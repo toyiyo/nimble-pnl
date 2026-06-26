@@ -1,9 +1,9 @@
 import { memo } from 'react';
 
 import { useDroppable } from '@dnd-kit/core';
+import { AlertTriangle } from 'lucide-react';
 
-import { classifyCapacity } from '@/lib/openShiftHelpers';
-import type { Shift } from '@/types/scheduling';
+import type { Shift, SlotCoverage } from '@/types/scheduling';
 import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
@@ -15,7 +15,7 @@ interface ShiftCellProps {
   day: string;
   isActiveDay: boolean;
   shifts: Shift[];
-  capacity: number;
+  capacity?: number;
   onRemoveShift: (shiftId: string) => void;
   isHighlighted?: boolean;
   /** Mobile tap-to-assign: called when cell is tapped with an employee selected */
@@ -24,6 +24,30 @@ interface ShiftCellProps {
   hasMobileSelection?: boolean;
   allocationStatus?: AllocationStatus;
   pickedEmployeeName?: string;
+  /** Coverage data for this slot (computed by ShiftPlannerTab). */
+  coverage?: SlotCoverage;
+  /** Called when the coverage indicator is clicked; lifted to tab-level popover. */
+  onCoverageClick?: (templateId: string, day: string, rect: DOMRect) => void;
+}
+
+/** Tiny badge shown when coverage data is unavailable and capacity > 1. */
+function FallbackCapacityBadge({ shifts, capacity }: { shifts: Shift[]; capacity: number }) {
+  const openSpots = Math.max(0, capacity - shifts.length);
+  const status = openSpots === 0 ? 'full' : shifts.length > 0 ? 'partial' : 'empty';
+  return (
+    <div
+      className={cn(
+        'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
+        status === 'full'
+          ? 'text-foreground bg-muted/50'
+          : status === 'partial'
+            ? 'text-muted-foreground bg-muted/30'
+            : 'text-destructive bg-destructive/10',
+      )}
+    >
+      {shifts.length}/{capacity}
+    </div>
+  );
 }
 
 export const ShiftCell = memo(
@@ -32,13 +56,15 @@ export const ShiftCell = memo(
     day,
     isActiveDay,
     shifts,
-    capacity,
+    capacity = 1,
     onRemoveShift,
     isHighlighted,
     onMobileTap,
     hasMobileSelection,
     allocationStatus,
     pickedEmployeeName,
+    coverage,
+    onCoverageClick,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -60,6 +86,15 @@ export const ShiftCell = memo(
       allocationStatus === 'conflict' && 'outline outline-2 outline-destructive bg-destructive/10',
       allocationStatus === 'available' && 'bg-primary/5',
     );
+
+    // Suppress coverage indicator only when the cell already renders at least one placed shift
+    // AND coverage is 100% — in that case the chip is redundant noise because the assignee
+    // chip already signals the slot is filled.
+    // Do NOT suppress when shifts.length === 0 even if coverage === 100%, because the slot
+    // may be covered by a non-template fill-in that isn't bucketed here; hiding the indicator
+    // would make a covered cell look empty.
+    const showCoverageIndicator = coverage !== undefined &&
+      !(coverage.coveragePct === 100 && shifts.length >= 1);
 
     return (
       <div
@@ -95,27 +130,56 @@ export const ShiftCell = memo(
             onRemove={onRemoveShift}
           />
         ))}
-        {capacity > 1 && (() => {
-          const status = classifyCapacity(capacity, shifts.length);
-          return (
-            <div
-              className={cn(
-                'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
-                status === 'full'
-                  ? 'text-emerald-600 bg-emerald-500/10'
-                  : status === 'partial'
-                    ? 'text-amber-600 bg-amber-500/10'
-                    : 'text-red-500 bg-red-500/10',
-              )}
+
+        {/* Coverage indicator — shown only when coverage data is available and not suppressed */}
+        {showCoverageIndicator && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCoverageClick?.(templateId, day, e.currentTarget.getBoundingClientRect());
+            }}
+            aria-label={`Coverage ${coverage.coveragePct}%${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. Open details`}
+            aria-haspopup="dialog"
+            className={cn(
+              'mt-1 flex items-center gap-1 text-[11px]',
+              coverage.openSpots > 0 ? 'text-destructive' : 'text-muted-foreground',
+            )}
+          >
+            <span
+              className="inline-block h-1.5 w-10 rounded-full bg-muted overflow-hidden"
+              aria-hidden="true"
             >
-              {shifts.length}/{capacity}
-            </div>
-          );
-        })()}
+              <span
+                className={cn(
+                  'block h-full',
+                  coverage.openSpots > 0 ? 'bg-destructive/70' : 'bg-foreground/60',
+                )}
+                style={{ width: `${coverage.coveragePct}%` }}
+              />
+            </span>
+            <span>{coverage.coveragePct}%</span>
+            {coverage.openSpots > 0 && (
+              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+            )}
+            <span className="sr-only">
+              {coverage.openSpots > 0
+                ? `Needs ${coverage.openSpots} more; `
+                : 'Fully covered; '}
+              {coverage.coveragePct}% of window covered
+            </span>
+          </button>
+        )}
+
+        {/* Fallback capacity badge (only when no coverage data and capacity > 1) */}
+        {!coverage && capacity > 1 && (
+          <FallbackCapacityBadge shifts={shifts} capacity={capacity} />
+        )}
       </div>
     );
   },
   (prev, next) =>
+    prev.coverage === next.coverage &&
     prev.templateId === next.templateId &&
     prev.day === next.day &&
     prev.isActiveDay === next.isActiveDay &&
@@ -126,5 +190,6 @@ export const ShiftCell = memo(
     prev.hasMobileSelection === next.hasMobileSelection &&
     prev.onMobileTap === next.onMobileTap &&
     prev.allocationStatus === next.allocationStatus &&
-    prev.pickedEmployeeName === next.pickedEmployeeName,
+    prev.pickedEmployeeName === next.pickedEmployeeName &&
+    prev.onCoverageClick === next.onCoverageClick,
 );

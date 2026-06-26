@@ -3,8 +3,10 @@
  *
  * Tests pure functions from openShiftHelpers.ts:
  * - formatCompactTime: compact 12-hour time labels
- * - computeOpenSpots: available slot calculation
- * - classifyCapacity: slot fill status
+ *
+ * Note (T11): computeOpenSpots and classifyCapacity have been removed — they were
+ * the exact-match path replaced by the coverage engine (computeSlotCoverage).
+ * Their removal is guarded by: tests/unit/openShiftHelpersCleanup.test.ts
  *
  * Also tests conflict detection logic from AvailableShiftsPage
  * (extracted into pure helper for testability).
@@ -13,8 +15,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   formatCompactTime,
-  computeOpenSpots,
-  classifyCapacity,
 } from '@/lib/openShiftHelpers';
 
 // ---- formatCompactTime ----
@@ -57,56 +57,6 @@ describe('formatCompactTime', () => {
     // HH:MM:SS - only first two segments matter
     expect(formatCompactTime('16:00:00')).toBe('4p');
     expect(formatCompactTime('08:30:00')).toBe('8:30a');
-  });
-});
-
-// ---- computeOpenSpots ----
-
-describe('computeOpenSpots', () => {
-  it('returns capacity minus assigned count', () => {
-    expect(computeOpenSpots(3, 1)).toBe(2);
-  });
-
-  it('returns 0 when fully booked', () => {
-    expect(computeOpenSpots(3, 3)).toBe(0);
-  });
-
-  it('clamps to 0 when over-assigned', () => {
-    expect(computeOpenSpots(2, 5)).toBe(0);
-  });
-
-  it('defaults capacity to 1 when undefined', () => {
-    expect(computeOpenSpots(undefined, 0)).toBe(1);
-    expect(computeOpenSpots(undefined, 1)).toBe(0);
-  });
-
-  it('returns full capacity when no one assigned', () => {
-    expect(computeOpenSpots(5, 0)).toBe(5);
-  });
-});
-
-// ---- classifyCapacity ----
-
-describe('classifyCapacity', () => {
-  it('returns "empty" when no one is assigned', () => {
-    expect(classifyCapacity(4, 0)).toBe('empty');
-  });
-
-  it('returns "partial" when partially filled', () => {
-    expect(classifyCapacity(4, 2)).toBe('partial');
-  });
-
-  it('returns "full" when at capacity', () => {
-    expect(classifyCapacity(4, 4)).toBe('full');
-  });
-
-  it('returns "full" when over capacity', () => {
-    expect(classifyCapacity(2, 5)).toBe('full');
-  });
-
-  it('uses default capacity of 1 when undefined', () => {
-    expect(classifyCapacity(undefined, 0)).toBe('empty');
-    expect(classifyCapacity(undefined, 1)).toBe('full');
   });
 });
 

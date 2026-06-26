@@ -9,15 +9,17 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AlertCircle, CalendarOff, Users, X } from 'lucide-react';
 
 import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
-import { useShiftTemplates } from '@/hooks/useShiftTemplates';
+import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
 
-import type { ShiftTemplate, ConflictCheck } from '@/types/scheduling';
+import type { ShiftTemplate, ConflictCheck, SlotCoverage, CoverageShift } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
 import type { ValidationIssue } from '@/lib/shiftValidator';
+
+import { computeSlotCoverage } from '@/lib/shiftCoverage';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -25,6 +27,7 @@ import { computeAllocationStatuses, type AllocationStatus } from '@/lib/shiftAll
 
 import { AssignmentPopover } from './AssignmentPopover';
 import { AreaFilterPills } from './AreaFilterPills';
+import { CoverageDetail } from './CoverageDetail';
 import { CoverageStrip } from './CoverageStrip';
 import { ScheduleOverviewPanel } from './ScheduleOverviewPanel';
 
@@ -124,6 +127,47 @@ export function ShiftPlannerTab({
   const [conflictDialogData, setConflictDialogData] = useState<ConflictDialogData | null>(null);
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+
+  // Tab-level coverage Map: Map<templateId, Map<day, SlotCoverage>>
+  // Per-slot try/catch so one bad row never blanks the whole grid.
+  const coverageByTemplateDay = useMemo(() => {
+    const cov: CoverageShift[] = shifts.map((s) => ({
+      employee_id: s.employee_id,
+      employee_name: s.employee?.name ?? null,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      position: s.position,
+      status: s.status,
+    }));
+    const map = new Map<string, Map<string, SlotCoverage>>();
+    for (const t of templates) {
+      const inner = new Map<string, SlotCoverage>();
+      for (const day of weekDays) {
+        if (!templateAppliesToDay(t, day)) continue;
+        try {
+          inner.set(
+            day,
+            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, t.position, restaurantTimezone),
+          );
+        } catch {
+          // one bad row never blanks the grid
+        }
+      }
+      map.set(t.id, inner);
+    }
+    return map;
+  }, [shifts, templates, weekDays, restaurantTimezone]);
+
+  // Lifted coverage detail state — single Popover/Drawer instance (Single Dialog Pattern)
+  const [coverageDetail, setCoverageDetail] = useState<{ templateId: string; day: string; anchorRect?: DOMRect } | null>(null);
+
+  const handleCoverageClick = useCallback((templateId: string, day: string, rect?: DOMRect) => {
+    setCoverageDetail({ templateId, day, anchorRect: rect });
+  }, []);
+
+  const handleCoverageClose = useCallback(() => {
+    setCoverageDetail(null);
+  }, []);
 
   const [pickedEmployeeId, setPickedEmployeeId] = useState<string | null>(null);
 
@@ -452,6 +496,14 @@ export function ShiftPlannerTab({
     );
   }
 
+  // Derived slot label for the CoverageDetail heading
+  const coverageSlotLabel = coverageDetail
+    ? (() => {
+        const t = templates.find((tmpl) => tmpl.id === coverageDetail.templateId);
+        return t ? `${t.position} · ${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}` : undefined;
+      })()
+    : undefined;
+
   return (
     <div className="space-y-3">
       <PlannerHeader
@@ -535,6 +587,8 @@ export function ShiftPlannerTab({
                   coverageSlot={!isMobile ? <CoverageStrip weekDays={weekDays} coverageByDay={coverageByDay} /> : undefined}
                   allocationStatuses={allocationStatuses}
                   pickedEmployeeName={pickedEmployeeName}
+                  coverageByTemplateDay={coverageByTemplateDay}
+                  onCoverageClick={handleCoverageClick}
                 />
               </div>
             )}
@@ -691,6 +745,20 @@ export function ShiftPlannerTab({
         generationError={generationError}
         onGenerate={handleGenerate}
         onRetry={handleGenerateRetry}
+      />
+
+      {/* Coverage detail — ONE lifted instance (Single Dialog Pattern).
+          Desktop uses Popover (anchored to cell rect when available); mobile uses Drawer. */}
+      <CoverageDetail
+        open={coverageDetail !== null}
+        coverage={
+          coverageDetail
+            ? (coverageByTemplateDay.get(coverageDetail.templateId)?.get(coverageDetail.day) ?? null)
+            : null
+        }
+        slotLabel={coverageSlotLabel}
+        anchorRect={coverageDetail?.anchorRect}
+        onClose={handleCoverageClose}
       />
 
     </div>

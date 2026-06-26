@@ -12,7 +12,7 @@
 
 BEGIN;
 
-SELECT plan(3);
+SELECT plan(4);
 
 -- ============================================
 -- Setup: disable RLS and seed test data
@@ -154,6 +154,86 @@ SELECT is(
   ),
   false,
   'second claim on full capacity-1 template returns success=false'
+);
+
+-- ============================================
+-- Test 4: a fill-in shift (non-exact-match window) DOES reduce open_spots
+-- under coverage-based get_open_shifts.
+--
+-- Under the old exact-match approach, a shift with a different start/end time
+-- than the template was invisible to get_open_shifts (assigned_count=0).
+-- Under coverage, shift_slot_min_concurrent counts any overlapping shift, so
+-- a fill-in that covers the entire template window yields 0 open_spots.
+--
+-- Fixture: new restaurant + template (Tue 10:00-16:30 cap 1) + a fill-in
+-- shift 09:00-17:00 (overlaps the entire window but does NOT exactly match).
+-- Expected: get_open_shifts returns 0 rows (slot is fully covered).
+-- ============================================
+
+DO $$
+DECLARE
+  v_rid  uuid := 'aaaaaaaa-ca01-0000-0000-000000000002';
+  v_emp  uuid := 'cccccccc-ca01-0000-0000-000000000010';
+  v_tmpl uuid := 'bbbbbbbb-ca01-0000-0000-000000000010';
+  v_uid  uuid := 'dddddddd-ca01-0000-0000-000000000002';
+  -- Find next Tuesday that is in the future (DOW 2)
+  v_d    date := CURRENT_DATE + ((2 - EXTRACT(DOW FROM CURRENT_DATE)::int + 7) % 7);
+BEGIN
+  -- Ensure next Tuesday is strictly in the future
+  IF v_d <= CURRENT_DATE THEN v_d := v_d + 7; END IF;
+
+  DELETE FROM public.shifts          WHERE restaurant_id = v_rid;
+  DELETE FROM public.open_shift_claims WHERE restaurant_id = v_rid;
+  DELETE FROM public.schedule_publications WHERE restaurant_id = v_rid;
+  DELETE FROM public.staffing_settings WHERE restaurant_id = v_rid;
+  DELETE FROM public.shift_templates WHERE restaurant_id = v_rid;
+  DELETE FROM public.employees       WHERE restaurant_id = v_rid;
+  DELETE FROM public.restaurants     WHERE id = v_rid;
+
+  INSERT INTO auth.users(id, email)
+    VALUES (v_uid, 'fillin-test@example.com') ON CONFLICT DO NOTHING;
+
+  INSERT INTO public.restaurants(id, name, timezone)
+    VALUES (v_rid, 'FillIn Test', 'America/Chicago')
+    ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
+
+  INSERT INTO public.employees(id, restaurant_id, name, position, status, is_active)
+    VALUES (v_emp, v_rid, 'FillIn Emp', 'Server', 'active', true)
+    ON CONFLICT (id) DO NOTHING;
+
+  -- Template: Tuesdays 10:00-16:30 cap 1
+  INSERT INTO public.shift_templates(id, restaurant_id, name, start_time, end_time, position, days, capacity, is_active)
+    VALUES (v_tmpl, v_rid, 'Mid Opener', '10:00:00', '16:30:00', 'Server', '{2}', 1, true)
+    ON CONFLICT (id) DO UPDATE SET is_active = true;
+
+  INSERT INTO public.staffing_settings(restaurant_id, open_shifts_enabled, require_shift_claim_approval)
+    VALUES (v_rid, true, false)
+    ON CONFLICT (restaurant_id) DO UPDATE SET open_shifts_enabled = true;
+
+  INSERT INTO public.schedule_publications(restaurant_id, week_start_date, week_end_date, published_by, shift_count)
+    VALUES (v_rid, v_d - EXTRACT(DOW FROM v_d)::int, v_d - EXTRACT(DOW FROM v_d)::int + 6, v_uid, 0)
+    ON CONFLICT DO NOTHING;
+
+  -- Fill-in: 09:00-17:00 local — overlaps the FULL 10:00-16:30 window but
+  -- does NOT exactly match it. Old exact-match would miss this; coverage counts it.
+  INSERT INTO public.shifts(restaurant_id, employee_id, start_time, end_time, position, status)
+    VALUES (
+      v_rid, v_emp,
+      (v_d::text || ' 09:00')::timestamp AT TIME ZONE 'America/Chicago',
+      (v_d::text || ' 17:00')::timestamp AT TIME ZONE 'America/Chicago',
+      'Server', 'scheduled'
+    );
+END $$;
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM get_open_shifts(
+      'aaaaaaaa-ca01-0000-0000-000000000002'::uuid,
+      CURRENT_DATE,
+      CURRENT_DATE + 14
+    )
+  ),
+  'fill-in overlapping full template window reduces open_spots to 0 (coverage-based)'
 );
 
 SELECT * FROM finish();

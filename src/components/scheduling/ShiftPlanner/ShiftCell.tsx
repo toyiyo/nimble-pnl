@@ -28,6 +28,9 @@ interface ShiftCellProps {
   coverage?: SlotCoverage;
   /** Called when the coverage indicator is clicked; lifted to tab-level popover. */
   onCoverageClick?: (templateId: string, day: string, rect: DOMRect) => void;
+  /** Concise slot identity for the coverage indicator aria-label (e.g. "Cold Stone Server").
+   *  Derived from template area + position in TemplateGrid. Falls back to "Coverage" when omitted. */
+  slotName?: string;
 }
 
 /** Tiny badge shown when coverage data is unavailable and capacity > 1. */
@@ -65,6 +68,7 @@ export const ShiftCell = memo(
     pickedEmployeeName,
     coverage,
     onCoverageClick,
+    slotName,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -139,7 +143,7 @@ export const ShiftCell = memo(
               e.stopPropagation();
               onCoverageClick?.(templateId, day, e.currentTarget.getBoundingClientRect());
             }}
-            aria-label={`Coverage ${coverage.coveragePct}%${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. Open details`}
+            aria-label={`${slotName ?? 'Coverage'} ${day}: ${capacity - coverage.openSpots} of ${capacity} staffed${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. Open details`}
             aria-haspopup="dialog"
             className={cn(
               'mt-1 flex items-center gap-1 text-[11px]',
@@ -191,5 +195,6 @@ export const ShiftCell = memo(
     prev.onMobileTap === next.onMobileTap &&
     prev.allocationStatus === next.allocationStatus &&
     prev.pickedEmployeeName === next.pickedEmployeeName &&
-    prev.onCoverageClick === next.onCoverageClick,
+    prev.onCoverageClick === next.onCoverageClick &&
+    prev.slotName === next.slotName,
 );

@@ -77,12 +77,15 @@ describe('ShiftCell coverage indicator — render tests', () => {
     expect(btn.tagName).toBe('BUTTON');
   });
 
-  it('aria-label includes coverage percentage and "Open details"', () => {
+  it('aria-label includes filled/capacity counts and "Open details"', () => {
+    // New format: "<slotName|Coverage> <day>: X of N staffed[, needs M more]. Open details"
+    // BASE_PROPS has capacity=1, coverage has openSpots=1 → 0 of 1 staffed, needs 1 more
     const coverage = makeCoverage({ coveragePct: 47, openSpots: 1, minConcurrent: 0 });
     render(<ShiftCell {...BASE_PROPS} coverage={coverage} />);
     const btn = screen.getByRole('button', { name: /Coverage/i });
-    expect(btn.getAttribute('aria-label')).toMatch(/47%/);
-    expect(btn.getAttribute('aria-label')).toMatch(/Open details/i);
+    const label = btn.getAttribute('aria-label') ?? '';
+    expect(label).toMatch(/of 1 staffed/i);
+    expect(label).toMatch(/Open details/i);
   });
 
   it('aria-label mentions needs N more when openSpots > 0', () => {
@@ -168,6 +171,52 @@ describe('ShiftCell coverage indicator — render tests', () => {
   });
 });
 
+// ── slotName prop — aria-label slot identity (Task 2e) ───────────────────────
+
+describe('ShiftCell coverage indicator — slotName aria-label (Task 2e)', () => {
+  it('uses slotName in aria-label when provided (area + position)', () => {
+    const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
+    render(
+      <ShiftCell
+        {...BASE_PROPS}
+        capacity={2}
+        coverage={coverage}
+        slotName="Cold Stone Server"
+        shifts={[]}
+      />,
+    );
+    // aria-label must start with the slotName, not bare "Coverage"
+    const btn = screen.getByRole('button');
+    const label = btn.getAttribute('aria-label') ?? '';
+    expect(label).toMatch(/Cold Stone Server/i);
+    expect(label).toMatch(/Open details/i);
+  });
+
+  it('aria-label includes filled/capacity counts when slotName is provided', () => {
+    const coverage = makeCoverage({ coveragePct: 50, openSpots: 1 });
+    render(
+      <ShiftCell
+        {...BASE_PROPS}
+        capacity={2}
+        coverage={coverage}
+        slotName="Wetzel's Server"
+        shifts={[]}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    const label = btn.getAttribute('aria-label') ?? '';
+    expect(label).toMatch(/1 of 2 staffed/i);
+    expect(label).toMatch(/needs 1 more/i);
+  });
+
+  it('falls back to "Coverage" in aria-label when slotName is omitted', () => {
+    const coverage = makeCoverage({ coveragePct: 50, openSpots: 1 });
+    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={[]} />);
+    const btn = screen.getByRole('button', { name: /Coverage/i });
+    expect(btn).toBeTruthy();
+  });
+});
+
 // ── source-text tests (memo comparator + no raw colors in source) ─────────────
 const SRC = readFileSync(
   resolve(__dirname, '../../src/components/scheduling/ShiftPlanner/ShiftCell.tsx'),
@@ -179,10 +228,12 @@ describe('ShiftCell source-text invariants (Task 9)', () => {
     expect(SRC).toMatch(/prev\.coverage.*next\.coverage|coverage.*===.*coverage/s);
   });
 
-  it('indicator is a <button> in source with aria-label containing "Coverage"', () => {
-    // The coverage indicator must use a <button> element AND have an aria-label with "Coverage"
+  it('indicator is a <button> in source with aria-label using slotName fallback', () => {
+    // The coverage indicator must use a <button> element AND have an aria-label that
+    // falls back to "Coverage" when slotName is omitted (via slotName ?? 'Coverage').
     expect(SRC).toMatch(/<button/);
-    expect(SRC).toMatch(/aria-label=\{`Coverage/);
+    // New format: `${slotName ?? 'Coverage'} ${day}: ...`
+    expect(SRC).toMatch(/slotName\s*\?\?\s*['"]Coverage['"]/);
   });
 
   it('uses aria-haspopup="dialog" on the indicator button', () => {

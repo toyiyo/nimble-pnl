@@ -169,6 +169,7 @@ export function TemplateGrid({
                           pickedEmployeeName={pickedEmployeeName}
                           coverage={coverageByTemplateDay?.get(template.id)?.get(day)}
                           onCoverageClick={onCoverageClick}
+                          slotName={`${template.area ? template.area + ' ' : ''}${template.position}`}
                         />
                       </div>
                     );

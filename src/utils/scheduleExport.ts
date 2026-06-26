@@ -442,10 +442,15 @@ export const generateRosterPDF = (options: RosterExportOptions): void => {
     cursorY = ((doc as any).lastAutoTable?.finalY ?? cursorY) + 18;
   }
 
-  // Footer
+  // Footer — placed just below the last table, clamped to the page (mirrors generateSchedulePDF)
+  const footerY = (doc as any).lastAutoTable?.finalY ?? cursorY;
   doc.setFontSize(9);
   doc.setTextColor(100);
-  doc.text(`Generated ${format(new Date(), "MMM d, yyyy 'at' h:mm a")}`, margin, pageHeight - 24);
+  doc.text(
+    `Generated ${format(new Date(), "MMM d, yyyy 'at' h:mm a")}`,
+    margin,
+    Math.min(footerY + 18, pageHeight - 24),
+  );
 
   const fileName =
     days.length === 1

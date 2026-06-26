@@ -3,7 +3,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const { mockText, mockSave, mockAutoTable } = vi.hoisted(() => ({
   mockText: vi.fn(),
   mockSave: vi.fn(),
-  mockAutoTable: vi.fn(),
+  mockAutoTable: vi.fn((doc: any, opts: any) => {
+    doc.lastAutoTable = { finalY: (opts?.startY ?? 100) + 50 };
+  }),
 }));
 
 vi.mock('jspdf', () => ({
@@ -101,6 +103,9 @@ describe('generateRosterPDF', () => {
     const days = [DAY, new Date(2026, 5, 26), new Date(2026, 5, 27)];
     generateRosterPDF({ ...base, weekStart: days[0], weekEnd: days[2], days, sortBy: 'startTime', groupBy: 'none' });
     expect(mockAutoTable).toHaveBeenCalledTimes(3);
+    const startYs = mockAutoTable.mock.calls.map((c: any[]) => c[1].startY);
+    expect(startYs[1]).toBeGreaterThan(startYs[0]);
+    expect(startYs[2]).toBeGreaterThan(startYs[1]);
   });
 
   it('shows "No one scheduled" for an empty day', () => {

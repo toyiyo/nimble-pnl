@@ -111,3 +111,31 @@ describe('computeSlotCoverage — covering employees + segments', () => {
     expect(c.segments.some((s) => !s.covered)).toBe(true); // gap after Shy leaves
   });
 });
+
+import { minutesToCompact } from '@/lib/shiftCoverage';
+
+describe('minutesToCompact', () => {
+  it('formats on-the-hour minutes: 840 (14:00) => "2p"', () => {
+    expect(minutesToCompact(840)).toBe('2p');
+  });
+
+  it('formats with minutes: 570 (9:30) => "9:30a"', () => {
+    expect(minutesToCompact(570)).toBe('9:30a');
+  });
+
+  it('formats midnight: 0 => "12a"', () => {
+    expect(minutesToCompact(0)).toBe('12a');
+  });
+
+  it('formats noon: 720 => "12p"', () => {
+    expect(minutesToCompact(720)).toBe('12p');
+  });
+
+  it('normalises overnight minutes: 1500 (25:00, i.e. 01:00 next-day) => "1a"', () => {
+    expect(minutesToCompact(1500)).toBe('1a');
+  });
+
+  it('normalises negative minutes: -60 (23:00 previous-day) => "11p"', () => {
+    expect(minutesToCompact(-60)).toBe('11p');
+  });
+});

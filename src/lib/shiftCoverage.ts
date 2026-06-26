@@ -15,6 +15,7 @@
 
 import { toZonedTime } from 'date-fns-tz';
 import type { CoverageShift, CoverageSegment, CoveringEmployee, SlotCoverage } from '@/types/scheduling';
+import { formatCompactTime } from '@/lib/openShiftHelpers';
 
 /**
  * Coerce a raw capacity value: 0, NaN, null, undefined, or < 1 → 1.
@@ -23,6 +24,21 @@ import type { CoverageShift, CoverageSegment, CoveringEmployee, SlotCoverage } f
 export function capacityFloor(capacity: number | undefined | null): number {
   const c = Number(capacity);
   return Number.isFinite(c) && c >= 1 ? Math.floor(c) : 1;
+}
+
+/**
+ * Convert minutes-from-midnight (possibly >1440 for overnight or negative for previous-day)
+ * into a compact 12-hour label, e.g. 840 → "2p", 570 → "9:30a", 1500 → "1a".
+ *
+ * Delegates to `formatCompactTime` from openShiftHelpers so the display format is consistent
+ * across the app. The `min % 1440` normalisation handles overnight clipped end-times that
+ * shiftCoverage stores as values >= 1440.
+ */
+export function minutesToCompact(min: number): string {
+  const norm = ((min % 1440) + 1440) % 1440; // wrap to [0, 1440)
+  const h = Math.floor(norm / 60);
+  const m = norm % 60;
+  return formatCompactTime(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
 }
 
 /**

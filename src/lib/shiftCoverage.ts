@@ -1,0 +1,172 @@
+/**
+ * shiftCoverage.ts — pure coverage engine
+ *
+ * Computes time-based concurrent-minimum coverage for a template slot.
+ * Algorithm: sweep-line over breakpoints derived from clipped shift intervals.
+ * Identical logic is mirrored in SQL as shift_slot_min_concurrent().
+ *
+ * Key invariants (match the SQL exactly):
+ *  - "distinct employees" per sub-interval (one person with 2 overlapping shifts = 1)
+ *  - capacityFloor: 0/NaN/<1 → 1
+ *  - W0 and W1 are always seeded into breakpoints (empty shift set → minConcurrent=0)
+ *  - Overnight: when end ≤ start in minutes, add 1440 to end
+ *  - All math in restaurant-local minutes from local midnight of dateStr
+ */
+
+import { toZonedTime } from 'date-fns-tz';
+import type { CoverageShift, CoverageSegment, CoveringEmployee, SlotCoverage } from '@/types/scheduling';
+
+/**
+ * Coerce a raw capacity value: 0, NaN, null, undefined, or < 1 → 1.
+ * Matches SQL: GREATEST(1, capacity).
+ */
+export function capacityFloor(capacity: number | undefined | null): number {
+  const c = Number(capacity);
+  return Number.isFinite(c) && c >= 1 ? Math.floor(c) : 1;
+}
+
+/**
+ * Parse "HH:MM:SS" or "HH:MM" into minutes from midnight (integer).
+ */
+function parseTimeToMinutes(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * Convert a UTC ISO string to wall-clock minutes from local midnight of `dateStr`
+ * (YYYY-MM-DD) in the given IANA `tz`.
+ *
+ * Handles cross-midnight shifts: if the instant falls on the day after dateStr,
+ * the result will be ≥ 1440 (e.g. 02:00 next-day = 1560).
+ * If it falls the day before, the result will be negative.
+ */
+function isoToLocalMinutes(iso: string, dateStr: string, tz: string): number {
+  const zoned = toZonedTime(new Date(iso), tz);
+  const wallMins = zoned.getHours() * 60 + zoned.getMinutes();
+
+  // Compute the calendar-day delta between the zoned date and dateStr
+  const [Y, M, D] = dateStr.split('-').map(Number);
+  const anchorMs = new Date(Y, M - 1, D).getTime();
+  const zonedDay = new Date(zoned.getFullYear(), zoned.getMonth(), zoned.getDate()).getTime();
+  const dayDelta = Math.round((zonedDay - anchorMs) / 86_400_000);
+
+  return wallMins + dayDelta * 1440;
+}
+
+interface Clip {
+  employeeId: string;
+  employeeName?: string | null;
+  cs: number; // clipped start (minutes from local midnight)
+  ce: number; // clipped end
+}
+
+/**
+ * Compute coverage for a single template slot on a given date.
+ *
+ * @param windowStart  "HH:MM:SS" or "HH:MM" — local start of the slot
+ * @param windowEnd    "HH:MM:SS" or "HH:MM" — local end of the slot (may be < start for overnight)
+ * @param capacity     Template capacity (coerced via capacityFloor)
+ * @param dateStr      "YYYY-MM-DD" — the local calendar date of the slot
+ * @param shifts       Candidate shifts (all positions/statuses; engine filters internally)
+ * @param position     The position the slot requires
+ * @param tz           IANA timezone of the restaurant
+ */
+export function computeSlotCoverage(
+  windowStart: string,
+  windowEnd: string,
+  capacity: number,
+  dateStr: string,
+  shifts: CoverageShift[],
+  position: string,
+  tz: string,
+): SlotCoverage {
+  const cap = capacityFloor(capacity);
+  const w0 = parseTimeToMinutes(windowStart);
+  const w1raw = parseTimeToMinutes(windowEnd);
+  // Overnight window: if end ≤ start, treat end as next-day (+1440)
+  const w1 = w1raw <= w0 ? w1raw + 1440 : w1raw;
+
+  // --- Build clipped intervals ---
+  const clips: Clip[] = [];
+  for (const s of shifts) {
+    // Filter: position must match; cancelled shifts are skipped
+    if (s.position !== position) continue;
+    if (s.status === 'cancelled') continue;
+
+    const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
+    let de = isoToLocalMinutes(s.end_time, dateStr, tz);
+    // Overnight shift: if end ≤ start in local minutes, add 1440
+    if (de <= ds) de += 1440;
+
+    // Clip to window
+    const cs = Math.max(w0, ds);
+    const ce = Math.min(w1, de);
+    if (cs < ce) {
+      clips.push({ employeeId: s.employee_id, employeeName: s.employee_name ?? null, cs, ce });
+    }
+  }
+
+  // --- Sweep line over breakpoints ---
+  // Always seed W0 and W1 so an empty shift set still produces a full-window n=0 interval.
+  const bpSet = new Set<number>([w0, w1]);
+  for (const c of clips) {
+    bpSet.add(c.cs);
+    bpSet.add(c.ce);
+  }
+  const bps = Array.from(bpSet).sort((a, b) => a - b);
+
+  let minConcurrent = Infinity;
+  let coveredMin = 0;
+  const segments: CoverageSegment[] = [];
+
+  for (let i = 0; i < bps.length - 1; i++) {
+    const a = bps[i];
+    const b = bps[i + 1];
+    // Only process sub-intervals within [w0, w1)
+    if (b <= a || a < w0 || a >= w1) continue;
+
+    // COUNT(DISTINCT employee_id) at instant a
+    const emps = new Set<string>();
+    for (const c of clips) {
+      if (c.cs <= a && c.ce > a) emps.add(c.employeeId);
+    }
+    const n = emps.size;
+
+    minConcurrent = Math.min(minConcurrent, n);
+    const covered = n >= cap;
+    if (covered) coveredMin += b - a;
+
+    // Merge consecutive segments with the same coverage flag
+    const last = segments[segments.length - 1];
+    if (last && last.covered === covered && last.endMin === a) {
+      last.endMin = b;
+    } else {
+      segments.push({ startMin: a, endMin: b, covered });
+    }
+  }
+
+  // If no sub-intervals were processed (e.g. w0 === w1), default to 0
+  if (!Number.isFinite(minConcurrent)) minConcurrent = 0;
+
+  const span = w1 - w0;
+  const coveragePct = span > 0 ? Math.round((coveredMin / span) * 100) : 100;
+
+  // Build covering-employees list (sorted by start, all clips present)
+  const coveringEmployees: CoveringEmployee[] = clips
+    .map((c) => ({
+      employeeId: c.employeeId,
+      employeeName: c.employeeName ?? null,
+      startMin: c.cs,
+      endMin: c.ce,
+    }))
+    .sort((a, b) => a.startMin - b.startMin);
+
+  return {
+    minConcurrent,
+    openSpots: Math.max(0, cap - minConcurrent),
+    coveragePct,
+    segments,
+    coveringEmployees,
+  };
+}

@@ -383,3 +383,39 @@ export interface OpenShift {
   pending_claims: number;
   open_spots: number;
 }
+
+// --- Coverage engine types (used by shiftCoverage.ts + planner) ---
+
+/** A shift as seen by the coverage engine — minimal fields needed for the sweep. */
+export interface CoverageShift {
+  employee_id: string;
+  employee_name?: string | null;
+  start_time: string; // ISO UTC from Supabase
+  end_time: string;   // ISO UTC
+  position: string;
+  status?: string | null;
+}
+
+/** A contiguous sub-interval of the slot window, either fully covered (n≥C) or a gap (n<C). */
+export interface CoverageSegment {
+  startMin: number; // minutes from local midnight of the slot date
+  endMin: number;
+  covered: boolean;
+}
+
+/** One employee's clipped presence within the slot window. */
+export interface CoveringEmployee {
+  employeeId: string;
+  employeeName?: string | null;
+  startMin: number; // clipped to [w0, w1]
+  endMin: number;
+}
+
+/** Full result of computeSlotCoverage for one (template slot, date) pair. */
+export interface SlotCoverage {
+  minConcurrent: number;
+  openSpots: number;
+  coveragePct: number;         // 0..100, rounded
+  segments: CoverageSegment[]; // contiguous covered/gap runs across the window
+  coveringEmployees: CoveringEmployee[];
+}

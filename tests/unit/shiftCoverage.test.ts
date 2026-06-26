@@ -115,6 +115,46 @@ describe('computeSlotCoverage — covering employees + segments', () => {
   });
 });
 
+describe('computeSlotCoverage — area scope (opt-in)', () => {
+  const tz = 'America/Chicago'; const D = '2026-06-27';
+  const mkA = (emp: string, s: string, e: string, area: string | null): CoverageShift =>
+    ({ employee_id: emp, employee_name: emp, start_time: s, end_time: e, position: 'Server', status: 'scheduled', area });
+
+  it('counts only same-area shifts when options.area is set', () => {
+    const shifts = [
+      mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'), // 10:00-16:30 CDT
+      mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
+    ];
+    const c = computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, 'Server', tz, { area: 'Cold Stone' });
+    expect(c.coveringEmployees.map(e => e.employeeId)).toEqual(['CS1']); // WZ1 excluded
+    expect(c.openSpots).toBe(0);
+  });
+
+  it('no area filter when options omitted (back-compat) — counts both areas', () => {
+    const shifts = [
+      mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'),
+      mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
+    ];
+    const c = computeSlotCoverage('10:00:00', '16:30:00', 2, D, shifts, 'Server', tz);
+    expect(c.coveringEmployees.length).toBe(2);
+  });
+
+  it('options.area null/undefined => no filter (template with no area)', () => {
+    const shifts = [mkA('X', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone')];
+    expect(computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, 'Server', tz, { area: null }).openSpots).toBe(0);
+  });
+
+  it('same-area half-shift fill-in => partial coverage + gap segment', () => {
+    // cap 1, window 16:00-22:30 CDT; one Cold Stone person leaves at 19:30 => gap 19:30-22:30
+    // CDT (UTC-5): 16:00=21:00Z, 19:30=00:30Z+1
+    const shifts = [mkA('CS1', '2026-06-27T21:00:00Z', '2026-06-28T00:30:00Z', 'Cold Stone')]; // 16:00-19:30 CDT
+    const c = computeSlotCoverage('16:00:00', '22:30:00', 1, D, shifts, 'Server', tz, { area: 'Cold Stone' });
+    expect(c.openSpots).toBe(1);
+    expect(c.coveragePct).toBeLessThan(100);
+    expect(c.segments.some(s => !s.covered)).toBe(true);
+  });
+});
+
 import { minutesToCompact } from '@/lib/shiftCoverage';
 
 describe('minutesToCompact', () => {

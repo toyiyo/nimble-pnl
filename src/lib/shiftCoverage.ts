@@ -78,6 +78,22 @@ interface Clip {
 }
 
 /**
+ * Options bag for computeSlotCoverage.
+ *
+ * Back-compat contract: passing no options (or options={}) preserves the original
+ * whole-restaurant behaviour. Only `area` is opt-in. Banner callers (Scheduling.tsx)
+ * never pass options — they stay whole-floor intentionally.
+ */
+export interface ComputeSlotCoverageOptions {
+  /**
+   * When non-null, only shifts whose `shift.area === area` are counted.
+   * Pass the template's own `area` field (from ShiftTemplate.area).
+   * null / undefined → no area filter (counts all same-position shifts).
+   */
+  area?: string | null;
+}
+
+/**
  * Compute coverage for a single template slot on a given date.
  *
  * @param windowStart  "HH:MM:SS" or "HH:MM" — local start of the slot
@@ -87,6 +103,7 @@ interface Clip {
  * @param shifts       Candidate shifts (all positions/statuses; engine filters internally)
  * @param position     The position the slot requires
  * @param tz           IANA timezone of the restaurant
+ * @param options      Optional bag — `{ area }` for planner per-cell scoping; omit for banner/SQL.
  */
 export function computeSlotCoverage(
   windowStart: string,
@@ -96,6 +113,7 @@ export function computeSlotCoverage(
   shifts: CoverageShift[],
   position: string,
   tz: string,
+  options?: ComputeSlotCoverageOptions,
 ): SlotCoverage {
   const cap = capacityFloor(capacity);
   const w0 = parseTimeToMinutes(windowStart);
@@ -109,6 +127,9 @@ export function computeSlotCoverage(
     // Filter: position must match; cancelled shifts are skipped
     if (s.position !== position) continue;
     if (s.status === 'cancelled') continue;
+    // Opt-in area filter: when options.area is set (non-null), only count same-area shifts.
+    // null/undefined area → no filter (whole-restaurant, back-compat with banner callers).
+    if (options && options.area !== undefined && options.area !== null && s.area !== options.area) continue;
 
     const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
     let de = isoToLocalMinutes(s.end_time, dateStr, tz);

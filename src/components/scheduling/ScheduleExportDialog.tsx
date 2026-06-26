@@ -324,7 +324,7 @@ export const ScheduleExportDialog = ({
             <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
               Layout
             </span>
-            <div className="mt-1.5 inline-flex rounded-lg border border-border/40 p-0.5 bg-muted/30">
+            <div className="mt-1.5 inline-flex rounded-lg border border-border/40 p-0.5 bg-muted/30" role="group" aria-label="Layout">
               <button
                 type="button"
                 onClick={() => setLayout('roster')}
@@ -359,7 +359,7 @@ export const ScheduleExportDialog = ({
                   Sort by
                 </Label>
                 <Select value={sortBy} onValueChange={(v) => setSortBy(v as RosterSortBy)}>
-                  <SelectTrigger className="h-9 mt-1.5 text-[13px]">
+                  <SelectTrigger className="h-9 mt-1.5 text-[13px]" aria-label="Sort by">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -374,7 +374,7 @@ export const ScheduleExportDialog = ({
                   Day
                 </Label>
                 <Select value={rosterDay} onValueChange={setRosterDay}>
-                  <SelectTrigger className="h-9 mt-1.5 text-[13px]">
+                  <SelectTrigger className="h-9 mt-1.5 text-[13px]" aria-label="Day">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

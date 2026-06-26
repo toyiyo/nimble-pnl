@@ -30,6 +30,26 @@ interface ShiftCellProps {
   onCoverageClick?: (templateId: string, day: string, rect: DOMRect) => void;
 }
 
+/** Tiny badge shown when coverage data is unavailable and capacity > 1. */
+function FallbackCapacityBadge({ shifts, capacity }: { shifts: Shift[]; capacity: number }) {
+  const openSpots = Math.max(0, capacity - shifts.length);
+  const status = openSpots === 0 ? 'full' : shifts.length > 0 ? 'partial' : 'empty';
+  return (
+    <div
+      className={cn(
+        'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
+        status === 'full'
+          ? 'text-emerald-600 bg-emerald-500/10'
+          : status === 'partial'
+            ? 'text-amber-600 bg-amber-500/10'
+            : 'text-red-500 bg-red-500/10',
+      )}
+    >
+      {shifts.length}/{capacity}
+    </div>
+  );
+}
+
 export const ShiftCell = memo(
   function ShiftCell({
     templateId,
@@ -147,24 +167,9 @@ export const ShiftCell = memo(
         )}
 
         {/* Fallback capacity badge (only when no coverage data and capacity > 1) */}
-        {!coverage && capacity > 1 && (() => {
-          const openSpots = Math.max(0, (capacity ?? 1) - shifts.length);
-          const status = openSpots === 0 ? 'full' : shifts.length > 0 ? 'partial' : 'empty';
-          return (
-            <div
-              className={cn(
-                'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
-                status === 'full'
-                  ? 'text-emerald-600 bg-emerald-500/10'
-                  : status === 'partial'
-                    ? 'text-amber-600 bg-amber-500/10'
-                    : 'text-red-500 bg-red-500/10',
-              )}
-            >
-              {shifts.length}/{capacity}
-            </div>
-          );
-        })()}
+        {!coverage && capacity > 1 && (
+          <FallbackCapacityBadge shifts={shifts} capacity={capacity} />
+        )}
       </div>
     );
   },

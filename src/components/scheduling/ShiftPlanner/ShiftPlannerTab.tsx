@@ -15,8 +15,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
 
-import type { ShiftTemplate, ConflictCheck, SlotCoverage } from '@/types/scheduling';
-import type { CoverageShift } from '@/types/scheduling';
+import type { ShiftTemplate, ConflictCheck, SlotCoverage, CoverageShift } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
 import type { ValidationIssue } from '@/lib/shiftValidator';
 
@@ -497,6 +496,14 @@ export function ShiftPlannerTab({
     );
   }
 
+  // Derived slot label for the CoverageDetail heading
+  const coverageSlotLabel = coverageDetail
+    ? (() => {
+        const t = templates.find((tmpl) => tmpl.id === coverageDetail.templateId);
+        return t ? `${t.position} · ${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}` : undefined;
+      })()
+    : undefined;
+
   return (
     <div className="space-y-3">
       <PlannerHeader
@@ -749,14 +756,7 @@ export function ShiftPlannerTab({
             ? (coverageByTemplateDay.get(coverageDetail.templateId)?.get(coverageDetail.day) ?? null)
             : null
         }
-        slotLabel={
-          coverageDetail
-            ? (() => {
-                const t = templates.find((tmpl) => tmpl.id === coverageDetail.templateId);
-                return t ? `${t.position} · ${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}` : undefined;
-              })()
-            : undefined
-        }
+        slotLabel={coverageSlotLabel}
         anchorRect={coverageDetail?.anchorRect}
         onClose={handleCoverageClose}
       />

@@ -3,6 +3,10 @@ import autoTable from "jspdf-autotable";
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import type { Shift, Employee } from "@/types/scheduling";
 import { groupEmployees, type GroupByMode } from "@/lib/scheduleGrouping";
+import { calculateShiftHours } from "@/lib/scheduleRoster";
+
+// Re-exported for backward compatibility; canonical home is @/lib/scheduleRoster.
+export { calculateShiftHours };
 
 export interface ScheduleExportOptions {
   shifts: Shift[];
@@ -46,17 +50,6 @@ export const formatKitchenTime = (startTime: string, endTime: string): string =>
   const endStr = isClose ? "CL" : formatHour(end);
   
   return `${startStr}-${endStr}`;
-};
-
-/**
- * Calculate shift hours (excluding break)
- */
-export const calculateShiftHours = (shift: Shift): number => {
-  const start = new Date(shift.start_time);
-  const end = new Date(shift.end_time);
-  const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-  const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
-  return netMinutes / 60;
 };
 
 /**

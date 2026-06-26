@@ -127,9 +127,9 @@ export function computeSlotCoverage(
     // Filter: position must match; cancelled shifts are skipped
     if (s.position !== position) continue;
     if (s.status === 'cancelled') continue;
-    // Opt-in area filter: when options.area is set (non-null), only count same-area shifts.
-    // null/undefined area → no filter (whole-restaurant, back-compat with banner callers).
-    if (options && options.area !== undefined && options.area !== null && s.area !== options.area) continue;
+    // Opt-in area filter: when options.area is non-null/undefined, only count same-area shifts.
+    // Omitted/null area → no filter (whole-restaurant, back-compat with banner callers).
+    if (options?.area != null && s.area !== options.area) continue;
 
     const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
     let de = isoToLocalMinutes(s.end_time, dateStr, tz);

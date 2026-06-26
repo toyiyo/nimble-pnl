@@ -51,6 +51,15 @@ interface ShiftPlannerTabProps {
   onWeekStartChange: (next: Date) => void;
 }
 
+/** Format a template's slot label for CoverageDetail headings.
+ *  e.g. "Cold Stone · Server · 10:00–16:30" or "Server · 10:00–16:30 (all areas)". */
+function buildSlotLabel(t: ShiftTemplate): string {
+  const timeRange = `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`;
+  return t.area
+    ? `${t.area} · ${t.position} · ${timeRange}`
+    : `${t.position} · ${timeRange} (all areas)`;
+}
+
 export function ShiftPlannerTab({
   restaurantId,
   weekStart: externalWeekStart,
@@ -505,15 +514,11 @@ export function ShiftPlannerTab({
   // Prepends t.area when set (e.g. "Cold Stone · Server · 10:00–16:30");
   // appends "(all areas)" when t.area is null so managers don't mistake a
   // restaurant-wide slot for an area-scoped one.
-  const coverageSlotLabel = coverageDetail
-    ? (() => {
-        const t = templates.find((tmpl) => tmpl.id === coverageDetail.templateId);
-        if (!t) return undefined;
-        const timeRange = `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`;
-        return t.area
-          ? `${t.area} · ${t.position} · ${timeRange}`
-          : `${t.position} · ${timeRange} (all areas)`;
-      })()
+  const coverageDetailTemplate = coverageDetail
+    ? templates.find((tmpl) => tmpl.id === coverageDetail.templateId)
+    : undefined;
+  const coverageSlotLabel = coverageDetailTemplate
+    ? buildSlotLabel(coverageDetailTemplate)
     : undefined;
 
   return (

@@ -96,6 +96,7 @@ export const ShiftCell = memo(
     //   • Fully covered (openSpots === 0): quiet — Check icon, N/N count, text-muted-foreground, no bar.
     //   • Under-covered (openSpots > 0): prominent — AlertTriangle, progress bar, text-destructive.
     const showCoverageIndicator = coverage !== undefined;
+    const filledCount = coverage !== undefined ? capacity - coverage.openSpots : 0;
 
     return (
       <div
@@ -140,7 +141,7 @@ export const ShiftCell = memo(
               e.stopPropagation();
               onCoverageClick?.(templateId, day, e.currentTarget.getBoundingClientRect());
             }}
-            aria-label={`${slotName ?? 'Coverage'} ${day}: ${capacity - coverage.openSpots} of ${capacity} staffed${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. Open details`}
+            aria-label={`${slotName ?? 'Coverage'} ${day}: ${filledCount} of ${capacity} staffed${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. Open details`}
             aria-haspopup="dialog"
             className={cn(
               'mt-1 flex items-center gap-1',
@@ -162,13 +163,13 @@ export const ShiftCell = memo(
                   />
                 </span>
                 <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                <span>{capacity - coverage.openSpots}/{capacity}</span>
+                <span>{filledCount}/{capacity}</span>
               </>
             ) : (
               /* Fully-covered tier: quiet — Check icon + N/N count, no progress bar */
               <>
                 <Check className="h-3 w-3" aria-hidden="true" />
-                <span>{capacity - coverage.openSpots}/{capacity}</span>
+                <span>{filledCount}/{capacity}</span>
               </>
             )}
             <span className="sr-only">

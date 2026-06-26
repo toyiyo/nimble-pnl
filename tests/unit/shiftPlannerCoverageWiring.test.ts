@@ -120,8 +120,12 @@ describe('ShiftPlannerTab — coverageSlotLabel area formatting (source-text, Ta
 
   it('coverageSlotLabel does NOT use the old bare "position · start–end" format (must include area logic)', () => {
     // The old format was: `${t.position} · ${t.start_time.slice(0,5)}–${t.end_time.slice(0,5)}`
-    // The new format must branch on t.area. Assert the IIFE or computed value references t.area.
-    expect(SRC).toMatch(/coverageSlotLabel[\s\S]{0,300}t\.area/);
+    // The new format must branch on t.area — either inline or via a helper function that references t.area.
+    // After simplification (buildSlotLabel extracted), the area branch lives in buildSlotLabel.
+    // Assert: (a) coverageSlotLabel calls buildSlotLabel, or (b) t.area appears within 400 chars of coverageSlotLabel.
+    const hasBuildSlotLabel = /coverageSlotLabel[\s\S]{0,200}buildSlotLabel/.test(SRC);
+    const hasInlineArea = /coverageSlotLabel[\s\S]{0,400}t\.area/.test(SRC);
+    expect(hasBuildSlotLabel || hasInlineArea).toBe(true);
   });
 });
 

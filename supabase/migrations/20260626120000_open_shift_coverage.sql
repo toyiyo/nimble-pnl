@@ -270,3 +270,175 @@ $$;
 
 -- Re-issue EXECUTE so the privilege is self-contained in this migration file.
 GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authenticated;
+
+-- ============================================================================
+-- Rewrite claim_open_shift to use coverage-based guard.
+--
+-- Critical fix: the old guard counted only exact time-window matches
+--   (start_time::time = template.start_time AND end_time::time = template.end_time)
+-- so a fill-in with different hours (but fully covering the slot) was invisible,
+-- allowing a double-claim on an already-staffed slot.
+--
+-- New guard: v_assigned_count = shift_slot_min_concurrent(...)
+-- The guard fires when (minConcurrent + pending) >= GREATEST(1, capacity),
+-- exactly mirroring the arithmetic in get_open_shifts so the offer and the
+-- claim check always agree.
+--
+-- Everything else is unchanged from 20260413001912_fix_shift_claim_timezone.sql:
+--   * SECURITY DEFINER (no RLS bypass needed)
+--   * Restaurant timezone lookup
+--   * Template lock (FOR SHARE)
+--   * Day-of-week validation
+--   * Overnight timestamp construction (+ interval '1 day')
+--   * Conflict check with existing employee shifts
+--   * require_shift_claim_approval branch
+--   * GRANT EXECUTE
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.claim_open_shift(
+    p_restaurant_id UUID,
+    p_template_id   UUID,
+    p_shift_date    DATE,
+    p_employee_id   UUID
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_tz                TEXT;
+    v_template          RECORD;
+    v_assigned_count    INT;
+    v_pending_count     BIGINT;
+    v_requires_approval BOOLEAN;
+    v_claim_id          UUID;
+    v_shift_id          UUID;
+    v_shift_start       TIMESTAMPTZ;
+    v_shift_end         TIMESTAMPTZ;
+BEGIN
+    -- Look up the restaurant timezone
+    SELECT COALESCE(r.timezone, 'America/Chicago') INTO v_tz
+    FROM public.restaurants r WHERE r.id = p_restaurant_id;
+
+    -- Lock and fetch the template
+    SELECT * INTO v_template
+    FROM public.shift_templates
+    WHERE id = p_template_id
+      AND restaurant_id = p_restaurant_id
+    FOR SHARE;
+
+    IF NOT FOUND THEN
+        RETURN json_build_object('success', false, 'error', 'Template not found');
+    END IF;
+
+    -- Verify day-of-week matches
+    IF NOT (EXTRACT(DOW FROM p_shift_date)::int = ANY(v_template.days)) THEN
+        RETURN json_build_object('success', false, 'error', 'Template does not apply to this day');
+    END IF;
+
+    -- Coverage-based assigned count (replaces exact time-window match).
+    -- Uses the same sweep-line function as get_open_shifts so the offer and
+    -- claim guard always agree — prevents double-claiming a covered slot.
+    v_assigned_count := public.shift_slot_min_concurrent(
+        p_restaurant_id,
+        v_template.position,
+        p_shift_date,
+        v_template.start_time,
+        v_template.end_time,
+        v_tz
+    );
+
+    -- Count pending claims for this template+date
+    SELECT COUNT(*) INTO v_pending_count
+    FROM public.open_shift_claims
+    WHERE shift_template_id = p_template_id
+      AND shift_date = p_shift_date
+      AND status = 'pending_approval';
+
+    -- Capacity guard: reject if coverage + pending already fills the slot.
+    -- GREATEST(1, capacity) mirrors the capacityFloor used in get_open_shifts.
+    IF (v_assigned_count + v_pending_count) >= GREATEST(1, v_template.capacity) THEN
+        RETURN json_build_object('success', false, 'error', 'No open spots available');
+    END IF;
+
+    -- Build shift timestamps from template times + shift date.
+    -- Cast to timestamp (no tz) first, then interpret in restaurant timezone.
+    v_shift_start := (p_shift_date || ' ' || v_template.start_time)::timestamp AT TIME ZONE v_tz;
+    v_shift_end   := (p_shift_date || ' ' || v_template.end_time)::timestamp   AT TIME ZONE v_tz;
+
+    -- Handle overnight shifts
+    IF v_template.end_time <= v_template.start_time THEN
+        v_shift_end := v_shift_end + interval '1 day';
+    END IF;
+
+    -- Check for schedule conflict with existing employee shifts
+    IF EXISTS (
+        SELECT 1 FROM public.shifts
+        WHERE employee_id    = p_employee_id
+          AND restaurant_id  = p_restaurant_id
+          AND status        != 'cancelled'
+          AND (start_time, end_time) OVERLAPS (v_shift_start, v_shift_end)
+    ) THEN
+        RETURN json_build_object('success', false, 'error', 'Schedule conflict with existing shift');
+    END IF;
+
+    -- Check approval setting
+    SELECT COALESCE(require_shift_claim_approval, false) INTO v_requires_approval
+    FROM public.staffing_settings
+    WHERE restaurant_id = p_restaurant_id;
+
+    IF v_requires_approval IS NULL THEN
+        v_requires_approval := false;
+    END IF;
+
+    IF NOT v_requires_approval THEN
+        -- Instant approval: create the shift and the claim
+        INSERT INTO public.shifts (
+            restaurant_id, employee_id, start_time, end_time,
+            break_duration, position, status, source, is_published
+        ) VALUES (
+            p_restaurant_id, p_employee_id, v_shift_start, v_shift_end,
+            v_template.break_duration, v_template.position, 'scheduled', 'template', true
+        )
+        RETURNING id INTO v_shift_id;
+
+        INSERT INTO public.open_shift_claims (
+            restaurant_id, shift_template_id, shift_date,
+            claimed_by_employee_id, status, resulting_shift_id
+        ) VALUES (
+            p_restaurant_id, p_template_id, p_shift_date,
+            p_employee_id, 'approved', v_shift_id
+        )
+        RETURNING id INTO v_claim_id;
+
+        RETURN json_build_object(
+            'success', true,
+            'claim_id', v_claim_id,
+            'shift_id', v_shift_id,
+            'status', 'approved',
+            'message', 'Shift claimed and added to your schedule'
+        );
+    ELSE
+        -- Requires approval: just create the claim
+        INSERT INTO public.open_shift_claims (
+            restaurant_id, shift_template_id, shift_date,
+            claimed_by_employee_id, status
+        ) VALUES (
+            p_restaurant_id, p_template_id, p_shift_date,
+            p_employee_id, 'pending_approval'
+        )
+        RETURNING id INTO v_claim_id;
+
+        RETURN json_build_object(
+            'success', true,
+            'claim_id', v_claim_id,
+            'status', 'pending_approval',
+            'message', 'Claim submitted for manager approval'
+        );
+    END IF;
+END;
+$$;
+
+-- Re-issue EXECUTE so the privilege is self-contained in this migration file.
+GRANT EXECUTE ON FUNCTION public.claim_open_shift(UUID, UUID, DATE, UUID) TO authenticated;

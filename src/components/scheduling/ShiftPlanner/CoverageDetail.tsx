@@ -171,6 +171,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
         side="bottom"
         align="start"
         sideOffset={4}
+        aria-label="Covering employees for this slot"
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         {/* Header */}

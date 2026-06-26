@@ -145,7 +145,12 @@ export const ShiftCell = memo(
               e.stopPropagation();
               onCoverageClick?.(templateId, day, e.currentTarget.getBoundingClientRect());
             }}
-            aria-label={`${slotName ?? 'Coverage'} ${dayLabel ?? day}: ${filledCount} of ${capacity} staffed${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. ${coverage.coveragePct}% of window covered. Open details`}
+            aria-label={[
+              `${slotName ?? 'Coverage'} ${dayLabel ?? day}: ${filledCount} of ${capacity} staffed`,
+              coverage.openSpots > 0 ? `needs ${coverage.openSpots} more` : '',
+              `${coverage.coveragePct}% of window covered`,
+              'Open details',
+            ].filter(Boolean).join('. ')}
             aria-haspopup="dialog"
             className={cn(
               'mt-1 flex items-center gap-1',

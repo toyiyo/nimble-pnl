@@ -166,7 +166,7 @@ export function ShiftPlannerTab({
         try {
           inner.set(
             day,
-            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, t.position, restaurantTimezone, { area: t.area || null }),
+            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, { position: t.position, tz: restaurantTimezone, area: t.area || null }),
           );
         } catch {
           // one bad row never blanks the grid

@@ -80,11 +80,15 @@ interface Clip {
 /**
  * Options bag for computeSlotCoverage.
  *
- * Back-compat contract: passing no options (or options={}) preserves the original
- * whole-restaurant behaviour. Only `area` is opt-in. Banner callers (Scheduling.tsx)
- * never pass options — they stay whole-floor intentionally.
+ * `position` and `tz` are required slot configuration.
+ * `area` is opt-in: null / undefined → no area filter (whole-restaurant, back-compat).
+ * Banner callers (Scheduling.tsx) omit `area` — they stay whole-floor intentionally.
  */
 export interface ComputeSlotCoverageOptions {
+  /** The position the slot requires (e.g. "Server"). */
+  position: string;
+  /** IANA timezone of the restaurant. */
+  tz: string;
   /**
    * When non-null, only shifts whose `shift.area === area` are counted.
    * Pass the template's own `area` field (from ShiftTemplate.area).
@@ -101,9 +105,7 @@ export interface ComputeSlotCoverageOptions {
  * @param capacity     Template capacity (coerced via capacityFloor)
  * @param dateStr      "YYYY-MM-DD" — the local calendar date of the slot
  * @param shifts       Candidate shifts (all positions/statuses; engine filters internally)
- * @param position     The position the slot requires
- * @param tz           IANA timezone of the restaurant
- * @param options      Optional bag — `{ area }` for planner per-cell scoping; omit for banner/SQL.
+ * @param options      Required bag — `{ position, tz }` always; `{ area }` for planner per-cell scoping.
  */
 export function computeSlotCoverage(
   windowStart: string,
@@ -111,10 +113,9 @@ export function computeSlotCoverage(
   capacity: number,
   dateStr: string,
   shifts: CoverageShift[],
-  position: string,
-  tz: string,
-  options?: ComputeSlotCoverageOptions,
+  options: ComputeSlotCoverageOptions,
 ): SlotCoverage {
+  const { position, tz } = options;
   const cap = capacityFloor(capacity);
   const w0 = parseTimeToMinutes(windowStart);
   const w1raw = parseTimeToMinutes(windowEnd);
@@ -129,7 +130,7 @@ export function computeSlotCoverage(
     if (s.status === 'cancelled') continue;
     // Opt-in area filter: when options.area is non-null/undefined, only count same-area shifts.
     // Omitted/null area → no filter (whole-restaurant, back-compat with banner callers).
-    if (options?.area != null && s.area !== options.area) continue;
+    if (options.area != null && s.area !== options.area) continue;
 
     const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
     let de = isoToLocalMinutes(s.end_time, dateStr, tz);

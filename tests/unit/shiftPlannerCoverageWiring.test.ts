@@ -71,17 +71,29 @@ describe('ShiftPlannerTab — coverage wiring (source-text)', () => {
 });
 
 describe('ShiftPlannerTab — area-scope wiring (source-text, Task 2a)', () => {
-  it('sets `area` field on CoverageShift objects from the joined shift.employee data', () => {
-    // Area must come from s.employee?.area (the already-joined row), NOT from an active-only
-    // empArea map. This ensures inactive/terminated employees' shifts still carry their area
-    // and are counted correctly — using the active-only list caused false chip/indicator gaps.
-    expect(SRC).toMatch(/area\s*:\s*s\.employee\?\.area/);
+  it('sets `area` field on CoverageShift objects using template area for template-bound shifts', () => {
+    // For template-bound shifts (shift_template_id set), the template's area is authoritative.
+    // A cross-area employee assigned to a template slot must count toward that template's area.
+    // Fallback to s.employee?.area for unbound/legacy shifts (inactive employees still count).
+    expect(SRC).toMatch(/s\.shift_template_id/);
+    expect(SRC).toMatch(/templateAreaMap/);
+    // Employee area still appears as fallback
+    expect(SRC).toMatch(/s\.employee\?\.area/);
   });
 
   it('does NOT use an empArea map built from active-only employees for area derivation', () => {
-    // The active-only empArea pattern was replaced by s.employee?.area to fix the gap bug.
-    // If empArea reappears here, it risks reintroducing the inactive-employee exclusion issue.
+    // The active-only empArea pattern was replaced. If empArea reappears, it risks
+    // reintroducing the inactive-employee exclusion issue.
     expect(SRC).not.toMatch(/area\s*:\s*empArea/);
+  });
+
+  it('builds templateAreaMap keyed by template id before building cov array', () => {
+    // templateAreaMap must be built from templates before shifts.map so that
+    // s.shift_template_id can look up the template's area for each shift.
+    // If templateAreaMap disappears, cross-area assignments break coverage again.
+    expect(SRC).toMatch(/templateAreaMap\s*=\s*new Map/);
+    // Must be keyed with the template id
+    expect(SRC).toMatch(/templateAreaMap\.get\s*\(s\.shift_template_id\)/);
   });
 
   it('passes { area: t.area } (or equivalent) as options to computeSlotCoverage', () => {

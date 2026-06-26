@@ -120,7 +120,7 @@ describe('computeSlotCoverage — area scope (opt-in)', () => {
   const mkA = (emp: string, s: string, e: string, area: string | null): CoverageShift =>
     ({ employee_id: emp, employee_name: emp, start_time: s, end_time: e, position: 'Server', status: 'scheduled', area });
 
-  it('counts only same-area shifts when options.area is set', () => {
+  it('CRITICAL: should count only same-area shifts when options.area is set', () => {
     const shifts = [
       mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'), // 10:00-16:30 CDT
       mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
@@ -130,7 +130,7 @@ describe('computeSlotCoverage — area scope (opt-in)', () => {
     expect(c.openSpots).toBe(0);
   });
 
-  it('no area filter when options omitted (back-compat) — counts both areas', () => {
+  it('CRITICAL: should count all areas when options are omitted (back-compat — banner callers unchanged)', () => {
     const shifts = [
       mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'),
       mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
@@ -139,12 +139,12 @@ describe('computeSlotCoverage — area scope (opt-in)', () => {
     expect(c.coveringEmployees.length).toBe(2);
   });
 
-  it('options.area null/undefined => no filter (template with no area)', () => {
+  it('CRITICAL: should count all areas when options.area is null (template with no area set)', () => {
     const shifts = [mkA('X', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone')];
     expect(computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, 'Server', tz, { area: null }).openSpots).toBe(0);
   });
 
-  it('options={} (empty bag) => no area filter, counts all areas', () => {
+  it('CRITICAL: should count all areas when options is an empty bag (back-compat — options.area = undefined)', () => {
     // Back-compat: callers that pass an empty options object should get whole-restaurant behaviour.
     // options.area evaluates to undefined, which is != null → false → no filter applied.
     const shifts = [
@@ -156,7 +156,7 @@ describe('computeSlotCoverage — area scope (opt-in)', () => {
     expect(c.openSpots).toBe(0);
   });
 
-  it('same-area half-shift fill-in => partial coverage + gap segment', () => {
+  it('CRITICAL: should show partial coverage and gap segment when same-area shift covers only half the window', () => {
     // cap 1, window 16:00-22:30 CDT; one Cold Stone person leaves at 19:30 => gap 19:30-22:30
     // CDT (UTC-5): 16:00=21:00Z, 19:30=00:30Z+1
     const shifts = [mkA('CS1', '2026-06-27T21:00:00Z', '2026-06-28T00:30:00Z', 'Cold Stone')]; // 16:00-19:30 CDT

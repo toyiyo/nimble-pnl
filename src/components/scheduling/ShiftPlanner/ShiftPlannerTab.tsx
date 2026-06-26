@@ -140,10 +140,13 @@ export function ShiftPlannerTab({
   // Tab-level coverage Map: Map<templateId, Map<day, SlotCoverage>>
   // Per-slot try/catch so one bad row never blanks the whole grid.
   const coverageByTemplateDay = useMemo(() => {
-    // Derive area directly from the already-joined shift.employee row so that
-    // shifts belonging to inactive/terminated employees still carry their area
-    // and are counted correctly. The active-only employees list is not used here
-    // because it excludes deactivated employees, causing false chip/indicator gaps.
+    // Area source: for template-bound shifts (shift_template_id set), the template's area
+    // is authoritative — an employee assigned cross-area should count toward the template's
+    // area cell, not their home area. For unbound/legacy shifts, fall back to the joined
+    // employee row so inactive/terminated employees' shifts still carry their area.
+    const templateAreaMap = new Map<string, string | null>(
+      templates.map((t) => [t.id, t.area || null]),
+    );
     const cov: CoverageShift[] = shifts.map((s) => ({
       employee_id: s.employee_id,
       employee_name: s.employee?.name ?? null,
@@ -151,7 +154,9 @@ export function ShiftPlannerTab({
       end_time: s.end_time,
       position: s.position,
       status: s.status,
-      area: s.employee?.area ?? null,
+      area: s.shift_template_id
+        ? (templateAreaMap.get(s.shift_template_id) ?? s.employee?.area ?? null)
+        : (s.employee?.area ?? null),
     }));
     const map = new Map<string, Map<string, SlotCoverage>>();
     for (const t of templates) {

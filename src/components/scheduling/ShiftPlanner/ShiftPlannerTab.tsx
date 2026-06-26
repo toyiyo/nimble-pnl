@@ -160,10 +160,10 @@ export function ShiftPlannerTab({
   }, [shifts, templates, weekDays, restaurantTimezone]);
 
   // Lifted coverage detail state — single Popover/Drawer instance (Single Dialog Pattern)
-  const [coverageDetail, setCoverageDetail] = useState<{ templateId: string; day: string } | null>(null);
+  const [coverageDetail, setCoverageDetail] = useState<{ templateId: string; day: string; anchorRect?: DOMRect } | null>(null);
 
-  const handleCoverageClick = useCallback((templateId: string, day: string) => {
-    setCoverageDetail({ templateId, day });
+  const handleCoverageClick = useCallback((templateId: string, day: string, rect?: DOMRect) => {
+    setCoverageDetail({ templateId, day, anchorRect: rect });
   }, []);
 
   const handleCoverageClose = useCallback(() => {
@@ -741,7 +741,7 @@ export function ShiftPlannerTab({
       />
 
       {/* Coverage detail — ONE lifted instance (Single Dialog Pattern).
-          Desktop uses Popover; for now a Dialog (Drawer wiring in Task 10). */}
+          Desktop uses Popover (anchored to cell rect when available); mobile uses Drawer. */}
       <CoverageDetail
         open={coverageDetail !== null}
         coverage={
@@ -757,6 +757,7 @@ export function ShiftPlannerTab({
               })()
             : undefined
         }
+        anchorRect={coverageDetail?.anchorRect}
         onClose={handleCoverageClose}
       />
 

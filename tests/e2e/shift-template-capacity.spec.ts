@@ -83,9 +83,11 @@ test.describe('Shift Template Capacity', () => {
       await toast.locator('button[aria-label="Close"]').click().catch(() => {});
     }
 
-    // 10. Verify "0/3" capacity indicator is visible somewhere on the page
-    // The indicator shows assigned/capacity, starting at 0/3 for a new template
-    await expect(page.getByText('0/3')).toBeVisible({ timeout: 5000 });
+    // 10. Verify the coverage indicator is visible — it shows a progress bar + percentage.
+    // With capacity=3 and 0 shifts assigned, it renders: "Coverage 0%, needs 3 more. Open details"
+    await expect(
+      page.getByRole('button', { name: /coverage 0%, needs 3 more/i }),
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test('default capacity shows no indicator', async ({ page }) => {

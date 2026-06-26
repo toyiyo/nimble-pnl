@@ -96,9 +96,10 @@ AS $$
     UNION SELECT cs FROM clip
     UNION SELECT ce FROM clip
   ),
-  -- Ordered distinct breakpoints.
+  -- Ordered breakpoints. UNION (not UNION ALL) in the bp CTE already deduplicates;
+  -- a second DISTINCT here would be a redundant sort pass.
   ordered_bp AS (
-    SELECT DISTINCT b FROM bp ORDER BY b
+    SELECT b FROM bp ORDER BY b
   ),
   -- Sub-intervals between consecutive breakpoints.
   seg AS (
@@ -127,7 +128,13 @@ AS $$
   SELECT COALESCE(MIN(n), 0)::int FROM cnt;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.shift_slot_min_concurrent(uuid, text, date, time, time, text) TO authenticated;
+-- shift_slot_min_concurrent is an internal helper called only by get_open_shifts and
+-- claim_open_shift (both SECURITY DEFINER).  Granting it directly to authenticated
+-- would allow any logged-in user to enumerate staffing data for any restaurant UUID
+-- they can guess — a cross-tenant information-disclosure path.  Remove the direct
+-- grant; the two caller functions carry their own SECURITY DEFINER privilege.
+REVOKE EXECUTE ON FUNCTION public.shift_slot_min_concurrent(uuid, text, date, time, time, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.shift_slot_min_concurrent(uuid, text, date, time, time, text) FROM authenticated;
 
 -- ============================================================================
 -- Rewrite get_open_shifts to use coverage-based min-concurrent headcount.

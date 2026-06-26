@@ -42,8 +42,9 @@ interface TemplateGridProps {
   pickedEmployeeName?: string;
   /** Tab-level coverage map passed from ShiftPlannerTab (Task 8+). */
   coverageByTemplateDay?: Map<string, Map<string, SlotCoverage>>;
-  /** Called when a cell's coverage indicator is clicked; lifted to tab level. */
-  onCoverageClick?: (templateId: string, day: string) => void;
+  /** Called when a cell's coverage indicator is clicked; lifted to tab level.
+   *  rect is the bounding box of the indicator button (desktop Popover anchor). */
+  onCoverageClick?: (templateId: string, day: string, rect?: DOMRect) => void;
 }
 
 export function TemplateGrid({

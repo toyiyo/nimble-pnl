@@ -39,10 +39,10 @@ function FallbackCapacityBadge({ shifts, capacity }: { shifts: Shift[]; capacity
       className={cn(
         'text-[10px] font-medium px-1.5 py-0.5 rounded text-center',
         status === 'full'
-          ? 'text-emerald-600 bg-emerald-500/10'
+          ? 'text-foreground bg-muted/50'
           : status === 'partial'
-            ? 'text-amber-600 bg-amber-500/10'
-            : 'text-red-500 bg-red-500/10',
+            ? 'text-muted-foreground bg-muted/30'
+            : 'text-destructive bg-destructive/10',
       )}
     >
       {shifts.length}/{capacity}
@@ -88,7 +88,7 @@ export const ShiftCell = memo(
     );
 
     // Suppress coverage indicator when fully covered with 0 or 1 placed shifts (noise reduction).
-    const showCoverageIndicator = coverage != null &&
+    const showCoverageIndicator = coverage !== undefined &&
       !(coverage.coveragePct === 100 && shifts.length <= 1);
 
     return (

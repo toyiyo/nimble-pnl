@@ -12,10 +12,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Printer, FileDown } from "lucide-react";
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
-import { generateSchedulePDF, generateRosterPDF } from "@/utils/scheduleExport";
+import { generateSchedulePDF, generateRosterPDF, formatKitchenTime } from "@/utils/scheduleExport";
 import type { Shift, Employee } from "@/types/scheduling";
 import type { GroupByMode } from "@/lib/scheduleGrouping";
-import { type RosterSortBy } from "@/lib/scheduleRoster";
+import { buildRosterDay, type RosterSortBy } from "@/lib/scheduleRoster";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ScheduleExportDialogProps {
@@ -105,6 +105,17 @@ export const ScheduleExportDialog = ({
       .slice(0, 4),
     [allEmployeesWithShifts, selectedEmployeeIds]
   );
+
+  // Roster preview for the selected day (or first day of the week when "Whole week")
+  const previewRosterDay = useMemo(() => {
+    if (layout !== 'roster' || weekDays.length === 0) return null;
+    const day =
+      rosterDay === 'all'
+        ? weekDays[0]
+        : weekDays.find(d => format(d, 'yyyy-MM-dd') === rosterDay) ?? weekDays[0];
+    const selectedShifts = filteredShifts.filter(s => selectedEmployeeIds.has(s.employee_id));
+    return buildRosterDay(selectedShifts, employees, day, sortBy, groupBy);
+  }, [layout, rosterDay, weekDays, filteredShifts, selectedEmployeeIds, employees, sortBy, groupBy]);
 
   const selectedCount = selectedEmployeeIds.size;
   const totalAvailable = allEmployeesWithShifts.length;
@@ -205,7 +216,50 @@ export const ScheduleExportDialog = ({
             )}
           </div>
 
-          {/* Mini preview table */}
+          {/* Preview: roster (per-day) or grid */}
+          {layout === 'roster' ? (
+            <div className="overflow-hidden text-left">
+              <div className="text-[13px] font-semibold text-foreground mb-1.5">
+                {previewRosterDay ? format(previewRosterDay.day, 'EEEE, MMM d') : ''}
+                {previewRosterDay && previewRosterDay.totalStaff > 0 && (
+                  <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+                    {previewRosterDay.totalStaff} staff · {previewRosterDay.totalHours.toFixed(1)} hrs
+                  </span>
+                )}
+              </div>
+              {previewRosterDay && previewRosterDay.totalStaff > 0 ? (
+                <div className="space-y-2">
+                  {previewRosterDay.sections.map(section => (
+                    <div key={section.label || 'all'}>
+                      {groupBy !== 'none' && section.label && (
+                        <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
+                          {section.label}
+                        </div>
+                      )}
+                      {section.rows.slice(0, 6).map(row => (
+                        <div key={row.shift.id} className="flex items-center gap-2 text-xs py-0.5">
+                          <span className="font-medium tabular-nums w-16">
+                            {formatKitchenTime(row.shift.start_time, row.shift.end_time)}
+                          </span>
+                          <span className="flex-1 truncate">{row.employee.name}</span>
+                          {includePositions && (
+                            <span className="text-muted-foreground text-[10px] truncate">{row.shift.position}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {previewRosterDay.totalStaff > 6 && (
+                    <div className="text-[11px] text-muted-foreground italic">… more on the PDF</div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center p-4 text-muted-foreground italic text-xs">
+                  No one scheduled
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
@@ -259,6 +313,7 @@ export const ScheduleExportDialog = ({
               </tbody>
             </table>
           </div>
+          )}
 
           <div className="flex items-center justify-between mt-3 pt-2 border-t border-border text-xs text-muted-foreground">
             <span>Generated {format(new Date(), "MMM d, yyyy")}</span>

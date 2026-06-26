@@ -501,11 +501,18 @@ export function ShiftPlannerTab({
     );
   }
 
-  // Derived slot label for the CoverageDetail heading
+  // Derived slot label for the CoverageDetail heading.
+  // Prepends t.area when set (e.g. "Cold Stone · Server · 10:00–16:30");
+  // appends "(all areas)" when t.area is null so managers don't mistake a
+  // restaurant-wide slot for an area-scoped one.
   const coverageSlotLabel = coverageDetail
     ? (() => {
         const t = templates.find((tmpl) => tmpl.id === coverageDetail.templateId);
-        return t ? `${t.position} · ${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}` : undefined;
+        if (!t) return undefined;
+        const timeRange = `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`;
+        return t.area
+          ? `${t.area} · ${t.position} · ${timeRange}`
+          : `${t.position} · ${timeRange} (all areas)`;
       })()
     : undefined;
 

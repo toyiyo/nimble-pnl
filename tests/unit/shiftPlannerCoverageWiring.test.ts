@@ -89,3 +89,26 @@ describe('ShiftPlannerTab — area-scope wiring (source-text, Task 2a)', () => {
     expect(SRC).toMatch(/computeSlotCoverage\s*\([\s\S]*?\{[\s\S]*?area\s*:\s*t\.area/);
   });
 });
+
+describe('ShiftPlannerTab — coverageSlotLabel area formatting (source-text, Task 2d)', () => {
+  it('prepends t.area when set — e.g. "Cold Stone · Server · 10:00–16:30"', () => {
+    // The label must incorporate t.area before t.position when area is truthy.
+    // Look for a conditional that inserts area at the front of the label string.
+    // Acceptable forms: `${t.area ? t.area + ' · ' : ''}${t.position}`
+    //                   `${t.area} · ${t.position}`  (inside a truthy branch)
+    //                   template literal with t.area placed before t.position.
+    expect(SRC).toMatch(/t\.area\s*\?\s*.*t\.area.*t\.position|t\.area.*·.*t\.position/s);
+  });
+
+  it('appends "(all areas)" when t.area is null/falsy', () => {
+    // The label must append the literal string "(all areas)" when the template has no area,
+    // so managers don't mistake a restaurant-wide slot for an area-scoped one.
+    expect(SRC).toMatch(/\(all areas\)/);
+  });
+
+  it('coverageSlotLabel does NOT use the old bare "position · start–end" format (must include area logic)', () => {
+    // The old format was: `${t.position} · ${t.start_time.slice(0,5)}–${t.end_time.slice(0,5)}`
+    // The new format must branch on t.area. Assert the IIFE or computed value references t.area.
+    expect(SRC).toMatch(/coverageSlotLabel[\s\S]{0,300}t\.area/);
+  });
+});

@@ -76,6 +76,33 @@ mirrors the SQL. The area filter must be **opt-in** so the banner/SQL/tests are 
 A Cold Stone "Open" (Need 2) cell counts only Cold Stone Servers (not Wetzel's Mixers); under-capacity
 cells show "needs N"; fully covered show X/N; a same-area partial-window shift shows a gap.
 
+## Phase 2.5 frontend-review resolutions (folded)
+
+- **(crit) `employees` in deps.** `coverageByTemplateDay`'s `useMemo` deps become
+  `[shifts, templates, weekDays, restaurantTimezone, employees]` — the new `employeeId → area` map
+  is built from `employees`, so it must be a dependency or the area map goes stale.
+- **(crit + major) Two-tier indicator with a non-color cue.** Removing suppression must not drown the
+  grid. Render two weights:
+  - **Fully covered** (`openSpots === 0`): quiet — `text-[10px] text-muted-foreground`, label `N/N`
+    + a `Check` icon (`aria-hidden`), **no progress bar**. Matches `FallbackCapacityBadge`'s full
+    tokens for consistency.
+  - **Under-covered** (`openSpots > 0`): prominent — `text-[11px] text-destructive`, progress bar +
+    `AlertTriangle` + `needs N`.
+  The `Check` vs `AlertTriangle` icon is the WCAG 1.4.1 non-color differentiator.
+- **(major) Options bag, not an 8th positional param.** `computeSlotCoverage(..., options?: { area?: string | null })`.
+  Banner/SQL callers pass no options (unchanged). Planner passes `{ area: t.area }`.
+- **(major) `aria-label` carries slot identity.** Thread a concise slot name (e.g.
+  `${t.area ? t.area + ' ' : ''}${t.position}`) to `ShiftCell`; label reads
+  `"<slot> <weekday>: <filled> of <capacity> staffed[, needs N more]. Open details"` — not a bare
+  `"Coverage 100%"`.
+- **(major) CoverageDetail heading includes area.** `coverageSlotLabel` prepends `t.area` when set
+  (`"Cold Stone · Server · 10:00–4:30"`); when `t.area` is null, append `"(all areas)"` so the
+  restaurant-wide list isn't mistaken for area-scoped.
+- **(minor) a11y polish.** Remove `role="status"` from the static gap rows in `CoverageDetail`
+  (it's not a live region). Keep the progress bar `aria-hidden`. Keep `onOpenAutoFocus` preventDefault
+  but ensure the popover has a focusable element (the existing close affordance) so keyboard users can
+  enter the list.
+
 ## Retrospective lesson (record in Phase 10)
 
 Verify a data-driven UI feature against **real production data**, not just the mockup + isolated

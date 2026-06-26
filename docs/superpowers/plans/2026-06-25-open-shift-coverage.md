@@ -137,7 +137,7 @@ describe('computeSlotCoverage — min-concurrent', () => {
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/open-shift-coverage && npx vitest run tests/unit/shiftCoverage.test.ts`
+Run: `npx vitest run tests/unit/shiftCoverage.test.ts`
 Expected: FAIL — `computeSlotCoverage` / `capacityFloor` not exported.
 
 - [ ] **Step 4: Implement `src/lib/shiftCoverage.ts` core**

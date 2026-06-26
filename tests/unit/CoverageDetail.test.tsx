@@ -17,7 +17,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import type { SlotCoverage } from '@/types/scheduling';
@@ -234,8 +234,6 @@ describe('CoverageDetail — mobile Drawer path (useIsMobile=true)', () => {
       />,
     );
     // The Drawer's onOpenChange(false) callback should invoke onClose.
-    // Simulate by finding the close button rendered by the Drawer primitive.
-    const closeBtns = screen.queryAllByRole('button');
     // Even if there's no explicit close button rendered, the onClose prop
     // must be passed through — verify the component renders without error
     // in the mobile path and the onClose callback reference is stable.

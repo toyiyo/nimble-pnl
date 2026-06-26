@@ -118,7 +118,7 @@ export function TemplateGrid({
 
         {coverageSlot && (
           <>
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-t border-border/40">
+            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-t border-border/40">
               Cover
             </div>
             {coverageSlot}

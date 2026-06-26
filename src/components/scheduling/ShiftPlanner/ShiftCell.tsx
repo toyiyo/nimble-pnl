@@ -106,7 +106,7 @@ export const ShiftCell = memo(
           'min-h-[64px] p-1.5 space-y-1 transition-colors duration-200 relative',
           'border-l-2 border-primary/40',
           isOver && 'bg-foreground/5 ring-1 ring-foreground/20 rounded',
-          isHighlighted && 'bg-green-500/10',
+          isHighlighted && 'bg-primary/10',
           hasMobileSelection && 'bg-primary/5 ring-1 ring-primary/30 rounded cursor-pointer',
           overlayClass,
         )}

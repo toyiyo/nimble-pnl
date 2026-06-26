@@ -131,7 +131,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
                 <Users className="h-4 w-4 text-foreground" />
               </div>
               <div>
-                <DrawerTitle className="text-[15px] font-semibold text-foreground text-left">
+                <DrawerTitle className="text-[17px] font-semibold text-foreground text-left">
                   Covering employees for this slot
                 </DrawerTitle>
                 <DrawerDescription className="text-[12px] text-muted-foreground mt-0.5 text-left">

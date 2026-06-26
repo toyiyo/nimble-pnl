@@ -14,6 +14,8 @@
  * 6. (Task 2a) An employee→area map (empArea) is built from `employees` inside coverageByTemplateDay.
  * 7. (Task 2a) CoverageShift objects carry `area` field derived from empArea.
  * 8. (Task 2a) `computeSlotCoverage` is called with `{ area: ...}` options (threads t.area).
+ * 9. (Task 2f) TemplateGrid.tsx assembles slotName from template.area + template.position and passes it to ShiftCell.
+ * 10. (Task 2f) ShiftCell.tsx includes slotName in the memo comparator.
  */
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -21,6 +23,16 @@ import { describe, it, expect } from 'vitest';
 
 const SRC = readFileSync(
   resolve(__dirname, '../../src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx'),
+  'utf-8',
+);
+
+const TEMPLATE_GRID_SRC = readFileSync(
+  resolve(__dirname, '../../src/components/scheduling/ShiftPlanner/TemplateGrid.tsx'),
+  'utf-8',
+);
+
+const SHIFT_CELL_SRC = readFileSync(
+  resolve(__dirname, '../../src/components/scheduling/ShiftPlanner/ShiftCell.tsx'),
   'utf-8',
 );
 
@@ -110,5 +122,44 @@ describe('ShiftPlannerTab — coverageSlotLabel area formatting (source-text, Ta
     // The old format was: `${t.position} · ${t.start_time.slice(0,5)}–${t.end_time.slice(0,5)}`
     // The new format must branch on t.area. Assert the IIFE or computed value references t.area.
     expect(SRC).toMatch(/coverageSlotLabel[\s\S]{0,300}t\.area/);
+  });
+});
+
+describe('TemplateGrid — slotName threading to ShiftCell (source-text, Task 2f)', () => {
+  it('passes a slotName prop to ShiftCell', () => {
+    // TemplateGrid must pass slotName= to the ShiftCell JSX element.
+    expect(TEMPLATE_GRID_SRC).toMatch(/slotName\s*=/);
+  });
+
+  it('builds slotName by prefixing template.area when set — e.g. "Cold Stone Server"', () => {
+    // The formula must conditionally prepend template.area before template.position.
+    // Accept: template.area ? template.area + ' ' ... template.position
+    //         or `${template.area ? ...} ${template.position}`
+    expect(TEMPLATE_GRID_SRC).toMatch(/template\.area\s*\?[\s\S]{0,60}template\.position/);
+  });
+
+  it('produces a pure-position slotName when template.area is null/falsy', () => {
+    // When area is falsy the ternary must fall through to just template.position.
+    // The pattern `template.area ? ... : ''}${template.position}` ensures this.
+    expect(TEMPLATE_GRID_SRC).toMatch(/''\s*}\s*\$\{template\.position\}|template\.area\s*\?[\s\S]{0,80}template\.position/);
+  });
+});
+
+describe('ShiftCell — slotName in memo comparator (source-text, Task 2f)', () => {
+  it('declares optional slotName prop in ShiftCellProps', () => {
+    // The prop interface must declare slotName so TypeScript enforces the contract.
+    expect(SHIFT_CELL_SRC).toMatch(/slotName\s*\?\s*:\s*string/);
+  });
+
+  it('includes slotName in the React.memo comparator', () => {
+    // The custom comparator passed to React.memo must compare prev.slotName === next.slotName
+    // so that a slot area/position change triggers a re-render.
+    expect(SHIFT_CELL_SRC).toMatch(/prev\.slotName\s*===\s*next\.slotName/);
+  });
+
+  it('uses slotName in the coverage indicator aria-label', () => {
+    // The aria-label must reference slotName (possibly via fallback) so that
+    // screen-readers announce the slot identity alongside the staffing count.
+    expect(SHIFT_CELL_SRC).toMatch(/slotName.*aria-label|aria-label.*slotName/s);
   });
 });

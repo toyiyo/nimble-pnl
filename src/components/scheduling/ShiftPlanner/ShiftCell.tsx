@@ -3,7 +3,6 @@ import { memo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { AlertTriangle } from 'lucide-react';
 
-import { classifyCapacity } from '@/lib/openShiftHelpers';
 import type { Shift, SlotCoverage } from '@/types/scheduling';
 import type { AllocationStatus } from '@/lib/shiftAllocation';
 
@@ -149,7 +148,8 @@ export const ShiftCell = memo(
 
         {/* Fallback capacity badge (only when no coverage data and capacity > 1) */}
         {!coverage && capacity > 1 && (() => {
-          const status = classifyCapacity(capacity, shifts.length);
+          const openSpots = Math.max(0, (capacity ?? 1) - shifts.length);
+          const status = openSpots === 0 ? 'full' : shifts.length > 0 ? 'partial' : 'empty';
           return (
             <div
               className={cn(

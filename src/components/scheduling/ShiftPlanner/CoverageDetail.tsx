@@ -78,7 +78,6 @@ function CoverageList({ coverage }: { coverage: SlotCoverage }) {
             <div
               key={i}
               className="flex items-center gap-1.5 text-[12px] text-destructive"
-              role="status"
               aria-label={`Gap from ${minutesToCompact(seg.startMin)} to ${minutesToCompact(seg.endMin)}`}
             >
               <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />

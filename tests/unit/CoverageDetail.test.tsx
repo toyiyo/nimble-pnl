@@ -241,6 +241,24 @@ describe('CoverageDetail — mobile Drawer path (useIsMobile=true)', () => {
   });
 });
 
+// ── a11y: no role="status" on static gap rows (Task 4a) ─────────────────────
+
+describe('CoverageDetail — a11y: gap rows must not have role="status"', () => {
+  it('gap row divs do NOT carry role="status" (static content, not a live region)', () => {
+    render(
+      <CoverageDetail
+        open={true}
+        coverage={makeGapCoverage()}
+        onClose={vi.fn()}
+      />,
+    );
+    // role="status" turns an element into an ARIA live region (polite).
+    // Gap rows are static content — they should NOT have role="status".
+    const statusEls = document.querySelectorAll('[role="status"]');
+    expect(statusEls.length).toBe(0);
+  });
+});
+
 // ── source-text invariants ────────────────────────────────────────────────────
 const SRC = readFileSync(
   resolve(__dirname, '../../src/components/scheduling/ShiftPlanner/CoverageDetail.tsx'),
@@ -275,5 +293,10 @@ describe('CoverageDetail source-text invariants (Task 10)', () => {
 
   it('uses minutesToCompact for employee time labels', () => {
     expect(SRC).toMatch(/minutesToCompact/);
+  });
+
+  it('does NOT use role="status" on gap rows (static content, not a live region) (Task 4a)', () => {
+    // role="status" is a live region role — incorrect for static rendered content.
+    expect(SRC).not.toMatch(/role="status"/);
   });
 });

@@ -172,4 +172,13 @@ describe('calculateShiftHours (re-homed)', () => {
     } as unknown as Shift;
     expect(calculateShiftHours(shift)).toBe(8);
   });
+
+  it('ignores a malformed negative break_duration (does not inflate paid time)', () => {
+    const shift = {
+      start_time: '2026-06-25T08:00:00',
+      end_time: '2026-06-25T16:00:00',
+      break_duration: -15,
+    } as Shift;
+    expect(calculateShiftHours(shift)).toBe(8);
+  });
 });

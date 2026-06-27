@@ -25,6 +25,7 @@ import {
 import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculations';
 import { startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { calculateShiftHours } from '@/lib/scheduleRoster';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 
@@ -396,15 +397,6 @@ export function calculateScheduledLaborCost(
   // Track which daily_rate employees we've already added costs for each day
   const dailyRateEmployeesCountedPerDay = new Map<string, Set<string>>();
   
-  // Helper to calculate shift hours
-  const calculateShiftHours = (shift: Shift): number => {
-    const start = new Date(shift.start_time);
-    const end = new Date(shift.end_time);
-    const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
-    return netMinutes / 60;
-  };
-
   // Process hourly employee shifts
   shifts.forEach(shift => {
     const employee = employeeMap.get(shift.employee_id);

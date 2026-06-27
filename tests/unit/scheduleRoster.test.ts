@@ -153,4 +153,32 @@ describe('calculateShiftHours (re-homed)', () => {
     } as Shift;
     expect(calculateShiftHours(shift)).toBe(7.5);
   });
+
+  it('clamps to 0 when the break exceeds the shift length', () => {
+    const shift = {
+      start_time: '2026-06-25T08:00:00',
+      end_time: '2026-06-25T09:00:00',
+      break_duration: 120,
+    } as Shift;
+    expect(calculateShiftHours(shift)).toBe(0);
+  });
+
+  it('treats null break_duration as 0 (DB column has no NOT NULL constraint)', () => {
+    // A null would otherwise make totalMinutes - break_duration NaN and poison labor totals
+    const shift = {
+      start_time: '2026-06-25T08:00:00',
+      end_time: '2026-06-25T16:00:00',
+      break_duration: null,
+    } as unknown as Shift;
+    expect(calculateShiftHours(shift)).toBe(8);
+  });
+
+  it('ignores a malformed negative break_duration (does not inflate paid time)', () => {
+    const shift = {
+      start_time: '2026-06-25T08:00:00',
+      end_time: '2026-06-25T16:00:00',
+      break_duration: -15,
+    } as Shift;
+    expect(calculateShiftHours(shift)).toBe(8);
+  });
 });

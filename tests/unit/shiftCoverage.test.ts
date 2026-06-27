@@ -26,7 +26,7 @@ describe('computeSlotCoverage — min-concurrent', () => {
       mk('A', '2026-06-27T19:00:00Z', '2026-06-27T20:00:00Z'), // 14:00-15:00 CDT
       mk('B', '2026-06-27T20:00:00Z', '2026-06-27T23:00:00Z'), // 15:00-18:00 CDT
     ];
-    const c = computeSlotCoverage('14:00:00', '18:00:00', 1, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('14:00:00', '18:00:00', 1, D, shifts, { position: 'Server', tz });
     expect(c.minConcurrent).toBe(1);
     expect(c.openSpots).toBe(0);
     expect(c.coveragePct).toBe(100);
@@ -38,7 +38,7 @@ describe('computeSlotCoverage — min-concurrent', () => {
       mk('A', '2026-06-27T19:00:00Z', '2026-06-27T20:00:00Z'),
       mk('B', '2026-06-27T19:00:00Z', '2026-06-27T20:00:00Z'),
     ];
-    const c = computeSlotCoverage('14:00:00', '18:00:00', 1, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('14:00:00', '18:00:00', 1, D, shifts, { position: 'Server', tz });
     expect(c.minConcurrent).toBe(0);
     expect(c.openSpots).toBe(1);
   });
@@ -51,7 +51,7 @@ describe('computeSlotCoverage — min-concurrent', () => {
     const shifts = [
       mk('A', '2026-06-27T13:30:00Z', '2026-06-27T23:00:00Z'), // 08:30-18:00 CDT
     ];
-    const c = computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, { position: 'Server', tz });
     expect(c.openSpots).toBe(0);
   });
 
@@ -60,14 +60,14 @@ describe('computeSlotCoverage — min-concurrent', () => {
       mk('A', '2026-06-27T19:00:00Z', '2026-06-27T21:00:00Z'), // 14:00-16:00
       mk('A', '2026-06-27T20:00:00Z', '2026-06-27T22:00:00Z'), // 15:00-17:00 (same emp)
     ];
-    const c = computeSlotCoverage('14:00:00', '17:00:00', 2, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('14:00:00', '17:00:00', 2, D, shifts, { position: 'Server', tz });
     expect(c.minConcurrent).toBe(1); // not 2
     expect(c.openSpots).toBe(1);
   });
 
   it('position mismatch is ignored', () => {
     const shifts = [mk('A', '2026-06-27T19:00:00Z', '2026-06-27T23:00:00Z', 'Cook')];
-    const c = computeSlotCoverage('14:00:00', '18:00:00', 1, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('14:00:00', '18:00:00', 1, D, shifts, { position: 'Server', tz });
     expect(c.openSpots).toBe(1);
   });
 });
@@ -79,7 +79,7 @@ describe('computeSlotCoverage — overnight + capacity>1', () => {
   it('overnight window 22:00-02:00 covered by an overnight shift', () => {
     // CDT is UTC-5. 22:00 CDT = 03:00Z next day. 02:00 CDT = 07:00Z next day.
     const shifts = [mk('A', '2026-06-28T03:00:00Z', '2026-06-28T07:00:00Z')]; // 22:00-02:00 CDT
-    const c = computeSlotCoverage('22:00:00', '02:00:00', 1, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('22:00:00', '02:00:00', 1, D, shifts, { position: 'Server', tz });
     expect(c.openSpots).toBe(0);
   });
 
@@ -91,7 +91,7 @@ describe('computeSlotCoverage — overnight + capacity>1', () => {
       mk('B', '2026-06-27T21:00:00Z', '2026-06-28T04:30:00Z'), // 16:00-23:30 CDT
       mk('C', '2026-06-27T21:00:00Z', '2026-06-28T00:30:00Z'), // 16:00-19:30 CDT
     ];
-    const c = computeSlotCoverage('16:00:00', '23:30:00', 3, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('16:00:00', '23:30:00', 3, D, shifts, { position: 'Server', tz });
     expect(c.minConcurrent).toBe(2);
     expect(c.openSpots).toBe(1);
     // covered = 3.5h (16-19:30) when n=3. gap = 4h (19:30-23:30) when n=2.
@@ -109,9 +109,61 @@ describe('computeSlotCoverage — covering employees + segments', () => {
       { ...mk('A', '2026-06-27T21:00:00Z', '2026-06-28T04:30:00Z'), employee_name: 'Jodi' },
       { ...mk('B', '2026-06-27T21:00:00Z', '2026-06-28T00:30:00Z'), employee_name: 'Shy' },
     ];
-    const c = computeSlotCoverage('16:00:00', '23:30:00', 2, D, shifts, 'Server', tz);
+    const c = computeSlotCoverage('16:00:00', '23:30:00', 2, D, shifts, { position: 'Server', tz });
     expect(c.coveringEmployees.map((e) => e.employeeName)).toContain('Jodi');
     expect(c.segments.some((s) => !s.covered)).toBe(true); // gap after Shy leaves
+  });
+});
+
+describe('computeSlotCoverage — area scope (opt-in)', () => {
+  const tz = 'America/Chicago'; const D = '2026-06-27';
+  const mkA = (emp: string, s: string, e: string, area: string | null): CoverageShift =>
+    ({ employee_id: emp, employee_name: emp, start_time: s, end_time: e, position: 'Server', status: 'scheduled', area });
+
+  it('CRITICAL: should count only same-area shifts when options.area is set', () => {
+    const shifts = [
+      mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'), // 10:00-16:30 CDT
+      mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
+    ];
+    const c = computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, { position: 'Server', tz, area: 'Cold Stone' });
+    expect(c.coveringEmployees.map(e => e.employeeId)).toEqual(['CS1']); // WZ1 excluded
+    expect(c.openSpots).toBe(0);
+  });
+
+  it('CRITICAL: should count all areas when options.area is omitted (back-compat — banner callers unchanged)', () => {
+    const shifts = [
+      mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'),
+      mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
+    ];
+    const c = computeSlotCoverage('10:00:00', '16:30:00', 2, D, shifts, { position: 'Server', tz });
+    expect(c.coveringEmployees.length).toBe(2);
+  });
+
+  it('CRITICAL: should count all areas when options.area is null (template with no area set)', () => {
+    const shifts = [mkA('X', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone')];
+    expect(computeSlotCoverage('10:00:00', '16:30:00', 1, D, shifts, { position: 'Server', tz, area: null }).openSpots).toBe(0);
+  });
+
+  it('CRITICAL: should count all areas when options.area is undefined (back-compat — options.area = undefined)', () => {
+    // Back-compat: callers that omit area from the options object get whole-restaurant behaviour.
+    // options.area evaluates to undefined, which is != null → false → no filter applied.
+    const shifts = [
+      mkA('CS1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', 'Cold Stone'),
+      mkA('WZ1', '2026-06-27T15:00:00Z', '2026-06-27T21:30:00Z', "Wetzel's"),
+    ];
+    const c = computeSlotCoverage('10:00:00', '16:30:00', 2, D, shifts, { position: 'Server', tz });
+    expect(c.coveringEmployees.length).toBe(2);
+    expect(c.openSpots).toBe(0);
+  });
+
+  it('CRITICAL: should show partial coverage and gap segment when same-area shift covers only half the window', () => {
+    // cap 1, window 16:00-22:30 CDT; one Cold Stone person leaves at 19:30 => gap 19:30-22:30
+    // CDT (UTC-5): 16:00=21:00Z, 19:30=00:30Z+1
+    const shifts = [mkA('CS1', '2026-06-27T21:00:00Z', '2026-06-28T00:30:00Z', 'Cold Stone')]; // 16:00-19:30 CDT
+    const c = computeSlotCoverage('16:00:00', '22:30:00', 1, D, shifts, { position: 'Server', tz, area: 'Cold Stone' });
+    expect(c.openSpots).toBe(1);
+    expect(c.coveragePct).toBeLessThan(100);
+    expect(c.segments.some(s => !s.covered)).toBe(true);
   });
 });
 

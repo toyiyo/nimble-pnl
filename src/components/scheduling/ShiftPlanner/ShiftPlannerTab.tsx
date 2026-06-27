@@ -51,6 +51,15 @@ interface ShiftPlannerTabProps {
   onWeekStartChange: (next: Date) => void;
 }
 
+/** Format a template's slot label for CoverageDetail headings.
+ *  e.g. "Cold Stone · Server · 10:00–16:30" or "Server · 10:00–16:30 (all areas)". */
+function buildSlotLabel(t: ShiftTemplate): string {
+  const timeRange = `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`;
+  return t.area
+    ? `${t.area} · ${t.position} · ${timeRange}`
+    : `${t.position} · ${timeRange} (all areas)`;
+}
+
 export function ShiftPlannerTab({
   restaurantId,
   weekStart: externalWeekStart,
@@ -131,6 +140,13 @@ export function ShiftPlannerTab({
   // Tab-level coverage Map: Map<templateId, Map<day, SlotCoverage>>
   // Per-slot try/catch so one bad row never blanks the whole grid.
   const coverageByTemplateDay = useMemo(() => {
+    // Area source: for template-bound shifts (shift_template_id set), the template's area
+    // is authoritative — an employee assigned cross-area should count toward the template's
+    // area cell, not their home area. For unbound/legacy shifts, fall back to the joined
+    // employee row so inactive/terminated employees' shifts still carry their area.
+    const templateAreaMap = new Map<string, string | null>(
+      templates.map((t) => [t.id, t.area || null]),
+    );
     const cov: CoverageShift[] = shifts.map((s) => ({
       employee_id: s.employee_id,
       employee_name: s.employee?.name ?? null,
@@ -138,6 +154,9 @@ export function ShiftPlannerTab({
       end_time: s.end_time,
       position: s.position,
       status: s.status,
+      area: s.shift_template_id
+        ? (templateAreaMap.get(s.shift_template_id) ?? s.employee?.area ?? null)
+        : (s.employee?.area ?? null),
     }));
     const map = new Map<string, Map<string, SlotCoverage>>();
     for (const t of templates) {
@@ -147,7 +166,7 @@ export function ShiftPlannerTab({
         try {
           inner.set(
             day,
-            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, t.position, restaurantTimezone),
+            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, { position: t.position, tz: restaurantTimezone, area: t.area || null }),
           );
         } catch {
           // one bad row never blanks the grid
@@ -496,12 +515,15 @@ export function ShiftPlannerTab({
     );
   }
 
-  // Derived slot label for the CoverageDetail heading
-  const coverageSlotLabel = coverageDetail
-    ? (() => {
-        const t = templates.find((tmpl) => tmpl.id === coverageDetail.templateId);
-        return t ? `${t.position} · ${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}` : undefined;
-      })()
+  // Derived slot label for the CoverageDetail heading.
+  // Prepends t.area when set (e.g. "Cold Stone · Server · 10:00–16:30");
+  // appends "(all areas)" when t.area is null so managers don't mistake a
+  // restaurant-wide slot for an area-scoped one.
+  const coverageDetailTemplate = coverageDetail
+    ? templates.find((tmpl) => tmpl.id === coverageDetail.templateId)
+    : undefined;
+  const coverageSlotLabel = coverageDetailTemplate
+    ? buildSlotLabel(coverageDetailTemplate)
     : undefined;
 
   return (

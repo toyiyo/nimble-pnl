@@ -1,17 +1,19 @@
 /**
- * Tests for ShiftCell compact accessible coverage indicator (Task 9).
+ * Tests for ShiftCell compact accessible coverage indicator (Task 3a: two-tier + aria).
  *
  * RED → GREEN → REFACTOR TDD cycle.
  *
  * Invariants:
  * 1. Renders a <button> (not a <div>) for the coverage indicator.
- * 2. button has aria-label containing coverage % and "Open details".
+ * 2. button has aria-label containing slot identity, capacity counts, and "Open details".
  * 3. Uses semantic tokens only — no hard-coded colors (text-amber-600 / text-emerald-600 / text-red-500).
- * 4. Shows AlertTriangle icon when openSpots > 0.
- * 5. Does NOT render the indicator when coveragePct === 100 AND shifts.length <= 1 (noise-reduction).
- * 6. Calls onCoverageClick with (templateId, day, rect) when clicked; stopPropagation fires.
- * 7. React.memo comparator includes coverage reference check.
- * 8. When coverage is undefined, falls back gracefully (no crash, old capacity badge shows if capacity > 1).
+ * 4. Shows AlertTriangle icon (non-color cue) when openSpots > 0 (under-covered tier).
+ * 5. ALWAYS renders the indicator when coverage is defined (including coveragePct === 100 with shifts placed).
+ * 6. Fully-covered tier: shows Check icon + N/N text-muted-foreground, NO progress bar.
+ * 7. Under-covered tier: shows AlertTriangle + text-destructive + "needs N" + progress bar.
+ * 8. Calls onCoverageClick with (templateId, day, rect) when clicked; stopPropagation fires.
+ * 9. React.memo comparator includes coverage reference check.
+ * 10. When coverage is undefined, falls back gracefully (no crash, old capacity badge shows if capacity > 1).
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
@@ -77,12 +79,15 @@ describe('ShiftCell coverage indicator — render tests', () => {
     expect(btn.tagName).toBe('BUTTON');
   });
 
-  it('aria-label includes coverage percentage and "Open details"', () => {
+  it('aria-label includes filled/capacity counts and "Open details"', () => {
+    // New format: "<slotName|Coverage> <day>: X of N staffed[, needs M more]. Open details"
+    // BASE_PROPS has capacity=1, coverage has openSpots=1 → 0 of 1 staffed, needs 1 more
     const coverage = makeCoverage({ coveragePct: 47, openSpots: 1, minConcurrent: 0 });
     render(<ShiftCell {...BASE_PROPS} coverage={coverage} />);
     const btn = screen.getByRole('button', { name: /Coverage/i });
-    expect(btn.getAttribute('aria-label')).toMatch(/47%/);
-    expect(btn.getAttribute('aria-label')).toMatch(/Open details/i);
+    const label = btn.getAttribute('aria-label') ?? '';
+    expect(label).toMatch(/of 1 staffed/i);
+    expect(label).toMatch(/Open details/i);
   });
 
   it('aria-label mentions needs N more when openSpots > 0', () => {
@@ -103,24 +108,52 @@ describe('ShiftCell coverage indicator — render tests', () => {
     expect(ariaHiddenChildren.length).toBeGreaterThan(0);
   });
 
-  it('does NOT render coverage indicator when coveragePct === 100 AND shifts.length >= 1', () => {
+  it('DOES render coverage indicator when coveragePct === 100 AND shifts.length >= 1 (no suppression)', () => {
     const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
-    // One placed shift → suppress (assignee chip already signals full coverage).
+    // Two-tier design: fully-covered cells always show the indicator (quiet tier),
+    // so the manager always sees "N/N" rather than a blank cell.
     const shifts: Shift[] = [
       makeShift({ id: 's1', employee_id: 'e1', employee: { name: 'Alice' } as Shift['employee'] }),
     ];
     render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={shifts} />);
-    const btns = screen.queryAllByRole('button', { name: /Coverage/i });
-    expect(btns.length).toBe(0);
+    const btn = screen.getByRole('button', { name: /Coverage|Server/i });
+    expect(btn).toBeTruthy();
   });
 
-  it('DOES render coverage indicator when coveragePct === 100 AND shifts.length === 0 (non-template fill-in)', () => {
+  it('DOES render coverage indicator when coveragePct === 100 AND shifts.length === 0', () => {
     const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
-    // No placed shift in this bucket but coverage engine says full → show indicator
-    // so the cell doesn't appear empty when it's actually covered by a fill-in.
     render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={[]} />);
     const btn = screen.getByRole('button', { name: /Coverage/i });
     expect(btn).toBeTruthy();
+  });
+
+  it('fully-covered indicator uses text-muted-foreground and shows N/N count (quiet tier)', () => {
+    const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
+    const shifts: Shift[] = [
+      makeShift({ id: 's1', employee_id: 'e1', employee: { name: 'Alice' } as Shift['employee'] }),
+    ];
+    render(<ShiftCell {...BASE_PROPS} capacity={1} coverage={coverage} shifts={shifts} />);
+    const btn = screen.getByRole('button', { name: /Coverage|1\/1/i });
+    expect(btn.className).toContain('text-muted-foreground');
+    // Fully-covered tier shows N/N counts in the button text
+    expect(btn.textContent).toMatch(/1\/1|1 of 1/i);
+  });
+
+  it('fully-covered indicator does NOT render a progress bar (quiet tier)', () => {
+    const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
+    render(<ShiftCell {...BASE_PROPS} capacity={1} coverage={coverage} shifts={[]} />);
+    const btn = screen.getByRole('button', { name: /Coverage/i });
+    // No progress bar span inside the fully-covered button
+    const progressBars = btn.querySelectorAll('[style*="width"]');
+    expect(progressBars.length).toBe(0);
+  });
+
+  it('under-covered indicator renders a progress bar', () => {
+    const coverage = makeCoverage({ coveragePct: 50, openSpots: 1 });
+    render(<ShiftCell {...BASE_PROPS} capacity={2} coverage={coverage} shifts={[]} />);
+    const btn = screen.getByRole('button', { name: /Coverage/i });
+    const progressBars = btn.querySelectorAll('[style*="width"]');
+    expect(progressBars.length).toBeGreaterThan(0);
   });
 
   it('does NOT render coverage indicator when coverage is undefined', () => {
@@ -168,6 +201,52 @@ describe('ShiftCell coverage indicator — render tests', () => {
   });
 });
 
+// ── slotName prop — aria-label slot identity (Task 2e) ───────────────────────
+
+describe('ShiftCell coverage indicator — slotName aria-label (Task 2e)', () => {
+  it('uses slotName in aria-label when provided (area + position)', () => {
+    const coverage = makeCoverage({ coveragePct: 100, openSpots: 0 });
+    render(
+      <ShiftCell
+        {...BASE_PROPS}
+        capacity={2}
+        coverage={coverage}
+        slotName="Cold Stone Server"
+        shifts={[]}
+      />,
+    );
+    // aria-label must start with the slotName, not bare "Coverage"
+    const btn = screen.getByRole('button');
+    const label = btn.getAttribute('aria-label') ?? '';
+    expect(label).toMatch(/Cold Stone Server/i);
+    expect(label).toMatch(/Open details/i);
+  });
+
+  it('aria-label includes filled/capacity counts when slotName is provided', () => {
+    const coverage = makeCoverage({ coveragePct: 50, openSpots: 1 });
+    render(
+      <ShiftCell
+        {...BASE_PROPS}
+        capacity={2}
+        coverage={coverage}
+        slotName="Wetzel's Server"
+        shifts={[]}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    const label = btn.getAttribute('aria-label') ?? '';
+    expect(label).toMatch(/1 of 2 staffed/i);
+    expect(label).toMatch(/needs 1 more/i);
+  });
+
+  it('falls back to "Coverage" in aria-label when slotName is omitted', () => {
+    const coverage = makeCoverage({ coveragePct: 50, openSpots: 1 });
+    render(<ShiftCell {...BASE_PROPS} coverage={coverage} shifts={[]} />);
+    const btn = screen.getByRole('button', { name: /Coverage/i });
+    expect(btn).toBeTruthy();
+  });
+});
+
 // ── source-text tests (memo comparator + no raw colors in source) ─────────────
 const SRC = readFileSync(
   resolve(__dirname, '../../src/components/scheduling/ShiftPlanner/ShiftCell.tsx'),
@@ -179,18 +258,25 @@ describe('ShiftCell source-text invariants (Task 9)', () => {
     expect(SRC).toMatch(/prev\.coverage.*next\.coverage|coverage.*===.*coverage/s);
   });
 
-  it('indicator is a <button> in source with aria-label containing "Coverage"', () => {
-    // The coverage indicator must use a <button> element AND have an aria-label with "Coverage"
+  it('indicator is a <button> in source with aria-label using slotName fallback', () => {
+    // The coverage indicator must use a <button> element AND have an aria-label that
+    // falls back to "Coverage" when slotName is omitted (via slotName ?? 'Coverage').
     expect(SRC).toMatch(/<button/);
-    expect(SRC).toMatch(/aria-label=\{`Coverage/);
+    // New format: `${slotName ?? 'Coverage'} ${day}: ...`
+    expect(SRC).toMatch(/slotName\s*\?\?\s*['"]Coverage['"]/);
   });
 
   it('uses aria-haspopup="dialog" on the indicator button', () => {
     expect(SRC).toMatch(/aria-haspopup="dialog"/);
   });
 
-  it('has a sr-only span for screen reader summary', () => {
-    expect(SRC).toMatch(/sr-only/);
+  it('includes coverage percentage in the aria-label (not a dead sr-only span)', () => {
+    // The coverage percentage must be accessible to screen readers.
+    // It was previously in a sr-only span that was silently suppressed by the button's aria-label.
+    // The fix moves it directly into the aria-label string, so `sr-only` should not appear here
+    // (it would be a dead pattern overridden by aria-label per WAI-ARIA spec).
+    expect(SRC).toMatch(/coveragePct.*aria-label|aria-label.*coveragePct/s);
+    expect(SRC).not.toMatch(/sr-only/);
   });
 
   it('does NOT use hard-coded raw color classes in the coverage indicator button', () => {
@@ -207,6 +293,21 @@ describe('ShiftCell source-text invariants (Task 9)', () => {
     expect(coverageButtonBlock).not.toMatch(/text-emerald-[0-9]+/);
     expect(coverageButtonBlock).not.toMatch(/text-amber-[0-9]+/);
     expect(coverageButtonBlock).not.toMatch(/text-red-[0-9]+/);
+  });
+
+  it('showCoverageIndicator does NOT reference coveragePct === 100 (suppression removed)', () => {
+    // Per two-tier design: indicator always shows when coverage is defined.
+    // The old suppression (coveragePct===100 && shifts.length>=1) must be gone.
+    const indicatorLine = SRC.slice(
+      SRC.indexOf('showCoverageIndicator'),
+      SRC.indexOf('showCoverageIndicator') + 200,
+    );
+    expect(indicatorLine).not.toMatch(/coveragePct.*100|100.*coveragePct/);
+  });
+
+  it('imports Check from lucide-react for the fully-covered tier icon', () => {
+    expect(SRC).toMatch(/\bCheck\b/);
+    expect(SRC).toMatch(/lucide-react/);
   });
 
   it('calls stopPropagation in the onClick handler', () => {

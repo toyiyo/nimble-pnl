@@ -13,7 +13,7 @@
  * - Gaps: AlertTriangle icon + "Gap HH:MMa–HH:MMp" (non-color cue per WCAG 1.4.1)
  */
 import { useRef, useEffect } from 'react';
-import { AlertTriangle, Users } from 'lucide-react';
+import { AlertTriangle, Users, X } from 'lucide-react';
 
 import {
   Popover,
@@ -78,7 +78,6 @@ function CoverageList({ coverage }: { coverage: SlotCoverage }) {
             <div
               key={i}
               className="flex items-center gap-1.5 text-[12px] text-destructive"
-              role="status"
               aria-label={`Gap from ${minutesToCompact(seg.startMin)} to ${minutesToCompact(seg.endMin)}`}
             >
               <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -132,7 +131,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
                 <Users className="h-4 w-4 text-foreground" />
               </div>
               <div>
-                <DrawerTitle className="text-[15px] font-semibold text-foreground text-left">
+                <DrawerTitle className="text-[17px] font-semibold text-foreground text-left">
                   Covering employees for this slot
                 </DrawerTitle>
                 <DrawerDescription className="text-[12px] text-muted-foreground mt-0.5 text-left">
@@ -172,7 +171,6 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
         align="start"
         sideOffset={4}
         aria-label="Covering employees for this slot"
-        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-border/40">
@@ -180,7 +178,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
             <div className="h-8 w-8 rounded-lg bg-muted/50 flex items-center justify-center shrink-0">
               <Users className="h-4 w-4 text-foreground" />
             </div>
-            <div>
+            <div className="flex-1 min-w-0">
               <p className="text-[14px] font-semibold text-foreground">
                 Covering employees for this slot
               </p>
@@ -188,6 +186,14 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
                 {slotLabel ? `${slotLabel} · ` : ''}{headerText}
               </p>
             </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close coverage details"
+              className="h-7 w-7 rounded-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors shrink-0"
+            >
+              <X className="h-4 w-4" aria-hidden="true" />
+            </button>
           </div>
         </div>
         {/* Body */}

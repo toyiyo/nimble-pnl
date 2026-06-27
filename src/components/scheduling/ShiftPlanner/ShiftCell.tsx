@@ -1,7 +1,7 @@
 import { memo } from 'react';
 
 import { useDroppable } from '@dnd-kit/core';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Check } from 'lucide-react';
 
 import type { Shift, SlotCoverage } from '@/types/scheduling';
 import type { AllocationStatus } from '@/lib/shiftAllocation';
@@ -28,6 +28,12 @@ interface ShiftCellProps {
   coverage?: SlotCoverage;
   /** Called when the coverage indicator is clicked; lifted to tab-level popover. */
   onCoverageClick?: (templateId: string, day: string, rect: DOMRect) => void;
+  /** Concise slot identity for the coverage indicator aria-label (e.g. "Cold Stone Server").
+   *  Derived from template area + position in TemplateGrid. Falls back to "Coverage" when omitted. */
+  slotName?: string;
+  /** Human-readable weekday name for the coverage indicator aria-label (e.g. "Monday").
+   *  When omitted, falls back to the ISO date string which is not screen-reader friendly. */
+  dayLabel?: string;
 }
 
 /** Tiny badge shown when coverage data is unavailable and capacity > 1. */
@@ -65,6 +71,8 @@ export const ShiftCell = memo(
     pickedEmployeeName,
     coverage,
     onCoverageClick,
+    slotName,
+    dayLabel,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -87,14 +95,12 @@ export const ShiftCell = memo(
       allocationStatus === 'available' && 'bg-primary/5',
     );
 
-    // Suppress coverage indicator only when the cell already renders at least one placed shift
-    // AND coverage is 100% — in that case the chip is redundant noise because the assignee
-    // chip already signals the slot is filled.
-    // Do NOT suppress when shifts.length === 0 even if coverage === 100%, because the slot
-    // may be covered by a non-template fill-in that isn't bucketed here; hiding the indicator
-    // would make a covered cell look empty.
-    const showCoverageIndicator = coverage !== undefined &&
-      !(coverage.coveragePct === 100 && shifts.length >= 1);
+    // Always show the coverage indicator when coverage data is available.
+    // Two-tier treatment prevents visual noise:
+    //   • Fully covered (openSpots === 0): quiet — Check icon, N/N count, text-muted-foreground, no bar.
+    //   • Under-covered (openSpots > 0): prominent — AlertTriangle, progress bar, text-destructive.
+    const showCoverageIndicator = coverage !== undefined;
+    const filledCount = coverage !== undefined ? capacity - coverage.openSpots : 0;
 
     return (
       <div
@@ -105,7 +111,7 @@ export const ShiftCell = memo(
           'min-h-[64px] p-1.5 space-y-1 transition-colors duration-200 relative',
           'border-l-2 border-primary/40',
           isOver && 'bg-foreground/5 ring-1 ring-foreground/20 rounded',
-          isHighlighted && 'bg-green-500/10',
+          isHighlighted && 'bg-primary/10',
           hasMobileSelection && 'bg-primary/5 ring-1 ring-primary/30 rounded cursor-pointer',
           overlayClass,
         )}
@@ -131,7 +137,7 @@ export const ShiftCell = memo(
           />
         ))}
 
-        {/* Coverage indicator — shown only when coverage data is available and not suppressed */}
+        {/* Coverage indicator — always shown when coverage data is available (two-tier treatment) */}
         {showCoverageIndicator && (
           <button
             type="button"
@@ -139,35 +145,42 @@ export const ShiftCell = memo(
               e.stopPropagation();
               onCoverageClick?.(templateId, day, e.currentTarget.getBoundingClientRect());
             }}
-            aria-label={`Coverage ${coverage.coveragePct}%${coverage.openSpots > 0 ? `, needs ${coverage.openSpots} more` : ''}. Open details`}
+            aria-label={[
+              `${slotName ?? 'Coverage'} ${dayLabel ?? day}: ${filledCount} of ${capacity} staffed`,
+              coverage.openSpots > 0 ? `needs ${coverage.openSpots} more` : '',
+              `${coverage.coveragePct}% of window covered`,
+              'Open details',
+            ].filter(Boolean).join('. ')}
             aria-haspopup="dialog"
             className={cn(
-              'mt-1 flex items-center gap-1 text-[11px]',
-              coverage.openSpots > 0 ? 'text-destructive' : 'text-muted-foreground',
+              'mt-1 flex items-center gap-1',
+              coverage.openSpots > 0
+                ? 'text-[11px] text-destructive'
+                : 'text-[10px] text-muted-foreground',
             )}
           >
-            <span
-              className="inline-block h-1.5 w-10 rounded-full bg-muted overflow-hidden"
-              aria-hidden="true"
-            >
-              <span
-                className={cn(
-                  'block h-full',
-                  coverage.openSpots > 0 ? 'bg-destructive/70' : 'bg-foreground/60',
-                )}
-                style={{ width: `${coverage.coveragePct}%` }}
-              />
-            </span>
-            <span>{coverage.coveragePct}%</span>
-            {coverage.openSpots > 0 && (
-              <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+            {coverage.openSpots > 0 ? (
+              /* Under-covered tier: prominent — progress bar + AlertTriangle + "needs N" */
+              <>
+                <span
+                  className="inline-block h-1.5 w-10 rounded-full bg-muted overflow-hidden"
+                  aria-hidden="true"
+                >
+                  <span
+                    className="block h-full bg-destructive/70"
+                    style={{ width: `${coverage.coveragePct}%` }}
+                  />
+                </span>
+                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                <span>{filledCount}/{capacity}</span>
+              </>
+            ) : (
+              /* Fully-covered tier: quiet — Check icon + N/N count, no progress bar */
+              <>
+                <Check className="h-3 w-3" aria-hidden="true" />
+                <span>{filledCount}/{capacity}</span>
+              </>
             )}
-            <span className="sr-only">
-              {coverage.openSpots > 0
-                ? `Needs ${coverage.openSpots} more; `
-                : 'Fully covered; '}
-              {coverage.coveragePct}% of window covered
-            </span>
           </button>
         )}
 
@@ -191,5 +204,7 @@ export const ShiftCell = memo(
     prev.onMobileTap === next.onMobileTap &&
     prev.allocationStatus === next.allocationStatus &&
     prev.pickedEmployeeName === next.pickedEmployeeName &&
-    prev.onCoverageClick === next.onCoverageClick,
+    prev.onCoverageClick === next.onCoverageClick &&
+    prev.slotName === next.slotName &&
+    prev.dayLabel === next.dayLabel,
 );

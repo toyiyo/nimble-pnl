@@ -379,8 +379,7 @@ export function computeOpenShiftCount(
         t.capacity ?? 1,
         dayStr,
         cov,
-        t.position,
-        restaurantTimezone,
+        { position: t.position, tz: restaurantTimezone },
       ).openSpots;
     }
   }

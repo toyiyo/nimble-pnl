@@ -118,7 +118,7 @@ export function TemplateGrid({
 
         {coverageSlot && (
           <>
-            <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-t border-border/40">
+            <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-t border-border/40">
               Cover
             </div>
             {coverageSlot}
@@ -153,6 +153,10 @@ export function TemplateGrid({
                   {weekDays.map((day) => {
                     const isActiveDay = templateAppliesToDay(template, day);
                     const shifts = gridData.get(template.id)?.get(day) ?? [];
+                    // Full weekday name for screen-reader aria-label (e.g. "Monday").
+                    // Parsed as local midnight to avoid UTC-offset day shifts.
+                    const [y, mo, d] = day.split('-').map(Number);
+                    const fullDayLabel = new Date(y, mo - 1, d).toLocaleDateString('en-US', { weekday: 'long' });
                     return (
                       <div key={day} className="border-t border-l border-border/40">
                         <ShiftCell
@@ -169,6 +173,8 @@ export function TemplateGrid({
                           pickedEmployeeName={pickedEmployeeName}
                           coverage={coverageByTemplateDay?.get(template.id)?.get(day)}
                           onCoverageClick={onCoverageClick}
+                          slotName={`${template.area ? template.area + ' ' : ''}${template.position}`}
+                          dayLabel={fullDayLabel}
                         />
                       </div>
                     );

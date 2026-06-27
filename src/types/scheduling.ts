@@ -394,6 +394,9 @@ export interface CoverageShift {
   end_time: string;   // ISO UTC
   position: string;
   status?: string | null;
+  /** Employee's home area — set by ShiftPlannerTab when building coverage shifts. Used by the
+   *  opt-in area filter in computeSlotCoverage. Banner callers leave this unset. */
+  area?: string | null;
 }
 
 /** A contiguous sub-interval of the slot window, either fully covered (n≥C) or a gap (n<C). */

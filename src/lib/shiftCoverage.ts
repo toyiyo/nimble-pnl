@@ -140,7 +140,7 @@ export function computeSlotCoverage(
     const cs = Math.max(w0, ds);
     const ce = Math.min(w1, de);
 
-    if (options.area != null) {
+    if (options.area !== null && options.area !== undefined) {
       // Collect loaned-out employees: home area = this slot's area, working elsewhere.
       // They are surfaced in loanedOut[] but do NOT count toward coverage.
       if ((s.homeArea ?? null) === options.area && (s.area ?? null) !== options.area) {

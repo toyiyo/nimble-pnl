@@ -91,6 +91,17 @@ export function TemplateGrid({
   const groups = useMemo(() => groupTemplatesByArea(templates, areaFilter), [templates, areaFilter]);
   const showSectionHeaders = areaFilter === null && groups.length > 1;
 
+  /**
+   * Area keys in offTemplateByArea that have NO matching template group.
+   * These shifts must be rendered in their own OffTemplateRow lanes so they
+   * are not silently dropped when there is no active template for that area.
+   */
+  const orphanOffTemplateAreas = useMemo(() => {
+    if (!offTemplateByArea) return [];
+    const groupAreaSet = new Set(groups.map((g) => g.area));
+    return [...offTemplateByArea.keys()].filter((area) => !groupAreaSet.has(area));
+  }, [offTemplateByArea, groups]);
+
   return (
     <div className="rounded-xl border border-border/40 overflow-x-auto">
       <div className="grid grid-cols-[56px_repeat(7,1fr)] md:grid-cols-[200px_repeat(7,1fr)] min-w-[560px] md:min-w-[1000px]">
@@ -191,19 +202,29 @@ export function TemplateGrid({
                 </div>
               ))}
             {(!showSectionHeaders || !collapsed[group.area]) &&
-              (() => {
-                const offShifts = offTemplateByArea?.get(group.area);
-                return offShifts && offShifts.size > 0 ? (
-                  <OffTemplateRow
-                    area={group.area}
-                    weekDays={weekDays}
-                    shiftsByDay={offShifts}
-                    onRemoveShift={onRemoveShift}
-                  />
-                ) : null;
-              })()}
+              !!offTemplateByArea?.get(group.area)?.size && (
+                <OffTemplateRow
+                  area={group.area}
+                  weekDays={weekDays}
+                  shiftsByDay={offTemplateByArea!.get(group.area)!}
+                  onRemoveShift={onRemoveShift}
+                />
+              )}
           </div>
         ))}
+        {/* Off-template lanes for areas that have no active template in this view. */}
+        {orphanOffTemplateAreas.map((area) => {
+          const offShifts = offTemplateByArea!.get(area)!;
+          return offShifts.size > 0 ? (
+            <OffTemplateRow
+              key={`orphan-${area}`}
+              area={area}
+              weekDays={weekDays}
+              shiftsByDay={offShifts}
+              onRemoveShift={onRemoveShift}
+            />
+          ) : null;
+        })}
       </div>
 
       {/* Add template button */}

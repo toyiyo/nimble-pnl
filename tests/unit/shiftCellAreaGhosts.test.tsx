@@ -83,17 +83,13 @@ describe('ShiftCell ghostLoanedOut ghost rows', () => {
 
   it('renders no ghost rows when ghostLoanedOut is empty', () => {
     render(<ShiftCell {...BASE_PROPS} ghostLoanedOut={[]} />);
-    // No "at " text from ghost rows
-    const atText = document.body.querySelectorAll('*');
-    const hasAtText = [...atText].some((el) => el.textContent?.match(/^at /));
-    expect(hasAtText).toBe(false);
+    // Ghost rows carry aria-label "... working ... this slot"; absence confirms no ghosts rendered.
+    expect(screen.queryByLabelText(/working .* this slot/i)).toBeNull();
   });
 
   it('renders no ghost rows when ghostLoanedOut is undefined', () => {
     render(<ShiftCell {...BASE_PROPS} />);
-    const atText = document.body.querySelectorAll('*');
-    const hasAtText = [...atText].some((el) => el.textContent?.match(/^at /));
-    expect(hasAtText).toBe(false);
+    expect(screen.queryByLabelText(/working .* this slot/i)).toBeNull();
   });
 
   it('renders multiple ghost rows for multiple loaned-out employees', () => {

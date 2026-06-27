@@ -7,7 +7,7 @@
  *  - Source-text invariants: new props accepted; OffTemplateRow imported
  */
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -121,6 +121,9 @@ describe('TemplateGrid source-text invariants — task 8', () => {
 // ── off-template row rendering ────────────────────────────────────────────────
 
 describe('TemplateGrid offTemplateByArea rendering', () => {
+  beforeEach(() => {
+    localStorage.removeItem('shift-planner-area-collapse');
+  });
   it('renders OffTemplateRow when area has off-template shifts', () => {
     const offShift = makeShift('s1', 'Cold Stone');
     const offTemplateByArea = new Map<string, Map<string, Shift[]>>([
@@ -166,6 +169,24 @@ describe('TemplateGrid offTemplateByArea rendering', () => {
       />,
     );
     expect(screen.getByText('Emp s1')).toBeTruthy();
+  });
+
+  it('renders OffTemplateRow for orphan area with no template group', () => {
+    // 'Bar' area has no template but has off-template shifts
+    const offShift = makeShift('s2', 'Bar');
+    const offTemplateByArea = new Map<string, Map<string, Shift[]>>([
+      ['Bar', new Map([['2026-07-04', [offShift]]])],
+    ]);
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter={null}
+        offTemplateByArea={offTemplateByArea}
+      />,
+    );
+    // Should still render Off-template row even though no template has area='Bar'
+    expect(screen.getByText('Off-template')).toBeTruthy();
+    expect(screen.getByText('Emp s2')).toBeTruthy();
   });
 });
 

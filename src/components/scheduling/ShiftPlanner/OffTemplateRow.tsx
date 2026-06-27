@@ -23,7 +23,7 @@ export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift }: R
           <Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           <span className="truncate">Off-template</span>
         </div>
-        <span className="text-[11px] text-muted-foreground/70">odd hours · no plan</span>
+        <span className="text-[11px] text-muted-foreground/70">{area} · odd hours · no plan</span>
       </div>
       {weekDays.map((day) => {
         const shifts = shiftsByDay.get(day) ?? [];

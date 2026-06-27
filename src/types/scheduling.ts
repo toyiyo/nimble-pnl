@@ -394,8 +394,8 @@ export interface CoverageShift {
   end_time: string;   // ISO UTC
   position: string;
   status?: string | null;
-  /** Employee's home area — set by ShiftPlannerTab when building coverage shifts. Used by the
-   *  opt-in area filter in computeSlotCoverage. Banner callers leave this unset. */
+  /** Work area for the shift (template's area, or employee.area when no template). Distinct from
+   *  `homeArea`. Set by ShiftPlannerTab; used by the opt-in area filter in computeSlotCoverage. */
   area?: string | null;
   /** Employee's home area (shift.employee.area). Distinct from `area` (work area).
    *  Set by ShiftPlannerTab; used to compute covering vs loaned-out. */

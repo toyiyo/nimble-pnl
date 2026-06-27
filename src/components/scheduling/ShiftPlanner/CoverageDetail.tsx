@@ -48,7 +48,7 @@ export function groupCoveringByArea(
   const coveringFrom = new Map<string, CoveringEmployee[]>();
   for (const emp of list) {
     const home = emp.homeArea ?? null;
-    if (slotArea == null || home == null || home === slotArea) {
+    if (slotArea === null || slotArea === undefined || home === null || home === slotArea) {
       onArea.push(emp);
     } else {
       const g = coveringFrom.get(home);
@@ -85,49 +85,55 @@ function CoverageList({ coverage, slotArea }: { coverage: SlotCoverage; slotArea
       ) : (
         <div className="space-y-3">
           {onArea.length > 0 && (
-            <ul className="space-y-1.5" aria-label="On this area">
+            <div>
               {slotArea && (
-                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                   On {slotArea}
                 </p>
               )}
-              {onArea.map((emp, i) => (
-                <li key={`on-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
-                  <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
-                  <span className="text-muted-foreground tabular-nums">
-                    {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+              <ul className="space-y-1.5" aria-label="On this area">
+                {onArea.map((emp, i) => (
+                  <li key={`on-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {[...coveringFrom.entries()].map(([home, emps]) => (
-            <ul key={`cf-${home}`} className="space-y-1.5">
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <div key={`cf-${home}`}>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 Covering from {home}
               </p>
-              {emps.map((emp, i) => (
-                <li key={`cov-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
-                  <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
-                  <span className="text-muted-foreground tabular-nums">
-                    {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+              <ul className="space-y-1.5" aria-label={`Covering from ${home}`}>
+                {emps.map((emp, i) => (
+                  <li key={`cov-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
           {loanedOut.length > 0 && (
-            <ul className="space-y-1.5">
-              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
                 Covering elsewhere
               </p>
-              {loanedOut.map((emp, i) => (
-                <li key={`loaned-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
-                  <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
-                  <span className="text-muted-foreground">at {emp.workArea ?? '—'}</span>
-                </li>
-              ))}
-            </ul>
+              <ul className="space-y-1.5" aria-label="Covering elsewhere">
+                {loanedOut.map((emp, i) => (
+                  <li key={`loaned-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                    <span className="text-muted-foreground">at {emp.workArea ?? '—'}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </div>
       )}

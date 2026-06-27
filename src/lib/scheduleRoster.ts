@@ -30,12 +30,17 @@ export interface RosterDay {
  * Net scheduled hours for a shift (break excluded), clamped to >= 0.
  * Canonical home for this helper; re-exported from utils/scheduleExport for
  * backward compatibility.
+ *
+ * `break_duration` may be null at runtime (the DB column defaults to 0 but has
+ * no NOT NULL constraint), so it is coalesced to 0 — otherwise a null would
+ * make `totalMinutes - break_duration` NaN and poison every labor-cost total
+ * that sums these hours.
  */
 export const calculateShiftHours = (shift: Shift): number => {
   const start = new Date(shift.start_time);
   const end = new Date(shift.end_time);
   const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-  const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
+  const netMinutes = Math.max(totalMinutes - (shift.break_duration ?? 0), 0);
   return netMinutes / 60;
 };
 

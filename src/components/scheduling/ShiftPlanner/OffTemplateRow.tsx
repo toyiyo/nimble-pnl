@@ -56,7 +56,7 @@ export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift }: R
                   type="button"
                   onClick={() => onRemoveShift(s.id)}
                   aria-label={`Remove off-template shift for ${s.employee?.name ?? 'employee'}`}
-                  className="shrink-0 ml-auto rounded hover:bg-foreground/10 p-0.5"
+                  className="shrink-0 ml-auto rounded hover:bg-foreground/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current p-0.5"
                 >
                   <X className="h-3 w-3" />
                 </button>

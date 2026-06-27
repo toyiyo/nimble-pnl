@@ -397,6 +397,9 @@ export interface CoverageShift {
   /** Employee's home area — set by ShiftPlannerTab when building coverage shifts. Used by the
    *  opt-in area filter in computeSlotCoverage. Banner callers leave this unset. */
   area?: string | null;
+  /** Employee's home area (shift.employee.area). Distinct from `area` (work area).
+   *  Set by ShiftPlannerTab; used to compute covering vs loaned-out. */
+  homeArea?: string | null;
 }
 
 /** A contiguous sub-interval of the slot window, either fully covered (n≥C) or a gap (n<C). */
@@ -412,6 +415,10 @@ export interface CoveringEmployee {
   employeeName?: string | null;
   startMin: number; // clipped to [w0, w1]
   endMin: number;
+  /** Employee's home area. */
+  homeArea?: string | null;
+  /** Where the shift is worked (slot/work area). */
+  workArea?: string | null;
 }
 
 /** Full result of computeSlotCoverage for one (template slot, date) pair. */
@@ -421,4 +428,8 @@ export interface SlotCoverage {
   coveragePct: number;         // 0..100, rounded
   segments: CoverageSegment[]; // contiguous covered/gap runs across the window
   coveringEmployees: CoveringEmployee[];
+  /** Employees whose home area == this slot's area but who are working a
+   *  different area during the window (loaned out). Empty when slot area is null.
+   *  Does NOT affect minConcurrent/openSpots. */
+  loanedOut: CoveringEmployee[];
 }

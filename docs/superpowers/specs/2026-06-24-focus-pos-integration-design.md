@@ -1,462 +1,300 @@
 # Focus POS Integration — Design
 
-**Date:** 2026-06-24
-**Author:** Claude (Opus 4.8) via `/dev`
-**Status:** Draft for approval
+**Feature:** Pull Focus POS daily sales into EasyShiftHQ → `unified_sales` for P&L.
 **Branch:** `feature/focus-pos-integration`
+**Status:** Draft for approval (v2)
+
+## Revision history
+
+- **v1 (2026-06-24) — SUPERSEDED.** Targeted the FocusLink integrator datafeed
+  JSON API (`focuslink.focuspos.com/v2/.../datafeed`). Abandoned: integrator
+  credentials are effectively unobtainable for us.
+- **v2 (2026-06-27) — THIS DOC.** Targets the Focus **SSRS "Revenue Center"
+  report**, fetched as **HTML over an anonymous GET** and parsed. Chosen after
+  live investigation (see §2). Same end state (`unified_sales` for P&L), very
+  different data source.
 
 ## 1. Overview
 
-Add a **Focus POS** integration that pulls a restaurant's daily sales (checks,
-line items, payments) into EasyShiftHQ and normalizes them into `unified_sales`
-for P&L — mirroring the existing **Toast** integration. Focus POS (a **Shift4**
-product) offers **no webhooks**, so this is a **poll-based** integration using
-the same day-by-day backfill + scheduled-sync architecture as Toast.
+Focus POS exposes a SQL Server Reporting Services (SSRS) **Revenue Center
+Report** that returns a store's **daily sales aggregates**. The report server
+(`mfprod-1.myfocuspos.com/ReportServer`) answers **anonymous HTTP GETs** — no
+login, no cookies, no credentials — returning the report as HTML. We fetch one
+business day at a time, parse the HTML, and normalize into `unified_sales`
+(gross + offset rows), mirroring the Toast integration's downstream contract.
+
+Because no auth is involved, this is a **plain `fetch` in a Deno edge function**
+(no headless browser, no credential storage) on the same poll-based +
+pg_cron architecture as Toast.
 
 ### Goals
-
-- Connect a restaurant to Focus by entering its **storeKey** (after an onboarding
-  email to Focus/Shift4 support).
-- Pull sales via the FocusLink **datafeed** endpoint, one business day per call.
-- Persist raw Focus data in `focus_*` tables and normalize into `unified_sales`
-  using the same **gross + offset** model as Toast (tax/tip/discount/void/refund).
-- Backfill 90 days on first connect, then keep current via a pg_cron bulk sync.
+- Connect a restaurant by capturing its **report URL** (which carries the store
+  routing parameters) — pasted once into a setup form.
+- Pull the Revenue Center report per business day; parse daily aggregates
+  (per-item sales, tax, tips, discounts, refunds, payments-by-tender,
+  sales-by-order-type).
+- Normalize into `unified_sales` (`pos_system='focus'`) using the gross + offset
+  model. Backfill ~90 days, then keep current via pg_cron.
 
 ### Non-goals (v1)
+- Per-check / per-ticket granularity (the Revenue Center report is daily
+  aggregate; the CheckViewer per-check path was evaluated and rejected as a
+  1+2N stateful scrape).
+- Menu, labor, or employee ingestion.
+- Any write-back to Focus.
 
-- Menu catalog ingestion (`/pos/menus`) — fast-follow.
-- Labor / employee / timecard ingestion from the datafeed — overlaps with existing
-  scheduling/labor systems; out of scope.
-- Pushing orders **into** Focus (`POST /pos/orders/send`) — not needed.
-- Live sandbox verification — deferred until integrator credentials are obtained
-  (build + test against mocks now).
+## 2. Background: what we verified (live)
 
-## 2. Background: the Focus POS / FocusLink API
-
-Confirmed from Focus/Shift4 help docs (help.focusca.com) and the public API surface:
-
-| Aspect | Detail |
+| Question | Finding |
 | --- | --- |
-| **Pull endpoint** | `GET {baseUrl}/stores/{storeKey}/datafeed?date=YYYY-MM-DD` |
-| **Granularity** | **One business day per call.** No date range, no pagination — each call returns the full day's database extract. |
-| **Format** | JSON or XML, same fields. We use **JSON** (`Accept: application/json`) — native Deno parsing. |
-| **Base URL (prod)** | `https://focuslink.focuspos.com/v2` |
-| **Base URL (sandbox)** | Separate URL issued at certification (env-configured). |
-| **Auth** | **HTTP Basic Auth.** Integrator **API Key** = username, **API Secret** = password. (HMAC auth is deprecated.) |
-| **Integrator license** | **One** API Key/Secret held by EasyShiftHQ, valid across all enrolled stores. |
-| **storeKey** | 4–6 digit identifier, **unique per restaurant**. |
-| **Datafeed contents** | config, menu, employee/labor, **sales (checks + item details + payments)**, summaries. We consume only the **sales** sections. |
-| **Webhooks** | None — poll only. |
+| **Report URL** | `GET https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/revenuecenter&dbServer=<srv>&dbCatalog=<cat>&UserID=<uid>&StoreID=<sid>&rs:Command=Render&rs:Format=HTML4.0` |
+| **Auth** | **None.** Anonymous GET (no cookies/credentials, tested from a clean environment) returns HTTP 200 + the full report HTML. The portal (`my.focuspos.com`) login is *not* required — its session cookie doesn't even reach the ReportServer host. |
+| **Formats** | **HTML / HTML4.0 → 200** (work). **CSV / XML / EXCELOPENXML / ATOM → 503** (all structured exports are blocked server-side). So we must parse HTML. |
+| **Parameters** | `StoreID` (required, per-store, e.g. 5-digit), **`Start Date` / `End Date`** (date range — confirmed present, enables per-day backfill), `Revenue Center` (multi-select brand filter, default = all), plus routing params `dbServer`, `dbCatalog`, `UserID` carried in the URL. |
+| **Data** | Daily aggregates: per-item units/sales, Subtotal, Inclusive Tax, Subtotal Discounts, Net Sales, Food Tax, Total Tax, Total Sales, Paid In/Out, Gift Cards, **Retained Tips**, **Refunds**, Cash Rounding, Total Accountable, **payments by tender** (Cash/Visa/MC/…), **sales by order type** (Eat In/…). |
 
-**Unknown:** the exact field-level JSON shape of the datafeed (checks/items/
-payments property names) lives in a download we can't reach without a license.
-See §10 for how we isolate this risk.
+> **Exact URL names for the date parameters** (prompts are "Start Date"/"End
+> Date"; the URL param names are expected to be `StartDate`/`EndDate`) are
+> confirmed in the **first build task** by issuing one dated request and
+> diffing the result. The URL-builder is an isolated module so this can't ripple.
 
 ## 3. Key decisions
 
-From the brainstorming Q&A:
-
-1. **Credentials — platform-level.** The integrator **API Key/Secret** are stored
-   as **Supabase edge-function secrets** (`FOCUS_API_KEY`, `FOCUS_API_SECRET`),
-   not per restaurant. A `focus_connections` row holds only the per-restaurant
-   **storeKey**, **MID** (merchant id, for support/reconciliation), and
-   **environment** (sandbox/production). **No per-restaurant encrypted secret** —
-   simpler than Toast, and matches Focus's documented "one integrator license,
-   many storeKeys" model.
-
-2. **Scope — sales only.** Checks → `focus_orders`/`focus_order_items`/
-   `focus_payments` → `unified_sales`. Exact P&L parity with Toast.
-
-3. **Testing — mocks now.** Build the full integration with unit + pgTAP tests
-   against a **mock datafeed JSON fixture**. Field extraction is isolated in one
-   module so the real schema can be slotted in later with no structural change.
-
-4. **Onboarding copy.** The setup wizard instructs the operator to email
-   **fcesupport@shift4.com** with **Name, MID, Contact, and "EasyShiftHQ"** as the
-   integration, then enter the returned **storeKey** (+ MID, environment) into the
-   per-location form.
-
-> **Credential-model note for reviewer:** the per-restaurant form collects the
-> **storeKey** (the operator's per-location credential) and **MID**; the Basic-Auth
-> API Key/Secret remain platform secrets. If it turns out Shift4 issues a distinct
-> API key/secret *per merchant*, we'd add an optional encrypted per-connection
-> override (falling back to the platform secret). v1 assumes the documented
-> single-integrator-license model. Flagged for confirmation.
+1. **No credential storage.** Access is anonymous, so there is nothing to encrypt
+   — the setup form captures **routing parameters**, not secrets. (The user
+   initially expected a username/password form; the anonymous endpoint makes it
+   unnecessary. The `_shared/encryption.ts` service is *not* used.)
+2. **Capture-by-URL onboarding.** The operator pastes their full report URL
+   (the one their browser shows when viewing the report). We parse out
+   `baseUrl/host`, report path, `dbServer`, `dbCatalog`, `UserID`, `StoreID`.
+   Robust to per-deployment differences (host could be `mfprod-2…`, catalog
+   differs per brand, etc.).
+3. **Daily-aggregate granularity.** `unified_sales` gets per-day rows
+   (per-item sale rows + tax/tip/discount/refund offset rows), not per-check.
+   Sufficient for P&L; documented trade-off (§13).
+4. **Parse `rs:Format=HTML4.0`.** Static HTML (vs the HTML5 interactive viewer,
+   which renders client-side into an iframe). All field access is isolated in
+   one parser module + a **sanitized fixture** (no prod PII).
 
 ## 4. Architecture
 
 ```
-Restaurant operator
-   │  (enters storeKey + MID + environment)
-   ▼
-FocusSetupWizard ──► focus-save-connection ──► focus_connections
-                          │
-                          ▼
-                     focus-test-connection ──► GET /datafeed?date=<yesterday>  (Basic Auth, platform creds)
-                                                    │ 200 ⇒ connection_status='connected'
-   pg_cron (6h) ──► focus-bulk-sync ──┐
-   user "Sync now" ──► focus-sync-data ┤
-                                       ▼
-                         _shared/focusDatafeed.ts   (build URL + Basic Auth header, fetch one day JSON)
-                                       ▼
-                         _shared/focusOrderProcessor.ts   (extract checks/items/payments → upsert focus_* tables)
-                                       ▼
-                         focus_orders / focus_order_items / focus_payments
-                                       ▼
-   pg_cron (5min) ──► sync_all_focus_to_unified_sales() ──► sync_focus_to_unified_sales(rid[,start,end])
-                                       ▼
-                                  unified_sales   (pos_system='focus', gross + offsets)
-                                       ▼
-                               existing P&L / dashboards (unchanged)
+Operator pastes report URL ─► focus-save-connection ─► focus_connections
+                                  (parse routing params; SSRF-guard the host)
+                                                 │
+   pg_cron (6h) ─► focus-bulk-sync ──┐           │
+   "Sync now"  ─► focus-sync-data ───┤           ▼
+                                     ▼   _shared/focusReportClient.ts
+                          buildReportUrl(conn, date) ─► anonymous GET (HTML4.0)
+                                     ▼
+                          _shared/focusReportParser.ts  (HTML → structured day)
+                                     ▼
+                          focus_daily_reports  (raw parsed JSON per store-day)
+                                     ▼
+   pg_cron (5m) ─► sync_all_focus_to_unified_sales() ─► sync_focus_to_unified_sales(rid[,start,end])
+                                     ▼
+                          unified_sales (pos_system='focus', gross + offsets) ─► existing P&L
 ```
 
-All edge functions follow the codebase's **split pattern**: a thin Deno `index.ts`
-(env reads, `createClient`, `serve`) + a pure `_shared/<name>Handler.ts` with
-injected deps, so Vitest covers the logic and SonarCloud new-code coverage stays
-≥80% (per lessons 2026-05-07).
+Edge functions use the codebase **split pattern**: thin Deno `index.ts` +
+pure `_shared/<name>Handler.ts` with injected deps (Vitest-coverable, keeps
+SonarCloud new-code coverage ≥80%).
 
-## 5. Data model
+## 5. Data source detail
 
-New migration `supabase/migrations/<ts>_focus_integration.sql`. Tables mirror the
-Toast shape (shape is stable even though Focus field *names* differ).
+`focus_connections` stores the URL components; the client rebuilds the URL per
+day, swapping in the date range and forcing `rs:Format=HTML4.0`:
+
+```
+{base}?{reportPath}&dbServer={db_server}&dbCatalog={db_catalog}
+      &UserID={report_user_id}&StoreID={store_id}
+      &StartDate={mm/dd/yyyy}&EndDate={mm/dd/yyyy}
+      &rs:Command=Render&rs:Format=HTML4.0
+```
+
+**SSRF guard (critical):** the stored host MUST match an allow-list
+(`*.myfocuspos.com`) before any fetch. A connection row is operator-supplied, so
+without this guard a malicious value could point the edge function at an internal
+address. Validated at save time **and** before every fetch.
+
+## 6. Data model
+
+New migration `supabase/migrations/<ts>_focus_integration.sql`.
 
 ### `focus_connections`
 | Column | Type | Notes |
 | --- | --- | --- |
-| `id` | uuid PK | `gen_random_uuid()` |
-| `restaurant_id` | uuid NOT NULL | FK → `restaurants(id) ON DELETE CASCADE` |
-| `store_key` | text NOT NULL | 4–6 digit, stored as text (preserve leading zeros) |
-| `mid` | text | merchant id, optional, for support |
-| `environment` | text NOT NULL DEFAULT `'production'` | CHECK in (`sandbox`,`production`) |
-| `last_sync_time` | timestamptz | incremental window anchor |
-| `initial_sync_done` | boolean DEFAULT false | true once 90-day backfill completes |
-| `sync_cursor` | integer DEFAULT 0 | days completed in initial backfill |
+| `id` | uuid PK | |
+| `restaurant_id` | uuid NOT NULL | FK → `restaurants(id) ON DELETE CASCADE`; **UNIQUE** |
+| `report_base_url` | text NOT NULL | scheme+host, e.g. `https://mfprod-1.myfocuspos.com` (CHECK: `*.myfocuspos.com`) |
+| `report_path` | text NOT NULL | e.g. `/ReportServer?/generalstorereports/revenuecenter` |
+| `db_server` | text | routing param |
+| `db_catalog` | text | routing param (brand/tenant) |
+| `report_user_id` | text | routing param (audit; optional) |
+| `store_id` | text NOT NULL | per-store id |
+| `revenue_center` | text | optional brand filter; default all |
+| `last_sync_time` | timestamptz | incremental anchor |
+| `initial_sync_done` | boolean DEFAULT false | |
+| `sync_cursor` | integer DEFAULT 0 | days completed in backfill |
 | `is_active` | boolean DEFAULT true | |
-| `connection_status` | text DEFAULT `'pending'` | CHECK in (`pending`,`connected`,`error`,`disconnected`) |
+| `connection_status` | text DEFAULT 'pending' | CHECK in (pending,connected,error,disconnected) |
 | `last_error` / `last_error_at` | text / timestamptz | |
-| `created_at` / `updated_at` | timestamptz | `updated_at` via trigger |
-| | | **UNIQUE(restaurant_id)**; indexes on `restaurant_id`, partial `is_active` |
+| `created_at` / `updated_at` | timestamptz | |
+| | | indexes: `restaurant_id`; partial `(last_sync_time ASC NULLS FIRST) WHERE is_active` |
 
-No `sync_page` column — a datafeed call returns a whole day in one document, so the
-cursor is just **days completed** (simpler than Toast's order pagination).
+No credential columns.
 
-### `focus_orders` (check headers)
-`UNIQUE(restaurant_id, focus_check_guid)`. Columns: `focus_check_guid`, `store_key`,
-`order_date` DATE, `order_time` TIME, `business_date` INTEGER (yyyymmdd),
-`total_amount`, `tax_amount`, `tip_amount`, `discount_amount`,
-`service_charge_amount`, `payment_status`, `order_type`, `dining_option`,
-`raw_json` JSONB, timestamps.
+### `focus_daily_reports` (raw parsed per store-day; audit + reprocess)
+`UNIQUE(restaurant_id, business_date, revenue_center)`. Columns: `business_date`
+DATE, `revenue_center` text, `net_sales`, `total_tax`, `subtotal_discounts`,
+`retained_tips`, `refunds`, `total_sales`, `total_payments` numeric,
+`items_json` jsonb (per-item units/sales), `payments_json` jsonb (by tender),
+`order_types_json` jsonb, `raw_totals_json` jsonb (full parsed snapshot),
+`fetched_at` timestamptz. Index `(restaurant_id, business_date)`.
 
-### `focus_order_items`
-`UNIQUE(restaurant_id, focus_item_guid, focus_check_guid)`. Columns: `name`,
-`quantity`, `unit_price` (gross), `total_price` (net), `discount_amount` DEFAULT 0,
-`is_voided` boolean DEFAULT false, `sales_category`, `raw_json` JSONB.
+### RLS (both tables)
+`SELECT` for any role in `user_restaurants`; a single `FOR ALL` policy for
+`owner`/`manager`; edge functions write via the **service-role client**
+(bypasses RLS). pgTAP pins the policies.
 
-### `focus_payments`
-`UNIQUE(restaurant_id, focus_payment_guid, focus_check_guid)`. Columns: `amount`,
-`tip_amount`, `payment_type`, `payment_status`, `payment_date` DATE,
-`refund_amount` DEFAULT 0, `refund_status`, `raw_json` JSONB. Index on
-`(restaurant_id, payment_date)`.
+## 7. unified_sales normalization
 
-**Amounts are stored as received (dollars).** A field-mapping comment block in the
-processor documents the assumed currency unit; if the real feed is in cents, the
-single extraction module is the only thing that changes.
+RPCs mirror Toast (`pos_system='focus'`), `SECURITY DEFINER`,
+`SET search_path = public`, `SET statement_timeout = '120s'`:
 
-### RLS
-`SELECT` for any role in `user_restaurants` for the `restaurant_id`, plus a single
-`FOR ALL` policy for `owner`/`manager` (INSERT/UPDATE/DELETE). Edge functions use the
-**service-role client** for all write-backs (bypasses RLS). pgTAP pins the policies.
-**See R1/R9 in §17** for the exact policy shape and the user-client/service-client
-split that prevents the upsert-blocked-by-missing-UPDATE-policy footgun.
+- `sync_focus_to_unified_sales(p_restaurant_id uuid)` and the
+  `(…, p_start_date date, p_end_date date)` overload.
+- `sync_all_focus_to_unified_sales()` — bounded `ORDER BY last_sync_time
+  LIMIT 10` (5-min cron).
 
-## 6. `unified_sales` normalization
+**Row model (gross + offset), per business day, from `focus_daily_reports`:**
 
-New RPCs (mirroring Toast, `pos_system='focus'`):
+| `item_type` | `adjustment_type` | Source | `external_order_id` / `external_item_id` | Amount |
+| --- | --- | --- | --- | --- |
+| `sale` | NULL | each item in `items_json` | `focus-{store}-{yyyymmdd}` / slug(item_name) | item sales (+) |
+| `tax` | `tax` | `total_tax` | …`_tax` | + |
+| `tip` | `tip` | `retained_tips` | …`_tip` | + |
+| `discount` | `discount` | `subtotal_discounts` | …`_discount` | − |
+| `refund` | NULL | `refunds` | …`_refund` | − |
 
-- `sync_focus_to_unified_sales(p_restaurant_id uuid) → integer`
-- `sync_focus_to_unified_sales(p_restaurant_id uuid, p_start_date date, p_end_date date) → integer`
-- `sync_all_focus_to_unified_sales() → table(restaurant_id uuid, orders_synced integer)` (5-min cron)
+`sale_date` = `business_date`. Same disciplines as Toast: pass-through allow-list
+(`tax/tip/discount`), GUC trigger bypass (`app.skip_unified_sales_triggers`) then
+batch categorize + per-date aggregate, `ON CONFLICT … DO UPDATE` preserving
+`category_id`/`is_categorized`, stale-row cleanup when a day is re-fetched with
+changed values. Payments-by-tender are kept in `focus_daily_reports` for
+reconciliation (not written to `unified_sales`).
 
-**Row model (gross + offset), identical contract to Toast:**
+## 8. Edge functions
 
-| `item_type` | `adjustment_type` | Source | Amount |
-| --- | --- | --- | --- |
-| `sale` | NULL | non-voided items | gross line total (positive) |
-| `discount` | `discount` | items w/ `discount_amount > 0` | `-discount_amount` |
-| `discount` | `void` | voided items | `-unit_price` |
-| `tax` | `tax` | order `tax_amount ≠ 0` | positive |
-| `tip` | `tip` | payments `tip_amount ≠ 0`, not denied/voided | positive |
-| `refund` | NULL | payments w/ refund | negative |
-
-Discipline carried over from lessons:
-- **Pass-through allow-list** (lesson 2026-05-03): only `tax/tip/discount/void`
-  adjustment types are written; downstream P&L aggregations already allow-list these.
-- **GUC trigger bypass** `app.skip_unified_sales_triggers='true'` during bulk
-  upserts, then batch-categorize + per-date aggregation (lesson 2026-02-15 / Toast
-  `20260215200000`). `statement_timeout` raised on the function.
-- **`ON CONFLICT … DO UPDATE`** preserves `category_id`/`is_categorized`.
-- **Stale-row cleanup** before upserts: delete sale/tax/discount/tip rows that no
-  longer apply (item later voided, tax dropped to 0, payment voided).
-
-## 7. Edge functions
-
-`supabase/config.toml`: each gets `verify_jwt = false` and does its **own** auth.
+`supabase/config.toml`: four `verify_jwt = false` stanzas (each does its own auth).
 
 | Function | Trigger | Auth | Purpose |
 | --- | --- | --- | --- |
-| `focus-save-connection` | user POST | JWT → `getUser()` + `owner/manager` role check | upsert storeKey/MID/environment |
-| `focus-test-connection` | user POST | same | one datafeed call (yesterday) → set `connection_status` |
-| `focus-sync-data` | user POST | same (RLS-checked read + service-role row fetch) | manual sync: initial cursor day or incremental |
-| `focus-bulk-sync` | **cron** | **constant-time `Bearer SUPABASE_SERVICE_ROLE_KEY`** check | round-robin sync of active connections |
-
-**Security (lessons 2026-05-07):** `focus-bulk-sync` is cron-only → it enforces a
-timing-safe service-role Bearer comparison (it is *not* open just because
-`verify_jwt=false`). All required envs (`FOCUS_API_KEY`, `FOCUS_API_SECRET`,
-base URLs) are read once into consts and **fail fast (500)** if missing — no silent
-production fallbacks.
+| `focus-save-connection` | user POST | JWT + owner/manager role | parse + validate (SSRF-guard) report URL, upsert `focus_connections` |
+| `focus-test-connection` | user POST | same | anonymous fetch yesterday's report → `connection_status` |
+| `focus-sync-data` | user POST | JWT (RLS read) + **service-role** writes | manual sync: cursor day (backfill) or last N days |
+| `focus-bulk-sync` | **cron** | timing-safe `Bearer SUPABASE_SERVICE_ROLE_KEY` | round-robin sync of active connections |
 
 **Shared modules:**
-- `_shared/focusDatafeed.ts` — `buildDatafeedUrl(env, storeKey, date)`,
-  `basicAuthHeader(key, secret)`, `fetchDatafeed(deps, …)` (injectable `fetch` +
-  per-attempt `AbortSignal.timeout`, with a wall-clock budget guard around any
-  multi-day loop, per lesson 2026-05-17).
-- `_shared/focusOrderProcessor.ts` — `processDatafeed(supabase, datafeed,
-  restaurantId, storeKey, { skipUnifiedSalesSync })`. **The single field-mapping
-  module.** Extracts checks/items/payments via small named helpers
-  (`extractChecks`, `extractItems`, `extractPayments`) with a documented
-  assumed-field-path comment block.
+- `_shared/focusReportClient.ts` — `buildReportUrl(conn, startDate, endDate)`,
+  `assertAllowedHost(url)` (SSRF), `fetchReportHtml(deps, url)` (injectable
+  `fetch`, per-attempt `AbortSignal.timeout`, wall-clock budget guard).
+- `_shared/focusReportParser.ts` — `parseRevenueCenterReport(html, businessDate)`
+  → structured day object. **The single HTML-mapping module** (named extractors +
+  an "ASSUMED MARKUP" comment block).
 
-## 8. Sync orchestration
+Security: cron gate is constant-time (lesson 2026-05-07); required envs read once
+and fail-fast; 5xx returns generic, real error logged.
 
-- **Initial backfill:** `initial_sync_done=false` → process **one business day per
-  invocation**, advancing `sync_cursor` from 0…90 (`TARGET_DAYS=90`,
-  configurable). `skipUnifiedSalesSync=true` during backfill; `unified_sales` is
-  reconciled by the 5-min cron. At `sync_cursor ≥ 90` → `initial_sync_done=true`.
-- **Incremental:** `initial_sync_done=true` → re-fetch the last **2 business days**
-  (today + yesterday) to catch late-closed checks; idempotent upserts dedupe.
-- **`focus-bulk-sync` cron loop:** `ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5`
-  (round-robin), 2s delay between restaurants, one day (initial) or two days
-  (incremental) per restaurant per run, wall-clock budget guard so the function
-  always returns a structured response within the edge limit.
+## 9. Sync orchestration
 
-## 9. Frontend
+- **Backfill:** `initial_sync_done=false` → one business day per invocation,
+  `sync_cursor` 0…`TARGET_DAYS` (90, configurable); `unified_sales` reconciled by
+  the 5-min cron. `sync_cursor ≥ 90` → `initial_sync_done=true`.
+- **Incremental:** re-fetch the last **2 business days** (late-posted adjustments);
+  idempotent upserts dedupe on `(restaurant_id, business_date, revenue_center)`.
+- **`focus-bulk-sync`:** `ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5`,
+  2s delay between restaurants, wall-clock budget guard. One ~90 KB GET + parse
+  per store-day — comfortably inside edge CPU/wall limits.
 
-- **`src/hooks/useFocusConnection.tsx`** — React Query hook (`staleTime: 30000`),
-  `enabled: !!restaurantId`. Exposes `isConnected`, `connection`,
-  `saveConnection(storeKey, mid, environment)`, `testConnection()`, `disconnect()`,
-  `triggerManualSync(opts?)`. Each `supabase.functions.invoke` call is tested for
-  both transport-reject and resolved-`{error}` paths (lesson 2026-05-16).
-- **`src/components/pos/FocusSetupWizard.tsx`** — Apple/Notion-styled `Dialog`:
-  1. **Get credentials** — instructions to email **fcesupport@shift4.com** (Name,
-     MID, Contact, "EasyShiftHQ").
-  2. **Enter store details** — `storeKey` (required), `mid`, `environment`
-     (sandbox/production) → `saveConnection()` + `testConnection()`.
-  3. **Done** — success + link to "Sync now".
-  Three-state rendering, `aria-label`s, semantic tokens, `DialogDescription` for
-  `aria-describedby`.
-- **`src/components/FocusSync.tsx`** — reuses shared `SyncComponents.tsx`; add
-  `FOCUS_CONFIG: POSConfig = { name: 'Focus POS', dataLabel: 'orders',
-  dataLabelSingular: 'order', syncInterval: '6 hours' }`.
-- **Registration** (the distributed provider registry):
-  `src/pages/Integrations.tsx` (add `focus-pos` entry + `useFocusConnection`),
-  `src/components/IntegrationCard.tsx` (branches + `<FocusSetupWizard>`/`<FocusSync>`),
-  `src/components/IntegrationLogo.tsx` (logo/emoji).
+## 10. Frontend
 
-## 10. Mocking & the unknown JSON schema
+- **`src/hooks/useFocusConnection.tsx`** — React Query (`staleTime: 30000`,
+  `enabled: !!restaurantId`, `refetchOnWindowFocus: false`, `maybeSingle()`).
+  `saveConnection(reportUrl)`, `testConnection()`, `disconnect()`,
+  `triggerManualSync()`. Both `functions.invoke` error paths tested.
+- **`src/components/pos/FocusSetupWizard.tsx`** — Apple/Notion `Dialog` with its
+  own `DialogTitle`/`DialogDescription`:
+  1. **How to get your report URL** — short steps (open the Revenue Center report
+     in Focus, copy the URL from the address bar) + `mailto`/help link.
+  2. **Paste report URL** — one field; on submit we parse + show the detected
+     Store ID / brand for confirmation, then `saveConnection` + `testConnection`.
+     Partial-failure handled (saved but test failed → `status='error'`, inline
+     error + retry).
+  3. **Done** → "Sync now" / close (`onComplete`).
+  Field has `id`/`htmlFor`; icons `aria-hidden`; `max-h-[80vh]`.
+- **`src/components/FocusSync.tsx`** — reuses `SyncComponents.tsx`; one-day-per-call
+  (no `nextPage`); backfill progress via `InitialSyncPendingAlert` `syncCursor`.
+  Add `FOCUS_CONFIG: POSConfig` (+ `recentWindowLabel: 'last 2 business days'`).
+- **Registration:** `Integrations.tsx` (entry + `useFocusConnection`),
+  `IntegrationCard.tsx` (branch + `<FocusSetupWizard>`/`<FocusSync>`),
+  `IntegrationLogo.tsx` (emoji fallback `🍦`/🖥️ — no missing-PNG broken image).
 
-The datafeed's exact field names are unknown until we have a license, so:
+## 11. Security & fragility (must-read)
 
-1. **`tests/fixtures/focus-datafeed-sample.json`** — a documented, plausible
-   one-day datafeed (a few checks, items, payments, including a void, a discount,
-   a tip, and a refund) used by all processor/RPC tests.
-2. **All field access is confined to `_shared/focusOrderProcessor.ts`**, behind
-   named extractor helpers + an "ASSUMED FIELD PATHS" comment block. Table schemas
-   and the `unified_sales` RPC are **shape-stable** and never need to change when
-   the real schema arrives — only the extractor body does.
-3. The processor tolerates missing/None sections (config/menu/labor) and never
-   throws on absent optional fields.
-4. The fetch **query date** (`?date=`) is passed to the processor as the
-   authoritative business date (R3), and a stable **per-line** item key is derived
-   even if `focus_item_guid` turns out to be a reused menu-catalog id (R12). The
-   fixture includes both a unique-per-line and a reused-GUID case.
+- **Anonymous endpoint = data exposure on Focus's side.** Anyone with a `StoreID`
+  can read that store's sales unauthenticated. **We fetch only the `StoreID` a
+  restaurant supplies for its own connection** — never enumerate. Surface this to
+  the operator; recommend they report it to Focus/Shift4.
+- **SSRF guard** (`*.myfocuspos.com` allow-list) on the stored host, at save and
+  at fetch.
+- **Fragility:** undocumented, unauthenticated, and Focus has already locked down
+  the export formats — they could add auth or block this at any time. Build
+  **defensively**: explicit `connection_status='error'` + `last_error` when the
+  fetch fails or the parser can't find expected anchors; the sync never silently
+  writes zeros. Treat the FocusLink API as the eventual migration target; isolate
+  the source behind the client+parser modules so a future swap is contained.
+- No prod PII (real store names/IDs/employee names/figures) in committed docs,
+  fixtures, or tests — the test fixture is **synthetic** (lesson 2026-06-22).
 
-## 11. Configuration & secrets
-
-- `supabase/config.toml`: add `[functions.focus-*] verify_jwt = false` (×4).
-- New edge secrets: `FOCUS_API_KEY`, `FOCUS_API_SECRET`,
-  `FOCUS_BASE_URL_PRODUCTION` (default `https://focuslink.focuspos.com/v2`),
-  `FOCUS_BASE_URL_SANDBOX`.
-- New pg_cron jobs (pg_cron + pg_net), schedules **offset from Toast** to spread
-  load: `focus-bulk-sync` every 6h, `focus-unified-sales-sync` every 5 min.
-- `sonar-project.properties` / `vitest.config.ts` excludes stay aligned
-  (lesson 2026-05-16) for any new thin `index.ts` entry files.
-
-## 12. Testing strategy
+## 12. Testing
 
 | Layer | Tests |
 | --- | --- |
-| Unit (Vitest) | `focusOrderProcessor` (fixture → asserts upserts incl. void/discount/tip/refund; multi-check fixture per lesson 2026-06-22), `focusDatafeed` (URL build + Basic Auth header + env fail-fast), `useFocusConnection` (both invoke error paths) |
-| pgTAP | `sync_focus_to_unified_sales` (gross + offset rows, pass-through allow-list, stale cleanup, auth), `focus_connections` RLS, signature/idempotency |
-| Build/typecheck/lint | full Phase-8 gate |
+| Unit (Vitest) | `focusReportParser` (synthetic HTML fixture → asserts per-item sales, tax, tip, discount, refund, payments, order types; malformed/empty-report guards), `focusReportClient` (URL build incl. date params, SSRF allow-list accept/reject, fetch error paths), `useFocusConnection` (both invoke error paths, URL-parse) |
+| pgTAP | `sync_focus_to_unified_sales` (gross + offset rows, allow-list, stale cleanup, auth), `focus_connections`/`focus_daily_reports` RLS, idempotency on `(restaurant_id, business_date, revenue_center)` |
+| Full gate | typecheck, lint, build, Sonar ≥80% (branch coverage on parser/url-builder) |
 
-Branch coverage: count branches in any toast-style string composition and write
-≥2 assertions/branch (lesson 2026-06-19) to keep SonarCloud ≥80%.
+## 13. Decided trade-offs / out of scope
 
-## 13. Security
+- **Daily aggregate, not per-check** — Revenue Center report granularity; adequate
+  for P&L. Per-check would require the rejected CheckViewer 1+2N scrape.
+- **Anonymous-fetch dependency** — accepted because integrator API creds are
+  unobtainable; mitigated by defensive build + isolation for future migration.
+- **5-min SQL cron** kept (with `LIMIT`); convert to pg_net if restaurant count
+  grows.
+- Menu/labor ingestion deferred.
 
-- No per-restaurant secrets stored; platform Basic-Auth creds live only in edge env.
-- Cron function gated by timing-safe service-role compare.
-- `restaurant_id`-scoped RLS on all `focus_*` tables; every RPC `restaurant_id`-scoped.
-- 5xx returns are generic; real errors logged server-side (lesson 2026-04-22).
-- No prod PII (real names/MIDs/storeKeys/UUIDs) in committed docs, fixtures, or
-  tests — placeholders only (`store-1234`, "Sample Restaurant") (lesson 2026-06-22).
+## 14. Open questions / build-time validations
 
-## 14. Decided trade-offs / out of scope
-
-- **One integrator license** assumed (see §3 note). Per-merchant secret override
-  is a documented future extension, not built now.
-- **90-day backfill = 90 calls/store**, one day per invocation — slower than Toast's
-  order pagination but simpler and within CPU limits. Acceptable.
-- **Menu/labor ingestion** deferred.
-- **No live verification** until sandbox creds exist; mock-driven build.
+1. **Exact date param URL names** (`StartDate`/`EndDate` expected) — confirmed in
+   build task 1 via one dated request; isolated in `buildReportUrl`.
+2. **`Revenue Center` multi-select** — default to all revenue centers; confirm the
+   URL encoding for "select all".
+3. **Item-name stability** — `external_item_id` slug derived from item name; if
+   Focus exposes an item code in the report, prefer it.
+4. **Logo** — emoji fallback for v1; swap for brand art later.
 
 ## 15. File manifest
 
-**New:** migration `_focus_integration.sql`; `_shared/focusDatafeed.ts`,
-`_shared/focusOrderProcessor.ts`; edge fns `focus-save-connection`,
-`focus-test-connection`, `focus-sync-data`, `focus-bulk-sync` (each
-`index.ts` + handler); `src/hooks/useFocusConnection.tsx`;
+**New:** migration `_focus_integration.sql`; `_shared/focusReportClient.ts`,
+`_shared/focusReportParser.ts`; edge fns `focus-save-connection`,
+`focus-test-connection`, `focus-sync-data`, `focus-bulk-sync` (each `index.ts`
++ handler); `src/hooks/useFocusConnection.tsx`;
 `src/components/pos/FocusSetupWizard.tsx`; `src/components/FocusSync.tsx`;
-fixtures + unit tests + pgTAP tests; `public/logos/focus.png` (placeholder).
+synthetic fixture + unit tests + pgTAP tests; cron migration.
 
 **Modified:** `supabase/config.toml`; `src/pages/Integrations.tsx`;
 `src/components/IntegrationCard.tsx`; `src/components/IntegrationLogo.tsx`;
-`src/components/pos/SyncComponents.tsx` (`FOCUS_CONFIG`); cron migration; Sonar/vitest excludes if needed.
-
-## 16. Open questions
-
-1. **Per-merchant secret?** Confirm Shift4 issues a single integrator key/secret
-   (platform env) vs. per-merchant credentials (would need the encrypted-override
-   path). Default: platform env (§3).
-2. **storeKey format** — confirm always numeric 4–6 digits (stored as text either way).
-3. **Logo asset** — v1 uses an **emoji fallback** (🖥️) in `IntegrationLogo` (no
-   image file → no broken `<img>`); swap to a real `focus.png` when brand art is
-   provided. (Resolved per design review — see §17.)
-
-## 17. Design-review resolutions (Phase 2.5)
-
-Both the Supabase and Frontend design reviewers ran against this doc. Accepted
-refinements (folded into the contract the plan implements):
-
-### Database / RLS / RPC (Supabase reviewer)
-
-- **R1 (critical) — RLS as a single `FOR ALL` policy + service-role write-backs.**
-  `focus_connections` gets a `FOR SELECT` policy (any role in `user_restaurants`)
-  **and** a single `FOR ALL` policy for `owner`/`manager` (covering
-  INSERT/UPDATE/DELETE) — never split INSERT/SELECT without UPDATE, or upserts and
-  the frontend `disconnect` (sets `is_active=false`) break. **All edge-function
-  write-backs** (`connection_status`, `last_sync_time`, `sync_cursor`,
-  `initial_sync_done`, `last_error`) go through the **service-role client**
-  (RLS-bypassing), exactly like the Toast functions — so `focus-test-connection`'s
-  status update never depends on the caller's UPDATE grant. The `FOR ALL` policy
-  exists for direct frontend writes (disconnect). Same `FOR SELECT`/`FOR ALL` pair
-  on `focus_orders`/`focus_order_items`/`focus_payments` (SELECT any role; writes
-  service-role only). pgTAP pins all policies.
-- **R2 (critical) — bound the 5-min aggregation cron.**
-  `sync_all_focus_to_unified_sales()` loops `WHERE is_active … ORDER BY
-  last_sync_time ASC NULLS FIRST LIMIT 10` (the Toast equivalent lacks this LIMIT —
-  we fix the latent bug here rather than copy it).
-- **R3 (major) — authoritative business date from the query param.**
-  `processDatafeed(... , businessDate)` receives the **`?date=YYYY-MM-DD` value used
-  to fetch the day** as a first-class argument and uses it as `business_date`
-  (yyyymmdd int) and `order_date` DATE — never a UTC-converted timestamp inside the
-  JSON (avoids the Toast `closedDate.toISOString()` midnight-drift class of bug).
-  Time-of-day, if needed, comes from the payload but the **date** is the query day.
-- **R4 (major) — composite item identity in `unified_sales`.**
-  `external_item_id` for sale/discount/void rows is `focus_check_guid || '_' ||
-  focus_item_guid` (+ the `_discount`/`_void` suffixes), so a void/stale-cleanup
-  DELETE can never match the same menu item on a different check. Stale-cleanup
-  joins on the composite, not the bare item GUID.
-- **R5 (major) — RPC hardening.** Both `sync_focus_to_unified_sales` overloads and
-  `sync_all_focus_to_unified_sales` are `SECURITY DEFINER` with
-  `SET search_path = public` and `SET statement_timeout = '120s'`. The
-  `set_updated_at` trigger function likewise pins `SET search_path = public`.
-- **R6 (major) — refund reads the first-class column.** The `refund` rows come from
-  `focus_payments WHERE refund_amount > 0` (negative amount), not from `raw_json`.
-- **R7 (major/minor) — indexes.** Add: partial `(last_sync_time ASC NULLS FIRST)
-  WHERE is_active` (round-robin sort), `(restaurant_id, order_date DESC)` on
-  `focus_orders`, `(restaurant_id, payment_date)` and `(restaurant_id,
-  payment_status)` on `focus_payments`.
-- **R8 (minor) — schema hardening.** `is_voided boolean NOT NULL DEFAULT false`
-  (NULL would dodge the `= true` cleanup filter). `mid` gets a `COMMENT` documenting
-  the expected numeric format (no hard CHECK — operators paste varied formats).
-- **R9 (minor) — two clients in `focus-sync-data`.** `userClient` (JWT) for the
-  auth/role check + RLS-scoped connection read; `serviceClient` for **all** writes
-  to `focus_*`. Listed explicitly so the implementer doesn't write through the JWT
-  client (which only has SELECT).
-- **R10 (minor) — config.toml.** Four explicit named stanzas:
-  `[functions.focus-save-connection]`, `[functions.focus-test-connection]`,
-  `[functions.focus-sync-data]`, `[functions.focus-bulk-sync]`, each
-  `verify_jwt = false`.
-- **R11 (trade-off) — 5-min cron stays SQL-level** (like Toast) with the LIMIT from
-  R2. If restaurant count grows enough to pressure DB connections, convert it to a
-  pg_net HTTP call to a `focus-aggregate` edge function (noted, not built in v1).
-
-### Unknown-schema note (folded into §10)
-
-- **R12 — `focus_item_guid` may be a menu-catalog id, not a per-line id.** If the
-  feed reuses one GUID for the same menu item across checks, the per-item unique
-  key must include a line sequence (`focus_line_number`) — the fixture covers both
-  shapes, and `external_item_id` already composites the check GUID (R4) so
-  normalization is safe either way. The processor extracts a stable per-line key.
-
-### Frontend / hook / a11y (Frontend reviewer)
-
-- **R13 (critical) — hook threads `restaurantId`.** `useFocusConnection(restaurantId?:
-  string | null)`; every mutation (`saveConnection`, `testConnection`, `disconnect`,
-  `triggerManualSync`) closes over that `restaurantId`. Query: `enabled:
-  !!restaurantId`, `staleTime: 30000`, `refetchOnWindowFocus: false`,
-  `refetchOnMount: true`; `maybeSingle()` read (avoids PGRST116). Instantiated
-  unconditionally in `IntegrationCard` like the other providers — the `enabled`
-  guard is the protection (we do **not** refactor the pre-existing all-providers
-  pattern; out of scope).
-- **R14 (critical) — wizard owns its dialog a11y.** `FocusSetupWizard` renders
-  `DialogHeader > DialogTitle + DialogDescription` itself (Radix wires
-  `aria-describedby`) — it does **not** delegate the accessible name to a `Card`
-  subtitle (the gap present in `ToastSetupWizard`). Every input has `id` +
-  `<Label htmlFor>` (`store-key`, `mid`, `environment`). `max-h-[80vh]` per CLAUDE.md.
-- **R15 (major) — environment control.** A labeled shadcn `RadioGroup` with two
-  options (Production default, Sandbox). Selecting **Sandbox** shows the amber
-  warning panel (`bg-amber-500/10 border-amber-500/20`) so an operator can't
-  silently point a live location at the test feed.
-- **R16 (major) — partial-failure flow.** Step 2 runs `saveConnection()` then
-  `testConnection()` under one `loading` boolean. If save succeeds but test fails:
-  the row persists with `connection_status='error'`, the user stays on step 2, and
-  a destructive inline error + toast explains the failure with a retry. Success
-  advances to step 3.
-- **R17 (major) — `FocusSync` is one-day-per-call, not paginated.** It must **not**
-  copy `ToastSync.executeSyncLoop`'s `nextPage` cursor (Focus has no page cursor).
-  Manual "Sync now" calls `focus-sync-data` once (advances `sync_cursor` by a day,
-  or re-fetches the last 2 business days when `initial_sync_done`). Initial-backfill
-  progress is shown via `InitialSyncPendingAlert`'s existing `syncCursor` prop
-  (days completed / 90), not an order count.
-- **R18 (major) — `POSConfig.recentWindowLabel`.** Add an optional
-  `recentWindowLabel?: string` to `POSConfig`; `getSyncDescription` in
-  `SyncComponents.tsx` uses it instead of the hardcoded "last 25 hours" string.
-  `FOCUS_CONFIG = { name: 'Focus POS', dataLabel: 'orders', dataLabelSingular:
-  'order', syncInterval: '6 hours', recentWindowLabel: 'last 2 business days' }`.
-  Toast/Shift4/Sling keep current copy (label optional, defaults to existing text).
-- **R19 (major/minor) — logo + alt text.** v1 adds `'focus-pos': '🖥️'` to
-  `IntegrationLogo`'s `emojiMap` (no image map entry → no broken `<img>`). Give
-  `IntegrationLogo` a small id→display-name lookup (or `altText` prop) so the image
-  path, when a real `focus.png` lands, renders `alt="Focus POS logo"` not
-  `alt="focus-pos logo"`.
-- **R20 (minor) — registration completeness.** `Integrations.tsx` imports/calls
-  `useFocusConnection` at page level and feeds `isConnected` into the `focus-pos`
-  registry entry's `connected:` field; `IntegrationCard` renders `<FocusSync>` in
-  the connected branch (`isFocusIntegration`) and `<FocusSetupWizard>` in a
-  `Dialog` toggled by `showFocusSetup`; step-3 "Sync now" / "Go to dashboard"
-  calls `onComplete()` (closes the dialog) — it does not navigate away mid-dialog.
-- **R21 (minor) — mailto + icon a11y.** The support address is
-  `<a href="mailto:fcesupport@shift4.com">`; any decorative `ExternalLink`/`Mail`
-  icon gets `aria-hidden="true"`.
+`src/components/pos/SyncComponents.tsx` (`FOCUS_CONFIG` + `recentWindowLabel`);
+Sonar/vitest excludes if any thin `index.ts` needs it.

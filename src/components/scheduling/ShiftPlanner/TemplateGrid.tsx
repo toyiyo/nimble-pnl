@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo, type ReactNode } from 'react';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 
-import type { ShiftTemplate, Shift, SlotCoverage } from '@/types/scheduling';
+import type { ShiftTemplate, Shift, SlotCoverage, CoveringEmployee } from '@/types/scheduling';
 import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
@@ -11,6 +11,7 @@ import { groupTemplatesByArea } from '@/lib/templateAreaGrouping';
 import { TemplateRowHeader } from './TemplateRowHeader';
 import { ShiftCell } from './ShiftCell';
 import { AreaSectionHeader } from './AreaSectionHeader';
+import { OffTemplateRow } from './OffTemplateRow';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const AREA_COLLAPSE_KEY = 'shift-planner-area-collapse';
@@ -45,6 +46,10 @@ interface TemplateGridProps {
   /** Called when a cell's coverage indicator is clicked; lifted to tab level.
    *  rect is the bounding box of the indicator button (desktop Popover anchor). */
   onCoverageClick?: (templateId: string, day: string, rect?: DOMRect) => void;
+  /** De-duped loaned-out ghosts keyed `${templateId}:${day}`. */
+  ghostByCell?: Map<string, CoveringEmployee[]>;
+  /** Unmatched shifts grouped by area → day (off-template lane). */
+  offTemplateByArea?: Map<string, Map<string, Shift[]>>;
 }
 
 export function TemplateGrid({
@@ -64,6 +69,8 @@ export function TemplateGrid({
   pickedEmployeeName,
   coverageByTemplateDay,
   onCoverageClick,
+  ghostByCell,
+  offTemplateByArea,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -175,12 +182,23 @@ export function TemplateGrid({
                           onCoverageClick={onCoverageClick}
                           slotName={`${template.area ? template.area + ' ' : ''}${template.position}`}
                           dayLabel={fullDayLabel}
+                          cellArea={template.area ?? null}
+                          ghostLoanedOut={ghostByCell?.get(`${template.id}:${day}`)}
                         />
                       </div>
                     );
                   })}
                 </div>
               ))}
+            {(!showSectionHeaders || !collapsed[group.area]) &&
+              (offTemplateByArea?.get(group.area)?.size ?? 0) > 0 && (
+                <OffTemplateRow
+                  area={group.area}
+                  weekDays={weekDays}
+                  shiftsByDay={offTemplateByArea!.get(group.area)!}
+                  onRemoveShift={onRemoveShift}
+                />
+              )}
           </div>
         ))}
       </div>

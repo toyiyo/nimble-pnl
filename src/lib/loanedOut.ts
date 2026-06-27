@@ -11,16 +11,17 @@ import type { SlotCoverage, CoveringEmployee } from '@/types/scheduling';
  * employee appears in exactly one cell: greatest clipped overlap, tie-break by
  * earliest template start, then templateId lexicographic.
  */
+interface Candidate {
+  templateId: string;
+  day: string;
+  emp: CoveringEmployee;
+  overlap: number;
+}
+
 export function assignLoanedOutCell(
   coverageByTemplateDay: Map<string, Map<string, SlotCoverage>>,
   templateStartById: Map<string, string>,
 ): Map<string, CoveringEmployee[]> {
-  interface Candidate {
-    templateId: string;
-    day: string;
-    emp: CoveringEmployee;
-    overlap: number;
-  }
   // Group candidates by employee+day.
   const byEmpDay = new Map<string, Candidate[]>();
   for (const [templateId, byDay] of coverageByTemplateDay) {
@@ -38,7 +39,8 @@ export function assignLoanedOutCell(
   const result = new Map<string, CoveringEmployee[]>();
   for (const candidates of byEmpDay.values()) {
     let best = candidates[0];
-    for (const c of candidates.slice(1)) {
+    for (let i = 1; i < candidates.length; i++) {
+      const c = candidates[i];
       if (c.overlap > best.overlap) { best = c; continue; }
       if (c.overlap < best.overlap) continue;
       const cs = templateStartById.get(c.templateId) ?? '';

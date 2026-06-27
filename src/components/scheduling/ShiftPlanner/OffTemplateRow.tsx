@@ -3,6 +3,7 @@ import { Clock, X } from 'lucide-react';
 import type { Shift } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
 import { formatLocalTime } from '@/hooks/useShiftPlanner';
+import { formatCompactTime } from '@/lib/openShiftHelpers';
 
 interface OffTemplateRowProps {
   area: string;
@@ -10,14 +11,6 @@ interface OffTemplateRowProps {
   /** Map<day, Shift[]> for this area's unmatched shifts. */
   shiftsByDay: Map<string, Shift[]>;
   onRemoveShift: (shiftId: string) => void;
-}
-
-/** Compact 12h label from "HH:MM:SS", e.g. "13:00:00" -> "1:00p", "09:00:00" -> "9a". */
-function compact(t: string): string {
-  const [h, m] = t.split(':').map(Number);
-  const ampm = h >= 12 ? 'p' : 'a';
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${h12}${ampm}` : `${h12}:${String(m).padStart(2, '0')}${ampm}`;
 }
 
 /** Read-only lane that surfaces shifts not bound to any active template.
@@ -50,7 +43,7 @@ export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift }: R
               >
                 <span className="truncate">{s.employee?.name ?? 'Unassigned'}</span>
                 <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                  {compact(formatLocalTime(s.start_time))}–{compact(formatLocalTime(s.end_time))}
+                  {formatCompactTime(formatLocalTime(s.start_time))}–{formatCompactTime(formatLocalTime(s.end_time))}
                 </span>
                 <button
                   type="button"

@@ -78,19 +78,6 @@ function CoverageList({ coverage, slotArea }: { coverage: SlotCoverage; slotArea
   const { onArea, coveringFrom } = groupCoveringByArea(coveringEmployees, slotArea);
   const nothing = coveringEmployees.length === 0 && loanedOut.length === 0;
 
-  const Row = (emp: CoveringEmployee, key: string) => (
-    <li key={key} className="flex items-center justify-between text-[13px]">
-      <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
-      <span className="text-muted-foreground tabular-nums">
-        {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
-      </span>
-    </li>
-  );
-
-  const Heading = (text: string) => (
-    <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">{text}</p>
-  );
-
   return (
     <div className="space-y-3">
       {nothing ? (
@@ -99,19 +86,41 @@ function CoverageList({ coverage, slotArea }: { coverage: SlotCoverage; slotArea
         <div className="space-y-3">
           {onArea.length > 0 && (
             <ul className="space-y-1.5" aria-label="On this area">
-              {slotArea ? Heading(`On ${slotArea}`) : null}
-              {onArea.map((emp, i) => Row(emp, `on-${emp.employeeId}-${i}`))}
+              {slotArea && (
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                  On {slotArea}
+                </p>
+              )}
+              {onArea.map((emp, i) => (
+                <li key={`on-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                  <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
+                  </span>
+                </li>
+              ))}
             </ul>
           )}
           {[...coveringFrom.entries()].map(([home, emps]) => (
             <ul key={`cf-${home}`} className="space-y-1.5">
-              {Heading(`Covering from ${home}`)}
-              {emps.map((emp, i) => Row(emp, `cov-${emp.employeeId}-${i}`))}
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                Covering from {home}
+              </p>
+              {emps.map((emp, i) => (
+                <li key={`cov-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                  <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                  <span className="text-muted-foreground tabular-nums">
+                    {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
+                  </span>
+                </li>
+              ))}
             </ul>
           ))}
           {loanedOut.length > 0 && (
             <ul className="space-y-1.5">
-              {Heading('Covering elsewhere')}
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                Covering elsewhere
+              </p>
               {loanedOut.map((emp, i) => (
                 <li key={`loaned-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
                   <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>

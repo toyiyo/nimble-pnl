@@ -191,14 +191,17 @@ export function TemplateGrid({
                 </div>
               ))}
             {(!showSectionHeaders || !collapsed[group.area]) &&
-              (offTemplateByArea?.get(group.area)?.size ?? 0) > 0 && (
-                <OffTemplateRow
-                  area={group.area}
-                  weekDays={weekDays}
-                  shiftsByDay={offTemplateByArea!.get(group.area)!}
-                  onRemoveShift={onRemoveShift}
-                />
-              )}
+              (() => {
+                const offShifts = offTemplateByArea?.get(group.area);
+                return offShifts && offShifts.size > 0 ? (
+                  <OffTemplateRow
+                    area={group.area}
+                    weekDays={weekDays}
+                    shiftsByDay={offShifts}
+                    onRemoveShift={onRemoveShift}
+                  />
+                ) : null;
+              })()}
           </div>
         ))}
       </div>

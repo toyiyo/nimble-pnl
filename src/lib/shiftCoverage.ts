@@ -124,24 +124,42 @@ export function computeSlotCoverage(
   // Overnight window: if end ≤ start, treat end as next-day (+1440)
   const w1 = w1raw <= w0 ? w1raw + 1440 : w1raw;
 
-  // --- Build clipped intervals ---
+  // --- Build clipped intervals (and loaned-out candidates in the same pass) ---
   const clips: Clip[] = [];
+  const loanedOut: CoveringEmployee[] = [];
   for (const s of shifts) {
     // Filter: position must match; cancelled shifts are skipped
     if (s.position !== position) continue;
     if (s.status === 'cancelled') continue;
-    // Opt-in area filter: when options.area is non-null/undefined, only count same-area shifts.
-    // Omitted/null area → no filter (whole-restaurant, back-compat with banner callers).
-    if (options.area != null && s.area !== options.area) continue;
 
     const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
     let de = isoToLocalMinutes(s.end_time, dateStr, tz);
     // Overnight shift: if end ≤ start in local minutes, add 1440
     if (de <= ds) de += 1440;
 
-    // Clip to window
     const cs = Math.max(w0, ds);
     const ce = Math.min(w1, de);
+
+    if (options.area != null) {
+      // Collect loaned-out employees: home area = this slot's area, working elsewhere.
+      // They are surfaced in loanedOut[] but do NOT count toward coverage.
+      if ((s.homeArea ?? null) === options.area && (s.area ?? null) !== options.area) {
+        if (cs < ce) {
+          loanedOut.push({
+            employeeId: s.employee_id,
+            employeeName: s.employee_name ?? null,
+            homeArea: s.homeArea ?? null,
+            workArea: s.area ?? null,
+            startMin: cs,
+            endMin: ce,
+          });
+        }
+        continue; // loaned-out: not counted toward this slot's coverage
+      }
+      // Opt-in area filter: only count same-area shifts.
+      if (s.area !== options.area) continue;
+    }
+
     if (cs < ce) {
       clips.push({
         employeeId: s.employee_id,
@@ -153,6 +171,7 @@ export function computeSlotCoverage(
       });
     }
   }
+  loanedOut.sort((a, b) => a.startMin - b.startMin);
 
   // --- Sweep line over breakpoints ---
   // Always seed W0 and W1 so an empty shift set still produces a full-window n=0 interval.
@@ -210,34 +229,6 @@ export function computeSlotCoverage(
       endMin: c.ce,
     }))
     .sort((a, b) => a.startMin - b.startMin);
-
-  // Loaned out: employees whose HOME area is this slot's area but who are
-  // working a different area during the window. Only when slot area is set.
-  const loanedOut: CoveringEmployee[] = [];
-  if (options.area != null) {
-    for (const s of shifts) {
-      if (s.position !== position) continue;
-      if (s.status === 'cancelled') continue;
-      if ((s.homeArea ?? null) !== options.area) continue; // must be from this area
-      if ((s.area ?? null) === options.area) continue;      // and working elsewhere
-      const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
-      let de = isoToLocalMinutes(s.end_time, dateStr, tz);
-      if (de <= ds) de += 1440;
-      const cs = Math.max(w0, ds);
-      const ce = Math.min(w1, de);
-      if (cs < ce) {
-        loanedOut.push({
-          employeeId: s.employee_id,
-          employeeName: s.employee_name ?? null,
-          homeArea: s.homeArea ?? null,
-          workArea: s.area ?? null,
-          startMin: cs,
-          endMin: ce,
-        });
-      }
-    }
-    loanedOut.sort((a, b) => a.startMin - b.startMin);
-  }
 
   return {
     minConcurrent,

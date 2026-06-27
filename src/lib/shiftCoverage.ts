@@ -73,6 +73,8 @@ function isoToLocalMinutes(iso: string, dateStr: string, tz: string): number {
 interface Clip {
   employeeId: string;
   employeeName?: string | null;
+  homeArea?: string | null;
+  workArea?: string | null;
   cs: number; // clipped start (minutes from local midnight)
   ce: number; // clipped end
 }
@@ -141,7 +143,14 @@ export function computeSlotCoverage(
     const cs = Math.max(w0, ds);
     const ce = Math.min(w1, de);
     if (cs < ce) {
-      clips.push({ employeeId: s.employee_id, employeeName: s.employee_name ?? null, cs, ce });
+      clips.push({
+        employeeId: s.employee_id,
+        employeeName: s.employee_name ?? null,
+        homeArea: s.homeArea ?? null,
+        workArea: s.area ?? null,
+        cs,
+        ce,
+      });
     }
   }
 
@@ -195,10 +204,40 @@ export function computeSlotCoverage(
     .map((c) => ({
       employeeId: c.employeeId,
       employeeName: c.employeeName ?? null,
+      homeArea: c.homeArea ?? null,
+      workArea: c.workArea ?? null,
       startMin: c.cs,
       endMin: c.ce,
     }))
     .sort((a, b) => a.startMin - b.startMin);
+
+  // Loaned out: employees whose HOME area is this slot's area but who are
+  // working a different area during the window. Only when slot area is set.
+  const loanedOut: CoveringEmployee[] = [];
+  if (options.area != null) {
+    for (const s of shifts) {
+      if (s.position !== position) continue;
+      if (s.status === 'cancelled') continue;
+      if ((s.homeArea ?? null) !== options.area) continue; // must be from this area
+      if ((s.area ?? null) === options.area) continue;      // and working elsewhere
+      const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
+      let de = isoToLocalMinutes(s.end_time, dateStr, tz);
+      if (de <= ds) de += 1440;
+      const cs = Math.max(w0, ds);
+      const ce = Math.min(w1, de);
+      if (cs < ce) {
+        loanedOut.push({
+          employeeId: s.employee_id,
+          employeeName: s.employee_name ?? null,
+          homeArea: s.homeArea ?? null,
+          workArea: s.area ?? null,
+          startMin: cs,
+          endMin: ce,
+        });
+      }
+    }
+    loanedOut.sort((a, b) => a.startMin - b.startMin);
+  }
 
   return {
     minConcurrent,
@@ -206,5 +245,6 @@ export function computeSlotCoverage(
     coveragePct,
     segments,
     coveringEmployees,
+    loanedOut,
   };
 }

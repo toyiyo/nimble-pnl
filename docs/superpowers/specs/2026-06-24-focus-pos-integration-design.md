@@ -112,10 +112,15 @@ day, swapping in the date range and forcing `rs:Format=HTML4.0`:
       &rs:Command=Render&rs:Format=HTML4.0
 ```
 
-**SSRF guard (critical):** the stored host MUST match an allow-list
-(`*.myfocuspos.com`) before any fetch. A connection row is operator-supplied, so
-without this guard a malicious value could point the edge function at an internal
-address. Validated at save time **and** before every fetch.
+**SSRF guard (critical — see S1 in §16):** `assertAllowedHost(url)` enforces
+**https only**, **no userinfo** (`url.username`/`url.password` empty), and a tight
+host match `^https://([a-z0-9-]+\.)*myfocuspos\.com(/|$)` (rejects
+`evil.myfocuspos.com.attacker.com`). Validated at **save time** (+ a DB CHECK on
+`report_base_url`) **and before every fetch**. Critically, the fetch uses
+`redirect: 'manual'` and **re-validates each `Location` hop** through the same
+guard before following (the report does a same-host 302 → `ReportViewer.aspx`, so
+this is transparent in production but blocks a stored URL that 302s to
+`169.254.169.254`/internal). Max redirect hops bounded.
 
 ## 6. Data model
 
@@ -177,12 +182,21 @@ RPCs mirror Toast (`pos_system='focus'`), `SECURITY DEFINER`,
 | `discount` | `discount` | `subtotal_discounts` | …`_discount` | − |
 | `refund` | NULL | `refunds` | …`_refund` | − |
 
-`sale_date` = `business_date`. Same disciplines as Toast: pass-through allow-list
-(`tax/tip/discount`), GUC trigger bypass (`app.skip_unified_sales_triggers`) then
-batch categorize + per-date aggregate, `ON CONFLICT … DO UPDATE` preserving
-`category_id`/`is_categorized`, stale-row cleanup when a day is re-fetched with
-changed values. Payments-by-tender are kept in `focus_daily_reports` for
-reconciliation (not written to `unified_sales`).
+`sale_date` = `business_date`. `external_item_id` = `slug(revenue_center) || '_' ||
+slug(item_name)` (revenue_center included to avoid cross-center collision; prefer a
+stable item code if the report exposes one — build validation). Same disciplines as
+Toast: pass-through allow-list (`tax/tip/discount`), GUC trigger bypass
+(`app.skip_unified_sales_triggers`) then batch categorize + per-date aggregate.
+
+**Write strategy (refined per review — see S2 in §16):** for each synced
+`(restaurant_id, sale_date)`, first **DELETE orphans** —
+`DELETE FROM unified_sales WHERE restaurant_id=p_rid AND pos_system='focus' AND
+sale_date=p_date AND external_item_id NOT IN (<current day's external_item_ids>)` —
+then **`ON CONFLICT … DO UPDATE`** the current rows. This preserves
+`category_id`/`is_categorized` for items that persist (manual categorization isn't
+lost on re-sync) while removing rows for items renamed/removed since the last fetch
+(the failure the bare ON CONFLICT can't handle). Payments-by-tender stay in
+`focus_daily_reports` for reconciliation (not written to `unified_sales`).
 
 ## 8. Edge functions
 
@@ -297,4 +311,95 @@ synthetic fixture + unit tests + pgTAP tests; cron migration.
 **Modified:** `supabase/config.toml`; `src/pages/Integrations.tsx`;
 `src/components/IntegrationCard.tsx`; `src/components/IntegrationLogo.tsx`;
 `src/components/pos/SyncComponents.tsx` (`FOCUS_CONFIG` + `recentWindowLabel`);
+`src/lib/focusUrlParser.ts` (new, client-side preview parser);
 Sonar/vitest excludes if any thin `index.ts` needs it.
+
+## 16. Design-review resolutions (v2 Phase 2.5)
+
+Supabase + Frontend reviewers ran against this doc. Accepted refinements folded
+into the build contract:
+
+### Supabase / DB / edge functions
+- **S1 (critical) — SSRF survives redirects.** Folded inline into §5: `redirect:
+  'manual'` + per-hop `Location` re-validation, https-only, no-userinfo, tight
+  host regex, DB CHECK on `report_base_url`. Reject `http:`/`file:`/`javascript:`.
+- **S2 (critical) — item identity / rename safety.** Folded inline into §7:
+  orphan-DELETE (`external_item_id NOT IN current set`) per `(restaurant_id,
+  sale_date)` **before** the `ON CONFLICT DO UPDATE`, so renames/removals don't
+  duplicate and categorization survives. `external_item_id` includes
+  `revenue_center`. Prefer a stable item code if the report exposes one (build
+  task — §14.3).
+- **S3 (critical) — connection writes use the service-role client.**
+  `focus-save-connection` upserts `focus_connections` via the **service-role
+  client** (RLS-bypassing), so no UPDATE policy is required for the upsert path;
+  the `FOR ALL` owner/manager policy exists only for direct frontend writes
+  (disconnect). pgTAP covers SELECT + the FOR ALL path. Stated explicitly so no
+  one routes the upsert through the JWT client.
+- **S4 (major) — business-date timezone.** `focus_connections` carries a
+  `timezone` (IANA, seeded from the restaurant's configured tz). The client
+  computes "today/yesterday" and every backfill cursor date **in that tz** via
+  `Intl.DateTimeFormat`, then formats `mm/dd/yyyy`. Prevents the UTC-midnight
+  off-by-one across the whole 90-day backfill (not just incremental).
+- **S5 (major) — cron `LIMIT 5`.** `sync_all_focus_to_unified_sales()` carries
+  `ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5` **in the SQL function itself**
+  (not just docs); `focus-bulk-sync` likewise 5. Partial index
+  `(last_sync_time ASC NULLS FIRST) WHERE is_active = true`; the query includes
+  `WHERE is_active = true` to use it.
+- **S6 (major) — explicit handler auth.** `focus-save-connection` /
+  `focus-test-connection` handlers call `userClient.auth.getUser()` and check the
+  role is `owner`/`manager` in `user_restaurants` (not just a config comment).
+- **S7 (major) — named unique constraint.** `CONSTRAINT
+  focus_connections_restaurant_key UNIQUE(restaurant_id)` so the upsert can
+  `ON CONFLICT (restaurant_id)`.
+- **S8 (minor) — RPC hardening / indexes.** `SET search_path = public` at the
+  **function header** (not body); `(restaurant_id, business_date)` index on
+  `focus_daily_reports` (restaurant_id first). URL builder uses `new URL(path,
+  base)` to handle the `?`-bearing `report_path` (unit-tested with the §2 example).
+- **S9 (minor) — parser result is a discriminated union.**
+  `parseRevenueCenterReport` returns `{ok:true, data}` | `{ok:false,
+  reason:'empty'|'parse_error'}`. `focus-test-connection` treats `empty` as
+  **connected** (new/closed store, no sales) and only `parse_error`/HTTP-error as
+  failure. Backfill cursor is a closed interval (today excluded; incremental
+  covers recent) — documented in the migration comment.
+
+### Frontend / a11y / React Query
+- **F1 (critical) — wizard owns its dialog.** `FocusSetupWizard` renders its own
+  `DialogContent` + `DialogHeader` + `DialogTitle` + `DialogDescription` (it is the
+  dialog, not a `Card` inside a bare outer `Dialog` — fixes, doesn't repeat, the
+  Toast a11y gap). `IntegrationCard` controls only `open`/`onOpenChange`.
+- **F2 (critical) — URL field validation a11y.** The URL `<input>` gets
+  `aria-invalid` on error and `aria-describedby` → the inline-error element id, for
+  both failure modes (unparseable URL; SSRF-rejected on save).
+- **F3 (critical) — partial-failure re-entry.** On `testConnection` failure the
+  wizard **stays on step 2**, keeps the URL value, shows the inline error; "Retry"
+  re-runs `testConnection` (the row is already upserted; save is idempotent). It
+  never advances to Done on failure.
+- **F4 (major) — two-phase step 2 + client parser.** Step 2 = `url-entry` →
+  (client-side `parseReportUrl` in `src/lib/focusUrlParser.ts`, pure + unit-tested)
+  → `url-confirmed` (show detected `store_id`, `db_catalog`/brand, host) → "Save &
+  Connect". The edge function re-parses + SSRF-guards authoritatively; the client
+  parse is preview-only (no commit).
+- **F5 (major) — `POSConfig.recentWindowLabel` wired.** Add the optional field;
+  update **both** hardcoded "25 hours" strings in `SyncComponents.tsx`
+  (`getSyncDescription` and `SyncModeSelector`) to `config.recentWindowLabel ??
+  'last 25 hours'`. `FOCUS_CONFIG = {name:'Focus POS', dataLabel:'daily reports',
+  dataLabelSingular:'daily report', syncInterval:'6 hours', recentWindowLabel:'last
+  2 business days'}`.
+- **F6 (major) — full registration checklist.** `Integrations.tsx`: call
+  `useFocusConnection`, add the `focus-pos` entry, **add `focusConnected` to the
+  `useMemo` deps**. `IntegrationCard`: all 8 Toast-parity touch points —
+  `showFocusSetup` state, hook call, `isFocusIntegration`, `getActuallyConnected`,
+  `getActuallyConnecting`, `handleConnect`, `handleDisconnect`, and the
+  `<FocusSync>` (connected branch) + `<FocusSetupWizard>` (dialog) renders.
+  `IntegrationLogo`: `emojiMap['focus-pos']='🍦'` (else the generic 🔌 fallback shows).
+- **F7 (major) — empty-state guards.** `FocusSync` early-returns a "not connected"
+  state when `connection` is null (don't read `connection.initial_sync_done` on
+  undefined). Dialog uses `max-h-[80vh]` **with a sticky footer** for CTAs (short
+  viewports).
+- **F8 (minor).** `DialogDescription` (never a bare `<p>`) in the header; step
+  indicator `aria-current="step"`; hook uses `refetchOnMount: true` +
+  `refetchOnWindowFocus: false`, `maybeSingle()`, and an **explicit select field
+  list** (no `select('*')`). Step 1 carries a non-alarming **informational**
+  `Alert` ("report URLs carry no password — anyone with your Store ID can read this
+  report; we fetch only your store") + a link to report it to Focus/Shift4.
+  Pre-existing `IntegrationCard` direct-color usage is noted, not blocked.

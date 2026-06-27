@@ -74,4 +74,22 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
 - pgTAP test: supabase/tests/40_focus_schema_rls.sql (12 tests, all green).
 - Full suite: 1386/1386 tests passing.
 
-### Next: Task 2 — unified_sales sync RPCs (supabase/tests/41_focus_unified_sales_sync.sql)
+### Task 2 DONE — commit 4189f7d8
+- Migration: supabase/migrations/20260627130000_focus_unified_sales_sync.sql
+  - focus_slug(text) — IMMUTABLE slug helper for deterministic external_item_id.
+  - _sync_focus_to_unified_sales_impl(uuid, date, date) — shared SECURITY DEFINER
+    body: GUC trigger bypass (app.skip_unified_sales_triggers), per-date loop,
+    orphan DELETE (items no longer in items_json), item UPSERT (category_id/is_categorized
+    preserved), tax/tip/discount/refund offset rows (zero-value rows skipped+cleaned),
+    batch categorize (auth.uid() IS NOT NULL guard), batch aggregate.
+  - sync_focus_to_unified_sales(uuid) — all-dates overload with auth check.
+  - sync_focus_to_unified_sales(uuid, date, date) — date-range overload.
+  - sync_all_focus_to_unified_sales() → TABLE — cron wrapper, LIMIT 5 round-robin,
+    last 2 business days, EXCEPTION handler per restaurant.
+  - GRANTs to authenticated + service_role.
+- pgTAP test: supabase/tests/41_focus_unified_sales_sync.sql (15 tests, all green).
+  Covers: function signatures, sale rows (count + amounts), tax/tip offsets,
+  zero-value guards (no discount/refund rows), pos_system='focus', external_order_id
+  pattern, orphan cleanup, categorization preservation, auth rejection, sync_all result.
+
+### Next: Task 3 — focusUrlParser (src/lib/focusUrlParser.ts + Vitest)

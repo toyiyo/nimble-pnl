@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { Shift, Employee } from '@/types/scheduling';
+import { calculateShiftHours } from '@/lib/scheduleRoster';
 
 export interface EmployeeLaborCost {
   id: string;
@@ -44,15 +45,6 @@ export function useEmployeeLaborCosts(
         employeeCosts: [],
       };
     }
-
-    // Calculate shift hours helper
-    const calculateShiftHours = (shift: Shift): number => {
-      const start = new Date(shift.start_time);
-      const end = new Date(shift.end_time);
-      const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-      const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
-      return netMinutes / 60;
-    };
 
     // Calculate per-employee costs
     const employeeCostsMap = new Map<string, EmployeeLaborCost>();

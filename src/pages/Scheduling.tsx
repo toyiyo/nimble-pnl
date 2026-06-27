@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
+import { calculateShiftHours } from '@/lib/scheduleRoster';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
@@ -570,15 +571,6 @@ const Scheduling = () => {
     const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
     return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter, areaFilter);
   }, [allEmployees, shifts, positionFilter, areaFilter]);
-
-  // Calculate labor metrics
-  const calculateShiftHours = (shift: Shift) => {
-    const start = new Date(shift.start_time);
-    const end = new Date(shift.end_time);
-    const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
-    return netMinutes / 60;
-  };
 
   // Calculate hours for all shifts (including inactive employees)
   const totalScheduledHours = shifts

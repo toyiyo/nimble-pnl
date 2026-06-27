@@ -1,9 +1,9 @@
 import { memo } from 'react';
 
 import { useDroppable } from '@dnd-kit/core';
-import { AlertTriangle, Check } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check } from 'lucide-react';
 
-import type { Shift, SlotCoverage } from '@/types/scheduling';
+import type { Shift, SlotCoverage, CoveringEmployee } from '@/types/scheduling';
 import type { AllocationStatus } from '@/lib/shiftAllocation';
 
 import { cn } from '@/lib/utils';
@@ -34,6 +34,10 @@ interface ShiftCellProps {
   /** Human-readable weekday name for the coverage indicator aria-label (e.g. "Monday").
    *  When omitted, falls back to the ISO date string which is not screen-reader friendly. */
   dayLabel?: string;
+  /** Area of this cell's template (for covering detection on chips). */
+  cellArea?: string | null;
+  /** De-duped loaned-out ghosts for this cell (employees from this area working elsewhere). */
+  ghostLoanedOut?: CoveringEmployee[];
 }
 
 /** Tiny badge shown when coverage data is unavailable and capacity > 1. */
@@ -73,6 +77,8 @@ export const ShiftCell = memo(
     onCoverageClick,
     slotName,
     dayLabel,
+    cellArea,
+    ghostLoanedOut,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
@@ -133,8 +139,22 @@ export const ShiftCell = memo(
             employeeName={shift.employee?.name ?? 'Unassigned'}
             position={shift.position}
             source={shift.source}
+            homeArea={shift.employee?.area ?? null}
+            cellArea={cellArea ?? null}
             onRemove={onRemoveShift}
           />
+        ))}
+
+        {ghostLoanedOut?.map((g) => (
+          <div
+            key={`ghost-${g.employeeId}`}
+            aria-label={`${g.employeeName ?? 'Employee'} working ${g.workArea ?? 'another area'} this slot`}
+            className="flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/50 text-[11px] text-muted-foreground"
+          >
+            <ArrowRight className="h-3 w-3 shrink-0" aria-hidden="true" />
+            <span className="truncate">{g.employeeName ?? 'Employee'}</span>
+            <span className="shrink-0 text-[10px]">· at {g.workArea ?? '—'}</span>
+          </div>
         ))}
 
         {/* Coverage indicator — always shown when coverage data is available (two-tier treatment) */}
@@ -206,5 +226,7 @@ export const ShiftCell = memo(
     prev.pickedEmployeeName === next.pickedEmployeeName &&
     prev.onCoverageClick === next.onCoverageClick &&
     prev.slotName === next.slotName &&
-    prev.dayLabel === next.dayLabel,
+    prev.dayLabel === next.dayLabel &&
+    prev.cellArea === next.cellArea &&
+    prev.ghostLoanedOut === next.ghostLoanedOut,
 );

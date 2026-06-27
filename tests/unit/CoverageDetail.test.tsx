@@ -43,6 +43,7 @@ function makeGapCoverage(): SlotCoverage {
     coveringEmployees: [
       { employeeId: 'e1', employeeName: 'Alice', startMin: 600, endMin: 990 },
     ],
+    loanedOut: [],
   };
 }
 
@@ -56,6 +57,7 @@ function makeFullCoverage(): SlotCoverage {
       { employeeId: 'e1', employeeName: 'Bob', startMin: 600, endMin: 990 },
       { employeeId: 'e2', employeeName: 'Carol', startMin: 600, endMin: 990 },
     ],
+    loanedOut: [],
   };
 }
 
@@ -66,13 +68,14 @@ function makeEmptyCoverage(): SlotCoverage {
     coveragePct: 0,
     segments: [{ startMin: 600, endMin: 990, covered: false }],
     coveringEmployees: [],
+    loanedOut: [],
   };
 }
 
 // ── render tests ─────────────────────────────────────────────────────────────
 
 describe('CoverageDetail — render tests (desktop, useIsMobile=false)', () => {
-  it('renders heading "Covering employees for this slot"', () => {
+  it('renders heading "Staff for this slot"', () => {
     render(
       <CoverageDetail
         open={true}
@@ -80,7 +83,7 @@ describe('CoverageDetail — render tests (desktop, useIsMobile=false)', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText(/Covering employees for this slot/i)).toBeTruthy();
+    expect(screen.getByText(/Staff for this slot/i)).toBeTruthy();
   });
 
   it('shows covering employee name', () => {
@@ -209,11 +212,12 @@ describe('CoverageDetail — mobile Drawer path (useIsMobile=true)', () => {
           coveragePct: 100,
           segments: [{ startMin: 600, endMin: 990, covered: true }],
           coveringEmployees: [{ employeeId: 'e1', employeeName: 'Dana', startMin: 600, endMin: 990 }],
+          loanedOut: [],
         }}
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText(/Covering employees for this slot/i)).toBeTruthy();
+    expect(screen.getByText(/Staff for this slot/i)).toBeTruthy();
     expect(screen.getByText('Dana')).toBeTruthy();
   });
 
@@ -229,6 +233,7 @@ describe('CoverageDetail — mobile Drawer path (useIsMobile=true)', () => {
           coveragePct: 50,
           segments: [{ startMin: 600, endMin: 990, covered: false }],
           coveringEmployees: [],
+          loanedOut: [],
         }}
         onClose={onClose}
       />,

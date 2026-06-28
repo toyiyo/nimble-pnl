@@ -234,3 +234,15 @@ verify_jwt = false
 
 [functions.unsubscribe-email]
 verify_jwt = false
+
+[functions.focus-save-connection]
+verify_jwt = false
+
+[functions.focus-test-connection]
+verify_jwt = false
+
+[functions.focus-sync-data]
+verify_jwt = false
+
+[functions.focus-bulk-sync]
+verify_jwt = false

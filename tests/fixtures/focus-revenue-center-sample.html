@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<!--
+  SYNTHETIC TEST FIXTURE — Focus POS SSRS Revenue Center Report HTML4.0
+
+  This fixture is 100% synthetic. "Sample Creamery" is a fictional store.
+  All item names, amounts, and store IDs are invented. No real PII, no real
+  store data. Created per lesson 2026-06-22 (no prod PII in fixtures).
+
+  ASSUMED MARKUP (for focusReportParser.ts):
+  The SSRS HTML4.0 renderer produces a top-level <table> (class="t") that
+  contains the report layout. The Revenue Center report uses this structure:
+
+  1. Header rows: store name, date range, etc. (skipped by parser)
+  2. ITEMS SECTION — each row has:
+       col[0]: item description (text)
+       col[1]: units sold (numeric string, may be empty)
+       col[2]: sales amount (numeric string, dollar value)
+     Items section starts after a row whose first cell text matches
+     "Revenue Center" (section header). Ends at the first row whose
+     first cell text matches a known summary label.
+  3. SUMMARY ROWS — rows where col[0] matches known labels:
+       "Net Sales", "Inclusive Tax" (or "Tax"), "Subtotal Discounts",
+       "Retained Tips", "Refunds", "Total Sales"
+     col[1] is blank; col[2] is the numeric amount.
+  4. PAYMENTS SECTION — rows where first cell text matches "PAYMENTS" or
+     follows a "PAYMENTS" header row. Each row: col[0]=tender, col[1]=amount.
+     Ends at a row matching "ORDER TYPES" or end of table.
+  5. ORDER TYPES SECTION — rows after the "ORDER TYPES" header.
+     Each row: col[0]=type name, col[1]=amount.
+
+  Parser uses label-based anchoring (not positional row index) for robustness.
+  All numeric values are cleaned with parseFloat(cell.replace(/[$,]/g, '')).
+
+  KNOWN LABELS (anchor text; case-insensitive trim):
+    Items section start: "Revenue Center"
+    Items section end  : any of the summary labels below
+    Summary labels     : "Net Sales", "Inclusive Tax", "Subtotal Discounts",
+                         "Retained Tips", "Refunds", "Total Sales"
+    Payments header    : "Payments By Tender" (or "PAYMENTS")
+    Order types header : "Sales By Order Type" (or "ORDER TYPES")
+-->
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>Revenue Center Report</title>
+  <style type="text/css">
+    body { font-family: Arial, sans-serif; font-size: 10pt; }
+    table { border-collapse: collapse; }
+    td { padding: 2px 6px; }
+    .th { font-weight: bold; background-color: #c0c0c0; }
+    .num { text-align: right; }
+  </style>
+</head>
+<body>
+<!-- SSRS HTML4.0 wraps everything in a top-level report table -->
+<table class="t" id="report-table" border="0" cellpadding="0" cellspacing="0">
+  <tr>
+    <td colspan="3">
+      <!-- Inner layout table (SSRS nests tables for layout) -->
+      <table border="0" width="100%" cellpadding="4" cellspacing="0">
+
+        <!-- ── Report header ─────────────────────────────────────────────── -->
+        <tr>
+          <td colspan="3" class="th" style="font-size:14pt">
+            Sample Creamery — Revenue Center Report
+          </td>
+        </tr>
+        <tr>
+          <td colspan="3">Store #: 99999 &nbsp;|&nbsp; Date: 06/27/2026</td>
+        </tr>
+        <tr><td colspan="3">&nbsp;</td></tr>
+
+        <!-- ── Column headers ───────────────────────────────────────────── -->
+        <tr class="th">
+          <td>Revenue Center</td>
+          <td class="num">Units Sold</td>
+          <td class="num">Sales</td>
+        </tr>
+
+        <!-- ── Items — Dine-In Revenue Center ───────────────────────────── -->
+        <!--
+          PARSER NOTE: The first data row after the "Revenue Center" header
+          row carries the revenue center name in col[0] and no amounts.
+          Subsequent rows are items belonging to that revenue center.
+          A new revenue center starts when col[0] looks like a section name
+          (the parser detects this by col[1] being empty AND col[2] being empty).
+        -->
+        <tr>
+          <td><strong>Dine-In</strong></td>
+          <td class="num"></td>
+          <td class="num"></td>
+        </tr>
+        <tr>
+          <td>Scoop Single</td>
+          <td class="num">20</td>
+          <td class="num">$59.80</td>
+        </tr>
+        <tr>
+          <td>Scoop Double</td>
+          <td class="num">15</td>
+          <td class="num">$67.50</td>
+        </tr>
+        <tr>
+          <td>Waffle Cone</td>
+          <td class="num">8</td>
+          <td class="num">$28.00</td>
+        </tr>
+        <tr>
+          <td>Sundae Classic</td>
+          <td class="num">5</td>
+          <td class="num">$37.50</td>
+        </tr>
+        <tr>
+          <td>Hot Fudge Topping</td>
+          <td class="num">3</td>
+          <td class="num">$6.00</td>
+        </tr>
+        <!-- Blank separator within section (parser must skip blank rows) -->
+        <tr>
+          <td>&nbsp;</td>
+          <td class="num"></td>
+          <td class="num"></td>
+        </tr>
+
+        <!-- ── Items — Drive-Through Revenue Center ──────────────────────── -->
+        <tr>
+          <td><strong>Drive-Through</strong></td>
+          <td class="num"></td>
+          <td class="num"></td>
+        </tr>
+        <tr>
+          <td>Shake Vanilla</td>
+          <td class="num">12</td>
+          <td class="num">$65.40</td>
+        </tr>
+        <tr>
+          <td>Shake Chocolate</td>
+          <td class="num">9</td>
+          <td class="num">$49.05</td>
+        </tr>
+        <tr>
+          <td>Cup Small</td>
+          <td class="num">22</td>
+          <td class="num">$44.00</td>
+        </tr>
+
+        <!-- ── Summary rows ──────────────────────────────────────────────── -->
+        <!--
+          PARSER NOTE: Summary rows are identified by their label in col[0].
+          The amount is in col[2] (same column as item sales). col[1] is blank.
+          The parser must recognize these labels case-insensitively.
+          "Subtotal Discounts" is the discount applied before tax.
+          "Retained Tips" = tip retained by the house (not allocated to employees).
+        -->
+        <tr>
+          <td class="th">Subtotal</td>
+          <td class="num th"></td>
+          <td class="num th">$357.25</td>
+        </tr>
+        <tr>
+          <td class="th">Net Sales</td>
+          <td class="num th"></td>
+          <td class="num th">$340.00</td>
+        </tr>
+        <tr>
+          <td>Inclusive Tax</td>
+          <td class="num"></td>
+          <td class="num">$28.00</td>
+        </tr>
+        <tr>
+          <td>Subtotal Discounts</td>
+          <td class="num"></td>
+          <td class="num">$17.25</td>
+        </tr>
+        <tr>
+          <td>Retained Tips</td>
+          <td class="num"></td>
+          <td class="num">$45.50</td>
+        </tr>
+        <tr>
+          <td>Refunds</td>
+          <td class="num"></td>
+          <td class="num">$0.00</td>
+        </tr>
+        <tr>
+          <td class="th">Total Sales</td>
+          <td class="num th"></td>
+          <td class="num th">$368.00</td>
+        </tr>
+        <tr><td colspan="3">&nbsp;</td></tr>
+
+        <!-- ── Payments by tender ────────────────────────────────────────── -->
+        <!--
+          PARSER NOTE: "Payments By Tender" header row signals the start of
+          the payments section. Each subsequent row until a known section header
+          (or end of table) is a tender row: col[0]=tender name, col[1]=amount.
+          The parser maps: cash/credit cards/gift cards etc.
+        -->
+        <tr class="th">
+          <td>Payments By Tender</td>
+          <td class="num">Count</td>
+          <td class="num">Amount</td>
+        </tr>
+        <tr>
+          <td>Cash</td>
+          <td class="num">18</td>
+          <td class="num">$95.20</td>
+        </tr>
+        <tr>
+          <td>Visa</td>
+          <td class="num">24</td>
+          <td class="num">$152.50</td>
+        </tr>
+        <tr>
+          <td>Mastercard</td>
+          <td class="num">10</td>
+          <td class="num">$80.30</td>
+        </tr>
+        <tr>
+          <td>Gift Card</td>
+          <td class="num">5</td>
+          <td class="num">$40.00</td>
+        </tr>
+        <tr><td colspan="3">&nbsp;</td></tr>
+
+        <!-- ── Sales by order type ───────────────────────────────────────── -->
+        <!--
+          PARSER NOTE: "Sales By Order Type" header signals the order-type
+          section. Each subsequent row: col[0]=type name, col[1]=amount.
+          Typically: Eat In, Take Out, Drive-Through.
+        -->
+        <tr class="th">
+          <td>Sales By Order Type</td>
+          <td class="num">Count</td>
+          <td class="num">Amount</td>
+        </tr>
+        <tr>
+          <td>Eat In</td>
+          <td class="num">43</td>
+          <td class="num">$198.80</td>
+        </tr>
+        <tr>
+          <td>Take Out</td>
+          <td class="num">30</td>
+          <td class="num">$114.60</td>
+        </tr>
+        <tr>
+          <td>Drive-Through</td>
+          <td class="num">21</td>
+          <td class="num">$54.60</td>
+        </tr>
+
+        <!-- Footer spacer -->
+        <tr><td colspan="3">&nbsp;</td></tr>
+
+      </table>
+    </td>
+  </tr>
+</table>
+</body>
+</html>

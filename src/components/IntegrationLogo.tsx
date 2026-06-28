@@ -28,6 +28,7 @@ const emojiMap: Record<string, string> = {
   'toast-pos': '🍞',
   'square-pos': '⬜',
   'clover-pos': '🍀',
+  'focus-pos': '🍦',
   'sling-scheduling': '📋',
   '7shifts': '📅',
   'when-i-work': '⏰',

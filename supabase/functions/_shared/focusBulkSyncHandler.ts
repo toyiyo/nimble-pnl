@@ -43,6 +43,8 @@ import {
   type FocusConnectionRow as SharedFocusConnectionRow,
   type FetchDeps,
 } from './focusReportClient.ts';
+import { loginToPortal, FocusAuthError } from './focusPortalClient.ts';
+import { getEncryptionService } from './encryption.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,8 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
   initial_sync_done: boolean;
   sync_cursor: number;
   last_sync_time: string | null;
+  username: string;
+  password_encrypted: string;
 }
 
 /** Minimal Supabase service-role client surface needed by this handler. */
@@ -156,6 +160,26 @@ async function processConnection(
   row: FocusConnectionRow,
   deps: BulkSyncDeps,
 ): Promise<{ newSyncCursor: number; newInitialSyncDone: boolean }> {
+  // Auth gate: validate credentials before fetching report data
+  const encSvc = await getEncryptionService();
+  const password = await encSvc.decrypt(row.password_encrypted);
+  try {
+    await loginToPortal({ fetch: deps.fetch }, row.username, password);
+  } catch (err) {
+    if (err instanceof FocusAuthError) {
+      await deps.serviceClient
+        .from('focus_connections')
+        .update({
+          connection_status: 'error',
+          last_error: 'Invalid Focus credentials',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id);
+      throw err; // propagates to outer catch → added to errors[], restaurant skipped
+    }
+    throw err;
+  }
+
   const conn: FocusConnection = rowToFocusConnection(row);
 
   const syncDeps: SyncDeps = {
@@ -241,7 +265,7 @@ export async function handleBulkSync(
     .select(
       'id, restaurant_id, report_base_url, report_path, db_server, db_catalog, ' +
         'report_user_id, store_id, revenue_center, timezone, initial_sync_done, ' +
-        'sync_cursor, last_sync_time',
+        'sync_cursor, last_sync_time, username, password_encrypted',
     )
     .eq('is_active', true)
     .order('last_sync_time', { ascending: true, nullsFirst: true })

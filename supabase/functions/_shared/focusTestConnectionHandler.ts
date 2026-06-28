@@ -44,6 +44,8 @@ import {
   type FetchDeps,
 } from './focusReportClient.ts';
 import { parseRevenueCenterReport } from './focusReportParser.ts';
+import { loginToPortal, FocusAuthError } from './focusPortalClient.ts';
+import { getEncryptionService } from './encryption.ts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,8 @@ export interface UserClient {
 interface FocusConnectionRow extends SharedFocusConnectionRow {
   id: string;
   restaurant_id: string;
+  username: string;
+  password_encrypted: string;
 }
 
 /** Minimal Supabase service-role client surface needed for reads + writes. */
@@ -184,7 +188,7 @@ export async function handleTestConnection(
     .from('focus_connections')
     .select(
       'id, restaurant_id, report_base_url, report_path, db_server, db_catalog, ' +
-        'report_user_id, store_id, revenue_center, timezone',
+        'report_user_id, store_id, revenue_center, timezone, username, password_encrypted',
     )
     .eq('restaurant_id', restaurantId)
     .eq('is_active', true)
@@ -197,6 +201,31 @@ export async function handleTestConnection(
   // ── 6. Build FocusConnection for the client module ───────────────────────
 
   const conn: FocusConnection = rowToFocusConnection(connRow);
+
+  // ── 6b. Auth gate: validate credentials before fetching report ───────────
+
+  try {
+    const encSvc = await getEncryptionService();
+    const password = await encSvc.decrypt(connRow.password_encrypted);
+    await loginToPortal({ fetch: deps.fetch }, connRow.username, password);
+  } catch (err) {
+    if (err instanceof FocusAuthError) {
+      await deps.serviceClient
+        .from('focus_connections')
+        .update({
+          connection_status: 'error',
+          last_error: 'Invalid Focus credentials',
+          last_error_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', connRow.id);
+      return new Response(
+        JSON.stringify({ success: false, status: 'error', error: 'Invalid Focus credentials' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    throw err;
+  }
 
   // ── 7. Compute yesterday in the connection's IANA timezone (review S4) ────
 

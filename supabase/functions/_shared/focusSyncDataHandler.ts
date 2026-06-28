@@ -46,6 +46,8 @@ import {
   type FocusConnectionRow as SharedFocusConnectionRow,
   type FetchDeps,
 } from './focusReportClient.ts';
+import { loginToPortal, FocusAuthError } from './focusPortalClient.ts';
+import { getEncryptionService } from './encryption.ts';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -76,6 +78,8 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
   restaurant_id: string;
   initial_sync_done: boolean;
   sync_cursor: number;
+  username: string;
+  password_encrypted: string;
 }
 
 /** Minimal Supabase service-role client surface (reads + writes). */
@@ -200,7 +204,8 @@ export async function handleSyncData(
     .from('focus_connections')
     .select(
       'id, restaurant_id, report_base_url, report_path, db_server, db_catalog, ' +
-        'report_user_id, store_id, revenue_center, timezone, initial_sync_done, sync_cursor',
+        'report_user_id, store_id, revenue_center, timezone, initial_sync_done, sync_cursor, ' +
+        'username, password_encrypted',
     )
     .eq('restaurant_id', restaurantId)
     .eq('is_active', true)
@@ -210,7 +215,35 @@ export async function handleSyncData(
     return jsonError(404, 'No active Focus POS connection found for this restaurant');
   }
 
-  // ── 6. Build FocusConnection for the client module ───────────────────────
+  // ── 6. Auth gate: validate credentials before syncing ────────────────────
+
+  try {
+    const encSvc = await getEncryptionService();
+    const password = await encSvc.decrypt(connRow.password_encrypted);
+    await loginToPortal({ fetch: deps.fetch }, connRow.username, password);
+  } catch (err) {
+    if (err instanceof FocusAuthError) {
+      await deps.serviceClient
+        .from('focus_connections')
+        .update({
+          connection_status: 'error',
+          last_error: 'Invalid Focus credentials',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', connRow.id);
+      return new Response(
+        JSON.stringify({
+          syncCursor: connRow.sync_cursor,
+          initialSyncDone: connRow.initial_sync_done,
+          status: 'error',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    throw err;
+  }
+
+  // ── 7. Build FocusConnection for the client module ───────────────────────
 
   const conn: FocusConnection = rowToFocusConnection(connRow);
 
@@ -232,7 +265,7 @@ export async function handleSyncData(
   let newInitialSyncDone = connRow.initial_sync_done;
 
   if (!connRow.initial_sync_done) {
-    // ── 7a. Backfill: one day per call ────────────────────────────────────────
+    // ── 8a. Backfill: one day per call ────────────────────────────────────────
     // Target date = today_in_tz − sync_cursor − 1
     // (day 0 = yesterday, day 1 = 2 days ago, …, day 89 = 90 days ago)
     const targetDate = subtractDays(todayInTz(tz, now), connRow.sync_cursor + 1);
@@ -251,7 +284,7 @@ export async function handleSyncData(
       }
     }
   } else {
-    // ── 7b. Incremental: re-fetch last 2 business days ─────────────────────
+    // ── 8b. Incremental: re-fetch last 2 business days ─────────────────────
     const [yesterday, dayBefore] = recentBusinessDays(tz, now);
 
     const [r1, r2] = await Promise.all([
@@ -268,7 +301,7 @@ export async function handleSyncData(
     // else: at least one is 'ok' → keep the default 'ok'
   }
 
-  // ── 8. Update connection state via service-role client (review S3) ────────
+  // ── 9. Update connection state via service-role client (review S3) ────────
 
   await deps.serviceClient
     .from('focus_connections')
@@ -280,7 +313,7 @@ export async function handleSyncData(
     })
     .eq('id', connRow.id);
 
-  // ── 9. Respond ────────────────────────────────────────────────────────────
+  // ── 10. Respond ───────────────────────────────────────────────────────────
 
   return new Response(
     JSON.stringify({

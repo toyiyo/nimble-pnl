@@ -439,7 +439,7 @@ export function groupUnmatchedByArea(
   const out = new Map<string, Map<string, Shift[]>>();
   for (const [day, shifts] of unmatchedByDay) {
     for (const shift of shifts) {
-      const area = shift.employee?.area || UNASSIGNED;
+      const area = shift.employee?.area ?? UNASSIGNED;
       let byDay = out.get(area);
       if (!byDay) { byDay = new Map(); out.set(area, byDay); }
       const list = byDay.get(day);

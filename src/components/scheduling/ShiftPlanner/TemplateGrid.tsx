@@ -99,8 +99,13 @@ export function TemplateGrid({
   const orphanOffTemplateAreas = useMemo(() => {
     if (!offTemplateByArea) return [];
     const groupAreaSet = new Set(groups.map((g) => g.area));
-    return [...offTemplateByArea.keys()].filter((area) => !groupAreaSet.has(area));
-  }, [offTemplateByArea, groups]);
+    // When areaFilter is active, only consider that one area so we don't render
+    // off-template lanes for other areas that are hidden by the filter.
+    const candidateAreas = areaFilter
+      ? (offTemplateByArea.has(areaFilter) ? [areaFilter] : [])
+      : [...offTemplateByArea.keys()];
+    return candidateAreas.filter((area) => !groupAreaSet.has(area));
+  }, [offTemplateByArea, groups, areaFilter]);
 
   return (
     <div className="rounded-xl border border-border/40 overflow-x-auto">

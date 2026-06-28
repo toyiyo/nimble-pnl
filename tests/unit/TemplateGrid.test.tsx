@@ -188,6 +188,27 @@ describe('TemplateGrid offTemplateByArea rendering', () => {
     expect(screen.getByText('Off-template')).toBeTruthy();
     expect(screen.getByText('Emp s2')).toBeTruthy();
   });
+
+  it('does NOT render off-template lanes for unrelated areas when areaFilter is active', () => {
+    // Cold Stone is filtered in; Wetzel's has off-template shifts but should be hidden
+    const csShift = makeShift('s-cs', 'Cold Stone');
+    const wzShift = makeShift('s-wz', "Wetzel's");
+    const offTemplateByArea = new Map<string, Map<string, Shift[]>>([
+      ['Cold Stone', new Map([['2026-07-04', [csShift]]])],
+      ["Wetzel's", new Map([['2026-07-04', [wzShift]]])],
+    ]);
+    // baseGridProps has template with area='Cold Stone', so Cold Stone is in groups.
+    // With areaFilter='Cold Stone', the Wetzel's off-template lane must be suppressed.
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter="Cold Stone"
+        offTemplateByArea={offTemplateByArea}
+      />,
+    );
+    // Wetzel's lane must NOT appear
+    expect(screen.queryByText('Emp s-wz')).toBeNull();
+  });
 });
 
 // ── ghostByCell threading ─────────────────────────────────────────────────────

@@ -33,28 +33,31 @@ export function OffTemplateRow({ area, weekDays, shiftsByDay, onRemoveShift }: R
             data-testid="off-template-cell"
             className="border-t border-l border-border/40 min-h-[64px] p-1.5 space-y-1"
           >
-            {shifts.map((s) => (
-              <div
-                key={s.id}
-                className={cn(
-                  'flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/60',
-                  'bg-muted/30 text-[12px] text-foreground',
-                )}
-              >
-                <span className="truncate">{s.employee?.name ?? 'Unassigned'}</span>
-                <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
-                  {formatCompactTime(formatLocalTime(s.start_time))}–{formatCompactTime(formatLocalTime(s.end_time))}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onRemoveShift(s.id)}
-                  aria-label={`Remove off-template shift for ${s.employee?.name ?? 'employee'}`}
-                  className="shrink-0 ml-auto rounded hover:bg-foreground/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current p-0.5"
+            {shifts.map((s) => {
+              const employeeLabel = s.employee?.name ?? 'Unassigned';
+              return (
+                <div
+                  key={s.id}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-1 rounded-md border border-dashed border-border/60',
+                    'bg-muted/30 text-[12px] text-foreground',
+                  )}
                 >
-                  <X className="h-3 w-3" />
-                </button>
-              </div>
-            ))}
+                  <span className="truncate">{employeeLabel}</span>
+                  <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+                    {formatCompactTime(formatLocalTime(s.start_time))}–{formatCompactTime(formatLocalTime(s.end_time))}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onRemoveShift(s.id)}
+                    aria-label={`Remove off-template shift for ${employeeLabel}`}
+                    className="shrink-0 ml-auto rounded hover:bg-foreground/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-current p-0.5"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
         );
       })}

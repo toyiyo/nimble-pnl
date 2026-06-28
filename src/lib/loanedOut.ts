@@ -43,8 +43,10 @@ export function assignLoanedOutCell(
       const c = candidates[i];
       if (c.overlap > best.overlap) { best = c; continue; }
       if (c.overlap < best.overlap) continue;
-      const cs = templateStartById.get(c.templateId) ?? '';
-      const bs = templateStartById.get(best.templateId) ?? '';
+      // Use a high sentinel for missing starts so known-start templates win
+      // the tie-break over templates with no start time recorded.
+      const cs = templateStartById.get(c.templateId) ?? '\xFF';
+      const bs = templateStartById.get(best.templateId) ?? '\xFF';
       if (cs < bs) { best = c; continue; }
       if (cs > bs) continue;
       if (c.templateId < best.templateId) best = c;

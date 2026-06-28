@@ -403,3 +403,43 @@ into the build contract:
   `Alert` ("report URLs carry no password — anyone with your Store ID can read this
   report; we fetch only your store") + a link to report it to Focus/Shift4.
   Pre-existing `IntegrationCard` direct-color usage is noted, not blocked.
+
+## 17. Auth pivot — v3 (credential-gated)
+
+**Supersedes the "no credential storage / anonymous fetch" decision in §3.** Live
+validation showed the SSRS report host serves the Revenue Center report
+anonymously, but relying on that undocumented backdoor is not acceptable for a
+production integration. The restaurant now authenticates with their **Focus
+portal username + password + Store ID**.
+
+**What's authenticated, and what isn't (validated against a real login):**
+- The **portal** (`my.focuspos.com`) is a standard ASP.NET WebForms forms-login.
+  A successful login proves the restaurant owns a valid Focus account.
+- The **report host** (`mfprod-N.myfocuspos.com`) is a *different* host that
+  shares no auth with the portal — the portal session cookie does not reach it,
+  and the report is served anonymously. So the report **data fetch is inherently
+  anonymous**; the login cannot authenticate it. This is Focus's architecture,
+  not a choice.
+- Therefore credentials are used to: (a) **gate** every connect/test/sync behind a
+  successful portal login (no valid account ⇒ no sync — real access control tied
+  to the restaurant's Focus account), and (b) **auto-discover** the routing params
+  (report host / `dbServer` / `dbCatalog` / report path) from the authenticated
+  session, so the operator only supplies **username + password + Store ID** (no
+  pasted URL).
+
+**Implementation:**
+- Schema: `focus_connections` adds `username` + `password_encrypted` (AES-GCM via
+  `_shared/encryption.ts`); routing-param columns become nullable (discovered, not
+  pasted; null ⇒ `connection_status='error'`).
+- New `_shared/focusPortalClient.ts`: `loginToPortal()` (forms-login, throws
+  `FocusAuthError` on bad creds) + `discoverReportRouting()` (SSRF-guarded to
+  `*.myfocuspos.com`, throws `FocusDiscoveryError`).
+- `focus-save-connection` body is `{ restaurantId, username, password, storeId }`:
+  login → discover → encrypt password → upsert (service-role). `focus-test-connection`
+  and the sync handlers decrypt the password and `loginToPortal` as an access gate
+  before the (anonymous) report fetch.
+- Frontend: `FocusSetupWizard` collects username / password / Store ID;
+  `useFocusConnection.saveConnection(restaurantId, username, password, storeId)`.
+  The §16-F obsolete pieces (`src/lib/focusUrlParser.ts` URL-paste preview) are removed.
+- **No credential is ever logged or stored in plaintext.** Tests use fake creds
+  only; no real credentials/identifiers in source control.

@@ -158,4 +158,56 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   businessDate pass-through. Error cases: garbage string, empty string, empty-report fixture,
   no-table HTML, discriminated union shape (ok:true has data, ok:false has reason).
 
-### Next: Task 6 — focusSyncHandler (fetch → parse → upsert focus_daily_reports)
+### Task 6 DONE — commit 434c371f
+- supabase/functions/_shared/focusSyncHandler.ts:
+  - SyncDeps interface (injectable fetch, supabase, restaurantId) for Vitest coverage.
+  - SyncResult discriminated union: {status:'ok'} | {status:'empty'} | {status:'error', error?}.
+  - isoToMmDdYyyy(iso): converts 'YYYY-MM-DD' to 'MM/DD/YYYY' for SSRS URL params.
+  - processReportDay(deps, conn, businessDate):
+    1. buildReportUrl(conn, formattedDate, formattedDate) — single-day range.
+    2. fetchReportHtml (SSRF-guarded, redirect-safe).
+    3. parseRevenueCenterReport (discriminated result).
+    4. Branching on parse result:
+       - ok:true  → upserts full payload (all totals + jsonb arrays); {status:'ok'}.
+       - reason:'empty' → upserts zeroed row (all zeros, empty arrays); {status:'empty'}.
+       - reason:'parse_error' → skips upsert; {status:'error'}.
+    5. ON CONFLICT target: 'restaurant_id,business_date,revenue_center'.
+    6. Supabase upsert errors → {status:'error', error: message}.
+    7. Top-level try/catch for fetch/unexpected errors → {status:'error', error: message}.
+- tests/unit/focusSyncHandler.test.ts: 22 Vitest tests all green.
+  Happy path: status:'ok', from('focus_daily_reports'), correct restaurant_id/business_date,
+  net_sales/total_tax/retained_tips numerics, items_json/payments_json/order_types_json arrays,
+  raw_totals_json object, onConflict columns. URL format: StartDate=06%2F27%2F2026.
+  Empty path: status:'empty', upsert called once with zeroed row.
+  Parse-error path: status:'error', upsert NOT called.
+  Supabase error: status:'error', error message surfaced.
+  Network error: status:'error'.
+- Full suite: 358 files / 4718 tests green. typecheck clean.
+
+### Task 7 DONE — commit 4490ce31
+- supabase/functions/_shared/focusSaveConnectionHandler.ts:
+  - UserClient / ServiceClient / SaveConnectionDeps interfaces (injectable for Vitest).
+  - handleSaveConnection(req, deps): 401 when Authorization header absent; 401 when
+    getUser() returns null; 400 when restaurantId/reportUrl missing; 403 when user
+    lacks owner/manager membership in user_restaurants; 400 when parseFocusReportUrl
+    returns null (invalid URL, non-https, non-myfocuspos.com, missing StoreID); 500 on
+    upsert error; 200 + {success:true} on success.
+  - Upsert payload: restaurant_id, report_base_url, report_path, store_id, db_server,
+    db_catalog, report_user_id, is_active, connection_status='pending', updated_at.
+  - Uses service-role client for all writes (review S3: RLS bypass).
+  - onConflict('restaurant_id') — named unique constraint from Task 1 migration.
+- supabase/functions/focus-save-connection/index.ts: thin CORS wrapper (verify_jwt=false
+  pattern matching toast-save-credentials); builds userClient (with caller JWT) +
+  serviceClient (service role key); delegates to handler.
+- supabase/config.toml: [functions.focus-save-connection] verify_jwt = false.
+- tests/unit/focusSaveConnectionHandler.test.ts: 24 Vitest tests all green.
+  Missing auth header (401), bad JWT (401), missing restaurantId (400 + error matches
+  /restaurantId/i), missing reportUrl (400 + /reportUrl/i), staff role (403), no
+  membership (403), not-a-url (400 + /invalid|url/i), evil.com (400), http:// (400),
+  no StoreID (400). Happy path (owner): 200, {success:true}, from('focus_connections'),
+  report_base_url, report_path contains /ReportServer, store_id='15312', db_server,
+  db_catalog, report_user_id, restaurant_id, connection_status='pending',
+  onConflict('restaurant_id'). Manager role also 200. Upsert error → 500.
+- Full suite: 359 files / 4742 tests green. typecheck clean.
+
+### Next: Task 8 — focus-test-connection edge function

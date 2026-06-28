@@ -98,7 +98,7 @@ describe('useFocusConnection', () => {
         restaurant_id: 'rest-1',
         report_base_url: 'https://mfprod-1.myfocuspos.com',
         report_path: '/ReportServer?/generalstorereports/revenuecenter',
-        store_id: '15312',
+        store_id: '99999',
         db_server: 'mfaz-rep-1',
         db_catalog: 'KAHALA2',
         report_user_id: null,
@@ -172,7 +172,7 @@ describe('useFocusConnection', () => {
       const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
 
       await act(async () => {
-        await result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '15312');
+        await result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '99999');
       });
 
       expect(mockInvoke).toHaveBeenCalledWith('focus-save-connection', {
@@ -180,7 +180,7 @@ describe('useFocusConnection', () => {
           restaurantId: 'rest-1',
           username: 'sample.user',
           password: 'test-pass',
-          storeId: '15312',
+          storeId: '99999',
         },
       });
     });
@@ -195,7 +195,7 @@ describe('useFocusConnection', () => {
 
       await act(async () => {
         await expect(
-          result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '15312')
+          result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '99999')
         ).rejects.toThrow('Network request failed');
       });
     });
@@ -211,7 +211,7 @@ describe('useFocusConnection', () => {
 
       await act(async () => {
         await expect(
-          result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '15312')
+          result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '99999')
         ).rejects.toThrow();
       });
     });

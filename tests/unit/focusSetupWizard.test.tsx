@@ -209,11 +209,11 @@ describe('FocusSetupWizard', () => {
 
     fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     // Step 2b shows Store ID and Username values
-    expect(screen.getByText('15312')).toBeTruthy();
+    expect(screen.getByText('99999')).toBeTruthy();
     expect(screen.getByText('sample.user')).toBeTruthy();
     expect(screen.getByRole('button', { name: /save.*connect/i })).toBeTruthy();
   });
@@ -226,14 +226,14 @@ describe('FocusSetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
     fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(mockSaveConnection).toHaveBeenCalledWith('rest-1', 'sample.user', 'test-pass', '15312');
+      expect(mockSaveConnection).toHaveBeenCalledWith('rest-1', 'sample.user', 'test-pass', '99999');
       expect(mockTestConnection).toHaveBeenCalledWith('rest-1');
     });
   });
@@ -246,7 +246,7 @@ describe('FocusSetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
     fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
@@ -256,7 +256,7 @@ describe('FocusSetupWizard', () => {
       // Should NOT have advanced to the Done step
       expect(screen.queryByText(/setup complete/i)).toBeNull();
       // Should still show the store ID and username (staying on step 2b)
-      expect(screen.getByText('15312')).toBeTruthy();
+      expect(screen.getByText('99999')).toBeTruthy();
       expect(screen.getByText('sample.user')).toBeTruthy();
       // Error text about the test failure
       expect(screen.getByText(/connection test failed/i)).toBeTruthy();
@@ -273,7 +273,7 @@ describe('FocusSetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
     fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
     fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });

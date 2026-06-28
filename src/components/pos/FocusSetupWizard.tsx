@@ -372,7 +372,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                   setStoreId(e.target.value);
                   if (storeIdError) setStoreIdError(null);
                 }}
-                placeholder="15312"
+                placeholder="99999"
                 className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
                   storeIdError ? 'border-destructive focus-visible:ring-destructive' : ''
                 }`}

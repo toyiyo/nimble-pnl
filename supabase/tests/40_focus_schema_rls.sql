@@ -61,7 +61,7 @@ SELECT throws_ok(
 -- Test 11: CHECK accepts a valid myfocuspos.com host (uses the seeded test restaurant)
 SELECT lives_ok(
   $$INSERT INTO focus_connections(restaurant_id, report_base_url, report_path, store_id, username, password_encrypted)
-    VALUES ('00000000-0000-0000-0000-f0c0550000a1'::uuid, 'https://mfprod-1.myfocuspos.com', '/ReportServer?/generalstorereports/revenuecenter', '15312', 'sample.user', 'enc-placeholder')$$,
+    VALUES ('00000000-0000-0000-0000-f0c0550000a1'::uuid, 'https://mfprod-1.myfocuspos.com', '/ReportServer?/generalstorereports/revenuecenter', '99999', 'sample.user', 'enc-placeholder')$$,
   'report_base_url CHECK accepts a valid myfocuspos.com host'
 );
 

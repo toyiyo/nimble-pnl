@@ -31,7 +31,7 @@ const CONN: FocusConnection = {
   dbServer: 'mfaz-rep-1',
   dbCatalog: 'KAHALA2',
   reportUserId: 'testuser',
-  storeId: '15312',
+  storeId: '99999',
   revenueCenter: '',
 };
 

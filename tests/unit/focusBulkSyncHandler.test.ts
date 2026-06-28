@@ -59,7 +59,7 @@ const MOCK_CONN_INCREMENTAL = {
   db_server: 'mfaz-rep-1',
   db_catalog: 'KAHALA2',
   report_user_id: 'sample.user',
-  store_id: '15312',
+  store_id: '99999',
   revenue_center: '',
   timezone: 'America/Chicago',
   initial_sync_done: true,

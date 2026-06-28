@@ -27,7 +27,7 @@ const CONN: FocusConnection = {
   dbServer: 'mfaz-rep-1',
   dbCatalog: 'KAHALA2',
   reportUserId: 'testuser',
-  storeId: '15312',
+  storeId: '99999',
   revenueCenter: '',
 };
 
@@ -48,7 +48,7 @@ describe('buildReportUrl', () => {
 
   it('includes StoreID, dbServer, dbCatalog from the connection', () => {
     const url = buildReportUrl(CONN, '06/27/2026', '06/27/2026');
-    expect(url).toContain('StoreID=15312');
+    expect(url).toContain('StoreID=99999');
     expect(url).toContain('dbServer=mfaz-rep-1');
     expect(url).toContain('dbCatalog=KAHALA2');
   });
@@ -67,7 +67,7 @@ describe('buildReportUrl', () => {
     };
     const url = buildReportUrl(minimal, '06/27/2026', '06/27/2026');
     // Must still have the required params
-    expect(url).toContain('StoreID=15312');
+    expect(url).toContain('StoreID=99999');
     expect(url).toContain('StartDate=06%2F27%2F2026');
   });
 

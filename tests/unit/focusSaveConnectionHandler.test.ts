@@ -55,7 +55,7 @@ const RESTAURANT_ID = '00000000-0000-0000-0000-000000000042';
 const USER_ID = 'user-uuid-1234';
 const USERNAME = 'sample.user';
 const PASSWORD = 'test-pass';
-const STORE_ID = '15312';
+const STORE_ID = '99999';
 
 // ── Mock builders ─────────────────────────────────────────────────────────────
 

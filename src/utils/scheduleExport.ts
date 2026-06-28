@@ -3,6 +3,10 @@ import autoTable from "jspdf-autotable";
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
 import type { Shift, Employee } from "@/types/scheduling";
 import { groupEmployees, type GroupByMode } from "@/lib/scheduleGrouping";
+import { calculateShiftHours, buildRoster, type RosterSortBy } from "@/lib/scheduleRoster";
+
+// Re-exported for backward compatibility; canonical home is @/lib/scheduleRoster.
+export { calculateShiftHours };
 
 export interface ScheduleExportOptions {
   shifts: Shift[];
@@ -13,6 +17,7 @@ export interface ScheduleExportOptions {
   includePositions?: boolean;
   includeHoursSummary?: boolean;
   positionFilter?: string;
+  areaFilter?: string;
   groupBy?: GroupByMode;
   selectedEmployeeIds?: Set<string>;
 }
@@ -48,17 +53,6 @@ export const formatKitchenTime = (startTime: string, endTime: string): string =>
 };
 
 /**
- * Calculate shift hours (excluding break)
- */
-export const calculateShiftHours = (shift: Shift): number => {
-  const start = new Date(shift.start_time);
-  const end = new Date(shift.end_time);
-  const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-  const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
-  return netMinutes / 60;
-};
-
-/**
  * Generates a print-optimized PDF of the weekly schedule
  */
 export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
@@ -71,6 +65,7 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
     includePositions = true,
     includeHoursSummary = false,
     positionFilter,
+    areaFilter,
     groupBy = 'none',
     selectedEmployeeIds,
   } = options;
@@ -78,11 +73,19 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
   // Get days of the week
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Filter shifts by position if needed
-  const filteredShifts = positionFilter && positionFilter !== "all"
+  /** Returns the filter value when active, null when "all" or absent. */
+  const active = (f?: string) => (f && f !== "all" ? f : null);
+  const activePosition = active(positionFilter);
+  const activeArea = active(areaFilter);
+
+  // Filter shifts by position and/or area if needed (AND semantics)
+  const filteredShifts = (activePosition || activeArea)
     ? shifts.filter(s => {
         const emp = employees.find(e => e.id === s.employee_id);
-        return emp?.position === positionFilter;
+        if (!emp) return false;
+        if (activePosition && emp.position !== activePosition) return false;
+        if (activeArea && emp.area !== activeArea) return false;
+        return true;
       })
     : shifts;
 
@@ -120,10 +123,11 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
 
   // Filter/grouping indicators
   let subtitleY = margin + 35;
-  if (positionFilter && positionFilter !== "all") {
+  const filterParts = [active(areaFilter), active(positionFilter)].filter(Boolean) as string[];
+  if (filterParts.length > 0) {
     doc.setFontSize(10);
     doc.setTextColor(100);
-    doc.text(`Filtered: ${positionFilter}`, pageWidth / 2, subtitleY, { align: "center" });
+    doc.text(`Filtered: ${filterParts.join(" · ")}`, pageWidth / 2, subtitleY, { align: "center" });
     subtitleY += 14;
   }
   if (groupBy !== 'none') {
@@ -270,6 +274,188 @@ export const generateSchedulePDF = (options: ScheduleExportOptions): void => {
 
   // Save the PDF
   const fileName = `schedule_${format(weekStart, "yyyy-MM-dd")}_to_${format(weekEnd, "yyyy-MM-dd")}.pdf`;
+  doc.save(fileName);
+};
+
+export interface RosterExportOptions {
+  shifts: Shift[];
+  employees: Employee[];
+  days: Date[];
+  weekStart: Date;
+  weekEnd: Date;
+  restaurantName?: string;
+  sortBy?: RosterSortBy;
+  groupBy?: GroupByMode;
+  areaFilter?: string;
+  positionFilter?: string;
+  selectedEmployeeIds?: Set<string>;
+  includePositions?: boolean;
+  includeHoursSummary?: boolean;
+}
+
+/**
+ * Generates a per-day roster PDF: one table per day, each listing the day's
+ * shifts sorted by start time / name / hours, with area (or position)
+ * sub-sections. Portrait orientation (a narrow, tall list).
+ */
+export const generateRosterPDF = (options: RosterExportOptions): void => {
+  const {
+    shifts,
+    employees,
+    days,
+    weekStart,
+    weekEnd,
+    restaurantName = "Restaurant",
+    sortBy = "startTime",
+    groupBy = "none",
+    areaFilter,
+    positionFilter,
+    selectedEmployeeIds,
+    includePositions = true,
+    includeHoursSummary = false,
+  } = options;
+
+  const active = (f?: string) => (f && f !== "all" ? f : null);
+  const activeArea = active(areaFilter);
+  const activePosition = active(positionFilter);
+
+  // Pre-filter by area / position / selected employees (same semantics as the grid).
+  const filteredShifts = shifts.filter(s => {
+    const emp = employees.find(e => e.id === s.employee_id);
+    if (!emp) return false;
+    if (activeArea && emp.area !== activeArea) return false;
+    if (activePosition && emp.position !== activePosition) return false;
+    if (selectedEmployeeIds && !selectedEmployeeIds.has(emp.id)) return false;
+    return true;
+  });
+
+  const rosterDays = buildRoster(filteredShifts, employees, days, sortBy, groupBy);
+
+  const doc = new jsPDF({ orientation: "portrait", unit: "pt", format: "letter" });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 40;
+
+  // Title + week range
+  doc.setFontSize(18);
+  doc.setFont("helvetica", "bold");
+  doc.text(restaurantName.toUpperCase(), pageWidth / 2, margin, { align: "center" });
+  doc.setFontSize(12);
+  doc.setFont("helvetica", "normal");
+  doc.text(
+    `Week of ${format(weekStart, "MMMM d")} - ${format(weekEnd, "MMMM d, yyyy")}`,
+    pageWidth / 2,
+    margin + 20,
+    { align: "center" },
+  );
+
+  // Subtitles: active filters + sort indicator
+  let subtitleY = margin + 35;
+  const filterParts = [activeArea, activePosition].filter(Boolean) as string[];
+  if (filterParts.length > 0) {
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Filtered: ${filterParts.join(" · ")}`, pageWidth / 2, subtitleY, { align: "center" });
+    subtitleY += 14;
+  }
+  const sortLabel = sortBy === "name" ? "Name" : sortBy === "hours" ? "Hours" : "Start time";
+  doc.setFontSize(10);
+  doc.setTextColor(100);
+  doc.text(`Sorted by: ${sortLabel}`, pageWidth / 2, subtitleY, { align: "center" });
+  subtitleY += 14;
+  doc.setTextColor(0);
+
+  // Columns
+  const columns = ["Time", "Employee"];
+  if (includePositions) columns.push("Position");
+  if (includeHoursSummary) columns.push("Hours");
+  const colCount = columns.length;
+
+  let cursorY = subtitleY + 5;
+
+  for (const rosterDay of rosterDays) {
+    const dayHeader = `${format(rosterDay.day, "EEEE · MMM d")}${
+      rosterDay.totalStaff > 0
+        ? `      ${rosterDay.totalStaff} staff · ${rosterDay.totalHours.toFixed(1)} hrs`
+        : ""
+    }`;
+
+    const body: any[][] = [];
+
+    if (rosterDay.totalStaff === 0) {
+      body.push([{
+        content: "No one scheduled",
+        colSpan: colCount,
+        styles: { halign: "center" as const, textColor: [150, 150, 150], fontStyle: "italic" as const },
+      }]);
+    } else {
+      for (const section of rosterDay.sections) {
+        if (groupBy !== "none" && section.label) {
+          body.push([{
+            content: `${section.label} (${section.rows.length})`,
+            colSpan: colCount,
+            styles: {
+              halign: "left" as const,
+              fontStyle: "bold" as const,
+              fillColor: [230, 230, 230],
+              textColor: [50, 50, 50],
+              fontSize: 10,
+            },
+          }]);
+        }
+        for (const row of section.rows) {
+          const cells: any[] = [
+            formatKitchenTime(row.shift.start_time, row.shift.end_time),
+            row.employee.name,
+          ];
+          if (includePositions) cells.push(row.shift.position || row.employee.position || "");
+          if (includeHoursSummary) cells.push(row.hours.toFixed(1));
+          body.push(cells);
+        }
+      }
+    }
+
+    autoTable(doc, {
+      startY: cursorY,
+      head: [
+        [{
+          content: dayHeader,
+          colSpan: colCount,
+          styles: {
+            halign: "left" as const,
+            fontStyle: "bold" as const,
+            fillColor: [220, 220, 220],
+            textColor: [20, 20, 20],
+            fontSize: 11,
+          },
+        }],
+        columns.map(c => ({ content: c, styles: { fontStyle: "bold" as const } })),
+      ],
+      body,
+      theme: "grid",
+      styles: { fontSize: 10, cellPadding: 5, lineColor: [200, 200, 200], lineWidth: 0.5 },
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontSize: 9 },
+      columnStyles: { 0: { cellWidth: 80 } },
+      margin: { left: margin, right: margin },
+    });
+
+    cursorY = ((doc as any).lastAutoTable?.finalY ?? cursorY) + 18;
+  }
+
+  // Footer — placed just below the last table, clamped to the page (mirrors generateSchedulePDF)
+  const footerY = (doc as any).lastAutoTable?.finalY ?? cursorY;
+  doc.setFontSize(9);
+  doc.setTextColor(100);
+  doc.text(
+    `Generated ${format(new Date(), "MMM d, yyyy 'at' h:mm a")}`,
+    margin,
+    Math.min(footerY + 18, pageHeight - 24),
+  );
+
+  const fileName =
+    days.length === 1
+      ? `roster_${format(days[0], "yyyy-MM-dd")}.pdf`
+      : `roster_${format(weekStart, "yyyy-MM-dd")}_to_${format(weekEnd, "yyyy-MM-dd")}.pdf`;
   doc.save(fileName);
 };
 

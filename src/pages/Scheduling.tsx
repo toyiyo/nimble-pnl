@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
+import { calculateShiftHours } from '@/lib/scheduleRoster';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
@@ -49,12 +50,13 @@ import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
-import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
+import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
-import { computeOpenSpots } from '@/lib/openShiftHelpers';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatLocalDate } from '@/lib/shiftInterval';
+import { computeSlotCoverage } from '@/lib/shiftCoverage';
+import type { CoverageShift, ShiftTemplate } from '@/types/scheduling';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
@@ -327,6 +329,64 @@ const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSel
   );
 };
 
+/**
+ * Pure function extracted from the openShiftCount useMemo so it can be
+ * unit-tested independently of the Scheduling component.
+ *
+ * Uses the coverage engine (computeSlotCoverage) instead of the old
+ * buildTemplateGridData + computeOpenSpots exact-match path, so fill-in
+ * shifts that overlap a template window without exactly matching it are
+ * counted correctly.
+ */
+/**
+ * Return the local calendar date (YYYY-MM-DD) for a UTC ISO timestamp in the
+ * given IANA timezone.  This mirrors SQL: (start_time AT TIME ZONE tz)::date.
+ */
+function localDateOf(isoUtc: string, tz: string): string {
+  const zoned = dateFnsTz.toZonedTime(new Date(isoUtc), tz);
+  const y = zoned.getFullYear();
+  const m = String(zoned.getMonth() + 1).padStart(2, '0');
+  const d = String(zoned.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function computeOpenShiftCount(
+  templates: ShiftTemplate[],
+  shifts: Shift[],
+  weekDayStrings: string[], // 'yyyy-MM-dd'
+  restaurantTimezone: string,
+): number {
+  if (!templates.length || shifts === undefined) return 0;
+  const allCov: CoverageShift[] = shifts.map((s) => ({
+    employee_id: s.employee_id,
+    employee_name: s.employee?.name ?? null,
+    start_time: s.start_time,
+    end_time: s.end_time,
+    position: s.position,
+    status: s.status,
+  }));
+  let total = 0;
+  for (const t of templates) {
+    for (const dayStr of weekDayStrings) {
+      if (!templateAppliesToDay(t, dayStr)) continue;
+      // Mirror SQL's filter: only include shifts whose local start date = dayStr.
+      // This keeps overnight carry-over shifts (local start = previous day) from
+      // reducing the banner count for the carry-over day, matching the behaviour of
+      // shift_slot_min_concurrent and preventing UI/SQL divergence.
+      const cov = allCov.filter((s) => localDateOf(s.start_time, restaurantTimezone) === dayStr);
+      total += computeSlotCoverage(
+        t.start_time,
+        t.end_time,
+        t.capacity ?? 1,
+        dayStr,
+        cov,
+        { position: t.position, tz: restaurantTimezone },
+      ).openSpots;
+    }
+  }
+  return total;
+}
+
 const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
@@ -512,15 +572,6 @@ const Scheduling = () => {
     return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter, areaFilter);
   }, [allEmployees, shifts, positionFilter, areaFilter]);
 
-  // Calculate labor metrics
-  const calculateShiftHours = (shift: Shift) => {
-    const start = new Date(shift.start_time);
-    const end = new Date(shift.end_time);
-    const totalMinutes = (end.getTime() - start.getTime()) / (1000 * 60);
-    const netMinutes = Math.max(totalMinutes - shift.break_duration, 0);
-    return netMinutes / 60;
-  };
-
   // Calculate hours for all shifts (including inactive employees)
   const totalScheduledHours = shifts
     .filter(s => filteredEmployeesWithShifts.some(e => e.id === s.employee_id))
@@ -528,24 +579,10 @@ const Scheduling = () => {
 
   const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
 
-  const openShiftCount = useMemo(() => {
-    if (!templates.length || shifts === undefined) return 0;
-
-    const weekDayStrings = weekDays.map(formatLocalDate);
-
-    // Build the grid to count assigned shifts per template/day
-    const gridData = buildTemplateGridData(shifts, templates, weekDayStrings);
-
-    let total = 0;
-    for (const template of templates) {
-      for (const dayStr of weekDayStrings) {
-        if (!templateAppliesToDay(template, dayStr)) continue;
-        const assigned = gridData.get(template.id)?.get(dayStr)?.length ?? 0;
-        total += computeOpenSpots(template.capacity, assigned);
-      }
-    }
-    return total;
-  }, [templates, shifts, weekDays]);
+  const openShiftCount = useMemo(
+    () => computeOpenShiftCount(templates, shifts, weekDays.map(formatLocalDate), restaurantTimezone),
+    [templates, shifts, weekDays, restaurantTimezone],
+  );
 
   // Grouped employees for rendering
   const employeeGroups = useMemo(
@@ -2107,6 +2144,7 @@ const Scheduling = () => {
         weekEnd={weekEnd}
         restaurantName={selectedRestaurant?.restaurant?.name}
         positionFilter={positionFilter}
+        areaFilter={areaFilter}
         groupBy={groupBy}
       />
 

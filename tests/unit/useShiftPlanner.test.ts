@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildGridData, buildTemplateGridData, buildShiftPayload, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime } from '@/hooks/useShiftPlanner';
+import { buildGridData, buildTemplateGridData, buildShiftPayload, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime, groupUnmatchedByArea } from '@/hooks/useShiftPlanner';
 import { ShiftInterval } from '@/lib/shiftInterval';
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
@@ -500,6 +500,30 @@ describe('useShiftPlanner utilities', () => {
 
       expect(payload.shift_template_id).toBeNull();
       expect(payload.source).toBe('manual');
+    });
+  });
+
+  describe('groupUnmatchedByArea', () => {
+    const mk = (id: string, area: string | undefined): Shift => ({
+      id, restaurant_id: 'r', employee_id: id, start_time: '2026-06-30T15:00:00Z',
+      end_time: '2026-06-30T19:30:00Z', break_duration: 0, position: 'Server',
+      status: 'scheduled', is_published: false, locked: false, source: 'manual',
+      created_at: '', updated_at: '',
+      employee: { id, name: id, area, position: 'Server' } as Shift['employee'],
+    });
+
+    it('groups unmatched shifts by employee area; null area under Unassigned', () => {
+      const unmatched = new Map<string, Shift[]>([
+        ['2026-06-30', [mk('a', 'Cold Stone'), mk('b', "Wetzel's"), mk('c', undefined)]],
+      ]);
+      const out = groupUnmatchedByArea(unmatched);
+      expect(out.get('Cold Stone')?.get('2026-06-30')?.map((s) => s.id)).toEqual(['a']);
+      expect(out.get("Wetzel's")?.get('2026-06-30')?.map((s) => s.id)).toEqual(['b']);
+      expect(out.get('Unassigned')?.get('2026-06-30')?.map((s) => s.id)).toEqual(['c']);
+    });
+
+    it('returns empty map for empty input', () => {
+      expect(groupUnmatchedByArea(new Map()).size).toBe(0);
     });
   });
 });

@@ -8,16 +8,19 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { AlertCircle, CalendarOff, Users, X } from 'lucide-react';
 
-import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
-import { useShiftTemplates } from '@/hooks/useShiftTemplates';
+import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek, groupUnmatchedByArea } from '@/hooks/useShiftPlanner';
+import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
 
-import type { ShiftTemplate, ConflictCheck } from '@/types/scheduling';
+import type { ShiftTemplate, ConflictCheck, SlotCoverage, CoverageShift } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
 import type { ValidationIssue } from '@/lib/shiftValidator';
+
+import { computeSlotCoverage } from '@/lib/shiftCoverage';
+import { assignLoanedOutCell } from '@/lib/loanedOut';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -25,6 +28,7 @@ import { computeAllocationStatuses, type AllocationStatus } from '@/lib/shiftAll
 
 import { AssignmentPopover } from './AssignmentPopover';
 import { AreaFilterPills } from './AreaFilterPills';
+import { CoverageDetail } from './CoverageDetail';
 import { CoverageStrip } from './CoverageStrip';
 import { ScheduleOverviewPanel } from './ScheduleOverviewPanel';
 
@@ -46,6 +50,15 @@ interface ShiftPlannerTabProps {
   restaurantId: string;
   weekStart: Date;
   onWeekStartChange: (next: Date) => void;
+}
+
+/** Format a template's slot label for CoverageDetail headings.
+ *  e.g. "Cold Stone · Server · 10:00–16:30" or "Server · 10:00–16:30 (all areas)". */
+function buildSlotLabel(t: ShiftTemplate): string {
+  const timeRange = `${t.start_time.slice(0, 5)}–${t.end_time.slice(0, 5)}`;
+  return t.area
+    ? `${t.area} · ${t.position} · ${timeRange}`
+    : `${t.position} · ${timeRange} (all areas)`;
 }
 
 export function ShiftPlannerTab({
@@ -124,6 +137,70 @@ export function ShiftPlannerTab({
   const [conflictDialogData, setConflictDialogData] = useState<ConflictDialogData | null>(null);
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
   const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+
+  // Tab-level coverage Map: Map<templateId, Map<day, SlotCoverage>>
+  // Per-slot try/catch so one bad row never blanks the whole grid.
+  const coverageByTemplateDay = useMemo(() => {
+    // Area source: for template-bound shifts (shift_template_id set), the template's area
+    // is authoritative — an employee assigned cross-area should count toward the template's
+    // area cell, not their home area. For unbound/legacy shifts, fall back to the joined
+    // employee row so inactive/terminated employees' shifts still carry their area.
+    const templateAreaMap = new Map<string, string | null>(
+      templates.map((t) => [t.id, t.area || null]),
+    );
+    const cov: CoverageShift[] = shifts.map((s) => ({
+      employee_id: s.employee_id,
+      employee_name: s.employee?.name ?? null,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      position: s.position,
+      status: s.status,
+      area: s.shift_template_id
+        ? (templateAreaMap.get(s.shift_template_id) ?? s.employee?.area ?? null)
+        : (s.employee?.area ?? null),
+      homeArea: s.employee?.area ?? null,
+    }));
+    const map = new Map<string, Map<string, SlotCoverage>>();
+    for (const t of templates) {
+      const inner = new Map<string, SlotCoverage>();
+      for (const day of weekDays) {
+        if (!templateAppliesToDay(t, day)) continue;
+        try {
+          inner.set(
+            day,
+            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, { position: t.position, tz: restaurantTimezone, area: t.area || null }),
+          );
+        } catch {
+          // one bad row never blanks the grid
+        }
+      }
+      map.set(t.id, inner);
+    }
+    return map;
+  }, [shifts, templates, weekDays, restaurantTimezone]);
+
+  // Ghost map: de-duped loaned-out employees keyed `${templateId}:${day}`
+  const ghostByCell = useMemo(() => {
+    const startById = new Map(templates.map((t) => [t.id, t.start_time]));
+    return assignLoanedOutCell(coverageByTemplateDay, startById);
+  }, [coverageByTemplateDay, templates]);
+
+  // Off-template lane: unmatched shifts grouped by employee area → day
+  const offTemplateByArea = useMemo(
+    () => groupUnmatchedByArea(templateGridData.get('__unmatched__') ?? new Map()),
+    [templateGridData],
+  );
+
+  // Lifted coverage detail state — single Popover/Drawer instance (Single Dialog Pattern)
+  const [coverageDetail, setCoverageDetail] = useState<{ templateId: string; day: string; anchorRect?: DOMRect } | null>(null);
+
+  const handleCoverageClick = useCallback((templateId: string, day: string, rect?: DOMRect) => {
+    setCoverageDetail({ templateId, day, anchorRect: rect });
+  }, []);
+
+  const handleCoverageClose = useCallback(() => {
+    setCoverageDetail(null);
+  }, []);
 
   const [pickedEmployeeId, setPickedEmployeeId] = useState<string | null>(null);
 
@@ -452,6 +529,17 @@ export function ShiftPlannerTab({
     );
   }
 
+  // Derived slot label for the CoverageDetail heading.
+  // Prepends t.area when set (e.g. "Cold Stone · Server · 10:00–16:30");
+  // appends "(all areas)" when t.area is null so managers don't mistake a
+  // restaurant-wide slot for an area-scoped one.
+  const coverageDetailTemplate = coverageDetail
+    ? templates.find((tmpl) => tmpl.id === coverageDetail.templateId)
+    : undefined;
+  const coverageSlotLabel = coverageDetailTemplate
+    ? buildSlotLabel(coverageDetailTemplate)
+    : undefined;
+
   return (
     <div className="space-y-3">
       <PlannerHeader
@@ -535,6 +623,10 @@ export function ShiftPlannerTab({
                   coverageSlot={!isMobile ? <CoverageStrip weekDays={weekDays} coverageByDay={coverageByDay} /> : undefined}
                   allocationStatuses={allocationStatuses}
                   pickedEmployeeName={pickedEmployeeName}
+                  coverageByTemplateDay={coverageByTemplateDay}
+                  onCoverageClick={handleCoverageClick}
+                  ghostByCell={ghostByCell}
+                  offTemplateByArea={offTemplateByArea}
                 />
               </div>
             )}
@@ -691,6 +783,21 @@ export function ShiftPlannerTab({
         generationError={generationError}
         onGenerate={handleGenerate}
         onRetry={handleGenerateRetry}
+      />
+
+      {/* Coverage detail — ONE lifted instance (Single Dialog Pattern).
+          Desktop uses Popover (anchored to cell rect when available); mobile uses Drawer. */}
+      <CoverageDetail
+        open={coverageDetail !== null}
+        coverage={
+          coverageDetail
+            ? (coverageByTemplateDay.get(coverageDetail.templateId)?.get(coverageDetail.day) ?? null)
+            : null
+        }
+        slotLabel={coverageSlotLabel}
+        slotArea={coverageDetailTemplate?.area ?? null}
+        anchorRect={coverageDetail?.anchorRect}
+        onClose={handleCoverageClose}
       />
 
     </div>

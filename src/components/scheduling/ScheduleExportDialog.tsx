@@ -12,9 +12,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Printer, FileDown } from "lucide-react";
 import { format, eachDayOfInterval, isSameDay, parseISO } from "date-fns";
-import { generateSchedulePDF } from "@/utils/scheduleExport";
+import { generateSchedulePDF, generateRosterPDF, formatKitchenTime } from "@/utils/scheduleExport";
 import type { Shift, Employee } from "@/types/scheduling";
 import type { GroupByMode } from "@/lib/scheduleGrouping";
+import { buildRosterDay, type RosterSortBy } from "@/lib/scheduleRoster";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ScheduleExportDialogProps {
   open: boolean;
@@ -25,6 +27,7 @@ interface ScheduleExportDialogProps {
   weekEnd: Date;
   restaurantName?: string;
   positionFilter?: string;
+  areaFilter?: string;
   groupBy?: GroupByMode;
 }
 
@@ -37,32 +40,36 @@ export const ScheduleExportDialog = ({
   weekEnd,
   restaurantName = "Restaurant",
   positionFilter,
+  areaFilter,
   groupBy = 'none',
 }: ScheduleExportDialogProps) => {
   const [includePositions, setIncludePositions] = useState(true);
   const [includeHoursSummary, setIncludeHoursSummary] = useState(false);
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<Set<string>>(new Set());
+  const [layout, setLayout] = useState<'grid' | 'roster'>('roster');
+  const [sortBy, setSortBy] = useState<RosterSortBy>('startTime');
+  const [rosterDay, setRosterDay] = useState<string>('all'); // 'all' or 'yyyy-MM-dd'
 
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Filter shifts by position
-  const positionFilteredShifts = useMemo(() =>
-    positionFilter && positionFilter !== "all"
-      ? shifts.filter(s => {
-          const emp = employees.find(e => e.id === s.employee_id);
-          return emp?.position === positionFilter;
-        })
-      : shifts,
-    [shifts, employees, positionFilter]
+  // Filter shifts by area and position (AND semantics)
+  const filteredShifts = useMemo(() =>
+    shifts.filter(s => {
+      const emp = employees.find(e => e.id === s.employee_id);
+      if (positionFilter && positionFilter !== "all" && emp?.position !== positionFilter) return false;
+      if (areaFilter && areaFilter !== "all" && emp?.area !== areaFilter) return false;
+      return true;
+    }),
+    [shifts, employees, positionFilter, areaFilter]
   );
 
-  // All employees who have shifts (after position filter)
+  // All employees who have shifts (after area + position filter)
   const allEmployeesWithShifts = useMemo(() => {
-    const ids = new Set(positionFilteredShifts.map(s => s.employee_id));
+    const ids = new Set(filteredShifts.map(s => s.employee_id));
     return employees
       .filter(emp => ids.has(emp.id))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [positionFilteredShifts, employees]);
+  }, [filteredShifts, employees]);
 
   // Initialize selection to all employees when dialog opens or list changes
   useEffect(() => {
@@ -99,11 +106,27 @@ export const ScheduleExportDialog = ({
     [allEmployeesWithShifts, selectedEmployeeIds]
   );
 
+  // Roster preview for the selected day (or first day of the week when "Whole week")
+  const previewRosterDay = useMemo(() => {
+    if (layout !== 'roster' || weekDays.length === 0) return null;
+    const day =
+      rosterDay === 'all'
+        ? weekDays[0]
+        : weekDays.find(d => format(d, 'yyyy-MM-dd') === rosterDay) ?? weekDays[0];
+    const selectedShifts = filteredShifts.filter(s => selectedEmployeeIds.has(s.employee_id));
+    return buildRosterDay(selectedShifts, employees, day, sortBy, groupBy);
+  }, [layout, rosterDay, weekDays, filteredShifts, selectedEmployeeIds, employees, sortBy, groupBy]);
+
   const selectedCount = selectedEmployeeIds.size;
   const totalAvailable = allEmployeesWithShifts.length;
 
+  const activeFilterParts = [
+    areaFilter && areaFilter !== "all" ? areaFilter : null,
+    positionFilter && positionFilter !== "all" ? positionFilter : null,
+  ].filter(Boolean) as string[];
+
   const getShiftDisplay = (employeeId: string, day: Date): string => {
-    const dayShifts = positionFilteredShifts.filter(
+    const dayShifts = filteredShifts.filter(
       s => s.employee_id === employeeId && isSameDay(parseISO(s.start_time), day)
     );
     if (dayShifts.length === 0) return "OFF";
@@ -123,18 +146,41 @@ export const ScheduleExportDialog = ({
   };
 
   const handleExport = () => {
-    generateSchedulePDF({
-      shifts,
-      employees,
-      weekStart,
-      weekEnd,
-      restaurantName,
-      includePositions,
-      includeHoursSummary,
-      positionFilter,
-      groupBy,
-      selectedEmployeeIds,
-    });
+    if (layout === 'roster') {
+      const days =
+        rosterDay === 'all'
+          ? weekDays
+          : weekDays.filter(d => format(d, 'yyyy-MM-dd') === rosterDay);
+      generateRosterPDF({
+        shifts,
+        employees,
+        days,
+        weekStart,
+        weekEnd,
+        restaurantName,
+        sortBy,
+        groupBy,
+        positionFilter,
+        areaFilter,
+        selectedEmployeeIds,
+        includePositions,
+        includeHoursSummary,
+      });
+    } else {
+      generateSchedulePDF({
+        shifts,
+        employees,
+        weekStart,
+        weekEnd,
+        restaurantName,
+        includePositions,
+        includeHoursSummary,
+        positionFilter,
+        areaFilter,
+        groupBy,
+        selectedEmployeeIds,
+      });
+    }
     onOpenChange(false);
   };
 
@@ -158,9 +204,9 @@ export const ScheduleExportDialog = ({
             <div className="text-xs text-muted-foreground">
               Week of {format(weekStart, "MMM d")} - {format(weekEnd, "MMM d, yyyy")}
             </div>
-            {positionFilter && positionFilter !== "all" && (
+            {activeFilterParts.length > 0 && (
               <div className="text-xs text-muted-foreground mt-1">
-                Filtered: {positionFilter}
+                Filtered: {activeFilterParts.join(" · ")}
               </div>
             )}
             {groupBy !== 'none' && (
@@ -170,7 +216,50 @@ export const ScheduleExportDialog = ({
             )}
           </div>
 
-          {/* Mini preview table */}
+          {/* Preview: roster (per-day) or grid */}
+          {layout === 'roster' ? (
+            <div className="overflow-hidden text-left">
+              <div className="text-[13px] font-semibold text-foreground mb-1.5">
+                {previewRosterDay ? format(previewRosterDay.day, 'EEEE, MMM d') : ''}
+                {previewRosterDay && previewRosterDay.totalStaff > 0 && (
+                  <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+                    {previewRosterDay.totalStaff} staff · {previewRosterDay.totalHours.toFixed(1)} hrs
+                  </span>
+                )}
+              </div>
+              {previewRosterDay && previewRosterDay.totalStaff > 0 ? (
+                <div className="space-y-2">
+                  {previewRosterDay.sections.map(section => (
+                    <div key={section.label || 'all'}>
+                      {groupBy !== 'none' && section.label && (
+                        <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-0.5">
+                          {section.label}
+                        </div>
+                      )}
+                      {section.rows.slice(0, 6).map(row => (
+                        <div key={row.shift.id} className="flex items-center gap-2 text-xs py-0.5">
+                          <span className="font-medium tabular-nums w-16">
+                            {formatKitchenTime(row.shift.start_time, row.shift.end_time)}
+                          </span>
+                          <span className="flex-1 truncate">{row.employee.name}</span>
+                          {includePositions && (
+                            <span className="text-muted-foreground text-[10px] truncate">{row.shift.position || row.employee.position || ''}</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {previewRosterDay.sections.some(s => s.rows.length > 6) && (
+                    <div className="text-[11px] text-muted-foreground italic">… more on the PDF</div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-center p-4 text-muted-foreground italic text-xs">
+                  No one scheduled
+                </div>
+              )}
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs border-collapse">
               <thead>
@@ -224,6 +313,7 @@ export const ScheduleExportDialog = ({
               </tbody>
             </table>
           </div>
+          )}
 
           <div className="flex items-center justify-between mt-3 pt-2 border-t border-border text-xs text-muted-foreground">
             <span>Generated {format(new Date(), "MMM d, yyyy")}</span>
@@ -283,6 +373,79 @@ export const ScheduleExportDialog = ({
           </div>
         </div>
 
+        {/* Layout + roster sorting */}
+        <div className="space-y-3">
+          <div>
+            <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              Layout
+            </span>
+            <div className="mt-1.5 inline-flex rounded-lg border border-border/40 p-0.5 bg-muted/30" role="group" aria-label="Layout">
+              <button
+                type="button"
+                onClick={() => setLayout('roster')}
+                aria-pressed={layout === 'roster'}
+                className={`h-8 px-3 rounded-md text-[13px] font-medium transition-colors ${
+                  layout === 'roster'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Per-day roster
+              </button>
+              <button
+                type="button"
+                onClick={() => setLayout('grid')}
+                aria-pressed={layout === 'grid'}
+                className={`h-8 px-3 rounded-md text-[13px] font-medium transition-colors ${
+                  layout === 'grid'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Weekly grid
+              </button>
+            </div>
+          </div>
+
+          {layout === 'roster' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Sort by
+                </Label>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as RosterSortBy)}>
+                  <SelectTrigger className="h-9 mt-1.5 text-[13px]" aria-label="Sort by">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="startTime">Start time</SelectItem>
+                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="hours">Hours scheduled</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                  Day
+                </Label>
+                <Select value={rosterDay} onValueChange={setRosterDay}>
+                  <SelectTrigger className="h-9 mt-1.5 text-[13px]" aria-label="Day">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Whole week</SelectItem>
+                    {weekDays.map(d => (
+                      <SelectItem key={d.toISOString()} value={format(d, 'yyyy-MM-dd')}>
+                        {format(d, 'EEEE, MMM d')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Options */}
         <div className="space-y-3">
           <div className="flex items-center space-x-2">
@@ -302,7 +465,7 @@ export const ScheduleExportDialog = ({
               onCheckedChange={(checked) => setIncludeHoursSummary(checked === true)}
             />
             <Label htmlFor="include-hours" className="text-sm cursor-pointer">
-              Include hours summary per employee
+              {layout === 'roster' ? 'Include hours per shift' : 'Include hours summary per employee'}
             </Label>
           </div>
         </div>

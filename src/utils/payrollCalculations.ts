@@ -45,6 +45,7 @@ export interface EmployeePayroll {
   employeeId: string;
   employeeName: string;
   position: string;
+  area: string | null; // Employee's work area (e.g. Front of House, Back of House)
   compensationType: CompensationType; // Type of compensation
   hourlyRate: number; // In cents (for hourly employees)
   regularHours: number;
@@ -521,6 +522,7 @@ export function calculateEmployeePay(
     employeeId: employee.id,
     employeeName: employee.name,
     position: employee.position,
+    area: employee.area ?? null,
     compensationType,
     hourlyRate: employee.hourly_rate,
     regularHours: Math.round(totalRegularHours * 100) / 100, // Round to 2 decimals
@@ -642,12 +644,29 @@ export function calculatePayrollPeriod(
 }
 
 /**
+ * Escape a string value for safe CSV embedding.
+ * - Doubles embedded quotes per RFC 4180
+ * - Strips carriage returns and newlines to prevent row splitting
+ * - Prefixes formula-triggering characters (=, +, -, @) with a single quote
+ *   to block spreadsheet formula injection
+ * Returns the value wrapped in double quotes.
+ */
+function escapeCsvCell(value: string | null | undefined): string {
+  const raw = value ?? '';
+  const noNewlines = raw.replace(/\r?\n/g, ' ');
+  const escapedQuotes = noNewlines.replace(/"/g, '""');
+  const neutralized = /^[=+\-@]/.test(escapedQuotes) ? `'${escapedQuotes}` : escapedQuotes;
+  return `"${neutralized}"`;
+}
+
+/**
  * Export payroll to CSV format
  */
 export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
   const headers = [
     'Employee Name',
     'Position',
+    'Area',
     'Hourly Rate',
     'Regular Hours',
     'Overtime Hours',
@@ -665,8 +684,9 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
   ].join(',');
 
   const rows = payrollPeriod.employees.map(ep => [
-    `"${ep.employeeName}"`,
-    `"${ep.position}"`,
+    escapeCsvCell(ep.employeeName),
+    escapeCsvCell(ep.position),
+    escapeCsvCell(ep.area),
     formatCurrency(ep.hourlyRate),
     formatHours(ep.regularHours),
     formatHours(ep.overtimeHours),
@@ -691,8 +711,9 @@ export function exportPayrollToCSV(payrollPeriod: PayrollPeriod): string {
 
   const totalRow = [
     '"TOTAL"',
-    '""',
-    '""',
+    '""', // Position — blank for TOTAL row
+    '""', // Area — blank for TOTAL row
+    '""', // Hourly Rate — blank for TOTAL row
     formatHours(payrollPeriod.totalRegularHours),
     formatHours(payrollPeriod.totalOvertimeHours),
     formatHours(payrollPeriod.totalDoubleTimeHours),

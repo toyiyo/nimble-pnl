@@ -83,12 +83,14 @@ test.describe('Shift Template Capacity', () => {
       await toast.locator('button[aria-label="Close"]').click().catch(() => {});
     }
 
-    // 10. Verify "0/3" capacity indicator is visible somewhere on the page
-    // The indicator shows assigned/capacity, starting at 0/3 for a new template
-    await expect(page.getByText('0/3')).toBeVisible({ timeout: 5000 });
+    // 10. Verify the coverage indicator is visible — two-tier prominent treatment.
+    // With capacity=3 and 0 shifts on Monday, aria-label includes "0 of 3 staffed" and "needs 3 more"
+    await expect(
+      page.getByRole('button', { name: /0 of 3 staffed/i }),
+    ).toBeVisible({ timeout: 5000 });
   });
 
-  test('default capacity shows no indicator', async ({ page }) => {
+  test('default capacity=1 shows coverage indicator (two-tier, no suppression)', async ({ page }) => {
     // 1. Sign up and create restaurant
     const testUser = generateTestUser('shift-cap-default');
     await signUpAndCreateRestaurant(page, testUser);
@@ -168,7 +170,11 @@ test.describe('Shift Template Capacity', () => {
       await toast.locator('button[aria-label="Close"]').click().catch(() => {});
     }
 
-    // 10. Verify NO "0/1" indicator is shown (capacity=1 is intentionally hidden)
-    await expect(page.getByText('0/1')).not.toBeVisible();
+    // 10. Verify the coverage indicator IS shown for capacity=1 (two-tier treatment: no suppression).
+    // An unstaffed slot shows the prominent tier: AlertTriangle + "0/1" count.
+    // aria-label: "Cashier Tuesday: 0 of 1 staffed, needs 1 more. 0% of window covered. Open details"
+    await expect(
+      page.getByRole('button', { name: /0 of 1 staffed/i }),
+    ).toBeVisible({ timeout: 5000 });
   });
 });

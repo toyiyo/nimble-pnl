@@ -383,3 +383,53 @@ export interface OpenShift {
   pending_claims: number;
   open_spots: number;
 }
+
+// --- Coverage engine types (used by shiftCoverage.ts + planner) ---
+
+/** A shift as seen by the coverage engine — minimal fields needed for the sweep. */
+export interface CoverageShift {
+  employee_id: string;
+  employee_name?: string | null;
+  start_time: string; // ISO UTC from Supabase
+  end_time: string;   // ISO UTC
+  position: string;
+  status?: string | null;
+  /** Work area for the shift (template's area, or employee.area when no template). Distinct from
+   *  `homeArea`. Set by ShiftPlannerTab; used by the opt-in area filter in computeSlotCoverage. */
+  area?: string | null;
+  /** Employee's home area (shift.employee.area). Distinct from `area` (work area).
+   *  Set by ShiftPlannerTab; used to compute covering vs loaned-out. */
+  homeArea?: string | null;
+}
+
+/** A contiguous sub-interval of the slot window, either fully covered (n≥C) or a gap (n<C). */
+export interface CoverageSegment {
+  startMin: number; // minutes from local midnight of the slot date
+  endMin: number;
+  covered: boolean;
+}
+
+/** One employee's clipped presence within the slot window. */
+export interface CoveringEmployee {
+  employeeId: string;
+  employeeName?: string | null;
+  startMin: number; // clipped to [w0, w1]
+  endMin: number;
+  /** Employee's home area. */
+  homeArea?: string | null;
+  /** Where the shift is worked (slot/work area). */
+  workArea?: string | null;
+}
+
+/** Full result of computeSlotCoverage for one (template slot, date) pair. */
+export interface SlotCoverage {
+  minConcurrent: number;
+  openSpots: number;
+  coveragePct: number;         // 0..100, rounded
+  segments: CoverageSegment[]; // contiguous covered/gap runs across the window
+  coveringEmployees: CoveringEmployee[];
+  /** Employees whose home area == this slot's area but who are working a
+   *  different area during the window (loaned out). Empty when slot area is null.
+   *  Does NOT affect minConcurrent/openSpots. */
+  loanedOut: CoveringEmployee[];
+}

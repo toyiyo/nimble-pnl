@@ -123,6 +123,10 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
     await setupWithShifts(page);
     const dialog = await openPrintDialog(page);
 
+    // This test asserts the grid preview's <table>; the dialog defaults to the Per-day
+    // roster layout (whose preview is not a table), so switch to the Weekly grid layout.
+    await dialog.getByRole('button', { name: 'Weekly grid' }).click();
+
     // Uncheck Alice and Bob
     await empCheckbox(dialog, 'Alice Johnson').click();
     await empCheckbox(dialog, 'Bob Smith').click();
@@ -168,6 +172,10 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
   test('Download button is disabled when no employees selected', async ({ page }) => {
     await setupWithShifts(page);
     const dialog = await openPrintDialog(page);
+
+    // "No employees selected" is the grid preview's empty state; the dialog defaults to
+    // the Per-day roster layout (empty state "No one scheduled"), so switch to Weekly grid.
+    await dialog.getByRole('button', { name: 'Weekly grid' }).click();
 
     // Deselect all
     await dialog.getByRole('button', { name: 'Deselect all employees' }).click();
@@ -229,7 +237,89 @@ test.describe('Schedule Print/Export — Employee Selection', () => {
     await dialog.getByRole('button', { name: /download pdf/i }).click();
     const download = await downloadPromise;
 
-    // Verify filename pattern
-    expect(download.suggestedFilename()).toMatch(/^schedule_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.pdf$/);
+    // The dialog defaults to the Per-day roster layout, so the export is a roster PDF
+    // spanning the whole week (roster_<weekStart>_to_<weekEnd>.pdf).
+    expect(download.suggestedFilename()).toMatch(/^roster_\d{4}-\d{2}-\d{2}_to_\d{4}-\d{2}-\d{2}\.pdf$/);
+  });
+
+  test('area filter narrows the employee list in print dialog', async ({ page }) => {
+    // Seed employees across two distinct areas so #area-filter renders
+    // (the area filter select is only shown when areas.length > 1)
+    const testUser = generateTestUser('areaprint');
+    await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
+
+    // page.evaluate crosses the browser boundary; helpers are injected at runtime so
+    // their return types are unknown — `any` is necessary here (same pattern as setupWithShifts).
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+
+    const employees = await page.evaluate(
+      ({ emps, restId }: any) => (window as any).__insertEmployees(emps, restId),
+      {
+        emps: [
+          { name: 'Front Alice', position: 'Server', area: 'Front of House', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500 },
+          { name: 'Front Bob', position: 'Server', area: 'Front of House', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500 },
+          { name: 'Back Carlos', position: 'Cook', area: 'Back of House', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1800 },
+          { name: 'Back Diana', position: 'Cook', area: 'Back of House', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1800 },
+        ],
+        restId: restaurantId,
+      },
+    );
+
+    // employees is the serialised JSON returned by __insertEmployees — shape is any[]
+    const frontAlice = (employees as any[]).find((e: any) => e.name === 'Front Alice');
+    const frontBob = (employees as any[]).find((e: any) => e.name === 'Front Bob');
+    const backCarlos = (employees as any[]).find((e: any) => e.name === 'Back Carlos');
+    const backDiana = (employees as any[]).find((e: any) => e.name === 'Back Diana');
+
+    const monday = getMondayOfCurrentWeek();
+    const tzStr = getTimezoneOffsetString();
+    const mondayStr = formatDate(monday);
+
+    await page.evaluate(
+      ({ rows, restId }: any) => (window as any).__insertShifts(rows, restId),
+      {
+        rows: [
+          { employee_id: frontAlice.id, start_time: `${mondayStr}T08:00:00${tzStr}`, end_time: `${mondayStr}T16:00:00${tzStr}`, position: 'Server', status: 'scheduled', break_duration: 0, is_published: false, locked: false },
+          { employee_id: frontBob.id, start_time: `${mondayStr}T10:00:00${tzStr}`, end_time: `${mondayStr}T18:00:00${tzStr}`, position: 'Server', status: 'scheduled', break_duration: 0, is_published: false, locked: false },
+          { employee_id: backCarlos.id, start_time: `${mondayStr}T06:00:00${tzStr}`, end_time: `${mondayStr}T14:00:00${tzStr}`, position: 'Cook', status: 'scheduled', break_duration: 0, is_published: false, locked: false },
+          { employee_id: backDiana.id, start_time: `${mondayStr}T07:00:00${tzStr}`, end_time: `${mondayStr}T15:00:00${tzStr}`, position: 'Cook', status: 'scheduled', break_duration: 0, is_published: false, locked: false },
+        ],
+        restId: restaurantId,
+      },
+    );
+
+    await page.goto('/scheduling');
+    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await page.waitForTimeout(2000);
+
+    // Set area filter to "Back of House"
+    // The #area-filter select is only rendered when areas.length > 1
+    const areaSelect = page.locator('#area-filter');
+    await expect(areaSelect).toBeVisible({ timeout: 10000 });
+    await areaSelect.click();
+    await page.getByRole('option', { name: 'Back of House' }).click();
+    await page.waitForTimeout(500);
+
+    // Open print dialog
+    const printButton = page.getByRole('button', { name: 'Print', exact: true });
+    await expect(printButton).toBeEnabled({ timeout: 8000 });
+    await printButton.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByText(/of \d+/)).toBeVisible({ timeout: 5000 });
+
+    // Only Back of House employees should appear
+    await expect(empCheckbox(dialog, 'Back Carlos')).toBeVisible();
+    await expect(empCheckbox(dialog, 'Back Diana')).toBeVisible();
+
+    // Front of House employees should NOT appear
+    await expect(empCheckbox(dialog, 'Front Alice')).not.toBeVisible();
+    await expect(empCheckbox(dialog, 'Front Bob')).not.toBeVisible();
+
+    // Count should show "2 of 2"
+    await expect(dialog.getByText('2 of 2')).toBeVisible();
   });
 });

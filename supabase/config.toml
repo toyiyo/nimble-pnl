@@ -243,3 +243,6 @@ verify_jwt = false
 
 [functions.focus-sync-data]
 verify_jwt = false
+
+[functions.focus-bulk-sync]
+verify_jwt = false

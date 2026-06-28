@@ -12,9 +12,10 @@ export type SyncMode = 'recent' | 'custom';
 
 export interface POSConfig {
   name: string;
-  dataLabel: string;         // "orders" or "tickets"
-  dataLabelSingular: string; // "order" or "ticket"
-  syncInterval: string;      // "2 hours" or "6 hours"
+  dataLabel: string;          // "orders" or "tickets"
+  dataLabelSingular: string;  // "order" or "ticket"
+  syncInterval: string;       // "2 hours" or "6 hours"
+  recentWindowLabel?: string; // e.g. "last 2 business days" — overrides "last 25 hours"
 }
 
 // --- Connection Status ---
@@ -139,7 +140,7 @@ export function SyncModeSelector({
             </Label>
             <p className="text-sm text-muted-foreground">
               {initialSyncDone
-                ? `Fetch ${config.dataLabel} from the last 25 hours`
+                ? `Fetch ${config.dataLabel} from the ${config.recentWindowLabel ?? 'last 25 hours'}`
                 : `Import last 90 days of ${config.dataLabelSingular} history`}
             </p>
           </div>
@@ -191,7 +192,7 @@ function getSyncDescription(
     return `Sync ${config.dataLabel} from ${format(dateRange.from, 'MMM d')} to ${format(dateRange.to, 'MMM d, yyyy')}`;
   }
   if (initialSyncDone) {
-    return `Manually sync ${config.dataLabel} from the last 25 hours`;
+    return `Manually sync ${config.dataLabel} from the ${config.recentWindowLabel ?? 'last 25 hours'}`;
   }
   return `Start initial sync (last 90 days of ${config.dataLabel})`;
 }
@@ -340,4 +341,12 @@ export const SLING_CONFIG: POSConfig = {
   dataLabel: 'shifts',
   dataLabelSingular: 'shift',
   syncInterval: '6 hours',
+};
+
+export const FOCUS_CONFIG: POSConfig = {
+  name: 'Focus POS',
+  dataLabel: 'daily reports',
+  dataLabelSingular: 'daily report',
+  syncInterval: '6 hours',
+  recentWindowLabel: 'last 2 business days',
 };

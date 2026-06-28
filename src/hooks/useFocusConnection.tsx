@@ -55,7 +55,7 @@ export function useFocusConnection(restaurantId?: string | null) {
   const queryClient = useQueryClient();
 
   // Query — design §10 / F8: maybeSingle(), explicit column list, staleTime 30s,
-  // refetchOnWindowFocus:false, refetchOnMount:true, enabled:!!restaurantId
+  // refetchOnWindowFocus:true, refetchOnMount:true, enabled:!!restaurantId
   const { data: connection, isLoading: loading, error } = useQuery({
     queryKey: ['focus-connection', restaurantId],
     queryFn: async () => {
@@ -83,56 +83,62 @@ export function useFocusConnection(restaurantId?: string | null) {
     },
     enabled: !!restaurantId,
     staleTime: 30000,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
     refetchOnMount: true,
   });
 
   const isConnected = !!connection;
 
   // ---- saveConnection ----
+  // useMutation with onSettled: invalidates cache on both success and failure.
+  // focus-save-connection writes to DB; even if it returns a non-2xx, the
+  // connection row may have been partially updated, so we always re-fetch.
   // Both invoke error shapes handled (lesson 2026-05-16):
   //   Shape 1: invoke itself rejects (network, timeout) → error object
   //   Shape 2: {data:null, error:{message:...}} from HTTP-level error
+
+  const saveConnectionMutation = useMutation({
+    mutationFn: async ({ restaurantId, reportUrl }: { restaurantId: string; reportUrl: string }) => {
+      const { data, error } = await supabase.functions.invoke('focus-save-connection', {
+        body: { restaurantId, reportUrl },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as Record<string, unknown>;
+    },
+    onSettled: (_data, _error, { restaurantId }) => {
+      queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
+    },
+  });
 
   async function saveConnection(
     restaurantId: string,
     reportUrl: string
   ): Promise<Record<string, unknown>> {
-    const { data, error } = await supabase.functions.invoke('focus-save-connection', {
-      body: { restaurantId, reportUrl },
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (data?.error) {
-      throw new Error(data.error);
-    }
-
-    queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
-
-    return data;
+    return saveConnectionMutation.mutateAsync({ restaurantId, reportUrl });
   }
 
   // ---- testConnection ----
+  // useMutation with onSettled: focus-test-connection writes connection_status
+  // before returning; a failed HTTP response still leaves the row updated,
+  // so we invalidate on both success and failure paths.
+
+  const testConnectionMutation = useMutation({
+    mutationFn: async (restaurantId: string) => {
+      const { data, error } = await supabase.functions.invoke('focus-test-connection', {
+        body: { restaurantId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return data as Record<string, unknown>;
+    },
+    onSettled: (_data, _error, restaurantId) => {
+      queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
+    },
+  });
 
   async function testConnection(restaurantId: string): Promise<Record<string, unknown>> {
-    const { data, error } = await supabase.functions.invoke('focus-test-connection', {
-      body: { restaurantId },
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (data?.error) {
-      throw new Error(data.error);
-    }
-
-    queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
-
-    return data;
+    return testConnectionMutation.mutateAsync(restaurantId);
   }
 
   // ---- disconnect ----
@@ -142,7 +148,7 @@ export function useFocusConnection(restaurantId?: string | null) {
     mutationFn: async (restaurantId: string) => {
       // focus_connections is not yet in the generated Supabase types — same pattern
       // as useSlingConnection.ts.
-       
+
       const { error } = await supabase
         .from('focus_connections' as any)
         .update({ is_active: false })
@@ -152,8 +158,10 @@ export function useFocusConnection(restaurantId?: string | null) {
         throw error;
       }
     },
-    onSuccess: (_, restaurantId) => {
+    onSettled: (_data, _error, restaurantId) => {
       queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
+    },
+    onSuccess: () => {
       toast({
         title: 'Disconnected',
         description: 'Focus POS connection has been disabled',
@@ -173,26 +181,28 @@ export function useFocusConnection(restaurantId?: string | null) {
   }
 
   // ---- triggerManualSync ----
-  // Both invoke error shapes handled
+  // useMutation with onSettled: focus-sync-data writes sync_cursor and
+  // last_sync_time before returning; invalidate on both paths so sync
+  // progress is always fresh after a manual trigger.
+
+  const triggerManualSyncMutation = useMutation({
+    mutationFn: async (restaurantId: string) => {
+      const { data, error } = await supabase.functions.invoke('focus-sync-data', {
+        body: { restaurantId },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return (data ?? null) as Record<string, unknown> | null;
+    },
+    onSettled: (_data, _error, restaurantId) => {
+      queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
+    },
+  });
 
   async function triggerManualSync(
     restaurantId: string
   ): Promise<Record<string, unknown> | null> {
-    const { data, error } = await supabase.functions.invoke('focus-sync-data', {
-      body: { restaurantId },
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (data?.error) {
-      throw new Error(data.error);
-    }
-
-    queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
-
-    return data;
+    return triggerManualSyncMutation.mutateAsync(restaurantId);
   }
 
   return {

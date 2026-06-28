@@ -170,7 +170,7 @@ RPCs mirror Toast (`pos_system='focus'`), `SECURITY DEFINER`,
 - `sync_focus_to_unified_sales(p_restaurant_id uuid)` and the
   `(…, p_start_date date, p_end_date date)` overload.
 - `sync_all_focus_to_unified_sales()` — bounded `ORDER BY last_sync_time
-  LIMIT 10` (5-min cron).
+  LIMIT 5` (5-min cron).
 
 **Row model (gross + offset), per business day, from `focus_daily_reports`:**
 

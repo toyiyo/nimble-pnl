@@ -224,8 +224,14 @@ export async function handleTestConnection(
       connectionStatus = 'connected';
     }
   } catch (err) {
+    // Log the raw fetch/parse error server-side; surface a sanitized, actionable
+    // reason to the client (CodeQL: don't leak internal error/stack detail).
+    console.error(
+      'focus-test-connection: report fetch failed:',
+      err instanceof Error ? err.message : String(err),
+    );
     connectionStatus = 'error';
-    lastError = err instanceof Error ? err.message : String(err);
+    lastError = 'Could not fetch the Focus report — verify the report URL and Store ID are correct';
   }
 
   // ── 9. Write connection_status via service-role client (review S3) ────────

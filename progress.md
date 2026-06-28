@@ -30,7 +30,15 @@ fix/print-inactive-employees (worktree: .claude/worktrees/print-inactive-employe
     2. ScheduleExportDialog: corrected import order (Select shadcn UI with other UI imports; scheduleVisibility lib after types)
     3. scheduleVisibility.test: added partial-fixture comment on double-cast
     Commit: 53dac27f — all 6 tests pass, typecheck PASS
-- [ ] Phase 8 Verify
+- [x] Phase 7c CodeRabbit review — 1 major finding, ruled NOT actionable:
+    - Finding: "allEmployeesWithShifts still derived from filteredShifts, so active employees with area/position-filtered shifts disappear." CodeRabbit points at plan doc lines 344-355 (not implementation). This is intentional per spec — the export mirrors the on-screen grid including area/position filter. Same ruling as Phase 7's Codex finding. No fix committed. clean=true.
+- [x] Phase 8 Verify — PASS
+    - Unit tests: 4853/4855 pass (2 intentional skips), 369 test files
+    - Typecheck: PASS (tsc --noEmit, 0 errors)
+    - Lint: 0 new errors in our files; pre-existing errors unchanged
+    - Build: PASS (vite build via main repo node_modules)
+    - DB tests: pre-existing open_shift_coverage.test.sql failure (shift_slot_min_concurrent missing from local DB — same on main)
+    - E2E tests: 146 pass, 1 flaky (scheduling-conflicts:284 fails under parallel load, passes in isolation, pre-existing), 12 skip; schedule-print-export (7/7) and scheduling-inactive-employees (3/3) all PASS
 - [ ] Phase 9 Ship & CI
 
 ## CI Status

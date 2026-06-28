@@ -490,6 +490,18 @@ Finding (severity=major):
   dropping sales data. This only matters when conn.revenueCenter is empty (all-centers fetch);
   per-center fetches (conn.revenueCenter set) are unaffected.
 
+## Phase 7c CodeRabbit COMPLETE — commit 963e367d
+
+1 actionable finding fixed: `.onConflict()` chained method → `upsert(payload, { onConflict })` options object.
+Affected: focusSyncHandler.ts + focusSaveConnectionHandler.ts + 4 test mock factories.
+All 4852 tests green.
+
+Skipped (not actionable / pre-existing patterns):
+- focus_connections FOR ALL policy: same as Toast (noted in 7b, comment in migration)
+- focus_daily_reports FOR ALL policy: same pattern; service role handles all writes
+- JSONB CHECK constraints: minor hardening, would need new ALTER migration
+- sync_cursor BETWEEN 0 AND 90: minor hardening, code already guards this
+
 ## Phase 7b Fold Findings COMPLETE — commit df287ddd
 
 10 critical/major actionable findings fixed (6 reviewers: security, performance, maintainability,

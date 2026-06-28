@@ -44,7 +44,7 @@ serve(async (req: Request) => {
     // Service-role client: used for all writes (bypasses RLS per review S3).
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    const res = await handleSaveConnection(req, { userClient, serviceClient });
+    const res = await handleSaveConnection(req, { userClient, serviceClient, fetch: globalThis.fetch });
 
     // Attach CORS headers to the handler's response.
     const body = await res.arrayBuffer();

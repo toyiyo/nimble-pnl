@@ -5,18 +5,20 @@
  *
  * Responsibilities:
  *  1. Validate the Authorization header and verify the JWT via userClient.auth.getUser().
- *  2. Parse + validate the request body: { restaurantId, reportUrl }.
+ *  2. Parse + validate the request body: { restaurantId, username, password, storeId }.
  *  3. Confirm the caller is an owner or manager of the target restaurant.
- *  4. Parse the reportUrl via parseFocusReportUrl (SSRF guard baked in: https-only,
- *     *.myfocuspos.com allowlist, StoreID required).
- *  5. Upsert into focus_connections via the service-role client (review S3: all writes
+ *  4. Authenticate against the Focus portal via loginToPortal (401 on FocusAuthError).
+ *  5. Discover report routing via discoverReportRouting.
+ *     - On FocusDiscoveryError: save the connection with connection_status='error'.
+ *  6. Encrypt the password with the encryption service.
+ *  7. Upsert into focus_connections via the service-role client (review S3: all writes
  *     to integration tables use service_role to bypass RLS).
- *  6. Return JSON responses with appropriate HTTP status codes.
+ *  8. Return JSON responses with appropriate HTTP status codes.
  *
  * Design references:
  *  - Plan Task 7
  *  - Spec §8 (_shared/focusSaveConnectionHandler.ts)
- *  - §16 S3 (service-role writes), S6 (JWT + role check), S1 (SSRF — delegated to parseFocusReportUrl)
+ *  - §16 S3 (service-role writes), S6 (JWT + role check)
  *
  * Auth pattern mirrors toast-save-credentials:
  *   Authorization header → userClient.auth.getUser() → user_restaurants role check → business logic.
@@ -26,7 +28,13 @@
  * without any Deno-specific imports.
  */
 
-import { parseFocusReportUrl } from '../../../src/lib/focusUrlParser.ts';
+import {
+  loginToPortal,
+  discoverReportRouting,
+  FocusAuthError,
+  FocusDiscoveryError,
+} from './focusPortalClient.ts';
+import { getEncryptionService } from './encryption.ts';
 import { FOCUS_ALLOWED_ROLES } from './focusReportClient.ts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -68,6 +76,30 @@ export interface SaveConnectionDeps {
   userClient: UserClient;
   /** Supabase client created with SUPABASE_SERVICE_ROLE_KEY (for writes — bypasses RLS). */
   serviceClient: ServiceClient;
+  /** fetch implementation. In production: globalThis.fetch. Injectable for Vitest. */
+  fetch: typeof fetch;
+  /**
+   * Optional injectable: replace loginToPortal for testing.
+   * Defaults to the real loginToPortal when omitted.
+   */
+  login?: (
+    deps: { fetch: typeof fetch },
+    username: string,
+    password: string,
+  ) => Promise<{ cookie: string }>;
+  /**
+   * Optional injectable: replace discoverReportRouting for testing.
+   * Defaults to the real discoverReportRouting when omitted.
+   */
+  discover?: (
+    deps: { fetch: typeof fetch },
+    session: { cookie: string },
+  ) => Promise<{
+    baseUrl: string;
+    reportPath: string;
+    dbServer: string | null;
+    dbCatalog: string | null;
+  }>;
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -75,7 +107,7 @@ export interface SaveConnectionDeps {
 /**
  * Handle a POST /focus-save-connection request.
  *
- * Expected JSON body: { restaurantId: string, reportUrl: string }
+ * Expected JSON body: { restaurantId: string, username: string, password: string, storeId: string }
  * Required header:    Authorization: Bearer <jwt>
  *
  * On success returns 200 JSON { success: true, connection: <row> }.
@@ -90,6 +122,10 @@ export async function handleSaveConnection(
       status,
       headers: { 'Content-Type': 'application/json' },
     });
+
+  // Resolve injectable overrides
+  const loginFn = deps.login ?? loginToPortal;
+  const discoverFn = deps.discover ?? discoverReportRouting;
 
   // ── 1. Authorization header ────────────────────────────────────────────────
 
@@ -116,16 +152,24 @@ export async function handleSaveConnection(
     return jsonError(400, 'Invalid JSON body');
   }
 
-  const { restaurantId, reportUrl } = body as {
+  const { restaurantId, username, password, storeId } = body as {
     restaurantId?: string;
-    reportUrl?: string;
+    username?: string;
+    password?: string;
+    storeId?: string;
   };
 
   if (!restaurantId) {
     return jsonError(400, 'Missing required field: restaurantId');
   }
-  if (!reportUrl) {
-    return jsonError(400, 'Missing required field: reportUrl');
+  if (!username) {
+    return jsonError(400, 'Missing required field: username');
+  }
+  if (!password) {
+    return jsonError(400, 'Missing required field: password');
+  }
+  if (!storeId) {
+    return jsonError(400, 'Missing required field: storeId');
   }
 
   // ── 4. Role check ─────────────────────────────────────────────────────────
@@ -141,29 +185,59 @@ export async function handleSaveConnection(
     return jsonError(403, 'Access denied: owner or manager role required');
   }
 
-  // ── 5. Validate + parse the report URL (SSRF guard) ───────────────────────
+  // ── 5. Authenticate against Focus portal (auth gate) ─────────────────────
 
-  const parsed = parseFocusReportUrl(reportUrl);
-  if (!parsed) {
-    return jsonError(
-      400,
-      'Invalid report URL: must be https://*.myfocuspos.com with a StoreID parameter',
-    );
+  let session: { cookie: string };
+  try {
+    session = await loginFn({ fetch: deps.fetch }, username, password);
+  } catch (err) {
+    if (err instanceof FocusAuthError) {
+      return jsonError(401, 'Invalid Focus credentials');
+    }
+    throw err;
   }
 
-  // ── 6. Upsert via service-role client (review S3) ─────────────────────────
+  // ── 6. Discover report routing params ─────────────────────────────────────
+
+  let routing: {
+    baseUrl: string;
+    reportPath: string;
+    dbServer: string | null;
+    dbCatalog: string | null;
+  } | null = null;
+  let discoveryError: string | null = null;
+
+  try {
+    routing = await discoverFn({ fetch: deps.fetch }, session);
+  } catch (err) {
+    if (err instanceof FocusDiscoveryError) {
+      discoveryError = err.message;
+    } else {
+      throw err;
+    }
+  }
+
+  // ── 7. Encrypt password ───────────────────────────────────────────────────
+
+  const encSvc = await getEncryptionService();
+  const passwordEncrypted = await encSvc.encrypt(password);
+
+  // ── 8. Upsert via service-role client (review S3) ─────────────────────────
 
   const upsertPayload: Record<string, unknown> = {
     restaurant_id: restaurantId,
-    report_base_url: parsed.baseUrl,
-    report_path: parsed.reportPath,
-    store_id: parsed.storeId,
-    db_server: parsed.dbServer || null,
-    db_catalog: parsed.dbCatalog || null,
-    report_user_id: parsed.userId || null,
+    username,
+    password_encrypted: passwordEncrypted,
+    store_id: storeId,
+    report_base_url: routing?.baseUrl ?? null,
+    report_path: routing?.reportPath ?? null,
+    db_server: routing?.dbServer ?? null,
+    db_catalog: routing?.dbCatalog ?? null,
+    report_user_id: username,
     is_active: true,
-    connection_status: 'pending',
-    // Reset backfill state on every save so that replacing a StoreID or report URL
+    connection_status: discoveryError ? 'error' : 'pending',
+    last_error: discoveryError ?? null,
+    // Reset backfill state on every save so that replacing credentials or storeId
     // triggers a full 90-day re-sync for the new connection. Without this reset an
     // already-completed sync would skip the backfill and only fetch recent days for
     // the replacement store. (Codex review P2)
@@ -185,7 +259,7 @@ export async function handleSaveConnection(
     return jsonError(500, 'An internal error occurred while saving the connection');
   }
 
-  // ── 7. Success ────────────────────────────────────────────────────────────
+  // ── 9. Success ────────────────────────────────────────────────────────────
 
   return new Response(JSON.stringify({ success: true, connection }), {
     status: 200,

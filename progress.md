@@ -130,4 +130,32 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
     503 error, network error propagation.
 - Full suite: 356 files / 4667 tests all green. typecheck clean.
 
-### Next: Task 5 — focusReportParser (HTML → structured day)
+### Task 5 DONE — commit 39aa3aea
+- supabase/functions/_shared/focusReportParser.ts:
+  - ParsedItem / ParsedTotals / ParsedPayment / ParsedOrderType / ParsedDay interfaces (exported).
+  - ParseResult discriminated union: {ok:true,data:ParsedDay} | {ok:false,reason:'empty'|'parse_error'} (design §16 S9).
+  - parseRevenueCenterReport(html, businessDate, domParser?): state-machine over all <tr> elements.
+    State: before_items → items → summary → payments → order_types.
+    Anchors: RE_ITEMS_HEADER (/revenue center/i), SUMMARY_LABELS map, RE_PAYMENTS_HEADER, RE_ORDER_TYPES_HEADER.
+    Revenue-center name row: col[1] and col[2] both empty in items section.
+    parseMoney(): strips $, commas, whitespace; returns 0 for empty/NaN.
+    Optional DOMParser injection (Deno: pass deno_dom instance; tests: globalThis.DOMParser via jsdom).
+    No imports — runs identically in Deno and Node/jsdom.
+  - empty detection: foundStructure=true but no items + all totals zero.
+  - parse_error: no recognizable structure (allRows.length===0 or foundStructure never set).
+- tests/fixtures/focus-revenue-center-sample.html:
+  - 100% synthetic "Sample Creamery" store (store #99999, fictional).
+  - 8 items: Dine-In (Scoop Single 20×$59.80, Scoop Double 15×$67.50, Waffle Cone 8×$28.00,
+    Sundae Classic 5×$37.50, Hot Fudge Topping 3×$6.00) + Drive-Through (Shake Vanilla 12×$65.40,
+    Shake Chocolate 9×$49.05, Cup Small 22×$44.00).
+  - Totals: netSales=$340.00, totalTax=$28.00, subtotalDiscounts=$17.25, retainedTips=$45.50,
+    refunds=$0.00, totalSales=$368.00.
+  - Payments: Cash $95.20, Visa $152.50, Mastercard $80.30, Gift Card $40.00.
+  - Order types: Eat In $198.80, Take Out $114.60, Drive-Through $54.60.
+  - No real PII (lesson 2026-06-22).
+- tests/unit/focusReportParser.test.ts: 29 Vitest tests all green.
+  Happy path: item count/names/units/sales/revenueCenter, all 6 totals, 4 payments, 3 order types,
+  businessDate pass-through. Error cases: garbage string, empty string, empty-report fixture,
+  no-table HTML, discriminated union shape (ok:true has data, ok:false has reason).
+
+### Next: Task 6 — focusSyncHandler (fetch → parse → upsert focus_daily_reports)

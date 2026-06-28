@@ -1,7 +1,38 @@
 # Progress: Focus POS integration
 
 ## Current Phase
-Phase 7c: CodeRabbit — COMPLETE (skipped, billing limit on iteration 3)
+Phase 9d: Review-comment triage — COMPLETE (commit 192ede74, pushed)
+
+## Phase 9d Triage COMPLETE — 2026-06-28
+
+All PR review comments classified and actioned. Full artifact at
+dev-tools/9d-triage-fix/focus-pos-integration.md.
+
+### Findings Fixed (commit 192ede74)
+
+**Bugs (critical — 2 fixes):**
+- C7 (Codex P1): DOMParser not provided in Deno runtime → parser returned parse_error
+  on every call. Fixed by injecting optional domParser field through SyncDeps/SyncDataDeps/
+  BulkSyncDeps/TestConnectionDeps; deno_dom imported only in the thin index.ts entry points.
+- C8 (Codex P1): Backfill cursor advanced even on fetch/parse errors → permanently skipped
+  business days on transient failures. Fixed: cursor only advances when result.status !== 'error'.
+
+**Refactor/suggestion (1 implemented):**
+- C9 (Codex P2): Reconnecting with a new StoreID skipped the 90-day backfill. Fixed:
+  save-connection upsert now resets sync_cursor=0, initial_sync_done=false, last_sync_time=null.
+
+**Nit/code quality (5 fixes):**
+- C2: Removed unused Dialog import from FocusSetupWizard.tsx
+- C3: Removed unused userRoleSingleMock variable from focusSaveConnectionHandler.test.ts
+- C4-C6: Removed 3 unused variable bindings from focusSyncHandler.test.ts
+
+**Declined (1):**
+- C1: CodeQL stack-trace findings on 5 focus functions — declined (pre-existing pattern in
+  7+ other edge functions). Replied on PR with explanation.
+
+**Informational (4 bot comments):** netlify, vercel, supabase, coderabbitai bots — no action.
+
+### Tests: 4857 passed / 2 skipped (all green, +5 new regression tests)
 
 ## DECISION LOG (latest first)
 - 2026-06-27: Data source PIVOT. FocusLink integrator API abandoned (creds ~impossible to get).
@@ -605,7 +636,30 @@ Fixed to COUNT(*) > 0 — committed 4598b3c1 (previous conversation).
 - 3fd89a82 fix(db): use GRANT ALL TABLES in SCHEMA public for local CLI compat
 
 ## Current Phase
-Phase 8: Verify — COMPLETE. allPass=true (only pre-existing failures match CI baseline).
+Phase 9b: CI — COMPLETE (ciGreen=true, iteration 1/5).
+
+## Phase 9b: CI — COMPLETE
+
+All checks passed (no failures, no fixups needed):
+- Analyze (actions): pass (43s)
+- Analyze (javascript-typescript): pass (1m28s)
+- CodeQL: pass (2s)
+- CodeRabbit: pass (review completed)
+- Database Tests (pgTAP): pass (4m34s)
+- E2E Tests (Shard 1/4): pass (9m52s)
+- E2E Tests (Shard 2/4): pass (12m25s)
+- E2E Tests (Shard 3/4): pass (11m10s)
+- E2E Tests (Shard 4/4): pass (8m12s)
+- Merge E2E Reports: pass (38s)
+- Unit Tests: pass (7m15s)
+- SonarCloud Code Analysis: pass (2m48s) — configured and passing
+- Supabase Preview: pass
+- Vercel: pass
+- netlify/easyshifthq/deploy-preview: pass
+- Redirect rules, Vercel Preview Comments: pass
+- Header rules / Pages changed: skipping (not applicable)
+
+No commits needed — no CI failures to fix.
 
 ## Phase 9a: Ship — COMPLETE
 

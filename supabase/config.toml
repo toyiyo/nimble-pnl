@@ -240,3 +240,6 @@ verify_jwt = false
 
 [functions.focus-test-connection]
 verify_jwt = false
+
+[functions.focus-sync-data]
+verify_jwt = false

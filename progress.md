@@ -19,6 +19,8 @@ fix/print-inactive-employees (worktree: .claude/worktrees/print-inactive-employe
 - [ ] Phase 4 Build (TDD)
   - [x] Task 1: Create src/lib/scheduleVisibility.ts (buildActiveShiftEmployeeIds + filterEmployeesForScheduleView + selectVisibleRosterInputs), typecheck, commit (2034f289)
   - [x] Task 2: Re-point Scheduling.tsx at the lib: delete helper definitions, add import + re-export for back-compat, run schedulingHelpers.test.ts (16/16 pass), typecheck, commit (e6fafcad)
+  - [x] Task 3: Add selectVisibleRosterInputs via TDD: wrote 6 tests in scheduleVisibility.test.ts, all 6 pass (function was already in lib from Task 1), typecheck pass, commit (30a75eb0)
+  - [x] Task 4: Apply selectVisibleRosterInputs chokepoint in ScheduleExportDialog.tsx: imported helper, derived visibleShifts/visibleEmployees, replaced filteredShifts + allEmployeesWithShifts memos, updated previewRosterDay, updated both PDF generator calls, typecheck pass, all 74 tests in 7-file suite pass, commit (d12c8211)
 - [ ] Phase 5 UI review
 - [ ] Phase 6 Simplify
 - [ ] Phase 7 Multi-model review

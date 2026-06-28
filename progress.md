@@ -490,7 +490,7 @@ Finding (severity=major):
   dropping sales data. This only matters when conn.revenueCenter is empty (all-centers fetch);
   per-center fetches (conn.revenueCenter set) are unaffected.
 
-## Phase 7c CodeRabbit COMPLETE — commit 963e367d
+## Phase 7c CodeRabbit iteration 1 COMPLETE — commit 963e367d
 
 1 actionable finding fixed: `.onConflict()` chained method → `upsert(payload, { onConflict })` options object.
 Affected: focusSyncHandler.ts + focusSaveConnectionHandler.ts + 4 test mock factories.
@@ -501,6 +501,35 @@ Skipped (not actionable / pre-existing patterns):
 - focus_daily_reports FOR ALL policy: same pattern; service role handles all writes
 - JSONB CHECK constraints: minor hardening, would need new ALTER migration
 - sync_cursor BETWEEN 0 AND 90: minor hardening, code already guards this
+
+## Phase 7c CodeRabbit iteration 2 COMPLETE — commit c8d23617
+
+6 actionable findings fixed:
+
+**Security (critical):**
+- REVOKE default PUBLIC/anon EXECUTE on SECURITY DEFINER RPCs in new migration
+  20260627150000_focus_sync_hardening.sql — impl + sync_all now service_role-only.
+
+**Data integrity (major):**
+- Offset row IDs (tax/tip/discount/refund) now include revenue_center slug prefix
+  so rows from different revenue centers for the same store/date don't overwrite.
+- Aggregation drives from focus_daily_reports (not synced_at >= v_sync_start) —
+  covers delete-only syncs that left no updated synced_at rows.
+
+**Stability (major):**
+- sync_all_focus_to_unified_sales updates last_sync_time after each successful
+  sync so the round-robin ORDER BY advances past the same 5 restaurants.
+
+**Frontend (major):**
+- refetchOnWindowFocus: false → true in useFocusConnection.
+- saveConnection/testConnection/triggerManualSync use useMutation + onSettled
+  for cache invalidation on both success and failure paths.
+
+**Docs (minor):**
+- Design doc LIMIT 10 → LIMIT 5 (aligned with code).
+
+New pgTAP test file: supabase/tests/43_focus_sync_hardening.sql (7 tests).
+All 4852 Vitest tests green, typecheck clean.
 
 ## Phase 7b Fold Findings COMPLETE — commit df287ddd
 

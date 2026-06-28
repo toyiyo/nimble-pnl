@@ -54,9 +54,7 @@ export interface ServiceClient {
       data: Record<string, unknown>,
       options?: Record<string, unknown>,
     ): {
-      onConflict(columns: string): {
-        select(): Promise<{ data: unknown; error: { message: string } | null }>;
-      };
+      select(): Promise<{ data: unknown; error: { message: string } | null }>;
     };
   };
 }
@@ -170,8 +168,7 @@ export async function handleSaveConnection(
 
   const { data: connection, error: upsertError } = await deps.serviceClient
     .from('focus_connections')
-    .upsert(upsertPayload)
-    .onConflict('restaurant_id')
+    .upsert(upsertPayload, { onConflict: 'restaurant_id' })
     .select();
 
   if (upsertError) {

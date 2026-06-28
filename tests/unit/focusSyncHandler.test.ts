@@ -77,20 +77,20 @@ const GARBAGE_HTML = '<html><body><p>Not a report</p></body></html>';
 
 /**
  * Build a minimal Supabase-like client mock.
- * The upsert chain: .from().upsert().onConflict().select() must resolve.
+ * The upsert chain: .from().upsert(payload, options).select() must resolve.
+ * onConflict is passed as an options object (not a chained method).
  */
 function makeSupabaseMock(opts: { error?: string } = {}) {
   const selectMock = vi.fn().mockResolvedValue({
     data: opts.error ? null : [{}],
     error: opts.error ? { message: opts.error } : null,
   });
-  const onConflictMock = vi.fn().mockReturnValue({ select: selectMock });
-  const upsertMock = vi.fn().mockReturnValue({ onConflict: onConflictMock });
+  const upsertMock = vi.fn().mockReturnValue({ select: selectMock });
   const fromMock = vi.fn().mockReturnValue({ upsert: upsertMock });
 
   return {
     client: { from: fromMock },
-    mocks: { fromMock, upsertMock, onConflictMock, selectMock },
+    mocks: { fromMock, upsertMock, selectMock },
   };
 }
 
@@ -177,8 +177,9 @@ describe('processReportDay', () => {
       expect(upsertPayload.raw_totals_json).not.toBeNull();
     });
 
-    it('calls onConflict with the three unique-key columns', () => {
-      const conflictArg = mocks.onConflictMock.mock.calls[0][0] as string;
+    it('passes onConflict option with the three unique-key columns', () => {
+      const upsertOptions = mocks.upsertMock.mock.calls[0][1] as Record<string, string>;
+      const conflictArg = upsertOptions?.onConflict ?? '';
       expect(conflictArg).toContain('restaurant_id');
       expect(conflictArg).toContain('business_date');
       expect(conflictArg).toContain('revenue_center');

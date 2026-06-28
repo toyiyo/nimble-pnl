@@ -115,9 +115,9 @@ function makeServiceClientMock(opts: { connection?: MockConnection } = {}) {
   const updateMock = vi.fn().mockReturnValue({ eq: eqUpdateMock });
 
   // focus_daily_reports upsert (processReportDay goes through supabase.from())
+  // onConflict is passed as an options object to upsert(), not a chained method
   const upsertSelectMock = vi.fn().mockResolvedValue({ data: [], error: null });
-  const onConflictMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
-  const upsertMock = vi.fn().mockReturnValue({ onConflict: onConflictMock });
+  const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
 
   const fromMock = vi.fn().mockImplementation((table: string) => {
     if (table === 'focus_connections') {
@@ -137,7 +137,6 @@ function makeServiceClientMock(opts: { connection?: MockConnection } = {}) {
       updateMock,
       eqUpdateMock,
       upsertMock,
-      onConflictMock,
       singleMock,
     },
   };

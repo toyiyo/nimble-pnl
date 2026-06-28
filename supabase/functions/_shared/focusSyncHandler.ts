@@ -43,9 +43,7 @@ export interface SupabaseDeps {
       data: Record<string, unknown>,
       options?: Record<string, unknown>,
     ): {
-      onConflict(columns: string): {
-        select(): Promise<{ data: unknown; error: { message: string } | null }>;
-      };
+      select(): Promise<{ data: unknown; error: { message: string } | null }>;
     };
   };
 }
@@ -153,8 +151,7 @@ export async function processReportDay(
     // 5. Upsert into focus_daily_reports
     const { error } = await deps.supabase
       .from('focus_daily_reports')
-      .upsert(payload)
-      .onConflict('restaurant_id,business_date,revenue_center')
+      .upsert(payload, { onConflict: 'restaurant_id,business_date,revenue_center' })
       .select();
 
     if (error) {

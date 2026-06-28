@@ -78,13 +78,13 @@ function makeServiceClientMock(opts: { error?: string } = {}) {
     data: opts.error ? null : [{ id: 'conn-uuid' }],
     error: opts.error ? { message: opts.error } : null,
   });
-  const onConflictMock = vi.fn().mockReturnValue({ select: selectMock });
-  const upsertMock = vi.fn().mockReturnValue({ onConflict: onConflictMock });
+  // onConflict is passed as an options object to upsert(), not a chained method
+  const upsertMock = vi.fn().mockReturnValue({ select: selectMock });
   const fromMock = vi.fn().mockReturnValue({ upsert: upsertMock });
 
   return {
     client: { from: fromMock },
-    mocks: { fromMock, upsertMock, onConflictMock, selectMock },
+    mocks: { fromMock, upsertMock, selectMock },
   };
 }
 
@@ -354,9 +354,9 @@ describe('handleSaveConnection', () => {
       expect(payload).toHaveProperty('connection_status', 'pending');
     });
 
-    it('uses onConflict("restaurant_id") for upsert', () => {
-      const conflictArg = serviceClientMocks.onConflictMock.mock.calls[0][0] as string;
-      expect(conflictArg).toBe('restaurant_id');
+    it('passes onConflict("restaurant_id") option to upsert', () => {
+      const upsertOptions = serviceClientMocks.upsertMock.mock.calls[0][1] as Record<string, string>;
+      expect(upsertOptions?.onConflict).toBe('restaurant_id');
     });
   });
 

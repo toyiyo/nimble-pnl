@@ -34,7 +34,7 @@ Phase 7c: CodeRabbit — COMPLETE (skipped, billing limit on iteration 3)
 - Portal recon: CheckViewer 1+2N drilldown mapped (rejected); SSRS report path found (chosen).
 
 ## Git
-- PR: not yet created. No code written.
+- PR: https://github.com/toyiyo/nimble-pnl/pull/557 (PR #557)
 
 ## 2026-06-27 BREAKTHROUGH: ReportServer is ANONYMOUS (no creds needed)
 - Tested report URL with NO cookies / NO auth (clean curl): HTTP 200 + full Revenue Center HTML
@@ -606,3 +606,9 @@ Fixed to COUNT(*) > 0 — committed 4598b3c1 (previous conversation).
 
 ## Current Phase
 Phase 8: Verify — COMPLETE. allPass=true (only pre-existing failures match CI baseline).
+
+## Phase 9a: Ship — COMPLETE
+
+- Branch pushed: `git push -u origin feature/focus-pos-integration`
+- PR created: https://github.com/toyiyo/nimble-pnl/pull/557 (PR #557)
+- Title: "feat(focus): Focus POS integration via SSRS Revenue Center report"

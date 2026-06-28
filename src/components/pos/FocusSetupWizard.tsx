@@ -5,15 +5,15 @@
  * Design doc §10 + F1–F8.
  *
  * Steps:
- *   1. instructions  — how to get the report URL (informational Alert, no alarm)
- *   2. url-entry     — paste URL; client-side parseFocusReportUrl preview
- *   2b. url-confirmed — show detected storeId / brand; "Save & Connect"
- *   3. done          — "Sync now" / close
+ *   1. instructions — informational step; how to prepare credentials
+ *   2. credentials  — enter username, password, store ID; click Continue to preview
+ *   2b. confirmed   — show detected storeId and username; "Save & Connect"
+ *   3. done         — "Sync now" / close
  *
  * F1: wizard owns DialogContent + DialogHeader + DialogTitle + DialogDescription.
- * F2: URL input has aria-invalid + aria-describedby → inline error id.
- * F3: testConnection failure → stays on url-confirmed, keeps URL, shows inline error + Retry.
- * F4: two-phase step 2 (url-entry → url-confirmed) with client preview.
+ * F2: credential inputs have aria-invalid + aria-describedby → inline error ids.
+ * F3: testConnection failure → stays on confirmed, shows inline error + Retry.
+ * F4: two-phase step 2 (credentials → confirmed) with preview.
  * F7: max-h-[80vh] + sticky footer.
  * F8: DialogDescription (not bare <p>), step indicator aria-current="step".
  */
@@ -31,15 +31,14 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import { useFocusConnection } from '@/hooks/useFocusConnection';
-import { parseFocusReportUrl } from '@/lib/focusUrlParser';
-import { CheckCircle2, AlertCircle, ExternalLink, Link, Loader2, Info } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Loader2, Info, Link } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type WizardStep =
-  | 'instructions'  // step 1: how to get the URL
-  | 'url-entry'     // step 2a: paste URL
-  | 'url-confirmed' // step 2b: show detected params, "Save & Connect"
+  | 'instructions'  // step 1: how to get credentials
+  | 'credentials'   // step 2a: enter username/password/storeId
+  | 'confirmed'     // step 2b: preview storeId + username, "Save & Connect"
   | 'done';         // step 3: complete
 
 interface FocusSetupWizardProps {
@@ -53,13 +52,13 @@ interface FocusSetupWizardProps {
 
 const STEPS: { id: string; label: string }[] = [
   { id: 'instructions', label: 'Instructions' },
-  { id: 'url',          label: 'Paste URL' },
+  { id: 'credentials',  label: 'Credentials' },
   { id: 'done',         label: 'Done' },
 ];
 
 function stepIndex(step: WizardStep): number {
   if (step === 'instructions') return 0;
-  if (step === 'url-entry' || step === 'url-confirmed') return 1;
+  if (step === 'credentials' || step === 'confirmed') return 1;
   return 2;
 }
 
@@ -114,11 +113,14 @@ function StepIndicator({ current }: StepIndicatorProps) {
 
 // ─── Component ─────────────────────────────────────────────────────────────────
 
-export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: FocusSetupWizardProps) {
+export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOpenChange }: FocusSetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('instructions');
-  const [reportUrl, setReportUrl] = useState('');
-  const [urlError, setUrlError] = useState<string | null>(null);
-  const [parsedParams, setParsedParams] = useState<ReturnType<typeof parseFocusReportUrl> | null>(null);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [storeId, setStoreId] = useState('');
+  const [usernameError, setUsernameError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [storeIdError, setStoreIdError] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
 
@@ -128,22 +130,38 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
   // ── Step 1 → 2 ─────────────────────────────────────────────────────────────
 
   function handleGetStarted() {
-    setStep('url-entry');
+    setStep('credentials');
   }
 
-  // ── Step 2a: Verify URL (client-side parse) ─────────────────────────────────
+  // ── Step 2a: Validate credentials (client-side) ─────────────────────────────
 
-  function handleVerifyUrl() {
-    setUrlError(null);
-    const parsed = parseFocusReportUrl(reportUrl);
-    if (!parsed) {
-      setUrlError(
-        'Could not parse this URL. Paste the full address bar URL from the Focus Revenue Center report page (must be an https://...myfocuspos.com URL containing a StoreID).'
-      );
-      return;
+  function handleContinue() {
+    let hasError = false;
+
+    if (!username.trim()) {
+      setUsernameError('Username is required');
+      hasError = true;
+    } else {
+      setUsernameError(null);
     }
-    setParsedParams(parsed);
-    setStep('url-confirmed');
+
+    if (!password.trim()) {
+      setPasswordError('Password is required');
+      hasError = true;
+    } else {
+      setPasswordError(null);
+    }
+
+    if (!storeId.trim()) {
+      setStoreIdError('Store ID is required');
+      hasError = true;
+    } else {
+      setStoreIdError(null);
+    }
+
+    if (hasError) return;
+
+    setStep('confirmed');
   }
 
   // ── Step 2b: Save & Connect ─────────────────────────────────────────────────
@@ -152,7 +170,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
     setConnectError(null);
     setIsConnecting(true);
     try {
-      await saveConnection(restaurantId, reportUrl);
+      await saveConnection(restaurantId, username, password, storeId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save connection';
       setConnectError(msg);
@@ -164,7 +182,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
       await testConnection(restaurantId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Connection test failed';
-      // Partial failure (F3): saved but test failed → stay on step 2b, show error + Retry
+      // Partial failure (F3): saved but test failed → stay on confirmed, show error + Retry
       setConnectError(msg);
       setIsConnecting(false);
       return;
@@ -195,8 +213,9 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
   // ── Dialog description text per step ──────────────────────────────────────
 
   function dialogDescription(): string {
-    if (step === 'instructions') return 'Follow these steps to find and copy your Focus Revenue Center report URL.';
-    if (step === 'url-entry' || step === 'url-confirmed') return 'Paste your Focus report URL so we can detect your store settings.';
+    if (step === 'instructions') return 'Follow these steps to connect your Focus POS account.';
+    if (step === 'credentials') return 'Enter your Focus POS credentials to authenticate and connect.';
+    if (step === 'confirmed') return 'Review your settings and save the connection.';
     return 'Your Focus POS connection is ready.';
   }
 
@@ -235,114 +254,158 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
             <Alert className="border-border/40 bg-muted/30">
               <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <AlertDescription className="text-[13px]">
-                <span className="font-medium text-foreground">No password required.</span>{' '}
-                Focus report URLs contain no credentials. Note: anyone who knows your Store ID can
-                read this report — we only fetch data for the store you authorize. If you're
-                concerned, you can{' '}
-                <a
-                  href="https://www.shift4.com/contact"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-foreground transition-colors"
-                >
-                  report this to Focus/Shift4
-                  <ExternalLink className="inline h-3 w-3 ml-0.5" aria-hidden="true" />
-                </a>
-                .
+                <span className="font-medium text-foreground">Credentials are encrypted before storage.</span>{' '}
+                Your Focus POS username and password are used to authenticate and discover your
+                report settings. They are encrypted with AES-GCM before being stored.
               </AlertDescription>
             </Alert>
 
             <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
               <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
                 <h3 className="text-[13px] font-semibold text-foreground">
-                  How to get your report URL
+                  How to connect your Focus POS account
                 </h3>
               </div>
               <div className="p-4">
                 <ol className="space-y-3 text-[13px] text-muted-foreground list-decimal list-inside">
                   <li>
-                    Log in to your Focus POS portal at{' '}
-                    <a
-                      href="https://my.focuspos.com"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-foreground underline underline-offset-2 hover:text-foreground/80 inline-flex items-center gap-0.5"
-                    >
-                      my.focuspos.com
-                      <ExternalLink className="h-3 w-3" aria-hidden="true" />
-                    </a>
+                    Have your Focus POS portal credentials ready (username and password from{' '}
+                    <span className="text-foreground font-medium">my.focuspos.com</span>)
                   </li>
-                  <li>Navigate to <strong className="text-foreground">Reports</strong> → <strong className="text-foreground">Revenue Center</strong></li>
-                  <li>Run the report for any date range</li>
-                  <li>Copy the <strong className="text-foreground">full URL</strong> from your browser&apos;s address bar</li>
-                  <li>Paste it on the next screen</li>
+                  <li>
+                    Know your <strong className="text-foreground">Store ID</strong> (from your Focus
+                    contract or admin — usually a 4–6 digit number)
+                  </li>
+                  <li>Click <strong className="text-foreground">Get Started</strong> to enter your credentials and connect</li>
                 </ol>
               </div>
             </div>
           </>
         )}
 
-        {/* ── Step 2a: URL entry ───────────────────────────────── */}
-        {step === 'url-entry' && (
+        {/* ── Step 2a: Credentials entry ──────────────────────── */}
+        {step === 'credentials' && (
           <div className="space-y-4">
+            {/* Username */}
             <div className="space-y-1.5">
-              {/* F2: htmlFor wired to input id */}
               <Label
-                htmlFor="focus-report-url"
+                htmlFor="focus-username"
                 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
               >
-                Report URL
+                Username
               </Label>
               <Input
-                id="focus-report-url"
-                type="url"
-                value={reportUrl}
+                id="focus-username"
+                type="text"
+                value={username}
                 onChange={(e) => {
-                  setReportUrl(e.target.value);
-                  if (urlError) setUrlError(null);
+                  setUsername(e.target.value);
+                  if (usernameError) setUsernameError(null);
                 }}
-                placeholder="https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/..."
-                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg font-mono focus-visible:ring-1 focus-visible:ring-border ${
-                  urlError ? 'border-destructive focus-visible:ring-destructive' : ''
+                placeholder="your.username"
+                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
+                  usernameError ? 'border-destructive focus-visible:ring-destructive' : ''
                 }`}
-                // F2: aria-invalid + aria-describedby
-                aria-invalid={urlError ? 'true' : undefined}
-                aria-describedby={urlError ? 'focus-url-error' : undefined}
+                aria-invalid={usernameError ? 'true' : undefined}
+                aria-describedby={usernameError ? 'focus-username-error' : undefined}
               />
-              {/* F2: inline error element with matching id */}
-              {urlError && (
+              {usernameError && (
                 <p
-                  id="focus-url-error"
+                  id="focus-username-error"
                   className="text-[12px] text-destructive flex items-start gap-1.5 mt-1"
                   role="alert"
                 >
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
-                  {urlError}
+                  {usernameError}
                 </p>
               )}
             </div>
-            <p className="text-[12px] text-muted-foreground">
-              Paste the full address bar URL from the Focus Revenue Center report. We extract your
-              Store ID and brand from it — no passwords are sent.
-            </p>
+
+            {/* Password */}
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="focus-password"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Password
+              </Label>
+              <Input
+                id="focus-password"
+                type="password"
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (passwordError) setPasswordError(null);
+                }}
+                placeholder="••••••••"
+                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
+                  passwordError ? 'border-destructive focus-visible:ring-destructive' : ''
+                }`}
+                aria-invalid={passwordError ? 'true' : undefined}
+                aria-describedby={passwordError ? 'focus-password-error' : undefined}
+              />
+              {passwordError && (
+                <p
+                  id="focus-password-error"
+                  className="text-[12px] text-destructive flex items-start gap-1.5 mt-1"
+                  role="alert"
+                >
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                  {passwordError}
+                </p>
+              )}
+            </div>
+
+            {/* Store ID */}
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="focus-store-id"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Store ID
+              </Label>
+              <Input
+                id="focus-store-id"
+                type="text"
+                value={storeId}
+                onChange={(e) => {
+                  setStoreId(e.target.value);
+                  if (storeIdError) setStoreIdError(null);
+                }}
+                placeholder="15312"
+                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
+                  storeIdError ? 'border-destructive focus-visible:ring-destructive' : ''
+                }`}
+                aria-invalid={storeIdError ? 'true' : undefined}
+                aria-describedby={storeIdError ? 'focus-store-id-error' : undefined}
+              />
+              {storeIdError && (
+                <p
+                  id="focus-store-id-error"
+                  className="text-[12px] text-destructive flex items-start gap-1.5 mt-1"
+                  role="alert"
+                >
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                  {storeIdError}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
         {/* ── Step 2b: Confirmation ─────────────────────────────── */}
-        {step === 'url-confirmed' && parsedParams && (
+        {step === 'confirmed' && (
           <div className="space-y-4">
             <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
               <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
-                <h3 className="text-[13px] font-semibold text-foreground">Detected settings</h3>
+                <h3 className="text-[13px] font-semibold text-foreground">Connection settings</h3>
                 <p className="text-[12px] text-muted-foreground mt-0.5">
-                  Confirm these look correct for your store.
+                  Confirm these look correct before connecting.
                 </p>
               </div>
               <div className="p-4 space-y-3">
-                <Row label="Store ID" value={parsedParams.storeId} />
-                {parsedParams.dbCatalog && <Row label="Brand" value={parsedParams.dbCatalog} />}
-                {parsedParams.dbServer && <Row label="DB Server" value={parsedParams.dbServer} />}
-                <Row label="Host" value={parsedParams.baseUrl} />
+                <Row label="Store ID" value={storeId} />
+                <Row label="Username" value={username} />
               </div>
             </div>
 
@@ -354,32 +417,11 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
                   <span className="font-medium">Connection test failed:</span> {connectError}
                   <br />
                   <span className="text-[12px] text-destructive/80">
-                    Your URL was saved. Click Retry to test again, or go back to change the URL.
+                    Your credentials were saved. Click Retry to test again, or go back to change them.
                   </span>
                 </AlertDescription>
               </Alert>
             )}
-
-            {/* Show the URL input (read-only) so user can confirm/edit */}
-            <div className="space-y-1.5">
-              <Label
-                htmlFor="focus-report-url"
-                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-              >
-                Report URL
-              </Label>
-              <Input
-                id="focus-report-url"
-                type="url"
-                value={reportUrl}
-                onChange={(e) => {
-                  setReportUrl(e.target.value);
-                  setConnectError(null);
-                }}
-                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg font-mono focus-visible:ring-1 focus-visible:ring-border"
-                aria-label="Report URL"
-              />
-            </div>
           </div>
         )}
 
@@ -411,16 +453,18 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
       <div className="flex-shrink-0 px-6 py-4 border-t border-border/40 bg-background flex items-center justify-between gap-3">
         {/* Left: Back button (steps 2a/2b only) */}
         <div>
-          {(step === 'url-entry' || step === 'url-confirmed') && (
+          {(step === 'credentials' || step === 'confirmed') && (
             <button
               type="button"
               onClick={() => {
-                if (step === 'url-entry') {
-                  setUrlError(null);
+                if (step === 'credentials') {
+                  setUsernameError(null);
+                  setPasswordError(null);
+                  setStoreIdError(null);
                   setStep('instructions');
                 } else {
                   setConnectError(null);
-                  setStep('url-entry');
+                  setStep('credentials');
                 }
               }}
               className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
@@ -441,17 +485,16 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
             </Button>
           )}
 
-          {step === 'url-entry' && (
+          {step === 'credentials' && (
             <Button
-              onClick={handleVerifyUrl}
-              disabled={!reportUrl.trim()}
-              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium disabled:opacity-50"
+              onClick={handleContinue}
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
             >
-              Verify URL
+              Continue
             </Button>
           )}
 
-          {step === 'url-confirmed' && (
+          {step === 'confirmed' && (
             <>
               {connectError && (
                 <Button

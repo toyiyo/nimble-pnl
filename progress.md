@@ -244,4 +244,46 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   2026-06-27T23:00:00Z + America/New_York → 06%2F26%2F2026. Manager role also 200.
 - Full suite: 360 files / 4759 tests green. typecheck clean.
 
-### Next: Task 9 — focus-sync-data edge function (manual)
+### Task 9 DONE — commit 35aaa00b
+- supabase/functions/_shared/focusSyncDataHandler.ts:
+  - UserClient / ServiceClient / SyncDataDeps interfaces (injectable for Vitest).
+  - todayInTz(tz, now): returns today's calendar date ('YYYY-MM-DD') in the given IANA
+    timezone via Intl.DateTimeFormat with en-CA locale (review S4: prevents UTC-midnight
+    off-by-one across the 90-day backfill, not just incremental).
+  - subtractDays(isoDate, days): subtracts calendar days using noon UTC anchor to avoid
+    DST edge cases.
+  - handleSyncData(req, deps):
+    1. 401 when Authorization header absent.
+    2. 401 when getUser() returns null.
+    3. 400 when restaurantId missing (/restaurantId/i error).
+    4. 403 when user is not owner/manager in user_restaurants (review S6).
+    5. 404 when no active focus_connections row for the restaurant.
+    6. Builds FocusConnection from the DB row.
+    7. Backfill path (initial_sync_done=false): target = today_in_tz − cursor − 1;
+       calls processReportDay; increments sync_cursor; sets initial_sync_done=true
+       when cursor reaches 90 (TARGET_DAYS).
+    8. Incremental path (initial_sync_done=true): processes yesterday + day-before
+       (last 2 business days) in parallel; surfaces worst status (error > empty > ok).
+    9. Writes sync_cursor/initial_sync_done/last_sync_time via service-role client
+       (review S3).
+    10. Returns 200 { syncCursor, initialSyncDone, status }.
+- supabase/functions/focus-sync-data/index.ts: thin CORS wrapper (verify_jwt=false
+  pattern matching focus-save-connection and focus-test-connection); builds
+  userClient (with caller JWT) + serviceClient (service role key) + passes
+  globalThis.fetch; delegates to handler.
+- supabase/config.toml: [functions.focus-sync-data] verify_jwt = false.
+- tests/unit/focusSyncDataHandler.test.ts: 25 Vitest tests all green.
+  Missing auth header (401), bad JWT (401), missing restaurantId (400 + /restaurantId/i),
+  staff role (403), no membership (403), no connection (404).
+  Backfill path (cursor=5, now=June 27 Chicago): 200, syncCursor=6,
+  initialSyncDone=false, status='ok', URL contains StartDate=06%2F21%2F2026 (June 27
+  − 5 − 1 = June 21), update payload has sync_cursor=6 + last_sync_time string.
+  Backfill completion (cursor=89→90): syncCursor=90, initialSyncDone=true, DB payload
+  has initial_sync_done=true + sync_cursor=90. Incremental path (cursor=90): 200,
+  initialSyncDone=true, 2 fetch calls, URLs contain 06/26/2026 and 06/25/2026.
+  Timezone backfill (02:00 UTC + America/Chicago = June 26 local → target = June 25).
+  S3 service-role write asserted (updateMock called once). Manager role 200. HTTP 503
+  fetch → status='error' (still 200).
+- Full suite: 361 files / 4784 tests green. typecheck clean.
+
+### Next: Task 10 — focus-bulk-sync edge function (cron)

@@ -196,19 +196,25 @@ export const ScheduleExportDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Printer className="h-5 w-5 text-primary" />
-            Print Schedule
-          </DialogTitle>
-          <DialogDescription>
-            Export a kitchen-friendly schedule for display or manager reference.
-          </DialogDescription>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-y-auto p-0 gap-0 border-border/40">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
+              <Printer className="h-5 w-5 text-foreground" />
+            </div>
+            <div>
+              <DialogTitle className="text-[17px] font-semibold text-foreground">Print Schedule</DialogTitle>
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                Export a kitchen-friendly schedule for display or manager reference.
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
 
+        <div className="px-6 py-5 space-y-5">
+
         {/* Preview */}
-        <div className="border rounded-lg p-4 bg-muted/30">
+        <div className="border border-border/40 rounded-xl p-4 bg-muted/30">
           <div className="text-center mb-3">
             <div className="font-bold text-sm">{restaurantName.toUpperCase()}</div>
             <div className="text-xs text-muted-foreground">
@@ -424,7 +430,7 @@ export const ScheduleExportDialog = ({
                   Sort by
                 </Label>
                 <Select value={sortBy} onValueChange={(v) => setSortBy(v as RosterSortBy)}>
-                  <SelectTrigger className="h-9 mt-1.5 text-[13px]" aria-label="Sort by">
+                  <SelectTrigger className="h-9 mt-1.5 text-[13px] bg-muted/30 border-border/40 rounded-lg" aria-label="Sort by">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -439,7 +445,7 @@ export const ScheduleExportDialog = ({
                   Day
                 </Label>
                 <Select value={rosterDay} onValueChange={setRosterDay}>
-                  <SelectTrigger className="h-9 mt-1.5 text-[13px]" aria-label="Day">
+                  <SelectTrigger className="h-9 mt-1.5 text-[13px] bg-muted/30 border-border/40 rounded-lg" aria-label="Day">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -464,7 +470,7 @@ export const ScheduleExportDialog = ({
               checked={includePositions}
               onCheckedChange={(checked) => setIncludePositions(checked === true)}
             />
-            <Label htmlFor="include-positions" className="text-sm cursor-pointer">
+            <Label htmlFor="include-positions" className="text-[14px] cursor-pointer">
               Include position labels
             </Label>
           </div>
@@ -474,21 +480,31 @@ export const ScheduleExportDialog = ({
               checked={includeHoursSummary}
               onCheckedChange={(checked) => setIncludeHoursSummary(checked === true)}
             />
-            <Label htmlFor="include-hours" className="text-sm cursor-pointer">
+            <Label htmlFor="include-hours" className="text-[14px] cursor-pointer">
               {layout === 'roster' ? 'Include hours per shift' : 'Include hours summary per employee'}
             </Label>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
             Cancel
           </Button>
-          <Button onClick={handleExport} className="gap-2" disabled={selectedCount === 0}>
+          <Button
+            onClick={handleExport}
+            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium gap-2"
+            disabled={selectedCount === 0}
+          >
             <FileDown className="h-4 w-4" />
             Download PDF
           </Button>
         </DialogFooter>
+
+        </div>{/* end px-6 py-5 */}
       </DialogContent>
     </Dialog>
   );

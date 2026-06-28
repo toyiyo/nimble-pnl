@@ -273,8 +273,10 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                     <span className="text-foreground font-medium">my.focuspos.com</span>)
                   </li>
                   <li>
-                    Know your <strong className="text-foreground">Store ID</strong> (from your Focus
-                    contract or admin — usually a 4–6 digit number)
+                    Know your{' '}
+                    <strong className="text-foreground">store code or Store ID</strong> (e.g.{' '}
+                    <span className="font-medium text-foreground">ABC-12345</span> or a numeric ID —
+                    from your Focus contract or admin portal)
                   </li>
                   <li>Click <strong className="text-foreground">Get Started</strong> to enter your credentials and connect</li>
                 </ol>
@@ -372,14 +374,16 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                   setStoreId(e.target.value);
                   if (storeIdError) setStoreIdError(null);
                 }}
-                placeholder="99999"
+                placeholder="e.g. ABC-12345 or 54321"
                 className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
                   storeIdError ? 'border-destructive focus-visible:ring-destructive' : ''
                 }`}
                 aria-invalid={storeIdError ? 'true' : undefined}
-                aria-describedby={storeIdError ? 'focus-store-id-error' : undefined}
+                aria-describedby={
+                  storeIdError ? 'focus-store-id-error' : 'focus-store-id-hint'
+                }
               />
-              {storeIdError && (
+              {storeIdError ? (
                 <p
                   id="focus-store-id-error"
                   className="text-[12px] text-destructive flex items-start gap-1.5 mt-1"
@@ -387,6 +391,11 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                 >
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
                   {storeIdError}
+                </p>
+              ) : (
+                <p id="focus-store-id-hint" className="text-[12px] text-muted-foreground mt-1">
+                  Enter your store code (e.g. <span className="font-medium">ABC-12345</span>) or
+                  numeric Store ID — found in your Focus contract or admin portal.
                 </p>
               )}
             </div>

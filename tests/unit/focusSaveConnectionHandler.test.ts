@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * focusSaveConnectionHandler.test.ts
  *
@@ -28,6 +29,8 @@ import {
 
 vi.mock('../../supabase/functions/_shared/focusPortalClient', () => ({
   loginToPortal: vi.fn().mockResolvedValue({ cookie: 'session-cookie' }),
+  // Default: resolves to the numeric SSRS StoreID for the test store code
+  resolveStoreId: vi.fn().mockResolvedValue('15312'),
   discoverReportRouting: vi.fn().mockResolvedValue({
     baseUrl: 'https://mfprod-1.myfocuspos.com',
     reportPath: '/ReportServer?/generalstorereports/revenuecenter',
@@ -119,11 +122,12 @@ function makeRequest(opts: {
   });
 }
 
-/** Build default deps with injectable login/discover overrides. */
+/** Build default deps with injectable login/resolve/discover overrides. */
 function makeDeps(opts: {
   userClientOpts?: Parameters<typeof makeUserClientMock>[0];
   serviceClientOpts?: Parameters<typeof makeServiceClientMock>[0];
   loginOverride?: SaveConnectionDeps['login'];
+  resolveOverride?: SaveConnectionDeps['resolve'];
   discoverOverride?: SaveConnectionDeps['discover'];
 } = {}): { deps: SaveConnectionDeps; mocks: ReturnType<typeof makeServiceClientMock>['mocks'] } {
   const userClient = makeUserClientMock(opts.userClientOpts ?? {});
@@ -135,6 +139,7 @@ function makeDeps(opts: {
       serviceClient: serviceClient as any,
       fetch: vi.fn() as any,
       ...(opts.loginOverride !== undefined && { login: opts.loginOverride }),
+      ...(opts.resolveOverride !== undefined && { resolve: opts.resolveOverride }),
       ...(opts.discoverOverride !== undefined && { discover: opts.discoverOverride }),
     },
     mocks,
@@ -273,6 +278,31 @@ describe('handleSaveConnection', () => {
     expect(body.error).toMatch(/invalid focus credentials/i);
   });
 
+  // ── Store resolution error — saves with status='error' ──────────────────────
+
+  it('saves with connection_status="error" when resolveStoreId throws FocusDiscoveryError (unknown store)', async () => {
+    const { FocusDiscoveryError: FocusDiscoveryErrorClass } = await import(
+      '../../supabase/functions/_shared/focusPortalClient'
+    );
+    const { deps, mocks } = makeDeps({
+      resolveOverride: vi.fn().mockRejectedValue(
+        new FocusDiscoveryErrorClass('Store "MYSTERY" not found in your Focus account.'),
+      ),
+    });
+
+    const req = makeRequest({});
+    const res = await handleSaveConnection(req, deps);
+
+    // Still 200 — the credentials are valid even if the store code is wrong
+    expect(res.status).toBe(200);
+
+    const payload = mocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(payload).toHaveProperty('connection_status', 'error');
+    // Report routing columns stay null since we never called discoverReportRouting
+    expect(payload.report_base_url).toBeNull();
+    expect(payload.report_path).toBeNull();
+  });
+
   // ── Discovery error — saves with status='error' ───────────────────────────────
 
   it('saves with connection_status="error" when discoverReportRouting throws FocusDiscoveryError', async () => {
@@ -334,9 +364,10 @@ describe('handleSaveConnection', () => {
       expect(payload).toHaveProperty('password_encrypted', 'encrypted-pw');
     });
 
-    it('upserts store_id from the request body', () => {
+    it('upserts the numeric store_id returned by resolveStoreId (not the raw entered value)', () => {
+      // The mock resolveStoreId returns '15312' regardless of the entered STORE_ID ('99999')
       const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('store_id', STORE_ID);
+      expect(payload).toHaveProperty('store_id', '15312');
     });
 
     it('upserts report_base_url from discovery result', () => {

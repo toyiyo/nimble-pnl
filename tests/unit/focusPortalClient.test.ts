@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * focusPortalClient.test.ts
  *
@@ -10,12 +11,16 @@
  *  - discoverReportRouting happy path: page contains allowed myfocuspos.com host
  *    + dbServer/dbCatalog/report-catalog path → resolves with ReportRouting
  *  - discoverReportRouting failure: page contains non-myfocuspos host → FocusDiscoveryError
+ *  - resolveStoreId: store code label match → numeric ID
+ *  - resolveStoreId: numeric ID direct match → same numeric ID
+ *  - resolveStoreId: unknown store → FocusDiscoveryError with hint
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import {
   loginToPortal,
   discoverReportRouting,
+  resolveStoreId,
   FocusAuthError,
   FocusDiscoveryError,
 } from '../../supabase/functions/_shared/focusPortalClient';
@@ -184,6 +189,110 @@ describe('discoverReportRouting', () => {
 
     await expect(
       discoverReportRouting({ fetch: fetchMock as any }, FAKE_SESSION),
+    ).rejects.toThrow(FocusDiscoveryError);
+  });
+});
+
+// ── resolveStoreId tests ──────────────────────────────────────────────────────
+
+describe('resolveStoreId', () => {
+  const FAKE_SESSION = { cookie: 'AuthCookie=abc123' };
+
+  /** Build an HTML page with a store dropdown containing the given entries. */
+  function makeStoreListHtml(entries: Array<{ value: string; label: string }>): string {
+    const options = entries
+      .map((e) => `<option value="${e.value}">${e.label}</option>`)
+      .join('\n');
+    return `<html><body><select id="storeList">${options}</select></body></html>`;
+  }
+
+  it('returns the numeric ID when the entered value matches an option label (case-insensitive)', async () => {
+    const html = makeStoreListHtml([
+      { value: '54321', label: 'ABC-12345' },
+      { value: '99999', label: 'XYZ-99' },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => html,
+    });
+
+    const result = await resolveStoreId({ fetch: fetchMock as any }, FAKE_SESSION, 'ABC-12345');
+    expect(result).toBe('54321');
+  });
+
+  it('label match is case-insensitive', async () => {
+    const html = makeStoreListHtml([{ value: '54321', label: 'ABC-12345' }]);
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => html,
+    });
+
+    const result = await resolveStoreId({ fetch: fetchMock as any }, FAKE_SESSION, 'abc-12345');
+    expect(result).toBe('54321');
+  });
+
+  it('returns the numeric ID when the entered value is already the numeric SSRS StoreID', async () => {
+    const html = makeStoreListHtml([
+      { value: '54321', label: 'ABC-12345' },
+      { value: '99999', label: 'XYZ-99' },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => html,
+    });
+
+    const result = await resolveStoreId({ fetch: fetchMock as any }, FAKE_SESSION, '54321');
+    expect(result).toBe('54321');
+  });
+
+  it('throws FocusDiscoveryError when the store is not found in the dropdown', async () => {
+    const html = makeStoreListHtml([
+      { value: '54321', label: 'ABC-12345' },
+      { value: '99999', label: 'XYZ-99' },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => html,
+    });
+
+    await expect(
+      resolveStoreId({ fetch: fetchMock as any }, FAKE_SESSION, 'UNKNOWN-STORE'),
+    ).rejects.toThrow(FocusDiscoveryError);
+  });
+
+  it('error message includes available store codes as a hint', async () => {
+    const html = makeStoreListHtml([
+      { value: '54321', label: 'ABC-12345' },
+      { value: '99999', label: 'XYZ-99' },
+    ]);
+    const fetchMock = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => html,
+    });
+
+    await expect(
+      resolveStoreId({ fetch: fetchMock as any }, FAKE_SESSION, 'MYSTERY'),
+    ).rejects.toThrow(/ABC-12345/);
+  });
+
+  it('throws FocusDiscoveryError when the store list page returns non-2xx', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false, status: 403 });
+
+    await expect(
+      resolveStoreId({ fetch: fetchMock as any }, FAKE_SESSION, 'ABC-12345'),
+    ).rejects.toThrow(FocusDiscoveryError);
+  });
+
+  it('throws FocusDiscoveryError when fetch rejects (network error)', async () => {
+    const fetchMock = vi.fn().mockRejectedValueOnce(new TypeError('fetch failed'));
+
+    await expect(
+      resolveStoreId({ fetch: fetchMock as any }, FAKE_SESSION, 'ABC-12345'),
     ).rejects.toThrow(FocusDiscoveryError);
   });
 });

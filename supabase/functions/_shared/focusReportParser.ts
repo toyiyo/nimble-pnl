@@ -135,7 +135,7 @@ const RE_ORDER_TYPES_HEADER = /sales\s+by\s+order\s+type/i;
 
 /** Strip leading/trailing whitespace from a DOM element's text content. */
 function cellText(el: Element): string {
-  return (el.textContent ?? '').replace(/ /g, ' ').trim();
+  return (el.textContent ?? '').replace(/\u00A0/g, ' ').trim();
 }
 
 /**
@@ -265,7 +265,7 @@ export function parseRevenueCenterReport(
         }
 
         // Skip blank/whitespace rows
-        if (!c0 || c0 === ' ') break;
+        if (!c0 || c0 === '\u00A0') break;
 
         const c1 = cells.length >= 2 ? cellText(cells[1]) : '';
         const c2 = cells.length >= 3 ? cellText(cells[2]) : '';
@@ -309,7 +309,7 @@ export function parseRevenueCenterReport(
       }
 
       case 'payments': {
-        if (!c0 || c0 === ' ') break;
+        if (!c0 || c0 === '\u00A0') break;
         const amountCell = cells.length >= 3 ? cellText(cells[2]) : (cells.length >= 2 ? cellText(cells[1]) : '');
         const amount = parseMoney(amountCell);
         // Only record rows that look like tender rows (non-zero or explicitly named)
@@ -320,7 +320,7 @@ export function parseRevenueCenterReport(
       }
 
       case 'order_types': {
-        if (!c0 || c0 === ' ') break;
+        if (!c0 || c0 === '\u00A0') break;
         const amountCell = cells.length >= 3 ? cellText(cells[2]) : (cells.length >= 2 ? cellText(cells[1]) : '');
         const amount = parseMoney(amountCell);
         if (c0 && (amount > 0 || amountCell === '$0.00' || amountCell === '0.00')) {

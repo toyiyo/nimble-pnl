@@ -68,6 +68,7 @@ export function useFocusConnection(restaurantId?: string | null) {
       // regenerated after the migration is deployed.
        
       const { data, error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from('focus_connections' as any)
         .select(FOCUS_CONNECTION_COLUMNS)
         .eq('restaurant_id', restaurantId)
@@ -150,6 +151,7 @@ export function useFocusConnection(restaurantId?: string | null) {
       // as useSlingConnection.ts.
 
       const { error } = await supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from('focus_connections' as any)
         .update({ is_active: false })
         .eq('restaurant_id', restaurantId);

@@ -44,7 +44,7 @@ export function selectVisibleRosterInputs(
   employees: Employee[],
 ): { shifts: Shift[]; employees: Employee[] } {
   const liveShifts = shifts.filter(s => s.status !== 'cancelled');
-  const liveShiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
+  const liveShiftEmployeeIds = new Set(liveShifts.map(s => s.employee_id));
   return {
     shifts: liveShifts,
     employees: filterEmployeesForScheduleView(employees, liveShiftEmployeeIds, null, null),

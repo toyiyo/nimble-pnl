@@ -6,6 +6,7 @@ import {
 } from '@/lib/scheduleVisibility';
 import type { Employee, Shift } from '@/types/scheduling';
 
+// Partial fixtures — only the fields exercised by the functions under test.
 const emp = (id: string, is_active: boolean): Employee =>
   ({ id, name: `Emp ${id}`, is_active } as unknown as Employee);
 

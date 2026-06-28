@@ -1,7 +1,7 @@
 # Progress: Focus POS integration
 
 ## Current Phase
-Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
+Phase 6: Simplify — COMPLETE (commit be8b6011)
 
 ## DECISION LOG (latest first)
 - 2026-06-27: Data source PIVOT. FocusLink integrator API abandoned (creds ~impossible to get).
@@ -428,6 +428,29 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   renders Focus POS + calls hook, IntegrationCard 8 touch points (a–h) all green.
 - Full suite: 365 files / 4852 tests green. typecheck clean. build clean.
   Lint: +2 no-explicit-any (same kind as pre-existing sling pattern; 1501 total vs 1499 baseline).
+
+## Phase 6 Simplify COMPLETE — commit be8b6011
+
+Simplifications applied (behavior unchanged, all 4852 tests still green):
+
+1. **FOCUS_ALLOWED_ROLES** extracted to `focusReportClient.ts` — removed 3 local
+   `ALLOWED_ROLES = new Set(['owner', 'manager'])` copies from save/test/sync handlers.
+2. **isoToMmDdYyyy** extracted to `focusReportClient.ts` — removed 2 local copies
+   (focusSyncHandler + focusTestConnectionHandler). Both handlers import it from client.
+3. **todayInTz, subtractDays, recentBusinessDays** extracted to `focusReportClient.ts` —
+   removed 2 local copies (focusSyncDataHandler + focusBulkSyncHandler).
+4. **FocusConnectionRow (shared routing fields) + rowToFocusConnection** added to
+   `focusReportClient.ts` — removed 3 identical 7-line copy-paste mapping blocks.
+   Local row types now extend the shared interface with handler-specific fields only.
+5. **STRIP_PARAMS_LOWER** (dead code in focusUrlParser.ts) — defined but never read;
+   removed cleanly (tests still green because behavior is the same).
+6. **FocusSetupWizard Back button** — two identical `<button>Back</button>` elements
+   (one for url-entry step, one for url-confirmed) collapsed into a single element
+   with conditional handler logic.
+7. **focusSyncDataHandler incremental "worst status"** — removed unreachable
+   `else { status = 'ok'; }` branch (default is already 'ok'); added clarifying comment.
+8. **Sync Now / Done button** — removed pointless `() => { onComplete(); }` wrapper,
+   passing `onComplete` directly as `onClick`.
 
 ## Phase 4 Build COMPLETE — All 14 tasks done
 

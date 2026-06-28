@@ -8,12 +8,14 @@
  *  2. Parse + validate the request body: { restaurantId, username, password, storeId }.
  *  3. Confirm the caller is an owner or manager of the target restaurant.
  *  4. Authenticate against the Focus portal via loginToPortal (401 on FocusAuthError).
- *  5. Discover report routing via discoverReportRouting.
+ *  5. Resolve the entered store code/ID to a numeric SSRS StoreID via resolveStoreId.
+ *     - On FocusDiscoveryError: skip report discovery, save with connection_status='error'.
+ *  6. Discover report routing via discoverReportRouting (skipped on step-5 error).
  *     - On FocusDiscoveryError: save the connection with connection_status='error'.
- *  6. Encrypt the password with the encryption service.
- *  7. Upsert into focus_connections via the service-role client (review S3: all writes
+ *  7. Encrypt the password with the encryption service.
+ *  8. Upsert into focus_connections via the service-role client (review S3: all writes
  *     to integration tables use service_role to bypass RLS).
- *  8. Return JSON responses with appropriate HTTP status codes.
+ *  9. Return JSON responses with appropriate HTTP status codes.
  *
  * Design references:
  *  - Plan Task 7
@@ -31,6 +33,7 @@
 import {
   loginToPortal,
   discoverReportRouting,
+  resolveStoreId,
   FocusAuthError,
   FocusDiscoveryError,
 } from './focusPortalClient.ts';
@@ -100,6 +103,15 @@ export interface SaveConnectionDeps {
     dbServer: string | null;
     dbCatalog: string | null;
   }>;
+  /**
+   * Optional injectable: replace resolveStoreId for testing.
+   * Defaults to the real resolveStoreId when omitted.
+   */
+  resolve?: (
+    deps: { fetch: typeof fetch },
+    session: { cookie: string },
+    enteredStoreId: string,
+  ) => Promise<string>;
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -126,6 +138,7 @@ export async function handleSaveConnection(
   // Resolve injectable overrides
   const loginFn = deps.login ?? loginToPortal;
   const discoverFn = deps.discover ?? discoverReportRouting;
+  const resolveFn = deps.resolve ?? resolveStoreId;
 
   // ── 1. Authorization header ────────────────────────────────────────────────
 
@@ -197,18 +210,19 @@ export async function handleSaveConnection(
     throw err;
   }
 
-  // ── 6. Discover report routing params ─────────────────────────────────────
+  // ── 6. Resolve store code → numeric SSRS StoreID ─────────────────────────
+  //
+  // Operators enter either a human-readable code (e.g. "ABC-12345") or the raw
+  // numeric ID. resolveStoreId normalises either form to the numeric value that
+  // the SSRS report server requires. On FocusDiscoveryError we fall through to
+  // the partial-save path (connection_status='error') rather than blocking the
+  // whole save — the credentials are valid even if we can't resolve the store.
 
-  let routing: {
-    baseUrl: string;
-    reportPath: string;
-    dbServer: string | null;
-    dbCatalog: string | null;
-  } | null = null;
+  let resolvedStoreId = storeId;
   let discoveryError: string | null = null;
 
   try {
-    routing = await discoverFn({ fetch: deps.fetch }, session);
+    resolvedStoreId = await resolveFn({ fetch: deps.fetch }, session, storeId);
   } catch (err) {
     if (err instanceof FocusDiscoveryError) {
       discoveryError = err.message;
@@ -217,18 +231,39 @@ export async function handleSaveConnection(
     }
   }
 
-  // ── 7. Encrypt password ───────────────────────────────────────────────────
+  // ── 7. Discover report routing params (only when store resolved) ──────────
+
+  let routing: {
+    baseUrl: string;
+    reportPath: string;
+    dbServer: string | null;
+    dbCatalog: string | null;
+  } | null = null;
+
+  if (!discoveryError) {
+    try {
+      routing = await discoverFn({ fetch: deps.fetch }, session);
+    } catch (err) {
+      if (err instanceof FocusDiscoveryError) {
+        discoveryError = err.message;
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  // ── 8. Encrypt password ───────────────────────────────────────────────────
 
   const encSvc = await getEncryptionService();
   const passwordEncrypted = await encSvc.encrypt(password);
 
-  // ── 8. Upsert via service-role client (review S3) ─────────────────────────
+  // ── 9. Upsert via service-role client (review S3) ─────────────────────────
 
   const upsertPayload: Record<string, unknown> = {
     restaurant_id: restaurantId,
     username,
     password_encrypted: passwordEncrypted,
-    store_id: storeId,
+    store_id: resolvedStoreId,
     report_base_url: routing?.baseUrl ?? null,
     report_path: routing?.reportPath ?? null,
     db_server: routing?.dbServer ?? null,
@@ -259,7 +294,7 @@ export async function handleSaveConnection(
     return jsonError(500, 'An internal error occurred while saving the connection');
   }
 
-  // ── 9. Success ────────────────────────────────────────────────────────────
+  // ── 10. Success ───────────────────────────────────────────────────────────
 
   return new Response(JSON.stringify({ success: true, connection }), {
     status: 200,

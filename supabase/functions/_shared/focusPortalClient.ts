@@ -160,6 +160,72 @@ export async function loginToPortal(
   return { cookie: cookieHeader(jar) };
 }
 
+const STORE_LIST_PATH = '/Reports/NFocus.aspx';
+const STORE_OPTION_RE = /<option[^>]*value="(\d{2,7})"[^>]*>([^<]{1,60})<\/option>/gi;
+
+/**
+ * Resolve an operator-entered store identifier (either a numeric SSRS StoreID or
+ * a human-readable store code like "ABC-12345") to the numeric SSRS StoreID
+ * required for report queries. Fetches the portal's store-list page with the
+ * authenticated session and parses the <option> dropdown to find the match.
+ *
+ * Matching rules (in priority order):
+ *  1. Exact match on the numeric option value (enteredStoreId is already numeric).
+ *  2. Case-insensitive match on the option text (the store code label).
+ *
+ * Throws FocusDiscoveryError when the store is not found (includes a hint listing
+ * up to 10 available codes so the operator can correct a typo).
+ */
+export async function resolveStoreId(
+  deps: PortalDeps,
+  session: FocusSession,
+  enteredStoreId: string,
+): Promise<string> {
+  let res: Response;
+  try {
+    res = await deps.fetch(`${PORTAL_BASE}${STORE_LIST_PATH}`, {
+      headers: { Cookie: session.cookie, 'User-Agent': UA },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch {
+    throw new FocusDiscoveryError('Could not reach the Focus store list page');
+  }
+  if (!res.ok) {
+    throw new FocusDiscoveryError('Focus store list page returned an error');
+  }
+  const html = await res.text();
+
+  // Parse all <option value="NUMERIC">CODE_LABEL</option> entries.
+  const entries: Array<{ numericId: string; label: string }> = [];
+  let m: RegExpExecArray | null;
+  STORE_OPTION_RE.lastIndex = 0;
+  while ((m = STORE_OPTION_RE.exec(html)) !== null) {
+    entries.push({ numericId: m[1], label: m[2].trim() });
+  }
+
+  const needle = enteredStoreId.trim();
+
+  // 1. Exact numeric match (operator entered the raw SSRS StoreID).
+  const byNumeric = entries.find((e) => e.numericId === needle);
+  if (byNumeric) return byNumeric.numericId;
+
+  // 2. Case-insensitive label match (operator entered a store code like "ABC-12345").
+  const byLabel = entries.find(
+    (e) => e.label.toLowerCase() === needle.toLowerCase(),
+  );
+  if (byLabel) return byLabel.numericId;
+
+  // Not found — include available codes as a hint (up to 10).
+  const available = entries
+    .slice(0, 10)
+    .map((e) => e.label)
+    .join(', ');
+  const hint = available ? ` Available store codes: ${available}.` : '';
+  throw new FocusDiscoveryError(
+    `Store "${needle}" not found in your Focus account.${hint}`,
+  );
+}
+
 /**
  * With an authenticated session, discover the report routing params (report host,
  * dbServer, dbCatalog, report path) from the portal's report viewer page. These

@@ -321,4 +321,23 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   LIMIT test: limitMock always called with 5.
 - Full suite: 362 files / 4804 tests all green. typecheck clean.
 
-### Next: Task 11 — cron migration (pg_cron schedules)
+### Task 11 DONE — commit 01c18d07
+- Migration: supabase/migrations/20260627140000_focus_cron.sql
+  - CREATE EXTENSION IF NOT EXISTS pg_cron (idempotent).
+  - CREATE EXTENSION IF NOT EXISTS pg_net (idempotent).
+  - GRANT USAGE ON SCHEMA cron TO postgres.
+  - focus-bulk-sync: SELECT-EXISTS unschedule guard + cron.schedule('focus-bulk-sync',
+    '30 1,7,13,19 * * *', net.http_post to focus-bulk-sync edge fn with service_role_key Bearer).
+    Schedule offset: Toast runs at 0 0,2,4,...,22 (even hours on the hour);
+    Shift4 at 0 1,3,...,23 (odd hours); Focus at :30 of 1,7,13,19 (every 6h, clear offset).
+  - focus-unified-sales-sync: SELECT-EXISTS unschedule guard + cron.schedule(
+    'focus-unified-sales-sync', '*/5 * * * *', SELECT sync_all_focus_to_unified_sales()).
+    Safety net: keeps unified_sales current between 6-hour bulk sync runs.
+- pgTAP test: supabase/tests/42_focus_cron.sql (4 tests, all green):
+  - Test 1: cron job 'focus-bulk-sync' exists in cron.job.
+  - Test 2: cron job 'focus-unified-sales-sync' exists in cron.job.
+  - Test 3: focus-bulk-sync schedule = '30 1,7,13,19 * * *'.
+  - Test 4: focus-unified-sales-sync schedule = '*/5 * * * *'.
+- Vitest: 362 files / 4804 tests still green (unchanged from Task 10).
+
+### Next: Task 12 — useFocusConnection hook

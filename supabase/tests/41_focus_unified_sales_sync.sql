@@ -61,6 +61,7 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 -- focus_connections (store_id = 'S9999', needed for external_order_id + sync_all)
 INSERT INTO public.focus_connections (
   id, restaurant_id, report_base_url, report_path, store_id,
+  username, password_encrypted,
   is_active, connection_status, initial_sync_done, last_sync_time
 ) VALUES (
   '00000000-0000-0000-0000-f0c000000021',
@@ -68,6 +69,7 @@ INSERT INTO public.focus_connections (
   'https://mfprod-1.myfocuspos.com',
   '/ReportServer?/generalstorereports/revenuecenter',
   'S9999',
+  'sample.user', 'enc-placeholder',
   true, 'connected', true,
   now() - interval '3 days'
 )

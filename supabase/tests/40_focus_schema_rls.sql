@@ -3,7 +3,7 @@
 -- Covers: table existence, key columns, CHECK constraints, named unique indexes, RLS enabled
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(14);
 
 -- Setup: create a test restaurant for FK-valid INSERT tests
 SET LOCAL role TO postgres;
@@ -48,9 +48,11 @@ SELECT is(
 );
 
 -- Test 10: CHECK rejects non-https / non-myfocuspos host (valid FK, bad URL → CHECK fires)
+-- NOTE: username and password_encrypted are included to avoid NOT NULL errors before CHECK fires.
+-- The CHECK constraint on report_base_url (or NOT NULL) will still cause the insert to fail.
 SELECT throws_ok(
-  $$INSERT INTO focus_connections(restaurant_id, report_base_url, report_path, store_id)
-    VALUES ('00000000-0000-0000-0000-f0c0550000a1'::uuid, 'http://evil.com', '/x', '1')$$,
+  $$INSERT INTO focus_connections(restaurant_id, report_base_url, report_path, store_id, username, password_encrypted)
+    VALUES ('00000000-0000-0000-0000-f0c0550000a1'::uuid, 'http://evil.com', '/x', '1', 'sample.user', 'enc-placeholder')$$,
   NULL,
   NULL,
   'report_base_url CHECK rejects non-https / non-myfocuspos URL'
@@ -58,13 +60,19 @@ SELECT throws_ok(
 
 -- Test 11: CHECK accepts a valid myfocuspos.com host (uses the seeded test restaurant)
 SELECT lives_ok(
-  $$INSERT INTO focus_connections(restaurant_id, report_base_url, report_path, store_id)
-    VALUES ('00000000-0000-0000-0000-f0c0550000a1'::uuid, 'https://mfprod-1.myfocuspos.com', '/ReportServer?/generalstorereports/revenuecenter', '15312')$$,
+  $$INSERT INTO focus_connections(restaurant_id, report_base_url, report_path, store_id, username, password_encrypted)
+    VALUES ('00000000-0000-0000-0000-f0c0550000a1'::uuid, 'https://mfprod-1.myfocuspos.com', '/ReportServer?/generalstorereports/revenuecenter', '15312', 'sample.user', 'enc-placeholder')$$,
   'report_base_url CHECK accepts a valid myfocuspos.com host'
 );
 
 -- Test 12: focus_connections.id is the primary key
 SELECT col_is_pk('public', 'focus_connections', 'id', 'focus_connections.id is the primary key');
+
+-- Test 13: focus_connections has username column (credential-gated auth)
+SELECT has_column('public', 'focus_connections', 'username', 'focus_connections has username');
+
+-- Test 14: focus_connections has password_encrypted column (credential-gated auth)
+SELECT has_column('public', 'focus_connections', 'password_encrypted', 'focus_connections has password_encrypted');
 
 SELECT * FROM finish();
 ROLLBACK;

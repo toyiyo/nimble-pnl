@@ -68,6 +68,57 @@ from the grid, and over "only filter cancelled shifts", which is insufficient.)
    the live preview, and both `generateRosterPDF` / `generateSchedulePDF`
    calls. The raw props are left untouched; the dialog sanitizes at its edge.
 
+### Implementation contract (precise change list)
+
+`selectVisibleRosterInputs` signature:
+```ts
+function selectVisibleRosterInputs(
+  shifts: Shift[],
+  employees: Employee[],
+): { shifts: Shift[]; employees: Employee[] }
+```
+
+Inside `ScheduleExportDialog`, in order:
+
+- **Order matters — filter visibility on the RAW props first.** Compute
+  `const { shifts: visibleShifts, employees: visibleEmployees } =
+  selectVisibleRosterInputs(shifts, employees)` from the **raw** `props.shifts`
+  and `props.employees`, *before* the existing position/area `filteredShifts`
+  memo runs. Rationale: the grid derives `buildActiveShiftEmployeeIds` from the
+  full (un-position/area-filtered) shift list, then applies position/area to
+  the *employee* list. Running visibility on already-position-filtered shifts
+  would wrongly hide an inactive employee whose live shift is in a different
+  area than the active filter. So: visibility filter → then position/area
+  filter.
+- Memoize it: `useMemo(() => selectVisibleRosterInputs(shifts, employees), [shifts, employees])`.
+- `filteredShifts` memo: operate on `visibleShifts` (not raw `shifts`); its
+  `emp` lookup uses `visibleEmployees`. Update deps to
+  `[visibleShifts, visibleEmployees, positionFilter, areaFilter]`.
+- `allEmployeesWithShifts` memo: join `filteredShifts` ids against
+  `visibleEmployees`. Deps `[filteredShifts, visibleEmployees]`.
+- `previewRosterDay` memo: call `buildRosterDay(selectedShifts, visibleEmployees, …)`
+  (not raw `employees`). Update deps to use `visibleEmployees`.
+- `getShiftDisplay` reads from `filteredShifts` (already visible) — no change.
+- `handleExport`: pass `shifts={visibleShifts}` and `employees={visibleEmployees}`
+  to **both** `generateRosterPDF` and `generateSchedulePDF` — not the raw props.
+  This is the load-bearing change for the actual PDF output; updating only the
+  checkbox list / preview without this leaves the bug in the exported file.
+- `selectedEmployeeIds` invariant: it is initialized from
+  `allEmployeesWithShifts` (now derived from `visibleEmployees`) via the
+  existing `useEffect` keyed on `[open, allEmployeesWithShifts]`. That effect
+  must keep depending on `allEmployeesWithShifts` (the derived list), not the
+  raw `employees` prop, so stale ids for now-hidden employees are dropped on
+  open. The invariant `selectedEmployeeIds ⊆ visibleEmployees.ids` then holds,
+  so the generators' internal `selectedEmployeeIds` filter cannot re-admit a
+  hidden employee.
+
+**PDF generators (`scheduleExport.ts`) need no signature change.** They keep
+re-deriving their own `shiftEmployeeIds` internally, but since they now receive
+`visibleShifts` (cancelled stripped) + `visibleEmployees` (inactive-no-live-shift
+stripped), that internal derivation becomes redundant-but-harmless: it can only
+ever produce a subset of the already-visible set. No edit required inside the
+generators; the fix lives entirely at the dialog boundary.
+
 ### Why this over alternatives
 
 - **Filtering at the call site** (passing a pre-filtered list from
@@ -114,7 +165,9 @@ Scheduling.tsx
 
 ## Testing
 
-New unit tests (`tests/unit/scheduleVisibility.test.ts`):
+New unit tests (`tests/unit/scheduleVisibility.test.ts`) — import the helpers
+**directly from `@/lib/scheduleVisibility`** (not via `@/pages/Scheduling`) to
+avoid dragging the heavy page import graph into the test:
 - `selectVisibleRosterInputs`:
   - inactive employee + only a cancelled shift → **excluded**, and the cancelled
     shift is stripped from the returned shifts.
@@ -123,8 +176,11 @@ New unit tests (`tests/unit/scheduleVisibility.test.ts`):
   - cancelled shifts are removed regardless of employee.
   - empty inputs → empty outputs.
 - Parity assertion: for a fixed dataset, the employee set returned by
-  `selectVisibleRosterInputs` equals the grid's
-  `filterEmployeesForScheduleView(...)` with no position/area filter.
+  `selectVisibleRosterInputs(shifts, employees)` equals the grid's
+  `filterEmployeesForScheduleView(employees, buildActiveShiftEmployeeIds(shifts), null, null)`
+  — note the parity test feeds the **full** shift list to
+  `buildActiveShiftEmployeeIds` (matching how the grid computes the id set
+  before applying position/area to the employee list).
 
 Existing suites that must stay green: `schedulingHelpers.test.ts` (import path
 unchanged via re-export), `scheduleRoster*.test.ts`, `scheduleExport*.test.ts`.

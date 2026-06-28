@@ -2,8 +2,12 @@
 -- FOCUS POS INTEGRATION DATABASE SCHEMA
 -- Focus SSRS Revenue Center report → HTML parse → unified_sales
 --
--- Access model: anonymous GET (no credentials stored). The setup
--- form captures report routing parameters, not secrets.
+-- Access model: credential-gated (Option A). The restaurant's Focus portal
+-- username + password are stored (password AES-GCM encrypted). Every connect
+-- and sync first authenticates via the portal login; routing params
+-- (report host / dbServer / dbCatalog / path) are auto-discovered from the
+-- authenticated portal session. The Revenue Center report data itself is then
+-- fetched from Focus's report host.
 --
 -- Backfill notes:
 --   - sync_cursor 0…90 tracks days completed in the 90-day backfill
@@ -19,14 +23,21 @@
 CREATE TABLE public.focus_connections (
   id                 uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id      uuid        NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
-  -- SSRF guard: only https, only *.myfocuspos.com hosts allowed (S1)
-  report_base_url    text        NOT NULL
-    CHECK (report_base_url ~ '^https://([a-z0-9-]+\.)*myfocuspos\.com(/|$)'),
-  report_path        text        NOT NULL,
+  -- Routing params are AUTO-DISCOVERED from the authenticated portal session at
+  -- connect time, so they are nullable (a login-ok-but-discovery-failed connection
+  -- is still saved with status='error'). SSRF guard (S1): when set, only https +
+  -- *.myfocuspos.com hosts allowed.
+  report_base_url    text
+    CHECK (report_base_url IS NULL OR report_base_url ~ '^https://([a-z0-9-]+\.)*myfocuspos\.com(/|$)'),
+  report_path        text,
   db_server          text,
   db_catalog         text,
   report_user_id     text,
   store_id           text        NOT NULL,
+  -- Focus portal login (Option A, credential-gated). Password is AES-GCM
+  -- encrypted at rest (via _shared/encryption.ts); never stored in plaintext.
+  username           text        NOT NULL,
+  password_encrypted text        NOT NULL,
   revenue_center     text,
   -- IANA timezone for tz-correct date arithmetic across the full backfill (S4)
   timezone           text        NOT NULL DEFAULT 'America/Chicago',

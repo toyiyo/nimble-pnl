@@ -210,4 +210,38 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   onConflict('restaurant_id'). Manager role also 200. Upsert error → 500.
 - Full suite: 359 files / 4742 tests green. typecheck clean.
 
-### Next: Task 8 — focus-test-connection edge function
+### Task 8 DONE — commit bcc236b8
+- supabase/functions/_shared/focusTestConnectionHandler.ts:
+  - UserClient / ServiceClient / TestConnectionDeps interfaces (injectable for Vitest).
+  - yesterdayInTz(tz, now): computes yesterday as 'YYYY-MM-DD' in the connection's IANA
+    timezone via Intl.DateTimeFormat (en-CA locale → 'YYYY-MM-DD' direct), then subtracts
+    one day using setUTCDate (review S4: tz-correct date prevents UTC-midnight off-by-one).
+  - handleTestConnection(req, deps):
+    1. 401 when Authorization header absent.
+    2. 401 when getUser() returns null.
+    3. 400 when restaurantId missing.
+    4. 403 when user is not owner/manager in user_restaurants (review S6).
+    5. 404 when no active focus_connections row for the restaurant.
+    6. Builds FocusConnection from the DB row.
+    7. Computes yesterday in connection.timezone; calls buildReportUrl (single-day range).
+    8. fetchReportHtml (SSRF-guarded, redirect-safe).
+    9. parseRevenueCenterReport (discriminated result): ok/empty → 'connected';
+       parse_error → 'error' (review S9).
+    10. Writes connection_status/last_error/last_error_at via service-role client (review S3).
+    11. Returns 200 { success, status, error? } for both connected and error outcomes.
+- supabase/functions/focus-test-connection/index.ts: thin CORS wrapper (verify_jwt=false
+  pattern matching focus-save-connection); builds userClient + serviceClient + passes
+  globalThis.fetch; delegates to handler.
+- supabase/config.toml: [functions.focus-test-connection] verify_jwt = false.
+- tests/unit/focusTestConnectionHandler.test.ts: 17 Vitest tests all green.
+  Missing auth header (401), bad JWT (401), missing restaurantId (400 + /restaurantId/i),
+  staff role (403), no membership (403), no connection (404). Happy path: 200 + {success:true,
+  status:'connected'}, update called with connection_status='connected'/null errors, eq('id').
+  Empty report (ok:false, reason:'empty'): also sets 'connected'. Parse error: {success:false,
+  status:'error'}, last_error string truthy, last_error_at string. HTTP 503: {success:false,
+  status:'error'}. Service-role client for write (S3). Timezone: 2026-06-27T02:00:00Z +
+  America/Chicago → StartDate=06%2F25%2F2026 (yesterday in Chicago = June 25);
+  2026-06-27T23:00:00Z + America/New_York → 06%2F26%2F2026. Manager role also 200.
+- Full suite: 360 files / 4759 tests green. typecheck clean.
+
+### Next: Task 9 — focus-sync-data edge function (manual)

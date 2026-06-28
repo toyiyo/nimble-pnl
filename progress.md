@@ -407,4 +407,26 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   connected, InitialSyncPendingAlert with syncCursor=42 shows "42 of 90".
 - Full suite: 364 files / 4840 tests all green. typecheck clean.
 
-### Next: Task 14 — Register Focus POS in Integrations UI
+### Task 14 DONE — commit 28c51fc7
+- src/components/IntegrationLogo.tsx: emojiMap['focus-pos'] = '🍦' (design F6, no missing-PNG 🔌 fallback).
+- src/pages/Integrations.tsx: import useFocusConnection; const { isConnected: focusConnected } =
+  useFocusConnection(selectedRestaurant?.restaurant_id || null); focus-pos entry added to integrations
+  array (Point of Sale category, 'Sync daily sales from Focus POS'); focusConnected added to useMemo deps.
+- src/components/IntegrationCard.tsx: all 8 Toast-parity touch points (F6):
+  1. showFocusSetup state + import FocusSetupWizard.
+  2. focusConnection = useFocusConnection(restaurantId) hook call.
+  3. isFocusIntegration = integration.id === 'focus-pos'.
+  4. getActuallyConnected: isFocusIntegration → focusConnection.isConnected.
+  5. getActuallyConnecting: isFocusIntegration → focusConnection.loading.
+  6. handleConnect: isFocusIntegration → setShowFocusSetup(true).
+  7. handleDisconnect: isFocusIntegration → focusConnection.disconnect(restaurantId).
+  8. Connected branch: <FocusSync restaurantId={restaurantId} /> rendered.
+  9. Dialog: <Dialog open={showFocusSetup}><FocusSetupWizard …/></Dialog> rendered.
+- src/hooks/useFocusConnection.tsx: both `.from('focus_connections' as any)` casts use the
+  same pattern as useSlingConnection.ts (table not yet in generated types).
+- tests/unit/focusPosRegistration.test.tsx: 12 Vitest tests — IntegrationLogo emoji, Integrations
+  renders Focus POS + calls hook, IntegrationCard 8 touch points (a–h) all green.
+- Full suite: 365 files / 4852 tests green. typecheck clean. build clean.
+  Lint: +2 no-explicit-any (same kind as pre-existing sling pattern; 1501 total vs 1499 baseline).
+
+## Phase 4 Build COMPLETE — All 14 tasks done

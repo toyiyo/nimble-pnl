@@ -28,6 +28,22 @@ import {
   type BulkSyncDeps,
 } from '../../supabase/functions/_shared/focusBulkSyncHandler';
 
+// ── Mock portal client & encryption ──────────────────────────────────────────
+
+vi.mock('../../supabase/functions/_shared/focusPortalClient', () => ({
+  loginToPortal: vi.fn().mockResolvedValue({ cookie: 'session-cookie' }),
+  FocusAuthError: class FocusAuthError extends Error {
+    constructor(m = '') { super(m); this.name = 'FocusAuthError'; }
+  },
+}));
+
+vi.mock('../../supabase/functions/_shared/encryption', () => ({
+  getEncryptionService: vi.fn().mockResolvedValue({
+    encrypt: vi.fn().mockResolvedValue('encrypted-pw'),
+    decrypt: vi.fn().mockResolvedValue('test-pass'),
+  }),
+}));
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const RESTAURANT_ID_1 = '00000000-0000-0000-0000-000000000001';
@@ -42,13 +58,15 @@ const MOCK_CONN_INCREMENTAL = {
   report_path: '/ReportServer?/generalstorereports/revenuecenter',
   db_server: 'mfaz-rep-1',
   db_catalog: 'KAHALA2',
-  report_user_id: 'J.Delgado',
+  report_user_id: 'sample.user',
   store_id: '15312',
   revenue_center: '',
   timezone: 'America/Chicago',
   initial_sync_done: true,
   sync_cursor: 90,
   last_sync_time: '2026-06-26T00:00:00.000Z',
+  username: 'sample.user',
+  password_encrypted: 'enc',
 };
 
 /** A minimal focus_connections row for a backfill connection. */
@@ -463,6 +481,41 @@ describe('handleBulkSync', () => {
     await handleBulkSync(req, deps);
 
     expect(mocks.limitMock).toHaveBeenCalledWith(5);
+  });
+
+  // ── Auth gate: FocusAuthError → restaurant skipped, surfaces in errors[] ────────
+
+  it('skips restaurant and adds to errors[] when loginToPortal throws FocusAuthError', async () => {
+    const { loginToPortal: mockLoginToPortal } = await import(
+      '../../supabase/functions/_shared/focusPortalClient'
+    );
+    const { FocusAuthError: FocusAuthErrorClass } = await import(
+      '../../supabase/functions/_shared/focusPortalClient'
+    );
+
+    // Make loginToPortal fail for the FIRST call (first restaurant) only
+    (mockLoginToPortal as ReturnType<typeof vi.fn>)
+      .mockRejectedValueOnce(new FocusAuthErrorClass('bad creds'))
+      .mockResolvedValue({ cookie: 'session-cookie' });
+
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connections: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL] },
+    });
+
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    const res = await handleBulkSync(req, deps);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    // First restaurant errored (auth failure) → NOT counted in processed
+    // Second restaurant should still be processed
+    expect(body.processed).toBe(1);
+    expect(body.errors.length).toBeGreaterThanOrEqual(1);
+
+    // The error message should contain something about auth / credentials
+    const errorMsg = body.errors[0] as string;
+    expect(errorMsg).toContain(RESTAURANT_ID_1);
   });
 
   // ── Backfill cursor is NOT advanced on fetch error (Codex P1) ────────────────

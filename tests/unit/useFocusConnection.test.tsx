@@ -155,7 +155,7 @@ describe('useFocusConnection', () => {
   // ---- saveConnection ----
 
   describe('saveConnection', () => {
-    it('invokes focus-save-connection edge function with restaurantId + reportUrl', async () => {
+    it('invokes focus-save-connection edge function with restaurantId, username, password, storeId', async () => {
       const mockInvoke = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
       (supabase.functions.invoke as any) = mockInvoke;
 
@@ -172,16 +172,15 @@ describe('useFocusConnection', () => {
       const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
 
       await act(async () => {
-        await result.current.saveConnection(
-          'rest-1',
-          'https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/revenuecenter&StoreID=15312'
-        );
+        await result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '15312');
       });
 
       expect(mockInvoke).toHaveBeenCalledWith('focus-save-connection', {
         body: {
           restaurantId: 'rest-1',
-          reportUrl: 'https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/revenuecenter&StoreID=15312',
+          username: 'sample.user',
+          password: 'test-pass',
+          storeId: '15312',
         },
       });
     });
@@ -196,7 +195,7 @@ describe('useFocusConnection', () => {
 
       await act(async () => {
         await expect(
-          result.current.saveConnection('rest-1', 'https://mfprod-1.myfocuspos.com/...')
+          result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '15312')
         ).rejects.toThrow('Network request failed');
       });
     });
@@ -212,7 +211,7 @@ describe('useFocusConnection', () => {
 
       await act(async () => {
         await expect(
-          result.current.saveConnection('rest-1', 'https://mfprod-1.myfocuspos.com/...')
+          result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '15312')
         ).rejects.toThrow();
       });
     });

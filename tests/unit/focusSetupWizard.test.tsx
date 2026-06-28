@@ -3,7 +3,7 @@
  *
  * Tests for:
  *  1. SyncComponents: POSConfig.recentWindowLabel optional field + FOCUS_CONFIG export
- *  2. FocusSetupWizard: step flow, URL validation, aria-invalid, confirmation preview,
+ *  2. FocusSetupWizard: step flow, credential validation, aria-invalid, confirmation preview,
  *     partial-failure re-entry (F1–F8)
  *  3. FocusSync: not-connected guard (F7), syncCursor forwarded to InitialSyncPendingAlert
  */
@@ -49,9 +49,6 @@ function makeHookReturn(connectionOverride: Record<string, unknown> | null = nul
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
-
-const VALID_URL =
-  'https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/revenuecenter&dbServer=mfaz-rep-1&dbCatalog=KAHALA2&UserID=J.Delgado&StoreID=15312&rs:Command=Render';
 
 function makeQC() {
   return new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -166,15 +163,15 @@ describe('FocusSetupWizard', () => {
     );
   }
 
-  it('renders step 1 with "how to get your report url" heading', () => {
+  it('renders step 1 with "how to connect your focus pos account" heading', () => {
     renderWizard();
-    expect(screen.getByText(/how to get your report url/i)).toBeTruthy();
+    expect(screen.getByText(/how to connect your focus pos account/i)).toBeTruthy();
   });
 
-  it('step 1 has an informational Alert mentioning "no password" and "store id"', () => {
+  it('step 1 has an informational Alert mentioning "credentials" and "encrypted"', () => {
     renderWizard();
-    expect(screen.getByText(/no password required/i)).toBeTruthy();
-    expect(screen.getByText(/store id/i)).toBeTruthy();
+    // The alert mentions credentials being encrypted
+    expect(screen.getByText(/credentials are encrypted/i)).toBeTruthy();
   });
 
   it('has a "Get Started" button on step 1', () => {
@@ -182,64 +179,75 @@ describe('FocusSetupWizard', () => {
     expect(screen.getByRole('button', { name: /get started/i })).toBeTruthy();
   });
 
-  it('navigates to URL entry (step 2a) when Get Started is clicked', () => {
+  it('navigates to credentials step (step 2a) when Get Started is clicked', () => {
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    const input = screen.getByLabelText(/report url/i);
-    expect(input).toBeTruthy();
-    expect(input.getAttribute('id')).toBe('focus-report-url');
+    // Step 2a shows Username, Password, Store ID labels
+    expect(screen.getByLabelText(/username/i)).toBeTruthy();
+    expect(screen.getByLabelText(/password/i)).toBeTruthy();
+    expect(screen.getByLabelText(/store id/i)).toBeTruthy();
   });
 
-  it('shows aria-invalid and an error when an invalid URL is submitted', () => {
+  it('shows aria-invalid and errors when Continue is clicked with empty fields', () => {
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
 
-    const input = screen.getByLabelText(/report url/i);
-    fireEvent.change(input, { target: { value: 'not-a-url' } });
-    fireEvent.click(screen.getByRole('button', { name: /verify url/i }));
+    // Click Continue without filling any fields
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
-    expect(input.getAttribute('aria-invalid')).toBe('true');
-    expect(screen.getByText(/could not parse/i)).toBeTruthy();
+    const usernameInput = screen.getByLabelText(/username/i);
+    expect(usernameInput.getAttribute('aria-invalid')).toBe('true');
+    const passwordInput = screen.getByLabelText(/password/i);
+    expect(passwordInput.getAttribute('aria-invalid')).toBe('true');
+    const storeIdInput = screen.getByLabelText(/store id/i);
+    expect(storeIdInput.getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('advances to confirmation showing storeId and brand for a valid URL', () => {
+  it('advances to confirmed step showing storeId and username after valid credentials', () => {
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
 
-    fireEvent.change(screen.getByLabelText(/report url/i), { target: { value: VALID_URL } });
-    fireEvent.click(screen.getByRole('button', { name: /verify url/i }));
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
+    // Step 2b shows Store ID and Username values
     expect(screen.getByText('15312')).toBeTruthy();
-    expect(screen.getByText(/KAHALA2/i)).toBeTruthy();
+    expect(screen.getByText('sample.user')).toBeTruthy();
     expect(screen.getByRole('button', { name: /save.*connect/i })).toBeTruthy();
   });
 
-  it('calls saveConnection then testConnection on "Save & Connect"', async () => {
+  it('calls saveConnection then testConnection with correct args on "Save & Connect"', async () => {
     mockSaveConnection.mockResolvedValueOnce({ success: true });
     mockTestConnection.mockResolvedValueOnce({ success: true, status: 'connected' });
 
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    fireEvent.change(screen.getByLabelText(/report url/i), { target: { value: VALID_URL } });
-    fireEvent.click(screen.getByRole('button', { name: /verify url/i }));
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(mockSaveConnection).toHaveBeenCalledWith('rest-1', VALID_URL);
+      expect(mockSaveConnection).toHaveBeenCalledWith('rest-1', 'sample.user', 'test-pass', '15312');
       expect(mockTestConnection).toHaveBeenCalledWith('rest-1');
     });
   });
 
-  it('stays on step 2 with URL retained when testConnection fails (partial failure F3)', async () => {
+  it('stays on confirmed step with credentials visible when testConnection fails (partial failure F3)', async () => {
     mockSaveConnection.mockResolvedValueOnce({ success: true });
     mockTestConnection.mockRejectedValueOnce(new Error('connection refused'));
 
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    fireEvent.change(screen.getByLabelText(/report url/i), { target: { value: VALID_URL } });
-    fireEvent.click(screen.getByRole('button', { name: /verify url/i }));
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
     fireEvent.click(saveBtn);
@@ -247,8 +255,9 @@ describe('FocusSetupWizard', () => {
     await waitFor(() => {
       // Should NOT have advanced to the Done step
       expect(screen.queryByText(/setup complete/i)).toBeNull();
-      // URL field should still be visible (stay on step 2b)
-      expect(screen.getByLabelText(/report url/i)).toBeTruthy();
+      // Should still show the store ID and username (staying on step 2b)
+      expect(screen.getByText('15312')).toBeTruthy();
+      expect(screen.getByText('sample.user')).toBeTruthy();
       // Error text about the test failure
       expect(screen.getByText(/connection test failed/i)).toBeTruthy();
     });
@@ -262,8 +271,10 @@ describe('FocusSetupWizard', () => {
     renderWizard({ onComplete });
 
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    fireEvent.change(screen.getByLabelText(/report url/i), { target: { value: VALID_URL } });
-    fireEvent.click(screen.getByRole('button', { name: /verify url/i }));
+    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
+    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
+    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '15312' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
     fireEvent.click(saveBtn);

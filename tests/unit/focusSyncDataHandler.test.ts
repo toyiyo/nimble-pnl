@@ -31,6 +31,22 @@ import {
   type SyncDataDeps,
 } from '../../supabase/functions/_shared/focusSyncDataHandler';
 
+// ── Mock portal client & encryption ──────────────────────────────────────────
+
+vi.mock('../../supabase/functions/_shared/focusPortalClient', () => ({
+  loginToPortal: vi.fn().mockResolvedValue({ cookie: 'session-cookie' }),
+  FocusAuthError: class FocusAuthError extends Error {
+    constructor(m = '') { super(m); this.name = 'FocusAuthError'; }
+  },
+}));
+
+vi.mock('../../supabase/functions/_shared/encryption', () => ({
+  getEncryptionService: vi.fn().mockResolvedValue({
+    encrypt: vi.fn().mockResolvedValue('encrypted-pw'),
+    decrypt: vi.fn().mockResolvedValue('test-pass'),
+  }),
+}));
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const RESTAURANT_ID = '00000000-0000-0000-0000-000000000099';
@@ -61,12 +77,14 @@ const MOCK_CONNECTION_BACKFILL = {
   report_path: '/ReportServer?/generalstorereports/revenuecenter',
   db_server: 'mfaz-rep-1',
   db_catalog: 'KAHALA2',
-  report_user_id: 'J.Delgado',
+  report_user_id: 'sample.user',
   store_id: '15312',
   revenue_center: '',
   timezone: 'America/Chicago',
   initial_sync_done: false,
   sync_cursor: 5,
+  username: 'sample.user',
+  password_encrypted: 'enc',
 };
 
 /** Fake focus_connections DB row — incremental mode */
@@ -251,6 +269,35 @@ describe('handleSyncData', () => {
     expect(res.status).toBe(404);
     const body = await res.json();
     expect(body).toHaveProperty('error');
+  });
+
+  // ── Auth gate: FocusAuthError → returns 200 {status:'error'} ─────────────────
+
+  it('returns 200 {status:"error"} and sets connection_status="error" when loginToPortal throws FocusAuthError', async () => {
+    const { loginToPortal: mockLoginToPortal } = await import(
+      '../../supabase/functions/_shared/focusPortalClient'
+    );
+    const { FocusAuthError: FocusAuthErrorClass } = await import(
+      '../../supabase/functions/_shared/focusPortalClient'
+    );
+    (mockLoginToPortal as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new FocusAuthErrorClass('bad creds'),
+    );
+
+    const { deps, mocks } = makeDeps({});
+    const req = makeRequest({});
+    const res = await handleSyncData(req, deps);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toMatchObject({ status: 'error' });
+
+    // Should have updated connection_status in DB
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(updateArg).toMatchObject({
+      connection_status: 'error',
+      last_error: 'Invalid Focus credentials',
+    });
   });
 
   // ── Backfill path ─────────────────────────────────────────────────────────

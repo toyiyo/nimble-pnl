@@ -23,8 +23,13 @@ fix/print-inactive-employees (worktree: .claude/worktrees/print-inactive-employe
   - [x] Task 4: Apply selectVisibleRosterInputs chokepoint in ScheduleExportDialog.tsx: imported helper, derived visibleShifts/visibleEmployees, replaced filteredShifts + allEmployeesWithShifts memos, updated previewRosterDay, updated both PDF generator calls, typecheck pass, all 74 tests in 7-file suite pass, commit (d12c8211)
   - [x] Task 5: Full local verification — all 369 test files / 4853 tests pass, typecheck PASS, lint pre-existing only (0 new errors in our files), build PASS from worktree. No fixup commit needed (nothing to commit).
 - [x] Phase 5 UI review — fixed ScheduleExportDialog: icon-box header, p0/gap-0 DialogContent, semantic token on icon, text-[17px] title, px-6 py-5 body wrapper, styled primary/ghost buttons, SelectTrigger inputs, label typography (a95de782)
-- [ ] Phase 6 Simplify
-- [ ] Phase 7 Multi-model review
+- [x] Phase 6 Simplify — collapsed filterEmployeesForScheduleView to chained .filter(), deduped predicate in selectVisibleRosterInputs (d9aace7a)
+- [x] Phase 7 Multi-model review — Codex ran; one minor finding: active employees with all shifts cancelled are absent from the print checkbox list (by design — nothing to export), Codex rated it major but it is within intended behavior (see codex-review-output.md)
+- [x] Phase 7b Fold findings — all findings were minor; fixed 3:
+    1. scheduleVisibility: eliminated redundant cancelled-shift filter pass (derive liveShiftEmployeeIds from liveShifts directly)
+    2. ScheduleExportDialog: corrected import order (Select shadcn UI with other UI imports; scheduleVisibility lib after types)
+    3. scheduleVisibility.test: added partial-fixture comment on double-cast
+    Commit: 53dac27f — all 6 tests pass, typecheck PASS
 - [ ] Phase 8 Verify
 - [ ] Phase 9 Ship & CI
 

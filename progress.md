@@ -92,4 +92,42 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   zero-value guards (no discount/refund rows), pos_system='focus', external_order_id
   pattern, orphan cleanup, categorization preservation, auth rejection, sync_all result.
 
-### Next: Task 3 — focusUrlParser (src/lib/focusUrlParser.ts + Vitest)
+### Task 3 DONE — commit 166bd22e
+- src/lib/focusUrlParser.ts: parseFocusReportUrl() — pure TS (no browser/Deno deps),
+  https-only, no-userinfo, /^([a-z0-9-]+\.)*myfocuspos\.com$/i allowlist,
+  requires StoreID, case-insensitive param keys, extracts baseUrl/reportPath/
+  dbServer/dbCatalog/userId/storeId from SSRS unconventional URL shape.
+- tests/unit/focusUrlParser.test.ts: 16 Vitest cases covering happy path
+  (real URL, alt subdomain, optional params absent, case-insensitive keys),
+  SSRF/security rejections (evil.com, http://, subdomain attack,
+  embedded username+password, username-only, file://, javascript:),
+  missing StoreID (absent, empty string, non-URL), reportPath extraction
+  (catalog segment preserved, Focus-generated params stripped).
+- Full suite: 355 test files / 4642 tests all green. typecheck clean.
+
+### Task 4 DONE — commit 173c2ae6
+- supabase/functions/_shared/focusReportClient.ts:
+  - FocusConnection interface (reportBaseUrl, reportPath, dbServer, dbCatalog,
+    reportUserId, storeId, revenueCenter) — mirrors focus_connections DB columns.
+  - FetchDeps interface (injectable fetch for testability without real network).
+  - assertAllowedHost(urlString): SSRF guard — https-only, no embedded credentials,
+    tight ^([a-z0-9-]+\.)*myfocuspos\.com$ host allow-list; throws for any violation.
+  - buildReportUrl(conn, startDate, endDate): constructs full SSRS URL with
+    StartDate/EndDate (MM/DD/YYYY), rs:Command=Render, rs:Format=HTML4.0, StoreID,
+    optional dbServer/dbCatalog/UserID/RevenueCenter. Handles ?-bearing reportPath
+    (splits on first "?" to isolate pathname vs catalog segment).
+  - fetchReportHtml(deps, url): redirect:'manual' loop, max 5 hops, per-hop
+    AbortSignal.timeout(20s), assertAllowedHost on each Location header (blocks
+    SSRF via redirects to 169.254.169.254 or non-myfocuspos.com hosts).
+- tests/unit/focusReportClient.test.ts: 25 Vitest tests (all green):
+  - buildReportUrl: StartDate/EndDate encoding, rs:Command/Format, StoreID/dbServer/
+    dbCatalog inclusion, base URL host, optional field handling, UserID omit-when-empty,
+    date ranges.
+  - assertAllowedHost: accepts valid myfocuspos.com + subdomains; throws for http://,
+    evil.com, subdomain injection, embedded credentials, file://.
+  - fetchReportHtml: 200 direct, same-host 302 followed + re-validated, SSRF-blocked
+    302 to 169.254.x.x and evil.com, hop limit (≤6 calls), missing Location header,
+    503 error, network error propagation.
+- Full suite: 356 files / 4667 tests all green. typecheck clean.
+
+### Next: Task 5 — focusReportParser (HTML → structured day)

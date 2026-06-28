@@ -63,8 +63,9 @@ export function useFocusConnection(restaurantId?: string | null) {
         return null;
       }
 
+       
       const { data, error } = await supabase
-        .from('focus_connections')
+        .from('focus_connections' as any)
         .select(FOCUS_CONNECTION_COLUMNS)
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
@@ -74,7 +75,8 @@ export function useFocusConnection(restaurantId?: string | null) {
         throw error;
       }
 
-      return data as FocusConnection | null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return ((data as any) ?? null) as FocusConnection | null;
     },
     enabled: !!restaurantId,
     staleTime: 30000,
@@ -135,8 +137,9 @@ export function useFocusConnection(restaurantId?: string | null) {
 
   const disconnectMutation = useMutation({
     mutationFn: async (restaurantId: string) => {
+       
       const { error } = await supabase
-        .from('focus_connections')
+        .from('focus_connections' as any)
         .update({ is_active: false })
         .eq('restaurant_id', restaurantId);
 

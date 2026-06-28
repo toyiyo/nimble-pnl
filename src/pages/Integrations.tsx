@@ -9,6 +9,7 @@ import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { useToastIntegration } from '@/hooks/useToastIntegration';
 import { useSlingIntegration } from '@/hooks/useSlingIntegration';
+import { useFocusConnection } from '@/hooks/useFocusConnection';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -21,6 +22,7 @@ const Integrations = () => {
   const { isConnected: shift4Connected } = useShift4Integration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: toastConnected } = useToastIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: slingConnected } = useSlingIntegration(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: focusConnected } = useFocusConnection(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -62,6 +64,15 @@ const Integrations = () => {
       logo: '💳',
       connected: shift4Connected,
       features: ['Payment Charges', 'Refunds', 'Real-time Webhooks', 'API Key Auth']
+    },
+    {
+      id: 'focus-pos',
+      name: 'Focus POS',
+      description: 'Sync daily sales from Focus POS',
+      category: 'Point of Sale',
+      logo: '🍦',
+      connected: focusConnected,
+      features: ['Daily Sales', 'Revenue Center Reports', 'Tax & Tips', 'Order Types']
     },
     {
       id: 'sling-scheduling',
@@ -108,7 +119,7 @@ const Integrations = () => {
       connected: false,
       features: ['Purchase Orders', 'Food Costs', 'Inventory', 'Delivery Tracking']
     }
-  ], [toastConnected, squareConnected, cloverConnected, shift4Connected, slingConnected]);
+  ], [toastConnected, squareConnected, cloverConnected, shift4Connected, focusConnected, slingConnected]);
 
   const groupedIntegrations = useMemo(() => {
     return integrations.reduce((acc, integration) => {

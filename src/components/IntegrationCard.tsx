@@ -10,14 +10,17 @@ import { useCloverIntegration } from '@/hooks/useCloverIntegration';
 import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { useToastConnection } from '@/hooks/useToastConnection';
 import { useSlingConnection } from '@/hooks/useSlingConnection';
+import { useFocusConnection } from '@/hooks/useFocusConnection';
 import { SquareSync } from '@/components/SquareSync';
 import { CloverSync } from '@/components/CloverSync';
 import { Shift4Sync } from '@/components/Shift4Sync';
 import { ToastSync } from '@/components/ToastSync';
 import { SlingSync } from '@/components/SlingSync';
+import { FocusSync } from '@/components/FocusSync';
 import { Shift4ConnectDialog } from '@/components/Shift4ConnectDialog';
 import { ToastSetupWizard } from '@/components/pos/ToastSetupWizard';
 import { SlingSetupWizard } from '@/components/pos/SlingSetupWizard';
+import { FocusSetupWizard } from '@/components/pos/FocusSetupWizard';
 import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Plug, Settings, CheckCircle, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -42,6 +45,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   const [showShift4Dialog, setShowShift4Dialog] = useState(false);
   const [showToastSetup, setShowToastSetup] = useState(false);
   const [showSlingSetup, setShowSlingSetup] = useState(false);
+  const [showFocusSetup, setShowFocusSetup] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -60,12 +64,16 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
   // Sling-specific integration hook
   const slingConnection = useSlingConnection(restaurantId);
 
-  // Check if this integration is Square, Clover, Shift4, Toast, or Sling and if it's connected
+  // Focus-specific integration hook
+  const focusConnection = useFocusConnection(restaurantId);
+
+  // Check if this integration is Square, Clover, Shift4, Toast, Sling, or Focus and if it's connected
   const isSquareIntegration = integration.id === 'square-pos';
   const isCloverIntegration = integration.id === 'clover-pos';
   const isShift4Integration = integration.id === 'shift4-pos';
   const isToastIntegration = integration.id === 'toast-pos';
   const isSlingIntegration = integration.id === 'sling-scheduling';
+  const isFocusIntegration = integration.id === 'focus-pos';
 
   const getActuallyConnected = (): boolean => {
     if (isSquareIntegration) return squareIntegration.isConnected;
@@ -73,6 +81,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     if (isShift4Integration) return shift4Integration.isConnected;
     if (isToastIntegration) return toastConnection.isConnected;
     if (isSlingIntegration) return slingConnection.isConnected;
+    if (isFocusIntegration) return focusConnection.isConnected;
     return integration.connected;
   };
 
@@ -82,6 +91,7 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     if (isShift4Integration) return shift4Integration.loading;
     if (isToastIntegration) return toastConnection.loading;
     if (isSlingIntegration) return slingConnection.loading;
+    if (isFocusIntegration) return focusConnection.loading;
     return isConnecting;
   };
 
@@ -111,6 +121,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
 
     if (isSlingIntegration) {
       setShowSlingSetup(true);
+      return;
+    }
+
+    if (isFocusIntegration) {
+      setShowFocusSetup(true);
       return;
     }
 
@@ -169,6 +184,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
 
     if (isSlingIntegration) {
       await slingConnection.disconnectSling(restaurantId);
+      return;
+    }
+
+    if (isFocusIntegration) {
+      await focusConnection.disconnect(restaurantId);
       return;
     }
 
@@ -334,6 +354,11 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             {isSlingIntegration && (
               <SlingSync restaurantId={restaurantId} />
             )}
+
+            {/* Focus POS Sync Component */}
+            {isFocusIntegration && (
+              <FocusSync restaurantId={restaurantId} />
+            )}
           </div>
         )}
       </CardContent>
@@ -370,6 +395,18 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
             }}
           />
         </DialogContent>
+      </Dialog>
+
+      {/* Focus POS Setup Wizard Dialog */}
+      <Dialog open={showFocusSetup} onOpenChange={setShowFocusSetup}>
+        <FocusSetupWizard
+          restaurantId={restaurantId}
+          onComplete={() => {
+            setShowFocusSetup(false);
+            queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
+          }}
+          onOpenChange={setShowFocusSetup}
+        />
       </Dialog>
     </Card>
   );

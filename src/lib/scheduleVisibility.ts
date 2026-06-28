@@ -19,17 +19,10 @@ export function filterEmployeesForScheduleView(
   positionFilter: string | null,
   areaFilter: string | null,
 ): Employee[] {
-  const filtered = allEmployees.filter(emp =>
-    emp.is_active || shiftEmployeeIds.has(emp.id)
-  );
-  let result = filtered;
-  if (areaFilter && areaFilter !== 'all') {
-    result = result.filter(emp => emp.area === areaFilter);
-  }
-  if (positionFilter && positionFilter !== 'all') {
-    result = result.filter(emp => emp.position === positionFilter);
-  }
-  return result;
+  return allEmployees
+    .filter(emp => emp.is_active || shiftEmployeeIds.has(emp.id))
+    .filter(emp => !areaFilter || areaFilter === 'all' || emp.area === areaFilter)
+    .filter(emp => !positionFilter || positionFilter === 'all' || emp.position === positionFilter);
 }
 
 /**
@@ -52,8 +45,8 @@ export function selectVisibleRosterInputs(
 ): { shifts: Shift[]; employees: Employee[] } {
   const liveShifts = shifts.filter(s => s.status !== 'cancelled');
   const liveShiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
-  const visibleEmployees = employees.filter(
-    emp => emp.is_active || liveShiftEmployeeIds.has(emp.id),
-  );
-  return { shifts: liveShifts, employees: visibleEmployees };
+  return {
+    shifts: liveShifts,
+    employees: filterEmployeesForScheduleView(employees, liveShiftEmployeeIds, null, null),
+  };
 }

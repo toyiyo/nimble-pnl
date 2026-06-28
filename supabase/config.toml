@@ -237,3 +237,6 @@ verify_jwt = false
 
 [functions.focus-save-connection]
 verify_jwt = false
+
+[functions.focus-test-connection]
+verify_jwt = false

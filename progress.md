@@ -286,4 +286,39 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   fetch → status='error' (still 200).
 - Full suite: 361 files / 4784 tests green. typecheck clean.
 
-### Next: Task 10 — focus-bulk-sync edge function (cron)
+### Task 10 DONE — commit a6fce117
+- supabase/functions/_shared/focusBulkSyncHandler.ts:
+  - BulkSyncDeps interface (injectable serviceClient, fetch, sleep, now, serviceRoleKey).
+  - timingSafeEqual(a, b): constant-time string comparison for the Bearer gate
+    (lesson 2026-05-07); checks length first then XOR-accumulates char codes.
+  - recentBusinessDays(tz, now): returns yesterday + day-before as ISO strings
+    in the connection's IANA timezone (en-CA locale, design S4).
+  - backfillDate(tz, now, cursor): today_in_tz − cursor − 1 (design review S4).
+  - processConnection(row, deps): builds FocusConnection + SyncDeps; backfill path
+    (initial_sync_done=false) calls processReportDay once for cursor day; incremental
+    path (initial_sync_done=true) calls processReportDay for yesterday + day-before
+    in parallel; returns { newSyncCursor, newInitialSyncDone }.
+  - handleBulkSync(req, deps):
+    1. Bearer gate — timing-safe compare; 401 when absent or wrong.
+    2. SELECT focus_connections WHERE is_active ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5.
+    3. For each connection: budget check (90s, skipped for i=0); sleep(2000ms) between (i>0);
+       processConnection → UPDATE focus_connections; per-connection exception → errors[].
+    4. Returns 200 { processed, errors, elapsedMs }.
+- supabase/functions/focus-bulk-sync/index.ts: thin CORS wrapper (verify_jwt=false);
+  passes globalThis.fetch, Date.now, setTimeout-based sleep,
+  SUPABASE_SERVICE_ROLE_KEY as serviceRoleKey.
+- supabase/config.toml: [functions.focus-bulk-sync] verify_jwt = false.
+- tests/unit/focusBulkSyncHandler.test.ts: 20 Vitest tests all green.
+  Bearer gate: 401 for absent header, wrong key, missing prefix.
+  Happy path: 200, { processed, errors, elapsedMs }, processed=1, errors=[].
+  Query shape: LIMIT 5, ORDER BY last_sync_time ASC NULLS FIRST, is_active filter.
+  Incremental path: 2 fetch calls (2 recent business days in parallel).
+  Backfill path: 1 fetch call, sync_cursor 5→6 in DB update.
+  Sleep: 2000ms between restaurants (called once for 2 connections); no sleep for 1.
+  Budget: stops at restaurant 2 when 90s exceeded after restaurant 1 completes.
+  Empty list: 200 processed=0 errors=[]. Per-connection error (DB update throws):
+  continues, processed=2, errors=[...'DB write failure'..].
+  LIMIT test: limitMock always called with 5.
+- Full suite: 362 files / 4804 tests all green. typecheck clean.
+
+### Next: Task 11 — cron migration (pg_cron schedules)

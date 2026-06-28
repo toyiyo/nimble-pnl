@@ -67,7 +67,7 @@ SELECT is(relrowsecurity,true,'RLS on focus_daily_reports') FROM pg_class WHERE 
 -- CHECK rejects non-https / non-myfocuspos host
 SELECT throws_ok($$INSERT INTO focus_connections(restaurant_id,report_base_url,report_path,store_id) VALUES (gen_random_uuid(),'http://evil.com','/x','1')$$, NULL, NULL, 'rejects bad base_url');
 -- CHECK accepts a valid host
-SELECT lives_ok($$INSERT INTO focus_connections(restaurant_id,report_base_url,report_path,store_id) VALUES (gen_random_uuid(),'https://mfprod-1.myfocuspos.com','/ReportServer?/generalstorereports/revenuecenter','15312')$$, 'accepts valid');
+SELECT lives_ok($$INSERT INTO focus_connections(restaurant_id,report_base_url,report_path,store_id) VALUES (gen_random_uuid(),'https://mfprod-1.myfocuspos.com','/ReportServer?/generalstorereports/revenuecenter','00000')$$, 'accepts valid');
 SELECT col_is_pk('public','focus_connections','id','id is PK');
 SELECT * FROM finish();
 ROLLBACK;
@@ -192,7 +192,7 @@ Worker implements the row inserts per design §7 (sale rows per item; `tax`/`tip
 
 **Files:** Create `src/lib/focusUrlParser.ts`; Test `tests/unit/focusUrlParser.test.ts`
 
-- [ ] **Step 1: Failing Vitest** — assert `parseFocusReportUrl(url)` on the real-shaped URL `https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/revenuecenter&dbServer=mfaz-rep-1&dbCatalog=KAHALA2&UserID=sample.user&StoreID=15312&rs:Command=render` returns `{ baseUrl:'https://mfprod-1.myfocuspos.com', reportPath:'/ReportServer?/generalstorereports/revenuecenter', dbServer:'mfaz-rep-1', dbCatalog:'KAHALA2', userId:'sample.user', storeId:'15312' }`. Assert `null` for `https://evil.com/...`, for `http://...myfocuspos.com` (non-https), and for a URL missing `StoreID`.
+- [ ] **Step 1: Failing Vitest** — assert `parseFocusReportUrl(url)` on the real-shaped URL `https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/revenuecenter&dbServer=mfaz-rep-1&dbCatalog=KAHALA2&UserID=sample.user&StoreID=00000&rs:Command=render` returns `{ baseUrl:'https://mfprod-1.myfocuspos.com', reportPath:'/ReportServer?/generalstorereports/revenuecenter', dbServer:'mfaz-rep-1', dbCatalog:'KAHALA2', userId:'sample.user', storeId:'00000' }`. Assert `null` for `https://evil.com/...`, for `http://...myfocuspos.com` (non-https), and for a URL missing `StoreID`.
 - [ ] **Step 2: Run → fail.**
 - [ ] **Step 3: Implement.** Use `new URL()`. Validate `protocol==='https:'`, `username===''`, `password===''`, hostname matches `/^([a-z0-9-]+\.)*myfocuspos\.com$/`. The SSRS path is the part of the search starting with `/` (the report catalog path) — preserve `/ReportServer?<catalogPath>`; extract `dbServer/dbCatalog/UserID/StoreID` from query params (case-insensitive keys). Return `null` if `StoreID` absent.
 - [ ] **Step 4: Run → pass.**

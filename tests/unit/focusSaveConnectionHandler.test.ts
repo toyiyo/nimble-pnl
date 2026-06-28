@@ -30,7 +30,7 @@ import {
 vi.mock('../../supabase/functions/_shared/focusPortalClient', () => ({
   loginToPortal: vi.fn().mockResolvedValue({ cookie: 'session-cookie' }),
   // Default: resolves to the numeric SSRS StoreID for the test store code
-  resolveStoreId: vi.fn().mockResolvedValue('15312'),
+  resolveStoreId: vi.fn().mockResolvedValue('54321'),
   discoverReportRouting: vi.fn().mockResolvedValue({
     baseUrl: 'https://mfprod-1.myfocuspos.com',
     reportPath: '/ReportServer?/generalstorereports/revenuecenter',
@@ -365,9 +365,9 @@ describe('handleSaveConnection', () => {
     });
 
     it('upserts the numeric store_id returned by resolveStoreId (not the raw entered value)', () => {
-      // The mock resolveStoreId returns '15312' regardless of the entered STORE_ID ('99999')
+      // The mock resolveStoreId returns '54321' regardless of the entered STORE_ID ('99999')
       const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('store_id', '15312');
+      expect(payload).toHaveProperty('store_id', '54321');
     });
 
     it('upserts report_base_url from discovery result', () => {

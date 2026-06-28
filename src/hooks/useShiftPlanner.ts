@@ -15,6 +15,7 @@ import { validateShift, ValidationResult } from '@/lib/shiftValidator';
 import { checkConflictsImperative } from '@/hooks/useConflictDetection';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
+import { UNASSIGNED } from '@/lib/templateAreaGrouping';
 
 import type { Shift, ShiftTemplate, ConflictCheck } from '@/types/scheduling';
 import type { ValidationIssue } from '@/lib/shiftValidator';
@@ -163,6 +164,28 @@ export function buildTemplateGridData(
   }
 
   return grid;
+}
+
+/**
+ * Group the '__unmatched__' bucket (Map<day, Shift[]>) by employee work area.
+ * Shifts with no employee area fall under UNASSIGNED. Returns
+ * Map<area, Map<day, Shift[]>>. Pure; drives the off-template lane rows.
+ */
+export function groupUnmatchedByArea(
+  unmatchedByDay: Map<string, Shift[]>,
+): Map<string, Map<string, Shift[]>> {
+  const out = new Map<string, Map<string, Shift[]>>();
+  for (const [day, shifts] of unmatchedByDay) {
+    for (const shift of shifts) {
+      const area = shift.employee?.area ?? UNASSIGNED;
+      let byDay = out.get(area);
+      if (!byDay) { byDay = new Map(); out.set(area, byDay); }
+      const list = byDay.get(day);
+      if (list) list.push(shift);
+      else byDay.set(day, [shift]);
+    }
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

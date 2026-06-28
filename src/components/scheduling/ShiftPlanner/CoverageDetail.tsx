@@ -29,44 +29,113 @@ import {
 } from '@/components/ui/drawer';
 
 import { useIsMobile } from '@/hooks/use-mobile';
-import type { SlotCoverage } from '@/types/scheduling';
+import type { SlotCoverage, CoveringEmployee } from '@/types/scheduling';
 import { minutesToCompact } from '@/lib/shiftCoverage';
+
+/**
+ * Groups the coveringEmployees list by home area vs. covering-from area.
+ *
+ * - `onArea`: employees whose homeArea matches slotArea (or homeArea is null, or slotArea is null/undefined)
+ * - `coveringFrom`: employees whose homeArea differs from slotArea, keyed by homeArea
+ *
+ * Pure helper — exported for unit tests.
+ */
+export function groupCoveringByArea(
+  list: CoveringEmployee[],
+  slotArea: string | null | undefined,
+): { onArea: CoveringEmployee[]; coveringFrom: Map<string, CoveringEmployee[]> } {
+  const onArea: CoveringEmployee[] = [];
+  const coveringFrom = new Map<string, CoveringEmployee[]>();
+  for (const emp of list) {
+    const home = emp.homeArea ?? null;
+    if (slotArea === null || slotArea === undefined || home === null || home === slotArea) {
+      onArea.push(emp);
+    } else {
+      const g = coveringFrom.get(home);
+      if (g) g.push(emp);
+      else coveringFrom.set(home, [emp]);
+    }
+  }
+  return { onArea, coveringFrom };
+}
 
 interface CoverageDetailProps {
   open: boolean;
   coverage: SlotCoverage | null;
   /** Human-readable slot label shown in the title, e.g. "Server · 10:00a–4:30p" */
   slotLabel?: string;
+  /** Area of the slot (template area), used to group covering employees by home area. */
+  slotArea?: string | null;
   /** Bounding rect of the cell that triggered this panel (desktop anchor). */
   anchorRect?: DOMRect;
   onClose: () => void;
 }
 
 /** Employee list + gap segments (shared between Popover and Drawer layouts). */
-function CoverageList({ coverage }: { coverage: SlotCoverage }) {
-  const { coveringEmployees, segments } = coverage;
+function CoverageList({ coverage, slotArea }: { coverage: SlotCoverage; slotArea?: string | null }) {
+  const { coveringEmployees, segments, loanedOut } = coverage;
   const gapSegments = segments.filter((s) => !s.covered);
+  const { onArea, coveringFrom } = groupCoveringByArea(coveringEmployees, slotArea);
+  const nothing = coveringEmployees.length === 0 && loanedOut.length === 0;
 
   return (
     <div className="space-y-3">
-      {coveringEmployees.length === 0 ? (
+      {nothing ? (
         <p className="text-[13px] text-muted-foreground">No employees scheduled for this slot.</p>
       ) : (
-        <ul className="space-y-1.5" aria-label="Covering employees">
-          {coveringEmployees.map((emp, i) => (
-            <li
-              key={`${emp.employeeId}-${i}`}
-              className="flex items-center justify-between text-[13px]"
-            >
-              <span className="font-medium text-foreground">
-                {emp.employeeName ?? 'Employee'}
-              </span>
-              <span className="text-muted-foreground tabular-nums">
-                {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
-              </span>
-            </li>
+        <div className="space-y-3">
+          {onArea.length > 0 && (
+            <div>
+              {slotArea && (
+                <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                  On {slotArea}
+                </p>
+              )}
+              <ul className="space-y-1.5" aria-label="On this area">
+                {onArea.map((emp, i) => (
+                  <li key={`on-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {[...coveringFrom.entries()].map(([home, emps]) => (
+            <div key={`cf-${home}`}>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                Covering from {home}
+              </p>
+              <ul className="space-y-1.5" aria-label={`Covering from ${home}`}>
+                {emps.map((emp, i) => (
+                  <li key={`cov-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {minutesToCompact(emp.startMin)}–{minutesToCompact(emp.endMin)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+          {loanedOut.length > 0 && (
+            <div>
+              <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1.5">
+                Covering elsewhere
+              </p>
+              <ul className="space-y-1.5" aria-label="Covering elsewhere">
+                {loanedOut.map((emp, i) => (
+                  <li key={`loaned-${emp.employeeId}-${i}`} className="flex items-center justify-between text-[13px]">
+                    <span className="font-medium text-foreground">{emp.employeeName ?? 'Employee'}</span>
+                    <span className="text-muted-foreground">at {emp.workArea ?? '—'}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
 
       {gapSegments.length > 0 && (
@@ -90,7 +159,7 @@ function CoverageList({ coverage }: { coverage: SlotCoverage }) {
   );
 }
 
-export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose }: CoverageDetailProps) {
+export function CoverageDetail({ open, coverage, slotLabel, slotArea, anchorRect, onClose }: CoverageDetailProps) {
   const isMobile = useIsMobile();
   // Virtual anchor element positioned at the cell's bounding rect
   const virtualAnchorRef = useRef<HTMLSpanElement>(null);
@@ -132,7 +201,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
               </div>
               <div>
                 <DrawerTitle className="text-[17px] font-semibold text-foreground text-left">
-                  Covering employees for this slot
+                  Staff for this slot
                 </DrawerTitle>
                 <DrawerDescription className="text-[12px] text-muted-foreground mt-0.5 text-left">
                   {slotLabel ? `${slotLabel} · ` : ''}{headerText}
@@ -141,7 +210,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
             </div>
           </DrawerHeader>
           <div className="pt-4">
-            <CoverageList coverage={coverage} />
+            <CoverageList coverage={coverage} slotArea={slotArea} />
           </div>
         </DrawerContent>
       </Drawer>
@@ -170,7 +239,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
         side="bottom"
         align="start"
         sideOffset={4}
-        aria-label="Covering employees for this slot"
+        aria-label="Staff for this slot"
       >
         {/* Header */}
         <div className="px-4 pt-4 pb-3 border-b border-border/40">
@@ -180,7 +249,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-[14px] font-semibold text-foreground">
-                Covering employees for this slot
+                Staff for this slot
               </p>
               <p className="text-[12px] text-muted-foreground mt-0.5">
                 {slotLabel ? `${slotLabel} · ` : ''}{headerText}
@@ -198,7 +267,7 @@ export function CoverageDetail({ open, coverage, slotLabel, anchorRect, onClose 
         </div>
         {/* Body */}
         <div className="px-4 py-3">
-          <CoverageList coverage={coverage} />
+          <CoverageList coverage={coverage} slotArea={slotArea} />
         </div>
       </PopoverContent>
     </Popover>

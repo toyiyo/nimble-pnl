@@ -174,3 +174,71 @@ describe('ShiftCell — slotName in memo comparator (source-text, Task 2f)', () 
     expect(SHIFT_CELL_SRC).toMatch(/slotName.*aria-label|aria-label.*slotName/s);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Task 10: Wire homeArea, ghostByCell, offTemplateByArea, slotArea
+// ---------------------------------------------------------------------------
+
+describe('ShiftPlannerTab — Task 10: homeArea in coverage shifts (source-text)', () => {
+  it('sets homeArea on CoverageShift objects using s.employee?.area', () => {
+    // homeArea must be derived from the employee's own area (not the template area).
+    // It is set alongside the existing `area` field in the cov array.
+    expect(SRC).toMatch(/homeArea\s*:\s*s\.employee\?\.area/);
+  });
+});
+
+describe('ShiftPlannerTab — Task 10: ghostByCell useMemo (source-text)', () => {
+  it('imports assignLoanedOutCell from @/lib/loanedOut', () => {
+    expect(SRC).toMatch(/assignLoanedOutCell/);
+    expect(SRC).toMatch(/loanedOut/);
+  });
+
+  it('declares a ghostByCell useMemo that calls assignLoanedOutCell', () => {
+    expect(SRC).toMatch(/ghostByCell\s*=\s*useMemo/);
+    expect(SRC).toMatch(/assignLoanedOutCell\s*\(/);
+  });
+
+  it('builds a templateStart lookup from templates inside ghostByCell memo', () => {
+    // The memo must map template id → start_time for tie-breaking.
+    expect(SRC).toMatch(/t\.id[^\n]*t\.start_time|t\.start_time[^\n]*t\.id/);
+  });
+
+  it('ghostByCell has coverageByTemplateDay and templates in its deps', () => {
+    // Both must appear as dependency array entries for ghostByCell.
+    expect(SRC).toMatch(/ghostByCell[\s\S]{0,300}\[coverageByTemplateDay[\s\S]{0,50}templates\]/);
+  });
+});
+
+describe('ShiftPlannerTab — Task 10: offTemplateByArea useMemo (source-text)', () => {
+  it('imports groupUnmatchedByArea from useShiftPlanner', () => {
+    expect(SRC).toMatch(/groupUnmatchedByArea/);
+  });
+
+  it('declares an offTemplateByArea useMemo that calls groupUnmatchedByArea', () => {
+    expect(SRC).toMatch(/offTemplateByArea\s*=\s*useMemo/);
+    expect(SRC).toMatch(/groupUnmatchedByArea\s*\(/);
+  });
+
+  it('offTemplateByArea memo reads the __unmatched__ bucket from templateGridData', () => {
+    // groupUnmatchedByArea receives templateGridData.get('__unmatched__')
+    expect(SRC).toMatch(/__unmatched__/);
+  });
+});
+
+describe('ShiftPlannerTab — Task 10: TemplateGrid receives new props (source-text)', () => {
+  it('passes ghostByCell to TemplateGrid', () => {
+    expect(SRC).toMatch(/ghostByCell\s*=\s*\{ghostByCell\}/);
+  });
+
+  it('passes offTemplateByArea to TemplateGrid', () => {
+    expect(SRC).toMatch(/offTemplateByArea\s*=\s*\{offTemplateByArea\}/);
+  });
+});
+
+describe('ShiftPlannerTab — Task 10: slotArea passed to CoverageDetail (source-text)', () => {
+  it('passes slotArea derived from coverageDetailTemplate.area to CoverageDetail', () => {
+    // CoverageDetail must receive slotArea={coverageDetailTemplate?.area ?? null}
+    // so the popover can split staff into on-area vs covering groups.
+    expect(SRC).toMatch(/slotArea\s*=\s*\{coverageDetailTemplate\?\.area/);
+  });
+});

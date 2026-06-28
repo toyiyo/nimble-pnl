@@ -169,6 +169,52 @@ describe('computeSlotCoverage — area scope (opt-in)', () => {
 
 import { minutesToCompact } from '@/lib/shiftCoverage';
 
+describe('area facets: covering + loanedOut', () => {
+  const tz = 'America/Chicago';
+  // Wetzel's Close slot 16:00-23:30 on 2026-07-04 (Sat)
+  const slot = ['16:00:00', '23:30:00', 2, '2026-07-04'] as const;
+
+  function shift(over: Partial<CoverageShift>): CoverageShift {
+    return {
+      employee_id: 'e1', employee_name: 'Termora',
+      start_time: '2026-07-04T21:00:00Z', end_time: '2026-07-05T04:30:00Z',
+      position: 'Server', status: 'scheduled', area: "Wetzel's", homeArea: 'Cold Stone',
+      ...over,
+    };
+  }
+
+  it('tags coveringEmployees with homeArea and workArea', () => {
+    const cov = computeSlotCoverage(...slot, [shift({})], { position: 'Server', tz, area: "Wetzel's" });
+    expect(cov.coveringEmployees).toHaveLength(1);
+    expect(cov.coveringEmployees[0].homeArea).toBe('Cold Stone');
+    expect(cov.coveringEmployees[0].workArea).toBe("Wetzel's");
+  });
+
+  it('populates loanedOut for the home-area slot and excludes from openSpots', () => {
+    // Cold Stone Close slot, same window. Termora homeArea=Cold Stone, workArea=Wetzel's.
+    const cov = computeSlotCoverage('16:00:00', '23:30:00', 4, '2026-07-04', [shift({})], { position: 'Server', tz, area: 'Cold Stone' });
+    // She does NOT fill a Cold Stone spot:
+    expect(cov.coveringEmployees).toHaveLength(0);
+    expect(cov.openSpots).toBe(4);
+    // ...but is surfaced as loaned out:
+    expect(cov.loanedOut).toHaveLength(1);
+    expect(cov.loanedOut[0].employeeId).toBe('e1');
+    expect(cov.loanedOut[0].workArea).toBe("Wetzel's");
+    expect(cov.loanedOut[0].endMin - cov.loanedOut[0].startMin).toBeGreaterThan(0);
+  });
+
+  it('loanedOut is empty when slot area is null (whole-restaurant)', () => {
+    const cov = computeSlotCoverage(...slot, [shift({})], { position: 'Server', tz });
+    expect(cov.loanedOut).toEqual([]);
+  });
+
+  it('same-area shift is neither covering-tagged-cross nor loaned out', () => {
+    const cov = computeSlotCoverage(...slot, [shift({ area: "Wetzel's", homeArea: "Wetzel's" })], { position: 'Server', tz, area: "Wetzel's" });
+    expect(cov.coveringEmployees[0].homeArea).toBe("Wetzel's");
+    expect(cov.loanedOut).toEqual([]);
+  });
+});
+
 describe('minutesToCompact', () => {
   it('formats on-the-hour minutes: 840 (14:00) => "2p"', () => {
     expect(minutesToCompact(840)).toBe('2p');

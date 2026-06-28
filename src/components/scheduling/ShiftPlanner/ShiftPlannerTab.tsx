@@ -8,7 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 import { AlertCircle, CalendarOff, Users, X } from 'lucide-react';
 
-import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek } from '@/hooks/useShiftPlanner';
+import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek, groupUnmatchedByArea } from '@/hooks/useShiftPlanner';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -20,6 +20,7 @@ import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
 import type { ValidationIssue } from '@/lib/shiftValidator';
 
 import { computeSlotCoverage } from '@/lib/shiftCoverage';
+import { assignLoanedOutCell } from '@/lib/loanedOut';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -157,6 +158,7 @@ export function ShiftPlannerTab({
       area: s.shift_template_id
         ? (templateAreaMap.get(s.shift_template_id) ?? s.employee?.area ?? null)
         : (s.employee?.area ?? null),
+      homeArea: s.employee?.area ?? null,
     }));
     const map = new Map<string, Map<string, SlotCoverage>>();
     for (const t of templates) {
@@ -176,6 +178,18 @@ export function ShiftPlannerTab({
     }
     return map;
   }, [shifts, templates, weekDays, restaurantTimezone]);
+
+  // Ghost map: de-duped loaned-out employees keyed `${templateId}:${day}`
+  const ghostByCell = useMemo(() => {
+    const startById = new Map(templates.map((t) => [t.id, t.start_time]));
+    return assignLoanedOutCell(coverageByTemplateDay, startById);
+  }, [coverageByTemplateDay, templates]);
+
+  // Off-template lane: unmatched shifts grouped by employee area → day
+  const offTemplateByArea = useMemo(
+    () => groupUnmatchedByArea(templateGridData.get('__unmatched__') ?? new Map()),
+    [templateGridData],
+  );
 
   // Lifted coverage detail state — single Popover/Drawer instance (Single Dialog Pattern)
   const [coverageDetail, setCoverageDetail] = useState<{ templateId: string; day: string; anchorRect?: DOMRect } | null>(null);
@@ -611,6 +625,8 @@ export function ShiftPlannerTab({
                   pickedEmployeeName={pickedEmployeeName}
                   coverageByTemplateDay={coverageByTemplateDay}
                   onCoverageClick={handleCoverageClick}
+                  ghostByCell={ghostByCell}
+                  offTemplateByArea={offTemplateByArea}
                 />
               </div>
             )}
@@ -779,6 +795,7 @@ export function ShiftPlannerTab({
             : null
         }
         slotLabel={coverageSlotLabel}
+        slotArea={coverageDetailTemplate?.area ?? null}
         anchorRect={coverageDetail?.anchorRect}
         onClose={handleCoverageClose}
       />

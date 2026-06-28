@@ -39,10 +39,10 @@ fix/print-inactive-employees (worktree: .claude/worktrees/print-inactive-employe
     - Build: PASS (vite build via main repo node_modules)
     - DB tests: pre-existing open_shift_coverage.test.sql failure (shift_slot_min_concurrent missing from local DB — same on main)
     - E2E tests: 146 pass, 1 flaky (scheduling-conflicts:284 fails under parallel load, passes in isolation, pre-existing), 12 skip; schedule-print-export (7/7) and scheduling-inactive-employees (3/3) all PASS
-- [ ] Phase 9 Ship & CI
+- [x] Phase 9 Ship & CI — PR #558 opened, branch pushed
 
 ## CI Status
-- PR: not yet created
+- PR: https://github.com/toyiyo/nimble-pnl/pull/558
 
 ## Blockers
 - none

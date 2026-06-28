@@ -153,10 +153,13 @@ export function recentBusinessDays(tz: string, now: Date): [string, string] {
 /**
  * Shared shape for DB rows from focus_connections that carry routing params.
  * Used by focusTestConnectionHandler, focusSyncDataHandler, focusBulkSyncHandler.
+ *
+ * report_base_url and report_path are nullable because they are discovered at
+ * connect-time and may be null if discovery failed (connection_status='error').
  */
 export interface FocusConnectionRow {
-  report_base_url: string;
-  report_path: string;
+  report_base_url: string | null;
+  report_path: string | null;
   db_server: string | null;
   db_catalog: string | null;
   report_user_id: string | null;
@@ -168,8 +171,17 @@ export interface FocusConnectionRow {
 /**
  * Map a DB focus_connections row to the FocusConnection type expected by
  * focusReportClient functions. Extracted here to avoid copy-paste in three handlers.
+ *
+ * Throws when report_base_url or report_path is null — this indicates the
+ * connection is in an error state (discovery failed). Callers should check
+ * connection_status before calling this function.
  */
 export function rowToFocusConnection(row: FocusConnectionRow): FocusConnection {
+  if (!row.report_base_url || !row.report_path) {
+    throw new Error(
+      'Focus connection is missing report routing — re-connect to discover report URL',
+    );
+  }
   return {
     reportBaseUrl: row.report_base_url,
     reportPath: row.report_path,

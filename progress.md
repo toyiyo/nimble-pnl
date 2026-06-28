@@ -476,3 +476,57 @@ Findings:
 - IntegrationLogo.tsx, Integrations.tsx: No new violations introduced.
 
 One commit: eab1aeb0 style(focus): fix input typography to match CLAUDE.md text-[14px] spec
+
+## Phase 7a Codex Adversarial Review COMPLETE
+
+Codex (gpt-5.5) ran against full branch diff vs main. Output: dev-tools/codex-review-output.md.
+
+Finding (severity=major):
+- file: supabase/functions/_shared/focusSyncHandler.ts line 112
+- processReportDay uses the first parsed item's revenueCenter as the DB row's revenue_center for
+  an all-centers report. Items from subsequent revenue centers are stored under the wrong key,
+  causing mis-keyed external_item_ids in sync_focus_to_unified_sales. If two centers sell an item
+  with the same name, the second center's row silently overwrites the first in unified_sales,
+  dropping sales data. This only matters when conn.revenueCenter is empty (all-centers fetch);
+  per-center fetches (conn.revenueCenter set) are unaffected.
+
+## Phase 7b Fold Findings COMPLETE — commit df287ddd
+
+10 critical/major actionable findings fixed (6 reviewers: security, performance, maintainability,
+sound-logic, ocr-rules, codex). All 4852 tests pass, typecheck clean.
+
+### Fixes applied
+
+**Security:**
+- focusSaveConnectionHandler: generic 500 message (was leaking raw upsertError.message)
+- focusBulkSyncHandler: timingSafeEqual now iterates max(a,b) length — old early-exit
+  on length mismatch allowed token-length inference via timing
+- focusTestConnectionHandler + focusSyncDataHandler: .eq('is_active', true) boolean
+  (was string 'true' — could return zero rows under strict PostgREST coercion)
+
+**Correctness (data integrity):**
+- focusSyncHandler: revenue_center key always uses conn.revenueCenter ('' for all-centers)
+  instead of data.items[0].revenueCenter — fixes non-deterministic ON CONFLICT key that
+  could create duplicate rows or drop sales from unified_sales
+- sync_all_focus_to_unified_sales SQL: end date now yesterday UTC instead of CURRENT_DATE —
+  prevents partial-day data for restaurants in negative UTC offsets
+
+**Logic / UX:**
+- focusBulkSyncHandler: processed counts only succeeded restaurants (not attempted)
+- FocusSync catch block: uses local totalDays not stale React state totalDaysSynced
+- FocusSync: loading skeleton + error Alert before happy path (CLAUDE.md Always Handle States)
+- IntegrationCard getConnectionDateLabel: Focus branch shows real last_sync_time
+- useFocusConnection: explanatory comments on both `as any` casts
+
+### Skipped (not actionable bugs / approved design / style)
+- N+1 INSERT loop in SQL (performance/major): set-based rewrite is a significant SQL
+  refactor; deferred — current throughput (one restaurant, daily reports) is not a hot path
+- FocusSync custom date range not wired (maintainability/major): design doc does not specify
+  date-range mode for Focus (one-day-per-call model); leaving UI as informational-only is
+  consistent with design
+- useFocusConnection hook called unconditionally in IntegrationCard (performance/major):
+  React Query deduplicates network requests; this is a pre-existing pattern matching Toast/Sling
+- RLS focus_conn_all WITH CHECK gap (security/major): pre-existing pattern from Toast migration;
+  service-role handles all writes; flagged in code comment in migration
+- supabase/config.toml missing final newline (minor): style
+- import order in useFocusConnection.tsx (minor): style — CodeRabbit will flag in 7c

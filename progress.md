@@ -340,4 +340,71 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   - Test 4: focus-unified-sales-sync schedule = '*/5 * * * *'.
 - Vitest: 362 files / 4804 tests still green (unchanged from Task 10).
 
-### Next: Task 12 — useFocusConnection hook
+### Task 12 DONE — commit 4c44a257
+- src/hooks/useFocusConnection.tsx:
+  - FocusConnection type (mirrors focus_connections DB columns, no select('*')).
+  - FOCUS_CONNECTION_COLUMNS explicit column list (design F8).
+  - useQuery: queryKey ['focus-connection', restaurantId], maybeSingle() (never
+    throws PGRST116), staleTime:30000, enabled:!!restaurantId,
+    refetchOnWindowFocus:false, refetchOnMount:true.
+  - saveConnection(restaurantId, reportUrl) → invokes focus-save-connection;
+    both error shapes handled (lesson 2026-05-16).
+  - testConnection(restaurantId) → invokes focus-test-connection; both error shapes.
+  - disconnect(restaurantId) → useMutation sets is_active=false on focus_connections
+    (JWT client; RLS FOR ALL owner/manager policy covers this path).
+  - triggerManualSync(restaurantId) → invokes focus-sync-data; both error shapes.
+  - Returns {isConnected, connection, loading, error, saveConnection, testConnection,
+    disconnect, triggerManualSync}.
+- tests/unit/useFocusConnection.test.tsx: 17 Vitest tests all green.
+  Query: disabled when no restaurantId; maybeSingle() called; explicit column list
+  asserted (not '*', contains id/store_id/connection_status/is_active);
+  returns connection + isConnected:true on data; throws on non-PGRST116 DB error.
+  saveConnection: invoke called with correct fn name + body; error shape 1 (rejection)
+  throws; error shape 2 ({data:null,error:{message}}) throws.
+  testConnection: invoke called; both error shapes throw.
+  disconnect: update called with {is_active:false}; error shape 1 (direct error)
+  throws; error shape 2 (thrown rejection) throws.
+  triggerManualSync: invoke called with focus-sync-data; both error shapes throw.
+- Full suite: 363 files / 4821 tests green. typecheck clean.
+
+### Task 13 DONE — commit 84122f69
+- src/components/pos/SyncComponents.tsx:
+  - POSConfig: added optional `recentWindowLabel?: string` field (design F5).
+  - getSyncDescription: uses `config.recentWindowLabel ?? 'last 25 hours'` (backport).
+  - SyncModeSelector: same substitution in the description text.
+  - FOCUS_CONFIG exported: {name:'Focus POS', dataLabel:'daily reports',
+    dataLabelSingular:'daily report', syncInterval:'6 hours',
+    recentWindowLabel:'last 2 business days'}.
+- src/components/pos/FocusSetupWizard.tsx:
+  - Apple/Notion Dialog (DialogContent + DialogTitle + DialogDescription — F1).
+  - 3-step flow: instructions → url-entry → url-confirmed → done.
+  - Step 1: informational non-alarming Alert (no password, Store ID caveat,
+    Focus/Shift4 mailto link — F8).
+  - Step 2a (url-entry): Input id="focus-report-url", Label htmlFor (F2),
+    aria-invalid + aria-describedby on validation failure (F2).
+  - Step 2b (url-confirmed): client-side parseFocusReportUrl preview shows
+    storeId + dbCatalog (F4); "Save & Connect" button.
+  - handleSaveAndConnect: calls saveConnection then testConnection; partial
+    failure (testConnection rejects) → stays on step 2b, shows inline error +
+    Retry button (F3); never advances to Done on failure.
+  - Sticky footer (F7), max-h-[80vh] (F7).
+  - StepIndicator with aria-current="step" (F8).
+- src/components/FocusSync.tsx:
+  - Early-return not-connected guard (F7: never reads connection.initial_sync_done
+    on null).
+  - Passes syncCursor to InitialSyncPendingAlert for backfill progress display.
+  - One-day-per-call (no nextPage loop — Focus sync model).
+  - Uses FOCUS_CONFIG throughout.
+- tests/unit/focusSetupWizard.test.tsx: 19 Vitest tests all green.
+  SyncComponents (4): FOCUS_CONFIG shape, recentWindowLabel used/fallback in
+  SyncModeSelector and SyncButton.
+  FocusSetupWizard (11): step 1 heading + informational Alert, Get Started button,
+  step 2a navigation, aria-invalid on invalid URL, confirmation shows storeId/brand,
+  saveConnection+testConnection called on Save & Connect, partial-failure re-entry
+  (URL retained, error shown, not on Done step), success advances to Done step,
+  DialogTitle h2, step indicator aria-current.
+  FocusSync (3): not-connected guard (no Sync Now button), sync dashboard when
+  connected, InitialSyncPendingAlert with syncCursor=42 shows "42 of 90".
+- Full suite: 364 files / 4840 tests all green. typecheck clean.
+
+### Next: Task 14 — Register Focus POS in Integrations UI

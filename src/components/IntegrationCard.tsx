@@ -214,6 +214,10 @@ export const IntegrationCard = ({ integration, restaurantId }: IntegrationCardPr
     if (isSlingIntegration && slingConnection.connection) {
       return `Connected: ${new Date(slingConnection.connection.created_at).toLocaleDateString()}`;
     }
+    if (isFocusIntegration && focusConnection.connection) {
+      const ts = focusConnection.connection.last_sync_time ?? focusConnection.connection.created_at;
+      return `Last sync: ${new Date(ts).toLocaleDateString()}`;
+    }
     return 'Last sync: 2 hours ago';
   };
 

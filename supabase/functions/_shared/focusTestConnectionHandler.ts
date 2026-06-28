@@ -181,7 +181,7 @@ export async function handleTestConnection(
         'report_user_id, store_id, revenue_center, timezone',
     )
     .eq('restaurant_id', restaurantId)
-    .eq('is_active', 'true')
+    .eq('is_active', true)
     .single();
 
   if (connError || !connRow) {

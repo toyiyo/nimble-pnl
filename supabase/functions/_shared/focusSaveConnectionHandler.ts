@@ -175,8 +175,10 @@ export async function handleSaveConnection(
     .select();
 
   if (upsertError) {
+    // Log full detail server-side; return a generic message to avoid leaking
+    // DB constraint names or table structure to the caller (security review finding).
     console.error('focus-save-connection: upsert failed:', upsertError.message);
-    return jsonError(500, `Failed to save connection: ${upsertError.message}`);
+    return jsonError(500, 'An internal error occurred while saving the connection');
   }
 
   // ── 7. Success ────────────────────────────────────────────────────────────

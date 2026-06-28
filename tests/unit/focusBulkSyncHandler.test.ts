@@ -436,8 +436,10 @@ describe('handleBulkSync', () => {
 
     expect(res.status).toBe(200);
     const body = await res.json();
-    // Both restaurants were attempted (2 processed = 1 errored + 1 ok)
-    expect(body.processed).toBe(2);
+    // processed counts only SUCCEEDED restaurants; errored ones are in errors[].
+    // First restaurant errored → processed=1, errors=[1 item].
+    // Total attempted = processed + errors.length = 2.
+    expect(body.processed).toBe(1);
     // The error from the first restaurant should be surfaced
     expect(body.errors.length).toBeGreaterThanOrEqual(1);
     expect(body.errors[0]).toMatch(/DB write failure/);

@@ -63,6 +63,9 @@ export function useFocusConnection(restaurantId?: string | null) {
         return null;
       }
 
+      // focus_connections is not yet in the generated Supabase types — same pattern
+      // as useSlingConnection.ts. The cast is removed automatically once types are
+      // regenerated after the migration is deployed.
        
       const { data, error } = await supabase
         .from('focus_connections' as any)
@@ -137,6 +140,8 @@ export function useFocusConnection(restaurantId?: string | null) {
 
   const disconnectMutation = useMutation({
     mutationFn: async (restaurantId: string) => {
+      // focus_connections is not yet in the generated Supabase types — same pattern
+      // as useSlingConnection.ts.
        
       const { error } = await supabase
         .from('focus_connections' as any)

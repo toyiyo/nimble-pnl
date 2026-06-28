@@ -197,7 +197,7 @@ export async function handleSyncData(
         'report_user_id, store_id, revenue_center, timezone, initial_sync_done, sync_cursor',
     )
     .eq('restaurant_id', restaurantId)
-    .eq('is_active', 'true')
+    .eq('is_active', true)
     .single();
 
   if (connError || !connRow) {

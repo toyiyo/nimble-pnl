@@ -115,7 +115,9 @@ export interface BulkSyncDeps {
 
 /** Per-run result. */
 interface BulkSyncResult {
+  /** Restaurants successfully synced (excludes errored restaurants). */
   processed: number;
+  /** Per-restaurant error strings for failed restaurants. */
   errors: string[];
   elapsedMs: number;
 }
@@ -126,21 +128,21 @@ interface BulkSyncResult {
  * Constant-time string comparison to avoid timing side-channels on the
  * service-role Bearer token gate (lesson 2026-05-07).
  *
+ * Iterates over max(a.length, b.length) in all branches so that response
+ * time does not reveal the correct token length to an attacker making
+ * requests with tokens of varying lengths.
+ *
  * Returns true only when both strings have equal length and content.
  */
 function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) {
-    // Still iterate to prevent length leakage — XOR all characters of a with
-    // a[0] so the loop is not trivially optimised away.
-    let mismatch = 1;
-    for (let i = 0; i < a.length; i++) {
-      mismatch |= a.charCodeAt(i) ^ a.charCodeAt(0);
-    }
-    return mismatch === 0; // always false (mismatch starts at 1)
-  }
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  const maxLen = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length; // non-zero when lengths differ
+  for (let i = 0; i < maxLen; i++) {
+    // Out-of-bounds charCodeAt returns NaN; NaN ^ NaN is 0 in JS,
+    // so we substitute 0 for missing characters to avoid NaN poisoning.
+    const ca = i < a.length ? a.charCodeAt(i) : 0;
+    const cb = i < b.length ? b.charCodeAt(i) : 0;
+    diff |= ca ^ cb;
   }
   return diff === 0;
 }
@@ -289,8 +291,9 @@ export async function handleBulkSync(
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`focus-bulk-sync: error for restaurant ${row.restaurant_id}:`, message);
+      // Do not increment result.processed on error — processed means succeeded.
+      // The caller can compute attempted = processed + errors.length.
       result.errors.push(`${row.restaurant_id}: ${message}`);
-      result.processed++; // Count as attempted (even if errored)
     }
   }
 

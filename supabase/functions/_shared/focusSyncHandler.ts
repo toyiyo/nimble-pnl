@@ -105,12 +105,12 @@ export async function processReportDay(
 
     if (parseResult.ok) {
       const { data } = parseResult;
-      // Use the first item's revenueCenter as the row's revenue_center.
-      // When multiple revenue centers exist, each will produce its own row
-      // via separate processReportDay calls with a non-empty conn.revenueCenter.
-      // For an all-centers report we store the first (or empty string).
-      const revenueCenter =
-        data.items.length > 0 ? data.items[0].revenueCenter : conn.revenueCenter;
+      // Always use conn.revenueCenter as the conflict key.
+      // For an all-centers fetch conn.revenueCenter is '' — using items[0].revenueCenter
+      // would create a non-deterministic key (depends on HTML ordering) that could diverge
+      // between syncs and create duplicate rows or mis-keyed external_item_ids in
+      // unified_sales when items from multiple centers are collapsed into one report row.
+      const revenueCenter = conn.revenueCenter ?? '';
 
       payload = {
         restaurant_id: deps.restaurantId,

@@ -383,10 +383,16 @@ BEGIN
   LOOP
     BEGIN
       restaurant_id := r.restaurant_id;
+      -- Use yesterday UTC as the end date instead of CURRENT_DATE.
+      -- CURRENT_DATE (UTC) may be ahead of a restaurant's local date when that
+      -- restaurant is in a negative UTC offset (e.g. America/Los_Angeles at 01:00
+      -- UTC is still the previous day locally), which would push partial-day data
+      -- into unified_sales before the business day has closed.  Capping to
+      -- (NOW() AT TIME ZONE 'UTC')::date - 1 keeps the window to completed days.
       rows_synced   := public._sync_focus_to_unified_sales_impl(
                          r.restaurant_id,
-                         (CURRENT_DATE - interval '2 days')::date,
-                         CURRENT_DATE
+                         ((NOW() AT TIME ZONE 'UTC')::date - interval '2 days')::date,
+                         ((NOW() AT TIME ZONE 'UTC')::date - interval '1 day')::date
                        );
       RETURN NEXT;
     EXCEPTION WHEN OTHERS THEN

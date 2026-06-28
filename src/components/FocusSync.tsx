@@ -52,7 +52,33 @@ export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
   const [syncMode, setSyncMode] = useState<SyncMode>('recent');
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const { toast } = useToast();
-  const { connection, triggerManualSync } = useFocusConnection(restaurantId);
+  const { connection, loading: connectionLoading, error: connectionError, triggerManualSync } = useFocusConnection(restaurantId);
+
+  // Handle query loading / error states before the happy path (CLAUDE.md rule)
+  if (connectionLoading) {
+    return (
+      <Card>
+        <CardContent className="py-6">
+          <div className="h-4 w-48 bg-muted animate-pulse rounded" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (connectionError) {
+    return (
+      <Card>
+        <CardContent className="py-6">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              Failed to load Focus POS connection status. Please refresh the page.
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // F7: early-return guard — don't read connection.initial_sync_done on null
   if (!connection?.is_active) {
@@ -133,12 +159,14 @@ export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
       toast({ title: 'Sync failed', description: errorMessage, variant: 'destructive' });
       console.error('Focus sync error:', error);
 
-      if (totalDaysSynced > 0) {
+      // Use local `totalDays` (not the React state `totalDaysSynced`) because the
+      // state setter is async — the closure captures the value at render time (0).
+      if (totalDays > 0) {
         setSyncResult({
-          daysSynced: totalDaysSynced,
+          daysSynced: totalDays,
           errors: [errorMessage],
           syncComplete: false,
-          progress: syncProgress,
+          progress: 100,
         });
       }
     } finally {

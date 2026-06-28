@@ -99,9 +99,19 @@ export function useFocusConnection(restaurantId?: string | null) {
   //   Shape 2: {data:null, error:{message:...}} from HTTP-level error
 
   const saveConnectionMutation = useMutation({
-    mutationFn: async ({ restaurantId, reportUrl }: { restaurantId: string; reportUrl: string }) => {
+    mutationFn: async ({
+      restaurantId,
+      username,
+      password,
+      storeId,
+    }: {
+      restaurantId: string;
+      username: string;
+      password: string;
+      storeId: string;
+    }) => {
       const { data, error } = await supabase.functions.invoke('focus-save-connection', {
-        body: { restaurantId, reportUrl },
+        body: { restaurantId, username, password, storeId },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -114,9 +124,11 @@ export function useFocusConnection(restaurantId?: string | null) {
 
   async function saveConnection(
     restaurantId: string,
-    reportUrl: string
+    username: string,
+    password: string,
+    storeId: string,
   ): Promise<Record<string, unknown>> {
-    return saveConnectionMutation.mutateAsync({ restaurantId, reportUrl });
+    return saveConnectionMutation.mutateAsync({ restaurantId, username, password, storeId });
   }
 
   // ---- testConnection ----

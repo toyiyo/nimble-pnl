@@ -119,6 +119,12 @@ export interface SyncDataDeps {
   fetch: FetchDeps['fetch'];
   /** Current time (injected so tests can control date calculations). Defaults to new Date(). */
   now?: Date;
+  /**
+   * Optional DOMParser-compatible instance. Provide `new DOMParser()` from deno_dom in
+   * Deno edge functions (globalThis.DOMParser is undefined there).
+   * Omit in tests — jsdom provides globalThis.DOMParser.
+   */
+  domParser?: { parseFromString(html: string, mimeType: string): Document };
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -210,10 +216,13 @@ export async function handleSyncData(
 
   // Build the injectable SyncDeps that processReportDay expects.
   // The serviceClient satisfies the SupabaseDeps interface (it has upsert).
+  // Forward domParser so processReportDay can pass it to parseRevenueCenterReport
+  // (deno_dom in Deno edge function runtime; undefined in tests → jsdom fallback).
   const syncDeps: SyncDeps = {
     fetch: deps.fetch,
     supabase: deps.serviceClient as unknown as SupabaseDeps,
     restaurantId,
+    domParser: deps.domParser,
   };
 
   const tz = connRow.timezone || 'America/Chicago';
@@ -231,9 +240,15 @@ export async function handleSyncData(
     const result = await processReportDay(syncDeps, conn, targetDate);
     status = result.status;
 
-    newSyncCursor = connRow.sync_cursor + 1;
-    if (newSyncCursor >= TARGET_DAYS) {
-      newInitialSyncDone = true;
+    // Only advance the cursor on success or empty (day had no sales).
+    // On error (network failure, parse failure) keep cursor in place so the
+    // same day is retried on the next call — prevents permanently skipping
+    // a business day due to a transient Focus outage. (Codex review P1)
+    if (result.status !== 'error') {
+      newSyncCursor = connRow.sync_cursor + 1;
+      if (newSyncCursor >= TARGET_DAYS) {
+        newInitialSyncDone = true;
+      }
     }
   } else {
     // ── 7b. Incremental: re-fetch last 2 business days ─────────────────────

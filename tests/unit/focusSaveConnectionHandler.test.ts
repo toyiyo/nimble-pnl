@@ -61,7 +61,6 @@ function makeUserClientMock(opts: {
     data: user && role ? { role } : null,
     error: null,
   });
-  const userRoleSingleMock = vi.fn().mockReturnValue(userRoleSelectMock());
   const userRoleEqRestMock = vi.fn().mockReturnValue({ single: () => userRoleSelectMock() });
   const userRoleEqUserMock = vi.fn().mockReturnValue({ eq: userRoleEqRestMock });
   const userRoleSelectFieldMock = vi.fn().mockReturnValue({ eq: userRoleEqUserMock });
@@ -357,6 +356,21 @@ describe('handleSaveConnection', () => {
     it('passes onConflict("restaurant_id") option to upsert', () => {
       const upsertOptions = serviceClientMocks.upsertMock.mock.calls[0][1] as Record<string, string>;
       expect(upsertOptions?.onConflict).toBe('restaurant_id');
+    });
+
+    it('resets sync_cursor to 0 so a re-connected store triggers a full backfill (Codex P2)', () => {
+      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload).toHaveProperty('sync_cursor', 0);
+    });
+
+    it('resets initial_sync_done to false on every save (Codex P2)', () => {
+      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload).toHaveProperty('initial_sync_done', false);
+    });
+
+    it('resets last_sync_time to null on every save (Codex P2)', () => {
+      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(payload).toHaveProperty('last_sync_time', null);
     });
   });
 

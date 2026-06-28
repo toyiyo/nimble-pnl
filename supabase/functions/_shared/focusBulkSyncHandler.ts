@@ -104,6 +104,8 @@ export interface ServiceClient {
  * - sleep            Waits n ms between restaurants (injectable for tests).
  * - now              Returns the current wall-clock timestamp in ms (injectable for tests).
  * - serviceRoleKey   The raw service-role key to compare against the Bearer token.
+ * - domParser        Optional DOMParser-compatible instance (deno_dom in Deno edge
+ *                    functions; omit in tests → jsdom globalThis.DOMParser fallback).
  */
 export interface BulkSyncDeps {
   serviceClient: ServiceClient;
@@ -111,6 +113,7 @@ export interface BulkSyncDeps {
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   serviceRoleKey: string;
+  domParser?: { parseFromString(html: string, mimeType: string): Document };
 }
 
 /** Per-run result. */
@@ -159,6 +162,7 @@ async function processConnection(
     fetch: deps.fetch,
     supabase: deps.serviceClient as unknown as SupabaseDeps,
     restaurantId: row.restaurant_id,
+    domParser: deps.domParser,
   };
 
   const tz = row.timezone || 'America/Chicago';
@@ -171,11 +175,17 @@ async function processConnection(
     // Backfill: one cursor day per call
     // Formula: today_in_tz − cursor − 1 (design review S4)
     const targetDate = subtractDays(todayInTz(tz, now), row.sync_cursor + 1);
-    await processReportDay(syncDeps, conn, targetDate);
+    const result = await processReportDay(syncDeps, conn, targetDate);
 
-    newSyncCursor = row.sync_cursor + 1;
-    if (newSyncCursor >= TARGET_DAYS) {
-      newInitialSyncDone = true;
+    // Only advance the cursor on success or empty (day had no sales).
+    // On error (network failure, parse failure) keep cursor in place so the
+    // same day is retried on the next cron run — prevents permanently skipping
+    // a business day due to a transient Focus outage. (Codex review P1)
+    if (result.status !== 'error') {
+      newSyncCursor = row.sync_cursor + 1;
+      if (newSyncCursor >= TARGET_DAYS) {
+        newInitialSyncDone = true;
+      }
     }
   } else {
     // Incremental: last 2 business days in parallel

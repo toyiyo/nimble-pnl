@@ -103,6 +103,12 @@ export interface TestConnectionDeps {
   fetch: FetchDeps['fetch'];
   /** Current time (injected so tests can control "yesterday" computation). Defaults to new Date(). */
   now?: Date;
+  /**
+   * Optional DOMParser-compatible instance. Provide `new DOMParser()` from deno_dom in
+   * Deno edge functions (globalThis.DOMParser is undefined there).
+   * Omit in tests — jsdom provides globalThis.DOMParser.
+   */
+  domParser?: { parseFromString(html: string, mimeType: string): Document };
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -206,7 +212,9 @@ export async function handleTestConnection(
   try {
     const url = buildReportUrl(conn, formattedDate, formattedDate);
     const html = await fetchReportHtml({ fetch: deps.fetch }, url);
-    const parseResult = parseRevenueCenterReport(html, businessDate);
+    // Pass deps.domParser when provided (deno_dom in Deno edge functions).
+    // Omit in tests so the parser falls back to globalThis.DOMParser (jsdom).
+    const parseResult = parseRevenueCenterReport(html, businessDate, deps.domParser);
 
     // S9: ok:true OR reason:'empty' → connected; parse_error → error
     if (!parseResult.ok && parseResult.reason === 'parse_error') {

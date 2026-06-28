@@ -463,4 +463,31 @@ describe('handleSyncData', () => {
     const body = await res.json();
     expect(body.status).toBe('error');
   });
+
+  // ── Backfill cursor is NOT advanced on error (Codex P1) ──────────────────
+
+  it('does NOT advance sync_cursor when processReportDay returns error (backfill)', async () => {
+    // MOCK_CONNECTION_BACKFILL has sync_cursor=5; fetch returns 503 → parse_error → error
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connection: MOCK_CONNECTION_BACKFILL },
+    });
+    // Override fetch to return 503 so processReportDay returns {status:'error'}
+    (deps.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 503,
+      headers: { get: () => null },
+      text: () => Promise.resolve(''),
+    });
+
+    const req = makeRequest({});
+    const res = await handleSyncData(req, deps);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('error');
+    // Cursor must stay at 5 — not incremented to 6
+    expect(body.syncCursor).toBe(5);
+    // DB update payload must also have sync_cursor=5 (unchanged)
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(updateArg.sync_cursor).toBe(5);
+  });
 });

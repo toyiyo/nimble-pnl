@@ -163,6 +163,13 @@ export async function handleSaveConnection(
     report_user_id: parsed.userId || null,
     is_active: true,
     connection_status: 'pending',
+    // Reset backfill state on every save so that replacing a StoreID or report URL
+    // triggers a full 90-day re-sync for the new connection. Without this reset an
+    // already-completed sync would skip the backfill and only fetch recent days for
+    // the replacement store. (Codex review P2)
+    sync_cursor: 0,
+    initial_sync_done: false,
+    last_sync_time: null,
     updated_at: new Date().toISOString(),
   };
 

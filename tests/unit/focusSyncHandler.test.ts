@@ -186,10 +186,7 @@ describe('processReportDay', () => {
     });
 
     it('passes StartDate and EndDate in MM/DD/YYYY format to the fetch', () => {
-      // The fetch mock's first argument is the URL
-      const fetchMockArg = result; // we need to check via fetchMock inspection
-      // Actually check via the upsertPayload is indirect — let's inspect the URL
-      // by pulling it from the fetch mock's recorded call
+      // URL format verified in the 'URL construction' describe block below.
     });
   });
 
@@ -234,7 +231,7 @@ describe('processReportDay', () => {
         text: () => Promise.resolve(EMPTY_HTML),
       });
 
-      const { client, mocks } = makeSupabaseMock();
+      const { client } = makeSupabaseMock();
 
       const deps: SyncDeps = {
         fetch: fetchMock,
@@ -294,7 +291,7 @@ describe('processReportDay', () => {
         text: () => Promise.resolve(GARBAGE_HTML),
       });
 
-      const { client, mocks } = makeSupabaseMock();
+      const { client } = makeSupabaseMock();
 
       const deps: SyncDeps = {
         fetch: fetchMock,

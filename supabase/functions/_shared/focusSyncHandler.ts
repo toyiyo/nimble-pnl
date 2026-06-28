@@ -55,11 +55,15 @@ export interface SupabaseDeps {
  *                    vi.fn() in tests). Passed through to fetchReportHtml.
  * - `supabase`:      Supabase client (service-role in production; mock in tests).
  * - `restaurantId`:  UUID of the restaurant owning this connection.
+ * - `domParser`:     Optional DOMParser-compatible instance. Provide `new DOMParser()`
+ *                    from deno_dom when running in Deno edge functions (globalThis.DOMParser
+ *                    is undefined there). Omit in tests — jsdom provides globalThis.DOMParser.
  */
 export interface SyncDeps {
   fetch: FetchDeps['fetch'];
   supabase: SupabaseDeps;
   restaurantId: string;
+  domParser?: { parseFromString(html: string, mimeType: string): Document };
 }
 
 /** Discriminated result returned by processReportDay. */
@@ -91,7 +95,9 @@ export async function processReportDay(
     const html = await fetchReportHtml({ fetch: deps.fetch }, url);
 
     // 3. Parse the HTML (discriminated result union)
-    const parseResult = parseRevenueCenterReport(html, businessDate);
+    // Pass deps.domParser when provided (deno_dom in Deno edge functions).
+    // Omit in tests so the parser falls back to globalThis.DOMParser (jsdom).
+    const parseResult = parseRevenueCenterReport(html, businessDate, deps.domParser);
 
     // 4a. Parse error → skip upsert entirely
     if (!parseResult.ok && parseResult.reason === 'parse_error') {

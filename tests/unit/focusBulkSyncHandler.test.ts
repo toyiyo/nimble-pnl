@@ -464,4 +464,27 @@ describe('handleBulkSync', () => {
 
     expect(mocks.limitMock).toHaveBeenCalledWith(5);
   });
+
+  // ── Backfill cursor is NOT advanced on fetch error (Codex P1) ────────────────
+
+  it('does NOT advance sync_cursor when backfill fetch returns 503', async () => {
+    // MOCK_CONN_BACKFILL has sync_cursor=5; fetch returns 503 → error → cursor unchanged
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connections: [MOCK_CONN_BACKFILL] },
+      fetchHtml: '', // will be overridden below
+    });
+    // Return 503 so processReportDay returns {status:'error'}
+    (deps.fetch as ReturnType<typeof makeFetchMock>).mockResolvedValue({
+      status: 503,
+      headers: { get: () => null },
+      text: () => Promise.resolve(''),
+    });
+
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    await handleBulkSync(req, deps);
+
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    // Cursor must stay at 5 (MOCK_CONN_BACKFILL.sync_cursor) — not incremented
+    expect(updateArg.sync_cursor).toBe(MOCK_CONN_BACKFILL.sync_cursor);
+  });
 });

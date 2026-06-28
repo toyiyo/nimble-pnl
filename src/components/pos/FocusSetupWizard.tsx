@@ -412,19 +412,18 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
       <div className="flex-shrink-0 px-6 py-4 border-t border-border/40 bg-background flex items-center justify-between gap-3">
         {/* Left: Back button (steps 2a/2b only) */}
         <div>
-          {(step === 'url-entry') && (
+          {(step === 'url-entry' || step === 'url-confirmed') && (
             <button
               type="button"
-              onClick={() => { setUrlError(null); setStep('instructions'); }}
-              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Back
-            </button>
-          )}
-          {step === 'url-confirmed' && (
-            <button
-              type="button"
-              onClick={() => { setConnectError(null); setStep('url-entry'); }}
+              onClick={() => {
+                if (step === 'url-entry') {
+                  setUrlError(null);
+                  setStep('instructions');
+                } else {
+                  setConnectError(null);
+                  setStep('url-entry');
+                }
+              }}
               className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               Back
@@ -487,7 +486,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
                 Close
               </Button>
               <Button
-                onClick={() => { onComplete(); }}
+                onClick={onComplete}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
               >
                 Sync Now

@@ -34,7 +34,15 @@ import {
   type SyncDeps,
   type SupabaseDeps,
 } from './focusSyncHandler.ts';
-import { type FocusConnection, type FetchDeps } from './focusReportClient.ts';
+import {
+  rowToFocusConnection,
+  todayInTz,
+  subtractDays,
+  recentBusinessDays,
+  type FocusConnection,
+  type FocusConnectionRow as SharedFocusConnectionRow,
+  type FetchDeps,
+} from './focusReportClient.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -52,18 +60,10 @@ const TARGET_DAYS = 90;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-/** DB row shape for focus_connections. */
-interface FocusConnectionRow {
+/** DB row shape for focus_connections (extends shared routing params). */
+interface FocusConnectionRow extends SharedFocusConnectionRow {
   id: string;
   restaurant_id: string;
-  report_base_url: string;
-  report_path: string;
-  db_server: string | null;
-  db_catalog: string | null;
-  report_user_id: string | null;
-  store_id: string;
-  revenue_center: string | null;
-  timezone: string;
   initial_sync_done: boolean;
   sync_cursor: number;
   last_sync_time: string | null;
@@ -126,7 +126,7 @@ interface BulkSyncResult {
  * Constant-time string comparison to avoid timing side-channels on the
  * service-role Bearer token gate (lesson 2026-05-07).
  *
- * Returns true only when both strings are identical and non-empty.
+ * Returns true only when both strings have equal length and content.
  */
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) {
@@ -145,64 +145,13 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
-/**
- * Return yesterday and the day before as ISO strings in the given IANA timezone.
- * Uses Intl.DateTimeFormat with the en-CA locale (→ 'YYYY-MM-DD') to avoid UTC
- * midnight off-by-one (design review S4).
- */
-function recentBusinessDays(tz: string, now: Date): [string, string] {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  const todayStr = formatter.format(now);
-  const yesterday = subtractDays(todayStr, 1);
-  const dayBefore = subtractDays(todayStr, 2);
-  return [yesterday, dayBefore];
-}
-
-/**
- * Return the target backfill date for the given cursor position.
- * Formula: today_in_tz − cursor − 1  (design review S4, plan Task 9).
- */
-function backfillDate(tz: string, now: Date, cursor: number): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  const todayStr = formatter.format(now);
-  return subtractDays(todayStr, cursor + 1);
-}
-
-/**
- * Subtract `days` calendar days from an ISO date string ('YYYY-MM-DD').
- * Uses noon UTC to avoid DST edge cases.
- */
-function subtractDays(isoDate: string, days: number): string {
-  const d = new Date(isoDate + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().substring(0, 10);
-}
-
 // ── Per-connection processor ──────────────────────────────────────────────────
 
 async function processConnection(
   row: FocusConnectionRow,
   deps: BulkSyncDeps,
 ): Promise<{ newSyncCursor: number; newInitialSyncDone: boolean }> {
-  const conn: FocusConnection = {
-    reportBaseUrl: row.report_base_url,
-    reportPath: row.report_path,
-    dbServer: row.db_server ?? '',
-    dbCatalog: row.db_catalog ?? '',
-    reportUserId: row.report_user_id ?? '',
-    storeId: row.store_id,
-    revenueCenter: row.revenue_center ?? '',
-  };
+  const conn: FocusConnection = rowToFocusConnection(row);
 
   const syncDeps: SyncDeps = {
     fetch: deps.fetch,
@@ -218,7 +167,8 @@ async function processConnection(
 
   if (!row.initial_sync_done) {
     // Backfill: one cursor day per call
-    const targetDate = backfillDate(tz, now, row.sync_cursor);
+    // Formula: today_in_tz − cursor − 1 (design review S4)
+    const targetDate = subtractDays(todayInTz(tz, now), row.sync_cursor + 1);
     await processReportDay(syncDeps, conn, targetDate);
 
     newSyncCursor = row.sync_cursor + 1;

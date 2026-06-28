@@ -430,3 +430,26 @@ Phase 2: Brainstorm — DESIGN PIVOT in progress (data source changed)
   Lint: +2 no-explicit-any (same kind as pre-existing sling pattern; 1501 total vs 1499 baseline).
 
 ## Phase 4 Build COMPLETE — All 14 tasks done
+
+## Phase 5 UI Review COMPLETE — commit eab1aeb0
+
+Reviewed all changed UI files (FocusSetupWizard.tsx, FocusSync.tsx, IntegrationCard.tsx,
+IntegrationLogo.tsx, SyncComponents.tsx, Integrations.tsx) against CLAUDE.md Apple/Notion guidelines.
+
+Findings:
+- FocusSetupWizard.tsx: LARGELY COMPLIANT. Correct dialog structure (DialogContent/Header/Title/
+  Description), semantic tokens throughout, border-border/40, bg-muted/30, rounded-xl, correct button
+  typography (h-9 px-4 text-[13px]), aria-invalid/aria-describedby on inputs, aria-current="step".
+  VIOLATION FIXED: Both URL inputs used text-[13px] with a conflicting text-xs (which computes to 12px);
+  corrected to text-[14px] (CLAUDE.md spec for inputs) and removed redundant text-xs.
+- FocusSync.tsx: COMPLIANT. Early-return guard for not-connected state. Reuses SyncComponents.
+- SyncComponents.tsx: Shared file. Pre-existing green/emerald direct-color violations (bg-green-100
+  text-green-700, text-green-600 in ConnectionStatus/SyncResults) existed on main before this PR; not
+  introduced by focus branch changes (only FOCUS_CONFIG + recentWindowLabel additions). Not fixed here
+  to avoid unrelated scope creep.
+- IntegrationCard.tsx: Shared file. Pre-existing emerald direct-color violations (border-emerald-500/20,
+  bg-emerald-500/10, text-emerald-700) existed on main before this PR; focus branch only added the
+  isFocusIntegration branches which follow the same patterns. Not fixed to avoid unrelated scope creep.
+- IntegrationLogo.tsx, Integrations.tsx: No new violations introduced.
+
+One commit: eab1aeb0 style(focus): fix input typography to match CLAUDE.md text-[14px] spec

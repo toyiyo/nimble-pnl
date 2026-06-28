@@ -34,7 +34,13 @@
 import {
   buildReportUrl,
   fetchReportHtml,
+  isoToMmDdYyyy,
+  rowToFocusConnection,
+  todayInTz,
+  subtractDays,
+  FOCUS_ALLOWED_ROLES,
   type FocusConnection,
+  type FocusConnectionRow as SharedFocusConnectionRow,
   type FetchDeps,
 } from './focusReportClient.ts';
 import { parseRevenueCenterReport } from './focusReportParser.ts';
@@ -57,18 +63,10 @@ export interface UserClient {
   };
 }
 
-/** DB row shape returned from focus_connections. */
-interface FocusConnectionRow {
+/** DB row shape returned from focus_connections (extends shared routing params). */
+interface FocusConnectionRow extends SharedFocusConnectionRow {
   id: string;
   restaurant_id: string;
-  report_base_url: string;
-  report_path: string;
-  db_server: string | null;
-  db_catalog: string | null;
-  report_user_id: string | null;
-  store_id: string;
-  revenue_center: string | null;
-  timezone: string;
 }
 
 /** Minimal Supabase service-role client surface needed for reads + writes. */
@@ -105,51 +103,6 @@ export interface TestConnectionDeps {
   fetch: FetchDeps['fetch'];
   /** Current time (injected so tests can control "yesterday" computation). Defaults to new Date(). */
   now?: Date;
-}
-
-// ── Constants ─────────────────────────────────────────────────────────────────
-
-const ALLOWED_ROLES = new Set(['owner', 'manager']);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Compute "yesterday" as an ISO date string ('YYYY-MM-DD') in the given IANA timezone.
- *
- * Uses Intl.DateTimeFormat to get the current calendar date in the connection's timezone,
- * then subtracts one day. This correctly handles UTC-midnight off-by-one across all
- * 90-day backfill dates (design review S4).
- *
- * @param tz   IANA timezone string, e.g. 'America/Chicago'
- * @param now  Reference point for "now" (injectable for tests)
- */
-function yesterdayInTz(tz: string, now: Date): string {
-  // Get "today" in the connection's timezone
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  // en-CA locale gives "YYYY-MM-DD" format directly
-  const todayStr = formatter.format(now); // e.g. "2026-06-27"
-
-  // Subtract one day from the parsed date (no timezone offset confusion because
-  // we're working with the calendar date in the target tz, not a UTC timestamp).
-  const today = new Date(todayStr + 'T12:00:00Z'); // noon UTC to avoid DST edge cases
-  today.setUTCDate(today.getUTCDate() - 1);
-
-  // Return as 'YYYY-MM-DD'
-  return today.toISOString().substring(0, 10);
-}
-
-/**
- * Convert an ISO date string ('YYYY-MM-DD') to the MM/DD/YYYY format
- * expected by the SSRS report URL params (StartDate / EndDate).
- */
-function isoToMmDdYyyy(iso: string): string {
-  const [yyyy, mm, dd] = iso.split('-');
-  return `${mm}/${dd}/${yyyy}`;
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -215,7 +168,7 @@ export async function handleTestConnection(
     .eq('restaurant_id', restaurantId)
     .single();
 
-  if (!membership || !ALLOWED_ROLES.has(membership.role)) {
+  if (!membership || !FOCUS_ALLOWED_ROLES.has(membership.role)) {
     return jsonError(403, 'Access denied: owner or manager role required');
   }
 
@@ -237,20 +190,12 @@ export async function handleTestConnection(
 
   // ── 6. Build FocusConnection for the client module ───────────────────────
 
-  const conn: FocusConnection = {
-    reportBaseUrl: connRow.report_base_url,
-    reportPath: connRow.report_path,
-    dbServer: connRow.db_server ?? '',
-    dbCatalog: connRow.db_catalog ?? '',
-    reportUserId: connRow.report_user_id ?? '',
-    storeId: connRow.store_id,
-    revenueCenter: connRow.revenue_center ?? '',
-  };
+  const conn: FocusConnection = rowToFocusConnection(connRow);
 
   // ── 7. Compute yesterday in the connection's IANA timezone (review S4) ────
 
   const tz = connRow.timezone || 'America/Chicago';
-  const businessDate = yesterdayInTz(tz, now); // 'YYYY-MM-DD'
+  const businessDate = subtractDays(todayInTz(tz, now), 1); // 'YYYY-MM-DD'
   const formattedDate = isoToMmDdYyyy(businessDate); // 'MM/DD/YYYY'
 
   // ── 8. Fetch + parse the report ───────────────────────────────────────────

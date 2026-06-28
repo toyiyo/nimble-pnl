@@ -27,6 +27,7 @@
 import {
   buildReportUrl,
   fetchReportHtml,
+  isoToMmDdYyyy,
   type FocusConnection,
   type FetchDeps,
 } from './focusReportClient.ts';
@@ -68,17 +69,6 @@ export type SyncResult =
   | { status: 'ok' }
   | { status: 'empty' }
   | { status: 'error'; error?: string };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Convert an ISO date string ('YYYY-MM-DD') to the MM/DD/YYYY format
- * expected by the SSRS report URL params (StartDate / EndDate).
- */
-function isoToMmDdYyyy(iso: string): string {
-  const [yyyy, mm, dd] = iso.split('-');
-  return `${mm}/${dd}/${yyyy}`;
-}
 
 // ── Main export ───────────────────────────────────────────────────────────────
 

@@ -25,6 +25,14 @@
  * restaurant owner has explicitly provided their own StoreID. See design §11.
  */
 
+// ── Shared constants ──────────────────────────────────────────────────────────
+
+/**
+ * Edge-function handler roles that may save/test/sync Focus connections.
+ * Declared here so all handlers import from one place (DRY).
+ */
+export const FOCUS_ALLOWED_ROLES = new Set(['owner', 'manager']);
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /**
@@ -96,6 +104,82 @@ const PER_HOP_TIMEOUT_MS = 20_000;
  *   - any URL carrying userinfo
  */
 const ALLOWED_HOST_RE = /^([a-z0-9-]+\.)*myfocuspos\.com$/i;
+
+// ── Shared date helpers ───────────────────────────────────────────────────────
+
+/**
+ * Convert an ISO date string ('YYYY-MM-DD') to the MM/DD/YYYY format expected
+ * by SSRS report URL params (StartDate / EndDate).
+ */
+export function isoToMmDdYyyy(iso: string): string {
+  const [yyyy, mm, dd] = iso.split('-');
+  return `${mm}/${dd}/${yyyy}`;
+}
+
+/**
+ * Return the current calendar date as 'YYYY-MM-DD' in the given IANA timezone.
+ * Uses the en-CA locale (produces 'YYYY-MM-DD' directly) to avoid UTC-midnight
+ * off-by-one errors (design review S4).
+ */
+export function todayInTz(tz: string, now: Date): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+}
+
+/**
+ * Subtract `days` calendar days from an ISO date string ('YYYY-MM-DD').
+ * Uses noon UTC to avoid DST edge cases.
+ */
+export function subtractDays(isoDate: string, days: number): string {
+  const d = new Date(isoDate + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() - days);
+  return d.toISOString().substring(0, 10);
+}
+
+/**
+ * Return yesterday and the day before as ISO strings in the given IANA timezone.
+ */
+export function recentBusinessDays(tz: string, now: Date): [string, string] {
+  const todayStr = todayInTz(tz, now);
+  return [subtractDays(todayStr, 1), subtractDays(todayStr, 2)];
+}
+
+// ── Shared row mapper ─────────────────────────────────────────────────────────
+
+/**
+ * Shared shape for DB rows from focus_connections that carry routing params.
+ * Used by focusTestConnectionHandler, focusSyncDataHandler, focusBulkSyncHandler.
+ */
+export interface FocusConnectionRow {
+  report_base_url: string;
+  report_path: string;
+  db_server: string | null;
+  db_catalog: string | null;
+  report_user_id: string | null;
+  store_id: string;
+  revenue_center: string | null;
+  timezone: string;
+}
+
+/**
+ * Map a DB focus_connections row to the FocusConnection type expected by
+ * focusReportClient functions. Extracted here to avoid copy-paste in three handlers.
+ */
+export function rowToFocusConnection(row: FocusConnectionRow): FocusConnection {
+  return {
+    reportBaseUrl: row.report_base_url,
+    reportPath: row.report_path,
+    dbServer: row.db_server ?? '',
+    dbCatalog: row.db_catalog ?? '',
+    reportUserId: row.report_user_id ?? '',
+    storeId: row.store_id,
+    revenueCenter: row.revenue_center ?? '',
+  };
+}
 
 // ── assertAllowedHost ─────────────────────────────────────────────────────────
 

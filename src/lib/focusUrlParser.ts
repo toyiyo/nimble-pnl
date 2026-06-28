@@ -35,26 +35,6 @@ export interface FocusUrlParams {
 }
 
 /**
- * Known query-param keys to strip from reportPath.
- * These are per-request params added by the URL builder / SSRS viewer —
- * they are NOT part of the stable report-catalog path.
- *
- * NOTE: SSRS uses case-insensitive param names; we normalise to lower-case
- * before matching.
- */
-const STRIP_PARAMS_LOWER = new Set([
-  'dbserver',
-  'dbcatalog',
-  'userid',
-  'storeid',
-  'rs:command',
-  'rs:format',
-  'startdate',
-  'enddate',
-  'revenuecenter',
-]);
-
-/**
  * Host-allowlist regex.  Mirrors the DB CHECK and server-side SSRF guard
  * in focusReportClient.ts.
  *

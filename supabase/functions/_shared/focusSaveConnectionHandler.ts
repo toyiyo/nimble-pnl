@@ -27,6 +27,7 @@
  */
 
 import { parseFocusReportUrl } from '../../../src/lib/focusUrlParser.ts';
+import { FOCUS_ALLOWED_ROLES } from './focusReportClient.ts';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -70,10 +71,6 @@ export interface SaveConnectionDeps {
   /** Supabase client created with SUPABASE_SERVICE_ROLE_KEY (for writes — bypasses RLS). */
   serviceClient: ServiceClient;
 }
-
-// ── Allowed roles ─────────────────────────────────────────────────────────────
-
-const ALLOWED_ROLES = new Set(['owner', 'manager']);
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
@@ -142,7 +139,7 @@ export async function handleSaveConnection(
     .eq('restaurant_id', restaurantId)
     .single();
 
-  if (!membership || !ALLOWED_ROLES.has(membership.role)) {
+  if (!membership || !FOCUS_ALLOWED_ROLES.has(membership.role)) {
     return jsonError(403, 'Access denied: owner or manager role required');
   }
 

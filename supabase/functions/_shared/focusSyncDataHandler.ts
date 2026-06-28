@@ -36,7 +36,16 @@ import {
   type SyncDeps,
   type SupabaseDeps,
 } from './focusSyncHandler.ts';
-import { type FocusConnection, type FetchDeps } from './focusReportClient.ts';
+import {
+  rowToFocusConnection,
+  todayInTz,
+  subtractDays,
+  recentBusinessDays,
+  FOCUS_ALLOWED_ROLES,
+  type FocusConnection,
+  type FocusConnectionRow as SharedFocusConnectionRow,
+  type FetchDeps,
+} from './focusReportClient.ts';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -61,18 +70,10 @@ export interface UserClient {
   };
 }
 
-/** DB row shape returned from focus_connections. */
-interface FocusConnectionRow {
+/** DB row shape returned from focus_connections (extends shared routing params). */
+interface FocusConnectionRow extends SharedFocusConnectionRow {
   id: string;
   restaurant_id: string;
-  report_base_url: string;
-  report_path: string;
-  db_server: string | null;
-  db_catalog: string | null;
-  report_user_id: string | null;
-  store_id: string;
-  revenue_center: string | null;
-  timezone: string;
   initial_sync_done: boolean;
   sync_cursor: number;
 }
@@ -118,38 +119,6 @@ export interface SyncDataDeps {
   fetch: FetchDeps['fetch'];
   /** Current time (injected so tests can control date calculations). Defaults to new Date(). */
   now?: Date;
-}
-
-// ── Allowed roles ─────────────────────────────────────────────────────────────
-
-const ALLOWED_ROLES = new Set(['owner', 'manager']);
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Return the current calendar date as 'YYYY-MM-DD' in the given IANA timezone.
- *
- * Uses Intl.DateTimeFormat with the en-CA locale (which produces 'YYYY-MM-DD'
- * directly) to avoid any UTC-midnight off-by-one errors (design review S4).
- */
-function todayInTz(tz: string, now: Date): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return formatter.format(now); // e.g. '2026-06-27'
-}
-
-/**
- * Subtract `days` calendar days from an ISO date string ('YYYY-MM-DD').
- * Uses noon UTC to avoid DST edge cases.
- */
-function subtractDays(isoDate: string, days: number): string {
-  const d = new Date(isoDate + 'T12:00:00Z');
-  d.setUTCDate(d.getUTCDate() - days);
-  return d.toISOString().substring(0, 10);
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -215,7 +184,7 @@ export async function handleSyncData(
     .eq('restaurant_id', restaurantId)
     .single();
 
-  if (!membership || !ALLOWED_ROLES.has(membership.role)) {
+  if (!membership || !FOCUS_ALLOWED_ROLES.has(membership.role)) {
     return jsonError(403, 'Access denied: owner or manager role required');
   }
 
@@ -237,15 +206,7 @@ export async function handleSyncData(
 
   // ── 6. Build FocusConnection for the client module ───────────────────────
 
-  const conn: FocusConnection = {
-    reportBaseUrl: connRow.report_base_url,
-    reportPath: connRow.report_path,
-    dbServer: connRow.db_server ?? '',
-    dbCatalog: connRow.db_catalog ?? '',
-    reportUserId: connRow.report_user_id ?? '',
-    storeId: connRow.store_id,
-    revenueCenter: connRow.revenue_center ?? '',
-  };
+  const conn: FocusConnection = rowToFocusConnection(connRow);
 
   // Build the injectable SyncDeps that processReportDay expects.
   // The serviceClient satisfies the SupabaseDeps interface (it has upsert).
@@ -256,7 +217,6 @@ export async function handleSyncData(
   };
 
   const tz = connRow.timezone || 'America/Chicago';
-  const todayStr = todayInTz(tz, now); // 'YYYY-MM-DD' in the restaurant's tz
 
   let status: 'ok' | 'empty' | 'error' = 'ok';
   let newSyncCursor = connRow.sync_cursor;
@@ -266,7 +226,7 @@ export async function handleSyncData(
     // ── 7a. Backfill: one day per call ────────────────────────────────────────
     // Target date = today_in_tz − sync_cursor − 1
     // (day 0 = yesterday, day 1 = 2 days ago, …, day 89 = 90 days ago)
-    const targetDate = subtractDays(todayStr, connRow.sync_cursor + 1);
+    const targetDate = subtractDays(todayInTz(tz, now), connRow.sync_cursor + 1);
 
     const result = await processReportDay(syncDeps, conn, targetDate);
     status = result.status;
@@ -277,9 +237,7 @@ export async function handleSyncData(
     }
   } else {
     // ── 7b. Incremental: re-fetch last 2 business days ─────────────────────
-    // yesterday = today_in_tz − 1; day before = today_in_tz − 2
-    const yesterday = subtractDays(todayStr, 1);
-    const dayBefore = subtractDays(todayStr, 2);
+    const [yesterday, dayBefore] = recentBusinessDays(tz, now);
 
     const [r1, r2] = await Promise.all([
       processReportDay(syncDeps, conn, yesterday),
@@ -291,9 +249,8 @@ export async function handleSyncData(
       status = 'error';
     } else if (r1.status === 'empty' && r2.status === 'empty') {
       status = 'empty';
-    } else {
-      status = 'ok';
     }
+    // else: at least one is 'ok' → keep the default 'ok'
   }
 
   // ── 8. Update connection state via service-role client (review S3) ────────

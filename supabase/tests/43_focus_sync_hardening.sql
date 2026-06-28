@@ -145,7 +145,7 @@ SELECT sync_focus_to_unified_sales('00000000-0000-0000-0000-f0c000000111'::uuid)
 
 -- Test 5: tax offset row external_item_id contains revenue_center slug
 SELECT ok(
-  (SELECT COUNT(*)::integer FROM public.unified_sales
+  (SELECT COUNT(*) > 0 FROM public.unified_sales
    WHERE restaurant_id = '00000000-0000-0000-0000-f0c000000111'
      AND pos_system = 'focus'
      AND item_type = 'tax'
@@ -155,7 +155,7 @@ SELECT ok(
 
 -- Test 6: tip offset row external_item_id contains revenue_center slug
 SELECT ok(
-  (SELECT COUNT(*)::integer FROM public.unified_sales
+  (SELECT COUNT(*) > 0 FROM public.unified_sales
    WHERE restaurant_id = '00000000-0000-0000-0000-f0c000000111'
      AND pos_system = 'focus'
      AND item_type = 'tip'

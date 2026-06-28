@@ -16,6 +16,7 @@ import { generateSchedulePDF, generateRosterPDF, formatKitchenTime } from "@/uti
 import type { Shift, Employee } from "@/types/scheduling";
 import type { GroupByMode } from "@/lib/scheduleGrouping";
 import { buildRosterDay, type RosterSortBy } from "@/lib/scheduleRoster";
+import { selectVisibleRosterInputs } from "@/lib/scheduleVisibility";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ScheduleExportDialogProps {
@@ -52,24 +53,33 @@ export const ScheduleExportDialog = ({
 
   const weekDays = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
-  // Filter shifts by area and position (AND semantics)
+  // Mirror the on-screen grid: drop cancelled shifts and inactive employees
+  // who have no remaining live shift. Computed from the RAW props before the
+  // position/area filter below (the grid derives its live-shift id set from
+  // the full shift list, then applies position/area to the employee list).
+  const { shifts: visibleShifts, employees: visibleEmployees } = useMemo(
+    () => selectVisibleRosterInputs(shifts, employees),
+    [shifts, employees],
+  );
+
+  // Filter shifts by area and position (AND semantics) on top of visibility.
   const filteredShifts = useMemo(() =>
-    shifts.filter(s => {
-      const emp = employees.find(e => e.id === s.employee_id);
+    visibleShifts.filter(s => {
+      const emp = visibleEmployees.find(e => e.id === s.employee_id);
       if (positionFilter && positionFilter !== "all" && emp?.position !== positionFilter) return false;
       if (areaFilter && areaFilter !== "all" && emp?.area !== areaFilter) return false;
       return true;
     }),
-    [shifts, employees, positionFilter, areaFilter]
+    [visibleShifts, visibleEmployees, positionFilter, areaFilter]
   );
 
-  // All employees who have shifts (after area + position filter)
+  // All employees who have shifts (after visibility + area + position filter)
   const allEmployeesWithShifts = useMemo(() => {
     const ids = new Set(filteredShifts.map(s => s.employee_id));
-    return employees
+    return visibleEmployees
       .filter(emp => ids.has(emp.id))
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [filteredShifts, employees]);
+  }, [filteredShifts, visibleEmployees]);
 
   // Initialize selection to all employees when dialog opens or list changes
   useEffect(() => {
@@ -114,8 +124,8 @@ export const ScheduleExportDialog = ({
         ? weekDays[0]
         : weekDays.find(d => format(d, 'yyyy-MM-dd') === rosterDay) ?? weekDays[0];
     const selectedShifts = filteredShifts.filter(s => selectedEmployeeIds.has(s.employee_id));
-    return buildRosterDay(selectedShifts, employees, day, sortBy, groupBy);
-  }, [layout, rosterDay, weekDays, filteredShifts, selectedEmployeeIds, employees, sortBy, groupBy]);
+    return buildRosterDay(selectedShifts, visibleEmployees, day, sortBy, groupBy);
+  }, [layout, rosterDay, weekDays, filteredShifts, selectedEmployeeIds, visibleEmployees, sortBy, groupBy]);
 
   const selectedCount = selectedEmployeeIds.size;
   const totalAvailable = allEmployeesWithShifts.length;
@@ -152,8 +162,8 @@ export const ScheduleExportDialog = ({
           ? weekDays
           : weekDays.filter(d => format(d, 'yyyy-MM-dd') === rosterDay);
       generateRosterPDF({
-        shifts,
-        employees,
+        shifts: visibleShifts,
+        employees: visibleEmployees,
         days,
         weekStart,
         weekEnd,
@@ -168,8 +178,8 @@ export const ScheduleExportDialog = ({
       });
     } else {
       generateSchedulePDF({
-        shifts,
-        employees,
+        shifts: visibleShifts,
+        employees: visibleEmployees,
         weekStart,
         weekEnd,
         restaurantName,

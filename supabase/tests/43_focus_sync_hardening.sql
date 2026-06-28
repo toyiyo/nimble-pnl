@@ -49,6 +49,7 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 -- Connection (last_sync_time = 2 days ago so sync_all picks it up)
 INSERT INTO public.focus_connections (
   id, restaurant_id, report_base_url, report_path, store_id,
+  username, password_encrypted,
   is_active, connection_status, initial_sync_done, last_sync_time
 ) VALUES (
   '00000000-0000-0000-0000-f0c000000121',
@@ -56,6 +57,7 @@ INSERT INTO public.focus_connections (
   'https://mfprod-1.myfocuspos.com',
   '/ReportServer?/generalstorereports/revenuecenter',
   'SH999',
+  'sample.user', 'enc-placeholder',
   true, 'connected', true,
   now() - interval '2 days'
 )

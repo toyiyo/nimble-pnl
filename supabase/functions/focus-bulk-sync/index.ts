@@ -18,6 +18,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { handleBulkSync } from '../_shared/focusBulkSyncHandler.ts';
+import { makeFocusHttpFetch } from '../_shared/focusHttpFetch.ts';
 // Deno server runtime does NOT have globalThis.DOMParser (browser-only API).
 // Import deno_dom so we can pass a working DOMParser to parseRevenueCenterReport.
 import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
@@ -42,7 +43,7 @@ serve(async (req: Request) => {
 
     const res = await handleBulkSync(req, {
       serviceClient,
-      fetch: globalThis.fetch,
+      fetch: makeFocusHttpFetch(serviceClient),
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => Date.now(),
       serviceRoleKey: supabaseServiceKey,

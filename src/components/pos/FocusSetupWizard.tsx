@@ -303,7 +303,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
                   if (urlError) setUrlError(null);
                 }}
                 placeholder="https://mfprod-1.myfocuspos.com/ReportServer?/generalstorereports/..."
-                className={`h-10 text-[13px] bg-muted/30 border-border/40 rounded-lg font-mono text-xs focus-visible:ring-1 focus-visible:ring-border ${
+                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg font-mono focus-visible:ring-1 focus-visible:ring-border ${
                   urlError ? 'border-destructive focus-visible:ring-destructive' : ''
                 }`}
                 // F2: aria-invalid + aria-describedby
@@ -377,7 +377,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange }: Foc
                   setReportUrl(e.target.value);
                   setConnectError(null);
                 }}
-                className="h-10 text-[13px] bg-muted/30 border-border/40 rounded-lg font-mono text-xs focus-visible:ring-1 focus-visible:ring-border"
+                className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg font-mono focus-visible:ring-1 focus-visible:ring-border"
                 aria-label="Report URL"
               />
             </div>

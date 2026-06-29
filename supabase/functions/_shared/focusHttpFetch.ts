@@ -11,9 +11,11 @@
  * their login / cookie / redirect / parse logic unchanged — only the socket
  * moves to Postgres.
  *
- * The RPC does not follow redirects (so a 302 + Set-Cookie is surfaced for the
- * cookie jar) and applies its own libcurl timeout, so `redirect` and `signal`
- * from the RequestInit are intentionally ignored here.
+ * The RPC follows redirects (pgsql-http 1.6 always does and cannot be told not
+ * to) but still surfaces the INTERMEDIATE Set-Cookie + Location headers from the
+ * redirect chain, which is what focusPortalClient's cookie jar needs to detect
+ * auth (AuthCookie/MyMenu). The RPC applies its own libcurl timeout, so
+ * `redirect` and `signal` from the RequestInit are intentionally ignored here.
  */
 
 interface RpcHeader {

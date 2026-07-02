@@ -57,7 +57,8 @@ const FOCUS_CONNECTION_COLUMNS = [
  *   - there is no persisted error (connection_status !== 'error')
  *
  * Returns false in all other cases (done, disconnected, errored, no data).
- * NOTE: Do not lower staleTime below 30000 or polling will cause excessive DB load.
+ * NOTE: refetchInterval fires independently of staleTime (TanStack React Query design),
+ * so staleTime does not gate the 8s polling cadence.
  */
 export function __focusRefetchInterval(
   query: { state: { data: Pick<FocusConnection, 'initial_sync_done' | 'is_active' | 'connection_status'> | null | undefined } }

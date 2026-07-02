@@ -74,7 +74,7 @@ interface InitialSyncPendingAlertProps {
 
 export function InitialSyncPendingAlert({ syncCursor, config }: InitialSyncPendingAlertProps): JSX.Element {
   const daysCompleted = syncCursor ?? 0;
-  const progress = Math.round((daysCompleted / 90) * 100);
+  const progress = Math.min(100, Math.round((daysCompleted / 90) * 100));
 
   return (
     <Alert>

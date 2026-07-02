@@ -72,14 +72,20 @@ interface FocusBackfillRow {
 /**
  * CAS update chain type:
  *   .update(data).eq('id',...).eq('restaurant_id',...).eq('sync_cursor',old).select()
+ *
+ * Three .eq() calls before .select() requires four chain levels (CasEq1–CasEq4).
  */
 interface CasSelectResult {
   data: unknown[] | null;
   error: { message: string } | null;
 }
 
-interface CasEq3 {
+interface CasEq4 {
   select(): Promise<CasSelectResult>;
+}
+
+interface CasEq3 {
+  eq(col: string, val: unknown): CasEq4;
 }
 
 interface CasEq2 {
@@ -250,10 +256,12 @@ export async function handleBackfillSync(
     const row = rows[i];
 
     try {
-      // Guard: store_id is required for the Lynk API path.
-      if (!row.api_secret_encrypted || !row.store_id) {
+      // Guard: api_key, api_secret_encrypted, and store_id are all required for Lynk.
+      // Including api_key here makes the check self-contained (query filter is the primary
+      // guard, but an explicit throw is cleaner than a downstream non-null assertion).
+      if (!row.api_key || !row.api_secret_encrypted || !row.store_id) {
         throw new Error(
-          'Focus POS API credentials are incomplete (missing api_secret_encrypted or store_id)',
+          'Focus POS API credentials are incomplete (missing api_key, api_secret_encrypted, or store_id)',
         );
       }
 
@@ -339,6 +347,33 @@ export async function handleBackfillSync(
       const message = err instanceof Error ? err.message : String(err);
       console.error(`focus-backfill-sync: error for restaurant ${row.restaurant_id}:`, message);
       result.errors.push(`${row.restaurant_id}: ${message}`);
+
+      // Best-effort: advance last_sync_time so this connection is not perpetually
+      // NULLS FIRST in the round-robin ORDER BY, which would starve healthy connections.
+      // Also write connection_status='error' + last_error for frontend visibility (§8.3).
+      // Intentionally fire-and-forget: if this write also fails, we log but don't throw.
+      const nowIso = new Date(deps.now()).toISOString();
+      deps.serviceClient
+        .from('focus_connections')
+        .update({
+          last_sync_time: nowIso,
+          connection_status: 'error',
+          last_error: message,
+          last_error_at: nowIso,
+          updated_at: nowIso,
+        })
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id)
+        .eq('sync_cursor', row.sync_cursor)
+        .select()
+        .then(({ error: updateErr }) => {
+          if (updateErr) {
+            console.warn(
+              `focus-backfill-sync: best-effort error-state write failed for ${row.restaurant_id}:`,
+              updateErr.message,
+            );
+          }
+        });
     }
   }
 

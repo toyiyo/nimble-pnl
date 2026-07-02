@@ -344,6 +344,21 @@ describe('processBackfillBatch', () => {
     expect(result.status).toBe('ok'); // last completed day was ok
   });
 
+  it('returns status="inprogress" when the very first day is inprogress (no completed day yet)', async () => {
+    const { deps } = makeDeps([
+      { status: 'inprogress' },
+    ]);
+    const result = await processBackfillBatch(
+      deps,
+      MOCK_CONFIG,
+      { ...BASE_OPTS, syncCursor: 0, maxDays: 5 },
+    );
+
+    expect(result.daysProcessed).toBe(0);
+    expect(result.syncCursor).toBe(0); // cursor not advanced
+    expect(result.status).toBe('inprogress'); // must NOT be 'ok'
+  });
+
   it('does not call processDayTransactions after an inprogress day', async () => {
     const { deps } = makeDeps([
       { status: 'inprogress' },

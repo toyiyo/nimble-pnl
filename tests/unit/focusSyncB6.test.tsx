@@ -72,6 +72,23 @@ vi.mock('@/components/pos/SyncComponents', async () => {
   };
 });
 
+// Mock DateRangePicker so we can fire onSelect programmatically in tests.
+// The real component is a complex UI widget that cannot be manipulated via fireEvent.
+// Use local-time Date constructor (not ISO string) to avoid UTC midnight → prior day offset.
+vi.mock('@/components/ui/date-range-picker', () => ({
+  DateRangePicker: ({ onSelect }: { onSelect: (r: { from: Date; to: Date }) => void }) => (
+    <button
+      data-testid="mock-date-range-picker"
+      onClick={() => onSelect({
+        from: new Date(2026, 5, 1),  // June 1 2026 local time
+        to: new Date(2026, 5, 5),    // June 5 2026 local time
+      })}
+    >
+      Pick dates
+    </button>
+  ),
+}));
+
 // ---- component under test -----------------------------------------------
 
 import { FocusSync } from '@/components/FocusSync';
@@ -165,25 +182,21 @@ describe('FocusSync B6 — custom date range passthrough', () => {
     const customRadio = screen.getByRole('radio', { name: /custom date range/i });
     fireEvent.click(customRadio);
 
-    // The DateRangePicker is rendered; we simulate the onChange via
-    // the onDateRangeChange prop by clicking directly on the component.
-    // Because DateRangePicker is a complex UI widget, we test the FocusSync
-    // internal by finding and clicking the SyncButton and asserting the call
-    // shape when dateRange is pre-set via the state setter path.
-    //
-    // Approach: render a patched version of FocusSync that has dateRange pre-set.
-    // We do this by re-rendering with a modified setup using the actual FocusSync
-    // component and manipulating the DateRangePicker (if rendered).
-    // For this test we use a simpler approach: verify that without dateRange, the button
-    // is disabled, and with dateRange, the call includes the date fields.
-    // (The call shape is tested via the DateRangePicker onChange → state path.)
-    //
-    // Since we cannot easily set DateRangePicker from outside, we assert the key
-    // contract: when syncMode='custom' and no dateRange, button is disabled.
+    // Use the mocked DateRangePicker to set a date range (fires onSelect with fixed dates)
+    const picker = screen.getByTestId('mock-date-range-picker');
+    fireEvent.click(picker);
+
+    // With a date range set, Sync Now should be enabled
     const syncBtn = screen.getByRole('button', { name: /sync now/i });
-    expect(syncBtn).toBeDisabled();
-    // No call should have been made
-    expect(mockTriggerManualSync).not.toHaveBeenCalled();
+    expect(syncBtn).not.toBeDisabled();
+
+    await act(async () => { fireEvent.click(syncBtn); });
+
+    expect(mockTriggerManualSync).toHaveBeenCalledTimes(1);
+    expect(mockTriggerManualSync).toHaveBeenCalledWith('rest-1', {
+      startDate: '2026-06-01',  // format(new Date(2026,5,1), 'yyyy-MM-dd') → '2026-06-01'
+      endDate: '2026-06-05',    // format(new Date(2026,5,5), 'yyyy-MM-dd') → '2026-06-05'
+    });
   });
 });
 

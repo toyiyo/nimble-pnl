@@ -564,4 +564,49 @@ describe('handleBackfillSync', () => {
     const txConfig = (mockBatch as ReturnType<typeof vi.fn>).mock.calls[0][1] as { baseUrl: string };
     expect(txConfig.baseUrl).toBe('https://sandbox.focuspos.com');
   });
+
+  // ── Guard completeness: api_key included ─────────────────────────────────────
+
+  it('throws and writes error state when api_key is missing (guard completeness)', async () => {
+    // Row matches query filter (api_key IS NOT NULL) but mock can return one without it
+    // to simulate an edge-case or future query-filter gap.
+    const rowWithoutApiKey = { ...MOCK_LYNK_BACKFILLING, api_key: null };
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connections: [rowWithoutApiKey] },
+    });
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    const res = await handleBackfillSync(req, deps);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // Connection is in errors[] because guard threw
+    expect(body.errors).toHaveLength(1);
+    expect(body.errors[0]).toMatch(/api_key/);
+    // processed is 0 (guard threw before CAS)
+    expect(body.processed).toBe(0);
+    // Best-effort error-state write was fired (update was called for the error path)
+    expect(mocks.updateMock).toHaveBeenCalled();
+  });
+
+  // ── Starvation prevention: error path writes last_sync_time ──────────────────
+
+  it('writes last_sync_time + connection_status=error when processing throws, to prevent round-robin starvation', async () => {
+    const { processBackfillBatch: mockBatch } = await import(
+      '../../supabase/functions/_shared/focusBackfillBatch'
+    );
+    (mockBatch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('Decryption failed'));
+
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+    });
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    await handleBackfillSync(req, deps);
+
+    // Best-effort update must have been called (fires-and-forgets from catch block)
+    expect(mocks.updateMock).toHaveBeenCalled();
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(typeof updateArg.last_sync_time).toBe('string');
+    expect(updateArg.connection_status).toBe('error');
+    expect(typeof updateArg.last_error).toBe('string');
+  });
 });

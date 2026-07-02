@@ -155,6 +155,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectErrorKind, setConnectErrorKind] = useState<ConnectErrorKind>('test');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isSyncingNow, setIsSyncingNow] = useState(false);
 
   // Focus management on step change (design §8.5 — ref+useEffect keyed on step)
   const stepHeadingRef = useRef<HTMLDivElement>(null);
@@ -278,6 +279,8 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
   }
 
   async function handleSyncNow() {
+    if (isSyncingNow) return;
+    setIsSyncingNow(true);
     try {
       await triggerManualSync(restaurantId);
       toast({
@@ -291,6 +294,8 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
         description: 'Automatic sync will retry on schedule.',
         variant: 'destructive',
       });
+    } finally {
+      setIsSyncingNow(false);
     }
   }
 
@@ -713,8 +718,10 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
               </Button>
               <Button
                 onClick={handleSyncNow}
+                disabled={isSyncingNow}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
               >
+                {isSyncingNow && <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />}
                 Sync Now
               </Button>
             </>

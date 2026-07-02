@@ -167,7 +167,7 @@ export function ShiftTimelineTab({
   const controls = (
     <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border/40">
       {/* Day selector */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-0.5">
+      <div role="group" aria-label="Select day" className="flex items-center gap-1 overflow-x-auto pb-0.5">
         {weekDays.map((day) => (
           <button
             key={day}
@@ -193,6 +193,7 @@ export function ShiftTimelineTab({
         value={groupBy}
         onValueChange={(v) => { if (v === 'area' || v === 'position') setGroupBy(v); }}
         className="h-8"
+        aria-label="Group shifts by"
       >
         <ToggleGroupItem value="area" className="h-8 px-3 text-[12px]">
           Area

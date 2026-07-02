@@ -566,6 +566,7 @@ export function ShiftPlannerTab({
           value={view}
           onValueChange={(v) => { if (v === 'plan' || v === 'timeline') setView(v); }}
           className="h-8"
+          aria-label="Schedule view"
         >
           <ToggleGroupItem value="plan" className="h-8 px-3 text-[12px]">
             Plan

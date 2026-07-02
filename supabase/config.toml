@@ -249,3 +249,6 @@ verify_jwt = false
 
 [functions.focus-list-restaurants]
 verify_jwt = false
+
+[functions.focus-backfill-sync]
+verify_jwt = false

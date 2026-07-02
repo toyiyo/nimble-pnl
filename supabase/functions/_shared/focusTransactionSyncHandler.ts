@@ -43,6 +43,11 @@ export interface TransactionSupabaseDeps {
     ): {
       select(): Promise<{ data: unknown; error: { message: string } | null }>;
     };
+    delete(): {
+      eq(col: string, val: string): {
+        eq(col: string, val: string): Promise<{ error: { message: string } | null }>;
+      };
+    };
   };
   rpc(
     fn: string,
@@ -88,15 +93,6 @@ export type TransactionSyncResult =
   | { status: 'empty' }
   | { status: 'inprogress' }
   | { status: 'error'; error?: string };
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Extract the last 4 digits from a masked card number (e.g. "XXXXXXXXXXXX1234" → "1234"). */
-function cardLast4(masked: string | null): string | null {
-  if (!masked) return null;
-  const m = masked.match(/(\d{4})\s*$/);
-  return m ? m[1] : null;
-}
 
 // ── Upsert helpers ────────────────────────────────────────────────────────────
 
@@ -187,7 +183,7 @@ async function upsertPayments(
           name: payment.name,
           amount: payment.amount,
           tip: payment.tip,
-          card_last4: cardLast4(payment.cardLast4),
+          card_last4: payment.cardLast4,
         },
         { onConflict: 'restaurant_id,business_date,focus_check_id,payment_key' },
       )
@@ -242,13 +238,32 @@ export async function processDayTransactions(
 
     // ── 3. Parse the XML ──────────────────────────────────────────────────────
 
-    const { checks } = parseFocusDatafeed(result.xml);
+    const { checks, deletedCheckIds } = parseFocusDatafeed(result.xml);
 
-    if (checks.length === 0) {
+    if (checks.length === 0 && deletedCheckIds.length === 0) {
       return { status: 'empty' };
     }
 
-    // ── 4. Upsert checks → items → payments ──────────────────────────────────
+    // ── 4. Delete voided checks (DeleteRecord entries) ────────────────────────
+    // Voided checks are removed from focus_orders; ON DELETE CASCADE cleans up
+    // focus_order_items and focus_payments automatically.
+    // unified_sales orphan-delete is handled by _sync_focus_transactions_to_unified_sales_impl.
+
+    for (const voidedCheckId of deletedCheckIds) {
+      const { error: delError } = await deps.supabase
+        .from('focus_orders')
+        .delete()
+        .eq('restaurant_id', config.restaurantId)
+        .eq('focus_check_id', voidedCheckId);
+      if (delError) {
+        // Non-fatal: log and continue — the check may not exist locally yet.
+        console.warn(
+          `focus_orders delete (voided check ${voidedCheckId}): ${delError.message}`,
+        );
+      }
+    }
+
+    // ── 5. Upsert active checks → items → payments ────────────────────────────
 
     for (const check of checks) {
       await upsertOrder(deps.supabase, check, config.restaurantId, businessDate);
@@ -256,7 +271,7 @@ export async function processDayTransactions(
       await upsertPayments(deps.supabase, check, config.restaurantId, businessDate);
     }
 
-    // ── 5. Sync to unified_sales ──────────────────────────────────────────────
+    // ── 6. Sync to unified_sales ──────────────────────────────────────────────
 
     if (!options.skipUnifiedSalesSync) {
       const { error: rpcError } = await deps.supabase.rpc(

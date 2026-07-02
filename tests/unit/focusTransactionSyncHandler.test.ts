@@ -94,14 +94,22 @@ function makeRpcMock() {
   return vi.fn().mockResolvedValue({ data: null, error: null });
 }
 
+function makeDeleteMock() {
+  const eqInner = vi.fn().mockResolvedValue({ error: null });
+  const eqOuter = vi.fn().mockReturnValue({ eq: eqInner });
+  const deleteFn = vi.fn().mockReturnValue({ eq: eqOuter });
+  return { deleteFn, eqOuter, eqInner };
+}
+
 function makeSupabaseMock() {
   const { upsertFn: ordersUpsert, selectFn: ordersSelect } = makeUpsertMock();
   const { upsertFn: itemsUpsert, selectFn: itemsSelect } = makeUpsertMock();
   const { upsertFn: paymentsUpsert, selectFn: paymentsSelect } = makeUpsertMock();
+  const { deleteFn: ordersDelete, eqOuter: deleteEqOuter, eqInner: deleteEqInner } = makeDeleteMock();
   const rpcFn = makeRpcMock();
 
   const fromFn = vi.fn().mockImplementation((table: string) => {
-    if (table === 'focus_orders') return { upsert: ordersUpsert };
+    if (table === 'focus_orders') return { upsert: ordersUpsert, delete: ordersDelete };
     if (table === 'focus_order_items') return { upsert: itemsUpsert };
     if (table === 'focus_payments') return { upsert: paymentsUpsert };
     return { upsert: vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
@@ -109,7 +117,7 @@ function makeSupabaseMock() {
 
   return {
     client: { from: fromFn, rpc: rpcFn },
-    mocks: { fromFn, ordersUpsert, ordersSelect, itemsUpsert, itemsSelect, paymentsUpsert, paymentsSelect, rpcFn },
+    mocks: { fromFn, ordersUpsert, ordersSelect, itemsUpsert, itemsSelect, paymentsUpsert, paymentsSelect, ordersDelete, deleteEqOuter, deleteEqInner, rpcFn },
   };
 }
 
@@ -385,6 +393,49 @@ describe('processDayTransactions', () => {
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
     expect((result as any).error).toMatch(/DB write failed/);
+  });
+
+  // ── Voided checks (DeleteRecord) ─────────────────────────────────────────────
+
+  it('deletes voided checks from focus_orders when DeleteRecord entries are present', async () => {
+    const XML_WITH_DELETE = `<DailyData><Checks>
+<Check><CheckRecord><ID>10</ID><Total>12.50</Total></CheckRecord>
+<Seats><Seat><SeatRecord><Key>1</Key></SeatRecord>
+<CheckItemRecord><SeatKey>1</SeatKey><Key>3</Key><RecordNumber>100</RecordNumber>
+  <ID>Scoop</ID><GuestCheckName>Scoop Single</GuestCheckName>
+  <ReportGroupID>10</ReportGroupID><Price>4.99</Price>
+</CheckItemRecord>
+<PaymentRecord><SeatKey>1</SeatKey><Key>1</Key><ID>5</ID>
+  <Name>Visa</Name><Amount>12.50</Amount></PaymentRecord>
+</Seat></Seats></Check>
+<DeleteRecord><ID>99</ID></DeleteRecord>
+</Checks></DailyData>`;
+
+    const { deps, mocks } = makeDeps({ xml: XML_WITH_DELETE });
+    const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+
+    // Should succeed — the live check is processed normally
+    expect(result).toMatchObject({ status: 'ok', checksWritten: 1 });
+
+    // focus_orders.delete() should have been called for the voided check ID '99'
+    expect(mocks.ordersDelete).toHaveBeenCalledOnce();
+    expect(mocks.deleteEqOuter).toHaveBeenCalledWith('restaurant_id', RESTAURANT_ID);
+    expect(mocks.deleteEqInner).toHaveBeenCalledWith('focus_check_id', '99');
+  });
+
+  it('returns ok when only voided checks are present (no active checks)', async () => {
+    // A day where all checks were voided: checks.length === 0 but deletedCheckIds.length > 0
+    const XML_ONLY_DELETE = `<DailyData><Checks>
+<DeleteRecord><ID>55</ID></DeleteRecord>
+</Checks></DailyData>`;
+
+    const { deps, mocks } = makeDeps({ xml: XML_ONLY_DELETE });
+    const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+
+    // Not 'empty' — there is work to do (delete the voided check)
+    expect(result).toMatchObject({ status: 'ok', checksWritten: 0 });
+    expect(mocks.ordersDelete).toHaveBeenCalledOnce();
+    expect(mocks.ordersUpsert).not.toHaveBeenCalled();
   });
 
   // ── Multiple checks (wider coverage) ─────────────────────────────────────────

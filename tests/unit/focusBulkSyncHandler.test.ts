@@ -622,7 +622,7 @@ describe('handleBulkSync', () => {
       mockedProcessDayTransactions.mockResolvedValue({ status: 'ok' });
     });
 
-    it('skips a backfilling Lynk row: processDayTransactions is NOT called and sync_cursor is unchanged', async () => {
+    it('skips a backfilling Lynk row: no datafeed fetch AND no DB write (owned by focus-backfill-sync)', async () => {
       const { deps, mocks } = makeDeps({
         serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
       });
@@ -632,12 +632,10 @@ describe('handleBulkSync', () => {
       // processDayTransactions must NOT have been called
       expect(mockedProcessDayTransactions).not.toHaveBeenCalled();
 
-      // The connection row must still be updated (last_sync_time), but sync_cursor
-      // must remain at its original value (unchanged).
-      expect(mocks.updateMock).toHaveBeenCalledTimes(1);
-      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(updateArg.sync_cursor).toBe(MOCK_LYNK_BACKFILLING.sync_cursor);
-      expect(updateArg.initial_sync_done).toBe(false);
+      // The row must NOT be written at all. Writing row.sync_cursor here could
+      // regress a newer cursor that focus-backfill-sync advanced between our read
+      // and this write, and would spuriously bump last_sync_time (CodeRabbit Major, 9d).
+      expect(mocks.updateMock).not.toHaveBeenCalled();
     });
 
     it('counts a skipped backfilling Lynk row as processed (no error)', async () => {

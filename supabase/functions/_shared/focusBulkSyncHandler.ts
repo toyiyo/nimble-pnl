@@ -174,7 +174,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 async function processConnection(
   row: FocusConnectionRow,
   deps: BulkSyncDeps,
-): Promise<{ newSyncCursor: number; newInitialSyncDone: boolean }> {
+): Promise<{ newSyncCursor: number; newInitialSyncDone: boolean; skipped?: boolean }> {
   const tz = row.timezone || 'America/Chicago';
   const now = new Date(deps.now());
   const isLynkPath = !!row.api_key;
@@ -188,8 +188,17 @@ async function processConnection(
     // B5 skip guard (design §8.7): Lynk backfill is owned by the 5-minute
     // focus-backfill-sync cron. The 6-h bulk-sync must NOT also advance Lynk
     // backfill rows — that would race the cron on sync_cursor.
+    //
+    // skipped:true → the caller writes NOTHING. Persisting row.sync_cursor here
+    // could regress a newer cursor that focus-backfill-sync advanced between our
+    // read and this write, and would spuriously bump last_sync_time (perturbing
+    // the round-robin). (CodeRabbit Major, 9d.)
     if (!row.initial_sync_done) {
-      return { newSyncCursor: row.sync_cursor, newInitialSyncDone: row.initial_sync_done };
+      return {
+        newSyncCursor: row.sync_cursor,
+        newInitialSyncDone: row.initial_sync_done,
+        skipped: true,
+      };
     }
 
     // Guard against partially-migrated or corrupted rows — both secrets required.
@@ -395,20 +404,26 @@ export async function handleBulkSync(
     const row = rows[i];
 
     try {
-      const { newSyncCursor, newInitialSyncDone } = await processConnection(row, deps);
+      const { newSyncCursor, newInitialSyncDone, skipped } = await processConnection(row, deps);
 
-      // Update the connection row with the new cursor + sync time (review S3).
-      // Filter by both id and restaurant_id to satisfy multi-tenant contract.
-      await deps.serviceClient
-        .from('focus_connections')
-        .update({
-          sync_cursor: newSyncCursor,
-          initial_sync_done: newInitialSyncDone,
-          last_sync_time: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id)
-        .eq('restaurant_id', row.restaurant_id);
+      // Skipped rows (Lynk backfill — owned by focus-backfill-sync) get NO write:
+      // persisting the stale cursor could regress the cron's progress and bumping
+      // last_sync_time would perturb the round-robin. Still counted as processed
+      // (it was handled without error). (CodeRabbit Major, 9d.)
+      if (!skipped) {
+        // Update the connection row with the new cursor + sync time (review S3).
+        // Filter by both id and restaurant_id to satisfy multi-tenant contract.
+        await deps.serviceClient
+          .from('focus_connections')
+          .update({
+            sync_cursor: newSyncCursor,
+            initial_sync_done: newInitialSyncDone,
+            last_sync_time: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('restaurant_id', row.restaurant_id);
+      }
 
       result.processed++;
     } catch (err) {

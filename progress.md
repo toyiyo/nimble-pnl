@@ -48,6 +48,13 @@
   - `tests/unit/focusTransactionSyncHandler.test.ts` — 24 Vitest tests covering: fetchDatafeed call contract (baseUrl, restaurantGuid, apiKey/Secret, businessDate, called once), focus_orders upsert (one per check, totals, onConflict), focus_order_items (kitchen comment skipped, priced item, modifier, onConflict), focus_payments (amount/tip/card_last4, onConflict), RPC call (correct params), skipUnifiedSalesSync flag, empty datafeed, inprogress result, error results (network/auth/upsert), multi-check.
 - TDD: RED confirmed (module not found), GREEN: all 24 pass. Full suite (5141 tests, 384 files) clean. Existing focusSyncDataHandler (30 tests) and focusBulkSyncHandler (20 tests) both still pass after handler updates.
 
+#### Task 5 — Repoint test-connection to GET /api/restaurants + Vitest — COMPLETED (2026-07-01)
+- Commit: `bbd41573`
+- Files:
+  - `supabase/functions/_shared/focusTestConnectionHandler.ts` — Rewrites business logic from the old FocusLink datafeed verification to `GET /api/restaurants` on `pos-api.focuspos.com`. Checks whether `conn.store_id` GUID is in `items[].restaurant_guid`. Removes `now`/datafeed deps; reuses `focusApiBaseUrl()` from `focusLynkClient` for production/sandbox routing; SSRF guard preserved; `writeStatus` helper extracted. Error gates: 401 (credentials), 403 (license/permission), 404 (route not found), network, non-JSON, GUID-not-found (actionable message).
+  - `tests/unit/focusTestConnectionHandler.test.ts` — 17 Vitest tests (was 7 using old datafeed URL). Covers: auth/role/404 guards, correct URL and Basic auth header, sandbox base URL routing, GUID-found → connected, GUID-missing → error + actionable message, HTTP 401/403/404/5xx, network failure, non-JSON response, last_error_at lifecycle.
+- TDD: RED confirmed (3 failures vs old datafeed URL + missing GUID membership check), GREEN: all 17 pass. Full suite (5151 tests, 384 files) clean.
+
 ### Review — PENDING
 ### Verify — PENDING
 ### Ship — PENDING

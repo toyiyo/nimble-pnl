@@ -124,13 +124,29 @@
 
 ### CodeRabbit Review (7c) — COMPLETED (2026-07-02)
 - Tool: coderabbit 0.6.4
-- Findings fixed (commit `76b69720`):
+
+#### Iteration 1 — Findings fixed (commit `76b69720`):
   - **major**: Added FK constraints from `focus_order_items`/`focus_payments` → `focus_orders` (composite natural-key FK, ON DELETE CASCADE) via new migration `20260701150000_focus_transactions_integrity.sql`
   - **major**: Added `card_last4 CHECK('^[0-9]{4}$')` to `focus_payments` in same migration to enforce PCI last-4 boundary at DB level
   - **minor**: `supabase/tests/46` — expanded plan(32→34), added `focus_payments` SELECT policy test and `focus_order_items` FOR ALL policy test
   - **minor**: `supabase/tests/45` — replaced `col_has_check` with `ok()` that asserts both 'sandbox' and 'production' appear in the constraint definition
   - **minor**: `progress.md` — replaced absolute `/Users/` symlink path with generic placeholder
   - **minor**: `docs/superpowers/plans/...` — replaced hard-coded `/Users/` creds/OpenAPI paths with env-var placeholder + spec reference; aligned RLS template name to `focus_daily_reports`
+
+#### Iteration 2 — Findings fixed (commit `c0d09acd`):
+  - **security/major**: `focusLynkClient.ts` — added `redirect: 'error'` to both fetch calls (POST+blob) to block SSRF bypass via 3xx redirects from allow-listed hosts
+  - **major**: `focusTransactionSyncHandler.ts` — scoped voided-check DELETEs to `business_date` (check IDs may reset daily; cross-day deletion prevented); updated 3-level delete mock + assertions
+  - **major**: `focusSyncDataHandler.ts` — guard `api_secret_encrypted`/`store_id` before decryption; returns 409 for incomplete credentials instead of throwing
+  - **major**: `focusBulkSyncHandler.ts` — guard nullable Lynk credentials; propagate `processDayTransactions` error status for both backfill and incremental paths
+  - **major**: `20260701130000_focus_transactions_unified_sales.sql` — added `AND parent_sale_id IS NULL` to all three orphan-DELETE statements to protect user-managed split/child rows
+  - **major**: `focusSaveConnectionHandler.ts` — renamed `storeId` → `restaurantGuid` throughout handler + tests; added `requiredString()` helper for type-safe body field extraction
+  - **major**: `focusTestConnectionHandler.ts` — replaced `any` with `unknown` in JSON parse; scoped `writeStatus` DB update by `restaurant_id`; handle update errors; updated mocks for chained `.eq()`
+  - **major**: `FocusSetupWizard.tsx` — added UUID format validation + trim normalisation on Restaurant GUID field; wired Sync Now button to `triggerManualSync`
+  - **minor**: `focusDatafeedParser.ts` — added `console.warn` when checks are dropped due to missing CheckRecord/ID
+  - **minor**: `focusLynkClient.test.ts` — type-safe cast for `mock.calls[0][1]`
+  - **minor**: `supabase/tests/46` — expanded plan(34→36); added `card_last4` CHECK rejection test and order-level composite FK cascade delete test
+  - Deferred (too architectural for CR): "replace child rows before re-upserting" (atomic per-check replace), "daily aggregate skips dates where all items removed", "return error when unified_sales RPC fails" (intentionally non-fatal per design)
+- TypeScript: 0 errors. Tests: 5145/5147 pass (2 pre-existing skips).
 
 ### Verify — PENDING
 ### Ship — PENDING

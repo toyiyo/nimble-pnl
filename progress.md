@@ -67,6 +67,17 @@
   - `tests/unit/focusPosRegistration.test.tsx` — Logo test updated from 🍦 emoji assertion to `<img alt="focus-pos logo">` assertion.
 - TDD: RED confirmed (11 failures on new API-field tests + logo image test), GREEN: all 40 wizard+hook tests pass; focusPosRegistration 12/12 pass. TypeScript 0 errors. Full suite clean.
 
+### UI Review — COMPLETED (2026-07-01)
+- Commit: `03a13e7a`
+- Files reviewed: `src/components/pos/FocusSetupWizard.tsx`, `src/components/IntegrationLogo.tsx`
+- Findings:
+  - Typography scale: all correct (text-[17px] title, text-[13px] secondary, text-[12px] uppercase labels).
+  - Semantic tokens: no direct colors; all bg-foreground/text-foreground/bg-muted/30/border-border/40.
+  - Dialog structure: DialogContent p-0 gap-0, icon box rounded-xl bg-muted/50, DialogDescription (not bare p).
+  - Accessibility: aria-labels, htmlFor+id on all inputs, aria-invalid+aria-describedby, aria-hidden on icons, role="list"/listitem/aria-current="step" on step indicator. Fixed: added `aria-label="Saving connection…"` to Save & Connect button during isConnecting state.
+  - IntegrationLogo: removed stale `'focus-pos': '🍦'` dead-code entry from emojiMap (unreachable; imageLogoMap takes precedence).
+- TypeScript: 0 errors. Unit tests: 52/52 pass.
+
 ### Review — PENDING
 ### Verify — PENDING
 ### Ship — PENDING

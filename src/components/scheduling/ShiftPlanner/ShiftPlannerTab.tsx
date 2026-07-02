@@ -5,6 +5,7 @@ import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/cor
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 import { AlertCircle, CalendarOff, Users, X } from 'lucide-react';
 
@@ -45,6 +46,7 @@ import { useGenerateSchedule } from '@/hooks/useGenerateSchedule';
 import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
 import { useEmployeeAvailability } from '@/hooks/useAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
+import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
 
 interface ShiftPlannerTabProps {
   restaurantId: string;
@@ -409,6 +411,9 @@ export function ShiftPlannerTab({
     [pendingAssignment, weekDays],
   );
 
+  // Plan | Timeline view toggle
+  const [view, setView] = useState<'plan' | 'timeline'>('plan');
+
   // Template CRUD handlers
   const handleAddTemplate = useCallback(() => {
     setEditingTemplate(undefined);
@@ -554,6 +559,39 @@ export function ShiftPlannerTab({
         isGenerating={generateSchedule.isPending}
       />
 
+      {/* Plan | Timeline view toggle — shared across both modes */}
+      <div className="flex items-center gap-2">
+        <ToggleGroup
+          type="single"
+          value={view}
+          onValueChange={(v) => { if (v === 'plan' || v === 'timeline') setView(v); }}
+          className="h-8"
+        >
+          <ToggleGroupItem value="plan" className="h-8 px-3 text-[12px]">
+            Plan
+          </ToggleGroupItem>
+          <ToggleGroupItem value="timeline" className="h-8 px-3 text-[12px]">
+            Timeline
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      {/* Timeline view — replaces editing tree when active */}
+      {view === 'timeline' && (
+        <ShiftTimelineTab
+          shifts={shifts}
+          employees={employees}
+          weekDays={weekDays}
+          restaurantId={restaurantId}
+          tz={restaurantTimezone}
+          loading={false}
+          error={null}
+        />
+      )}
+
+      {/* Plan view — editing tree (DnD, templates, sidebar, overlays) */}
+      {view === 'plan' && (
+        <>
       {/* Validation alerts */}
       {validationResult && !validationResult.valid && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
@@ -722,6 +760,8 @@ export function ShiftPlannerTab({
           ) : null}
         </DragOverlay>
       </DndContext>
+        </>
+      )}
 
       {/* Template form dialog */}
       <TemplateFormDialog

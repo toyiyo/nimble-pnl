@@ -29,3 +29,6 @@ export {
   getInternalRoles,
   getLandingPath,
 } from './definitions';
+
+// Invitations
+export { canInviteRole, getInvitableRoles } from './invitations';

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { deriveWindow, buildLanes } from '@/components/scheduling/ShiftTimeline/useTimelineModel';
-import type { Shift, Employee } from '@/types/scheduling';
+import { deriveWindow, buildLanes, expandDemand, computeGaps } from '@/components/scheduling/ShiftTimeline/useTimelineModel';
+import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 
 const shift = (start: string, end: string): Shift => ({
   id: start, restaurant_id: 'r', employee_id: 'e', start_time: start, end_time: end,
@@ -64,5 +64,31 @@ describe('buildLanes', () => {
       employees, '2026-07-11', 'America/Chicago', 'position',
     );
     expect(lanes[0].label).toBe('Server');
+  });
+});
+
+const rec = (hour: number, staff: number): HourlyStaffingRecommendation =>
+  ({ hour, recommendedStaff: staff, projectedSales: 0, estimatedLaborCost: 0, laborPct: 0, overTarget: false });
+
+describe('expandDemand', () => {
+  it('expands hourly recs to a 15-min step grid aligned to the window', () => {
+    const demand = expandDemand([rec(10, 2), rec(11, 3)], 600, 720, 15);
+    expect(demand!.find((d) => d.min === 600)!.target).toBe(2);  // 10:00
+    expect(demand!.find((d) => d.min === 645)!.target).toBe(2);  // 10:45 → hour 10
+    expect(demand!.find((d) => d.min === 660)!.target).toBe(3);  // 11:00 → hour 11
+  });
+  it('returns null when there are no recommendations', () => {
+    expect(expandDemand([], 600, 720, 15)).toBeNull();
+  });
+});
+
+describe('computeGaps', () => {
+  it('finds contiguous windows where coverage < demand', () => {
+    const coverage = [{ min: 600, count: 1 }, { min: 615, count: 1 }, { min: 630, count: 3 }];
+    const demand = [{ min: 600, target: 2 }, { min: 615, target: 2 }, { min: 630, target: 2 }];
+    expect(computeGaps(coverage, demand)).toEqual([{ startMin: 600, endMin: 615 }]);
+  });
+  it('returns no gaps when demand is null', () => {
+    expect(computeGaps([{ min: 600, count: 0 }], null)).toEqual([]);
   });
 });

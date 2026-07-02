@@ -1,8 +1,9 @@
-import { isoToLocalMinutes, minutesToCompact } from '@/lib/shiftCoverage';
+import { useMemo } from 'react';
+import { isoToLocalMinutes, minutesToCompact, computeDayCoverage } from '@/lib/shiftCoverage';
 import { getPositionColors } from '@/lib/positionColors';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
 import { type GroupByMode, UNASSIGNED_LABEL } from '@/lib/scheduleGrouping';
-import type { Shift, Employee } from '@/types/scheduling';
+import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 import type { PositionColors } from '@/lib/positionColors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -186,4 +187,100 @@ export function buildLanes(
       bars: assignRows(sectionRows, dateStr, tz),
     };
   });
+}
+
+// ─── Demand expansion ─────────────────────────────────────────────────────────
+
+const STEP_MIN = 15;
+
+/**
+ * Expand hourly staffing recommendations into a fine-grained step grid
+ * spanning [startMin, endMin].  Returns null when there are no recommendations
+ * (so the chart can omit the demand line and gap detection).
+ */
+export function expandDemand(
+  recs: HourlyStaffingRecommendation[],
+  startMin: number,
+  endMin: number,
+  step = STEP_MIN,
+): { min: number; target: number }[] | null {
+  if (recs.length === 0) return null;
+  const byHour = new Map(recs.map((r) => [r.hour, r.recommendedStaff]));
+  const out: { min: number; target: number }[] = [];
+  for (let m = startMin; m <= endMin; m += step) {
+    const hour = Math.floor((m % 1440) / 60);
+    out.push({ min: m, target: byHour.get(hour) ?? 0 });
+  }
+  return out;
+}
+
+// ─── Gap detection ────────────────────────────────────────────────────────────
+
+/**
+ * Find contiguous time windows where actual coverage falls below demand.
+ * Returns an empty array when demand is null (no recommendations loaded).
+ *
+ * The returned gaps use the minute values of the coverage samples: `startMin`
+ * is the first under-staffed sample; `endMin` is the last under-staffed sample
+ * in the run.
+ */
+export function computeGaps(
+  coverage: { min: number; count: number }[],
+  demand: { min: number; target: number }[] | null,
+): TimelineGap[] {
+  if (!demand) return [];
+  const targetAt = new Map(demand.map((d) => [d.min, d.target]));
+  const gaps: TimelineGap[] = [];
+  let open: TimelineGap | null = null;
+  for (const c of coverage) {
+    const short = c.count < (targetAt.get(c.min) ?? 0);
+    if (short) {
+      if (open) {
+        open.endMin = c.min;
+      } else {
+        open = { startMin: c.min, endMin: c.min };
+      }
+    } else if (open) {
+      gaps.push(open);
+      open = null;
+    }
+  }
+  if (open) gaps.push(open);
+  return gaps;
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Derive the full timeline model for a single day.
+ *
+ * Pure transform — safe to call from any environment (no DOM access).
+ * Memoized so the object reference is stable when inputs haven't changed.
+ */
+export function useTimelineModel(
+  shifts: Shift[],
+  employees: Employee[],
+  dateStr: string,
+  tz: string,
+  groupBy: GroupByMode,
+  recommendations: HourlyStaffingRecommendation[],
+): TimelineModel {
+  return useMemo(() => {
+    const dayShifts = shifts.filter((s) => s.status !== 'cancelled');
+    const window = deriveWindow(dayShifts, dateStr, tz);
+    const lanes = buildLanes(dayShifts, employees, dateStr, tz, groupBy);
+    // Shift structurally satisfies the fields computeDayCoverage reads
+    // (start_time, end_time, status) so the cast is safe.
+    const coverage = computeDayCoverage(
+      dayShifts as Parameters<typeof computeDayCoverage>[0],
+      dateStr,
+      tz,
+      STEP_MIN,
+      window.startMin,
+      window.endMin,
+    );
+    const demand = expandDemand(recommendations, window.startMin, window.endMin);
+    const gaps = computeGaps(coverage, demand);
+    return { window, lanes, coverage, demand, gaps };
+  }, [shifts, employees, dateStr, tz, groupBy, recommendations]);
 }

@@ -46,6 +46,22 @@ Date: 2026-07-02
 - **Props**: `{ hours: CoverageHour[]; formatHour?: (hour: number) => string }`
 - **Design**: colored cells (destructive/emerald/muted tint), per-cell aria-label ("5 PM, short 2" / "covered"), sr-only `<ul aria-label="Understaffed windows">` listing each short hour for screen readers
 
+## Phase: UI Review (Phase 5) ✅ COMPLETED
+Date: 2026-07-02
+
+### Findings & Fixes
+- **Violation found**: `bg-emerald-500`, `fill-emerald-500`, `text-emerald-700 dark:text-emerald-400` direct Tailwind color literals in CoverageVerdict, CoverageChart, CoverageStatusStrip.
+- **Fix**: Replaced all 4 occurrences with `bg-success`, `fill-success`, `text-success` (semantic token backed by `--success` CSS variable, defined in tailwind.config.ts and src/index.css).
+- **Commit**: 95a59af2
+- **Tests**: 35/35 passing post-fix
+
+### Other guidelines verified as compliant
+- Typography scale: ✅ (`text-[15px]`, `text-[13px]`, `text-[12px]`, `text-[11px]`, `text-[10px]` with correct pairings)
+- Three-state rendering: ✅ (loading → skeleton, error → message, empty → empty-state, data → full render)
+- Accessibility: ✅ (`role="img"` + `<title>`/`<desc>` on SVG, `aria-label` on groups/buttons, `aria-pressed`, `aria-busy`, sr-only list for understaffed hours)
+- Border/radius patterns: ✅ (`border-border/40`, `bg-muted/30`, `bg-muted/50`, `rounded-lg`, `rounded-xl`)
+- Keyboard navigation: ✅ (day selector buttons with `aria-pressed`, ToggleGroup items are keyboard accessible)
+
 ### Task 5: Wire into ShiftTimelineTab; remove old components ✅ COMPLETED
 - **Commit**: f4ecb77d
 - **Files modified**: `src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx`, `tests/unit/shiftTimelineTab.test.tsx`

@@ -11,7 +11,8 @@
  *  - stops (no advance) on day inprogress
  *  - sets initialSyncDone when cursor >= targetDays
  *  - targetDays param honored (test uses small value)
- *  - pure: never calls DB/serviceClient directly
+ *  - never writes the connection row / calls supabase.from directly
+ *  - syncs the processed range into unified_sales via rpc (range + completion window)
  *  - daysProcessed reflects only ok/empty days
  *
  * Design ref: plan §B1; spec §5.1 + §8.3.
@@ -75,10 +76,12 @@ function makeDeps(
     ? vi.fn(() => clockTimes[clockCallIndex++] ?? clockTimes[clockTimes.length - 1])
     : vi.fn(() => Date.now()); // real time (fast tests won't exceed budget)
 
-  // Minimal mock supabase — processBackfillBatch must never call it directly
+  // Mock supabase — processBackfillBatch must never call `.from` directly (day
+  // writes go through processDayTransactions), but it DOES call `.rpc` once after
+  // the loop to sync the batch's range into unified_sales (resolving mock).
   const mockSupabase = {
-    from: vi.fn(() => { throw new Error('processBackfillBatch must not call supabase directly'); }),
-    rpc: vi.fn(() => { throw new Error('processBackfillBatch must not call supabase directly'); }),
+    from: vi.fn(() => { throw new Error('processBackfillBatch must not call supabase.from directly'); }),
+    rpc: vi.fn(async () => ({ data: null, error: null })),
   } as unknown as TransactionSyncDeps['supabase'];
 
   const mockFetchDatafeed = vi.fn(() => {
@@ -449,5 +452,67 @@ describe('processBackfillBatch', () => {
 
     expect(result.status).toBe('empty');
     expect(result.daysProcessed).toBe(2);
+  });
+});
+
+// ── unified_sales range sync (Codex P1: backfilled days must reach unified_sales) ──
+describe('processBackfillBatch — unified_sales sync', () => {
+  // now = 2026-07-02T14:00Z → Chicago date 2026-07-02; cursor 0 → yesterday (07-01)
+  it('syncs the processed batch range into unified_sales after ok days', async () => {
+    const { deps } = makeDeps([
+      { status: 'ok', checksWritten: 1 },
+      { status: 'ok', checksWritten: 1 },
+      { status: 'ok', checksWritten: 1 },
+    ]);
+    await processBackfillBatch(deps, MOCK_CONFIG, { ...BASE_OPTS, maxDays: 3 });
+
+    const rpc = deps.supabase.rpc as ReturnType<typeof vi.fn>;
+    expect(rpc).toHaveBeenCalledTimes(1);
+    // cursor 0→3 → dates 07-01, 06-30, 06-29; range = [oldest 06-29 .. newest 07-01]
+    expect(rpc).toHaveBeenCalledWith('sync_focus_transactions_to_unified_sales', {
+      p_restaurant_id: RESTAURANT_ID,
+      p_start_date: '2026-06-29',
+      p_end_date: '2026-07-01',
+    });
+  });
+
+  it('syncs the full backfill window on completion (initialSyncDone)', async () => {
+    const { deps } = makeDeps(Array(3).fill({ status: 'ok', checksWritten: 1 }));
+    const result = await processBackfillBatch(deps, MOCK_CONFIG, {
+      ...BASE_OPTS,
+      maxDays: 5,
+      targetDays: 3, // completes after 3 days
+    });
+
+    expect(result.initialSyncDone).toBe(true);
+    const rpc = deps.supabase.rpc as ReturnType<typeof vi.fn>;
+    expect(rpc).toHaveBeenCalledTimes(1);
+    // completion → full window [subtractDays(today, targetDays)=06-29 .. yesterday 07-01]
+    expect(rpc).toHaveBeenCalledWith('sync_focus_transactions_to_unified_sales', {
+      p_restaurant_id: RESTAURANT_ID,
+      p_start_date: '2026-06-29',
+      p_end_date: '2026-07-01',
+    });
+  });
+
+  it('does NOT sync unified_sales when no days were processed (error on first day)', async () => {
+    const { deps } = makeDeps([{ status: 'error', error: 'boom' }]);
+    const result = await processBackfillBatch(deps, MOCK_CONFIG, { ...BASE_OPTS, maxDays: 3 });
+
+    expect(result.daysProcessed).toBe(0);
+    expect((deps.supabase.rpc as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it('is non-fatal when the unified_sales RPC returns an error (orders already written)', async () => {
+    const { deps } = makeDeps([{ status: 'ok', checksWritten: 1 }]);
+    (deps.supabase.rpc as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      data: null,
+      error: { message: 'rpc down' },
+    });
+    const result = await processBackfillBatch(deps, MOCK_CONFIG, { ...BASE_OPTS, maxDays: 1 });
+
+    // Batch still reports success — the day rows are durably written.
+    expect(result.syncCursor).toBe(1);
+    expect(result.status).toBe('ok');
   });
 });

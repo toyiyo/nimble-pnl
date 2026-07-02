@@ -10,8 +10,18 @@
  *
  * Design ref: spec §5.1 + §8.3.
  *
- * PURE: never writes to the database. All cursor / flag / last_sync_time
- * persistence is the caller's responsibility (with CAS per §8.1).
+ * Side effects: writes order rows (via processDayTransactions, each with
+ * skipUnifiedSalesSync:true) and, after the loop, syncs the processed date range
+ * into unified_sales via the sync_focus_transactions_to_unified_sales RPC. It does
+ * NOT write the connection row — cursor / flag / last_sync_time persistence is the
+ * caller's responsibility (with CAS per §8.1).
+ *
+ * Why the in-batch unified_sales sync: backfill days are written with
+ * skipUnifiedSalesSync:true (a per-day RPC is too costly inside the CPU budget),
+ * but the 6-hour transaction cron only re-syncs the last 2 business days — so
+ * without this, backfilled history (days 3..90) would never reach unified_sales /
+ * P&L. We sync the batch's own range here, and on completion do a full 90-day
+ * reconciliation to close any gap left by a transient intermediate RPC failure.
  */
 
 import {
@@ -186,6 +196,38 @@ export async function processBackfillBatch(
   }
 
   const initialSyncDone = cursor >= targetDays;
+
+  // ── Sync the just-written days into unified_sales ──────────────────────────
+  // Backfill days were written with skipUnifiedSalesSync:true; the 6-hour
+  // transaction cron only covers the last 2 business days, so we must sync the
+  // batch's range here or the backfilled P&L history would never appear.
+  // On completion, sync the full 90-day window as a reconciliation backstop
+  // (covers any day whose per-batch RPC failed transiently).
+  if (daysProcessed > 0) {
+    const rangeStart = initialSyncDone
+      ? subtractDays(todayStr, targetDays) // full backfill window on completion
+      : subtractDays(todayStr, cursor); // oldest day processed this batch
+    const rangeEnd = initialSyncDone
+      ? subtractDays(todayStr, 1) // yesterday — newest backfill day
+      : subtractDays(todayStr, opts.syncCursor + 1); // newest day processed this batch
+
+    const { error: rpcError } = await deps.supabase.rpc(
+      'sync_focus_transactions_to_unified_sales',
+      {
+        p_restaurant_id: config.restaurantId,
+        p_start_date: rangeStart,
+        p_end_date: rangeEnd,
+      },
+    );
+    if (rpcError) {
+      // Non-fatal: orders are durably written. Log so the gap is visible; the
+      // completion full-window sync (or a later manual re-sync) re-covers it.
+      console.warn(
+        `focusBackfillBatch: unified_sales sync failed for ${config.restaurantId} ` +
+          `(${rangeStart}..${rangeEnd}): ${rpcError.message}`,
+      );
+    }
+  }
 
   return {
     syncCursor: cursor,

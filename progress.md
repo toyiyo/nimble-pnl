@@ -101,6 +101,18 @@ Phase 4-9: Autonomous dev-build-and-ship workflow — in progress
   - `TZ=UTC npm run test` — 388 test files pass, 1 skipped (pre-existing), 5124 tests pass
   - `npm run build` — successful in 18.74s (chunk size warning is pre-existing)
 
+### Phase 5: UI Review
+- Commit: `ac5c758d`
+- Reviewed all changed UI/component files (ShiftTimeline/, EmployeeChip.tsx, StaffingOverlay.tsx, ShiftPlannerTab.tsx) against CLAUDE.md Apple/Notion guidelines
+- Typography scale: all compliant (`text-[11px]`–`text-[15px]`)
+- Semantic tokens: all compliant; blue/amber colors in StaffingOverlay pre-exist the branch (no new violations)
+- Three-state rendering: loading/error/empty/data all handled in ShiftTimelineTab
+- Accessibility fixes applied:
+  - `ToggleGroup` for groupBy in ShiftTimelineTab → `aria-label="Group shifts by"`
+  - Day-selector wrapper in ShiftTimelineTab → `role="group" aria-label="Select day"`
+  - `ToggleGroup` for view in ShiftPlannerTab → `aria-label="Schedule view"`
+- TypeScript typecheck: clean after fixes
+
 ## CI Status
 - PR: not yet created
 - Iteration: 0/5

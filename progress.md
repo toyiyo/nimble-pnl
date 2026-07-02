@@ -42,7 +42,12 @@ Phase 4-9: Autonomous workflow (dev-build-and-ship) — launched
   - npm run build: ✓ built in 51.84s
   - npm run test:db: 1430/1431 passed; 1 pre-existing failure (enqueue_weekly_brief_jobs expects 0 restaurants but DB has 140 — not introduced by our changes)
   - npm run test:e2e: 145 passed, 12 skipped, 2 failed (manual-sale-tip-not-doubled + scheduling-conflicts — pre-existing, our test files not modified)
-- [ ] Phase 9 (PR) — pending
+- [x] Phase 9 (PR) — https://github.com/toyiyo/nimble-pnl/pull/562
+- [x] Phase 9d (Review comment triage) — 2 Codex inline comments triaged
+  - bug/correctness (1): mutateAsync+Promise.allSettled for bulk spinner — commit bac84a06
+  - informational/declined (1): nowTick timer already fixes expiration refresh — PR reply posted
+  - informational/read-only (6): bot status comments (Netlify, Vercel, CodeRabbit, Supabase, SonarCloud, Codex PR-level)
+  - Triage artifact: dev-tools/9d-triage-feature/manager-clear-stale-trades.md
 
 ## Preflight (Phase 4 gate)
 - gh: authenticated (jdelgado2002, repo+workflow scopes)
@@ -51,4 +56,15 @@ Phase 4-9: Autonomous workflow (dev-build-and-ship) — launched
 - SONAR_TOKEN / SONAR_PROJECT_KEY: NOT set (warning only)
 
 ## CI Status
-- PR: not yet created
+- PR: https://github.com/toyiyo/nimble-pnl/pull/562 (opened 2026-07-01)
+- [x] Phase 9b (CI iter 1): ALL checks GREEN (2026-07-01)
+  - Unit Tests: pass (both runs)
+  - Database Tests (pgTAP): pass (both runs)
+  - E2E Tests (Shard 1-4): pass (both runs)
+  - Merge E2E Reports: pass (both runs)
+  - SonarCloud Code Analysis: pass (quality gate green)
+  - CodeQL: pass
+  - CodeRabbit: pass
+  - Vercel: pass
+  - Netlify deploy preview: pass
+  - Supabase Preview: pass

@@ -25,6 +25,10 @@ import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
+import {
+  buildActiveShiftEmployeeIds,
+  filterEmployeesForScheduleView,
+} from '@/lib/scheduleVisibility';
 import { ShiftDialog } from '@/components/ShiftDialog';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
 import { TimeOffRequestDialog } from '@/components/TimeOffRequestDialog';
@@ -115,6 +119,10 @@ import {
 export const SKELETON_ROWS = [...new Array(4)].map((_, rowIndex) => `row-${rowIndex}`);
 export const SKELETON_DAYS = [...new Array(7)].map((_, dayIndex) => `day-${dayIndex}`);
 
+// Re-exported from scheduleVisibility for backward compatibility (tests and
+// other consumers import these from '@/pages/Scheduling').
+export { buildActiveShiftEmployeeIds, filterEmployeesForScheduleView };
+
 export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boolean) => {
   if (hasConflicts) {
     return 'border-l-warning bg-warning/5 hover:bg-warning/10';
@@ -127,38 +135,6 @@ export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boole
   }
   return 'border-l-primary/50';
 };
-
-/** Build set of employee IDs who have at least one non-cancelled shift.
- *  Cancelled shifts should not keep inactive employees visible in the grid. */
-export function buildActiveShiftEmployeeIds(
-  shifts: { employee_id: string; status: string }[],
-): Set<string> {
-  return new Set(
-    shifts.filter(s => s.status !== 'cancelled').map(s => s.employee_id)
-  );
-}
-
-/** Filter employees for the weekly schedule grid:
- *  - Active employees always shown (so managers can schedule them)
- *  - Inactive employees shown only if they have shifts this week */
-export function filterEmployeesForScheduleView(
-  allEmployees: Employee[],
-  shiftEmployeeIds: Set<string>,
-  positionFilter: string | null,
-  areaFilter: string | null,
-): Employee[] {
-  const filtered = allEmployees.filter(emp =>
-    emp.is_active || shiftEmployeeIds.has(emp.id)
-  );
-  let result = filtered;
-  if (areaFilter && areaFilter !== 'all') {
-    result = result.filter(emp => emp.area === areaFilter);
-  }
-  if (positionFilter && positionFilter !== 'all') {
-    result = result.filter(emp => emp.position === positionFilter);
-  }
-  return result;
-}
 
 type ShiftCardProps = {
   shift: Shift;

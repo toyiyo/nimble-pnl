@@ -1,18 +1,19 @@
 /**
  * FocusSetupWizard.tsx
  *
- * Apple/Notion-style Dialog for connecting a restaurant to Focus POS.
- * Design doc §10 + F1–F8.
+ * Apple/Notion-style Dialog for connecting a restaurant to Focus POS (Shift4).
+ * Collects: API Key, API Secret, Restaurant GUID (store_id), Environment.
  *
  * Steps:
  *   1. instructions — informational step; how to prepare credentials
- *   2. credentials  — enter username, password, store ID; click Continue to preview
- *   2b. confirmed   — show detected storeId and username; "Save & Connect"
+ *   2. credentials  — enter API Key, API Secret, Restaurant GUID, Environment
+ *   2b. confirmed   — preview GUID + environment; "Save & Connect"
  *   3. done         — "Sync now" / close
  *
  * F1: wizard owns DialogContent + DialogHeader + DialogTitle + DialogDescription.
  * F2: credential inputs have aria-invalid + aria-describedby → inline error ids.
- * F3: testConnection failure → stays on confirmed, shows inline error + Retry.
+ * F3: testConnection failure → stays on confirmed, shows inline "Connection test failed" error.
+ *     saveConnection failure → shows "Failed to save" (distinct from test failure).
  * F4: two-phase step 2 (credentials → confirmed) with preview.
  * F7: max-h-[80vh] + sticky footer.
  * F8: DialogDescription (not bare <p>), step indicator aria-current="step".
@@ -29,6 +30,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { useFocusConnection } from '@/hooks/useFocusConnection';
 import { CheckCircle2, AlertCircle, Loader2, Info, Link } from 'lucide-react';
@@ -37,9 +45,12 @@ import { CheckCircle2, AlertCircle, Loader2, Info, Link } from 'lucide-react';
 
 type WizardStep =
   | 'instructions'  // step 1: how to get credentials
-  | 'credentials'   // step 2a: enter username/password/storeId
-  | 'confirmed'     // step 2b: preview storeId + username, "Save & Connect"
+  | 'credentials'   // step 2a: enter API Key/Secret/GUID/Environment
+  | 'confirmed'     // step 2b: preview GUID + environment, "Save & Connect"
   | 'done';         // step 3: complete
+
+/** Distinguish save failure from test failure in error state */
+type ConnectErrorKind = 'save' | 'test';
 
 interface FocusSetupWizardProps {
   restaurantId: string;
@@ -115,17 +126,25 @@ function StepIndicator({ current }: StepIndicatorProps) {
 
 export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOpenChange }: FocusSetupWizardProps) {
   const [step, setStep] = useState<WizardStep>('instructions');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [storeId, setStoreId] = useState('');
-  const [usernameError, setUsernameError] = useState<string | null>(null);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [storeIdError, setStoreIdError] = useState<string | null>(null);
+
+  // Credential fields (Lynk API)
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
+  const [restaurantGuid, setRestaurantGuid] = useState('');
+  const [environment, setEnvironment] = useState<'production' | 'sandbox'>('production');
+
+  // Validation errors
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [apiSecretError, setApiSecretError] = useState<string | null>(null);
+  const [guidError, setGuidError] = useState<string | null>(null);
+
+  // Connection error — distinguished by kind
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [connectErrorKind, setConnectErrorKind] = useState<ConnectErrorKind>('test');
   const [isConnecting, setIsConnecting] = useState(false);
 
   const { toast } = useToast();
-  const { saveConnection, testConnection } = useFocusConnection(restaurantId);
+  const { saveConnection, testConnection, triggerManualSync } = useFocusConnection(restaurantId);
 
   // ── Step 1 → 2 ─────────────────────────────────────────────────────────────
 
@@ -135,45 +154,63 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
 
   // ── Step 2a: Validate credentials (client-side) ─────────────────────────────
 
+  const RESTAURANT_GUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   function handleContinue() {
     let hasError = false;
 
-    if (!username.trim()) {
-      setUsernameError('Username is required');
+    const trimmedApiKey = apiKey.trim();
+    const trimmedApiSecret = apiSecret.trim();
+    const trimmedRestaurantGuid = restaurantGuid.trim();
+
+    if (!trimmedApiKey) {
+      setApiKeyError('API Key is required');
       hasError = true;
     } else {
-      setUsernameError(null);
+      setApiKeyError(null);
     }
 
-    if (!password.trim()) {
-      setPasswordError('Password is required');
+    if (!trimmedApiSecret) {
+      setApiSecretError('API Secret is required');
       hasError = true;
     } else {
-      setPasswordError(null);
+      setApiSecretError(null);
     }
 
-    if (!storeId.trim()) {
-      setStoreIdError('Store ID is required');
+    if (!trimmedRestaurantGuid) {
+      setGuidError('Restaurant GUID is required');
+      hasError = true;
+    } else if (!RESTAURANT_GUID_PATTERN.test(trimmedRestaurantGuid)) {
+      setGuidError('Restaurant GUID must be a valid UUID (e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)');
       hasError = true;
     } else {
-      setStoreIdError(null);
+      setGuidError(null);
     }
 
     if (hasError) return;
 
+    // Normalise whitespace before advancing to the confirmation step
+    setApiKey(trimmedApiKey);
+    setApiSecret(trimmedApiSecret);
+    setRestaurantGuid(trimmedRestaurantGuid);
     setStep('confirmed');
   }
 
   // ── Step 2b: Save & Connect ─────────────────────────────────────────────────
+  // UX fix (plan §6): save failure must NOT render as "Connection test failed /
+  // Your credentials were saved". We track the error kind separately.
 
   async function handleSaveAndConnect() {
     setConnectError(null);
     setIsConnecting(true);
+
     try {
-      await saveConnection(restaurantId, username, password, storeId);
+      await saveConnection(restaurantId, apiKey, apiSecret, restaurantGuid, environment);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save connection';
       setConnectError(msg);
+      setConnectErrorKind('save');
       setIsConnecting(false);
       return;
     }
@@ -182,39 +219,42 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
       await testConnection(restaurantId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Connection test failed';
-      // Partial failure (F3): saved but test failed → stay on confirmed, show error + Retry
       setConnectError(msg);
+      setConnectErrorKind('test');
       setIsConnecting(false);
       return;
     }
 
-    setIsConnecting(false);
-    setStep('done');
-    toast({ title: 'Focus POS connected', description: 'Daily reports will sync every 6 hours.' });
+    onConnectSuccess();
   }
 
-  // ── Retry after partial failure ─────────────────────────────────────────────
+  // ── Retry after test failure ────────────────────────────────────────────────
 
   async function handleRetry() {
     setConnectError(null);
     setIsConnecting(true);
     try {
       await testConnection(restaurantId);
-      setIsConnecting(false);
-      setStep('done');
-      toast({ title: 'Focus POS connected', description: 'Daily reports will sync every 6 hours.' });
+      onConnectSuccess();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Connection test failed';
       setConnectError(msg);
+      setConnectErrorKind('test');
       setIsConnecting(false);
     }
+  }
+
+  function onConnectSuccess() {
+    setIsConnecting(false);
+    setStep('done');
+    toast({ title: 'Focus POS connected', description: 'Transactions will sync automatically.' });
   }
 
   // ── Dialog description text per step ──────────────────────────────────────
 
   function dialogDescription(): string {
     if (step === 'instructions') return 'Follow these steps to connect your Focus POS account.';
-    if (step === 'credentials') return 'Enter your Focus POS credentials to authenticate and connect.';
+    if (step === 'credentials') return 'Enter your Focus POS API credentials to authenticate and connect.';
     if (step === 'confirmed') return 'Review your settings and save the connection.';
     return 'Your Focus POS connection is ready.';
   }
@@ -250,13 +290,12 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
         {/* ── Step 1: Instructions ─────────────────────────────── */}
         {step === 'instructions' && (
           <>
-            {/* F8: informational Alert — non-alarming, no variant="destructive" */}
             <Alert className="border-border/40 bg-muted/30">
               <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <AlertDescription className="text-[13px]">
                 <span className="font-medium text-foreground">Credentials are encrypted before storage.</span>{' '}
-                Your Focus POS username and password are used to authenticate and discover your
-                report settings. They are encrypted with AES-GCM before being stored.
+                Your Focus POS API Key and Secret are used to authenticate with the Shift4 API.
+                The secret is encrypted with AES-GCM before being stored.
               </AlertDescription>
             </Alert>
 
@@ -269,16 +308,21 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
               <div className="p-4">
                 <ol className="space-y-3 text-[13px] text-muted-foreground list-decimal list-inside">
                   <li>
-                    Have your Focus POS portal credentials ready (username and password from{' '}
-                    <span className="text-foreground font-medium">my.focuspos.com</span>)
+                    Log in to the{' '}
+                    <span className="text-foreground font-medium">Focus POS API portal</span> and
+                    generate an API Key and API Secret for your account group.
                   </li>
                   <li>
-                    Know your{' '}
-                    <strong className="text-foreground">store code or Store ID</strong> (e.g.{' '}
-                    <span className="font-medium text-foreground">ABC-12345</span> or a numeric ID —
-                    from your Focus contract or admin portal)
+                    Note your{' '}
+                    <strong className="text-foreground">Restaurant GUID</strong> — a UUID that
+                    identifies your specific location (e.g.{' '}
+                    <span className="font-mono text-foreground text-[12px]">
+                      xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+                    </span>
+                    ). Obtain it from{' '}
+                    <span className="font-medium text-foreground">GET /api/restaurants</span>.
                   </li>
-                  <li>Click <strong className="text-foreground">Get Started</strong> to enter your credentials and connect</li>
+                  <li>Click <strong className="text-foreground">Get Started</strong> to enter your credentials and connect.</li>
                 </ol>
               </div>
             </div>
@@ -288,116 +332,143 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
         {/* ── Step 2a: Credentials entry ──────────────────────── */}
         {step === 'credentials' && (
           <div className="space-y-4">
-            {/* Username */}
+            {/* API Key */}
             <div className="space-y-1.5">
               <Label
-                htmlFor="focus-username"
+                htmlFor="focus-api-key"
                 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
               >
-                Username
+                API Key
               </Label>
               <Input
-                id="focus-username"
+                id="focus-api-key"
                 type="text"
-                value={username}
+                value={apiKey}
                 onChange={(e) => {
-                  setUsername(e.target.value);
-                  if (usernameError) setUsernameError(null);
+                  setApiKey(e.target.value);
+                  if (apiKeyError) setApiKeyError(null);
                 }}
-                placeholder="your.username"
-                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
-                  usernameError ? 'border-destructive focus-visible:ring-destructive' : ''
+                placeholder="Enter your Focus POS API Key"
+                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border font-mono ${
+                  apiKeyError ? 'border-destructive focus-visible:ring-destructive' : ''
                 }`}
-                aria-invalid={usernameError ? 'true' : undefined}
-                aria-describedby={usernameError ? 'focus-username-error' : undefined}
+                aria-invalid={apiKeyError ? 'true' : undefined}
+                aria-describedby={apiKeyError ? 'focus-api-key-error' : undefined}
               />
-              {usernameError && (
+              {apiKeyError && (
                 <p
-                  id="focus-username-error"
+                  id="focus-api-key-error"
                   className="text-[12px] text-destructive flex items-start gap-1.5 mt-1"
                   role="alert"
                 >
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
-                  {usernameError}
+                  {apiKeyError}
                 </p>
               )}
             </div>
 
-            {/* Password */}
+            {/* API Secret */}
             <div className="space-y-1.5">
               <Label
-                htmlFor="focus-password"
+                htmlFor="focus-api-secret"
                 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
               >
-                Password
+                API Secret
               </Label>
               <Input
-                id="focus-password"
+                id="focus-api-secret"
                 type="password"
-                value={password}
+                value={apiSecret}
                 onChange={(e) => {
-                  setPassword(e.target.value);
-                  if (passwordError) setPasswordError(null);
+                  setApiSecret(e.target.value);
+                  if (apiSecretError) setApiSecretError(null);
                 }}
                 placeholder="••••••••"
                 className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
-                  passwordError ? 'border-destructive focus-visible:ring-destructive' : ''
+                  apiSecretError ? 'border-destructive focus-visible:ring-destructive' : ''
                 }`}
-                aria-invalid={passwordError ? 'true' : undefined}
-                aria-describedby={passwordError ? 'focus-password-error' : undefined}
+                aria-invalid={apiSecretError ? 'true' : undefined}
+                aria-describedby={apiSecretError ? 'focus-api-secret-error' : undefined}
               />
-              {passwordError && (
+              {apiSecretError && (
                 <p
-                  id="focus-password-error"
+                  id="focus-api-secret-error"
                   className="text-[12px] text-destructive flex items-start gap-1.5 mt-1"
                   role="alert"
                 >
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
-                  {passwordError}
+                  {apiSecretError}
                 </p>
               )}
             </div>
 
-            {/* Store ID */}
+            {/* Restaurant GUID */}
             <div className="space-y-1.5">
               <Label
-                htmlFor="focus-store-id"
+                htmlFor="focus-restaurant-guid"
                 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
               >
-                Store ID
+                Restaurant GUID
               </Label>
               <Input
-                id="focus-store-id"
+                id="focus-restaurant-guid"
                 type="text"
-                value={storeId}
+                value={restaurantGuid}
                 onChange={(e) => {
-                  setStoreId(e.target.value);
-                  if (storeIdError) setStoreIdError(null);
+                  setRestaurantGuid(e.target.value);
+                  if (guidError) setGuidError(null);
                 }}
-                placeholder="e.g. ABC-12345 or 54321"
-                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
-                  storeIdError ? 'border-destructive focus-visible:ring-destructive' : ''
+                placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border font-mono ${
+                  guidError ? 'border-destructive focus-visible:ring-destructive' : ''
                 }`}
-                aria-invalid={storeIdError ? 'true' : undefined}
-                aria-describedby={
-                  storeIdError ? 'focus-store-id-error' : 'focus-store-id-hint'
-                }
+                aria-invalid={guidError ? 'true' : undefined}
+                aria-describedby={guidError ? 'focus-guid-error' : 'focus-guid-hint'}
               />
-              {storeIdError ? (
+              {guidError ? (
                 <p
-                  id="focus-store-id-error"
+                  id="focus-guid-error"
                   className="text-[12px] text-destructive flex items-start gap-1.5 mt-1"
                   role="alert"
                 >
                   <AlertCircle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" aria-hidden="true" />
-                  {storeIdError}
+                  {guidError}
                 </p>
               ) : (
-                <p id="focus-store-id-hint" className="text-[12px] text-muted-foreground mt-1">
-                  Enter your store code (e.g. <span className="font-medium">ABC-12345</span>) or
-                  numeric Store ID — found in your Focus contract or admin portal.
+                <p id="focus-guid-hint" className="text-[12px] text-muted-foreground mt-1">
+                  The UUID for your restaurant location from{' '}
+                  <span className="font-medium text-foreground">GET /api/restaurants</span>.
                 </p>
               )}
+            </div>
+
+            {/* Environment */}
+            <div className="space-y-1.5">
+              <Label
+                htmlFor="focus-environment"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Environment
+              </Label>
+              <Select
+                value={environment}
+                onValueChange={(v) => setEnvironment(v as 'production' | 'sandbox')}
+              >
+                <SelectTrigger
+                  id="focus-environment"
+                  className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="production">Production</SelectItem>
+                  <SelectItem value="sandbox">Sandbox</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[12px] text-muted-foreground mt-1">
+                Use <strong className="text-foreground">Production</strong> for live data.
+                Sandbox is for development testing.
+              </p>
             </div>
           </div>
         )}
@@ -413,20 +484,34 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                 </p>
               </div>
               <div className="p-4 space-y-3">
-                <Row label="Store ID" value={storeId} />
-                <Row label="Username" value={username} />
+                <Row label="Restaurant GUID" value={restaurantGuid} />
+                <Row label="Environment" value={environment} />
+                <Row label="API Key" value={`${apiKey.slice(0, 6)}••••••`} />
               </div>
             </div>
 
-            {/* Partial failure error (F3) */}
-            {connectError && (
+            {/* Error alert — UX fix: distinguish save failure from test failure (F3) */}
+            {connectError && connectErrorKind === 'save' && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                <AlertDescription className="text-[13px]">
+                  <span className="font-medium">Failed to save:</span> {connectError}
+                  <br />
+                  <span className="text-[12px] text-destructive/80">
+                    Please check your credentials and try again.
+                  </span>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {connectError && connectErrorKind === 'test' && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" aria-hidden="true" />
                 <AlertDescription className="text-[13px]">
                   <span className="font-medium">Connection test failed:</span> {connectError}
                   <br />
                   <span className="text-[12px] text-destructive/80">
-                    Your credentials were saved. Click Retry to test again, or go back to change them.
+                    Your API credentials were saved. Click Retry to test again, or go back to change them.
                   </span>
                 </AlertDescription>
               </Alert>
@@ -443,15 +528,15 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
             <div>
               <p className="text-[17px] font-semibold text-foreground">Setup complete!</p>
               <p className="text-[13px] text-muted-foreground mt-1">
-                Focus POS is connected. Daily reports sync automatically every 6 hours.
+                Focus POS is connected. Transactions sync automatically every 6 hours.
                 You can also trigger a manual sync from the dashboard.
               </p>
             </div>
             <Alert className="text-left border-border/40 bg-muted/30">
               <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
               <AlertDescription className="text-[13px] text-muted-foreground">
-                The first sync will backfill the last 90 days of daily reports (one day per call).
-                Use <strong className="text-foreground">Sync Now</strong> to accelerate the backfill.
+                The first sync will backfill the last 90 days of transactions.
+                Use <strong className="text-foreground">Sync Now</strong> to start syncing immediately.
               </AlertDescription>
             </Alert>
           </div>
@@ -467,9 +552,9 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
               type="button"
               onClick={() => {
                 if (step === 'credentials') {
-                  setUsernameError(null);
-                  setPasswordError(null);
-                  setStoreIdError(null);
+                  setApiKeyError(null);
+                  setApiSecretError(null);
+                  setGuidError(null);
                   setStep('instructions');
                 } else {
                   setConnectError(null);
@@ -505,7 +590,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
 
           {step === 'confirmed' && (
             <>
-              {connectError && (
+              {connectError && connectErrorKind === 'test' && (
                 <Button
                   onClick={handleRetry}
                   disabled={isConnecting}
@@ -519,6 +604,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
               <Button
                 onClick={handleSaveAndConnect}
                 disabled={isConnecting}
+                aria-label={isConnecting ? 'Saving connection…' : undefined}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium disabled:opacity-50"
               >
                 {isConnecting && <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />}
@@ -537,7 +623,18 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                 Close
               </Button>
               <Button
-                onClick={onComplete}
+                onClick={async () => {
+                  try {
+                    await triggerManualSync(restaurantId);
+                    onComplete();
+                  } catch {
+                    toast({
+                      title: 'Sync could not be started',
+                      description: 'Automatic sync will retry on schedule.',
+                      variant: 'destructive',
+                    });
+                  }
+                }}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
               >
                 Sync Now

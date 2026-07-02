@@ -776,3 +776,36 @@
 - **Rule:** When two surfaces (on-screen view + print/export) render "the same" data, they must share one tested visibility/filter helper. A second surface that re-derives its own filtering will drift. Apply the shared filter at the data-entry boundary (prop boundary / single chokepoint), not inside each downstream consumer.
 - **Mistake (hygiene):** The dev-build-and-ship workflow committed `progress.md` into the branch even though it is listed in `.gitignore` — it reached the PR diff. (`git rm --cached progress.md` removed it; it had been force/`-A` added.)
 - **Rule:** `progress.md` is ephemeral and gitignored — it must never appear in a PR. Before Phase 9a (or at 9e), verify with `git ls-files progress.md` returns nothing; if it's tracked, `git rm --cached progress.md` and commit. Also verify the PR's GitHub changed-file list (`gh pr view <PR> --json files`) matches expectations — a stale local `origin/main` ref can make `git diff origin/main..HEAD` wrongly attribute another merged PR's files to your branch; the GitHub PR file list (true merge base) is authoritative.
+- **[2026-07-02 CONFIRMED — recurred on PR #562]** The dev-build-and-ship workflow again committed `progress.md` into the branch; it reached the PR diff and was only caught in Phase 10. `git rm --cached progress.md` removed it. Until the workflow enforces this at 9a, manually run `git ls-files progress.md` (must be empty) AND `gh pr view <PR> --json files` before declaring Done.
+
+---
+
+## Category: Time / Timezone (continued)
+
+### [2026-07-02] Time-derived UI state frozen at mount — "expired" never advances without a ticking `now`
+- **Mistake:** PR #562's `TradeApprovalQueue` partitioned trades into expired/active via `isTradeExpired(startTime, now)` where `now` was `new Date()` captured ONCE at mount (hoisted above the `useMemo`s). A trade whose shift start passed while the manager sat on the page never moved into the Expired group until a remount/refetch. The OCR reviewer flagged it major.
+- **Correction:** Added a `nowTick` state advanced by `setInterval` (60s) as a dependency of the partition `useMemo`s, evaluating `new Date()` inside the memo on each tick. `now` is still injected into the pure `isTradeExpired` helper for testability — the fix is where/when `now` is sampled, not the helper.
+- **Rule:** When UI state derives from "is timestamp T before now?", `now` must be a live value (ticking state / interval-refreshed), not `Date.now()`/`new Date()` sampled once at render. Sample it inside the memo that depends on the tick; keep the comparison in a pure helper taking `now` as a param so tests inject a fixed clock — but never let the production sample of `now` be frozen.
+
+### [2026-07-02] `toLocaleString({ timeZone })` throws RangeError on an invalid/empty IANA string — probe and fall back
+- **Mistake:** PR #562's email fix passed `restaurant.timezone` straight into `toLocaleString('en-US', { timeZone })`. A malformed/empty/legacy non-IANA value makes `toLocaleString` throw `RangeError: Invalid time zone specified`, crashing the whole email send in the edge function, not just one field.
+- **Correction:** Probe the timezone once with a try/catch (`new Intl.DateTimeFormat('en-US', { timeZone })`); on throw, fall back to `'UTC'` and log. Only a validated tz reaches `toLocaleString`. Applied in the shared `formatDateTime` so every caller is protected.
+- **Rule:** Any value flowing into `Intl`/`toLocaleString`'s `timeZone` from the DB or user input must be validated first — an invalid IANA string is a throw, not a silent fallback. Probe with a throwaway `Intl.DateTimeFormat({ timeZone })` in try/catch and default to `'UTC'` (or documented restaurant default). Never assume a stored timezone column holds a currently-valid IANA name.
+
+---
+
+## Category: React Query (continued)
+
+### [2026-07-02] Bulk mutations need `mutateAsync` + `Promise.allSettled` to drive a "removing" spinner
+- **Mistake:** PR #562's "Remove all expired (N)" bulk action fired `mutate()` in a loop. `mutate()` is fire-and-forget (returns void), so the handler had no way to `await` all N deletions to clear the bulk spinner / close the dialog. Codex flagged it in Phase 9d.
+- **Correction:** Switched to `await Promise.allSettled(ids.map(id => mutateAsync({ tradeId: id })))`. `allSettled` (not `all`) so one failed delete doesn't abort the rest; per-row `deletingIds` still drives individual spinners via `onSettled`; the bulk handler awaits the aggregate. Single-row path keeps `mutate()`.
+- **Rule:** When a control fans one mutation over N items and needs to know when all finished (clear a bulk spinner, close a dialog, show a summary), use `mutateAsync` + `Promise.allSettled`, not N× `mutate()`. `allSettled` over `all` so one rejection doesn't drop successful siblings. Per-item feedback stays on `onSettled`; the awaited aggregate drives only the bulk-level UI transition.
+
+---
+
+## Category: Security (continued)
+
+### [2026-07-02] Multi-tenant delete/update: add the explicit `restaurant_id` filter even when RLS already scopes it
+- **Mistake:** PR #562's `useDeleteShiftTrade` did `.delete().eq('id', tradeId).in('status', [...])`. The Phase 2.5 Supabase design reviewer explicitly called a client-side `restaurant_id` filter "belt-and-suspenders, not required" since the manager DELETE RLS policy scopes by `restaurant_id`. CodeRabbit (Phase 7c) flagged its absence as major; `.eq('restaurant_id', restaurantId)` was added.
+- **Correction:** Added the explicit tenant filter. It self-documents intent, guards against an RLS regression (if the policy is loosened/dropped later, the client filter still blocks cross-tenant deletes), and costs nothing.
+- **Rule:** For any client-side multi-tenant `delete()`/`update()`, include the explicit `restaurant_id` (tenant) filter even when RLS enforces it — defense-in-depth, not redundancy. Don't let "RLS covers it" talk you out of the filter: RLS is the backstop, the query filter is the stated intent, and a filter-less mutation is one policy edit away from a cross-tenant bug. Refines the earlier "RLS USING clause is sufficient" note — sufficient for security in isolation, but the filter is the house standard.

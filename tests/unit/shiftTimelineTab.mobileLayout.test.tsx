@@ -32,14 +32,15 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
+// Use a past week so defaultDay() never selects "today" and breaks the assertions.
 const WEEK_DAYS = [
-  '2026-07-06',
-  '2026-07-07',
-  '2026-07-08',
-  '2026-07-09',
-  '2026-07-10',
-  '2026-07-11',
-  '2026-07-12',
+  '2026-01-05',
+  '2026-01-06',
+  '2026-01-07',
+  '2026-01-08',
+  '2026-01-09',
+  '2026-01-10',
+  '2026-01-11',
 ];
 
 const makeEmployee = (id: string, name: string): Employee => ({
@@ -78,9 +79,9 @@ const BASE_PROPS = {
   error: null,
 } as const;
 
-// A shift on Mon 2026-07-06 (15:00Z = 10:00 CDT)
+// A shift on Mon 2026-01-05 (16:00Z = 10:00 CST, UTC-6 in January)
 const EMPLOYEES = [makeEmployee('e1', 'Ann')];
-const SHIFTS = [makeShift('s1', 'e1', '2026-07-06T15:00:00Z', '2026-07-06T21:00:00Z')];
+const SHIFTS = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 

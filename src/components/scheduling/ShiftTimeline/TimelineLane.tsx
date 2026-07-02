@@ -36,7 +36,7 @@ export function TimelineLane({ lane, minToPct, onSelect }: TimelineLaneProps) {
       >
         <span className="text-[13px] font-medium text-foreground truncate">{label || 'Unassigned'}</span>
         <span className="text-[11px] text-muted-foreground mt-0.5">
-          {bars.length} shift{bars.length === 1 ? '' : 's'} · {hours.toFixed(1)}h
+          {bars.length} shift{bars.length !== 1 ? 's' : ''} · {hours.toFixed(1)}h
         </span>
       </div>
 

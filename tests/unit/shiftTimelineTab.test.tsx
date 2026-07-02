@@ -27,14 +27,15 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
+// Use a past week so defaultDay() never selects "today" and breaks the assertions.
 const WEEK_DAYS = [
-  '2026-07-06', // Mon
-  '2026-07-07',
-  '2026-07-08',
-  '2026-07-09',
-  '2026-07-10',
-  '2026-07-11',
-  '2026-07-12',
+  '2026-01-05', // Mon
+  '2026-01-06',
+  '2026-01-07',
+  '2026-01-08',
+  '2026-01-09',
+  '2026-01-10',
+  '2026-01-11',
 ];
 
 const makeEmployee = (id: string, name: string): Employee => ({
@@ -149,10 +150,10 @@ describe('ShiftTimelineTab', () => {
 
   it('renders shift bars when shifts exist on the selected day', () => {
     const employees = [makeEmployee('e1', 'Ann')];
-    // Shift on 2026-07-06 (Mon = weekDays[0], which will be selected by default)
-    // 15:00Z = 10:00 America/Chicago (CDT = UTC-5)
+    // Shift on 2026-01-05 (Mon = weekDays[0], which will be selected by default)
+    // 16:00Z = 10:00 America/Chicago (CST = UTC-6 in January)
     const shifts = [
-      makeShift('s1', 'e1', '2026-07-06T15:00:00Z', '2026-07-06T21:00:00Z'),
+      makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
     ];
     render(
       <ShiftTimelineTab
@@ -166,24 +167,24 @@ describe('ShiftTimelineTab', () => {
     expect(btn).toBeInTheDocument();
   });
 
-  it('correctly attributes a late-evening shift (23:00 CDT = 04:00Z next day) to its local day', () => {
+  it('correctly attributes a late-evening shift (23:00 CST = 05:00Z next day) to its local day', () => {
     // This is the cross-UTC-midnight case that the old UTC prefix filter silently dropped.
-    // 2026-07-06 23:00 CDT = 2026-07-07T04:00:00Z (UTC next day).
-    // filterToDay must use isoToLocalMinutes so the shift appears on Mon Jul 6, not Tue Jul 7.
+    // 2026-01-05 23:00 CST = 2026-01-06T05:00:00Z (UTC next day).
+    // filterToDay must use isoToLocalMinutes so the shift appears on Mon Jan 5, not Tue Jan 6.
     const employees = [makeEmployee('e1', 'Bob')];
     const shifts = [
-      // start: Mon Jul 6 23:00 CDT → 2026-07-07T04:00:00Z; end: Tue Jul 7 00:00 CDT → 2026-07-07T05:00:00Z
-      makeShift('s1', 'e1', '2026-07-07T04:00:00Z', '2026-07-07T05:00:00Z'),
+      // start: Mon Jan 5 23:00 CST → 2026-01-06T05:00:00Z; end: Tue Jan 6 00:00 CST → 2026-01-06T06:00:00Z
+      makeShift('s1', 'e1', '2026-01-06T05:00:00Z', '2026-01-06T06:00:00Z'),
     ];
     render(
       <ShiftTimelineTab
         {...BASE_PROPS}
         shifts={shifts}
         employees={employees}
-        // weekDays[0] = 2026-07-06 is selected by default (today fallback)
+        // weekDays[0] = 2026-01-05 is selected by default (today fallback)
       />,
     );
-    // Bob should be visible on Mon Jul 6 (the local day) — not missing
+    // Bob should be visible on Mon Jan 5 (the local day) — not missing
     const btn = screen.getByRole('button', { name: /Bob/i });
     expect(btn).toBeInTheDocument();
   });

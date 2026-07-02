@@ -73,15 +73,15 @@ export function CoverageCurve({
   const demandPath = (() => {
     if (!demand || demand.length === 0) return null;
 
-    const segments = demand.map((sample, i) => {
-      const x = toX(sample.min);
-      const y = toY(sample.target);
-      const nextX = i + 1 < demand.length ? toX(demand[i + 1].min) : toX(endMin);
-      const cmd = i === 0 ? 'M' : 'L';
-      return `${cmd} ${x} ${y} L ${nextX} ${y}`;
-    });
-
-    return segments.join(' ');
+    return demand
+      .map((sample, i) => {
+        const x = toX(sample.min);
+        const y = toY(sample.target);
+        const nextX = i + 1 < demand.length ? toX(demand[i + 1].min) : toX(endMin);
+        const cmd = i === 0 ? 'M' : 'L';
+        return `${cmd} ${x} ${y} L ${nextX} ${y}`;
+      })
+      .join(' ');
   })();
 
   const understaffedCount = gaps.length;
@@ -96,7 +96,7 @@ export function CoverageCurve({
       style={{ height }}
     >
       <title>Coverage curve</title>
-      <desc>{`Peak coverage ${peakCount} staff. ${understaffedCount} understaffed window${understaffedCount === 1 ? '' : 's'}.`}</desc>
+      <desc>{`Peak coverage ${peakCount} staff. ${understaffedCount} understaffed window${understaffedCount !== 1 ? 's' : ''}.`}</desc>
 
       {/* Gap shading: red rectangles for understaffed windows */}
       {gaps.map((g) => {

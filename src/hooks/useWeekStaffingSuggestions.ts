@@ -38,7 +38,7 @@ export function useWeekStaffingSuggestions(
     for (const emp of employees) {
       if (emp.position) positions.add(emp.position);
     }
-    return Array.from(positions).sort((a, b) => a.localeCompare(b));
+    return Array.from(positions).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [employees]);
 
   // Merge DB settings with local overrides for live preview.

@@ -143,14 +143,14 @@ export function ShiftTimelineTab({
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading timeline">
         <div className="flex items-center gap-2">
-          {Array.from({ length: 7 }).map((_, i) => (
-            <Skeleton key={`day-skel-${i}`} className="h-8 w-16 rounded-lg" />
+          {['s0','s1','s2','s3','s4','s5','s6'].map((k) => (
+            <Skeleton key={k} className="h-8 w-16 rounded-lg" />
           ))}
         </div>
         <Skeleton className="h-20 w-full rounded-xl" />
         <Skeleton className="h-6 w-full rounded-lg" />
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={`lane-skel-${i}`} className="h-10 w-full rounded-xl" />
+        {['l0','l1','l2'].map((k) => (
+          <Skeleton key={k} className="h-10 w-full rounded-xl" />
         ))}
       </div>
     );

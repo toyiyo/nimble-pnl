@@ -25,7 +25,13 @@ Phase 4-9: Autonomous workflow (dev-build-and-ship) — launched
 - [x] Phase 4 Task 3 (id=3): Manager cleanup UI in TradeApprovalQueue.tsx — commit 55140a80
 - [x] Phase 5 (UI Review): Typography scale, dialog structure, color semantics — commit 3517b38e
 - [x] Phase 6 (Simplify): IIFE → renderConfirmButtonContent, drop unused onSuccess param — commit 5c4c3815
-- [ ] Phases 7-9 (CodeRabbit review, verify, PR) — pending
+- [x] Phase 7a (OCR rules review) — 4 findings: 1 major (frozen `now` at mount), 1 major (duplicate remove-button render pattern), 1 minor (hardcoded fallback timezone comment missing), 1 minor (inline arrow closures in map callbacks). No critical findings.
+- [x] Phase 7b (fold findings): 3 fixes committed — c719873a
+  - frozen `now` at mount (major): evaluate `new Date()` inside partition memos, not hoisted
+  - duplicate RemoveButton JSX (major): extracted shared RemoveButton component
+  - StalePendingRow typography (minor): text-sm/text-xs → text-[14px]/text-[12px]
+  - formatDateTime timezone RangeError (security/minor): added Intl probe with UTC fallback
+- [ ] Phases 7c-9 (CodeRabbit review, verify, PR) — pending
 
 ## Preflight (Phase 4 gate)
 - gh: authenticated (jdelgado2002, repo+workflow scopes)

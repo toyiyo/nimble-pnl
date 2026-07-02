@@ -3,7 +3,7 @@ import type { TimelineGap } from './useTimelineModel';
 import { STEP_MIN } from './useTimelineModel';
 
 interface CoverageGapListProps {
-  gaps: TimelineGap[];
+  readonly gaps: TimelineGap[];
 }
 
 /**

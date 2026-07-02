@@ -3,9 +3,9 @@ import { minutesToCompact } from '@/lib/shiftCoverage';
 
 interface TimelineAxisProps {
   /** Derived time window for the selected day. */
-  window: TimelineWindow;
+  readonly window: TimelineWindow;
   /** Maps a minute value to a horizontal percent position within the plot. */
-  minToPct: (min: number) => number;
+  readonly minToPct: (min: number) => number;
 }
 
 /**

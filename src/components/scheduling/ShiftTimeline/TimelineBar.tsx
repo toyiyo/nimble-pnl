@@ -4,11 +4,11 @@ import type { Shift } from '@/types/scheduling';
 
 interface TimelineBarProps {
   /** The bar data (shift, geometry, label, color) from useTimelineModel. */
-  bar: TimelineBarModel;
+  readonly bar: TimelineBarModel;
   /** Maps a minute value to a horizontal percent within [0, 100]. */
-  minToPct: (min: number) => number;
+  readonly minToPct: (min: number) => number;
   /** Called when the user clicks or activates the bar. */
-  onSelect: (shift: Shift) => void;
+  readonly onSelect: (shift: Shift) => void;
 }
 
 /**

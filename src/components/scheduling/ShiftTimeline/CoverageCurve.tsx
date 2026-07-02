@@ -2,17 +2,17 @@ import type { TimelineWindow, TimelineGap } from './useTimelineModel';
 
 interface CoverageCurveProps {
   /** Derived time window for the selected day. */
-  window: TimelineWindow;
+  readonly window: TimelineWindow;
   /** 15-min headcount samples over the window. */
-  coverage: { min: number; count: number }[];
+  readonly coverage: { readonly min: number; readonly count: number }[];
   /** 15-min demand step samples, or null when no recommendations are available. */
-  demand: { min: number; target: number }[] | null;
+  readonly demand: { readonly min: number; readonly target: number }[] | null;
   /** Understaffed windows to highlight with red shading. */
-  gaps: TimelineGap[];
+  readonly gaps: TimelineGap[];
   /** Maps a minute value to a horizontal percent within [0, 100]. */
-  minToPct: (min: number) => number;
+  readonly minToPct: (min: number) => number;
   /** Fixed SVG height in px (default 80). */
-  height?: number;
+  readonly height?: number;
 }
 
 /**
@@ -52,50 +52,36 @@ export function CoverageCurve({
   // Step function: each sample occupies from its minute to the next sample's
   // minute.  We close the path back along the bottom baseline.
   const coveragePath = (() => {
-    const parts: string[] = [];
     const baseline = height;
 
-    // Start at the bottom-left
-    parts.push(`M ${toX(coverage[0].min)} ${baseline}`);
-
-    for (let i = 0; i < coverage.length; i++) {
-      const x = toX(coverage[i].min);
-      const y = toY(coverage[i].count);
-      parts.push(`L ${x} ${y}`);
-
-      // Horizontal segment to the next sample (or end of window)
+    const segments = coverage.map((sample, i) => {
+      const x = toX(sample.min);
+      const y = toY(sample.count);
       const nextX = i + 1 < coverage.length ? toX(coverage[i + 1].min) : toX(endMin);
-      parts.push(`L ${nextX} ${y}`);
-    }
+      return `L ${x} ${y} L ${nextX} ${y}`;
+    });
 
-    // Close back to bottom baseline
-    parts.push(`L ${toX(endMin)} ${baseline}`);
-    parts.push('Z');
-
-    return parts.join(' ');
+    return [
+      `M ${toX(coverage[0].min)} ${baseline}`,
+      ...segments,
+      `L ${toX(endMin)} ${baseline}`,
+      'Z',
+    ].join(' ');
   })();
 
   // ── Demand step-line path ────────────────────────────────────────────────
   const demandPath = (() => {
     if (!demand || demand.length === 0) return null;
-    const parts: string[] = [];
 
-    for (let i = 0; i < demand.length; i++) {
-      const x = toX(demand[i].min);
-      const y = toY(demand[i].target);
-
-      if (i === 0) {
-        parts.push(`M ${x} ${y}`);
-      } else {
-        parts.push(`L ${x} ${y}`);
-      }
-
-      // Extend horizontally to the next sample
+    const segments = demand.map((sample, i) => {
+      const x = toX(sample.min);
+      const y = toY(sample.target);
       const nextX = i + 1 < demand.length ? toX(demand[i + 1].min) : toX(endMin);
-      parts.push(`L ${nextX} ${y}`);
-    }
+      const cmd = i === 0 ? 'M' : 'L';
+      return `${cmd} ${x} ${y} L ${nextX} ${y}`;
+    });
 
-    return parts.join(' ');
+    return segments.join(' ');
   })();
 
   const understaffedCount = gaps.length;

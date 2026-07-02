@@ -9,13 +9,13 @@ import type { Shift } from '@/types/scheduling';
 
 interface TimelineShiftPopoverProps {
   /** The currently active shift to show, or null when none is selected. */
-  activeShift: Shift | null;
+  readonly activeShift: Shift | null;
   /** Restaurant IANA timezone for displaying local times. */
-  tz: string;
+  readonly tz: string;
   /** The calendar date string (YYYY-MM-DD) of the selected day. */
-  dateStr: string;
+  readonly dateStr: string;
   /** Called when the popover is closed or dismissed. */
-  onClose: () => void;
+  readonly onClose: () => void;
 }
 
 /**
@@ -83,7 +83,7 @@ export function TimelineShiftPopover({
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">

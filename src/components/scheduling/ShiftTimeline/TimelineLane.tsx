@@ -4,11 +4,11 @@ import { TimelineBar } from './TimelineBar';
 
 interface TimelineLaneProps {
   /** Lane data from useTimelineModel (label, hours, bars). */
-  lane: TimelineLaneModel;
+  readonly lane: TimelineLaneModel;
   /** Maps a minute value to a horizontal percent within [0, 100]. */
-  minToPct: (min: number) => number;
+  readonly minToPct: (min: number) => number;
   /** Called when the user clicks a shift bar. */
-  onSelect: (shift: Shift) => void;
+  readonly onSelect: (shift: Shift) => void;
 }
 
 /** Height in pixels for each stacked bar row within a lane. */
@@ -36,7 +36,7 @@ export function TimelineLane({ lane, minToPct, onSelect }: TimelineLaneProps) {
       >
         <span className="text-[13px] font-medium text-foreground truncate">{label || 'Unassigned'}</span>
         <span className="text-[11px] text-muted-foreground mt-0.5">
-          {bars.length} shift{bars.length !== 1 ? 's' : ''} · {hours.toFixed(1)}h
+          {bars.length} shift{bars.length === 1 ? '' : 's'} · {hours.toFixed(1)}h
         </span>
       </div>
 

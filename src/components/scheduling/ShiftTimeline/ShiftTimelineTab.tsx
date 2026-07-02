@@ -23,19 +23,19 @@ import type { GroupByMode } from '@/lib/scheduleGrouping';
 
 interface ShiftTimelineTabProps {
   /** Shifts for the whole week — this component filters to the selected day. */
-  shifts: Shift[];
+  readonly shifts: Shift[];
   /** All employees for the restaurant (used for group labels + joining). */
-  employees: Employee[];
+  readonly employees: Employee[];
   /** 7-element array of YYYY-MM-DD strings for the current week. */
-  weekDays: string[];
+  readonly weekDays: string[];
   /** Restaurant ID, forwarded to useWeekStaffingSuggestions. */
-  restaurantId: string;
+  readonly restaurantId: string;
   /** Restaurant IANA timezone (e.g. "America/Chicago"). */
-  tz: string;
+  readonly tz: string;
   /** Forwarded from the parent's isLoading state. */
-  loading: boolean;
+  readonly loading: boolean;
   /** Forwarded from the parent's error state; renders an inline message. */
-  error: Error | null;
+  readonly error: Error | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -144,13 +144,13 @@ export function ShiftTimelineTab({
       <div className="space-y-3" aria-busy="true" aria-label="Loading timeline">
         <div className="flex items-center gap-2">
           {Array.from({ length: 7 }).map((_, i) => (
-            <Skeleton key={i} className="h-8 w-16 rounded-lg" />
+            <Skeleton key={`day-skel-${i}`} className="h-8 w-16 rounded-lg" />
           ))}
         </div>
         <Skeleton className="h-20 w-full rounded-xl" />
         <Skeleton className="h-6 w-full rounded-lg" />
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-10 w-full rounded-xl" />
+          <Skeleton key={`lane-skel-${i}`} className="h-10 w-full rounded-xl" />
         ))}
       </div>
     );
@@ -172,8 +172,8 @@ export function ShiftTimelineTab({
   // ── Day selector + group-by controls ──────────────────────────────────────
   const controls = (
     <div className="flex flex-wrap items-center justify-between gap-3 pb-2 border-b border-border/40">
-      {/* Day selector */}
-      <div role="group" aria-label="Select day" className="flex items-center gap-1 overflow-x-auto pb-0.5">
+      {/* Day selector — fieldset/legend provides a semantic group for the day buttons */}
+      <fieldset aria-label="Select day" className="flex items-center gap-1 overflow-x-auto pb-0.5 border-0 p-0 m-0">
         {weekDays.map((day) => (
           <button
             key={day}
@@ -191,7 +191,7 @@ export function ShiftTimelineTab({
             {formatDayLabel(day).split(',')[0]}
           </button>
         ))}
-      </div>
+      </fieldset>
 
       {/* Group-by toggle */}
       <ToggleGroup

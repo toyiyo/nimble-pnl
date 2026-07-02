@@ -4,13 +4,13 @@ import type { TimelineWindow } from './useTimelineModel';
 
 interface NowIndicatorProps {
   /** Calendar date string (YYYY-MM-DD) of the currently selected day. */
-  dateStr: string;
+  readonly dateStr: string;
   /** Restaurant IANA timezone. */
-  tz: string;
+  readonly tz: string;
   /** Derived time window for the selected day. */
-  window: TimelineWindow;
+  readonly window: TimelineWindow;
   /** Maps a minute value to a horizontal percent within [0, 100]. */
-  minToPct: (min: number) => number;
+  readonly minToPct: (min: number) => number;
 }
 
 /**

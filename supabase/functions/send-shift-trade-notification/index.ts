@@ -1,4 +1,4 @@
-import { generateHeader } from '../_shared/emailTemplates.ts';
+import { generateHeader, formatDateTime } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
@@ -57,16 +57,6 @@ const ACTION_CONTENT: Record<RequestBody['action'], {
     message: (employeeName, shiftDetails) => `${employeeName ?? 'The employee'} has cancelled their shift trade request${shiftDetails ? ` for ${shiftDetails}` : ''}.`,
   },
 };
-
-const formatDateTime = (date: string) => new Date(date).toLocaleString('en-US', {
-  weekday: 'short',
-  month: 'short',
-  day: 'numeric',
-  year: 'numeric',
-  hour: 'numeric',
-  minute: '2-digit',
-  hour12: true
-});
 
 const buildEmails = async (
   supabase: SupabaseClient,
@@ -323,7 +313,8 @@ const handler = async (req: Request): Promise<Response> => {
           user_id
         ),
         restaurant:restaurants(
-          name
+          name,
+          timezone
         )
       `)
       .eq('id', tradeId)
@@ -339,10 +330,12 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Build shift details object
     const shift = trade.offered_shift;
+    // Matches the `restaurants.timezone` column default and Clover/Shift4 fallback.
+    const restaurantTimezone = trade.restaurant?.timezone || 'America/Chicago';
     const shiftDetails = shift
       ? {
-          startTime: formatDateTime(shift.start_time),
-          endTime: formatDateTime(shift.end_time),
+          startTime: formatDateTime(shift.start_time, restaurantTimezone),
+          endTime: formatDateTime(shift.end_time, restaurantTimezone),
           position: shift.position
         }
       : null;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { parseDateLocal } from '@/lib/dateUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,6 +23,7 @@ import {
   useShiftTrades,
   useApproveShiftTrade,
   useRejectShiftTrade,
+  useDeleteShiftTrade,
   ShiftTrade,
 } from '@/hooks/useShiftTrades';
 import {
@@ -33,6 +34,7 @@ import {
 } from '@/hooks/useOpenShiftClaims';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
+import { isTradeExpired } from '@/lib/shiftTradeStatus';
 import {
   CheckCircle,
   XCircle,
@@ -43,12 +45,23 @@ import {
   FileText,
   ChevronDown,
   ShoppingBag,
+  Trash2,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 type ActionType = 'approve' | 'reject' | null;
 
-function renderClaimButtonContent(action: ActionType, isPending: boolean) {
+/**
+ * Discriminated union for the single confirm-dialog used by the cleanup UI.
+ * - 'single': manager clicks Remove on one expired/stale trade
+ * - 'bulk': manager clicks "Remove all expired (N)"
+ */
+type ConfirmTarget =
+  | { type: 'single'; trade: ShiftTrade }
+  | { type: 'bulk'; ids: string[] }
+  | null;
+
+function renderConfirmButtonContent(action: ActionType, isPending: boolean) {
   if (isPending) {
     return (
       <>
@@ -73,7 +86,12 @@ function renderClaimButtonContent(action: ActionType, isPending: boolean) {
   );
 }
 
-export const TradeApprovalQueue = () => {
+interface TradeApprovalQueueProps {
+  /** Injectable for testing; defaults to `new Date()` when omitted. */
+  now?: Date;
+}
+
+export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {}) => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
@@ -107,6 +125,150 @@ export const TradeApprovalQueue = () => {
   const [selectedClaim, setSelectedClaim] = useState<OpenShiftClaimWithJoins | null>(null);
   const [claimActionType, setClaimActionType] = useState<ActionType>(null);
   const [claimNote, setClaimNote] = useState('');
+
+  // -------------------------------------------------------------------------
+  // Cleanup UI state (manager removes stale/expired trades)
+  // -------------------------------------------------------------------------
+
+  /**
+   * Tracks IDs of trades whose delete is in-flight.
+   * Updated in onSettled (not onSuccess) so a failed delete still clears the spinner.
+   */
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
+
+  /**
+   * Single confirm dialog for both single-remove and bulk-remove actions.
+   * null = dialog is closed.
+   */
+  const [confirmTarget, setConfirmTarget] = useState<ConfirmTarget>(null);
+
+  /**
+   * Ref for focus restoration: "Remove all expired" / section header button.
+   * After the bulk confirm dialog closes (which unmounts rows), we return focus
+   * here so keyboard users aren't stranded on an unmounted element.
+   */
+  const bulkRemoveBtnRef = useRef<HTMLButtonElement>(null);
+
+  const { mutateAsync: deleteTradeAsync } = useDeleteShiftTrade();
+
+  /**
+   * Ticking clock for expiration re-evaluation.
+   *
+   * Increments every 60 s so the partition memos re-run even when no new
+   * trade data arrives (e.g. a focused tab where React Query's 30 s staleTime
+   * window has already expired and no refetch is triggered). Tests inject
+   * `nowProp`, bypassing this ticker entirely.
+   */
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    if (nowProp !== undefined) return; // tests control `now` directly
+    const id = setInterval(() => setNowTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, [nowProp]);
+
+  /**
+   * Partition open trades in a single pass.
+   *
+   * `now` is evaluated inside the memo (not hoisted) so it reflects the actual
+   * wall-clock time at the moment `openTrades` last changed (every 30 s refetch
+   * or on window focus), or at every 60 s tick of `nowTick`. `nowProp` is
+   * injected in tests to fix time; in production it is `undefined` and
+   * `new Date()` is called fresh each time the memo re-runs.
+   */
+  const { expiredOpen, activeOpen } = useMemo(() => {
+    const now = nowProp ?? new Date();
+    const expiredOpen: ShiftTrade[] = [];
+    const activeOpen: ShiftTrade[] = [];
+    for (const t of openTrades) {
+      if (isTradeExpired(t.offered_shift?.start_time, now)) {
+        expiredOpen.push(t);
+      } else {
+        activeOpen.push(t);
+      }
+    }
+    return { expiredOpen, activeOpen };
+    // nowTick is intentionally included so the partition re-evaluates every
+    // 60 s while the manager keeps the page open, even without new trade data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades, nowProp, nowTick]);
+
+  /**
+   * Partition pending trades in a single pass.
+   * Stale = ghost (null accepted_by) OR expired shift date.
+   * Render stale trades in a "Needs cleanup" section; normal in the approve/reject section.
+   */
+  const { stalePending, normalPending } = useMemo(() => {
+    const now = nowProp ?? new Date();
+    const stalePending: ShiftTrade[] = [];
+    const normalPending: ShiftTrade[] = [];
+    for (const t of pendingTrades) {
+      if (!t.accepted_by || isTradeExpired(t.offered_shift?.start_time, now)) {
+        stalePending.push(t);
+      } else {
+        normalPending.push(t);
+      }
+    }
+    return { stalePending, normalPending };
+    // nowTick included for same reason as the open-trades memo above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTrades, nowProp, nowTick]);
+
+  /** All stale IDs for the bulk action. */
+  const allStaleIds = useMemo(
+    () => [...expiredOpen, ...stalePending].map((t) => t.id),
+    [expiredOpen, stalePending]
+  );
+
+  const handleRemoveSingle = useCallback((trade: ShiftTrade) => {
+    setConfirmTarget({ type: 'single', trade });
+  }, []);
+
+  const handleRemoveBulk = useCallback(() => {
+    setConfirmTarget({ type: 'bulk', ids: allStaleIds });
+  }, [allStaleIds]);
+
+  /**
+   * Fire all deletes in parallel and clear each ID's spinner independently.
+   *
+   * `mutateAsync` is used instead of `mutate` so that each call returns its own
+   * Promise. `Promise.allSettled` guarantees that every per-ID `finally` block
+   * runs even when earlier mutations complete before later ones — avoiding the
+   * TQ v5 limitation where a single `useMutation` instance only tracks the
+   * *latest* per-call `onSettled` option.
+   */
+  const handleConfirmRemove = useCallback(async () => {
+    if (!confirmTarget) return;
+
+    const idsToDelete =
+      confirmTarget.type === 'single' ? [confirmTarget.trade.id] : confirmTarget.ids;
+    const isBulk = confirmTarget.type === 'bulk';
+
+    setConfirmTarget(null);
+    setDeletingIds((prev) => new Set([...prev, ...idsToDelete]));
+
+    await Promise.allSettled(
+      idsToDelete.map((tradeId) =>
+        deleteTradeAsync({ tradeId, restaurantId: restaurantId ?? '' }).finally(() => {
+          setDeletingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(tradeId);
+            return next;
+          });
+        })
+      )
+    );
+
+    // Restore focus after bulk removal (rows are unmounted)
+    if (isBulk) {
+      requestAnimationFrame(() => {
+        bulkRemoveBtnRef.current?.focus();
+      });
+    }
+  }, [confirmTarget, deleteTradeAsync, restaurantId]);
+
+  const handleCancelRemove = useCallback(() => {
+    setConfirmTarget(null);
+  }, []);
 
   const loading = pendingLoading || openLoading || claimsLoading;
 
@@ -200,10 +362,13 @@ export const TradeApprovalQueue = () => {
     );
   }
 
-  const hasPendingTrades = pendingTrades.length > 0;
+  const hasNormalPending = normalPending.length > 0;
+  const hasStalePending = stalePending.length > 0;
   const hasOpenTrades = openTrades.length > 0;
-  const hasNoTrades = !hasPendingTrades && !hasOpenTrades;
+  const hasExpiredOpen = expiredOpen.length > 0;
+  const hasActiveOpen = activeOpen.length > 0;
   const hasPendingClaims = pendingClaims.length > 0;
+  const hasAnyStale = allStaleIds.length > 0;
 
   return (
     <div className="space-y-6">
@@ -216,12 +381,12 @@ export const TradeApprovalQueue = () => {
                 <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-2xl text-green-900 dark:text-green-100">
+                    <CardTitle className="text-[17px] font-semibold text-green-900 dark:text-green-100">
                       Pending Shift Claims
                     </CardTitle>
                     <Badge className="bg-green-500">{pendingClaims.length}</Badge>
                   </div>
-                  <CardDescription className="text-green-700 dark:text-green-300">
+                  <CardDescription className="text-[13px] text-green-700 dark:text-green-300">
                     Employees requesting to claim open shifts
                   </CardDescription>
                 </div>
@@ -250,14 +415,14 @@ export const TradeApprovalQueue = () => {
             <Clock className="h-6 w-6 text-amber-600 dark:text-amber-400" />
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-2xl text-amber-900 dark:text-amber-100">
+                <CardTitle className="text-[17px] font-semibold text-amber-900 dark:text-amber-100">
                   Pending Approval
                 </CardTitle>
-                {hasPendingTrades && (
-                  <Badge className="bg-amber-500">{pendingTrades.length}</Badge>
+                {hasNormalPending && (
+                  <Badge className="bg-amber-500">{normalPending.length}</Badge>
                 )}
               </div>
-              <CardDescription className="text-amber-700 dark:text-amber-300">
+              <CardDescription className="text-[13px] text-amber-700 dark:text-amber-300">
                 Trades accepted by employees awaiting your approval
               </CardDescription>
             </div>
@@ -265,9 +430,9 @@ export const TradeApprovalQueue = () => {
         </CardHeader>
       </Card>
 
-      {hasPendingTrades ? (
+      {hasNormalPending ? (
         <div className="space-y-4">
-          {pendingTrades.map((trade) => (
+          {normalPending.map((trade) => (
             <TradeRequestCard
               key={trade.id}
               trade={trade}
@@ -281,10 +446,27 @@ export const TradeApprovalQueue = () => {
         <Card className="bg-gradient-to-br from-muted/50 to-transparent">
           <CardContent className="py-8 text-center">
             <CheckCircle className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-            <h3 className="mb-1 text-base font-semibold">No pending approvals</h3>
-            <p className="text-sm text-muted-foreground">No trades awaiting your decision.</p>
+            <h3 className="mb-1 text-[15px] font-semibold text-foreground">No pending approvals</h3>
+            <p className="text-[13px] text-muted-foreground">No trades awaiting your decision.</p>
           </CardContent>
         </Card>
+      )}
+
+      {/* Stale Pending (Needs cleanup) Section */}
+      {hasStalePending && (
+        <div className="space-y-2">
+          <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider px-1">
+            Needs cleanup
+          </p>
+          {stalePending.map((trade) => (
+            <StalePendingRow
+              key={trade.id}
+              trade={trade}
+              isRemoving={deletingIds.has(trade.id)}
+              onRemove={() => handleRemoveSingle(trade)}
+            />
+          ))}
+        </div>
       )}
 
       {/* Open Marketplace Section */}
@@ -296,7 +478,7 @@ export const TradeApprovalQueue = () => {
                 <ShoppingBag className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-xl text-blue-900 dark:text-blue-100">
+                    <CardTitle className="text-[17px] font-semibold text-blue-900 dark:text-blue-100">
                       Open in Marketplace
                     </CardTitle>
                     {hasOpenTrades && (
@@ -305,7 +487,7 @@ export const TradeApprovalQueue = () => {
                       </Badge>
                     )}
                   </div>
-                  <CardDescription className="text-blue-700 dark:text-blue-300">
+                  <CardDescription className="text-[13px] text-blue-700 dark:text-blue-300">
                     Shifts posted for trade, awaiting another employee to accept
                   </CardDescription>
                 </div>
@@ -317,14 +499,57 @@ export const TradeApprovalQueue = () => {
             <CardContent className="pt-0">
               {hasOpenTrades ? (
                 <div className="space-y-3">
-                  {openTrades.map((trade) => (
-                    <OpenTradeCard key={trade.id} trade={trade} />
-                  ))}
+                  {/* Expired open trades (removable) */}
+                  {hasExpiredOpen && (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Expired
+                        </p>
+                        {/* Bulk remove button — disabled when any delete is in-flight */}
+                        {hasAnyStale && (
+                          <Button
+                            ref={bulkRemoveBtnRef}
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[12px] border-destructive/40 text-destructive hover:bg-destructive/10"
+                            disabled={deletingIds.size > 0}
+                            onClick={handleRemoveBulk}
+                          >
+                            Remove all expired ({allStaleIds.length})
+                          </Button>
+                        )}
+                      </div>
+                      {expiredOpen.map((trade) => (
+                        <OpenTradeCard
+                          key={trade.id}
+                          trade={trade}
+                          expired
+                          isRemoving={deletingIds.has(trade.id)}
+                          onRemove={() => handleRemoveSingle(trade)}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Active (non-expired) open trades — read-only */}
+                  {hasActiveOpen && (
+                    <div className="space-y-2">
+                      {hasExpiredOpen && (
+                        <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                          Active
+                        </p>
+                      )}
+                      {activeOpen.map((trade) => (
+                        <OpenTradeCard key={trade.id} trade={trade} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="py-6 text-center">
                   <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No shifts currently in the marketplace.</p>
+                  <p className="text-[13px] text-muted-foreground">No shifts currently in the marketplace.</p>
                 </div>
               )}
             </CardContent>
@@ -332,68 +557,166 @@ export const TradeApprovalQueue = () => {
         </Card>
       </Collapsible>
 
-      {/* Claim Approval/Rejection Dialog */}
-      <Dialog open={!!selectedClaim && !!claimActionType} onOpenChange={(open) => !open && handleClaimCancel()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {claimActionType === 'approve' ? (
-                <>
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  Approve Shift Claim
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  Reject Shift Claim
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {claimActionType === 'approve'
-                ? 'This will assign the shift to the claiming employee.'
-                : 'This will decline the claim request.'}
-            </DialogDescription>
+      {/* Bulk "Remove all expired" button — also shown outside marketplace section when
+          only stale pending trades exist (no open trades) */}
+      {!hasOpenTrades && hasAnyStale && (
+        <div className="flex justify-end">
+          <Button
+            ref={!hasExpiredOpen ? bulkRemoveBtnRef : undefined}
+            size="sm"
+            variant="outline"
+            className="h-7 text-[12px] border-destructive/40 text-destructive hover:bg-destructive/10"
+            disabled={deletingIds.size > 0}
+            onClick={handleRemoveBulk}
+          >
+            Remove all expired ({allStaleIds.length})
+          </Button>
+        </div>
+      )}
+
+      {/* Single-dialog for cleanup confirm (single or bulk) */}
+      <Dialog open={confirmTarget !== null} onOpenChange={(open) => !open && handleCancelRemove()}>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  {confirmTarget?.type === 'bulk'
+                    ? `Remove ${confirmTarget.ids.length} stale trade${confirmTarget.ids.length === 1 ? '' : 's'}?`
+                    : 'Remove stale trade?'}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  {confirmTarget?.type === 'bulk'
+                    ? `This will permanently remove ${confirmTarget.ids.length} trade${confirmTarget.ids.length === 1 ? '' : 's'}. This action cannot be undone.`
+                    : 'This will permanently remove the stale trade request. This action cannot be undone.'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
-          {selectedClaim && (
-            <div className="space-y-4">
-              {/* Claim Summary */}
-              <div className="rounded-lg border border-border bg-muted/20 p-4">
-                <h4 className="mb-3 text-sm font-semibold text-muted-foreground">Claim Summary</h4>
-                <div className="space-y-1 text-sm">
+          <div className="px-6 py-5 space-y-5">
+            {confirmTarget?.type === 'single' && (
+              <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                  <h3 className="text-[13px] font-semibold text-foreground">Trade details</h3>
+                </div>
+                <div className="p-4 space-y-1 text-[14px]">
                   <p>
-                    <span className="font-medium">Employee:</span>{' '}
-                    {selectedClaim.employee?.name ?? 'Unknown'}
+                    <span className="font-medium text-foreground">Posted by:</span>{' '}
+                    <span className="text-muted-foreground">{confirmTarget.trade.offered_by?.name ?? 'Unknown'}</span>
                   </p>
-                  <p>
-                    <span className="font-medium">Shift:</span>{' '}
-                    {selectedClaim.shift_template?.name ?? 'Unknown'}
-                  </p>
-                  <p>
-                    <span className="font-medium">Date:</span>{' '}
-                    {format(parseDateLocal(selectedClaim.shift_date), 'EEEE, MMMM d, yyyy')}
-                  </p>
-                  {selectedClaim.shift_template && (
+                  {confirmTarget.trade.offered_shift && (
                     <p>
-                      <span className="font-medium">Time:</span>{' '}
-                      {selectedClaim.shift_template.start_time} – {selectedClaim.shift_template.end_time}
+                      <span className="font-medium text-foreground">Shift date:</span>{' '}
+                      <span className="text-muted-foreground">{format(new Date(confirmTarget.trade.offered_shift.start_time), 'EEEE, MMMM d, yyyy')}</span>
                     </p>
                   )}
                   <p>
-                    <span className="font-medium">Position:</span>{' '}
-                    {selectedClaim.shift_template?.position ?? selectedClaim.employee?.position ?? '—'}
+                    <span className="font-medium text-foreground">Status:</span>{' '}
+                    <span className="text-muted-foreground">{confirmTarget.trade.status}</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {confirmTarget?.type === 'bulk' && (
+              <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
+                <p className="text-[14px] text-muted-foreground">
+                  {confirmTarget.ids.length} trade{confirmTarget.ids.length === 1 ? '' : 's'} will be permanently removed.
+                </p>
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={handleCancelRemove}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmRemove}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              >
+                Remove
+              </Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Claim Approval/Rejection Dialog */}
+      <Dialog open={!!selectedClaim && !!claimActionType} onOpenChange={(open) => !open && handleClaimCancel()}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${
+                claimActionType === 'approve' ? 'bg-green-500/10' : 'bg-destructive/10'
+              }`}>
+                {claimActionType === 'approve' ? (
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-destructive" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  {claimActionType === 'approve' ? 'Approve Shift Claim' : 'Reject Shift Claim'}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  {claimActionType === 'approve'
+                    ? 'This will assign the shift to the claiming employee.'
+                    : 'This will decline the claim request.'}
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          {selectedClaim && (
+            <div className="px-6 py-5 space-y-5">
+              {/* Claim Summary */}
+              <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                  <h3 className="text-[13px] font-semibold text-foreground">Claim Summary</h3>
+                </div>
+                <div className="p-4 space-y-1 text-[14px]">
+                  <p>
+                    <span className="font-medium text-foreground">Employee:</span>{' '}
+                    <span className="text-muted-foreground">{selectedClaim.employee?.name ?? 'Unknown'}</span>
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Shift:</span>{' '}
+                    <span className="text-muted-foreground">{selectedClaim.shift_template?.name ?? 'Unknown'}</span>
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Date:</span>{' '}
+                    <span className="text-muted-foreground">{format(parseDateLocal(selectedClaim.shift_date), 'EEEE, MMMM d, yyyy')}</span>
+                  </p>
+                  {selectedClaim.shift_template && (
+                    <p>
+                      <span className="font-medium text-foreground">Time:</span>{' '}
+                      <span className="text-muted-foreground">{selectedClaim.shift_template.start_time} – {selectedClaim.shift_template.end_time}</span>
+                    </p>
+                  )}
+                  <p>
+                    <span className="font-medium text-foreground">Position:</span>{' '}
+                    <span className="text-muted-foreground">{selectedClaim.shift_template?.position ?? selectedClaim.employee?.position ?? '—'}</span>
                   </p>
                 </div>
               </div>
 
               {/* Manager Note */}
               <div className="space-y-2">
-                <Label htmlFor="claim-manager-note" className="text-sm font-medium">
-                  Add Note{' '}
-                  <span className="text-muted-foreground">
-                    ({claimActionType === 'reject' ? 'Recommended' : 'Optional'})
-                  </span>
+                <Label
+                  htmlFor="claim-manager-note"
+                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  Note ({claimActionType === 'reject' ? 'Recommended' : 'Optional'})
                 </Label>
                 <Textarea
                   id="claim-manager-note"
@@ -405,107 +728,124 @@ export const TradeApprovalQueue = () => {
                   value={claimNote}
                   onChange={(e) => setClaimNote(e.target.value)}
                   rows={3}
-                  className="resize-none"
+                  className="resize-none text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                 />
               </div>
 
               {claimActionType === 'approve' && (
-                <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 dark:bg-green-950/20">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400" />
-                  <p className="text-xs text-green-700 dark:text-green-300">
+                <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                  <p className="text-[13px] text-green-700 dark:text-green-300">
                     The employee will be notified of your decision.
                   </p>
                 </div>
               )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={handleClaimCancel}
+                  disabled={isApprovingClaim || isRejectingClaim}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleClaimConfirm}
+                  disabled={isApprovingClaim || isRejectingClaim}
+                  variant={claimActionType === 'approve' ? 'default' : 'destructive'}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  {renderConfirmButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
+                </Button>
+              </DialogFooter>
             </div>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleClaimCancel} disabled={isApprovingClaim || isRejectingClaim}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleClaimConfirm}
-              disabled={isApprovingClaim || isRejectingClaim}
-              variant={claimActionType === 'approve' ? 'default' : 'destructive'}
-            >
-              {renderClaimButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Trade Approval/Rejection Dialog */}
       <Dialog open={!!selectedTrade && !!actionType} onOpenChange={(open) => !open && handleCancel()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {actionType === 'approve' ? (
-                <>
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  Approve Trade Request
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  Reject Trade Request
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {actionType === 'approve'
-                ? 'This will transfer the shift to the accepting employee.'
-                : 'This will decline the trade request and keep the original assignment.'}
-            </DialogDescription>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${
+                actionType === 'approve' ? 'bg-green-500/10' : 'bg-destructive/10'
+              }`}>
+                {actionType === 'approve' ? (
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-destructive" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  {actionType === 'approve' ? 'Approve Trade Request' : 'Reject Trade Request'}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  {actionType === 'approve'
+                    ? 'This will transfer the shift to the accepting employee.'
+                    : 'This will decline the trade request and keep the original assignment.'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
           {selectedTrade && (
-            <div className="space-y-4">
+            <div className="px-6 py-5 space-y-5">
               {/* Trade Summary */}
-              <div className="rounded-lg border border-border bg-muted/20 p-4">
-                <h4 className="mb-3 text-sm font-semibold text-muted-foreground">Trade Summary</h4>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 text-center">
-                    <p className="text-xs text-muted-foreground">From</p>
-                    <p className="font-medium">{selectedTrade.offered_by?.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedTrade.offered_by?.position}
-                    </p>
-                  </div>
-                  <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1 text-center">
-                    <p className="text-xs text-muted-foreground">To</p>
-                    <p className="font-medium">{selectedTrade.accepted_by?.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedTrade.accepted_by?.position}
-                    </p>
-                  </div>
+              <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                  <h3 className="text-[13px] font-semibold text-foreground">Trade Summary</h3>
                 </div>
-                <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
-                  <p>
-                    <span className="font-medium">Date:</span>{' '}
-                    {selectedTrade.offered_shift &&
-                      format(new Date(selectedTrade.offered_shift.start_time), 'EEEE, MMMM d')}
-                  </p>
-                  <p>
-                    <span className="font-medium">Time:</span>{' '}
-                    {selectedTrade.offered_shift &&
-                      `${format(new Date(selectedTrade.offered_shift.start_time), 'h:mm a')} - ${format(new Date(selectedTrade.offered_shift.end_time), 'h:mm a')}`}
-                  </p>
-                  <p>
-                    <span className="font-medium">Position:</span>{' '}
-                    {selectedTrade.offered_shift?.position}
-                  </p>
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 text-center">
+                      <p className="text-[12px] text-muted-foreground">From</p>
+                      <p className="text-[14px] font-medium text-foreground">{selectedTrade.offered_by?.name}</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {selectedTrade.offered_by?.position}
+                      </p>
+                    </div>
+                    <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex-1 text-center">
+                      <p className="text-[12px] text-muted-foreground">To</p>
+                      <p className="text-[14px] font-medium text-foreground">{selectedTrade.accepted_by?.name}</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {selectedTrade.accepted_by?.position}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-1 border-t border-border/40 pt-3 text-[14px]">
+                    <p>
+                      <span className="font-medium text-foreground">Date:</span>{' '}
+                      <span className="text-muted-foreground">
+                        {selectedTrade.offered_shift &&
+                          format(new Date(selectedTrade.offered_shift.start_time), 'EEEE, MMMM d')}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Time:</span>{' '}
+                      <span className="text-muted-foreground">
+                        {selectedTrade.offered_shift &&
+                          `${format(new Date(selectedTrade.offered_shift.start_time), 'h:mm a')} - ${format(new Date(selectedTrade.offered_shift.end_time), 'h:mm a')}`}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Position:</span>{' '}
+                      <span className="text-muted-foreground">{selectedTrade.offered_shift?.position}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
 
               {/* Employee Reason */}
               {selectedTrade.reason && (
-                <div className="rounded-lg bg-blue-50 p-4 dark:bg-blue-950/20">
-                  <p className="mb-1 text-sm font-medium text-blue-900 dark:text-blue-100">
-                    Employee Reason:
-                  </p>
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                    <h3 className="text-[13px] font-semibold text-foreground">Employee Reason</h3>
+                  </div>
+                  <p className="px-4 py-3 text-[14px] text-muted-foreground">
                     {selectedTrade.reason}
                   </p>
                 </div>
@@ -513,11 +853,11 @@ export const TradeApprovalQueue = () => {
 
               {/* Manager Note */}
               <div className="space-y-2">
-                <Label htmlFor="manager-note" className="text-sm font-medium">
-                  Add Note{' '}
-                  <span className="text-muted-foreground">
-                    ({actionType === 'reject' ? 'Recommended' : 'Optional'})
-                  </span>
+                <Label
+                  htmlFor="manager-note"
+                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  Note ({actionType === 'reject' ? 'Recommended' : 'Optional'})
                 </Label>
                 <Textarea
                   id="manager-note"
@@ -529,56 +869,39 @@ export const TradeApprovalQueue = () => {
                   value={managerNote}
                   onChange={(e) => setManagerNote(e.target.value)}
                   rows={3}
-                  className="resize-none"
+                  className="resize-none text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                 />
               </div>
 
               {actionType === 'approve' && (
-                <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 dark:bg-green-950/20">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400" />
-                  <p className="text-xs text-green-700 dark:text-green-300">
+                <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                  <p className="text-[13px] text-green-700 dark:text-green-300">
                     Both employees will be notified via email of your decision.
                   </p>
                 </div>
               )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={handleCancel}
+                  disabled={isApproving || isRejecting}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirm}
+                  disabled={isApproving || isRejecting}
+                  variant={actionType === 'approve' ? 'default' : 'destructive'}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  {renderConfirmButtonContent(actionType, isApproving || isRejecting)}
+                </Button>
+              </DialogFooter>
             </div>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCancel} disabled={isApproving || isRejecting}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={isApproving || isRejecting}
-              variant={actionType === 'approve' ? 'default' : 'destructive'}
-            >
-              {(() => {
-                if (isApproving || isRejecting) {
-                  return (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  );
-                }
-                if (actionType === 'approve') {
-                  return (
-                    <>
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      Approve
-                    </>
-                  );
-                }
-                return (
-                  <>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Reject
-                  </>
-                );
-              })()}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -606,8 +929,8 @@ const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequest
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-lg">{trade.offered_shift.position}</CardTitle>
-            <CardDescription className="mt-1">
+            <CardTitle className="text-[17px] font-semibold text-foreground">{trade.offered_shift.position}</CardTitle>
+            <CardDescription className="text-[13px] mt-1">
               {format(shiftStart, 'EEEE, MMMM d, yyyy')}
             </CardDescription>
           </div>
@@ -686,10 +1009,10 @@ const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequest
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-lg">
+            <CardTitle className="text-[17px] font-semibold text-foreground">
               {claim.shift_template?.position ?? '—'}
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription className="text-[13px] mt-1">
               {format(shiftDate, 'EEEE, MMMM d, yyyy')}
             </CardDescription>
           </div>
@@ -738,7 +1061,7 @@ const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequest
             <XCircle className="mr-2 h-4 w-4" />
             Reject
           </Button>
-          <Button onClick={onApprove} disabled={disabled} className="flex-1 bg-green-600 hover:bg-green-700">
+          <Button onClick={onApprove} disabled={disabled} className="flex-1">
             <CheckCircle className="mr-2 h-4 w-4" />
             Approve
           </Button>
@@ -748,12 +1071,52 @@ const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequest
   );
 };
 
-// Open Trade Card (read-only for managers)
-interface OpenTradeCardProps {
-  trade: ShiftTrade;
+// ---------------------------------------------------------------------------
+// Shared remove button — used by both OpenTradeCard and StalePendingRow
+// ---------------------------------------------------------------------------
+
+interface RemoveButtonProps {
+  isRemoving: boolean;
+  onClick: () => void;
+  /** Destructive-outline style (StalePendingRow) vs filled destructive (OpenTradeCard). */
+  variant?: 'destructive' | 'outline-destructive';
 }
 
-const OpenTradeCard = ({ trade }: OpenTradeCardProps) => {
+const RemoveButton = ({ isRemoving, onClick, variant = 'destructive' }: RemoveButtonProps) => (
+  <Button
+    size="sm"
+    variant={variant === 'destructive' ? 'destructive' : 'outline'}
+    className={
+      variant === 'outline-destructive'
+        ? 'h-7 text-[12px] border-destructive/40 text-destructive hover:bg-destructive/10'
+        : 'h-7 text-[12px]'
+    }
+    disabled={isRemoving}
+    onClick={onClick}
+  >
+    {isRemoving ? (
+      <>
+        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+        Removing…
+      </>
+    ) : (
+      'Remove'
+    )}
+  </Button>
+);
+
+// Open Trade Card
+interface OpenTradeCardProps {
+  trade: ShiftTrade;
+  /** Whether this trade's shift has already started (past). Default: false. */
+  expired?: boolean;
+  /** Whether a delete is currently in-flight for this specific trade. */
+  isRemoving?: boolean;
+  /** Called when the manager clicks the Remove button (only rendered when expired=true). */
+  onRemove?: () => void;
+}
+
+const OpenTradeCard = ({ trade, expired = false, isRemoving = false, onRemove }: OpenTradeCardProps) => {
   if (!trade.offered_shift || !trade.offered_by) {
     return null;
   }
@@ -763,12 +1126,21 @@ const OpenTradeCard = ({ trade }: OpenTradeCardProps) => {
   const postedAt = new Date(trade.created_at);
 
   return (
-    <div className="flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50/50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
+    <div className={`flex items-center justify-between rounded-lg border p-4 ${
+      expired
+        ? 'border-border/40 bg-muted/20'
+        : 'border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/30'
+    }`}>
       <div className="flex-1 space-y-1">
         <div className="flex items-center gap-2">
           <span className="font-medium">{trade.offered_by?.name ?? 'Unknown'}</span>
           <span className="text-muted-foreground">•</span>
           <span className="text-sm text-muted-foreground">{trade.offered_by?.position ?? ''}</span>
+          {expired && (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              Expired
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           <span>{format(shiftStart, 'EEE, MMM d')}</span>
@@ -783,14 +1155,52 @@ const OpenTradeCard = ({ trade }: OpenTradeCardProps) => {
           <p className="text-xs text-muted-foreground italic">"{trade.reason}"</p>
         )}
       </div>
-      <div className="text-right">
-        <Badge variant="outline" className="border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-300">
-          Open
-        </Badge>
-        <p className="mt-1 text-xs text-muted-foreground">
+      <div className="flex flex-col items-end gap-2">
+        {expired ? (
+          <RemoveButton isRemoving={isRemoving} onClick={onRemove!} />
+        ) : (
+          <Badge variant="outline" className="border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-300">
+            Open
+          </Badge>
+        )}
+        <p className="text-xs text-muted-foreground">
           Posted {format(postedAt, 'MMM d')}
         </p>
       </div>
+    </div>
+  );
+};
+
+// Stale Pending Row (ghost or expired pending_approval trade)
+interface StalePendingRowProps {
+  trade: ShiftTrade;
+  isRemoving: boolean;
+  onRemove: () => void;
+}
+
+const StalePendingRow = ({ trade, isRemoving, onRemove }: StalePendingRowProps) => {
+  if (!trade.offered_shift) return null;
+
+  const shiftStart = new Date(trade.offered_shift.start_time);
+  const isGhost = !trade.accepted_by;
+
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/20 p-3">
+      <div className="flex-1 space-y-0.5">
+        <div className="flex items-center gap-2 text-[14px]">
+          <span className="font-medium">{trade.offered_by?.name ?? 'Unknown'}</span>
+          <span className="text-muted-foreground">•</span>
+          <span className="text-muted-foreground">{trade.offered_shift.position}</span>
+          <Badge variant="outline" className="text-[12px] text-muted-foreground">
+            {isGhost ? 'Ghost' : 'Expired'}
+          </Badge>
+        </div>
+        <p className="text-[12px] text-muted-foreground">
+          {format(shiftStart, 'EEE, MMM d, yyyy')}
+          {isGhost && ' — accepter no longer exists'}
+        </p>
+      </div>
+      <RemoveButton isRemoving={isRemoving} onClick={onRemove} variant="outline-destructive" />
     </div>
   );
 };

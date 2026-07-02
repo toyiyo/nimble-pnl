@@ -47,7 +47,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  const canManageMembers = userRole === 'owner' || userRole === 'manager';
+  const canManageMembers = userRole === 'owner' || userRole === 'manager' || userRole === 'operations_manager';
 
   useEffect(() => {
     fetchTeamMembers();

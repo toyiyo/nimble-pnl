@@ -267,3 +267,134 @@ row is skipped by bulk-sync.
 
 **Dependency order:** A (list fn → hook → wizard) ∥ B1 (`focusBackfillBatch`) → B2 (`focus-sync-data`) →
 B3 (`focus-backfill-sync` + cron) → B4 (`focus-bulk-sync` skip) → B5 (frontend). Commit per green task.
+
+---
+
+## 8. Design-review resolutions (2026-07-02) — BINDING, supersede §4–§7 on conflict
+
+Two design reviewers (Supabase + Frontend) reviewed §1–§7. Accepted concerns below are the binding
+contract. Where they refine an earlier section, the resolution wins.
+
+### 8.1 Concurrency — optimistic compare-and-swap (Supabase critical #1)
+
+pg_cron does **not** serialize overlapping runs of the same job. If a 5-min tick runs long, a second
+tick can start and both read the same `sync_cursor`. Idempotent upserts prevent data corruption but not
+**cursor** clobbering. **All cursor writes use compare-and-swap:**
+
+```
+UPDATE focus_connections
+   SET sync_cursor = <new>, initial_sync_done = <newDone>, last_sync_time = now(), updated_at = now()
+ WHERE id = <connId> AND restaurant_id = <restaurantId> AND sync_cursor = <readCursor>
+```
+Use `.select()` and check the returned row count: **0 rows ⇒ a concurrent tick already advanced it — do
+NOT retry, just return** (this tick's day-fetches were wasted but harmless). This also fixes the
+pre-existing **multi-tenant bug** (Supabase major #4): the write now filters `restaurant_id` too, matching
+`focusBulkSyncHandler`. Applies to `focusSyncDataHandler` (backfill write), `focusBackfillSyncHandler`,
+and the Lynk incremental writes. `readCursor` = the cursor value loaded at the start of the batch.
+
+### 8.2 Custom range — synchronous, capped at 14 days (Supabase critical #2)
+
+Drop `EdgeRuntime.waitUntil` / `scheduleBackground` entirely — it is unreliable on the Supabase edge
+runtime and would silently drop a 90-day background promise. **Custom range is processed synchronously**
+in `focusSyncDataHandler`: validate `startDate ≤ endDate` and span **≤ 14 days** (else 400 with a clear
+message: *"Custom range is limited to 14 days. Use the automatic 90-day import for a full backfill."*);
+iterate the explicit date list via `processDateRangeTransactions(deps, config, start, end)` (new helper),
+`processDayTransactions` each day (no `skipUnifiedSalesSync` — run the RPC once for the range at the end),
+return `{ daysSynced, status }`. Each day is committed as it goes, so it is durable and testable with no
+background primitive. The 90-day "walk away" path stays on the durable cron (§8.3). Rationale: custom range
+is a deliberate, small, targeted re-sync where a short wait is acceptable; the repeated-click pain the
+feature fixes is specifically the 90-day initial backfill.
+
+### 8.3 Backfill batch budgets (Supabase major #1 + minors)
+
+- `processBackfillBatch` opts: **manual kick** `{ budgetMs: 12_000, maxDays: 5 }`; **cron per-restaurant**
+  `{ budgetMs: <remaining run budget, ~50_000 max>, maxDays: 7 }`. NOT 30 — a day that hits the 30 s
+  fetch timeout would blow a larger budget. 90 days → ~13–18 ticks (~65–90 min) fully server-side.
+- `TARGET_DAYS = 90` is a module constant; `targetDays` param defaults to it and is only overridden in
+  tests. Production callers never lower it (guards against premature `initial_sync_done`).
+- On a day `error`, `processBackfillBatch` stops and returns the **un-advanced** cursor + `lastError`; the
+  caller writes `connection_status='error'` + `last_error=<msg>` (+ `last_error_at`) so the operator sees the
+  stall (Supabase minor #1) and the frontend can stop polling (§8.5). `inprogress` → stop, no cursor change.
+- Elapsed measured via injectable `clock` (default `Date.now`) for deterministic Vitest budget tests.
+
+### 8.4 Item/payment upserts batched per check (Supabase minor #3)
+
+In `focusTransactionSyncHandler.ts`, replace the per-item and per-payment `await` loops with a **single
+array upsert per check** (`.upsert([...allItems], { onConflict })` / `.upsert([...allPayments], …)`).
+Same `onConflict` keys, same skip of `isKitchenComment` items. This collapses up to hundreds of sequential
+round-trips per day into two, directly de-risking the batch budget and speeding the existing daily sync.
+Update the existing `focusTransactionSyncHandler` tests to assert array-shaped upsert calls.
+
+### 8.5 Frontend (Frontend criticals + majors)
+
+- **`useFocusConnection.triggerManualSync(restaurantId, options?: { startDate?: string; endDate?: string })`**
+  — the mutationFn MUST accept and **spread `options` into the invoke body** (`{ restaurantId, ...options }`).
+  Current code drops it → custom range would silently do a normal sync (Frontend critical #1). Tests cover
+  both invoke-error shapes.
+- **Connection query `refetchInterval`** (Frontend major #1 — bound the polling):
+  ```ts
+  refetchInterval: (q) => {
+    const d = q.state.data;                     // FocusConnection | null | undefined (pending → undefined → false)
+    if (!d || d.initial_sync_done || !d.is_active || d.connection_status === 'error') return false;
+    return 8000;
+  }
+  ```
+  Keep `staleTime: 30000`; add a code comment that lowering it must not break progress polling. Polling
+  stops on done, disconnect, or a persisted error; window-focus refetch self-heals a recovered backfill.
+  `connection_status` must be added to `FocusConnection` type + `FOCUS_CONNECTION_COLUMNS` if not already
+  selected. (It is already selected.)
+- **`FocusSync.tsx` — remove dead progress state** (Frontend critical #2): delete `syncProgress`,
+  `totalDaysSynced`, `syncResult`, and the `<SyncProgressDisplay>` + `<SyncResults>` renders. `handleSync`
+  makes ONE call (no loop): `recent/initial` → `triggerManualSync(restaurantId)`; `custom` →
+  `triggerManualSync(restaurantId, { startDate: format(from,'yyyy-MM-dd'), endDate: format(to,'yyyy-MM-dd') })`;
+  then a toast *"Import started — running in the background. You can leave this page; it keeps going."*
+  `isLoading` covers only the kick. Live progress is the polling `InitialSyncPendingAlert`.
+- **`SyncComponents.InitialSyncPendingAlert`** (Frontend major #4 + minors): collapse to ONE message path
+  (drop the `hasProgress`/not-started bifurcation) — *"Importing your last 90 days in the background
+  ({daysCompleted} of 90). No need to keep this page open."*; wrap the count in
+  `<span role="status" aria-live="polite" aria-atomic="true">`. Add `aria-label="Sync progress"` +
+  `aria-valuemin/max` to the `<Progress>` in `SyncProgressDisplay` (still used by Toast). Swap the
+  `RadioGroup` `space-x-3` → `gap-3`.
+- **Wizard `select` step** (Frontend majors #2/#3/#6): after `listRestaurants` succeeds → `select` step.
+  If `restaurants.length === 1`, auto-select and show it as a read-back line; else a shadcn `Select` with
+  `<Label htmlFor="focus-restaurant">Restaurant</Label>` ⇄ `<SelectTrigger id="focus-restaurant">`, options
+  = `restaurant_name` (value = `restaurant_guid`); if `restaurant_name` is blank show
+  *"Restaurant (name unavailable)"* + the GUID as secondary text (not the raw GUID as the label — Supabase
+  minor #4). The step folds in the old `confirmed` preview `Row` (restaurant name · environment · masked
+  API key) and reuses the existing `connectError` + `connectErrorKind` (save vs test) alert below the
+  picker; **"Save & Connect"** stays primary. On `credentials → select` transition, move focus to the step
+  heading/`DialogContent` via a `ref` + `useEffect` keyed on `step`.
+- **Wizard `instructions` step** (Frontend critical #3): DELETE the `<li>` that mentions the Restaurant
+  GUID and *"GET /api/restaurants"*, DELETE `RESTAURANT_GUID_PATTERN` and the `restaurantGuid` credentials
+  input/state. Rewrite the list to: (1) generate an API Key + Secret in Shift4/Focus, (2) click
+  **Find my restaurant(s)** — "we'll look them up for you", (3) pick your location and connect.
+- **Wizard `done` step** (Frontend minor #4): update copy — *"The first sync imports your last 90 days in
+  the background. You can leave this page; it keeps going."* The done-step **Sync Now** shows the same
+  background toast, then `onComplete()`.
+- **Step indicator** (Frontend minor): move `aria-current="step"` onto the `role="listitem"` element.
+
+### 8.6 Edge-function security / config (Supabase majors #3/#5 + minors)
+
+- **`focus-list-restaurants`**: `sandboxBaseUrl` comes from `deps.sandboxBaseUrl`
+  (index.ts: `Deno.env.get('FOCUS_API_SANDBOX_URL')`), **never** from the request body — same as
+  `focusTestConnectionHandler`. SSRF guard `isSafeUrl(baseUrl, FOCUSPOS_HOST_RE)` after resolve; `redirect:'error'`.
+- **`config.toml`**: add `[functions.focus-list-restaurants]` and `[functions.focus-backfill-sync]`, both
+  `verify_jwt = false` (else the gateway 401s before the in-function gate). Explicit checklist item.
+- **Cron migration**: use `current_setting('app.settings.service_role_key', true)` (missing_ok) so an unset
+  GUC yields a graceful edge 401, not a cron-body exception. Idempotent unschedule guard; grants unchanged.
+
+### 8.7 `focus-bulk-sync` skip guard (Supabase major #2, Frontend n/a)
+
+Add `if (isLynkPath && !row.initial_sync_done) return { newSyncCursor: row.sync_cursor, newInitialSyncDone:
+row.initial_sync_done };` at the **top of the `isLynkPath` block** in `focusBulkSyncHandler.processConnection`
+(before decrypt/work), so the 6-h cron cedes Lynk backfill to the 5-min cron. Write the skip **test first**.
+Portal path unchanged.
+
+### 8.8 Deferred (noted, not in scope)
+
+- `ConnectionStatus` badge raw colors (`bg-green-100 …`, `dark:` overrides) in `SyncComponents.tsx` — a
+  pre-existing CLAUDE.md violation in a component shared by all 5 POS integrations. Fixing it ripples
+  visually across Toast/Square/Clover/Sling/Focus and belongs in a dedicated theming pass. Left as-is.
+- Batched item upsert changes payment/item error granularity (one bad row fails the check's batch); the
+  check is retried next tick — accepted.
+

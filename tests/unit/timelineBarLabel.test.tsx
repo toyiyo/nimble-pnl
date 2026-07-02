@@ -44,14 +44,12 @@ function makeBar(overrides: Partial<TimelineBarModel> = {}): TimelineBarModel {
 
 describe('TimelineBar', () => {
   const minToPct = (min: number) => ((min - 600) / (960 - 600)) * 100;
-  const window = { startMin: 600, endMin: 960 };
 
   it('renders a button with the correct aria-label', () => {
     const onSelect = vi.fn();
     render(
       <TimelineBar
         bar={makeBar()}
-        window={window}
         minToPct={minToPct}
         onSelect={onSelect}
       />,
@@ -68,7 +66,6 @@ describe('TimelineBar', () => {
     render(
       <TimelineBar
         bar={bar}
-        window={window}
         minToPct={minToPct}
         onSelect={onSelect}
       />,
@@ -82,7 +79,6 @@ describe('TimelineBar', () => {
     render(
       <TimelineBar
         bar={makeBar({ label: 'Jane Doe' })}
-        window={window}
         minToPct={minToPct}
         onSelect={vi.fn()}
       />,
@@ -94,7 +90,6 @@ describe('TimelineBar', () => {
     render(
       <TimelineBar
         bar={makeBar()}
-        window={window}
         minToPct={minToPct}
         onSelect={vi.fn()}
       />,

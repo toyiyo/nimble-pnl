@@ -191,7 +191,7 @@ export function buildLanes(
 
 // ─── Demand expansion ─────────────────────────────────────────────────────────
 
-const STEP_MIN = 15;
+export const STEP_MIN = 15;
 
 /**
  * Expand hourly staffing recommendations into a fine-grained step grid

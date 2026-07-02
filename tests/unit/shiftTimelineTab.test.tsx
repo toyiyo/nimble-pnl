@@ -165,4 +165,26 @@ describe('ShiftTimelineTab', () => {
     const btn = screen.getByRole('button', { name: /Ann/i });
     expect(btn).toBeInTheDocument();
   });
+
+  it('correctly attributes a late-evening shift (23:00 CDT = 04:00Z next day) to its local day', () => {
+    // This is the cross-UTC-midnight case that the old UTC prefix filter silently dropped.
+    // 2026-07-06 23:00 CDT = 2026-07-07T04:00:00Z (UTC next day).
+    // filterToDay must use isoToLocalMinutes so the shift appears on Mon Jul 6, not Tue Jul 7.
+    const employees = [makeEmployee('e1', 'Bob')];
+    const shifts = [
+      // start: Mon Jul 6 23:00 CDT → 2026-07-07T04:00:00Z; end: Tue Jul 7 00:00 CDT → 2026-07-07T05:00:00Z
+      makeShift('s1', 'e1', '2026-07-07T04:00:00Z', '2026-07-07T05:00:00Z'),
+    ];
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+        // weekDays[0] = 2026-07-06 is selected by default (today fallback)
+      />,
+    );
+    // Bob should be visible on Mon Jul 6 (the local day) — not missing
+    const btn = screen.getByRole('button', { name: /Bob/i });
+    expect(btn).toBeInTheDocument();
+  });
 });

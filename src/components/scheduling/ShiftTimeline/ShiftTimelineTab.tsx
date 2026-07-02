@@ -5,6 +5,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 import { CalendarOff } from 'lucide-react';
 
+import { isoToLocalMinutes } from '@/lib/shiftCoverage';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useTimelineModel } from './useTimelineModel';
 import { CoverageCurve } from './CoverageCurve';
@@ -67,13 +68,19 @@ function defaultDay(weekDays: string[]): string {
 }
 
 /**
- * Filter the week's shifts down to those whose `start_time` date falls on
- * the target day in UTC (Supabase UTC ISO strings; the "date" portion is
- * sufficient for bucketing — finer TZ-based filtering is done inside
- * `useTimelineModel` via `isoToLocalMinutes`).
+ * Filter the week's shifts to those that start on `dayStr` in the restaurant's
+ * local timezone. Uses `isoToLocalMinutes` so that late-evening shifts in
+ * timezones west of UTC (e.g. 23:30 CDT stored as 04:30Z next day) are
+ * correctly attributed to their local calendar day rather than silently dropped.
+ *
+ * A shift is included when its local start minute falls within [0, 1440) for
+ * the given day (i.e. it starts on that calendar day in the restaurant's TZ).
  */
-function filterToDay(shifts: Shift[], dayStr: string): Shift[] {
-  return shifts.filter((s) => s.start_time.startsWith(dayStr));
+function filterToDay(shifts: Shift[], dayStr: string, tz: string): Shift[] {
+  return shifts.filter((s) => {
+    const startMin = isoToLocalMinutes(s.start_time, dayStr, tz);
+    return startMin >= 0 && startMin < 1440;
+  });
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -112,7 +119,7 @@ export function ShiftTimelineTab({
   }, [daySuggestions, selectedDay]);
 
   // ── Filter shifts to the selected day ─────────────────────────────────────
-  const dayShifts = useMemo(() => filterToDay(shifts, selectedDay), [shifts, selectedDay]);
+  const dayShifts = useMemo(() => filterToDay(shifts, selectedDay, tz), [shifts, selectedDay, tz]);
 
   // ── Timeline model (pure transform) ───────────────────────────────────────
   const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);

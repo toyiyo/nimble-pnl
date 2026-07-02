@@ -1,5 +1,6 @@
 import { minutesToCompact } from '@/lib/shiftCoverage';
 import type { TimelineGap } from './useTimelineModel';
+import { STEP_MIN } from './useTimelineModel';
 
 interface CoverageGapListProps {
   gaps: TimelineGap[];
@@ -24,7 +25,7 @@ export function CoverageGapList({ gaps }: CoverageGapListProps) {
           className="text-[13px] text-muted-foreground flex items-center gap-2"
         >
           <span aria-hidden className="h-2 w-2 rounded-sm bg-destructive" />
-          Below demand {minutesToCompact(g.startMin)}–{minutesToCompact(g.endMin % 1440)}
+          Below demand {minutesToCompact(g.startMin)}–{minutesToCompact((g.endMin + STEP_MIN) % 1440)}
         </li>
       ))}
     </ul>

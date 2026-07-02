@@ -5,9 +5,13 @@ import { CoverageGapList } from '@/components/scheduling/ShiftTimeline/CoverageG
 
 describe('CoverageGapList', () => {
   it('lists each understaffed window as text', () => {
-    render(<CoverageGapList gaps={[{ startMin: 600, endMin: 690 }]} />);
+    // gap: startMin=600, endMin=615 (last under-staffed 15-min sample)
+    // displayed end = endMin + STEP_MIN = 630 → "10:30a"
+    render(<CoverageGapList gaps={[{ startMin: 600, endMin: 615 }]} />);
     // minutesToCompact(600) → "10a"
     expect(screen.getByText(/10a/i)).toBeInTheDocument();
+    // minutesToCompact(630) → "10:30a"
+    expect(screen.getByText(/10:30a/i)).toBeInTheDocument();
     expect(screen.getByRole('list', { name: /understaffed/i })).toBeInTheDocument();
   });
   it('renders nothing when there are no gaps', () => {

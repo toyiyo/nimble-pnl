@@ -55,7 +55,7 @@ export function CoverageVerdict({
       <div className="flex items-center gap-2 py-1">
         <span
           aria-hidden
-          className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-emerald-500"
+          className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-success"
         />
         <p className="text-[15px] font-medium text-foreground">
           Meeting demand all day.

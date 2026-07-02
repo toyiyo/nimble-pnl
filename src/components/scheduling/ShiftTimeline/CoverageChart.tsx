@@ -271,7 +271,7 @@ function DeltaView({ hours, plotW, plotH, peak }: DeltaViewProps) {
         const barClass = isShort
           ? 'fill-destructive'
           : isOver
-            ? 'fill-emerald-500'
+            ? 'fill-success'
             : 'fill-muted-foreground/50';
         const barState = isShort ? 'short' : 'covered';
 
@@ -437,7 +437,7 @@ function Legend({ hasDemand, view }: { hasDemand: boolean; view: 'area' | 'delta
     return (
       <div className="flex items-center gap-4 text-[11px] text-muted-foreground mt-1">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-3 rounded-sm bg-emerald-500 opacity-80" />
+          <span className="inline-block h-2 w-3 rounded-sm bg-success opacity-80" />
           Covered
         </span>
         <span className="flex items-center gap-1">

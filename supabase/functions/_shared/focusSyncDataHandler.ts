@@ -8,21 +8,24 @@
  *  2. Parse + validate the request body: { restaurantId }.
  *  3. Confirm the caller is an owner or manager of the target restaurant (review S6).
  *  4. Load the active focus_connections row via the service-role client.
- *  5. Determine the sync mode:
+ *  5. Determine the sync path:
+ *       - Lynk API path (api_key present): use processDayTransactions per business day.
+ *       - Legacy portal path (api_key absent): use processReportDay (SSRS scrape).
+ *  6. Determine the sync mode:
  *       a. Backfill (initial_sync_done=false):
  *          - Compute the target business date: today_in_tz − sync_cursor − 1 (review S4).
- *          - Call processReportDay for that date.
+ *          - Call the day-processor for that date.
  *          - Increment sync_cursor; when it reaches TARGET_DAYS (90) set initial_sync_done=true.
  *       b. Incremental (initial_sync_done=true):
  *          - Process the last 2 business days (yesterday + day before) in the tz.
- *  6. Write the updated sync_cursor / initial_sync_done / last_sync_time via service-role
+ *  7. Write the updated sync_cursor / initial_sync_done / last_sync_time via service-role
  *     client (review S3).
- *  7. Return 200 JSON { syncCursor, initialSyncDone, status } where status comes from
- *     processReportDay ('ok' | 'empty' | 'error').
+ *  8. Return 200 JSON { syncCursor, initialSyncDone, status } where status comes from
+ *     the day-processor ('ok' | 'empty' | 'error').
  *
  * Design references:
- *  - Plan Task 9
- *  - Spec §8 (focus-sync-data edge function), §9 (sync orchestration)
+ *  - Plan Task 4 (Lynk path), Task 9 (original portal path)
+ *  - Spec §4 (sync flow with Lynk), §8 (focus-sync-data edge function)
  *  - §16 S3 (service-role client for writes), S4 (business-date timezone),
  *           S6 (JWT + role), S9 (parse_error propagation)
  *
@@ -48,6 +51,11 @@ import {
 } from './focusReportClient.ts';
 import { loginToPortal, FocusAuthError } from './focusPortalClient.ts';
 import { getEncryptionService } from './encryption.ts';
+import {
+  processDayTransactions,
+  type TransactionSyncConfig,
+} from './focusTransactionSyncHandler.ts';
+import { focusApiBaseUrl } from './focusLynkClient.ts';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -78,8 +86,14 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
   restaurant_id: string;
   initial_sync_done: boolean;
   sync_cursor: number;
-  username: string;
-  password_encrypted: string;
+  username: string | null;
+  password_encrypted: string | null;
+  /** Lynk API key (HTTP Basic username). Present for API-path connections. */
+  api_key: string | null;
+  /** Lynk API secret, AES-GCM encrypted. Present for API-path connections. */
+  api_secret_encrypted: string | null;
+  /** Environment: 'production' | 'sandbox'. */
+  environment: string | null;
 }
 
 /** Minimal Supabase service-role client surface (reads + writes). */
@@ -129,6 +143,11 @@ export interface SyncDataDeps {
    * Omit in tests — jsdom provides globalThis.DOMParser.
    */
   domParser?: { parseFromString(html: string, mimeType: string): Document };
+  /**
+   * Optional injectable fetchDatafeed function for the Lynk API path.
+   * Defaults to the real fetchDatafeed from focusLynkClient. Injectable for tests.
+   */
+  fetchDatafeed?: Parameters<typeof processDayTransactions>[0]['fetchDatafeed'];
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -205,7 +224,7 @@ export async function handleSyncData(
     .select(
       'id, restaurant_id, report_base_url, report_path, db_server, db_catalog, ' +
         'report_user_id, store_id, revenue_center, timezone, initial_sync_done, sync_cursor, ' +
-        'username, password_encrypted',
+        'username, password_encrypted, api_key, api_secret_encrypted, environment',
     )
     .eq('restaurant_id', restaurantId)
     .eq('is_active', true)
@@ -215,90 +234,144 @@ export async function handleSyncData(
     return jsonError(404, 'No active Focus POS connection found for this restaurant');
   }
 
-  // ── 6. Auth gate: validate credentials before syncing ────────────────────
-
-  try {
-    const encSvc = await getEncryptionService();
-    const password = await encSvc.decrypt(connRow.password_encrypted);
-    await loginToPortal({ fetch: deps.fetch }, connRow.username, password);
-  } catch (err) {
-    if (err instanceof FocusAuthError) {
-      await deps.serviceClient
-        .from('focus_connections')
-        .update({
-          connection_status: 'error',
-          last_error: 'Invalid Focus credentials',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', connRow.id);
-      return new Response(
-        JSON.stringify({
-          syncCursor: connRow.sync_cursor,
-          initialSyncDone: connRow.initial_sync_done,
-          status: 'error',
-        }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
-    throw err;
-  }
-
-  // ── 7. Build FocusConnection for the client module ───────────────────────
-
-  const conn: FocusConnection = rowToFocusConnection(connRow);
-
-  // Build the injectable SyncDeps that processReportDay expects.
-  // The serviceClient satisfies the SupabaseDeps interface (it has upsert).
-  // Forward domParser so processReportDay can pass it to parseRevenueCenterReport
-  // (deno_dom in Deno edge function runtime; undefined in tests → jsdom fallback).
-  const syncDeps: SyncDeps = {
-    fetch: deps.fetch,
-    supabase: deps.serviceClient as unknown as SupabaseDeps,
-    restaurantId,
-    domParser: deps.domParser,
-  };
-
   const tz = connRow.timezone || 'America/Chicago';
+  const isLynkPath = !!connRow.api_key;
 
   let status: 'ok' | 'empty' | 'error' = 'ok';
   let newSyncCursor = connRow.sync_cursor;
   let newInitialSyncDone = connRow.initial_sync_done;
 
-  if (!connRow.initial_sync_done) {
-    // ── 8a. Backfill: one day per call ────────────────────────────────────────
-    // Target date = today_in_tz − sync_cursor − 1
-    // (day 0 = yesterday, day 1 = 2 days ago, …, day 89 = 90 days ago)
-    const targetDate = subtractDays(todayInTz(tz, now), connRow.sync_cursor + 1);
+  if (isLynkPath) {
+    // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────
+    // Decrypt the API secret and build the transaction sync config.
 
-    const result = await processReportDay(syncDeps, conn, targetDate);
-    status = result.status;
+    const encSvc = await getEncryptionService();
+    const apiSecret = await encSvc.decrypt(connRow.api_secret_encrypted!);
 
-    // Only advance the cursor on success or empty (day had no sales).
-    // On error (network failure, parse failure) keep cursor in place so the
-    // same day is retried on the next call — prevents permanently skipping
-    // a business day due to a transient Focus outage. (Codex review P1)
-    if (result.status !== 'error') {
-      newSyncCursor = connRow.sync_cursor + 1;
-      if (newSyncCursor >= TARGET_DAYS) {
-        newInitialSyncDone = true;
+    const txConfig: TransactionSyncConfig = {
+      restaurantId,
+      storeId: connRow.store_id,
+      apiKey: connRow.api_key!,
+      apiSecret,
+      baseUrl: focusApiBaseUrl(
+        (connRow.environment as 'production' | 'sandbox') ?? 'production',
+      ),
+    };
+
+    // Import fetchDatafeed lazily so tests can inject a mock via deps.fetchDatafeed.
+    const { fetchDatafeed: realFetchDatafeed } = await import('./focusLynkClient.ts');
+    const fetchDatafeedFn = deps.fetchDatafeed ?? realFetchDatafeed;
+
+    const txDeps = {
+      supabase: deps.serviceClient as unknown as Parameters<typeof processDayTransactions>[0]['supabase'],
+      fetchDatafeed: fetchDatafeedFn,
+    };
+
+    if (!connRow.initial_sync_done) {
+      // ── Backfill: one cursor day per call ────────────────────────────────────
+      const targetDate = subtractDays(todayInTz(tz, now), connRow.sync_cursor + 1);
+
+      const result = await processDayTransactions(txDeps, txConfig, targetDate, {
+        skipUnifiedSalesSync: true, // deferred to the 6-hour cron job
+      });
+
+      // Map inprogress → treat as empty (don't advance cursor; will retry next call)
+      if (result.status === 'inprogress') {
+        status = 'ok'; // not an error; just not ready yet
+      } else {
+        status = result.status === 'ok' ? 'ok' : result.status === 'empty' ? 'empty' : 'error';
+        if (result.status !== 'error') {
+          newSyncCursor = connRow.sync_cursor + 1;
+          if (newSyncCursor >= TARGET_DAYS) {
+            newInitialSyncDone = true;
+          }
+        }
+      }
+    } else {
+      // ── Incremental: last 2 business days ────────────────────────────────────
+      const [yesterday, dayBefore] = recentBusinessDays(tz, now);
+
+      const [r1, r2] = await Promise.all([
+        processDayTransactions(txDeps, txConfig, yesterday),
+        processDayTransactions(txDeps, txConfig, dayBefore),
+      ]);
+
+      if (r1.status === 'error' || r2.status === 'error') {
+        status = 'error';
+      } else if (r1.status === 'empty' && r2.status === 'empty') {
+        status = 'empty';
       }
     }
   } else {
-    // ── 8b. Incremental: re-fetch last 2 business days ─────────────────────
-    const [yesterday, dayBefore] = recentBusinessDays(tz, now);
+    // ── Legacy portal path (SSRS scrape) ──────────────────────────────────────
 
-    const [r1, r2] = await Promise.all([
-      processReportDay(syncDeps, conn, yesterday),
-      processReportDay(syncDeps, conn, dayBefore),
-    ]);
+    // ── 6. Auth gate: validate credentials before syncing ─────────────────────
 
-    // Surface the worst status of the two calls
-    if (r1.status === 'error' || r2.status === 'error') {
-      status = 'error';
-    } else if (r1.status === 'empty' && r2.status === 'empty') {
-      status = 'empty';
+    try {
+      const encSvc = await getEncryptionService();
+      const password = await encSvc.decrypt(connRow.password_encrypted!);
+      await loginToPortal({ fetch: deps.fetch }, connRow.username!, password);
+    } catch (err) {
+      if (err instanceof FocusAuthError) {
+        await deps.serviceClient
+          .from('focus_connections')
+          .update({
+            connection_status: 'error',
+            last_error: 'Invalid Focus credentials',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', connRow.id);
+        return new Response(
+          JSON.stringify({
+            syncCursor: connRow.sync_cursor,
+            initialSyncDone: connRow.initial_sync_done,
+            status: 'error',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      throw err;
     }
-    // else: at least one is 'ok' → keep the default 'ok'
+
+    // ── 7. Build FocusConnection for the client module ─────────────────────────
+
+    const conn: FocusConnection = rowToFocusConnection(connRow);
+
+    const syncDeps: SyncDeps = {
+      fetch: deps.fetch,
+      supabase: deps.serviceClient as unknown as SupabaseDeps,
+      restaurantId,
+      domParser: deps.domParser,
+    };
+
+    if (!connRow.initial_sync_done) {
+      // ── Backfill: one day per call ────────────────────────────────────────────
+      const targetDate = subtractDays(todayInTz(tz, now), connRow.sync_cursor + 1);
+
+      const result = await processReportDay(syncDeps, conn, targetDate);
+      status = result.status;
+
+      if (result.status !== 'error') {
+        newSyncCursor = connRow.sync_cursor + 1;
+        if (newSyncCursor >= TARGET_DAYS) {
+          newInitialSyncDone = true;
+        }
+      }
+    } else {
+      // ── Incremental: re-fetch last 2 business days ────────────────────────────
+      const [yesterday, dayBefore] = recentBusinessDays(tz, now);
+
+      const [r1, r2] = await Promise.all([
+        processReportDay(syncDeps, conn, yesterday),
+        processReportDay(syncDeps, conn, dayBefore),
+      ]);
+
+      if (r1.status === 'error' || r2.status === 'error') {
+        status = 'error';
+      } else if (r1.status === 'empty' && r2.status === 'empty') {
+        status = 'empty';
+      }
+    }
   }
 
   // ── 9. Update connection state via service-role client (review S3) ────────

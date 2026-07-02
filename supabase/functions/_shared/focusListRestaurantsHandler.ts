@@ -27,10 +27,9 @@ import {
   isSafeUrl,
   FOCUSPOS_HOST_RE,
 } from './focusLynkClient.ts';
+import { FOCUS_ALLOWED_ROLES } from './focusReportClient.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
-
-const FOCUS_ALLOWED_ROLES = new Set(['owner', 'manager']);
 const TIMEOUT_MS = 20_000;
 
 // ── Public types ──────────────────────────────────────────────────────────────

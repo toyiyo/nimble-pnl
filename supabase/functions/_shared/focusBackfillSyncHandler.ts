@@ -290,19 +290,22 @@ export async function handleBackfillSync(
         maxDays: MAX_DAYS_PER_CONNECTION,
       });
 
+      // Single timestamp shared across all fields in this update.
+      const nowIso = new Date(deps.now()).toISOString();
+
       // Build update payload.
       const updatePayload: Record<string, unknown> = {
         sync_cursor: batchResult.syncCursor,
         initial_sync_done: batchResult.initialSyncDone,
-        last_sync_time: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        last_sync_time: nowIso,
+        updated_at: nowIso,
       };
 
       // On error, persist the stall details so the frontend can stop polling (§8.3).
       if (batchResult.status === 'error') {
         updatePayload.connection_status = 'error';
         updatePayload.last_error = batchResult.lastError ?? 'Unknown backfill error';
-        updatePayload.last_error_at = new Date().toISOString();
+        updatePayload.last_error_at = nowIso;
       }
 
       // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent

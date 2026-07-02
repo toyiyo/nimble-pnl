@@ -145,8 +145,10 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
   const [restaurants, setRestaurants] = useState<FocusRestaurantOption[]>([]);
   const [selectedGuid, setSelectedGuid] = useState<string>('');
 
-  // listRestaurants error shown inline on credentials step
+  // listRestaurants error shown inline on credentials step (null = no error)
   const [listError, setListError] = useState<string | null>(null);
+  // True when listRestaurants succeeded but returned zero locations
+  const [listEmpty, setListEmpty] = useState(false);
   const [isListing, setIsListing] = useState(false);
 
   // Connection error — distinguished by kind (save vs test)
@@ -198,13 +200,14 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
     setApiKey(trimmedApiKey);
     setApiSecret(trimmedApiSecret);
     setListError(null);
+    setListEmpty(false);
     setIsListing(true);
 
     try {
       const results = await listRestaurants(restaurantId, trimmedApiKey, trimmedApiSecret, environment);
 
       if (results.length === 0) {
-        setListError('no-restaurants');
+        setListEmpty(true);
         setIsListing(false);
         return;
       }
@@ -272,6 +275,23 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
     setIsConnecting(false);
     setStep('done');
     toast({ title: 'Focus POS connected', description: 'Transactions will sync automatically.' });
+  }
+
+  async function handleSyncNow() {
+    try {
+      await triggerManualSync(restaurantId);
+      toast({
+        title: 'Import started',
+        description: 'Running in the background. You can leave this page; it keeps going.',
+      });
+      onComplete();
+    } catch {
+      toast({
+        title: 'Sync could not be started',
+        description: 'Automatic sync will retry on schedule.',
+        variant: 'destructive',
+      });
+    }
   }
 
   // ── Dialog description text per step ──────────────────────────────────────
@@ -384,6 +404,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                   setApiKey(e.target.value);
                   if (apiKeyError) setApiKeyError(null);
                   if (listError) setListError(null);
+                  if (listEmpty) setListEmpty(false);
                 }}
                 placeholder="Enter your Focus POS API Key"
                 className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border font-mono ${
@@ -420,6 +441,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                   setApiSecret(e.target.value);
                   if (apiSecretError) setApiSecretError(null);
                   if (listError) setListError(null);
+                  if (listEmpty) setListEmpty(false);
                 }}
                 placeholder="••••••••"
                 className={`h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border ${
@@ -470,7 +492,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
             </div>
 
             {/* Inline list error — stays on credentials step */}
-            {listError && listError !== 'no-restaurants' && (
+            {listError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" aria-hidden="true" />
                 <AlertDescription className="text-[13px]">
@@ -478,7 +500,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                 </AlertDescription>
               </Alert>
             )}
-            {listError === 'no-restaurants' && (
+            {listEmpty && (
               <Alert className="border-border/40 bg-muted/30">
                 <Info className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                 <AlertDescription className="text-[13px] text-muted-foreground">
@@ -618,6 +640,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                   setApiKeyError(null);
                   setApiSecretError(null);
                   setListError(null);
+                  setListEmpty(false);
                   setStep('instructions');
                 } else {
                   // select → credentials: clear connection errors, keep credentials
@@ -689,22 +712,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                 Close
               </Button>
               <Button
-                onClick={async () => {
-                  try {
-                    await triggerManualSync(restaurantId);
-                    toast({
-                      title: 'Import started',
-                      description: 'Running in the background. You can leave this page; it keeps going.',
-                    });
-                    onComplete();
-                  } catch {
-                    toast({
-                      title: 'Sync could not be started',
-                      description: 'Automatic sync will retry on schedule.',
-                      variant: 'destructive',
-                    });
-                  }
-                }}
+                onClick={handleSyncNow}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
               >
                 Sync Now

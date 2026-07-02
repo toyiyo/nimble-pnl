@@ -18,6 +18,13 @@ export interface POSConfig {
   recentWindowLabel?: string; // e.g. "last 2 business days" — overrides "last 25 hours"
 }
 
+// ── Helpers ────────────────────────────────────────────────────────────────────
+
+/** Capitalizes the first character of a string. */
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 // --- Connection Status ---
 
 interface ConnectionStatusProps {
@@ -35,7 +42,7 @@ export function ConnectionStatus({ lastSyncTime, config }: ConnectionStatusProps
         <div className="flex-1">
           <h4 className="text-[14px] font-medium text-foreground">Scheduled Sync Active</h4>
           <p className="text-[13px] text-muted-foreground">
-            {config.dataLabel.charAt(0).toUpperCase() + config.dataLabel.slice(1)} sync automatically every {config.syncInterval}
+            {capitalize(config.dataLabel)} sync automatically every {config.syncInterval}
           </p>
           {lastSyncTime && (
             <p className="text-[12px] text-muted-foreground mt-1">
@@ -282,7 +289,7 @@ export function SyncResults({ itemsSynced, errors, config }: SyncResultsProps): 
       <div className="space-y-1">
         <div className="text-[17px] font-semibold text-foreground">{itemsSynced}</div>
         <div className="text-[13px] text-muted-foreground">
-          {config.dataLabel.charAt(0).toUpperCase() + config.dataLabel.slice(1)} synced
+          {capitalize(config.dataLabel)} synced
         </div>
       </div>
 
@@ -319,7 +326,7 @@ export function HowSyncingWorksInfo({ config }: HowSyncingWorksInfoProps): JSX.E
         <div className="space-y-2">
           <div className="text-[14px] font-medium text-foreground">How syncing works</div>
           <div className="text-[13px] text-muted-foreground space-y-1">
-            <div><strong className="text-foreground">Scheduled Sync:</strong> {config.dataLabel.charAt(0).toUpperCase() + config.dataLabel.slice(1)} sync automatically every {config.syncInterval}</div>
+            <div><strong className="text-foreground">Scheduled Sync:</strong> {capitalize(config.dataLabel)} sync automatically every {config.syncInterval}</div>
             <div><strong className="text-foreground">Manual Sync:</strong> Use the button above for immediate sync</div>
             <div><strong className="text-foreground">Historical Data:</strong> First sync imports last 90 days of {config.dataLabel}</div>
             <div><strong className="text-foreground">Incremental:</strong> After initial sync, only recent {config.dataLabel} are fetched</div>

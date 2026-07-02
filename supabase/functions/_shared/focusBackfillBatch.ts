@@ -133,6 +133,10 @@ export async function processBackfillBatch(
     };
   }
 
+  // todayStr is constant for the duration of this call (timezone + now never change).
+  // Compute it once outside the loop to avoid recreating Intl.DateTimeFormat each iteration.
+  const todayStr = todayInTz(opts.timezone, opts.now);
+
   while (cursor < targetDays && daysProcessed < opts.maxDays) {
     // Budget check before each day
     if (clock() - startMs >= opts.budgetMs) {
@@ -141,7 +145,6 @@ export async function processBackfillBatch(
 
     // Compute the target date: today_in_tz − (cursor + 1)
     // cursor=0 → yesterday, cursor=1 → two days ago, etc.
-    const todayStr = todayInTz(opts.timezone, opts.now);
     const targetDate = subtractDays(todayStr, cursor + 1);
 
     // Call the injectable per-day processor

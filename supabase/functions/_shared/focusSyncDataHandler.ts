@@ -380,19 +380,22 @@ export async function handleSyncData(
         maxDays: 5,
       });
 
+      // Single timestamp shared across all fields in this update.
+      const nowIso = now.toISOString();
+
       // Build update payload
       const updatePayload: Record<string, unknown> = {
         sync_cursor: batchResult.syncCursor,
         initial_sync_done: batchResult.initialSyncDone,
-        last_sync_time: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        last_sync_time: nowIso,
+        updated_at: nowIso,
       };
 
       // On error, persist the stall details so the frontend can stop polling (§8.3)
       if (batchResult.status === 'error') {
         updatePayload.connection_status = 'error';
         updatePayload.last_error = batchResult.lastError ?? 'Unknown backfill error';
-        updatePayload.last_error_at = new Date().toISOString();
+        updatePayload.last_error_at = nowIso;
       }
 
       // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent
@@ -435,11 +438,12 @@ export async function handleSyncData(
         status = 'empty';
       }
 
+      const nowIso = now.toISOString();
       await deps.serviceClient
         .from('focus_connections')
         .update({
-          last_sync_time: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
+          last_sync_time: nowIso,
+          updated_at: nowIso,
         })
         .eq('id', connRow.id)
         .eq('restaurant_id', restaurantId)
@@ -476,7 +480,7 @@ export async function handleSyncData(
           .update({
             connection_status: 'error',
             last_error: 'Invalid Focus credentials',
-            updated_at: new Date().toISOString(),
+            updated_at: now.toISOString(),
           })
           .eq('id', connRow.id)
           .eq('restaurant_id', restaurantId)
@@ -536,13 +540,14 @@ export async function handleSyncData(
 
     // ── 9. Update connection state via service-role client ─────────────────────
 
+    const nowIso = now.toISOString();
     await deps.serviceClient
       .from('focus_connections')
       .update({
         sync_cursor: newSyncCursor,
         initial_sync_done: newInitialSyncDone,
-        last_sync_time: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        last_sync_time: nowIso,
+        updated_at: nowIso,
       })
       .eq('id', connRow.id)
       .eq('restaurant_id', restaurantId)

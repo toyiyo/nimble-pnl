@@ -119,6 +119,9 @@ export interface ServiceClient {
  * - sleep            Waits n ms between restaurants (injectable for tests).
  * - now              Returns the current wall-clock timestamp in ms (injectable for tests).
  * - serviceRoleKey   The raw service-role key to compare against the Bearer token.
+ * - sandboxBaseUrl   Optional override URL for environment='sandbox' connections
+ *                    (FOCUS_API_SANDBOX_URL env var). Without it, sandbox connections
+ *                    fall back to the production URL (focusApiBaseUrl doc §6).
  * - domParser        Optional DOMParser-compatible instance (deno_dom in Deno edge
  *                    functions; omit in tests → jsdom globalThis.DOMParser fallback).
  */
@@ -128,6 +131,7 @@ export interface BulkSyncDeps {
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   serviceRoleKey: string;
+  sandboxBaseUrl?: string;
   domParser?: { parseFromString(html: string, mimeType: string): Document };
 }
 
@@ -203,6 +207,7 @@ async function processConnection(
       apiSecret,
       baseUrl: focusApiBaseUrl(
         (row.environment as 'production' | 'sandbox') ?? 'production',
+        deps.sandboxBaseUrl,
       ),
     };
 
@@ -211,35 +216,18 @@ async function processConnection(
       fetchDatafeed: realFetchDatafeed,
     };
 
-    if (!row.initial_sync_done) {
-      // Backfill: one cursor day per call
-      const targetDate = subtractDays(todayInTz(tz, now), row.sync_cursor + 1);
-      const result = await processDayTransactions(txDeps, txConfig, targetDate, {
-        skipUnifiedSalesSync: true, // cron job handles unified_sales sync
-      });
-
-      if (result.status === 'error') {
-        throw new Error(result.error ?? `Focus transaction sync failed for ${targetDate}`);
-      }
-
-      // inprogress → retry same day; don't advance cursor
-      if (result.status !== 'inprogress') {
-        newSyncCursor = row.sync_cursor + 1;
-        if (newSyncCursor >= TARGET_DAYS) {
-          newInitialSyncDone = true;
-        }
-      }
-    } else {
-      // Incremental: last 2 business days in parallel
-      const [yesterday, dayBefore] = recentBusinessDays(tz, now);
-      const results = await Promise.all([
-        processDayTransactions(txDeps, txConfig, yesterday),
-        processDayTransactions(txDeps, txConfig, dayBefore),
-      ]);
-      const failed = results.find((r) => r.status === 'error');
-      if (failed?.status === 'error') {
-        throw new Error(failed.error ?? 'Focus transaction incremental sync failed');
-      }
+    // At this point initial_sync_done=true is guaranteed (B5 skip guard at top
+    // of processConnection returns early for backfilling rows). The Lynk backfill
+    // is owned exclusively by the 5-min focus-backfill-sync cron (design §8.7).
+    // Incremental: last 2 business days in parallel.
+    const [yesterday, dayBefore] = recentBusinessDays(tz, now);
+    const results = await Promise.all([
+      processDayTransactions(txDeps, txConfig, yesterday),
+      processDayTransactions(txDeps, txConfig, dayBefore),
+    ]);
+    const failed = results.find((r) => r.status === 'error');
+    if (failed?.status === 'error') {
+      throw new Error(failed.error ?? 'Focus transaction incremental sync failed');
     }
   } else {
     // ── Legacy portal path (SSRS scrape) ──────────────────────────────────────

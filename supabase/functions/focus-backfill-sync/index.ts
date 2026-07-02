@@ -44,6 +44,7 @@ serve(async (req: Request) => {
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => Date.now(),
       serviceRoleKey: supabaseServiceKey,
+      sandboxBaseUrl: Deno.env.get('FOCUS_API_SANDBOX_URL') || undefined,
     });
 
     // Attach CORS headers to the handler's response.

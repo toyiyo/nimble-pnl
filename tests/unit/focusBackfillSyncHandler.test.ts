@@ -521,4 +521,47 @@ describe('handleBackfillSync', () => {
     expect(body.errors).toHaveLength(0);
     expect(mockBatch).toHaveBeenCalledTimes(2);
   });
+
+  // ── CAS miss: another tick already won ───────────────────────────────────────
+
+  it('does NOT increment processed when CAS write returns 0 rows (concurrent tick won)', async () => {
+    const { deps } = makeDeps({
+      serviceClientOpts: {
+        connections: [MOCK_LYNK_BACKFILLING],
+        casRowCount: 0, // 0 rows → another tick already advanced the cursor
+      },
+    });
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    const res = await handleBackfillSync(req, deps);
+
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    // CAS miss → not counted as processed
+    expect(body.processed).toBe(0);
+    expect(body.errors).toHaveLength(0);
+  });
+
+  // ── Sandbox URL threading ─────────────────────────────────────────────────────
+
+  it('uses sandboxBaseUrl as baseUrl when environment=sandbox', async () => {
+    const { processBackfillBatch: mockBatch } = await import(
+      '../../supabase/functions/_shared/focusBackfillBatch'
+    );
+
+    const sandboxConn = { ...MOCK_LYNK_BACKFILLING, environment: 'sandbox' };
+    const { deps } = makeDeps({
+      serviceClientOpts: { connections: [sandboxConn] },
+    });
+    // Provide a sandboxBaseUrl dep
+    const depsWithSandbox = { ...deps, sandboxBaseUrl: 'https://sandbox.focuspos.com' };
+
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    await handleBackfillSync(req, depsWithSandbox);
+
+    // processBackfillBatch receives the txConfig. The config's baseUrl should
+    // use the sandbox URL since environment='sandbox' and sandboxBaseUrl is set.
+    expect(mockBatch).toHaveBeenCalledTimes(1);
+    const txConfig = (mockBatch as ReturnType<typeof vi.fn>).mock.calls[0][1] as { baseUrl: string };
+    expect(txConfig.baseUrl).toBe('https://sandbox.focuspos.com');
+  });
 });

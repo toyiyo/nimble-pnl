@@ -174,6 +174,12 @@ export interface SyncDataDeps {
    * Defaults to the real fetchDatafeed from focusLynkClient. Injectable for tests.
    */
   fetchDatafeed?: Parameters<typeof processDayTransactions>[0]['fetchDatafeed'];
+  /**
+   * Optional override URL for environment='sandbox' connections
+   * (FOCUS_API_SANDBOX_URL env var). Without it, sandbox connections
+   * fall back to the production URL (focusApiBaseUrl doc §6).
+   */
+  sandboxBaseUrl?: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -305,6 +311,7 @@ export async function handleSyncData(
       apiSecret,
       baseUrl: focusApiBaseUrl(
         (connRow.environment as 'production' | 'sandbox') ?? 'production',
+        deps.sandboxBaseUrl,
       ),
     };
 
@@ -399,8 +406,9 @@ export async function handleSyncData(
       }
 
       // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent
-      // ticks don't clobber each other (§8.1). 0 rows back = another tick already won.
-      await deps.serviceClient
+      // ticks don't clobber each other (§8.1). 0 rows back = another tick already won;
+      // return the stale cursor values — the cron tick that won will advance them next tick.
+      const { data: casBfRows, error: casBfErr } = await deps.serviceClient
         .from('focus_connections')
         .update(updatePayload)
         .eq('id', connRow.id)
@@ -408,11 +416,20 @@ export async function handleSyncData(
         .eq('sync_cursor', readCursor)
         .select();
 
+      if (casBfErr) {
+        return jsonError(500, `CAS write failed: ${casBfErr.message}`);
+      }
+
+      // CAS miss: a concurrent tick already advanced the cursor; report the current
+      // batch result so the frontend still shows progress, but note the actual write
+      // was skipped (the winning tick's update already took effect).
+      const casWon = !!(casBfRows?.length);
+
       return new Response(
         JSON.stringify({
           syncCursor: batchResult.syncCursor,
           initialSyncDone: batchResult.initialSyncDone,
-          status: batchResult.status,
+          status: casWon ? batchResult.status : 'ok',
           backgrounded: !batchResult.initialSyncDone,
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -439,7 +456,7 @@ export async function handleSyncData(
       }
 
       const nowIso = now.toISOString();
-      await deps.serviceClient
+      const { error: casIncErr } = await deps.serviceClient
         .from('focus_connections')
         .update({
           last_sync_time: nowIso,
@@ -449,6 +466,13 @@ export async function handleSyncData(
         .eq('restaurant_id', restaurantId)
         .eq('sync_cursor', readCursor)
         .select();
+
+      if (casIncErr) {
+        console.warn(`focus-sync-data: incremental CAS write warning: ${casIncErr.message}`);
+      }
+      // A CAS miss on the incremental path is non-critical: sync_cursor doesn't
+      // advance on incremental syncs anyway, so 0 rows just means another client
+      // also updated last_sync_time — both writes are idempotent (same timestamp ~).
 
       return new Response(
         JSON.stringify({

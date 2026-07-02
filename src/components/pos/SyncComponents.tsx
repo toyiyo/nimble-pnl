@@ -170,7 +170,7 @@ export function SyncModeSelector({
               Custom date range
             </Label>
             <p className="text-[13px] text-muted-foreground">
-              Backfill or re-sync {config.dataLabel} for specific dates (max 90 days)
+              Backfill or re-sync {config.dataLabel} for specific dates (max 14 days)
             </p>
             {syncMode === 'custom' && (
               <div className="pt-2">

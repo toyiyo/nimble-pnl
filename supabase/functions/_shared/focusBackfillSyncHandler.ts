@@ -29,8 +29,7 @@
  */
 
 import { getEncryptionService } from './encryption.ts';
-import { focusApiBaseUrl } from './focusLynkClient.ts';
-import { fetchDatafeed as realFetchDatafeed } from './focusLynkClient.ts';
+import { focusApiBaseUrl, fetchDatafeed as realFetchDatafeed } from './focusLynkClient.ts';
 import {
   processBackfillBatch,
   type BackfillBatchDeps,
@@ -119,12 +118,16 @@ export interface BackfillSyncServiceClient {
  * - sleep          Waits n ms between restaurants (injectable for tests).
  * - now            Returns the current wall-clock timestamp in ms (injectable for tests).
  * - serviceRoleKey The raw service-role key to compare against the Bearer token.
+ * - sandboxBaseUrl Optional override URL for environment='sandbox' connections
+ *                  (FOCUS_API_SANDBOX_URL env var). Without it, sandbox connections
+ *                  fall back to the production URL (focusApiBaseUrl doc §6).
  */
 export interface BackfillSyncDeps {
   serviceClient: BackfillSyncServiceClient;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
   serviceRoleKey: string;
+  sandboxBaseUrl?: string;
 }
 
 /** Per-run result. */
@@ -265,6 +268,7 @@ export async function handleBackfillSync(
         apiSecret,
         baseUrl: focusApiBaseUrl(
           (row.environment as 'production' | 'sandbox') ?? 'production',
+          deps.sandboxBaseUrl,
         ),
       };
 
@@ -309,14 +313,26 @@ export async function handleBackfillSync(
       }
 
       // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent
-      // ticks don't clobber each other (§8.1). 0 rows back = another tick already won.
-      await deps.serviceClient
+      // ticks don't clobber each other (§8.1). 0 rows back = another tick already won;
+      // in that case, skip incrementing processed (the other tick already counted it).
+      const { data: casRows, error: casErr } = await deps.serviceClient
         .from('focus_connections')
         .update(updatePayload)
         .eq('id', row.id)
         .eq('restaurant_id', row.restaurant_id)
         .eq('sync_cursor', readCursor)
         .select();
+
+      if (casErr) {
+        throw new Error(`CAS write failed: ${casErr.message}`);
+      }
+      if (!casRows?.length) {
+        // A concurrent tick already advanced this cursor — skip silently.
+        console.log(
+          `focus-backfill-sync: CAS miss for restaurant ${row.restaurant_id} (cursor ${readCursor}), skipping`,
+        );
+        continue;
+      }
 
       result.processed++;
     } catch (err) {

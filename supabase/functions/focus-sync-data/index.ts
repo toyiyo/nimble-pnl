@@ -57,6 +57,7 @@ serve(async (req: Request) => {
       serviceClient,
       fetch: makeFocusHttpFetch(serviceClient),
       domParser: new DOMParser(),
+      sandboxBaseUrl: Deno.env.get('FOCUS_API_SANDBOX_URL') || undefined,
     });
 
     // Attach CORS headers to the handler's response.

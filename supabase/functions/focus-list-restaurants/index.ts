@@ -42,12 +42,6 @@ serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Service-role client: available in deps if needed for future writes;
-    // not currently used by the list-restaurants handler (read-only, role check
-    // uses userClient).
-    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
-    void serviceClient; // suppress unused-var warning
-
     const res = await handleListRestaurants(req, {
       userClient,
       fetch: globalThis.fetch.bind(globalThis),

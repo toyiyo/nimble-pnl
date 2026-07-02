@@ -73,11 +73,13 @@ export function useFocusConnection(restaurantId?: string | null) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Query — design §10 / F8: maybeSingle(), explicit column list, staleTime 30s,
+  // Query — design §10 / F8: maybeSingle(), explicit column list,
   // refetchOnWindowFocus:true, refetchOnMount:true, enabled:!!restaurantId.
   // refetchInterval (design §8.5 / Frontend major #1): polls every 8s while backfilling;
-  // stops on done, disconnect, or persisted error. Do NOT lower staleTime — polling
-  // relies on fresh data but excessive invalidation degrades performance.
+  // stops on done, disconnect, or persisted error.
+  // staleTime: 0 while backfilling so each refetchInterval tick actually fires a network
+  // request (React Query skips refetches when cached data is still "fresh"). On done/error
+  // the interval stops anyway, so 0 staleTime only has a cost during the backfill window.
   const { data: connection, isLoading: loading, error } = useQuery<FocusConnection | null>({
     queryKey: ['focus-connection', restaurantId],
     queryFn: async () => {
@@ -105,7 +107,10 @@ export function useFocusConnection(restaurantId?: string | null) {
       return ((data as any) ?? null) as FocusConnection | null;
     },
     enabled: !!restaurantId,
-    staleTime: 30000,
+    // staleTime: 0 ensures refetchInterval polls actually fire network requests
+    // during backfill. Once backfill ends the interval stops, so there is no
+    // steady-state cost from the low staleTime.
+    staleTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
     refetchInterval: __focusRefetchInterval as Parameters<typeof useQuery>[0]['refetchInterval'],

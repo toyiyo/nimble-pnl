@@ -138,7 +138,8 @@ ShiftTimelineTab → (horizontally-scrollable plot) CoverageCurve + TimelineAxis
   15-min sample.
 - **demand** — expand each `HourlyStaffingRecommendation` (integer hour →
   `recommendedStaff`) into a **15-min step function** aligned to the coverage grid
-  (`demand[i].target = rec[floor(min/60)].recommendedStaff`). If the store has no
+  (`demand[i].target = rec[floor((min % 1440) / 60)].recommendedStaff`). The `% 1440`
+  wraps overnight windows where `endMin` may exceed 1440. If the store has no
   hourly-sales / staffing config for the day, `dayRecommendations` is empty →
   `demand = null` and no demand line / gaps render.
 - **gaps** — contiguous windows on the shared 15-min grid where

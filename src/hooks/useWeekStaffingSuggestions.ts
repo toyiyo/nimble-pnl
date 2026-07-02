@@ -41,11 +41,20 @@ export function useWeekStaffingSuggestions(
     return Array.from(positions).sort();
   }, [employees]);
 
-  // Merge DB settings with local overrides for live preview
-  const activeSettings = useMemo(() => ({
-    ...effectiveSettings,
-    ...(settingsOverrides ?? {}),
-  }), [effectiveSettings, settingsOverrides]);
+  // Merge DB settings with local overrides for live preview.
+  // Filter out undefined values from settingsOverrides: a Partial can carry
+  // sparse keys, and spreading undefined onto effectiveSettings would corrupt
+  // numeric fields like lookback_weeks that drive the date range.
+  const activeSettings = useMemo(() => {
+    const definedOverrides = Object.fromEntries(
+      Object.entries(settingsOverrides ?? {}).filter(([, v]) => v !== undefined),
+    ) as Partial<StaffingSettings>;
+
+    return {
+      ...effectiveSettings,
+      ...definedOverrides,
+    };
+  }, [effectiveSettings, settingsOverrides]);
 
   // Compute date range once for both queries
   const dateRange = useMemo(() => {
@@ -79,8 +88,15 @@ export function useWeekStaffingSuggestions(
     refetchOnMount: true,
   });
 
-  // Fetch time punches to compute actual labor hours for SPLH hint
-  const { data: timePunches } = useQuery({
+  // Fetch time punches to compute actual labor hours for SPLH hint.
+  // isLoading and refetch are joined with the sales query so callers see a
+  // unified loading state; punch failures collapse actualSplh to null, which
+  // the UI already handles gracefully.
+  const {
+    data: timePunches,
+    isLoading: punchesLoading,
+    refetch: refetchPunches,
+  } = useQuery({
     queryKey: ['staffing-time-punches', restaurantId, activeSettings.lookback_weeks],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -98,6 +114,8 @@ export function useWeekStaffingSuggestions(
     },
     enabled: !!restaurantId,
     staleTime: 60000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   // Compute actual SPLH from historical sales and labor hours
@@ -158,11 +176,16 @@ export function useWeekStaffingSuggestions(
     return { daySuggestions: result, hasHourlyBreakdown: anyHourly };
   }, [allSales, salesByDow, weekDays, activeSettings, avgHourlyRateCents, tz]);
 
+  const refetch = () => {
+    void refetchSales();
+    void refetchPunches();
+  };
+
   return {
     daySuggestions,
-    isLoading: settingsLoading || salesLoading,
+    isLoading: settingsLoading || salesLoading || punchesLoading,
     error: salesError,
-    refetch: refetchSales,
+    refetch,
     hasSalesData: (allSales?.length ?? 0) > 0,
     hasHourlyBreakdown,
     activeSettings,

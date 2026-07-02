@@ -5,33 +5,31 @@
  *
  * Responsibilities:
  *  1. Validate the Authorization header and verify the JWT via userClient.auth.getUser().
- *  2. Parse + validate the request body: { restaurantId }.
+ *  2. Parse + validate the request body: { restaurantId, startDate?, endDate? }.
  *  3. Confirm the caller is an owner or manager of the target restaurant (review S6).
  *  4. Load the active focus_connections row via the service-role client.
  *  5. Determine the sync path:
- *       - Lynk API path (api_key present): use processDayTransactions per business day.
+ *       - Lynk API path (api_key present): use processBackfillBatch / processDateRangeTransactions.
  *       - Legacy portal path (api_key absent): use processReportDay (SSRS scrape).
- *  6. Determine the sync mode:
- *       a. Backfill (initial_sync_done=false):
- *          - Compute the target business date: today_in_tz − sync_cursor − 1 (review S4).
- *          - Call the day-processor for that date.
- *          - Increment sync_cursor; when it reaches TARGET_DAYS (90) set initial_sync_done=true.
- *       b. Incremental (initial_sync_done=true):
+ *  6. Determine the sync mode for the Lynk path:
+ *       a. Custom range (startDate + endDate in body, ≤14 days, Lynk only):
+ *          - Validate: both required, start≤end, span≤14 days → else 400.
+ *          - Call processDateRangeTransactions synchronously.
+ *          - Return { daysSynced, status }.
+ *       b. Backfill (initial_sync_done=false):
+ *          - Delegate to processBackfillBatch({ budgetMs:12_000, maxDays:5 }).
+ *          - Persist cursor/flag/last_sync_time via CAS (§8.1).
+ *          - On error: also write connection_status='error' + last_error (§8.3).
+ *          - Return { syncCursor, initialSyncDone, status, backgrounded }.
+ *       c. Incremental (initial_sync_done=true):
  *          - Process the last 2 business days (yesterday + day before) in the tz.
  *  7. Write the updated sync_cursor / initial_sync_done / last_sync_time via service-role
- *     client (review S3).
- *  8. Return 200 JSON { syncCursor, initialSyncDone, status } where status comes from
- *     the day-processor ('ok' | 'empty' | 'error').
+ *     client with CAS to prevent concurrent-tick clobbering (§8.1).
+ *  8. Return 200 JSON.
  *
  * Design references:
- *  - Plan Task 4 (Lynk path), Task 9 (original portal path)
- *  - Spec §4 (sync flow with Lynk), §8 (focus-sync-data edge function)
- *  - §16 S3 (service-role client for writes), S4 (business-date timezone),
- *           S6 (JWT + role), S9 (parse_error propagation)
- *
- * The handler receives pre-constructed clients (userClient built from the caller's JWT,
- * serviceClient built from SUPABASE_SERVICE_ROLE_KEY) so it is fully testable with Vitest
- * without any Deno-specific imports.
+ *  - Plan B3; spec §5.2 (custom range), §8.1 (CAS), §8.2 (14-day cap), §8.3 (error status)
+ *  - Plan Task 9 (portal path unchanged)
  */
 
 import {
@@ -53,14 +51,19 @@ import { loginToPortal, FocusAuthError } from './focusPortalClient.ts';
 import { getEncryptionService } from './encryption.ts';
 import {
   processDayTransactions,
+  processDateRangeTransactions,
   type TransactionSyncConfig,
 } from './focusTransactionSyncHandler.ts';
 import { focusApiBaseUrl, fetchDatafeed as realFetchDatafeed } from './focusLynkClient.ts';
+import {
+  processBackfillBatch,
+  type BackfillBatchDeps,
+} from './focusBackfillBatch.ts';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-/** Number of days to backfill (one per call). */
-const TARGET_DAYS = 90;
+/** Maximum days span allowed for a custom date-range sync (§8.2). */
+const MAX_CUSTOM_RANGE_DAYS = 14;
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,6 +99,27 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
   environment: string | null;
 }
 
+/**
+ * CAS update chain: .update(data).eq(id).eq(restaurantId).eq('sync_cursor', readCursor).select()
+ * Returns { data: row[], error } — 0 rows means another tick already advanced it.
+ */
+interface CasUpdateResult {
+  data: unknown[] | null;
+  error: { message: string } | null;
+}
+
+interface CasEq3 {
+  select(): Promise<CasUpdateResult>;
+}
+
+interface CasEq2 {
+  eq(col: string, val: unknown): CasEq3;
+}
+
+interface CasEq1 {
+  eq(col: string, val: string): CasEq2;
+}
+
 /** Minimal Supabase service-role client surface (reads + writes). */
 export interface ServiceClient {
   from(table: string): {
@@ -111,9 +135,7 @@ export interface ServiceClient {
     };
     update(
       data: Record<string, unknown>,
-    ): {
-      eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }>;
-    };
+    ): CasEq1;
     upsert(
       data: Record<string, unknown>,
       options?: Record<string, unknown>,
@@ -123,6 +145,10 @@ export interface ServiceClient {
       };
     };
   };
+  rpc(
+    fn: string,
+    args: Record<string, unknown>,
+  ): Promise<{ data: unknown; error: { message: string } | null }>;
 }
 
 /**
@@ -150,16 +176,37 @@ export interface SyncDataDeps {
   fetchDatafeed?: Parameters<typeof processDayTransactions>[0]['fetchDatafeed'];
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Validate an ISO date string (YYYY-MM-DD). Returns a Date if valid, null otherwise.
+ */
+function parseIsoDate(s: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const d = new Date(s + 'T00:00:00Z');
+  if (isNaN(d.getTime())) return null;
+  return d;
+}
+
+/**
+ * Count the number of calendar days in the range [startDate, endDate] inclusive.
+ * Both are ISO YYYY-MM-DD strings.
+ */
+function rangeDays(startDate: string, endDate: string): number {
+  const start = new Date(startDate + 'T00:00:00Z');
+  const end = new Date(endDate + 'T00:00:00Z');
+  return Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 /**
  * Handle a POST /focus-sync-data request.
  *
- * Expected JSON body: { restaurantId: string }
+ * Expected JSON body: { restaurantId: string, startDate?: string, endDate?: string }
  * Required header:    Authorization: Bearer <jwt>
  *
- * Returns 200 { syncCursor, initialSyncDone, status } on success.
- * Returns 4xx for auth / input errors.
+ * Returns 200 JSON on success; 4xx for auth / input errors.
  */
 export async function handleSyncData(
   req: Request,
@@ -198,7 +245,11 @@ export async function handleSyncData(
     return jsonError(400, 'Invalid JSON body');
   }
 
-  const { restaurantId } = body as { restaurantId?: string };
+  const { restaurantId, startDate, endDate } = body as {
+    restaurantId?: string;
+    startDate?: string;
+    endDate?: string;
+  };
 
   if (!restaurantId) {
     return jsonError(400, 'Missing required field: restaurantId');
@@ -237,13 +288,8 @@ export async function handleSyncData(
   const tz = connRow.timezone || 'America/Chicago';
   const isLynkPath = !!connRow.api_key;
 
-  let status: 'ok' | 'empty' | 'error' = 'ok';
-  let newSyncCursor = connRow.sync_cursor;
-  let newInitialSyncDone = connRow.initial_sync_done;
-
   if (isLynkPath) {
     // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────
-    // Guard against partially-migrated or corrupted rows before decryption.
     if (!connRow.api_secret_encrypted || !connRow.store_id) {
       return jsonError(409, 'Focus POS API credentials are incomplete');
     }
@@ -264,52 +310,157 @@ export async function handleSyncData(
 
     const fetchDatafeedFn = deps.fetchDatafeed ?? realFetchDatafeed;
 
-    const txDeps = {
-      supabase: deps.serviceClient as unknown as Parameters<typeof processDayTransactions>[0]['supabase'],
-      fetchDatafeed: fetchDatafeedFn,
-    };
+    // ── Custom range (§8.2) ────────────────────────────────────────────────────
+    // Detected when either startDate or endDate is present in the body.
+    const hasCustomRange = startDate !== undefined || endDate !== undefined;
+    if (hasCustomRange) {
+      // Both fields required
+      if (!startDate || !endDate) {
+        return jsonError(
+          400,
+          'Both startDate and endDate are required for a custom range sync',
+        );
+      }
+      // Parse + validate
+      const startD = parseIsoDate(startDate);
+      const endD = parseIsoDate(endDate);
+      if (!startD || !endD) {
+        return jsonError(400, 'startDate and endDate must be valid ISO dates (YYYY-MM-DD)');
+      }
+      if (startD > endD) {
+        return jsonError(
+          400,
+          'Invalid range: startDate must be on or before endDate',
+        );
+      }
+      const span = rangeDays(startDate, endDate);
+      if (span > MAX_CUSTOM_RANGE_DAYS) {
+        return jsonError(
+          400,
+          `Custom range is limited to ${MAX_CUSTOM_RANGE_DAYS} days. Use the automatic 90-day import for a full backfill.`,
+        );
+      }
+
+      // Run synchronously (§8.2 — dropped waitUntil)
+      const rangeResult = await processDateRangeTransactions(
+        {
+          supabase: deps.serviceClient as unknown as Parameters<typeof processDateRangeTransactions>[0]['supabase'],
+          fetchDatafeed: fetchDatafeedFn,
+        },
+        txConfig,
+        startDate,
+        endDate,
+      );
+
+      return new Response(
+        JSON.stringify({
+          daysSynced: rangeResult.daysSynced,
+          status: rangeResult.status,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    // ── Read the cursor before the batch (for CAS) ─────────────────────────
+    const readCursor = connRow.sync_cursor;
 
     if (!connRow.initial_sync_done) {
-      // ── Backfill: one cursor day per call ────────────────────────────────────
-      const targetDate = subtractDays(todayInTz(tz, now), connRow.sync_cursor + 1);
+      // ── Backfill: small kick via processBackfillBatch (§8.3) ─────────────────
+      const batchDeps: BackfillBatchDeps = {
+        supabase: deps.serviceClient as unknown as BackfillBatchDeps['supabase'],
+        fetchDatafeed: fetchDatafeedFn,
+        processDayTransactions,
+      };
 
-      const result = await processDayTransactions(txDeps, txConfig, targetDate, {
-        skipUnifiedSalesSync: true, // deferred to the 6-hour cron job
+      const batchResult = await processBackfillBatch(batchDeps, txConfig, {
+        syncCursor: readCursor,
+        timezone: tz,
+        now,
+        budgetMs: 12_000,
+        maxDays: 5,
       });
 
-      // Map inprogress → treat as ok (don't advance cursor; will retry next call)
-      if (result.status !== 'inprogress') {
-        if (result.status === 'ok') {
-          status = 'ok';
-        } else if (result.status === 'empty') {
-          status = 'empty';
-        } else {
-          status = 'error';
-        }
-        if (result.status !== 'error') {
-          newSyncCursor = connRow.sync_cursor + 1;
-          if (newSyncCursor >= TARGET_DAYS) {
-            newInitialSyncDone = true;
-          }
-        }
+      // Build update payload
+      const updatePayload: Record<string, unknown> = {
+        sync_cursor: batchResult.syncCursor,
+        initial_sync_done: batchResult.initialSyncDone,
+        last_sync_time: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // On error, persist the stall details so the frontend can stop polling (§8.3)
+      if (batchResult.status === 'error') {
+        updatePayload.connection_status = 'error';
+        updatePayload.last_error = batchResult.lastError ?? 'Unknown backfill error';
+        updatePayload.last_error_at = new Date().toISOString();
       }
+
+      // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent
+      // ticks don't clobber each other (§8.1). 0 rows back = another tick already won.
+      await deps.serviceClient
+        .from('focus_connections')
+        .update(updatePayload)
+        .eq('id', connRow.id)
+        .eq('restaurant_id', restaurantId)
+        .eq('sync_cursor', readCursor)
+        .select();
+
+      return new Response(
+        JSON.stringify({
+          syncCursor: batchResult.syncCursor,
+          initialSyncDone: batchResult.initialSyncDone,
+          status: batchResult.status,
+          backgrounded: !batchResult.initialSyncDone,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
     } else {
       // ── Incremental: last 2 business days ────────────────────────────────────
       const [yesterday, dayBefore] = recentBusinessDays(tz, now);
+
+      const txDeps = {
+        supabase: deps.serviceClient as unknown as Parameters<typeof processDayTransactions>[0]['supabase'],
+        fetchDatafeed: fetchDatafeedFn,
+      };
 
       const [r1, r2] = await Promise.all([
         processDayTransactions(txDeps, txConfig, yesterday),
         processDayTransactions(txDeps, txConfig, dayBefore),
       ]);
 
+      let status: 'ok' | 'empty' | 'error' = 'ok';
       if (r1.status === 'error' || r2.status === 'error') {
         status = 'error';
       } else if (r1.status === 'empty' && r2.status === 'empty') {
         status = 'empty';
       }
+
+      await deps.serviceClient
+        .from('focus_connections')
+        .update({
+          last_sync_time: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', connRow.id)
+        .eq('restaurant_id', restaurantId)
+        .eq('sync_cursor', readCursor)
+        .select();
+
+      return new Response(
+        JSON.stringify({
+          syncCursor: connRow.sync_cursor,
+          initialSyncDone: connRow.initial_sync_done,
+          status,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
     }
   } else {
     // ── Legacy portal path (SSRS scrape) ──────────────────────────────────────
+
+    let status: 'ok' | 'empty' | 'error' = 'ok';
+    let newSyncCursor = connRow.sync_cursor;
+    let newInitialSyncDone = connRow.initial_sync_done;
 
     // ── 6. Auth gate: validate credentials before syncing ─────────────────────
 
@@ -328,7 +479,9 @@ export async function handleSyncData(
             updated_at: new Date().toISOString(),
           })
           .eq('id', connRow.id)
-          .eq('restaurant_id', restaurantId);
+          .eq('restaurant_id', restaurantId)
+          .eq('sync_cursor', connRow.sync_cursor)
+          .select();
         return new Response(
           JSON.stringify({
             syncCursor: connRow.sync_cursor,
@@ -361,7 +514,7 @@ export async function handleSyncData(
 
       if (result.status !== 'error') {
         newSyncCursor = connRow.sync_cursor + 1;
-        if (newSyncCursor >= TARGET_DAYS) {
+        if (newSyncCursor >= 90) {
           newInitialSyncDone = true;
         }
       }
@@ -380,31 +533,34 @@ export async function handleSyncData(
         status = 'empty';
       }
     }
+
+    // ── 9. Update connection state via service-role client ─────────────────────
+
+    await deps.serviceClient
+      .from('focus_connections')
+      .update({
+        sync_cursor: newSyncCursor,
+        initial_sync_done: newInitialSyncDone,
+        last_sync_time: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', connRow.id)
+      .eq('restaurant_id', restaurantId)
+      .eq('sync_cursor', connRow.sync_cursor)
+      .select();
+
+    // ── 10. Respond ────────────────────────────────────────────────────────────
+
+    return new Response(
+      JSON.stringify({
+        syncCursor: newSyncCursor,
+        initialSyncDone: newInitialSyncDone,
+        status,
+      }),
+      {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      },
+    );
   }
-
-  // ── 9. Update connection state via service-role client (review S3) ────────
-
-  await deps.serviceClient
-    .from('focus_connections')
-    .update({
-      sync_cursor: newSyncCursor,
-      initial_sync_done: newInitialSyncDone,
-      last_sync_time: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', connRow.id);
-
-  // ── 10. Respond ───────────────────────────────────────────────────────────
-
-  return new Response(
-    JSON.stringify({
-      syncCursor: newSyncCursor,
-      initialSyncDone: newInitialSyncDone,
-      status,
-    }),
-    {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    },
-  );
 }

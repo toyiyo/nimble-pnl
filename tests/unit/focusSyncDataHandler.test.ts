@@ -22,7 +22,17 @@
  *  - Manager role also succeeds
  *  - Status propagated from processReportDay (ok / empty / error)
  *
- * Design ref: plan Task 9; spec §8 (focus-sync-data); review S3, S4, S9.
+ *  B3 additions (spec §5.2, §8.1, §8.2, §8.3):
+ *  - Lynk backfill: delegates to processBackfillBatch(budgetMs=12_000, maxDays=5)
+ *  - Lynk backfill: cursor write uses CAS (§8.1) — filters eq('sync_cursor', readCursor)
+ *  - Lynk backfill error: writes connection_status='error' + last_error (§8.3)
+ *  - Lynk backfill: response includes backgrounded=true when not done
+ *  - Custom range: valid ≤14d → processDateRangeTransactions, returns {daysSynced,status}
+ *  - Custom range: span>14 → 400
+ *  - Custom range: start>end → 400
+ *  - Custom range: unparseable date → 400
+ *
+ * Design ref: plan B3; spec §5.2 / §8.1 / §8.2 / §8.3.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -43,8 +53,36 @@ vi.mock('../../supabase/functions/_shared/focusPortalClient', () => ({
 vi.mock('../../supabase/functions/_shared/encryption', () => ({
   getEncryptionService: vi.fn().mockResolvedValue({
     encrypt: vi.fn().mockResolvedValue('encrypted-pw'),
-    decrypt: vi.fn().mockResolvedValue('test-pass'),
+    decrypt: vi.fn().mockResolvedValue('decrypted-api-secret'),
   }),
+}));
+
+// ── Mock focusBackfillBatch (B3) ──────────────────────────────────────────────
+
+const mockProcessBackfillBatch = vi.fn();
+
+vi.mock('../../supabase/functions/_shared/focusBackfillBatch', () => ({
+  processBackfillBatch: (...args: unknown[]) => mockProcessBackfillBatch(...args),
+  TARGET_DAYS: 90,
+}));
+
+// ── Mock focusTransactionSyncHandler (B3 custom-range) ────────────────────────
+
+const mockProcessDateRangeTransactions = vi.fn();
+
+vi.mock('../../supabase/functions/_shared/focusTransactionSyncHandler', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../supabase/functions/_shared/focusTransactionSyncHandler')>();
+  return {
+    ...original,
+    processDateRangeTransactions: (...args: unknown[]) => mockProcessDateRangeTransactions(...args),
+  };
+});
+
+// ── Mock focusLynkClient ──────────────────────────────────────────────────────
+
+vi.mock('../../supabase/functions/_shared/focusLynkClient', () => ({
+  focusApiBaseUrl: vi.fn().mockReturnValue('https://pos-api.focuspos.com'),
+  fetchDatafeed: vi.fn(),
 }));
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -94,6 +132,34 @@ const MOCK_CONNECTION_INCREMENTAL = {
   sync_cursor: 90,
 };
 
+/** Fake focus_connections DB row — Lynk API path, backfill in progress (cursor=3) */
+const MOCK_CONNECTION_LYNK_BACKFILL = {
+  id: 'conn-uuid-2',
+  restaurant_id: RESTAURANT_ID,
+  report_base_url: null,
+  report_path: null,
+  db_server: null,
+  db_catalog: null,
+  report_user_id: null,
+  store_id: 'csc-24329-guid',
+  revenue_center: null,
+  timezone: 'America/Chicago',
+  initial_sync_done: false,
+  sync_cursor: 3,
+  username: null,
+  password_encrypted: null,
+  api_key: 'test-api-key',
+  api_secret_encrypted: 'enc-secret',
+  environment: 'production',
+};
+
+/** Fake focus_connections DB row — Lynk API path, incremental (done) */
+const MOCK_CONNECTION_LYNK_INCREMENTAL = {
+  ...MOCK_CONNECTION_LYNK_BACKFILL,
+  initial_sync_done: true,
+  sync_cursor: 90,
+};
+
 // ── Mock builders ─────────────────────────────────────────────────────────────
 
 function makeUserClientMock(opts: { user?: { id: string } | null; role?: string | null }) {
@@ -129,8 +195,11 @@ function makeServiceClientMock(opts: { connection?: MockConnection } = {}) {
   const selectMock = vi.fn().mockReturnValue({ eq: restaurantIdMock });
 
   // UPDATE focus_connections (for sync_cursor / initial_sync_done / last_sync_time)
-  // Chain supports two .eq() calls: .eq('id', ...).eq('restaurant_id', ...)
-  const eqUpdate2Mock = vi.fn().mockResolvedValue({ data: null, error: null });
+  // CAS chain supports three .eq() calls: .eq('id').eq('restaurant_id').eq('sync_cursor', readCursor)
+  // Last .eq returns { data: [{id}], error: null } (1 row = CAS success); expose select() for CAS check.
+  const casSelectMock = vi.fn().mockResolvedValue({ data: [{ id: 'conn-uuid' }], error: null });
+  const eqUpdate3Mock = vi.fn().mockReturnValue({ select: casSelectMock });
+  const eqUpdate2Mock = vi.fn().mockReturnValue({ eq: eqUpdate3Mock });
   const eqUpdateMock = vi.fn().mockReturnValue({ eq: eqUpdate2Mock });
   const updateMock = vi.fn().mockReturnValue({ eq: eqUpdateMock });
 
@@ -156,6 +225,9 @@ function makeServiceClientMock(opts: { connection?: MockConnection } = {}) {
       selectMock,
       updateMock,
       eqUpdateMock,
+      eqUpdate2Mock,
+      eqUpdate3Mock,
+      casSelectMock,
       upsertMock,
       singleMock,
     },
@@ -538,5 +610,288 @@ describe('handleSyncData', () => {
     // DB update payload must also have sync_cursor=5 (unchanged)
     const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
     expect(updateArg.sync_cursor).toBe(5);
+  });
+
+  // ── B3: Lynk path — backfill via processBackfillBatch ────────────────────
+
+  describe('Lynk backfill path (B3): delegates to processBackfillBatch', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      // Default: batch advances from cursor=3 to 8 (5 days, not done)
+      mockProcessBackfillBatch.mockResolvedValue({
+        syncCursor: 8,
+        initialSyncDone: false,
+        daysProcessed: 5,
+        status: 'ok',
+      });
+    });
+
+    it('calls processBackfillBatch with budgetMs=12_000 and maxDays=5', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      await handleSyncData(req, deps);
+
+      expect(mockProcessBackfillBatch).toHaveBeenCalledOnce();
+      const [, , opts] = mockProcessBackfillBatch.mock.calls[0] as [unknown, unknown, Record<string, unknown>];
+      expect(opts.budgetMs).toBe(12_000);
+      expect(opts.maxDays).toBe(5);
+    });
+
+    it('passes the read syncCursor to processBackfillBatch', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      await handleSyncData(req, deps);
+
+      const [, , opts] = mockProcessBackfillBatch.mock.calls[0] as [unknown, unknown, Record<string, unknown>];
+      expect(opts.syncCursor).toBe(3); // MOCK_CONNECTION_LYNK_BACKFILL.sync_cursor
+    });
+
+    it('returns 200 with syncCursor, initialSyncDone, status, backgrounded=true (not done)', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.syncCursor).toBe(8);
+      expect(body.initialSyncDone).toBe(false);
+      expect(body.status).toBe('ok');
+      expect(body.backgrounded).toBe(true);
+    });
+
+    it('returns backgrounded=false when initialSyncDone=true', async () => {
+      mockProcessBackfillBatch.mockResolvedValue({
+        syncCursor: 90,
+        initialSyncDone: true,
+        daysProcessed: 5,
+        status: 'ok',
+      });
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      const body = await res.json();
+      expect(body.backgrounded).toBe(false);
+    });
+
+    it('writes cursor update with CAS .eq("sync_cursor", readCursor) (§8.1)', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      await handleSyncData(req, deps);
+
+      // The third .eq in the CAS chain must be called with ('sync_cursor', 3)
+      const thirdEqCalls = mocks.eqUpdate3Mock.mock.calls as [string, unknown][];
+      const casSyncCursorCall = thirdEqCalls.find(([col]) => col === 'sync_cursor');
+      expect(casSyncCursorCall).toBeDefined();
+      expect(casSyncCursorCall![1]).toBe(3); // readCursor from the connection row
+    });
+
+    it('CAS update payload contains the new syncCursor from processBackfillBatch', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      await handleSyncData(req, deps);
+
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.sync_cursor).toBe(8); // returned from mock
+      expect(typeof updateArg.last_sync_time).toBe('string');
+    });
+  });
+
+  // ── B3: Lynk backfill error → connection_status='error' (§8.3) ────────────
+
+  describe('Lynk backfill path (B3): on batch error writes connection_status', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockProcessBackfillBatch.mockResolvedValue({
+        syncCursor: 3,
+        initialSyncDone: false,
+        daysProcessed: 0,
+        status: 'error',
+        lastError: 'Datafeed fetch failed: timeout',
+      });
+    });
+
+    it('writes connection_status="error" and last_error to focus_connections on batch error', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('error');
+
+      // The update should include connection_status + last_error
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.connection_status).toBe('error');
+      expect(typeof updateArg.last_error).toBe('string');
+      expect(updateArg.last_error).toContain('timeout');
+    });
+
+    it('does NOT advance the cursor on batch error (cursor stays at readCursor)', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      const body = await res.json();
+      expect(body.syncCursor).toBe(3); // un-advanced
+    });
+  });
+
+  // ── B3: Custom range — valid (≤14 days) → processDateRangeTransactions ─────
+
+  describe('Lynk custom range (B3): valid range calls processDateRangeTransactions', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockProcessDateRangeTransactions.mockResolvedValue({
+        status: 'ok',
+        daysSynced: 3,
+      });
+    });
+
+    it('returns 200 {daysSynced, status} for a valid 3-day range', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: '2026-06-03' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.daysSynced).toBe(3);
+      expect(body.status).toBe('ok');
+    });
+
+    it('calls processDateRangeTransactions with the correct startDate and endDate', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: '2026-06-03' },
+      });
+      await handleSyncData(req, deps);
+
+      expect(mockProcessDateRangeTransactions).toHaveBeenCalledOnce();
+      const [, , start, end] = mockProcessDateRangeTransactions.mock.calls[0] as [unknown, unknown, string, string];
+      expect(start).toBe('2026-06-01');
+      expect(end).toBe('2026-06-03');
+    });
+
+    it('custom range works even when initial_sync_done=false (backfilling)', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-10', endDate: '2026-06-12' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.daysSynced).toBe(3);
+    });
+  });
+
+  // ── B3: Custom range — invalid → 400 (§8.2) ─────────────────────────────────
+
+  describe('Lynk custom range (B3): invalid range → 400', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('returns 400 when span exceeds 14 days', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: '2026-06-20' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/14/);
+    });
+
+    it('returns 400 when start > end', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-10', endDate: '2026-06-05' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(400);
+      const body = await res.json();
+      expect(body.error).toMatch(/start.*end|end.*start|invalid range/i);
+    });
+
+    it('returns 400 when startDate is not a valid date string', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: 'not-a-date', endDate: '2026-06-10' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 when endDate is not a valid date string', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: 'bad' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 when startDate provided but endDate missing', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(400);
+    });
+
+    it('allows exactly 14 days span (boundary: not 400)', async () => {
+      mockProcessDateRangeTransactions.mockResolvedValue({ status: 'ok', daysSynced: 14 });
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      // 2026-06-01 to 2026-06-14 = 14 days inclusive
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: '2026-06-14' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+    });
   });
 });

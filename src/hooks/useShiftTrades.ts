@@ -206,7 +206,7 @@ export const useCreateShiftTrade = () => {
 
       return data;
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
       toast({

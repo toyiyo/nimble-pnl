@@ -61,7 +61,7 @@ type ConfirmTarget =
   | { type: 'bulk'; ids: string[] }
   | null;
 
-function renderClaimButtonContent(action: ActionType, isPending: boolean) {
+function renderConfirmButtonContent(action: ActionType, isPending: boolean) {
   if (isPending) {
     return (
       <>
@@ -722,7 +722,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                   variant={claimActionType === 'approve' ? 'default' : 'destructive'}
                   className="h-9 px-4 rounded-lg text-[13px] font-medium"
                 >
-                  {renderClaimButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
+                  {renderConfirmButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
                 </Button>
               </DialogFooter>
             </div>
@@ -863,30 +863,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                   variant={actionType === 'approve' ? 'default' : 'destructive'}
                   className="h-9 px-4 rounded-lg text-[13px] font-medium"
                 >
-                  {(() => {
-                    if (isApproving || isRejecting) {
-                      return (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Processing...
-                        </>
-                      );
-                    }
-                    if (actionType === 'approve') {
-                      return (
-                        <>
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Approve
-                        </>
-                      );
-                    }
-                    return (
-                      <>
-                        <XCircle className="mr-2 h-4 w-4" />
-                        Reject
-                      </>
-                    );
-                  })()}
+                  {renderConfirmButtonContent(actionType, isApproving || isRejecting)}
                 </Button>
               </DialogFooter>
             </div>

@@ -31,7 +31,10 @@ Phase 4-9: Autonomous workflow (dev-build-and-ship) — launched
   - duplicate RemoveButton JSX (major): extracted shared RemoveButton component
   - StalePendingRow typography (minor): text-sm/text-xs → text-[14px]/text-[12px]
   - formatDateTime timezone RangeError (security/minor): added Intl probe with UTC fallback
-- [ ] Phases 7c-9 (CodeRabbit review, verify, PR) — pending
+- [x] Phase 7c (CodeRabbit review iter 1): 2 findings fixed — c356c674
+  - major: missing restaurant_id filter on delete query → added .eq('restaurant_id', restaurantId)
+  - minor: progress.md fix count mismatch → corrected to 4
+- [ ] Phases 8-9 (verify, PR) — pending
 
 ## Preflight (Phase 4 gate)
 - gh: authenticated (jdelgado2002, repo+workflow scopes)

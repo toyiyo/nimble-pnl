@@ -3,8 +3,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { minutesToCompact } from '@/lib/shiftCoverage';
-import { isoToLocalMinutes } from '@/lib/shiftCoverage';
+import { minutesToCompact, isoToLocalMinutes } from '@/lib/shiftCoverage';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
 import type { Shift } from '@/types/scheduling';
 
@@ -17,8 +16,6 @@ interface TimelineShiftPopoverProps {
   dateStr: string;
   /** Called when the popover is closed or dismissed. */
   onClose: () => void;
-  /** The trigger element (the bar button that was clicked). */
-  trigger?: React.ReactNode;
 }
 
 /**

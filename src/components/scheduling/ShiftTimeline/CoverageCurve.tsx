@@ -52,7 +52,6 @@ export function CoverageCurve({
   // Step function: each sample occupies from its minute to the next sample's
   // minute.  We close the path back along the bottom baseline.
   const coveragePath = (() => {
-    if (coverage.length === 0) return '';
     const parts: string[] = [];
     const baseline = height;
 

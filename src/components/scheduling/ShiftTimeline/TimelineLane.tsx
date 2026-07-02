@@ -1,12 +1,10 @@
-import type { TimelineLane as TimelineLaneModel, TimelineWindow } from './useTimelineModel';
+import type { TimelineLane as TimelineLaneModel } from './useTimelineModel';
 import type { Shift } from '@/types/scheduling';
 import { TimelineBar } from './TimelineBar';
 
 interface TimelineLaneProps {
   /** Lane data from useTimelineModel (label, hours, bars). */
   lane: TimelineLaneModel;
-  /** Derived time window for the selected day. */
-  window: TimelineWindow;
   /** Maps a minute value to a horizontal percent within [0, 100]. */
   minToPct: (min: number) => number;
   /** Called when the user clicks a shift bar. */
@@ -24,7 +22,7 @@ const ROW_HEIGHT_PX = 28;
  *  - Relative-positioned plot region whose height is `(maxRow + 1) × ROW_HEIGHT_PX`.
  *  - Each `TimelineBar` is placed at `top: bar.row × ROW_HEIGHT_PX`.
  */
-export function TimelineLane({ lane, window, minToPct, onSelect }: TimelineLaneProps) {
+export function TimelineLane({ lane, minToPct, onSelect }: TimelineLaneProps) {
   const { label, hours, bars } = lane;
   const maxRow = bars.reduce((max, b) => Math.max(max, b.row), 0);
   const plotHeight = (maxRow + 1) * ROW_HEIGHT_PX;
@@ -58,7 +56,6 @@ export function TimelineLane({ lane, window, minToPct, onSelect }: TimelineLaneP
           >
             <TimelineBar
               bar={bar}
-              window={window}
               minToPct={minToPct}
               onSelect={onSelect}
             />

@@ -129,7 +129,6 @@ export function ShiftTimelineTab({
   const plotMinWidth = spanHours * MIN_PX_PER_HOUR;
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
-  const handleShiftSelect = useCallback((shift: Shift) => setActiveShift(shift), []);
   const handlePopoverClose = useCallback(() => setActiveShift(null), []);
 
   // ── Loading state ──────────────────────────────────────────────────────────
@@ -264,9 +263,8 @@ export function ShiftTimelineTab({
               <TimelineLane
                 key={lane.key}
                 lane={lane}
-                window={model.window}
                 minToPct={minToPct}
-                onSelect={handleShiftSelect}
+                onSelect={setActiveShift}
               />
             ))}
           </div>

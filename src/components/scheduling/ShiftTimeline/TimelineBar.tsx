@@ -1,12 +1,10 @@
 import { cn } from '@/lib/utils';
-import type { TimelineBar as TimelineBarModel, TimelineWindow } from './useTimelineModel';
+import type { TimelineBar as TimelineBarModel } from './useTimelineModel';
 import type { Shift } from '@/types/scheduling';
 
 interface TimelineBarProps {
   /** The bar data (shift, geometry, label, color) from useTimelineModel. */
   bar: TimelineBarModel;
-  /** Derived time window for the selected day (used for width/position calc). */
-  window: TimelineWindow;
   /** Maps a minute value to a horizontal percent within [0, 100]. */
   minToPct: (min: number) => number;
   /** Called when the user clicks or activates the bar. */

@@ -34,7 +34,15 @@ Phase 4-9: Autonomous workflow (dev-build-and-ship) — launched
 - [x] Phase 7c (CodeRabbit review iter 1): 2 findings fixed — c356c674
   - major: missing restaurant_id filter on delete query → added .eq('restaurant_id', restaurantId)
   - minor: progress.md fix count mismatch → corrected to 4
-- [ ] Phases 8-9 (verify, PR) — pending
+- [x] Phase 7c (CodeRabbit review iter 2): skipped — billing/rate-limit reached (resets in ~7 min); CodeRabbit GitHub bot will still review the PR in Phase 9d
+- [x] Phase 8 (Verify): all checks run — commit 89feacd4 (lint dep fix)
+  - npm run test: 385 passed, 1 skipped (0 failures in our code)
+  - npm run typecheck: PASSED (no type errors)
+  - npm run lint: pre-existing errors only (our modified files all clean); fixed react-hooks/exhaustive-deps warning in handleConfirmRemove
+  - npm run build: ✓ built in 51.84s
+  - npm run test:db: 1430/1431 passed; 1 pre-existing failure (enqueue_weekly_brief_jobs expects 0 restaurants but DB has 140 — not introduced by our changes)
+  - npm run test:e2e: 145 passed, 12 skipped, 2 failed (manual-sale-tip-not-doubled + scheduling-conflicts — pre-existing, our test files not modified)
+- [ ] Phase 9 (PR) — pending
 
 ## Preflight (Phase 4 gate)
 - gh: authenticated (jdelgado2002, repo+workflow scopes)

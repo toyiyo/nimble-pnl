@@ -180,6 +180,14 @@ async function processConnection(
 
   if (isLynkPath) {
     // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────
+
+    // B5 skip guard (design §8.7): Lynk backfill is owned by the 5-minute
+    // focus-backfill-sync cron. The 6-h bulk-sync must NOT also advance Lynk
+    // backfill rows — that would race the cron on sync_cursor.
+    if (!row.initial_sync_done) {
+      return { newSyncCursor: row.sync_cursor, newInitialSyncDone: row.initial_sync_done };
+    }
+
     // Guard against partially-migrated or corrupted rows — both secrets required.
     if (!row.api_secret_encrypted || !row.store_id) {
       throw new Error('Focus POS API credentials are incomplete (missing api_secret_encrypted or store_id)');

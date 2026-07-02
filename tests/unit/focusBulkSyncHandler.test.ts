@@ -44,6 +44,26 @@ vi.mock('../../supabase/functions/_shared/encryption', () => ({
   }),
 }));
 
+// ── Mock Lynk transaction handler (B5: bulk-sync skip guard) ────────────────
+// processDayTransactions is called by the Lynk path in processConnection.
+// Mocked so tests can assert call counts without network.
+// vi.mock factories are hoisted, so we cannot reference outer const here —
+// use vi.fn() inline and retrieve via vi.mocked() in tests.
+
+vi.mock('../../supabase/functions/_shared/focusTransactionSyncHandler', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../supabase/functions/_shared/focusTransactionSyncHandler')>();
+  return {
+    ...original,
+    processDayTransactions: vi.fn().mockResolvedValue({ status: 'ok' }),
+  };
+});
+
+// ── Mock Lynk client (focusApiBaseUrl + fetchDatafeed) ───────────────────────
+vi.mock('../../supabase/functions/_shared/focusLynkClient', () => ({
+  focusApiBaseUrl: vi.fn().mockReturnValue('https://api.focuspos.com'),
+  fetchDatafeed: vi.fn().mockResolvedValue({ status: 'ok' }),
+}));
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const RESTAURANT_ID_1 = '00000000-0000-0000-0000-000000000001';
@@ -77,6 +97,38 @@ const MOCK_CONN_BACKFILL = {
   initial_sync_done: false,
   sync_cursor: 5,
   last_sync_time: null,
+};
+
+/** A Lynk API row that is still backfilling (initial_sync_done=false, api_key set). */
+const MOCK_LYNK_BACKFILLING = {
+  id: 'conn-lynk-backfill',
+  restaurant_id: RESTAURANT_ID_2,
+  report_base_url: null,
+  report_path: null,
+  db_server: null,
+  db_catalog: null,
+  report_user_id: null,
+  store_id: 'store-001',
+  revenue_center: '',
+  timezone: 'America/Chicago',
+  initial_sync_done: false,
+  sync_cursor: 10,
+  last_sync_time: null,
+  username: null,
+  password_encrypted: null,
+  api_key: 'lynk-api-key',
+  api_secret_encrypted: 'encrypted-secret-for-lynk',
+  environment: 'production',
+};
+
+/** A Lynk API row that has completed backfill (initial_sync_done=true, api_key set). */
+const MOCK_LYNK_INCREMENTAL = {
+  ...MOCK_LYNK_BACKFILLING,
+  id: 'conn-lynk-incremental',
+  restaurant_id: RESTAURANT_ID_1,
+  initial_sync_done: true,
+  sync_cursor: 90,
+  last_sync_time: '2026-07-01T00:00:00Z',
 };
 
 /** Minimal valid Revenue Center HTML — enough for the real parser to succeed. */
@@ -549,5 +601,78 @@ describe('handleBulkSync', () => {
     const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
     // Cursor must stay at 5 (MOCK_CONN_BACKFILL.sync_cursor) — not incremented
     expect(updateArg.sync_cursor).toBe(MOCK_CONN_BACKFILL.sync_cursor);
+  });
+
+  // ── B5: focus-bulk-sync cedes Lynk backfill to focus-backfill-sync cron ──────
+  //
+  // The 6-h bulk-sync must NOT advance Lynk backfill rows (that's the 5-min
+  // focus-backfill-sync cron's job). The skip guard sits at the top of the
+  // isLynkPath block before any decrypt / datafeed fetch.
+
+  describe('B5 — bulk-sync cedes Lynk backfill', () => {
+    // Access the hoisted mock via vi.mocked so beforeEach can clear it.
+    let mockedProcessDayTransactions: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      mockedProcessDayTransactions = vi.mocked(txModule.processDayTransactions);
+      mockedProcessDayTransactions.mockClear();
+      // Ensure it resolves successfully for incremental tests
+      mockedProcessDayTransactions.mockResolvedValue({ status: 'ok' });
+    });
+
+    it('skips a backfilling Lynk row: processDayTransactions is NOT called and sync_cursor is unchanged', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // processDayTransactions must NOT have been called
+      expect(mockedProcessDayTransactions).not.toHaveBeenCalled();
+
+      // The connection row must still be updated (last_sync_time), but sync_cursor
+      // must remain at its original value (unchanged).
+      expect(mocks.updateMock).toHaveBeenCalledTimes(1);
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.sync_cursor).toBe(MOCK_LYNK_BACKFILLING.sync_cursor);
+      expect(updateArg.initial_sync_done).toBe(false);
+    });
+
+    it('counts a skipped backfilling Lynk row as processed (no error)', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      const res = await handleBulkSync(req, deps);
+
+      const body = await res.json();
+      expect(body.processed).toBe(1);
+      expect(body.errors).toHaveLength(0);
+    });
+
+    it('still processes an incremental Lynk row (initial_sync_done=true): processDayTransactions IS called', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // Incremental path calls processDayTransactions twice (last 2 business days)
+      expect(mockedProcessDayTransactions).toHaveBeenCalledTimes(2);
+    });
+
+    it('still processes a portal backfilling row (no api_key): fetch IS called', async () => {
+      const { deps, fetchMock } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_CONN_BACKFILL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // Portal path calls fetch (for processReportDay)
+      expect(fetchMock).toHaveBeenCalled();
+      // processDayTransactions is NOT called for portal rows
+      expect(mockedProcessDayTransactions).not.toHaveBeenCalled();
+    });
   });
 });

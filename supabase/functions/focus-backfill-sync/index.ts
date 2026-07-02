@@ -36,6 +36,16 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
+    // Fail closed: if either config var is absent the Bearer gate would pass
+    // timingSafeEqual('', '') — reject immediately before creating any client.
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('focus-backfill-sync: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+      return new Response(JSON.stringify({ error: 'Internal server error' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Service-role client: used for all reads + writes (bypasses RLS).
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 

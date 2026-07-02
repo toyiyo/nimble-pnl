@@ -206,7 +206,7 @@ describe('FocusSync B6 — custom mode without date → destructive toast, no sy
     mockTriggerManualSync.mockResolvedValue({ daysSynced: 0, status: 'ok' });
   });
 
-  it('shows destructive toast when custom mode but no date range, and does not call triggerManualSync', async () => {
+  it('disables Sync Now when custom mode has no date range, preventing triggerManualSync', async () => {
     // Note: the SyncButton itself is disabled when dateRange is missing in custom mode,
     // so the click never reaches handleSync. Verify the button is disabled as the guard.
     renderFocusSync();

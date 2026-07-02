@@ -227,7 +227,34 @@ async function processConnection(
     ]);
     const failed = results.find((r) => r.status === 'error');
     if (failed?.status === 'error') {
-      throw new Error(failed.error ?? 'Focus transaction incremental sync failed');
+      const message = failed.error ?? 'Focus transaction incremental sync failed';
+      // Persist error state so the frontend can surface it (mirrors legacy path and
+      // focusBackfillSyncHandler behavior). Best-effort: don't await, never throw.
+      deps.serviceClient
+        .from('focus_connections')
+        .update({
+          connection_status: 'error',
+          last_error: message,
+          last_error_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id)
+        .then(({ error: updateErr }: { error: { message: string } | null }) => {
+          if (updateErr) {
+            console.warn(
+              `focus-bulk-sync: best-effort error-state write failed for ${row.restaurant_id}:`,
+              updateErr.message,
+            );
+          }
+        })
+        .catch((e: unknown) => {
+          console.warn(
+            `focus-bulk-sync: best-effort error-state write threw for ${row.restaurant_id}:`,
+            e instanceof Error ? e.message : String(e),
+          );
+        });
+      throw new Error(message);
     }
   } else {
     // ── Legacy portal path (SSRS scrape) ──────────────────────────────────────
@@ -390,6 +417,22 @@ export async function handleBulkSync(
       // Do not increment result.processed on error — processed means succeeded.
       // The caller can compute attempted = processed + errors.length.
       result.errors.push(`${row.restaurant_id}: ${message}`);
+      // Bump last_sync_time even on failure so this connection doesn't get
+      // re-selected ahead of healthy connections on every run (round-robin
+      // ORDER BY last_sync_time ASC starvation prevention). Best-effort only.
+      deps.serviceClient
+        .from('focus_connections')
+        .update({ last_sync_time: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id)
+        .then(({ error: tsErr }: { error: { message: string } | null }) => {
+          if (tsErr) {
+            console.warn(`focus-bulk-sync: last_sync_time bump failed for ${row.restaurant_id}:`, tsErr.message);
+          }
+        })
+        .catch((e: unknown) => {
+          console.warn(`focus-bulk-sync: last_sync_time bump threw for ${row.restaurant_id}:`, e instanceof Error ? e.message : String(e));
+        });
     }
   }
 

@@ -301,8 +301,15 @@ export async function handleSyncData(
     }
 
     // Decrypt the API secret and build the transaction sync config.
+    // Wrap in try/catch: a corrupted ciphertext or key rotation must return a
+    // clean JSON error (Edge Function convention) instead of an uncaught throw.
     const encSvc = await getEncryptionService();
-    const apiSecret = await encSvc.decrypt(connRow.api_secret_encrypted);
+    let apiSecret: string;
+    try {
+      apiSecret = await encSvc.decrypt(connRow.api_secret_encrypted!);
+    } catch {
+      return jsonError(500, 'Failed to decrypt Focus POS API credentials');
+    }
 
     const txConfig: TransactionSyncConfig = {
       restaurantId,
@@ -456,12 +463,25 @@ export async function handleSyncData(
       }
 
       const nowIso = now.toISOString();
+
+      // Build update payload: always refresh last_sync_time; also persist error
+      // state when incremental sync fails so the frontend / ops can surface it.
+      const incUpdatePayload: Record<string, unknown> = {
+        last_sync_time: nowIso,
+        updated_at: nowIso,
+      };
+      if (status === 'error') {
+        incUpdatePayload.connection_status = 'error';
+        incUpdatePayload.last_error =
+          (r1.status === 'error' ? r1.error : undefined) ??
+          (r2.status === 'error' ? r2.error : undefined) ??
+          'Incremental sync failed';
+        incUpdatePayload.last_error_at = nowIso;
+      }
+
       const { error: casIncErr } = await deps.serviceClient
         .from('focus_connections')
-        .update({
-          last_sync_time: nowIso,
-          updated_at: nowIso,
-        })
+        .update(incUpdatePayload)
         .eq('id', connRow.id)
         .eq('restaurant_id', restaurantId)
         .eq('sync_cursor', readCursor)

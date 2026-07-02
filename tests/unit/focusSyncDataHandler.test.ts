@@ -40,6 +40,7 @@ import {
   handleSyncData,
   type SyncDataDeps,
 } from '../../supabase/functions/_shared/focusSyncDataHandler';
+import * as focusLynkClient from '../../supabase/functions/_shared/focusLynkClient';
 
 // ── Mock portal client & encryption ──────────────────────────────────────────
 
@@ -892,6 +893,47 @@ describe('handleSyncData', () => {
       const res = await handleSyncData(req, deps);
 
       expect(res.status).toBe(200);
+    });
+  });
+
+  // ── Lynk incremental: error state persisted to connection_status ─────────────
+
+  describe('Lynk incremental path: error persisted to connection_status (9d fix)', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      // Make fetchDatafeed throw so processDayTransactions returns status='error'
+      vi.mocked(focusLynkClient.fetchDatafeed).mockRejectedValue(
+        new Error('Lynk API timeout'),
+      );
+    });
+
+    it('writes connection_status="error" and last_error when incremental sync fails', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.status).toBe('error');
+
+      // The CAS update payload must include connection_status and last_error
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.connection_status).toBe('error');
+      expect(typeof updateArg.last_error).toBe('string');
+      expect(updateArg.last_error_at).toBeDefined();
+    });
+
+    it('returns status=error in body when incremental sync fails', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      const body = await res.json();
+      expect(body.status).toBe('error');
     });
   });
 });

@@ -674,5 +674,57 @@ describe('handleBulkSync', () => {
       // processDayTransactions is NOT called for portal rows
       expect(mockedProcessDayTransactions).not.toHaveBeenCalled();
     });
+
+    it('persists connection_status="error" when Lynk incremental processDayTransactions fails (9d fix)', async () => {
+      // Make the incremental sync fail on both days
+      mockedProcessDayTransactions.mockResolvedValue({ status: 'error', error: 'Lynk API 503' });
+
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // Best-effort error-state write fires asynchronously; wait for microtasks
+      await Promise.resolve();
+
+      // The best-effort update must write connection_status='error'
+      const updateCalls = mocks.updateMock.mock.calls as [Record<string, unknown>][];
+      const errorWrite = updateCalls.find(
+        ([payload]: [Record<string, unknown>]) => payload.connection_status === 'error',
+      );
+      expect(errorWrite).toBeDefined();
+      const errorPayload = errorWrite![0] as Record<string, unknown>;
+      expect(typeof errorPayload.last_error).toBe('string');
+    });
+
+    it('bumps last_sync_time on failed connections to prevent round-robin starvation (9d fix)', async () => {
+      // Make the incremental sync fail so the catch block runs
+      mockedProcessDayTransactions.mockResolvedValue({ status: 'error', error: 'Network error' });
+
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      const res = await handleBulkSync(req, deps);
+
+      // The sync counts as an error, not processed
+      const body = await res.json();
+      expect(body.processed).toBe(0);
+      expect(body.errors.length).toBeGreaterThan(0);
+
+      // last_sync_time bump fires asynchronously; wait for microtasks
+      await Promise.resolve();
+
+      // update must have been called at least once for the starvation-prevention bump
+      expect(mocks.updateMock).toHaveBeenCalled();
+      const updateCalls = mocks.updateMock.mock.calls as [Record<string, unknown>][];
+      const bumpCall = updateCalls.find(
+        ([payload]: [Record<string, unknown>]) =>
+          typeof payload.last_sync_time === 'string' &&
+          payload.connection_status === undefined,
+      );
+      expect(bumpCall).toBeDefined();
+    });
   });
 });

@@ -113,6 +113,10 @@ const parser = new XMLParser({
   ignoreAttributes: true,
   parseTagValue: false, // keep every leaf as a string; we parse numbers ourselves
   trimValues: true,
+  // Disable entity expansion to prevent XXE / DoS via crafted DTD entities.
+  // Focus datafeed XML uses no custom entities; disabling is safe and required for
+  // security on untrusted server-side XML input.
+  processEntities: false,
 });
 
 /* eslint-disable @typescript-eslint/no-explicit-any */

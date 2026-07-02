@@ -19,7 +19,7 @@
 --   36:    order-level ON DELETE CASCADE (focus_order_items removed when parent order deleted)
 
 BEGIN;
-SELECT plan(36);
+SELECT plan(38);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup
@@ -286,8 +286,9 @@ SELECT throws_ok(
 );
 
 -- ─────────────────────────────────────────────────────────────────────
--- 35: card_last4 CHECK — rejects non-4-digit values (PCI boundary)
+-- 35-37: card_last4 CHECK — rejects non-4-digit values (PCI boundary)
 -- Migration: 20260701150000_focus_transactions_integrity.sql
+-- Three cases: too long (5 digits), too short (3 digits), non-digit chars.
 -- ─────────────────────────────────────────────────────────────────────
 SELECT throws_ok(
   $$INSERT INTO public.focus_payments (restaurant_id, business_date, focus_check_id, payment_key, amount, card_last4)
@@ -296,8 +297,22 @@ SELECT throws_ok(
   'focus_payments.card_last4 rejects more than 4 digits'
 );
 
+SELECT throws_ok(
+  $$INSERT INTO public.focus_payments (restaurant_id, business_date, focus_check_id, payment_key, amount, card_last4)
+    VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-06-29', 'CHK-1', 'PK-BAD2', 0, '123')$$,
+  NULL, NULL,
+  'focus_payments.card_last4 rejects fewer than 4 digits'
+);
+
+SELECT throws_ok(
+  $$INSERT INTO public.focus_payments (restaurant_id, business_date, focus_check_id, payment_key, amount, card_last4)
+    VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-06-29', 'CHK-1', 'PK-BAD3', 0, '12AB')$$,
+  NULL, NULL,
+  'focus_payments.card_last4 rejects non-digit characters'
+);
+
 -- ─────────────────────────────────────────────────────────────────────
--- 36: order-level ON DELETE CASCADE via composite FK
+-- 38: order-level ON DELETE CASCADE via composite FK
 -- Migration: 20260701150000_focus_transactions_integrity.sql
 -- ─────────────────────────────────────────────────────────────────────
 INSERT INTO public.focus_orders (restaurant_id, business_date, focus_check_id, total)

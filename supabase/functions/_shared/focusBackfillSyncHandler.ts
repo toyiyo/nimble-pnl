@@ -373,6 +373,12 @@ export async function handleBackfillSync(
               updateErr.message,
             );
           }
+        })
+        .catch((e: unknown) => {
+          console.warn(
+            `focus-backfill-sync: best-effort error-state write threw for ${row.restaurant_id}:`,
+            e instanceof Error ? e.message : String(e),
+          );
         });
     }
   }

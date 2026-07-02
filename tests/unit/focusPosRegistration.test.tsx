@@ -172,11 +172,14 @@ function wrapQC(ui: React.ReactElement) {
 
 // ─── 1. IntegrationLogo ────────────────────────────────────────────────────────
 
-describe('IntegrationLogo — focus-pos emoji', () => {
-  it("renders '🍦' emoji for 'focus-pos' (not the generic 🔌 fallback)", async () => {
+describe('IntegrationLogo — focus-pos image', () => {
+  it("renders an <img> for 'focus-pos' (proper logo, not the 🍦 emoji placeholder)", async () => {
     const { IntegrationLogo } = await import('@/components/IntegrationLogo');
     const { container } = render(<IntegrationLogo integrationId="focus-pos" />);
-    expect(container.textContent).toContain('🍦');
+    // Should render an image element, not the emoji fallback
+    const img = container.querySelector('img[alt="focus-pos logo"]');
+    expect(img).toBeTruthy();
+    expect(container.textContent).not.toContain('🍦');
     expect(container.textContent).not.toContain('🔌');
   });
 });

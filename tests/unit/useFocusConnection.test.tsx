@@ -155,7 +155,7 @@ describe('useFocusConnection', () => {
   // ---- saveConnection ----
 
   describe('saveConnection', () => {
-    it('invokes focus-save-connection edge function with restaurantId, username, password, storeId', async () => {
+    it('invokes focus-save-connection edge function with apiKey, apiSecret, storeId (restaurantGuid), environment', async () => {
       const mockInvoke = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
       (supabase.functions.invoke as any) = mockInvoke;
 
@@ -172,17 +172,54 @@ describe('useFocusConnection', () => {
       const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
 
       await act(async () => {
-        await result.current.saveConnection('rest-1', 'sample.user', 'test-pass', '99999');
+        await result.current.saveConnection(
+          'rest-1',
+          'test-api-key',
+          'test-api-secret',
+          'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh',
+          'production',
+        );
       });
 
       expect(mockInvoke).toHaveBeenCalledWith('focus-save-connection', {
         body: {
           restaurantId: 'rest-1',
-          username: 'sample.user',
-          password: 'test-pass',
-          storeId: '99999',
+          apiKey: 'test-api-key',
+          apiSecret: 'test-api-secret',
+          storeId: 'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh',
+          environment: 'production',
         },
       });
+    });
+
+    it('defaults environment to "production" when not specified', async () => {
+      const mockInvoke = vi.fn().mockResolvedValue({ data: { success: true }, error: null });
+      (supabase.functions.invoke as any) = mockInvoke;
+
+      (supabase.from as any) = vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+            }),
+          }),
+        }),
+      });
+
+      const { result } = renderHook(() => useFocusConnection('rest-1'), { wrapper });
+
+      await act(async () => {
+        await result.current.saveConnection(
+          'rest-1',
+          'test-api-key',
+          'test-api-secret',
+          'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh',
+          // no environment
+        );
+      });
+
+      const callBody = (mockInvoke.mock.calls[0][1] as { body: Record<string, unknown> }).body;
+      expect(callBody.environment).toBe('production');
     });
 
     it('throws when invoke returns a network/FunctionsHttpError (error shape 1)', async () => {

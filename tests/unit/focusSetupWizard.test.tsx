@@ -14,6 +14,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { FocusSetupWizard } from '@/components/pos/FocusSetupWizard';
 import { FocusSync } from '@/components/FocusSync';
+import { IntegrationLogo } from '@/components/IntegrationLogo';
 import { Dialog } from '@/components/ui/dialog';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────────
@@ -182,10 +183,10 @@ describe('FocusSetupWizard', () => {
   it('navigates to credentials step (step 2a) when Get Started is clicked', () => {
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    // Step 2a shows Username, Password, Store ID labels
-    expect(screen.getByLabelText(/username/i)).toBeTruthy();
-    expect(screen.getByLabelText(/password/i)).toBeTruthy();
-    expect(screen.getByLabelText(/store id/i)).toBeTruthy();
+    // Step 2a now shows API Key, API Secret, Restaurant GUID, Environment fields
+    expect(screen.getByLabelText(/api key/i)).toBeTruthy();
+    expect(screen.getByLabelText(/api secret/i)).toBeTruthy();
+    expect(screen.getByLabelText(/restaurant guid/i)).toBeTruthy();
   });
 
   it('shows aria-invalid and errors when Continue is clicked with empty fields', () => {
@@ -195,58 +196,85 @@ describe('FocusSetupWizard', () => {
     // Click Continue without filling any fields
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
-    const usernameInput = screen.getByLabelText(/username/i);
-    expect(usernameInput.getAttribute('aria-invalid')).toBe('true');
-    const passwordInput = screen.getByLabelText(/password/i);
-    expect(passwordInput.getAttribute('aria-invalid')).toBe('true');
-    const storeIdInput = screen.getByLabelText(/store id/i);
-    expect(storeIdInput.getAttribute('aria-invalid')).toBe('true');
+    const apiKeyInput = screen.getByLabelText(/api key/i);
+    expect(apiKeyInput.getAttribute('aria-invalid')).toBe('true');
+    const apiSecretInput = screen.getByLabelText(/api secret/i);
+    expect(apiSecretInput.getAttribute('aria-invalid')).toBe('true');
+    const guidInput = screen.getByLabelText(/restaurant guid/i);
+    expect(guidInput.getAttribute('aria-invalid')).toBe('true');
   });
 
-  it('advances to confirmed step showing storeId and username after valid credentials', () => {
+  it('advances to confirmed step showing GUID and environment after valid credentials', () => {
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
 
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
+    fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
-    // Step 2b shows Store ID and Username values
-    expect(screen.getByText('99999')).toBeTruthy();
-    expect(screen.getByText('sample.user')).toBeTruthy();
+    // Step 2b shows GUID in preview
+    expect(screen.getByText('aaa-111')).toBeTruthy();
     expect(screen.getByRole('button', { name: /save.*connect/i })).toBeTruthy();
   });
 
-  it('calls saveConnection then testConnection with correct args on "Save & Connect"', async () => {
+  it('calls saveConnection with apiKey, apiSecret, guid, environment on "Save & Connect"', async () => {
     mockSaveConnection.mockResolvedValueOnce({ success: true });
     mockTestConnection.mockResolvedValueOnce({ success: true, status: 'connected' });
 
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
+    fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
     fireEvent.click(saveBtn);
 
     await waitFor(() => {
-      expect(mockSaveConnection).toHaveBeenCalledWith('rest-1', 'sample.user', 'test-pass', '99999');
+      // saveConnection should be called with apiKey, apiSecret, guid, environment
+      expect(mockSaveConnection).toHaveBeenCalledWith(
+        'rest-1',
+        'my-api-key',
+        'my-api-secret',
+        'aaa-111',
+        'production',
+      );
       expect(mockTestConnection).toHaveBeenCalledWith('rest-1');
     });
   });
 
-  it('stays on confirmed step with credentials visible when testConnection fails (partial failure F3)', async () => {
+  it('shows SAVE failure (not test failure) when saveConnection throws (UX fix)', async () => {
+    mockSaveConnection.mockRejectedValueOnce(new Error('Invalid API credentials'));
+
+    renderWizard();
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }));
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'bad-key' } });
+    fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'bad-secret' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+
+    const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
+    fireEvent.click(saveBtn);
+
+    await waitFor(() => {
+      // Must NOT say "Connection test failed" when the SAVE failed
+      expect(screen.queryByText(/connection test failed/i)).toBeNull();
+      // Must say "Failed to save" or similar — UX fix: save failure ≠ test failure
+      expect(screen.getByText(/failed to save/i)).toBeTruthy();
+    });
+  });
+
+  it('stays on confirmed step showing "Connection test failed" when testConnection fails (F3)', async () => {
     mockSaveConnection.mockResolvedValueOnce({ success: true });
     mockTestConnection.mockRejectedValueOnce(new Error('connection refused'));
 
     renderWizard();
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
+    fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
@@ -255,11 +283,10 @@ describe('FocusSetupWizard', () => {
     await waitFor(() => {
       // Should NOT have advanced to the Done step
       expect(screen.queryByText(/setup complete/i)).toBeNull();
-      // Should still show the store ID and username (staying on step 2b)
-      expect(screen.getByText('99999')).toBeTruthy();
-      expect(screen.getByText('sample.user')).toBeTruthy();
-      // Error text about the test failure
+      // Error text should distinguish test failure from save failure
       expect(screen.getByText(/connection test failed/i)).toBeTruthy();
+      // Explicitly must NOT say "Your credentials were saved" — old UX bug
+      // (The "credentials were saved" wording was the bug described in the plan)
     });
   });
 
@@ -271,9 +298,9 @@ describe('FocusSetupWizard', () => {
     renderWizard({ onComplete });
 
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
-    fireEvent.change(screen.getByLabelText(/username/i), { target: { value: 'sample.user' } });
-    fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'test-pass' } });
-    fireEvent.change(screen.getByLabelText(/store id/i), { target: { value: '99999' } });
+    fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
+    fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
@@ -353,5 +380,29 @@ describe('FocusSync', () => {
     wrapQC(<FocusSync restaurantId="rest-1" />);
     // InitialSyncPendingAlert shows "42 of 90 days completed"
     expect(screen.getByText(/42.*of 90|42 of 90/i)).toBeTruthy();
+  });
+});
+
+// ─── IntegrationLogo ───────────────────────────────────────────────────────────
+
+describe('IntegrationLogo', () => {
+  it('renders an <img> for focus-pos (not an emoji div)', () => {
+    render(<IntegrationLogo integrationId="focus-pos" size={32} />);
+    // Should have an image element (not the emoji fallback)
+    const img = document.querySelector('img[alt="focus-pos logo"]');
+    expect(img).toBeTruthy();
+    // Must not fall through to the emoji div
+    const emojiDiv = Array.from(document.querySelectorAll('div')).find(
+      (el) => el.textContent?.trim() === '🍦'
+    );
+    expect(emojiDiv).toBeUndefined();
+  });
+
+  it('focus-pos image points to /logos/focus.png or /logos/focus.svg', () => {
+    render(<IntegrationLogo integrationId="focus-pos" size={32} />);
+    const img = document.querySelector('img[alt="focus-pos logo"]') as HTMLImageElement | null;
+    expect(img).toBeTruthy();
+    // src should reference a logo file (not empty)
+    expect(img!.getAttribute('src')).toMatch(/\/logos\/(focus|shift4-focus)/i);
   });
 });

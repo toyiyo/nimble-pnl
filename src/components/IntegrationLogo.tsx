@@ -9,6 +9,7 @@ interface IntegrationLogoProps {
 // Image-based logos (stored in public/logos/)
 const imageLogoMap: Record<string, string> = {
   'clover-pos': '/logos/clover.png',
+  'focus-pos': '/logos/focus.svg',
   'toast-pos': '/logos/toast.png',
   'shift4-pos': '/logos/shift4.png',
   'sling-scheduling': '/logos/sling.svg',

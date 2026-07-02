@@ -88,6 +88,19 @@ Phase 4-9: Autonomous dev-build-and-ship workflow — in progress
 - Test: `tests/unit/shiftPlannerTab.viewToggle.test.tsx` (6 tests: toggle renders, defaults to plan, switching to timeline, editing tree hidden in timeline, mobile FAB hidden, switching back; all pass)
 - TDD: RED (module renders but toggle absent) → GREEN (6/6 pass) → REFACTOR (none needed) → typecheck clean → lint clean (no new errors) → build clean → COMMIT
 
+### Task 11: Mobile layout pass — sticky lane labels, shared horizontal scroll, full verification
+- Commit: `6345a1b6`
+- Test file: `tests/unit/shiftTimelineTab.mobileLayout.test.tsx` (3 tests, all pass under TZ=UTC and TZ=Asia/Tokyo)
+  - Lane label has `sticky left-0 z-10` — stays pinned during horizontal scroll
+  - Coverage curve (`role="img"`) and sticky lane label share the same `overflow-x-auto` scroll container
+  - Lane label has `z-10` — renders above bars during horizontal scroll
+- Layout was already correct from Task 9 (sticky labels in TimelineLane.tsx; plot in single overflow-x-auto in ShiftTimelineTab.tsx); tests confirmed and documented
+- Full verification:
+  - `npm run typecheck` — clean (no errors)
+  - Lint of feature files — clean (no new errors in ShiftTimeline/, positionColors.ts, useWeekStaffingSuggestions.ts, ShiftPlannerTab.tsx)
+  - `TZ=UTC npm run test` — 388 test files pass, 1 skipped (pre-existing), 5124 tests pass
+  - `npm run build` — successful in 18.74s (chunk size warning is pre-existing)
+
 ## CI Status
 - PR: not yet created
 - Iteration: 0/5

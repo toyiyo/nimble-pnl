@@ -95,17 +95,19 @@ function makeRpcMock() {
 }
 
 function makeDeleteMock() {
-  const eqInner = vi.fn().mockResolvedValue({ error: null });
+  // Three-level eq chain: .delete().eq(restaurant_id).eq(business_date).eq(focus_check_id)
+  const eqInnermost = vi.fn().mockResolvedValue({ error: null });
+  const eqInner = vi.fn().mockReturnValue({ eq: eqInnermost });
   const eqOuter = vi.fn().mockReturnValue({ eq: eqInner });
   const deleteFn = vi.fn().mockReturnValue({ eq: eqOuter });
-  return { deleteFn, eqOuter, eqInner };
+  return { deleteFn, eqOuter, eqInner, eqInnermost };
 }
 
 function makeSupabaseMock() {
   const { upsertFn: ordersUpsert, selectFn: ordersSelect } = makeUpsertMock();
   const { upsertFn: itemsUpsert, selectFn: itemsSelect } = makeUpsertMock();
   const { upsertFn: paymentsUpsert, selectFn: paymentsSelect } = makeUpsertMock();
-  const { deleteFn: ordersDelete, eqOuter: deleteEqOuter, eqInner: deleteEqInner } = makeDeleteMock();
+  const { deleteFn: ordersDelete, eqOuter: deleteEqOuter, eqInner: deleteEqInner, eqInnermost: deleteEqInnermost } = makeDeleteMock();
   const rpcFn = makeRpcMock();
 
   const fromFn = vi.fn().mockImplementation((table: string) => {
@@ -117,7 +119,7 @@ function makeSupabaseMock() {
 
   return {
     client: { from: fromFn, rpc: rpcFn },
-    mocks: { fromFn, ordersUpsert, ordersSelect, itemsUpsert, itemsSelect, paymentsUpsert, paymentsSelect, ordersDelete, deleteEqOuter, deleteEqInner, rpcFn },
+    mocks: { fromFn, ordersUpsert, ordersSelect, itemsUpsert, itemsSelect, paymentsUpsert, paymentsSelect, ordersDelete, deleteEqOuter, deleteEqInner, deleteEqInnermost, rpcFn },
   };
 }
 
@@ -417,10 +419,11 @@ describe('processDayTransactions', () => {
     // Should succeed — the live check is processed normally
     expect(result).toMatchObject({ status: 'ok', checksWritten: 1 });
 
-    // focus_orders.delete() should have been called for the voided check ID '99'
+    // focus_orders.delete() scoped to restaurant_id + business_date + focus_check_id
     expect(mocks.ordersDelete).toHaveBeenCalledOnce();
     expect(mocks.deleteEqOuter).toHaveBeenCalledWith('restaurant_id', RESTAURANT_ID);
-    expect(mocks.deleteEqInner).toHaveBeenCalledWith('focus_check_id', '99');
+    expect(mocks.deleteEqInner).toHaveBeenCalledWith('business_date', BUSINESS_DATE);
+    expect(mocks.deleteEqInnermost).toHaveBeenCalledWith('focus_check_id', '99');
   });
 
   it('returns ok when only voided checks are present (no active checks)', async () => {

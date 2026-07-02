@@ -45,7 +45,9 @@ export interface TransactionSupabaseDeps {
     };
     delete(): {
       eq(col: string, val: string): {
-        eq(col: string, val: string): Promise<{ error: { message: string } | null }>;
+        eq(col: string, val: string): {
+          eq(col: string, val: string): Promise<{ error: { message: string } | null }>;
+        };
       };
     };
   };
@@ -254,6 +256,7 @@ export async function processDayTransactions(
         .from('focus_orders')
         .delete()
         .eq('restaurant_id', config.restaurantId)
+        .eq('business_date', businessDate)
         .eq('focus_check_id', voidedCheckId);
       if (delError) {
         // Non-fatal: log and continue — the check may not exist locally yet.

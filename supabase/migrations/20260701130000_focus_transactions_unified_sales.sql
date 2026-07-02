@@ -114,12 +114,15 @@ BEGIN
     ) INTO v_current_ids;
 
     -- ── Step 2: DELETE orphan sale rows no longer in focus_order_items ─────
+    -- Only delete base (un-split) rows; parent_sale_id IS NULL guards user-
+    -- managed split/child rows from being silently removed on every sync.
     DELETE FROM public.unified_sales us
     WHERE us.restaurant_id     = p_restaurant_id
       AND us.pos_system        = 'focus'
       AND us.item_type         = 'sale'
       AND us.sale_date         = v_order.business_date
       AND us.external_order_id = v_order_id
+      AND us.parent_sale_id IS NULL
       AND NOT (us.external_item_id = ANY(v_current_ids));
 
     -- ── Step 3: UPSERT sale rows (one per priced item) ────────────────────
@@ -187,13 +190,15 @@ BEGIN
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
     v_count := v_count + v_row_count;
 
-    -- Delete stale discount rows for items that no longer have a discount
+    -- Delete stale discount rows for items that no longer have a discount.
+    -- parent_sale_id IS NULL guards user-managed split rows.
     DELETE FROM public.unified_sales us
     WHERE us.restaurant_id     = p_restaurant_id
       AND us.pos_system        = 'focus'
       AND us.item_type         = 'discount'
       AND us.sale_date         = v_order.business_date
       AND us.external_order_id = v_order_id
+      AND us.parent_sale_id IS NULL
       AND us.external_item_id NOT IN (
         SELECT v_order_id || '__' || foi.item_key || '_discount'
         FROM public.focus_order_items foi
@@ -234,13 +239,15 @@ BEGIN
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
     v_count := v_count + v_row_count;
 
-    -- Delete stale tip rows for payments that no longer have a tip
+    -- Delete stale tip rows for payments that no longer have a tip.
+    -- parent_sale_id IS NULL guards user-managed split rows.
     DELETE FROM public.unified_sales us
     WHERE us.restaurant_id     = p_restaurant_id
       AND us.pos_system        = 'focus'
       AND us.item_type         = 'tip'
       AND us.sale_date         = v_order.business_date
       AND us.external_order_id = v_order_id
+      AND us.parent_sale_id IS NULL
       AND us.external_item_id NOT IN (
         SELECT v_order_id || '_' || fp.payment_key || '_tip'
         FROM public.focus_payments fp

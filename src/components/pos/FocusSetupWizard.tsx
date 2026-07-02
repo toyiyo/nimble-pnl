@@ -144,7 +144,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
   const [isConnecting, setIsConnecting] = useState(false);
 
   const { toast } = useToast();
-  const { saveConnection, testConnection } = useFocusConnection(restaurantId);
+  const { saveConnection, testConnection, triggerManualSync } = useFocusConnection(restaurantId);
 
   // ── Step 1 → 2 ─────────────────────────────────────────────────────────────
 
@@ -154,25 +154,35 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
 
   // ── Step 2a: Validate credentials (client-side) ─────────────────────────────
 
+  const RESTAURANT_GUID_PATTERN =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   function handleContinue() {
     let hasError = false;
 
-    if (!apiKey.trim()) {
+    const trimmedApiKey = apiKey.trim();
+    const trimmedApiSecret = apiSecret.trim();
+    const trimmedRestaurantGuid = restaurantGuid.trim();
+
+    if (!trimmedApiKey) {
       setApiKeyError('API Key is required');
       hasError = true;
     } else {
       setApiKeyError(null);
     }
 
-    if (!apiSecret.trim()) {
+    if (!trimmedApiSecret) {
       setApiSecretError('API Secret is required');
       hasError = true;
     } else {
       setApiSecretError(null);
     }
 
-    if (!restaurantGuid.trim()) {
+    if (!trimmedRestaurantGuid) {
       setGuidError('Restaurant GUID is required');
+      hasError = true;
+    } else if (!RESTAURANT_GUID_PATTERN.test(trimmedRestaurantGuid)) {
+      setGuidError('Restaurant GUID must be a valid UUID (e.g. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)');
       hasError = true;
     } else {
       setGuidError(null);
@@ -180,6 +190,10 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
 
     if (hasError) return;
 
+    // Normalise whitespace before advancing to the confirmation step
+    setApiKey(trimmedApiKey);
+    setApiSecret(trimmedApiSecret);
+    setRestaurantGuid(trimmedRestaurantGuid);
     setStep('confirmed');
   }
 
@@ -609,7 +623,14 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                 Close
               </Button>
               <Button
-                onClick={onComplete}
+                onClick={async () => {
+                  try {
+                    await triggerManualSync(restaurantId);
+                  } catch {
+                    // Sync errors are non-fatal here — the cron job will retry.
+                  }
+                  onComplete();
+                }}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
               >
                 Sync Now

@@ -5,7 +5,7 @@
  *
  * Responsibilities:
  *  1. Validate the Authorization header + verify the JWT via userClient.auth.getUser().
- *  2. Parse + validate the body: { restaurantId, apiKey, apiSecret, storeId, mid?, environment? }.
+ *  2. Parse + validate the body: { restaurantId, apiKey, apiSecret, restaurantGuid, mid?, environment? }.
  *  3. Confirm the caller is an owner or manager of the target restaurant.
  *  4. Encrypt the API secret (AES-GCM) — the key is stored as-is (it is the Basic-auth username).
  *  5. Upsert into focus_connections via the service-role client (bypasses RLS).
@@ -78,18 +78,21 @@ export async function handleSaveConnection(
     return jsonError(400, 'Invalid JSON body');
   }
 
-  const { restaurantId, apiKey, apiSecret, storeId, mid } = body as {
-    restaurantId?: string;
-    apiKey?: string;
-    apiSecret?: string;
-    storeId?: string;
-    mid?: string;
+  const requiredString = (field: string): string | null => {
+    const value = body[field];
+    return typeof value === 'string' && value.trim() ? value.trim() : null;
   };
+
+  const restaurantId = requiredString('restaurantId');
+  const apiKey = requiredString('apiKey');
+  const apiSecret = requiredString('apiSecret');
+  const restaurantGuid = requiredString('restaurantGuid');
+  const mid = typeof body.mid === 'string' ? body.mid : undefined;
 
   if (!restaurantId) return jsonError(400, 'Missing required field: restaurantId');
   if (!apiKey) return jsonError(400, 'Missing required field: apiKey');
   if (!apiSecret) return jsonError(400, 'Missing required field: apiSecret');
-  if (!storeId) return jsonError(400, 'Missing required field: storeId');
+  if (!restaurantGuid) return jsonError(400, 'Missing required field: restaurantGuid');
 
   const environment = (body.environment as string | undefined) ?? 'production';
   if (!ALLOWED_ENVIRONMENTS.has(environment)) {
@@ -117,7 +120,7 @@ export async function handleSaveConnection(
     restaurant_id: restaurantId,
     api_key: apiKey,
     api_secret_encrypted: apiSecretEncrypted,
-    store_id: storeId,
+    store_id: restaurantGuid,
     mid: mid ?? null,
     environment,
     is_active: true,

@@ -31,7 +31,7 @@ const VALID_BODY = {
   restaurantId: RESTAURANT_ID,
   apiKey: 'license-key',
   apiSecret: 'license-secret',
-  storeId: '24329',
+  restaurantGuid: '24329abc-0000-0000-0000-000000000001',
   mid: '0023042280',
   environment: 'production',
 };
@@ -95,7 +95,7 @@ describe('handleSaveConnection (FocusLink API)', () => {
     expect(res.status).toBe(401);
   });
 
-  it.each(['restaurantId', 'apiKey', 'apiSecret', 'storeId'])(
+  it.each(['restaurantId', 'apiKey', 'apiSecret', 'restaurantGuid'])(
     'returns 400 when %s is missing',
     async (field) => {
       const body: Record<string, unknown> = { ...VALID_BODY };
@@ -132,7 +132,7 @@ describe('handleSaveConnection (FocusLink API)', () => {
       restaurant_id: RESTAURANT_ID,
       api_key: 'license-key',
       api_secret_encrypted: 'encrypted-secret', // never the plaintext secret
-      store_id: '24329',
+      store_id: '24329abc-0000-0000-0000-000000000001',
       mid: '0023042280',
       environment: 'production',
       connection_status: 'pending',

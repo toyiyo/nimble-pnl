@@ -68,9 +68,11 @@ export interface ServiceClient {
         };
       };
     };
-    update(
-      data: Record<string, unknown>,
-    ): { eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }> };
+    update(data: Record<string, unknown>): {
+      eq(col: string, val: string): {
+        eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }>;
+      };
+    };
   };
 }
 
@@ -149,7 +151,7 @@ export async function handleTestConnection(
 
   if (!isSafeBase(baseUrl)) {
     const errMsg = 'Focus POS base URL must be https on a focuspos.com host';
-    await writeStatus(deps.serviceClient, conn.id, 'error', errMsg);
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
     return new Response(
       JSON.stringify({ success: false, status: 'error', error: errMsg }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -172,7 +174,7 @@ export async function handleTestConnection(
     });
   } catch (e) {
     const errMsg = `Network error reaching Focus POS API: ${e instanceof Error ? e.message : String(e)}`;
-    await writeStatus(deps.serviceClient, conn.id, 'error', errMsg);
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
     return new Response(
       JSON.stringify({ success: false, status: 'error', error: errMsg }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -192,7 +194,7 @@ export async function handleTestConnection(
     } else {
       errMsg = `Focus POS API returned HTTP ${httpStatus}`;
     }
-    await writeStatus(deps.serviceClient, conn.id, 'error', errMsg);
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
     return new Response(
       JSON.stringify({ success: false, status: 'error', error: errMsg }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -201,13 +203,12 @@ export async function handleTestConnection(
 
   // ── 9. Parse JSON ─────────────────────────────────────────────────────────
   const rawText = await apiRes.text();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let parsed: any;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);
   } catch {
     const errMsg = 'Focus POS API returned a non-JSON response — cannot parse restaurant list';
-    await writeStatus(deps.serviceClient, conn.id, 'error', errMsg);
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
     return new Response(
       JSON.stringify({ success: false, status: 'error', error: errMsg }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -215,18 +216,26 @@ export async function handleTestConnection(
   }
 
   // ── 10. Check store_id GUID is in items[].restaurant_guid ─────────────────
-  const items: Array<{ restaurant_guid?: string }> = Array.isArray(parsed?.items)
-    ? parsed.items
-    : [];
-  const found = items.some(
-    (item) => item.restaurant_guid?.toLowerCase() === conn.store_id.toLowerCase(),
+  const parsedItems =
+    parsed &&
+    typeof parsed === 'object' &&
+    Array.isArray((parsed as { items?: unknown }).items)
+      ? (parsed as { items: unknown[] }).items
+      : [];
+  const found = parsedItems.some(
+    (item) =>
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as { restaurant_guid?: unknown }).restaurant_guid === 'string' &&
+      (item as { restaurant_guid: string }).restaurant_guid.toLowerCase() ===
+        conn.store_id.toLowerCase(),
   );
 
   if (!found) {
     const errMsg =
       `Restaurant GUID "${conn.store_id}" not found in the Focus POS account's restaurant list — ` +
       `verify the Restaurant GUID entered during setup matches the one in the Focus POS portal.`;
-    await writeStatus(deps.serviceClient, conn.id, 'error', errMsg);
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
     return new Response(
       JSON.stringify({ success: false, status: 'error', error: errMsg }),
       { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -234,7 +243,7 @@ export async function handleTestConnection(
   }
 
   // ── 11. Success ───────────────────────────────────────────────────────────
-  await writeStatus(deps.serviceClient, conn.id, 'connected', null);
+  await writeStatus(deps.serviceClient, restaurantId, conn.id, 'connected', null);
   return new Response(
     JSON.stringify({ success: true, status: 'connected' }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -245,11 +254,12 @@ export async function handleTestConnection(
 
 async function writeStatus(
   serviceClient: ServiceClient,
+  restaurantId: string,
   connId: string,
   connectionStatus: 'connected' | 'error',
   lastError: string | null,
 ): Promise<void> {
-  await serviceClient
+  const { error } = await serviceClient
     .from('focus_connections')
     .update({
       connection_status: connectionStatus,
@@ -257,5 +267,10 @@ async function writeStatus(
       last_error_at: connectionStatus === 'connected' ? null : new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .eq('id', connId);
+    .eq('id', connId)
+    .eq('restaurant_id', restaurantId);
+
+  if (error) {
+    throw new Error(`Failed to update Focus connection status: ${error.message}`);
+  }
 }

@@ -180,8 +180,13 @@ async function processConnection(
 
   if (isLynkPath) {
     // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────
+    // Guard against partially-migrated or corrupted rows — both secrets required.
+    if (!row.api_secret_encrypted || !row.store_id) {
+      throw new Error('Focus POS API credentials are incomplete (missing api_secret_encrypted or store_id)');
+    }
+
     const encSvc = await getEncryptionService();
-    const apiSecret = await encSvc.decrypt(row.api_secret_encrypted!);
+    const apiSecret = await encSvc.decrypt(row.api_secret_encrypted);
 
     const txConfig: TransactionSyncConfig = {
       restaurantId: row.restaurant_id,
@@ -205,8 +210,12 @@ async function processConnection(
         skipUnifiedSalesSync: true, // cron job handles unified_sales sync
       });
 
+      if (result.status === 'error') {
+        throw new Error(result.error ?? `Focus transaction sync failed for ${targetDate}`);
+      }
+
       // inprogress → retry same day; don't advance cursor
-      if (result.status !== 'error' && result.status !== 'inprogress') {
+      if (result.status !== 'inprogress') {
         newSyncCursor = row.sync_cursor + 1;
         if (newSyncCursor >= TARGET_DAYS) {
           newInitialSyncDone = true;
@@ -215,10 +224,14 @@ async function processConnection(
     } else {
       // Incremental: last 2 business days in parallel
       const [yesterday, dayBefore] = recentBusinessDays(tz, now);
-      await Promise.all([
+      const results = await Promise.all([
         processDayTransactions(txDeps, txConfig, yesterday),
         processDayTransactions(txDeps, txConfig, dayBefore),
       ]);
+      const failed = results.find((r) => r.status === 'error');
+      if (failed?.status === 'error') {
+        throw new Error(failed.error ?? 'Focus transaction incremental sync failed');
+      }
     }
   } else {
     // ── Legacy portal path (SSRS scrape) ──────────────────────────────────────

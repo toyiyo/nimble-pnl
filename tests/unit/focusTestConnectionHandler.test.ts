@@ -69,10 +69,11 @@ function makeServiceClientMock(opts: { connRow?: any; connError?: string } = {})
     error: opts.connError ? { message: opts.connError } : null,
   });
   const select = vi.fn().mockReturnValue({ eq: () => ({ eq: () => ({ single }) }) });
-  const updateEq = vi.fn().mockResolvedValue({ data: null, error: null });
-  const update = vi.fn().mockReturnValue({ eq: updateEq });
+  const updateEqInner = vi.fn().mockResolvedValue({ data: null, error: null });
+  const updateEqOuter = vi.fn().mockReturnValue({ eq: updateEqInner });
+  const update = vi.fn().mockReturnValue({ eq: updateEqOuter });
   const from = vi.fn().mockReturnValue({ select, update });
-  return { client: { from }, mocks: { from, update, updateEq } };
+  return { client: { from }, mocks: { from, update, updateEqOuter, updateEqInner } };
 }
 
 /** A fetch double returning one canned Response. */

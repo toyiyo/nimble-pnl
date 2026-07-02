@@ -15,9 +15,11 @@
 --   32:    focus_orders.focus_check_id not null
 --   33:    focus_order_items.item_key not null
 --   34:    focus_payments.payment_key not null
+--   35:    focus_payments.card_last4 CHECK rejects non-4-digit values (PCI boundary)
+--   36:    order-level ON DELETE CASCADE (focus_order_items removed when parent order deleted)
 
 BEGIN;
-SELECT plan(34);
+SELECT plan(36);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup
@@ -281,6 +283,40 @@ SELECT throws_ok(
     VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-06-29', 'CHK-1', NULL, 0)$$,
   NULL, NULL,
   'focus_payments.payment_key is NOT NULL'
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- 35: card_last4 CHECK — rejects non-4-digit values (PCI boundary)
+-- Migration: 20260701150000_focus_transactions_integrity.sql
+-- ─────────────────────────────────────────────────────────────────────
+SELECT throws_ok(
+  $$INSERT INTO public.focus_payments (restaurant_id, business_date, focus_check_id, payment_key, amount, card_last4)
+    VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-06-29', 'CHK-1', 'PK-BAD', 0, '12345')$$,
+  NULL, NULL,
+  'focus_payments.card_last4 rejects more than 4 digits'
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- 36: order-level ON DELETE CASCADE via composite FK
+-- Migration: 20260701150000_focus_transactions_integrity.sql
+-- ─────────────────────────────────────────────────────────────────────
+INSERT INTO public.focus_orders (restaurant_id, business_date, focus_check_id, total)
+VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-06-30', 'CHK-FK-CASCADE', 15.00);
+
+INSERT INTO public.focus_order_items (restaurant_id, business_date, focus_check_id, item_key, name)
+VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-06-30', 'CHK-FK-CASCADE', 'IKEY-FK-1', 'FK Item');
+
+DELETE FROM public.focus_orders
+WHERE restaurant_id = '00000000-0000-0000-0001-f0c0aa000001'
+  AND business_date = '2026-06-30'
+  AND focus_check_id = 'CHK-FK-CASCADE';
+
+SELECT is(
+  (SELECT COUNT(*)::int FROM public.focus_order_items
+    WHERE restaurant_id = '00000000-0000-0000-0001-f0c0aa000001'
+      AND focus_check_id = 'CHK-FK-CASCADE'),
+  0,
+  'focus_order_items cascade-deleted when parent focus_order is deleted'
 );
 
 SELECT * FROM finish();

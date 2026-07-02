@@ -210,11 +210,11 @@ describe('FocusSetupWizard', () => {
 
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
     fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
-    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa11100-0000-0000-0000-000000000001' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     // Step 2b shows GUID in preview
-    expect(screen.getByText('aaa-111')).toBeTruthy();
+    expect(screen.getByText('aaa11100-0000-0000-0000-000000000001')).toBeTruthy();
     expect(screen.getByRole('button', { name: /save.*connect/i })).toBeTruthy();
   });
 
@@ -226,7 +226,7 @@ describe('FocusSetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
     fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
-    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa11100-0000-0000-0000-000000000001' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
@@ -238,7 +238,7 @@ describe('FocusSetupWizard', () => {
         'rest-1',
         'my-api-key',
         'my-api-secret',
-        'aaa-111',
+        'aaa11100-0000-0000-0000-000000000001',
         'production',
       );
       expect(mockTestConnection).toHaveBeenCalledWith('rest-1');
@@ -252,7 +252,7 @@ describe('FocusSetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'bad-key' } });
     fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'bad-secret' } });
-    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa11100-0000-0000-0000-000000000001' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
@@ -274,7 +274,7 @@ describe('FocusSetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
     fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
-    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa11100-0000-0000-0000-000000000001' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });
@@ -300,7 +300,7 @@ describe('FocusSetupWizard', () => {
     fireEvent.click(screen.getByRole('button', { name: /get started/i }));
     fireEvent.change(screen.getByLabelText(/api key/i), { target: { value: 'my-api-key' } });
     fireEvent.change(screen.getByLabelText(/api secret/i), { target: { value: 'my-api-secret' } });
-    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa-111' } });
+    fireEvent.change(screen.getByLabelText(/restaurant guid/i), { target: { value: 'aaa11100-0000-0000-0000-000000000001' } });
     fireEvent.click(screen.getByRole('button', { name: /continue/i }));
 
     const saveBtn = await screen.findByRole('button', { name: /save.*connect/i });

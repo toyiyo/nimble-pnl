@@ -174,7 +174,13 @@ function parseCheck(check: any): FocusCheck {
 export function parseFocusDatafeed(xml: string): FocusDatafeed {
   const doc = parser.parse(xml) as any;
   const checksNode = doc?.DailyData?.Checks;
-  const checks = toArray(checksNode?.Check).map(parseCheck).filter((c) => c.checkId !== '');
+  const parsedChecks = toArray(checksNode?.Check).map(parseCheck);
+  const checks = parsedChecks.filter((c) => c.checkId !== '');
+  if (checks.length !== parsedChecks.length) {
+    console.warn(
+      `focusDatafeedParser: dropped ${parsedChecks.length - checks.length} check(s) with missing CheckRecord/ID`,
+    );
+  }
   const deletedCheckIds = toArray(checksNode?.DeleteRecord)
     .map((d: any) => str(d?.ID))
     .filter((id): id is string => id !== null && id !== undefined);

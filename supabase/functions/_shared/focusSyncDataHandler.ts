@@ -243,10 +243,14 @@ export async function handleSyncData(
 
   if (isLynkPath) {
     // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────
-    // Decrypt the API secret and build the transaction sync config.
+    // Guard against partially-migrated or corrupted rows before decryption.
+    if (!connRow.api_secret_encrypted || !connRow.store_id) {
+      return jsonError(409, 'Focus POS API credentials are incomplete');
+    }
 
+    // Decrypt the API secret and build the transaction sync config.
     const encSvc = await getEncryptionService();
-    const apiSecret = await encSvc.decrypt(connRow.api_secret_encrypted!);
+    const apiSecret = await encSvc.decrypt(connRow.api_secret_encrypted);
 
     const txConfig: TransactionSyncConfig = {
       restaurantId,

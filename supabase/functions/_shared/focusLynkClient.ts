@@ -239,6 +239,9 @@ export async function fetchDatafeed(
         'focuspos-restaurant-id': config.restaurantGuid,
       },
       body: JSON.stringify(requestBody),
+      // Disable redirect-follow so an allow-listed host responding with a 3xx
+      // to an internal address cannot bypass the SSRF guard above.
+      redirect: 'error',
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {
@@ -324,6 +327,9 @@ export async function fetchDatafeed(
   let blobRes: Response;
   try {
     blobRes = await deps.fetch(blobUrl, {
+      // Disable redirect-follow to prevent SSRF via 3xx responses from the
+      // allow-listed Azure blob host.
+      redirect: 'error',
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
   } catch (e) {

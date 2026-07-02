@@ -235,8 +235,10 @@ describe('fetchDatafeed', () => {
     await fetchDatafeed({ fetch: fetchFn1 }, CONFIG, BUSINESS_DATE);
     await fetchDatafeed({ fetch: fetchFn2 }, CONFIG, BUSINESS_DATE);
 
-    const body1 = JSON.parse(fetchFn1.mock.calls[0][1].body as string);
-    const body2 = JSON.parse(fetchFn2.mock.calls[0][1].body as string);
+    const [, init1] = fetchFn1.mock.calls[0] as [string, RequestInit];
+    const [, init2] = fetchFn2.mock.calls[0] as [string, RequestInit];
+    const body1 = JSON.parse(init1.body as string);
+    const body2 = JSON.parse(init2.body as string);
     expect(body1.pos_request.header.request_id).toBeTruthy();
     expect(body2.pos_request.header.request_id).toBeTruthy();
     expect(body1.pos_request.header.request_id).not.toBe(

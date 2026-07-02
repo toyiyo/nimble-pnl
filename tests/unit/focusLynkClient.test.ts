@@ -336,6 +336,42 @@ describe('fetchDatafeed', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  // ── Blob HTTP status guard ───────────────────────────────────────────────────
+
+  it('returns ok:false kind=http when the blob URL returns a non-2xx status', async () => {
+    // Simulates an expired Azure SAS URL (403). Without the status check the
+    // error HTML body would be passed to the XML parser, which would see an
+    // empty feed and advance sync_cursor — permanently skipping that day.
+    const fetchFn = makeFetch({ blobStatus: 403, blobBody: '<Error>AuthenticationFailed</Error>' });
+    const result = await fetchDatafeed({ fetch: fetchFn }, CONFIG, BUSINESS_DATE);
+    expect(result).toMatchObject({ ok: false, kind: 'http', status: 403 });
+  });
+
+  it('returns ok:false kind=http when the blob URL returns 404', async () => {
+    const fetchFn = makeFetch({ blobStatus: 404, blobBody: '<Error>BlobNotFound</Error>' });
+    const result = await fetchDatafeed({ fetch: fetchFn }, CONFIG, BUSINESS_DATE);
+    expect(result).toMatchObject({ ok: false, kind: 'http', status: 404 });
+  });
+
+  // ── SSRF: SSRF error message redacts SAS token query params ─────────────────
+
+  it('SSRF: blob_url error message does not include query string (SAS token redacted)', async () => {
+    const maliciousBlobBody = JSON.stringify({
+      pos_response: {
+        // A URL that passes the blob host check but has query params that should be redacted
+        // (use a non-blob URL to trigger the SSRF rejection path)
+        payload: { blob_url: 'https://evil.com/file.xml?sig=SECRET&se=2026' },
+      },
+    });
+    const fetchFn = makeFetch({ syncBody: maliciousBlobBody });
+    const result = await fetchDatafeed({ fetch: fetchFn }, CONFIG, BUSINESS_DATE);
+    expect(result).toMatchObject({ ok: false, kind: 'config' });
+    if (!result.ok) {
+      expect(result.error).not.toContain('sig=SECRET');
+      expect(result.error).not.toContain('se=2026');
+    }
+  });
+
   it('SSRF: rejects a blob_url not on blob.core.windows.net (returns kind=config)', async () => {
     const maliciousBlobBody = JSON.stringify({
       pos_response: {

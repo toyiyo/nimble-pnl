@@ -75,27 +75,27 @@ export interface FocusDatafeed {
 // ── helpers ─────────────────────────────────────────────────────────────────
 
 function toArray<T>(x: T | T[] | undefined | null): T[] {
-  if (x == null) return [];
+  if (x === null || x === undefined) return [];
   return Array.isArray(x) ? x : [x];
 }
 
 /** Trim to string or null (empty → null). */
 function str(x: unknown): string | null {
-  if (x == null) return null;
+  if (x === null || x === undefined) return null;
   const s = String(x).trim();
   return s === '' ? null : s;
 }
 
 /** Parse a numeric field; missing/blank → 0. */
 function num(x: unknown): number {
-  if (x == null || x === '') return 0;
+  if (x === null || x === undefined || x === '') return 0;
   const n = Number.parseFloat(String(x));
   return Number.isFinite(n) ? n : 0;
 }
 
 /** Optional numeric field: missing/blank → null. */
 function numOrNull(x: unknown): number | null {
-  if (x == null || String(x).trim() === '') return null;
+  if (x === null || x === undefined || String(x).trim() === '') return null;
   const n = Number.parseFloat(String(x));
   return Number.isFinite(n) ? n : null;
 }
@@ -177,7 +177,7 @@ export function parseFocusDatafeed(xml: string): FocusDatafeed {
   const checks = toArray(checksNode?.Check).map(parseCheck).filter((c) => c.checkId !== '');
   const deletedCheckIds = toArray(checksNode?.DeleteRecord)
     .map((d: any) => str(d?.ID))
-    .filter((id): id is string => id != null);
+    .filter((id): id is string => id !== null && id !== undefined);
   return { checks, deletedCheckIds };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

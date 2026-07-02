@@ -296,11 +296,19 @@ export async function fetchDatafeed(
   // ── 6. SSRF-guard the blob URL ───────────────────────────────────────────────
 
   if (!isSafeUrl(blobUrl, BLOB_HOST_RE)) {
+    // Redact any query string (Azure SAS URLs embed auth tokens in sig=/se=/sv= params).
+    let redacted = blobUrl;
+    try {
+      const u = new URL(blobUrl);
+      redacted = `${u.protocol}//${u.host}${u.pathname}`;
+    } catch {
+      // If the URL can't be parsed just use it as-is (no query string to redact)
+    }
     return {
       ok: false,
       status: 0,
       kind: 'config',
-      error: `Focus POS blob_url must be https on blob.core.windows.net; got: ${blobUrl}`,
+      error: `Focus POS blob_url must be https on blob.core.windows.net; got: ${redacted}`,
     };
   }
 
@@ -317,6 +325,22 @@ export async function fetchDatafeed(
       status: 0,
       kind: 'network',
       error: e instanceof Error ? e.message : 'network error downloading datafeed blob',
+    };
+  }
+
+  // ── 8. Guard the blob HTTP status ────────────────────────────────────────────
+  // Azure SAS URLs are time-limited (30–60 min). An expired or throttled URL
+  // returns 403/404 with an error body (XML or HTML), NOT the datafeed XML.
+  // Without this check the error body is passed to the XML parser which sees
+  // an empty DailyData.Checks node, returns {checks:[]}, and the caller
+  // advances sync_cursor — permanently skipping that business day.
+
+  if (!blobRes.ok) {
+    return {
+      ok: false,
+      status: blobRes.status,
+      kind: 'http',
+      error: `Focus POS datafeed blob returned HTTP ${blobRes.status} — SAS URL may have expired`,
     };
   }
 

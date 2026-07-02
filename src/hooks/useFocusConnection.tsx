@@ -22,6 +22,12 @@ type FocusConnection = {
   updated_at: string;
 };
 
+// Restaurant option returned by focus-list-restaurants — design §4.2.
+export type FocusRestaurantOption = {
+  restaurant_guid: string;
+  restaurant_name: string;
+};
+
 // Explicit column list — design F8: no select('*').
 // api_key excluded: credential fields must not reach the browser.
 const FOCUS_CONNECTION_COLUMNS = [
@@ -40,13 +46,42 @@ const FOCUS_CONNECTION_COLUMNS = [
   'updated_at',
 ].join(',');
 
+/**
+ * Determines whether the connection query should poll for progress updates.
+ * Exported for unit testing (design §8.5 / Frontend major #1).
+ *
+ * Returns 8000ms when:
+ *   - a connection row exists
+ *   - the backfill is not yet done (initial_sync_done=false)
+ *   - the connection is active (is_active=true)
+ *   - there is no persisted error (connection_status !== 'error')
+ *
+ * Returns false in all other cases (done, disconnected, errored, no data).
+ * NOTE: refetchInterval fires independently of staleTime (TanStack React Query design),
+ * so staleTime does not gate the 8s polling cadence.
+ */
+export function __focusRefetchInterval(
+  query: { state: { data: Pick<FocusConnection, 'initial_sync_done' | 'is_active' | 'connection_status'> | null | undefined } }
+): number | false {
+  const d = query.state.data;
+  if (!d || d.initial_sync_done || !d.is_active || d.connection_status === 'error') {
+    return false;
+  }
+  return 8000;
+}
+
 export function useFocusConnection(restaurantId?: string | null) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Query — design §10 / F8: maybeSingle(), explicit column list, staleTime 30s,
-  // refetchOnWindowFocus:true, refetchOnMount:true, enabled:!!restaurantId
-  const { data: connection, isLoading: loading, error } = useQuery({
+  // Query — design §10 / F8: maybeSingle(), explicit column list,
+  // refetchOnWindowFocus:true, refetchOnMount:true, enabled:!!restaurantId.
+  // refetchInterval (design §8.5 / Frontend major #1): polls every 8s while backfilling;
+  // stops on done, disconnect, or persisted error.
+  // staleTime: 0 while backfilling so each refetchInterval tick actually fires a network
+  // request (React Query skips refetches when cached data is still "fresh"). On done/error
+  // the interval stops anyway, so 0 staleTime only has a cost during the backfill window.
+  const { data: connection, isLoading: loading, error } = useQuery<FocusConnection | null>({
     queryKey: ['focus-connection', restaurantId],
     queryFn: async () => {
       if (!restaurantId) {
@@ -56,7 +91,7 @@ export function useFocusConnection(restaurantId?: string | null) {
       // focus_connections is not yet in the generated Supabase types — same pattern
       // as useSlingConnection.ts. The cast is removed automatically once types are
       // regenerated after the migration is deployed.
-       
+
       const { data, error } = await supabase
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .from('focus_connections' as any)
@@ -73,9 +108,13 @@ export function useFocusConnection(restaurantId?: string | null) {
       return ((data as any) ?? null) as FocusConnection | null;
     },
     enabled: !!restaurantId,
-    staleTime: 30000,
+    // staleTime: 0 ensures refetchInterval polls actually fire network requests
+    // during backfill. Once backfill ends the interval stops, so there is no
+    // steady-state cost from the low staleTime.
+    staleTime: 0,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
+    refetchInterval: __focusRefetchInterval as Parameters<typeof useQuery>[0]['refetchInterval'],
   });
 
   const isConnected = !!connection;
@@ -203,25 +242,81 @@ export function useFocusConnection(restaurantId?: string | null) {
   // useMutation with onSettled: focus-sync-data writes sync_cursor and
   // last_sync_time before returning; invalidate on both paths so sync
   // progress is always fresh after a manual trigger.
+  //
+  // Design §8.5 (Frontend critical #1): options MUST be spread into the body
+  // so custom-range startDate/endDate reach the edge function. Omitting this
+  // caused custom range to silently fall back to a normal sync.
 
   const triggerManualSyncMutation = useMutation({
-    mutationFn: async (restaurantId: string) => {
+    mutationFn: async ({
+      restaurantId,
+      options,
+    }: {
+      restaurantId: string;
+      options?: { startDate?: string; endDate?: string };
+    }) => {
       const { data, error } = await supabase.functions.invoke('focus-sync-data', {
-        body: { restaurantId },
+        body: {
+          restaurantId,
+          ...(options?.startDate && { startDate: options.startDate }),
+          ...(options?.endDate && { endDate: options.endDate }),
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       return (data ?? null) as Record<string, unknown> | null;
     },
-    onSettled: (_data, _error, restaurantId) => {
+    onSettled: (_data, _error, { restaurantId }) => {
       queryClient.invalidateQueries({ queryKey: ['focus-connection', restaurantId] });
     },
   });
 
   async function triggerManualSync(
-    restaurantId: string
+    restaurantId: string,
+    options?: { startDate?: string; endDate?: string },
   ): Promise<Record<string, unknown> | null> {
-    return triggerManualSyncMutation.mutateAsync(restaurantId);
+    return triggerManualSyncMutation.mutateAsync({ restaurantId, options });
+  }
+
+  // ---- listRestaurants ----
+  // useMutation (not useQuery) because it carries unsaved API credentials in
+  // the body; caching them in React Query would risk stale-credential confusion
+  // and expose key/secret in query state. Design §4.2 / §8.5.
+  //
+  // Both invoke error shapes handled (lesson 2026-05-16):
+  //   Shape 1: invoke itself rejects (network, timeout)
+  //   Shape 2: {data:null, error:{message:...}} from HTTP-level error
+  //   Shape 3: {data:{success:false, error:'...'}} Focus-side friendly message
+
+  const listRestaurantsMutation = useMutation({
+    mutationFn: async ({
+      restaurantId,
+      apiKey,
+      apiSecret,
+      environment,
+    }: {
+      restaurantId: string;
+      apiKey: string;
+      apiSecret: string;
+      environment: string;
+    }): Promise<FocusRestaurantOption[]> => {
+      const { data, error } = await supabase.functions.invoke('focus-list-restaurants', {
+        body: { restaurantId, apiKey, apiSecret, environment },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      return (data?.restaurants ?? []) as FocusRestaurantOption[];
+    },
+    // No cache invalidation needed — read-only, credentials not stored.
+  });
+
+  async function listRestaurants(
+    restaurantId: string,
+    apiKey: string,
+    apiSecret: string,
+    environment: string = 'production',
+  ): Promise<FocusRestaurantOption[]> {
+    return listRestaurantsMutation.mutateAsync({ restaurantId, apiKey, apiSecret, environment });
   }
 
   return {
@@ -233,5 +328,6 @@ export function useFocusConnection(restaurantId?: string | null) {
     testConnection,
     disconnect,
     triggerManualSync,
+    listRestaurants,
   };
 }

@@ -1,32 +1,25 @@
 /**
- * focus-sync-data/index.ts
+ * focus-list-restaurants/index.ts
  *
- * Edge function: manually trigger a Focus POS sync for one business day.
+ * Edge function: list Focus POS restaurants for a given API key + secret.
  *
  * This thin entry point handles CORS pre-flight, builds the injectable deps
- * (user-scoped client + service-role client + fetch), and delegates all
- * business logic to focusSyncDataHandler.ts.
- *
- * Sync mode is determined by the connection row:
- *   - initial_sync_done=false → backfill (one cursor day per call, up to 90 days)
- *   - initial_sync_done=true  → incremental (last 2 business days, idempotent)
+ * (user-scoped client + service-role client), and delegates all business
+ * logic to focusListRestaurantsHandler.ts.
  *
  * Auth model: verify_jwt = false (so the function receives the raw JWT and
  * validates it itself via userClient.auth.getUser() — mirroring
- * focus-save-connection and focus-test-connection). The caller MUST still
- * send a valid Supabase JWT in the Authorization header; the handler returns
- * 401 if it is missing or invalid.
+ * focus-save-connection). The caller MUST still send a valid Supabase JWT
+ * in the Authorization header; the handler returns 401 if it is missing or
+ * invalid.
  *
- * Design ref: Plan Task 9; spec §8 (focus-sync-data), §9 (sync orchestration).
+ * Design ref: spec §4.1 (Increment A — A2) + §8.6 (security).
+ * Plan ref: A2.
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { handleSyncData } from '../_shared/focusSyncDataHandler.ts';
-import { makeFocusHttpFetch } from '../_shared/focusHttpFetch.ts';
-// Deno server runtime does NOT have globalThis.DOMParser (browser-only API).
-// Import deno_dom so we can pass a working DOMParser to parseRevenueCenterReport.
-import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
+import { handleListRestaurants } from '../_shared/focusListRestaurantsHandler.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -49,14 +42,9 @@ serve(async (req: Request) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Service-role client: used for all reads + writes (bypasses RLS per review S3).
-    const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
-
-    const res = await handleSyncData(req, {
+    const res = await handleListRestaurants(req, {
       userClient,
-      serviceClient,
-      fetch: makeFocusHttpFetch(serviceClient),
-      domParser: new DOMParser(),
+      fetch: globalThis.fetch.bind(globalThis),
       sandboxBaseUrl: Deno.env.get('FOCUS_API_SANDBOX_URL') || undefined,
     });
 
@@ -71,7 +59,7 @@ serve(async (req: Request) => {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('focus-sync-data: unexpected error:', message);
+    console.error('focus-list-restaurants: unexpected error:', message);
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

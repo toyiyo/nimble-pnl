@@ -10,7 +10,7 @@
 -- focus_payments tables). The bulk-sync edge function skips the RPC for large
 -- imports; this cron picks those up with a short lag.
 --
--- Schedule: */6 * * * * (every 6 hours, on the hour)
+-- Schedule: 0 */6 * * * (every 6 hours, on the hour)
 -- =====================================================================
 
 -- Ensure required extensions exist (idempotent)

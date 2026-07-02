@@ -9,8 +9,8 @@
  *      - calls fetchDatafeed with the correct business date (YYYY-MM-DD)
  *      - when fetchDatafeed returns ok:true, parses the XML with parseFocusDatafeed
  *      - upserts focus_orders (one per check)
- *      - upserts focus_order_items (skips isKitchenComment lines; includes priced + modifier lines)
- *      - upserts focus_payments (one per payment per check)
+ *      - upserts focus_order_items via ONE array upsert per check (skips isKitchenComment)
+ *      - upserts focus_payments via ONE array upsert per check
  *      - calls sync_focus_transactions_to_unified_sales RPC for the restaurant + date
  *      - returns { status: 'ok', checksWritten: N } on success
  *      - returns { status: 'empty' } when checks array is empty
@@ -21,16 +21,23 @@
  *      - calls fetchDatafeed exactly once per call
  *      - calls the unified_sales RPC with correct p_restaurant_id and date params
  *      - when skipUnifiedSalesSync=true, does NOT call the RPC
+ *  - processDateRangeTransactions: iterates explicit date list, calls processDayTransactions each day,
+ *      calls unified_sales RPC once for the full range (unless skipUnifiedSalesSync).
  *
- * Design ref: plan Task 4; spec §4 (sync flow), §3 (data model), §7 (testing).
+ * Design ref: plan Task B2; spec §4 (sync flow), §3 (data model), §8.4 (batch upserts).
  */
 
 import { describe, it, expect, vi } from 'vitest';
 import {
   processDayTransactions,
+  processDateRangeTransactions,
   type TransactionSyncDeps,
   type TransactionSyncConfig,
+  type TransactionSupabaseDeps,
 } from '../../supabase/functions/_shared/focusTransactionSyncHandler';
+
+// Narrowed return type for the fetchDatafeed mock used in tests
+type FetchDatafeedFn = TransactionSyncDeps['fetchDatafeed'];
 
 // ── Sample XML (from fixtures; two checks, one with kitchen comments) ──────────
 
@@ -146,8 +153,8 @@ function makeDeps(opts: {
 
   return {
     deps: {
-      supabase: client as any,
-      fetchDatafeed: fetchDatafeedMock as any,
+      supabase: client as unknown as TransactionSupabaseDeps,
+      fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
     },
     mocks,
     fetchDatafeedMock,
@@ -224,25 +231,40 @@ describe('processDayTransactions', () => {
     expect(upsertOptions?.onConflict).toMatch(/restaurant_id.*business_date.*focus_check_id/);
   });
 
-  // ── Success: focus_order_items upsert ────────────────────────────────────────
+  // ── Success: focus_order_items BATCH upsert (§8.4) ──────────────────────────
+  // After B2, items are upserted as ONE array per check, not one await per row.
+
+  it('makes exactly ONE focus_order_items upsert call per check (batch)', async () => {
+    const { deps, mocks } = makeDeps({});
+    await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    // SAMPLE_XML_ONE_CHECK has 1 check → 1 array upsert call
+    expect(mocks.itemsUpsert).toHaveBeenCalledOnce();
+  });
+
+  it('upserts items as an array (not individual rows)', async () => {
+    const { deps, mocks } = makeDeps({});
+    await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    // First (only) call's first arg must be an array
+    const arg = mocks.itemsUpsert.mock.calls[0][0];
+    expect(Array.isArray(arg)).toBe(true);
+  });
 
   it('skips kitchen-comment items (isKitchenComment=true)', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     // SAMPLE_XML_ONE_CHECK has: 1 priced item + 1 modifier + 1 kitchen comment
-    // Only 2 should be written (no kitchen comment)
-    expect(mocks.itemsUpsert).toHaveBeenCalledTimes(2);
-    const itemNames = mocks.itemsUpsert.mock.calls.map(
-      (c: any[]) => c[0].name
-    );
+    // The array must have exactly 2 items (no kitchen comment)
+    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as Record<string, unknown>[];
+    expect(itemsArray).toHaveLength(2);
+    const itemNames = itemsArray.map((r) => r.name);
     expect(itemNames).not.toContain('CUSTOMER NAME REDACTED');
   });
 
-  it('writes the priced item row to focus_order_items', async () => {
+  it('writes the priced item row to focus_order_items array', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
-    const rows = mocks.itemsUpsert.mock.calls.map((c: any[]) => c[0]);
-    const scoop = rows.find((r: any) => r.name === 'Scoop Single');
+    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as Record<string, unknown>[];
+    const scoop = itemsArray.find((r) => r.name === 'Scoop Single');
     expect(scoop).toBeTruthy();
     expect(scoop.price).toBe(4.99);
     expect(scoop.is_modifier).toBe(false);
@@ -251,11 +273,11 @@ describe('processDayTransactions', () => {
     expect(scoop.business_date).toBe(BUSINESS_DATE);
   });
 
-  it('writes the modifier row to focus_order_items', async () => {
+  it('writes the modifier row to focus_order_items array', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
-    const rows = mocks.itemsUpsert.mock.calls.map((c: any[]) => c[0]);
-    const modifier = rows.find((r: any) => r.name === 'Chocolate');
+    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as Record<string, unknown>[];
+    const modifier = itemsArray.find((r) => r.name === 'Chocolate');
     expect(modifier).toBeTruthy();
     expect(modifier.is_modifier).toBe(true);
     expect(modifier.parent_key).toBe('3');
@@ -270,14 +292,28 @@ describe('processDayTransactions', () => {
     );
   });
 
-  // ── Success: focus_payments upsert ───────────────────────────────────────────
+  // ── Success: focus_payments BATCH upsert (§8.4) ─────────────────────────────
+  // After B2, payments are upserted as ONE array per check.
 
-  it('upserts one focus_payments row per payment per check', async () => {
+  it('makes exactly ONE focus_payments upsert call per check (batch)', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(mocks.paymentsUpsert).toHaveBeenCalledOnce();
-    const row = mocks.paymentsUpsert.mock.calls[0][0];
-    expect(row).toMatchObject({
+  });
+
+  it('upserts payments as an array (not individual rows)', async () => {
+    const { deps, mocks } = makeDeps({});
+    await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    const arg = mocks.paymentsUpsert.mock.calls[0][0];
+    expect(Array.isArray(arg)).toBe(true);
+  });
+
+  it('upserts one focus_payments row per payment per check (inside the array)', async () => {
+    const { deps, mocks } = makeDeps({});
+    await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    const paymentsArray = mocks.paymentsUpsert.mock.calls[0][0] as Record<string, unknown>[];
+    expect(paymentsArray).toHaveLength(1);
+    expect(paymentsArray[0]).toMatchObject({
       restaurant_id: RESTAURANT_ID,
       business_date: BUSINESS_DATE,
       focus_check_id: '10',
@@ -370,7 +406,7 @@ describe('processDayTransactions', () => {
     });
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
-    expect((result as any).error).toBeTruthy();
+    expect((result as { error?: string }).error).toBeTruthy();
   });
 
   it('returns { status: "error" } when fetchDatafeed returns ok:false (network error)', async () => {
@@ -394,7 +430,7 @@ describe('processDayTransactions', () => {
     });
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
-    expect((result as any).error).toMatch(/DB write failed/);
+    expect((result as { error?: string }).error).toMatch(/DB write failed/);
   });
 
   // ── Voided checks (DeleteRecord) ─────────────────────────────────────────────
@@ -441,7 +477,7 @@ describe('processDayTransactions', () => {
     expect(mocks.ordersUpsert).not.toHaveBeenCalled();
   });
 
-  // ── Multiple checks (wider coverage) ─────────────────────────────────────────
+  // ── Multiple checks: batch calls per check (not per item) ────────────────────
 
   it('processes 2 checks and returns checksWritten=2', async () => {
     const TWO_CHECKS = `<DailyData><Checks>
@@ -453,5 +489,171 @@ describe('processDayTransactions', () => {
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'ok', checksWritten: 2 });
     expect(mocks.ordersUpsert).toHaveBeenCalledTimes(2);
+    // ONE items upsert call per check (2 checks → 2 calls), each call is an array
+    expect(mocks.itemsUpsert).toHaveBeenCalledTimes(2);
+    expect(Array.isArray(mocks.itemsUpsert.mock.calls[0][0])).toBe(true);
+    expect(Array.isArray(mocks.itemsUpsert.mock.calls[1][0])).toBe(true);
+    // ONE payments upsert call per check (2 checks → 2 calls)
+    expect(mocks.paymentsUpsert).toHaveBeenCalledTimes(2);
+    expect(Array.isArray(mocks.paymentsUpsert.mock.calls[0][0])).toBe(true);
+    expect(Array.isArray(mocks.paymentsUpsert.mock.calls[1][0])).toBe(true);
+  });
+
+  // ── Error from array upsert → check fails ────────────────────────────────────
+
+  it('returns { status: "error" } when the items array upsert fails', async () => {
+    const { client, mocks } = makeSupabaseMock();
+    // Make items upsert fail
+    mocks.itemsUpsert.mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: null, error: { message: 'items write failed' } }),
+    });
+    const fetchDatafeedMock = makeFetchDatafeedMock();
+    const deps: TransactionSyncDeps = {
+      supabase: client as unknown as TransactionSupabaseDeps,
+      fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
+    };
+    const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    expect(result).toMatchObject({ status: 'error' });
+    expect((result as { error?: string }).error).toMatch(/items write failed/);
+  });
+
+  it('returns { status: "error" } when the payments array upsert fails', async () => {
+    const { client, mocks } = makeSupabaseMock();
+    // Make payments upsert fail
+    mocks.paymentsUpsert.mockReturnValue({
+      select: vi.fn().mockResolvedValue({ data: null, error: { message: 'payments write failed' } }),
+    });
+    const fetchDatafeedMock = makeFetchDatafeedMock();
+    const deps: TransactionSyncDeps = {
+      supabase: client as unknown as TransactionSupabaseDeps,
+      fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
+    };
+    const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    expect(result).toMatchObject({ status: 'error' });
+    expect((result as { error?: string }).error).toMatch(/payments write failed/);
+  });
+});
+
+// ── processDateRangeTransactions ──────────────────────────────────────────────
+
+describe('processDateRangeTransactions', () => {
+  /**
+   * Build a deps object with a mocked processDayTransactions and supabase (for
+   * the final unified_sales RPC call).
+   */
+  function makeDateRangeDeps(opts: {
+    dayResults?: Record<string, { status: 'ok' | 'empty' | 'error' | 'inprogress'; error?: string }>;
+    rpcError?: { message: string } | null;
+  } = {}) {
+    const { client, mocks } = makeSupabaseMock();
+
+    // processDateRangeTransactions calls deps.processDayTransactions for each date,
+    // then calls supabase.rpc once for the range.
+    const processDayMock = vi.fn().mockImplementation(
+      async (_deps: unknown, _config: unknown, date: string) => {
+        const overrides = opts.dayResults ?? {};
+        return overrides[date] ?? { status: 'ok', checksWritten: 1 };
+      },
+    );
+
+    if (opts.rpcError !== undefined) {
+      mocks.rpcFn.mockResolvedValue({ data: null, error: opts.rpcError });
+    }
+
+    return {
+      deps: {
+        supabase: client as unknown as TransactionSupabaseDeps,
+        fetchDatafeed: vi.fn() as unknown as FetchDatafeedFn,
+        processDayTransactions: processDayMock,
+      },
+      mocks,
+      processDayMock,
+    };
+  }
+
+  it('calls processDayTransactions once per date in the range', async () => {
+    const { deps, processDayMock } = makeDateRangeDeps();
+    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29');
+    expect(processDayMock).toHaveBeenCalledTimes(3);
+    const dates = processDayMock.mock.calls.map((c: unknown[]) => c[2]);
+    expect(dates).toContain('2026-06-27');
+    expect(dates).toContain('2026-06-28');
+    expect(dates).toContain('2026-06-29');
+  });
+
+  it('calls processDayTransactions with skipUnifiedSalesSync=true for each day', async () => {
+    const { deps, processDayMock } = makeDateRangeDeps();
+    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29');
+    for (const call of processDayMock.mock.calls) {
+      expect(call[3]).toMatchObject({ skipUnifiedSalesSync: true });
+    }
+  });
+
+  it('calls the unified_sales RPC once at the end with the full range', async () => {
+    const { deps, mocks } = makeDateRangeDeps();
+    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29');
+    expect(mocks.rpcFn).toHaveBeenCalledOnce();
+    expect(mocks.rpcFn).toHaveBeenCalledWith(
+      'sync_focus_transactions_to_unified_sales',
+      expect.objectContaining({
+        p_restaurant_id: RESTAURANT_ID,
+        p_start_date: '2026-06-27',
+        p_end_date: '2026-06-29',
+      }),
+    );
+  });
+
+  it('does NOT call the RPC when skipUnifiedSalesSync=true', async () => {
+    const { deps, mocks } = makeDateRangeDeps();
+    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29', { skipUnifiedSalesSync: true });
+    expect(mocks.rpcFn).not.toHaveBeenCalled();
+  });
+
+  it('works for a single-day range', async () => {
+    const { deps, processDayMock, mocks } = makeDateRangeDeps();
+    const result = await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-29', '2026-06-29');
+    expect(processDayMock).toHaveBeenCalledOnce();
+    expect(processDayMock.mock.calls[0][2]).toBe('2026-06-29');
+    expect(mocks.rpcFn).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ status: 'ok', daysSynced: 1 });
+  });
+
+  it('returns { status, daysSynced } with count of processed days', async () => {
+    const { deps } = makeDateRangeDeps();
+    const result = await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29');
+    expect(result).toMatchObject({ status: 'ok', daysSynced: 3 });
+  });
+
+  it('stops on a day error and returns { status: "error" }', async () => {
+    const { deps, processDayMock, mocks } = makeDateRangeDeps({
+      dayResults: {
+        '2026-06-28': { status: 'error', error: 'datafeed error' },
+      },
+    });
+    const result = await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29');
+    // Processes 06-27 (ok), then 06-28 (error → stops)
+    expect(processDayMock.mock.calls.length).toBeLessThan(3);
+    expect(result).toMatchObject({ status: 'error' });
+    // RPC should still be called for the days that did succeed (or not — design choice).
+    // Per spec §8.2: "Each day is committed as it goes, so it is durable."
+    // The RPC is called once at the end regardless; check it was NOT called on error-stop.
+    expect(mocks.rpcFn).not.toHaveBeenCalled();
+  });
+
+  it('does not skip any date when all days are ok', async () => {
+    const { deps, processDayMock } = makeDateRangeDeps();
+    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-25', '2026-06-29');
+    expect(processDayMock).toHaveBeenCalledTimes(5);
+    const dates = processDayMock.mock.calls.map((c: unknown[]) => c[2]).sort();
+    expect(dates).toEqual(['2026-06-25', '2026-06-26', '2026-06-27', '2026-06-28', '2026-06-29']);
+  });
+
+  it('calls processDayTransactions with the correct config', async () => {
+    const { deps, processDayMock } = makeDateRangeDeps();
+    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-29', '2026-06-29');
+    expect(processDayMock.mock.calls[0][1]).toMatchObject({
+      restaurantId: RESTAURANT_ID,
+      storeId: STORE_ID,
+    });
   });
 });

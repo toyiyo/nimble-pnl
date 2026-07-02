@@ -133,6 +133,8 @@
   - **minor**: `progress.md` — replaced absolute `/Users/` symlink path with generic placeholder
   - **minor**: `docs/superpowers/plans/...` — replaced hard-coded `/Users/` creds/OpenAPI paths with env-var placeholder + spec reference; aligned RLS template name to `focus_daily_reports`
 
+#### Iteration 3 — No findings (clean) ✔
+
 #### Iteration 2 — Findings fixed (commit `c0d09acd`):
   - **security/major**: `focusLynkClient.ts` — added `redirect: 'error'` to both fetch calls (POST+blob) to block SSRF bypass via 3xx redirects from allow-listed hosts
   - **major**: `focusTransactionSyncHandler.ts` — scoped voided-check DELETEs to `business_date` (check IDs may reset daily; cross-day deletion prevented); updated 3-level delete mock + assertions
@@ -148,5 +150,29 @@
   - Deferred (too architectural for CR): "replace child rows before re-upserting" (atomic per-check replace), "daily aggregate skips dates where all items removed", "return error when unified_sales RPC fails" (intentionally non-fatal per design)
 - TypeScript: 0 errors. Tests: 5145/5147 pass (2 pre-existing skips).
 
-### Verify — PENDING
+### CodeRabbit Review (7c) — COMPLETED (2026-07-02)
+
+### Verify — COMPLETED (2026-07-02)
+
+#### Issue found and fixed: Missing migrations in local DB
+- Migrations `20260701140000_focus_transactions_cron.sql` and `20260701150000_focus_transactions_integrity.sql` had been committed but not applied to the local pgTAP database.
+- Applied both via `psql -f` and registered in `supabase_migrations.schema_migrations`.
+- After applying: pgTAP tests 35 (card_last4 CHECK) and 36 (order-level ON DELETE CASCADE) now pass.
+
+#### Results — ALL PASS
+
+| Check | Result | Detail |
+|-------|--------|--------|
+| `npm run test` | PASS | 5145/5147 passed (2 pre-existing skips in `schedule-solver-trace.test.ts`) — 383 files |
+| `npm run test:db` | PASS | 1494/1495 passed (1 pre-existing failure in `32_weekly_brief_queue.sql` — unrelated to this branch, present on main) |
+| `npm run test:e2e` | PASS | 146/159 passed (12 skipped, 1 pre-existing failure in `scheduling-conflicts.spec.ts:326` — file not modified in this branch) |
+| `npm run typecheck` | PASS | 0 TypeScript errors |
+| `npm run lint` | PASS (no new errors) | 1515 pre-existing lint errors/warnings in untouched files; 0 errors in new focus files |
+| `npm run build` | PASS | Production build succeeded in 19.77s; exit code 0 |
+
+#### Pre-existing issues (not regressions from this branch)
+- `32_weekly_brief_queue.sql` test 9: pre-existing DB test failure (present since `feat: gate Ops Inbox & Weekly Brief`)
+- `scheduling-conflicts.spec.ts:326` ("Assign All batches conflicts…"): pre-existing E2E flake — `tests/e2e/scheduling-conflicts.spec.ts` has 0 diff vs main
+- ESLint 1515 problems: all in files not touched by this branch (e.g., `AccountDialog.tsx`, `BankCSVUpload.tsx`, `ChatMessage.tsx`)
+
 ### Ship — PENDING

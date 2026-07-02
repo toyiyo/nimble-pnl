@@ -1,4 +1,5 @@
 import type { CoverageVerdict as CVType } from '@/lib/coverageSummary';
+import { formatCoverageHour } from '@/lib/coverageSummary';
 
 interface CoverageVerdictProps {
   /** The verdict object computed by `buildVerdict` from `src/lib/coverageSummary`. */
@@ -8,16 +9,6 @@ interface CoverageVerdictProps {
    * string, e.g. `17 → "5 PM"`.  Defaults to a built-in 12-hour formatter.
    */
   readonly formatHour?: (hour: number) => string;
-}
-
-/**
- * Format a clock hour (0-23) into a compact 12-hour label, e.g. 0 → "12 AM", 17 → "5 PM".
- */
-function defaultFormatHour(hour: number): string {
-  const h24 = ((hour % 24) + 24) % 24;
-  const period = h24 < 12 ? 'AM' : 'PM';
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12} ${period}`;
 }
 
 /**
@@ -32,7 +23,7 @@ function defaultFormatHour(hour: number): string {
  */
 export function CoverageVerdict({
   verdict,
-  formatHour = defaultFormatHour,
+  formatHour = formatCoverageHour,
 }: CoverageVerdictProps) {
   const { hasDemand, metAll, shortHours, totalHours, worst } = verdict;
 

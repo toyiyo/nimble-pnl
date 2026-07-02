@@ -1,4 +1,5 @@
 import type { CoverageHour } from '@/lib/coverageSummary';
+import { formatCoverageHour } from '@/lib/coverageSummary';
 import { cn } from '@/lib/utils';
 
 interface CoverageStatusStripProps {
@@ -9,16 +10,6 @@ interface CoverageStatusStripProps {
    * string, e.g. `17 → "5 PM"`.  Defaults to a built-in 12-hour formatter.
    */
   readonly formatHour?: (hour: number) => string;
-}
-
-/**
- * Format a clock hour (0-23) into a compact 12-hour label, e.g. 0 → "12 AM", 17 → "5 PM".
- */
-function defaultFormatHour(hour: number): string {
-  const h24 = ((hour % 24) + 24) % 24;
-  const period = h24 < 12 ? 'AM' : 'PM';
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12} ${period}`;
 }
 
 /**
@@ -51,7 +42,7 @@ function cellAriaLabel(hour: CoverageHour, label: string): string {
  */
 export function CoverageStatusStrip({
   hours,
-  formatHour = defaultFormatHour,
+  formatHour = formatCoverageHour,
 }: CoverageStatusStripProps) {
   if (hours.length === 0) return null;
 

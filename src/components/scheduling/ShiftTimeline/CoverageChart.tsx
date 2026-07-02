@@ -1,4 +1,5 @@
 import type { CoverageHour } from '@/lib/coverageSummary';
+import { formatCoverageHour } from '@/lib/coverageSummary';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -14,24 +15,15 @@ const MARGIN_BOTTOM = 20;
 /** Total viewBox width. The plot area is [MARGIN_LEFT, WIDTH - MARGIN_RIGHT]. */
 const WIDTH = 400;
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function formatHourLabel(hour: number): string {
-  const h24 = ((hour % 24) + 24) % 24;
-  const period = h24 < 12 ? 'AM' : 'PM';
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${h12}${period}`;
-}
-
 /**
  * Compute a nice maximum for the y-axis, rounding up to the next integer ≥ 1.
  */
 function computePeak(hours: CoverageHour[]): number {
-  let peak = 1;
-  for (const h of hours) {
-    if (h.scheduled > peak) peak = h.scheduled;
-    if (h.needed !== null && h.needed > peak) peak = h.needed;
-  }
+  const peak = hours.reduce((acc, h) => {
+    const candidates = [acc, h.scheduled];
+    if (h.needed !== null) candidates.push(h.needed);
+    return Math.max(...candidates);
+  }, 1);
   return Math.max(Math.ceil(peak), 1);
 }
 
@@ -320,6 +312,20 @@ interface AxesProps {
 function Axes({ plotW, plotH, peak, view, hourLabels, hours }: AxesProps) {
   const xEnd = MARGIN_LEFT + plotW;
 
+  // X-axis hour labels are identical in both views — render once.
+  const xAxisLabels = hourLabels.map((label, i) => (
+    <text
+      key={i}
+      x={MARGIN_LEFT + ((i + 0.5) / hours.length) * plotW}
+      y={MARGIN_TOP + plotH + 12}
+      textAnchor="middle"
+      className="fill-muted-foreground"
+      fontSize="8"
+    >
+      {label}
+    </text>
+  ));
+
   if (view === 'area') {
     // Y: 0…peak, gridlines at integer steps (max 5 lines to avoid clutter)
     const step = Math.max(1, Math.ceil(peak / 5));
@@ -355,23 +361,7 @@ function Axes({ plotW, plotH, peak, view, hourLabels, hours }: AxesProps) {
           );
         })}
 
-        {/* X-axis hour labels */}
-        {hourLabels.map((label, i) => {
-          const xMid =
-            MARGIN_LEFT + ((i + 0.5) / hours.length) * plotW;
-          return (
-            <text
-              key={i}
-              x={xMid}
-              y={MARGIN_TOP + plotH + 12}
-              textAnchor="middle"
-              className="fill-muted-foreground"
-              fontSize="8"
-            >
-              {label}
-            </text>
-          );
-        })}
+        {xAxisLabels}
       </>
     );
   }
@@ -410,22 +400,7 @@ function Axes({ plotW, plotH, peak, view, hourLabels, hours }: AxesProps) {
         );
       })}
 
-      {/* X-axis hour labels */}
-      {hourLabels.map((label, i) => {
-        const xMid = MARGIN_LEFT + ((i + 0.5) / hours.length) * plotW;
-        return (
-          <text
-            key={i}
-            x={xMid}
-            y={MARGIN_TOP + plotH + 12}
-            textAnchor="middle"
-            className="fill-muted-foreground"
-            fontSize="8"
-          >
-            {label}
-          </text>
-        );
-      })}
+      {xAxisLabels}
     </>
   );
 }
@@ -492,7 +467,7 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
   const plotW = WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
   const plotH = height - MARGIN_TOP - MARGIN_BOTTOM;
 
-  const hourLabels = hours.map((h) => formatHourLabel(h.hour));
+  const hourLabels = hours.map((h) => formatCoverageHour(h.hour));
 
   // Compute accessible description
   const shortCount = hours.filter((h) => h.delta !== null && h.delta < 0).length;

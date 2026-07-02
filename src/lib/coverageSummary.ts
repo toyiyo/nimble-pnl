@@ -35,6 +35,18 @@ export interface CoverageVerdict {
 const HOUR = 60;
 
 /**
+ * Format a clock hour (0–23) into a compact 12-hour label without minutes,
+ * e.g. 0 → "12 AM", 17 → "5 PM".  Used by CoverageVerdict, CoverageChart,
+ * and CoverageStatusStrip so the label style is consistent across all three.
+ */
+export function formatCoverageHour(hour: number): string {
+  const h24 = ((hour % 24) + 24) % 24;
+  const period = h24 < 12 ? 'AM' : 'PM';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  return `${h12} ${period}`;
+}
+
+/**
  * Aggregate 15-min coverage samples into per-hour summaries aligned with
  * the hourly demand targets.
  *

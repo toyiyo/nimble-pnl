@@ -28,6 +28,9 @@ export default defineConfig({
         'src/components/**',
         'src/pages/**',
         'src/contexts/**',
+        // Data-fetch hook relocated verbatim from StaffingOverlay (a coverage-
+        // excluded component); its pure math is covered via computeStaffingSuggestions.
+        'src/hooks/useWeekStaffingSuggestions.ts',
         'src/integrations/**',
         'src/types/**',
         'src/App.tsx',

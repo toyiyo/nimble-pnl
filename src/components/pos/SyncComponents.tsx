@@ -27,18 +27,18 @@ interface ConnectionStatusProps {
 
 export function ConnectionStatus({ lastSyncTime, config }: ConnectionStatusProps): JSX.Element {
   return (
-    <div className="bg-muted/50 rounded-lg p-4">
+    <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
       <div className="flex items-center gap-3">
-        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary">
-          <Clock className="h-4 w-4" />
+        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted/50">
+          <Clock className="h-4 w-4 text-foreground" />
         </div>
         <div className="flex-1">
-          <h4 className="font-medium text-sm">Scheduled Sync Active</h4>
-          <p className="text-xs text-muted-foreground">
+          <h4 className="text-[14px] font-medium text-foreground">Scheduled Sync Active</h4>
+          <p className="text-[13px] text-muted-foreground">
             {config.dataLabel.charAt(0).toUpperCase() + config.dataLabel.slice(1)} sync automatically every {config.syncInterval}
           </p>
           {lastSyncTime && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-[12px] text-muted-foreground mt-1">
               Last synced: {formatDistanceToNow(lastSyncTime, { addSuffix: true })}
               <span className="text-muted-foreground/60 ml-1">
                 ({format(lastSyncTime, 'PPp')})
@@ -47,8 +47,8 @@ export function ConnectionStatus({ lastSyncTime, config }: ConnectionStatusProps
           )}
         </div>
         <Badge
-          variant="default"
-          className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+          variant="outline"
+          className="border-border/40 bg-muted/50 text-foreground"
         >
           <CheckCircle2 className="h-3 w-3 mr-1" />
           Connected
@@ -145,10 +145,10 @@ export function SyncModeSelector({
         <div className="flex items-start space-x-3">
           <RadioGroupItem value="recent" id="recent" className="mt-1" />
           <div className="flex-1">
-            <Label htmlFor="recent" className="font-medium cursor-pointer">
+            <Label htmlFor="recent" className="text-[14px] font-medium text-foreground cursor-pointer">
               {initialSyncDone ? `Sync recent ${config.dataLabel}` : 'Initial sync'}
             </Label>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               {initialSyncDone
                 ? `Fetch ${config.dataLabel} from the ${config.recentWindowLabel ?? 'last 25 hours'}`
                 : `Import last 90 days of ${config.dataLabelSingular} history`}
@@ -159,10 +159,10 @@ export function SyncModeSelector({
         <div className="flex items-start space-x-3">
           <RadioGroupItem value="custom" id="custom" className="mt-1" />
           <div className="flex-1 space-y-2">
-            <Label htmlFor="custom" className="font-medium cursor-pointer">
+            <Label htmlFor="custom" className="text-[14px] font-medium text-foreground cursor-pointer">
               Custom date range
             </Label>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               Backfill or re-sync {config.dataLabel} for specific dates (max 90 days)
             </p>
             {syncMode === 'custom' && (
@@ -218,13 +218,13 @@ export function SyncButton({ isLoading, initialSyncDone, syncMode, dateRange, on
         <Button
           onClick={onSync}
           disabled={isDisabled}
-          className="w-full max-w-xs mx-auto"
-          size="lg"
+          aria-label={isLoading ? 'Syncing in progress…' : undefined}
+          className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium disabled:opacity-50"
         >
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
           {buttonText}
         </Button>
-        <p className="text-sm text-muted-foreground mt-2">{description}</p>
+        <p className="text-[13px] text-muted-foreground mt-2">{description}</p>
       </div>
     </div>
   );
@@ -247,18 +247,18 @@ export function SyncProgressDisplay({ progress, itemsSynced, initialSyncDone, co
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">
+        <span className="text-[14px] font-medium text-foreground">
           Syncing data from {config.name}... {progress > 0 && `(${progress}%)`}
         </span>
-        <RefreshCw className="h-4 w-4 animate-spin" />
+        <RefreshCw className="h-4 w-4 animate-spin text-foreground" aria-hidden="true" />
       </div>
       {itemsSynced > 0 && (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[12px] text-muted-foreground">
           {itemsSynced} {config.dataLabel} synced so far
         </p>
       )}
       <Progress value={progress || undefined} className="w-full" />
-      <p className="text-xs text-muted-foreground">{statusText}</p>
+      <p className="text-[12px] text-muted-foreground">{statusText}</p>
     </div>
   );
 }
@@ -273,15 +273,15 @@ interface SyncResultsProps {
 
 export function SyncResults({ itemsSynced, errors, config }: SyncResultsProps): JSX.Element {
   return (
-    <div className="bg-muted/50 rounded-lg p-4 space-y-4">
+    <div className="rounded-xl border border-border/40 bg-muted/30 p-4 space-y-4">
       <div className="flex items-center gap-2 mb-3">
-        <CheckCircle2 className="h-5 w-5 text-green-600" />
-        <h4 className="font-medium">Sync Complete</h4>
+        <CheckCircle2 className="h-5 w-5 text-foreground" aria-hidden="true" />
+        <h4 className="text-[14px] font-medium text-foreground">Sync Complete</h4>
       </div>
 
       <div className="space-y-1">
-        <div className="text-2xl font-bold text-primary">{itemsSynced}</div>
-        <div className="text-sm text-muted-foreground">
+        <div className="text-[17px] font-semibold text-foreground">{itemsSynced}</div>
+        <div className="text-[13px] text-muted-foreground">
           {config.dataLabel.charAt(0).toUpperCase() + config.dataLabel.slice(1)} synced
         </div>
       </div>
@@ -291,9 +291,9 @@ export function SyncResults({ itemsSynced, errors, config }: SyncResultsProps): 
           <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             <div className="space-y-1">
-              <div className="font-medium">Some errors occurred:</div>
+              <div className="text-[14px] font-medium">Some errors occurred:</div>
               {errors.map((error, idx) => (
-                <div key={`error-${idx}`} className="text-sm">
+                <div key={`error-${idx}`} className="text-[13px]">
                   {error}
                 </div>
               ))}
@@ -313,16 +313,16 @@ interface HowSyncingWorksInfoProps {
 
 export function HowSyncingWorksInfo({ config }: HowSyncingWorksInfoProps): JSX.Element {
   return (
-    <Alert>
-      <AlertCircle className="h-4 w-4" />
+    <Alert className="border-border/40 bg-muted/30">
+      <AlertCircle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
       <AlertDescription>
         <div className="space-y-2">
-          <div className="font-medium">How syncing works</div>
-          <div className="text-sm space-y-1">
-            <div><strong>Scheduled Sync:</strong> {config.dataLabel.charAt(0).toUpperCase() + config.dataLabel.slice(1)} sync automatically every {config.syncInterval}</div>
-            <div><strong>Manual Sync:</strong> Use the button above for immediate sync</div>
-            <div><strong>Historical Data:</strong> First sync imports last 90 days of {config.dataLabel}</div>
-            <div><strong>Incremental:</strong> After initial sync, only recent {config.dataLabel} are fetched</div>
+          <div className="text-[14px] font-medium text-foreground">How syncing works</div>
+          <div className="text-[13px] text-muted-foreground space-y-1">
+            <div><strong className="text-foreground">Scheduled Sync:</strong> {config.dataLabel.charAt(0).toUpperCase() + config.dataLabel.slice(1)} sync automatically every {config.syncInterval}</div>
+            <div><strong className="text-foreground">Manual Sync:</strong> Use the button above for immediate sync</div>
+            <div><strong className="text-foreground">Historical Data:</strong> First sync imports last 90 days of {config.dataLabel}</div>
+            <div><strong className="text-foreground">Incremental:</strong> After initial sync, only recent {config.dataLabel} are fetched</div>
           </div>
         </div>
       </AlertDescription>

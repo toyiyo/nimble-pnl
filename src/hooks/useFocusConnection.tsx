@@ -78,7 +78,7 @@ export function useFocusConnection(restaurantId?: string | null) {
   // refetchInterval (design §8.5 / Frontend major #1): polls every 8s while backfilling;
   // stops on done, disconnect, or persisted error. Do NOT lower staleTime — polling
   // relies on fresh data but excessive invalidation degrades performance.
-  const { data: connection, isLoading: loading, error } = useQuery({
+  const { data: connection, isLoading: loading, error } = useQuery<FocusConnection | null>({
     queryKey: ['focus-connection', restaurantId],
     queryFn: async () => {
       if (!restaurantId) {

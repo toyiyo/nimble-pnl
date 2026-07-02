@@ -237,7 +237,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
         bulkRemoveBtnRef.current?.focus();
       });
     }
-  }, [confirmTarget, deleteTrade]);
+  }, [confirmTarget, deleteTrade, restaurantId]);
 
   const handleCancelRemove = useCallback(() => {
     setConfirmTarget(null);

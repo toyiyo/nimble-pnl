@@ -347,12 +347,12 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                 <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-2xl text-green-900 dark:text-green-100">
+                    <CardTitle className="text-[17px] font-semibold text-green-900 dark:text-green-100">
                       Pending Shift Claims
                     </CardTitle>
                     <Badge className="bg-green-500">{pendingClaims.length}</Badge>
                   </div>
-                  <CardDescription className="text-green-700 dark:text-green-300">
+                  <CardDescription className="text-[13px] text-green-700 dark:text-green-300">
                     Employees requesting to claim open shifts
                   </CardDescription>
                 </div>
@@ -381,14 +381,14 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
             <Clock className="h-6 w-6 text-amber-600 dark:text-amber-400" />
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-2xl text-amber-900 dark:text-amber-100">
+                <CardTitle className="text-[17px] font-semibold text-amber-900 dark:text-amber-100">
                   Pending Approval
                 </CardTitle>
                 {hasNormalPending && (
                   <Badge className="bg-amber-500">{normalPending.length}</Badge>
                 )}
               </div>
-              <CardDescription className="text-amber-700 dark:text-amber-300">
+              <CardDescription className="text-[13px] text-amber-700 dark:text-amber-300">
                 Trades accepted by employees awaiting your approval
               </CardDescription>
             </div>
@@ -412,8 +412,8 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
         <Card className="bg-gradient-to-br from-muted/50 to-transparent">
           <CardContent className="py-8 text-center">
             <CheckCircle className="mx-auto mb-3 h-10 w-10 text-muted-foreground" />
-            <h3 className="mb-1 text-base font-semibold">No pending approvals</h3>
-            <p className="text-sm text-muted-foreground">No trades awaiting your decision.</p>
+            <h3 className="mb-1 text-[15px] font-semibold text-foreground">No pending approvals</h3>
+            <p className="text-[13px] text-muted-foreground">No trades awaiting your decision.</p>
           </CardContent>
         </Card>
       )}
@@ -444,7 +444,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                 <ShoppingBag className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <CardTitle className="text-xl text-blue-900 dark:text-blue-100">
+                    <CardTitle className="text-[17px] font-semibold text-blue-900 dark:text-blue-100">
                       Open in Marketplace
                     </CardTitle>
                     {hasOpenTrades && (
@@ -453,7 +453,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                       </Badge>
                     )}
                   </div>
-                  <CardDescription className="text-blue-700 dark:text-blue-300">
+                  <CardDescription className="text-[13px] text-blue-700 dark:text-blue-300">
                     Shifts posted for trade, awaiting another employee to accept
                   </CardDescription>
                 </div>
@@ -515,7 +515,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
               ) : (
                 <div className="py-6 text-center">
                   <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">No shifts currently in the marketplace.</p>
+                  <p className="text-[13px] text-muted-foreground">No shifts currently in the marketplace.</p>
                 </div>
               )}
             </CardContent>
@@ -542,120 +542,147 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
 
       {/* Single-dialog for cleanup confirm (single or bulk) */}
       <Dialog open={confirmTarget !== null} onOpenChange={(open) => !open && handleCancelRemove()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Trash2 className="h-5 w-5 text-destructive" />
-              {confirmTarget?.type === 'bulk'
-                ? `Remove ${confirmTarget.ids.length} stale trade${confirmTarget.ids.length === 1 ? '' : 's'}?`
-                : 'Remove stale trade?'}
-            </DialogTitle>
-            <DialogDescription>
-              {confirmTarget?.type === 'bulk'
-                ? `This will permanently remove ${confirmTarget.ids.length} trade${confirmTarget.ids.length === 1 ? '' : 's'} (${confirmTarget.ids.length} trade${confirmTarget.ids.length === 1 ? '' : 's'}). This action cannot be undone.`
-                : 'This will permanently remove the stale trade request. This action cannot be undone.'}
-            </DialogDescription>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-xl bg-destructive/10 flex items-center justify-center">
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  {confirmTarget?.type === 'bulk'
+                    ? `Remove ${confirmTarget.ids.length} stale trade${confirmTarget.ids.length === 1 ? '' : 's'}?`
+                    : 'Remove stale trade?'}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  {confirmTarget?.type === 'bulk'
+                    ? `This will permanently remove ${confirmTarget.ids.length} trade${confirmTarget.ids.length === 1 ? '' : 's'}. This action cannot be undone.`
+                    : 'This will permanently remove the stale trade request. This action cannot be undone.'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
-          {confirmTarget?.type === 'single' && (
-            <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm space-y-1">
-              <p>
-                <span className="font-medium">Posted by:</span>{' '}
-                {confirmTarget.trade.offered_by?.name ?? 'Unknown'}
-              </p>
-              {confirmTarget.trade.offered_shift && (
-                <p>
-                  <span className="font-medium">Shift date:</span>{' '}
-                  {format(new Date(confirmTarget.trade.offered_shift.start_time), 'EEEE, MMMM d, yyyy')}
+          <div className="px-6 py-5 space-y-5">
+            {confirmTarget?.type === 'single' && (
+              <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                  <h3 className="text-[13px] font-semibold text-foreground">Trade details</h3>
+                </div>
+                <div className="p-4 space-y-1 text-[14px]">
+                  <p>
+                    <span className="font-medium text-foreground">Posted by:</span>{' '}
+                    <span className="text-muted-foreground">{confirmTarget.trade.offered_by?.name ?? 'Unknown'}</span>
+                  </p>
+                  {confirmTarget.trade.offered_shift && (
+                    <p>
+                      <span className="font-medium text-foreground">Shift date:</span>{' '}
+                      <span className="text-muted-foreground">{format(new Date(confirmTarget.trade.offered_shift.start_time), 'EEEE, MMMM d, yyyy')}</span>
+                    </p>
+                  )}
+                  <p>
+                    <span className="font-medium text-foreground">Status:</span>{' '}
+                    <span className="text-muted-foreground">{confirmTarget.trade.status}</span>
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {confirmTarget?.type === 'bulk' && (
+              <div className="rounded-xl border border-border/40 bg-muted/30 p-4">
+                <p className="text-[14px] text-muted-foreground">
+                  {confirmTarget.ids.length} trade{confirmTarget.ids.length === 1 ? '' : 's'} will be permanently removed.
                 </p>
-              )}
-              <p>
-                <span className="font-medium">Status:</span> {confirmTarget.trade.status}
-              </p>
-            </div>
-          )}
+              </div>
+            )}
 
-          {confirmTarget?.type === 'bulk' && (
-            <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm">
-              <p className="text-muted-foreground">
-                {confirmTarget.ids.length} trade{confirmTarget.ids.length === 1 ? '' : 's'} will be removed.
-              </p>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCancelRemove}>
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={handleConfirmRemove}>
-              Remove
-            </Button>
-          </DialogFooter>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={handleCancelRemove}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmRemove}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              >
+                Remove
+              </Button>
+            </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
 
       {/* Claim Approval/Rejection Dialog */}
       <Dialog open={!!selectedClaim && !!claimActionType} onOpenChange={(open) => !open && handleClaimCancel()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {claimActionType === 'approve' ? (
-                <>
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  Approve Shift Claim
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  Reject Shift Claim
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {claimActionType === 'approve'
-                ? 'This will assign the shift to the claiming employee.'
-                : 'This will decline the claim request.'}
-            </DialogDescription>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${
+                claimActionType === 'approve' ? 'bg-green-500/10' : 'bg-destructive/10'
+              }`}>
+                {claimActionType === 'approve' ? (
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-destructive" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  {claimActionType === 'approve' ? 'Approve Shift Claim' : 'Reject Shift Claim'}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  {claimActionType === 'approve'
+                    ? 'This will assign the shift to the claiming employee.'
+                    : 'This will decline the claim request.'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
           {selectedClaim && (
-            <div className="space-y-4">
+            <div className="px-6 py-5 space-y-5">
               {/* Claim Summary */}
-              <div className="rounded-lg border border-border bg-muted/20 p-4">
-                <h4 className="mb-3 text-sm font-semibold text-muted-foreground">Claim Summary</h4>
-                <div className="space-y-1 text-sm">
+              <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                  <h3 className="text-[13px] font-semibold text-foreground">Claim Summary</h3>
+                </div>
+                <div className="p-4 space-y-1 text-[14px]">
                   <p>
-                    <span className="font-medium">Employee:</span>{' '}
-                    {selectedClaim.employee?.name ?? 'Unknown'}
+                    <span className="font-medium text-foreground">Employee:</span>{' '}
+                    <span className="text-muted-foreground">{selectedClaim.employee?.name ?? 'Unknown'}</span>
                   </p>
                   <p>
-                    <span className="font-medium">Shift:</span>{' '}
-                    {selectedClaim.shift_template?.name ?? 'Unknown'}
+                    <span className="font-medium text-foreground">Shift:</span>{' '}
+                    <span className="text-muted-foreground">{selectedClaim.shift_template?.name ?? 'Unknown'}</span>
                   </p>
                   <p>
-                    <span className="font-medium">Date:</span>{' '}
-                    {format(parseDateLocal(selectedClaim.shift_date), 'EEEE, MMMM d, yyyy')}
+                    <span className="font-medium text-foreground">Date:</span>{' '}
+                    <span className="text-muted-foreground">{format(parseDateLocal(selectedClaim.shift_date), 'EEEE, MMMM d, yyyy')}</span>
                   </p>
                   {selectedClaim.shift_template && (
                     <p>
-                      <span className="font-medium">Time:</span>{' '}
-                      {selectedClaim.shift_template.start_time} – {selectedClaim.shift_template.end_time}
+                      <span className="font-medium text-foreground">Time:</span>{' '}
+                      <span className="text-muted-foreground">{selectedClaim.shift_template.start_time} – {selectedClaim.shift_template.end_time}</span>
                     </p>
                   )}
                   <p>
-                    <span className="font-medium">Position:</span>{' '}
-                    {selectedClaim.shift_template?.position ?? selectedClaim.employee?.position ?? '—'}
+                    <span className="font-medium text-foreground">Position:</span>{' '}
+                    <span className="text-muted-foreground">{selectedClaim.shift_template?.position ?? selectedClaim.employee?.position ?? '—'}</span>
                   </p>
                 </div>
               </div>
 
               {/* Manager Note */}
               <div className="space-y-2">
-                <Label htmlFor="claim-manager-note" className="text-sm font-medium">
-                  Add Note{' '}
-                  <span className="text-muted-foreground">
-                    ({claimActionType === 'reject' ? 'Recommended' : 'Optional'})
-                  </span>
+                <Label
+                  htmlFor="claim-manager-note"
+                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  Note ({claimActionType === 'reject' ? 'Recommended' : 'Optional'})
                 </Label>
                 <Textarea
                   id="claim-manager-note"
@@ -667,107 +694,124 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                   value={claimNote}
                   onChange={(e) => setClaimNote(e.target.value)}
                   rows={3}
-                  className="resize-none"
+                  className="resize-none text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                 />
               </div>
 
               {claimActionType === 'approve' && (
-                <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 dark:bg-green-950/20">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400" />
-                  <p className="text-xs text-green-700 dark:text-green-300">
+                <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                  <p className="text-[13px] text-green-700 dark:text-green-300">
                     The employee will be notified of your decision.
                   </p>
                 </div>
               )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={handleClaimCancel}
+                  disabled={isApprovingClaim || isRejectingClaim}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleClaimConfirm}
+                  disabled={isApprovingClaim || isRejectingClaim}
+                  variant={claimActionType === 'approve' ? 'default' : 'destructive'}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  {renderClaimButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
+                </Button>
+              </DialogFooter>
             </div>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleClaimCancel} disabled={isApprovingClaim || isRejectingClaim}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleClaimConfirm}
-              disabled={isApprovingClaim || isRejectingClaim}
-              variant={claimActionType === 'approve' ? 'default' : 'destructive'}
-            >
-              {renderClaimButtonContent(claimActionType, isApprovingClaim || isRejectingClaim)}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Trade Approval/Rejection Dialog */}
       <Dialog open={!!selectedTrade && !!actionType} onOpenChange={(open) => !open && handleCancel()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {actionType === 'approve' ? (
-                <>
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  Approve Trade Request
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-5 w-5 text-red-600" />
-                  Reject Trade Request
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              {actionType === 'approve'
-                ? 'This will transfer the shift to the accepting employee.'
-                : 'This will decline the trade request and keep the original assignment.'}
-            </DialogDescription>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <div className="flex items-center gap-3">
+              <div className={`h-10 w-10 rounded-xl flex items-center justify-center ${
+                actionType === 'approve' ? 'bg-green-500/10' : 'bg-destructive/10'
+              }`}>
+                {actionType === 'approve' ? (
+                  <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+                ) : (
+                  <XCircle className="h-5 w-5 text-destructive" />
+                )}
+              </div>
+              <div>
+                <DialogTitle className="text-[17px] font-semibold text-foreground">
+                  {actionType === 'approve' ? 'Approve Trade Request' : 'Reject Trade Request'}
+                </DialogTitle>
+                <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                  {actionType === 'approve'
+                    ? 'This will transfer the shift to the accepting employee.'
+                    : 'This will decline the trade request and keep the original assignment.'}
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
           {selectedTrade && (
-            <div className="space-y-4">
+            <div className="px-6 py-5 space-y-5">
               {/* Trade Summary */}
-              <div className="rounded-lg border border-border bg-muted/20 p-4">
-                <h4 className="mb-3 text-sm font-semibold text-muted-foreground">Trade Summary</h4>
-                <div className="flex items-center gap-2">
-                  <div className="flex-1 text-center">
-                    <p className="text-xs text-muted-foreground">From</p>
-                    <p className="font-medium">{selectedTrade.offered_by?.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedTrade.offered_by?.position}
-                    </p>
-                  </div>
-                  <ArrowRight className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex-1 text-center">
-                    <p className="text-xs text-muted-foreground">To</p>
-                    <p className="font-medium">{selectedTrade.accepted_by?.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {selectedTrade.accepted_by?.position}
-                    </p>
-                  </div>
+              <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                  <h3 className="text-[13px] font-semibold text-foreground">Trade Summary</h3>
                 </div>
-                <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
-                  <p>
-                    <span className="font-medium">Date:</span>{' '}
-                    {selectedTrade.offered_shift &&
-                      format(new Date(selectedTrade.offered_shift.start_time), 'EEEE, MMMM d')}
-                  </p>
-                  <p>
-                    <span className="font-medium">Time:</span>{' '}
-                    {selectedTrade.offered_shift &&
-                      `${format(new Date(selectedTrade.offered_shift.start_time), 'h:mm a')} - ${format(new Date(selectedTrade.offered_shift.end_time), 'h:mm a')}`}
-                  </p>
-                  <p>
-                    <span className="font-medium">Position:</span>{' '}
-                    {selectedTrade.offered_shift?.position}
-                  </p>
+                <div className="p-4 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 text-center">
+                      <p className="text-[12px] text-muted-foreground">From</p>
+                      <p className="text-[14px] font-medium text-foreground">{selectedTrade.offered_by?.name}</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {selectedTrade.offered_by?.position}
+                      </p>
+                    </div>
+                    <ArrowRight className="h-5 w-5 text-muted-foreground" />
+                    <div className="flex-1 text-center">
+                      <p className="text-[12px] text-muted-foreground">To</p>
+                      <p className="text-[14px] font-medium text-foreground">{selectedTrade.accepted_by?.name}</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        {selectedTrade.accepted_by?.position}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-1 border-t border-border/40 pt-3 text-[14px]">
+                    <p>
+                      <span className="font-medium text-foreground">Date:</span>{' '}
+                      <span className="text-muted-foreground">
+                        {selectedTrade.offered_shift &&
+                          format(new Date(selectedTrade.offered_shift.start_time), 'EEEE, MMMM d')}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Time:</span>{' '}
+                      <span className="text-muted-foreground">
+                        {selectedTrade.offered_shift &&
+                          `${format(new Date(selectedTrade.offered_shift.start_time), 'h:mm a')} - ${format(new Date(selectedTrade.offered_shift.end_time), 'h:mm a')}`}
+                      </span>
+                    </p>
+                    <p>
+                      <span className="font-medium text-foreground">Position:</span>{' '}
+                      <span className="text-muted-foreground">{selectedTrade.offered_shift?.position}</span>
+                    </p>
+                  </div>
                 </div>
               </div>
 
               {/* Employee Reason */}
               {selectedTrade.reason && (
-                <div className="rounded-lg bg-blue-50 p-4 dark:bg-blue-950/20">
-                  <p className="mb-1 text-sm font-medium text-blue-900 dark:text-blue-100">
-                    Employee Reason:
-                  </p>
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
+                <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
+                    <h3 className="text-[13px] font-semibold text-foreground">Employee Reason</h3>
+                  </div>
+                  <p className="px-4 py-3 text-[14px] text-muted-foreground">
                     {selectedTrade.reason}
                   </p>
                 </div>
@@ -775,11 +819,11 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
 
               {/* Manager Note */}
               <div className="space-y-2">
-                <Label htmlFor="manager-note" className="text-sm font-medium">
-                  Add Note{' '}
-                  <span className="text-muted-foreground">
-                    ({actionType === 'reject' ? 'Recommended' : 'Optional'})
-                  </span>
+                <Label
+                  htmlFor="manager-note"
+                  className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                >
+                  Note ({actionType === 'reject' ? 'Recommended' : 'Optional'})
                 </Label>
                 <Textarea
                   id="manager-note"
@@ -791,56 +835,62 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                   value={managerNote}
                   onChange={(e) => setManagerNote(e.target.value)}
                   rows={3}
-                  className="resize-none"
+                  className="resize-none text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                 />
               </div>
 
               {actionType === 'approve' && (
-                <div className="flex items-start gap-2 rounded-lg bg-green-50 p-3 dark:bg-green-950/20">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400" />
-                  <p className="text-xs text-green-700 dark:text-green-300">
+                <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
+                  <p className="text-[13px] text-green-700 dark:text-green-300">
                     Both employees will be notified via email of your decision.
                   </p>
                 </div>
               )}
+
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={handleCancel}
+                  disabled={isApproving || isRejecting}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleConfirm}
+                  disabled={isApproving || isRejecting}
+                  variant={actionType === 'approve' ? 'default' : 'destructive'}
+                  className="h-9 px-4 rounded-lg text-[13px] font-medium"
+                >
+                  {(() => {
+                    if (isApproving || isRejecting) {
+                      return (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      );
+                    }
+                    if (actionType === 'approve') {
+                      return (
+                        <>
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Approve
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <XCircle className="mr-2 h-4 w-4" />
+                        Reject
+                      </>
+                    );
+                  })()}
+                </Button>
+              </DialogFooter>
             </div>
           )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={handleCancel} disabled={isApproving || isRejecting}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirm}
-              disabled={isApproving || isRejecting}
-              variant={actionType === 'approve' ? 'default' : 'destructive'}
-            >
-              {(() => {
-                if (isApproving || isRejecting) {
-                  return (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Processing...
-                    </>
-                  );
-                }
-                if (actionType === 'approve') {
-                  return (
-                    <>
-                      <CheckCircle className="mr-2 h-4 w-4" />
-                      Approve
-                    </>
-                  );
-                }
-                return (
-                  <>
-                    <XCircle className="mr-2 h-4 w-4" />
-                    Reject
-                  </>
-                );
-              })()}
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -868,8 +918,8 @@ const TradeRequestCard = ({ trade, onApprove, onReject, disabled }: TradeRequest
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-lg">{trade.offered_shift.position}</CardTitle>
-            <CardDescription className="mt-1">
+            <CardTitle className="text-[17px] font-semibold text-foreground">{trade.offered_shift.position}</CardTitle>
+            <CardDescription className="text-[13px] mt-1">
               {format(shiftStart, 'EEEE, MMMM d, yyyy')}
             </CardDescription>
           </div>
@@ -948,10 +998,10 @@ const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequest
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div>
-            <CardTitle className="text-lg">
+            <CardTitle className="text-[17px] font-semibold text-foreground">
               {claim.shift_template?.position ?? '—'}
             </CardTitle>
-            <CardDescription className="mt-1">
+            <CardDescription className="text-[13px] mt-1">
               {format(shiftDate, 'EEEE, MMMM d, yyyy')}
             </CardDescription>
           </div>
@@ -1000,7 +1050,7 @@ const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequest
             <XCircle className="mr-2 h-4 w-4" />
             Reject
           </Button>
-          <Button onClick={onApprove} disabled={disabled} className="flex-1 bg-green-600 hover:bg-green-700">
+          <Button onClick={onApprove} disabled={disabled} className="flex-1">
             <CheckCircle className="mr-2 h-4 w-4" />
             Approve
           </Button>

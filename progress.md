@@ -24,7 +24,8 @@ Phase 4-9: Autonomous workflow (dev-build-and-ship) — launched
 - [x] Phase 4 Task 4: Email formatDateTime timezone — commit dd47efbc
 - [x] Phase 4 Task 3 (id=3): Manager cleanup UI in TradeApprovalQueue.tsx — commit 55140a80
 - [x] Phase 5 (UI Review): Typography scale, dialog structure, color semantics — commit 3517b38e
-- [ ] Phases 6-9 (workflow) — pending
+- [x] Phase 6 (Simplify): IIFE → renderConfirmButtonContent, drop unused onSuccess param — commit 5c4c3815
+- [ ] Phases 7-9 (CodeRabbit review, verify, PR) — pending
 
 ## Preflight (Phase 4 gate)
 - gh: authenticated (jdelgado2002, repo+workflow scopes)

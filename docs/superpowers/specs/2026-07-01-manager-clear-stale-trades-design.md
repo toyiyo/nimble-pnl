@@ -2,7 +2,9 @@
 
 **Date:** 2026-07-01
 **Branch:** `feature/manager-clear-stale-trades`
-**Scope:** Manager-side cleanup only. NOT the poster tracker or area-mismatch warnings (deferred).
+**Scope:** (1) Manager-side cleanup of stale/expired trades, and (2) fix the
+shift-trade notification email to render times in the restaurant's timezone.
+NOT the poster tracker or area-mismatch warnings (deferred).
 
 ## Problem
 
@@ -61,11 +63,17 @@ export const useDeleteShiftTrade = () => {
       const { error } = await supabase
         .from('shift_trades')
         .delete()
-        .eq('id', tradeId);
+        .eq('id', tradeId)
+        // Guard: never hard-delete an approved/rejected audit record, even
+        // though the manager DELETE RLS policy technically permits it. If the
+        // trade was approved between click and execute, this is a safe no-op.
+        .in('status', ['open', 'pending_approval']);
       if (error) throw error;
       return { tradeId };
     },
     onSuccess: () => {
+      // The shift never moved (ownership only transfers in approve_shift_trade),
+      // so NO ['shifts'] invalidation is needed here.
       queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
       queryClient.invalidateQueries({ queryKey: ['marketplace_trades'] });
       toast({ title: 'Trade removed', description: 'The stale trade request was removed.' });
@@ -77,8 +85,16 @@ export const useDeleteShiftTrade = () => {
 };
 ```
 
-No notification email fires (the poster's request is being cleaned up, not
-decided) — deliberately different from approve/reject/cancel.
+- **Status guard (Supabase review, minor):** the `.in('status', [...])` filter
+  closes the gap where the general-purpose hook could otherwise delete an
+  `approved` record if called outside the UI guard. PostgREST `DELETE` of a
+  row that no longer matches (already approved, or already gone) affects 0 rows
+  and returns no error — safe/idempotent.
+- No notification email fires (the poster's request is being cleaned up, not
+  decided) — deliberately different from approve/reject/cancel.
+- The Supabase client surfaces failures via the returned `{ error }`, not by
+  throwing; the `if (error) throw error` normalizes it into the mutation's
+  `onError`. Transport-level throw is possible but rare (both are tested).
 
 ### 2. Expired detection helper — `src/lib/shiftTradeStatus.ts` (new, pure, tested)
 
@@ -95,26 +111,84 @@ read `Date.now()` inside), per the testability lesson.
 
 ### 3. Component — `src/components/schedule/TradeApprovalQueue.tsx`
 
-- **`OpenTradeCard`** gains an optional `onRemove` + `isRemoving` + `expired`
-  props. When `expired`, show an "Expired" badge (semantic tokens, not raw
-  colors) and a **Remove** button that opens the confirm dialog. Non-expired
-  open trades render exactly as today (read-only).
-- Split the "Open in Marketplace" list into **Expired** (removable) and **Active**
-  (read-only) groups, so the manager sees what's actionable.
-- **Ghost pending trades:** compute `stalePending = pendingTrades.filter(t => !t.accepted_by || isTradeExpired(t.offered_shift?.start_time, now))`. Render
-  a small "Needs cleanup" row for these with a Remove action (a ghost can't use
-  the existing Approve/Reject card because it renders null). Non-stale
-  pending trades keep the existing `TradeRequestCard`.
-- **Bulk action:** "Remove all expired (N)" button that deletes every expired
-  open trade (and stale pending) after a single confirm.
-- **Concurrency:** track in-flight deletions with `useState<Set<string>>` —
-  add on start, delete in `onSettled` — so multiple rows can be removed
-  independently (per the Set-vs-scalar lesson). The bulk button and per-row
-  buttons all disable while any relevant deletion is in flight.
-- **Confirm dialog:** single dialog at list level (single-dialog pattern), not
-  per row. Reuses the existing dialog styling in this file.
+- **`OpenTradeCard`** gains optional `onRemove`, `isRemoving`, `expired` props.
+  When `expired`, show an "Expired" badge and a **Remove** button that opens the
+  confirm dialog. Non-expired open trades render exactly as today (read-only).
+  - **Badge styling (frontend review, minor):** mirror the component's existing
+    badge language — `<Badge variant="outline">` at the established size — and
+    route the destructive action through shadcn `<Button variant="destructive">`
+    so the semantic token applies via the variant (consistent with the existing
+    Reject button). Do not introduce new raw palette classes.
+- **Split open trades once via `partition`** (frontend review, major): compute
+  `{ expired, active }` from `openTrades` in a single pass and render Expired
+  (removable) and Active (read-only) sub-groups. Do not rely on a child's `null`
+  return as an implicit filter.
+- **Ghost / stale pending trades** (frontend review, major): partition
+  `pendingTrades` **once** into
+  `stalePending = t => !t.accepted_by || isTradeExpired(t.offered_shift?.start_time, now)`
+  and `normalPending` (the rest). Pass `normalPending` to `TradeRequestCard.map()`
+  and `stalePending` to a small "Needs cleanup" row with a Remove action. This
+  prevents a ghost from (a) rendering in both paths or (b) rendering in neither
+  while still counting in the tab badge. The "Needs cleanup" Remove button uses
+  visible text (`<Button size="sm">Remove</Button>`), no `aria-label` needed.
+- **Bulk action:** "Remove all expired (N)" button that removes every expired
+  open trade + stale pending after a single confirm. It fires `mutate()` N times
+  and relies on React Query's invalidation dedup (intentional; documented in a
+  code comment). The bulk button is disabled whenever `deletingIds.size > 0`.
+- **Concurrency (frontend review, major):** track in-flight deletions with
+  `useState<Set<string>>` — add on start, remove in **`onSettled`** (NOT
+  `onSuccess`, so a failed delete still clears the spinner). Per-row spinner uses
+  `deletingIds.has(trade.id)`, **not** the mutation's shared `isPending` (which
+  would spin every row at once).
+- **Confirm dialog (frontend review, major):** ONE dialog at list level.
+  State is a discriminated union so a single dialog serves both cases:
+  `type ConfirmTarget = { type: 'single'; trade: ShiftTrade } | { type: 'bulk'; ids: string[] } | null`.
+  Single shows the trade's date/time/poster; bulk shows the count.
+- **Focus management (frontend review, minor):** after the confirm dialog closes
+  (especially bulk remove, which unmounts rows), return focus to the "Remove all
+  expired" button (or the Open Marketplace section header) so focus is not lost
+  to an unmounted node.
+- **Null `start_time` edge (frontend review, minor):** `isTradeExpired` returns
+  `false` for a missing `start_time`, so such an open trade stays in the Active
+  (read-only) group rather than being flagged expired. Acceptable — the hook
+  already filters out trades whose `offered_shift` is null.
 
-### 4. Tab-badge correctness — `src/pages/Scheduling.tsx`
+### 4. Email timezone fix — shift-trade notification
+
+**Bug:** `send-shift-trade-notification/index.ts` formats shift times with
+`toLocaleString('en-US', {...})` and **no `timeZone` option**
+(`index.ts:61`). On Supabase's edge runtime the default TZ is UTC, so every
+trade email shows the shift in UTC instead of the restaurant's local time.
+
+**Fix:**
+1. Extend the shared helper `_shared/emailTemplates.ts` `formatDateTime` to take
+   an **optional** `timeZone?: string` param (backward compatible — existing
+   callers that omit it are unchanged):
+   ```ts
+   export const formatDateTime = (date: string | Date, timeZone?: string): string => {
+     const d = typeof date === 'string' ? new Date(date) : date;
+     return d.toLocaleString('en-US', {
+       weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+       hour: 'numeric', minute: '2-digit', hour12: true,
+       ...(timeZone ? { timeZone } : {}),
+     });
+   };
+   ```
+2. In `send-shift-trade-notification/index.ts`: replace the file-local
+   `formatDateTime` with the shared import, add `timezone` to the restaurant
+   embed (`restaurant:restaurants(name, timezone)`), compute
+   `const restaurantTimezone = trade.restaurant?.timezone || 'America/Chicago'`
+   (matches the `restaurants.timezone` column default and the Clover/Shift4 sync
+   fallback), and pass it: `formatDateTime(shift.start_time, restaurantTimezone)`.
+
+**Out of scope (follow-up):** `send-shift-notification/index.ts` uses the same
+shared `formatDateTime` without a `timeZone` and has the identical latent bug.
+The optional param leaves it untouched (still renders in runtime default). Fixing
+it needs that function to fetch the restaurant timezone — filed as a separate
+follow-up, not bundled here to keep this PR's blast radius tight. The dead
+`index.refactored.ts` is left as-is.
+
+### 5. Tab-badge correctness — `src/pages/Scheduling.tsx`
 
 The "Shift Trades" tab badge uses `pendingTrades.length`. Ghost pending trades
 inflate it. Out of direct scope to change the badge formula, but removing the
@@ -142,12 +216,17 @@ change in this PR (noted as a follow-up if the count still feels wrong).
 
 - `tests/unit/shiftTradeStatus.test.ts` — `isTradeExpired`: past → true,
   future → false, exactly-now → false, undefined → false. Inject a fixed `now`.
-- `tests/unit/useShiftTrades.deleteTrade.test.ts` — mock `supabase.from().delete().eq()`;
-  assert success invalidates both query keys and shows toast; assert the
-  resolved-with-`{error}` path surfaces the destructive toast and rejects
-  (per the `functions.invoke`/PostgREST error-shape lesson — here it's a
-  `.delete()` builder returning `{ error }`, mock both a thrown error and a
-  resolved `{ error }`).
+- `tests/unit/useShiftTrades.deleteTrade.test.ts` — mock the
+  `supabase.from().delete().eq().in()` builder chain; assert success invalidates
+  `['shift_trades']` + `['marketplace_trades']` and shows the success toast;
+  assert both failure shapes surface the destructive toast — a resolved
+  `{ error: {...} }` (PostgREST HTTP failure) and a thrown error (transport),
+  per the error-shape lesson.
+- `tests/unit/emailTemplates.formatDateTime.test.ts` — the same UTC instant
+  renders a different wall-clock string for `America/Chicago` vs
+  `America/New_York`; omitting `timeZone` stays backward compatible. (Lives under
+  `_shared/**`, which is vitest-coverage-excluded, so no coverage-gate impact —
+  the test guards correctness only. Precedent: `trialEmailTemplates.test.ts`.)
 - Component behavior is covered indirectly; a source-text guard is unnecessary
   since logic lives in the pure helper + hook.
 

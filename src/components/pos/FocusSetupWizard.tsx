@@ -211,9 +211,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
       return;
     }
 
-    setIsConnecting(false);
-    setStep('done');
-    toast({ title: 'Focus POS connected', description: 'Transactions will sync automatically.' });
+    onConnectSuccess();
   }
 
   // ── Retry after test failure ────────────────────────────────────────────────
@@ -223,15 +221,19 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
     setIsConnecting(true);
     try {
       await testConnection(restaurantId);
-      setIsConnecting(false);
-      setStep('done');
-      toast({ title: 'Focus POS connected', description: 'Transactions will sync automatically.' });
+      onConnectSuccess();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Connection test failed';
       setConnectError(msg);
       setConnectErrorKind('test');
       setIsConnecting(false);
     }
+  }
+
+  function onConnectSuccess() {
+    setIsConnecting(false);
+    setStep('done');
+    toast({ title: 'Focus POS connected', description: 'Transactions will sync automatically.' });
   }
 
   // ── Dialog description text per step ──────────────────────────────────────

@@ -275,10 +275,8 @@ export async function handleSyncData(
         skipUnifiedSalesSync: true, // deferred to the 6-hour cron job
       });
 
-      // Map inprogress → treat as empty (don't advance cursor; will retry next call)
-      if (result.status === 'inprogress') {
-        status = 'ok'; // not an error; just not ready yet
-      } else {
+      // Map inprogress → treat as ok (don't advance cursor; will retry next call)
+      if (result.status !== 'inprogress') {
         status = result.status === 'ok' ? 'ok' : result.status === 'empty' ? 'empty' : 'error';
         if (result.status !== 'error') {
           newSyncCursor = connRow.sync_cursor + 1;

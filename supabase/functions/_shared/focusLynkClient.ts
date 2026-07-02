@@ -195,7 +195,7 @@ export async function fetchDatafeed(
     };
   }
 
-  if (!config.restaurantGuid || config.restaurantGuid.trim() === '') {
+  if (!config.restaurantGuid) {
     return {
       ok: false,
       status: 0,

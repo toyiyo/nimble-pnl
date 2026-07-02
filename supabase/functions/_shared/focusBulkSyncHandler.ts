@@ -236,9 +236,8 @@ async function processConnection(
             updated_at: new Date().toISOString(),
           })
           .eq('id', row.id);
-        throw err; // propagates to outer catch → added to errors[], restaurant skipped
       }
-      throw err;
+      throw err; // propagates to outer catch → added to errors[], restaurant skipped
     }
 
     const conn: FocusConnection = rowToFocusConnection(row);

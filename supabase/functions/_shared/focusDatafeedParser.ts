@@ -150,12 +150,17 @@ function parseCheck(check: any): FocusCheck {
     for (const cir of toArray(seat.CheckItemRecord)) items.push(parseItem(cir));
     for (const pr of toArray(seat.PaymentRecord)) payments.push(parsePayment(pr));
   }
+  // Round to 2 decimal places after summing to avoid binary float drift
+  // (e.g. 0.1 + 0.2 !== 0.3). Math.round * 100 / 100 is the standard JS idiom.
   const taxableSales =
-    num(cr.TaxableSales1) +
-    num(cr.TaxableSales2) +
-    num(cr.TaxableSales3) +
-    num(cr.TaxableSales4) +
-    num(cr.TaxableSales5);
+    Math.round(
+      (num(cr.TaxableSales1) +
+        num(cr.TaxableSales2) +
+        num(cr.TaxableSales3) +
+        num(cr.TaxableSales4) +
+        num(cr.TaxableSales5)) *
+        100,
+    ) / 100;
   return {
     checkId: str(cr.ID) ?? '',
     openedAt: str(cr.TimeOpened),

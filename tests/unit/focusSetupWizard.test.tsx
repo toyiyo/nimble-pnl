@@ -285,8 +285,11 @@ describe('FocusSetupWizard', () => {
       expect(screen.queryByText(/setup complete/i)).toBeNull();
       // Error text should distinguish test failure from save failure
       expect(screen.getByText(/connection test failed/i)).toBeTruthy();
-      // Explicitly must NOT say "Your credentials were saved" — old UX bug
-      // (The "credentials were saved" wording was the bug described in the plan)
+      // The component also shows "Your API credentials were saved. Click Retry..."
+      // alongside the test-failure error — this is the intended UX (credentials
+      // saved = true, connection test = failed).  Asserting it IS present ensures
+      // the component never silently drops this informational message.
+      expect(screen.getByText(/credentials were saved/i)).toBeTruthy();
     });
   });
 

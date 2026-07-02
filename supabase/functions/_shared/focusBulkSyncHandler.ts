@@ -241,6 +241,7 @@ async function processConnection(
       await loginToPortal({ fetch: deps.fetch }, row.username!, password);
     } catch (err) {
       if (err instanceof FocusAuthError) {
+        // Filter by both id and restaurant_id to satisfy multi-tenant contract.
         await deps.serviceClient
           .from('focus_connections')
           .update({
@@ -248,7 +249,8 @@ async function processConnection(
             last_error: 'Invalid Focus credentials',
             updated_at: new Date().toISOString(),
           })
-          .eq('id', row.id);
+          .eq('id', row.id)
+          .eq('restaurant_id', row.restaurant_id);
       }
       throw err; // propagates to outer catch → added to errors[], restaurant skipped
     }
@@ -372,7 +374,8 @@ export async function handleBulkSync(
     try {
       const { newSyncCursor, newInitialSyncDone } = await processConnection(row, deps);
 
-      // Update the connection row with the new cursor + sync time (review S3)
+      // Update the connection row with the new cursor + sync time (review S3).
+      // Filter by both id and restaurant_id to satisfy multi-tenant contract.
       await deps.serviceClient
         .from('focus_connections')
         .update({
@@ -381,7 +384,8 @@ export async function handleBulkSync(
           last_sync_time: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq('id', row.id);
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id);
 
       result.processed++;
     } catch (err) {

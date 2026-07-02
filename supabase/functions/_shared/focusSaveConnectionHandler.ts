@@ -134,10 +134,14 @@ export async function handleSaveConnection(
     updated_at: new Date().toISOString(),
   };
 
+  // Select only non-sensitive fields — never expose api_secret_encrypted or api_key.
   const { data: connection, error: upsertError } = await deps.serviceClient
     .from('focus_connections')
     .upsert(upsertPayload, { onConflict: 'restaurant_id' })
-    .select();
+    .select(
+      'id, restaurant_id, store_id, mid, environment, is_active, connection_status, ' +
+      'initial_sync_done, sync_cursor, last_sync_time, updated_at',
+    );
 
   if (upsertError) {
     console.error('focus-save-connection: upsert failed:', upsertError.message);

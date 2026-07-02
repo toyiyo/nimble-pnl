@@ -626,10 +626,14 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
                 onClick={async () => {
                   try {
                     await triggerManualSync(restaurantId);
+                    onComplete();
                   } catch {
-                    // Sync errors are non-fatal here — the cron job will retry.
+                    toast({
+                      title: 'Sync could not be started',
+                      description: 'Automatic sync will retry on schedule.',
+                      variant: 'destructive',
+                    });
                   }
-                  onComplete();
                 }}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
               >

@@ -159,6 +159,8 @@ describe('handleTestConnection (Focus POS /api/restaurants)', () => {
       'Basic ' + btoa('myapikey:plain-secret'),
     );
     expect((init.method as string).toUpperCase()).toBe('GET');
+    // redirect:error blocks 3xx SSRF bypass (mirrors Lynk datafeed behaviour)
+    expect((init as RequestInit & { redirect?: string }).redirect).toBe('error');
   });
 
   it('GETs /api/restaurants on the sandbox base URL when environment=sandbox', async () => {

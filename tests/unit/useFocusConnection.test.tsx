@@ -186,7 +186,7 @@ describe('useFocusConnection', () => {
           restaurantId: 'rest-1',
           apiKey: 'test-api-key',
           apiSecret: 'test-api-secret',
-          storeId: 'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh',
+          restaurantGuid: 'aaaabbbb-cccc-dddd-eeee-ffffgggghhhh',
           environment: 'production',
         },
       });

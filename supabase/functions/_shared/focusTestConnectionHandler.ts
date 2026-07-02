@@ -166,6 +166,7 @@ export async function handleTestConnection(
   try {
     apiRes = await deps.fetch(restaurantsUrl, {
       method: 'GET',
+      redirect: 'error', // Block 3xx: an allowlisted host redirecting to an internal URL would bypass SSRF guard.
       headers: {
         Authorization: authValue,
         Accept: 'application/json',

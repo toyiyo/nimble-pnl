@@ -4,11 +4,11 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
 
-// Mirrors focus_connections DB columns — explicit list keeps select leaner than select('*')
+// Mirrors focus_connections DB columns — explicit list keeps select leaner than select('*').
+// api_key / api_secret_encrypted are intentionally omitted: credentials must stay server-side.
 type FocusConnection = {
   id: string;
   restaurant_id: string;
-  api_key: string | null;
   store_id: string;
   environment: string;
   last_sync_time: string | null;
@@ -22,11 +22,11 @@ type FocusConnection = {
   updated_at: string;
 };
 
-// Explicit column list — design F8: no select('*')
+// Explicit column list — design F8: no select('*').
+// api_key excluded: credential fields must not reach the browser.
 const FOCUS_CONNECTION_COLUMNS = [
   'id',
   'restaurant_id',
-  'api_key',
   'store_id',
   'environment',
   'last_sync_time',
@@ -107,7 +107,7 @@ export function useFocusConnection(restaurantId?: string | null) {
           restaurantId,
           apiKey,
           apiSecret,
-          storeId: restaurantGuid,
+          restaurantGuid,
           environment,
         },
       });

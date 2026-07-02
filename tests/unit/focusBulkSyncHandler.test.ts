@@ -115,7 +115,9 @@ function makeServiceClientMock(opts: {
   const selectMock = vi.fn().mockReturnValue({ eq: eqActiveMock });
 
   // UPDATE focus_connections (last_sync_time, sync_cursor, initial_sync_done)
-  const eqUpdateMock = vi.fn().mockResolvedValue({ data: null, error: null });
+  // Chain supports two .eq() calls: .eq('id', ...).eq('restaurant_id', ...)
+  const eqUpdate2Mock = vi.fn().mockResolvedValue({ data: null, error: null });
+  const eqUpdateMock = vi.fn().mockReturnValue({ eq: eqUpdate2Mock });
   const updateMock = vi.fn().mockReturnValue({ eq: eqUpdateMock });
 
   // focus_daily_reports upsert (processReportDay calls this)
@@ -427,18 +429,26 @@ describe('handleBulkSync', () => {
     const fetchMock = makeFetchMock(VALID_HTML);
     const sleepMock = makeSleepMock();
 
-    // Override the update mock so the FIRST call throws
+    // Override the update mock so the FIRST call throws.
+    // Handler now chains two .eq() calls: .eq('id', ...).eq('restaurant_id', ...).
+    // The throw must happen at the end of the chain (second .eq), not the first.
     let updateCallCount = 0;
     scMocks.updateMock.mockImplementation(() => {
       updateCallCount++;
       if (updateCallCount === 1) {
-        // First restaurant's update throws
+        // First restaurant's update throws on the second .eq() (terminal)
         return {
-          eq: () => { throw new Error('DB write failure'); },
+          eq: () => ({
+            eq: () => { throw new Error('DB write failure'); },
+          }),
         };
       }
       // Second restaurant's update succeeds
-      return { eq: vi.fn().mockResolvedValue({ data: null, error: null }) };
+      return {
+        eq: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      };
     });
 
     const deps: BulkSyncDeps = {

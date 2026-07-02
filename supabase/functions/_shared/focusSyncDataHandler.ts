@@ -319,6 +319,7 @@ export async function handleSyncData(
       await loginToPortal({ fetch: deps.fetch }, connRow.username!, password);
     } catch (err) {
       if (err instanceof FocusAuthError) {
+        // Filter by both id and restaurant_id to satisfy multi-tenant contract.
         await deps.serviceClient
           .from('focus_connections')
           .update({
@@ -326,7 +327,8 @@ export async function handleSyncData(
             last_error: 'Invalid Focus credentials',
             updated_at: new Date().toISOString(),
           })
-          .eq('id', connRow.id);
+          .eq('id', connRow.id)
+          .eq('restaurant_id', restaurantId);
         return new Response(
           JSON.stringify({
             syncCursor: connRow.sync_cursor,

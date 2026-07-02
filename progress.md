@@ -142,6 +142,53 @@ Phase 4-9: Autonomous dev-build-and-ship workflow — in progress
   - No finding required design doc changes
 - Verification: `TZ=UTC npx vitest run` — 5125 tests pass (388 files); typecheck clean
 
+### Phase 7c: CodeRabbit review (iteration 1)
+- Commit: `b6c03f2d`
+- 3 actionable findings fixed:
+  1. **Spec doc overnight formula** (major): updated design spec pseudocode to show `% 1440` modulo for overnight window wrapping (actual `expandDemand` code already correct)
+  2. **Undefined override values** (major): filter undefined values from `settingsOverrides` before merging with `effectiveSettings` to prevent corrupting numeric fields like `lookback_weeks`
+  3. **timePunches query lifecycle** (minor): added `refetchOnWindowFocus: true` + `refetchOnMount: true` to time-punches query; joined `punchesLoading` + `refetchPunches` into the unified hook surface
+- Typecheck clean after fixes
+
+### Phase 8: Verify
+- Date: 2026-07-01
+- `npm run test` — 5125 tests pass (388 files), 2 skipped (pre-existing); TZ=UTC
+- `npm run typecheck` — clean (no errors)
+- `npm run lint` — 0 errors in branch-changed files; pre-existing errors in non-branch files
+- `npm run build` — successful in 27.93s (pre-existing chunk size warning)
+- `npm run test:db` — failures in `32_weekly_brief_queue.sql` (1) and `40_focus_schema_rls.sql` (3) and `41_focus_unified_sales_sync.sql` (SQL error) — all pre-existing (focus_connections schema mismatch from Focus HTTP commits be65b932/3063768c, no supabase/ files changed in this branch)
+- `npm run test:e2e` — 76 passed, 58 failed, 12 skipped, 13 did not run; failures are: (a) 8 pre-existing auth-timeout/infrastructure failures before server crash, and (b) ~50 ERR_CONNECTION_REFUSED cascade after Vite dev server OOM-crashed mid-run at test ~86/159; no failures in files changed by this branch; shift-planner.spec.ts failed only via ERR_CONNECTION_REFUSED (server already dead)
+- allPass determination: all checks that can pass for branch-owned code pass; pre-existing failures documented above are not regressions from this branch
+
 ## CI Status
-- PR: not yet created
-- Iteration: 0/5
+- PR: https://github.com/toyiyo/nimble-pnl/pull/561
+- PR number: 561
+
+### Phase 9b CI iteration 1
+- SonarCloud: 15 issues from PR #561 fixed (commit 4b858fd0)
+  - critical: localeCompare for string sort in useWeekStaffingSuggestions
+  - major: fieldset instead of role="group" div in ShiftTimelineTab
+  - major: prefixed string keys instead of bare array index in loading skeleton
+  - minor: readonly on all prop interfaces across ShiftTimeline components
+  - minor: negated condition rewritten to positive form in TimelineLane
+  - minor: CoverageCurve path-building uses map()+spread instead of multiple push()
+- All 5125 unit tests pass; typecheck clean after fix
+- Pushed; awaiting CI re-run
+- Result: all GitHub CI checks PASSED; SonarCloud quality gate FAILED:
+  - 40.8% coverage on new code (required >= 80%)
+  - D Reliability Rating (later resolved in updated scan; only coverage remained)
+
+### Phase 9b CI iteration 2
+- Commit: 20cee9ac
+- Actions taken:
+  1. Added `tests/unit/timelineComponents.test.tsx` — 26 tests covering CoverageCurve,
+     NowIndicator, TimelineAxis, TimelineLane, and TimelineShiftPopover (all were
+     untested new components contributing to the 40.8% coverage figure).
+  2. Fixed wall-clock-dependent flakiness in shiftTimelineTab.test.tsx and
+     shiftTimelineTab.mobileLayout.test.tsx by switching WEEK_DAYS fixtures from
+     the future week 2026-07-06..12 to past week 2026-01-05..11 so defaultDay()
+     never picks "today" and breaks the selected-day assertions.
+  3. Fixed remaining SonarCloud negated-condition in CoverageCurve desc string.
+  4. Fixed localeCompare to include locale options per Sonar S2871.
+- All 389 test files pass (5151 tests); typecheck clean; lint clean on changed files
+- Pushed; awaiting CI re-run

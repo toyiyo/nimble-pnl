@@ -57,7 +57,7 @@ function parseTimeToMinutes(t: string): number {
  * the result will be ≥ 1440 (e.g. 02:00 next-day = 1560).
  * If it falls the day before, the result will be negative.
  */
-function isoToLocalMinutes(iso: string, dateStr: string, tz: string): number {
+export function isoToLocalMinutes(iso: string, dateStr: string, tz: string): number {
   const zoned = toZonedTime(new Date(iso), tz);
   const wallMins = zoned.getHours() * 60 + zoned.getMinutes();
 
@@ -238,4 +238,39 @@ export function computeSlotCoverage(
     coveringEmployees,
     loanedOut,
   };
+}
+
+export interface DayCoverageSample {
+  min: number;
+  count: number;
+}
+
+/**
+ * Whole-day coverage curve: headcount of non-cancelled shifts on the floor at
+ * each `stepMin` sample from windowStartMin to windowEndMin (inclusive).
+ * Uses local wall-clock minutes in `tz`; overnight shifts (end ≤ start) extend +1440.
+ */
+export function computeDayCoverage(
+  shifts: CoverageShift[],
+  dateStr: string,
+  tz: string,
+  stepMin: number,
+  windowStartMin: number,
+  windowEndMin: number,
+): DayCoverageSample[] {
+  const intervals: { s: number; e: number }[] = [];
+  for (const s of shifts) {
+    if (s.status === 'cancelled') continue;
+    const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
+    let de = isoToLocalMinutes(s.end_time, dateStr, tz);
+    if (de <= ds) de += 1440;
+    intervals.push({ s: ds, e: de });
+  }
+  const samples: DayCoverageSample[] = [];
+  for (let m = windowStartMin; m <= windowEndMin; m += stepMin) {
+    let count = 0;
+    for (const iv of intervals) if (m >= iv.s && m < iv.e) count++;
+    samples.push({ min: m, count });
+  }
+  return samples;
 }

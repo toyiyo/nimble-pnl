@@ -95,9 +95,6 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
 
-  /** The "current time" used for expiry checks. Injectable for tests. */
-  const now = useMemo(() => nowProp ?? new Date(), [nowProp]);
-
   // Fetch both pending_approval and open trades
   const { trades: pendingTrades, loading: pendingLoading } = useShiftTrades(
     restaurantId,
@@ -154,8 +151,17 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
 
   const { mutate: deleteTrade } = useDeleteShiftTrade();
 
-  /** Partition open trades in a single pass. */
+  /**
+   * Partition open trades in a single pass.
+   *
+   * `now` is evaluated inside the memo (not hoisted) so it reflects the actual
+   * wall-clock time at the moment `openTrades` last changed (every 30 s refetch
+   * or on window focus). `nowProp` is injected in tests to fix time; in
+   * production it is `undefined` and `new Date()` is called fresh each time
+   * the memo re-runs.
+   */
   const { expiredOpen, activeOpen } = useMemo(() => {
+    const now = nowProp ?? new Date();
     const expiredOpen: ShiftTrade[] = [];
     const activeOpen: ShiftTrade[] = [];
     for (const t of openTrades) {
@@ -166,7 +172,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
       }
     }
     return { expiredOpen, activeOpen };
-  }, [openTrades, now]);
+  }, [openTrades, nowProp]);
 
   /**
    * Partition pending trades in a single pass.
@@ -174,6 +180,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
    * Render stale trades in a "Needs cleanup" section; normal in the approve/reject section.
    */
   const { stalePending, normalPending } = useMemo(() => {
+    const now = nowProp ?? new Date();
     const stalePending: ShiftTrade[] = [];
     const normalPending: ShiftTrade[] = [];
     for (const t of pendingTrades) {
@@ -184,7 +191,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
       }
     }
     return { stalePending, normalPending };
-  }, [pendingTrades, now]);
+  }, [pendingTrades, nowProp]);
 
   /** All stale IDs for the bulk action. */
   const allStaleIds = useMemo(
@@ -1037,6 +1044,40 @@ const ClaimRequestCard = ({ claim, onApprove, onReject, disabled }: ClaimRequest
   );
 };
 
+// ---------------------------------------------------------------------------
+// Shared remove button — used by both OpenTradeCard and StalePendingRow
+// ---------------------------------------------------------------------------
+
+interface RemoveButtonProps {
+  isRemoving: boolean;
+  onClick: () => void;
+  /** Destructive-outline style (StalePendingRow) vs filled destructive (OpenTradeCard). */
+  variant?: 'destructive' | 'outline-destructive';
+}
+
+const RemoveButton = ({ isRemoving, onClick, variant = 'destructive' }: RemoveButtonProps) => (
+  <Button
+    size="sm"
+    variant={variant === 'destructive' ? 'destructive' : 'outline'}
+    className={
+      variant === 'outline-destructive'
+        ? 'h-7 text-[12px] border-destructive/40 text-destructive hover:bg-destructive/10'
+        : 'h-7 text-[12px]'
+    }
+    disabled={isRemoving}
+    onClick={onClick}
+  >
+    {isRemoving ? (
+      <>
+        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+        Removing…
+      </>
+    ) : (
+      'Remove'
+    )}
+  </Button>
+);
+
 // Open Trade Card
 interface OpenTradeCardProps {
   trade: ShiftTrade;
@@ -1089,22 +1130,7 @@ const OpenTradeCard = ({ trade, expired = false, isRemoving = false, onRemove }:
       </div>
       <div className="flex flex-col items-end gap-2">
         {expired ? (
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-7 text-[12px]"
-            disabled={isRemoving}
-            onClick={onRemove}
-          >
-            {isRemoving ? (
-              <>
-                <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                Removing…
-              </>
-            ) : (
-              'Remove'
-            )}
-          </Button>
+          <RemoveButton isRemoving={isRemoving} onClick={onRemove!} />
         ) : (
           <Badge variant="outline" className="border-blue-300 text-blue-700 dark:border-blue-600 dark:text-blue-300">
             Open
@@ -1134,35 +1160,20 @@ const StalePendingRow = ({ trade, isRemoving, onRemove }: StalePendingRowProps) 
   return (
     <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/20 p-3">
       <div className="flex-1 space-y-0.5">
-        <div className="flex items-center gap-2 text-sm">
+        <div className="flex items-center gap-2 text-[14px]">
           <span className="font-medium">{trade.offered_by?.name ?? 'Unknown'}</span>
           <span className="text-muted-foreground">•</span>
           <span className="text-muted-foreground">{trade.offered_shift.position}</span>
-          <Badge variant="outline" className="text-xs text-muted-foreground">
+          <Badge variant="outline" className="text-[12px] text-muted-foreground">
             {isGhost ? 'Ghost' : 'Expired'}
           </Badge>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-[12px] text-muted-foreground">
           {format(shiftStart, 'EEE, MMM d, yyyy')}
           {isGhost && ' — accepter no longer exists'}
         </p>
       </div>
-      <Button
-        size="sm"
-        variant="outline"
-        className="h-7 text-[12px] border-destructive/40 text-destructive hover:bg-destructive/10"
-        disabled={isRemoving}
-        onClick={onRemove}
-      >
-        {isRemoving ? (
-          <>
-            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-            Removing…
-          </>
-        ) : (
-          'Remove'
-        )}
-      </Button>
+      <RemoveButton isRemoving={isRemoving} onClick={onRemove} variant="outline-destructive" />
     </div>
   );
 };

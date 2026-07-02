@@ -261,6 +261,20 @@ export const formatDate = (date: string | Date): string => {
  */
 export const formatDateTime = (date: string | Date, timeZone?: string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
+
+  // Validate the IANA timezone before passing it to Intl — an invalid value
+  // (empty string, Windows zone name, corrupted DB data) causes toLocaleString
+  // to throw a RangeError which would propagate to the edge function's outer
+  // handler and return HTTP 500, suppressing email delivery entirely.
+  let safeTimeZone = timeZone;
+  if (safeTimeZone) {
+    try {
+      new Intl.DateTimeFormat(undefined, { timeZone: safeTimeZone });
+    } catch {
+      safeTimeZone = 'UTC';
+    }
+  }
+
   return d.toLocaleString('en-US', {
     weekday: 'short',
     month: 'short',
@@ -269,7 +283,7 @@ export const formatDateTime = (date: string | Date, timeZone?: string): string =
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    ...(timeZone ? { timeZone } : {}),
+    ...(safeTimeZone ? { timeZone: safeTimeZone } : {}),
   });
 };
 

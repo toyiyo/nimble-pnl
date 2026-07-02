@@ -33,7 +33,11 @@ import {
   processDateRangeTransactions,
   type TransactionSyncDeps,
   type TransactionSyncConfig,
+  type TransactionSupabaseDeps,
 } from '../../supabase/functions/_shared/focusTransactionSyncHandler';
+
+// Narrowed return type for the fetchDatafeed mock used in tests
+type FetchDatafeedFn = TransactionSyncDeps['fetchDatafeed'];
 
 // ── Sample XML (from fixtures; two checks, one with kitchen comments) ──────────
 
@@ -149,8 +153,8 @@ function makeDeps(opts: {
 
   return {
     deps: {
-      supabase: client as any,
-      fetchDatafeed: fetchDatafeedMock as any,
+      supabase: client as unknown as TransactionSupabaseDeps,
+      fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
     },
     mocks,
     fetchDatafeedMock,
@@ -250,17 +254,17 @@ describe('processDayTransactions', () => {
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     // SAMPLE_XML_ONE_CHECK has: 1 priced item + 1 modifier + 1 kitchen comment
     // The array must have exactly 2 items (no kitchen comment)
-    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as any[];
+    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as Record<string, unknown>[];
     expect(itemsArray).toHaveLength(2);
-    const itemNames = itemsArray.map((r: any) => r.name);
+    const itemNames = itemsArray.map((r) => r.name);
     expect(itemNames).not.toContain('CUSTOMER NAME REDACTED');
   });
 
   it('writes the priced item row to focus_order_items array', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
-    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as any[];
-    const scoop = itemsArray.find((r: any) => r.name === 'Scoop Single');
+    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as Record<string, unknown>[];
+    const scoop = itemsArray.find((r) => r.name === 'Scoop Single');
     expect(scoop).toBeTruthy();
     expect(scoop.price).toBe(4.99);
     expect(scoop.is_modifier).toBe(false);
@@ -272,8 +276,8 @@ describe('processDayTransactions', () => {
   it('writes the modifier row to focus_order_items array', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
-    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as any[];
-    const modifier = itemsArray.find((r: any) => r.name === 'Chocolate');
+    const itemsArray = mocks.itemsUpsert.mock.calls[0][0] as Record<string, unknown>[];
+    const modifier = itemsArray.find((r) => r.name === 'Chocolate');
     expect(modifier).toBeTruthy();
     expect(modifier.is_modifier).toBe(true);
     expect(modifier.parent_key).toBe('3');
@@ -307,7 +311,7 @@ describe('processDayTransactions', () => {
   it('upserts one focus_payments row per payment per check (inside the array)', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
-    const paymentsArray = mocks.paymentsUpsert.mock.calls[0][0] as any[];
+    const paymentsArray = mocks.paymentsUpsert.mock.calls[0][0] as Record<string, unknown>[];
     expect(paymentsArray).toHaveLength(1);
     expect(paymentsArray[0]).toMatchObject({
       restaurant_id: RESTAURANT_ID,
@@ -402,7 +406,7 @@ describe('processDayTransactions', () => {
     });
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
-    expect((result as any).error).toBeTruthy();
+    expect((result as { error?: string }).error).toBeTruthy();
   });
 
   it('returns { status: "error" } when fetchDatafeed returns ok:false (network error)', async () => {
@@ -426,7 +430,7 @@ describe('processDayTransactions', () => {
     });
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
-    expect((result as any).error).toMatch(/DB write failed/);
+    expect((result as { error?: string }).error).toMatch(/DB write failed/);
   });
 
   // ── Voided checks (DeleteRecord) ─────────────────────────────────────────────
@@ -505,12 +509,12 @@ describe('processDayTransactions', () => {
     });
     const fetchDatafeedMock = makeFetchDatafeedMock();
     const deps: TransactionSyncDeps = {
-      supabase: client as any,
-      fetchDatafeed: fetchDatafeedMock as any,
+      supabase: client as unknown as TransactionSupabaseDeps,
+      fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
     };
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
-    expect((result as any).error).toMatch(/items write failed/);
+    expect((result as { error?: string }).error).toMatch(/items write failed/);
   });
 
   it('returns { status: "error" } when the payments array upsert fails', async () => {
@@ -521,12 +525,12 @@ describe('processDayTransactions', () => {
     });
     const fetchDatafeedMock = makeFetchDatafeedMock();
     const deps: TransactionSyncDeps = {
-      supabase: client as any,
-      fetchDatafeed: fetchDatafeedMock as any,
+      supabase: client as unknown as TransactionSupabaseDeps,
+      fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
     };
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
-    expect((result as any).error).toMatch(/payments write failed/);
+    expect((result as { error?: string }).error).toMatch(/payments write failed/);
   });
 });
 
@@ -558,8 +562,8 @@ describe('processDateRangeTransactions', () => {
 
     return {
       deps: {
-        supabase: client as any,
-        fetchDatafeed: vi.fn() as any,
+        supabase: client as unknown as TransactionSupabaseDeps,
+        fetchDatafeed: vi.fn() as unknown as FetchDatafeedFn,
         processDayTransactions: processDayMock,
       },
       mocks,
@@ -571,7 +575,7 @@ describe('processDateRangeTransactions', () => {
     const { deps, processDayMock } = makeDateRangeDeps();
     await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29');
     expect(processDayMock).toHaveBeenCalledTimes(3);
-    const dates = processDayMock.mock.calls.map((c: any[]) => c[2]);
+    const dates = processDayMock.mock.calls.map((c: unknown[]) => c[2]);
     expect(dates).toContain('2026-06-27');
     expect(dates).toContain('2026-06-28');
     expect(dates).toContain('2026-06-29');
@@ -640,7 +644,7 @@ describe('processDateRangeTransactions', () => {
     const { deps, processDayMock } = makeDateRangeDeps();
     await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-25', '2026-06-29');
     expect(processDayMock).toHaveBeenCalledTimes(5);
-    const dates = processDayMock.mock.calls.map((c: any[]) => c[2]).sort();
+    const dates = processDayMock.mock.calls.map((c: unknown[]) => c[2]).sort();
     expect(dates).toEqual(['2026-06-25', '2026-06-26', '2026-06-27', '2026-06-28', '2026-06-29']);
   });
 

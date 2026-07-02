@@ -11,7 +11,7 @@
  * gated by a timing-safe Bearer token check against SUPABASE_SERVICE_ROLE_KEY
  * inside the handler (lesson 2026-05-07).
  *
- * Schedule: */5 * * * * (every 5 minutes, idiomatic for fast backfill).
+ * Schedule: every 5 minutes — "* /5 * * * *" (idiomatic for fast backfill).
  * No-op when no connections have initial_sync_done=false AND api_key IS NOT NULL.
  *
  * Design ref: plan B4; spec §5.3 (focus-backfill-sync).

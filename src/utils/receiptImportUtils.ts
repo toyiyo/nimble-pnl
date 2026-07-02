@@ -73,3 +73,47 @@ export function calculateUnitPrice(item: UnitPriceInput): number {
 
   return item.parsed_price || 0;
 }
+
+export interface ImportedQuantityInput {
+  casesOrdered?: number | null;
+  unitsPerPack?: number | null;
+}
+
+/**
+ * Total inner units received = cases ordered × units per pack.
+ * Both inputs default to 1 so a missing/zero value never zeroes the quantity.
+ */
+export function computeImportedQuantity({ casesOrdered, unitsPerPack }: ImportedQuantityInput): number {
+  const cases = Math.max(1, casesOrdered || 0);
+  const pack = Math.max(1, unitsPerPack || 0);
+  return cases * pack;
+}
+
+export interface ParsedPackSize {
+  unitsPerPack: number;
+  sizeValue: number;
+  sizeUnit: string;
+}
+
+/**
+ * Parse a Sygma-style "pack/size unit" token, e.g. "8/32 OZ", "1/20 LB", "2/2.5GAL".
+ * A token with no slash (e.g. "20 LB") is treated as pack = 1.
+ * Returns null when no numeric size can be found.
+ */
+export function parsePackSizeToken(token: string): ParsedPackSize | null {
+  if (!token) return null;
+  const trimmed = token.trim();
+  const hasSlash = trimmed.includes('/');
+  const [packPart, sizePart] = hasSlash ? trimmed.split('/', 2) : ['1', trimmed];
+
+  const unitsPerPack = hasSlash ? Math.max(1, parseInt(packPart, 10) || 1) : 1;
+
+  // size like "2.5GAL" or "32 OZ" → number then unit (parseFloat keeps decimals)
+  const sizeMatch = sizePart.trim().match(/^([\d.]+)\s*([a-zA-Z ]+)$/);
+  if (!sizeMatch) return null;
+  const sizeValue = parseFloat(sizeMatch[1]);
+  if (Number.isNaN(sizeValue)) return null;
+  const sizeUnit = sizeMatch[2].trim().toLowerCase();
+
+  return { unitsPerPack, sizeValue, sizeUnit };
+}

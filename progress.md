@@ -69,3 +69,27 @@ Date: 2026-07-02
 - **Tests**: 43 passing (12 in shiftTimelineTab.test.tsx including 4 new wiring tests, all prior coverage tests still passing)
 - **Build**: clean (tsc + eslint on changed files = 0 errors, build succeeds in 47s)
 - **Wiring**: `summarizeCoverageHours` + `buildVerdict` memos; `coverageView` state; `CoverageVerdict` → `ToggleGroup (Chart|+/−)` → `CoverageChart` (inside `pl-[120px]`) → `CoverageStatusStrip` (inside `pl-[120px]`); `CoverageCurve`/`CoverageGapList` imports+usages removed
+
+## Phase: Simplify (Phase 6) ✅ COMPLETED
+Date: 2026-07-02
+
+### Review Findings (4 angles)
+
+**Reuse**: `defaultFormatHour` was copy-pasted verbatim across `CoverageVerdict.tsx`, `CoverageStatusStrip.tsx`, and `CoverageChart.tsx` (where it was also named `formatHourLabel` and had a subtle inconsistency — no space before AM/PM, producing `"5PM"` vs `"5 PM"`).
+
+**Simplification**: The x-axis hour-label JSX block was duplicated identically in both branches of `Axes` (area and delta views). The `computePeak` function used a manual `for` loop with two `if` branches.
+
+**Efficiency**: No wasted computation found. `buildVerdict` filters once and reuses the result; shortfall rendering is already lazy.
+
+**Altitude**: No bandaid patterns found. The `pl-[120px]` layout offset is intentional (aligns coverage panel with the shift-lane axis) and documented in comments.
+
+### Fixes Applied
+- Extracted `formatCoverageHour` into `src/lib/coverageSummary.ts` — single canonical export replacing 3 copies; also fixes the `"5PM"` vs `"5 PM"` inconsistency between the chart axis and verdict/strip labels.
+- Lifted x-axis hour-label JSX out of both branches of `Axes` into a shared `xAxisLabels` constant (removed ~14 lines of duplication).
+- Simplified `computePeak` from manual `for` loop to a `reduce` + `Math.max`.
+
+### Commit
+- **Commit**: 3042f8fe
+- **Files**: `src/lib/coverageSummary.ts`, `CoverageVerdict.tsx`, `CoverageStatusStrip.tsx`, `CoverageChart.tsx`
+- **Tests**: 40/40 passing; typecheck + lint clean
+- **Net**: −31 lines (39 ins / 70 del)

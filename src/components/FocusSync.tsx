@@ -123,8 +123,11 @@ export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
       }
 
       toast({
-        title: 'Import started',
-        description: 'Running in the background. You can leave this page; it keeps going.',
+        title: syncMode === 'custom' ? 'Sync complete' : 'Import started',
+        description:
+          syncMode === 'custom'
+            ? 'Custom range sync complete.'
+            : 'Running in the background. You can leave this page; it keeps going.',
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed';

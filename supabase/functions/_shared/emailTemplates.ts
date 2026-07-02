@@ -253,9 +253,13 @@ export const formatDate = (date: string | Date): string => {
 };
 
 /**
- * Helper to format date-time consistently
+ * Helper to format date-time consistently.
+ *
+ * @param date     - ISO string or Date object to format.
+ * @param timeZone - Optional IANA timezone (e.g. 'America/Chicago').
+ *                   When omitted the runtime default is used (backward-compatible).
  */
-export const formatDateTime = (date: string | Date): string => {
+export const formatDateTime = (date: string | Date, timeZone?: string): string => {
   const d = typeof date === 'string' ? new Date(date) : date;
   return d.toLocaleString('en-US', {
     weekday: 'short',
@@ -264,7 +268,8 @@ export const formatDateTime = (date: string | Date): string => {
     year: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-    hour12: true
+    hour12: true,
+    ...(timeZone ? { timeZone } : {}),
   });
 };
 

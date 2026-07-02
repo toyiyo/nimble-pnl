@@ -125,6 +125,23 @@ Phase 4-9: Autonomous dev-build-and-ship workflow — in progress
 - Skipped: `todayStr()` in ShiftTimelineTab intentionally uses host-TZ (not restaurant TZ) per the existing comment — matches planner header convention; no reuse opportunity
 - All 38 timeline unit tests pass; typecheck clean
 
+### Phase 7a: Codex adversarial review
+- Output: `dev-tools/codex-review-output.md`
+- Finding: severity=major in `src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx` line 75
+  - `filterToDay` uses `start_time.startsWith(dayStr)` which compares UTC ISO date prefix against the local `dayStr`. For restaurants behind UTC (e.g. America/Chicago), a shift starting at 22:00 local time is stored as the next UTC day, so it gets filtered out before `useTimelineModel` can apply `isoToLocalMinutes` — results in missing bars and false understaffing on the cross-midnight case.
+
+### Phase 7b: Fold review findings
+- Commit: `e2cf2ddf`
+- Critical/major findings addressed (3 total):
+  1. **filterToDay UTC prefix bug** (sound-logic + ocr-rules + codex — severity=major): replaced `start_time.startsWith(dayStr)` UTC prefix match with `isoToLocalMinutes`-based local-date check so late-evening shifts in timezones west of UTC are correctly attributed to their local calendar day. Added cross-midnight regression test to `shiftTimelineTab.test.tsx`.
+  2. **CoverageGapList end time off-by-step** (sound-logic — severity=major): exported `STEP_MIN` from `useTimelineModel.ts` and added it to `g.endMin` in `CoverageGapList` so the text end time matches the SVG shading extent. Updated `coverageGapList.test.tsx` to verify the corrected time.
+  3. **Dead `window` prop in timelineBarLabel tests** (ocr-rules — severity=major): removed dead prop from all four `TimelineBar` render calls and dropped the shadowed `const window` variable.
+- Minor findings skipped (per instructions — CodeRabbit catches style/nits in 7c):
+  - Performance: redundant `peakCount` map in CoverageCurve, `spanHours`/`plotMinWidth` not memoized
+  - Maintainability: hardcoded loading/error props, import order, redundant wrapper div, unnecessary `handlePopoverClose` useCallback
+  - No finding required design doc changes
+- Verification: `TZ=UTC npx vitest run` — 5125 tests pass (388 files); typecheck clean
+
 ## CI Status
 - PR: not yet created
 - Iteration: 0/5

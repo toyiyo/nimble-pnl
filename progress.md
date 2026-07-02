@@ -1,27 +1,39 @@
 # Progress: Invoice importer — read "pack" (inner count) instead of "size" as quantity
 
 ## Spec
-Link: (pending Phase 2)
+- Design: docs/superpowers/specs/2026-07-02-invoice-pack-quantity-design.md
+- Plan:   docs/superpowers/plans/2026-07-02-invoice-pack-quantity.md
 
 ## Current Phase
-Phase 2: Brainstorm — in-progress (awaiting codebase exploration)
+Phase 4-9: dev-build-and-ship workflow — task 1 complete, task 2 ready
 
-## Completed Tasks
-- [x] Phase 0: Consulted lessons.md
-- [x] Phase 1: Created worktree + branch feature/invoice-pack-quantity
+## Completed
+- [x] Phase 0 lessons, Phase 1 worktree (feature/invoice-pack-quantity)
+- [x] Phase 2 brainstorm + design doc (committed 7ead6d5b)
+- [x] Phase 2.5 design review (Supabase + Frontend) folded (committed 74e37a89)
+- [x] Phase 3 plan (committed)
+- [x] Preflight check (2026-07-02)
+- [x] Task 1: Migration add pack_quantity + pgTAP test (committed 6dc7c07c)
 
-## Key Domain Facts
-- PFG invoice columns: Item# | Ordered | Shipped | Pack | Size | Unit | Description | Price | Extension
-  - Item 87750: Ordered=1, Pack=500, Size=.32 OZ -> 1 case = 500 packets of .32 oz each
-- Sygma invoice: Pack/Size combined token e.g. "1/20 LB", "8/32 OZ", "2/2.5GAL" (pack=first, size=second)
-- Purchasing unit = case/box; Pack = inner count per case; Size = size of each inner unit
-- We buy by the box, sell by the packet -> quantity should be driven by Pack, not Size
+## Preflight Results (2026-07-02)
+- gh: authenticated as jdelgado2002 ✓
+- jq: 1.7.1-apple ✓
+- node: v20.20.2 ✓
+- coderabbit: 0.6.4 ✓
+- codex: 0.137.0 ✓ (available)
+- .env.local symlink: created ✓
+- SONAR_TOKEN: NOT_SET (warning only)
+- SONAR_PROJECT_KEY: NOT_SET (warning only)
+- Branch: feature/invoice-pack-quantity ✓
+
+## Key Decisions
+- quantity = casesOrdered × unitsPerPack (inner units); package_type = inner unit; size_value/size_unit = per-inner size
+- DO NOT write products.package_qty (calculate_recipe_cost multiplies size_value × package_qty → would corrupt P&L)
+- Store pack on receipt_line_items.pack_quantity (audit/UI only)
+- Idempotency + current_stock race: pre-existing, out of scope
 
 ## CI Status
 - PR: not yet created
 
 ## Blockers
 - None
-
-## Key Decisions
-- (pending)

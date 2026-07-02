@@ -33,6 +33,7 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
 - [x] Phase 4 build (TDD) — task 4/12: Create SQL migration 20260702120000_add_operations_manager_role.sql: extend role CHECK constraint, update user_is_internal_team helper, and replace user_has_capability function body with operations_manager added to non-accounting/non-admin branches (9fecf97d)
 - [x] Phase 4 build (TDD) — task 5/12: Create pgTAP test supabase/tests/21_operations_manager_capabilities.sql: sentinel tests for included capabilities and denied accounting/admin capabilities (drift guard) (8ba640b6)
 - [x] Phase 4 build (TDD) — task 6/12: Write failing pgTAP DML test supabase/tests/22_operations_manager_rls.sql (RED: 2f9d0d80); append residual-policy section to migration (GREEN: a26e4ba3). 9/9 tests pass; full suite 1470/1470.
+- [x] Phase 4 build (TDD) — task 8/12 (plan task 7): Update supabase/functions/send-team-invitation/index.ts: Deno invite matrix + canInviteRole(), widen inviter allow-list to include operations_manager, add role_not_allowed 403 guard, add Operations Manager label (b3f3dac3)
 
 ## Key Decisions
 - New role `operations_manager`, label "Operations Manager", non-breaking.

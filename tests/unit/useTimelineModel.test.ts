@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveWindow, buildLanes, expandDemand, computeGaps } from '@/components/scheduling/ShiftTimeline/useTimelineModel';
+import { deriveWindow, buildLanes, expandDemand, computeGaps, buildTimelineModel } from '@/lib/timelineModel';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 
 const shift = (start: string, end: string): Shift => ({
@@ -65,6 +65,44 @@ describe('buildLanes', () => {
     );
     expect(lanes[0].label).toBe('Server');
   });
+
+  it("with groupBy 'none' returns a single unlabelled lane", () => {
+    const lanes = buildLanes(
+      [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')],
+      employees, '2026-07-11', 'America/Chicago', 'none',
+    );
+    expect(lanes).toHaveLength(1);
+    expect(lanes[0].label).toBe('');
+    expect(lanes[0].bars).toHaveLength(1);
+  });
+
+  it("with groupBy 'none' and no shifts returns no lanes", () => {
+    expect(buildLanes([], employees, '2026-07-11', 'America/Chicago', 'none')).toEqual([]);
+  });
+
+  it('sorts sections alphabetically with unassigned area last', () => {
+    const mixed = [
+      emp('e1', 'Ann', 'Front', 'Server'),
+      emp('e2', 'Bob', '', 'Server'),      // no area → Unassigned
+      emp('e3', 'Cy', 'Back', 'Server'),
+    ];
+    const shifts = [
+      shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z'),
+      shiftFor('s2', 'e2', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z'),
+      shiftFor('s3', 'e3', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z'),
+    ];
+    const lanes = buildLanes(shifts, mixed, '2026-07-11', 'America/Chicago', 'area');
+    expect(lanes.map((l) => l.label)).toEqual(['Back', 'Front', 'Unassigned']);
+    expect(lanes[2].key).toBe('unassigned');
+  });
+
+  it('drops shifts whose employee is missing', () => {
+    const lanes = buildLanes(
+      [shiftFor('s1', 'ghost', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')],
+      employees, '2026-07-11', 'America/Chicago', 'area',
+    );
+    expect(lanes).toEqual([]);
+  });
 });
 
 const rec = (hour: number, staff: number): HourlyStaffingRecommendation =>
@@ -90,5 +128,41 @@ describe('computeGaps', () => {
   });
   it('returns no gaps when demand is null', () => {
     expect(computeGaps([{ min: 600, count: 0 }], null)).toEqual([]);
+  });
+  it('closes an open gap that runs to the last sample', () => {
+    const coverage = [{ min: 600, count: 0 }, { min: 615, count: 0 }];
+    const demand = [{ min: 600, target: 1 }, { min: 615, target: 1 }];
+    expect(computeGaps(coverage, demand)).toEqual([{ startMin: 600, endMin: 615 }]);
+  });
+});
+
+describe('buildTimelineModel', () => {
+  const employees = [emp('e1', 'Ann', 'Front', 'Server')];
+  const shiftFor = (id: string, eid: string, start: string, end: string) =>
+    ({ id, restaurant_id: 'r', employee_id: eid, start_time: start, end_time: end, break_duration: 0,
+       position: 'Server', status: 'scheduled', is_published: false, source: 'manual',
+       locked: false, created_at: '', updated_at: '' } as Shift);
+
+  it('assembles window, lanes, coverage, demand and gaps', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // 10-13 CT
+    const model = buildTimelineModel(
+      shifts, employees, '2026-07-11', 'America/Chicago', 'area', [rec(10, 1), rec(11, 1), rec(12, 1)],
+    );
+    expect(model.window.startMin).toBe(600);
+    expect(model.lanes[0].label).toBe('Front');
+    expect(model.coverage.some((c) => c.count === 1)).toBe(true);
+    expect(model.demand).not.toBeNull();
+    expect(Array.isArray(model.gaps)).toBe(true);
+  });
+
+  it('excludes cancelled shifts and yields null demand with no recs', () => {
+    const shifts = [
+      shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z'),
+      { ...shiftFor('s2', 'e1', '2026-07-11T19:00:00Z', '2026-07-11T22:00:00Z'), status: 'cancelled' } as Shift,
+    ];
+    const model = buildTimelineModel(shifts, employees, '2026-07-11', 'America/Chicago', 'area', []);
+    expect(model.lanes[0].bars).toHaveLength(1); // cancelled dropped
+    expect(model.demand).toBeNull();
+    expect(model.gaps).toEqual([]);
   });
 });

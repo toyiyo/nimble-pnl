@@ -113,7 +113,7 @@ export const Inventory: React.FC = () => {
   const { activeSession, startReconciliation, resumeReconciliation, refreshSession } = useReconciliation(selectedRestaurant?.restaurant_id || null);
 
   // Check if user has permission to delete products
-  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
+  const canDeleteProducts = ['owner', 'manager', 'operations_manager'].includes(selectedRestaurant?.role || '');
   
   // Get unique categories from products
   const categories = useMemo(() => 

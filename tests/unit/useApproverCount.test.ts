@@ -48,7 +48,7 @@ describe('useApproverCount', () => {
     expect(mockSupabase.from).not.toHaveBeenCalled();
   });
 
-  it('fetches count from user_restaurants with owner/manager roles', async () => {
+  it('fetches count from user_restaurants with owner/manager/operations_manager roles', async () => {
     const stub = makeCountStub(3);
     mockSupabase.from.mockReturnValue(stub);
 
@@ -63,7 +63,7 @@ describe('useApproverCount', () => {
     const eqCall = stub.select.mock.results[0].value.eq;
     expect(eqCall).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     const inCall = eqCall.mock.results[0].value.in;
-    expect(inCall).toHaveBeenCalledWith('role', ['owner', 'manager']);
+    expect(inCall).toHaveBeenCalledWith('role', ['owner', 'manager', 'operations_manager']);
   });
 
   it('returns 0 when the count is null', async () => {

@@ -414,11 +414,12 @@ export const useDeleteShiftTrade = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ tradeId }: { tradeId: string }) => {
+    mutationFn: async ({ tradeId, restaurantId }: { tradeId: string; restaurantId: string }) => {
       const { error } = await supabase
         .from('shift_trades')
         .delete()
         .eq('id', tradeId)
+        .eq('restaurant_id', restaurantId)
         // Guard: never hard-delete an approved/rejected audit record, even
         // though the manager DELETE RLS policy technically permits it. If the
         // trade was approved between click and execute, this is a safe no-op.

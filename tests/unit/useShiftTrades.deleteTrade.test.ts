@@ -7,7 +7,7 @@
  *   (c) thrown transport error → destructive toast
  *
  * The Supabase builder chain exercised is:
- *   supabase.from('shift_trades').delete().eq('id', tradeId).in('status', [...])
+ *   supabase.from('shift_trades').delete().eq('id', tradeId).eq('restaurant_id', restaurantId).in('status', [...])
  */
 
 import React, { ReactNode } from 'react';
@@ -84,13 +84,14 @@ describe('useDeleteShiftTrade', () => {
     });
 
     await act(async () => {
-      await result.current.mutateAsync({ tradeId: 'trade-123' });
+      await result.current.mutateAsync({ tradeId: 'trade-123', restaurantId: 'rest-1' });
     });
 
     // Correct Supabase chain was called
     expect(mockSupabase.from).toHaveBeenCalledWith('shift_trades');
     expect(chain.delete).toHaveBeenCalled();
     expect(chain.eq).toHaveBeenCalledWith('id', 'trade-123');
+    expect(chain.eq).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     expect(chain.in).toHaveBeenCalledWith('status', ['open', 'pending_approval']);
 
     // Success toast (not destructive — no variant key)
@@ -115,7 +116,7 @@ describe('useDeleteShiftTrade', () => {
 
     await expect(
       act(async () => {
-        await result.current.mutateAsync({ tradeId: 'trade-456' });
+        await result.current.mutateAsync({ tradeId: 'trade-456', restaurantId: 'rest-1' });
       }),
     ).rejects.toThrow();
 
@@ -147,7 +148,7 @@ describe('useDeleteShiftTrade', () => {
 
     await expect(
       act(async () => {
-        await result.current.mutateAsync({ tradeId: 'trade-789' });
+        await result.current.mutateAsync({ tradeId: 'trade-789', restaurantId: 'rest-1' });
       }),
     ).rejects.toThrow('Network timeout');
 
@@ -178,7 +179,7 @@ describe('useDeleteShiftTrade', () => {
     const { result } = renderHook(() => useDeleteShiftTrade(), { wrapper });
 
     await act(async () => {
-      await result.current.mutateAsync({ tradeId: 'trade-123' });
+      await result.current.mutateAsync({ tradeId: 'trade-123', restaurantId: 'rest-1' });
     });
 
     const calledKeys = invalidateSpy.mock.calls.map(

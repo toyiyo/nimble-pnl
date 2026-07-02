@@ -216,7 +216,7 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
     for (const tradeId of idsToDelete) {
       setDeletingIds((prev) => new Set([...prev, tradeId]));
       deleteTrade(
-        { tradeId },
+        { tradeId, restaurantId: restaurantId ?? '' },
         {
           onSettled: () => {
             setDeletingIds((prev) => {

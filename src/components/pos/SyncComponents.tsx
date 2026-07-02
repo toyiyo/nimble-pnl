@@ -66,18 +66,28 @@ interface InitialSyncPendingAlertProps {
 }
 
 export function InitialSyncPendingAlert({ syncCursor, config }: InitialSyncPendingAlertProps): JSX.Element {
-  const daysCompleted = syncCursor || 0;
+  const daysCompleted = syncCursor ?? 0;
   const progress = Math.round((daysCompleted / 90) * 100);
-  const hasProgress = daysCompleted > 0;
 
   return (
     <Alert>
       <Calendar className="h-4 w-4" />
       <AlertDescription>
-        <strong>{hasProgress ? 'Initial sync in progress:' : 'First sync pending:'}</strong>{' '}
-        {hasProgress
-          ? `${daysCompleted} of 90 days completed (${progress}%). Click "Sync Now" to continue.`
-          : `The next scheduled sync will import your last 90 days of ${config.dataLabel}. You can also click "Sync Now" to start immediately.`}
+        <span
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <strong>Importing your last 90 days in the background</strong>{' '}
+          ({daysCompleted} of 90, {progress}%). No need to keep this page open.
+        </span>
+        <Progress
+          value={progress}
+          className="mt-2"
+          aria-label="Sync progress"
+          aria-valuemin={0}
+          aria-valuemax={100}
+        />
       </AlertDescription>
     </Alert>
   );

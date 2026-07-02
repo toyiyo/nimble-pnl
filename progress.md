@@ -175,4 +175,61 @@
 - `scheduling-conflicts.spec.ts:326` ("Assign All batches conflicts…"): pre-existing E2E flake — `tests/e2e/scheduling-conflicts.spec.ts` has 0 diff vs main
 - ESLint 1515 problems: all in files not touched by this branch (e.g., `AccountDialog.tsx`, `BankCSVUpload.tsx`, `ChatMessage.tsx`)
 
-### Ship — PENDING
+### Ship — COMPLETED (2026-07-02)
+- Branch pushed: `origin/feat/focus-focuslink-datafeed`
+- PR: https://github.com/toyiyo/nimble-pnl/pull/563 (#563)
+
+### CI (Phase 9b) — COMPLETED (2026-07-02), iteration 1
+- All checks passed on PR #563:
+  - Analyze (actions): pass 31s
+  - Analyze (javascript-typescript): pass 2m9s
+  - CodeQL: pass
+  - CodeRabbit: pass (review completed)
+  - Database Tests (pgTAP): pass 4m27s
+  - E2E Tests (Shard 1–4): pass 8–13m
+  - Merge E2E Reports: pass 36s
+  - Unit Tests: pass 5m24s
+  - SonarCloud Code Analysis: pass 53s (quality gate GREEN — Sonar IS configured)
+  - Vercel: pass
+  - Supabase Preview: pass
+  - netlify/easyshifthq/deploy-preview: pass
+  - Redirect rules: pass
+  - Skipping (not failing): Header rules, Pages changed
+
+- Queue items noted (non-blocking):
+  - 1 CodeRabbit P1 comment: negative discount amounts in unified_sales SQL (review suggestion, not CI failure)
+  - no-explicit-any lint in test files: pattern present in main (pre-existing) for unchanged files; new files follow same pattern used project-wide; lint is not a blocking CI check
+
+- ciGreen: true
+
+### Review-comment Triage (Phase 9d) — COMPLETED (2026-07-02)
+- Triage artifact: `dev-tools/9d-triage-feat/focus-focuslink-datafeed.md`
+- Fix commit: `44feb658ea64e57984fe7897288031e7dc93b921` — pushed to `origin/feat/focus-focuslink-datafeed`
+
+#### Fixes applied (10 bug/correctness + 1 partial):
+- `useFocusConnection.tsx`: send `restaurantGuid` (not `storeId`) to edge function — saves had been returning 400 for every new connection
+- `useFocusConnection.tsx` + `FOCUS_CONNECTION_COLUMNS`: removed `api_key` credential from client-side select
+- `focusSaveConnectionHandler.ts`: `.select()` restricted to non-credential columns only
+- `unified_sales` migration: `discount_amount > 0` → `!= 0` (Focus stores discounts as negative)
+- New migration `20260701160000`: REVOKE PUBLIC EXECUTE on SECURITY DEFINER `_impl`; re-creates `_impl` with corrected discount predicate
+- `focusDatafeedParser.ts`: `taxableSales` rounded to 2dp after summing 5 floats
+- `focusBulkSyncHandler.ts`: all `focus_connections` updates scoped by `restaurant_id`
+- `focusSyncDataHandler.ts`: status update scoped by `restaurant_id`
+- `focusTestConnectionHandler.ts`: added `redirect: 'error'` to SSRF guard
+- `FocusSetupWizard.tsx`: `Sync Now` surfaces errors before closing
+- `focusSetupWizard.test.tsx`: fixed saved-credentials assertion from negative to positive
+- `focusBulkSyncHandler.test.ts` + `focusSyncDataHandler.test.ts`: extended update mock chains for 2x `.eq()` calls
+- `focusTestConnectionHandler.test.ts`: added `redirect:'error'` assertion
+
+#### Declined with PR reply (7):
+- Backfill unified_sales sync (design constraint: CPU budget)
+- Voided-check unified_sales cleanup (handled by SQL orphan delete in 20260701160000)
+- Stale child row cleanup (heavy lift, deferred)
+- sandboxBaseUrl in BulkSyncDeps/SyncDataDeps (no sandbox env deployed)
+- Return error on unified_sales RPC failure (intentionally non-fatal)
+- Remove stale child rows before re-upsert (architectural)
+
+#### Counts:
+- fixesCommitted: 10
+- declinedWithReply: 7
+- informational: 3

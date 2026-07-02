@@ -122,6 +122,15 @@
   - `focus-test-connection/index.ts`: corrected stale doc comment (was "FocusLink datafeed call for yesterday", now "GET /api/restaurants").
 - TypeScript: 0 errors. Tests: 5145/5147 pass (2 pre-existing skips). No regressions.
 
-### Review — PENDING
+### CodeRabbit Review (7c) — COMPLETED (2026-07-02)
+- Tool: coderabbit 0.6.4
+- Findings fixed (commit `76b69720`):
+  - **major**: Added FK constraints from `focus_order_items`/`focus_payments` → `focus_orders` (composite natural-key FK, ON DELETE CASCADE) via new migration `20260701150000_focus_transactions_integrity.sql`
+  - **major**: Added `card_last4 CHECK('^[0-9]{4}$')` to `focus_payments` in same migration to enforce PCI last-4 boundary at DB level
+  - **minor**: `supabase/tests/46` — expanded plan(32→34), added `focus_payments` SELECT policy test and `focus_order_items` FOR ALL policy test
+  - **minor**: `supabase/tests/45` — replaced `col_has_check` with `ok()` that asserts both 'sandbox' and 'production' appear in the constraint definition
+  - **minor**: `progress.md` — replaced absolute `/Users/` symlink path with generic placeholder
+  - **minor**: `docs/superpowers/plans/...` — replaced hard-coded `/Users/` creds/OpenAPI paths with env-var placeholder + spec reference; aligned RLS template name to `focus_daily_reports`
+
 ### Verify — PENDING
 ### Ship — PENDING

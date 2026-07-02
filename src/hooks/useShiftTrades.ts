@@ -398,6 +398,48 @@ export const useCancelShiftTrade = () => {
 };
 
 /**
+ * Hook for managers to hard-delete a stale or expired shift-trade request.
+ *
+ * Design constraints (see design doc §1):
+ * - Only deletes rows whose status is still 'open' or 'pending_approval'.
+ *   If a trade was approved between the click and the execute, the `.in()`
+ *   filter turns the DELETE into a safe no-op (PostgREST returns no error).
+ * - No notification email: removal is janitorial, not a decision that affects
+ *   shift ownership (the shift never moved).
+ * - No ['shifts'] invalidation: ownership is only transferred in
+ *   approve_shift_trade, which is a separate code path.
+ */
+export const useDeleteShiftTrade = () => {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  return useMutation({
+    mutationFn: async ({ tradeId }: { tradeId: string }) => {
+      const { error } = await supabase
+        .from('shift_trades')
+        .delete()
+        .eq('id', tradeId)
+        // Guard: never hard-delete an approved/rejected audit record, even
+        // though the manager DELETE RLS policy technically permits it. If the
+        // trade was approved between click and execute, this is a safe no-op.
+        .in('status', ['open', 'pending_approval']);
+      if (error) throw error;
+      return { tradeId };
+    },
+    onSuccess: () => {
+      // The shift never moved (ownership only transfers in approve_shift_trade),
+      // so NO ['shifts'] invalidation is needed here.
+      queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
+      queryClient.invalidateQueries({ queryKey: ['marketplace_trades'] });
+      toast({ title: 'Trade removed', description: 'The stale trade request was removed.' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error removing trade', description: error.message, variant: 'destructive' });
+    },
+  });
+};
+
+/**
  * Hook to get marketplace trades (available for any employee to accept)
  * Filters out trades where current employee has conflicts
  */

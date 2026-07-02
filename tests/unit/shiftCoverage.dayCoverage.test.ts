@@ -36,4 +36,9 @@ describe('computeDayCoverage', () => {
     const cov = computeDayCoverage(shifts, '2026-07-11', 'America/Chicago', 60, 600, 1080);
     expect(cov.every((c) => c.count === 0)).toBe(true);
   });
+  it('returns [] for a non-positive step instead of looping forever', () => {
+    const shifts = [mk('e', '2026-07-11T15:00:00Z', '2026-07-11T21:00:00Z')];
+    expect(computeDayCoverage(shifts, '2026-07-11', 'America/Chicago', 0, 600, 1080)).toEqual([]);
+    expect(computeDayCoverage(shifts, '2026-07-11', 'America/Chicago', -15, 600, 1080)).toEqual([]);
+  });
 });

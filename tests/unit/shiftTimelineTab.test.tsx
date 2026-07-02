@@ -167,6 +167,27 @@ describe('ShiftTimelineTab', () => {
     expect(btn).toBeInTheDocument();
   });
 
+  it('resets the selected day when the week changes (stale day not carried over)', () => {
+    const employees = [makeEmployee('e1', 'Ann')];
+    // Shift on the FIRST week's default day (2026-01-05).
+    const weekAShifts = [makeShift('a1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+    const { rerender } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={weekAShifts} employees={employees} />,
+    );
+    expect(screen.getByRole('button', { name: /Ann/i })).toBeInTheDocument();
+
+    // Navigate to a different, non-overlapping week with a shift on its default day.
+    const WEEK_B = ['2026-02-02', '2026-02-03', '2026-02-04', '2026-02-05', '2026-02-06', '2026-02-07', '2026-02-08'];
+    const weekBShifts = [makeShift('b1', 'e1', '2026-02-02T16:00:00Z', '2026-02-02T22:00:00Z')];
+    rerender(
+      <ShiftTimelineTab {...BASE_PROPS} weekDays={WEEK_B} shifts={weekBShifts} employees={employees} />,
+    );
+    // If the selected day were stuck on the old week (2026-01-05, absent from WEEK_B),
+    // we'd see the empty state. Instead the derived day falls back to WEEK_B[0] and the bar shows.
+    expect(screen.getByRole('button', { name: /Ann/i })).toBeInTheDocument();
+    expect(screen.queryByText(/no shifts scheduled/i)).not.toBeInTheDocument();
+  });
+
   it('correctly attributes a late-evening shift (23:00 CST = 05:00Z next day) to its local day', () => {
     // This is the cross-UTC-midnight case that the old UTC prefix filter silently dropped.
     // 2026-01-05 23:00 CST = 2026-01-06T05:00:00Z (UTC next day).

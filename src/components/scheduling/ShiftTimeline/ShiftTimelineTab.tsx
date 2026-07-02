@@ -106,7 +106,11 @@ export function ShiftTimelineTab({
   error,
 }: ShiftTimelineTabProps) {
   // ── Local state ────────────────────────────────────────────────────────────
-  const [selectedDay, setSelectedDay] = useState<string>(() => defaultDay(weekDays));
+  const [selectedDayState, setSelectedDay] = useState<string>(() => defaultDay(weekDays));
+  // Derive the effective day so navigating to a different week (weekDays prop
+  // changes) never leaves a stale date selected — fall back to the week's default
+  // when the stored day is outside the current week.
+  const selectedDay = weekDays.includes(selectedDayState) ? selectedDayState : defaultDay(weekDays);
   const [groupBy, setGroupBy] = useState<GroupByMode>('area');
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
 
@@ -238,8 +242,9 @@ export function ShiftTimelineTab({
       <div className="overflow-x-auto rounded-xl border border-border/40">
         <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
 
-          {/* Coverage curve */}
-          <div className="px-2 pt-2">
+          {/* Coverage curve — offset by the 120px lane-label column so its
+              minToPct x-scale aligns with the axis ticks and shift bars. */}
+          <div className="pl-[120px] pt-2">
             <CoverageCurve
               window={model.window}
               coverage={model.coverage}

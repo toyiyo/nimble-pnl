@@ -258,6 +258,9 @@ export function computeDayCoverage(
   windowStartMin: number,
   windowEndMin: number,
 ): DayCoverageSample[] {
+  // Guard against a non-positive step, which would loop forever.
+  if (stepMin <= 0) return [];
+
   const intervals: { s: number; e: number }[] = [];
   for (const s of shifts) {
     if (s.status === 'cancelled') continue;

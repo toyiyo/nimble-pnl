@@ -78,6 +78,16 @@
   - IntegrationLogo: removed stale `'focus-pos': '🍦'` dead-code entry from emojiMap (unreachable; imageLogoMap takes precedence).
 - TypeScript: 0 errors. Unit tests: 52/52 pass.
 
+### Simplify — COMPLETED (2026-07-01)
+- Commit: `8a106cdf`
+- Files changed: 4
+- Simplifications applied:
+  - `focusLynkClient.ts`: Removed redundant `.trim() === ''` guard after `!config.restaurantGuid` (falsy already covers blank/empty strings).
+  - `focusBulkSyncHandler.ts`: Collapsed double `throw err` (one inside `if (err instanceof FocusAuthError)`, one after) into a single re-throw after the status-write block — same behavior, one code path.
+  - `focusSyncDataHandler.ts`: Removed the `status = 'ok'` inprogress branch (default was already `'ok'`); condensed to a single `else` path that maps result status, eliminating the dead assignment.
+  - `FocusSetupWizard.tsx`: Extracted `onConnectSuccess()` helper shared by `handleSaveAndConnect` and `handleRetry` to remove duplicated toast + step-transition code.
+- TypeScript: 0 errors. Tests: 5155/5155 pass (no regressions).
+
 ### Review — PENDING
 ### Verify — PENDING
 ### Ship — PENDING

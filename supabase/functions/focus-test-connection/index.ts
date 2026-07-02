@@ -1,8 +1,8 @@
 /**
  * focus-test-connection/index.ts
  *
- * Edge function: test an existing Focus POS connection by making one FocusLink
- * datafeed call for yesterday and writing the result to connection_status.
+ * Edge function: test an existing Focus POS connection by calling
+ * GET /api/restaurants and writing the result to connection_status.
  *
  * This thin entry point handles CORS pre-flight, builds the injectable deps
  * (user-scoped client + service-role client + native fetch), and delegates all

@@ -55,7 +55,7 @@ import {
   processDayTransactions,
   type TransactionSyncConfig,
 } from './focusTransactionSyncHandler.ts';
-import { focusApiBaseUrl } from './focusLynkClient.ts';
+import { focusApiBaseUrl, fetchDatafeed as realFetchDatafeed } from './focusLynkClient.ts';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -258,8 +258,6 @@ export async function handleSyncData(
       ),
     };
 
-    // Import fetchDatafeed lazily so tests can inject a mock via deps.fetchDatafeed.
-    const { fetchDatafeed: realFetchDatafeed } = await import('./focusLynkClient.ts');
     const fetchDatafeedFn = deps.fetchDatafeed ?? realFetchDatafeed;
 
     const txDeps = {
@@ -277,7 +275,13 @@ export async function handleSyncData(
 
       // Map inprogress → treat as ok (don't advance cursor; will retry next call)
       if (result.status !== 'inprogress') {
-        status = result.status === 'ok' ? 'ok' : result.status === 'empty' ? 'empty' : 'error';
+        if (result.status === 'ok') {
+          status = 'ok';
+        } else if (result.status === 'empty') {
+          status = 'empty';
+        } else {
+          status = 'error';
+        }
         if (result.status !== 'error') {
           newSyncCursor = connRow.sync_cursor + 1;
           if (newSyncCursor >= TARGET_DAYS) {

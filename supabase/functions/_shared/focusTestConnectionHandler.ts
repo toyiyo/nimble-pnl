@@ -20,24 +20,19 @@
  */
 
 import { getEncryptionService } from './encryption.ts';
-import { focusApiBaseUrl } from './focusLynkClient.ts';
+import {
+  focusApiBaseUrl,
+  isSafeUrl,
+  FOCUSPOS_HOST_RE,
+} from './focusLynkClient.ts';
 
 const FOCUS_ALLOWED_ROLES = new Set(['owner', 'manager']);
 
 const TIMEOUT_MS = 20_000;
 
-// ── SSRF allow-list (same as focusLynkClient) ────────────────────────────────
-/** https only, host must be (a subdomain of) focuspos.com. */
-const FOCUSPOS_HOST_RE = /(^|\.)focuspos\.com$/i;
-
+/** Convenience wrapper: SSRF-check that `url` is a safe focuspos.com base URL. */
 function isSafeBase(url: string): boolean {
-  let u: URL;
-  try {
-    u = new URL(url);
-  } catch {
-    return false;
-  }
-  return u.protocol === 'https:' && u.username === '' && u.password === '' && FOCUSPOS_HOST_RE.test(u.hostname);
+  return isSafeUrl(url, FOCUSPOS_HOST_RE);
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────

@@ -88,6 +88,40 @@
   - `FocusSetupWizard.tsx`: Extracted `onConnectSuccess()` helper shared by `handleSaveAndConnect` and `handleRetry` to remove duplicated toast + step-transition code.
 - TypeScript: 0 errors. Tests: 5155/5155 pass (no regressions).
 
+### Codex Adversarial Review (7a) — COMPLETED (2026-07-01)
+- Tool: Codex CLI v0.137.0 (gpt-5.5)
+- Output: `dev-tools/codex-review-output.md`
+- Finding: severity=major — `focusLynkClient.ts` line 323: blob response is consumed with `blobRes.text()` without checking `blobRes.ok` / HTTP status. An expired or failed Azure SAS URL (403/404/5xx) returns a non-XML error body that passes back as `ok: true`, causes the parser to see an empty feed, and advances `sync_cursor` — permanently skipping that business day on backfill.
+
+### OCR Rules Review (7a) — COMPLETED (2026-07-01)
+- Reviewer: Claude Sonnet 4.6 (ocr-rules-reviewer agent)
+- Script: `dev-tools/ocr-rules-review.sh origin/main`
+- OCR pack applied: default + **/*.{ts,js,tsx,jsx} + **/*.json + **/package.json
+- Findings summary (5 violations, no fix applied per Phase 7a brief):
+  - CRITICAL ×5:
+    - `focusDatafeedParser.ts` lines 78,84,91,98,180: `== null` and `!= null` (loose equality) — rule: "Using `==` and `!=` is prohibited"
+  - MAJOR ×3:
+    - `focusSyncDataHandler.ts` line 280: nested ternary `status === 'ok' ? … : … === 'empty' ? … : …` — rule: "Nested ternary expressions are not allowed"
+    - `focusSyncDataHandler.ts` line 262: redundant dynamic `await import('./focusLynkClient.ts')` inside function body while `focusApiBaseUrl` is already statically imported from the same module at top — dead/duplicate import pattern
+    - `supabase/functions/focus-test-connection/index.ts` added doc comment lines: says "making one FocusLink datafeed call for yesterday" but handler now calls `GET /api/restaurants` — stale/incorrect comment
+
+### Fold Findings (7b) — COMPLETED (2026-07-01)
+- Deduplicated findings from 6 reviewers (security, performance, maintainability, sound-logic, ocr-rules, codex).
+- All critical/major issues already fixed in prior phases (Simplify/7a):
+  - Blob HTTP status check (focusLynkClient.ts): already added before 7b.
+  - SQL: sync_all grant → service_role only: already applied.
+  - SQL: store_id NULL guard + is_active filter + ORDER BY: already applied.
+  - SQL: UTC timezone issue → 3-day lookback: already applied.
+  - deletedCheckIds void handling: already implemented in focusTransactionSyncHandler.ts.
+  - Dead module focusDatafeed.ts: already deleted.
+  - focusDatafeedParser.ts loose equality: already fixed to strict === / !==.
+- Remaining actionable issues fixed in this phase:
+  - `focusSyncDataHandler.ts` line 262: removed dynamic `await import('./focusLynkClient.ts')` — added `fetchDatafeed` to existing static import at line 58.
+  - `focusSyncDataHandler.ts` line 280: replaced nested ternary with explicit if/else-if/else block.
+  - `focusTestConnectionHandler.ts`: eliminated duplicated SSRF guard — now imports `isSafeUrl` + `FOCUSPOS_HOST_RE` from focusLynkClient (which exports them); local copies removed.
+  - `focus-test-connection/index.ts`: corrected stale doc comment (was "FocusLink datafeed call for yesterday", now "GET /api/restaurants").
+- TypeScript: 0 errors. Tests: 5145/5147 pass (2 pre-existing skips). No regressions.
+
 ### Review — PENDING
 ### Verify — PENDING
 ### Ship — PENDING

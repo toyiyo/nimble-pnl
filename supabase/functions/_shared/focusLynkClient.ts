@@ -25,8 +25,12 @@
 
 // ── SSRF allow-lists ─────────────────────────────────────────────────────────
 
-/** https only, host must be (a subdomain of) focuspos.com. */
-const FOCUSPOS_HOST_RE = /(^|\.)focuspos\.com$/i;
+/**
+ * https only, host must be (a subdomain of) focuspos.com.
+ * Exported so other handlers (focusTestConnectionHandler) can reuse the
+ * same allow-list rather than maintaining independent copies.
+ */
+export const FOCUSPOS_HOST_RE = /(^|\.)focuspos\.com$/i;
 
 /** https only, host must be (a subdomain of) blob.core.windows.net. */
 const BLOB_HOST_RE = /(^|\.)blob\.core\.windows\.net$/i;
@@ -85,8 +89,11 @@ export type FocusLynkResult =
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-/** Return true when `url` satisfies https + hostRe + no userinfo. */
-function isSafeUrl(url: string, hostRe: RegExp): boolean {
+/**
+ * Return true when `url` satisfies https + hostRe + no userinfo.
+ * Exported for reuse in focusTestConnectionHandler (SSRF guard for the API base URL).
+ */
+export function isSafeUrl(url: string, hostRe: RegExp): boolean {
   let u: URL;
   try {
     u = new URL(url);

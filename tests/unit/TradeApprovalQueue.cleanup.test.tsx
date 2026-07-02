@@ -28,7 +28,7 @@ vi.mock('@/hooks/useShiftTrades', async (importOriginal) => {
     useShiftTrades: vi.fn(),
     useApproveShiftTrade: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
     useRejectShiftTrade: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
-    useDeleteShiftTrade: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
+    useDeleteShiftTrade: vi.fn(() => ({ mutate: vi.fn(), mutateAsync: vi.fn().mockResolvedValue(undefined), isPending: false })),
   };
 });
 
@@ -167,12 +167,12 @@ function setup(
   pendingTrades: ReturnType<typeof makeTrade>[],
 ) {
   const mockUseShiftTrades = vi.mocked(useShiftTrades);
-  const mockDeleteFn = vi.fn();
+  const mockDeleteFn = vi.fn().mockResolvedValue(undefined);
   const mockUseDeleteShiftTrade = vi.mocked(useDeleteShiftTrade);
 
   mockUseDeleteShiftTrade.mockReturnValue({
-    mutate: mockDeleteFn,
-    mutateAsync: vi.fn(),
+    mutate: vi.fn(),
+    mutateAsync: mockDeleteFn,
     isPending: false,
     isIdle: true,
     isSuccess: false,

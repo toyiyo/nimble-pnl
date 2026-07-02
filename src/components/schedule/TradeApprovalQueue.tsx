@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { parseDateLocal } from '@/lib/dateUtils';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -149,16 +149,31 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
    */
   const bulkRemoveBtnRef = useRef<HTMLButtonElement>(null);
 
-  const { mutate: deleteTrade } = useDeleteShiftTrade();
+  const { mutateAsync: deleteTradeAsync } = useDeleteShiftTrade();
+
+  /**
+   * Ticking clock for expiration re-evaluation.
+   *
+   * Increments every 60 s so the partition memos re-run even when no new
+   * trade data arrives (e.g. a focused tab where React Query's 30 s staleTime
+   * window has already expired and no refetch is triggered). Tests inject
+   * `nowProp`, bypassing this ticker entirely.
+   */
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    if (nowProp !== undefined) return; // tests control `now` directly
+    const id = setInterval(() => setNowTick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, [nowProp]);
 
   /**
    * Partition open trades in a single pass.
    *
    * `now` is evaluated inside the memo (not hoisted) so it reflects the actual
    * wall-clock time at the moment `openTrades` last changed (every 30 s refetch
-   * or on window focus). `nowProp` is injected in tests to fix time; in
-   * production it is `undefined` and `new Date()` is called fresh each time
-   * the memo re-runs.
+   * or on window focus), or at every 60 s tick of `nowTick`. `nowProp` is
+   * injected in tests to fix time; in production it is `undefined` and
+   * `new Date()` is called fresh each time the memo re-runs.
    */
   const { expiredOpen, activeOpen } = useMemo(() => {
     const now = nowProp ?? new Date();
@@ -172,7 +187,10 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
       }
     }
     return { expiredOpen, activeOpen };
-  }, [openTrades, nowProp]);
+    // nowTick is intentionally included so the partition re-evaluates every
+    // 60 s while the manager keeps the page open, even without new trade data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTrades, nowProp, nowTick]);
 
   /**
    * Partition pending trades in a single pass.
@@ -191,7 +209,9 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
       }
     }
     return { stalePending, normalPending };
-  }, [pendingTrades, nowProp]);
+    // nowTick included for same reason as the open-trades memo above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTrades, nowProp, nowTick]);
 
   /** All stale IDs for the bulk action. */
   const allStaleIds = useMemo(
@@ -207,37 +227,44 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
     setConfirmTarget({ type: 'bulk', ids: allStaleIds });
   }, [allStaleIds]);
 
-  const handleConfirmRemove = useCallback(() => {
+  /**
+   * Fire all deletes in parallel and clear each ID's spinner independently.
+   *
+   * `mutateAsync` is used instead of `mutate` so that each call returns its own
+   * Promise. `Promise.allSettled` guarantees that every per-ID `finally` block
+   * runs even when earlier mutations complete before later ones — avoiding the
+   * TQ v5 limitation where a single `useMutation` instance only tracks the
+   * *latest* per-call `onSettled` option.
+   */
+  const handleConfirmRemove = useCallback(async () => {
     if (!confirmTarget) return;
 
     const idsToDelete =
       confirmTarget.type === 'single' ? [confirmTarget.trade.id] : confirmTarget.ids;
-
-    for (const tradeId of idsToDelete) {
-      setDeletingIds((prev) => new Set([...prev, tradeId]));
-      deleteTrade(
-        { tradeId, restaurantId: restaurantId ?? '' },
-        {
-          onSettled: () => {
-            setDeletingIds((prev) => {
-              const next = new Set(prev);
-              next.delete(tradeId);
-              return next;
-            });
-          },
-        }
-      );
-    }
+    const isBulk = confirmTarget.type === 'bulk';
 
     setConfirmTarget(null);
+    setDeletingIds((prev) => new Set([...prev, ...idsToDelete]));
+
+    await Promise.allSettled(
+      idsToDelete.map((tradeId) =>
+        deleteTradeAsync({ tradeId, restaurantId: restaurantId ?? '' }).finally(() => {
+          setDeletingIds((prev) => {
+            const next = new Set(prev);
+            next.delete(tradeId);
+            return next;
+          });
+        })
+      )
+    );
 
     // Restore focus after bulk removal (rows are unmounted)
-    if (confirmTarget.type === 'bulk') {
+    if (isBulk) {
       requestAnimationFrame(() => {
         bulkRemoveBtnRef.current?.focus();
       });
     }
-  }, [confirmTarget, deleteTrade, restaurantId]);
+  }, [confirmTarget, deleteTradeAsync, restaurantId]);
 
   const handleCancelRemove = useCallback(() => {
     setConfirmTarget(null);

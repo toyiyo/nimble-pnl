@@ -113,6 +113,18 @@ Phase 4-9: Autonomous dev-build-and-ship workflow — in progress
   - `ToggleGroup` for view in ShiftPlannerTab → `aria-label="Schedule view"`
 - TypeScript typecheck: clean after fixes
 
+### Phase 6: Simplify
+- Commit: `4e175fd1`
+- Ran 4 cleanup review angles (reuse, simplification, efficiency, altitude)
+- Fixes applied:
+  - `TimelineShiftPopover`: merged two separate `shiftCoverage` import lines into one; removed never-used `trigger?: React.ReactNode` prop
+  - `TimelineBar`: removed dead `window: TimelineWindow` prop (and its import) — `minToPct` already encodes the window geometry
+  - `TimelineLane`: stopped threading `window` through to `TimelineBar`
+  - `ShiftTimelineTab`: replaced `handleShiftSelect = useCallback((shift) => setActiveShift(shift), [])` with direct `setActiveShift` (stable React setter)
+  - `CoverageCurve`: removed unreachable inner `coverage.length === 0` guard inside the `coveragePath` IIFE (outer early-return already handles it)
+- Skipped: `todayStr()` in ShiftTimelineTab intentionally uses host-TZ (not restaurant TZ) per the existing comment — matches planner header convention; no reuse opportunity
+- All 38 timeline unit tests pass; typecheck clean
+
 ## CI Status
 - PR: not yet created
 - Iteration: 0/5

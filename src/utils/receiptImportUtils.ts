@@ -117,3 +117,48 @@ export function parsePackSizeToken(token: string): ParsedPackSize | null {
 
   return { unitsPerPack, sizeValue, sizeUnit };
 }
+
+/**
+ * Input type matching ParsedLineItem from process-receipt/index.ts.
+ * Defined here so the mapping can be tested in isolation.
+ */
+export interface ParsedLineItemInput {
+  rawText: string;
+  parsedName: string;
+  parsedQuantity: number;
+  parsedUnit: string;
+  casesOrdered?: number | null;
+  unitsPerPack?: number | null;
+  packageType?: string | null;
+  sizeValue?: number | null;
+  sizeUnit?: string | null;
+  unitPrice?: number | null;
+  lineTotal?: number | null;
+  parsedPrice?: number | null;
+  confidenceScore: number;
+}
+
+/**
+ * Build a receipt_line_items DB insert row from a parsed AI line item.
+ *
+ * - pack_quantity maps from item.unitsPerPack (the distributor pack count).
+ * - line_sequence is 1-based (index + 1).
+ * - pack_quantity is null when unitsPerPack is absent or not provided.
+ */
+export function buildLineItemInsert(receiptId: string, item: ParsedLineItemInput, index: number) {
+  return {
+    receipt_id: receiptId,
+    raw_text: item.rawText,
+    parsed_name: item.parsedName,
+    parsed_quantity: item.parsedQuantity,
+    parsed_unit: item.parsedUnit,
+    package_type: item.packageType ?? null,
+    size_value: item.sizeValue ?? null,
+    size_unit: item.sizeUnit ?? null,
+    parsed_price: item.lineTotal ?? null,   // lineTotal in parsed_price for backward compat
+    unit_price: item.unitPrice ?? null,
+    confidence_score: item.confidenceScore,
+    line_sequence: index + 1,
+    pack_quantity: item.unitsPerPack ?? null, // Distributor pack (audit/UI only)
+  };
+}

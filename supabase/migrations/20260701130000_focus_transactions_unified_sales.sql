@@ -67,11 +67,24 @@ DECLARE
   v_order_id       text;
   v_current_ids    text[];
 BEGIN
-  -- Fetch the store_id for this restaurant (needed for external_order_id)
+  -- Fetch the store_id from the most-recently-created active connection.
+  -- Filtering by is_active prevents stale/deleted connections from being used.
+  -- ORDER BY + LIMIT 1 makes the query deterministic when multiple rows exist.
   SELECT fc.store_id INTO v_store_id
   FROM public.focus_connections fc
   WHERE fc.restaurant_id = p_restaurant_id
+    AND fc.is_active = true
+  ORDER BY fc.created_at DESC
   LIMIT 1;
+
+  -- If no active connection found, there is nothing to key external_order_id on.
+  -- Proceeding with a NULL store_id would produce orphan unified_sales rows
+  -- (pattern: focus-unknown-YYYYMMDD-{check_id}) that can never be re-synced.
+  IF v_store_id IS NULL THEN
+    RAISE EXCEPTION
+      'sync_focus_transactions_to_unified_sales: no active focus_connections row '
+      'found for restaurant %', p_restaurant_id;
+  END IF;
 
   -- GUC flag: skip per-row triggers during bulk sync (transaction-local).
   PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
@@ -349,10 +362,16 @@ BEGIN
   LOOP
     BEGIN
       restaurant_id := r.restaurant_id;
+      -- Use a conservative 3-day lookback window rather than UTC-derived dates.
+      -- Focus business dates are stored in the restaurant's local timezone (e.g.
+      -- America/Chicago). UTC midnight on July 1 can be June 30 in Chicago, so
+      -- a 1-day UTC window misses the most recent local business date.
+      -- A 3-day window covers all US timezones (UTC-12 to UTC-12) safely and
+      -- matches the existing sync_all_focus_to_unified_sales pattern.
       rows_synced   := public._sync_focus_transactions_to_unified_sales_impl(
                          r.restaurant_id,
-                         ((NOW() AT TIME ZONE 'UTC')::date - interval '2 days')::date,
-                         ((NOW() AT TIME ZONE 'UTC')::date - interval '1 day')::date
+                         (CURRENT_DATE - interval '3 days')::date,
+                         CURRENT_DATE
                        );
       RETURN NEXT;
     EXCEPTION WHEN OTHERS THEN
@@ -373,8 +392,13 @@ GRANT EXECUTE ON FUNCTION public.sync_focus_transactions_to_unified_sales(uuid)
 GRANT EXECUTE ON FUNCTION public.sync_focus_transactions_to_unified_sales(uuid, date, date)
   TO authenticated, service_role;
 
+-- sync_all_focus_transactions_to_unified_sales is a cron wrapper only —
+-- service_role exclusively (matches the precedent set by
+-- sync_all_focus_to_unified_sales in 20260627150000_focus_sync_hardening.sql).
+-- Granting to authenticated would let any logged-in user trigger a cross-restaurant
+-- bulk sync that iterates ALL active focus_connections regardless of ownership.
 GRANT EXECUTE ON FUNCTION public.sync_all_focus_transactions_to_unified_sales()
-  TO authenticated, service_role;
+  TO service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Comments

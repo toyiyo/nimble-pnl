@@ -588,6 +588,7 @@ export function FocusSetupWizard({ restaurantId, onComplete, onOpenChange: _onOp
               <Button
                 onClick={handleSaveAndConnect}
                 disabled={isConnecting}
+                aria-label={isConnecting ? 'Saving connection…' : undefined}
                 className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium disabled:opacity-50"
               >
                 {isConnecting && <Loader2 className="h-4 w-4 animate-spin mr-2" aria-hidden="true" />}

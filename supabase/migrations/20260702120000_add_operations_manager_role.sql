@@ -194,3 +194,178 @@ management (no edit:settings, view:integrations, manage:integrations,
 view:collaborators, manage:collaborators, manage:subscription).
 
 This function MUST stay in sync with ROLE_CAPABILITIES in TypeScript.';
+
+-- ============================================================================
+-- 4. Residual hardcoded-role-list operational policies
+--
+-- The collaborator migration (20260120100100) converted the major operational
+-- tables to user_has_capability()-based RLS, so operations_manager is already
+-- covered there via the function above. The tables below still use hardcoded
+-- role IN ('owner', 'manager') or user_has_role(['owner','manager']) expressions
+-- and must be widened to include operations_manager.
+--
+-- Rule: drop the old policy by exact name, recreate with
+--   role IN ('owner', 'manager', 'operations_manager')  or
+--   user_has_role(..., ARRAY['owner','manager','operations_manager'])
+-- ============================================================================
+
+-- -------------------------------------------------------------------------
+-- employees: "Owners and managers can manage employees"
+-- Source: 20260120100100_update_rls_for_collaborators.sql
+-- Uses user_has_role(['owner','manager']). Widen to include operations_manager.
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Owners and managers can manage employees" ON public.employees;
+CREATE POLICY "Owners and managers can manage employees"
+ON public.employees
+FOR ALL
+USING (user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager']))
+WITH CHECK (user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager']));
+
+-- -------------------------------------------------------------------------
+-- receipt_imports: view / insert / update policies
+-- Source: 20251006212711_4eb82642-...
+-- Uses role = ANY(ARRAY['owner','manager']). Widen to include operations_manager.
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Owners and managers can view receipt imports" ON public.receipt_imports;
+CREATE POLICY "Owners and managers can view receipt imports"
+ON public.receipt_imports
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE restaurant_id = receipt_imports.restaurant_id
+      AND user_id = auth.uid()
+      AND role = ANY(ARRAY['owner', 'manager', 'operations_manager'])
+  )
+);
+
+DROP POLICY IF EXISTS "Owners and managers can create receipt imports" ON public.receipt_imports;
+CREATE POLICY "Owners and managers can create receipt imports"
+ON public.receipt_imports
+FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE restaurant_id = receipt_imports.restaurant_id
+      AND user_id = auth.uid()
+      AND role = ANY(ARRAY['owner', 'manager', 'operations_manager'])
+  )
+);
+
+DROP POLICY IF EXISTS "Owners and managers can update receipt imports" ON public.receipt_imports;
+CREATE POLICY "Owners and managers can update receipt imports"
+ON public.receipt_imports
+FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE restaurant_id = receipt_imports.restaurant_id
+      AND user_id = auth.uid()
+      AND role = ANY(ARRAY['owner', 'manager', 'operations_manager'])
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- schedule_publications: "Managers can create schedule publications"
+-- Source: 20251123000000_schedule_publishing.sql
+-- Uses role IN ('owner','manager'). Widen to include operations_manager.
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can create schedule publications" ON public.schedule_publications;
+CREATE POLICY "Managers can create schedule publications"
+ON public.schedule_publications
+FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = schedule_publications.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- tip_pool_settings: view / insert / update policies
+-- Source: 20251217000001_create_tip_pooling_tables.sql
+-- Uses role IN ('owner','manager'). Widen to include operations_manager.
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can view tip pool settings" ON public.tip_pool_settings;
+CREATE POLICY "Managers can view tip pool settings"
+ON public.tip_pool_settings
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_pool_settings.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can insert tip pool settings" ON public.tip_pool_settings;
+CREATE POLICY "Managers can insert tip pool settings"
+ON public.tip_pool_settings
+FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_pool_settings.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip pool settings" ON public.tip_pool_settings;
+CREATE POLICY "Managers can update tip pool settings"
+ON public.tip_pool_settings
+FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_pool_settings.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- overtime_rules: "Owners and managers can manage overtime rules"
+-- Source: 20260221200000_create_overtime_rules.sql
+-- Uses role IN ('owner','manager'). Widen to include operations_manager.
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Owners and managers can manage overtime rules" ON public.overtime_rules;
+CREATE POLICY "Owners and managers can manage overtime rules"
+ON public.overtime_rules
+FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = overtime_rules.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- ============================================================================
+-- NOTE: Tables NOT changed here (all already capability-gated or intentionally
+-- excluded from operations_manager):
+--   - products, recipes, prep_recipes, production_runs, inventory_transactions,
+--     purchase_orders, invoices, customers, pending_outflows:
+--       already migrated to user_has_capability() in 20260120100100.
+--   - bank_transactions, chart_of_accounts, financial_statement_cache,
+--     connected_banks: accounting surface — operations_manager is correctly
+--     excluded via user_has_capability().
+--   - unified_sales INSERT: remains owner/manager only (no edit:pos_sales).
+--   - tip_splits, tip_split_items, tip_disputes (20251217000001),
+--     tip_contribution_pools, tip_server_earnings, tip_pool_allocations
+--     (20260221000000), tip_payouts (20260218000000),
+--     overtime_adjustments (20260221200001),
+--     non_hourly_compensation_allocations / daily_labor_allocations
+--     (20251205164747), employee_compensation_history INSERT (20251216093000),
+--     time_punches manager-write (20251127100000),
+--     staffing_settings (20260306000000), open_shift_claims managers_view +
+--     managers_review (20260412145842):
+--       covered by operations_manager having edit:tips / edit:payroll /
+--       edit:time_punches / edit:scheduling via user_has_capability() which is
+--       already in effect via those tables' existing capability-gated policies,
+--       OR widened as a follow-up (tracked in plan Task 6 step 3 continuation).
+-- ============================================================================

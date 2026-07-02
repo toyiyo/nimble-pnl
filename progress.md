@@ -55,6 +55,18 @@
   - `tests/unit/focusTestConnectionHandler.test.ts` — 17 Vitest tests (was 7 using old datafeed URL). Covers: auth/role/404 guards, correct URL and Basic auth header, sandbox base URL routing, GUID-found → connected, GUID-missing → error + actionable message, HTTP 401/403/404/5xx, network failure, non-JSON response, last_error_at lifecycle.
 - TDD: RED confirmed (3 failures vs old datafeed URL + missing GUID membership check), GREEN: all 17 pass. Full suite (5151 tests, 384 files) clean.
 
+#### Task 6 — Wizard + hook + logo + UX fix — COMPLETED (2026-07-01)
+- Commit: `0ac9a106`
+- Files:
+  - `src/components/pos/FocusSetupWizard.tsx` — Replaced portal username/password/storeId fields with API Key, API Secret, Restaurant GUID (UUID), and Environment (production/sandbox). Save failure now shows "Failed to save" (distinct from "Connection test failed") — fixes the UX bug where both error kinds rendered the same misleading message. Retry button only shown after test failure, not save failure.
+  - `src/hooks/useFocusConnection.tsx` — `saveConnection` signature updated to `(restaurantId, apiKey, apiSecret, restaurantGuid, environment='production')`. Calls `focus-save-connection` with `{ apiKey, apiSecret, storeId: restaurantGuid, environment }`. `FocusConnection` type updated to reflect `api_key`/`environment` columns; legacy portal columns removed.
+  - `src/components/IntegrationLogo.tsx` — Added `'focus-pos': '/logos/focus.svg'` to `imageLogoMap`; removes the 🍦 emoji placeholder.
+  - `public/logos/focus.svg` — Stylised F mark on dark rounded square (Focus POS brand).
+  - `tests/unit/focusSetupWizard.test.tsx` — 4 new tests: API Key/Secret/GUID/env flow, default-production, save-failure vs test-failure distinction, logo image assertion. Old portal field assertions updated to new API field assertions.
+  - `tests/unit/useFocusConnection.test.tsx` — 2 new tests: apiKey/apiSecret/storeId(=GUID)/environment contract, default-production when env omitted. Old username/password test replaced.
+  - `tests/unit/focusPosRegistration.test.tsx` — Logo test updated from 🍦 emoji assertion to `<img alt="focus-pos logo">` assertion.
+- TDD: RED confirmed (11 failures on new API-field tests + logo image test), GREEN: all 40 wizard+hook tests pass; focusPosRegistration 12/12 pass. TypeScript 0 errors. Full suite clean.
+
 ### Review — PENDING
 ### Verify — PENDING
 ### Ship — PENDING

@@ -19,7 +19,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { handleSaveConnection } from '../_shared/focusSaveConnectionHandler.ts';
-import { makeFocusHttpFetch } from '../_shared/focusHttpFetch.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,7 +44,7 @@ serve(async (req: Request) => {
     // Service-role client: used for all writes (bypasses RLS per review S3).
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    const res = await handleSaveConnection(req, { userClient, serviceClient, fetch: makeFocusHttpFetch(serviceClient) });
+    const res = await handleSaveConnection(req, { userClient, serviceClient });
 
     // Attach CORS headers to the handler's response.
     const body = await res.arrayBuffer();

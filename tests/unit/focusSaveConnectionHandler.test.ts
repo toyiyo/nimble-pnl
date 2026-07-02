@@ -2,53 +2,24 @@
 /**
  * focusSaveConnectionHandler.test.ts
  *
- * Vitest unit tests for supabase/functions/_shared/focusSaveConnectionHandler.ts
+ * Vitest unit tests for the FocusLink (Shift4 API) save-connection handler.
  *
- * Coverage:
- *  - JWT + role check: 401 when no Authorization header
- *  - JWT + role check: 401 when getUser returns null (bad token)
- *  - Body validation: 400 when restaurantId, username, password, or storeId missing
- *  - Role check: 403 when user is not owner/manager
- *  - Portal auth: 401 when loginToPortal throws FocusAuthError
- *  - Discovery error: saves with connection_status='error' when discoverReportRouting throws
- *  - Happy path: 200 with credentials upserted via service-role client
- *  - Happy path: upserts username, password_encrypted, store_id, report_base_url, report_path
- *  - Happy path: connection_status='pending' when discovery succeeds
- *  - Supabase upsert error → 500
- *
- * Design ref: plan Task 7; spec §8 (_shared/focusSaveConnectionHandler.ts)
+ * The handler no longer logs into the portal — it simply validates the caller,
+ * encrypts the API secret, and upserts the per-connection credentials
+ * (api_key, api_secret_encrypted, store_id, mid, environment). Credential
+ * VALIDATION is the job of focus-test-connection (one datafeed call).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   handleSaveConnection,
   type SaveConnectionDeps,
 } from '../../supabase/functions/_shared/focusSaveConnectionHandler';
 
-// ── Mock portal client & encryption ──────────────────────────────────────────
-
-vi.mock('../../supabase/functions/_shared/focusPortalClient', () => ({
-  loginToPortal: vi.fn().mockResolvedValue({ cookie: 'session-cookie' }),
-  // Default: resolves to the numeric SSRS StoreID for the test store code
-  resolveStoreId: vi.fn().mockResolvedValue('54321'),
-  discoverReportRouting: vi.fn().mockResolvedValue({
-    baseUrl: 'https://mfprod-1.myfocuspos.com',
-    reportPath: '/ReportServer?/generalstorereports/revenuecenter',
-    dbServer: 'mfaz-rep-1',
-    dbCatalog: 'KAHALA2',
-  }),
-  FocusAuthError: class FocusAuthError extends Error {
-    constructor(m = '') { super(m); this.name = 'FocusAuthError'; }
-  },
-  FocusDiscoveryError: class FocusDiscoveryError extends Error {
-    constructor(m = '') { super(m); this.name = 'FocusDiscoveryError'; }
-  },
-}));
-
 vi.mock('../../supabase/functions/_shared/encryption', () => ({
   getEncryptionService: vi.fn().mockResolvedValue({
-    encrypt: vi.fn().mockResolvedValue('encrypted-pw'),
-    decrypt: vi.fn().mockResolvedValue('test-pass'),
+    encrypt: vi.fn().mockResolvedValue('encrypted-secret'),
+    decrypt: vi.fn().mockResolvedValue('plain-secret'),
   }),
 }));
 
@@ -56,32 +27,27 @@ vi.mock('../../supabase/functions/_shared/encryption', () => ({
 
 const RESTAURANT_ID = '00000000-0000-0000-0000-000000000042';
 const USER_ID = 'user-uuid-1234';
-const USERNAME = 'sample.user';
-const PASSWORD = 'test-pass';
-const STORE_ID = '99999';
+const VALID_BODY = {
+  restaurantId: RESTAURANT_ID,
+  apiKey: 'license-key',
+  apiSecret: 'license-secret',
+  restaurantGuid: '24329abc-0000-0000-0000-000000000001',
+  mid: '0023042280',
+  environment: 'production',
+};
 
 // ── Mock builders ─────────────────────────────────────────────────────────────
 
-function makeUserClientMock(opts: {
-  user?: { id: string } | null;
-  role?: string;
-}) {
+function makeUserClientMock(opts: { user?: { id: string } | null; role?: string }) {
   const user = opts.user !== undefined ? opts.user : { id: USER_ID };
   const role = opts.role ?? 'owner';
-
-  const getUserMock = vi.fn().mockResolvedValue({ data: { user } });
-  const userRoleSelectMock = vi.fn().mockResolvedValue({
-    data: user && role ? { role } : null,
-    error: null,
-  });
-  const userRoleEqRestMock = vi.fn().mockReturnValue({ single: () => userRoleSelectMock() });
-  const userRoleEqUserMock = vi.fn().mockReturnValue({ eq: userRoleEqRestMock });
-  const userRoleSelectFieldMock = vi.fn().mockReturnValue({ eq: userRoleEqUserMock });
-  const userRoleFromMock = vi.fn().mockReturnValue({ select: userRoleSelectFieldMock });
-
+  const single = vi.fn().mockResolvedValue({ data: user && role ? { role } : null, error: null });
+  const eqRest = vi.fn().mockReturnValue({ single });
+  const eqUser = vi.fn().mockReturnValue({ eq: eqRest });
+  const select = vi.fn().mockReturnValue({ eq: eqUser });
   return {
-    auth: { getUser: getUserMock },
-    from: userRoleFromMock,
+    auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
+    from: vi.fn().mockReturnValue({ select }),
   };
 }
 
@@ -92,347 +58,112 @@ function makeServiceClientMock(opts: { error?: string } = {}) {
   });
   const upsertMock = vi.fn().mockReturnValue({ select: selectMock });
   const fromMock = vi.fn().mockReturnValue({ upsert: upsertMock });
-
-  return {
-    client: { from: fromMock },
-    mocks: { fromMock, upsertMock, selectMock },
-  };
+  return { client: { from: fromMock }, mocks: { fromMock, upsertMock, selectMock } };
 }
 
-/** Build a minimal Request-like object the handler can consume. */
-function makeRequest(opts: {
-  authHeader?: string | null;
-  body?: Record<string, unknown>;
-}): Request {
+function makeRequest(opts: { authHeader?: string | null; body?: Record<string, unknown> }): Request {
   const headers = new Headers();
-  if (opts.authHeader !== null) {
-    headers.set('Authorization', opts.authHeader ?? 'Bearer fake-jwt-token');
-  }
+  if (opts.authHeader !== null) headers.set('Authorization', opts.authHeader ?? 'Bearer fake-jwt');
   return new Request('https://example.com/functions/v1/focus-save-connection', {
     method: 'POST',
     headers,
-    body: JSON.stringify(
-      opts.body ?? {
-        restaurantId: RESTAURANT_ID,
-        username: USERNAME,
-        password: PASSWORD,
-        storeId: STORE_ID,
-      },
-    ),
+    body: JSON.stringify(opts.body ?? VALID_BODY),
   });
 }
 
-/** Build default deps with injectable login/resolve/discover overrides. */
 function makeDeps(opts: {
   userClientOpts?: Parameters<typeof makeUserClientMock>[0];
   serviceClientOpts?: Parameters<typeof makeServiceClientMock>[0];
-  loginOverride?: SaveConnectionDeps['login'];
-  resolveOverride?: SaveConnectionDeps['resolve'];
-  discoverOverride?: SaveConnectionDeps['discover'];
 } = {}): { deps: SaveConnectionDeps; mocks: ReturnType<typeof makeServiceClientMock>['mocks'] } {
   const userClient = makeUserClientMock(opts.userClientOpts ?? {});
   const { client: serviceClient, mocks } = makeServiceClientMock(opts.serviceClientOpts ?? {});
-
-  return {
-    deps: {
-      userClient: userClient as any,
-      serviceClient: serviceClient as any,
-      fetch: vi.fn() as any,
-      ...(opts.loginOverride !== undefined && { login: opts.loginOverride }),
-      ...(opts.resolveOverride !== undefined && { resolve: opts.resolveOverride }),
-      ...(opts.discoverOverride !== undefined && { discover: opts.discoverOverride }),
-    },
-    mocks,
-  };
+  return { deps: { userClient: userClient as any, serviceClient: serviceClient as any }, mocks };
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-describe('handleSaveConnection', () => {
-  // ── Missing Authorization header ─────────────────────────────────────────────
-
-  it('returns 401 when Authorization header is missing', async () => {
-    const { deps } = makeDeps({ userClientOpts: { user: null } });
-
-    const req = makeRequest({ authHeader: null });
-    const res = await handleSaveConnection(req, deps);
-
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  // ── Bad / expired JWT ────────────────────────────────────────────────────────
-
-  it('returns 401 when getUser returns null user', async () => {
-    const { deps } = makeDeps({ userClientOpts: { user: null } });
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
-
+describe('handleSaveConnection (FocusLink API)', () => {
+  it('returns 401 when the Authorization header is missing', async () => {
+    const { deps } = makeDeps();
+    const res = await handleSaveConnection(makeRequest({ authHeader: null }), deps);
     expect(res.status).toBe(401);
   });
 
-  // ── Missing body fields ──────────────────────────────────────────────────────
-
-  it('returns 400 when restaurantId is missing', async () => {
-    const { deps } = makeDeps();
-
-    const req = makeRequest({ body: { username: USERNAME, password: PASSWORD, storeId: STORE_ID } });
-    const res = await handleSaveConnection(req, deps);
-
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toMatch(/restaurantId/i);
+  it('returns 401 when getUser returns no user', async () => {
+    const { deps } = makeDeps({ userClientOpts: { user: null } });
+    const res = await handleSaveConnection(makeRequest({}), deps);
+    expect(res.status).toBe(401);
   });
 
-  it('returns 400 when username is missing', async () => {
+  it.each(['restaurantId', 'apiKey', 'apiSecret', 'restaurantGuid'])(
+    'returns 400 when %s is missing',
+    async (field) => {
+      const body: Record<string, unknown> = { ...VALID_BODY };
+      delete body[field];
+      const { deps } = makeDeps();
+      const res = await handleSaveConnection(makeRequest({ body }), deps);
+      expect(res.status).toBe(400);
+    },
+  );
+
+  it('returns 400 when environment is not sandbox|production', async () => {
     const { deps } = makeDeps();
-
-    const req = makeRequest({ body: { restaurantId: RESTAURANT_ID, password: PASSWORD, storeId: STORE_ID } });
-    const res = await handleSaveConnection(req, deps);
-
+    const res = await handleSaveConnection(makeRequest({ body: { ...VALID_BODY, environment: 'staging' } }), deps);
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toMatch(/username/i);
   });
 
-  it('returns 400 when password is missing', async () => {
-    const { deps } = makeDeps();
-
-    const req = makeRequest({ body: { restaurantId: RESTAURANT_ID, username: USERNAME, storeId: STORE_ID } });
-    const res = await handleSaveConnection(req, deps);
-
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toMatch(/password/i);
-  });
-
-  it('returns 400 when storeId is missing', async () => {
-    const { deps } = makeDeps();
-
-    const req = makeRequest({ body: { restaurantId: RESTAURANT_ID, username: USERNAME, password: PASSWORD } });
-    const res = await handleSaveConnection(req, deps);
-
-    expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toMatch(/storeId/i);
-  });
-
-  // ── Non-owner / non-manager role ─────────────────────────────────────────────
-
-  it('returns 403 when user role is "staff" (not owner/manager)', async () => {
+  it('returns 403 when the caller is not owner/manager', async () => {
     const { deps } = makeDeps({ userClientOpts: { role: 'staff' } });
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
-
-    expect(res.status).toBe(403);
-    const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  it('returns 403 when user has no membership for the restaurant', async () => {
-    const userClient = {
-      auth: {
-        getUser: vi.fn().mockResolvedValue({ data: { user: { id: USER_ID } } }),
-      },
-      from: vi.fn().mockReturnValue({
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              single: vi.fn().mockResolvedValue({ data: null, error: null }),
-            }),
-          }),
-        }),
-      }),
-    };
-    const { client: serviceClient } = makeServiceClientMock();
-    const deps: SaveConnectionDeps = {
-      userClient: userClient as any,
-      serviceClient: serviceClient as any,
-      fetch: vi.fn() as any,
-    };
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
-
+    const res = await handleSaveConnection(makeRequest({}), deps);
     expect(res.status).toBe(403);
   });
 
-  // ── Focus portal auth failure ─────────────────────────────────────────────────
-
-  it('returns 401 when loginToPortal throws FocusAuthError', async () => {
-    const { FocusAuthError: FocusAuthErrorClass } = await import(
-      '../../supabase/functions/_shared/focusPortalClient'
-    );
-    const { deps } = makeDeps({
-      loginOverride: vi.fn().mockRejectedValue(new FocusAuthErrorClass('bad creds')),
-    });
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
-
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body.error).toMatch(/invalid focus credentials/i);
-  });
-
-  // ── Store resolution error — saves with status='error' ──────────────────────
-
-  it('saves with connection_status="error" when resolveStoreId throws FocusDiscoveryError (unknown store)', async () => {
-    const { FocusDiscoveryError: FocusDiscoveryErrorClass } = await import(
-      '../../supabase/functions/_shared/focusPortalClient'
-    );
-    const { deps, mocks } = makeDeps({
-      resolveOverride: vi.fn().mockRejectedValue(
-        new FocusDiscoveryErrorClass('Store "MYSTERY" not found in your Focus account.'),
-      ),
-    });
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
-
-    // Still 200 — the credentials are valid even if the store code is wrong
-    expect(res.status).toBe(200);
-
-    const payload = mocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload).toHaveProperty('connection_status', 'error');
-    // Report routing columns stay null since we never called discoverReportRouting
-    expect(payload.report_base_url).toBeNull();
-    expect(payload.report_path).toBeNull();
-  });
-
-  // ── Discovery error — saves with status='error' ───────────────────────────────
-
-  it('saves with connection_status="error" when discoverReportRouting throws FocusDiscoveryError', async () => {
-    const { FocusDiscoveryError: FocusDiscoveryErrorClass } = await import(
-      '../../supabase/functions/_shared/focusPortalClient'
-    );
-    const { deps, mocks } = makeDeps({
-      discoverOverride: vi.fn().mockRejectedValue(new FocusDiscoveryErrorClass('not found')),
-    });
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
-
-    // Still 200 — the connection was partially saved
-    expect(res.status).toBe(200);
-
-    // Upsert payload should have connection_status='error'
-    const payload = mocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-    expect(payload).toHaveProperty('connection_status', 'error');
-    // report_base_url and report_path should be null since discovery failed
-    expect(payload.report_base_url).toBeNull();
-    expect(payload.report_path).toBeNull();
-  });
-
-  // ── Happy path ───────────────────────────────────────────────────────────────
-
-  describe('happy path (owner + valid credentials)', () => {
-    let serviceClientMocks: ReturnType<typeof makeServiceClientMock>['mocks'];
-    let response: Response;
-
-    beforeEach(async () => {
-      const { deps, mocks } = makeDeps();
-      serviceClientMocks = mocks;
-
-      const req = makeRequest({});
-      response = await handleSaveConnection(req, deps);
-    });
-
-    it('returns 200', () => {
-      expect(response.status).toBe(200);
-    });
-
-    it('responds with { success: true }', async () => {
-      const body = await response.json();
-      expect(body).toMatchObject({ success: true });
-    });
-
-    it('calls from("focus_connections") on the service-role client', () => {
-      expect(serviceClientMocks.fromMock).toHaveBeenCalledWith('focus_connections');
-    });
-
-    it('upserts username', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('username', USERNAME);
-    });
-
-    it('upserts password_encrypted', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('password_encrypted', 'encrypted-pw');
-    });
-
-    it('upserts the numeric store_id returned by resolveStoreId (not the raw entered value)', () => {
-      // The mock resolveStoreId returns '54321' regardless of the entered STORE_ID ('99999')
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('store_id', '54321');
-    });
-
-    it('upserts report_base_url from discovery result', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('report_base_url', 'https://mfprod-1.myfocuspos.com');
-    });
-
-    it('upserts report_path from discovery result', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('report_path');
-      expect(String(payload.report_path)).toContain('/ReportServer');
-    });
-
-    it('upserts restaurant_id from the request body', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('restaurant_id', RESTAURANT_ID);
-    });
-
-    it('sets connection_status to "pending" on successful discovery', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('connection_status', 'pending');
-    });
-
-    it('passes onConflict("restaurant_id") option to upsert', () => {
-      const upsertOptions = serviceClientMocks.upsertMock.mock.calls[0][1] as Record<string, string>;
-      expect(upsertOptions?.onConflict).toBe('restaurant_id');
-    });
-
-    it('resets sync_cursor to 0 so a re-connected store triggers a full backfill', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('sync_cursor', 0);
-    });
-
-    it('resets initial_sync_done to false on every save', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('initial_sync_done', false);
-    });
-
-    it('resets last_sync_time to null on every save', () => {
-      const payload = serviceClientMocks.upsertMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(payload).toHaveProperty('last_sync_time', null);
-    });
-  });
-
-  // ── Manager role also succeeds ────────────────────────────────────────────────
-
-  it('returns 200 when user role is "manager"', async () => {
-    const { deps } = makeDeps({ userClientOpts: { role: 'manager' } });
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
+  it('upserts encrypted API credentials and returns 200', async () => {
+    const { deps, mocks } = makeDeps();
+    const res = await handleSaveConnection(makeRequest({}), deps);
 
     expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ success: true });
+
+    expect(mocks.fromMock).toHaveBeenCalledWith('focus_connections');
+    const [payload, options] = mocks.upsertMock.mock.calls[0];
+    expect(options).toEqual({ onConflict: 'restaurant_id' });
+    expect(payload).toMatchObject({
+      restaurant_id: RESTAURANT_ID,
+      api_key: 'license-key',
+      api_secret_encrypted: 'encrypted-secret', // never the plaintext secret
+      store_id: '24329abc-0000-0000-0000-000000000001',
+      mid: '0023042280',
+      environment: 'production',
+      connection_status: 'pending',
+      is_active: true,
+    });
+    expect(payload).not.toHaveProperty('apiSecret');
+    expect(JSON.stringify(payload)).not.toContain('license-secret');
   });
 
-  // ── Supabase upsert error ────────────────────────────────────────────────────
+  it('defaults environment to production when omitted', async () => {
+    const body = { ...VALID_BODY };
+    delete (body as Record<string, unknown>).environment;
+    const { deps, mocks } = makeDeps();
+    const res = await handleSaveConnection(makeRequest({ body }), deps);
+    expect(res.status).toBe(200);
+    expect(mocks.upsertMock.mock.calls[0][0]).toMatchObject({ environment: 'production' });
+  });
 
-  it('returns 500 when the service-role upsert fails', async () => {
+  it('resets sync state on save so a reconnect re-backfills', async () => {
+    const { deps, mocks } = makeDeps();
+    await handleSaveConnection(makeRequest({}), deps);
+    expect(mocks.upsertMock.mock.calls[0][0]).toMatchObject({
+      sync_cursor: 0,
+      initial_sync_done: false,
+      last_sync_time: null,
+    });
+  });
+
+  it('returns 500 when the upsert fails', async () => {
     const { deps } = makeDeps({ serviceClientOpts: { error: 'unique constraint violated' } });
-
-    const req = makeRequest({});
-    const res = await handleSaveConnection(req, deps);
-
+    const res = await handleSaveConnection(makeRequest({}), deps);
     expect(res.status).toBe(500);
-    const body = await res.json();
-    expect(body).toHaveProperty('error');
   });
 });

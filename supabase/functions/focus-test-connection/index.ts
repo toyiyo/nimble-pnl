@@ -1,12 +1,13 @@
 /**
  * focus-test-connection/index.ts
  *
- * Edge function: test an existing Focus POS connection by fetching yesterday's
- * Revenue Center report and writing the result to connection_status.
+ * Edge function: test an existing Focus POS connection by calling
+ * GET /api/restaurants and writing the result to connection_status.
  *
  * This thin entry point handles CORS pre-flight, builds the injectable deps
- * (user-scoped client + service-role client + fetch), and delegates all
- * business logic to focusTestConnectionHandler.ts.
+ * (user-scoped client + service-role client + native fetch), and delegates all
+ * business logic to focusTestConnectionHandler.ts. FocusLink is reachable by
+ * Deno's native fetch — no Postgres http transport needed.
  *
  * Auth model: verify_jwt = false (so the function receives the raw JWT and
  * validates it itself via userClient.auth.getUser() — mirroring
@@ -20,10 +21,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { handleTestConnection } from '../_shared/focusTestConnectionHandler.ts';
-import { makeFocusHttpFetch } from '../_shared/focusHttpFetch.ts';
-// Deno server runtime does NOT have globalThis.DOMParser (browser-only API).
-// Import deno_dom so we can pass a working DOMParser to parseRevenueCenterReport.
-import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -52,8 +49,8 @@ serve(async (req: Request) => {
     const res = await handleTestConnection(req, {
       userClient,
       serviceClient,
-      fetch: makeFocusHttpFetch(serviceClient),
-      domParser: new DOMParser(),
+      fetch: globalThis.fetch.bind(globalThis),
+      sandboxBaseUrl: Deno.env.get('FOCUS_API_SANDBOX_URL') || undefined,
     });
 
     // Attach CORS headers to the handler's response.

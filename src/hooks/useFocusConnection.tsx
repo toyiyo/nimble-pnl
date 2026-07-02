@@ -4,18 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
 
-// Mirrors focus_connections DB columns — explicit list keeps select leaner than select('*')
+// Mirrors focus_connections DB columns — explicit list keeps select leaner than select('*').
+// api_key / api_secret_encrypted are intentionally omitted: credentials must stay server-side.
 type FocusConnection = {
   id: string;
   restaurant_id: string;
-  report_base_url: string;
-  report_path: string;
-  db_server: string | null;
-  db_catalog: string | null;
-  report_user_id: string | null;
   store_id: string;
-  revenue_center: string | null;
-  timezone: string;
+  environment: string;
   last_sync_time: string | null;
   initial_sync_done: boolean;
   sync_cursor: number;
@@ -27,18 +22,13 @@ type FocusConnection = {
   updated_at: string;
 };
 
-// Explicit column list — design F8: no select('*')
+// Explicit column list — design F8: no select('*').
+// api_key excluded: credential fields must not reach the browser.
 const FOCUS_CONNECTION_COLUMNS = [
   'id',
   'restaurant_id',
-  'report_base_url',
-  'report_path',
-  'db_server',
-  'db_catalog',
-  'report_user_id',
   'store_id',
-  'revenue_center',
-  'timezone',
+  'environment',
   'last_sync_time',
   'initial_sync_done',
   'sync_cursor',
@@ -101,17 +91,25 @@ export function useFocusConnection(restaurantId?: string | null) {
   const saveConnectionMutation = useMutation({
     mutationFn: async ({
       restaurantId,
-      username,
-      password,
-      storeId,
+      apiKey,
+      apiSecret,
+      restaurantGuid,
+      environment,
     }: {
       restaurantId: string;
-      username: string;
-      password: string;
-      storeId: string;
+      apiKey: string;
+      apiSecret: string;
+      restaurantGuid: string;
+      environment: string;
     }) => {
       const { data, error } = await supabase.functions.invoke('focus-save-connection', {
-        body: { restaurantId, username, password, storeId },
+        body: {
+          restaurantId,
+          apiKey,
+          apiSecret,
+          restaurantGuid,
+          environment,
+        },
       });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
@@ -124,11 +122,18 @@ export function useFocusConnection(restaurantId?: string | null) {
 
   async function saveConnection(
     restaurantId: string,
-    username: string,
-    password: string,
-    storeId: string,
+    apiKey: string,
+    apiSecret: string,
+    restaurantGuid: string,
+    environment: string = 'production',
   ): Promise<Record<string, unknown>> {
-    return saveConnectionMutation.mutateAsync({ restaurantId, username, password, storeId });
+    return saveConnectionMutation.mutateAsync({
+      restaurantId,
+      apiKey,
+      apiSecret,
+      restaurantGuid,
+      environment,
+    });
   }
 
   // ---- testConnection ----

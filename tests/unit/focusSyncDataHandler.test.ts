@@ -129,7 +129,9 @@ function makeServiceClientMock(opts: { connection?: MockConnection } = {}) {
   const selectMock = vi.fn().mockReturnValue({ eq: restaurantIdMock });
 
   // UPDATE focus_connections (for sync_cursor / initial_sync_done / last_sync_time)
-  const eqUpdateMock = vi.fn().mockResolvedValue({ data: null, error: null });
+  // Chain supports two .eq() calls: .eq('id', ...).eq('restaurant_id', ...)
+  const eqUpdate2Mock = vi.fn().mockResolvedValue({ data: null, error: null });
+  const eqUpdateMock = vi.fn().mockReturnValue({ eq: eqUpdate2Mock });
   const updateMock = vi.fn().mockReturnValue({ eq: eqUpdateMock });
 
   // focus_daily_reports upsert (processReportDay goes through supabase.from())

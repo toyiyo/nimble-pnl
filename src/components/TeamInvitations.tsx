@@ -5,11 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import { formatExpiresIn } from '@/lib/invitationUtils';
+import type { Role } from '@/lib/permissions/types';
+import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { getInvitableRoles } from '@/lib/permissions/invitations';
 
 interface Invitation {
   id: string;
@@ -24,16 +28,19 @@ interface Invitation {
 
 interface TeamInvitationsProps {
   restaurantId: string;
-  userRole: string;
+  userRole: Role;
 }
 
 export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps) {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const invitableRoles = getInvitableRoles(userRole);
+  const canManageInvites = invitableRoles.length > 0;
+
   const [inviteForm, setInviteForm] = useState({
     email: '',
-    role: 'staff',
+    role: (invitableRoles[0] ?? 'staff') as string,
   });
   const [sending, setSending] = useState(false);
   const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
@@ -41,8 +48,6 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const [pendingConflict, setPendingConflict] = useState(false);
   const [resendConflictId, setResendConflictId] = useState<string | null>(null);
   const { toast } = useToast();
-
-  const canManageInvites = userRole === 'owner' || userRole === 'manager';
 
   useEffect(() => {
     setShowHistory(false);
@@ -53,7 +58,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
     try {
       const { data: invitations, error } = await supabase
         .from('invitations')
-        .select('*')
+        .select('id, email, role, status, created_at, expires_at, invited_by, employee_id')
         .eq('restaurant_id', restaurantId)
         .order('created_at', { ascending: false });
 
@@ -153,7 +158,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
         description: `Invitation sent to ${inviteForm.email}`,
       });
 
-      setInviteForm({ email: '', role: 'staff' });
+      setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' });
       setIsDialogOpen(false);
       fetchInvitations();
     } catch (error: any) {
@@ -230,7 +235,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
               setIsDialogOpen(open);
               if (!open) {
                 setPendingConflict(false);
-                setInviteForm({ email: '', role: 'staff' });
+                setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' });
               }
             }}>
               <DialogTrigger asChild>
@@ -276,16 +281,13 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       value={inviteForm.role}
                       onValueChange={(value) => setInviteForm({ ...inviteForm, role: value })}
                     >
-                      <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                      <SelectTrigger id="role" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="staff">Staff</SelectItem>
-                        <SelectItem value="chef">Chef</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        {userRole === 'owner' && (
-                          <SelectItem value="owner">Owner</SelectItem>
-                        )}
+                        {invitableRoles.map((r) => (
+                          <SelectItem key={r} value={r}>{ROLE_METADATA[r].label}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -301,7 +303,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                 </div>
 
                 <DialogFooter className="px-6 py-4 border-t border-border/40">
-                  <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); }}>
+                  <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' }); }}>
                     Cancel
                   </Button>
                   <Button onClick={sendInvitation} disabled={sending} className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90">
@@ -316,8 +318,17 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
       
       <CardContent>
         {loading ? (
-          <div className="text-center py-8">
-            <p className="text-muted-foreground">Loading invitations...</p>
+          <div className="space-y-3">
+            {[0, 1].map((i) => (
+              <div key={i} className="flex items-center gap-3 p-4 border border-border/40 rounded-xl">
+                <Skeleton className="h-5 w-5 rounded" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-3 w-56" />
+                </div>
+                <Skeleton className="h-6 w-16 rounded-full" />
+              </div>
+            ))}
           </div>
         ) : invitations.length > 0 ? (
           <div className="space-y-3 md:space-y-4">

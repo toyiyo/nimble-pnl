@@ -1,5 +1,8 @@
-import { isoToLocalMinutes } from '@/lib/shiftCoverage';
-import type { Shift } from '@/types/scheduling';
+import { isoToLocalMinutes, minutesToCompact } from '@/lib/shiftCoverage';
+import { getPositionColors } from '@/lib/positionColors';
+import { calculateShiftHours } from '@/lib/scheduleRoster';
+import { type GroupByMode, UNASSIGNED_LABEL } from '@/lib/scheduleGrouping';
+import type { Shift, Employee } from '@/types/scheduling';
 import type { PositionColors } from '@/lib/positionColors';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,4 +79,111 @@ export function deriveWindow(
     startMin: Math.floor(minStart / 60) * 60,
     endMin: Math.ceil(maxEnd / 60) * 60,
   };
+}
+
+// ─── Lane building ────────────────────────────────────────────────────────────
+
+/**
+ * Assign row indices to an ordered list of {shift, employee} pairs using a
+ * first-fit sweep: a bar lands on the lowest row whose last end-time ≤ this
+ * bar's start.  Shifts must already be sorted by start time so the sweep is
+ * deterministic.
+ */
+function assignRows(
+  pairs: Array<{ shift: Shift; employee: Employee; hours: number }>,
+  dateStr: string,
+  tz: string,
+): TimelineBar[] {
+  const rowEnds: number[] = []; // last endMin per row
+  return pairs.map(({ shift: s, employee: e, hours }) => {
+    const leftMin = isoToLocalMinutes(s.start_time, dateStr, tz);
+    let endMin = isoToLocalMinutes(s.end_time, dateStr, tz);
+    if (endMin <= leftMin) endMin += 1440;
+
+    let row = rowEnds.findIndex((end) => leftMin >= end);
+    if (row === -1) {
+      row = rowEnds.length;
+      rowEnds.push(endMin);
+    } else {
+      rowEnds[row] = endMin;
+    }
+
+    const start12 = minutesToCompact(leftMin);
+    const end12 = minutesToCompact(endMin % 1440);
+    return {
+      shift: s,
+      row,
+      leftMin,
+      endMin,
+      label: e.name,
+      ariaLabel: `${e.name}, ${s.position}, ${start12} to ${end12}, ${hours.toFixed(1)} hours`,
+      color: getPositionColors(s.position),
+    };
+  });
+}
+
+/**
+ * Build timeline lanes for the given day's shifts.
+ *
+ * Shifts are expected to be already filtered to the target day — this function
+ * does NOT re-apply a date filter (avoids host-TZ issues from date-based isSameDay).
+ *
+ * Groups by `groupBy` ('area' → employee.area, 'position' → employee.position,
+ * 'none' → single unlabelled lane).  Within each lane, shifts are sorted by
+ * start time then stacked onto rows using first-fit sweeping.
+ */
+export function buildLanes(
+  shifts: Shift[],
+  employees: Employee[],
+  dateStr: string,
+  tz: string,
+  groupBy: GroupByMode,
+): TimelineLane[] {
+  const empById = new Map(employees.map((e) => [e.id, e]));
+
+  // Join each shift to its employee (drop orphans)
+  const rows = shifts
+    .filter((s) => empById.has(s.employee_id))
+    .map((s) => ({
+      shift: s,
+      employee: empById.get(s.employee_id)!,
+      hours: calculateShiftHours(s),
+    }));
+
+  // Sort by start time (ascending) within each group for deterministic row-stacking
+  rows.sort((a, b) => a.shift.start_time.localeCompare(b.shift.start_time));
+
+  if (groupBy === 'none') {
+    const bars = assignRows(rows, dateStr, tz);
+    const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
+    return rows.length ? [{ key: '', label: '', hours: totalHours, bars }] : [];
+  }
+
+  // Group by the chosen dimension
+  const sectionMap = new Map<string, typeof rows>();
+  for (const row of rows) {
+    const raw = (groupBy === 'area' ? row.employee.area : row.employee.position) ?? '';
+    const key = raw.trim();
+    const arr = sectionMap.get(key);
+    if (arr) arr.push(row);
+    else sectionMap.set(key, [row]);
+  }
+
+  // Sort sections: alphabetical, unassigned ('') last
+  const sortedKeys = Array.from(sectionMap.keys()).sort((a, b) => {
+    if (a === '') return 1;
+    if (b === '') return -1;
+    return a.localeCompare(b);
+  });
+
+  return sortedKeys.map((key) => {
+    const sectionRows = sectionMap.get(key) ?? [];
+    const totalHours = sectionRows.reduce((sum, r) => sum + r.hours, 0);
+    return {
+      key: key || 'unassigned',
+      label: key || UNASSIGNED_LABEL,
+      hours: totalHours,
+      bars: assignRows(sectionRows, dateStr, tz),
+    };
+  });
 }

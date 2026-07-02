@@ -13,7 +13,7 @@
 - codex: 0.137.0 (available)
 - Sonar: NOT configured (SONAR_TOKEN and SONAR_PROJECT_KEY unset) — WARNING only
 - Worktree on correct branch: feat/focus-focuslink-datafeed
-- .env.local symlink created: /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/focus-focuslink/.env.local -> /Users/josedelgado/Documents/GitHub/nimble-pnl/.env.local
+- .env.local symlink created: `<worktree>/.env.local -> <repo-root>/.env.local`
 
 ### Build — IN PROGRESS
 

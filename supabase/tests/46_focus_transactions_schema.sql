@@ -8,16 +8,16 @@
 --   11-13: Named UNIQUE constraints (for ON CONFLICT)
 --   14-16: Composite indexes (restaurant_id, business_date)
 --   17-19: RLS enabled on each table
---   20-21: SELECT policy: member can read own restaurant (lives_ok / throws_ok)
---   22-23: FOR ALL policy: non-owner/manager is blocked from INSERT
---   24-26: Rows cascade-deleted when restaurant is deleted
---   27-29: NOT NULL on required columns
---   30:    focus_orders.focus_check_id not null
---   31:    focus_order_items.item_key not null
---   32:    focus_payments.payment_key not null
+--   20-22: SELECT policy: all three tables have a SELECT policy
+--   23-25: FOR ALL policy: all three tables have a FOR ALL (owner/manager) policy
+--   26-28: Rows cascade-deleted when restaurant is deleted
+--   29-31: NOT NULL on required columns
+--   32:    focus_orders.focus_check_id not null
+--   33:    focus_order_items.item_key not null
+--   34:    focus_payments.payment_key not null
 
 BEGIN;
-SELECT plan(32);
+SELECT plan(34);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup
@@ -119,7 +119,7 @@ SELECT is(
 );
 
 -- ─────────────────────────────────────────────────────────────────────
--- 20-21: SELECT policy — member can read, non-member cannot
+-- 20-22: SELECT policy — member can read (all three tables)
 --   We verify by checking the policy rows in pg_policies.
 -- ─────────────────────────────────────────────────────────────────────
 SELECT ok(
@@ -142,8 +142,18 @@ SELECT ok(
   'focus_order_items has a SELECT policy'
 );
 
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename  = 'focus_payments'
+      AND cmd = 'SELECT'
+  ),
+  'focus_payments has a SELECT policy'
+);
+
 -- ─────────────────────────────────────────────────────────────────────
--- 22-23: FOR ALL policy exists on each transaction table
+-- 23-25: FOR ALL policy exists on each transaction table
 -- ─────────────────────────────────────────────────────────────────────
 SELECT ok(
   EXISTS (
@@ -159,6 +169,16 @@ SELECT ok(
   EXISTS (
     SELECT 1 FROM pg_policies
     WHERE schemaname = 'public'
+      AND tablename  = 'focus_order_items'
+      AND cmd = 'ALL'
+  ),
+  'focus_order_items has a FOR ALL (owner/manager) policy'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE schemaname = 'public'
       AND tablename  = 'focus_payments'
       AND cmd = 'ALL'
   ),
@@ -166,7 +186,7 @@ SELECT ok(
 );
 
 -- ─────────────────────────────────────────────────────────────────────
--- 24-26: ON DELETE CASCADE — rows removed when restaurant deleted
+-- 26-28: ON DELETE CASCADE — rows removed when restaurant deleted
 -- ─────────────────────────────────────────────────────────────────────
 -- Seed parent restaurant and child rows
 INSERT INTO public.restaurants (id, name, address, phone)
@@ -213,7 +233,7 @@ SELECT is(
 );
 
 -- ─────────────────────────────────────────────────────────────────────
--- 27-29: NOT NULL on required columns (via failed INSERT)
+-- 29-31: NOT NULL on required columns (via failed INSERT)
 -- ─────────────────────────────────────────────────────────────────────
 -- focus_orders.restaurant_id NOT NULL
 SELECT throws_ok(
@@ -240,7 +260,7 @@ SELECT throws_ok(
 );
 
 -- ─────────────────────────────────────────────────────────────────────
--- 30-32: Critical identifier columns NOT NULL
+-- 32-34: Critical identifier columns NOT NULL
 -- ─────────────────────────────────────────────────────────────────────
 SELECT throws_ok(
   $$INSERT INTO public.focus_orders (restaurant_id, business_date, focus_check_id, total)

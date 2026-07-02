@@ -6,10 +6,10 @@
 (`toast_orders/items/payments`, `toastOrderProcessor.ts`, `sync_toast_to_unified_sales`,
 `toast-sync-data`, `toast-bulk-sync`, `ToastSetupWizard.tsx`, `useToastConnection.tsx`).
 
-**Live verification:** `source '/Users/josedelgado/Documents/Cold Stone Setup/focus-creds.env'`
+**Live verification:** `source "$FOCUS_CREDS_ENV_FILE"`
 (vars `FOCUS_API_KEY`/`FOCUS_API_SECRET`/`FOCUS_RESTAURANT_GUID`) — **never echo/print/commit
 the values**. Sanitized fixture: `tests/fixtures/focus-datafeed-sample.xml`. OpenAPI:
-`/Users/josedelgado/Documents/Cold Stone Setup/Focus-POS-API.yaml`.
+see `docs/superpowers/specs/2026-07-01-focus-pos-transactions-design.md` for API reference.
 
 Reuse (already built, do not redo): `focus_connections` API-columns migration,
 `focusSaveConnectionHandler.ts`, and `focusDatafeedParser.ts` (`parseFocusDatafeed`).
@@ -26,7 +26,7 @@ Reuse (already built, do not redo): `focus_connections` API-columns migration,
   SELECT (member) + FOR ALL (owner/manager) policies. `npm run test:db` → fail.
 - GREEN: create the 3 tables per design §3 (FK→restaurants ON DELETE CASCADE, named
   UNIQUEs, `(restaurant_id, business_date)` indexes, `updated_at` trigger reuse,
-  RLS policies mirroring `focus_reports_select`/`focus_reports_all`).
+  RLS policies mirroring the `focus_daily_reports` SELECT/FOR ALL pattern).
 - Verify RED→GREEN on a throwaway DB (seed `restaurants` + `user_restaurants` stubs)
   like the earlier focus migrations were verified.
 

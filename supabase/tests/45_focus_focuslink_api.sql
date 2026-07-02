@@ -9,8 +9,22 @@ SELECT has_column('public', 'focus_connections', 'api_secret_encrypted', 'api_se
 SELECT has_column('public', 'focus_connections', 'mid', 'mid column added');
 SELECT has_column('public', 'focus_connections', 'environment', 'environment column added');
 
--- environment is constrained to sandbox|production.
-SELECT col_has_check('public', 'focus_connections', 'environment', 'environment has a CHECK constraint');
+-- environment is constrained to 'sandbox' | 'production' exactly.
+SELECT ok(
+  EXISTS (
+    SELECT 1
+    FROM pg_constraint c
+    JOIN pg_attribute a
+      ON a.attrelid = c.conrelid
+     AND a.attnum = ANY(c.conkey)
+    WHERE c.conrelid = 'public.focus_connections'::regclass
+      AND c.contype = 'c'
+      AND a.attname = 'environment'
+      AND pg_get_constraintdef(c.oid) LIKE '%sandbox%'
+      AND pg_get_constraintdef(c.oid) LIKE '%production%'
+  ),
+  'environment CHECK allows only sandbox and production'
+);
 
 -- Portal credentials are no longer required (FocusLink uses key/secret).
 SELECT col_is_null('public', 'focus_connections', 'username', 'username is now nullable');

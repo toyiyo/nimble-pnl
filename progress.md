@@ -38,6 +38,16 @@
   - `supabase/tests/47_focus_transactions_unified_sales.sql` — 21 pgTAP tests covering function existence (4), sale row counts/amounts, external_order_id pattern, pos_category from report_group_id, modifier with price included, zero-price excluded, tip offset, discount offset, no discount for zero-amount, categorization preservation, orphan deletion, pos_system correctness, sale_date correctness, auth rejection, service-role access, cron wrapper row, date-range scoping.
 - TDD: RED confirmed (4 "not ok" for missing functions, then SQL abort before migration), GREEN: all 21 pass. Pre-existing 1-test failure in `32_weekly_brief_queue.sql` unrelated (present since before this branch).
 
+#### Task 4 — Sync handlers + cron edge functions — COMPLETED (2026-07-01)
+- Commit: `d9e9622a`
+- Files:
+  - `supabase/functions/_shared/focusTransactionSyncHandler.ts` — `processDayTransactions(deps, config, businessDate, options?)`: calls `fetchDatafeed` (Lynk client), parses XML with `parseFocusDatafeed`, upserts `focus_orders`/`focus_order_items` (skips `isKitchenComment` lines)/`focus_payments`, calls `sync_focus_transactions_to_unified_sales` RPC. Returns discriminated result `ok/empty/inprogress/error`. Injectable deps (supabase + fetchDatafeed) for full Vitest coverage.
+  - `supabase/functions/_shared/focusSyncDataHandler.ts` — Updated to dispatch to `processDayTransactions` (Lynk path) when `api_key` is present on the connection row; falls back to existing portal/SSRS path for legacy connections. Also fetches `api_key`, `api_secret_encrypted`, `environment` from the connection select.
+  - `supabase/functions/_shared/focusBulkSyncHandler.ts` — Same Lynk-path dispatch added to `processConnection`; also fetches Lynk columns in the round-robin query.
+  - `supabase/migrations/20260701140000_focus_transactions_cron.sql` — pg_cron job `focus-transactions-unified-sales-sync` (every 6 h) calling `sync_all_focus_transactions_to_unified_sales()` as safety-net for unified_sales currency.
+  - `tests/unit/focusTransactionSyncHandler.test.ts` — 24 Vitest tests covering: fetchDatafeed call contract (baseUrl, restaurantGuid, apiKey/Secret, businessDate, called once), focus_orders upsert (one per check, totals, onConflict), focus_order_items (kitchen comment skipped, priced item, modifier, onConflict), focus_payments (amount/tip/card_last4, onConflict), RPC call (correct params), skipUnifiedSalesSync flag, empty datafeed, inprogress result, error results (network/auth/upsert), multi-check.
+- TDD: RED confirmed (module not found), GREEN: all 24 pass. Full suite (5141 tests, 384 files) clean. Existing focusSyncDataHandler (30 tests) and focusBulkSyncHandler (20 tests) both still pass after handler updates.
+
 ### Review — PENDING
 ### Verify — PENDING
 ### Ship — PENDING

@@ -223,6 +223,7 @@ $$;
 --        assigns the rule's supplier when the transaction has none; the txn's own supplier wins.
 -- ============================================================
 
+
 CREATE OR REPLACE FUNCTION auto_apply_bank_categorization_rules()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -275,3 +276,172 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+
+-- ============================================================
+-- §4  apply_rules_to_pos_sales_internal + hardened public wrapper
+--
+--     Internal engine: full body of apply_rules_to_pos_sales minus the
+--     permission check. SECURITY DEFINER with pinned search_path so it
+--     can be called by sync functions (also SECURITY DEFINER, owner postgres)
+--     and service-role edge functions without needing auth.uid().
+--
+--     REVOKE from PUBLIC/anon/authenticated prevents PostgREST exposure.
+--     GRANT to service_role only — the sync functions and cron run as
+--     service_role or as the postgres owner (which supersedes REVOKE).
+--
+--     Public wrapper: unchanged signature and permission semantics for
+--     authenticated clients. Re-declared with SET search_path = public
+--     (the prior version was SECURITY DEFINER with an unpinned path —
+--     injection risk on the permission check). DEFAULT 100 is the safe
+--     interactive batch size; background callers pass larger limits.
+-- ============================================================
+
+-- Internal engine: no auth check. NOT exposed to clients (EXECUTE revoked below).
+-- Called by sync functions, cron backfill, and service-role edge functions.
+CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales_internal(
+  p_restaurant_id UUID,
+  p_batch_limit   INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  applied_count INTEGER,
+  total_count   INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_sale                RECORD;
+  v_applied_count       INTEGER := 0;
+  v_total_count         INTEGER := 0;
+  v_split_result        RECORD;
+  v_splits_with_amounts JSONB;
+  v_split               JSONB;
+  v_splits_array        JSONB[] := ARRAY[]::JSONB[];
+BEGIN
+  -- No permission check: this function is for background/service-role callers.
+  -- The public wrapper apply_rules_to_pos_sales enforces owner/manager membership.
+
+  FOR v_sale IN
+    SELECT
+      s.id,
+      s.total_price,
+      matched.rule_id,
+      matched.rule_name,
+      matched.category_id AS rule_category_id,
+      matched.is_split_rule,
+      matched.split_categories
+    FROM unified_sales s
+    CROSS JOIN LATERAL find_matching_rules_for_pos_sale(
+      p_restaurant_id,
+      jsonb_build_object(
+        'item_name',    s.item_name,
+        'total_price',  s.total_price,
+        'pos_category', s.pos_category
+      )
+    ) matched
+    WHERE s.restaurant_id = p_restaurant_id
+      AND (s.is_categorized = false OR s.category_id IS NULL)
+      AND s.is_split = false
+      AND matched.rule_id IS NOT NULL
+    ORDER BY s.sale_date DESC
+    LIMIT p_batch_limit
+  LOOP
+    v_total_count := v_total_count + 1;
+
+    BEGIN
+      IF v_sale.is_split_rule AND v_sale.split_categories IS NOT NULL THEN
+        v_splits_array := ARRAY[]::JSONB[];
+
+        FOR v_split IN SELECT * FROM jsonb_array_elements(v_sale.split_categories)
+        LOOP
+          v_splits_array := v_splits_array || jsonb_build_object(
+            'category_id', v_split->>'category_id',
+            'amount', CASE
+              WHEN v_split->>'percentage' IS NOT NULL
+              THEN ROUND((v_sale.total_price * (v_split->>'percentage')::NUMERIC / 100.0), 2)
+              ELSE (v_split->>'amount')::NUMERIC
+            END,
+            'description', COALESCE(v_split->>'description', '')
+          );
+        END LOOP;
+
+        v_splits_with_amounts := to_jsonb(v_splits_array);
+
+        SELECT * INTO v_split_result
+        FROM split_pos_sale(v_sale.id, v_splits_with_amounts);
+
+        IF NOT v_split_result.success THEN
+          RAISE NOTICE 'Failed to split sale %: %', v_sale.id, v_split_result.message;
+          CONTINUE;
+        END IF;
+      ELSE
+        UPDATE unified_sales
+        SET
+          category_id    = v_sale.rule_category_id,
+          is_categorized = true,
+          updated_at     = now()
+        WHERE id = v_sale.id;
+      END IF;
+
+      v_applied_count := v_applied_count + 1;
+      UPDATE categorization_rules
+      SET apply_count = apply_count + 1, last_applied_at = now()
+      WHERE id = v_sale.rule_id;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'Error categorizing sale %: %', v_sale.id, SQLERRM;
+    END;
+  END LOOP;
+
+  RETURN QUERY SELECT v_applied_count, v_total_count;
+END;
+$$;
+
+COMMENT ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer) IS
+  'Auth-free internal POS rule engine. No permission check — restricted to service_role via REVOKE/GRANT. '
+  'Called by sync functions (background), cron backfill, and service-role edge functions. '
+  'The public wrapper apply_rules_to_pos_sales enforces owner/manager membership for interactive calls. '
+  'DEFAULT 100 is the safe interactive batch size; background callers pass larger limits (e.g. 5000).';
+
+-- Prevent PostgREST / client exposure: clients must go through the public wrapper.
+REVOKE EXECUTE ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer) FROM PUBLIC, anon, authenticated;
+-- Service-role callers (edge functions, cron via sync functions) retain EXECUTE.
+GRANT  EXECUTE ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer) TO service_role;
+
+
+-- Public wrapper: unchanged signature and permission semantics for authenticated clients.
+-- Re-declared with SET search_path = public (the prior version was SECURITY DEFINER
+-- with an unpinned search_path — injection risk on the permission check).
+-- DEFAULT 100 is the safe interactive batch size; background callers pass larger limits.
+CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales(
+  p_restaurant_id UUID,
+  p_batch_limit   INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  applied_count INTEGER,
+  total_count   INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+      AND user_id = auth.uid()
+      AND role IN ('owner', 'manager')
+  ) THEN
+    RAISE EXCEPTION 'Permission denied: user does not have access to apply rules for this restaurant';
+  END IF;
+
+  RETURN QUERY SELECT * FROM apply_rules_to_pos_sales_internal(p_restaurant_id, p_batch_limit);
+END;
+$$;
+
+COMMENT ON FUNCTION apply_rules_to_pos_sales(uuid, integer) IS
+  'Public POS rule engine for authenticated owner/manager callers. '
+  'Enforces membership then delegates to apply_rules_to_pos_sales_internal. '
+  'DEFAULT 100 is the safe interactive batch size; background callers should '
+  'call the internal function directly with a larger limit.';

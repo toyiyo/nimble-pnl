@@ -2,6 +2,12 @@ import { memo } from 'react';
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -29,6 +35,16 @@ interface CoverageChartProps {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 /**
+ * Build a concise aria-label for an hour column.
+ * Task 3 will replace this with the full tooltip content via `buildHourTooltip`.
+ */
+function buildColumnAriaLabel(h: CoverageHour): string {
+  const timeRange = formatCoverageHour(h.hour);
+  const neededStr = h.needed !== null ? ` · ${h.needed} needed` : '';
+  return `${timeRange}: ${h.scheduled} scheduled${neededStr}`;
+}
+
+/**
  * Compute peak headcount across all hours (used for bar height scaling).
  * Always returns at least 1 to avoid divide-by-zero.
  */
@@ -48,9 +64,10 @@ interface AreaColumnProps {
   left: number;
   width: number;
   peak: number;
+  ariaLabel: string;
 }
 
-function AreaColumn({ h, left, width, peak }: AreaColumnProps) {
+function AreaColumn({ h, left, width, peak, ariaLabel }: AreaColumnProps) {
   const scheduledPct = (h.scheduled / peak) * 100;
   const neededPct = h.needed !== null ? (h.needed / peak) * 100 : null;
   const isShort = h.delta !== null && h.delta < 0 && neededPct !== null;
@@ -62,7 +79,9 @@ function AreaColumn({ h, left, width, peak }: AreaColumnProps) {
   return (
     <div
       data-hour-col=""
-      className="absolute inset-y-0"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
       style={{ left: `${left}%`, width: `${width}%` }}
     >
       {/* Bottom-anchored scheduled block */}
@@ -108,16 +127,19 @@ interface DeltaColumnProps {
   width: number;
   peak: number;
   deltaPeak: number;
+  ariaLabel: string;
 }
 
-function DeltaColumn({ h, left, width, peak, deltaPeak }: DeltaColumnProps) {
+function DeltaColumn({ h, left, width, peak, deltaPeak, ariaLabel }: DeltaColumnProps) {
   // No-demand hour — show scheduled headcount scaled by peak (not deltaPeak)
   if (h.delta === null) {
     const barPct = Math.min(50, Math.max(0.5, (h.scheduled / peak) * 50));
     return (
       <div
         data-hour-col=""
-        className="absolute inset-y-0"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         style={{ left: `${left}%`, width: `${width}%` }}
       >
         {/* Zero line at 50% height */}
@@ -139,7 +161,9 @@ function DeltaColumn({ h, left, width, peak, deltaPeak }: DeltaColumnProps) {
     return (
       <div
         data-hour-col=""
-        className="absolute inset-y-0"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         style={{ left: `${left}%`, width: `${width}%` }}
       >
         {/* Tick at zero baseline (50%) */}
@@ -165,7 +189,9 @@ function DeltaColumn({ h, left, width, peak, deltaPeak }: DeltaColumnProps) {
   return (
     <div
       data-hour-col=""
-      className="absolute inset-y-0 flex flex-col"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      className="absolute inset-y-0 flex flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
       style={{ left: `${left}%`, width: `${width}%` }}
     >
       {/* Bar + label for short hours (below zero line) */}
@@ -302,44 +328,62 @@ export const CoverageChart = memo(function CoverageChart({
     });
 
   return (
-    <div>
-      <div
-        role="img"
-        aria-label={descText}
-        className="relative w-full"
-        style={{ height }}
-      >
-        {view === 'area'
-          ? hours.map((h) => {
-              const left = effectiveMinToPct(h.startMin);
-              const width = effectiveMinToPct(h.startMin + 60) - left;
-              return (
-                <AreaColumn
-                  key={h.startMin}
-                  h={h}
-                  left={left}
-                  width={width}
-                  peak={peak}
-                />
-              );
-            })
-          : hours.map((h) => {
-              const left = effectiveMinToPct(h.startMin);
-              const width = effectiveMinToPct(h.startMin + 60) - left;
-              return (
-                <DeltaColumn
-                  key={h.startMin}
-                  h={h}
-                  left={left}
-                  width={width}
-                  peak={peak}
-                  deltaPeak={deltaPeak}
-                />
-              );
-            })}
-      </div>
+    <TooltipProvider>
+      <div>
+        <div
+          role="img"
+          aria-label={descText}
+          className="relative w-full"
+          style={{ height }}
+        >
+          {view === 'area'
+            ? hours.map((h) => {
+                const left = effectiveMinToPct(h.startMin);
+                const width = effectiveMinToPct(h.startMin + 60) - left;
+                const ariaLabel = buildColumnAriaLabel(h);
+                return (
+                  <Tooltip key={h.startMin}>
+                    <TooltipTrigger asChild>
+                      <AreaColumn
+                        h={h}
+                        left={left}
+                        width={width}
+                        peak={peak}
+                        ariaLabel={ariaLabel}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-[12px] max-w-[220px]">
+                      {ariaLabel}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })
+            : hours.map((h) => {
+                const left = effectiveMinToPct(h.startMin);
+                const width = effectiveMinToPct(h.startMin + 60) - left;
+                const ariaLabel = buildColumnAriaLabel(h);
+                return (
+                  <Tooltip key={h.startMin}>
+                    <TooltipTrigger asChild>
+                      <DeltaColumn
+                        h={h}
+                        left={left}
+                        width={width}
+                        peak={peak}
+                        deltaPeak={deltaPeak}
+                        ariaLabel={ariaLabel}
+                      />
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="text-[12px] max-w-[220px]">
+                      {ariaLabel}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+        </div>
 
-      <Legend hasDemand={hasDemand} view={view} />
-    </div>
+        <Legend hasDemand={hasDemand} view={view} />
+      </div>
+    </TooltipProvider>
   );
 });

@@ -120,7 +120,7 @@ export function ShiftTimelineTab({
   const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
 
   // ── Staffing recommendations ───────────────────────────────────────────────
-  const { daySuggestions } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
+  const { daySuggestions, activeSettings } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
 
   const dayRecommendations = useMemo(() => {
     const result = daySuggestions.get(selectedDay);
@@ -134,9 +134,10 @@ export function ShiftTimelineTab({
   const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
 
   // ── Hourly coverage summary + verdict (feeds the new coverage panel) ───────
+  const targetSplh = activeSettings?.target_splh ?? null;
   const hourlySummary = useMemo(
-    () => summarizeCoverageHours(model.coverage, model.demand, model.window),
-    [model.coverage, model.demand, model.window],
+    () => summarizeCoverageHours(model.coverage, model.demand, model.window, dayRecommendations),
+    [model.coverage, model.demand, model.window, dayRecommendations],
   );
   const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
 
@@ -294,7 +295,12 @@ export function ShiftTimelineTab({
 
             {/* Coverage chart — offset to align with the axis ticks */}
             <div className="pl-[120px]">
-              <CoverageChart hours={hourlySummary} view={coverageView} />
+              <CoverageChart
+                hours={hourlySummary}
+                view={coverageView}
+                minToPct={minToPct}
+                targetSplh={targetSplh}
+              />
             </div>
 
             {/* Per-hour status strip */}

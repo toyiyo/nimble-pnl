@@ -89,6 +89,31 @@ describe('CoverageChart — area view', () => {
   });
 });
 
+describe('CoverageChart — accessibility (tooltip shell)', () => {
+  it('each hour column is keyboard-focusable (tabIndex=0)', () => {
+    const { container } = render(
+      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
+    );
+    const cols = Array.from(container.querySelectorAll('[data-hour-col]')) as HTMLElement[];
+    expect(cols).toHaveLength(2);
+    cols.forEach((col) => {
+      expect(col.getAttribute('tabindex')).toBe('0');
+    });
+  });
+
+  it('each hour column has a descriptive aria-label', () => {
+    const { container } = render(
+      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
+    );
+    const cols = Array.from(container.querySelectorAll('[data-hour-col]')) as HTMLElement[];
+    cols.forEach((col) => {
+      const label = col.getAttribute('aria-label');
+      expect(label).toBeTruthy();
+      expect(label!.length).toBeGreaterThan(0);
+    });
+  });
+});
+
 describe('CoverageChart — delta view', () => {
   it('renders diverging bars with signed labels in delta view', () => {
     const { container, getByText } = render(

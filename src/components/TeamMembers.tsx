@@ -10,6 +10,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone, Briefcase } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import type { Role } from '@/lib/permissions/types';
 
 interface TeamMember {
   id: string;
@@ -207,9 +209,9 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <Badge variant={roleColors[member.role as keyof typeof roleColors] ?? 'outline'} className="flex items-center gap-1 capitalize">
+                  <Badge variant={roleColors[member.role as keyof typeof roleColors] ?? 'outline'} className="flex items-center gap-1">
                     <RoleIcon className="h-3 w-3" />
-                    {member.role === 'operations_manager' ? 'Ops Manager' : member.role}
+                    {ROLE_METADATA[member.role as Role]?.label ?? member.role}
                   </Badge>
                   
                   {canManageMembers && !isOwner && member.role !== 'kiosk' && (

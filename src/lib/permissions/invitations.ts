@@ -21,10 +21,10 @@ const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
 
 /** Roles that `inviter` is allowed to invite (empty if none). */
 export function getInvitableRoles(inviter: Role): Role[] {
-  return [...(INVITABLE_ROLES[inviter] ?? [])];
+  return [...INVITABLE_ROLES[inviter]];
 }
 
 /** Whether `inviter` may invite a member with role `target`. */
 export function canInviteRole(inviter: Role, target: Role): boolean {
-  return (INVITABLE_ROLES[inviter] ?? []).includes(target);
+  return INVITABLE_ROLES[inviter].includes(target);
 }

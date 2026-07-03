@@ -698,6 +698,115 @@ describe('useShiftTrades', () => {
     });
   });
 
+  describe('useMarketplaceTrades - area field', () => {
+    it('includes area in the offered_by select string sent to Supabase', async () => {
+      const builder = createSelectQueryBuilder([]);
+      mockSupabase.from.mockReturnValue(builder);
+
+      const { result } = renderHook(() => useMarketplaceTrades('rest-123', null), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      // The select string must contain "area" within the offered_by embed
+      const selectArg: string = builder.select.mock.calls[0][0];
+      expect(selectArg).toMatch(/offered_by:employees![^(]+\([^)]*\barea\b/);
+    });
+
+    it('exposes offered_by.area on returned trade objects when area is present', async () => {
+      const mockTrades = [
+        {
+          id: 'trade-area',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open' as const,
+          reason: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Bar',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'Alice',
+            position: 'Bartender',
+            area: 'Bar',
+          },
+        },
+      ];
+
+      const builder = createSelectQueryBuilder(mockTrades as unknown as TestShiftTrade[]);
+      mockSupabase.from.mockReturnValue(builder);
+
+      const { result } = renderHook(() => useMarketplaceTrades('rest-123', null), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].offered_by?.area).toBe('Bar');
+    });
+
+    it('exposes offered_by.area as null when employee has no area', async () => {
+      const mockTrades = [
+        {
+          id: 'trade-no-area',
+          restaurant_id: 'rest-123',
+          offered_shift_id: 'shift-1',
+          offered_by_employee_id: 'emp-1',
+          requested_shift_id: null,
+          target_employee_id: null,
+          accepted_by_employee_id: null,
+          status: 'open' as const,
+          reason: null,
+          manager_note: null,
+          reviewed_by: null,
+          reviewed_at: null,
+          created_at: '2026-01-04T10:00:00Z',
+          updated_at: '2026-01-04T10:00:00Z',
+          offered_shift: {
+            id: 'shift-1',
+            start_time: '2026-01-10T09:00:00Z',
+            end_time: '2026-01-10T17:00:00Z',
+            position: 'Server',
+            break_duration: 30,
+          },
+          offered_by: {
+            id: 'emp-1',
+            name: 'Bob',
+            position: 'Server',
+            area: null,
+          },
+        },
+      ];
+
+      const builder = createSelectQueryBuilder(mockTrades as unknown as TestShiftTrade[]);
+      mockSupabase.from.mockReturnValue(builder);
+
+      const { result } = renderHook(() => useMarketplaceTrades('rest-123', null), {
+        wrapper: createWrapper(),
+      });
+
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.trades).toHaveLength(1);
+      expect(result.current.trades[0].offered_by?.area).toBeNull();
+    });
+  });
+
   describe('useMarketplaceTrades - Fetch marketplace trades', () => {
     it('should fetch only open trades without target employee', async () => {
       const mockTrades: TestShiftTrade[] = [

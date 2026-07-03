@@ -29,6 +29,13 @@ import { SplitCategoryInput } from "@/components/banking/SplitCategoryInput";
 import { Badge } from "@/components/ui/badge";
 import { useAISuggestRules, type SuggestedRule } from "@/hooks/useAISuggestRules";
 
+// Generic bank description terms that are too broad to be the sole matching criterion.
+// Supplier is an assignment (not a filter) on bank rules, so it does not add specificity.
+const GENERIC_BANK_TERMS = [
+  'withdrawal', 'deposit', 'payment', 'transfer',
+  'debit', 'credit', 'ach', 'wire', 'check', 'atm',
+];
+
 interface EnhancedCategoryRulesDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -101,8 +108,6 @@ export const EnhancedCategoryRulesDialog = ({
   const applyRules = useApplyRulesV2();
   const aiSuggestRules = useAISuggestRules();
 
-  // Constants
-  const RULE_NAME_MAX_LENGTH = 30;
   const FORM_SCROLL_DELAY_MS = 100;
 
   // Handle prefilled rule data
@@ -186,9 +191,8 @@ export const EnhancedCategoryRulesDialog = ({
     }
 
     // Check for overly generic rules (safety check)
-    const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
     const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
-    const isGenericPattern = descPattern && genericTerms.includes(descPattern);
+    const isGenericPattern = descPattern && GENERIC_BANK_TERMS.includes(descPattern);
 
     if (isGenericPattern) {
       // Generic pattern - only an amount range provides enough specificity.
@@ -803,29 +807,23 @@ export const EnhancedCategoryRulesDialog = ({
 
                         {/* Warning for generic patterns */}
                         {(() => {
-                          const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
-                          const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
-                          const isGeneric = descPattern && genericTerms.includes(descPattern);
-                          const isEmpty = !descPattern;
-                          // A supplier-only rule is a valid filter rule — don't warn.
-                          // Only amount range counts as "other criteria" alongside descriptions.
-                          const hasOtherCriteria = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
-                                                  (formData.amountMax && parseFloat(formData.amountMax) > 0);
-
-                          if ((isEmpty && !formData.supplierId || isGeneric) && !hasOtherCriteria) {
-                            return (
-                              <Alert className="mt-2 bg-amber-500/10 border-amber-500/20 rounded-lg">
-                                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                                <AlertDescription className="text-[12px] text-amber-700 dark:text-amber-300">
-                                  {isEmpty
-                                    ? "Add a pattern, supplier, or amount range to target specific transactions."
-                                    : `"${formData.descriptionPattern}" is generic. Add more specificity.`
-                                  }
-                                </AlertDescription>
-                              </Alert>
-                            );
-                          }
-                          return null;
+                          const desc = formData.descriptionPattern?.trim().toLowerCase() || '';
+                          const isEmpty = !desc;
+                          const isGeneric = !!desc && GENERIC_BANK_TERMS.includes(desc);
+                          const hasAmountRange = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                                                 (formData.amountMax && parseFloat(formData.amountMax) > 0);
+                          if (!((isEmpty && !formData.supplierId) || isGeneric) || hasAmountRange) return null;
+                          return (
+                            <Alert className="mt-2 bg-amber-500/10 border-amber-500/20 rounded-lg">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                              <AlertDescription className="text-[12px] text-amber-700 dark:text-amber-300">
+                                {isEmpty
+                                  ? "Add a pattern, supplier, or amount range to target specific transactions."
+                                  : `"${formData.descriptionPattern}" is generic. Add more specificity.`
+                                }
+                              </AlertDescription>
+                            </Alert>
+                          );
                         })()}
                       </div>
 
@@ -840,23 +838,14 @@ export const EnhancedCategoryRulesDialog = ({
                           showNewIndicator={true}
                         />
                         {/* Contextual help text: assign-mode vs filter-mode */}
-                        {(() => {
-                          const hasDescOrAmount = formData.descriptionPattern ||
-                            (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
-                            (formData.amountMax && parseFloat(formData.amountMax) > 0);
-                          if (hasDescOrAmount) {
-                            return (
-                              <p className="text-[12px] text-muted-foreground">
-                                Matching transactions will be tagged with this supplier.
-                              </p>
-                            );
+                        <p className="text-[12px] text-muted-foreground">
+                          {formData.descriptionPattern ||
+                           (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                           (formData.amountMax && parseFloat(formData.amountMax) > 0)
+                            ? "Matching transactions will be tagged with this supplier."
+                            : "Only match transactions already linked to this supplier."
                           }
-                          return (
-                            <p className="text-[12px] text-muted-foreground">
-                              Only match transactions already linked to this supplier.
-                            </p>
-                          );
-                        })()}
+                        </p>
                       </div>
 
                       <div className="space-y-2">

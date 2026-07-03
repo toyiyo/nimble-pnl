@@ -141,11 +141,8 @@ BEGIN
   -- Extract transaction fields
   v_description := COALESCE(p_transaction->>'description', '');
   v_amount      := COALESCE((p_transaction->>'amount')::NUMERIC, 0);
-  v_supplier_id := CASE
-    WHEN p_transaction->>'supplier_id' IS NOT NULL
-    THEN (p_transaction->>'supplier_id')::UUID
-    ELSE NULL
-  END;
+  -- JSON field extraction returns NULL when the key is absent, so a plain cast is sufficient.
+  v_supplier_id := (p_transaction->>'supplier_id')::UUID;
   v_tx_type := CASE
     WHEN v_amount < 0 THEN 'debit'
     WHEN v_amount > 0 THEN 'credit'

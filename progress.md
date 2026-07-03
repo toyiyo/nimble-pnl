@@ -46,5 +46,7 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
 - Invites: operations_manager -> staff only. owner/manager can invite operations_manager.
 - Capability-first RLS: extend user_has_capability; residual hardcoded operational policies get the role; accounting tables untouched (natural deny).
 
+- [x] Phase 5 UI Review — TeamMembers.tsx: Skeleton loading state, border-border/40 rounded-xl list items, text-[14px]/text-[13px] typography, aria-label on MoreHorizontal, operations_manager in roleIcons/roleColors/select, human-readable badge label. Commit: 2052dbfc.
+
 ## CI Status
 - PR: not yet created

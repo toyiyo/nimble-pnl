@@ -264,9 +264,10 @@ export function ShiftTimelineTab({
         <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
 
           {/* Coverage panel — verdict → view toggle → chart → status strip.
-              Offset by the 120px lane-label column so the chart x-scale
-              aligns with the axis ticks and shift bars. */}
-          <div className="px-4 pt-3 pb-1 space-y-2">
+              No horizontal padding here: the pl-[120px] children must start at
+              the same left offset as TimelineAxis and shift lanes so the chart
+              x-scale aligns with the axis ticks below. */}
+          <div className="pt-3 pb-1 space-y-2 px-0">
             {/* Plain-language verdict + demand explainer */}
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <CoverageVerdict verdict={verdict} />

@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom';
+
 import {
   Popover,
   PopoverContent,
@@ -39,13 +41,13 @@ export function CoverageDemandInfo() {
           <strong>Covered</strong> = scheduled &ge; needed.{' '}
           <strong>Short</strong> = scheduled is below it.
         </p>
-        <a
-          href="/settings"
+        <Link
+          to="/settings"
           className="inline-flex items-center gap-0.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
           aria-label="Adjust targets in Staffing settings"
         >
           Adjust targets in Staffing settings &rarr;
-        </a>
+        </Link>
       </PopoverContent>
     </Popover>
   );

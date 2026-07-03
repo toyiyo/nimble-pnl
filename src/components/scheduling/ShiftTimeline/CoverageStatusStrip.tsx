@@ -59,7 +59,9 @@ export function CoverageStatusStrip({
           const label = labelByStartMin.get(h.startMin)!;
           const ariaLabel = cellAriaLabel(h, label);
           const isShort = h.delta !== null && h.delta < 0;
-          const hasDemand = h.delta !== null;
+          // Guard both delta and needed — inconsistent upstream state (delta
+          // non-null but needed null) must not reach the `h.needed!` assertion.
+          const hasDemand = h.delta !== null && h.needed !== null;
 
           let cellColorClass: string;
           if (isShort) {

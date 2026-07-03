@@ -64,7 +64,11 @@ export function summarizeCoverageHours(
   demand: { min: number; target: number }[] | null,
   window: { startMin: number; endMin: number },
 ): CoverageHour[] {
-  if (coverage.length === 0) return [];
+  // Do NOT short-circuit on empty coverage — when demand is configured but no
+  // shifts are scheduled, every hour must be returned with scheduled=0 so that
+  // buildVerdict reports hasDemand:true and the correct shortfall count, rather
+  // than silently hiding a fully-unstaffed period.
+  const hasAnyCoverage = coverage.length > 0;
 
   // Build a lookup: hourStart → demand target
   const demandMap: Map<number, number> | null = demand
@@ -85,15 +89,23 @@ export function summarizeCoverageHours(
 
   const out: CoverageHour[] = [];
 
-  // Iterate over each complete hour bucket within the window
+  // Iterate over each complete hour bucket within the window.
+  // When there is no coverage but demand IS configured, we must still emit an
+  // hour entry with scheduled=0 so buildVerdict surfaces the shortfall.
   const firstHourStart = Math.floor(window.startMin / HOUR) * HOUR;
   for (let start = firstHourStart; start < window.endMin; start += HOUR) {
     // All 15-min samples whose minute falls within [start, start+60)
-    const inHour = coverage.filter((c) => c.min >= start && c.min < start + HOUR);
-    if (inHour.length === 0) continue;
+    const inHour = hasAnyCoverage
+      ? coverage.filter((c) => c.min >= start && c.min < start + HOUR)
+      : [];
 
-    const scheduled = Math.min(...inHour.map((c) => c.count));
     const needed = needForHourStart(start);
+
+    // Skip the hour only when there is neither coverage data nor a demand
+    // target — i.e. an hour completely outside the operating window.
+    if (inHour.length === 0 && needed === null) continue;
+
+    const scheduled = inHour.length > 0 ? Math.min(...inHour.map((c) => c.count)) : 0;
 
     out.push({
       hour: Math.floor(start / HOUR) % 24,

@@ -106,3 +106,29 @@ describe('buildVerdict', () => {
     expect(v.shortHours).toBe(0);
   });
 });
+
+describe('summarizeCoverageHours — zero-coverage with demand', () => {
+  it('CRITICAL: emits scheduled=0 hours when coverage is empty but demand is configured', () => {
+    // Regression: the old early-return `if (coverage.length === 0) return []` silently
+    // dropped fully-unstaffed periods even when demand was configured, causing
+    // buildVerdict to report hasDemand:false / shortHours:0 for critical shortages.
+    const hrs = summarizeCoverageHours(
+      [],
+      [{ min: 600, target: 2 }, { min: 660, target: 3 }],
+      { startMin: 600, endMin: 720 },
+    );
+    expect(hrs).toHaveLength(2);
+    expect(hrs[0]).toMatchObject({ hour: 10, scheduled: 0, needed: 2, delta: -2 });
+    expect(hrs[1]).toMatchObject({ hour: 11, scheduled: 0, needed: 3, delta: -3 });
+
+    const verdict = buildVerdict(hrs);
+    expect(verdict.hasDemand).toBe(true);
+    expect(verdict.shortHours).toBe(2);
+    expect(verdict.metAll).toBe(false);
+  });
+
+  it('returns [] when both coverage and demand are absent (hour completely outside window)', () => {
+    const hrs = summarizeCoverageHours([], null, { startMin: 600, endMin: 660 });
+    expect(hrs).toHaveLength(0);
+  });
+});

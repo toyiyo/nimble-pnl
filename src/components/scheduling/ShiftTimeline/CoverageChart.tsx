@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
 
@@ -274,9 +276,14 @@ function DeltaView({ hours, plotW, plotH, peak, deltaPeak, svgHeight }: DeltaVie
         const barState = isShort ? 'short' : 'covered';
 
         // Label: signed delta, shown above or below bar depending on direction.
-        // Clamp labelY to stay inside the SVG viewBox.
+        // Clamp labelY to stay inside the SVG viewBox:
+        //   - short (below baseline): cap at bottom margin.
+        //   - surplus (above baseline): also clamp above MARGIN_TOP so a
+        //     max-height positive bar does not clip the label above the viewBox.
         const labelYRaw = isShort ? zeroY + barH + 8 : zeroY - barH - 4;
-        const labelY = Math.min(labelYRaw, svgHeight - MARGIN_BOTTOM - 2);
+        const labelY = isShort
+          ? Math.min(labelYRaw, svgHeight - MARGIN_BOTTOM - 2)
+          : Math.max(labelYRaw, MARGIN_TOP + 8);
 
         return (
           <g key={h.startMin}>
@@ -465,8 +472,12 @@ function Legend({ hasDemand, view }: { hasDemand: boolean; view: 'area' | 'delta
  * Accessible via `role="img"` + `<title>` / `<desc>`.
  * Colors use semantic Tailwind tokens (never direct color literals).
  * Uses a proper viewBox — no `preserveAspectRatio="none"`.
+ *
+ * Wrapped in React.memo: all inputs are stable primitives/arrays derived from
+ * useMemo in ShiftTimelineTab, so setActiveShift calls (popover open/close) do
+ * not re-run the O(H) SVG path computations unnecessarily.
  */
-export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps) {
+export const CoverageChart = memo(function CoverageChart({ hours, view, height = 120 }: CoverageChartProps) {
   if (hours.length === 0) return null;
 
   const hasDemand = hours.some((h) => h.needed !== null);
@@ -536,4 +547,4 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
       <Legend hasDemand={hasDemand} view={view} />
     </div>
   );
-}
+});

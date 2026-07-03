@@ -784,3 +784,73 @@ COMMENT ON FUNCTION apply_rules_to_bank_transactions(uuid, integer) IS
   'Enforces membership then delegates to apply_rules_to_bank_transactions_internal. '
   'DEFAULT 100 is the safe interactive batch size; background callers should '
   'call the internal function directly with a larger limit.';
+
+-- ============================================================
+-- §6  Dynamic gate rewrite of the four sync functions
+--
+--     Each of the four POS sync functions (sync_toast_to_unified_sales × 2,
+--     _sync_focus_to_unified_sales_impl, _sync_focus_transactions_to_unified_sales_impl)
+--     contains an auth.uid() guard that skips batch categorization when called from a
+--     background / service-role context:
+--
+--       IF auth.uid() IS NOT NULL THEN
+--         PERFORM apply_rules_to_pos_sales(p_restaurant_id, 10000);
+--       ELSE
+--         RAISE LOG '... skipping batch categorization ...';
+--       END IF;
+--
+--     This DO-block reads each live function body via pg_get_functiondef, uses
+--     regexp_replace to swap that block for an unconditional call to the new
+--     internal engine, then EXECUTEs the resulting CREATE OR REPLACE statement.
+--
+--     Idempotent: if a function already contains 'apply_rules_to_pos_sales_internal'
+--     it was already patched — skip it safely.
+--     Drift guard: if the gate pattern is not found and the function is not already
+--     patched, RAISE EXCEPTION aborts the migration (prevents silent no-op).
+--
+--     NOTE: the regex does NOT match the authorization header
+--     "IF auth.uid() IS NOT NULL AND NOT EXISTS ..." because the pattern requires
+--     "IS NOT NULL THEN" immediately followed (via \s*) by "PERFORM apply_rules_to_pos_sales",
+--     while the authorization header has "AND NOT EXISTS" in between.
+-- ============================================================
+DO $$
+DECLARE
+  v_fn  regprocedure;
+  v_src text;
+  v_new text;
+BEGIN
+  FOR v_fn IN
+    SELECT p.oid::regprocedure
+    FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN ('sync_toast_to_unified_sales',
+                        '_sync_focus_to_unified_sales_impl',
+                        '_sync_focus_transactions_to_unified_sales_impl')
+  LOOP
+    v_src := pg_get_functiondef(v_fn);
+
+    -- Idempotency: already patched in a previous run — skip.
+    IF v_src LIKE '%apply_rules_to_pos_sales_internal%' THEN
+      RAISE LOG 'gate rewrite: % already patched — skipping', v_fn;
+      CONTINUE;
+    END IF;
+
+    -- Replace the auth-gated block with an unconditional internal call.
+    v_new := regexp_replace(
+      v_src,
+      'IF auth\.uid\(\) IS NOT NULL THEN\s*PERFORM apply_rules_to_pos_sales\(p_restaurant_id, 10000\);\s*ELSE\s*RAISE LOG\s*[^;]+;\s*END IF;',
+      'PERFORM apply_rules_to_pos_sales_internal(p_restaurant_id, 10000);'
+    );
+
+    -- Drift guard: pattern not found → the body has changed in a way we did not anticipate.
+    IF v_new = v_src THEN
+      RAISE EXCEPTION
+        'gate rewrite: categorization gate not found in % — migration aborted (body drifted?)',
+        v_fn;
+    END IF;
+
+    EXECUTE v_new;
+    RAISE LOG 'gate rewrite: patched %', v_fn;
+  END LOOP;
+END;
+$$;

@@ -319,8 +319,45 @@ Phase 4–9: dev-build-and-ship workflow — launched
           3. Input backgrounds: changed all `bg-background` → `bg-muted/30` per CLAUDE.md form-element spec
         typecheck clean post-fix. All prior tests unaffected.
 
+  - [x] Phase 6 (Simplify): commit ffc740c1
+        Files: src/components/banking/EnhancedCategoryRulesDialog.tsx
+               supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql
+        Changes applied:
+          1. Hoisted GENERIC_BANK_TERMS array to module scope (was duplicated in handleCreateRule body AND JSX IIFE)
+          2. Removed unused RULE_NAME_MAX_LENGTH constant (defined but never referenced)
+          3. Replaced supplier help-text IIFE with a plain ternary expression
+          4. Simplified generic-pattern alert IIFE: early-return guard replaces nested if/return null
+          5. Simplified matches_bank_transaction_rule v_supplier_id: verbose CASE…IS NOT NULL…ELSE NULL
+             replaced with direct ::UUID cast (JSON extraction returns NULL for absent keys)
+        Skipped: auto_apply_bank_categorization_rules extra round-trip to categorization_rules for
+          auto_apply — changing it would require altering find_matching_rules_for_bank_transaction
+          to return auto_apply, which is a behaviour-adjacent change beyond simplification scope.
+        Tests: 6/6 pass; typecheck clean.
+
 ## CI Status
 - PR: not yet created
+
+## Phase 7a (Codex adversarial review) — COMPLETE
+
+## Phase 7b (Fold review findings) — COMPLETE
+Fixes applied:
+1. security major: `auto_apply_bank_categorization_rules` SECURITY DEFINER now has SET search_path = public
+2. sound-logic major + codex major: split-path UPDATE in `apply_rules_to_bank_transactions_internal` now assigns supplier_id via COALESCE
+3. maintainability major: stale "RED now" comments removed from test file
+4. sound-logic minor: `handleSaveEdit` now mirrors the same generic-pattern and short-pattern guards as `handleCreateRule`
+5. sound-logic minor: empty-description alert message no longer suggests "supplier" as a specificity criterion
+6. performance major: `apply_rules_to_bank_transactions_internal` gains `p_skip_rebuild BOOLEAN DEFAULT FALSE`; §7 backfill passes `true` and calls `rebuild_account_balances` once per restaurant after loop
+Tests: 1530/1530 pgTAP pass; 5284/5284 unit pass; typecheck clean.
+
+## Phase 7a (Codex adversarial review) — COMPLETE
+- Script: dev-tools/codex-adversarial-review.sh main
+- Output: dev-tools/codex-review-output.md
+- Finding: severity=major file=supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql line=688
+  Split-rule branch of apply_rules_to_bank_transactions_internal omits supplier_id from its UPDATE
+  (line 687-689: only sets is_split=true, is_categorized=true, category_id=NULL).
+  The non-split branch correctly assigns supplier_id via COALESCE at line 713.
+  Impact: bank transactions matched by a split rule with a supplier are categorized/split correctly
+  but supplier_id stays NULL — violates the assign-not-filter semantics introduced in §5.
 
 ## Blockers
 - none

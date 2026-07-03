@@ -225,6 +225,7 @@ CREATE OR REPLACE FUNCTION auto_apply_bank_categorization_rules()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_matching_rule RECORD;
@@ -468,9 +469,16 @@ COMMENT ON FUNCTION apply_rules_to_pos_sales(uuid, integer) IS
 
 -- Internal engine: no auth check. NOT exposed to clients (EXECUTE revoked below).
 -- Called by service-role edge functions, cron backfill, and migration backfill.
+-- p_skip_rebuild: when TRUE, skips rebuild_account_balances after the batch.
+--   Pass TRUE from the migration backfill DO-block which drains each restaurant
+--   in up to 50 rounds — calling rebuild after every round would multiply
+--   aggregate scans by 50x and risk migration timeouts.
+--   Regular callers (stripe-sync, interactive public wrapper) leave this FALSE
+--   so balances are always refreshed after applying a batch.
 CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions_internal(
   p_restaurant_id UUID,
-  p_batch_limit   INTEGER DEFAULT 100
+  p_batch_limit   INTEGER DEFAULT 100,
+  p_skip_rebuild  BOOLEAN DEFAULT FALSE
 )
 RETURNS TABLE (
   applied_count INTEGER,
@@ -685,7 +693,14 @@ BEGIN
         END IF;
 
         UPDATE bank_transactions
-        SET is_split = true, is_categorized = true, category_id = NULL, updated_at = now()
+        SET
+          is_split       = true,
+          is_categorized = true,
+          category_id    = NULL,
+          -- Supplier assignment on split path: same assign-not-filter semantics as non-split.
+          -- Transaction's own supplier wins; rule supplier assigned when transaction has none.
+          supplier_id    = COALESCE(v_transaction.supplier_id, v_transaction.rule_supplier_id, supplier_id),
+          updated_at     = now()
         WHERE id = v_transaction.id;
       ELSE
         -- Non-split journal lines
@@ -724,7 +739,7 @@ BEGIN
     END;
   END LOOP;
 
-  IF v_applied_count > 0 THEN
+  IF v_applied_count > 0 AND NOT p_skip_rebuild THEN
     PERFORM rebuild_account_balances(p_restaurant_id);
   END IF;
 
@@ -732,18 +747,20 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer) IS
+COMMENT ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer, boolean) IS
   'Auth-free internal bank rule engine. No permission check — restricted to service_role via REVOKE/GRANT. '
   'Called by service-role edge functions (stripe-sync-transactions), cron backfill, and migration backfill. '
   'Supplier assignment: COALESCE(txn.supplier_id, rule.supplier_id, db_value) — txn wins, then rule assigns, '
   'then preserves existing value. The public wrapper apply_rules_to_bank_transactions enforces '
   'owner/manager membership for interactive calls. '
-  'DEFAULT 100 is the safe interactive batch size; background callers pass larger limits (e.g. 1000).';
+  'DEFAULT 100 is the safe interactive batch size; background callers pass larger limits (e.g. 1000). '
+  'p_skip_rebuild=TRUE skips rebuild_account_balances — use from the migration backfill DO-block '
+  'which calls this function up to 50x per restaurant; callers that need fresh balances leave it FALSE.';
 
 -- Prevent PostgREST / client exposure: clients must go through the public wrapper.
-REVOKE EXECUTE ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer) FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer, boolean) FROM PUBLIC, anon, authenticated;
 -- Service-role callers (edge functions, cron, migration backfill) retain EXECUTE.
-GRANT  EXECUTE ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer) TO service_role;
+GRANT  EXECUTE ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer, boolean) TO service_role;
 
 
 -- Public wrapper: unchanged signature and permission semantics for authenticated clients.
@@ -912,11 +929,19 @@ BEGIN
     BEGIN
       i := 0;
       LOOP
+        -- p_skip_rebuild=true: skip rebuild_account_balances on every batch round.
+        -- With up to 50 rounds per restaurant, calling rebuild each time would
+        -- multiply aggregate scans ~50x and risk migration timeouts. A single
+        -- rebuild after the loop converges is sufficient.
         SELECT applied_count INTO n
-        FROM apply_rules_to_bank_transactions_internal(r.restaurant_id, 1000);
+        FROM apply_rules_to_bank_transactions_internal(r.restaurant_id, 1000, true);
         i := i + 1;
         EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
       END LOOP;
+      -- Rebuild account balances once after the loop — all batches are done.
+      IF i > 0 THEN
+        PERFORM rebuild_account_balances(r.restaurant_id);
+      END IF;
       RAISE LOG 'categorization backfill (bank): restaurant % done in % rounds',
         r.restaurant_id, i;
     EXCEPTION WHEN OTHERS THEN

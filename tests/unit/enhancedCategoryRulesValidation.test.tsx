@@ -1,25 +1,23 @@
 /**
- * Task 7a (RED phase): component tests for EnhancedCategoryRulesDialog
- * validation/copy changes driven by the supplier-assign semantics design.
+ * Component tests for EnhancedCategoryRulesDialog validation/copy changes
+ * driven by the supplier-assign semantics design.
  *
- * Four behaviours tested (all against the DESIRED final state — some are RED now):
+ * Five behaviours tested:
  *
- * (i)  too-generic gate: "payment" + supplierId + no amount → toast.error fires
- *      RED now: current hasOtherSpecificity includes supplierId, so no error.
+ * (i)   too-generic gate: "payment" + supplierId + no amount → toast.error fires.
+ *       Amount range (not supplier) is the only valid specificity bypass.
  *
- * (ii) short-pattern guard: 2-char pattern + amountMin set → no toast.error
- *      RED now: current guard uses !supplierId (not !amountMin), so the short
- *      pattern fires even when amountMin is set.
+ * (ii)  short-pattern guard: 2-char pattern + amountMin set → no toast.error.
+ *       Guard: `descPattern.length < 3 && !amountMin && !amountMax`
  *
  * (iii) inline alert suppression: only a supplier set → the "matches everything"
  *       alert does NOT render (supplier-only rule is a valid filter rule).
- *       Already GREEN on current code — regression guard.
  *
  * (iv-a) supplier help text — assign mode: description present → sub-label says
- *        "tagged with this supplier".  RED now: sub-label doesn't exist yet.
+ *        "tagged with this supplier".
  *
  * (iv-b) supplier help text — filter mode: no description/amount → sub-label
- *        says "already linked to this supplier".  RED now: sub-label doesn't exist.
+ *        says "already linked to this supplier".
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -171,12 +169,9 @@ describe('EnhancedCategoryRulesDialog — submit-gate + inline-alert + supplier 
   /**
    * (i) too-generic gate: "payment" + supplier + no amount → toast.error fires.
    *
-   * After the fix, hasOtherSpecificity will NOT include supplierId.  So a rule
-   * with a generic description and a supplier (but no amount) should still be
-   * rejected.
-   *
-   * RED on current code: current hasOtherSpecificity = supplierId || …, so the
-   * error is suppressed when a supplier is set.
+   * Amount range (not supplier) is the only valid specificity bypass, because
+   * supplier on a bank rule is an assignment (not a filter).  A generic
+   * description + supplier with no amount must be rejected.
    */
   it('(i) rejects a too-generic pattern even when a supplier is set (no amount)', async () => {
     const user = userEvent.setup();
@@ -209,12 +204,8 @@ describe('EnhancedCategoryRulesDialog — submit-gate + inline-alert + supplier 
   /**
    * (ii) short-pattern guard: 2-char pattern + amountMin set → no toast.error.
    *
-   * After the fix, the short-pattern guard becomes
-   *   descPattern.length < 3 && !amountMin && !amountMax
-   * so an amount range exempts a short pattern.
-   *
-   * RED on current code: guard is `!supplierId`, so setting amountMin doesn't
-   * exempt the short pattern; toast.error fires.
+   * Guard: `descPattern.length < 3 && !amountMin && !amountMax`
+   * An amount range exempts a short pattern from the length check.
    */
   it('(ii) exempts a short pattern from the guard when amountMin is set', async () => {
     const user = userEvent.setup();
@@ -263,10 +254,8 @@ describe('EnhancedCategoryRulesDialog — submit-gate + inline-alert + supplier 
 
   /**
    * (iv-a) supplier help text — assign mode: when a description pattern is
-   * present, the sub-label below the supplier selector should say something
-   * about tagging the supplier on matching transactions.
-   *
-   * RED on current code: this sub-label does not exist yet.
+   * present, the sub-label below the supplier selector says something about
+   * tagging the supplier on matching transactions.
    */
   it('(iv-a) shows "tagged with this supplier" help text when description is present', async () => {
     const user = userEvent.setup();
@@ -285,10 +274,8 @@ describe('EnhancedCategoryRulesDialog — submit-gate + inline-alert + supplier 
 
   /**
    * (iv-b) supplier help text — filter mode: when no description/amount is
-   * set, the sub-label should say something about matching only transactions
-   * already linked to that supplier.
-   *
-   * RED on current code: this sub-label does not exist yet.
+   * set, the sub-label says something about matching only transactions already
+   * linked to that supplier.
    */
   it('(iv-b) shows "already linked to this supplier" help text when supplier-only', async () => {
     const user = userEvent.setup();

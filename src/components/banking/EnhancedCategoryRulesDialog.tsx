@@ -300,6 +300,22 @@ export const EnhancedCategoryRulesDialog = ({
       }
     }
 
+    // Mirror the same pattern-quality guards as handleCreateRule so edits cannot
+    // produce a rule that the create path would reject.
+    const descPatternEdit = formData.descriptionPattern?.trim().toLowerCase() || '';
+    if (descPatternEdit && GENERIC_BANK_TERMS.includes(descPatternEdit)) {
+      const hasAmountRange = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                             (formData.amountMax && parseFloat(formData.amountMax) > 0);
+      if (!hasAmountRange) {
+        toast.error(`"${formData.descriptionPattern}" is too generic. Add an amount range to make this rule more specific.`);
+        return;
+      }
+    }
+    if (descPatternEdit && descPatternEdit.length < 3 && !formData.amountMin && !formData.amountMax) {
+      toast.error("Description pattern is too short. Use at least 3 characters or add an amount range.");
+      return;
+    }
+
     await updateRule.mutateAsync({
       ruleId: editingRuleId,
       ruleName: formData.ruleName,
@@ -818,7 +834,7 @@ export const EnhancedCategoryRulesDialog = ({
                               <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                               <AlertDescription className="text-[12px] text-amber-700 dark:text-amber-300">
                                 {isEmpty
-                                  ? "Add a pattern, supplier, or amount range to target specific transactions."
+                                  ? "Add a description pattern or amount range to target specific transactions."
                                   : `"${formData.descriptionPattern}" is generic. Add more specificity.`
                                 }
                               </AlertDescription>

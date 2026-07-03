@@ -36,10 +36,10 @@
 -- Task 3 (tests j–l): apply_rules_to_bank_transactions_internal privilege trio + NULL-auth
 --   batch path with supplier assignment + journal entries + public wrapper enforcement.
 --   Written RED (§5 not yet implemented).
---   (j) privilege trio:
---       - authenticated cannot EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer)
---       - anon cannot EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer)
---       - service_role CAN EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer)
+--   (j) privilege trio (function has 3 params after review fixes — p_skip_rebuild added):
+--       - authenticated cannot EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer,boolean)
+--       - anon cannot EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer,boolean)
+--       - service_role CAN EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer,boolean)
 --   (k) NULL-auth batch path: with jwt.claims cleared (no auth context), seed an uncategorized
 --       bank_transactions row (description matches 'VENDOR-H', supplier-less) + an active
 --       auto_apply bank_transactions rule (description 'VENDOR-H' contains, with supplier_id=H).
@@ -643,26 +643,25 @@ SELECT throws_ok(
 SET LOCAL "request.jwt.claims" TO '';
 
 -- ============================================================
--- Tests (j): privilege trio for apply_rules_to_bank_transactions_internal(uuid,integer)
+-- Tests (j): privilege trio for apply_rules_to_bank_transactions_internal(uuid,integer,boolean)
 -- ============================================================
--- RED: the function does not exist yet. has_function_privilege will raise (or return false)
--- for all three because the function is absent.
+-- §5 creates the function with 3 parameters (p_skip_rebuild added for backfill performance).
 -- After §5 lands:
 --   authenticated/anon = false (REVOKE EXECUTE)
 --   service_role       = true  (GRANT EXECUTE)
 
 SELECT ok(
-  NOT has_function_privilege('authenticated', 'apply_rules_to_bank_transactions_internal(uuid,integer)', 'EXECUTE'),
+  NOT has_function_privilege('authenticated', 'apply_rules_to_bank_transactions_internal(uuid,integer,boolean)', 'EXECUTE'),
   '(j) authenticated cannot EXECUTE apply_rules_to_bank_transactions_internal'
 );
 
 SELECT ok(
-  NOT has_function_privilege('anon', 'apply_rules_to_bank_transactions_internal(uuid,integer)', 'EXECUTE'),
+  NOT has_function_privilege('anon', 'apply_rules_to_bank_transactions_internal(uuid,integer,boolean)', 'EXECUTE'),
   '(j) anon cannot EXECUTE apply_rules_to_bank_transactions_internal'
 );
 
 SELECT ok(
-  has_function_privilege('service_role', 'apply_rules_to_bank_transactions_internal(uuid,integer)', 'EXECUTE'),
+  has_function_privilege('service_role', 'apply_rules_to_bank_transactions_internal(uuid,integer,boolean)', 'EXECUTE'),
   '(j) service_role can EXECUTE apply_rules_to_bank_transactions_internal'
 );
 

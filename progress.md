@@ -215,6 +215,18 @@ Phase 4–9: dev-build-and-ship workflow — launched
           (n) backfill convergence test (Task 5) — ok 27
         Note: local DB did not have the migration applied; applied via psql -f before running tests.
         No commit needed — verification only step.
+  - [x] Task 5e (plan Task 5 step 5, task 27/36): Commit Task 5 (backfill stuck uncategorized backlog in-migration) — commit 80e6e821
+        Commit already created in Task 5c phase.
+        Commit message: "fix(categorization): backfill stuck uncategorized backlog in-migration"
+        Files: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§7 appended, +65 lines)
+               supabase/tests/categorization_background_rules.test.sql (DO-block uncommented, RED→GREEN)
+        Migration §7 DO-block drains uncategorized backlogs per restaurant:
+          - POS loop: calls apply_rules_to_pos_sales_internal(restaurant_id, 5000), 50-round cap per restaurant
+          - Bank loop: calls apply_rules_to_bank_transactions_internal(restaurant_id, 1000), 50-round cap per restaurant
+          - Per-restaurant i counter reset ensures fair budget across all restaurants
+          - BEGIN/EXCEPTION per restaurant so one failure doesn't abort others
+          - No-op on empty/new databases (no matching categorization_rules)
+        All 1530/1530 pgTAP tests green; 27 tests in categorization_background_rules.test.sql (a–n all pass).
 
 ## CI Status
 - PR: not yet created

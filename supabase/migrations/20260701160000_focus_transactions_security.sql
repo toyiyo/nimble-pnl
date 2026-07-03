@@ -44,6 +44,7 @@ DECLARE
   v_order          record;
   v_order_id       text;
   v_current_ids    text[];
+  v_deleted_dates  date[];
 BEGIN
   -- Fetch the store_id from the most-recently-created active connection.
   -- Filtering by is_active prevents stale/deleted connections from being used.
@@ -72,21 +73,27 @@ BEGIN
   -- any focus_orders row in the date range (e.g. voided checks deleted by
   -- the sync handler). Must run before the per-check loop so the daily
   -- re-aggregation reflects the correct final state.
-  DELETE FROM public.unified_sales us
-  WHERE us.restaurant_id = p_restaurant_id
-    AND us.pos_system    = 'focus'
-    AND (p_start_date IS NULL OR us.sale_date >= p_start_date)
-    AND (p_end_date   IS NULL OR us.sale_date <= p_end_date)
-    AND NOT EXISTS (
-      SELECT 1
-      FROM public.focus_orders fo
-      WHERE fo.restaurant_id   = p_restaurant_id
-        AND fo.business_date   = us.sale_date
-        AND us.external_order_id =
-              'focus-' || COALESCE(v_store_id, 'unknown')
-              || '-' || to_char(fo.business_date, 'YYYYMMDD')
-              || '-' || fo.focus_check_id
-    );
+  -- RETURNING captures deleted sale_dates so re-aggregation below also
+  -- covers days where the only change was an orphan delete (Codex P1 fix).
+  WITH deleted AS (
+    DELETE FROM public.unified_sales us
+    WHERE us.restaurant_id = p_restaurant_id
+      AND us.pos_system    = 'focus'
+      AND (p_start_date IS NULL OR us.sale_date >= p_start_date)
+      AND (p_end_date   IS NULL OR us.sale_date <= p_end_date)
+      AND NOT EXISTS (
+        SELECT 1
+        FROM public.focus_orders fo
+        WHERE fo.restaurant_id   = p_restaurant_id
+          AND fo.business_date   = us.sale_date
+          AND us.external_order_id =
+                'focus-' || COALESCE(v_store_id, 'unknown')
+                || '-' || to_char(fo.business_date, 'YYYYMMDD')
+                || '-' || fo.focus_check_id
+      )
+    RETURNING sale_date
+  )
+  SELECT ARRAY(SELECT DISTINCT sale_date FROM deleted) INTO v_deleted_dates;
 
   -- ── Iterate per check (focus_order) ────────────────────────────────────
   FOR v_order IN
@@ -273,7 +280,10 @@ BEGIN
       'sync_focus_transactions_to_unified_sales: skipping batch categorization (service-role caller)';
   END IF;
 
-  -- Batch-aggregate daily totals for all dates touched in this sync
+  -- Batch-aggregate daily totals for all dates touched in this sync.
+  -- Union in v_deleted_dates so that days where the only change was an
+  -- orphan DELETE in Step 0 (no surviving row to carry a fresh synced_at)
+  -- are still re-aggregated and reflected in daily_sales / P&L.
   PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
   FROM (
     SELECT DISTINCT sale_date
@@ -281,6 +291,8 @@ BEGIN
     WHERE restaurant_id = p_restaurant_id
       AND pos_system    = 'focus'
       AND synced_at    >= v_sync_start
+    UNION
+    SELECT UNNEST(v_deleted_dates)
   ) d;
 
   RETURN v_count;

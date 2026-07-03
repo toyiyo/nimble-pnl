@@ -82,6 +82,23 @@ describe('summarizeAreaCoverage', () => {
   it('returns [] for no shifts', () => {
     expect(summarizeAreaCoverage([], employees, '2026-07-11', 'America/Chicago', win)).toEqual([]);
   });
+
+  it('omits areas that have employees but no shifts in the window (by-design: only shift-bearing areas shown)', () => {
+    // Design intent: summarizeAreaCoverage groups active shifts by area.
+    // An area with assigned employees but zero shifts has nothing to contribute
+    // to the per-area headcount strip, so it is excluded.
+    // Per-area zero-coverage rows for staffed-but-not-scheduled areas are a
+    // deferred enhancement (no per-area demand targets yet).
+    const res = summarizeAreaCoverage(
+      [shiftFor('s1', 'a', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')],
+      employees,
+      '2026-07-11',
+      'America/Chicago',
+      win,
+    );
+    expect(res.map((r) => r.area)).toContain('Cold Stone');
+    expect(res.map((r) => r.area)).not.toContain("Wetzel's");
+  });
 });
 
 describe('buildVerdict', () => {

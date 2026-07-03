@@ -39,3 +39,13 @@
   - `src/components/scheduling/ShiftTimeline/CoverageChart.tsx` — replaced fixed-viewBox SVG with per-hour absolutely-positioned HTML columns using `minToPct` scale; `AreaColumn` with bottom-anchored scheduled block + `data-shortfall` fill + dashed needed tick; `DeltaColumn` with `data-bar={short|covered|no-demand}` + `style.height` for proportional scaling; backward-compatible fallback `minToPct` for callers that don't yet pass it; `role="img"` + `aria-label` on container div.
 - TDD cycle: RED (2 new tests fail — `[data-hour-col]` returns 0 elements, `style.height` is NaN for SVG bars) → GREEN (11 tests pass) → typecheck clean → commit
 - Suites confirmed green: coverageSummary (13), coverageChart (11), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (16)
+
+### Task 2c — Add shadcn Tooltip shell to each HourColumn (TooltipProvider at root, tabIndex + aria-label on columns)
+- Status: DONE
+- Commit: d02ea41c
+- Files changed:
+  - `src/components/scheduling/ShiftTimeline/CoverageChart.tsx` — converted `AreaColumn` and `DeltaColumn` from plain function components to `forwardRef` components so Radix UI's `Slot` (used by `TooltipTrigger asChild`) can wire the ref correctly and silence the "Function components cannot be given refs" React warning; added `ref={ref}` to all three root div paths in `DeltaColumn` (no-demand, zero, and short/covered branches); imported `forwardRef` from react.
+  - `tests/unit/coverageChart.test.tsx` — added `beforeEach`/`afterEach` console.error spy; added `renders tooltip shell without React ref-forwarding warnings (area view)` and `renders tooltip shell without React ref-forwarding warnings (delta view)` tests to `CoverageChart — accessibility (tooltip shell)` describe block; imported `vi, beforeEach, afterEach` from vitest.
+- TDD cycle: RED (1 new test fails — `console.error` spy detects forwardRef warning) → GREEN (15 tests pass, no warnings) → typecheck clean → commit
+- Note: The `TooltipProvider`, `Tooltip`, `TooltipTrigger asChild`, `TooltipContent` shell was already placed in commit a8fc33ee; this task fixed the forwardRef regression that prevented correct Radix Slot wiring.
+- Suites confirmed green: coverageSummary (13), coverageChart (15), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (16)

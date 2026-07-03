@@ -3,14 +3,18 @@
  *
  * Sync dashboard for Focus POS. Reuses SyncComponents with FOCUS_CONFIG.
  *
- * Design doc §10 + F5 (FOCUS_CONFIG.recentWindowLabel = 'last 2 business days'),
- * F7 (early-return not-connected guard).
+ * Design doc §8.5 / Frontend critical #2 + §5.5:
+ * - handleSync makes ONE call (no loop). recent/initial → triggerManualSync(restaurantId);
+ *   custom → triggerManualSync(restaurantId, { startDate, endDate }) (yyyy-MM-dd).
+ * - Background toast shown ("running in the background") — not "Sync complete".
+ * - Dead progress state removed: syncProgress, totalDaysSynced, syncResult gone.
+ * - SyncProgressDisplay and SyncResults removed — live progress via InitialSyncPendingAlert.
  *
  * Differences from ToastSync:
  * - No nextPage (one-day-per-call: backfill increments cursor, incremental covers 2 days)
  * - Uses useFocusConnection instead of useToastConnection
  * - Uses FOCUS_CONFIG (syncInterval:'6 hours', recentWindowLabel:'last 2 business days')
- * - InitialSyncPendingAlert receives syncCursor for backfill progress display
+ * - InitialSyncPendingAlert receives syncCursor for passive backfill progress display
  */
 
 import { useState } from 'react';
@@ -26,8 +30,6 @@ import {
   LastErrorAlert,
   SyncModeSelector,
   SyncButton,
-  SyncProgressDisplay,
-  SyncResults,
   HowSyncingWorksInfo,
   FOCUS_CONFIG,
   type SyncMode,
@@ -37,18 +39,8 @@ interface FocusSyncProps {
   restaurantId: string;
 }
 
-interface SyncResult {
-  daysSynced: number;
-  errors: string[];
-  syncComplete: boolean;
-  progress: number;
-}
-
 export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
   const [isLoading, setIsLoading] = useState(false);
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
-  const [totalDaysSynced, setTotalDaysSynced] = useState(0);
-  const [syncProgress, setSyncProgress] = useState(0);
   const [syncMode, setSyncMode] = useState<SyncMode>('recent');
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const { toast } = useToast();
@@ -105,6 +97,7 @@ export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
     );
   }
 
+  // Design §8.5 / Frontend critical #2: one call, background toast, no progress loop.
   async function handleSync(): Promise<void> {
     if (syncMode === 'custom' && (!dateRange?.from || !dateRange?.to)) {
       toast({
@@ -116,59 +109,30 @@ export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
     }
 
     setIsLoading(true);
-    setSyncResult(null);
-    setTotalDaysSynced(0);
-    setSyncProgress(0);
-
-    const allErrors: string[] = [];
-    let totalDays = 0;
 
     try {
-      // Focus sync is one-day-per-call (no nextPage pagination).
-      // For custom date range, we call triggerManualSync once and let the edge function
-      // handle the date range. For recent/initial, we call once per click.
-      const data = await triggerManualSync(restaurantId);
-
-      if (data) {
-        // The edge function returns { syncCursor, initialSyncDone, status }
-        // We treat each call as 1 day synced for progress feedback.
-        totalDays = 1;
-        setTotalDaysSynced(totalDays);
-        setSyncProgress(100);
-
-        if (data.status === 'error') {
-          allErrors.push('Sync reported an error — check connection status for details');
-        }
+      if (syncMode === 'custom' && dateRange?.from && dateRange?.to) {
+        // Custom range: pass dates as yyyy-MM-dd — the edge function processes synchronously.
+        await triggerManualSync(restaurantId, {
+          startDate: format(dateRange.from, 'yyyy-MM-dd'),
+          endDate: format(dateRange.to, 'yyyy-MM-dd'),
+        });
+      } else {
+        // Recent / initial backfill: one kick; the 5-min cron finishes the rest.
+        await triggerManualSync(restaurantId);
       }
 
-      setSyncResult({
-        daysSynced: totalDays,
-        errors: allErrors,
-        syncComplete: true,
-        progress: 100,
+      toast({
+        title: syncMode === 'custom' ? 'Sync complete' : 'Import started',
+        description:
+          syncMode === 'custom'
+            ? 'Custom range sync complete.'
+            : 'Running in the background. You can leave this page; it keeps going.',
       });
-
-      const description =
-        syncMode === 'custom' && dateRange
-          ? `Synced for ${format(dateRange.from, 'MMM d')} - ${format(dateRange.to, 'MMM d, yyyy')}`
-          : 'Sync triggered successfully';
-
-      toast({ title: 'Sync complete', description });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Sync failed';
       toast({ title: 'Sync failed', description: errorMessage, variant: 'destructive' });
       console.error('Focus sync error:', error);
-
-      // Use local `totalDays` (not the React state `totalDaysSynced`) because the
-      // state setter is async — the closure captures the value at render time (0).
-      if (totalDays > 0) {
-        setSyncResult({
-          daysSynced: totalDays,
-          errors: [errorMessage],
-          syncComplete: false,
-          progress: 100,
-        });
-      }
     } finally {
       setIsLoading(false);
     }
@@ -190,7 +154,9 @@ export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
       <CardContent className="space-y-6">
         <ConnectionStatus lastSyncTime={lastSyncTime} config={FOCUS_CONFIG} />
 
-        {/* Backfill progress: pass syncCursor so InitialSyncPendingAlert shows "N of 90 days" */}
+        {/* Passive backfill progress — polls via refetchInterval in useFocusConnection.
+            No explicit progress bar here: InitialSyncPendingAlert shows "N of 90 days"
+            and updates itself as the connection row changes. */}
         {!connection.initial_sync_done && (
           <InitialSyncPendingAlert
             syncCursor={connection.sync_cursor}
@@ -219,23 +185,6 @@ export function FocusSync({ restaurantId }: FocusSyncProps): JSX.Element {
           onSync={handleSync}
           config={FOCUS_CONFIG}
         />
-
-        {isLoading && (
-          <SyncProgressDisplay
-            progress={syncProgress}
-            itemsSynced={totalDaysSynced}
-            initialSyncDone={connection.initial_sync_done}
-            config={FOCUS_CONFIG}
-          />
-        )}
-
-        {syncResult && (
-          <SyncResults
-            itemsSynced={syncResult.daysSynced}
-            errors={syncResult.errors}
-            config={FOCUS_CONFIG}
-          />
-        )}
 
         <HowSyncingWorksInfo config={FOCUS_CONFIG} />
       </CardContent>

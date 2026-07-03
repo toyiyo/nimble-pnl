@@ -1,12 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * focusBulkSyncHandler.test.ts
  *
  * Vitest unit tests for supabase/functions/_shared/focusBulkSyncHandler.ts
  *
  * Coverage:
- *  - Auth: 401 when Authorization header is missing
- *  - Auth: 401 when Authorization header does not match the service-role key
- *  - Auth: timing-safe compare (not short-circuit; confirmed by constant-time gate)
+ *  - Gate-less: processes with no Authorization header (matches toast/shift4)
  *  - Processing: queries active connections ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
  *  - Processing: processes each connection via processReportDay (backfill or incremental)
  *  - Processing: respects 2s inter-restaurant delay (injectable deps.sleep)
@@ -18,8 +17,8 @@
  *  - At most 5 connections processed per run (LIMIT 5)
  *
  * Design ref: plan Task 10; spec §8 (focus-bulk-sync), §9 (sync orchestration);
- * review S5 (LIMIT 5, round-robin), design §8 ("timing-safe Bearer gate", "2s delay",
- * "90s wall-clock budget").
+ * review S5 (LIMIT 5, round-robin), design §8 ("2s delay", "90s wall-clock budget").
+ * Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -42,6 +41,26 @@ vi.mock('../../supabase/functions/_shared/encryption', () => ({
     encrypt: vi.fn().mockResolvedValue('encrypted-pw'),
     decrypt: vi.fn().mockResolvedValue('test-pass'),
   }),
+}));
+
+// ── Mock Lynk transaction handler (B5: bulk-sync skip guard) ────────────────
+// processDayTransactions is called by the Lynk path in processConnection.
+// Mocked so tests can assert call counts without network.
+// vi.mock factories are hoisted, so we cannot reference outer const here —
+// use vi.fn() inline and retrieve via vi.mocked() in tests.
+
+vi.mock('../../supabase/functions/_shared/focusTransactionSyncHandler', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../../supabase/functions/_shared/focusTransactionSyncHandler')>();
+  return {
+    ...original,
+    processDayTransactions: vi.fn().mockResolvedValue({ status: 'ok' }),
+  };
+});
+
+// ── Mock Lynk client (focusApiBaseUrl + fetchDatafeed) ───────────────────────
+vi.mock('../../supabase/functions/_shared/focusLynkClient', () => ({
+  focusApiBaseUrl: vi.fn().mockReturnValue('https://api.focuspos.com'),
+  fetchDatafeed: vi.fn().mockResolvedValue({ status: 'ok' }),
 }));
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -77,6 +96,38 @@ const MOCK_CONN_BACKFILL = {
   initial_sync_done: false,
   sync_cursor: 5,
   last_sync_time: null,
+};
+
+/** A Lynk API row that is still backfilling (initial_sync_done=false, api_key set). */
+const MOCK_LYNK_BACKFILLING = {
+  id: 'conn-lynk-backfill',
+  restaurant_id: RESTAURANT_ID_2,
+  report_base_url: null,
+  report_path: null,
+  db_server: null,
+  db_catalog: null,
+  report_user_id: null,
+  store_id: 'store-001',
+  revenue_center: '',
+  timezone: 'America/Chicago',
+  initial_sync_done: false,
+  sync_cursor: 10,
+  last_sync_time: null,
+  username: null,
+  password_encrypted: null,
+  api_key: 'lynk-api-key',
+  api_secret_encrypted: 'encrypted-secret-for-lynk',
+  environment: 'production',
+};
+
+/** A Lynk API row that has completed backfill (initial_sync_done=true, api_key set). */
+const MOCK_LYNK_INCREMENTAL = {
+  ...MOCK_LYNK_BACKFILLING,
+  id: 'conn-lynk-incremental',
+  restaurant_id: RESTAURANT_ID_1,
+  initial_sync_done: true,
+  sync_cursor: 90,
+  last_sync_time: '2026-07-01T00:00:00Z',
 };
 
 /** Minimal valid Revenue Center HTML — enough for the real parser to succeed. */
@@ -193,7 +244,6 @@ function makeDeps(opts: {
   fetchHtml?: string;
   sleepMs?: number;
   nowFn?: () => number;
-  serviceRoleKey?: string;
 } = {}): { deps: BulkSyncDeps; mocks: ReturnType<typeof makeServiceClientMock>['mocks']; sleepMock: ReturnType<typeof makeSleepMock>; fetchMock: ReturnType<typeof makeFetchMock> } {
   const { client: serviceClient, mocks } = makeServiceClientMock(opts.serviceClientOpts ?? {});
   const fetchMock = makeFetchMock(opts.fetchHtml ?? VALID_HTML);
@@ -205,7 +255,6 @@ function makeDeps(opts: {
       fetch: fetchMock,
       sleep: sleepMock,
       now: opts.nowFn ?? makeClock(Date.now()),
-      serviceRoleKey: opts.serviceRoleKey ?? SERVICE_ROLE_KEY,
     },
     mocks,
     sleepMock,
@@ -216,34 +265,18 @@ function makeDeps(opts: {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('handleBulkSync', () => {
-  // ── Bearer gate ──────────────────────────────────────────────────────────────
+  // ── Gate-less: processes with no Authorization header (matches toast/shift4) ──
 
-  it('returns 401 when Authorization header is absent', async () => {
-    const { deps } = makeDeps();
+  it('processes with NO Authorization header (no Bearer gate)', async () => {
+    const { deps } = makeDeps({ serviceClientOpts: { connections: [] } });
     const req = makeRequest({ authHeader: null });
     const res = await handleBulkSync(req, deps);
 
-    expect(res.status).toBe(401);
+    // No 401 — the worker runs and returns its normal 200 result shape.
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  it('returns 401 when the Authorization header does not match the service-role key', async () => {
-    const { deps } = makeDeps();
-    const req = makeRequest({ authHeader: 'Bearer WRONG-KEY' });
-    const res = await handleBulkSync(req, deps);
-
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  it('returns 401 for an entirely missing Bearer prefix (bare token)', async () => {
-    const { deps } = makeDeps();
-    const req = makeRequest({ authHeader: SERVICE_ROLE_KEY }); // no "Bearer " prefix
-    const res = await handleBulkSync(req, deps);
-
-    expect(res.status).toBe(401);
+    expect(body).toHaveProperty('processed');
+    expect(body).toHaveProperty('elapsedMs');
   });
 
   // ── Successful run with a single incremental connection ──────────────────────
@@ -456,7 +489,6 @@ describe('handleBulkSync', () => {
       fetch: fetchMock,
       sleep: sleepMock,
       now: makeClock(Date.now()),
-      serviceRoleKey: SERVICE_ROLE_KEY,
     };
 
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
@@ -549,5 +581,128 @@ describe('handleBulkSync', () => {
     const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
     // Cursor must stay at 5 (MOCK_CONN_BACKFILL.sync_cursor) — not incremented
     expect(updateArg.sync_cursor).toBe(MOCK_CONN_BACKFILL.sync_cursor);
+  });
+
+  // ── B5: focus-bulk-sync cedes Lynk backfill to focus-backfill-sync cron ──────
+  //
+  // The 6-h bulk-sync must NOT advance Lynk backfill rows (that's the 5-min
+  // focus-backfill-sync cron's job). The skip guard sits at the top of the
+  // isLynkPath block before any decrypt / datafeed fetch.
+
+  describe('B5 — bulk-sync cedes Lynk backfill', () => {
+    // Access the hoisted mock via vi.mocked so beforeEach can clear it.
+    let mockedProcessDayTransactions: ReturnType<typeof vi.fn>;
+
+    beforeEach(async () => {
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      mockedProcessDayTransactions = vi.mocked(txModule.processDayTransactions);
+      mockedProcessDayTransactions.mockClear();
+      // Ensure it resolves successfully for incremental tests
+      mockedProcessDayTransactions.mockResolvedValue({ status: 'ok' });
+    });
+
+    it('skips a backfilling Lynk row: no datafeed fetch AND no DB write (owned by focus-backfill-sync)', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // processDayTransactions must NOT have been called
+      expect(mockedProcessDayTransactions).not.toHaveBeenCalled();
+
+      // The row must NOT be written at all. Writing row.sync_cursor here could
+      // regress a newer cursor that focus-backfill-sync advanced between our read
+      // and this write, and would spuriously bump last_sync_time (CodeRabbit Major, 9d).
+      expect(mocks.updateMock).not.toHaveBeenCalled();
+    });
+
+    it('counts a skipped backfilling Lynk row as processed (no error)', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      const res = await handleBulkSync(req, deps);
+
+      const body = await res.json();
+      expect(body.processed).toBe(1);
+      expect(body.errors).toHaveLength(0);
+    });
+
+    it('still processes an incremental Lynk row (initial_sync_done=true): processDayTransactions IS called', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // Incremental path calls processDayTransactions twice (last 2 business days)
+      expect(mockedProcessDayTransactions).toHaveBeenCalledTimes(2);
+    });
+
+    it('still processes a portal backfilling row (no api_key): fetch IS called', async () => {
+      const { deps, fetchMock } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_CONN_BACKFILL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // Portal path calls fetch (for processReportDay)
+      expect(fetchMock).toHaveBeenCalled();
+      // processDayTransactions is NOT called for portal rows
+      expect(mockedProcessDayTransactions).not.toHaveBeenCalled();
+    });
+
+    it('persists connection_status="error" when Lynk incremental processDayTransactions fails (9d fix)', async () => {
+      // Make the incremental sync fail on both days
+      mockedProcessDayTransactions.mockResolvedValue({ status: 'error', error: 'Lynk API 503' });
+
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      // Best-effort error-state write fires asynchronously; wait for microtasks
+      await Promise.resolve();
+
+      // The best-effort update must write connection_status='error'
+      const updateCalls = mocks.updateMock.mock.calls as [Record<string, unknown>][];
+      const errorWrite = updateCalls.find(
+        ([payload]: [Record<string, unknown>]) => payload.connection_status === 'error',
+      );
+      expect(errorWrite).toBeDefined();
+      const errorPayload = errorWrite![0] as Record<string, unknown>;
+      expect(typeof errorPayload.last_error).toBe('string');
+    });
+
+    it('bumps last_sync_time on failed connections to prevent round-robin starvation (9d fix)', async () => {
+      // Make the incremental sync fail so the catch block runs
+      mockedProcessDayTransactions.mockResolvedValue({ status: 'error', error: 'Network error' });
+
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      const res = await handleBulkSync(req, deps);
+
+      // The sync counts as an error, not processed
+      const body = await res.json();
+      expect(body.processed).toBe(0);
+      expect(body.errors.length).toBeGreaterThan(0);
+
+      // last_sync_time bump fires asynchronously; wait for microtasks
+      await Promise.resolve();
+
+      // update must have been called at least once for the starvation-prevention bump
+      expect(mocks.updateMock).toHaveBeenCalled();
+      const updateCalls = mocks.updateMock.mock.calls as [Record<string, unknown>][];
+      const bumpCall = updateCalls.find(
+        ([payload]: [Record<string, unknown>]) =>
+          typeof payload.last_sync_time === 'string' &&
+          payload.connection_status === undefined,
+      );
+      expect(bumpCall).toBeDefined();
+    });
   });
 });

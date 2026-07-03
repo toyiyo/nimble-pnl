@@ -1,28 +1,28 @@
 /**
- * focus-bulk-sync/index.ts
+ * focus-backfill-sync/index.ts
  *
- * Edge function: cron-triggered round-robin sync of active Focus POS connections.
+ * Edge function: cron-triggered durable backfill engine for Focus POS Lynk connections.
  *
  * This thin entry point reads Deno environment variables, builds the injectable
- * deps (service-role client, fetch, sleep, now), and delegates all business
- * logic to focusBulkSyncHandler.ts.
+ * deps (service-role client, sleep, now), and delegates all business logic to
+ * focusBackfillSyncHandler.ts.
  *
- * Auth model: verify_jwt = false, and NO in-function Bearer gate — mirrors
- * toast-bulk-sync / shift4-bulk-sync. Pull-only, idempotent upserts; the pg_cron
- * job invokes it with no Authorization header. The service-role key is still read
- * from the environment for the internal DB client only.
+ * Auth model: verify_jwt = false, and NO in-function Bearer gate — this cron
+ * worker mirrors toast-bulk-sync / shift4-bulk-sync. It only pulls the
+ * restaurant's own Focus data via idempotent upserts, so the pg_cron job can
+ * invoke it with no Authorization header (removing the legacy service-role-key
+ * dependency Supabase now discourages). The service-role key is still read from
+ * the environment for the internal DB client only.
  *
- * Design ref: plan Task 10; spec §8 (focus-bulk-sync), §9 (sync orchestration);
- * review S5 (LIMIT 5, round-robin).
+ * Schedule: every 5 minutes — "* /5 * * * *" (idiomatic for fast backfill).
+ * No-op when no connections have initial_sync_done=false AND api_key IS NOT NULL.
+ *
+ * Design ref: plan B4; spec §5.3 (focus-backfill-sync).
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { handleBulkSync } from '../_shared/focusBulkSyncHandler.ts';
-import { makeFocusHttpFetch } from '../_shared/focusHttpFetch.ts';
-// Deno server runtime does NOT have globalThis.DOMParser (browser-only API).
-// Import deno_dom so we can pass a working DOMParser to parseRevenueCenterReport.
-import { DOMParser } from 'https://deno.land/x/deno_dom@v0.1.43/deno-dom-wasm.ts';
+import { handleBackfillSync } from '../_shared/focusBackfillSyncHandler.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -39,16 +39,23 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-    // Service-role client: used for all reads + writes (bypasses RLS per review S3).
+    // The internal DB client needs both vars; without them no work can happen.
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('focus-backfill-sync: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+      return new Response(JSON.stringify({ error: 'Internal server error' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Service-role client: used for all reads + writes (bypasses RLS).
     const serviceClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    const res = await handleBulkSync(req, {
+    const res = await handleBackfillSync(req, {
       serviceClient,
-      fetch: makeFocusHttpFetch(serviceClient),
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => Date.now(),
       sandboxBaseUrl: Deno.env.get('FOCUS_API_SANDBOX_URL') || undefined,
-      domParser: new DOMParser(),
     });
 
     // Attach CORS headers to the handler's response.
@@ -62,7 +69,7 @@ serve(async (req: Request) => {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    console.error('focus-bulk-sync: unexpected error:', message);
+    console.error('focus-backfill-sync: unexpected error:', message);
     return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

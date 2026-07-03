@@ -323,6 +323,24 @@ describe('TradeApprovalQueue — manager cleanup UI', () => {
       const bulkBtn = screen.getByRole('button', { name: /remove all expired/i });
       expect(bulkBtn.textContent).toMatch(/\d+/);
     });
+
+    // Regression (CodeRabbit #562): the bulk button must NOT vanish when stale
+    // pending trades exist alongside active-only (non-expired) open trades. The
+    // in-marketplace header button only renders when hasExpiredOpen; the
+    // standalone fallback must cover this hasOpenTrades && !hasExpiredOpen case.
+    it('shows the bulk button when a stale pending trade coexists with an active-only open trade', () => {
+      setup([ACTIVE_OPEN], [GHOST_PENDING]);
+      expect(
+        screen.getByRole('button', { name: /remove all expired/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does NOT show the bulk button when only active open trades and normal pending trades exist', () => {
+      setup([ACTIVE_OPEN], [NORMAL_PENDING]);
+      expect(
+        screen.queryByRole('button', { name: /remove all expired/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 
   describe('Confirm dialog', () => {

@@ -59,11 +59,15 @@ export const useDeleteShiftTrade = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: async ({ tradeId }: { tradeId: string }) => {
+    mutationFn: async ({ tradeId, restaurantId }: { tradeId: string; restaurantId: string }) => {
       const { error } = await supabase
         .from('shift_trades')
         .delete()
         .eq('id', tradeId)
+        // Explicit tenant filter — defense-in-depth alongside the manager
+        // DELETE RLS policy (which already scopes by restaurant_id). Guards
+        // against an RLS regression and self-documents intent.
+        .eq('restaurant_id', restaurantId)
         // Guard: never hard-delete an approved/rejected audit record, even
         // though the manager DELETE RLS policy technically permits it. If the
         // trade was approved between click and execute, this is a safe no-op.
@@ -132,9 +136,16 @@ read `Date.now()` inside), per the testability lesson.
   while still counting in the tab badge. The "Needs cleanup" Remove button uses
   visible text (`<Button size="sm">Remove</Button>`), no `aria-label` needed.
 - **Bulk action:** "Remove all expired (N)" button that removes every expired
-  open trade + stale pending after a single confirm. It fires `mutate()` N times
-  and relies on React Query's invalidation dedup (intentional; documented in a
-  code comment). The bulk button is disabled whenever `deletingIds.size > 0`.
+  open trade + stale pending after a single confirm. It uses
+  `await Promise.allSettled(ids.map(id => mutateAsync({ tradeId: id, restaurantId })))`
+  (not fire-and-forget `mutate()`), so each per-ID `.finally()` clears that ID's
+  spinner independently and the handler can await the whole batch. `allSettled`
+  (not `all`) so one failed delete does not abort the rest. The bulk button is
+  disabled whenever `deletingIds.size > 0`, and it must remain visible whenever
+  stale work exists — the in-marketplace header button renders only when there
+  are expired *open* trades, so a standalone fallback covers the
+  `hasOpenTrades && !hasExpiredOpen` case (stale pending alongside active-only
+  open trades) as well as the no-open-trades case.
 - **Concurrency (frontend review, major):** track in-flight deletions with
   `useState<Set<string>>` — add on start, remove in **`onSettled`** (NOT
   `onSuccess`, so a failed delete still clears the spinner). Per-row spinner uses
@@ -180,6 +191,12 @@ trade email shows the shift in UTC instead of the restaurant's local time.
    `const restaurantTimezone = trade.restaurant?.timezone || 'America/Chicago'`
    (matches the `restaurants.timezone` column default and the Clover/Shift4 sync
    fallback), and pass it: `formatDateTime(shift.start_time, restaurantTimezone)`.
+3. **Harden against invalid IANA values:** `toLocaleString({ timeZone })` throws
+   `RangeError` on a malformed/empty/legacy timezone string, which would crash
+   the whole email send. `formatDateTime` probes the timezone once
+   (`new Intl.DateTimeFormat('en-US', { timeZone })` in a try/catch) and falls
+   back to `'UTC'` on failure, so a bad stored value degrades gracefully instead
+   of throwing.
 
 **Out of scope (follow-up):** `send-shift-notification/index.ts` uses the same
 shared `formatDateTime` without a `timeZone` and has the identical latent bug.

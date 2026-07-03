@@ -557,12 +557,17 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
         </Card>
       </Collapsible>
 
-      {/* Bulk "Remove all expired" button — also shown outside marketplace section when
-          only stale pending trades exist (no open trades) */}
-      {!hasOpenTrades && hasAnyStale && (
+      {/* Bulk "Remove all expired" fallback — shown whenever there is stale work
+          that the in-marketplace Expired header button does NOT already cover.
+          That header button only renders when `hasExpiredOpen`, so this fallback
+          handles every other case: stale pending trades alongside active-only
+          open trades (hasOpenTrades but !hasExpiredOpen), or no open trades at
+          all. The two placements are mutually exclusive on `hasExpiredOpen`, so
+          the bulk action never vanishes while stale work exists. */}
+      {!hasExpiredOpen && hasAnyStale && (
         <div className="flex justify-end">
           <Button
-            ref={!hasExpiredOpen ? bulkRemoveBtnRef : undefined}
+            ref={bulkRemoveBtnRef}
             size="sm"
             variant="outline"
             className="h-7 text-[12px] border-destructive/40 text-destructive hover:bg-destructive/10"

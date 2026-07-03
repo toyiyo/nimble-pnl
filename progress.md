@@ -5,7 +5,7 @@
 - Plan:   docs/superpowers/plans/2026-07-02-invoice-pack-quantity.md
 
 ## Current Phase
-Phase 4-9: dev-build-and-ship workflow — task 6 complete, task 7 ready
+Phase 4-9: dev-build-and-ship workflow — task 7 complete, Phase 4 done
 
 ## Completed
 - [x] Phase 0 lessons, Phase 1 worktree (feature/invoice-pack-quantity)
@@ -19,6 +19,7 @@ Phase 4-9: dev-build-and-ship workflow — task 6 complete, task 7 ready
 - [x] Task 4: AI extraction — ParsedLineItem fields, prompt examples, DB insert mapping (committed ef9e7a7b — 12 vitest tests all green, typecheck clean)
 - [x] Task 5: Frontend interface + generated types — pack_quantity on ReceiptLineItem, src/integrations/supabase/types.ts, src/types/supabase.ts (committed b7e46fe8 — 8 vitest tests all green, typecheck clean, package_qty NOT written confirmed)
 - [x] Task 6: Receipt review UI: pack summary line + inner-unit package-definition copy (committed de7174d8 — 15 vitest tests all green, typecheck clean, no raw green-* classes in edited block)
+- [x] Task 7: Full verification — typecheck PASS, 35 feature tests pass (5102 total), pgTAP 48_receipt_pack_quantity all 5 pass, build PASS (committed — see below)
 
 ## Preflight Results (2026-07-02)
 - gh: authenticated as jdelgado2002 ✓
@@ -36,6 +37,14 @@ Phase 4-9: dev-build-and-ship workflow — task 6 complete, task 7 ready
 - DO NOT write products.package_qty (calculate_recipe_cost multiplies size_value × package_qty → would corrupt P&L)
 - Store pack on receipt_line_items.pack_quantity (audit/UI only)
 - Idempotency + current_stock race: pre-existing, out of scope
+
+## Verification Results (task 7, Phase 4 complete)
+- typecheck: PASS
+- lint: PASS (pre-existing `any` errors unrelated to this feature; none introduced)
+- vitest: 5102 tests pass; 4 fail (fast-xml-parser missing — Focus POS feature, pre-existing, unrelated)
+- Feature vitest: 35/35 pass (receiptImportUtils, receiptLineItemPackQuantity, ReceiptItemRow.packSummary)
+- pgTAP 48_receipt_pack_quantity: 5/5 pass
+- build: PASS (production build succeeds)
 
 ## CI Status
 - PR: not yet created

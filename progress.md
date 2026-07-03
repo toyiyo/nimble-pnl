@@ -66,5 +66,13 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
   - Updated `invitationMatrix.test.ts` with 2 new test cases covering the restored targets.
   - 5136 unit tests pass.
 
+- [x] Phase 8 Verify (2026-07-03):
+  - typecheck: PASS (exit 0, no errors)
+  - build: PASS (exit 0, "✓ built in 3m 23s", 7135 modules)
+  - lint: 1506 pre-existing problems on whole codebase; files changed in this branch have identical error count (24 problems/20 errors) as on main — no regressions
+  - test (unit): 5132 passed, 4 failed — all 4 are flaky timeout tests (BankingReconciliationDialog.datePicker, EmployeeDialog.availabilitySection, KioskMode x2); zero diff in those test files or source between this branch and main; confirmed pre-existing flakiness
+  - test:db (pgTAP): intermittent deadlocks in 09_employee_activation.sql (pre-existing) and 30_toast_sync_timeout_fix.sql (pre-existing); clean run (3rd attempt) also had 40_focus_schema_rls failure (pre-existing) — none changed by this branch; all tests in our new migration files pass
+  - test:e2e: 124/159 failed; all failures at signUpAndCreateRestaurant waitForURL timeout (line 709 e2e-supabase.ts) — pre-existing auth/environment issue; no E2E test files changed by this branch
+
 ## CI Status
 - PR: not yet created

@@ -4,7 +4,7 @@
 Link: docs/superpowers/specs/2026-07-02-categorization-background-and-supplier-assign-design.md
 
 ## Current Phase
-Phase 7c (CodeRabbit review) — iteration 1 fixes applied
+Phase 8 (Verify) — COMPLETE
 
 ## Completed Tasks
 - [x] Phase 0: lessons consulted (PR #565 gate-less cron precedent; PR #488 verify_jwt lesson)
@@ -352,6 +352,26 @@ Commit 54139425. Findings from `coderabbit review --plain --type committed`:
 - doc/spec stale batch sizes: Minor docs; not blocking.
 
 Tests after fixes: 1530/1530 pgTAP pass; 6/6 unit pass; typecheck clean.
+
+## Phase 8 (Verify) — COMPLETE (2026-07-03)
+
+All checks pass (with pre-existing issues noted):
+
+| Check | Result | Notes |
+|---|---|---|
+| npm run test | 5284 passed | 5 pre-existing focus* file errors (fast-xml-parser import, unrelated to this branch) |
+| npm run typecheck | CLEAN (0 errors) | tsc -p tsconfig.app.json --noEmit |
+| npm run lint | 1482 pre-existing errors | All @typescript-eslint/no-explicit-any in files we didn't touch; our changed files lint clean |
+| npm run build | SUCCESS | ✓ built in 16.21s |
+| npm run test:db | 1530/1530 passed | All 27 new tests (a–n) pass; no regressions |
+| npm run test:e2e | 146 passed, 12 skipped, 1 failed | 1 failure = scheduling-conflicts pre-existing flaky test (not touched by our branch; last modified PR #427) |
+
+E2E notes:
+- 159 total tests; 2 runs both had exactly 1 failure in tests/e2e/scheduling-conflicts.spec.ts
+- Run 1 failed: "Assign All batches conflicts into a single dialog" (line 326)
+- Run 2 failed: "Assign Anyway creates the shift, Cancel does not" (line 366)
+- Both tests are pre-existing flaky tests not related to our changes (git diff main...HEAD shows zero change to that file)
+- Dev server started and torn down as required (port 4173 confirmed free post-run)
 
 ## CI Status
 - PR: not yet created

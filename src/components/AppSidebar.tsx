@@ -19,7 +19,6 @@ import {
 } from 'lucide-react';
 import { AppLogo } from '@/components/AppLogo';
 import {
-  navigationGroups,
   getNavigationForRole,
 } from '@/components/AppSidebar.nav';
 import type { NavGroup } from '@/components/AppSidebar.nav';

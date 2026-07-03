@@ -862,17 +862,22 @@ WITH CHECK (
 
 -- -------------------------------------------------------------------------
 -- user_restaurants UPDATE: prevent self-escalation to privileged roles.
--- The policy "Owners can manage restaurant associations" in 20250915213019
--- has WITH CHECK (user_id = auth.uid() OR is_restaurant_owner(...)).
--- The first branch allows any user to UPDATE their own row to any role.
--- This guard restricts UPDATE so that non-owners cannot promote themselves
--- (or others) to 'owner' or 'manager'.
+-- The policy "Owners can manage restaurant associations" (FOR ALL) allows
+-- users to UPDATE their own row to any role.  This restrictive UPDATE policy
+-- narrows that: non-owners can only update their OWN row, and the resulting
+-- role must not be 'owner' or 'manager'.  Using USING (row-targeting) that
+-- mirrors the FOR ALL policy prevents any user from reaching rows they do
+-- not own via this policy.  Restaurant owners are unrestricted.
 -- -------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Prevent self-escalation to privileged roles" ON public.user_restaurants;
 CREATE POLICY "Prevent self-escalation to privileged roles"
 ON public.user_restaurants
 FOR UPDATE
-USING (true)
+USING (
+  -- Only reach rows the caller owns OR rows in their owned restaurant
+  user_id = auth.uid()
+  OR public.is_restaurant_owner(restaurant_id, auth.uid())
+)
 WITH CHECK (
   -- Allow if the caller is an owner of this restaurant
   public.is_restaurant_owner(restaurant_id, auth.uid())
@@ -881,3 +886,40 @@ WITH CHECK (
   -- granting themselves manager/owner access)
   role NOT IN ('owner', 'manager')
 );
+
+-- -------------------------------------------------------------------------
+-- invitations RLS: widen SELECT and DELETE to include operations_manager.
+-- The send-team-invitation edge function already gates invitations via
+-- canInviteRole(), so ops managers can only invite 'staff'.  The RLS
+-- policies below let them see and cancel the invitations they create.
+-- -------------------------------------------------------------------------
+
+-- SELECT: replace existing "view invitations" policies to add operations_manager.
+DROP POLICY IF EXISTS "Restaurant owners and managers can view invitations" ON public.invitations;
+DROP POLICY IF EXISTS "Restaurant owners and managers can view invitations (no tokens)" ON public.invitations;
+
+CREATE POLICY "Restaurant owners and managers can view invitations (no tokens)"
+ON public.invitations
+FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = invitations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- DELETE/cancel: replace existing "manage invitations" policy to add operations_manager.
+DROP POLICY IF EXISTS "Restaurant owners and managers can manage invitations" ON public.invitations;
+
+CREATE POLICY "Restaurant owners and managers can manage invitations"
+ON public.invitations
+FOR ALL
+TO authenticated
+USING (EXISTS (
+  SELECT 1 FROM public.user_restaurants
+  WHERE restaurant_id = invitations.restaurant_id
+    AND user_id = auth.uid()
+    AND role IN ('owner', 'manager', 'operations_manager')
+));

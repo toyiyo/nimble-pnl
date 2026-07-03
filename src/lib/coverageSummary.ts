@@ -116,8 +116,8 @@ export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
 
   let worst: { hour: number; delta: number } | null = null;
   for (const h of shortHours) {
-    if (worst === null || (h.delta as number) < worst.delta) {
-      worst = { hour: h.hour, delta: h.delta as number };
+    if (worst === null || h.delta! < worst.delta) {
+      worst = { hour: h.hour, delta: h.delta! };
     }
   }
 

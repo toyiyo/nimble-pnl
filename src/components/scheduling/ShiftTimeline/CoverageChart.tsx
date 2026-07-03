@@ -183,20 +183,18 @@ interface DeltaViewProps {
   plotH: number;
   /** Headcount peak — scales the "no demand" scheduled bars proportionally. */
   peak: number;
+  /** Max absolute delta — passed from parent to avoid recomputing. */
+  deltaPeak: number;
   /** Total SVG height (px) — used to clamp label positions inside the viewBox. */
   svgHeight: number;
 }
 
-function DeltaView({ hours, plotW, plotH, peak, svgHeight }: DeltaViewProps) {
+function DeltaView({ hours, plotW, plotH, peak, deltaPeak, svgHeight }: DeltaViewProps) {
   if (hours.length === 0) return null;
 
   const xForIndex = (i: number) => MARGIN_LEFT + (i / hours.length) * plotW;
   const xEnd = MARGIN_LEFT + plotW;
   const barPad = 2; // gap between bars
-
-  // Scale bars by the maximum absolute delta so the tallest bar always fills
-  // half the plot height — regardless of the raw headcount peak.
-  const deltaPeak = Math.max(1, ...hours.map((h) => Math.abs(h.delta ?? 0)));
 
   // Delta range: from -deltaPeak to +deltaPeak (symmetric around 0)
   // Zero baseline in the middle of plotH
@@ -243,10 +241,9 @@ function DeltaView({ hours, plotW, plotH, peak, svgHeight }: DeltaViewProps) {
         }
 
         const isShort = h.delta < 0;
-        const isOver = h.delta > 0;
         // Exactly zero (demand met precisely) — render a subtle tick at baseline
         // so it's visually distinguishable from a no-bar slot.
-        if (!isShort && !isOver) {
+        if (h.delta === 0) {
           return (
             <g key={h.startMin}>
               <rect
@@ -530,6 +527,7 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
             plotW={plotW}
             plotH={plotH}
             peak={peak}
+            deltaPeak={deltaPeak}
             svgHeight={height}
           />
         )}

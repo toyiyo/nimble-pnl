@@ -47,6 +47,8 @@ export function CoverageStatusStrip({
 }: CoverageStatusStripProps) {
   if (hours.length === 0) return null;
 
+  // Compute each hour's label once — reused by the visual strip and sr-only list.
+  const labelByStartMin = new Map(hours.map((h) => [h.startMin, formatHour(h.hour)]));
   const shortHours = hours.filter((h) => h.delta !== null && h.delta < 0);
 
   return (
@@ -54,7 +56,7 @@ export function CoverageStatusStrip({
       {/* Visual strip of per-hour cells */}
       <div className="flex gap-[3px]" role="group" aria-label="Hourly coverage status">
         {hours.map((h) => {
-          const label = formatHour(h.hour);
+          const label = labelByStartMin.get(h.startMin)!;
           const ariaLabel = cellAriaLabel(h, label);
           const isShort = h.delta !== null && h.delta < 0;
           const hasDemand = h.delta !== null;
@@ -92,7 +94,7 @@ export function CoverageStatusStrip({
       {shortHours.length > 0 && (
         <ul aria-label="Understaffed windows" className="sr-only">
           {shortHours.map((h) => {
-            const label = formatHour(h.hour);
+            const label = labelByStartMin.get(h.startMin)!;
             const deficit = Math.abs(h.delta as number);
             return (
               <li key={h.startMin}>

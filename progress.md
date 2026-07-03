@@ -5,7 +5,7 @@
 - Plan:   docs/superpowers/plans/2026-07-02-invoice-pack-quantity.md
 
 ## Current Phase
-Phase 4-9: dev-build-and-ship workflow — task 5 complete, task 6 ready
+Phase 4-9: dev-build-and-ship workflow — task 6 complete, task 7 ready
 
 ## Completed
 - [x] Phase 0 lessons, Phase 1 worktree (feature/invoice-pack-quantity)
@@ -18,6 +18,7 @@ Phase 4-9: dev-build-and-ship workflow — task 5 complete, task 6 ready
 - [x] Task 3: Pure helpers parsePackSizeToken + computeImportedQuantity (committed 0d113d9e — 8 vitest tests all green)
 - [x] Task 4: AI extraction — ParsedLineItem fields, prompt examples, DB insert mapping (committed ef9e7a7b — 12 vitest tests all green, typecheck clean)
 - [x] Task 5: Frontend interface + generated types — pack_quantity on ReceiptLineItem, src/integrations/supabase/types.ts, src/types/supabase.ts (committed b7e46fe8 — 8 vitest tests all green, typecheck clean, package_qty NOT written confirmed)
+- [x] Task 6: Receipt review UI: pack summary line + inner-unit package-definition copy (committed de7174d8 — 15 vitest tests all green, typecheck clean, no raw green-* classes in edited block)
 
 ## Preflight Results (2026-07-02)
 - gh: authenticated as jdelgado2002 ✓

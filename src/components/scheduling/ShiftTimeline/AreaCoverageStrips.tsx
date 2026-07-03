@@ -72,7 +72,7 @@ export function AreaCoverageStrips({ areas }: AreaCoverageStripsProps) {
 
       {/* Footnote: per-area demand not yet available */}
       <p className="text-[11px] text-muted-foreground mt-1">
-        Demand targets are set for the whole location — per-brand targets coming soon.
+        Demand targets are set for the whole location — per-area targets coming soon.
       </p>
     </div>
   );

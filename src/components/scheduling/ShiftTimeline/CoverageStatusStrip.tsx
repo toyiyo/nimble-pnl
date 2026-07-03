@@ -52,7 +52,7 @@ export function CoverageStatusStrip({
   return (
     <div className="space-y-1">
       {/* Visual strip of per-hour cells */}
-      <div className="flex gap-0.5" role="group" aria-label="Hourly coverage status">
+      <div className="flex gap-[3px]" role="group" aria-label="Hourly coverage status">
         {hours.map((h) => {
           const label = formatHour(h.hour);
           const ariaLabel = cellAriaLabel(h, label);
@@ -79,8 +79,8 @@ export function CoverageStatusStrip({
                 cellColorClass,
               )}
             >
-              <span className="text-[10px] font-medium leading-none">{label}</span>
-              <span className="text-[10px] leading-none tabular-nums">
+              <span className="text-[9px] font-medium leading-none">{label}</span>
+              <span className="text-[11px] leading-none tabular-nums">
                 {hasDemand ? `${h.scheduled}/${h.needed!}` : `${h.scheduled}`}
               </span>
             </div>

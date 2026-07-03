@@ -1,9 +1,10 @@
-import { HelpCircle } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+
+import { HelpCircle } from 'lucide-react';
 
 /**
  * "How is 'needed' set?" explainer popover for the coverage panel header.

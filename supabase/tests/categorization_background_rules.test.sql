@@ -65,9 +65,25 @@
 --     m2: sync_toast_to_unified_sales(uuid, date, date)
 --     m3: _sync_focus_to_unified_sales_impl(uuid, date, date)
 --     m4: _sync_focus_transactions_to_unified_sales_impl(uuid, date, date)
+--
+-- Task 5 (test n): one-time backfill (migration §7) drains the POS backlog.
+--   Written RED (§7 not yet in migration, DO-block not yet in test body).
+--   pgTAP runs AFTER migrations, so the backfill has already executed on the test
+--   DB's data (empty on reset). A data assertion cannot test that directly. Instead:
+--   seed an uncategorized matching unified_sales row + an active auto_apply POS rule
+--   for Restaurant I, then run the backfill DO-block body inline (copy of the inner
+--   loop for one restaurant) and assert the row is is_categorized=true.
+--   RED failure: the assertion is present but the DO-block is absent — is_categorized
+--   stays false, so SELECT is(..., true, ...) fails.
+--   Fixtures:
+--     Restaurant I:    c1a00009-...-000000000901
+--     CoA I expense:   c1a00009-...-000000000906
+--     CoA I cash/1000: c1a00009-...-000000000907
+--     Rule I:          c1a00009-...-000000000900  (pos_sales, 'Delivery Fee' contains)
+--     Sale I:          c1a00009-...-000000000201  (item_name='Delivery Fee', is_categorized=false)
 
 BEGIN;
-SELECT plan(26);
+SELECT plan(27);
 
 -- ============================================================
 -- Setup
@@ -95,6 +111,7 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00000-...-000000000e01 = Restaurant E  (tests e, f)
 --   c1a00007-...-000000000701 = Restaurant G  (tests g, h, i; uses c1a00007 prefix for group G)
 --   c1a00008-...-000000000801 = Restaurant H  (tests j, k, l; uses c1a00008 prefix for group H)
+--   c1a00009-...-000000000901 = Restaurant I  (test n: backfill convergence)
 -- Chart-of-accounts
 --   c1a00000-...-000000000f01/0f02 = rest A  (expense + cash)
 --   c1a00000-...-000000000f03      = rest B
@@ -104,6 +121,8 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00007-...-000000000707      = rest G cash account (account_code='1000')
 --   c1a00008-...-000000000806      = rest H expense (Food Costs H)
 --   c1a00008-...-000000000807      = rest H cash account (account_code='1000')
+--   c1a00009-...-000000000906      = rest I expense (Delivery Fee I)
+--   c1a00009-...-000000000907      = rest I cash account (account_code='1000')
 -- Suppliers
 --   c1a00000-...-000000000d01 = Supplier A (SYGMA)
 --   c1a00000-...-000000000d02 = Supplier B
@@ -119,6 +138,7 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00000-...-000000000005 = rule E (description+supplier)
 --   c1a00007-...-000000000700 = rule G (pos_sales, item_name 'Sales Tax', auto_apply)
 --   c1a00008-...-000000000800 = rule H (bank_transactions, description 'VENDOR-H' contains, supplier=d08)
+--   c1a00009-...-000000000900 = rule I (pos_sales, item_name 'Delivery Fee' contains, auto_apply)
 -- Connected banks
 --   c1a00000-...-0000000000ba = bank A
 --   c1a00000-...-0000000000be = bank E
@@ -129,6 +149,7 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00008-...-000000000k01 = txn h01 (test k: uncategorized VENDOR-H txn for internal bank engine)
 -- unified_sales
 --   c1a00007-...-000000000201 = sale g01 (test h: uncategorized 'Sales Tax' row for internal engine)
+--   c1a00009-...-000000000201 = sale i01 (test n: uncategorized 'Delivery Fee' row for backfill)
 -- Users / auth (continued)
 --   c1a00008-...-0000000000ab = non-member user (NOT in user_restaurants for rest H; used in test l)
 -- Users / auth
@@ -142,7 +163,8 @@ VALUES
   ('c1a00000-0000-0000-0000-000000000c01', 'CAT-BG Test Restaurant C'),
   ('c1a00000-0000-0000-0000-000000000e01', 'CAT-BG Test Restaurant E'),
   ('c1a00007-0000-0000-0000-000000000701', 'CAT-BG Test Restaurant G'),
-  ('c1a00008-0000-0000-0000-000000000801', 'CAT-BG Test Restaurant H')
+  ('c1a00008-0000-0000-0000-000000000801', 'CAT-BG Test Restaurant H'),
+  ('c1a00009-0000-0000-0000-000000000901', 'CAT-BG Test Restaurant I')
 ON CONFLICT (id) DO NOTHING;
 
 -- Chart of accounts
@@ -168,6 +190,11 @@ VALUES
   ('c1a00008-0000-0000-0000-000000000806', 'c1a00008-0000-0000-0000-000000000801', '5100', 'Food Costs H',
    'expense', 'cost_of_goods_sold', 'debit'),
   ('c1a00008-0000-0000-0000-000000000807', 'c1a00008-0000-0000-0000-000000000801', '1000', 'Cash H',
+   'asset', 'cash', 'debit'),
+  -- Restaurant I: expense account (for POS rule category) + cash account (apply_rules_to_pos needs '1000')
+  ('c1a00009-0000-0000-0000-000000000906', 'c1a00009-0000-0000-0000-000000000901', '5300', 'Delivery Expense I',
+   'expense', 'cost_of_goods_sold', 'debit'),
+  ('c1a00009-0000-0000-0000-000000000907', 'c1a00009-0000-0000-0000-000000000901', '1000', 'Cash I',
    'asset', 'cash', 'debit')
 ON CONFLICT (id) DO NOTHING;
 
@@ -289,6 +316,21 @@ VALUES
    10, true, true)
 ON CONFLICT (id) DO NOTHING;
 
+-- Rule I: POS sales rule matching 'Delivery Fee' in item_name (for test n: backfill convergence)
+-- Distinct item_name_pattern from rule G ('Sales Tax') to avoid cross-match.
+INSERT INTO public.categorization_rules
+  (id, restaurant_id, rule_name, applies_to, item_name_pattern, item_name_match_type,
+   category_id, priority, is_active, auto_apply)
+VALUES
+  ('c1a00009-0000-0000-0000-000000000900',
+   'c1a00009-0000-0000-0000-000000000901',
+   'Delivery Fee Rule I',
+   'pos_sales',
+   'Delivery Fee', 'contains',
+   'c1a00009-0000-0000-0000-000000000906',
+   10, true, true)
+ON CONFLICT (id) DO NOTHING;
+
 -- Connected banks (needed for bank_transactions FK)
 INSERT INTO public.connected_banks (id, restaurant_id, stripe_financial_account_id, institution_name)
 VALUES
@@ -314,6 +356,24 @@ VALUES
    'Sales Tax',
    1,
    0.75,
+   CURRENT_DATE,
+   false)
+ON CONFLICT (id) DO NOTHING;
+
+-- unified_sales row for test (n): uncategorized 'Delivery Fee' row for backfill convergence.
+-- Isolated restaurant (I) ensures the backfill DO-block targets only this row.
+-- Inserted with skip trigger so auto_categorize_pos_sale does NOT pre-categorize.
+INSERT INTO public.unified_sales
+  (id, restaurant_id, pos_system, external_order_id, item_name,
+   quantity, total_price, sale_date, is_categorized)
+VALUES
+  ('c1a00009-0000-0000-0000-000000000201',
+   'c1a00009-0000-0000-0000-000000000901',
+   'toast',
+   'cat-bg-order-i01',
+   'Delivery Fee',
+   1,
+   3.50,
    CURRENT_DATE,
    false)
 ON CONFLICT (id) DO NOTHING;
@@ -735,6 +795,46 @@ SELECT ok(
    WHERE n.nspname = 'public'
      AND p.oid::regprocedure::text = '_sync_focus_transactions_to_unified_sales_impl(uuid,date,date)'),
   '(m4) _sync_focus_transactions_to_unified_sales_impl(uuid,date,date) categorizes unconditionally via internal engine'
+);
+
+-- ============================================================
+-- Test (n): one-time backfill (migration §7) drains the POS backlog
+-- ============================================================
+-- Strategy (per plan Task 5, step 1): pgTAP runs after migrations, so the
+-- §7 DO-block has already run against whatever rows exist at migration time
+-- (empty on `npm run db:reset`). To assert convergence functionally, we:
+--   1. Seed an uncategorized 'Delivery Fee' unified_sales row for Restaurant I
+--      (done above, with skip-trigger so auto_categorize_pos_sale doesn't pre-categorize).
+--   2. Run the backfill inner-loop inline for just Restaurant I (copy of §7 POS loop body).
+--   3. Assert the row is now is_categorized=true.
+--
+-- RED phase: the DO-block below is ABSENT. The row stays is_categorized=false.
+-- The assertion below therefore fails — confirming RED before §7 is implemented.
+--
+-- GREEN phase (task 5b): add the DO-block here (copy of §7 POS loop for one restaurant)
+-- and append §7 to the migration so the backfill also runs on prod/staging at deploy time.
+--
+-- DO $$
+-- DECLARE
+--   n integer;
+--   i integer := 0;
+-- BEGIN
+--   LOOP
+--     SELECT applied_count INTO n
+--     FROM apply_rules_to_pos_sales_internal(
+--       'c1a00009-0000-0000-0000-000000000901'::uuid, 5000);
+--     i := i + 1;
+--     EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
+--   END LOOP;
+-- END;
+-- $$;
+
+SELECT is(
+  (SELECT is_categorized
+   FROM public.unified_sales
+   WHERE id = 'c1a00009-0000-0000-0000-000000000201'),
+  true,
+  '(n) backfill loop drains POS backlog: Delivery Fee row is_categorized=true'
 );
 
 SELECT * FROM finish();

@@ -3,93 +3,129 @@ import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { CoverageChart } from '@/components/scheduling/ShiftTimeline/CoverageChart';
 
-// Two hours: one short (16 = 4 PM, delta -2) and one covered (17 = 5 PM, delta 0)
+// Shared minToPct for a 10:00–14:00 window (600–840 min, 240 min total).
+// Each 60-min hour occupies 60/240 = 25% of the width.
+const minToPct = (min: number) => ((min - 600) / 240) * 100;
+
+// Two hours: hour 10 (short: delta -2) and hour 11 (covered: delta 0).
+// projectedSales / laborPct are populated to test that they round-trip through
+// the chart without breaking rendering (tooltip content is tested in Task 3).
 const hours = [
-  { hour: 16, startMin: 960, scheduled: 3, needed: 5, delta: -2, projectedSales: null, laborPct: null },
-  { hour: 17, startMin: 1020, scheduled: 5, needed: 5, delta: 0, projectedSales: null, laborPct: null },
+  { hour: 10, startMin: 600, scheduled: 3, needed: 5, delta: -2, projectedSales: 480, laborPct: 22 },
+  { hour: 11, startMin: 660, scheduled: 5, needed: 5, delta: 0, projectedSales: 900, laborPct: 30 },
 ];
 
-// One hour with no demand (needed = null)
+// Two hours with no demand target (needed = null).
 const hoursNoDemand = [
   { hour: 10, startMin: 600, scheduled: 3, needed: null, delta: null, projectedSales: null, laborPct: null },
   { hour: 11, startMin: 660, scheduled: 4, needed: null, delta: null, projectedSales: null, laborPct: null },
 ];
 
-describe('CoverageChart — area view', () => {
-  it('renders an accessible SVG with role="img"', () => {
-    const { getByRole } = render(<CoverageChart hours={hours} view="area" />);
-    expect(getByRole('img')).toBeInTheDocument();
+describe('CoverageChart — column layout', () => {
+  it('renders one positioned column per hour, aligned to minToPct', () => {
+    const { container } = render(
+      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
+    );
+    const cols = container.querySelectorAll('[data-hour-col]');
+    expect(cols).toHaveLength(2);
+    // Hour 10: startMin 600 → minToPct(600) = 0%
+    expect((cols[0] as HTMLElement).style.left).toBe('0%');
+    // Width = minToPct(660) - minToPct(600) = 25% - 0% = 25%
+    expect((cols[0] as HTMLElement).style.width).toBe('25%');
+    // Hour 11: startMin 660 → minToPct(660) = 25%
+    expect((cols[1] as HTMLElement).style.left).toBe('25%');
   });
 
-  it('renders a shortfall element for the short hour', () => {
-    const { container } = render(<CoverageChart hours={hours} view="area" />);
-    expect(container.querySelector('[data-shortfall]')).toBeTruthy();
-  });
-
-  it('does not render a shortfall element when every hour is covered', () => {
-    const coveredHours = [
-      { hour: 16, startMin: 960, scheduled: 5, needed: 5, delta: 0, projectedSales: null, laborPct: null },
-      { hour: 17, startMin: 1020, scheduled: 6, needed: 5, delta: 1, projectedSales: null, laborPct: null },
-    ];
-    const { container } = render(<CoverageChart hours={coveredHours} view="area" />);
-    expect(container.querySelector('[data-shortfall]')).toBeFalsy();
-  });
-
-  it('renders the legend labels (Scheduled and Needed)', () => {
-    const { getAllByText, getByText } = render(<CoverageChart hours={hours} view="area" />);
-    expect(getByText(/scheduled/i)).toBeInTheDocument();
-    // "Needed" appears in both the SVG inline label and the legend — at least one must exist
-    expect(getAllByText(/needed/i).length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('does not render a Needed legend item when demand is absent', () => {
-    const { queryByText } = render(<CoverageChart hours={hoursNoDemand} view="area" />);
-    expect(queryByText(/needed/i)).not.toBeInTheDocument();
-  });
-
-  it('renders an SVG title for accessibility', () => {
-    const { container } = render(<CoverageChart hours={hours} view="area" />);
-    const title = container.querySelector('title');
-    expect(title).toBeTruthy();
-    expect(title?.textContent).toBeTruthy();
-  });
-
-  it('renders an SVG desc for accessibility', () => {
-    const { container } = render(<CoverageChart hours={hours} view="area" />);
-    const desc = container.querySelector('desc');
-    expect(desc).toBeTruthy();
-    expect(desc?.textContent).toBeTruthy();
-  });
-});
-
-describe('CoverageChart — delta view', () => {
-  it('renders one bar per hour via data-bar attribute', () => {
-    const { container } = render(<CoverageChart hours={hours} view="delta" />);
-    expect(container.querySelectorAll('[data-bar]').length).toBe(2);
-  });
-
-  it('renders a short bar for the negative-delta hour', () => {
-    const { container } = render(<CoverageChart hours={hours} view="delta" />);
-    const bars = container.querySelectorAll('[data-bar]');
-    // The first bar (hour 16, delta -2) should be marked as short
-    expect(bars[0].getAttribute('data-bar')).toBe('short');
-  });
-
-  it('renders a covered bar for the zero-delta hour', () => {
-    const { container } = render(<CoverageChart hours={hours} view="delta" />);
-    const bars = container.querySelectorAll('[data-bar]');
-    // The second bar (hour 17, delta 0) should be "covered"
-    expect(bars[1].getAttribute('data-bar')).toBe('covered');
-  });
-
-  it('renders an accessible SVG in delta view', () => {
-    const { getByRole } = render(<CoverageChart hours={hours} view="delta" />);
+  it('renders an accessible container with role="img"', () => {
+    const { getByRole } = render(
+      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
+    );
     expect(getByRole('img')).toBeInTheDocument();
   });
 
   it('renders nothing when hours array is empty', () => {
-    const { container } = render(<CoverageChart hours={[]} view="delta" />);
-    // Should return null or empty
-    expect(container.querySelector('svg')).toBeFalsy();
+    const { container } = render(
+      <CoverageChart hours={[]} view="delta" minToPct={minToPct} targetSplh={null} />,
+    );
+    // No columns, no chart content
+    expect(container.querySelectorAll('[data-hour-col]')).toHaveLength(0);
+  });
+});
+
+describe('CoverageChart — area view', () => {
+  it('renders a shortfall block only for short hours', () => {
+    const { container } = render(
+      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
+    );
+    // Only hour 10 is short (delta -2); hour 11 is covered
+    expect(container.querySelectorAll('[data-shortfall]')).toHaveLength(1);
+  });
+
+  it('does not render a shortfall block when every hour is covered', () => {
+    const coveredHours = [
+      { hour: 10, startMin: 600, scheduled: 5, needed: 5, delta: 0, projectedSales: null, laborPct: null },
+      { hour: 11, startMin: 660, scheduled: 6, needed: 5, delta: 1, projectedSales: null, laborPct: null },
+    ];
+    const { container } = render(
+      <CoverageChart hours={coveredHours} view="area" minToPct={minToPct} targetSplh={null} />,
+    );
+    expect(container.querySelector('[data-shortfall]')).toBeFalsy();
+  });
+
+  it('renders the legend labels (Scheduled and Needed) when demand exists', () => {
+    const { getAllByText, getByText } = render(
+      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
+    );
+    expect(getByText(/scheduled/i)).toBeInTheDocument();
+    // "Needed" should appear at least once (legend)
+    expect(getAllByText(/needed/i).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does not render a Needed legend item when demand is absent', () => {
+    const { queryByText } = render(
+      <CoverageChart hours={hoursNoDemand} view="area" minToPct={minToPct} targetSplh={null} />,
+    );
+    expect(queryByText(/needed/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('CoverageChart — delta view', () => {
+  it('renders diverging bars with signed labels in delta view', () => {
+    const { container, getByText } = render(
+      <CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />,
+    );
+    // Hour 10 is short → data-bar="short"
+    expect(container.querySelectorAll('[data-bar="short"]')).toHaveLength(1);
+    // Signed delta label "-2" for the short hour
+    expect(getByText('-2')).toBeInTheDocument();
+  });
+
+  it('renders a covered bar for the zero-delta hour', () => {
+    const { container } = render(
+      <CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />,
+    );
+    expect(container.querySelectorAll('[data-bar="covered"]')).toHaveLength(1);
+  });
+
+  it('renders one bar per hour via data-bar attribute', () => {
+    const { container } = render(
+      <CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />,
+    );
+    expect(container.querySelectorAll('[data-bar]')).toHaveLength(2);
+  });
+
+  it('scales no-demand bars by headcount peak (delta view)', () => {
+    const nd = [
+      { hour: 10, startMin: 600, scheduled: 1, needed: null, delta: null, projectedSales: null, laborPct: null },
+      { hour: 11, startMin: 660, scheduled: 4, needed: null, delta: null, projectedSales: null, laborPct: null },
+    ];
+    const { container } = render(
+      <CoverageChart hours={nd} view="delta" minToPct={minToPct} targetSplh={null} />,
+    );
+    const bars = Array.from(container.querySelectorAll('[data-bar="no-demand"]')) as HTMLElement[];
+    expect(bars).toHaveLength(2);
+    const h = (el: HTMLElement) => parseFloat(el.style.height);
+    // Hour 11 (scheduled=4) must be proportionally taller than hour 10 (scheduled=1)
+    expect(h(bars[1])).toBeGreaterThan(h(bars[0]) * 3); // 4 vs 1, proportional not pegged
   });
 });

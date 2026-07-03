@@ -296,6 +296,22 @@ Phase 4–9: dev-build-and-ship workflow — launched
           stripe-sync-transactions/index.ts has 9 pre-existing any errors (lines 98, 143, 154, 164, 183, 254, 255, 310, 345) — none at our changed lines 296–302.
         No commit needed — verification only step.
 
+  - [x] Task 7e (plan Task 7 step 5, task 36/36): Commit Task 7 (rule dialog reflects supplier-assign semantics and a11y DialogDescription) — commit c9344b27
+        Commit already created in Task 7c phase.
+        Commit message: "fix(banking): supplier-assign UI changes in EnhancedCategoryRulesDialog"
+        Files: src/components/banking/EnhancedCategoryRulesDialog.tsx
+               tests/unit/enhancedCategoryRulesValidation.test.tsx (via fa490305, RED commit)
+        Changes in c9344b27:
+          1. Submit gate: removed supplierId from hasOtherSpecificity; error msg "Add an amount range..."
+          2. Short-pattern guard: `descPattern.length < 3 && !amountMin && !amountMax` (was !supplierId)
+          3. Inline alert: supplier-only rule no longer triggers "matches everything" warning
+          4. Supplier help text: conditional sub-label — "tagged with this supplier" (assign mode)
+             vs "already linked to this supplier" (filter mode)
+          5. renderRuleConditions: "Assigns supplier: X" when desc/amount criteria, "Supplier: X" when supplier-only
+          6. A11y: <p> dialog subtitle replaced with <DialogDescription> so Radix wires aria-describedby
+        All 5/5 RTL tests (i-iv-b) pass; 5284 unit tests pass; typecheck clean; lint clean on changed files.
+        All 36/36 plan tasks complete.
+
 ## CI Status
 - PR: not yet created
 

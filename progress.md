@@ -258,6 +258,16 @@ Phase 4–9: dev-build-and-ship workflow — launched
         the internal engine skips auth check and is GRANT EXECUTE to service_role only.
         Batch limit 1000 (not 5000) chosen because bank rows create journal entries (heavier per row than POS).
 
+  - [x] Task 7a (plan Task 7 step 1, task 32/36): Write failing RTL component tests for EnhancedCategoryRulesDialog — commit fa490305
+        File: tests/unit/enhancedCategoryRulesValidation.test.tsx (new, 305 lines)
+        RED confirmed: 4 of 5 tests fail on current code; 1 passes (regression guard):
+          (i)  too-generic gate: "payment" + supplierId set → expects toast.error; current code suppresses it (supplier in hasOtherSpecificity)
+          (ii) short-pattern guard: 2-char pattern + amountMin → expects no error; current code fires it (!supplierId guard)
+          (iii) inline alert suppression: only supplier set → no alert; ALREADY PASSES (regression guard)
+          (iv-a) "tagged with this supplier" help text when description present → element missing (RED)
+          (iv-b) "already linked to this supplier" help text when supplier-only → element missing (RED)
+        Message: "test(banking): RED RTL tests for EnhancedCategoryRulesDialog supplier-assign UI changes"
+
 ## CI Status
 - PR: not yet created
 

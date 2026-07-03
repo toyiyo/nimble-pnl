@@ -119,6 +119,30 @@
   - `src/lib/coverageSummary.ts` — replaced `rec ? rec.projectedSales : null` / `rec ? rec.laborPct : null` ternaries with idiomatic `rec?.projectedSales ?? null` / `rec?.laborPct ?? null` optional chaining.
 - Verification: all 79 coverage-related tests pass (TZ=UTC); typecheck clean (tsc --noEmit 0 errors); net reduction of 32 lines across 2 files.
 
+## Phase 7a: Adversarial Review (Codex)
+
+- Status: DONE
+- Output: `dev-tools/codex-review-output.md`
+- Finding:
+  - severity=major file=src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx line=241
+  - `ShiftTimelineTab` returns the empty state whenever `model.lanes.length === 0`, before rendering the coverage panel. Trigger: a day has staffing recommendations/demand but zero scheduled shifts. `summarizeCoverageHours` was explicitly changed to emit `scheduled=0` shortage hours for this case, but the UI never reaches that code path because no shifts means no lanes, so managers see "No shifts scheduled" instead of the demand shortfall/needed staff for a fully unstaffed day.
+
+## Phase 7b: Fold Review Findings
+
+- Status: DONE
+- Commit: cf94256e
+- Findings reviewed: security (0), performance (1 minor), maintainability (3 minor), sound-logic (2 minor), ocr-rules (2 major + 4 minor), codex (1 major)
+- Fixes applied:
+  1. **codex (major):** `ShiftTimelineTab` — removed `lanes.length === 0` early return that prevented the coverage panel from showing on fully-unstaffed days; "No shifts scheduled" message now rendered inline below the coverage panel so demand shortfalls remain visible
+  2. **sound-logic (minor):** `buildHourTooltip` — added `&& targetSplh > 0` guard before dividing `projectedSales / targetSplh` to prevent "Infinity needed" tooltip text when target_splh is stored as 0
+  3. **ocr-rules (major):** `DeltaColumn` — deduplicated the identical outer wrapper div (ref, data-hour-col, tabIndex, aria-label, className, style) across the three early-return branches; now renders a single outer div with `innerContent` switched by branch, eliminating ~20 lines of duplication
+- Skipped (not bugs):
+  - `key={i}` in tooltipLines.map — minor opportunity; lines array is short-lived, not a correctness issue
+  - hardcoded `/settings` in CoverageDemandInfo — confirmed IS the real route (App.tsx line 256); not a bug
+  - import order, task comments, magic-number comments, AREA_STEP comment — nits; CodeRabbit covers these in 7c
+  - `delta===null & needed!==null` unreachable gap — unreachable per current code path; adding an else branch would be defensive code without a triggering test
+- Verification: 79/79 coverage-related tests pass (TZ=UTC); typecheck clean (0 errors)
+
 ## Phase 5: UI Review
 
 - Status: DONE (no violations found — no code changes required)

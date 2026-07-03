@@ -122,6 +122,16 @@ Phase 4–9: dev-build-and-ship workflow — launched
         Supplier assignment: NON-SPLIT UPDATE uses COALESCE(v_transaction.supplier_id, v_transaction.rule_supplier_id, supplier_id)
         REVOKE EXECUTE from PUBLIC/anon/authenticated; GRANT EXECUTE to service_role only.
         All 1525/1525 pgTAP tests green; 22 tests in categorization_background_rules.test.sql (a–l all pass).
+  - [x] Task 4a (plan Task 4 step 1, task 18/36): Write failing pgTAP tests (m1–m4) for sync-function gate rewrite — commit 65811813
+        File: supabase/tests/categorization_background_rules.test.sql (plan 22→26, +77 lines)
+        RED confirmed: Tests m1–m4 fail ("not ok 23–26"); prior 22 tests (a–l) still green.
+        Tests added:
+          (m1) sync_toast_to_unified_sales(uuid): def not like '%skipping batch categorization%'
+               AND def like '%apply_rules_to_pos_sales_internal%'
+          (m2) sync_toast_to_unified_sales(uuid,date,date): same assertion
+          (m3) _sync_focus_to_unified_sales_impl(uuid,date,date): same assertion
+          (m4) _sync_focus_transactions_to_unified_sales_impl(uuid,date,date): same assertion
+        Suite result: 1525 passed, 4 failed (new m1–m4), exit code indicates failure as expected.
 
 ## CI Status
 - PR: not yet created

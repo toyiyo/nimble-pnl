@@ -105,6 +105,23 @@ Phase 4–9: dev-build-and-ship workflow — launched
           4. auth.uid() in journal_entries INSERT tolerates NULL (column is NULLABLE per prod verification)
           5. REVOKE EXECUTE from PUBLIC/anon/authenticated; GRANT to service_role
           6. Public wrapper re-declared with SET search_path=public; delegates to internal
+  - [x] Task 3d (plan Task 3 step 4, task 16/36): Run npm run test:db to verify Task 3 tests pass
+        GREEN confirmed: npm run test:db → 1525/1525 passed, 0 failed.
+        All 22 tests (a–l) in categorization_background_rules.test.sql pass:
+          (j) privilege trio ok 15–17: authenticated/anon=false, service_role=true
+          (k) NULL-auth batch ok 18–21: applied_count=1, is_categorized=true, supplier_id assigned,
+              journal_entries row with created_by IS NULL
+          (l) public wrapper ok 22: raises 'Permission denied...' for non-member sub
+        Tasks 1 (a–h) and 2 (g–i) also all green — no regressions.
+        No commit needed — verification only step.
+  - [x] Task 3e (plan Task 3 step 5, task 17/36): Commit Task 3 (auth-free internal bank rule engine assigns rule supplier) — commit 3d9115f2
+        Commit message: "fix(categorization): auth-free internal bank rule engine assigns rule supplier"
+        Files: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§5 appended, +339 lines)
+        Migration §5 creates apply_rules_to_bank_transactions_internal (SECURITY DEFINER, SET search_path=public, no auth check)
+        and replaces the public apply_rules_to_bank_transactions wrapper to delegate to it while keeping owner/manager permission check.
+        Supplier assignment: NON-SPLIT UPDATE uses COALESCE(v_transaction.supplier_id, v_transaction.rule_supplier_id, supplier_id)
+        REVOKE EXECUTE from PUBLIC/anon/authenticated; GRANT EXECUTE to service_role only.
+        All 1525/1525 pgTAP tests green; 22 tests in categorization_background_rules.test.sql (a–l all pass).
 
 ## CI Status
 - PR: not yet created

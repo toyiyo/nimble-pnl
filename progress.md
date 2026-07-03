@@ -244,6 +244,19 @@ Phase 4–9: dev-build-and-ship workflow — launched
         Change: rpc('apply_rules_to_bank_transactions') → rpc('apply_rules_to_bank_transactions_internal', { p_restaurant_id, p_batch_limit: 1000 })
         Comment added explaining why internal engine is needed (auth.uid() is NULL for service-role callers).
         Message: "fix(banking): stripe sync applies rules via internal engine (service-role safe)"
+  - [x] Task 6c (plan Task 6 step 3, task 30/36): Run npm run test and npm run typecheck to verify pass
+        npm run test: 5279 tests passed (5 pre-existing focus* test file errors, all in tests/unit/focus*.test.ts — unrelated to this change; stripe-sync-rpc-name.test.ts passes individually: 1 passed).
+        npm run typecheck: clean (0 errors, tsc --noEmit exit 0).
+        No commit needed — verification only step.
+  - [x] Task 6d (plan Task 6 step 4, task 31/36): Commit Task 6 (stripe sync applies rules via internal engine, service-role safe) — commit bfc02c6b
+        Commit already created in Task 6b phase.
+        Commit message: "fix(banking): stripe sync applies rules via internal engine (service-role safe)"
+        File: supabase/functions/stripe-sync-transactions/index.ts (line 297 patched)
+        Test: tests/unit/stripe-sync-rpc-name.test.ts — 1 passed (GREEN confirmed).
+        Change: rpc('apply_rules_to_bank_transactions') → rpc('apply_rules_to_bank_transactions_internal', { p_restaurant_id, p_batch_limit: 1000 })
+        Rationale: service-role callers have auth.uid()=NULL; the public wrapper raises 'Permission denied';
+        the internal engine skips auth check and is GRANT EXECUTE to service_role only.
+        Batch limit 1000 (not 5000) chosen because bank rows create journal entries (heavier per row than POS).
 
 ## CI Status
 - PR: not yet created

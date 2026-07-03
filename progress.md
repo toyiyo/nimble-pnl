@@ -5,7 +5,7 @@
 - Plan:   docs/superpowers/plans/2026-07-02-invoice-pack-quantity.md
 
 ## Current Phase
-Phase 5 complete — UI review done, semantic token violations fixed and committed
+Phase 6 complete — simplification committed (b7748bc5)
 
 ## Completed
 - [x] Phase 0 lessons, Phase 1 worktree (feature/invoice-pack-quantity)

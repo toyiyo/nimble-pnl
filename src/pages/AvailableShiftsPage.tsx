@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -62,8 +62,6 @@ function formatTradeTime(startTime: string, endTime: string): string {
   const end = parseISO(endTime);
   return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
 }
-
-import { memo } from 'react';
 
 const TradeCard = memo(function TradeCard({
   trade,

@@ -176,6 +176,36 @@ Phase 4–9: dev-build-and-ship workflow — launched
         function not already patched. Authorization header preserved — regex only matches the categorization gate.
         All 1529/1529 pgTAP tests green; 26 tests (a–m4) in categorization_background_rules.test.sql pass.
 
+  - [x] Task 5a (plan Task 5 step 1, task 23/36): Write failing pgTAP test (n) for §7 one-time backfill — commit 8e597a0b
+        File: supabase/tests/categorization_background_rules.test.sql (plan 26→27, +102 lines net)
+        RED confirmed: test 27 "(n) backfill loop drains POS backlog: Delivery Fee row is_categorized=true" FAILS (1 failure);
+        all prior 26 tests (a–m4) still pass (1529/1530 total).
+        Fixtures added:
+          Restaurant I (c1a00009 prefix, UUID 000000000901), expense CoA (000000000906, code 5300),
+          cash CoA (000000000907, code 1000), Rule I (000000000900: pos_sales 'Delivery Fee' contains, auto_apply),
+          Sale I (000000000201: unified_sales item_name='Delivery Fee', is_categorized=false, inserted with skip trigger).
+        The DO-block (backfill inner loop for Restaurant I) is commented out in the test — row stays uncategorized.
+        GREEN phase (task 5b): uncomment/add DO-block in test + append §7 to migration.
+  - [x] Task 5b (plan Task 5 step 2, task 24/36): Run npm run test:db to verify test (n) fails
+        RED confirmed via npm run test:db:
+        - Tests (a)-(m4): 26/26 PASS (Tasks 1-4 still all green)
+        - not ok 27 - (n) backfill loop drains POS backlog: Delivery Fee row is_categorized=true
+        - Total: 1530 tests, 1529 passed, 1 failed — exactly the 1 new (n) backfill test failing as expected.
+        - §7 not yet appended to migration; row stays uncategorized (DO-block commented out in test fixture).
+        No commit needed — verification only step.
+  - [x] Task 5c (plan Task 5 step 3, task 25/36): Implement migration §7 — per-restaurant drain loop for POS and bank backlogs — commit 80e6e821
+        Files: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§7 appended, +65 lines)
+               supabase/tests/categorization_background_rules.test.sql (DO-block uncommented, RED→GREEN)
+        GREEN confirmed: npm run test:db → 27/27 tests pass in categorization_background_rules.test.sql;
+          (n) ok 27 - backfill loop drains POS backlog: Delivery Fee row is_categorized=true
+          All prior 26 tests (a–m4) still green; 1 pre-existing unrelated failure (enqueue_weekly_brief_jobs)
+        Migration §7 DO-block:
+          - POS loop: per restaurant, 5000/batch, 50-round cap, BEGIN/EXCEPTION per restaurant
+          - Bank loop: per restaurant, 1000/batch, 50-round cap, BEGIN/EXCEPTION per restaurant
+          - Counter i reset at start of each restaurant block (separate for POS and bank)
+          - No-op on empty databases (no matching categorization_rules → loop body never runs)
+        Message: "fix(categorization): backfill stuck uncategorized backlog in-migration"
+
 ## CI Status
 - PR: not yet created
 

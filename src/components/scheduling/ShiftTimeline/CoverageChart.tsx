@@ -243,8 +243,9 @@ function DeltaView({ hours, plotW, plotH, svgHeight }: DeltaViewProps) {
         const xMid = (x0 + x1) / 2;
 
         if (h.delta === null) {
-          // No demand — render a neutral bar for scheduled
-          const barH = Math.max(1, h.scheduled * pixelsPerUnit);
+          // No demand — render a neutral bar for scheduled (clamped so it never
+          // overflows the plot when deltaPeak is small but scheduled is large).
+          const barH = Math.min(halfH - 2, Math.max(1, h.scheduled * pixelsPerUnit));
           return (
             <g key={h.startMin}>
               <rect

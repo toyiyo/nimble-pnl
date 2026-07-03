@@ -267,11 +267,24 @@ export async function processDayTransactions(
     }
 
     // ── 5. Upsert active checks → items → payments ────────────────────────────
+    // Each check is isolated: a single malformed check (e.g. constraint violation)
+    // should not block the rest of the day or prevent the unified_sales sync (§6).
+    // Upserts are idempotent so failed checks will be retried on the next cron run.
 
+    const failedCheckIds: string[] = [];
     for (const check of checks) {
-      await upsertOrder(deps.supabase, check, config.restaurantId, businessDate);
-      await upsertItems(deps.supabase, check, config.restaurantId, businessDate);
-      await upsertPayments(deps.supabase, check, config.restaurantId, businessDate);
+      try {
+        await upsertOrder(deps.supabase, check, config.restaurantId, businessDate);
+        await upsertItems(deps.supabase, check, config.restaurantId, businessDate);
+        await upsertPayments(deps.supabase, check, config.restaurantId, businessDate);
+      } catch (checkErr) {
+        failedCheckIds.push(check.checkId);
+        console.warn(
+          `focus check ${check.checkId} sync failed (will retry on next cron pass): ${
+            checkErr instanceof Error ? checkErr.message : String(checkErr)
+          }`,
+        );
+      }
     }
 
     // ── 6. Sync to unified_sales ──────────────────────────────────────────────
@@ -293,7 +306,7 @@ export async function processDayTransactions(
       }
     }
 
-    return { status: 'ok', checksWritten: checks.length };
+    return { status: 'ok', checksWritten: checks.length - failedCheckIds.length };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
     return { status: 'error', error: message };

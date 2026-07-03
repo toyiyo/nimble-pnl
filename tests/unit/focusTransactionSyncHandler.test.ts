@@ -16,7 +16,7 @@
  *      - returns { status: 'empty' } when checks array is empty
  *      - returns { status: 'inprogress' } when fetchDatafeed kind is 'inprogress'
  *      - returns { status: 'error', error: string } when fetchDatafeed returns ok:false (non-inprogress)
- *      - returns { status: 'error' } when supabase upsert fails
+ *      - returns { status: 'ok', checksWritten: 0 } when per-check upsert fails (per-check isolation)
  *      - does NOT persist kitchen-comment items (isKitchenComment=true)
  *      - calls fetchDatafeed exactly once per call
  *      - calls the unified_sales RPC with correct p_restaurant_id and date params
@@ -226,7 +226,7 @@ describe('processDayTransactions', () => {
 
   // ── Success: focus_order_items upsert ────────────────────────────────────────
 
-  it('skips kitchen-comment items (isKitchenComment=true)', async () => {
+  it('CRITICAL: skips kitchen-comment items (isKitchenComment=true) — PII compliance', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     // SAMPLE_XML_ONE_CHECK has: 1 priced item + 1 modifier + 1 kitchen comment
@@ -272,7 +272,7 @@ describe('processDayTransactions', () => {
 
   // ── Success: focus_payments upsert ───────────────────────────────────────────
 
-  it('upserts one focus_payments row per payment per check', async () => {
+  it('CRITICAL: upserts one focus_payments row per payment per check', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(mocks.paymentsUpsert).toHaveBeenCalledOnce();
@@ -299,7 +299,7 @@ describe('processDayTransactions', () => {
 
   // ── Success: unified_sales RPC ───────────────────────────────────────────────
 
-  it('calls sync_focus_transactions_to_unified_sales RPC with correct params', async () => {
+  it('CRITICAL: calls sync_focus_transactions_to_unified_sales RPC with correct params', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(mocks.rpcFn).toHaveBeenCalledOnce();
@@ -388,13 +388,16 @@ describe('processDayTransactions', () => {
 
   // ── Supabase upsert error ────────────────────────────────────────────────────
 
-  it('returns { status: "error" } when focus_orders upsert fails', async () => {
+  it('CRITICAL: isolates per-check upsert failure — returns ok with checksWritten=0 (not a fatal error)', async () => {
+    // Per-check isolation: a single bad check (e.g. DB constraint violation) is
+    // caught and logged, leaving other checks and the unified_sales RPC unaffected.
+    // The caller receives { status: 'ok', checksWritten: 0 } so it knows no rows
+    // were written but the sync run itself did not abort.
     const { deps } = makeDeps({
       upsertError: { message: 'DB write failed' },
     });
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
-    expect(result).toMatchObject({ status: 'error' });
-    expect((result as any).error).toMatch(/DB write failed/);
+    expect(result).toMatchObject({ status: 'ok', checksWritten: 0 });
   });
 
   // ── Voided checks (DeleteRecord) ─────────────────────────────────────────────

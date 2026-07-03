@@ -88,3 +88,12 @@
 - TDD cycle: implementation was the GREEN phase of Task 3a (tests were RED, then buildHourTooltip was implemented in the same cycle); all 28 coverageChart tests pass, 79 total across 6 suites; typecheck clean.
 - Verification: `buildHourTooltip` handles all branches (short/covered/spare/right-on-target/no-demand/no-sales/no-SPLH); aria-labels on columns contain full tooltip content via comma-join; TooltipContent wiring contract confirmed by test (exact 5-line structure for full-data hour, 3-line for no-demand).
 - Suites confirmed green: coverageSummary (13), coverageChart (28), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (19)
+
+### Task 3c — Run tooltip tests, lint, then commit per-hour tooltip feature
+- Status: DONE
+- Commit: (verification-only task — all code already committed in 3a/3b at a2e65040; progress.md update committed below)
+- Verification results:
+  - `coverageChart` suite: 28 tests pass (all tooltip content + shell + layout + delta view tests)
+  - All 6 coverage-related suites: 79 tests pass (coverageSummary 13, coverageChart 28, areaCoverageStrips 6, coverageStatusStrip 8, coverageDemandInfo 5, shiftTimelineTab 19)
+  - Lint: 0 errors, 1 pre-existing warning (`react-refresh/only-export-components` on `buildHourTooltip` export — design doc requires this export for direct testing; warning is not an error and does not block the build)
+  - All 28 coverageChart tests pass including all CRITICAL-prefixed tooltip tests

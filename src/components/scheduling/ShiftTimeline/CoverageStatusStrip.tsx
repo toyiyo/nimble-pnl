@@ -15,19 +15,20 @@ interface CoverageStatusStripProps {
 /**
  * Derive an aria-label for a single hour cell.
  *
- * - Short: "{Hour label}, short {N}"
- * - Covered: "{Hour label}, covered"
- * - No demand: "{Hour label}"  (neutral)
+ * - Short with demand: "{Hour label}, {scheduled} of {needed}, short {N}"
+ * - Covered with demand: "{Hour label}, {scheduled} of {needed}, covered"
+ * - No demand: "{Hour label}, {scheduled} scheduled"  (neutral)
  */
 function cellAriaLabel(hour: CoverageHour, label: string): string {
-  if (hour.delta === null) {
-    // No demand configured — just announce the hour
-    return label;
+  if (hour.delta === null || hour.needed === null) {
+    // No demand configured — announce hour and scheduled count
+    return `${label}, ${hour.scheduled} scheduled`;
   }
+  const fraction = `${hour.scheduled} of ${hour.needed}`;
   if (hour.delta < 0) {
-    return `${label}, short ${Math.abs(hour.delta)}`;
+    return `${label}, ${fraction}, short ${Math.abs(hour.delta)}`;
   }
-  return `${label}, covered`;
+  return `${label}, ${fraction}, covered`;
 }
 
 /**
@@ -79,11 +80,9 @@ export function CoverageStatusStrip({
               )}
             >
               <span className="text-[10px] font-medium leading-none">{label}</span>
-              {hasDemand && (
-                <span className="text-[10px] leading-none">
-                  {isShort ? `−${Math.abs(h.delta as number)}` : '✓'}
-                </span>
-              )}
+              <span className="text-[10px] leading-none tabular-nums">
+                {hasDemand ? `${h.scheduled}/${h.needed!}` : `${h.scheduled}`}
+              </span>
             </div>
           );
         })}

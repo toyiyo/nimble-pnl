@@ -17,7 +17,7 @@
  *          - Call processDateRangeTransactions synchronously.
  *          - Return { daysSynced, status }.
  *       b. Backfill (initial_sync_done=false):
- *          - Delegate to processBackfillBatch({ budgetMs:12_000, maxDays:5 }).
+ *          - Delegate to processBackfillBatch({ budgetMs:12_000, maxDays:3 }).
  *          - Persist cursor/flag/last_sync_time via CAS (§8.1).
  *          - On error: also write connection_status='error' + last_error (§8.3).
  *          - Return { syncCursor, initialSyncDone, status, backgrounded }.
@@ -391,7 +391,7 @@ export async function handleSyncData(
         timezone: tz,
         now,
         budgetMs: 12_000,
-        maxDays: 5,
+        maxDays: 3,
       });
 
       // Single timestamp shared across all fields in this update.

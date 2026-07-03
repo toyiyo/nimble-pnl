@@ -53,6 +53,38 @@ Phase 6 complete — simplification committed (b7748bc5)
 - typecheck: PASS, vitest: PASS after fixes
 - Committed: 0e9bf898
 
+## Phase 7a — Adversarial Review Results (2026-07-02)
+- Codex available ✓ (v0.137.0)
+- Review output: dev-tools/codex-review-output.md
+- Finding (major): supabase/functions/process-receipt/index.ts:942 — `parsed_quantity` is set
+  from `item.parsedQuantity` (LLM-computed multiplication), NOT from the deterministic
+  `computeImportedQuantity(casesOrdered, unitsPerPack)` helper. If the LLM outputs
+  `casesOrdered=2, unitsPerPack=4, parsedQuantity=2` (fails to multiply), DB stores qty=2
+  with pack_quantity=4, so bulk import adds only 2 units instead of 8. The helper was added
+  to src/utils/receiptImportUtils.ts but is never called from the edge function.
+
+## Phase 7b — Review Findings Folded (2026-07-02)
+
+### Findings deduplication (5 reviewers + Codex → 4 unique actionable issues):
+
+1. **FIXED** (major, sound-logic + codex + maintainability): Edge function `parsed_quantity` was set from LLM value; now deterministically computed as `cases × pack` when `unitsPerPack` is present. Commit: 8d6fd75d.
+
+2. **FIXED** (major, sound-logic + ocr-rules): `pluralizeUnit` appended bare "s" to irregular units ("each"→"eachs", "box"→"boxs"). Added irregular-plural lookup table. Commit: 8d6fd75d.
+
+3. **FIXED** (major, maintainability + ocr-rules): Duplicate `Math.max(1, Math.round(...))` on adjacent JSX lines extracted to `casesCount` const; added `?? 0` null guard. Commit: 8d6fd75d.
+
+4. **SKIPPED** (minor, ocr-rules): `parsedUnit` reportedly missing from JSON template — it IS present at line 252. False finding.
+
+5. **SKIPPED** (security, major): Unauthenticated `process-receipt` endpoint pre-existing, out of scope per finding itself.
+
+6. **SKIPPED** (security, minor): pgTAP nil UUID `processed_by` — test-only with RLS disabled, not a production issue.
+
+7. **SKIPPED** (ocr-rules, major): Dead exports in `receiptImportUtils.ts` — `computeImportedQuantity` is now called (fix #1); `buildLineItemInsert`/`parsePackSizeToken` are test-facing helpers, removing them would break tests (out of scope for this phase).
+
+### Verification after fixes:
+- vitest: 35/35 feature tests pass
+- typecheck: PASS
+
 ## CI Status
 - PR: not yet created
 

@@ -58,3 +58,14 @@
 - Context: The ShiftTimelineTab implementation was already complete (wired in commit a8fc33ee as part of task 2b, step 5 of the task 2 plan). This task adds the missing tests that specifically validate the wiring contract.
 - TDD cycle: GREEN (3 new tests pass immediately since implementation pre-existed) → typecheck clean → commit
 - Suites confirmed green: coverageSummary (13), coverageChart (15), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (19)
+
+### Task 2e — Run chart + tab suites, typecheck + lint, then commit grid-aligned coverage chart
+- Status: DONE
+- Commit: fcc995ae (no new code commit needed — verification-only task; all code already committed in 2a–2d)
+- Verification results:
+  - `coverageChart` suite: 15 tests pass
+  - `shiftTimelineTab` suite: 19 tests pass
+  - All 6 coverage-related suites: 66 tests pass (coverageSummary 13, coverageChart 15, areaCoverageStrips 6, coverageStatusStrip 8, coverageDemandInfo 5, shiftTimelineTab 19)
+  - Typecheck: clean (no errors)
+  - Lint: no errors in modified files (src/components/scheduling/ShiftTimeline/CoverageChart.tsx, ShiftTimelineTab.tsx, src/lib/coverageSummary.ts, tests/unit/coverageChart.test.tsx, tests/unit/shiftTimelineTab.test.tsx, tests/unit/coverageSummary.test.ts)
+  - Pre-existing lint errors (1482 across other files) are not introduced by this branch

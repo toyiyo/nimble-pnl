@@ -157,6 +157,12 @@
   - `npm run build`: SUCCESS in 22s (0 errors, only pre-existing chunk-size warnings)
   - Dev server torn down after E2E tests
 
+## Phase 9a: Ship
+
+- Status: DONE
+- PR: https://github.com/toyiyo/nimble-pnl/pull/574 (PR #574)
+- Branch `worktree-timeline-chart-fixes` pushed to origin; PR opened against `main`.
+
 ## Phase 5: UI Review
 
 - Status: DONE (no violations found — no code changes required)

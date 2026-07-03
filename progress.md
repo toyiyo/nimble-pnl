@@ -5,7 +5,7 @@
 - Plan:   docs/superpowers/plans/2026-07-02-invoice-pack-quantity.md
 
 ## Current Phase
-Phase 4-9: dev-build-and-ship workflow — task 7 complete, Phase 4 done
+Phase 5 complete — UI review done, semantic token violations fixed and committed
 
 ## Completed
 - [x] Phase 0 lessons, Phase 1 worktree (feature/invoice-pack-quantity)
@@ -45,6 +45,13 @@ Phase 4-9: dev-build-and-ship workflow — task 7 complete, Phase 4 done
 - Feature vitest: 35/35 pass (receiptImportUtils, receiptLineItemPackQuantity, ReceiptItemRow.packSummary)
 - pgTAP 48_receipt_pack_quantity: 5/5 pass
 - build: PASS (production build succeeds)
+
+## Phase 5 — UI Review Results (2026-07-02)
+- Violations found: 12 raw color classes (green-50/700, blue-50/700, amber-50/700/400/500), 8 Label elements using text-xs instead of required scale
+- Fixed: all raw colors migrated to semantic tokens (bg-muted, text-foreground, text-muted-foreground, border-border/40); all Labels updated to text-[12px] font-medium uppercase tracking-wider
+- No accessibility issues found; pack summary aria-live="polite" correct
+- typecheck: PASS, vitest: PASS after fixes
+- Committed: 0e9bf898
 
 ## CI Status
 - PR: not yet created

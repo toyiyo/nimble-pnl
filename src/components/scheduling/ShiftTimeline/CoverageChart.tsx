@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { forwardRef, memo } from 'react';
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
@@ -67,57 +67,60 @@ interface AreaColumnProps {
   ariaLabel: string;
 }
 
-function AreaColumn({ h, left, width, peak, ariaLabel }: AreaColumnProps) {
-  const scheduledPct = (h.scheduled / peak) * 100;
-  const neededPct = h.needed !== null ? (h.needed / peak) * 100 : null;
-  const isShort = h.delta !== null && h.delta < 0 && neededPct !== null;
+const AreaColumn = forwardRef<HTMLDivElement, AreaColumnProps>(
+  function AreaColumn({ h, left, width, peak, ariaLabel }, ref) {
+    const scheduledPct = (h.scheduled / peak) * 100;
+    const neededPct = h.needed !== null ? (h.needed / peak) * 100 : null;
+    const isShort = h.delta !== null && h.delta < 0 && neededPct !== null;
 
-  // Shortfall block spans from "scheduled" height up to "needed" height
-  const shortfallBottomPct = scheduledPct;
-  const shortfallHeightPct = isShort && neededPct !== null ? neededPct - scheduledPct : 0;
+    // Shortfall block spans from "scheduled" height up to "needed" height
+    const shortfallBottomPct = scheduledPct;
+    const shortfallHeightPct = isShort && neededPct !== null ? neededPct - scheduledPct : 0;
 
-  return (
-    <div
-      data-hour-col=""
-      tabIndex={0}
-      aria-label={ariaLabel}
-      className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-      style={{ left: `${left}%`, width: `${width}%` }}
-    >
-      {/* Bottom-anchored scheduled block */}
+    return (
       <div
-        data-scheduled=""
-        className="absolute bottom-0 left-0 right-0 bg-primary/15 border-t border-primary"
-        style={{ height: `${scheduledPct}%` }}
-      />
-
-      {/* Shortfall block — spans from scheduled up to needed (red fill) */}
-      {isShort && (
+        ref={ref}
+        data-hour-col=""
+        tabIndex={0}
+        aria-label={ariaLabel}
+        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        style={{ left: `${left}%`, width: `${width}%` }}
+      >
+        {/* Bottom-anchored scheduled block */}
         <div
-          data-shortfall=""
-          className="absolute left-0 right-0 bg-destructive/70 flex items-center justify-center"
-          style={{
-            bottom: `${shortfallBottomPct}%`,
-            height: `${shortfallHeightPct}%`,
-          }}
-        >
-          {shortfallHeightPct > 10 && h.delta !== null && (
-            <span className="text-[9px] text-background font-medium">{h.delta}</span>
-          )}
-        </div>
-      )}
-
-      {/* Dashed needed tick line */}
-      {neededPct !== null && (
-        <div
-          data-needed=""
-          className="absolute left-0 right-0 border-t border-dashed border-muted-foreground"
-          style={{ bottom: `${neededPct}%` }}
+          data-scheduled=""
+          className="absolute bottom-0 left-0 right-0 bg-primary/15 border-t border-primary"
+          style={{ height: `${scheduledPct}%` }}
         />
-      )}
-    </div>
-  );
-}
+
+        {/* Shortfall block — spans from scheduled up to needed (red fill) */}
+        {isShort && (
+          <div
+            data-shortfall=""
+            className="absolute left-0 right-0 bg-destructive/70 flex items-center justify-center"
+            style={{
+              bottom: `${shortfallBottomPct}%`,
+              height: `${shortfallHeightPct}%`,
+            }}
+          >
+            {shortfallHeightPct > 10 && h.delta !== null && (
+              <span className="text-[9px] text-background font-medium">{h.delta}</span>
+            )}
+          </div>
+        )}
+
+        {/* Dashed needed tick line */}
+        {neededPct !== null && (
+          <div
+            data-needed=""
+            className="absolute left-0 right-0 border-t border-dashed border-muted-foreground"
+            style={{ bottom: `${neededPct}%` }}
+          />
+        )}
+      </div>
+    );
+  },
+);
 
 // ── Per-Hour Column (delta view) ───────────────────────────────────────────────
 
@@ -130,109 +133,114 @@ interface DeltaColumnProps {
   ariaLabel: string;
 }
 
-function DeltaColumn({ h, left, width, peak, deltaPeak, ariaLabel }: DeltaColumnProps) {
-  // No-demand hour — show scheduled headcount scaled by peak (not deltaPeak)
-  if (h.delta === null) {
-    const barPct = Math.min(50, Math.max(0.5, (h.scheduled / peak) * 50));
-    return (
-      <div
-        data-hour-col=""
-        tabIndex={0}
-        aria-label={ariaLabel}
-        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-        style={{ left: `${left}%`, width: `${width}%` }}
-      >
-        {/* Zero line at 50% height */}
-        <div className="absolute left-0 right-0" style={{ top: '50%' }}>
-          <div
-            data-bar="no-demand"
-            className="bg-muted/60 w-full"
-            style={{ height: `${barPct}%` }}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  const isShort = h.delta < 0;
-  const isZero = h.delta === 0;
-
-  if (isZero) {
-    return (
-      <div
-        data-hour-col=""
-        tabIndex={0}
-        aria-label={ariaLabel}
-        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-        style={{ left: `${left}%`, width: `${width}%` }}
-      >
-        {/* Tick at zero baseline (50%) */}
+const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
+  function DeltaColumn({ h, left, width, peak, deltaPeak, ariaLabel }, ref) {
+    // No-demand hour — show scheduled headcount scaled by peak (not deltaPeak)
+    if (h.delta === null) {
+      const barPct = Math.min(50, Math.max(0.5, (h.scheduled / peak) * 50));
+      return (
         <div
-          className="absolute left-0 right-0"
-          style={{ top: 'calc(50% - 2px)', height: '2px' }}
+          ref={ref}
+          data-hour-col=""
+          tabIndex={0}
+          aria-label={ariaLabel}
+          className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+          style={{ left: `${left}%`, width: `${width}%` }}
         >
-          <div
-            data-bar="covered"
-            className="bg-success opacity-40 w-full h-full"
-          />
+          {/* Zero line at 50% height */}
+          <div className="absolute left-0 right-0" style={{ top: '50%' }}>
+            <div
+              data-bar="no-demand"
+              className="bg-muted/60 w-full"
+              style={{ height: `${barPct}%` }}
+            />
+          </div>
         </div>
+      );
+    }
+
+    const isShort = h.delta < 0;
+    const isZero = h.delta === 0;
+
+    if (isZero) {
+      return (
+        <div
+          ref={ref}
+          data-hour-col=""
+          tabIndex={0}
+          aria-label={ariaLabel}
+          className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+          style={{ left: `${left}%`, width: `${width}%` }}
+        >
+          {/* Tick at zero baseline (50%) */}
+          <div
+            className="absolute left-0 right-0"
+            style={{ top: 'calc(50% - 2px)', height: '2px' }}
+          >
+            <div
+              data-bar="covered"
+              className="bg-success opacity-40 w-full h-full"
+            />
+          </div>
+        </div>
+      );
+    }
+
+    const absD = Math.abs(h.delta);
+    const barPct = Math.min(48, (absD / deltaPeak) * 50);
+    const barState = isShort ? 'short' : 'covered';
+    const barClass = isShort ? 'bg-destructive' : 'bg-success';
+    const label = h.delta > 0 ? `+${h.delta}` : String(h.delta);
+
+    return (
+      <div
+        ref={ref}
+        data-hour-col=""
+        tabIndex={0}
+        aria-label={ariaLabel}
+        className="absolute inset-y-0 flex flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        style={{ left: `${left}%`, width: `${width}%` }}
+      >
+        {/* Bar + label for short hours (below zero line) */}
+        {isShort ? (
+          <>
+            {/* Top half: empty */}
+            <div className="flex-1" />
+            {/* Bottom half: bar below zero line */}
+            <div className="flex-1 flex flex-col-reverse">
+              <div
+                data-bar={barState}
+                className={`w-full ${barClass}`}
+                style={{ height: `${barPct}%` }}
+              />
+            </div>
+            {/* Label below bar */}
+            <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center" style={{ bottom: `calc(50% - ${barPct}% - 10px)` }}>
+              <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Top half: bar above zero line */}
+            <div className="flex-1 flex flex-col-reverse">
+              <div
+                data-bar={barState}
+                className={`w-full ${barClass}`}
+                style={{ height: `${barPct}%` }}
+              />
+            </div>
+            {/* Bottom half: empty */}
+            <div className="flex-1" />
+            {/* Label above bar */}
+            <div className="absolute top-0 left-0 right-0 flex items-start justify-center" style={{ top: `calc(50% - ${barPct}% - 10px)` }}>
+              <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
+            </div>
+          </>
+        )}
       </div>
     );
-  }
-
-  const absD = Math.abs(h.delta);
-  const barPct = Math.min(48, (absD / deltaPeak) * 50);
-  const barState = isShort ? 'short' : 'covered';
-  const barClass = isShort ? 'bg-destructive' : 'bg-success';
-  const label = h.delta > 0 ? `+${h.delta}` : String(h.delta);
-
-  return (
-    <div
-      data-hour-col=""
-      tabIndex={0}
-      aria-label={ariaLabel}
-      className="absolute inset-y-0 flex flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-      style={{ left: `${left}%`, width: `${width}%` }}
-    >
-      {/* Bar + label for short hours (below zero line) */}
-      {isShort ? (
-        <>
-          {/* Top half: empty */}
-          <div className="flex-1" />
-          {/* Bottom half: bar below zero line */}
-          <div className="flex-1 flex flex-col-reverse">
-            <div
-              data-bar={barState}
-              className={`w-full ${barClass}`}
-              style={{ height: `${barPct}%` }}
-            />
-          </div>
-          {/* Label below bar */}
-          <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center" style={{ bottom: `calc(50% - ${barPct}% - 10px)` }}>
-            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
-          </div>
-        </>
-      ) : (
-        <>
-          {/* Top half: bar above zero line */}
-          <div className="flex-1 flex flex-col-reverse">
-            <div
-              data-bar={barState}
-              className={`w-full ${barClass}`}
-              style={{ height: `${barPct}%` }}
-            />
-          </div>
-          {/* Bottom half: empty */}
-          <div className="flex-1" />
-          {/* Label above bar */}
-          <div className="absolute top-0 left-0 right-0 flex items-start justify-center" style={{ top: `calc(50% - ${barPct}% - 10px)` }}>
-            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
+  },
+);
 
 // ── Legend ────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { CoverageChart } from '@/components/scheduling/ShiftTimeline/CoverageChart';
 
@@ -90,6 +90,16 @@ describe('CoverageChart — area view', () => {
 });
 
 describe('CoverageChart — accessibility (tooltip shell)', () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
   it('each hour column is keyboard-focusable (tabIndex=0)', () => {
     const { container } = render(
       <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
@@ -111,6 +121,22 @@ describe('CoverageChart — accessibility (tooltip shell)', () => {
       expect(label).toBeTruthy();
       expect(label!.length).toBeGreaterThan(0);
     });
+  });
+
+  it('renders tooltip shell without React ref-forwarding warnings (area view)', () => {
+    render(<CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />);
+    const refWarning = consoleErrorSpy.mock.calls.find((args) =>
+      typeof args[0] === 'string' && args[0].includes('Function components cannot be given refs'),
+    );
+    expect(refWarning).toBeUndefined();
+  });
+
+  it('renders tooltip shell without React ref-forwarding warnings (delta view)', () => {
+    render(<CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />);
+    const refWarning = consoleErrorSpy.mock.calls.find((args) =>
+      typeof args[0] === 'string' && args[0].includes('Function components cannot be given refs'),
+    );
+    expect(refWarning).toBeUndefined();
   });
 });
 

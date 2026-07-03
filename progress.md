@@ -49,5 +49,15 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
 - [x] Phase 5 UI Review — TeamMembers.tsx: Skeleton loading state, border-border/40 rounded-xl list items, text-[14px]/text-[13px] typography, aria-label on MoreHorizontal, operations_manager in roleIcons/roleColors/select, human-readable badge label. Commit: 2052dbfc.
 - [x] Phase 6 Simplify — TeamMembers.tsx: replaced hard-coded 'Ops Manager' special-case with ROLE_METADATA label lookup (reuse). invitations.ts: dropped redundant `?? []` nullish guards on fully-typed Record. All 5134 tests pass. Commit: a7b6d619.
 
+- [x] Phase 7a Codex adversarial review — 1 critical finding: operations_manager privilege escalation via TeamMembers.tsx role selector (src/components/TeamMembers.tsx:237 + RLS user_id=auth.uid() bypass in user_restaurants policy). See dev-tools/codex-review-output.md.
+- [x] Phase 7a OCR-rules review — 1 major finding (incomplete residual-policy coverage for tip/payroll/scheduling tables + schedule_change_logs), 1 minor finding (as any in test without comment). See StructuredOutput below.
+- [x] Phase 7b Fold findings — commit ca8557f4:
+  - FIXED (critical): 12+ residual hardcoded RLS policies widened in migration (tip_splits, tip_split_items, tip_disputes, tip_contribution_pools, tip_server_earnings, tip_pool_allocations, tip_payouts, overtime_adjustments, daily_labor_allocations, employee_compensation_history INSERT, time_punches INSERT, staffing_settings, open_shift_claims SELECT+UPDATE, schedule_change_logs INSERT).
+  - FIXED (critical/security): Added "Prevent self-escalation to privileged roles" RLS policy on user_restaurants; TeamMembers.tsx role dropdown now uses getInvitableRoles() instead of hardcoded list; userRole prop typed as Role.
+  - FIXED (major): pgTAP test 21 adds view:collaborators exclusion sentinel; pgTAP test 22 adds 6 DML tests for residual tables (plan 9→15).
+  - FIXED (minor): invitations.ts nullish guard; TeamInvitations.test.tsx as any comment.
+  - SKIPPED (minor): performance O(n²) find in TeamMembers (pre-existing, not regression); CORS wildcard (pre-existing); stale form default (low risk).
+  - 5134 unit tests pass, typecheck clean.
+
 ## CI Status
 - PR: not yet created

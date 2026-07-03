@@ -75,4 +75,5 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
   - test:e2e: 124/159 failed; all failures at signUpAndCreateRestaurant waitForURL timeout (line 709 e2e-supabase.ts) — pre-existing auth/environment issue; no E2E test files changed by this branch
 
 ## CI Status
-- PR: not yet created
+- PR: https://github.com/toyiyo/nimble-pnl/pull/568 (opened 2026-07-03)
+- Phase 9a (Ship) complete: branch pushed, PR #568 created

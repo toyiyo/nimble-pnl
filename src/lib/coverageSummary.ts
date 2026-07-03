@@ -8,7 +8,7 @@
 
 import { computeDayCoverage } from '@/lib/shiftCoverage';
 import { UNASSIGNED_LABEL } from '@/lib/scheduleGrouping';
-import type { Shift, Employee } from '@/types/scheduling';
+import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 
 export interface CoverageHour {
   /** 0–23 clock hour (use Math.floor(startMin / 60) % 24 for the display label) */
@@ -21,6 +21,10 @@ export interface CoverageHour {
   needed: number | null;
   /** scheduled − needed, or null when needed is null */
   delta: number | null;
+  /** Projected sales for this hour from staffing recommendations (null when unavailable). */
+  projectedSales: number | null;
+  /** Estimated labor % for this hour (null when unavailable). */
+  laborPct: number | null;
 }
 
 export interface CoverageVerdict {
@@ -58,11 +62,14 @@ export function formatCoverageHour(hour: number): string {
  * @param demand    Array of { min, target } — one entry per demand hour start,
  *                  or null if no demand is configured.
  * @param window    { startMin, endMin } — the visible day window in minutes.
+ * @param recs      Optional staffing recommendations; when provided, each hour
+ *                  entry gains projectedSales and laborPct from the matching rec.
  */
 export function summarizeCoverageHours(
   coverage: { min: number; count: number }[],
   demand: { min: number; target: number }[] | null,
   window: { startMin: number; endMin: number },
+  recs?: HourlyStaffingRecommendation[],
 ): CoverageHour[] {
   // Do NOT short-circuit on empty coverage — when demand is configured but no
   // shifts are scheduled, every hour must be returned with scheduled=0 so that
@@ -74,6 +81,11 @@ export function summarizeCoverageHours(
   const demandMap: Map<number, number> | null = demand
     ? new Map(demand.map((d) => [d.min, d.target]))
     : null;
+
+  // Build a lookup: clock hour (0–23) → staffing recommendation
+  const recByHour: Map<number, HourlyStaffingRecommendation> = new Map(
+    recs?.map((r) => [r.hour, r]) ?? [],
+  );
 
   /**
    * Returns the demand target for the hour that contains `min`.
@@ -114,12 +126,17 @@ export function summarizeCoverageHours(
 
     const scheduled = inHour.length > 0 ? Math.min(...inHour.map((c) => c.count)) : 0;
 
+    const clockHour = Math.floor(start / HOUR) % 24;
+    const rec = recByHour.get(clockHour) ?? null;
+
     out.push({
-      hour: Math.floor(start / HOUR) % 24,
+      hour: clockHour,
       startMin: start,
       scheduled,
       needed,
       delta: needed === null ? null : scheduled - needed,
+      projectedSales: rec ? rec.projectedSales : null,
+      laborPct: rec ? rec.laborPct : null,
     });
   }
 

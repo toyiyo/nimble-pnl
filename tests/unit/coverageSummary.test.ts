@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { summarizeCoverageHours, buildVerdict, summarizeAreaCoverage } from '@/lib/coverageSummary';
-import type { Shift, Employee } from '@/types/scheduling';
+import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 
 // window 10:00–13:00 (600–780), 15-min samples
 const win = { startMin: 600, endMin: 780 };
@@ -147,5 +147,32 @@ describe('summarizeCoverageHours — zero-coverage with demand', () => {
   it('returns [] when both coverage and demand are absent (hour completely outside window)', () => {
     const hrs = summarizeCoverageHours([], null, { startMin: 600, endMin: 660 });
     expect(hrs).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// summarizeCoverageHours — sales context (projectedSales / laborPct)
+// ---------------------------------------------------------------------------
+
+const recFull = (hour: number, staff: number, sales: number, laborPct: number): HourlyStaffingRecommendation => ({
+  hour,
+  recommendedStaff: staff,
+  projectedSales: sales,
+  estimatedLaborCost: 0,
+  laborPct,
+  overTarget: false,
+});
+
+describe('summarizeCoverageHours — sales context', () => {
+  it('CRITICAL: carries projectedSales and laborPct from recommendations per hour', () => {
+    const hrs = summarizeCoverageHours(coverage, demand, win, [recFull(10, 1, 480, 22.5), recFull(11, 3, 900, 30)]);
+    expect(hrs[0]).toMatchObject({ hour: 10, projectedSales: 480, laborPct: 22.5 });
+    expect(hrs[1]).toMatchObject({ hour: 11, projectedSales: 900 });
+    expect(hrs[2].projectedSales).toBeNull(); // hour 12 has no rec
+  });
+  it('CRITICAL: projectedSales/laborPct are null when recs omitted (back-compat)', () => {
+    const hrs = summarizeCoverageHours(coverage, demand, win);
+    expect(hrs[0].projectedSales).toBeNull();
+    expect(hrs[0].laborPct).toBeNull();
   });
 });

@@ -6,13 +6,15 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { CalendarOff } from 'lucide-react';
 
 import { isoToLocalMinutes } from '@/lib/shiftCoverage';
+import { summarizeCoverageHours, buildVerdict } from '@/lib/coverageSummary';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useTimelineModel } from './useTimelineModel';
-import { CoverageCurve } from './CoverageCurve';
+import { CoverageVerdict } from './CoverageVerdict';
+import { CoverageChart } from './CoverageChart';
+import { CoverageStatusStrip } from './CoverageStatusStrip';
 import { TimelineAxis } from './TimelineAxis';
 import { TimelineLane } from './TimelineLane';
 import { NowIndicator } from './NowIndicator';
-import { CoverageGapList } from './CoverageGapList';
 import { TimelineShiftPopover } from './TimelineShiftPopover';
 import { formatDayLabel } from '@/lib/shiftInterval';
 
@@ -113,6 +115,7 @@ export function ShiftTimelineTab({
   const selectedDay = weekDays.includes(selectedDayState) ? selectedDayState : defaultDay(weekDays);
   const [groupBy, setGroupBy] = useState<GroupByMode>('area');
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
+  const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
 
   // ── Staffing recommendations ───────────────────────────────────────────────
   const { daySuggestions } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
@@ -127,6 +130,13 @@ export function ShiftTimelineTab({
 
   // ── Timeline model (pure transform) ───────────────────────────────────────
   const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
+
+  // ── Hourly coverage summary + verdict (feeds the new coverage panel) ───────
+  const hourlySummary = useMemo(
+    () => summarizeCoverageHours(model.coverage, model.demand, model.window),
+    [model.coverage, model.demand, model.window],
+  );
+  const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
 
   // ── Geometry helper ────────────────────────────────────────────────────────
   const minToPct = useCallback(
@@ -242,16 +252,40 @@ export function ShiftTimelineTab({
       <div className="overflow-x-auto rounded-xl border border-border/40">
         <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
 
-          {/* Coverage curve — offset by the 120px lane-label column so its
-              minToPct x-scale aligns with the axis ticks and shift bars. */}
-          <div className="pl-[120px] pt-2">
-            <CoverageCurve
-              window={model.window}
-              coverage={model.coverage}
-              demand={model.demand}
-              gaps={model.gaps}
-              minToPct={minToPct}
-            />
+          {/* Coverage panel — verdict → view toggle → chart → status strip.
+              Offset by the 120px lane-label column so the chart x-scale
+              aligns with the axis ticks and shift bars. */}
+          <div className="px-4 pt-3 pb-1 space-y-2">
+            {/* Plain-language verdict */}
+            <CoverageVerdict verdict={verdict} />
+
+            {/* View toggle: area chart vs diverging-bar chart */}
+            <div className="flex items-center gap-2">
+              <ToggleGroup
+                type="single"
+                value={coverageView}
+                onValueChange={(v) => { if (v === 'area' || v === 'delta') setCoverageView(v); }}
+                className="h-7"
+                aria-label="Coverage chart view"
+              >
+                <ToggleGroupItem value="area" className="h-7 px-3 text-[12px]">
+                  Chart
+                </ToggleGroupItem>
+                <ToggleGroupItem value="delta" className="h-7 px-3 text-[12px]">
+                  +/−
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {/* Coverage chart — offset to align with the axis ticks */}
+            <div className="pl-[120px]">
+              <CoverageChart hours={hourlySummary} view={coverageView} />
+            </div>
+
+            {/* Per-hour status strip */}
+            <div className="pl-[120px]">
+              <CoverageStatusStrip hours={hourlySummary} />
+            </div>
           </div>
 
           {/* Hour axis */}
@@ -282,9 +316,6 @@ export function ShiftTimelineTab({
           </div>
         </div>
       </div>
-
-      {/* Gap list (text alternative to color-based curve) */}
-      <CoverageGapList gaps={model.gaps} />
 
       {/* Single popover instance per CLAUDE.md pattern */}
       <TimelineShiftPopover

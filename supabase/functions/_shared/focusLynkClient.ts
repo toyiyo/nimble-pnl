@@ -254,7 +254,17 @@ export async function fetchDatafeed(
   }
 
   const syncStatus = syncRes.status;
-  const syncText = await syncRes.text();
+  let syncText: string;
+  try {
+    syncText = await syncRes.text();
+  } catch (e) {
+    return {
+      ok: false,
+      status: syncStatus,
+      kind: 'network',
+      error: e instanceof Error ? e.message : 'network error reading Lynk sync response body',
+    };
+  }
 
   // ── 4. Handle non-2xx from Lynk ─────────────────────────────────────────────
 
@@ -357,6 +367,16 @@ export async function fetchDatafeed(
     };
   }
 
-  const xml = await blobRes.text();
+  let xml: string;
+  try {
+    xml = await blobRes.text();
+  } catch (e) {
+    return {
+      ok: false,
+      status: blobRes.status,
+      kind: 'network',
+      error: e instanceof Error ? e.message : 'network error downloading datafeed blob',
+    };
+  }
   return { ok: true, status: blobRes.status, xml };
 }

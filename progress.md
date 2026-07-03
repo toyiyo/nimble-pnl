@@ -143,6 +143,20 @@
   - `delta===null & needed!==null` unreachable gap — unreachable per current code path; adding an else branch would be defensive code without a triggering test
 - Verification: 79/79 coverage-related tests pass (TZ=UTC); typecheck clean (0 errors)
 
+## Phase 8: Verify
+
+- Status: DONE
+- Checks:
+  - `.env.local` symlink: PRESENT (→ /Users/josedelgado/Documents/GitHub/nimble-pnl/.env.local)
+  - `npm run test` (TZ=UTC): 5374 tests pass, 403 test files pass; 5 test files fail (pre-existing `fast-xml-parser` missing — identical on main)
+  - All 6 coverage-related suites: 79/79 pass (coverageSummary 13, coverageChart 28, areaCoverageStrips 6, coverageStatusStrip 8, coverageDemandInfo 5, shiftTimelineTab 19)
+  - `npm run test:db`: pre-existing failures (focus cron chedule mismatches + `_focus_parse_local_time` function missing) — identical on main
+  - `npm run test:e2e`: 23 passed, 12 skipped, 22 did not run (0 failures); main branch had 3 pre-existing failures
+  - `npm run typecheck`: CLEAN (0 errors)
+  - `npm run lint`: 1483 problems (pre-existing — identical on main; 1 pre-existing warning from this branch: `react-refresh/only-export-components` on `buildHourTooltip`)
+  - `npm run build`: SUCCESS in 22s (0 errors, only pre-existing chunk-size warnings)
+  - Dev server torn down after E2E tests
+
 ## Phase 5: UI Review
 
 - Status: DONE (no violations found — no code changes required)

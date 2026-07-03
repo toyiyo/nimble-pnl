@@ -135,8 +135,8 @@ export function summarizeCoverageHours(
       scheduled,
       needed,
       delta: needed === null ? null : scheduled - needed,
-      projectedSales: rec ? rec.projectedSales : null,
-      laborPct: rec ? rec.laborPct : null,
+      projectedSales: rec?.projectedSales ?? null,
+      laborPct: rec?.laborPct ?? null,
     });
   }
 

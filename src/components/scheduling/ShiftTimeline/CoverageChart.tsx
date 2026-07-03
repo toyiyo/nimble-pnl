@@ -95,14 +95,6 @@ export function buildHourTooltip(h: CoverageHour, targetSplh: number | null): st
 }
 
 /**
- * Build a concise aria-label for an hour column — full tooltip content joined
- * so keyboard-only users get the same information as hover users.
- */
-function buildColumnAriaLabel(h: CoverageHour, targetSplh: number | null): string {
-  return buildHourTooltip(h, targetSplh).join(', ');
-}
-
-/**
  * Compute peak headcount across all hours (used for bar height scaling).
  * Always returns at least 1 to avoid divide-by-zero.
  */
@@ -132,7 +124,6 @@ const AreaColumn = forwardRef<HTMLDivElement, AreaColumnProps>(
     const isShort = h.delta !== null && h.delta < 0 && neededPct !== null;
 
     // Shortfall block spans from "scheduled" height up to "needed" height
-    const shortfallBottomPct = scheduledPct;
     const shortfallHeightPct = isShort && neededPct !== null ? neededPct - scheduledPct : 0;
 
     return (
@@ -157,7 +148,7 @@ const AreaColumn = forwardRef<HTMLDivElement, AreaColumnProps>(
             data-shortfall=""
             className="absolute left-0 right-0 bg-destructive/70 flex items-center justify-center"
             style={{
-              bottom: `${shortfallBottomPct}%`,
+              bottom: `${scheduledPct}%`,
               height: `${shortfallHeightPct}%`,
             }}
           >
@@ -403,60 +394,37 @@ export const CoverageChart = memo(function CoverageChart({
           className="relative w-full"
           style={{ height }}
         >
-          {view === 'area'
-            ? hours.map((h) => {
-                const left = effectiveMinToPct(h.startMin);
-                const width = effectiveMinToPct(h.startMin + 60) - left;
-                const tooltipLines = buildHourTooltip(h, targetSplh);
-                const ariaLabel = buildColumnAriaLabel(h, targetSplh);
-                return (
-                  <Tooltip key={h.startMin}>
-                    <TooltipTrigger asChild>
-                      <AreaColumn
-                        h={h}
-                        left={left}
-                        width={width}
-                        peak={peak}
-                        ariaLabel={ariaLabel}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-[12px] max-w-[220px]">
-                      <div className="space-y-0.5">
-                        {tooltipLines.map((line, i) => (
-                          <p key={i} className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{line}</p>
-                        ))}
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
+          {hours.map((h) => {
+              const left = effectiveMinToPct(h.startMin);
+              const width = effectiveMinToPct(h.startMin + 60) - left;
+              const tooltipLines = buildHourTooltip(h, targetSplh);
+              const ariaLabel = tooltipLines.join(', ');
+              const col =
+                view === 'area' ? (
+                  <AreaColumn h={h} left={left} width={width} peak={peak} ariaLabel={ariaLabel} />
+                ) : (
+                  <DeltaColumn
+                    h={h}
+                    left={left}
+                    width={width}
+                    peak={peak}
+                    deltaPeak={deltaPeak}
+                    ariaLabel={ariaLabel}
+                  />
                 );
-              })
-            : hours.map((h) => {
-                const left = effectiveMinToPct(h.startMin);
-                const width = effectiveMinToPct(h.startMin + 60) - left;
-                const tooltipLines = buildHourTooltip(h, targetSplh);
-                const ariaLabel = buildColumnAriaLabel(h, targetSplh);
-                return (
-                  <Tooltip key={h.startMin}>
-                    <TooltipTrigger asChild>
-                      <DeltaColumn
-                        h={h}
-                        left={left}
-                        width={width}
-                        peak={peak}
-                        deltaPeak={deltaPeak}
-                        ariaLabel={ariaLabel}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="text-[12px] max-w-[220px]">
-                      <div className="space-y-0.5">
-                        {tooltipLines.map((line, i) => (
-                          <p key={i} className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{line}</p>
-                        ))}
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
+              return (
+                <Tooltip key={h.startMin}>
+                  <TooltipTrigger asChild>{col}</TooltipTrigger>
+                  <TooltipContent side="top" className="text-[12px] max-w-[220px]">
+                    <div className="space-y-0.5">
+                      {tooltipLines.map((line, i) => (
+                        <p key={i} className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{line}</p>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
         </div>
 
         <Legend hasDemand={hasDemand} view={view} />

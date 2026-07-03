@@ -38,4 +38,14 @@ describe('invite matrix', () => {
       expect(getInvitableRoles(r)).toEqual([]);
     }
   });
+
+  it('getInvitableRoles returns empty array for unknown role (fallback branch)', () => {
+    // Force an unknown role via type assertion to exercise the ?? [] fallback branch
+    expect(getInvitableRoles('unknown_role' as unknown as import('@/lib/permissions/types').Role)).toEqual([]);
+  });
+
+  it('canInviteRole returns false for unknown inviter (fallback branch)', () => {
+    // Force an unknown role via type assertion to exercise the ?? [] fallback branch
+    expect(canInviteRole('unknown_role' as unknown as import('@/lib/permissions/types').Role, 'staff')).toBe(false);
+  });
 });

@@ -49,3 +49,12 @@
 - TDD cycle: RED (1 new test fails — `console.error` spy detects forwardRef warning) → GREEN (15 tests pass, no warnings) → typecheck clean → commit
 - Note: The `TooltipProvider`, `Tooltip`, `TooltipTrigger asChild`, `TooltipContent` shell was already placed in commit a8fc33ee; this task fixed the forwardRef regression that prevented correct Radix Slot wiring.
 - Suites confirmed green: coverageSummary (13), coverageChart (15), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (16)
+
+### Task 2d — Update ShiftTimelineTab call site: pass minToPct, targetSplh, and dayRecommendations into summarizeCoverageHours
+- Status: DONE
+- Commit: c4cd08e9
+- Files changed:
+  - `tests/unit/shiftTimelineTab.test.tsx` — refactored `vi.mock` to use a named `mockUseWeekStaffingSuggestions` fn variable so tests can override return values per-test; added `afterEach` import; added `ShiftTimelineTab — call-site wiring (Task 2d)` describe block with 3 tests: confirms hook is called with correct args, confirms columns render when recommendations exist, confirms `style.left` is set (minToPct wired).
+- Context: The ShiftTimelineTab implementation was already complete (wired in commit a8fc33ee as part of task 2b, step 5 of the task 2 plan). This task adds the missing tests that specifically validate the wiring contract.
+- TDD cycle: GREEN (3 new tests pass immediately since implementation pre-existed) → typecheck clean → commit
+- Suites confirmed green: coverageSummary (13), coverageChart (15), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (19)

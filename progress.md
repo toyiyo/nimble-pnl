@@ -228,6 +228,23 @@ Phase 4–9: dev-build-and-ship workflow — launched
           - No-op on empty/new databases (no matching categorization_rules)
         All 1530/1530 pgTAP tests green; 27 tests in categorization_background_rules.test.sql (a–n all pass).
 
+  - [x] Task 6a (plan Task 6 step 1, task 28/36): Check existing stripe-sync unit tests for RPC name assertion; write failing test if needed — commit ae79d4e2
+        File: tests/unit/stripe-sync-rpc-name.test.ts (new, 30 lines)
+        Checked: tests/unit/stripe-sync-tombstone.test.ts — no RPC name assertion present.
+        Created static source-audit test: reads supabase/functions/stripe-sync-transactions/index.ts,
+          asserts source contains 'apply_rules_to_bank_transactions_internal'
+          AND does not contain 'apply_rules_to_bank_transactions' (the auth-gated public wrapper).
+        RED confirmed: test fails — source currently calls public wrapper ('apply_rules_to_bank_transactions'), not internal.
+        Vitest output: 1 failed; first assertion fires ("expected ... to contain 'apply_rules_to_bank_transactions_internal'").
+  - [x] Task 6b (plan Task 6 step 2, task 29/36): Change stripe-sync-transactions index.ts line 297 RPC from apply_rules_to_bank_transactions to apply_rules_to_bank_transactions_internal with p_batch_limit 1000 — commit bfc02c6b
+        File: supabase/functions/stripe-sync-transactions/index.ts (line 297 patched)
+        GREEN confirmed: npm run test -- tests/unit/stripe-sync-rpc-name.test.ts → 1 passed.
+        Full unit suite: 5279 tests passed (5 pre-existing focus* failures, unrelated to this change).
+        typecheck: clean (tsc --noEmit, 0 errors).
+        Change: rpc('apply_rules_to_bank_transactions') → rpc('apply_rules_to_bank_transactions_internal', { p_restaurant_id, p_batch_limit: 1000 })
+        Comment added explaining why internal engine is needed (auth.uid() is NULL for service-role callers).
+        Message: "fix(banking): stripe sync applies rules via internal engine (service-role safe)"
+
 ## CI Status
 - PR: not yet created
 

@@ -35,13 +35,71 @@ interface CoverageChartProps {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 /**
- * Build a concise aria-label for an hour column.
- * Task 3 will replace this with the full tooltip content via `buildHourTooltip`.
+ * Build the per-hour tooltip lines for an hour column.
+ *
+ * Returns an array of strings — one per visual line — so callers can join them
+ * as needed (aria-label uses comma-join; TooltipContent renders each on its own line).
+ *
+ * Content follows the design spec:
+ *   Line 1: "10 AM–11 AM"  (time range)
+ *   Line 2: "3 scheduled · 5 needed"  (or "4 scheduled" when no demand)
+ *   Line 3: "Projected sales $480"  (when projectedSales != null)
+ *   Line 4: "÷ $95/labor-hr target ≈ 5 needed"  (when targetSplh and projectedSales)
+ *   Line 5: verdict — "Short 2 — add staff" / "Covered · +1 spare" / "Right on target" /
+ *            "No demand target — set staffing targets to see needed staff."
+ *
+ * Exported so it can be unit-tested directly (pure function, no React).
  */
-function buildColumnAriaLabel(h: CoverageHour): string {
-  const timeRange = formatCoverageHour(h.hour);
-  const neededStr = h.needed !== null ? ` · ${h.needed} needed` : '';
-  return `${timeRange}: ${h.scheduled} scheduled${neededStr}`;
+export function buildHourTooltip(h: CoverageHour, targetSplh: number | null): string[] {
+  const lines: string[] = [];
+
+  // Line 1: time range, e.g. "10 AM–11 AM"
+  const startLabel = formatCoverageHour(h.hour);
+  const endLabel = formatCoverageHour(h.hour + 1);
+  lines.push(`${startLabel}–${endLabel}`);
+
+  // Line 2: scheduled / needed summary
+  if (h.needed !== null) {
+    lines.push(`${h.scheduled} scheduled · ${h.needed} needed`);
+  } else {
+    lines.push(`${h.scheduled} scheduled`);
+  }
+
+  // Lines 3–4: sales and SPLH math (only when rec data is present)
+  if (h.projectedSales !== null && h.needed !== null) {
+    const salesFmt = h.projectedSales.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    });
+    lines.push(`Projected sales ${salesFmt}`);
+
+    if (targetSplh !== null) {
+      const approxNeeded = Math.round(h.projectedSales / targetSplh);
+      lines.push(`÷ $${targetSplh}/labor-hr target ≈ ${approxNeeded} needed`);
+    }
+  }
+
+  // Line 5: verdict
+  if (h.needed === null) {
+    lines.push('No demand target — set staffing targets to see needed staff.');
+  } else if (h.delta !== null && h.delta < 0) {
+    lines.push(`Short ${Math.abs(h.delta)} — add staff`);
+  } else if (h.delta === 0) {
+    lines.push('Right on target');
+  } else if (h.delta !== null && h.delta > 0) {
+    lines.push(`Covered · +${h.delta} spare`);
+  }
+
+  return lines;
+}
+
+/**
+ * Build a concise aria-label for an hour column — full tooltip content joined
+ * so keyboard-only users get the same information as hover users.
+ */
+function buildColumnAriaLabel(h: CoverageHour, targetSplh: number | null): string {
+  return buildHourTooltip(h, targetSplh).join(', ');
 }
 
 /**
@@ -304,6 +362,7 @@ export const CoverageChart = memo(function CoverageChart({
   hours,
   view,
   minToPct,
+  targetSplh = null,
   height = 120,
 }: CoverageChartProps) {
   if (hours.length === 0) return null;
@@ -336,7 +395,7 @@ export const CoverageChart = memo(function CoverageChart({
     });
 
   return (
-    <TooltipProvider>
+    <TooltipProvider delayDuration={0}>
       <div>
         <div
           role="img"
@@ -348,7 +407,8 @@ export const CoverageChart = memo(function CoverageChart({
             ? hours.map((h) => {
                 const left = effectiveMinToPct(h.startMin);
                 const width = effectiveMinToPct(h.startMin + 60) - left;
-                const ariaLabel = buildColumnAriaLabel(h);
+                const tooltipLines = buildHourTooltip(h, targetSplh);
+                const ariaLabel = buildColumnAriaLabel(h, targetSplh);
                 return (
                   <Tooltip key={h.startMin}>
                     <TooltipTrigger asChild>
@@ -361,7 +421,11 @@ export const CoverageChart = memo(function CoverageChart({
                       />
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-[12px] max-w-[220px]">
-                      {ariaLabel}
+                      <div className="space-y-0.5">
+                        {tooltipLines.map((line, i) => (
+                          <p key={i} className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{line}</p>
+                        ))}
+                      </div>
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -369,7 +433,8 @@ export const CoverageChart = memo(function CoverageChart({
             : hours.map((h) => {
                 const left = effectiveMinToPct(h.startMin);
                 const width = effectiveMinToPct(h.startMin + 60) - left;
-                const ariaLabel = buildColumnAriaLabel(h);
+                const tooltipLines = buildHourTooltip(h, targetSplh);
+                const ariaLabel = buildColumnAriaLabel(h, targetSplh);
                 return (
                   <Tooltip key={h.startMin}>
                     <TooltipTrigger asChild>
@@ -383,7 +448,11 @@ export const CoverageChart = memo(function CoverageChart({
                       />
                     </TooltipTrigger>
                     <TooltipContent side="top" className="text-[12px] max-w-[220px]">
-                      {ariaLabel}
+                      <div className="space-y-0.5">
+                        {tooltipLines.map((line, i) => (
+                          <p key={i} className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{line}</p>
+                        ))}
+                      </div>
                     </TooltipContent>
                   </Tooltip>
                 );

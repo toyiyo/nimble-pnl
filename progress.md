@@ -312,6 +312,13 @@ Phase 4–9: dev-build-and-ship workflow — launched
         All 5/5 RTL tests (i-iv-b) pass; 5284 unit tests pass; typecheck clean; lint clean on changed files.
         All 36/36 plan tasks complete.
 
+  - [x] Phase 5 (UI Review): Reviewed EnhancedCategoryRulesDialog.tsx against CLAUDE.md Apple/Notion guidelines — commit 3c9e4f4e
+        Violations fixed:
+          1. Missing error state: added `error` branch (AlertTriangle icon + message) after isLoading check
+          2. Icon-only button: added aria-label="Dismiss AI suggestions" + aria-hidden to X icon in suggestion panel
+          3. Input backgrounds: changed all `bg-background` → `bg-muted/30` per CLAUDE.md form-element spec
+        typecheck clean post-fix. All prior tests unaffected.
+
 ## CI Status
 - PR: not yet created
 

@@ -19,7 +19,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(18);
 
 -- ============================================================================
 -- Fixtures (inserted as superuser before we switch to authenticated role)
@@ -308,9 +308,11 @@ SELECT lives_ok(
 );
 
 -- ============================================================================
--- Test 17: self-escalation guard — UPDATE on own membership to 'manager' is denied
--- The "Prevent self-escalation to privileged roles" policy WITH CHECK blocks
--- non-owners from writing 'manager' or 'owner'.
+-- Tests 17-18: self-escalation guard — the RESTRICTIVE policy "Prevent
+-- self-escalation to privileged roles" ANDs with the permissive policies,
+-- so a non-owner UPDATE of their own membership may only result in
+-- role IN ('staff','kiosk').  (A permissive guard would be ORed away by the
+-- pre-existing "Owners can manage restaurant associations" policy.)
 -- ============================================================================
 
 SELECT throws_ok(
@@ -321,6 +323,16 @@ SELECT throws_ok(
     NULL,
     NULL,
     'ops-mgr cannot self-escalate to manager via UPDATE (escalation guard)'
+);
+
+SELECT throws_ok(
+    $$ UPDATE public.user_restaurants
+       SET role = 'collaborator_accountant'
+       WHERE user_id = '22000000-0000-0000-0000-000000000002'::uuid
+         AND restaurant_id = '22000000-0000-0000-0000-000000000099'::uuid $$,
+    NULL,
+    NULL,
+    'ops-mgr cannot self-grant collaborator_accountant (financial access) via UPDATE'
 );
 
 SELECT * FROM finish();

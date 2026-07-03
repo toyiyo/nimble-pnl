@@ -862,29 +862,32 @@ WITH CHECK (
 
 -- -------------------------------------------------------------------------
 -- user_restaurants UPDATE: prevent self-escalation to privileged roles.
--- The policy "Owners can manage restaurant associations" (FOR ALL) allows
--- users to UPDATE their own row to any role.  This restrictive UPDATE policy
--- narrows that: non-owners can only update their OWN row, and the resulting
--- role must not be 'owner' or 'manager'.  Using USING (row-targeting) that
--- mirrors the FOR ALL policy prevents any user from reaching rows they do
--- not own via this policy.  Restaurant owners are unrestricted.
+-- The pre-existing permissive policy "Owners can manage restaurant
+-- associations" (FOR ALL) has WITH CHECK (user_id = auth.uid() OR
+-- is_restaurant_owner(...)), so any user can UPDATE their own row to ANY
+-- role.  Permissive policies are ORed, so another permissive policy cannot
+-- narrow that — this guard MUST be RESTRICTIVE (ANDed with the permissive
+-- set).  USING (true) keeps row-targeting rules unchanged (the permissive
+-- policies still decide which rows are reachable); the WITH CHECK is the
+-- enforcement: unless the writer owns the restaurant, the resulting row may
+-- only hold a non-privileged role.  'staff'/'kiosk' is an allowlist rather
+-- than blocking only owner/manager: self-escalation to operations_manager,
+-- chef, or any collaborator_* role also grants elevated access.
+-- accept-invitation writes memberships with the service-role key (bypasses
+-- RLS), so invitation acceptance is unaffected.
 -- -------------------------------------------------------------------------
 DROP POLICY IF EXISTS "Prevent self-escalation to privileged roles" ON public.user_restaurants;
 CREATE POLICY "Prevent self-escalation to privileged roles"
 ON public.user_restaurants
+AS RESTRICTIVE
 FOR UPDATE
-USING (
-  -- Only reach rows the caller owns OR rows in their owned restaurant
-  user_id = auth.uid()
-  OR public.is_restaurant_owner(restaurant_id, auth.uid())
-)
+USING (true)
 WITH CHECK (
-  -- Allow if the caller is an owner of this restaurant
+  -- Restaurant owners may assign any role
   public.is_restaurant_owner(restaurant_id, auth.uid())
   OR
-  -- Allow if the new role is not a privileged role (prevents non-owners from
-  -- granting themselves manager/owner access)
-  role NOT IN ('owner', 'manager')
+  -- Everyone else may only end up with a non-privileged role
+  role IN ('staff', 'kiosk')
 );
 
 -- -------------------------------------------------------------------------

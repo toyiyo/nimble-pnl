@@ -1,4 +1,4 @@
-import { forwardRef, memo } from 'react';
+import { forwardRef, memo, type ReactNode } from 'react';
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
@@ -74,7 +74,7 @@ export function buildHourTooltip(h: CoverageHour, targetSplh: number | null): st
     });
     lines.push(`Projected sales ${salesFmt}`);
 
-    if (targetSplh !== null) {
+    if (targetSplh !== null && targetSplh > 0) {
       const approxNeeded = Math.round(h.projectedSales / targetSplh);
       lines.push(`÷ $${targetSplh}/labor-hr target ≈ ${approxNeeded} needed`);
     }
@@ -184,63 +184,82 @@ interface DeltaColumnProps {
 
 const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
   function DeltaColumn({ h, left, width, peak, deltaPeak, ariaLabel }, ref) {
-    // No-demand hour — show scheduled headcount scaled by peak (not deltaPeak)
+    // Compute inner content once; all three branches share the same outer wrapper.
+    let innerContent: ReactNode;
+
     if (h.delta === null) {
+      // No-demand hour — show scheduled headcount scaled by peak (not deltaPeak)
       const barPct = Math.min(50, Math.max(0.5, (h.scheduled / peak) * 50));
-      return (
+      innerContent = (
+        // Zero line at 50% height
+        <div className="absolute left-0 right-0" style={{ top: '50%' }}>
+          <div
+            data-bar="no-demand"
+            className="bg-muted/60 w-full"
+            style={{ height: `${barPct}%` }}
+          />
+        </div>
+      );
+    } else if (h.delta === 0) {
+      innerContent = (
+        // Tick at zero baseline (50%)
         <div
-          ref={ref}
-          data-hour-col=""
-          tabIndex={0}
-          aria-label={ariaLabel}
-          className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-          style={{ left: `${left}%`, width: `${width}%` }}
+          className="absolute left-0 right-0"
+          style={{ top: 'calc(50% - 2px)', height: '2px' }}
         >
-          {/* Zero line at 50% height */}
-          <div className="absolute left-0 right-0" style={{ top: '50%' }}>
+          <div
+            data-bar="covered"
+            className="bg-success opacity-40 w-full h-full"
+          />
+        </div>
+      );
+    } else {
+      const isShort = h.delta < 0;
+      const absD = Math.abs(h.delta);
+      // cap at 48% (2% headroom for delta label above zero line)
+      const barPct = Math.min(48, (absD / deltaPeak) * 50);
+      const barState = isShort ? 'short' : 'covered';
+      const barClass = isShort ? 'bg-destructive' : 'bg-success';
+      const label = h.delta > 0 ? `+${h.delta}` : String(h.delta);
+
+      innerContent = isShort ? (
+        <>
+          {/* Top half: empty */}
+          <div className="flex-1" />
+          {/* Bottom half: bar below zero line */}
+          <div className="flex-1 flex flex-col-reverse">
             <div
-              data-bar="no-demand"
-              className="bg-muted/60 w-full"
+              data-bar={barState}
+              className={`w-full ${barClass}`}
               style={{ height: `${barPct}%` }}
             />
           </div>
-        </div>
-      );
-    }
-
-    const isShort = h.delta < 0;
-    const isZero = h.delta === 0;
-
-    if (isZero) {
-      return (
-        <div
-          ref={ref}
-          data-hour-col=""
-          tabIndex={0}
-          aria-label={ariaLabel}
-          className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-          style={{ left: `${left}%`, width: `${width}%` }}
-        >
-          {/* Tick at zero baseline (50%) */}
-          <div
-            className="absolute left-0 right-0"
-            style={{ top: 'calc(50% - 2px)', height: '2px' }}
-          >
+          {/* Label below bar */}
+          <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center" style={{ bottom: `calc(50% - ${barPct}% - 10px)` }}>
+            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Top half: bar above zero line */}
+          <div className="flex-1 flex flex-col-reverse">
             <div
-              data-bar="covered"
-              className="bg-success opacity-40 w-full h-full"
+              data-bar={barState}
+              className={`w-full ${barClass}`}
+              style={{ height: `${barPct}%` }}
             />
           </div>
-        </div>
+          {/* Bottom half: empty */}
+          <div className="flex-1" />
+          {/* Label above bar */}
+          <div className="absolute top-0 left-0 right-0 flex items-start justify-center" style={{ top: `calc(50% - ${barPct}% - 10px)` }}>
+            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
+          </div>
+        </>
       );
     }
 
-    const absD = Math.abs(h.delta);
-    const barPct = Math.min(48, (absD / deltaPeak) * 50);
-    const barState = isShort ? 'short' : 'covered';
-    const barClass = isShort ? 'bg-destructive' : 'bg-success';
-    const label = h.delta > 0 ? `+${h.delta}` : String(h.delta);
-
+    // Shared outer wrapper — only innerContent differs across the three branches
     return (
       <div
         ref={ref}
@@ -250,42 +269,7 @@ const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
         className="absolute inset-y-0 flex flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         style={{ left: `${left}%`, width: `${width}%` }}
       >
-        {/* Bar + label for short hours (below zero line) */}
-        {isShort ? (
-          <>
-            {/* Top half: empty */}
-            <div className="flex-1" />
-            {/* Bottom half: bar below zero line */}
-            <div className="flex-1 flex flex-col-reverse">
-              <div
-                data-bar={barState}
-                className={`w-full ${barClass}`}
-                style={{ height: `${barPct}%` }}
-              />
-            </div>
-            {/* Label below bar */}
-            <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center" style={{ bottom: `calc(50% - ${barPct}% - 10px)` }}>
-              <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Top half: bar above zero line */}
-            <div className="flex-1 flex flex-col-reverse">
-              <div
-                data-bar={barState}
-                className={`w-full ${barClass}`}
-                style={{ height: `${barPct}%` }}
-              />
-            </div>
-            {/* Bottom half: empty */}
-            <div className="flex-1" />
-            {/* Label above bar */}
-            <div className="absolute top-0 left-0 right-0 flex items-start justify-center" style={{ top: `calc(50% - ${barPct}% - 10px)` }}>
-              <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
-            </div>
-          </>
-        )}
+        {innerContent}
       </div>
     );
   },

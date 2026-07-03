@@ -237,23 +237,22 @@ export function ShiftTimelineTab({
     </div>
   );
 
-  // ── Empty state ────────────────────────────────────────────────────────────
-  if (model.lanes.length === 0) {
-    return (
-      <div className="space-y-3">
-        {controls}
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
-            <CalendarOff className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <p className="text-[15px] font-medium text-foreground">No shifts scheduled</p>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            Switch to Plan to add coverage.
-          </p>
+  // ── Empty-lane sentinel: shown inside the data layout when no shifts exist ───
+  // We do NOT bail out early here: even with zero lanes, the coverage panel must
+  // render so managers can see demand shortfalls on a fully unstaffed day.
+  // The empty state message is inlined below the coverage panel instead.
+  const noShiftsMessage =
+    model.lanes.length === 0 ? (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
+          <CalendarOff className="h-5 w-5 text-muted-foreground" />
         </div>
+        <p className="text-[15px] font-medium text-foreground">No shifts scheduled</p>
+        <p className="text-[13px] text-muted-foreground mt-1">
+          Switch to Plan to add coverage.
+        </p>
       </div>
-    );
-  }
+    ) : null;
 
   // ── Data state — full timeline ─────────────────────────────────────────────
   return (
@@ -321,27 +320,29 @@ export function ShiftTimelineTab({
             <TimelineAxis window={model.window} minToPct={minToPct} />
           </div>
 
-          {/* Lanes + NowIndicator overlay */}
-          <div className="relative">
-            {/* NowIndicator sits over the lanes plot region, offset for label column */}
-            <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
-              <NowIndicator
-                dateStr={selectedDay}
-                tz={tz}
-                window={model.window}
-                minToPct={minToPct}
-              />
-            </div>
+          {/* Lanes + NowIndicator overlay, or empty-day message */}
+          {noShiftsMessage ?? (
+            <div className="relative">
+              {/* NowIndicator sits over the lanes plot region, offset for label column */}
+              <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
+                <NowIndicator
+                  dateStr={selectedDay}
+                  tz={tz}
+                  window={model.window}
+                  minToPct={minToPct}
+                />
+              </div>
 
-            {model.lanes.map((lane) => (
-              <TimelineLane
-                key={lane.key}
-                lane={lane}
-                minToPct={minToPct}
-                onSelect={setActiveShift}
-              />
-            ))}
-          </div>
+              {model.lanes.map((lane) => (
+                <TimelineLane
+                  key={lane.key}
+                  lane={lane}
+                  minToPct={minToPct}
+                  onSelect={setActiveShift}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

@@ -77,3 +77,10 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
 ## CI Status
 - PR: https://github.com/toyiyo/nimble-pnl/pull/568 (opened 2026-07-03)
 - Phase 9a (Ship) complete: branch pushed, PR #568 created
+
+- [x] Phase 9b iteration 2 (2026-07-03, resumed session):
+  - CI failure diagnosed: pgTAP test 17 — "Prevent self-escalation" guard was PERMISSIVE (ORed away by pre-existing FOR ALL policy); reproduced locally.
+  - Fixed in 314a1b72: AS RESTRICTIVE + allowlist WITH CHECK (staff/kiosk for non-owners); closes owner/manager AND operations_manager/chef/collaborator_* escalation. pgTAP test 18 added; local suite 1552/1552.
+  - E2E shard 3 failure = dnd-kit drag flake in scheduling-conflicts (test has internal retry loop for this); re-running via push.
+  - Replied to Codex P1 thread with correction (prior reply had claimed the ineffective c4d650f4 USING fix).
+  - CI watch running on 314a1b72.

@@ -37,16 +37,31 @@ Only the **claim flow** on the one reachable surface. Verified during discovery:
 
 ### 1. Data — surface the offering employee's area
 
-`useMarketplaceTrades` (`src/hooks/useShiftTrades.ts`) currently embeds
-`offered_by:employees(id, name, position)`. Add `area`:
+Two edits in `src/hooks/useShiftTrades.ts`, and they are **separate — both are
+required** (frontend review, major):
 
-```ts
-offered_by:employees!offered_by_employee_id(id, name, position, area)
-```
+1. **The `useMarketplaceTrades` query string** (the one that actually feeds
+   `AvailableShiftsPage`) embeds `offered_by:employees!offered_by_employee_id(id,
+   name, position)`. Add `area`:
+   ```ts
+   offered_by:employees!offered_by_employee_id(id, name, position, area)
+   ```
+2. **The shared `ShiftTrade['offered_by']` type** — add `area: string | null`.
 
-Extend the `ShiftTrade['offered_by']` type (same file) with `area: string | null`.
-The `employees` FK on `shift_trades.offered_by_employee_id` already exists, so
-this embed is safe (no silent-null PostgREST embed risk).
+These are independent: the `ShiftTrade` type is shared, but the query lives in
+`useMarketplaceTrades` with its own select list. Updating only the type would
+make `offered_by.area` type-`string` but runtime-`undefined`. The main
+`useShiftTrades` query has yet another `offered_by` select; it does not feed this
+feature, so leaving its select as-is is fine — but the shared type gains `area`
+so any reader sees it. (Pre-existing note from Supabase review: `offered_by.email`
+is already in the type but not selected by the marketplace query — a pre-existing
+inconsistency we are NOT fixing here to avoid scope creep.)
+
+The `employees` FK on `shift_trades.offered_by_employee_id` is a real
+`NOT NULL REFERENCES employees(id)` (confirmed in the create migration), so this
+embed is safe — no silent-null PostgREST embed risk, and `employees` SELECT RLS
+already exposes coworkers' `area` (same sensitivity as the already-returned
+`position`).
 
 The claiming employee's area is **already available**: `useCurrentEmployee` does
 `.select('*')`, so `currentEmployee.area` is present — no hook change there.
@@ -91,32 +106,60 @@ the "keep testable logic in a pure helper" lesson.
 that contract: the **parent** computes the mismatch and passes it down as a
 precomputed prop.
 
-- Parent (render of each `item.type === 'trade'`):
-  `const areaMismatch = getAreaMismatch(item.trade.offered_by?.area, currentEmployee?.area)`
+- Parent (render of each `item.type === 'trade'`, where `currentEmployee` is
+  already guaranteed non-null by the page's early returns):
+  `const areaMismatch = getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)`
   passed as `areaMismatch={areaMismatch}`.
+- **Card layout** (frontend review, minor): `TradeCard`'s outer element changes
+  from the current single-row `flex items-center justify-between` to
+  `flex flex-col gap-2`. Row 1 is the existing content+button
+  `flex items-center justify-between` block (unchanged). Row 2 is the full-width
+  warning panel. The virtualizer's `measureElement` ref sits on the parent's row
+  wrapper (outside `TradeCard`), so it re-measures the taller card automatically
+  — no wrapper change around the measured element.
 - `TradeCard` gains `areaMismatch?: AreaMismatch | null`. When present:
-  - Render an amber warning row using the documented CLAUDE.md pattern
-    (`bg-amber-500/10 border border-amber-500/20`, `AlertTriangle` icon
-    `aria-hidden`, text in `text-amber-600`/amber-700 dark). Copy:
+  - Render a **full-width** amber warning panel using the documented CLAUDE.md
+    pattern: `flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border
+    border-amber-500/20`, `AlertTriangle` icon `aria-hidden`, sentence text at
+    **`text-[13px]`** in `text-amber-600` (established in this file for the SHIFT
+    TRADE / Pending badges). Copy:
     **"This is a {offeredArea} shift — you work {claimerArea}."**
-    Wrap in `role="status"` so it's announced without stealing focus.
-  - Relabel the claim button **"Claim anyway"** (from "Accept") and update its
-    `aria-label` to convey the cross-area intent. Button stays **enabled**
-    (warn, not block).
-- Extend the `memo` comparator to include the mismatch so the card re-renders
-  when it changes: compare `prev.areaMismatch?.offeredArea/claimerArea` to next.
+  - **Accessibility (frontend review, major + minor):** give the warning text a
+    stable id `area-mismatch-${trade.id}` and set `aria-describedby` to it on the
+    claim button, so a screen-reader user hears the area context exactly when the
+    button is focused. Do **not** use `role="status"`/a live region — in this
+    virtualized list a live region re-announces every time the row re-mounts on
+    scroll (noisy). `aria-describedby` gives the info at the right moment without
+    the spam.
+  - Relabel the claim button **"Claim anyway"** (from "Accept"), in-flight label
+    **"Claiming…"** (from "Accepting…"), and set a concise
+    `aria-label={`Claim anyway — trade from ${name} on ${dateLabel}`}` (area
+    detail comes through `aria-describedby`). Button stays **enabled** (warn,
+    not block). When there is no mismatch, the button keeps its current "Accept"
+    text, "Accepting…" in-flight label, and existing `aria-label`, with no
+    `aria-describedby`.
+- Extend the `memo` comparator to include the mismatch: compare
+  `prev.areaMismatch?.offeredArea` / `?.claimerArea` to next (field-by-field, NOT
+  by object reference — `getAreaMismatch` returns a fresh object each render, so
+  reference compare would always differ and defeat memoization). Optional-chaining
+  correctly handles the null↔object transitions.
 - Three-state / guards: the warning derives from already-loaded row data
   (`offered_by.area`) + `currentEmployee.area`, not a separate query, so there is
-  no independent loading/error state to guard. If `currentEmployee` is still
-  loading (`undefined`), `getAreaMismatch(_, undefined)` returns null → no
-  warning (fails safe). This satisfies the "warning heuristics must not fire on
-  missing/errored data" lesson: unknown area ⇒ no warning, never a false one.
+  no independent loading/error state to guard. `currentEmployee` is non-null here
+  (page early-returns a skeleton / not-linked state otherwise), and unknown area
+  on either side ⇒ `getAreaMismatch` returns null ⇒ no warning. This satisfies the
+  "warning heuristics must not fire on missing/errored data" lesson: unknown area
+  ⇒ silence, never a false alarm.
 
 ## Accessibility
 
-- Warning uses `role="status"` + visible text; icon is `aria-hidden`.
-- Button keeps a descriptive `aria-label` (now including "different area").
-- No color-only signal — the text states the areas explicitly.
+- Warning is visible sentence text (not color-only — it names both areas), icon
+  `aria-hidden`, with a stable id `area-mismatch-${trade.id}`.
+- The claim button links to it via `aria-describedby` (announced on focus), so no
+  live region is needed — this avoids the virtualized-list re-announcement noise a
+  `role="status"`/`aria-live` region would cause as rows re-mount on scroll.
+- Button `aria-label` stays action-focused ("Claim anyway — …"); the area detail
+  rides on `aria-describedby`.
 
 ## Testing
 

@@ -16,7 +16,7 @@
 --       rule supplier must NOT overwrite it (COALESCE: txn supplier wins)
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(8);
 
 -- ============================================================
 -- Setup

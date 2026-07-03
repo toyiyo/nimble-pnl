@@ -109,3 +109,24 @@
   - All 6 coverage-related suites under TZ=UTC: 79 tests pass (coverageSummary 13, coverageChart 28, areaCoverageStrips 6, coverageStatusStrip 8, coverageDemandInfo 5, shiftTimelineTab 19)
   - Recovered #569 suites confirmed green: areaCoverageStrips (6), coverageDemandInfo (5), coverageStatusStrip (8), shiftTimelineTab (19) — 38 total
   - Build: `npm run build` succeeds in 50.65s (0 errors, only pre-existing chunk-size warnings)
+
+## Phase 6: Simplify
+
+- Status: DONE
+- Commit: 73f8b338
+- Files changed:
+  - `src/components/scheduling/ShiftTimeline/CoverageChart.tsx` — (1) merged the identical area/delta `hours.map()` branches into a single map that switches only the inner column component, eliminating ~35 lines of duplicated tooltip + aria-label logic; (2) removed the `buildColumnAriaLabel` one-liner wrapper (was just `buildHourTooltip(h, t).join(', ')`) and inlined it at the call site; (3) removed the `shortfallBottomPct` alias for `scheduledPct` in AreaColumn (always equal, no semantic value).
+  - `src/lib/coverageSummary.ts` — replaced `rec ? rec.projectedSales : null` / `rec ? rec.laborPct : null` ternaries with idiomatic `rec?.projectedSales ?? null` / `rec?.laborPct ?? null` optional chaining.
+- Verification: all 79 coverage-related tests pass (TZ=UTC); typecheck clean (tsc --noEmit 0 errors); net reduction of 32 lines across 2 files.
+
+## Phase 5: UI Review
+
+- Status: DONE (no violations found — no code changes required)
+- Components reviewed: `ShiftTimelineTab.tsx`, `CoverageChart.tsx`, `CoverageDemandInfo.tsx`, `CoverageStatusStrip.tsx`, `AreaCoverageStrips.tsx`
+- Checks:
+  - Typography scale: PASS — all sizes per CLAUDE.md (9px chart annotations, 11px counts, 12px labels, 13px secondary, 15px body emphasis)
+  - Semantic color tokens: PASS — no direct colors; all use foreground/background/muted/destructive/success/primary/border semantic tokens
+  - Three-state rendering: PASS — ShiftTimelineTab: loading (Skeleton + aria-busy), error (inline message), empty (EmptyState with icon), data; child components return null for empty
+  - Accessibility: PASS — all interactive elements have aria-label; day buttons use aria-pressed; hour columns use tabIndex=0 + focus-visible:ring; screen-reader ul for understaffed windows in CoverageStatusStrip
+  - Card/container patterns: PASS — rounded-xl + border-border/40 for containers, rounded-lg for buttons, transition-colors for hover states
+  - No fixes required

@@ -16,7 +16,7 @@
  */
 
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
@@ -246,6 +246,10 @@ import AvailableShiftsPage from '@/pages/AvailableShiftsPage';
 // ---------------------------------------------------------------------------
 
 describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   function renderPage() {
     return render(React.createElement(AvailableShiftsPage));
   }

@@ -40,6 +40,12 @@ const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const TIMEOUT_MS = 30_000;
 
+/**
+ * How long to wait before retrying a Lynk POST that returned a valid 200
+ * response but was missing blob_url (transient Focus back-end issue).
+ */
+const BLOB_URL_RETRY_DELAY_MS = 1_500;
+
 // ── Public types ──────────────────────────────────────────────────────────────
 
 /** Injectable configuration for one Focus POS connection. */
@@ -58,6 +64,12 @@ export interface FocusLynkConfig {
 export interface FocusLynkDeps {
   /** fetch implementation. Production: globalThis.fetch. Tests: a vi.fn() double. */
   fetch: typeof fetch;
+  /**
+   * Optional delay function injected for tests so the retry does not actually
+   * sleep. Production: omit (defaults to a real 1 500 ms sleep). Tests: pass
+   * `() => Promise.resolve()` or a spy that resolves immediately.
+   */
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -178,10 +190,13 @@ export function buildLynkRequest(
  * Steps:
  *  1. SSRF-guard the baseUrl and restaurantGuid.
  *  2. POST /api/lynk/sync → get `pos_response.payload.blob_url`.
+ *     If the response is OK-shaped but missing blob_url, retry ONCE after a
+ *     short delay (default 1 500 ms, injectable via deps.sleep) — this is a
+ *     known transient Focus back-end issue that succeeds on the second attempt.
  *  3. SSRF-guard the blob_url.
  *  4. GET the blob_url → return the XML text.
  *
- * @param deps         Injectable fetch.
+ * @param deps         Injectable fetch + optional sleep.
  * @param config       Connection parameters.
  * @param businessDate ISO date string (`YYYY-MM-DD`).
  */
@@ -226,92 +241,136 @@ export async function fetchDatafeed(
     };
   }
 
-  // ── 3. POST /api/lynk/sync ───────────────────────────────────────────────────
+  // ── 3. POST /api/lynk/sync (with one retry on missing blob_url) ─────────────
 
   const syncUrl = `${config.baseUrl.replace(/\/+$/, '')}/api/lynk/sync`;
-  let syncRes: Response;
-  try {
-    syncRes = await deps.fetch(syncUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: basicAuth(config.apiKey, config.apiSecret),
-        'Content-Type': 'application/json',
-        'focuspos-restaurant-id': config.restaurantGuid,
-      },
-      body: JSON.stringify(requestBody),
-      // Disable redirect-follow so an allow-listed host responding with a 3xx
-      // to an internal address cannot bypass the SSRF guard above.
-      redirect: 'error',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      status: 0,
-      kind: 'network',
-      error: e instanceof Error ? e.message : 'network error',
-    };
+
+  /**
+   * Perform a single POST attempt to the Lynk sync endpoint.
+   * Returns a discriminated result:
+   *  - { ok: true; blobUrl: string; syncStatus: number } on success
+   *  - { ok: false; result: FocusLynkResult } for a terminal error
+   *  - { ok: false; result: FocusLynkResult; retryable: true } when blob_url
+   *    was absent in an otherwise valid response (transient Focus issue)
+   */
+   
+  async function doSyncPost(): Promise<
+    | { ok: true; blobUrl: string; syncStatus: number }
+    | { ok: false; result: FocusLynkResult; retryable?: boolean }
+  > {
+    let syncRes: Response;
+    try {
+      syncRes = await deps.fetch(syncUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: basicAuth(config.apiKey, config.apiSecret),
+          'Content-Type': 'application/json',
+          'focuspos-restaurant-id': config.restaurantGuid,
+        },
+        body: JSON.stringify(requestBody),
+        // Disable redirect-follow so an allow-listed host responding with a 3xx
+        // to an internal address cannot bypass the SSRF guard above.
+        redirect: 'error',
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+    } catch (e) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          status: 0,
+          kind: 'network',
+          error: e instanceof Error ? e.message : 'network error',
+        },
+      };
+    }
+
+    const syncStatus = syncRes.status;
+    let syncText: string;
+    try {
+      syncText = await syncRes.text();
+    } catch (e) {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          status: syncStatus,
+          kind: 'network',
+          error: e instanceof Error ? e.message : 'network error reading Lynk sync response body',
+        },
+      };
+    }
+
+    // ── 4. Handle non-2xx from Lynk ───────────────────────────────────────────
+
+    if (syncStatus === 401) {
+      return { ok: false, result: { ok: false, status: syncStatus, kind: 'auth', error: 'Focus POS API returned 401 Unauthorized' } };
+    }
+    if (syncStatus === 403) {
+      return { ok: false, result: { ok: false, status: syncStatus, kind: 'license', error: 'Focus POS API returned 403 Forbidden — check license / API key permissions' } };
+    }
+    if (syncStatus === 404) {
+      return { ok: false, result: { ok: false, status: syncStatus, kind: 'not_found', error: 'Focus POS API returned 404 — check the restaurant GUID and base URL' } };
+    }
+    if (syncStatus < 200 || syncStatus >= 300) {
+      return { ok: false, result: { ok: false, status: syncStatus, kind: 'http', error: `Focus POS Lynk API returned HTTP ${syncStatus}` } };
+    }
+
+    // ── 5. Parse the Lynk JSON response ───────────────────────────────────────
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let syncJson: any;
+    try {
+      syncJson = JSON.parse(syncText);
+    } catch {
+      return { ok: false, result: { ok: false, status: syncStatus, kind: 'parse', error: 'Focus POS Lynk API returned a non-JSON body' } };
+    }
+
+    // Check for InProgress
+    const posResponse = syncJson?.pos_response;
+    if (posResponse?.error_condition === 'InProgress') {
+      return {
+        ok: false,
+        result: {
+          ok: false,
+          status: syncStatus,
+          kind: 'inprogress',
+          error: 'Focus POS datafeed is not yet ready for this business date (InProgress)',
+        },
+      };
+    }
+
+    // Extract blob_url — absence is a known transient Focus issue; mark retryable
+    const blobUrl: string | undefined = posResponse?.payload?.blob_url;
+    if (!blobUrl) {
+      return {
+        ok: false,
+        retryable: true,
+        result: {
+          ok: false,
+          status: syncStatus,
+          kind: 'parse',
+          error: 'Focus POS Lynk response did not contain a blob_url',
+        },
+      };
+    }
+
+    return { ok: true, blobUrl, syncStatus };
   }
 
-  const syncStatus = syncRes.status;
-  let syncText: string;
-  try {
-    syncText = await syncRes.text();
-  } catch (e) {
-    return {
-      ok: false,
-      status: syncStatus,
-      kind: 'network',
-      error: e instanceof Error ? e.message : 'network error reading Lynk sync response body',
-    };
+  // First attempt
+  let syncAttempt = await doSyncPost();
+  if (!syncAttempt.ok && syncAttempt.retryable) {
+    // Retry once after a short delay (1 500 ms default; injectable for tests)
+    const sleepFn = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    await sleepFn(BLOB_URL_RETRY_DELAY_MS);
+    syncAttempt = await doSyncPost();
+  }
+  if (!syncAttempt.ok) {
+    return syncAttempt.result;
   }
 
-  // ── 4. Handle non-2xx from Lynk ─────────────────────────────────────────────
-
-  if (syncStatus === 401) {
-    return { ok: false, status: syncStatus, kind: 'auth', error: 'Focus POS API returned 401 Unauthorized' };
-  }
-  if (syncStatus === 403) {
-    return { ok: false, status: syncStatus, kind: 'license', error: 'Focus POS API returned 403 Forbidden — check license / API key permissions' };
-  }
-  if (syncStatus === 404) {
-    return { ok: false, status: syncStatus, kind: 'not_found', error: 'Focus POS API returned 404 — check the restaurant GUID and base URL' };
-  }
-  if (syncStatus < 200 || syncStatus >= 300) {
-    return { ok: false, status: syncStatus, kind: 'http', error: `Focus POS Lynk API returned HTTP ${syncStatus}` };
-  }
-
-  // ── 5. Parse the Lynk JSON response ─────────────────────────────────────────
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let syncJson: any;
-  try {
-    syncJson = JSON.parse(syncText);
-  } catch {
-    return { ok: false, status: syncStatus, kind: 'parse', error: 'Focus POS Lynk API returned a non-JSON body' };
-  }
-
-  // Check for InProgress
-  const posResponse = syncJson?.pos_response;
-  if (posResponse?.error_condition === 'InProgress') {
-    return {
-      ok: false,
-      status: syncStatus,
-      kind: 'inprogress',
-      error: 'Focus POS datafeed is not yet ready for this business date (InProgress)',
-    };
-  }
-
-  // Extract blob_url
-  const blobUrl: string | undefined = posResponse?.payload?.blob_url;
-  if (!blobUrl) {
-    return {
-      ok: false,
-      status: syncStatus,
-      kind: 'parse',
-      error: 'Focus POS Lynk response did not contain a blob_url',
-    };
-  }
+  const { blobUrl, syncStatus } = syncAttempt;
 
   // ── 6. SSRF-guard the blob URL ───────────────────────────────────────────────
 

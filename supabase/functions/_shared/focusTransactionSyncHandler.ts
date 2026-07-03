@@ -347,10 +347,19 @@ function dateRange(startDate: string, endDate: string): string[] {
  * Process an explicit date range of Focus POS transaction data.
  *
  * Iterates each date in [startDate, endDate] inclusive, calling
- * processDayTransactions for each with skipUnifiedSalesSync=true,
- * then calls the unified_sales RPC once for the full range.
+ * processDayTransactions for each with skipUnifiedSalesSync=true (each
+ * per-day upsert lands in focus_orders/focus_order_items/focus_payments
+ * immediately, so partial progress survives a mid-range worker crash).
  *
- * Stops early on a day error and skips the RPC.
+ * The unified_sales aggregation is intentionally NOT performed here.
+ * A 5-minute pg_cron job (focus-transactions-unified-sales-sync) runs
+ * sync_all_focus_transactions_to_unified_sales() in Postgres, which picks up
+ * recently written focus_orders rows automatically. Removing the in-worker
+ * RPC call is the fix for HTTP 546 edge-worker CPU-limit errors on 6-day
+ * custom-range syncs: parsing N × 4.5 MB XML documents was already near the
+ * limit, and the final RPC over that many rows pushed the invocation over.
+ *
+ * Stops early on a day error.
  *
  * Design ref: spec §5.2 / §8.2 (custom range, synchronous, capped at 14 days by caller).
  *
@@ -358,7 +367,7 @@ function dateRange(startDate: string, endDate: string): string[] {
  * @param config       Per-connection Lynk API config.
  * @param startDate    ISO date string ('YYYY-MM-DD') — range start (inclusive).
  * @param endDate      ISO date string ('YYYY-MM-DD') — range end (inclusive).
- * @param options      Optional flags (skipUnifiedSalesSync).
+ * @param options      Optional flags (skipUnifiedSalesSync — kept for API compat but unused here).
  */
 export async function processDateRangeTransactions(
   deps: DateRangeSyncDeps,
@@ -369,6 +378,10 @@ export async function processDateRangeTransactions(
 ): Promise<DateRangeSyncResult> {
   // Resolve the injectable per-day processor (production: this module's impl).
   const dayProcessor = deps.processDayTransactions ?? processDayTransactions;
+
+  // options.skipUnifiedSalesSync is accepted but no longer acted upon — the
+  // range path never calls the RPC regardless (see doc comment above).
+  void options;
 
   const dates = dateRange(startDate, endDate);
   let daysSynced = 0;
@@ -391,7 +404,7 @@ export async function processDateRangeTransactions(
     }
 
     if (result.status === 'inprogress') {
-      // Treat inprogress as a soft error for the range — stop without the RPC.
+      // Treat inprogress as a soft error for the range — stop without any RPC.
       return { status: 'error', error: 'InProgress on ' + date, daysSynced };
     }
 
@@ -399,22 +412,8 @@ export async function processDateRangeTransactions(
     lastStatus = result.status as 'ok' | 'empty';
   }
 
-  // All days succeeded — call unified_sales RPC once for the full range.
-  if (!options.skipUnifiedSalesSync) {
-    const { error: rpcError } = await deps.supabase.rpc(
-      'sync_focus_transactions_to_unified_sales',
-      {
-        p_restaurant_id: config.restaurantId,
-        p_start_date: startDate,
-        p_end_date: endDate,
-      },
-    );
-    if (rpcError) {
-      console.warn(
-        `sync_focus_transactions_to_unified_sales (range) warning: ${rpcError.message}`,
-      );
-    }
-  }
+  // unified_sales aggregation is handled by the Postgres cron
+  // (focus-transactions-unified-sales-sync), not here. See doc comment above.
 
   return { status: lastStatus, daysSynced };
 }

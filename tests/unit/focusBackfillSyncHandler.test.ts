@@ -589,4 +589,23 @@ describe('handleBackfillSync', () => {
     expect(updateArg.connection_status).toBe('error');
     expect(typeof updateArg.last_error).toBe('string');
   });
+
+  // ── Error hygiene: successful backfill tick clears stale error banner ─────────
+
+  it('sets connection_status="connected" and last_error=null on a successful backfill batch tick', async () => {
+    // Default mock returns status='ok' — verify the CAS update payload
+    // includes the healing fields to clear a prior error banner.
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+      nowFn: makeClock(1_000_000, 0),
+    });
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    await handleBackfillSync(req, deps);
+
+    expect(mocks.updateMock).toHaveBeenCalledTimes(1);
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(updateArg.connection_status).toBe('connected');
+    expect(updateArg.last_error).toBeNull();
+    expect(updateArg.last_error_at).toBeNull();
+  });
 });

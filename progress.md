@@ -79,3 +79,12 @@
 - TDD cycle: RED (12 new tests fail — `buildHourTooltip` not exported, aria-labels missing detail) → GREEN (28 tests pass, 79 across all 6 suites) → typecheck clean → commit
 - Note: The 2 "portal" tests that test Radix Tooltip portal opening via `userEvent`/`fireEvent` were restructured to test the `buildHourTooltip` line array directly (exact content contract) since Radix Tooltip portal rendering is unreliable in jsdom. The existing tooltip *shell* tests (task 2c) already validate that `TooltipContent` is wired to each column.
 - Suites confirmed green: coverageSummary (13), coverageChart (28), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (19)
+
+### Task 3b — Implement buildHourTooltip helper and wire tooltip content into CoverageChart columns
+- Status: DONE
+- Commit: a2e65040 (implementation was completed as part of Task 3a's TDD RED→GREEN cycle in the same commit)
+- Files changed:
+  - `src/components/scheduling/ShiftTimeline/CoverageChart.tsx` — `buildHourTooltip(h, targetSplh)` pure exported helper (5 lines: time range, scheduled/needed, projected sales, SPLH math, verdict); `buildColumnAriaLabel` delegates to it (comma-join); `TooltipContent` renders each line as a `<p>` with `space-y-0.5` spacing; `delayDuration={0}` on `TooltipProvider`.
+- TDD cycle: implementation was the GREEN phase of Task 3a (tests were RED, then buildHourTooltip was implemented in the same cycle); all 28 coverageChart tests pass, 79 total across 6 suites; typecheck clean.
+- Verification: `buildHourTooltip` handles all branches (short/covered/spare/right-on-target/no-demand/no-sales/no-SPLH); aria-labels on columns contain full tooltip content via comma-join; TooltipContent wiring contract confirmed by test (exact 5-line structure for full-data hour, 3-line for no-demand).
+- Suites confirmed green: coverageSummary (13), coverageChart (28), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (19)

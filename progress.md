@@ -273,6 +273,17 @@ Phase 4–9: dev-build-and-ship workflow — launched
         - 1 PASSED: (iii) inline alert suppression (regression guard)
         - Exact failure reasons match what 7a documented: supplierId in hasOtherSpecificity suppresses (i); !supplierId guard fires (ii); sub-labels missing for (iv-a)/(iv-b)
         No commit needed — verification only step.
+  - [x] Task 7c (plan Task 7 step 3, task 34/36): Implement all five changes in EnhancedCategoryRulesDialog.tsx — commit c9344b27
+        File: src/components/banking/EnhancedCategoryRulesDialog.tsx
+        Changes:
+          1. Submit gate (too-generic): removed supplierId from hasOtherSpecificity; error message changed to "Add an amount range..."
+          2. Short-pattern guard: condition changed from !supplierId to !amountMin && !amountMax
+          3. Inline alert: updated condition to (isEmpty && !supplierId || isGeneric) && !hasOtherCriteria so supplier-only rules don't trigger warning
+          4. Supplier help text: conditional sub-label below SearchableSupplierSelector — "tagged with this supplier" when desc/amount set, "already linked to this supplier" when supplier-only
+          5. renderRuleConditions: supplier shows "Assigns supplier: X" when rule has desc/amount, "Supplier: X" when supplier-only
+          6. A11y: <p> dialog subtitle replaced with <DialogDescription> so Radix wires aria-describedby
+        GREEN confirmed: npm run test -- tests/unit/enhancedCategoryRulesValidation.test.tsx → 5/5 passed
+        Full suite: 5284 passed (5 pre-existing focus* file errors, unrelated); typecheck clean.
 
 ## CI Status
 - PR: not yet created

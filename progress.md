@@ -334,6 +334,25 @@ Phase 7c (CodeRabbit review) — iteration 1 fixes applied
           to return auto_apply, which is a behaviour-adjacent change beyond simplification scope.
         Tests: 6/6 pass; typecheck clean.
 
+## Phase 7c (CodeRabbit review) — iteration 1 COMPLETE
+Commit 54139425. Findings from `coderabbit review --plain --type committed`:
+
+**Fixed (4 major/minor):**
+1. security major: All SECURITY DEFINER SET search_path changed from `public` → `pg_catalog, public` to prevent temp-schema object shadowing
+2. stability major: Added `p_batch_limit IS NULL OR p_batch_limit < 1` guard in `apply_rules_to_pos_sales_internal` and `apply_rules_to_bank_transactions_internal`
+3. performance major: stripe-sync now passes `p_skip_rebuild: true` to avoid double `rebuild_account_balances` call
+4. correctness minor: short-pattern guard now uses `parseFloat > 0` (mirrors generic-term guard) in both `handleCreateRule` and `handleSaveEdit`
+
+**Not actionable (6 findings skipped):**
+- split-rule supplier_id: Already fixed in Phase 7b (split path line 702 has COALESCE). CodeRabbit pointed at codex-review-output.md doc, not actual code.
+- tests (iv-a)/(iv-b) never select supplier: Help text renders unconditionally (not gated on supplierId); tests are correct as-is.
+- auto_apply filter in background engines: Contradicts spec D3 — the batch engine was designed to apply ALL matching rules; auto_apply gates the INSERT trigger only.
+- SKIP LOCKED for concurrent safety: New behavior requiring separate spec + tests; not in scope.
+- restaurant_id in matches_bank_transaction_rule: Internal helper called only from find_matching_rules_for_bank_transaction where cr.id is already restaurant-scoped; adding parameter would break existing callers.
+- doc/spec stale batch sizes: Minor docs; not blocking.
+
+Tests after fixes: 1530/1530 pgTAP pass; 6/6 unit pass; typecheck clean.
+
 ## CI Status
 - PR: not yet created
 

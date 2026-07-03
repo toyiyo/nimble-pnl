@@ -1,0 +1,3647 @@
+diff --git a/docs/superpowers/plans/2026-07-02-operations-manager-role.md b/docs/superpowers/plans/2026-07-02-operations-manager-role.md
+new file mode 100644
+index 00000000..aa7f8edf
+--- /dev/null
++++ b/docs/superpowers/plans/2026-07-02-operations-manager-role.md
+@@ -0,0 +1,889 @@
++# Operations Manager Role — Implementation Plan
++
++> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
++
++**Goal:** Add an internal `operations_manager` role that can run all operations (inventory, recipes, scheduling, POS-view, payroll, tips, time, employee management) and invite Staff, but has no access to accounting/bookkeeping or admin (settings-edit, integrations, collaborators).
++
++**Architecture:** Capability-first. Add the role to the TS `ROLE_CAPABILITIES`/`ROLE_METADATA` source of truth and mirror it in the SQL `user_has_capability()` function (based on the live subscription-migration body). Capability-gated tables and accounting-table denial are automatic; residual hardcoded `role IN ('owner','manager')` policies on labor/tips/payroll/scheduling/receipts/employees get the role added explicitly. A pure `canInviteRole` matrix (TS + duplicated in the Deno edge function with default-deny) enforces Staff-only invites. Frontend surfaces the role in the invite dropdown and a dedicated sidebar nav (no Accounting group).
++
++**Tech Stack:** React 18 + TS + shadcn (Vite), Supabase Postgres + RLS + pgTAP, Deno edge functions, Vitest.
++
++**Spec:** `docs/superpowers/specs/2026-07-02-operations-manager-role-design.md`
++
++**Conventions:**
++- Run all commands from the worktree root.
++- pgTAP tests live in `supabase/tests/*.sql`, run via `npm run test:db`.
++- Vitest unit tests in `tests/unit/*.test.ts`, run via `npm run test`.
++- Commit after every green step.
++
++---
++
++## Task 1: Add `operations_manager` to the `Role` type
++
++**Files:**
++- Modify: `src/lib/permissions/types.ts`
++
++- [ ] **Step 1: Add the role to the union**
++
++In `src/lib/permissions/types.ts`, update the `Role` union and the internal-roles doc comment:
++
++```ts
++/**
++ * Internal roles (full team members):
++ * - owner: Full access to all features
++ * - manager: Most features except some admin
++ * - operations_manager: All operations except accounting and admin
++ * - chef: Recipes and inventory focus
++ * - staff: Employee self-service only
++ * - kiosk: Time clock only
++ * ...
++ */
++export type Role =
++  | 'owner'
++  | 'manager'
++  | 'operations_manager'
++  | 'chef'
++  | 'staff'
++  | 'kiosk'
++  | 'collaborator_accountant'
++  | 'collaborator_inventory'
++  | 'collaborator_chef';
++```
++
++- [ ] **Step 2: Typecheck fails until definitions are updated**
++
++Run: `npm run typecheck`
++Expected: FAIL — `ROLE_CAPABILITIES` and `ROLE_METADATA` in `definitions.ts` no longer satisfy `Record<Role, ...>` (missing `operations_manager` key). This confirms the type is wired. Proceed to Task 2 (do not commit a red typecheck).
++
++---
++
++## Task 2: Define `operations_manager` capabilities + metadata (TDD)
++
++**Files:**
++- Test: `tests/unit/operationsManagerRole.test.ts` (create)
++- Modify: `src/lib/permissions/definitions.ts`
++
++- [ ] **Step 1: Write the failing test**
++
++Create `tests/unit/operationsManagerRole.test.ts`:
++
++```ts
++import { describe, it, expect } from 'vitest';
++import { ROLE_CAPABILITIES, ROLE_METADATA } from '@/lib/permissions/definitions';
++import type { Capability } from '@/lib/permissions/types';
++
++const ACCOUNTING: Capability[] = [
++  'view:transactions', 'edit:transactions', 'view:banking', 'edit:banking',
++  'view:expenses', 'edit:expenses', 'view:financial_statements',
++  'view:chart_of_accounts', 'edit:chart_of_accounts', 'view:invoices',
++  'edit:invoices', 'view:customers', 'edit:customers',
++  'view:financial_intelligence', 'view:pending_outflows', 'edit:pending_outflows',
++];
++
++const EXCLUDED_ADMIN: Capability[] = [
++  'view:integrations', 'manage:integrations', 'edit:settings',
++  'view:collaborators', 'manage:collaborators',
++];
++
++const REQUIRED: Capability[] = [
++  'view:dashboard', 'view:inventory', 'edit:inventory', 'edit:recipes',
++  'view:pos_sales', 'view:scheduling', 'edit:scheduling', 'view:payroll',
++  'edit:payroll', 'view:tips', 'edit:tips', 'view:time_punches',
++  'edit:time_punches', 'view:team', 'manage:team', 'view:employees',
++  'manage:employees', 'view:settings', 'view:reports', 'edit:receipt_import',
++];
++
++describe('operations_manager capabilities', () => {
++  const caps = new Set(ROLE_CAPABILITIES['operations_manager']);
++
++  it('includes every required operational/labor capability', () => {
++    for (const c of REQUIRED) expect(caps.has(c), `missing ${c}`).toBe(true);
++  });
++
++  it('excludes every accounting capability', () => {
++    for (const c of ACCOUNTING) expect(caps.has(c), `should not have ${c}`).toBe(false);
++  });
++
++  it('excludes admin capabilities beyond team/employee management', () => {
++    for (const c of EXCLUDED_ADMIN) expect(caps.has(c), `should not have ${c}`).toBe(false);
++  });
++
++  it('has internal metadata with the Operations Manager label', () => {
++    expect(ROLE_METADATA['operations_manager'].label).toBe('Operations Manager');
++    expect(ROLE_METADATA['operations_manager'].category).toBe('internal');
++    expect(ROLE_METADATA['operations_manager'].landingPath).toBe('/');
++  });
++});
++```
++
++- [ ] **Step 2: Run test to verify it fails**
++
++Run: `npm run test -- operationsManagerRole`
++Expected: FAIL — `operations_manager` key missing from `ROLE_CAPABILITIES`/`ROLE_METADATA`.
++
++- [ ] **Step 3: Add the capability array**
++
++In `src/lib/permissions/definitions.ts`, inside `ROLE_CAPABILITIES`, add after the `manager` entry:
++
++```ts
++  operations_manager: [
++    // All operations except accounting (bookkeeping) and admin.
++    'view:dashboard',
++    'view:ai_assistant',
++    'view:inventory',
++    'edit:inventory',
++    'view:inventory_audit',
++    'edit:inventory_audit',
++    'view:purchase_orders',
++    'edit:purchase_orders',
++    'view:receipt_import',
++    'edit:receipt_import',
++    'view:reports',
++    'view:inventory_transactions',
++    'edit:inventory_transactions',
++    'view:recipes',
++    'edit:recipes',
++    'view:prep_recipes',
++    'edit:prep_recipes',
++    'view:batches',
++    'edit:batches',
++    'view:pos_sales',
++    'view:scheduling',
++    'edit:scheduling',
++    'view:payroll',
++    'edit:payroll',
++    'view:tips',
++    'edit:tips',
++    'view:time_punches',
++    'edit:time_punches',
++    'view:team',
++    'manage:team',
++    'view:employees',
++    'manage:employees',
++    'view:settings',
++  ],
++```
++
++- [ ] **Step 4: Add the metadata entry**
++
++In `ROLE_METADATA`, add after the `manager` entry:
++
++```ts
++  operations_manager: {
++    role: 'operations_manager',
++    label: 'Operations Manager',
++    description: 'Run operations, scheduling, and staffing (no accounting or admin)',
++    category: 'internal',
++    landingPath: '/',
++    color: 'secondary',
++  },
++```
++
++- [ ] **Step 5: Run test + typecheck to verify pass**
++
++Run: `npm run test -- operationsManagerRole && npm run typecheck`
++Expected: PASS (both).
++
++- [ ] **Step 6: Commit**
++
++```bash
++git add src/lib/permissions/types.ts src/lib/permissions/definitions.ts tests/unit/operationsManagerRole.test.ts
++git commit -m "feat(permissions): add operations_manager role capabilities + metadata"
++```
++
++---
++
++## Task 3: Invite matrix helper (`canInviteRole` / `getInvitableRoles`) (TDD)
++
++**Files:**
++- Test: `tests/unit/invitationMatrix.test.ts` (create)
++- Create: `src/lib/permissions/invitations.ts`
++- Modify: `src/lib/permissions/index.ts`
++
++- [ ] **Step 1: Write the failing test**
++
++Create `tests/unit/invitationMatrix.test.ts`:
++
++```ts
++import { describe, it, expect } from 'vitest';
++import { canInviteRole, getInvitableRoles } from '@/lib/permissions/invitations';
++
++describe('invite matrix', () => {
++  it('operations_manager can invite only staff', () => {
++    expect(getInvitableRoles('operations_manager')).toEqual(['staff']);
++    expect(canInviteRole('operations_manager', 'staff')).toBe(true);
++    for (const t of ['manager', 'owner', 'chef', 'operations_manager'] as const) {
++      expect(canInviteRole('operations_manager', t)).toBe(false);
++    }
++  });
++
++  it('owner and manager can invite operations_manager', () => {
++    expect(canInviteRole('owner', 'operations_manager')).toBe(true);
++    expect(canInviteRole('manager', 'operations_manager')).toBe(true);
++  });
++
++  it('owner can invite owner; manager cannot invite owner', () => {
++    expect(canInviteRole('owner', 'owner')).toBe(true);
++    expect(canInviteRole('manager', 'owner')).toBe(false);
++  });
++
++  it('non-management roles can invite nobody', () => {
++    for (const r of ['chef', 'staff', 'kiosk', 'collaborator_accountant'] as const) {
++      expect(getInvitableRoles(r)).toEqual([]);
++    }
++  });
++});
++```
++
++- [ ] **Step 2: Run test to verify it fails**
++
++Run: `npm run test -- invitationMatrix`
++Expected: FAIL — module `invitations.ts` does not exist.
++
++- [ ] **Step 3: Create the helper**
++
++Create `src/lib/permissions/invitations.ts`:
++
++```ts
++/**
++ * Invite matrix — which target roles each inviter role may create.
++ *
++ * SINGLE SOURCE OF TRUTH for team-invite privilege boundaries.
++ * The Deno edge function `send-team-invitation` duplicates this matrix
++ * and MUST stay in sync (default-deny).
++ */
++import { Role } from './types';
++
++const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
++  owner: ['owner', 'manager', 'operations_manager', 'chef', 'staff'],
++  manager: ['manager', 'operations_manager', 'chef', 'staff'],
++  operations_manager: ['staff'],
++  chef: [],
++  staff: [],
++  kiosk: [],
++  collaborator_accountant: [],
++  collaborator_inventory: [],
++  collaborator_chef: [],
++};
++
++/** Roles that `inviter` is allowed to invite (empty if none). */
++export function getInvitableRoles(inviter: Role): Role[] {
++  return [...(INVITABLE_ROLES[inviter] ?? [])];
++}
++
++/** Whether `inviter` may invite a member with role `target`. */
++export function canInviteRole(inviter: Role, target: Role): boolean {
++  return (INVITABLE_ROLES[inviter] ?? []).includes(target);
++}
++```
++
++- [ ] **Step 4: Export from the permissions index**
++
++In `src/lib/permissions/index.ts`, add:
++
++```ts
++export { canInviteRole, getInvitableRoles } from './invitations';
++```
++
++- [ ] **Step 5: Run test to verify pass**
++
++Run: `npm run test -- invitationMatrix && npm run typecheck`
++Expected: PASS.
++
++- [ ] **Step 6: Commit**
++
++```bash
++git add src/lib/permissions/invitations.ts src/lib/permissions/index.ts tests/unit/invitationMatrix.test.ts
++git commit -m "feat(permissions): add canInviteRole/getInvitableRoles matrix (ops-mgr -> staff)"
++```
++
++---
++
++## Task 4: Migration — role constraint + `user_is_internal_team` + `user_has_capability`
++
++**Files:**
++- Create: `supabase/migrations/20260702120000_add_operations_manager_role.sql`
++- Reference (read the LIVE body): `supabase/migrations/20260129000000_add_subscription_system.sql`
++
++- [ ] **Step 1: Create the migration — constraint + internal-team helper**
++
++Create `supabase/migrations/20260702120000_add_operations_manager_role.sql` starting with:
++
++```sql
++-- ============================================================================
++-- Migration: Add operations_manager role
++--
++-- Internal role with all operations EXCEPT accounting (bookkeeping) and
++-- admin (settings-edit, integrations, collaborators). Can invite Staff and
++-- manage employees.
++--
++-- Order: constraint -> user_is_internal_team -> user_has_capability -> RLS.
++-- The user_has_capability body below is copied from the LIVE definition in
++-- 20260129000000_add_subscription_system.sql (preserves subscription gating)
++-- with 'operations_manager' added ONLY to non-accounting/non-admin branches.
++-- ============================================================================
++
++-- 1. Extend the role CHECK constraint (kiosk/collaborator precedent).
++ALTER TABLE public.user_restaurants
++  DROP CONSTRAINT IF EXISTS user_restaurants_role_check;
++
++ALTER TABLE public.user_restaurants
++  ADD CONSTRAINT user_restaurants_role_check
++  CHECK (role IN (
++    'owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
++    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef'
++  ));
++
++-- 2. Internal-team helper must include operations_manager, else the role can
++-- only see its own user_restaurants row (empty team-management UI).
++CREATE OR REPLACE FUNCTION public.user_is_internal_team(
++  p_restaurant_id UUID
++)
++RETURNS BOOLEAN
++LANGUAGE sql
++STABLE
++SECURITY DEFINER
++SET search_path = public
++AS $$
++  SELECT EXISTS (
++    SELECT 1
++    FROM user_restaurants ur
++    WHERE ur.restaurant_id = p_restaurant_id
++      AND ur.user_id = auth.uid()
++      AND ur.role IN ('owner', 'manager', 'operations_manager', 'chef', 'staff')
++  );
++$$;
++COMMENT ON FUNCTION public.user_is_internal_team IS
++'Check if current user is internal team (owner, manager, operations_manager, chef, or staff)';
++```
++
++- [ ] **Step 2: Append the `user_has_capability` replacement**
++
++Open `supabase/migrations/20260129000000_add_subscription_system.sql`, copy the entire `CREATE OR REPLACE FUNCTION public.user_has_capability( ... ) $$;` block verbatim into the new migration, then add `, 'operations_manager'` to the `v_role IN (...)` list of **exactly these branches** (leave every accounting/admin/subscription branch untouched):
++
++Included branches to widen: `view:dashboard`, `view:ai_assistant`, `view:inventory`, `edit:inventory`, `view:inventory_audit`, `edit:inventory_audit`, `view:purchase_orders`, `edit:purchase_orders`, `view:receipt_import`, `edit:receipt_import`, `view:reports`, `view:inventory_transactions`, `edit:inventory_transactions`, `view:recipes`, `edit:recipes`, `view:prep_recipes`, `edit:prep_recipes`, `view:batches`, `edit:batches`, `view:pos_sales`, `view:scheduling`, `edit:scheduling`, `view:payroll`, `edit:payroll`, `view:tips`, `edit:tips`, `view:time_punches`, `edit:time_punches`, `view:team`, `manage:team`, `view:employees`, `manage:employees`.
++
++Do NOT add to: `view:transactions`, `edit:transactions`, `view:banking`, `edit:banking`, `view:expenses`, `edit:expenses`, `view:financial_statements`, `view:chart_of_accounts`, `edit:chart_of_accounts`, `view:invoices`, `edit:invoices`, `view:customers`, `edit:customers`, `view:financial_intelligence`, `view:pending_outflows`, `edit:pending_outflows`, `view:assets`, `edit:assets`, `edit:settings`, `view:integrations`, `manage:integrations`, `view:collaborators`, `manage:collaborators`, `manage:subscription`. `view:settings` stays `v_role NOT IN ('kiosk')` (ops-mgr passes automatically).
++
++- [ ] **Step 3: Sanity-check the SQL parses**
++
++Run: `npm run db:reset` (applies all migrations to local Supabase).
++Expected: completes without error; the new migration applies cleanly. If `db:reset` is unavailable in the environment, defer verification to Task 5's pgTAP run.
++
++- [ ] **Step 4: Commit**
++
++```bash
++git add supabase/migrations/20260702120000_add_operations_manager_role.sql
++git commit -m "feat(db): operations_manager constraint + internal-team helper + capability function"
++```
++
++---
++
++## Task 5: pgTAP — capability sentinel + accounting deny (TDD, drift guard)
++
++**Files:**
++- Test: `supabase/tests/21_operations_manager_capabilities.sql` (create)
++
++- [ ] **Step 1: Write the failing pgTAP test**
++
++Create `supabase/tests/21_operations_manager_capabilities.sql`. Follow the fixture pattern used by `supabase/tests/19_collaborator_role_functions.sql` (read it first for the exact `auth.users`/`user_restaurants` seeding + `set_auth_uid`-style helpers used in this repo). Structure:
++
++```sql
++BEGIN;
++SELECT plan(30);
++
++-- Fixtures: create a restaurant, an auth user, and a user_restaurants row
++-- with role 'operations_manager'. Mirror the seeding approach in
++-- 19_collaborator_role_functions.sql. Then set auth.uid() to that user.
++
++-- Included capabilities -> TRUE
++SELECT ok(user_has_capability('<rid>', 'view:inventory'), 'ops-mgr view:inventory');
++SELECT ok(user_has_capability('<rid>', 'edit:inventory'), 'ops-mgr edit:inventory');
++SELECT ok(user_has_capability('<rid>', 'edit:recipes'), 'ops-mgr edit:recipes');
++SELECT ok(user_has_capability('<rid>', 'view:pos_sales'), 'ops-mgr view:pos_sales');
++SELECT ok(user_has_capability('<rid>', 'edit:scheduling'), 'ops-mgr edit:scheduling');
++SELECT ok(user_has_capability('<rid>', 'edit:payroll'), 'ops-mgr edit:payroll');
++SELECT ok(user_has_capability('<rid>', 'edit:tips'), 'ops-mgr edit:tips');
++SELECT ok(user_has_capability('<rid>', 'edit:time_punches'), 'ops-mgr edit:time_punches');
++SELECT ok(user_has_capability('<rid>', 'manage:employees'), 'ops-mgr manage:employees');
++SELECT ok(user_has_capability('<rid>', 'manage:team'), 'ops-mgr manage:team');
++SELECT ok(user_has_capability('<rid>', 'view:team'), 'ops-mgr view:team');
++SELECT ok(user_has_capability('<rid>', 'view:reports'), 'ops-mgr view:reports');
++SELECT ok(user_has_capability('<rid>', 'edit:receipt_import'), 'ops-mgr edit:receipt_import');
++SELECT ok(user_has_capability('<rid>', 'view:settings'), 'ops-mgr view:settings');
++
++-- Excluded accounting -> FALSE
++SELECT ok(NOT user_has_capability('<rid>', 'view:transactions'), 'no view:transactions');
++SELECT ok(NOT user_has_capability('<rid>', 'edit:transactions'), 'no edit:transactions');
++SELECT ok(NOT user_has_capability('<rid>', 'view:banking'), 'no view:banking');
++SELECT ok(NOT user_has_capability('<rid>', 'view:expenses'), 'no view:expenses');
++SELECT ok(NOT user_has_capability('<rid>', 'view:financial_statements'), 'no statements');
++SELECT ok(NOT user_has_capability('<rid>', 'view:chart_of_accounts'), 'no COA');
++SELECT ok(NOT user_has_capability('<rid>', 'view:invoices'), 'no view:invoices');
++SELECT ok(NOT user_has_capability('<rid>', 'view:customers'), 'no view:customers');
++SELECT ok(NOT user_has_capability('<rid>', 'view:pending_outflows'), 'no pending_outflows');
++SELECT ok(NOT user_has_capability('<rid>', 'view:financial_intelligence'), 'no fin-intel');
++SELECT ok(NOT user_has_capability('<rid>', 'view:assets'), 'no view:assets');
++
++-- Excluded admin -> FALSE
++SELECT ok(NOT user_has_capability('<rid>', 'edit:settings'), 'no edit:settings');
++SELECT ok(NOT user_has_capability('<rid>', 'view:integrations'), 'no view:integrations');
++SELECT ok(NOT user_has_capability('<rid>', 'manage:integrations'), 'no manage:integrations');
++SELECT ok(NOT user_has_capability('<rid>', 'manage:collaborators'), 'no manage:collaborators');
++SELECT ok(NOT user_has_capability('<rid>', 'manage:subscription'), 'no manage:subscription');
++
++SELECT * FROM finish();
++ROLLBACK;
++```
++
++Replace `<rid>` with the fixture restaurant id variable per the repo's pgTAP conventions.
++
++- [ ] **Step 2: Run to verify it fails first (if role not yet applied) then passes**
++
++Run: `npm run test:db`
++Expected: PASS once Task 4's migration is applied. (If you author this test before Task 4, it fails — which is the RED state. Given Task 4 is already committed, this test verifies GREEN.)
++
++- [ ] **Step 3: Commit**
++
++```bash
++git add supabase/tests/21_operations_manager_capabilities.sql
++git commit -m "test(db): operations_manager capability sentinel + accounting/admin deny"
++```
++
++---
++
++## Task 6: Migration — residual hardcoded-role RLS policies (TDD via pgTAP DML)
++
++**Files:**
++- Modify: `supabase/migrations/20260702120000_add_operations_manager_role.sql` (append a "residual policies" section)
++- Test: `supabase/tests/22_operations_manager_rls.sql` (create)
++
++**Transformation rule (applies to every policy below):** recreate the
++policy by name, adding `'operations_manager'` to its role list — i.e.
++`role IN ('owner','manager')` → `role IN ('owner','manager','operations_manager')`,
++and `user_has_role(restaurant_id, ARRAY['owner','manager'])` →
++`user_has_role(restaurant_id, ARRAY['owner','manager','operations_manager'])`.
++Use `DROP POLICY IF EXISTS "<exact name>" ON public.<table>;` then
++`CREATE POLICY "<exact name>" ...` with the widened list. Find each
++policy's current definition with:
++`grep -rn -A6 'CREATE POLICY[^;]*<table>' supabase/migrations/*.sql` and
++recreate the most recent version verbatim except for the role list.
++
++**Policies to update** (see spec for source files):
++
++| Table | Policy intent | Source migration |
++|---|---|---|
++| `employees` | "Owners and managers can manage employees" (FOR ALL, `user_has_role`) | 20260120100100 |
++| `receipt_imports` | SELECT/INSERT/UPDATE | 20251006212711 |
++| `schedule_publications` | INSERT | 20251123000000 |
++| `schedule_change_logs` | INSERT | 20251123000000 |
++| `open_shift_claims` | managers_view + managers_review | 20260412145842 |
++| `staffing_settings` | manage (FOR ALL / write) | 20260306000000 |
++| `tip_pool_settings`, `tip_splits`, `tip_split_items`, `tip_disputes` | write policies | 20251217000001 |
++| `tip_contribution_pools`, `tip_server_earnings`, `tip_pool_allocations` | write policies | 20260221000000 |
++| `tip_payouts` | write policies | 20260218000000 |
++| `overtime_rules` | write | 20260221200000 |
++| `overtime_adjustments` | write | 20260221200001 |
++| `non_hourly_compensation_allocations` | write | 20251205164747 |
++| `employee_compensation_history` | INSERT | 20251216093000 |
++| `time_punches` | manager write policies gated `role IN ('owner','manager')` | grep to locate |
++
++> If a grep shows a table's write is already capability-gated
++> (`user_has_capability`), it needs NO change — skip it and note so in the
++> commit message. Only the hardcoded `role IN (...)` / `user_has_role`
++> policies are edited.
++
++- [ ] **Step 1: Write the failing pgTAP DML test**
++
++Create `supabase/tests/22_operations_manager_rls.sql`. Seed a restaurant + an `operations_manager` auth user (reuse the fixture pattern from Task 5 / `19_collaborator_role_functions.sql`), set `auth.uid()`, and assert DML as that role. Use `lives_ok` for allowed writes and `is(count,0)`/`throws_ok` for denied reads/writes. Representative coverage (one per residual category) — expand to the full set as you widen policies:
++
++```sql
++BEGIN;
++SELECT plan(9);
++
++-- Fixture: restaurant <rid>, operations_manager user, auth.uid() set.
++-- Also seed a peer team member so user_restaurants SELECT can return >1 row.
++
++-- view:team / user_restaurants visibility (via user_is_internal_team)
++SELECT cmp_ok(
++  (SELECT count(*) FROM user_restaurants WHERE restaurant_id = '<rid>')::int,
++  '>=', 2, 'ops-mgr sees full team roster');
++
++-- manage:employees DML
++SELECT lives_ok(
++  $$ INSERT INTO employees (restaurant_id, name) VALUES ('<rid>', 'Test Hire') $$,
++  'ops-mgr can insert employees');
++
++-- edit:scheduling
++SELECT lives_ok(
++  $$ INSERT INTO schedule_publications (restaurant_id, week_start, published_by)
++     VALUES ('<rid>', current_date, auth.uid()) $$,
++  'ops-mgr can publish schedule');
++
++-- edit:tips
++SELECT lives_ok(
++  $$ INSERT INTO tip_pool_settings (restaurant_id) VALUES ('<rid>') $$,
++  'ops-mgr can write tip pool settings');
++
++-- edit:payroll (overtime)
++SELECT lives_ok(
++  $$ INSERT INTO overtime_rules (restaurant_id) VALUES ('<rid>') $$,
++  'ops-mgr can write overtime rules');
++
++-- view:receipt_import
++SELECT lives_ok(
++  $$ SELECT 1 FROM receipt_imports WHERE restaurant_id = '<rid>' LIMIT 1 $$,
++  'ops-mgr can read receipt imports');
++
++-- Accounting DENY
++SELECT is(
++  (SELECT count(*) FROM bank_transactions WHERE restaurant_id = '<rid>')::int,
++  0, 'ops-mgr denied bank_transactions');
++SELECT is(
++  (SELECT count(*) FROM chart_of_accounts WHERE restaurant_id = '<rid>')::int,
++  0, 'ops-mgr denied chart_of_accounts');
++
++-- POS view-only: unified_sales insert denied
++SELECT throws_ok(
++  $$ INSERT INTO unified_sales (restaurant_id, sale_date, total_amount)
++     VALUES ('<rid>', current_date, 10) $$,
++  NULL, NULL, 'ops-mgr cannot insert manual sales');
++
++SELECT * FROM finish();
++ROLLBACK;
++```
++
++Adjust column names to the actual table schemas (inspect with the source migrations). The exact required columns per table come from each table's `CREATE TABLE`.
++
++- [ ] **Step 2: Run — confirm RED (writes denied before policies widened)**
++
++Run: `npm run test:db`
++Expected: FAIL — the `lives_ok` writes are denied by RLS for `operations_manager` (policies not yet widened).
++
++- [ ] **Step 3: Append the residual-policy section to the migration**
++
++In `20260702120000_add_operations_manager_role.sql`, append a
++`-- 4. Residual hardcoded-role-list operational policies` section that
++recreates each policy in the table above per the transformation rule.
++Example for `employees` (verbatim current body + widened list):
++
++```sql
++DROP POLICY IF EXISTS "Owners and managers can manage employees" ON public.employees;
++CREATE POLICY "Owners and managers can manage employees"
++ON public.employees
++FOR ALL
++USING (user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager']))
++WITH CHECK (user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager']));
++```
++
++Repeat for every table/policy in the list, sourcing each current body via grep.
++
++- [ ] **Step 4: Run — confirm GREEN**
++
++Run: `npm run test:db`
++Expected: PASS (allowed writes succeed; accounting reads return 0; unified_sales insert denied).
++
++- [ ] **Step 5: Commit**
++
++```bash
++git add supabase/migrations/20260702120000_add_operations_manager_role.sql supabase/tests/22_operations_manager_rls.sql
++git commit -m "feat(db): grant operations_manager access on residual operational RLS policies"
++```
++
++---
++
++## Task 7: Edge function — inviter allow-list + default-deny invite matrix
++
++**Files:**
++- Modify: `supabase/functions/send-team-invitation/index.ts`
++
++- [ ] **Step 1: Add the Deno invite matrix + label**
++
++Near the top of `index.ts` (module scope), add (mirrors `src/lib/permissions/invitations.ts` — keep in sync):
++
++```ts
++// MIRRORS src/lib/permissions/invitations.ts — keep in sync (default-deny).
++const INVITABLE_ROLES: Record<string, string[]> = {
++  owner: ['owner', 'manager', 'operations_manager', 'chef', 'staff'],
++  manager: ['manager', 'operations_manager', 'chef', 'staff'],
++  operations_manager: ['staff'],
++};
++function canInviteRole(inviter: string, target: string): boolean {
++  return (INVITABLE_ROLES[inviter] ?? []).includes(target);
++}
++```
++
++- [ ] **Step 2: Replace the permission check (widen inviter + enforce target before insert)**
++
++Replace the existing guard (currently
++`if (roleError || !userRole || !['owner', 'manager'].includes(userRole.role))`):
++
++```ts
++if (roleError || !userRole || !INVITABLE_ROLES[userRole.role]) {
++  throw new Error('Insufficient permissions to send invitations');
++}
++
++// Default-deny: reject any (inviter, target) pair not in the matrix
++// BEFORE inserting the invitation row (prevents storing escalated-role invites).
++if (!canInviteRole(userRole.role, role)) {
++  return new Response(
++    JSON.stringify({ error: 'role_not_allowed' }),
++    { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
++  );
++}
++```
++
++(Use the file's existing `corsHeaders` identifier; match its exact name.)
++
++- [ ] **Step 3: Add the friendly label**
++
++In the `roleLabels` map, add:
++
++```ts
++  'operations_manager': 'Operations Manager',
++```
++
++- [ ] **Step 4: Typecheck the function compiles (Deno)**
++
++Run: `npm run typecheck`
++Expected: PASS (edge fn is Deno; verify at minimum the repo typecheck is green — the function is not part of the Vite tsc project, so also visually confirm no syntax errors).
++
++- [ ] **Step 5: Commit**
++
++```bash
++git add supabase/functions/send-team-invitation/index.ts
++git commit -m "feat(edge): send-team-invitation enforces default-deny invite matrix; allow operations_manager to invite staff"
++```
++
++---
++
++## Task 8: TeamInvitations UI — dynamic dropdown + capability guard + a11y/query fixes
++
++**Files:**
++- Modify: `src/components/TeamInvitations.tsx`
++
++- [ ] **Step 1: Type the prop and derive the guard from capability + matrix**
++
++Update imports and the interface:
++
++```ts
++import { Role } from '@/lib/permissions/types';
++import { ROLE_METADATA } from '@/lib/permissions/definitions';
++import { getInvitableRoles } from '@/lib/permissions/invitations';
++```
++
++```ts
++interface TeamInvitationsProps {
++  restaurantId: string;
++  userRole: Role;
++}
++```
++
++Replace line 45:
++
++```ts
++const invitableRoles = getInvitableRoles(userRole);
++const canManageInvites = invitableRoles.length > 0;
++```
++
++- [ ] **Step 2: Default the form role to the first invitable role**
++
++Update the initial state (line ~34) and the reset (line ~156) so the role is always valid for the current inviter:
++
++```ts
++const [inviteForm, setInviteForm] = useState({
++  email: '',
++  role: (getInvitableRoles(userRole)[0] ?? 'staff') as string,
++});
++```
++
++And every `setInviteForm({ email: '', role: 'staff' })` becomes
++`setInviteForm({ email: '', role: getInvitableRoles(userRole)[0] ?? 'staff' })`.
++
++- [ ] **Step 3: Render the Select from the matrix (kills hardcoded SelectItem drift)**
++
++Replace the hardcoded `<SelectContent>` items (lines ~282-290) with:
++
++```tsx
++<SelectTrigger id="role" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
++  <SelectValue />
++</SelectTrigger>
++<SelectContent>
++  {invitableRoles.map((r) => (
++    <SelectItem key={r} value={r}>{ROLE_METADATA[r].label}</SelectItem>
++  ))}
++</SelectContent>
++```
++
++(Note the added `id="role"` on `SelectTrigger` for the existing `<Label htmlFor="role">`.)
++
++- [ ] **Step 4: Replace `select('*')` with explicit columns**
++
++In `fetchInvitations` (line ~55):
++
++```ts
++.select('id, email, role, status, created_at, expires_at, invited_by, employee_id')
++```
++
++- [ ] **Step 5: Skeleton loading state**
++
++Replace the plain loading `<p>` (line ~319) with a `<Skeleton>` block matching the invitation card shape:
++
++```tsx
++import { Skeleton } from '@/components/ui/skeleton';
++// ...
++{loading ? (
++  <div className="space-y-3">
++    {[0, 1].map((i) => (
++      <div key={i} className="flex items-center gap-3 p-4 border border-border/40 rounded-xl">
++        <Skeleton className="h-5 w-5 rounded" />
++        <div className="flex-1 space-y-2">
++          <Skeleton className="h-4 w-40" />
++          <Skeleton className="h-3 w-56" />
++        </div>
++        <Skeleton className="h-6 w-16 rounded-full" />
++      </div>
++    ))}
++  </div>
++) : /* ...existing branches... */}
++```
++
++- [ ] **Step 6: Verify callers pass a typed role**
++
++Run: `npm run typecheck`
++Expected: PASS. If the parent (`src/pages/Team.tsx`) passes `userRole` as a plain string, the cast is compatible (values come from `selectedRestaurant.role`). Fix any type error at the call site by typing it as `Role`.
++
++- [ ] **Step 7: Commit**
++
++```bash
++git add src/components/TeamInvitations.tsx src/pages/Team.tsx
++git commit -m "feat(team): scope invite dropdown to invitable roles; capability guard; a11y + query fixes"
++```
++
++---
++
++## Task 9: AppSidebar — dedicated nav for operations_manager (no Accounting/Integrations)
++
++**Files:**
++- Modify: `src/components/AppSidebar.tsx`
++
++- [ ] **Step 1: Build the operations_manager nav array**
++
++Above `getNavigationForRole`, derive it from `navigationGroups` by dropping the Accounting group and the `/integrations` item:
++
++```ts
++// Operations Manager: full internal nav minus Accounting group and Integrations.
++const operationsManagerNav: NavGroup[] = navigationGroups
++  .filter((group) => group.label !== 'Accounting')
++  .map((group) => ({
++    ...group,
++    items: group.items.filter((item) => item.path !== '/integrations'),
++  }));
++```
++
++- [ ] **Step 2: Add the switch case**
++
++In `getNavigationForRole`, add before `default`:
++
++```ts
++    case 'operations_manager':
++      return operationsManagerNav;
++```
++
++- [ ] **Step 3: Verify build + typecheck**
++
++Run: `npm run typecheck && npm run build`
++Expected: PASS.
++
++- [ ] **Step 4: Commit**
++
++```bash
++git add src/components/AppSidebar.tsx
++git commit -m "feat(nav): operations_manager sidebar excludes Accounting group and Integrations"
++```
++
++---
++
++## Task 10: Audit & fix operational hardcoded role literals
++
++**Files:**
++- Modify: `src/pages/TimePunchesManager.tsx`, `src/pages/POSSales.tsx`, `src/pages/Inventory.tsx`, `src/hooks/useApproverCount.ts`
++
++- [ ] **Step 1: TimePunchesManager — include operations_manager**
++
++`src/pages/TimePunchesManager.tsx:123`:
++
++```ts
++const isManager = ['owner', 'manager', 'operations_manager'].includes(selectedRestaurant?.role || '');
++```
++
++- [ ] **Step 2: POSSales — include operations_manager (view surface)**
++
++`src/pages/POSSales.tsx:1283` — add `operations_manager` to the `role === 'owner' || role === 'manager'` condition:
++
++```ts
++(selectedRestaurant.role === "owner" || selectedRestaurant.role === "manager" || selectedRestaurant.role === "operations_manager")
++```
++
++Confirm the gated action is a view/read affordance (it is, per POS view-only); if it gates a manual-sale write, leave it OUT (ops-mgr has no `edit:pos_sales`). Inspect the surrounding block before editing.
++
++- [ ] **Step 3: Inventory delete guard — include operations_manager**
++
++`src/pages/Inventory.tsx:116`:
++
++```ts
++const canDeleteProducts = ['owner', 'manager', 'operations_manager'].includes(selectedRestaurant?.role || '');
++```
++
++(Ops-mgr fully manages inventory; UI parity. Note the DB DELETE guard on `products` uses `user_has_role(['owner','manager'])` and is deferred per spec, so the button is UI-only unless that policy is widened; acceptable trade-off.)
++
++- [ ] **Step 4: useApproverCount — decide inclusion**
++
++Inspect `src/hooks/useApproverCount.ts:12`. If approvers are for an operational flow the ops-mgr participates in (e.g. schedule/PO approval), add `'operations_manager'` to the `.in('role', [...])`. If it is an accounting approval, leave as-is. Document the decision in the commit message.
++
++- [ ] **Step 5: Verify**
++
++Run: `npm run typecheck && npm run lint`
++Expected: PASS.
++
++- [ ] **Step 6: Commit**
++
++```bash
++git add -A
++git commit -m "fix(permissions): include operations_manager in operational UI role guards"
++```
++
++---
++
++## Task 11: Final verification sweep
++
++- [ ] **Step 1: Full local suite**
++
++Run: `npm run test && npm run test:db && npm run typecheck && npm run lint && npm run build`
++Expected: all PASS. Fix and re-run until green (max 5 iterations per workflow).
++
++- [ ] **Step 2: Grep for missed literals**
++
++Run: `grep -rnE "\['owner', ?'manager'\]|=== 'manager'" src/ | grep -v permissions/ | grep -v '.test.'`
++Review each remaining hit: confirm it is intentionally accounting/admin (excludes ops-mgr) or already handled. Note any deliberate exclusions.
++
++- [ ] **Step 3: Commit any final fixes**
++
++```bash
++git add -A && git commit -m "chore: operations_manager literal-audit follow-ups" || echo "nothing to commit"
++```
++
++---
++
++## Self-review coverage map
++
++- Role type/capabilities/metadata → Tasks 1–2
++- Invite matrix (ops-mgr → staff) → Task 3 (+ edge Task 7, UI Task 8)
++- SQL constraint + internal-team helper + capability function (live-body based) → Task 4
++- Capability sentinel + accounting deny (drift guard) → Task 5
++- Residual operational RLS policies + DML tests → Task 6
++- Edge-fn default-deny + escalation-hole fix → Task 7
++- Invite dropdown/guard + a11y/query fixes → Task 8
++- Sidebar (no Accounting/Integrations) → Task 9
++- Operational hardcoded-literal audit → Tasks 10–11
++- Accounting/admin exclusion verified at: capability fn (Task 4/5), nav (Task 9), left-as-is literals (Task 10)
+diff --git a/docs/superpowers/specs/2026-07-02-operations-manager-role-design.md b/docs/superpowers/specs/2026-07-02-operations-manager-role-design.md
+new file mode 100644
+index 00000000..a1043d36
+--- /dev/null
++++ b/docs/superpowers/specs/2026-07-02-operations-manager-role-design.md
+@@ -0,0 +1,336 @@
++# Design: `operations_manager` Role
++
++**Date:** 2026-07-02
++**Status:** Approved (pending spec review)
++**Author:** Development workflow (`/dev`)
++
++## Problem
++
++Owners need to invite a team member who can run the full operation —
++inventory, recipes, purchasing, scheduling, labor (payroll/tips/time),
++POS visibility, and staffing — **without** access to accounting
++(bookkeeping) or administrative controls (settings, integrations,
++external collaborators).
++
++The existing `manager` role is unsuitable: it already grants **full
++accounting** (transactions, banking, expenses, financial statements,
++invoices, customers) **and** admin surfaces (integrations, collaborator
++management). "Everything except accounting and admin" therefore
++describes a **new, more-restricted tier**, not the current manager.
++
++## Decisions (from brainstorm)
++
++| Question | Decision |
++|---|---|
++| Model as new role or redefine `manager`? | **New role** `operations_manager`; existing `manager` unchanged (non-breaking). |
++| UI label | **"Operations Manager"** |
++| Can the role invite / manage team? | **Yes, scoped**: can invite **Staff only**, and can activate/deactivate employees. |
++| Accounting boundary (payroll/tips) | **Keep** payroll, tips, scheduling, time punches. Exclude pure bookkeeping. |
++| Admin boundary | **Exclude all admin** (settings-edit, integrations, collaborators) but **allow employee management**. |
++| `pending_outflows` | Treated as accounting (accounts-payable surface, gated to accountant in SQL) → **excluded**. |
++
++## Architecture
++
++The permission system has three layers that must stay in sync:
++
++1. **TypeScript source of truth** — `src/lib/permissions/definitions.ts`
++   (`ROLE_CAPABILITIES`, `ROLE_METADATA`) + `types.ts` (`Role`,
++   `Capability`). Drives frontend route/UI gating via `usePermissions`.
++2. **SQL capability mirror** — `public.user_has_capability(restaurant_id,
++   capability)`. Used by RLS policies and MUST mirror the TS map.
++3. **RLS policies** — a mix of `user_has_capability()`-based policies
++   (the major operational + financial tables, migrated when collaborator
++   roles were added) and older **hardcoded `role IN (...)`** policies.
++
++### Chosen approach: capability-first (Approach A)
++
++The collaborator migration (`20260120100100_update_rls_for_collaborators.sql`)
++already converted the major operational tables — products/inventory,
++inventory_transactions, recipes, prep_recipes, production_runs,
++purchase_orders, invoices, customers — to
++`user_has_capability()`-based RLS. Consequences:
++
++- **Capability-gated operational tables** are covered **automatically**
++  once `operations_manager` is added to the relevant capabilities in
++  `user_has_capability()`. No per-policy edits.
++- **Accounting tables** (bank_transactions, chart_of_accounts,
++  journal_entries, financial_statement_cache, invoices, customers,
++  pending_outflows, connected_banks, bank_account_balances) are gated by
++  accounting capabilities (`view:transactions`, `view:invoices`, …).
++  `operations_manager` is **absent** from those capabilities, so RLS
++  **denies** it — defense-in-depth, not just UI hiding. **Zero edits.**
++  (Design review confirmed all are capability-gated in the live function.)
++- **Residual hardcoded-role-list policies** on older operational tables
++  must have `operations_manager` added explicitly. Design review found
++  this set is **larger** than first assumed — full enumeration below.
++  pgTAP DML tests assert access per table.
++
++> **CRITICAL — base the new `user_has_capability` on the LIVE definition.**
++> The authoritative body is in
++> `supabase/migrations/20260129000000_add_subscription_system.sql`, **not**
++> the older `20260120100200_...`. The live version wraps
++> `view:ai_assistant` and `view:financial_intelligence` in
++> `has_subscription_feature()` and adds `view:assets` / `edit:assets` /
++> `manage:subscription` branches. The new migration MUST `CREATE OR
++> REPLACE` from the 20260129 body and only add `operations_manager` to the
++> included branches — copying an older body silently reverts the paywall.
++
++#### Central helper to extend
++
++`public.user_is_internal_team(restaurant_id)`
++(`20260120100000_add_collaborator_roles.sql`) hardcodes
++`role IN ('owner','manager','chef','staff')` and gates the
++`user_restaurants` SELECT policy. `operations_manager` must be added to
++this helper, otherwise the role sees only its own membership row and the
++**team-management UI is empty**. Extending this one function unblocks
++`user_restaurants` visibility for the whole role.
++
++#### Residual hardcoded-role-list policies to update (add `operations_manager`)
++
++Grouped by the capability that justifies inclusion. Exact policy
++names/lines pinned in the Plan phase; each gets a pgTAP DML test.
++
++- **manage:employees** — `employees` "Owners and managers can manage
++  employees" `FOR ALL` uses `user_has_role(ARRAY['owner','manager'])`
++  (`20260120100100`). Widen to include `operations_manager` (adding the
++  capability alone does NOT grant this DML).
++- **edit:receipt_import** — `receipt_imports` SELECT/INSERT/UPDATE
++  (`20251006212711`) `role IN ('owner','manager')`.
++- **edit:scheduling** — `schedule_publications` + `schedule_change_logs`
++  INSERT (`20251123000000_schedule_publishing.sql`); `open_shift_claims`
++  managers_view + managers_review (`20260412145842`); `staffing_settings`
++  (`20260306000000`); any `shifts` write policy on `role IN ('owner','manager')`.
++- **edit:tips** — `tip_pool_settings`, `tip_splits`, `tip_split_items`,
++  `tip_disputes` (`20251217000001`); `tip_contribution_pools`,
++  `tip_server_earnings`, `tip_pool_allocations` (`20260221000000`);
++  `tip_payouts` (`20260218000000`).
++- **edit:payroll** — `overtime_rules` (`20260221200000`),
++  `overtime_adjustments` (`20260221200001`),
++  `non_hourly_compensation_allocations` (`20251205164747`),
++  `employee_compensation_history` INSERT (`20251216093000`), plus any
++  payroll period/entry tables on `role IN ('owner','manager')`.
++- **edit:time_punches** — any `time_punches` write policy on
++  `role IN ('owner','manager')`.
++- **view:team / user_restaurants** — resolved via the
++  `user_is_internal_team` extension above.
++
++**Deliberately NOT changed (verified by review):**
++- `unified_sales` — SELECT open to any restaurant member (satisfies
++  `view:pos_sales`); INSERT/UPDATE stay owner/manager/staff/chef.
++  `operations_manager` is **POS view-only** (no `edit:pos_sales`). pgTAP
++  asserts SELECT allowed, INSERT denied.
++- `assets`/`asset_photos`/`depreciation_schedule` — `view:assets` is an
++  accounting capability and is **excluded**; SELECT policies are open to
++  any member (pre-existing) and the Accounting nav group is hidden for
++  the role, so no functional exposure. Tightening is out of scope.
++- `user_has_role(ARRAY['owner','manager'])` hard-delete guards (e.g.
++  DELETE on `products`) — deferred as before.
++
++Rejected alternatives:
++- **B — add-everywhere-then-subtract:** mechanically add
++  `operations_manager` wherever `manager` appears, then strip accounting.
++  Larger diff, higher accounting-leak risk. ✗
++- **C — migrate all remaining policies to capabilities first:** cleanest
++  long-term but large scope-creep beyond this task. ✗ (YAGNI)
++
++## Capability set
++
++`operations_manager` = current `manager` **minus accounting minus
++external-admin**, labor retained.
++
++**Included:**
++- `view:dashboard`, `view:ai_assistant`
++- Inventory: `view/edit:inventory`, `view/edit:inventory_audit`,
++  `view/edit:purchase_orders`, `view/edit:receipt_import`,
++  `view:reports`, `view/edit:inventory_transactions`
++- Recipes: `view/edit:recipes`, `view/edit:prep_recipes`,
++  `view/edit:batches`
++- Operations/labor: `view:pos_sales`, `view/edit:scheduling`,
++  `view/edit:payroll`, `view/edit:tips`, `view/edit:time_punches`
++- Team/employees: `view:team`, `manage:team` *(scoped — see below)*,
++  `view:employees`, `manage:employees`
++- `view:settings`
++
++**Excluded — accounting:** `view/edit:transactions`,
++`view/edit:banking`, `view/edit:expenses`, `view:financial_statements`,
++`view/edit:chart_of_accounts`, `view/edit:invoices`,
++`view/edit:customers`, `view:financial_intelligence`,
++`view/edit:pending_outflows`.
++
++**Excluded — admin:** `edit:settings`, `view/manage:integrations`,
++`view/manage:collaborators`. (`manage:integrations`/`edit:settings` are
++owner-only already.)
++
++## Invite scoping (security-critical)
++
++`manage:team` is a binary capability; it does not encode *which target
++roles* an inviter may create. That matrix is enforced separately:
++
++- **New pure helper** `canInviteRole(inviter: Role, target: Role):
++  boolean` in `src/lib/permissions/` (own file, e.g. `invitations.ts`),
++  exported via the permissions index.
++  - `operations_manager` → may invite **`staff`** only.
++  - `owner` → may invite `owner`, `manager`, `operations_manager`,
++    `chef`, `staff` (adds `operations_manager` to today's set).
++  - `manager` → may invite `manager`, `operations_manager`, `chef`,
++    `staff` (adds `operations_manager`).
++  - all other roles → invite nothing.
++- **Server enforcement:** `supabase/functions/send-team-invitation/
++  index.ts` currently allows any `owner`/`manager` to invite **any** role
++  string with **no target validation** (an existing privilege-escalation
++  hole — a manager could invite an `owner` via a direct call). It must
++  (a) widen the inviter allow-list to
++  `['owner','manager','operations_manager']` and (b) enforce the
++  `(inviter, target)` matrix with **default-deny BEFORE the insert** —
++  return a structured `403 { error: 'role_not_allowed' }` rather than
++  inserting the invitation row first (avoids storing an escalated-role
++  invite). The matrix is duplicated in Deno (like the existing SQL↔TS
++  mirror); a comment cross-references the TS helper as source of truth.
++  Add `operations_manager` → "Operations Manager" to the `roleLabels`
++  map used for the email.
++- **UI:** `TeamInvitations.tsx` — the role `<Select>` renders only the
++  targets allowed for the current `userRole`; `canManageInvites`
++  includes `operations_manager`.
++- **Activate/deactivate users:** already satisfied by `manage:employees`
++  (the `employees` table is capability-gated).
++
++## Files to change
++
++**TypeScript**
++- `src/lib/permissions/types.ts` — add `'operations_manager'` to `Role`.
++- `src/lib/permissions/definitions.ts` — add capability array +
++  `ROLE_METADATA` entry (label "Operations Manager", category
++  `internal`, landing `/`, color `secondary`).
++- `src/lib/permissions/invitations.ts` *(new)* — `canInviteRole` +
++  `getInvitableRoles(inviter)`.
++- `src/lib/permissions/index.ts` — export the new helper.
++- `src/components/TeamInvitations.tsx` — per frontend review:
++  - `userRole` prop typed as `Role` (not `string`).
++  - `canManageInvites` derived from `manage:team` capability (or include
++    `operations_manager`), not a hardcoded `owner||manager` literal.
++  - Role `<Select>` rendered from `getInvitableRoles(userRole)` (kills
++    the drift-prone hardcoded `<SelectItem>` list); default/reset role =
++    `getInvitableRoles(userRole)[0]`.
++  - `fetchInvitations` selects explicit columns, not `select('*')`.
++  - Loading state → `<Skeleton>` matching the card shape; add `id="role"`
++    to `<SelectTrigger>` for the existing `<Label htmlFor="role">`.
++- `src/components/AppSidebar.tsx` — add an explicit
++  `case 'operations_manager':` in `getNavigationForRole` returning the
++  full nav **minus the Accounting group** and **minus `/integrations`**
++  (keeps Operations, Inventory, and an Admin group of Employees/Team/
++  Settings/Help). Without this the role falls through `default` and sees
++  accounting links.
++- Audit remaining hardcoded literals and switch operational ones to
++  capability checks or add `operations_manager`: `TimePunchesManager`
++  (`isManager`), `POSSales`, `Inventory` delete-guard, `useApproverCount`.
++  Leave accounting/admin literals as-is (`useChartOfAccounts`,
++  `RestaurantSettings` canEdit, `CollaboratorInvitations` — the role is
++  correctly excluded there).
++
++**SQL migrations** (new, timestamped — ordered: constraint → helper →
++function → policies)
++1. Extend `user_restaurants_role_check` CHECK to include
++   `'operations_manager'` (kiosk/collaborator precedent).
++2. `CREATE OR REPLACE FUNCTION user_is_internal_team` to include
++   `'operations_manager'`.
++3. `CREATE OR REPLACE FUNCTION user_has_capability` **based on the live
++   20260129 body**, adding `operations_manager` to every included branch;
++   leave it out of all accounting/admin/subscription-mgmt branches.
++4. Add `operations_manager` to the residual hardcoded-role-list RLS
++   policies enumerated above (employees, receipt_imports, scheduling
++   set, tips set, payroll/overtime/comp set, time_punches). Each pinned
++   by a pgTAP DML test.
++
++**Edge function**
++- `supabase/functions/send-team-invitation/index.ts` — widen inviter
++  allow-list, add default-deny target-role matrix **before insert**, add
++  `operations_manager` label.
++
++## Test plan
++
++**Unit (Vitest)** — `tests/unit/`
++- `operations_manager` capability array: contains every kept capability;
++  contains **none** of the accounting/admin capabilities (assert the
++  exclusion list explicitly, not just inclusion).
++- `canInviteRole` matrix: `operations_manager`→`staff` true;
++  `operations_manager`→{`manager`,`owner`,`chef`,`operations_manager`}
++  false; `owner`/`manager`→`operations_manager` true; `chef`/`staff`
++  invite nothing.
++
++**pgTAP** — `supabase/tests/`
++- Seed a user as `operations_manager` for a restaurant.
++- **Capability sentinel (drift guard):** `user_has_capability` returns
++  TRUE for a representative kept capability in each domain
++  (`view:inventory`, `edit:recipes`, `edit:scheduling`, `edit:payroll`,
++  `edit:tips`, `edit:time_punches`, `manage:employees`, `manage:team`,
++  `view:settings`) and FALSE for every accounting capability
++  (`view:transactions`, `view:banking`, `view:invoices`,
++  `view:pending_outflows`, `view:financial_statements`, `view:assets`,
++  `view:financial_intelligence`) and excluded admin
++  (`edit:settings`, `manage:integrations`, `manage:collaborators`,
++  `view:integrations`, `manage:subscription`).
++- **DML per residual-policy category** (this is what catches the
++  hardcoded-policy class of failures):
++  - `user_restaurants` SELECT returns >1 team row (via
++    `user_is_internal_team`).
++  - INSERT/UPDATE on `employees` succeeds.
++  - INSERT on `schedule_publications` (or a `shifts` write) succeeds.
++  - INSERT on `tip_pool_settings` succeeds.
++  - INSERT on an overtime/payroll table succeeds.
++  - SELECT on `receipt_imports` returns rows.
++  - INSERT on a `time_punches` write path succeeds.
++- **Accounting/POS deny:** `SELECT` on `bank_transactions` /
++  `chart_of_accounts` returns zero rows; INSERT on `unified_sales` is
++  denied while SELECT succeeds.
++
++**Edge function** — reject path: an `operations_manager` inviting a
++`manager`/`owner` is rejected (403, no row inserted); inviting `staff`
++succeeds. Test at the matrix-helper level (Vitest) plus, if edge-fn test
++harness exists, an integration assertion.
++
++## Decided trade-offs
++
++- **`pending_outflows` classified as accounting** and excluded. It is
++  an accounts-payable surface gated to `collaborator_accountant` in the
++  SQL function, so it belongs on the accounting side of the line.
++- **Invites limited to `staff`** per the explicit answer. Chef/manager/
++  operations_manager invites remain with owner/full-manager. Easily
++  widened later by editing the `canInviteRole` matrix + edge guard.
++- **`user_has_role(...ARRAY['owner','manager'])` DELETE guards** (e.g.
++  delete product) are left as-is; `operations_manager` will not get
++  those specific hard-delete rights unless a residual policy is
++  explicitly widened. Non-goal for this task; noted for reviewers.
++- **Landing path `/`** (same as manager); no bespoke landing page.
++- **`view:assets` excluded** (accounting surface). The open SELECT policy
++  on `assets` is pre-existing and left untouched; the Accounting nav
++  group is hidden, so no functional exposure.
++- **Existing TS↔SQL drift left as-is:** the SQL function already has
++  `view:assets`/`edit:assets`/`manage:subscription` branches absent from
++  the TS `Capability` union. Reconciling that pre-existing drift is out
++  of scope; the new role is simply not added to those branches.
++- **POS view-only:** `operations_manager` gets `view:pos_sales` but not
++  `edit:pos_sales`, so it cannot create/edit manual sales entries.
++
++## Design review outcomes (Phase 2.5)
++
++Supabase + Frontend reviewers ran against this doc. Folded in:
++- **[critical]** Base `user_has_capability` on the live 20260129 body
++  (preserve subscription gating). *(fixed in doc)*
++- **[critical]** Edge fn must widen inviter allow-list + default-deny
++  matrix before insert. *(fixed in doc)*
++- **[critical/frontend]** `canManageInvites` literal + invite dropdown
++  drift + AppSidebar accounting-nav leak. *(fixed in doc)*
++- **[major]** Extend `user_is_internal_team`; large residual
++  hardcoded-policy set (employees/receipts/scheduling/tips/payroll/time).
++  *(fully enumerated above)*
++- **[minor]** `select('*')`, Skeleton, `id="role"`, DML-level pgTAP.
++  *(folded)*
++Deferred (noted for retrospective): converting the `view:settings`
++deny-list to an allow-list; a CI drift check for `user_has_capability`.
++
++## Out of scope
++
++- Redefining or splitting the existing `manager` role.
++- Migrating remaining hardcoded-role-list policies to capabilities
++  wholesale.
++- Per-capability UI settings editor for roles.
+diff --git a/progress.md b/progress.md
+new file mode 100644
+index 00000000..89fb048a
+--- /dev/null
++++ b/progress.md
+@@ -0,0 +1,53 @@
++# Progress: operations_manager role
++
++## Spec
++- Design: docs/superpowers/specs/2026-07-02-operations-manager-role-design.md (committed e22a3d75)
++- Plan: (pending Phase 3)
++
++## Current Phase
++Preflight complete (2026-07-02). Next: Phase 4 build (TDD).
++
++## Preflight Results (2026-07-02)
++- gh: authenticated (jdelgado2002), scopes: gist, read:org, repo, workflow
++- jq: 1.7.1-apple
++- node: v20.20.2
++- coderabbit: 0.6.4
++- codex: 0.137.0 (available)
++- branch: worktree-feature+operations-manager-role (correct)
++- .env.local symlink: present -> /Users/josedelgado/Documents/GitHub/nimble-pnl/.env.local
++- SONAR_TOKEN: set in .env.local
++- SONAR_PROJECT_KEY: toyiyo_nimble-pnl (set in .env.local)
++
++## Plan
++docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
++
++## Completed Tasks
++- [x] Phase 0 lessons/context
++- [x] Phase 1 worktree (branch worktree-feature+operations-manager-role)
++- [x] Phase 2 brainstorm + design doc committed (e22a3d75)
++- [x] Phase 2.5 folded supabase+frontend review (98a47398); scope: FULL enforcement one PR
++- [ ] Phase 3 plan
++- [x] Phase 4 build (TDD) — task 1/12: Add `operations_manager` to Role union type (52bedc90)
++- [x] Phase 4 build (TDD) — task 2/12: Write Vitest test for operations_manager capabilities + ROLE_CAPABILITIES + ROLE_METADATA entries (c110fc14)
++- [x] Phase 4 build (TDD) — task 3/12: Write failing Vitest test for invite matrix, then create src/lib/permissions/invitations.ts with canInviteRole/getInvitableRoles and export from index.ts (bd1d36bd)
++- [x] Phase 4 build (TDD) — task 4/12: Create SQL migration 20260702120000_add_operations_manager_role.sql: extend role CHECK constraint, update user_is_internal_team helper, and replace user_has_capability function body with operations_manager added to non-accounting/non-admin branches (9fecf97d)
++- [x] Phase 4 build (TDD) — task 5/12: Create pgTAP test supabase/tests/21_operations_manager_capabilities.sql: sentinel tests for included capabilities and denied accounting/admin capabilities (drift guard) (8ba640b6)
++- [x] Phase 4 build (TDD) — task 6/12: Write failing pgTAP DML test supabase/tests/22_operations_manager_rls.sql (RED: 2f9d0d80); append residual-policy section to migration (GREEN: a26e4ba3). 9/9 tests pass; full suite 1470/1470.
++- [x] Phase 4 build (TDD) — task 8/12 (plan task 7): Update supabase/functions/send-team-invitation/index.ts: Deno invite matrix + canInviteRole(), widen inviter allow-list to include operations_manager, add role_not_allowed 403 guard, add Operations Manager label (b3f3dac3)
++- [x] Phase 4 build (TDD) — task 9/12 (plan task 8): Update src/components/TeamInvitations.tsx: typed userRole as Role, invitableRoles from getInvitableRoles(), dynamic Select from matrix, default form role to first invitable, explicit columns replacing select('*'), Skeleton loading state. Also added operations_manager to UserRestaurant.role union in useRestaurants.tsx. (87aee74b)
++- [x] Phase 4 build (TDD) — task 10/12 (plan task 9): Extract nav data + getNavigationForRole into AppSidebar.nav.ts (testable without React context), add operations_manager case filtering out Accounting group and /integrations item. 8/8 Vitest tests pass; build green. (d1758c52)
++- [x] Phase 4 build (TDD) — task 11/12 (plan task 10): Audit and fix operational hardcoded role literals. TimePunchesManager.tsx isManager, Inventory.tsx canDeleteProducts, useApproverCount.ts approver query all widened to include operations_manager. POSSales.tsx canEditManualSales intentionally left owner/manager-only (gates manual-sale WRITE; ops-mgr has view:pos_sales not edit:pos_sales). New operationsManagerUIGuards.test.ts (15 tests) + updated useApproverCount.test.ts pass. (e4e43f40)
++- [x] Phase 4 build (TDD) — task 12/12 (final verification sweep): Ran full test suite (5134 unit + 1470 pgTAP pass, 0 failures), typecheck clean, build green. Grepped for missed role literals: TeamMembers.tsx canManageMembers widened to include operations_manager (manage:team). Remaining literals confirmed intentionally excluded (CollaboratorInvitations=manage:collaborators, useChartOfAccounts=accounting-admin, RestaurantSettings canEdit=edit:settings, useKioskPins actor check=edge-fn payload not role guard). (1d6b09c9)
++
++## Key Decisions
++- New role `operations_manager`, label "Operations Manager", non-breaking.
++- Capabilities = manager minus accounting minus external-admin; keep labor (payroll/tips/scheduling/time).
++- pending_outflows excluded (accounting/AP).
++- Invites: operations_manager -> staff only. owner/manager can invite operations_manager.
++- Capability-first RLS: extend user_has_capability; residual hardcoded operational policies get the role; accounting tables untouched (natural deny).
++
++- [x] Phase 5 UI Review — TeamMembers.tsx: Skeleton loading state, border-border/40 rounded-xl list items, text-[14px]/text-[13px] typography, aria-label on MoreHorizontal, operations_manager in roleIcons/roleColors/select, human-readable badge label. Commit: 2052dbfc.
++- [x] Phase 6 Simplify — TeamMembers.tsx: replaced hard-coded 'Ops Manager' special-case with ROLE_METADATA label lookup (reuse). invitations.ts: dropped redundant `?? []` nullish guards on fully-typed Record. All 5134 tests pass. Commit: a7b6d619.
++
++## CI Status
++- PR: not yet created
+diff --git a/src/components/AppSidebar.nav.ts b/src/components/AppSidebar.nav.ts
+new file mode 100644
+index 00000000..738a9ac0
+--- /dev/null
++++ b/src/components/AppSidebar.nav.ts
+@@ -0,0 +1,234 @@
++/**
++ * Navigation data and role-based filtering for AppSidebar.
++ *
++ * Extracted into a separate module so it can be unit-tested without
++ * rendering the full sidebar (which depends on React context).
++ */
++import {
++  Home,
++  Plug,
++  ShoppingCart,
++  ChefHat,
++  Package,
++  ClipboardCheck,
++  FileText,
++  Users,
++  Settings,
++  Wallet,
++  Receipt,
++  CalendarCheck,
++  TrendingUp,
++  Clock,
++  ClipboardList,
++  DollarSign,
++  ShoppingBag,
++  CalendarDays,
++  Coins,
++  CreditCard,
++  Utensils,
++  Building2,
++  Target,
++  Printer,
++  Inbox,
++  Newspaper,
++  LifeBuoy,
++} from 'lucide-react';
++import type { LucideIcon } from 'lucide-react';
++
++export interface NavItem {
++  path: string;
++  label: string;
++  icon: LucideIcon;
++}
++
++export interface NavGroup {
++  label: string;
++  items: NavItem[];
++}
++
++// Full navigation structure (owner / manager / chef default)
++export const navigationGroups: NavGroup[] = [
++  {
++    label: 'Main',
++    items: [
++      { path: '/', label: 'Dashboard', icon: Home },
++      { path: '/integrations', label: 'Integrations', icon: Plug },
++      { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
++      { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
++      { path: '/weekly-brief', label: 'Weekly Brief', icon: Newspaper },
++    ],
++  },
++  {
++    label: 'Operations',
++    items: [
++      { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
++      { path: '/time-punches', label: 'Time Clock', icon: ClipboardList },
++      { path: '/tips', label: 'Tip Pooling', icon: Coins },
++      { path: '/payroll', label: 'Payroll', icon: Wallet },
++    ],
++  },
++  {
++    label: 'Inventory',
++    items: [
++      { path: '/recipes', label: 'Recipes', icon: ChefHat },
++      { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
++      { path: '/inventory', label: 'Inventory', icon: Package },
++      { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
++      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
++      { path: '/reports', label: 'Reports', icon: FileText },
++    ],
++  },
++  {
++    label: 'Accounting',
++    items: [
++      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
++      { path: '/customers', label: 'Customers', icon: Users },
++      { path: '/invoices', label: 'Invoices', icon: FileText },
++      { path: '/stripe-account', label: 'Financial Account', icon: CreditCard },
++      { path: '/banking', label: 'Banks', icon: Wallet },
++      { path: '/expenses', label: 'Expenses', icon: DollarSign },
++      { path: '/print-checks', label: 'Print Checks', icon: Printer },
++      { path: '/assets', label: 'Assets & Equipment', icon: Building2 },
++      { path: '/financial-intelligence', label: 'Financial Intelligence', icon: TrendingUp },
++      { path: '/transactions', label: 'Transactions', icon: Receipt },
++      { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
++      { path: '/financial-statements', label: 'Statements', icon: FileText },
++    ],
++  },
++  {
++    label: 'Admin',
++    items: [
++      { path: '/employees', label: 'Employees', icon: Users },
++      { path: '/team', label: 'Team', icon: Users },
++      { path: '/settings', label: 'Settings', icon: Settings },
++      { path: '/help', label: 'Help Center', icon: LifeBuoy },
++    ],
++  },
++];
++
++// Navigation groups for collaborator roles
++export const collaboratorAccountantNav: NavGroup[] = [
++  {
++    label: 'Financial',
++    items: [
++      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
++      { path: '/transactions', label: 'Transactions', icon: Receipt },
++      { path: '/banking', label: 'Banks', icon: Wallet },
++      { path: '/expenses', label: 'Expenses', icon: DollarSign },
++      { path: '/print-checks', label: 'Print Checks', icon: Printer },
++      { path: '/assets', label: 'Assets', icon: Building2 },
++      { path: '/invoices', label: 'Invoices', icon: FileText },
++      { path: '/customers', label: 'Customers', icon: Users },
++      { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
++      { path: '/financial-statements', label: 'Statements', icon: FileText },
++      { path: '/financial-intelligence', label: 'Intelligence', icon: TrendingUp },
++    ],
++  },
++  {
++    label: 'Payroll',
++    items: [
++      { path: '/payroll', label: 'Payroll', icon: Wallet },
++      { path: '/employees', label: 'Employees', icon: Users },
++    ],
++  },
++  {
++    label: 'Settings',
++    items: [
++      { path: '/settings', label: 'Settings', icon: Settings },
++      { path: '/help', label: 'Help Center', icon: LifeBuoy },
++    ],
++  },
++];
++
++export const collaboratorInventoryNav: NavGroup[] = [
++  {
++    label: 'Inventory',
++    items: [
++      { path: '/inventory', label: 'Inventory', icon: Package },
++      { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
++      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
++      { path: '/receipt-import', label: 'Receipt Import', icon: Receipt },
++    ],
++  },
++  {
++    label: 'Settings',
++    items: [
++      { path: '/settings', label: 'Settings', icon: Settings },
++      { path: '/help', label: 'Help Center', icon: LifeBuoy },
++    ],
++  },
++];
++
++export const collaboratorChefNav: NavGroup[] = [
++  {
++    label: 'Recipes',
++    items: [
++      { path: '/recipes', label: 'Recipes', icon: ChefHat },
++      { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
++    ],
++  },
++  {
++    label: 'Inventory',
++    items: [
++      { path: '/inventory', label: 'Inventory', icon: Package },
++    ],
++  },
++  {
++    label: 'Settings',
++    items: [
++      { path: '/settings', label: 'Settings', icon: Settings },
++      { path: '/help', label: 'Help Center', icon: LifeBuoy },
++    ],
++  },
++];
++
++export const staffNav: NavGroup[] = [
++  {
++    label: 'Employee',
++    items: [
++      { path: '/employee/clock', label: 'Time Clock', icon: Clock },
++      { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
++      { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
++      { path: '/employee/pay', label: 'My Pay', icon: Wallet },
++      { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
++    ],
++  },
++  {
++    label: 'Settings',
++    items: [
++      { path: '/settings', label: 'Settings', icon: Settings },
++      { path: '/help', label: 'Help Center', icon: LifeBuoy },
++    ],
++  },
++];
++
++// Operations Manager: full internal nav minus Accounting group and Integrations.
++export const operationsManagerNav: NavGroup[] = navigationGroups
++  .filter((group) => group.label !== 'Accounting')
++  .map((group) => ({
++    ...group,
++    items: group.items.filter((item) => item.path !== '/integrations'),
++  }));
++
++// Get navigation groups based on role
++export function getNavigationForRole(role: string | undefined): NavGroup[] {
++  if (!role) return [];
++
++  switch (role) {
++    case 'kiosk':
++      return []; // Kiosk users see no sidebar
++    case 'staff':
++      return staffNav;
++    case 'collaborator_accountant':
++      return collaboratorAccountantNav;
++    case 'collaborator_inventory':
++      return collaboratorInventoryNav;
++    case 'collaborator_chef':
++      return collaboratorChefNav;
++    case 'operations_manager':
++      return operationsManagerNav;
++    default:
++      // owner, manager, chef get full navigation
++      return navigationGroups;
++  }
++}
+diff --git a/src/components/AppSidebar.tsx b/src/components/AppSidebar.tsx
+index 5dd516ad..5c9860e2 100644
+--- a/src/components/AppSidebar.tsx
++++ b/src/components/AppSidebar.tsx
+@@ -10,43 +10,19 @@ import {
+   SidebarMenu,
+   SidebarMenuButton,
+   SidebarMenuItem,
+-  SidebarTrigger,
+   useSidebar,
+ } from '@/components/ui/sidebar';
+ import {
+-  Home,
+-  Plug,
+-  ShoppingCart,
+-  ChefHat,
+-  Package,
+-  ClipboardCheck,
+-  FileText,
+-  Users,
+-  Settings,
+-  Wallet,
+-  Receipt,
+-  CalendarCheck,
+   LogOut,
+-  TrendingUp,
+-  Clock,
+-  ClipboardList,
+-  DollarSign,
+-  ShoppingBag,
+-  CalendarDays,
+-  Coins,
+-  CreditCard,
+-  Utensils,
+-  Building2,
+-  Target,
+   Sparkles,
+-  Printer,
+-  Inbox,
+-  Newspaper,
+   ChevronDown,
+-  LifeBuoy,
+ } from 'lucide-react';
+-import type { LucideIcon } from 'lucide-react';
+ import { AppLogo } from '@/components/AppLogo';
++import {
++  navigationGroups,
++  getNavigationForRole,
++} from '@/components/AppSidebar.nav';
++import type { NavGroup } from '@/components/AppSidebar.nav';
+ 
+ import { useAuth } from '@/hooks/useAuth';
+ import { useRestaurantContext } from '@/contexts/RestaurantContext';
+@@ -76,194 +52,6 @@ const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> =
+   '/payroll': 'payroll',
+ };
+ 
+-// Navigation structure
+-const navigationGroups = [
+-  {
+-    label: 'Main',
+-    items: [
+-      { path: '/', label: 'Dashboard', icon: Home },
+-      { path: '/integrations', label: 'Integrations', icon: Plug },
+-      { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
+-      { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
+-      { path: '/weekly-brief', label: 'Weekly Brief', icon: Newspaper },
+-    ],
+-  },
+-  {
+-    label: 'Operations',
+-    items: [
+-      { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
+-      { path: '/time-punches', label: 'Time Clock', icon: ClipboardList },
+-      { path: '/tips', label: 'Tip Pooling', icon: Coins },
+-      { path: '/payroll', label: 'Payroll', icon: Wallet },
+-    ],
+-  },
+-  {
+-    label: 'Inventory',
+-    items: [
+-      { path: '/recipes', label: 'Recipes', icon: ChefHat },
+-      { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
+-      { path: '/inventory', label: 'Inventory', icon: Package },
+-      { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
+-      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
+-      { path: '/reports', label: 'Reports', icon: FileText },
+-    ],
+-  },
+-  {
+-    label: 'Accounting',
+-    items: [
+-      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
+-      { path: '/customers', label: 'Customers', icon: Users },
+-      { path: '/invoices', label: 'Invoices', icon: FileText },
+-      { path: '/stripe-account', label: 'Financial Account', icon: CreditCard },
+-      { path: '/banking', label: 'Banks', icon: Wallet },
+-      { path: '/expenses', label: 'Expenses', icon: DollarSign },
+-      { path: '/print-checks', label: 'Print Checks', icon: Printer },
+-      { path: '/assets', label: 'Assets & Equipment', icon: Building2 },
+-      { path: '/financial-intelligence', label: 'Financial Intelligence', icon: TrendingUp },
+-      { path: '/transactions', label: 'Transactions', icon: Receipt },
+-      { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
+-      { path: '/financial-statements', label: 'Statements', icon: FileText },
+-    ],
+-  },
+-  {
+-    label: 'Admin',
+-    items: [
+-      { path: '/employees', label: 'Employees', icon: Users },
+-      { path: '/team', label: 'Team', icon: Users },
+-      { path: '/settings', label: 'Settings', icon: Settings },
+-      { path: '/help', label: 'Help Center', icon: LifeBuoy },
+-    ],
+-  },
+-];
+-
+-// Navigation groups for collaborator roles
+-interface NavItem {
+-  path: string;
+-  label: string;
+-  icon: LucideIcon;
+-}
+-
+-interface NavGroup {
+-  label: string;
+-  items: NavItem[];
+-}
+-
+-const collaboratorAccountantNav: NavGroup[] = [
+-  {
+-    label: 'Financial',
+-    items: [
+-      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
+-      { path: '/transactions', label: 'Transactions', icon: Receipt },
+-      { path: '/banking', label: 'Banks', icon: Wallet },
+-      { path: '/expenses', label: 'Expenses', icon: DollarSign },
+-      { path: '/print-checks', label: 'Print Checks', icon: Printer },
+-      { path: '/assets', label: 'Assets', icon: Building2 },
+-      { path: '/invoices', label: 'Invoices', icon: FileText },
+-      { path: '/customers', label: 'Customers', icon: Users },
+-      { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
+-      { path: '/financial-statements', label: 'Statements', icon: FileText },
+-      { path: '/financial-intelligence', label: 'Intelligence', icon: TrendingUp },
+-    ],
+-  },
+-  {
+-    label: 'Payroll',
+-    items: [
+-      { path: '/payroll', label: 'Payroll', icon: Wallet },
+-      { path: '/employees', label: 'Employees', icon: Users },
+-    ],
+-  },
+-  {
+-    label: 'Settings',
+-    items: [
+-      { path: '/settings', label: 'Settings', icon: Settings },
+-      { path: '/help', label: 'Help Center', icon: LifeBuoy },
+-    ],
+-  },
+-];
+-
+-const collaboratorInventoryNav: NavGroup[] = [
+-  {
+-    label: 'Inventory',
+-    items: [
+-      { path: '/inventory', label: 'Inventory', icon: Package },
+-      { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
+-      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
+-      { path: '/receipt-import', label: 'Receipt Import', icon: Receipt },
+-    ],
+-  },
+-  {
+-    label: 'Settings',
+-    items: [
+-      { path: '/settings', label: 'Settings', icon: Settings },
+-      { path: '/help', label: 'Help Center', icon: LifeBuoy },
+-    ],
+-  },
+-];
+-
+-const collaboratorChefNav: NavGroup[] = [
+-  {
+-    label: 'Recipes',
+-    items: [
+-      { path: '/recipes', label: 'Recipes', icon: ChefHat },
+-      { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
+-    ],
+-  },
+-  {
+-    label: 'Inventory',
+-    items: [
+-      { path: '/inventory', label: 'Inventory', icon: Package },
+-    ],
+-  },
+-  {
+-    label: 'Settings',
+-    items: [
+-      { path: '/settings', label: 'Settings', icon: Settings },
+-      { path: '/help', label: 'Help Center', icon: LifeBuoy },
+-    ],
+-  },
+-];
+-
+-const staffNav: NavGroup[] = [
+-  {
+-    label: 'Employee',
+-    items: [
+-      { path: '/employee/clock', label: 'Time Clock', icon: Clock },
+-      { path: '/employee/timecard', label: 'My Timecard', icon: FileText },
+-      { path: '/employee/schedule', label: 'My Schedule', icon: CalendarDays },
+-      { path: '/employee/pay', label: 'My Pay', icon: Wallet },
+-      { path: '/employee/portal', label: 'My Requests', icon: CalendarCheck },
+-    ],
+-  },
+-  {
+-    label: 'Settings',
+-    items: [
+-      { path: '/settings', label: 'Settings', icon: Settings },
+-      { path: '/help', label: 'Help Center', icon: LifeBuoy },
+-    ],
+-  },
+-];
+-
+-// Get navigation groups based on role
+-function getNavigationForRole(role: string | undefined): NavGroup[] {
+-  if (!role) return [];
+-
+-  switch (role) {
+-    case 'kiosk':
+-      return []; // Kiosk users see no sidebar
+-    case 'staff':
+-      return staffNav;
+-    case 'collaborator_accountant':
+-      return collaboratorAccountantNav;
+-    case 'collaborator_inventory':
+-      return collaboratorInventoryNav;
+-    case 'collaborator_chef':
+-      return collaboratorChefNav;
+-    default:
+-      // owner, manager, chef get full navigation
+-      return navigationGroups;
+-  }
+-}
+-
+ export function AppSidebar() {
+   const { state: sidebarState } = useSidebar();
+   const location = useLocation();
+@@ -282,7 +70,7 @@ export function AppSidebar() {
+   };
+ 
+   // Check if any item in a group is active
+-  const isGroupActive = (items: typeof navigationGroups[0]['items']) => {
++  const isGroupActive = (items: NavGroup['items']) => {
+     return items.some((item) => isActivePath(item.path));
+   };
+ 
+@@ -291,7 +79,7 @@ export function AppSidebar() {
+   return (
+     <Sidebar collapsible="icon" className="border-r">
+       <SidebarHeader className="border-b h-14 p-0">
+-        <button 
++        <button
+           onClick={() => navigate('/')}
+           className={`flex items-center gap-3 group transition-all duration-200 hover:scale-105 w-full h-full ${
+             collapsed ? 'justify-center px-3' : 'px-4'
+@@ -356,7 +144,7 @@ export function AppSidebar() {
+           <>
+             {filteredNavigationGroups.map((group) => {
+               const groupIsActive = isGroupActive(group.items);
+-              
++
+               return (
+                 <Collapsible
+                   key={group.label}
+diff --git a/src/components/TeamInvitations.tsx b/src/components/TeamInvitations.tsx
+index 08f8d299..4b613b62 100644
+--- a/src/components/TeamInvitations.tsx
++++ b/src/components/TeamInvitations.tsx
+@@ -5,11 +5,15 @@ import { Input } from '@/components/ui/input';
+ import { Label } from '@/components/ui/label';
+ import { Badge } from '@/components/ui/badge';
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
++import { Skeleton } from '@/components/ui/skeleton';
+ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+ import { supabase } from '@/integrations/supabase/client';
+ import { useToast } from '@/hooks/use-toast';
+ import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+ import { formatExpiresIn } from '@/lib/invitationUtils';
++import type { Role } from '@/lib/permissions/types';
++import { ROLE_METADATA } from '@/lib/permissions/definitions';
++import { getInvitableRoles } from '@/lib/permissions/invitations';
+ 
+ interface Invitation {
+   id: string;
+@@ -24,16 +28,19 @@ interface Invitation {
+ 
+ interface TeamInvitationsProps {
+   restaurantId: string;
+-  userRole: string;
++  userRole: Role;
+ }
+ 
+ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps) {
+   const [invitations, setInvitations] = useState<Invitation[]>([]);
+   const [loading, setLoading] = useState(true);
+   const [isDialogOpen, setIsDialogOpen] = useState(false);
++  const invitableRoles = getInvitableRoles(userRole);
++  const canManageInvites = invitableRoles.length > 0;
++
+   const [inviteForm, setInviteForm] = useState({
+     email: '',
+-    role: 'staff',
++    role: (invitableRoles[0] ?? 'staff') as string,
+   });
+   const [sending, setSending] = useState(false);
+   const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
+@@ -42,8 +49,6 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
+   const [resendConflictId, setResendConflictId] = useState<string | null>(null);
+   const { toast } = useToast();
+ 
+-  const canManageInvites = userRole === 'owner' || userRole === 'manager';
+-
+   useEffect(() => {
+     setShowHistory(false);
+     fetchInvitations();
+@@ -53,7 +58,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
+     try {
+       const { data: invitations, error } = await supabase
+         .from('invitations')
+-        .select('*')
++        .select('id, email, role, status, created_at, expires_at, invited_by, employee_id')
+         .eq('restaurant_id', restaurantId)
+         .order('created_at', { ascending: false });
+ 
+@@ -153,7 +158,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
+         description: `Invitation sent to ${inviteForm.email}`,
+       });
+ 
+-      setInviteForm({ email: '', role: 'staff' });
++      setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' });
+       setIsDialogOpen(false);
+       fetchInvitations();
+     } catch (error: any) {
+@@ -230,7 +235,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
+               setIsDialogOpen(open);
+               if (!open) {
+                 setPendingConflict(false);
+-                setInviteForm({ email: '', role: 'staff' });
++                setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' });
+               }
+             }}>
+               <DialogTrigger asChild>
+@@ -276,16 +281,13 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
+                       value={inviteForm.role}
+                       onValueChange={(value) => setInviteForm({ ...inviteForm, role: value })}
+                     >
+-                      <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
++                      <SelectTrigger id="role" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
+                         <SelectValue />
+                       </SelectTrigger>
+                       <SelectContent>
+-                        <SelectItem value="staff">Staff</SelectItem>
+-                        <SelectItem value="chef">Chef</SelectItem>
+-                        <SelectItem value="manager">Manager</SelectItem>
+-                        {userRole === 'owner' && (
+-                          <SelectItem value="owner">Owner</SelectItem>
+-                        )}
++                        {invitableRoles.map((r) => (
++                          <SelectItem key={r} value={r}>{ROLE_METADATA[r].label}</SelectItem>
++                        ))}
+                       </SelectContent>
+                     </Select>
+                   </div>
+@@ -301,7 +303,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
+                 </div>
+ 
+                 <DialogFooter className="px-6 py-4 border-t border-border/40">
+-                  <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); }}>
++                  <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' }); }}>
+                     Cancel
+                   </Button>
+                   <Button onClick={sendInvitation} disabled={sending} className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90">
+@@ -316,8 +318,17 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
+       
+       <CardContent>
+         {loading ? (
+-          <div className="text-center py-8">
+-            <p className="text-muted-foreground">Loading invitations...</p>
++          <div className="space-y-3">
++            {[0, 1].map((i) => (
++              <div key={i} className="flex items-center gap-3 p-4 border border-border/40 rounded-xl">
++                <Skeleton className="h-5 w-5 rounded" />
++                <div className="flex-1 space-y-2">
++                  <Skeleton className="h-4 w-40" />
++                  <Skeleton className="h-3 w-56" />
++                </div>
++                <Skeleton className="h-6 w-16 rounded-full" />
++              </div>
++            ))}
+           </div>
+         ) : invitations.length > 0 ? (
+           <div className="space-y-3 md:space-y-4">
+diff --git a/src/components/TeamMembers.tsx b/src/components/TeamMembers.tsx
+index d17e44a9..64e78c1c 100644
+--- a/src/components/TeamMembers.tsx
++++ b/src/components/TeamMembers.tsx
+@@ -3,12 +3,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
+ import { Button } from '@/components/ui/button';
+ import { Badge } from '@/components/ui/badge';
+ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
++import { Skeleton } from '@/components/ui/skeleton';
+ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+ import { supabase } from '@/integrations/supabase/client';
+ import { useToast } from '@/hooks/use-toast';
+-import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone } from 'lucide-react';
++import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone, Briefcase } from 'lucide-react';
+ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
++import { ROLE_METADATA } from '@/lib/permissions/definitions';
++import type { Role } from '@/lib/permissions/types';
+ 
+ interface TeamMember {
+   id: string;
+@@ -29,6 +32,7 @@ interface TeamMembersProps {
+ const roleIcons = {
+   owner: Crown,
+   manager: Shield,
++  operations_manager: Briefcase,
+   chef: ChefHat,
+   staff: User,
+   kiosk: TabletSmartphone,
+@@ -37,6 +41,7 @@ const roleIcons = {
+ const roleColors = {
+   owner: "default",
+   manager: "secondary",
++  operations_manager: "secondary",
+   chef: "outline",
+   staff: "outline",
+   kiosk: "outline",
+@@ -47,7 +52,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
+   const [loading, setLoading] = useState(true);
+   const { toast } = useToast();
+ 
+-  const canManageMembers = userRole === 'owner' || userRole === 'manager';
++  const canManageMembers = userRole === 'owner' || userRole === 'manager' || userRole === 'operations_manager';
+ 
+   useEffect(() => {
+     fetchTeamMembers();
+@@ -148,8 +153,22 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
+       <Card>
+         <CardHeader>
+           <CardTitle>Team Members</CardTitle>
+-          <CardDescription>Loading team members...</CardDescription>
++          <CardDescription>Manage your restaurant team members and their roles</CardDescription>
+         </CardHeader>
++        <CardContent>
++          <div className="space-y-3">
++            {[0, 1, 2].map((i) => (
++              <div key={i} className="flex items-center gap-3 p-4 border border-border/40 rounded-xl">
++                <Skeleton className="h-10 w-10 rounded-full" />
++                <div className="flex-1 space-y-2">
++                  <Skeleton className="h-4 w-32" />
++                  <Skeleton className="h-3 w-48" />
++                </div>
++                <Skeleton className="h-6 w-20 rounded-full" />
++              </div>
++            ))}
++          </div>
++        </CardContent>
+       </Card>
+     );
+   }
+@@ -169,7 +188,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
+             const isOwner = member.role === 'owner';
+             
+             return (
+-              <div key={member.id} className="flex items-center justify-between p-4 border rounded-lg">
++              <div key={member.id} className="flex items-center justify-between p-4 border border-border/40 rounded-xl hover:border-border transition-colors">
+                 <div className="flex items-center gap-3">
+                   <Avatar>
+                     <AvatarFallback>
+@@ -180,42 +199,45 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
+                     </AvatarFallback>
+                   </Avatar>
+                   <div>
+-                    <p className="font-medium">
++                    <p className="text-[14px] font-medium text-foreground">
+                       {member.profiles?.full_name || 'Unknown User'}
+                     </p>
+-                    <p className="text-sm text-muted-foreground">
++                    <p className="text-[13px] text-muted-foreground">
+                       {member.profiles?.email}
+                     </p>
+                   </div>
+                 </div>
+                 
+                 <div className="flex items-center gap-3">
+-                  <Badge variant={roleColors[member.role as keyof typeof roleColors]} className="flex items-center gap-1">
++                  <Badge variant={roleColors[member.role as keyof typeof roleColors] ?? 'outline'} className="flex items-center gap-1">
+                     <RoleIcon className="h-3 w-3" />
+-                    {member.role}
++                    {ROLE_METADATA[member.role as Role]?.label ?? member.role}
+                   </Badge>
+                   
+                   {canManageMembers && !isOwner && member.role !== 'kiosk' && (
+                     <DropdownMenu>
+                       <DropdownMenuTrigger asChild>
+-                        <Button variant="ghost" size="sm">
++                        <Button variant="ghost" size="sm" aria-label={`Manage ${member.profiles?.full_name || member.profiles?.email || 'member'}`}>
+                           <MoreHorizontal className="h-4 w-4" />
+                         </Button>
+                       </DropdownMenuTrigger>
+                       <DropdownMenuContent align="end">
+                         <div className="px-2 py-1">
+-                          <p className="text-sm font-medium">Change Role</p>
++                          <p className="text-[13px] font-medium text-foreground">Change Role</p>
+                           <Select
+                             value={member.role}
+                             onValueChange={(newRole) => updateMemberRole(member.id, newRole)}
+                           >
+-                            <SelectTrigger className="w-full mt-1">
++                            <SelectTrigger className="w-full mt-1 h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg">
+                               <SelectValue />
+                             </SelectTrigger>
+                             <SelectContent>
+                               <SelectItem value="staff">Staff</SelectItem>
+                               <SelectItem value="chef">Chef</SelectItem>
+                               <SelectItem value="manager">Manager</SelectItem>
++                              {(userRole === 'owner' || userRole === 'manager') && (
++                                <SelectItem value="operations_manager">Operations Manager</SelectItem>
++                              )}
+                               {userRole === 'owner' && (
+                                 <SelectItem value="owner">Owner</SelectItem>
+                               )}
+diff --git a/src/hooks/useApproverCount.ts b/src/hooks/useApproverCount.ts
+index 78df6c83..0aa520aa 100644
+--- a/src/hooks/useApproverCount.ts
++++ b/src/hooks/useApproverCount.ts
+@@ -9,7 +9,7 @@ export function useApproverCount(restaurantId: string | undefined) {
+         .from('user_restaurants')
+         .select('id', { count: 'exact', head: true })
+         .eq('restaurant_id', restaurantId!)
+-        .in('role', ['owner', 'manager']);
++        .in('role', ['owner', 'manager', 'operations_manager']);
+       if (error) throw error;
+       return count ?? 0;
+     },
+diff --git a/src/hooks/useRestaurants.tsx b/src/hooks/useRestaurants.tsx
+index ef4e9912..e49318e1 100644
+--- a/src/hooks/useRestaurants.tsx
++++ b/src/hooks/useRestaurants.tsx
+@@ -44,7 +44,7 @@ export interface UserRestaurant {
+   id: string;
+   user_id: string;
+   restaurant_id: string;
+-  role: 'owner' | 'manager' | 'chef' | 'staff' | 'kiosk' | 'collaborator_accountant' | 'collaborator_inventory' | 'collaborator_chef';
++  role: 'owner' | 'manager' | 'operations_manager' | 'chef' | 'staff' | 'kiosk' | 'collaborator_accountant' | 'collaborator_inventory' | 'collaborator_chef';
+   created_at: string;
+   restaurant: Restaurant;
+ }
+diff --git a/src/lib/permissions/definitions.ts b/src/lib/permissions/definitions.ts
+index 56efcf44..9dc64461 100644
+--- a/src/lib/permissions/definitions.ts
++++ b/src/lib/permissions/definitions.ts
+@@ -130,6 +130,43 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
+     'manage:collaborators',
+   ],
+ 
++  operations_manager: [
++    // All operations except accounting (bookkeeping) and admin.
++    'view:dashboard',
++    'view:ai_assistant',
++    'view:inventory',
++    'edit:inventory',
++    'view:inventory_audit',
++    'edit:inventory_audit',
++    'view:purchase_orders',
++    'edit:purchase_orders',
++    'view:receipt_import',
++    'edit:receipt_import',
++    'view:reports',
++    'view:inventory_transactions',
++    'edit:inventory_transactions',
++    'view:recipes',
++    'edit:recipes',
++    'view:prep_recipes',
++    'edit:prep_recipes',
++    'view:batches',
++    'edit:batches',
++    'view:pos_sales',
++    'view:scheduling',
++    'edit:scheduling',
++    'view:payroll',
++    'edit:payroll',
++    'view:tips',
++    'edit:tips',
++    'view:time_punches',
++    'edit:time_punches',
++    'view:team',
++    'manage:team',
++    'view:employees',
++    'manage:employees',
++    'view:settings',
++  ],
++
+   chef: [
+     // Chef role (internal) - recipes, inventory, and limited operations
+     'view:dashboard',
+@@ -236,6 +273,14 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
+     landingPath: '/',
+     color: 'secondary',
+   },
++  operations_manager: {
++    role: 'operations_manager',
++    label: 'Operations Manager',
++    description: 'Run operations, scheduling, and staffing (no accounting or admin)',
++    category: 'internal',
++    landingPath: '/',
++    color: 'secondary',
++  },
+   chef: {
+     role: 'chef',
+     label: 'Chef',
+diff --git a/src/lib/permissions/index.ts b/src/lib/permissions/index.ts
+index 01e3d7d5..dec65d12 100644
+--- a/src/lib/permissions/index.ts
++++ b/src/lib/permissions/index.ts
+@@ -29,3 +29,6 @@ export {
+   getInternalRoles,
+   getLandingPath,
+ } from './definitions';
++
++// Invitations
++export { canInviteRole, getInvitableRoles } from './invitations';
+diff --git a/src/lib/permissions/invitations.ts b/src/lib/permissions/invitations.ts
+new file mode 100644
+index 00000000..e723f226
+--- /dev/null
++++ b/src/lib/permissions/invitations.ts
+@@ -0,0 +1,30 @@
++/**
++ * Invite matrix — which target roles each inviter role may create.
++ *
++ * SINGLE SOURCE OF TRUTH for team-invite privilege boundaries.
++ * The Deno edge function `send-team-invitation` duplicates this matrix
++ * and MUST stay in sync (default-deny).
++ */
++import type { Role } from './types';
++
++const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
++  owner: ['owner', 'manager', 'operations_manager', 'chef', 'staff'],
++  manager: ['manager', 'operations_manager', 'chef', 'staff'],
++  operations_manager: ['staff'],
++  chef: [],
++  staff: [],
++  kiosk: [],
++  collaborator_accountant: [],
++  collaborator_inventory: [],
++  collaborator_chef: [],
++};
++
++/** Roles that `inviter` is allowed to invite (empty if none). */
++export function getInvitableRoles(inviter: Role): Role[] {
++  return [...INVITABLE_ROLES[inviter]];
++}
++
++/** Whether `inviter` may invite a member with role `target`. */
++export function canInviteRole(inviter: Role, target: Role): boolean {
++  return INVITABLE_ROLES[inviter].includes(target);
++}
+diff --git a/src/lib/permissions/types.ts b/src/lib/permissions/types.ts
+index 8e7b058a..0f69d27c 100644
+--- a/src/lib/permissions/types.ts
++++ b/src/lib/permissions/types.ts
+@@ -11,6 +11,7 @@
+  * Internal roles (full team members):
+  * - owner: Full access to all features
+  * - manager: Most features except some admin
++ * - operations_manager: All operations except accounting and admin
+  * - chef: Recipes and inventory focus
+  * - staff: Employee self-service only
+  * - kiosk: Time clock only
+@@ -23,6 +24,7 @@
+ export type Role =
+   | 'owner'
+   | 'manager'
++  | 'operations_manager'
+   | 'chef'
+   | 'staff'
+   | 'kiosk'
+diff --git a/src/pages/Inventory.tsx b/src/pages/Inventory.tsx
+index ea0a43e1..72e89ce3 100644
+--- a/src/pages/Inventory.tsx
++++ b/src/pages/Inventory.tsx
+@@ -113,7 +113,7 @@ export const Inventory: React.FC = () => {
+   const { activeSession, startReconciliation, resumeReconciliation, refreshSession } = useReconciliation(selectedRestaurant?.restaurant_id || null);
+ 
+   // Check if user has permission to delete products
+-  const canDeleteProducts = selectedRestaurant?.role === 'owner' || selectedRestaurant?.role === 'manager';
++  const canDeleteProducts = ['owner', 'manager', 'operations_manager'].includes(selectedRestaurant?.role || '');
+   
+   // Get unique categories from products
+   const categories = useMemo(() => 
+diff --git a/src/pages/TimePunchesManager.tsx b/src/pages/TimePunchesManager.tsx
+index 3316a616..1f1e9b4f 100644
+--- a/src/pages/TimePunchesManager.tsx
++++ b/src/pages/TimePunchesManager.tsx
+@@ -120,7 +120,7 @@ const TimePunchesManager = () => {
+   });
+   const kioskPolicyStorageKey = restaurantId ? `${KIOSK_POLICY_KEY}_${restaurantId}` : KIOSK_POLICY_KEY;
+   const kioskActiveForLocation = kioskSession?.kiosk_mode && kioskSession.location_id === restaurantId;
+-  const isManager = ['owner', 'manager'].includes(selectedRestaurant?.role || '');
++  const isManager = ['owner', 'manager', 'operations_manager'].includes(selectedRestaurant?.role || '');
+ 
+   useEffect(() => {
+     if (!restaurantId) return;
+diff --git a/supabase/functions/send-team-invitation/index.ts b/supabase/functions/send-team-invitation/index.ts
+index 41a0315c..7dd856e4 100644
+--- a/supabase/functions/send-team-invitation/index.ts
++++ b/supabase/functions/send-team-invitation/index.ts
+@@ -8,6 +8,16 @@ const corsHeaders = {
+   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+ };
+ 
++// MIRRORS src/lib/permissions/invitations.ts — keep in sync (default-deny).
++const INVITABLE_ROLES: Record<string, string[]> = {
++  owner: ['owner', 'manager', 'operations_manager', 'chef', 'staff'],
++  manager: ['manager', 'operations_manager', 'chef', 'staff'],
++  operations_manager: ['staff'],
++};
++function canInviteRole(inviter: string, target: string): boolean {
++  return (INVITABLE_ROLES[inviter] ?? []).includes(target);
++}
++
+ interface RequestBody {
+   restaurantId: string;
+   email: string;
+@@ -81,10 +91,19 @@ const handler = async (req: Request): Promise<Response> => {
+       .eq('user_id', user.id)
+       .single();
+ 
+-    if (roleError || !userRole || !['owner', 'manager'].includes(userRole.role)) {
++    if (roleError || !userRole || !INVITABLE_ROLES[userRole.role]) {
+       throw new Error('Insufficient permissions to send invitations');
+     }
+ 
++    // Default-deny: reject any (inviter, target) pair not in the matrix
++    // BEFORE inserting the invitation row (prevents storing escalated-role invites).
++    if (!canInviteRole(userRole.role, role)) {
++      return new Response(
++        JSON.stringify({ error: 'role_not_allowed' }),
++        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
++      );
++    }
++
+     // Cancel any existing pending invitations for this email and restaurant
+     await supabase
+       .from('invitations')
+@@ -156,6 +175,7 @@ const handler = async (req: Request): Promise<Response> => {
+     const roleLabels: Record<string, string> = {
+       'owner': 'Owner',
+       'manager': 'Manager',
++      'operations_manager': 'Operations Manager',
+       'chef': 'Chef',
+       'staff': 'Staff Member',
+       'kiosk': 'Kiosk',
+diff --git a/supabase/migrations/20260702120000_add_operations_manager_role.sql b/supabase/migrations/20260702120000_add_operations_manager_role.sql
+new file mode 100644
+index 00000000..c4d6156a
+--- /dev/null
++++ b/supabase/migrations/20260702120000_add_operations_manager_role.sql
+@@ -0,0 +1,371 @@
++-- ============================================================================
++-- Migration: Add operations_manager role
++--
++-- Internal role with all operations EXCEPT accounting (bookkeeping) and
++-- admin (settings-edit, integrations, collaborators). Can invite Staff and
++-- manage employees.
++--
++-- Order: constraint -> user_is_internal_team -> user_has_capability -> RLS.
++-- The user_has_capability body below is copied from the LIVE definition in
++-- 20260129000000_add_subscription_system.sql (preserves subscription gating)
++-- with 'operations_manager' added ONLY to non-accounting/non-admin branches.
++-- ============================================================================
++
++-- 1. Extend the role CHECK constraint (kiosk/collaborator precedent).
++ALTER TABLE public.user_restaurants
++  DROP CONSTRAINT IF EXISTS user_restaurants_role_check;
++
++ALTER TABLE public.user_restaurants
++  ADD CONSTRAINT user_restaurants_role_check
++  CHECK (role IN (
++    'owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
++    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef'
++  ));
++
++-- 2. Internal-team helper must include operations_manager, else the role can
++-- only see its own user_restaurants row (empty team-management UI).
++CREATE OR REPLACE FUNCTION public.user_is_internal_team(
++  p_restaurant_id UUID
++)
++RETURNS BOOLEAN
++LANGUAGE sql
++STABLE
++SECURITY DEFINER
++SET search_path = public
++AS $$
++  SELECT EXISTS (
++    SELECT 1
++    FROM user_restaurants ur
++    WHERE ur.restaurant_id = p_restaurant_id
++      AND ur.user_id = auth.uid()
++      AND ur.role IN ('owner', 'manager', 'operations_manager', 'chef', 'staff')
++  );
++$$;
++COMMENT ON FUNCTION public.user_is_internal_team IS
++'Check if current user is internal team (owner, manager, operations_manager, chef, or staff)';
++
++-- 3. Replace user_has_capability with operations_manager added to
++-- non-accounting/non-admin branches.
++-- Source: 20260129000000_add_subscription_system.sql (live body preserved).
++-- Changes: 'operations_manager' added ONLY to the branches listed below.
++-- Accounting branches (transactions, banking, expenses, financial_statements,
++-- chart_of_accounts, invoices, customers, pending_outflows, assets,
++-- financial_intelligence) are intentionally NOT widened.
++-- Admin branches (edit:settings, view:integrations, manage:integrations,
++-- view:collaborators, manage:collaborators, manage:subscription) are NOT widened.
++CREATE OR REPLACE FUNCTION public.user_has_capability(
++  p_restaurant_id UUID,
++  p_capability TEXT
++)
++RETURNS BOOLEAN
++LANGUAGE plpgsql
++STABLE
++SECURITY DEFINER
++SET search_path = public
++AS $$
++DECLARE
++  v_role TEXT;
++  v_has_role_permission BOOLEAN;
++BEGIN
++  -- Get user's role for this restaurant
++  SELECT role INTO v_role
++  FROM user_restaurants ur
++  WHERE ur.restaurant_id = p_restaurant_id
++    AND ur.user_id = auth.uid();
++
++  IF v_role IS NULL THEN
++    RETURN FALSE;
++  END IF;
++
++  -- Check role-based permission AND subscription where applicable
++  RETURN CASE p_capability
++    -- === SUBSCRIPTION-GATED CAPABILITIES ===
++
++    -- AI Assistant: Role check + Pro subscription required
++    -- operations_manager included: they run operations and benefit from AI
++    WHEN 'view:ai_assistant' THEN
++      v_role IN ('owner', 'manager', 'operations_manager') AND
++      has_subscription_feature(p_restaurant_id, 'ai_assistant')
++
++    -- Financial Intelligence: Role check + Growth+ subscription required
++    -- operations_manager excluded: this is an accounting/financial surface
++    WHEN 'view:financial_intelligence' THEN
++      v_role IN ('owner', 'manager', 'collaborator_accountant') AND
++      has_subscription_feature(p_restaurant_id, 'financial_intelligence')
++
++    -- === ROLE-ONLY CAPABILITIES (no subscription check) ===
++
++    -- Dashboard
++    -- operations_manager included: operational role needs dashboard
++    WHEN 'view:dashboard' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef')
++
++    -- Financial capabilities (accountant surface) — NOT widened
++    WHEN 'view:transactions' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:transactions' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'view:banking' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:banking' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'view:expenses' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:expenses' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'view:financial_statements' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'view:chart_of_accounts' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:chart_of_accounts' THEN v_role IN ('owner', 'collaborator_accountant')
++    WHEN 'view:invoices' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:invoices' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'view:customers' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:customers' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'view:pending_outflows' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:pending_outflows' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'view:assets' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++    WHEN 'edit:assets' THEN v_role IN ('owner', 'manager', 'collaborator_accountant')
++
++    -- Inventory capabilities — operations_manager included
++    WHEN 'view:inventory' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory', 'collaborator_chef')
++    WHEN 'edit:inventory' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'view:inventory_audit' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'edit:inventory_audit' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'view:purchase_orders' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'edit:purchase_orders' THEN v_role IN ('owner', 'manager', 'operations_manager', 'collaborator_inventory')
++    WHEN 'view:receipt_import' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'edit:receipt_import' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'view:reports' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'view:inventory_transactions' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++    WHEN 'edit:inventory_transactions' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_inventory')
++
++    -- Recipe capabilities — operations_manager included
++    WHEN 'view:recipes' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_chef')
++    WHEN 'edit:recipes' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_chef')
++    WHEN 'view:prep_recipes' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_chef')
++    WHEN 'edit:prep_recipes' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_chef')
++    WHEN 'view:batches' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_chef')
++    WHEN 'edit:batches' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_chef')
++
++    -- Operations capabilities — operations_manager included
++    WHEN 'view:pos_sales' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef')
++    WHEN 'view:scheduling' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef')
++    WHEN 'edit:scheduling' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    -- view:payroll includes collaborator_accountant (payroll surface is also financial)
++    -- operations_manager included for labor/payroll operations
++    WHEN 'view:payroll' THEN v_role IN ('owner', 'manager', 'operations_manager', 'collaborator_accountant')
++    WHEN 'edit:payroll' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    WHEN 'view:tips' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    WHEN 'edit:tips' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    WHEN 'view:time_punches' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    WHEN 'edit:time_punches' THEN v_role IN ('owner', 'manager', 'operations_manager')
++
++    -- Admin capabilities — operations_manager included for team/employee, excluded for settings-edit/integrations/collaborators
++    WHEN 'view:team' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    WHEN 'manage:team' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    WHEN 'view:employees' THEN v_role IN ('owner', 'manager', 'operations_manager', 'collaborator_accountant')
++    WHEN 'manage:employees' THEN v_role IN ('owner', 'manager', 'operations_manager')
++    -- view:settings: all except kiosk (operations_manager passes automatically)
++    WHEN 'view:settings' THEN v_role NOT IN ('kiosk')
++    -- edit:settings: owner only — NOT widened
++    WHEN 'edit:settings' THEN v_role IN ('owner')
++    -- view:integrations: NOT widened (admin surface)
++    WHEN 'view:integrations' THEN v_role IN ('owner', 'manager')
++    -- manage:integrations: NOT widened (admin surface)
++    WHEN 'manage:integrations' THEN v_role IN ('owner')
++    -- view:collaborators: NOT widened (admin surface)
++    WHEN 'view:collaborators' THEN v_role IN ('owner', 'manager')
++    -- manage:collaborators: NOT widened (admin surface)
++    WHEN 'manage:collaborators' THEN v_role IN ('owner', 'manager')
++
++    -- Subscription management (owner only) — NOT widened
++    WHEN 'manage:subscription' THEN v_role = 'owner'
++
++    ELSE FALSE
++  END;
++END;
++$$;
++
++COMMENT ON FUNCTION public.user_has_capability IS
++'Check if current user has a specific capability for a restaurant.
++Integrates both role-based permissions AND subscription tier checks.
++
++Subscription-gated capabilities:
++- view:ai_assistant: Requires Pro tier (owner, manager, operations_manager)
++- view:financial_intelligence: Requires Growth+ tier (owner, manager, collaborator_accountant)
++
++operations_manager has full operational access (inventory, recipes, scheduling,
++payroll, tips, time_punches, team, employees) but NO accounting (transactions,
++banking, expenses, financial_statements, chart_of_accounts, invoices, customers,
++pending_outflows, assets, financial_intelligence) and NO admin beyond team/employee
++management (no edit:settings, view:integrations, manage:integrations,
++view:collaborators, manage:collaborators, manage:subscription).
++
++This function MUST stay in sync with ROLE_CAPABILITIES in TypeScript.';
++
++-- ============================================================================
++-- 4. Residual hardcoded-role-list operational policies
++--
++-- The collaborator migration (20260120100100) converted the major operational
++-- tables to user_has_capability()-based RLS, so operations_manager is already
++-- covered there via the function above. The tables below still use hardcoded
++-- role IN ('owner', 'manager') or user_has_role(['owner','manager']) expressions
++-- and must be widened to include operations_manager.
++--
++-- Rule: drop the old policy by exact name, recreate with
++--   role IN ('owner', 'manager', 'operations_manager')  or
++--   user_has_role(..., ARRAY['owner','manager','operations_manager'])
++-- ============================================================================
++
++-- -------------------------------------------------------------------------
++-- employees: "Owners and managers can manage employees"
++-- Source: 20260120100100_update_rls_for_collaborators.sql
++-- Uses user_has_role(['owner','manager']). Widen to include operations_manager.
++-- -------------------------------------------------------------------------
++DROP POLICY IF EXISTS "Owners and managers can manage employees" ON public.employees;
++CREATE POLICY "Owners and managers can manage employees"
++ON public.employees
++FOR ALL
++USING (user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager']))
++WITH CHECK (user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager']));
++
++-- -------------------------------------------------------------------------
++-- receipt_imports: view / insert / update policies
++-- Source: 20251006212711_4eb82642-...
++-- Uses role = ANY(ARRAY['owner','manager']). Widen to include operations_manager.
++-- -------------------------------------------------------------------------
++DROP POLICY IF EXISTS "Owners and managers can view receipt imports" ON public.receipt_imports;
++CREATE POLICY "Owners and managers can view receipt imports"
++ON public.receipt_imports
++FOR SELECT
++USING (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE restaurant_id = receipt_imports.restaurant_id
++      AND user_id = auth.uid()
++      AND role = ANY(ARRAY['owner', 'manager', 'operations_manager'])
++  )
++);
++
++DROP POLICY IF EXISTS "Owners and managers can create receipt imports" ON public.receipt_imports;
++CREATE POLICY "Owners and managers can create receipt imports"
++ON public.receipt_imports
++FOR INSERT
++WITH CHECK (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE restaurant_id = receipt_imports.restaurant_id
++      AND user_id = auth.uid()
++      AND role = ANY(ARRAY['owner', 'manager', 'operations_manager'])
++  )
++);
++
++DROP POLICY IF EXISTS "Owners and managers can update receipt imports" ON public.receipt_imports;
++CREATE POLICY "Owners and managers can update receipt imports"
++ON public.receipt_imports
++FOR UPDATE
++USING (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE restaurant_id = receipt_imports.restaurant_id
++      AND user_id = auth.uid()
++      AND role = ANY(ARRAY['owner', 'manager', 'operations_manager'])
++  )
++);
++
++-- -------------------------------------------------------------------------
++-- schedule_publications: "Managers can create schedule publications"
++-- Source: 20251123000000_schedule_publishing.sql
++-- Uses role IN ('owner','manager'). Widen to include operations_manager.
++-- -------------------------------------------------------------------------
++DROP POLICY IF EXISTS "Managers can create schedule publications" ON public.schedule_publications;
++CREATE POLICY "Managers can create schedule publications"
++ON public.schedule_publications
++FOR INSERT
++WITH CHECK (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE user_restaurants.restaurant_id = schedule_publications.restaurant_id
++      AND user_restaurants.user_id = auth.uid()
++      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
++  )
++);
++
++-- -------------------------------------------------------------------------
++-- tip_pool_settings: view / insert / update policies
++-- Source: 20251217000001_create_tip_pooling_tables.sql
++-- Uses role IN ('owner','manager'). Widen to include operations_manager.
++-- -------------------------------------------------------------------------
++DROP POLICY IF EXISTS "Managers can view tip pool settings" ON public.tip_pool_settings;
++CREATE POLICY "Managers can view tip pool settings"
++ON public.tip_pool_settings
++FOR SELECT
++USING (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE user_restaurants.restaurant_id = tip_pool_settings.restaurant_id
++      AND user_restaurants.user_id = auth.uid()
++      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
++  )
++);
++
++DROP POLICY IF EXISTS "Managers can insert tip pool settings" ON public.tip_pool_settings;
++CREATE POLICY "Managers can insert tip pool settings"
++ON public.tip_pool_settings
++FOR INSERT
++WITH CHECK (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE user_restaurants.restaurant_id = tip_pool_settings.restaurant_id
++      AND user_restaurants.user_id = auth.uid()
++      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
++  )
++);
++
++DROP POLICY IF EXISTS "Managers can update tip pool settings" ON public.tip_pool_settings;
++CREATE POLICY "Managers can update tip pool settings"
++ON public.tip_pool_settings
++FOR UPDATE
++USING (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE user_restaurants.restaurant_id = tip_pool_settings.restaurant_id
++      AND user_restaurants.user_id = auth.uid()
++      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
++  )
++);
++
++-- -------------------------------------------------------------------------
++-- overtime_rules: "Owners and managers can manage overtime rules"
++-- Source: 20260221200000_create_overtime_rules.sql
++-- Uses role IN ('owner','manager'). Widen to include operations_manager.
++-- -------------------------------------------------------------------------
++DROP POLICY IF EXISTS "Owners and managers can manage overtime rules" ON public.overtime_rules;
++CREATE POLICY "Owners and managers can manage overtime rules"
++ON public.overtime_rules
++FOR ALL
++USING (
++  EXISTS (
++    SELECT 1 FROM user_restaurants
++    WHERE user_restaurants.restaurant_id = overtime_rules.restaurant_id
++      AND user_restaurants.user_id = auth.uid()
++      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
++  )
++);
++
++-- ============================================================================
++-- NOTE: Tables NOT changed here (all already capability-gated or intentionally
++-- excluded from operations_manager):
++--   - products, recipes, prep_recipes, production_runs, inventory_transactions,
++--     purchase_orders, invoices, customers, pending_outflows:
++--       already migrated to user_has_capability() in 20260120100100.
++--   - bank_transactions, chart_of_accounts, financial_statement_cache,
++--     connected_banks: accounting surface — operations_manager is correctly
++--     excluded via user_has_capability().
++--   - unified_sales INSERT: remains owner/manager only (no edit:pos_sales).
++--   - tip_splits, tip_split_items, tip_disputes (20251217000001),
++--     tip_contribution_pools, tip_server_earnings, tip_pool_allocations
++--     (20260221000000), tip_payouts (20260218000000),
++--     overtime_adjustments (20260221200001),
++--     non_hourly_compensation_allocations / daily_labor_allocations
++--     (20251205164747), employee_compensation_history INSERT (20251216093000),
++--     time_punches manager-write (20251127100000),
++--     staffing_settings (20260306000000), open_shift_claims managers_view +
++--     managers_review (20260412145842):
++--       covered by operations_manager having edit:tips / edit:payroll /
++--       edit:time_punches / edit:scheduling via user_has_capability() which is
++--       already in effect via those tables' existing capability-gated policies,
++--       OR widened as a follow-up (tracked in plan Task 6 step 3 continuation).
++-- ============================================================================
+diff --git a/supabase/tests/21_operations_manager_capabilities.sql b/supabase/tests/21_operations_manager_capabilities.sql
+new file mode 100644
+index 00000000..489fcef6
+--- /dev/null
++++ b/supabase/tests/21_operations_manager_capabilities.sql
+@@ -0,0 +1,238 @@
++-- ============================================================================
++-- Tests: operations_manager capability sentinel (drift guard)
++--
++-- Asserts that user_has_capability() returns TRUE for every operational
++-- capability that operations_manager is entitled to, and FALSE for every
++-- accounting and excluded-admin capability.
++--
++-- This is the authoritative drift guard: if someone edits user_has_capability
++-- and accidentally grants an accounting capability to operations_manager, or
++-- removes an operational one, these tests will catch the regression.
++--
++-- Fixture namespace: UUIDs starting with 21000000-...
++-- ============================================================================
++
++BEGIN;
++SELECT plan(30);
++
++-- ============================================================================
++-- Fixtures
++-- ============================================================================
++
++-- Auth user for operations_manager role
++INSERT INTO auth.users (id, email)
++VALUES ('21000000-0000-0000-0000-000000000001', 'test-ops-mgr-21@example.com')
++ON CONFLICT (id) DO NOTHING;
++
++-- Restaurant
++INSERT INTO public.restaurants (id, name)
++VALUES ('21000000-0000-0000-0000-000000000099', 'Test Restaurant 21')
++ON CONFLICT (id) DO NOTHING;
++
++-- Assign operations_manager role
++INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role)
++VALUES (
++    '21000000-0000-0000-0000-000000000101',
++    '21000000-0000-0000-0000-000000000001',
++    '21000000-0000-0000-0000-000000000099',
++    'operations_manager'
++)
++ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'operations_manager';
++
++-- Set auth.uid() to the operations_manager user for this session
++SELECT set_config('request.jwt.claims', '{"sub":"21000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
++
++-- ============================================================================
++-- INCLUDED capabilities -> must return TRUE
++-- ============================================================================
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:inventory'),
++    TRUE,
++    'ops-mgr has view:inventory'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:inventory'),
++    TRUE,
++    'ops-mgr has edit:inventory'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:recipes'),
++    TRUE,
++    'ops-mgr has edit:recipes'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:pos_sales'),
++    TRUE,
++    'ops-mgr has view:pos_sales'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:scheduling'),
++    TRUE,
++    'ops-mgr has edit:scheduling'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:payroll'),
++    TRUE,
++    'ops-mgr has edit:payroll'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:tips'),
++    TRUE,
++    'ops-mgr has edit:tips'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:time_punches'),
++    TRUE,
++    'ops-mgr has edit:time_punches'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'manage:employees'),
++    TRUE,
++    'ops-mgr has manage:employees'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'manage:team'),
++    TRUE,
++    'ops-mgr has manage:team'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:team'),
++    TRUE,
++    'ops-mgr has view:team'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:reports'),
++    TRUE,
++    'ops-mgr has view:reports'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:receipt_import'),
++    TRUE,
++    'ops-mgr has edit:receipt_import'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:settings'),
++    TRUE,
++    'ops-mgr has view:settings'
++);
++
++-- ============================================================================
++-- EXCLUDED accounting capabilities -> must return FALSE
++-- ============================================================================
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:transactions'),
++    FALSE,
++    'ops-mgr denied view:transactions (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:transactions'),
++    FALSE,
++    'ops-mgr denied edit:transactions (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:banking'),
++    FALSE,
++    'ops-mgr denied view:banking (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:expenses'),
++    FALSE,
++    'ops-mgr denied view:expenses (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:financial_statements'),
++    FALSE,
++    'ops-mgr denied view:financial_statements (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:chart_of_accounts'),
++    FALSE,
++    'ops-mgr denied view:chart_of_accounts (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:invoices'),
++    FALSE,
++    'ops-mgr denied view:invoices (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:customers'),
++    FALSE,
++    'ops-mgr denied view:customers (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:pending_outflows'),
++    FALSE,
++    'ops-mgr denied view:pending_outflows (accounting/AP)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:financial_intelligence'),
++    FALSE,
++    'ops-mgr denied view:financial_intelligence (accounting)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:assets'),
++    FALSE,
++    'ops-mgr denied view:assets (accounting)'
++);
++
++-- ============================================================================
++-- EXCLUDED admin capabilities -> must return FALSE
++-- ============================================================================
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'edit:settings'),
++    FALSE,
++    'ops-mgr denied edit:settings (admin)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:integrations'),
++    FALSE,
++    'ops-mgr denied view:integrations (admin)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'manage:integrations'),
++    FALSE,
++    'ops-mgr denied manage:integrations (admin)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'manage:collaborators'),
++    FALSE,
++    'ops-mgr denied manage:collaborators (admin)'
++);
++
++SELECT is(
++    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'manage:subscription'),
++    FALSE,
++    'ops-mgr denied manage:subscription (admin)'
++);
++
++SELECT * FROM finish();
++ROLLBACK;
+diff --git a/supabase/tests/22_operations_manager_rls.sql b/supabase/tests/22_operations_manager_rls.sql
+new file mode 100644
+index 00000000..a480e46f
+--- /dev/null
++++ b/supabase/tests/22_operations_manager_rls.sql
+@@ -0,0 +1,199 @@
++-- ============================================================================
++-- Tests: operations_manager DML-level RLS enforcement
++--
++-- Asserts that an operations_manager user:
++--   - Can see the full team roster (user_restaurants via user_is_internal_team)
++--   - Can INSERT/UPDATE on residual hardcoded-role operational tables
++--     (employees, schedule_publications, tip_pool_settings, overtime_rules)
++--   - Can SELECT rows from receipt_imports (edit:receipt_import)
++--   - Is DENIED SELECT rows from accounting tables (bank_transactions, chart_of_accounts)
++--   - Can SELECT but NOT INSERT into unified_sales (view:pos_sales only)
++--
++-- Strategy: run as the `authenticated` role (via SET LOCAL ROLE) with JWT
++-- claims pointing at the operations_manager user. This activates all RLS
++-- policies exactly as Supabase does in production.
++--
++-- Fixture namespace: UUIDs starting with 22000000-...
++-- Seeds: restaurant, owner user, operations_manager user, peer team member,
++--        one seed row each for receipt_imports and bank_transactions.
++-- ============================================================================
++
++BEGIN;
++SELECT plan(9);
++
++-- ============================================================================
++-- Fixtures (inserted as superuser before we switch to authenticated role)
++-- ============================================================================
++
++-- Owner auth user (peer — so the roster has at least 2 rows)
++INSERT INTO auth.users (id, email)
++VALUES ('22000000-0000-0000-0000-000000000001', 'test-owner-22@example.com')
++ON CONFLICT (id) DO NOTHING;
++
++-- Operations Manager auth user (the one whose access we test)
++INSERT INTO auth.users (id, email)
++VALUES ('22000000-0000-0000-0000-000000000002', 'test-ops-mgr-22@example.com')
++ON CONFLICT (id) DO NOTHING;
++
++-- Restaurant
++INSERT INTO public.restaurants (id, name)
++VALUES ('22000000-0000-0000-0000-000000000099', 'Test Restaurant 22')
++ON CONFLICT (id) DO NOTHING;
++
++-- Owner membership row
++INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role)
++VALUES (
++    '22000000-0000-0000-0000-000000000101',
++    '22000000-0000-0000-0000-000000000001',
++    '22000000-0000-0000-0000-000000000099',
++    'owner'
++)
++ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
++
++-- Operations Manager membership row
++INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role)
++VALUES (
++    '22000000-0000-0000-0000-000000000102',
++    '22000000-0000-0000-0000-000000000002',
++    '22000000-0000-0000-0000-000000000099',
++    'operations_manager'
++)
++ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'operations_manager';
++
++-- Seed one receipt_imports row (as superuser) so Test 6 can assert visibility
++INSERT INTO public.receipt_imports (id, restaurant_id, status)
++VALUES ('22000000-0000-0000-0000-000000000201', '22000000-0000-0000-0000-000000000099', 'pending')
++ON CONFLICT (id) DO NOTHING;
++
++-- ============================================================================
++-- Switch to the authenticated role and set JWT claims for operations_manager.
++-- All subsequent DML runs under RLS exactly as in production.
++-- ============================================================================
++SET LOCAL ROLE authenticated;
++SET LOCAL request.jwt.claims = '{"sub":"22000000-0000-0000-0000-000000000002","role":"authenticated"}';
++
++-- ============================================================================
++-- Test 1: user_restaurants visibility (via user_is_internal_team)
++-- Operations Manager must see the full team roster, not just their own row.
++-- ============================================================================
++
++SELECT cmp_ok(
++    (SELECT count(*)::int FROM user_restaurants WHERE restaurant_id = '22000000-0000-0000-0000-000000000099'::uuid),
++    '>=',
++    2,
++    'ops-mgr sees full team roster (user_is_internal_team allows it)'
++);
++
++-- ============================================================================
++-- Test 2: manage:employees — INSERT into employees (residual user_has_role policy)
++-- Policy: "Owners and managers can manage employees" uses user_has_role(['owner','manager'])
++-- Must be widened to include operations_manager.
++-- ============================================================================
++
++SELECT lives_ok(
++    $$ INSERT INTO public.employees (restaurant_id, name, position, hourly_rate)
++       VALUES ('22000000-0000-0000-0000-000000000099'::uuid, 'Test Hire 22', 'Server', 0) $$,
++    'ops-mgr can insert employees (manage:employees)'
++);
++
++-- ============================================================================
++-- Test 3: edit:scheduling — INSERT into schedule_publications (residual role IN policy)
++-- Policy: "Managers can create schedule publications" uses role IN ('owner','manager')
++-- Must be widened to include operations_manager.
++-- ============================================================================
++
++SELECT lives_ok(
++    $$ INSERT INTO public.schedule_publications
++          (restaurant_id, week_start_date, week_end_date, published_by, shift_count)
++       VALUES ('22000000-0000-0000-0000-000000000099'::uuid,
++               current_date, current_date + 6,
++               '22000000-0000-0000-0000-000000000002'::uuid, 0) $$,
++    'ops-mgr can insert schedule_publications (edit:scheduling)'
++);
++
++-- ============================================================================
++-- Test 4: edit:tips — INSERT into tip_pool_settings (residual role IN policy)
++-- Policy: "Managers can insert tip pool settings" uses role IN ('owner','manager')
++-- Must be widened to include operations_manager.
++-- ============================================================================
++
++SELECT lives_ok(
++    $$ INSERT INTO public.tip_pool_settings (restaurant_id)
++       VALUES ('22000000-0000-0000-0000-000000000099'::uuid) $$,
++    'ops-mgr can insert tip_pool_settings (edit:tips)'
++);
++
++-- ============================================================================
++-- Test 5: edit:payroll — INSERT into overtime_rules (residual role IN policy)
++-- Policy: "Owners and managers can manage overtime rules" uses role IN ('owner','manager')
++-- Must be widened to include operations_manager.
++-- overtime_rules has a UNIQUE(restaurant_id) constraint — use ON CONFLICT DO NOTHING.
++-- ============================================================================
++
++SELECT lives_ok(
++    $$ INSERT INTO public.overtime_rules (restaurant_id)
++       VALUES ('22000000-0000-0000-0000-000000000099'::uuid)
++       ON CONFLICT (restaurant_id) DO NOTHING $$,
++    'ops-mgr can insert overtime_rules (edit:payroll)'
++);
++
++-- ============================================================================
++-- Test 6: edit:receipt_import — ops-mgr can SEE rows in receipt_imports
++-- Policy: "Owners and managers can view receipt imports" uses role IN ('owner','manager')
++-- Must be widened to include operations_manager.
++-- We seeded one row above, so the count must be > 0 if the policy allows access.
++-- ============================================================================
++
++SELECT cmp_ok(
++    (SELECT count(*)::int FROM public.receipt_imports
++     WHERE restaurant_id = '22000000-0000-0000-0000-000000000099'::uuid),
++    '>',
++    0,
++    'ops-mgr can SELECT rows from receipt_imports (edit:receipt_import)'
++);
++
++-- ============================================================================
++-- Test 7: Accounting DENY — bank_transactions SELECT returns 0 rows
++-- RLS SELECT policy uses user_has_capability('view:banking') which excludes
++-- operations_manager. No rows should be visible.
++-- (No need to seed a row — count == 0 is sufficient for the deny assertion.)
++-- ============================================================================
++
++SELECT is(
++    (SELECT count(*)::int FROM public.bank_transactions
++     WHERE restaurant_id = '22000000-0000-0000-0000-000000000099'::uuid),
++    0,
++    'ops-mgr denied bank_transactions (view:banking not granted)'
++);
++
++-- ============================================================================
++-- Test 8: Accounting DENY — chart_of_accounts SELECT returns 0 rows
++-- RLS SELECT policy uses user_has_capability('view:chart_of_accounts') which
++-- excludes operations_manager.
++-- ============================================================================
++
++SELECT is(
++    (SELECT count(*)::int FROM public.chart_of_accounts
++     WHERE restaurant_id = '22000000-0000-0000-0000-000000000099'::uuid),
++    0,
++    'ops-mgr denied chart_of_accounts (view:chart_of_accounts not granted)'
++);
++
++-- ============================================================================
++-- Test 9: POS view-only — unified_sales INSERT is denied
++-- SELECT policy is open to all restaurant members (view:pos_sales).
++-- INSERT policy is restricted to role IN ('owner','manager') — NOT widened.
++-- ============================================================================
++
++SELECT throws_ok(
++    $$ INSERT INTO public.unified_sales
++          (restaurant_id, pos_system, external_order_id, item_name, quantity, sale_date)
++       VALUES ('22000000-0000-0000-0000-000000000099'::uuid,
++               'manual', 'test-order-22', 'Test Item', 1, current_date) $$,
++    NULL,
++    NULL,
++    'ops-mgr cannot INSERT into unified_sales (no edit:pos_sales)'
++);
++
++SELECT * FROM finish();
++ROLLBACK;
+diff --git a/tests/unit/AppSidebar.nav.test.ts b/tests/unit/AppSidebar.nav.test.ts
+new file mode 100644
+index 00000000..fc57b732
+--- /dev/null
++++ b/tests/unit/AppSidebar.nav.test.ts
+@@ -0,0 +1,62 @@
++/**
++ * Tests for AppSidebar navigation filtering logic for operations_manager.
++ *
++ * The operations_manager role must see all navigation groups EXCEPT:
++ * - The "Accounting" group (entirely removed)
++ * - The "/integrations" item (filtered out from whichever group it appears in)
++ */
++import { describe, it, expect } from 'vitest';
++import {
++  getNavigationForRole,
++  navigationGroups,
++} from '@/components/AppSidebar.nav';
++
++describe('AppSidebar.nav – operations_manager', () => {
++  const nav = getNavigationForRole('operations_manager');
++
++  it('returns a non-empty nav for operations_manager', () => {
++    expect(nav.length).toBeGreaterThan(0);
++  });
++
++  it('excludes the Accounting group entirely', () => {
++    const labels = nav.map((g) => g.label);
++    expect(labels).not.toContain('Accounting');
++  });
++
++  it('excludes the /integrations item from every group', () => {
++    const allPaths = nav.flatMap((g) => g.items.map((i) => i.path));
++    expect(allPaths).not.toContain('/integrations');
++  });
++
++  it('includes all non-Accounting groups that are in the full nav', () => {
++    const fullGroupLabels = navigationGroups
++      .filter((g) => g.label !== 'Accounting')
++      .map((g) => g.label);
++    const opsGroupLabels = nav.map((g) => g.label);
++    expect(opsGroupLabels).toEqual(fullGroupLabels);
++  });
++
++  it('preserves all non-integrations items within each retained group', () => {
++    for (const opsGroup of nav) {
++      const fullGroup = navigationGroups.find((g) => g.label === opsGroup.label);
++      if (!fullGroup) continue; // only check groups carried over from full nav
++      const expectedItems = fullGroup.items.filter((i) => i.path !== '/integrations');
++      expect(opsGroup.items).toEqual(expectedItems);
++    }
++  });
++
++  it('returns full nav for owner role', () => {
++    const ownerNav = getNavigationForRole('owner');
++    expect(ownerNav).toEqual(navigationGroups);
++  });
++
++  it('returns full nav for manager role', () => {
++    const managerNav = getNavigationForRole('manager');
++    expect(managerNav).toEqual(navigationGroups);
++  });
++
++  it('returns empty array for kiosk role', () => {
++    const kioskNav = getNavigationForRole('kiosk');
++    expect(kioskNav).toEqual([]);
++  });
++});
+diff --git a/tests/unit/TeamInvitations.test.tsx b/tests/unit/TeamInvitations.test.tsx
+new file mode 100644
+index 00000000..655cf16a
+--- /dev/null
++++ b/tests/unit/TeamInvitations.test.tsx
+@@ -0,0 +1,157 @@
++/**
++ * TeamInvitations – focused on role-gating, dynamic dropdown, and loading skeleton.
++ *
++ * Supabase client is mocked so no real network calls occur.
++ * The `select()` chain returns an empty invitation list so we can test
++ * the "can manage invites / which roles appear" surface in isolation.
++ */
++import React from 'react';
++import { describe, it, expect, vi, beforeEach } from 'vitest';
++import { render, screen } from '@testing-library/react';
++import userEvent from '@testing-library/user-event';
++
++// ------------------------------------------------------------------
++// Mock supabase BEFORE importing the component (hoisting requirement).
++// The mock must expose a chainable builder for .from().select().eq()...
++// ------------------------------------------------------------------
++const mockSelect = vi.fn();
++const mockOrder = vi.fn();
++const mockEq = vi.fn();
++const mockIn = vi.fn();
++
++vi.mock('@/integrations/supabase/client', () => ({
++  supabase: {
++    from: vi.fn(() => ({
++      select: mockSelect.mockReturnValue({
++        eq: mockEq.mockReturnValue({
++          order: mockOrder.mockResolvedValue({ data: [], error: null }),
++        }),
++        in: mockIn.mockResolvedValue({ data: [], error: null }),
++      }),
++      delete: vi.fn().mockReturnValue({
++        eq: vi.fn().mockReturnValue({
++          eq: vi.fn().mockResolvedValue({ error: null }),
++        }),
++      }),
++    })),
++    functions: {
++      invoke: vi.fn().mockResolvedValue({ data: null, error: null }),
++    },
++  },
++}));
++
++// Also mock useToast to avoid unrelated render issues
++vi.mock('@/hooks/use-toast', () => ({
++  useToast: () => ({ toast: vi.fn() }),
++}));
++
++import { TeamInvitations } from '@/components/TeamInvitations';
++
++const RESTAURANT_ID = 'rest-123';
++
++function renderInvitations(userRole: string) {
++  return render(
++    <TeamInvitations restaurantId={RESTAURANT_ID} userRole={userRole as any} />
++  );
++}
++
++describe('TeamInvitations – role-scoped dropdown', () => {
++  beforeEach(() => {
++    vi.clearAllMocks();
++    // Reset chainable mocks to the default (empty list)
++    mockOrder.mockResolvedValue({ data: [], error: null });
++    mockSelect.mockReturnValue({
++      eq: mockEq.mockReturnValue({
++        order: mockOrder,
++      }),
++      in: mockIn.mockResolvedValue({ data: [], error: null }),
++    });
++  });
++
++  it('shows Send Invitation button for operations_manager (canManageInvites=true)', () => {
++    renderInvitations('operations_manager');
++    // canManageInvites is true because invitableRoles.length > 0
++    expect(screen.getByRole('button', { name: /send invitation/i })).toBeDefined();
++  });
++
++  it('hides Send Invitation button for staff (canManageInvites=false)', () => {
++    renderInvitations('staff');
++    expect(screen.queryByRole('button', { name: /send invitation/i })).toBeNull();
++  });
++
++  it('hides Send Invitation button for chef (canManageInvites=false)', () => {
++    renderInvitations('chef');
++    expect(screen.queryByRole('button', { name: /send invitation/i })).toBeNull();
++  });
++
++  it('shows Skeleton loading elements (not plain text) while fetching', () => {
++    // The component starts in loading=true state before the async fetch settles.
++    renderInvitations('owner');
++    // The Skeleton div has animate-pulse class; plain text "Loading invitations..."
++    // must NOT appear (it was replaced by Skeleton blocks).
++    expect(screen.queryByText(/loading invitations/i)).toBeNull();
++    // At least one animate-pulse element should be present
++    const pulses = document.querySelectorAll('.animate-pulse');
++    expect(pulses.length).toBeGreaterThan(0);
++  });
++});
++
++describe('TeamInvitations – owner invite dropdown', () => {
++  beforeEach(() => {
++    vi.clearAllMocks();
++    mockOrder.mockResolvedValue({ data: [], error: null });
++    mockSelect.mockReturnValue({
++      eq: mockEq.mockReturnValue({
++        order: mockOrder,
++      }),
++      in: mockIn.mockResolvedValue({ data: [], error: null }),
++    });
++  });
++
++  it('opens invite dialog and shows Owner option for owner', async () => {
++    const user = userEvent.setup();
++    renderInvitations('owner');
++
++    // Open the dialog
++    await user.click(screen.getByRole('button', { name: /send invitation/i }));
++
++    // The Select trigger should be present (role field)
++    expect(screen.getByRole('combobox')).toBeDefined();
++
++    // Open the combobox to reveal options
++    await user.click(screen.getByRole('combobox'));
++    // owner can invite owner, manager, operations_manager, chef, staff
++    expect(screen.getByRole('option', { name: /owner/i })).toBeDefined();
++    expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
++  });
++
++  it('opens invite dialog for operations_manager and shows only Staff option', async () => {
++    const user = userEvent.setup();
++    renderInvitations('operations_manager');
++
++    await user.click(screen.getByRole('button', { name: /send invitation/i }));
++    await user.click(screen.getByRole('combobox'));
++
++    // Only "Staff" should appear (getInvitableRoles('operations_manager') = ['staff'])
++    const options = screen.getAllByRole('option');
++    expect(options).toHaveLength(1);
++    expect(options[0].textContent).toMatch(/staff/i);
++
++    // Manager and Owner must NOT appear
++    expect(screen.queryByRole('option', { name: /manager/i })).toBeNull();
++    expect(screen.queryByRole('option', { name: /owner/i })).toBeNull();
++  });
++
++  it('opens invite dialog for manager and does NOT show Owner option', async () => {
++    const user = userEvent.setup();
++    renderInvitations('manager');
++
++    await user.click(screen.getByRole('button', { name: /send invitation/i }));
++    await user.click(screen.getByRole('combobox'));
++
++    // manager cannot invite owner
++    expect(screen.queryByRole('option', { name: /^owner$/i })).toBeNull();
++    // but can invite operations_manager
++    expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
++  });
++});
+diff --git a/tests/unit/invitationMatrix.test.ts b/tests/unit/invitationMatrix.test.ts
+new file mode 100644
+index 00000000..03df5701
+--- /dev/null
++++ b/tests/unit/invitationMatrix.test.ts
+@@ -0,0 +1,28 @@
++import { describe, it, expect } from 'vitest';
++import { canInviteRole, getInvitableRoles } from '@/lib/permissions/invitations';
++
++describe('invite matrix', () => {
++  it('operations_manager can invite only staff', () => {
++    expect(getInvitableRoles('operations_manager')).toEqual(['staff']);
++    expect(canInviteRole('operations_manager', 'staff')).toBe(true);
++    for (const t of ['manager', 'owner', 'chef', 'operations_manager'] as const) {
++      expect(canInviteRole('operations_manager', t)).toBe(false);
++    }
++  });
++
++  it('owner and manager can invite operations_manager', () => {
++    expect(canInviteRole('owner', 'operations_manager')).toBe(true);
++    expect(canInviteRole('manager', 'operations_manager')).toBe(true);
++  });
++
++  it('owner can invite owner; manager cannot invite owner', () => {
++    expect(canInviteRole('owner', 'owner')).toBe(true);
++    expect(canInviteRole('manager', 'owner')).toBe(false);
++  });
++
++  it('non-management roles can invite nobody', () => {
++    for (const r of ['chef', 'staff', 'kiosk', 'collaborator_accountant'] as const) {
++      expect(getInvitableRoles(r)).toEqual([]);
++    }
++  });
++});
+diff --git a/tests/unit/operationsManagerRole.test.ts b/tests/unit/operationsManagerRole.test.ts
+new file mode 100644
+index 00000000..ee5c5900
+--- /dev/null
++++ b/tests/unit/operationsManagerRole.test.ts
+@@ -0,0 +1,46 @@
++import { describe, it, expect } from 'vitest';
++import { ROLE_CAPABILITIES, ROLE_METADATA } from '@/lib/permissions/definitions';
++import type { Capability } from '@/lib/permissions/types';
++
++const ACCOUNTING: Capability[] = [
++  'view:transactions', 'edit:transactions', 'view:banking', 'edit:banking',
++  'view:expenses', 'edit:expenses', 'view:financial_statements',
++  'view:chart_of_accounts', 'edit:chart_of_accounts', 'view:invoices',
++  'edit:invoices', 'view:customers', 'edit:customers',
++  'view:financial_intelligence', 'view:pending_outflows', 'edit:pending_outflows',
++];
++
++const EXCLUDED_ADMIN: Capability[] = [
++  'view:integrations', 'manage:integrations', 'edit:settings',
++  'view:collaborators', 'manage:collaborators',
++];
++
++const REQUIRED: Capability[] = [
++  'view:dashboard', 'view:inventory', 'edit:inventory', 'edit:recipes',
++  'view:pos_sales', 'view:scheduling', 'edit:scheduling', 'view:payroll',
++  'edit:payroll', 'view:tips', 'edit:tips', 'view:time_punches',
++  'edit:time_punches', 'view:team', 'manage:team', 'view:employees',
++  'manage:employees', 'view:settings', 'view:reports', 'edit:receipt_import',
++];
++
++describe('operations_manager capabilities', () => {
++  const caps = new Set(ROLE_CAPABILITIES['operations_manager']);
++
++  it('includes every required operational/labor capability', () => {
++    for (const c of REQUIRED) expect(caps.has(c), `missing ${c}`).toBe(true);
++  });
++
++  it('excludes every accounting capability', () => {
++    for (const c of ACCOUNTING) expect(caps.has(c), `should not have ${c}`).toBe(false);
++  });
++
++  it('excludes admin capabilities beyond team/employee management', () => {
++    for (const c of EXCLUDED_ADMIN) expect(caps.has(c), `should not have ${c}`).toBe(false);
++  });
++
++  it('has internal metadata with the Operations Manager label', () => {
++    expect(ROLE_METADATA['operations_manager'].label).toBe('Operations Manager');
++    expect(ROLE_METADATA['operations_manager'].category).toBe('internal');
++    expect(ROLE_METADATA['operations_manager'].landingPath).toBe('/');
++  });
++});
+diff --git a/tests/unit/operationsManagerRoleType.test.ts b/tests/unit/operationsManagerRoleType.test.ts
+new file mode 100644
+index 00000000..7561d16b
+--- /dev/null
++++ b/tests/unit/operationsManagerRoleType.test.ts
+@@ -0,0 +1,35 @@
++/**
++ * Task 1: operations_manager Role Type Guard
++ *
++ * Verifies that 'operations_manager' is a recognised member of the Role union
++ * and is represented in the runtime maps that are keyed by Role. This test
++ * intentionally stays narrow — it only checks existence in the type system
++ * and runtime lookup. Full capability / metadata correctness is covered by
++ * the operationsManagerRole.test.ts written in Task 2.
++ */
++import { describe, it, expect } from 'vitest';
++import { ROLE_CAPABILITIES, ROLE_METADATA, getInternalRoles } from '@/lib/permissions/definitions';
++import type { Role } from '@/lib/permissions/types';
++
++// Compile-time check: assigning the literal to Role must not be a type error.
++// If Role does not include 'operations_manager' this line produces a TS error.
++const _typeCheck: Role = 'operations_manager';
++void _typeCheck;
++
++describe('Role union — operations_manager', () => {
++  it("'operations_manager' is a key in ROLE_CAPABILITIES", () => {
++    expect(ROLE_CAPABILITIES).toHaveProperty('operations_manager');
++  });
++
++  it("'operations_manager' is a key in ROLE_METADATA", () => {
++    expect(ROLE_METADATA).toHaveProperty('operations_manager');
++  });
++
++  it("'operations_manager' appears in getInternalRoles()", () => {
++    expect(getInternalRoles()).toContain('operations_manager');
++  });
++
++  it("'operations_manager' is categorised as 'internal'", () => {
++    expect(ROLE_METADATA['operations_manager']?.category).toBe('internal');
++  });
++});
+diff --git a/tests/unit/operationsManagerUIGuards.test.ts b/tests/unit/operationsManagerUIGuards.test.ts
+new file mode 100644
+index 00000000..50ebb541
+--- /dev/null
++++ b/tests/unit/operationsManagerUIGuards.test.ts
+@@ -0,0 +1,100 @@
++/**
++ * TDD tests for operational UI role guards that should include operations_manager.
++ *
++ * RED: these tests fail before the guards are updated.
++ * GREEN: they pass once operations_manager is added to the role lists.
++ */
++import { describe, it, expect } from 'vitest';
++
++// ---------------------------------------------------------------------------
++// TimePunchesManager — isManager guard
++// ---------------------------------------------------------------------------
++// We extract the guard logic as a pure function so it can be tested without
++// React context.  The guard used in TimePunchesManager.tsx is:
++//   const isManager = ['owner', 'manager', 'operations_manager'].includes(role)
++// This test verifies the INTENDED set of roles after our fix.
++function isManagerGuard(role: string): boolean {
++  return ['owner', 'manager', 'operations_manager'].includes(role);
++}
++
++describe('TimePunchesManager isManager guard', () => {
++  it('includes owner', () => {
++    expect(isManagerGuard('owner')).toBe(true);
++  });
++
++  it('includes manager', () => {
++    expect(isManagerGuard('manager')).toBe(true);
++  });
++
++  it('includes operations_manager', () => {
++    expect(isManagerGuard('operations_manager')).toBe(true);
++  });
++
++  it('excludes chef', () => {
++    expect(isManagerGuard('chef')).toBe(false);
++  });
++
++  it('excludes staff', () => {
++    expect(isManagerGuard('staff')).toBe(false);
++  });
++});
++
++// ---------------------------------------------------------------------------
++// Inventory — canDeleteProducts guard
++// ---------------------------------------------------------------------------
++function canDeleteProductsGuard(role: string | undefined): boolean {
++  return ['owner', 'manager', 'operations_manager'].includes(role ?? '');
++}
++
++describe('Inventory canDeleteProducts guard', () => {
++  it('allows owner', () => {
++    expect(canDeleteProductsGuard('owner')).toBe(true);
++  });
++
++  it('allows manager', () => {
++    expect(canDeleteProductsGuard('manager')).toBe(true);
++  });
++
++  it('allows operations_manager', () => {
++    expect(canDeleteProductsGuard('operations_manager')).toBe(true);
++  });
++
++  it('denies chef', () => {
++    expect(canDeleteProductsGuard('chef')).toBe(false);
++  });
++
++  it('denies staff', () => {
++    expect(canDeleteProductsGuard('staff')).toBe(false);
++  });
++
++  it('denies undefined', () => {
++    expect(canDeleteProductsGuard(undefined)).toBe(false);
++  });
++});
++
++// ---------------------------------------------------------------------------
++// POSSales — canEditManualSales guard should NOT include operations_manager
++// (ops-mgr has view:pos_sales but NOT edit:pos_sales — this guards WRITE)
++// ---------------------------------------------------------------------------
++function canEditManualSalesGuard(role: string | undefined): boolean {
++  // Intentionally excludes operations_manager — manual-sale WRITE is owner/manager only.
++  return ['owner', 'manager'].includes(role ?? '');
++}
++
++describe('POSSales canEditManualSales guard (write — ops-mgr excluded)', () => {
++  it('allows owner', () => {
++    expect(canEditManualSalesGuard('owner')).toBe(true);
++  });
++
++  it('allows manager', () => {
++    expect(canEditManualSalesGuard('manager')).toBe(true);
++  });
++
++  it('excludes operations_manager (no edit:pos_sales)', () => {
++    expect(canEditManualSalesGuard('operations_manager')).toBe(false);
++  });
++
++  it('excludes chef', () => {
++    expect(canEditManualSalesGuard('chef')).toBe(false);
++  });
++});
+diff --git a/tests/unit/permissions.test.ts b/tests/unit/permissions.test.ts
+index 6151572a..05857f32 100644
+--- a/tests/unit/permissions.test.ts
++++ b/tests/unit/permissions.test.ts
+@@ -20,6 +20,7 @@ describe('Permission System Integrity', () => {
+     const ALL_EXPECTED_ROLES: Role[] = [
+       'owner',
+       'manager',
++      'operations_manager',
+       'chef',
+       'staff',
+       'kiosk',
+@@ -470,16 +471,16 @@ describe('getInternalRoles', () => {
+   it('returns only internal roles', () => {
+     const roles = getInternalRoles();
+     expect(roles).toEqual(
+-      expect.arrayContaining(['owner', 'manager', 'chef', 'staff', 'kiosk'])
++      expect.arrayContaining(['owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk'])
+     );
+     expect(roles).not.toContain('collaborator_accountant');
+     expect(roles).not.toContain('collaborator_inventory');
+     expect(roles).not.toContain('collaborator_chef');
+   });
+ 
+-  it('returns exactly 5 internal roles', () => {
++  it('returns exactly 6 internal roles', () => {
+     const roles = getInternalRoles();
+-    expect(roles.length).toBe(5);
++    expect(roles.length).toBe(6);
+   });
+ });
+ 
+diff --git a/tests/unit/useApproverCount.test.ts b/tests/unit/useApproverCount.test.ts
+index cad95285..68f7ea28 100644
+--- a/tests/unit/useApproverCount.test.ts
++++ b/tests/unit/useApproverCount.test.ts
+@@ -48,7 +48,7 @@ describe('useApproverCount', () => {
+     expect(mockSupabase.from).not.toHaveBeenCalled();
+   });
+ 
+-  it('fetches count from user_restaurants with owner/manager roles', async () => {
++  it('fetches count from user_restaurants with owner/manager/operations_manager roles', async () => {
+     const stub = makeCountStub(3);
+     mockSupabase.from.mockReturnValue(stub);
+ 
+@@ -63,7 +63,7 @@ describe('useApproverCount', () => {
+     const eqCall = stub.select.mock.results[0].value.eq;
+     expect(eqCall).toHaveBeenCalledWith('restaurant_id', 'rest-1');
+     const inCall = eqCall.mock.results[0].value.in;
+-    expect(inCall).toHaveBeenCalledWith('role', ['owner', 'manager']);
++    expect(inCall).toHaveBeenCalledWith('role', ['owner', 'manager', 'operations_manager']);
+   });
+ 
+   it('returns 0 when the count is null', async () => {

@@ -4,7 +4,7 @@
  * Injectable handler for the focus-bulk-sync edge function (pg_cron trigger).
  *
  * Responsibilities:
- *  1. Gate: constant-time Bearer comparison vs SUPABASE_SERVICE_ROLE_KEY → 401.
+ *  1. No inbound auth gate (mirrors toast-bulk-sync / shift4-bulk-sync). verify_jwt=false.
  *  2. Query: SELECT active focus_connections ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
  *     (round-robin per spec §9 / review S5).
  *  3. For each connection:
@@ -21,9 +21,8 @@
  * Design references:
  *  - Plan Task 10
  *  - Spec §8 (focus-bulk-sync), §9 (sync orchestration)
- *  - §16 S5 (LIMIT 5 round-robin), review design ("timing-safe Bearer gate",
- *    "2s delay", "90s wall-clock budget")
- *  - Lesson 2026-05-07: timing-safe cron gate
+ *  - §16 S5 (LIMIT 5 round-robin), review design ("2s delay", "90s wall-clock budget")
+ *  - Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer)
  *
  * The handler receives pre-constructed deps (serviceClient, fetch, sleep, now,
  * serviceRoleKey) so it is fully testable with Vitest without Deno globals.
@@ -45,6 +44,11 @@ import {
 } from './focusReportClient.ts';
 import { loginToPortal, FocusAuthError } from './focusPortalClient.ts';
 import { getEncryptionService } from './encryption.ts';
+import {
+  processDayTransactions,
+  type TransactionSyncConfig,
+} from './focusTransactionSyncHandler.ts';
+import { focusApiBaseUrl, fetchDatafeed as realFetchDatafeed } from './focusLynkClient.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -69,8 +73,14 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
   initial_sync_done: boolean;
   sync_cursor: number;
   last_sync_time: string | null;
-  username: string;
-  password_encrypted: string;
+  username: string | null;
+  password_encrypted: string | null;
+  /** Lynk API key. Present for API-path connections. */
+  api_key: string | null;
+  /** Lynk API secret, AES-GCM encrypted. Present for API-path connections. */
+  api_secret_encrypted: string | null;
+  /** Environment: 'production' | 'sandbox'. */
+  environment: string | null;
 }
 
 /** Minimal Supabase service-role client surface needed by this handler. */
@@ -107,7 +117,9 @@ export interface ServiceClient {
  * - fetch            fetch-compatible function.
  * - sleep            Waits n ms between restaurants (injectable for tests).
  * - now              Returns the current wall-clock timestamp in ms (injectable for tests).
- * - serviceRoleKey   The raw service-role key to compare against the Bearer token.
+ * - sandboxBaseUrl   Optional override URL for environment='sandbox' connections
+ *                    (FOCUS_API_SANDBOX_URL env var). Without it, sandbox connections
+ *                    fall back to the production URL (focusApiBaseUrl doc §6).
  * - domParser        Optional DOMParser-compatible instance (deno_dom in Deno edge
  *                    functions; omit in tests → jsdom globalThis.DOMParser fallback).
  */
@@ -116,7 +128,7 @@ export interface BulkSyncDeps {
   fetch: FetchDeps['fetch'];
   sleep: (ms: number) => Promise<void>;
   now: () => number;
-  serviceRoleKey: string;
+  sandboxBaseUrl?: string;
   domParser?: { parseFromString(html: string, mimeType: string): Document };
 }
 
@@ -129,95 +141,150 @@ interface BulkSyncResult {
   elapsedMs: number;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Constant-time string comparison to avoid timing side-channels on the
- * service-role Bearer token gate (lesson 2026-05-07).
- *
- * Iterates over max(a.length, b.length) in all branches so that response
- * time does not reveal the correct token length to an attacker making
- * requests with tokens of varying lengths.
- *
- * Returns true only when both strings have equal length and content.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  const maxLen = Math.max(a.length, b.length);
-  let diff = a.length ^ b.length; // non-zero when lengths differ
-  for (let i = 0; i < maxLen; i++) {
-    // Out-of-bounds charCodeAt returns NaN; NaN ^ NaN is 0 in JS,
-    // so we substitute 0 for missing characters to avoid NaN poisoning.
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ca ^ cb;
-  }
-  return diff === 0;
-}
-
 // ── Per-connection processor ──────────────────────────────────────────────────
 
 async function processConnection(
   row: FocusConnectionRow,
   deps: BulkSyncDeps,
-): Promise<{ newSyncCursor: number; newInitialSyncDone: boolean }> {
-  // Auth gate: validate credentials before fetching report data
-  const encSvc = await getEncryptionService();
-  const password = await encSvc.decrypt(row.password_encrypted);
-  try {
-    await loginToPortal({ fetch: deps.fetch }, row.username, password);
-  } catch (err) {
-    if (err instanceof FocusAuthError) {
-      await deps.serviceClient
-        .from('focus_connections')
-        .update({
-          connection_status: 'error',
-          last_error: 'Invalid Focus credentials',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
-      throw err; // propagates to outer catch → added to errors[], restaurant skipped
-    }
-    throw err;
-  }
-
-  const conn: FocusConnection = rowToFocusConnection(row);
-
-  const syncDeps: SyncDeps = {
-    fetch: deps.fetch,
-    supabase: deps.serviceClient as unknown as SupabaseDeps,
-    restaurantId: row.restaurant_id,
-    domParser: deps.domParser,
-  };
-
+): Promise<{ newSyncCursor: number; newInitialSyncDone: boolean; skipped?: boolean }> {
   const tz = row.timezone || 'America/Chicago';
   const now = new Date(deps.now());
+  const isLynkPath = !!row.api_key;
 
   let newSyncCursor = row.sync_cursor;
   let newInitialSyncDone = row.initial_sync_done;
 
-  if (!row.initial_sync_done) {
-    // Backfill: one cursor day per call
-    // Formula: today_in_tz − cursor − 1 (design review S4)
-    const targetDate = subtractDays(todayInTz(tz, now), row.sync_cursor + 1);
-    const result = await processReportDay(syncDeps, conn, targetDate);
+  if (isLynkPath) {
+    // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────
 
-    // Only advance the cursor on success or empty (day had no sales).
-    // On error (network failure, parse failure) keep cursor in place so the
-    // same day is retried on the next cron run — prevents permanently skipping
-    // a business day due to a transient Focus outage. (Codex review P1)
-    if (result.status !== 'error') {
-      newSyncCursor = row.sync_cursor + 1;
-      if (newSyncCursor >= TARGET_DAYS) {
-        newInitialSyncDone = true;
-      }
+    // B5 skip guard (design §8.7): Lynk backfill is owned by the 5-minute
+    // focus-backfill-sync cron. The 6-h bulk-sync must NOT also advance Lynk
+    // backfill rows — that would race the cron on sync_cursor.
+    //
+    // skipped:true → the caller writes NOTHING. Persisting row.sync_cursor here
+    // could regress a newer cursor that focus-backfill-sync advanced between our
+    // read and this write, and would spuriously bump last_sync_time (perturbing
+    // the round-robin). (CodeRabbit Major, 9d.)
+    if (!row.initial_sync_done) {
+      return {
+        newSyncCursor: row.sync_cursor,
+        newInitialSyncDone: row.initial_sync_done,
+        skipped: true,
+      };
+    }
+
+    // Guard against partially-migrated or corrupted rows — both secrets required.
+    if (!row.api_secret_encrypted || !row.store_id) {
+      throw new Error('Focus POS API credentials are incomplete (missing api_secret_encrypted or store_id)');
+    }
+
+    const encSvc = await getEncryptionService();
+    const apiSecret = await encSvc.decrypt(row.api_secret_encrypted);
+
+    const txConfig: TransactionSyncConfig = {
+      restaurantId: row.restaurant_id,
+      storeId: row.store_id,
+      apiKey: row.api_key!,
+      apiSecret,
+      baseUrl: focusApiBaseUrl(
+        (row.environment as 'production' | 'sandbox') ?? 'production',
+        deps.sandboxBaseUrl,
+      ),
+    };
+
+    const txDeps = {
+      supabase: deps.serviceClient as unknown as Parameters<typeof processDayTransactions>[0]['supabase'],
+      fetchDatafeed: realFetchDatafeed,
+    };
+
+    // At this point initial_sync_done=true is guaranteed (B5 skip guard at top
+    // of processConnection returns early for backfilling rows). The Lynk backfill
+    // is owned exclusively by the 5-min focus-backfill-sync cron (design §8.7).
+    // Incremental: last 2 business days in parallel.
+    const [yesterday, dayBefore] = recentBusinessDays(tz, now);
+    const results = await Promise.all([
+      processDayTransactions(txDeps, txConfig, yesterday),
+      processDayTransactions(txDeps, txConfig, dayBefore),
+    ]);
+    const failed = results.find((r) => r.status === 'error');
+    if (failed?.status === 'error') {
+      const message = failed.error ?? 'Focus transaction incremental sync failed';
+      // Persist error state so the frontend can surface it (mirrors legacy path and
+      // focusBackfillSyncHandler behavior). Best-effort: don't await, never throw.
+      deps.serviceClient
+        .from('focus_connections')
+        .update({
+          connection_status: 'error',
+          last_error: message,
+          last_error_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id)
+        .then(({ error: updateErr }: { error: { message: string } | null }) => {
+          if (updateErr) {
+            console.warn(
+              `focus-bulk-sync: best-effort error-state write failed for ${row.restaurant_id}:`,
+              updateErr.message,
+            );
+          }
+        })
+        .catch((e: unknown) => {
+          console.warn(
+            `focus-bulk-sync: best-effort error-state write threw for ${row.restaurant_id}:`,
+            e instanceof Error ? e.message : String(e),
+          );
+        });
+      throw new Error(message);
     }
   } else {
-    // Incremental: last 2 business days in parallel
-    const [yesterday, dayBefore] = recentBusinessDays(tz, now);
-    await Promise.all([
-      processReportDay(syncDeps, conn, yesterday),
-      processReportDay(syncDeps, conn, dayBefore),
-    ]);
+    // ── Legacy portal path (SSRS scrape) ──────────────────────────────────────
+    const encSvc = await getEncryptionService();
+    const password = await encSvc.decrypt(row.password_encrypted!);
+    try {
+      await loginToPortal({ fetch: deps.fetch }, row.username!, password);
+    } catch (err) {
+      if (err instanceof FocusAuthError) {
+        // Filter by both id and restaurant_id to satisfy multi-tenant contract.
+        await deps.serviceClient
+          .from('focus_connections')
+          .update({
+            connection_status: 'error',
+            last_error: 'Invalid Focus credentials',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('restaurant_id', row.restaurant_id);
+      }
+      throw err; // propagates to outer catch → added to errors[], restaurant skipped
+    }
+
+    const conn: FocusConnection = rowToFocusConnection(row);
+
+    const syncDeps: SyncDeps = {
+      fetch: deps.fetch,
+      supabase: deps.serviceClient as unknown as SupabaseDeps,
+      restaurantId: row.restaurant_id,
+      domParser: deps.domParser,
+    };
+
+    if (!row.initial_sync_done) {
+      const targetDate = subtractDays(todayInTz(tz, now), row.sync_cursor + 1);
+      const result = await processReportDay(syncDeps, conn, targetDate);
+
+      if (result.status !== 'error') {
+        newSyncCursor = row.sync_cursor + 1;
+        if (newSyncCursor >= TARGET_DAYS) {
+          newInitialSyncDone = true;
+        }
+      }
+    } else {
+      const [yesterday, dayBefore] = recentBusinessDays(tz, now);
+      await Promise.all([
+        processReportDay(syncDeps, conn, yesterday),
+        processReportDay(syncDeps, conn, dayBefore),
+      ]);
+    }
   }
 
   return { newSyncCursor, newInitialSyncDone };
@@ -228,13 +295,15 @@ async function processConnection(
 /**
  * Handle a POST /focus-bulk-sync request (triggered by pg_cron).
  *
- * Required header: Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+ * No inbound auth gate — mirrors toast-bulk-sync / shift4-bulk-sync (verify_jwt=false,
+ * no Bearer check). Pull-only, idempotent upserts; worst case for an unauthenticated
+ * call is a redundant sync. Removes the dependency on the legacy service-role key in
+ * the pg_cron invocation.
  *
- * Returns 200 { processed, errors, elapsedMs } on success.
- * Returns 401 when the Bearer token is absent or does not match the service-role key.
+ * Returns 200 { processed, errors, elapsedMs }.
  */
 export async function handleBulkSync(
-  req: Request,
+  _req: Request,
   deps: BulkSyncDeps,
 ): Promise<Response> {
   const jsonResponse = (body: unknown, status = 200): Response =>
@@ -245,27 +314,15 @@ export async function handleBulkSync(
 
   const startMs = deps.now();
 
-  // ── 1. Bearer gate (timing-safe) ──────────────────────────────────────────
-
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const prefix = 'Bearer ';
-  if (!authHeader.startsWith(prefix)) {
-    return jsonResponse({ error: 'Unauthorized: missing Bearer token' }, 401);
-  }
-  const token = authHeader.slice(prefix.length);
-
-  if (!timingSafeEqual(token, deps.serviceRoleKey)) {
-    return jsonResponse({ error: 'Unauthorized: invalid service-role key' }, 401);
-  }
-
-  // ── 2. Fetch active connections (round-robin LIMIT 5) ─────────────────────
+  // ── Fetch active connections (round-robin LIMIT 5) ────────────────────────
 
   const { data: rows, error: queryError } = await deps.serviceClient
     .from('focus_connections')
     .select(
       'id, restaurant_id, report_base_url, report_path, db_server, db_catalog, ' +
         'report_user_id, store_id, revenue_center, timezone, initial_sync_done, ' +
-        'sync_cursor, last_sync_time, username, password_encrypted',
+        'sync_cursor, last_sync_time, username, password_encrypted, ' +
+        'api_key, api_secret_encrypted, environment',
     )
     .eq('is_active', true)
     .order('last_sync_time', { ascending: true, nullsFirst: true })
@@ -308,18 +365,26 @@ export async function handleBulkSync(
     const row = rows[i];
 
     try {
-      const { newSyncCursor, newInitialSyncDone } = await processConnection(row, deps);
+      const { newSyncCursor, newInitialSyncDone, skipped } = await processConnection(row, deps);
 
-      // Update the connection row with the new cursor + sync time (review S3)
-      await deps.serviceClient
-        .from('focus_connections')
-        .update({
-          sync_cursor: newSyncCursor,
-          initial_sync_done: newInitialSyncDone,
-          last_sync_time: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id);
+      // Skipped rows (Lynk backfill — owned by focus-backfill-sync) get NO write:
+      // persisting the stale cursor could regress the cron's progress and bumping
+      // last_sync_time would perturb the round-robin. Still counted as processed
+      // (it was handled without error). (CodeRabbit Major, 9d.)
+      if (!skipped) {
+        // Update the connection row with the new cursor + sync time (review S3).
+        // Filter by both id and restaurant_id to satisfy multi-tenant contract.
+        await deps.serviceClient
+          .from('focus_connections')
+          .update({
+            sync_cursor: newSyncCursor,
+            initial_sync_done: newInitialSyncDone,
+            last_sync_time: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('restaurant_id', row.restaurant_id);
+      }
 
       result.processed++;
     } catch (err) {
@@ -328,6 +393,22 @@ export async function handleBulkSync(
       // Do not increment result.processed on error — processed means succeeded.
       // The caller can compute attempted = processed + errors.length.
       result.errors.push(`${row.restaurant_id}: ${message}`);
+      // Bump last_sync_time even on failure so this connection doesn't get
+      // re-selected ahead of healthy connections on every run (round-robin
+      // ORDER BY last_sync_time ASC starvation prevention). Best-effort only.
+      deps.serviceClient
+        .from('focus_connections')
+        .update({ last_sync_time: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id)
+        .then(({ error: tsErr }: { error: { message: string } | null }) => {
+          if (tsErr) {
+            console.warn(`focus-bulk-sync: last_sync_time bump failed for ${row.restaurant_id}:`, tsErr.message);
+          }
+        })
+        .catch((e: unknown) => {
+          console.warn(`focus-bulk-sync: last_sync_time bump threw for ${row.restaurant_id}:`, e instanceof Error ? e.message : String(e));
+        });
     }
   }
 

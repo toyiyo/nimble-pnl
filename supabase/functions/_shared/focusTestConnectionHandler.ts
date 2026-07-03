@@ -3,57 +3,42 @@
  *
  * Injectable handler for the focus-test-connection edge function.
  *
- * Responsibilities:
- *  1. Validate the Authorization header and verify the JWT via userClient.auth.getUser().
- *  2. Parse + validate the request body: { restaurantId }.
- *  3. Confirm the caller is an owner or manager of the target restaurant (review S6).
- *  4. Load the active focus_connections row for the restaurant via service-role client.
- *  5. Compute "yesterday" in the connection's IANA timezone (review S4 — tz-correct date).
- *  6. Fetch yesterday's Revenue Center report via focusReportClient (SSRF-guarded).
- *  7. Parse the HTML via focusReportParser.
- *  8. Based on the discriminated result (review S9):
- *       - {ok:true} or {ok:false, reason:'empty'}  → connection_status='connected'
- *       - {ok:false, reason:'parse_error'} or fetch error → connection_status='error'
- *  9. Write connection_status (+ last_error / last_error_at) via service-role client (review S3).
- * 10. Return 200 JSON { success, status, error? } for both outcomes (caller decides UX).
+ * Verifies a Focus POS connection by calling:
+ *   GET {baseUrl}/api/restaurants
+ * with HTTP Basic auth (apiKey : apiSecret).
  *
- * Design references:
- *  - Plan Task 8
- *  - Spec §8 (focus-test-connection edge function)
- *  - §16 S3 (service-role client for writes), S4 (business-date timezone),
- *           S6 (JWT + role), S9 (empty → connected; parse_error → error)
+ * The response returns `items[].restaurant_guid`.  The handler checks whether
+ * the stored `store_id` (a GUID) is present in that list.
  *
- * Auth pattern mirrors focus-save-connection (Task 7):
- *   Authorization header → userClient.auth.getUser() → user_restaurants role check → business logic.
+ * - Found   → connection_status = 'connected'
+ * - Missing → connection_status = 'error' with an actionable message
  *
- * The handler receives pre-constructed clients (userClient built from the caller's JWT,
- * serviceClient built from SUPABASE_SERVICE_ROLE_KEY) so it is fully testable with Vitest
- * without any Deno-specific imports.
+ * This replaces the previous FocusLink datafeed approach (FocusLink is the
+ * legacy SaaS relay; the real Focus POS API lives at pos-api.focuspos.com).
+ *
+ * Design ref: spec §2 (API / auth), plan Task 5.
  */
 
-import {
-  buildReportUrl,
-  fetchReportHtml,
-  isoToMmDdYyyy,
-  rowToFocusConnection,
-  todayInTz,
-  subtractDays,
-  FOCUS_ALLOWED_ROLES,
-  type FocusConnection,
-  type FocusConnectionRow as SharedFocusConnectionRow,
-  type FetchDeps,
-} from './focusReportClient.ts';
-import { parseRevenueCenterReport } from './focusReportParser.ts';
-import { loginToPortal, FocusAuthError } from './focusPortalClient.ts';
 import { getEncryptionService } from './encryption.ts';
+import {
+  focusApiBaseUrl,
+  isSafeUrl,
+  FOCUSPOS_HOST_RE,
+} from './focusLynkClient.ts';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+const FOCUS_ALLOWED_ROLES = new Set(['owner', 'manager']);
 
-/** Minimal Supabase user-client surface needed by the handler. */
+const TIMEOUT_MS = 20_000;
+
+/** Convenience wrapper: SSRF-check that `url` is a safe focuspos.com base URL. */
+function isSafeBase(url: string): boolean {
+  return isSafeUrl(url, FOCUSPOS_HOST_RE);
+}
+
+// ── Public types ──────────────────────────────────────────────────────────────
+
 export interface UserClient {
-  auth: {
-    getUser(): Promise<{ data: { user: { id: string } | null } }>;
-  };
+  auth: { getUser(): Promise<{ data: { user: { id: string } | null } }> };
   from(table: string): {
     select(columns: string): {
       eq(col: string, val: string): {
@@ -65,67 +50,43 @@ export interface UserClient {
   };
 }
 
-/** DB row shape returned from focus_connections (extends shared routing params). */
-interface FocusConnectionRow extends SharedFocusConnectionRow {
+interface FocusConnectionRow {
   id: string;
-  restaurant_id: string;
-  username: string;
-  password_encrypted: string;
+  api_key: string;
+  api_secret_encrypted: string;
+  store_id: string;
+  environment: string;
+  timezone: string;
 }
 
-/** Minimal Supabase service-role client surface needed for reads + writes. */
 export interface ServiceClient {
   from(table: string): {
     select(columns: string): {
       eq(col: string, val: string): {
-        eq(col: string, val: string): {
-          single(): Promise<{
-            data: FocusConnectionRow | null;
-            error: { message: string } | null;
-          }>;
+        eq(col: string, val: boolean | string): {
+          single(): Promise<{ data: FocusConnectionRow | null; error: { message: string } | null }>;
         };
       };
     };
-    update(
-      data: Record<string, unknown>,
-    ): {
-      eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }>;
+    update(data: Record<string, unknown>): {
+      eq(col: string, val: string): {
+        eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }>;
+      };
     };
   };
 }
 
-/**
- * Injectable dependencies that the thin index.ts provides.
- * Keeping them injectable makes the handler unit-testable without Deno env vars.
- */
 export interface TestConnectionDeps {
-  /** Supabase client created with the caller's Authorization JWT (for auth + role checks). */
   userClient: UserClient;
-  /** Supabase client created with SUPABASE_SERVICE_ROLE_KEY (for reads + writes — bypasses RLS). */
   serviceClient: ServiceClient;
-  /** fetch-compatible function. In production: globalThis.fetch. Injectable for Vitest. */
-  fetch: FetchDeps['fetch'];
-  /** Current time (injected so tests can control "yesterday" computation). Defaults to new Date(). */
-  now?: Date;
-  /**
-   * Optional DOMParser-compatible instance. Provide `new DOMParser()` from deno_dom in
-   * Deno edge functions (globalThis.DOMParser is undefined there).
-   * Omit in tests — jsdom provides globalThis.DOMParser.
-   */
-  domParser?: { parseFromString(html: string, mimeType: string): Document };
+  /** fetch implementation (native Deno fetch in prod; a double in tests). */
+  fetch: typeof fetch;
+  /** Base URL for the sandbox environment (issued by Shift4 at certification). */
+  sandboxBaseUrl?: string;
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-/**
- * Handle a POST /focus-test-connection request.
- *
- * Expected JSON body: { restaurantId: string }
- * Required header:    Authorization: Bearer <jwt>
- *
- * Always returns 200 for the connectivity outcome (caller reads {success, status}).
- * Returns 4xx for auth / input errors before we reach the test step.
- */
 export async function handleTestConnection(
   req: Request,
   deps: TestConnectionDeps,
@@ -136,159 +97,181 @@ export async function handleTestConnection(
       headers: { 'Content-Type': 'application/json' },
     });
 
-  const now = deps.now ?? new Date();
-
-  // ── 1. Authorization header ────────────────────────────────────────────────
-
+  // ── 1. Authorization header + JWT ──────────────────────────────────────────
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
-    return jsonError(401, 'Missing Authorization header');
-  }
-
-  // ── 2. Verify JWT ─────────────────────────────────────────────────────────
+  if (!authHeader) return jsonError(401, 'Missing Authorization header');
 
   const {
     data: { user },
   } = await deps.userClient.auth.getUser();
-  if (!user) {
-    return jsonError(401, 'Unauthorized: invalid or expired token');
-  }
+  if (!user) return jsonError(401, 'Unauthorized: invalid or expired token');
 
-  // ── 3. Parse request body ─────────────────────────────────────────────────
-
+  // ── 2. Parse body ──────────────────────────────────────────────────────────
   let body: Record<string, unknown>;
   try {
     body = await req.json();
   } catch {
     return jsonError(400, 'Invalid JSON body');
   }
-
   const { restaurantId } = body as { restaurantId?: string };
+  if (!restaurantId) return jsonError(400, 'Missing required field: restaurantId');
 
-  if (!restaurantId) {
-    return jsonError(400, 'Missing required field: restaurantId');
-  }
-
-  // ── 4. Role check ─────────────────────────────────────────────────────────
-
+  // ── 3. Role check ──────────────────────────────────────────────────────────
   const { data: membership } = await deps.userClient
     .from('user_restaurants')
     .select('role')
     .eq('user_id', user.id)
     .eq('restaurant_id', restaurantId)
     .single();
-
   if (!membership || !FOCUS_ALLOWED_ROLES.has(membership.role)) {
     return jsonError(403, 'Access denied: owner or manager role required');
   }
 
-  // ── 5. Load the active connection (via service-role client) ───────────────
-
-  const { data: connRow, error: connError } = await deps.serviceClient
+  // ── 4. Load the active connection ──────────────────────────────────────────
+  const { data: conn, error: connError } = await deps.serviceClient
     .from('focus_connections')
-    .select(
-      'id, restaurant_id, report_base_url, report_path, db_server, db_catalog, ' +
-        'report_user_id, store_id, revenue_center, timezone, username, password_encrypted',
-    )
+    .select('id, api_key, api_secret_encrypted, store_id, environment, timezone')
     .eq('restaurant_id', restaurantId)
     .eq('is_active', true)
     .single();
 
-  if (connError || !connRow) {
+  if (connError || !conn) {
     return jsonError(404, 'No active Focus POS connection found for this restaurant');
   }
 
-  // ── 6. Build FocusConnection for the client module ───────────────────────
+  // ── 5. Decrypt secret ──────────────────────────────────────────────────────
+  const encSvc = await getEncryptionService();
+  const apiSecret = await encSvc.decrypt(conn.api_secret_encrypted);
 
-  const conn: FocusConnection = rowToFocusConnection(connRow);
+  // ── 6. Determine base URL ─────────────────────────────────────────────────
+  const baseUrl = focusApiBaseUrl(
+    conn.environment as 'production' | 'sandbox',
+    deps.sandboxBaseUrl,
+  );
 
-  // ── 6b. Auth gate: validate credentials before fetching report ───────────
-
-  try {
-    const encSvc = await getEncryptionService();
-    const password = await encSvc.decrypt(connRow.password_encrypted);
-    await loginToPortal({ fetch: deps.fetch }, connRow.username, password);
-  } catch (err) {
-    if (err instanceof FocusAuthError) {
-      await deps.serviceClient
-        .from('focus_connections')
-        .update({
-          connection_status: 'error',
-          last_error: 'Invalid Focus credentials',
-          last_error_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', connRow.id);
-      return new Response(
-        JSON.stringify({ success: false, status: 'error', error: 'Invalid Focus credentials' }),
-        { status: 200, headers: { 'Content-Type': 'application/json' } },
-      );
-    }
-    throw err;
-  }
-
-  // ── 7. Compute yesterday in the connection's IANA timezone (review S4) ────
-
-  const tz = connRow.timezone || 'America/Chicago';
-  const businessDate = subtractDays(todayInTz(tz, now), 1); // 'YYYY-MM-DD'
-  const formattedDate = isoToMmDdYyyy(businessDate); // 'MM/DD/YYYY'
-
-  // ── 8. Fetch + parse the report ───────────────────────────────────────────
-
-  let connectionStatus: 'connected' | 'error';
-  let lastError: string | null = null;
-
-  try {
-    const url = buildReportUrl(conn, formattedDate, formattedDate);
-    const html = await fetchReportHtml({ fetch: deps.fetch }, url);
-    // Pass deps.domParser when provided (deno_dom in Deno edge functions).
-    // Omit in tests so the parser falls back to globalThis.DOMParser (jsdom).
-    const parseResult = parseRevenueCenterReport(html, businessDate, deps.domParser);
-
-    // S9: ok:true OR reason:'empty' → connected; parse_error → error
-    if (!parseResult.ok && parseResult.reason === 'parse_error') {
-      connectionStatus = 'error';
-      lastError = 'parse_error: report HTML could not be parsed — unexpected structure';
-    } else {
-      connectionStatus = 'connected';
-    }
-  } catch (err) {
-    // Log the raw fetch/parse error server-side; surface a sanitized, actionable
-    // reason to the client (CodeQL: don't leak internal error/stack detail).
-    console.error(
-      'focus-test-connection: report fetch failed:',
-      err instanceof Error ? err.message : String(err),
+  if (!isSafeBase(baseUrl)) {
+    const errMsg = 'Focus POS base URL must be https on a focuspos.com host';
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
+    return new Response(
+      JSON.stringify({ success: false, status: 'error', error: errMsg }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
     );
-    connectionStatus = 'error';
-    lastError = 'Could not fetch the Focus report — verify the report URL and Store ID are correct';
   }
 
-  // ── 9. Write connection_status via service-role client (review S3) ────────
+  // ── 7. GET /api/restaurants ────────────────────────────────────────────────
+  const restaurantsUrl = `${baseUrl.replace(/\/+$/, '')}/api/restaurants`;
+  const authValue = 'Basic ' + btoa(`${conn.api_key}:${apiSecret}`);
 
-  const updatePayload: Record<string, unknown> = {
-    connection_status: connectionStatus,
-    last_error: connectionStatus === 'connected' ? null : lastError,
-    last_error_at: connectionStatus === 'connected' ? null : new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
+  let apiRes: Response;
+  try {
+    apiRes = await deps.fetch(restaurantsUrl, {
+      method: 'GET',
+      redirect: 'error', // Block 3xx: an allowlisted host redirecting to an internal URL would bypass SSRF guard.
+      headers: {
+        Authorization: authValue,
+        Accept: 'application/json',
+      },
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (e) {
+    const errMsg = `Network error reaching Focus POS API: ${e instanceof Error ? e.message : String(e)}`;
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
+    return new Response(
+      JSON.stringify({ success: false, status: 'error', error: errMsg }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 
-  await deps.serviceClient
+  // ── 8. Handle non-2xx ─────────────────────────────────────────────────────
+  if (!apiRes.ok) {
+    const httpStatus = apiRes.status;
+    let errMsg: string;
+    if (httpStatus === 401) {
+      errMsg = `Focus POS API returned 401 Unauthorized — check API key and secret`;
+    } else if (httpStatus === 403) {
+      errMsg = `Focus POS API returned 403 Forbidden — check license / permission`;
+    } else if (httpStatus === 404) {
+      errMsg = `Focus POS API returned 404 Not Found — check the base URL / route`;
+    } else {
+      errMsg = `Focus POS API returned HTTP ${httpStatus}`;
+    }
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
+    return new Response(
+      JSON.stringify({ success: false, status: 'error', error: errMsg }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  // ── 9. Parse JSON ─────────────────────────────────────────────────────────
+  const rawText = await apiRes.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    const errMsg = 'Focus POS API returned a non-JSON response — cannot parse restaurant list';
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
+    return new Response(
+      JSON.stringify({ success: false, status: 'error', error: errMsg }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  // ── 10. Check store_id GUID is in items[].restaurant_guid ─────────────────
+  const parsedItems =
+    parsed &&
+    typeof parsed === 'object' &&
+    Array.isArray((parsed as { items?: unknown }).items)
+      ? (parsed as { items: unknown[] }).items
+      : [];
+  const found = parsedItems.some(
+    (item) =>
+      item !== null &&
+      typeof item === 'object' &&
+      typeof (item as { restaurant_guid?: unknown }).restaurant_guid === 'string' &&
+      (item as { restaurant_guid: string }).restaurant_guid.toLowerCase() ===
+        conn.store_id.toLowerCase(),
+  );
+
+  if (!found) {
+    const errMsg =
+      `Restaurant GUID "${conn.store_id}" not found in the Focus POS account's restaurant list — ` +
+      `verify the Restaurant GUID entered during setup matches the one in the Focus POS portal.`;
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
+    return new Response(
+      JSON.stringify({ success: false, status: 'error', error: errMsg }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
+
+  // ── 11. Success ───────────────────────────────────────────────────────────
+  await writeStatus(deps.serviceClient, restaurantId, conn.id, 'connected', null);
+  return new Response(
+    JSON.stringify({ success: true, status: 'connected' }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+}
+
+// ── Helper ────────────────────────────────────────────────────────────────────
+
+async function writeStatus(
+  serviceClient: ServiceClient,
+  restaurantId: string,
+  connId: string,
+  connectionStatus: 'connected' | 'error',
+  lastError: string | null,
+): Promise<void> {
+  const { error } = await serviceClient
     .from('focus_connections')
-    .update(updatePayload)
-    .eq('id', connRow.id);
+    .update({
+      connection_status: connectionStatus,
+      last_error: lastError,
+      last_error_at: connectionStatus === 'connected' ? null : new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', connId)
+    .eq('restaurant_id', restaurantId);
 
-  // ── 10. Respond ──────────────────────────────────────────────────────────
-
-  const responseBody: Record<string, unknown> = {
-    success: connectionStatus === 'connected',
-    status: connectionStatus,
-  };
-  if (connectionStatus === 'error' && lastError) {
-    responseBody.error = lastError;
+  if (error) {
+    throw new Error(`Failed to update Focus connection status: ${error.message}`);
   }
-
-  return new Response(JSON.stringify(responseBody), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
 }

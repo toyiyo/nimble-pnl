@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,15 @@ import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 
 type ConfidenceTier = 'auto-approved' | 'quick-review' | 'needs-attention';
+
+/**
+ * Returns the plural form of a unit label when n !== 1.
+ * Falls back to "unit" / "units" when the unit is blank.
+ */
+function pluralizeUnit(unit: string | null | undefined, n: number | null): string {
+  const u = (unit || '').trim() || 'unit';
+  return (n ?? 0) === 1 ? u : `${u}s`;
+}
 
 interface ReceiptItemRowProps {
   item: ReceiptLineItem;
@@ -311,6 +320,20 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                   </div>
                 </div>
 
+                {/* Pack summary — shown only when pack_quantity > 1 */}
+                {item.pack_quantity && item.pack_quantity > 1 && (
+                  <p
+                    className="text-[13px] text-muted-foreground"
+                    aria-live="polite"
+                  >
+                    {Math.max(1, Math.round((item.parsed_quantity || 0) / item.pack_quantity))}{' '}
+                    {Math.max(1, Math.round((item.parsed_quantity || 0) / item.pack_quantity)) === 1 ? 'case' : 'cases'}
+                    {' × '}{item.pack_quantity}{' = '}
+                    {item.parsed_quantity}{' '}
+                    {pluralizeUnit(item.package_type || item.parsed_unit, item.parsed_quantity)}
+                  </p>
+                )}
+
                 {/* Size & Package - only show when needed or expanded */}
                 <div className="grid grid-cols-3 gap-2">
                   <div>
@@ -368,16 +391,27 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
 
                 {/* Package Definition - matches inventory details format */}
                 {item.size_value && item.size_unit && (item.package_type || item.parsed_unit) && (
-                  <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-md">
+                  <div className="p-3 bg-muted/30 border border-border/40 rounded-md">
                     <div className="flex items-center gap-2 mb-1">
-                      <div className="w-5 h-5 bg-green-600 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">✓</span>
+                      <div className="w-5 h-5 bg-foreground rounded-full flex items-center justify-center">
+                        <span aria-hidden="true" className="text-background text-xs font-bold">✓</span>
                       </div>
-                      <span className="text-sm font-semibold text-green-800 dark:text-green-200">Your Package Definition:</span>
+                      <span className="text-[13px] font-semibold text-foreground">Your Package Definition:</span>
                     </div>
-                    <div className="text-base font-medium text-green-800 dark:text-green-200 pl-7">
-                      1 {item.package_type || item.parsed_unit || 'unit'} containing{' '}
-                      <span className="bg-green-200 dark:bg-green-800 px-2 py-0.5 rounded">{item.size_value} {item.size_unit}</span>
+                    <div className="text-[14px] font-medium text-foreground pl-7">
+                      {item.pack_quantity && item.pack_quantity > 1 ? (
+                        <>
+                          {item.parsed_quantity}{' '}
+                          {pluralizeUnit(item.package_type || item.parsed_unit, item.parsed_quantity)},
+                          {' '}each containing{' '}
+                          <span className="bg-muted px-2 py-0.5 rounded">{item.size_value} {item.size_unit}</span>
+                        </>
+                      ) : (
+                        <>
+                          1 {item.package_type || item.parsed_unit || 'unit'} containing{' '}
+                          <span className="bg-muted px-2 py-0.5 rounded">{item.size_value} {item.size_unit}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}

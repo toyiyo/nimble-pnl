@@ -26,6 +26,11 @@ Phase 4–9: dev-build-and-ship workflow — launched
         Files: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§1–§3)
                supabase/tests/categorization_background_rules.test.sql (plan fixed to 8)
         GREEN confirmed: 1511/1511 pgTAP tests pass; 8 new supplier-semantics tests (a–f) all pass.
+  - [x] Task 1d: §2 matches_bank_transaction_rule — already implemented in commit 39886317 (part of §1–§3 GREEN);
+        tests confirmed green (1511/1511) in this phase.
+  - [x] Task 1e: §3 auto_apply_bank_categorization_rules — already implemented in commit 39886317 (part of §1–§3 GREEN);
+        adds cr.supplier_id to SELECT list and NEW.supplier_id := COALESCE(NEW.supplier_id, v_matching_rule.supplier_id)
+        in the apply branch. GREEN confirmed: 1511/1511 pgTAP tests pass; trigger tests (e, f) both pass.
 
 ## CI Status
 - PR: not yet created

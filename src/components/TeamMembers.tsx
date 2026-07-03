@@ -3,11 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone } from 'lucide-react';
+import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone, Briefcase } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 interface TeamMember {
@@ -29,6 +30,7 @@ interface TeamMembersProps {
 const roleIcons = {
   owner: Crown,
   manager: Shield,
+  operations_manager: Briefcase,
   chef: ChefHat,
   staff: User,
   kiosk: TabletSmartphone,
@@ -37,6 +39,7 @@ const roleIcons = {
 const roleColors = {
   owner: "default",
   manager: "secondary",
+  operations_manager: "secondary",
   chef: "outline",
   staff: "outline",
   kiosk: "outline",
@@ -148,8 +151,22 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
       <Card>
         <CardHeader>
           <CardTitle>Team Members</CardTitle>
-          <CardDescription>Loading team members...</CardDescription>
+          <CardDescription>Manage your restaurant team members and their roles</CardDescription>
         </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="flex items-center gap-3 p-4 border border-border/40 rounded-xl">
+                <Skeleton className="h-10 w-10 rounded-full" />
+                <div className="flex-1 space-y-2">
+                  <Skeleton className="h-4 w-32" />
+                  <Skeleton className="h-3 w-48" />
+                </div>
+                <Skeleton className="h-6 w-20 rounded-full" />
+              </div>
+            ))}
+          </div>
+        </CardContent>
       </Card>
     );
   }
@@ -169,7 +186,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
             const isOwner = member.role === 'owner';
             
             return (
-              <div key={member.id} className="flex items-center justify-between p-4 border rounded-lg">
+              <div key={member.id} className="flex items-center justify-between p-4 border border-border/40 rounded-xl hover:border-border transition-colors">
                 <div className="flex items-center gap-3">
                   <Avatar>
                     <AvatarFallback>
@@ -180,42 +197,45 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="font-medium">
+                    <p className="text-[14px] font-medium text-foreground">
                       {member.profiles?.full_name || 'Unknown User'}
                     </p>
-                    <p className="text-sm text-muted-foreground">
+                    <p className="text-[13px] text-muted-foreground">
                       {member.profiles?.email}
                     </p>
                   </div>
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  <Badge variant={roleColors[member.role as keyof typeof roleColors]} className="flex items-center gap-1">
+                  <Badge variant={roleColors[member.role as keyof typeof roleColors] ?? 'outline'} className="flex items-center gap-1 capitalize">
                     <RoleIcon className="h-3 w-3" />
-                    {member.role}
+                    {member.role === 'operations_manager' ? 'Ops Manager' : member.role}
                   </Badge>
                   
                   {canManageMembers && !isOwner && member.role !== 'kiosk' && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="sm">
+                        <Button variant="ghost" size="sm" aria-label={`Manage ${member.profiles?.full_name || member.profiles?.email || 'member'}`}>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <div className="px-2 py-1">
-                          <p className="text-sm font-medium">Change Role</p>
+                          <p className="text-[13px] font-medium text-foreground">Change Role</p>
                           <Select
                             value={member.role}
                             onValueChange={(newRole) => updateMemberRole(member.id, newRole)}
                           >
-                            <SelectTrigger className="w-full mt-1">
+                            <SelectTrigger className="w-full mt-1 h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="staff">Staff</SelectItem>
                               <SelectItem value="chef">Chef</SelectItem>
                               <SelectItem value="manager">Manager</SelectItem>
+                              {(userRole === 'owner' || userRole === 'manager') && (
+                                <SelectItem value="operations_manager">Operations Manager</SelectItem>
+                              )}
                               {userRole === 'owner' && (
                                 <SelectItem value="owner">Owner</SelectItem>
                               )}

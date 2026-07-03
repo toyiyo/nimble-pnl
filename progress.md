@@ -72,6 +72,12 @@ Phase 4–9: dev-build-and-ship workflow — launched
         Public wrapper also gains SET search_path=public (fixes unpinned SECURITY DEFINER injection risk).
         All 1517/1517 pgTAP tests green; 14 tests in categorization_background_rules.test.sql (a–i all pass).
 
+  - [x] Task 3b (plan Task 3 step 2, task 14/36): Run npm run test:db to verify tests fail (bank-transactions-internal not yet created)
+        RED confirmed via npm run test:db:
+        - Tests (a)-(n, i.e., 14 tests): all PASS (Tasks 1 and 2 supplier-semantics still green)
+        - Line 584: ERROR "function apply_rules_to_bank_transactions_internal(uuid,integer) does not exist"
+        - Tests (j)(k)(l) abort as expected; exit code 3 (SQL error in test file)
+        No commit needed — verification only step.
   - [x] Task 3a (plan Task 3 step 1, task 13/36): Write failing pgTAP tests (j–l) for apply_rules_to_bank_transactions_internal — commit 90877e19
         File: supabase/tests/categorization_background_rules.test.sql (plan 14→22, +174 lines)
         RED confirmed: ERROR at line 584 "function apply_rules_to_bank_transactions_internal(uuid,integer) does not exist"
@@ -84,6 +90,21 @@ Phase 4–9: dev-build-and-ship workflow — launched
           (k) NULL-auth batch: applied_count=1, is_categorized=true, supplier_id=d08 from rule,
               journal_entries row with created_by IS NULL (4 assertions)
           (l) public wrapper raises 'Permission denied...' for non-member sub (1 assertion)
+  - [x] Task 3c (plan Task 3 step 3, task 15/36): Implement migration §5 — apply_rules_to_bank_transactions_internal + supplier assignment + public wrapper — commit 3d9115f2
+        File: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§5 appended, +339 lines)
+        GREEN confirmed: npm run test:db → 1525/1525 passed, 0 failed.
+        All 22 tests (a–l) in categorization_background_rules.test.sql pass:
+          (j) privilege trio: authenticated/anon=false, service_role=true
+          (k) NULL-auth batch: applied_count=1, is_categorized=true, supplier_id=d08 from rule,
+              journal_entries row with created_by IS NULL
+          (l) public wrapper raises 'Permission denied...' for non-member sub
+        Key changes vs. apply_rules_to_bank_transactions:
+          1. Removed permission check block
+          2. Added matched.supplier_id AS rule_supplier_id to cursor SELECT
+          3. Non-split UPDATE uses COALESCE(v_transaction.supplier_id, v_transaction.rule_supplier_id, supplier_id)
+          4. auth.uid() in journal_entries INSERT tolerates NULL (column is NULLABLE per prod verification)
+          5. REVOKE EXECUTE from PUBLIC/anon/authenticated; GRANT to service_role
+          6. Public wrapper re-declared with SET search_path=public; delegates to internal
 
 ## CI Status
 - PR: not yet created

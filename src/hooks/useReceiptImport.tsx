@@ -77,6 +77,7 @@ export interface ReceiptLineItem {
   package_type: string | null;  // Type of container (bottle, bag, case, etc.)
   size_value: number | null;    // Amount per package (750 for 750ml bottle)
   size_unit: string | null;     // Unit of measurement (ml, oz, lb, etc.)
+  pack_quantity: number | null; // Distributor pack: inner units per case (audit/UI)
   matched_product_id: string | null;
   confidence_score: number | null;
   mapping_status: string;

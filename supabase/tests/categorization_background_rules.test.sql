@@ -52,9 +52,22 @@
 --         a journal_entries row exists with reference_id = txn.id AND created_by IS NULL
 --   (l) public wrapper apply_rules_to_bank_transactions raises 'Permission denied...'
 --       for a sub NOT in user_restaurants for restaurant H.
+--
+-- Task 4 (tests m1–m4): dynamic gate rewrite of the four sync functions (migration §6).
+--   Written RED (§6 not yet applied).
+--   (m) For each of the four gated sync functions, assert that after migration §6:
+--       - the function body does NOT contain 'skipping batch categorization'
+--         (the RAISE LOG text unique to the auth gate that bypasses categorization)
+--       - the function body DOES contain 'apply_rules_to_pos_sales_internal'
+--         (the unconditional call to the background-safe engine)
+--   Functions tested:
+--     m1: sync_toast_to_unified_sales(uuid)
+--     m2: sync_toast_to_unified_sales(uuid, date, date)
+--     m3: _sync_focus_to_unified_sales_impl(uuid, date, date)
+--     m4: _sync_focus_transactions_to_unified_sales_impl(uuid, date, date)
 
 BEGIN;
-SELECT plan(22);
+SELECT plan(26);
 
 -- ============================================================
 -- Setup
@@ -660,6 +673,69 @@ SELECT throws_ok(
 
 -- Reset JWT claims
 SET LOCAL "request.jwt.claims" TO '';
+
+-- ============================================================
+-- Tests (m1–m4): dynamic gate rewrite of the four sync functions (§6)
+-- ============================================================
+-- RED: §6 has not yet been applied. Each of the four sync functions still
+-- contains 'skipping batch categorization' (in the auth.uid() gate) and does
+-- NOT contain 'apply_rules_to_pos_sales_internal'. After §6 lands both
+-- conditions will flip and all four assertions will pass.
+--
+-- Assertion strategy (plan comment in plan(26) above):
+--   ok( def NOT LIKE '%skipping batch categorization%'
+--       AND def LIKE '%apply_rules_to_pos_sales_internal%', '...' )
+--
+-- We look up each function via pg_proc + pg_namespace to get the live body
+-- from pg_get_functiondef(), so the test is robust to function signature drift.
+
+-- (m1) sync_toast_to_unified_sales(uuid)
+SELECT ok(
+  (SELECT
+     pg_get_functiondef(p.oid) NOT LIKE '%skipping batch categorization%'
+     AND pg_get_functiondef(p.oid) LIKE '%apply_rules_to_pos_sales_internal%'
+   FROM pg_proc p
+   JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.oid::regprocedure::text = 'sync_toast_to_unified_sales(uuid)'),
+  '(m1) sync_toast_to_unified_sales(uuid) categorizes unconditionally via internal engine'
+);
+
+-- (m2) sync_toast_to_unified_sales(uuid, date, date)
+SELECT ok(
+  (SELECT
+     pg_get_functiondef(p.oid) NOT LIKE '%skipping batch categorization%'
+     AND pg_get_functiondef(p.oid) LIKE '%apply_rules_to_pos_sales_internal%'
+   FROM pg_proc p
+   JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.oid::regprocedure::text = 'sync_toast_to_unified_sales(uuid,date,date)'),
+  '(m2) sync_toast_to_unified_sales(uuid,date,date) categorizes unconditionally via internal engine'
+);
+
+-- (m3) _sync_focus_to_unified_sales_impl(uuid, date, date)
+SELECT ok(
+  (SELECT
+     pg_get_functiondef(p.oid) NOT LIKE '%skipping batch categorization%'
+     AND pg_get_functiondef(p.oid) LIKE '%apply_rules_to_pos_sales_internal%'
+   FROM pg_proc p
+   JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.oid::regprocedure::text = '_sync_focus_to_unified_sales_impl(uuid,date,date)'),
+  '(m3) _sync_focus_to_unified_sales_impl(uuid,date,date) categorizes unconditionally via internal engine'
+);
+
+-- (m4) _sync_focus_transactions_to_unified_sales_impl(uuid, date, date)
+SELECT ok(
+  (SELECT
+     pg_get_functiondef(p.oid) NOT LIKE '%skipping batch categorization%'
+     AND pg_get_functiondef(p.oid) LIKE '%apply_rules_to_pos_sales_internal%'
+   FROM pg_proc p
+   JOIN pg_namespace n ON n.oid = p.pronamespace
+   WHERE n.nspname = 'public'
+     AND p.oid::regprocedure::text = '_sync_focus_transactions_to_unified_sales_impl(uuid,date,date)'),
+  '(m4) _sync_focus_transactions_to_unified_sales_impl(uuid,date,date) categorizes unconditionally via internal engine'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

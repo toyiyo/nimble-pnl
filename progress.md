@@ -97,3 +97,15 @@
   - All 6 coverage-related suites: 79 tests pass (coverageSummary 13, coverageChart 28, areaCoverageStrips 6, coverageStatusStrip 8, coverageDemandInfo 5, shiftTimelineTab 19)
   - Lint: 0 errors, 1 pre-existing warning (`react-refresh/only-export-components` on `buildHourTooltip` export — design doc requires this export for direct testing; warning is not an error and does not block the build)
   - All 28 coverageChart tests pass including all CRITICAL-prefixed tooltip tests
+
+### Task 4a — Full verification: typecheck + lint + tests (UTC) + build, confirm recovered #569 suites pass
+- Status: DONE
+- Commit: (verification-only task — all code already committed; progress.md update committed below)
+- Verification results:
+  - Typecheck: clean (tsc --noEmit — 0 errors)
+  - Lint on branch-modified files: 0 errors, 1 pre-existing warning (`react-refresh/only-export-components` on `buildHourTooltip` — not an error)
+  - Pre-existing lint errors (1483 across other files) — not introduced by this branch (confirmed on main)
+  - `TZ=UTC npm run test` (all suites): 403 test files pass, 5374 tests pass (5 `focus*` test files fail due to pre-existing missing `fast-xml-parser` package — confirmed identical failure on `main` branch)
+  - All 6 coverage-related suites under TZ=UTC: 79 tests pass (coverageSummary 13, coverageChart 28, areaCoverageStrips 6, coverageStatusStrip 8, coverageDemandInfo 5, shiftTimelineTab 19)
+  - Recovered #569 suites confirmed green: areaCoverageStrips (6), coverageDemandInfo (5), coverageStatusStrip (8), shiftTimelineTab (19) — 38 total
+  - Build: `npm run build` succeeds in 50.65s (0 errors, only pre-existing chunk-size warnings)

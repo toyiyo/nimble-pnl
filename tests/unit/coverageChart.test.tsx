@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import { CoverageChart, buildHourTooltip } from '@/components/scheduling/ShiftTimeline/CoverageChart';
 
 // Shared minToPct for a 10:00–14:00 window (600–840 min, 240 min total).

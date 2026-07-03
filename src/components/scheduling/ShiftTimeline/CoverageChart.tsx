@@ -75,8 +75,10 @@ export function buildHourTooltip(h: CoverageHour, targetSplh: number | null): st
     lines.push(`Projected sales ${salesFmt}`);
 
     if (targetSplh !== null && targetSplh > 0) {
-      const approxNeeded = Math.round(h.projectedSales / targetSplh);
-      lines.push(`÷ $${targetSplh}/labor-hr target ≈ ${approxNeeded} needed`);
+      // Use h.needed (the authoritative value, already computed with Math.ceil + minimum
+      // crew rules) rather than re-dividing here, which would use Math.round and produce
+      // a contradictory number on the same tooltip.
+      lines.push(`÷ $${targetSplh}/labor-hr target ≈ ${h.needed} needed`);
     }
   }
 
@@ -188,17 +190,15 @@ const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
     let innerContent: ReactNode;
 
     if (h.delta === null) {
-      // No-demand hour — show scheduled headcount scaled by peak (not deltaPeak)
+      // No-demand hour — show scheduled headcount as an upward bar from the zero line,
+      // scaled by peak (not deltaPeak). height is % of the full column height.
       const barPct = Math.min(50, Math.max(0.5, (h.scheduled / peak) * 50));
       innerContent = (
-        // Zero line at 50% height
-        <div className="absolute left-0 right-0" style={{ top: '50%' }}>
-          <div
-            data-bar="no-demand"
-            className="bg-muted/60 w-full"
-            style={{ height: `${barPct}%` }}
-          />
-        </div>
+        <div
+          data-bar="no-demand"
+          className="absolute left-0 right-0 bg-muted/60"
+          style={{ bottom: '50%', height: `${barPct}%` }}
+        />
       );
     } else if (h.delta === 0) {
       innerContent = (
@@ -224,35 +224,36 @@ const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
 
       innerContent = isShort ? (
         <>
-          {/* Top half: empty */}
-          <div className="flex-1" />
-          {/* Bottom half: bar below zero line */}
-          <div className="flex-1 flex flex-col-reverse">
-            <div
-              data-bar={barState}
-              className={`w-full ${barClass}`}
-              style={{ height: `${barPct}%` }}
-            />
-          </div>
-          {/* Label below bar */}
-          <div className="absolute bottom-0 left-0 right-0 flex items-end justify-center" style={{ bottom: `calc(50% - ${barPct}% - 10px)` }}>
+          {/* Bar grows downward from zero line (50% from top).
+              height is a percentage of the full column height, so barPct=48 means
+              the bar occupies 48% of the whole chart — not 48% of the lower half. */}
+          <div
+            data-bar={barState}
+            className={`absolute left-0 right-0 ${barClass}`}
+            style={{ top: '50%', height: `${barPct}%` }}
+          />
+          {/* Label sits just below the bar's bottom edge */}
+          <div
+            className="absolute left-0 right-0 flex justify-center"
+            style={{ top: `calc(50% + ${barPct}% + 1px)` }}
+          >
             <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
           </div>
         </>
       ) : (
         <>
-          {/* Top half: bar above zero line */}
-          <div className="flex-1 flex flex-col-reverse">
-            <div
-              data-bar={barState}
-              className={`w-full ${barClass}`}
-              style={{ height: `${barPct}%` }}
-            />
-          </div>
-          {/* Bottom half: empty */}
-          <div className="flex-1" />
-          {/* Label above bar */}
-          <div className="absolute top-0 left-0 right-0 flex items-start justify-center" style={{ top: `calc(50% - ${barPct}% - 10px)` }}>
+          {/* Bar grows upward from zero line (50% from top).
+              height is a percentage of the full column height. */}
+          <div
+            data-bar={barState}
+            className={`absolute left-0 right-0 ${barClass}`}
+            style={{ bottom: '50%', height: `${barPct}%` }}
+          />
+          {/* Label sits just above the bar's top edge */}
+          <div
+            className="absolute left-0 right-0 flex justify-center"
+            style={{ bottom: `calc(50% + ${barPct}% + 1px)` }}
+          >
             <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
           </div>
         </>
@@ -266,7 +267,7 @@ const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
         data-hour-col=""
         tabIndex={0}
         aria-label={ariaLabel}
-        className="absolute inset-y-0 flex flex-col focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
         style={{ left: `${left}%`, width: `${width}%` }}
       >
         {innerContent}

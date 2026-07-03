@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeCoverageHours, buildVerdict } from '@/lib/coverageSummary';
+import { summarizeCoverageHours, buildVerdict, summarizeAreaCoverage } from '@/lib/coverageSummary';
+import type { Shift, Employee } from '@/types/scheduling';
 
 // window 10:00–13:00 (600–780), 15-min samples
 const win = { startMin: 600, endMin: 780 };
@@ -26,6 +27,60 @@ describe('summarizeCoverageHours', () => {
     expect(hrs[0].needed).toBeNull();
     expect(hrs[0].delta).toBeNull();
     expect(hrs[0].scheduled).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// summarizeAreaCoverage
+// ---------------------------------------------------------------------------
+
+const emp = (id: string, area: string | null): Employee =>
+  ({ id, restaurant_id: 'r', name: id, area: area ?? undefined, position: 'Server',
+     status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 0,
+     locked: false, created_at: '', updated_at: '' } as Employee);
+
+const shiftFor = (id: string, eid: string, start: string, end: string): Shift =>
+  ({ id, restaurant_id: 'r', employee_id: eid, start_time: start, end_time: end,
+     break_duration: 0, position: 'Server', status: 'scheduled', is_published: false,
+     source: 'manual', locked: false, created_at: '', updated_at: '' } as unknown as Shift);
+
+describe('summarizeAreaCoverage', () => {
+  const employees = [emp('a', 'Cold Stone'), emp('b', "Wetzel's")];
+  // window 10:00–12:00 CT  (America/Chicago = UTC−5 in July/CDT = UTC−5)
+  const win = { startMin: 600, endMin: 720 }; // 10:00–12:00 local
+
+  // Cold Stone emp 'a': 2026-07-11 15:00Z–18:00Z → CDT (UTC-5) = 10:00–13:00
+  // Wetzel's  emp 'b': 2026-07-11 16:00Z–19:00Z → CDT (UTC-5) = 11:00–14:00
+  const shifts = [
+    shiftFor('s1', 'a', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z'),
+    shiftFor('s2', 'b', '2026-07-11T16:00:00Z', '2026-07-11T19:00:00Z'),
+  ];
+
+  it('CRITICAL: groups scheduled coverage per area (scheduled-only, no demand)', () => {
+    const res = summarizeAreaCoverage(shifts, employees, '2026-07-11', 'America/Chicago', win);
+    const cs = res.find((r) => r.area === 'Cold Stone')!;
+    const wz = res.find((r) => r.area === "Wetzel's")!;
+    expect(cs).toBeDefined();
+    expect(wz).toBeDefined();
+    // Cold Stone is on at 10:00
+    expect(cs.hours[0]).toMatchObject({ hour: 10, scheduled: 1, needed: null, delta: null });
+    // Wetzel's not scheduled at 10:00 (starts 11:00 CDT)
+    expect(wz.hours[0].scheduled).toBe(0);
+    // Wetzel's is scheduled at 11:00
+    expect(wz.hours.find((h) => h.hour === 11)!.scheduled).toBe(1);
+  });
+
+  it('CRITICAL: buckets a null/blank area under the Unassigned label', () => {
+    const res = summarizeAreaCoverage(
+      [shiftFor('s3', 'c', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')],
+      [emp('c', null)],
+      '2026-07-11', 'America/Chicago', win,
+    );
+    expect(res[0].area).toBe('Unassigned');
+  });
+
+  it('returns [] for no shifts', () => {
+    expect(summarizeAreaCoverage([], employees, '2026-07-11', 'America/Chicago', win)).toEqual([]);
   });
 });
 

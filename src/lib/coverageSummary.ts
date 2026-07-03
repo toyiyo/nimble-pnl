@@ -6,6 +6,10 @@
  * they consume pre-computed minute values, not wall-clock times.
  */
 
+import { computeDayCoverage } from '@/lib/shiftCoverage';
+import { UNASSIGNED_LABEL } from '@/lib/scheduleGrouping';
+import type { Shift, Employee } from '@/types/scheduling';
+
 export interface CoverageHour {
   /** 0–23 clock hour (use Math.floor(startMin / 60) % 24 for the display label) */
   hour: number;
@@ -124,4 +128,72 @@ export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
     totalHours: hours.length,
     worst,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Per-area scheduled coverage (no per-area demand)
+// ---------------------------------------------------------------------------
+
+export interface AreaCoverage {
+  area: string;
+  /** Scheduled-only hours (needed and delta are always null). */
+  hours: CoverageHour[];
+}
+
+const AREA_STEP = 15;
+
+/**
+ * Per-area SCHEDULED coverage (no per-area demand). Groups shifts by the
+ * employee's `area` (same key as buildRosterDay), then reuses computeDayCoverage
+ * + summarizeCoverageHours with demand=null. Areas sorted alphabetically,
+ * Unassigned last.
+ */
+export function summarizeAreaCoverage(
+  shifts: Shift[],
+  employees: Employee[],
+  dateStr: string,
+  tz: string,
+  window: { startMin: number; endMin: number },
+): AreaCoverage[] {
+  if (shifts.length === 0) return [];
+
+  // Build a lookup: employeeId → area key (empty string for unassigned)
+  const areaById = new Map(
+    employees.map((e) => [e.id, (e.area ?? '').trim()]),
+  );
+
+  // Group non-cancelled shifts by area
+  const byArea = new Map<string, Shift[]>();
+  for (const s of shifts) {
+    if (s.status === 'cancelled') continue;
+    const key = areaById.get(s.employee_id) ?? '';
+    const arr = byArea.get(key);
+    if (arr) arr.push(s);
+    else byArea.set(key, [s]);
+  }
+
+  if (byArea.size === 0) return [];
+
+  // Sort: alphabetical, Unassigned (empty string) last
+  const keys = Array.from(byArea.keys()).sort((a, b) => {
+    if (a === '') return 1;
+    if (b === '') return -1;
+    return a.localeCompare(b);
+  });
+
+  return keys.map((key) => {
+    const areaShifts = byArea.get(key)!;
+    const coverage = computeDayCoverage(
+      areaShifts,
+      dateStr,
+      tz,
+      AREA_STEP,
+      window.startMin,
+      window.endMin,
+    );
+    return {
+      area: key || UNASSIGNED_LABEL,
+      hours: summarizeCoverageHours(coverage, null, window),
+    };
+  });
 }

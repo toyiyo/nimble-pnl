@@ -5,8 +5,8 @@ export interface AreaMismatch {
 
 /** Normalize an area value: trimmed string, or null when unknown/blank. */
 function normalizeArea(area: string | null | undefined): string | null {
-  const t = (area ?? '').trim();
-  return t.length > 0 ? t : null;
+  const trimmed = (area ?? '').trim();
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 /**

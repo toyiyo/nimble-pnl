@@ -340,7 +340,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                 </div>
 
                 {/* Pack summary — shown only when pack_quantity > 1 */}
-                {item.pack_quantity && item.pack_quantity > 1 && (
+                {(item.pack_quantity ?? 0) > 1 && (
                   <p
                     className="text-[13px] text-muted-foreground"
                     aria-live="polite"

@@ -4,12 +4,15 @@
  * Edge function: cron-triggered durable backfill engine for Focus POS Lynk connections.
  *
  * This thin entry point reads Deno environment variables, builds the injectable
- * deps (service-role client, sleep, now, serviceRoleKey), and delegates all
- * business logic to focusBackfillSyncHandler.ts.
+ * deps (service-role client, sleep, now), and delegates all business logic to
+ * focusBackfillSyncHandler.ts.
  *
- * Auth model: verify_jwt = false (cron callers don't send JWTs). Access is
- * gated by a timing-safe Bearer token check against SUPABASE_SERVICE_ROLE_KEY
- * inside the handler (lesson 2026-05-07).
+ * Auth model: verify_jwt = false, and NO in-function Bearer gate — this cron
+ * worker mirrors toast-bulk-sync / shift4-bulk-sync. It only pulls the
+ * restaurant's own Focus data via idempotent upserts, so the pg_cron job can
+ * invoke it with no Authorization header (removing the legacy service-role-key
+ * dependency Supabase now discourages). The service-role key is still read from
+ * the environment for the internal DB client only.
  *
  * Schedule: every 5 minutes — "* /5 * * * *" (idiomatic for fast backfill).
  * No-op when no connections have initial_sync_done=false AND api_key IS NOT NULL.
@@ -36,8 +39,7 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
-    // Fail closed: if either config var is absent the Bearer gate would pass
-    // timingSafeEqual('', '') — reject immediately before creating any client.
+    // The internal DB client needs both vars; without them no work can happen.
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('focus-backfill-sync: missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
       return new Response(JSON.stringify({ error: 'Internal server error' }), {
@@ -53,7 +55,6 @@ serve(async (req: Request) => {
       serviceClient,
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => Date.now(),
-      serviceRoleKey: supabaseServiceKey,
       sandboxBaseUrl: Deno.env.get('FOCUS_API_SANDBOX_URL') || undefined,
     });
 

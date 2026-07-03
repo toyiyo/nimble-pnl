@@ -5,9 +5,7 @@
  * Vitest unit tests for supabase/functions/_shared/focusBulkSyncHandler.ts
  *
  * Coverage:
- *  - Auth: 401 when Authorization header is missing
- *  - Auth: 401 when Authorization header does not match the service-role key
- *  - Auth: timing-safe compare (not short-circuit; confirmed by constant-time gate)
+ *  - Gate-less: processes with no Authorization header (matches toast/shift4)
  *  - Processing: queries active connections ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
  *  - Processing: processes each connection via processReportDay (backfill or incremental)
  *  - Processing: respects 2s inter-restaurant delay (injectable deps.sleep)
@@ -19,8 +17,8 @@
  *  - At most 5 connections processed per run (LIMIT 5)
  *
  * Design ref: plan Task 10; spec §8 (focus-bulk-sync), §9 (sync orchestration);
- * review S5 (LIMIT 5, round-robin), design §8 ("timing-safe Bearer gate", "2s delay",
- * "90s wall-clock budget").
+ * review S5 (LIMIT 5, round-robin), design §8 ("2s delay", "90s wall-clock budget").
+ * Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -246,7 +244,6 @@ function makeDeps(opts: {
   fetchHtml?: string;
   sleepMs?: number;
   nowFn?: () => number;
-  serviceRoleKey?: string;
 } = {}): { deps: BulkSyncDeps; mocks: ReturnType<typeof makeServiceClientMock>['mocks']; sleepMock: ReturnType<typeof makeSleepMock>; fetchMock: ReturnType<typeof makeFetchMock> } {
   const { client: serviceClient, mocks } = makeServiceClientMock(opts.serviceClientOpts ?? {});
   const fetchMock = makeFetchMock(opts.fetchHtml ?? VALID_HTML);
@@ -258,7 +255,6 @@ function makeDeps(opts: {
       fetch: fetchMock,
       sleep: sleepMock,
       now: opts.nowFn ?? makeClock(Date.now()),
-      serviceRoleKey: opts.serviceRoleKey ?? SERVICE_ROLE_KEY,
     },
     mocks,
     sleepMock,
@@ -269,34 +265,18 @@ function makeDeps(opts: {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 describe('handleBulkSync', () => {
-  // ── Bearer gate ──────────────────────────────────────────────────────────────
+  // ── Gate-less: processes with no Authorization header (matches toast/shift4) ──
 
-  it('returns 401 when Authorization header is absent', async () => {
-    const { deps } = makeDeps();
+  it('processes with NO Authorization header (no Bearer gate)', async () => {
+    const { deps } = makeDeps({ serviceClientOpts: { connections: [] } });
     const req = makeRequest({ authHeader: null });
     const res = await handleBulkSync(req, deps);
 
-    expect(res.status).toBe(401);
+    // No 401 — the worker runs and returns its normal 200 result shape.
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  it('returns 401 when the Authorization header does not match the service-role key', async () => {
-    const { deps } = makeDeps();
-    const req = makeRequest({ authHeader: 'Bearer WRONG-KEY' });
-    const res = await handleBulkSync(req, deps);
-
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  it('returns 401 for an entirely missing Bearer prefix (bare token)', async () => {
-    const { deps } = makeDeps();
-    const req = makeRequest({ authHeader: SERVICE_ROLE_KEY }); // no "Bearer " prefix
-    const res = await handleBulkSync(req, deps);
-
-    expect(res.status).toBe(401);
+    expect(body).toHaveProperty('processed');
+    expect(body).toHaveProperty('elapsedMs');
   });
 
   // ── Successful run with a single incremental connection ──────────────────────
@@ -509,7 +489,6 @@ describe('handleBulkSync', () => {
       fetch: fetchMock,
       sleep: sleepMock,
       now: makeClock(Date.now()),
-      serviceRoleKey: SERVICE_ROLE_KEY,
     };
 
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });

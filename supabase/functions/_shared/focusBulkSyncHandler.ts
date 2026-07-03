@@ -4,7 +4,7 @@
  * Injectable handler for the focus-bulk-sync edge function (pg_cron trigger).
  *
  * Responsibilities:
- *  1. Gate: constant-time Bearer comparison vs SUPABASE_SERVICE_ROLE_KEY → 401.
+ *  1. No inbound auth gate (mirrors toast-bulk-sync / shift4-bulk-sync). verify_jwt=false.
  *  2. Query: SELECT active focus_connections ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
  *     (round-robin per spec §9 / review S5).
  *  3. For each connection:
@@ -21,9 +21,8 @@
  * Design references:
  *  - Plan Task 10
  *  - Spec §8 (focus-bulk-sync), §9 (sync orchestration)
- *  - §16 S5 (LIMIT 5 round-robin), review design ("timing-safe Bearer gate",
- *    "2s delay", "90s wall-clock budget")
- *  - Lesson 2026-05-07: timing-safe cron gate
+ *  - §16 S5 (LIMIT 5 round-robin), review design ("2s delay", "90s wall-clock budget")
+ *  - Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer)
  *
  * The handler receives pre-constructed deps (serviceClient, fetch, sleep, now,
  * serviceRoleKey) so it is fully testable with Vitest without Deno globals.
@@ -118,7 +117,6 @@ export interface ServiceClient {
  * - fetch            fetch-compatible function.
  * - sleep            Waits n ms between restaurants (injectable for tests).
  * - now              Returns the current wall-clock timestamp in ms (injectable for tests).
- * - serviceRoleKey   The raw service-role key to compare against the Bearer token.
  * - sandboxBaseUrl   Optional override URL for environment='sandbox' connections
  *                    (FOCUS_API_SANDBOX_URL env var). Without it, sandbox connections
  *                    fall back to the production URL (focusApiBaseUrl doc §6).
@@ -130,7 +128,6 @@ export interface BulkSyncDeps {
   fetch: FetchDeps['fetch'];
   sleep: (ms: number) => Promise<void>;
   now: () => number;
-  serviceRoleKey: string;
   sandboxBaseUrl?: string;
   domParser?: { parseFromString(html: string, mimeType: string): Document };
 }
@@ -142,31 +139,6 @@ interface BulkSyncResult {
   /** Per-restaurant error strings for failed restaurants. */
   errors: string[];
   elapsedMs: number;
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Constant-time string comparison to avoid timing side-channels on the
- * service-role Bearer token gate (lesson 2026-05-07).
- *
- * Iterates over max(a.length, b.length) in all branches so that response
- * time does not reveal the correct token length to an attacker making
- * requests with tokens of varying lengths.
- *
- * Returns true only when both strings have equal length and content.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  const maxLen = Math.max(a.length, b.length);
-  let diff = a.length ^ b.length; // non-zero when lengths differ
-  for (let i = 0; i < maxLen; i++) {
-    // Out-of-bounds charCodeAt returns NaN; NaN ^ NaN is 0 in JS,
-    // so we substitute 0 for missing characters to avoid NaN poisoning.
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ca ^ cb;
-  }
-  return diff === 0;
 }
 
 // ── Per-connection processor ──────────────────────────────────────────────────
@@ -323,13 +295,15 @@ async function processConnection(
 /**
  * Handle a POST /focus-bulk-sync request (triggered by pg_cron).
  *
- * Required header: Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+ * No inbound auth gate — mirrors toast-bulk-sync / shift4-bulk-sync (verify_jwt=false,
+ * no Bearer check). Pull-only, idempotent upserts; worst case for an unauthenticated
+ * call is a redundant sync. Removes the dependency on the legacy service-role key in
+ * the pg_cron invocation.
  *
- * Returns 200 { processed, errors, elapsedMs } on success.
- * Returns 401 when the Bearer token is absent or does not match the service-role key.
+ * Returns 200 { processed, errors, elapsedMs }.
  */
 export async function handleBulkSync(
-  req: Request,
+  _req: Request,
   deps: BulkSyncDeps,
 ): Promise<Response> {
   const jsonResponse = (body: unknown, status = 200): Response =>
@@ -340,20 +314,7 @@ export async function handleBulkSync(
 
   const startMs = deps.now();
 
-  // ── 1. Bearer gate (timing-safe) ──────────────────────────────────────────
-
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const prefix = 'Bearer ';
-  if (!authHeader.startsWith(prefix)) {
-    return jsonResponse({ error: 'Unauthorized: missing Bearer token' }, 401);
-  }
-  const token = authHeader.slice(prefix.length);
-
-  if (!timingSafeEqual(token, deps.serviceRoleKey)) {
-    return jsonResponse({ error: 'Unauthorized: invalid service-role key' }, 401);
-  }
-
-  // ── 2. Fetch active connections (round-robin LIMIT 5) ─────────────────────
+  // ── Fetch active connections (round-robin LIMIT 5) ────────────────────────
 
   const { data: rows, error: queryError } = await deps.serviceClient
     .from('focus_connections')

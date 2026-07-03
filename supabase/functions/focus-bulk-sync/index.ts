@@ -4,12 +4,13 @@
  * Edge function: cron-triggered round-robin sync of active Focus POS connections.
  *
  * This thin entry point reads Deno environment variables, builds the injectable
- * deps (service-role client, fetch, sleep, now, serviceRoleKey), and delegates
- * all business logic to focusBulkSyncHandler.ts.
+ * deps (service-role client, fetch, sleep, now), and delegates all business
+ * logic to focusBulkSyncHandler.ts.
  *
- * Auth model: verify_jwt = false (cron callers don't send JWTs). Access is
- * gated by a timing-safe Bearer token check against SUPABASE_SERVICE_ROLE_KEY
- * inside the handler (lesson 2026-05-07).
+ * Auth model: verify_jwt = false, and NO in-function Bearer gate — mirrors
+ * toast-bulk-sync / shift4-bulk-sync. Pull-only, idempotent upserts; the pg_cron
+ * job invokes it with no Authorization header. The service-role key is still read
+ * from the environment for the internal DB client only.
  *
  * Design ref: plan Task 10; spec §8 (focus-bulk-sync), §9 (sync orchestration);
  * review S5 (LIMIT 5, round-robin).
@@ -46,7 +47,6 @@ serve(async (req: Request) => {
       fetch: makeFocusHttpFetch(serviceClient),
       sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => Date.now(),
-      serviceRoleKey: supabaseServiceKey,
       sandboxBaseUrl: Deno.env.get('FOCUS_API_SANDBOX_URL') || undefined,
       domParser: new DOMParser(),
     });

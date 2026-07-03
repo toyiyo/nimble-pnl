@@ -21,6 +21,16 @@
 - TDD cycle: fixtures updated → all 60 coverage-related tests pass → typecheck clean → commit
 - Suites confirmed green: coverageSummary (13), coverageChart (12), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (16)
 
+### Task 2b — Rewrite CoverageChart as absolutely-positioned HTML columns using minToPct prop (area + delta views)
+- Status: DONE
+- Commit: a8fc33ee
+- Files changed:
+  - `src/components/scheduling/ShiftTimeline/CoverageChart.tsx` — added `buildColumnAriaLabel` helper; imported shadcn `Tooltip`/`TooltipProvider`/`TooltipTrigger`/`TooltipContent`; added `ariaLabel` prop to `AreaColumn` and `DeltaColumn` (all three `data-hour-col` return paths); added `tabIndex={0}`, `aria-label`, and focus-visible ring styles on each column div; wrapped each column in `Tooltip`/`TooltipTrigger asChild`/`TooltipContent` (shell — content extended in task 3); wrapped chart root in `TooltipProvider`.
+  - `src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx` — destructured `activeSettings` from `useWeekStaffingSuggestions`; computed `targetSplh = activeSettings?.target_splh ?? null`; passed `dayRecommendations` as 4th arg to `summarizeCoverageHours`; passed `minToPct` and `targetSplh` props to `CoverageChart`.
+  - `tests/unit/coverageChart.test.tsx` — added `CoverageChart — accessibility (tooltip shell)` describe block with 2 tests: `each hour column is keyboard-focusable (tabIndex=0)` and `each hour column has a descriptive aria-label`.
+- TDD cycle: RED (2 new tests fail — tabIndex and aria-label not on columns) → GREEN (13 tests pass) → typecheck clean → commit
+- Suites confirmed green: coverageSummary (13), coverageChart (13), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (16)
+
 ### Task 2a — Update CoverageChart tests for grid-aligned HTML column selectors (data-hour-col, data-shortfall, data-bar)
 - Status: DONE
 - Commit: ccb83054

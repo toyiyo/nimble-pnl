@@ -31,6 +31,14 @@ Phase 4–9: dev-build-and-ship workflow — launched
   - [x] Task 1e: §3 auto_apply_bank_categorization_rules — already implemented in commit 39886317 (part of §1–§3 GREEN);
         adds cr.supplier_id to SELECT list and NEW.supplier_id := COALESCE(NEW.supplier_id, v_matching_rule.supplier_id)
         in the apply branch. GREEN confirmed: 1511/1511 pgTAP tests pass; trigger tests (e, f) both pass.
+  - [x] Task 1f (plan step "Run npm run test:db to verify Task 1 tests pass and no regressions"):
+        npm run test:db: 1511/1511 passed, 0 failed. All Task 1 supplier-semantics tests (a–f) confirmed green,
+        no regressions in existing suite.
+  - [x] Task 1g (plan step 5, task 7/36): Commit Task 1 (supplier-assign semantics in three bank match/apply paths) — commit 39886317
+        Files: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§1–§3)
+               supabase/tests/categorization_background_rules.test.sql
+        Message: "fix(categorization): supplier on bank rules assigns instead of filters when other criteria exist"
+        All 1511 pgTAP tests green; 8 new supplier-semantics tests (a–f) pass.
 
 ## CI Status
 - PR: not yet created

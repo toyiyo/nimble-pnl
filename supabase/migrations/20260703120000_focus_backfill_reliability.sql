@@ -85,6 +85,7 @@ SET search_path = public
 AS $$
 DECLARE
   r record;
+  v_full_range boolean;
 BEGIN
   FOR r IN
     SELECT fc.restaurant_id, fc.initial_sync_done
@@ -95,19 +96,33 @@ BEGIN
   LOOP
     BEGIN
       restaurant_id := r.restaurant_id;
-      IF r.initial_sync_done THEN
+
+      -- Full-range when the backfill is still running, OR when HISTORICAL rows
+      -- (older than the 3-day incremental window) were written recently.
+      -- The second condition closes the completion race (Codex P1, PR #567):
+      -- the worker's FINAL batch writes ~5 historical days and flips
+      -- initial_sync_done=true between two cron ticks — without this, those
+      -- days would fall to the 3-day branch and never reach unified_sales.
+      -- It also picks up custom-range re-imports of old dates for free.
+      v_full_range := (NOT r.initial_sync_done) OR EXISTS (
+        SELECT 1
+        FROM public.focus_orders fo
+        WHERE fo.restaurant_id = r.restaurant_id
+          AND fo.updated_at   > now() - interval '15 minutes'
+          AND fo.business_date < (CURRENT_DATE - 3)
+      );
+
+      IF v_full_range THEN
+        -- Aggregate ALL dates stored in focus_orders (NULL bounds ⇒ full range).
+        rows_synced := public._sync_focus_transactions_to_unified_sales_impl(
+                         r.restaurant_id, NULL, NULL
+                       );
+      ELSE
         -- Incremental: 3-day lookback window (timezone-safe, matches prior behaviour).
         rows_synced := public._sync_focus_transactions_to_unified_sales_impl(
                          r.restaurant_id,
                          (CURRENT_DATE - interval '3 days')::date,
                          CURRENT_DATE
-                       );
-      ELSE
-        -- Backfill in progress: aggregate ALL dates already stored in focus_orders,
-        -- so the historical days the worker is importing reach unified_sales / P&L.
-        -- NULL date bounds ⇒ full range (see _impl p_start_date/p_end_date IS NULL).
-        rows_synced := public._sync_focus_transactions_to_unified_sales_impl(
-                         r.restaurant_id, NULL, NULL
                        );
       END IF;
       RETURN NEXT;

@@ -1,7 +1,7 @@
 -- Tests for Focus POS backfill reliability migration
 -- Migration: 20260703120000_focus_backfill_reliability.sql
 --
--- Test plan (10 tests):
+-- Test plan (13 tests):
 --  1  focus-transactions-unified-sales-sync now runs every 5 minutes (was 6 h)
 --  2  focus-backfill-sync cron uses a hardcoded URL (no current_setting GUC)
 --  3  focus-bulk-sync cron uses a hardcoded URL (no current_setting GUC)
@@ -12,9 +12,12 @@
 --  8  sale rows get sale_time from the check's TimeOpened
 --  9  tip offset rows get the same sale_time
 -- 10  malformed timestamps degrade to NULL sale_time (row still synced)
+-- 11  wrapper: backfilling connection (initial_sync_done=false) → full-range sync
+-- 12  wrapper: done + RECENT historical writes → still full-range (completion race)
+-- 13  wrapper: done + no recent historical writes → 3-day incremental (0 rows here)
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(13);
 
 -- Test 1: the transaction→unified_sales aggregation cron is now every 5 minutes,
 -- so backfilled days reach P&L within minutes (in-database, no edge CPU limit).
@@ -163,6 +166,57 @@ SELECT ok(
       AND us.sale_time IS NULL
   ),
   'malformed timestamps degrade to NULL sale_time; the row is still synced'
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Wrapper branch selection (full-range vs 3-day incremental)
+-- Seeds live on 2026-06-20/21 — always OUTSIDE the 3-day window — so
+-- rows_synced discriminates the branch: full-range = 3 (2 sales + 1 tip),
+-- 3-day incremental = 0.
+-- ─────────────────────────────────────────────────────────────────────
+
+-- Test 11: backfilling (initial_sync_done=false) → full-range → 3 rows.
+SELECT is(
+  (SELECT sf.rows_synced
+   FROM public.sync_all_focus_transactions_to_unified_sales() sf
+   WHERE sf.restaurant_id = '00000000-0000-0000-0000-f0c200000011'),
+  3,
+  'wrapper uses the full-range sync while a connection is backfilling'
+);
+
+-- Flip the connection to "backfill complete". The seeded focus_orders rows were
+-- written moments ago (updated_at = now()) with historical business_dates, which
+-- is exactly the completion-race shape: the worker's final batch just landed.
+UPDATE public.focus_connections
+SET initial_sync_done = true
+WHERE id = '00000000-0000-0000-0000-f0c200000021';
+
+-- Test 12: done + recent historical writes → STILL full-range (Codex P1 fix).
+SELECT is(
+  (SELECT sf.rows_synced
+   FROM public.sync_all_focus_transactions_to_unified_sales() sf
+   WHERE sf.restaurant_id = '00000000-0000-0000-0000-f0c200000011'),
+  3,
+  'wrapper stays on full-range right after completion (recent historical writes)'
+);
+
+-- Age the order rows past the 15-minute grace window. focus_orders has a
+-- BEFORE UPDATE trigger that resets updated_at=now(), so disable user triggers
+-- for this aging UPDATE (transaction-local; the whole test rolls back).
+ALTER TABLE public.focus_orders DISABLE TRIGGER USER;
+UPDATE public.focus_orders
+SET updated_at = now() - interval '2 hours'
+WHERE restaurant_id = '00000000-0000-0000-0000-f0c200000011';
+ALTER TABLE public.focus_orders ENABLE TRIGGER USER;
+
+-- Test 13: done + NO recent historical writes → 3-day incremental → 0 rows
+-- (the seeded dates are outside the window; steady-state stays cheap).
+SELECT is(
+  (SELECT sf.rows_synced
+   FROM public.sync_all_focus_transactions_to_unified_sales() sf
+   WHERE sf.restaurant_id = '00000000-0000-0000-0000-f0c200000011'),
+  0,
+  'wrapper falls back to the 3-day incremental window in steady state'
 );
 
 SELECT * FROM finish();

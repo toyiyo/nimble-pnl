@@ -15,19 +15,20 @@ interface CoverageStatusStripProps {
 /**
  * Derive an aria-label for a single hour cell.
  *
- * - Short: "{Hour label}, short {N}"
- * - Covered: "{Hour label}, covered"
- * - No demand: "{Hour label}"  (neutral)
+ * - Short with demand: "{Hour label}, {scheduled} of {needed}, short {N}"
+ * - Covered with demand: "{Hour label}, {scheduled} of {needed}, covered"
+ * - No demand: "{Hour label}, {scheduled} scheduled"  (neutral)
  */
 function cellAriaLabel(hour: CoverageHour, label: string): string {
-  if (hour.delta === null) {
-    // No demand configured — just announce the hour
-    return label;
+  if (hour.delta === null || hour.needed === null) {
+    // No demand configured — announce hour and scheduled count
+    return `${label}, ${hour.scheduled} scheduled`;
   }
+  const fraction = `${hour.scheduled} of ${hour.needed}`;
   if (hour.delta < 0) {
-    return `${label}, short ${Math.abs(hour.delta)}`;
+    return `${label}, ${fraction}, short ${Math.abs(hour.delta)}`;
   }
-  return `${label}, covered`;
+  return `${label}, ${fraction}, covered`;
 }
 
 /**
@@ -46,17 +47,21 @@ export function CoverageStatusStrip({
 }: CoverageStatusStripProps) {
   if (hours.length === 0) return null;
 
+  // Compute each hour's label once — reused by the visual strip and sr-only list.
+  const labelByStartMin = new Map(hours.map((h) => [h.startMin, formatHour(h.hour)]));
   const shortHours = hours.filter((h) => h.delta !== null && h.delta < 0);
 
   return (
     <div className="space-y-1">
       {/* Visual strip of per-hour cells */}
-      <div className="flex gap-0.5" role="group" aria-label="Hourly coverage status">
+      <div className="flex gap-[3px]" role="group" aria-label="Hourly coverage status">
         {hours.map((h) => {
-          const label = formatHour(h.hour);
+          const label = labelByStartMin.get(h.startMin)!;
           const ariaLabel = cellAriaLabel(h, label);
           const isShort = h.delta !== null && h.delta < 0;
-          const hasDemand = h.delta !== null;
+          // Guard both delta and needed — inconsistent upstream state (delta
+          // non-null but needed null) must not reach the `h.needed!` assertion.
+          const hasDemand = h.delta !== null && h.needed !== null;
 
           let cellColorClass: string;
           if (isShort) {
@@ -78,12 +83,10 @@ export function CoverageStatusStrip({
                 cellColorClass,
               )}
             >
-              <span className="text-[10px] font-medium leading-none">{label}</span>
-              {hasDemand && (
-                <span className="text-[10px] leading-none">
-                  {isShort ? `−${Math.abs(h.delta as number)}` : '✓'}
-                </span>
-              )}
+              <span className="text-[9px] font-medium leading-none">{label}</span>
+              <span className="text-[11px] leading-none tabular-nums">
+                {hasDemand ? `${h.scheduled}/${h.needed!}` : `${h.scheduled}`}
+              </span>
             </div>
           );
         })}
@@ -93,7 +96,7 @@ export function CoverageStatusStrip({
       {shortHours.length > 0 && (
         <ul aria-label="Understaffed windows" className="sr-only">
           {shortHours.map((h) => {
-            const label = formatHour(h.hour);
+            const label = labelByStartMin.get(h.startMin)!;
             const deficit = Math.abs(h.delta as number);
             return (
               <li key={h.startMin}>

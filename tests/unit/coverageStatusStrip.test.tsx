@@ -62,4 +62,29 @@ describe('CoverageStatusStrip', () => {
     const { container } = render(<CoverageStatusStrip hours={[]} />);
     expect(container.firstChild).toBeNull();
   });
+
+  it('CRITICAL: shows have/needed for demand hours and scheduled-only when no demand', () => {
+    render(
+      <CoverageStatusStrip
+        hours={[
+          { hour: 17, startMin: 1020, scheduled: 3, needed: 5, delta: -2 },
+          { hour: 18, startMin: 1080, scheduled: 4, needed: null, delta: null },
+        ]}
+      />,
+    );
+    // Demand-present hour shows "have/needed" fraction
+    expect(screen.getByText('3/5')).toBeInTheDocument();
+    // No-demand hour shows just the scheduled count
+    expect(screen.getByText('4')).toBeInTheDocument();
+  });
+
+  it('CRITICAL: aria-label for demand cell includes "N of M" and gap direction', () => {
+    render(
+      <CoverageStatusStrip
+        hours={[{ hour: 18, startMin: 1080, scheduled: 3, needed: 5, delta: -2 }]}
+      />,
+    );
+    // aria-label should expose "3 of 5, short 2" so screen readers convey the fraction
+    expect(screen.getByLabelText(/3 of 5.*short 2/i)).toBeInTheDocument();
+  });
 });

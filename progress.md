@@ -47,6 +47,7 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
 - Capability-first RLS: extend user_has_capability; residual hardcoded operational policies get the role; accounting tables untouched (natural deny).
 
 - [x] Phase 5 UI Review — TeamMembers.tsx: Skeleton loading state, border-border/40 rounded-xl list items, text-[14px]/text-[13px] typography, aria-label on MoreHorizontal, operations_manager in roleIcons/roleColors/select, human-readable badge label. Commit: 2052dbfc.
+- [x] Phase 6 Simplify — TeamMembers.tsx: replaced hard-coded 'Ops Manager' special-case with ROLE_METADATA label lookup (reuse). invitations.ts: dropped redundant `?? []` nullish guards on fully-typed Record. All 5134 tests pass. Commit: a7b6d619.
 
 ## CI Status
 - PR: not yet created

@@ -106,7 +106,8 @@ export function parsePackSizeToken(token: string): ParsedPackSize | null {
   const hasSlash = trimmed.includes('/');
   const [packPart, sizePart] = hasSlash ? trimmed.split('/', 2) : ['1', trimmed];
 
-  const unitsPerPack = hasSlash ? Math.max(1, parseInt(packPart, 10) || 1) : 1;
+  // parseInt('1') === 1 when !hasSlash; Math.max guards against malformed pack numbers.
+  const unitsPerPack = Math.max(1, parseInt(packPart, 10) || 1);
 
   // size like "2.5GAL" or "32 OZ" → number then unit (parseFloat keeps decimals)
   const sizeMatch = sizePart.trim().match(/^([\d.]+)\s*([a-zA-Z ]+)$/);

@@ -18,6 +18,9 @@ import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 
 type ConfidenceTier = 'auto-approved' | 'quick-review' | 'needs-attention';
 
+/** Shared className for intent-status badges (keeps all 6 badge nodes consistent). */
+const BADGE_CN = 'text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground';
+
 /**
  * Returns the plural form of a unit label when n !== 1.
  * Falls back to "unit" / "units" when the unit is blank.
@@ -77,42 +80,41 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
   const getIntentLabel = (item: ReceiptLineItem) => {
     // Already resolved
     if (item.mapping_status === 'mapped') {
-      return <Badge variant="secondary" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">Looks correct</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Looks correct</Badge>;
     }
     if (item.mapping_status === 'skipped') {
-      return <Badge variant="secondary" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">Skipped</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Skipped</Badge>;
     }
     if (item.mapping_status === 'new_item' && (item.confidence_score || 0) >= 0.8) {
-      return <Badge variant="secondary" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">New item</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>New item</Badge>;
     }
 
     // Needs attention indicators
     if (!item.matched_product_id && item.mapping_status === 'pending') {
       if ((item.confidence_score || 0) < 0.5) {
-        return <Badge variant="secondary" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">No match found</Badge>;
+        return <Badge variant="secondary" className={BADGE_CN}>No match found</Badge>;
       }
-      return <Badge variant="secondary" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">Check mapping</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Check mapping</Badge>;
     }
 
     // Size/unit issues
     if (!item.size_value && !item.size_unit) {
-      return <Badge variant="secondary" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">Add size info</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Add size info</Badge>;
     }
 
     // Price anomaly (simple heuristic - if price seems unusual)
     if (item.parsed_price && item.parsed_price > 100) {
-      return <Badge variant="secondary" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">Check price</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Check price</Badge>;
     }
     
     return null;
   };
 
   const formatPrice = (price: number | null) => {
-    if (!price) return '$0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD'
-    }).format(price);
+    }).format(price ?? 0);
   };
 
   const getStatusIcon = () => {

@@ -8,7 +8,7 @@
  * connection, within an 80-second total wall budget.
  *
  * Responsibilities:
- *  1. Gate: timing-safe Bearer compare vs SUPABASE_SERVICE_ROLE_KEY → 401.
+ *  1. No inbound auth gate (mirrors toast-bulk-sync / shift4-bulk-sync). verify_jwt=false.
  *  2. Query: active Lynk connections still backfilling:
  *       is_active=true AND initial_sync_done=false AND api_key IS NOT NULL
  *       ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5  (round-robin fairness).
@@ -24,7 +24,7 @@
  *
  * Design references:
  *  - Plan B4; spec §5.3 (focus-backfill-sync) + §8.1 (CAS) + §8.3 (error status).
- *  - Mirrors focusBulkSyncHandler timing-safe Bearer gate pattern.
+ *  - Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer).
  *  - Per-restaurant budget: remaining_budget / restaurants_left, capped at 50_000ms.
  */
 
@@ -123,7 +123,6 @@ export interface BackfillSyncServiceClient {
  * - serviceClient  Built from SUPABASE_SERVICE_ROLE_KEY (bypasses RLS).
  * - sleep          Waits n ms between restaurants (injectable for tests).
  * - now            Returns the current wall-clock timestamp in ms (injectable for tests).
- * - serviceRoleKey The raw service-role key to compare against the Bearer token.
  * - sandboxBaseUrl Optional override URL for environment='sandbox' connections
  *                  (FOCUS_API_SANDBOX_URL env var). Without it, sandbox connections
  *                  fall back to the production URL (focusApiBaseUrl doc §6).
@@ -132,7 +131,6 @@ export interface BackfillSyncDeps {
   serviceClient: BackfillSyncServiceClient;
   sleep: (ms: number) => Promise<void>;
   now: () => number;
-  serviceRoleKey: string;
   sandboxBaseUrl?: string;
 }
 
@@ -143,43 +141,21 @@ interface BackfillSyncResult {
   elapsedMs: number;
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/**
- * Constant-time string comparison to avoid timing side-channels on the
- * service-role Bearer token gate (lesson 2026-05-07).
- *
- * Iterates over max(a.length, b.length) in all branches so that response
- * time does not reveal the correct token length to an attacker making
- * requests with tokens of varying lengths.
- *
- * Returns true only when both strings have equal length and content.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  const maxLen = Math.max(a.length, b.length);
-  let diff = a.length ^ b.length; // non-zero when lengths differ
-  for (let i = 0; i < maxLen; i++) {
-    // Out-of-bounds charCodeAt returns NaN; NaN ^ NaN is 0 in JS,
-    // so we substitute 0 for missing characters to avoid NaN poisoning.
-    const ca = i < a.length ? a.charCodeAt(i) : 0;
-    const cb = i < b.length ? b.charCodeAt(i) : 0;
-    diff |= ca ^ cb;
-  }
-  return diff === 0;
-}
-
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 /**
  * Handle a POST /focus-backfill-sync request (triggered by pg_cron).
  *
- * Required header: Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>
+ * No inbound auth gate — this worker mirrors the toast-bulk-sync / shift4-bulk-sync
+ * cron pattern (verify_jwt=false, no Bearer check). It only PULLs the restaurant's
+ * own Focus data via idempotent upserts, so the worst case for an unauthenticated
+ * call is a redundant sync. This removes the dependency on the legacy service-role
+ * key (which Supabase now discourages) in the pg_cron invocation.
  *
- * Returns 200 { processed, errors, elapsedMs } on success.
- * Returns 401 when the Bearer token is absent or does not match the service-role key.
+ * Returns 200 { processed, errors, elapsedMs }.
  */
 export async function handleBackfillSync(
-  req: Request,
+  _req: Request,
   deps: BackfillSyncDeps,
 ): Promise<Response> {
   const jsonResponse = (body: unknown, status = 200): Response =>
@@ -190,20 +166,7 @@ export async function handleBackfillSync(
 
   const startMs = deps.now();
 
-  // ── 1. Bearer gate (timing-safe) ──────────────────────────────────────────
-
-  const authHeader = req.headers.get('Authorization') ?? '';
-  const prefix = 'Bearer ';
-  if (!authHeader.startsWith(prefix)) {
-    return jsonResponse({ error: 'Unauthorized: missing Bearer token' }, 401);
-  }
-  const token = authHeader.slice(prefix.length);
-
-  if (!timingSafeEqual(token, deps.serviceRoleKey)) {
-    return jsonResponse({ error: 'Unauthorized: invalid service-role key' }, 401);
-  }
-
-  // ── 2. Query: backfilling Lynk connections only ───────────────────────────
+  // ── Query: backfilling Lynk connections only ──────────────────────────────
   // Filters:  is_active=true, initial_sync_done=false, api_key IS NOT NULL
   // Ordering: last_sync_time ASC NULLS FIRST (round-robin fairness, same as bulk-sync)
   // Limit:    5 (one run cannot starve other restaurants)

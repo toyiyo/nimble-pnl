@@ -4,9 +4,7 @@
  * Vitest unit tests for supabase/functions/_shared/focusBackfillSyncHandler.ts
  *
  * Coverage:
- *  - Bearer gate: 401 when Authorization header is absent
- *  - Bearer gate: 401 when token does not match the service-role key
- *  - Bearer gate: 401 for bare token (no "Bearer " prefix)
+ *  - Gate-less: processes with no Authorization header (matches toast/shift4)
  *  - Query: selects only is_active=true AND initial_sync_done=false AND api_key IS NOT NULL
  *  - Query: ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
  *  - Processing: calls processBackfillBatch per restaurant with { maxDays:7 }
@@ -174,7 +172,6 @@ function makeRequest(opts: { authHeader?: string | null } = {}): Request {
 function makeDeps(opts: {
   serviceClientOpts?: Parameters<typeof makeServiceClientMock>[0];
   nowFn?: () => number;
-  serviceRoleKey?: string;
 } = {}): { deps: BackfillSyncDeps; mocks: ReturnType<typeof makeServiceClientMock>['mocks']; sleepMock: ReturnType<typeof makeSleepMock> } {
   const { client: serviceClient, mocks } = makeServiceClientMock(opts.serviceClientOpts ?? {});
   const sleepMock = makeSleepMock();
@@ -184,7 +181,6 @@ function makeDeps(opts: {
       serviceClient: serviceClient as BackfillSyncDeps['serviceClient'],
       sleep: sleepMock,
       now: opts.nowFn ?? makeClock(Date.now()),
-      serviceRoleKey: opts.serviceRoleKey ?? SERVICE_ROLE_KEY,
     },
     mocks,
     sleepMock,
@@ -198,34 +194,18 @@ describe('handleBackfillSync', () => {
     vi.clearAllMocks();
   });
 
-  // ── Bearer gate ──────────────────────────────────────────────────────────────
+  // ── Gate-less: processes with no Authorization header (matches toast/shift4) ──
 
-  it('returns 401 when Authorization header is absent', async () => {
-    const { deps } = makeDeps();
+  it('processes with NO Authorization header (no Bearer gate)', async () => {
+    const { deps } = makeDeps({ serviceClientOpts: { connections: [] } });
     const req = makeRequest({ authHeader: null });
     const res = await handleBackfillSync(req, deps);
 
-    expect(res.status).toBe(401);
+    // No 401 — the worker runs and returns its normal 200 result shape.
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  it('returns 401 when the Bearer token does not match the service-role key', async () => {
-    const { deps } = makeDeps();
-    const req = makeRequest({ authHeader: 'Bearer WRONG-KEY' });
-    const res = await handleBackfillSync(req, deps);
-
-    expect(res.status).toBe(401);
-    const body = await res.json();
-    expect(body).toHaveProperty('error');
-  });
-
-  it('returns 401 for a bare token without the "Bearer " prefix', async () => {
-    const { deps } = makeDeps();
-    const req = makeRequest({ authHeader: SERVICE_ROLE_KEY }); // no prefix
-    const res = await handleBackfillSync(req, deps);
-
-    expect(res.status).toBe(401);
+    expect(body).toHaveProperty('processed');
+    expect(body).toHaveProperty('elapsedMs');
   });
 
   // ── Connection query ──────────────────────────────────────────────────────────

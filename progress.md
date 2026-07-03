@@ -4,7 +4,7 @@
 Link: docs/superpowers/specs/2026-07-02-categorization-background-and-supplier-assign-design.md
 
 ## Current Phase
-Phase 8 (Verify) — COMPLETE
+Phase 9a (Ship) — COMPLETE
 
 ## Completed Tasks
 - [x] Phase 0: lessons consulted (PR #565 gate-less cron precedent; PR #488 verify_jwt lesson)
@@ -374,7 +374,8 @@ E2E notes:
 - Dev server started and torn down as required (port 4173 confirmed free post-run)
 
 ## CI Status
-- PR: not yet created
+- PR: #573 — https://github.com/toyiyo/nimble-pnl/pull/573 (opened 2026-07-03)
+- Phase 9a (Ship) COMPLETE: branch pushed, PR opened
 
 ## Phase 7a (Codex adversarial review) — COMPLETE
 

@@ -285,6 +285,17 @@ Phase 4–9: dev-build-and-ship workflow — launched
         GREEN confirmed: npm run test -- tests/unit/enhancedCategoryRulesValidation.test.tsx → 5/5 passed
         Full suite: 5284 passed (5 pre-existing focus* file errors, unrelated); typecheck clean.
 
+  - [x] Task 7d (plan Task 7 step 4, task 35/36): Run npm run test && npm run typecheck && npm run lint to verify pass
+        npm run test: 5284 tests passed (5 pre-existing focus* file errors — fast-xml-parser import, unrelated to this branch; all our new tests pass).
+        npm run typecheck: clean (0 errors, tsc -p tsconfig.app.json --noEmit exit 0).
+        npm run lint: project-wide pre-existing errors (1386 lines; all @typescript-eslint/no-explicit-any / react-hooks warnings in files we did not touch).
+        Our changed files linted clean:
+          - src/components/banking/EnhancedCategoryRulesDialog.tsx: 0 errors
+          - tests/unit/enhancedCategoryRulesValidation.test.tsx: 0 errors
+          - tests/unit/stripe-sync-rpc-name.test.ts: 0 errors
+          stripe-sync-transactions/index.ts has 9 pre-existing any errors (lines 98, 143, 154, 164, 183, 254, 255, 310, 345) — none at our changed lines 296–302.
+        No commit needed — verification only step.
+
 ## CI Status
 - PR: not yet created
 

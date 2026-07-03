@@ -39,6 +39,26 @@ Phase 4–9: dev-build-and-ship workflow — launched
                supabase/tests/categorization_background_rules.test.sql
         Message: "fix(categorization): supplier on bank rules assigns instead of filters when other criteria exist"
         All 1511 pgTAP tests green; 8 new supplier-semantics tests (a–f) pass.
+  - [x] Task 2a (plan Task 2 step 1, task 8/36): Write failing pgTAP tests (g–i) for apply_rules_to_pos_sales_internal — commit 03057d49
+        File: supabase/tests/categorization_background_rules.test.sql (plan 8→14, +169 lines)
+        RED confirmed: ERROR at line 437 "function apply_rules_to_pos_sales_internal(uuid,integer) does not exist"
+        Tests (a–f) still pass (8 GREEN); tests (g)(h)(i) abort as expected (function missing).
+        Fixtures: Restaurant G (c1a00007 prefix), 2 chart_of_accounts rows (expense+cash/1000),
+                  POS rule (item_name 'Sales Tax' contains, auto_apply), unified_sales row
+                  (inserted with skip trigger flag, is_categorized=false), non-member UUID for (i).
+  - [x] Task 2b (plan Task 2 step 2, task 9/36): Run npm run test:db to verify tests fail (internal function not yet created)
+        RED confirmed via npm run test:db:
+        - Tests (a)-(f): 8/8 PASS (Task 1 supplier-semantics still green)
+        - Line 437: ERROR "function apply_rules_to_pos_sales_internal(uuid,integer) does not exist"
+        - Tests (g)(h)(i) abort as expected; exit code 3 (SQL error in test file)
+  - [x] Task 2c (plan Task 2 step 3, task 10/36): Implement migration §4 — apply_rules_to_pos_sales_internal + public wrapper — commit 8bbfa920
+        File: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§4 appended, +170 lines)
+        GREEN confirmed: npm run test:db → 1517/1517 passed, 0 failed.
+        All 14 tests (a–i) in categorization_background_rules.test.sql pass:
+          (g) privilege trio: authenticated/anon=false, service_role=true
+          (h) NULL-auth functional path: applied_count=1, sale is_categorized=true
+          (i) public wrapper raises 'Permission denied...' for non-member sub
+        Message: "fix(categorization): auth-free internal POS rule engine + hardened public wrapper"
 
 ## CI Status
 - PR: not yet created

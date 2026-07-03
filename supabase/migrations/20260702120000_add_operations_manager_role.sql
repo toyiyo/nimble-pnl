@@ -611,10 +611,11 @@ CREATE POLICY "Managers can view tip pool allocations"
 ON public.tip_pool_allocations FOR SELECT
 USING (
   EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_pool_allocations.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
   )
 );
 
@@ -623,10 +624,11 @@ CREATE POLICY "Managers can insert tip pool allocations"
 ON public.tip_pool_allocations FOR INSERT
 WITH CHECK (
   EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_pool_allocations.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
   )
 );
 
@@ -635,10 +637,11 @@ CREATE POLICY "Managers can update tip pool allocations"
 ON public.tip_pool_allocations FOR UPDATE
 USING (
   EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_pool_allocations.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
   )
 );
 
@@ -647,10 +650,11 @@ CREATE POLICY "Managers can delete tip pool allocations"
 ON public.tip_pool_allocations FOR DELETE
 USING (
   EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_pool_allocations.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
   )
 );
 

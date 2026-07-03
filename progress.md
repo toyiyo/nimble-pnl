@@ -59,5 +59,12 @@ docs/superpowers/plans/2026-07-02-operations-manager-role.md (11 tasks, TDD)
   - SKIPPED (minor): performance O(n²) find in TeamMembers (pre-existing, not regression); CORS wildcard (pre-existing); stale form default (low risk).
   - 5134 unit tests pass, typecheck clean.
 
+- [x] Phase 7c CodeRabbit iteration 2 — rate limit hit (28 min reset); skipped per billing/quota rule (no findings to action).
+- [x] Phase 7c CodeRabbit iteration 1 — 2 findings fixed, commit 800a7b81:
+  - FIXED (major): `INVITABLE_ROLES` in `invitations.ts` and Deno mirror now include kiosk + collaborator_* as valid targets for owner/manager (restores pre-existing behavior broken by the default-deny matrix).
+  - FIXED (minor): `canInviteRole` now uses `?? []` null-safety guard (mirrors `getInvitableRoles`).
+  - Updated `invitationMatrix.test.ts` with 2 new test cases covering the restored targets.
+  - 5136 unit tests pass.
+
 ## CI Status
 - PR: not yet created

@@ -808,26 +808,25 @@ SELECT ok(
 --   2. Run the backfill inner-loop inline for just Restaurant I (copy of §7 POS loop body).
 --   3. Assert the row is now is_categorized=true.
 --
--- RED phase: the DO-block below is ABSENT. The row stays is_categorized=false.
--- The assertion below therefore fails — confirming RED before §7 is implemented.
---
--- GREEN phase (task 5b): add the DO-block here (copy of §7 POS loop for one restaurant)
--- and append §7 to the migration so the backfill also runs on prod/staging at deploy time.
---
--- DO $$
--- DECLARE
---   n integer;
---   i integer := 0;
--- BEGIN
---   LOOP
---     SELECT applied_count INTO n
---     FROM apply_rules_to_pos_sales_internal(
---       'c1a00009-0000-0000-0000-000000000901'::uuid, 5000);
---     i := i + 1;
---     EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
---   END LOOP;
--- END;
--- $$;
+-- GREEN phase: run the backfill inner-loop for Restaurant I inline.
+-- This mirrors the §7 POS loop body for a single restaurant so we can assert
+-- convergence without depending on migration execution order within pgTAP.
+-- (§7 in the migration drains the prod/staging backlog at deploy time; this
+-- DO-block drains the test fixture row so the assertion below can verify it.)
+DO $$
+DECLARE
+  n integer;
+  i integer := 0;
+BEGIN
+  LOOP
+    SELECT applied_count INTO n
+    FROM apply_rules_to_pos_sales_internal(
+      'c1a00009-0000-0000-0000-000000000901'::uuid, 5000);
+    i := i + 1;
+    EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
+  END LOOP;
+END;
+$$;
 
 SELECT is(
   (SELECT is_categorized

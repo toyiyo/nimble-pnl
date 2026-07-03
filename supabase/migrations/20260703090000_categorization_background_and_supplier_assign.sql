@@ -854,3 +854,78 @@ BEGIN
   END LOOP;
 END;
 $$;
+
+-- ============================================================
+-- §7  One-time backfill of the stuck categorization backlog.
+--
+-- Iterates restaurants that have at least one active auto_apply rule, then
+-- drains uncategorized rows in batches until the engine returns 0 (converged)
+-- or 50 rounds have been consumed (safety cap against pathological loops).
+--
+-- Design notes:
+--   • Iteration counters (i) are declared ONCE and reset at the start of each
+--     restaurant block — a shared never-reset counter would starve later
+--     restaurants of their 50-round safety budget.
+--   • POS and bank loops are completely separate (different applies_to filter,
+--     different internal function, different batch sizes).
+--   • Each restaurant is wrapped in BEGIN/EXCEPTION so one failing restaurant
+--     does not abort the whole migration — a WARNING is emitted instead.
+--   • Empty databases (local CI): zero matching restaurants → no-op.
+--   • apply_count on matched rules legitimately grows by ~1 per categorized row
+--     (the 9M/14.8M apply_count anomaly is a separate root-cause; untouched here).
+-- ============================================================
+DO $$
+DECLARE
+  r RECORD;
+  n integer;
+  i integer;
+BEGIN
+  -- ── POS backlog ──────────────────────────────────────────────────────────
+  FOR r IN
+    SELECT DISTINCT cr.restaurant_id
+    FROM categorization_rules cr
+    WHERE cr.is_active
+      AND cr.auto_apply
+      AND cr.applies_to IN ('pos_sales', 'both')
+  LOOP
+    BEGIN
+      i := 0;
+      LOOP
+        SELECT applied_count INTO n
+        FROM apply_rules_to_pos_sales_internal(r.restaurant_id, 5000);
+        i := i + 1;
+        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
+      END LOOP;
+      RAISE LOG 'categorization backfill (pos): restaurant % done in % rounds',
+        r.restaurant_id, i;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'categorization backfill (pos) failed for restaurant %: %',
+        r.restaurant_id, SQLERRM;
+    END;
+  END LOOP;
+
+  -- ── Bank backlog ─────────────────────────────────────────────────────────
+  FOR r IN
+    SELECT DISTINCT cr.restaurant_id
+    FROM categorization_rules cr
+    WHERE cr.is_active
+      AND cr.auto_apply
+      AND cr.applies_to IN ('bank_transactions', 'both')
+  LOOP
+    BEGIN
+      i := 0;
+      LOOP
+        SELECT applied_count INTO n
+        FROM apply_rules_to_bank_transactions_internal(r.restaurant_id, 1000);
+        i := i + 1;
+        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
+      END LOOP;
+      RAISE LOG 'categorization backfill (bank): restaurant % done in % rounds',
+        r.restaurant_id, i;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING 'categorization backfill (bank) failed for restaurant %: %',
+        r.restaurant_id, SQLERRM;
+    END;
+  END LOOP;
+END;
+$$;

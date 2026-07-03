@@ -21,6 +21,6 @@ export function getAreaMismatch(
   const offered = normalizeArea(offeredArea);
   const claimer = normalizeArea(claimerArea);
   if (!offered || !claimer) return null;
-  if (offered.toLocaleLowerCase() === claimer.toLocaleLowerCase()) return null;
+  if (offered.toLowerCase() === claimer.toLowerCase()) return null;
   return { offeredArea: offered, claimerArea: claimer };
 }

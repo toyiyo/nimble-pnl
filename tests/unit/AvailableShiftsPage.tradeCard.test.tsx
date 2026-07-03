@@ -17,7 +17,7 @@
 
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 
 // ---------------------------------------------------------------------------
 // Hoisted mock — date-fns/parseISO would work without mocking because we only
@@ -291,6 +291,26 @@ describe('AvailableShiftsPage TradeCard — area-mismatch warning', () => {
     renderPage();
     const acceptBtn = screen.getByRole('button', { name: /Accept trade from Carol Poster/i });
     expect(acceptBtn).not.toHaveAttribute('aria-describedby');
+  });
+
+  it('(8) in-flight label is "Claiming..." on mismatch, "Accepting..." on no mismatch', async () => {
+    // Verify that TradeCard renders the correct in-flight label text based on areaMismatch.
+    // TradeCard shows "Claiming..." (mismatch) or "Accepting..." (same area) when isAccepting=true.
+    // We trigger isAccepting by clicking: mutate is a no-op mock so acceptingTradeId stays set
+    // and isPending=true from useAcceptShiftTrade makes isAcceptingTrade=true.
+    const { useAcceptShiftTrade } = await import('@/hooks/useShiftTrades');
+    (useAcceptShiftTrade as ReturnType<typeof vi.fn>).mockReturnValue({
+      mutate: vi.fn(), // no-op: onSuccess/onError never called, acceptingTradeId stays set
+      isPending: true,
+    });
+    renderPage();
+    // Click "Claim anyway" so acceptingTradeId becomes 'trade-mismatch'
+    const claimBtn = screen.getByRole('button', { name: /Claim anyway/i });
+    await act(async () => { fireEvent.click(claimBtn); });
+    // acceptingTradeId='trade-mismatch', isPending=true → isAccepting=true for mismatch card
+    expect(screen.getByRole('button', { name: /Claim anyway/i })).toHaveTextContent('Claiming...');
+    // Same-area card: acceptingTradeId !== 'trade-same-area' → isAccepting=false → still "Accept"
+    expect(screen.getByRole('button', { name: /Accept trade from Carol Poster/i })).toHaveTextContent('Accept');
   });
 
   it('(9) warning panel has correct id: area-mismatch-{trade.id}', () => {

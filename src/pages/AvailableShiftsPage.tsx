@@ -117,30 +117,38 @@ const TradeCard = memo(function TradeCard({
         </div>
 
         <div className="ml-4 flex-shrink-0">
-          {trade.status === 'pending_approval' ? (
-            <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium">
-              Pending Approval
-            </span>
-          ) : areaMismatch ? (
-            <Button
-              onClick={() => onAccept(trade.id)}
-              disabled={isPast || isAccepting}
-              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-              aria-label={`Claim anyway — trade from ${name} on ${dateLabel}`}
-              aria-describedby={mismatchId}
-            >
-              {isAccepting ? 'Claiming...' : 'Claim anyway'}
-            </Button>
-          ) : (
-            <Button
-              onClick={() => onAccept(trade.id)}
-              disabled={isPast || isAccepting}
-              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-              aria-label={`Accept trade from ${name} on ${dateLabel}`}
-            >
-              {isAccepting ? 'Accepting...' : 'Accept'}
-            </Button>
-          )}
+          {(() => {
+            if (trade.status === 'pending_approval') {
+              return (
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium">
+                  Pending Approval
+                </span>
+              );
+            }
+            if (areaMismatch) {
+              return (
+                <Button
+                  onClick={() => onAccept(trade.id)}
+                  disabled={isPast || isAccepting}
+                  className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  aria-label={`Claim anyway — trade from ${name} on ${dateLabel}`}
+                  aria-describedby={mismatchId}
+                >
+                  {isAccepting ? 'Claiming...' : 'Claim anyway'}
+                </Button>
+              );
+            }
+            return (
+              <Button
+                onClick={() => onAccept(trade.id)}
+                disabled={isPast || isAccepting}
+                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                aria-label={`Accept trade from ${name} on ${dateLabel}`}
+              >
+                {isAccepting ? 'Accepting...' : 'Accept'}
+              </Button>
+            );
+          })()}
           {trade.target_employee_id === currentEmployeeId && (
             <div className="text-[11px] text-muted-foreground mt-1">Offered to you</div>
           )}

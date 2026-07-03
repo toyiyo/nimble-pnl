@@ -199,3 +199,20 @@
   - Accessibility: PASS — all interactive elements have aria-label; day buttons use aria-pressed; hour columns use tabIndex=0 + focus-visible:ring; screen-reader ul for understaffed windows in CoverageStatusStrip
   - Card/container patterns: PASS — rounded-xl + border-border/40 for containers, rounded-lg for buttons, transition-colors for hover states
   - No fixes required
+
+## Phase 9d: Review-Comment Triage
+
+- Status: DONE
+- Commit: 48040685
+- Triage artifact: `dev-tools/9d-triage-worktree-timeline-chart-fixes.md`
+- Comments reviewed:
+  - Inline (4): github-code-quality (1), Codex (3)
+  - PR conversation (5): netlify, vercel, supabase, coderabbitai, sonarqubecloud — all info/bot status
+  - PR-level reviews (2): github-code-quality COMMENTED, Codex COMMENTED
+- Fixes applied (3):
+  1. `tests/unit/coverageChart.test.tsx` — removed unused `screen` import (github-code-quality)
+  2. `CoverageChart.tsx` buildHourTooltip — SPLH line 4 now uses `h.needed` instead of `Math.round(sales/targetSplh)` to eliminate tooltip contradiction (Codex P2)
+  3. `CoverageChart.tsx` DeltaColumn — replaced `flex-1` + `flex flex-col` bar layout with `absolute` positioning so `barPct` is relative to the full column height (not 50% of it); fixed short bars, positive bars, and no-demand bars; removed `flex flex-col` from outer wrapper (Codex P2)
+- Declined (1): Codex suggestion to expand coverage window from recommendations on zero-shift days — deferred to follow-up (scope exceeds PR bounds; requires changes to `buildTimelineModel`/`deriveWindow`/axis geometry + new tests); PR reply posted at issuecomment-4879660716
+- Test results: 79/79 coverage-related tests pass (TZ=UTC); typecheck clean
+- Pushed: yes (to origin worktree-timeline-chart-fixes)

@@ -205,6 +205,16 @@ Phase 4–9: dev-build-and-ship workflow — launched
           - Counter i reset at start of each restaurant block (separate for POS and bank)
           - No-op on empty databases (no matching categorization_rules → loop body never runs)
         Message: "fix(categorization): backfill stuck uncategorized backlog in-migration"
+  - [x] Task 5d (plan Task 5 step 4, task 26/36): Run npm run test:db to verify full suite green
+        GREEN confirmed: npm run test:db → 1530/1530 passed, 0 failed.
+        All 27 tests in categorization_background_rules.test.sql pass:
+          (a)-(h) supplier-semantics tests (Task 1) — ok 1-8
+          (g)-(i) POS internal engine tests (Task 2) — ok 9-14
+          (j)-(l) bank internal engine tests (Task 3) — ok 15-22
+          (m1)-(m4) sync function gate rewrite tests (Task 4) — ok 23-26
+          (n) backfill convergence test (Task 5) — ok 27
+        Note: local DB did not have the migration applied; applied via psql -f before running tests.
+        No commit needed — verification only step.
 
 ## CI Status
 - PR: not yet created

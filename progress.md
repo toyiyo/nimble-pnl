@@ -72,6 +72,19 @@ Phase 4–9: dev-build-and-ship workflow — launched
         Public wrapper also gains SET search_path=public (fixes unpinned SECURITY DEFINER injection risk).
         All 1517/1517 pgTAP tests green; 14 tests in categorization_background_rules.test.sql (a–i all pass).
 
+  - [x] Task 3a (plan Task 3 step 1, task 13/36): Write failing pgTAP tests (j–l) for apply_rules_to_bank_transactions_internal — commit 90877e19
+        File: supabase/tests/categorization_background_rules.test.sql (plan 14→22, +174 lines)
+        RED confirmed: ERROR at line 584 "function apply_rules_to_bank_transactions_internal(uuid,integer) does not exist"
+        Tests (a–i) still pass (14 GREEN); tests (j)(k)(l) abort as expected (function missing).
+        Fixtures: Restaurant H (c1a00008 prefix), chart_of_accounts (expense+cash/1000),
+                  Supplier H (VENDOR-H Corp), Rule H (description 'VENDOR-H' contains + supplier_id=d08,
+                  auto_apply), connected bank H, bank txn h01 (inserted with trigger disabled, supplier NULL).
+        Tests added:
+          (j) privilege trio: authenticated/anon=false, service_role=true (3 assertions)
+          (k) NULL-auth batch: applied_count=1, is_categorized=true, supplier_id=d08 from rule,
+              journal_entries row with created_by IS NULL (4 assertions)
+          (l) public wrapper raises 'Permission denied...' for non-member sub (1 assertion)
+
 ## CI Status
 - PR: not yet created
 

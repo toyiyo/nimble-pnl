@@ -445,3 +445,342 @@ COMMENT ON FUNCTION apply_rules_to_pos_sales(uuid, integer) IS
   'Enforces membership then delegates to apply_rules_to_pos_sales_internal. '
   'DEFAULT 100 is the safe interactive batch size; background callers should '
   'call the internal function directly with a larger limit.';
+
+
+-- ============================================================
+-- §5  apply_rules_to_bank_transactions_internal + supplier assignment + public wrapper
+--
+--     Internal engine: full body of apply_rules_to_bank_transactions minus the
+--     permission check. SECURITY DEFINER with pinned search_path (already
+--     present in the original). The main cursor SELECT gains
+--     matched.supplier_id AS rule_supplier_id from the updated matcher (§1).
+--     In the non-split UPDATE, supplier assignment uses:
+--       COALESCE(v_transaction.supplier_id, v_transaction.rule_supplier_id, supplier_id)
+--     so the transaction's own supplier wins; failing that, the rule's supplier
+--     is assigned (assign-not-filter semantics); failing that, the DB value is
+--     preserved (no clobber).
+--
+--     REVOKE from PUBLIC/anon/authenticated prevents PostgREST exposure.
+--     GRANT to service_role only.
+--
+--     Public wrapper: unchanged signature and permission semantics for
+--     authenticated clients. Delegates to the internal function.
+--     DEFAULT 100 is the safe interactive batch size; background callers pass
+--     larger limits (the stripe-sync-transactions edge function uses 1000).
+-- ============================================================
+
+-- Internal engine: no auth check. NOT exposed to clients (EXECUTE revoked below).
+-- Called by service-role edge functions, cron backfill, and migration backfill.
+CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions_internal(
+  p_restaurant_id UUID,
+  p_batch_limit   INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  applied_count INTEGER,
+  total_count   INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_transaction         RECORD;
+  v_applied_count       INTEGER := 0;
+  v_total_count         INTEGER := 0;
+  v_splits_with_amounts JSONB;
+  v_split               JSONB;
+  v_splits_array        JSONB[] := ARRAY[]::JSONB[];
+  v_cash_account_id     UUID;
+  v_category            RECORD;
+  v_fiscal_period_id    UUID;
+  v_journal_entry_id    UUID;
+  v_existing_journal_entry UUID;
+  v_total_split_amount  NUMERIC;
+  v_split_rec           RECORD;
+  v_entry_prefix        TEXT;
+  v_entry_description   TEXT;
+BEGIN
+  -- No permission check: this function is for background/service-role callers.
+  -- The public wrapper apply_rules_to_bank_transactions enforces owner/manager membership.
+
+  SELECT id INTO v_cash_account_id
+  FROM chart_of_accounts
+  WHERE restaurant_id = p_restaurant_id
+    AND account_code = '1000'
+  LIMIT 1;
+
+  IF v_cash_account_id IS NULL THEN
+    RAISE EXCEPTION 'Cash account (1000) not found for restaurant %', p_restaurant_id;
+  END IF;
+
+  FOR v_transaction IN
+    SELECT
+      bt.id,
+      bt.amount,
+      bt.description,
+      bt.supplier_id,
+      bt.transaction_date,
+      bt.stripe_transaction_id,
+      matched.rule_id,
+      matched.rule_name,
+      matched.category_id AS rule_category_id,
+      matched.is_split_rule,
+      matched.split_categories,
+      matched.supplier_id AS rule_supplier_id   -- NEW: rule's supplier for assign-not-filter
+    FROM bank_transactions bt
+    CROSS JOIN LATERAL find_matching_rules_for_bank_transaction(
+      p_restaurant_id,
+      jsonb_build_object(
+        'description', bt.description,
+        'amount',      bt.amount,
+        'supplier_id', bt.supplier_id
+      )
+    ) matched
+    WHERE bt.restaurant_id = p_restaurant_id
+      AND (bt.is_categorized = false OR bt.category_id IS NULL)
+      AND bt.is_split = false
+      AND bt.excluded_reason IS NULL
+      AND matched.rule_id IS NOT NULL
+    ORDER BY bt.transaction_date DESC
+    LIMIT p_batch_limit
+  LOOP
+    v_total_count := v_total_count + 1;
+
+    BEGIN
+      SELECT id INTO v_fiscal_period_id
+      FROM fiscal_periods
+      WHERE restaurant_id = p_restaurant_id
+        AND v_transaction.transaction_date >= period_start
+        AND v_transaction.transaction_date <= period_end
+        AND is_closed = true
+      LIMIT 1;
+
+      IF v_fiscal_period_id IS NOT NULL THEN
+        RAISE EXCEPTION 'Transaction % in closed fiscal period', v_transaction.id;
+      END IF;
+
+      IF v_transaction.is_split_rule AND v_transaction.split_categories IS NOT NULL THEN
+        -- Split path
+        v_splits_array := ARRAY[]::JSONB[];
+        v_total_split_amount := 0;
+
+        FOR v_split IN SELECT * FROM jsonb_array_elements(v_transaction.split_categories)
+        LOOP
+          v_splits_array := v_splits_array || jsonb_build_object(
+            'category_id', v_split->>'category_id',
+            'amount', CASE
+              WHEN v_split->>'percentage' IS NOT NULL
+              THEN ROUND((ABS(v_transaction.amount) * (v_split->>'percentage')::NUMERIC / 100.0), 2)
+              ELSE (v_split->>'amount')::NUMERIC
+            END,
+            'description', COALESCE(v_split->>'description', '')
+          );
+        END LOOP;
+
+        v_splits_with_amounts := to_jsonb(v_splits_array);
+
+        SELECT COALESCE(SUM((elem->>'amount')::NUMERIC), 0)
+        INTO v_total_split_amount
+        FROM jsonb_array_elements(v_splits_with_amounts) AS elem;
+
+        IF ABS(ABS(v_transaction.amount) - v_total_split_amount) > 0.01 THEN
+          RAISE EXCEPTION 'Split amounts (%) do not match transaction amount (%) for txn %',
+            v_total_split_amount, ABS(v_transaction.amount), v_transaction.id;
+        END IF;
+
+        v_entry_prefix := 'SPLIT';
+        v_entry_description := 'Split transaction: ' || v_transaction.description;
+      ELSE
+        -- Non-split path: validate category
+        SELECT * INTO v_category
+        FROM chart_of_accounts
+        WHERE id = v_transaction.rule_category_id
+          AND restaurant_id = p_restaurant_id
+          AND is_active = true;
+
+        IF v_category.id IS NULL THEN
+          RAISE EXCEPTION 'Category not found or inactive for txn %', v_transaction.id;
+        END IF;
+
+        v_entry_prefix := 'BANK';
+        v_entry_description := 'Auto-categorized by rule: ' || v_transaction.rule_name;
+      END IF;
+
+      -- Upsert journal entry (shared by both paths).
+      -- created_by uses auth.uid() which returns NULL in service-role/cron context —
+      -- journal_entries.created_by is NULLABLE so NULL inserts are valid.
+      SELECT id INTO v_existing_journal_entry
+      FROM journal_entries
+      WHERE reference_type = 'bank_transaction'
+        AND reference_id = v_transaction.id
+        AND restaurant_id = p_restaurant_id
+      LIMIT 1;
+
+      IF v_existing_journal_entry IS NOT NULL THEN
+        v_journal_entry_id := v_existing_journal_entry;
+        DELETE FROM journal_entry_lines WHERE journal_entry_id = v_existing_journal_entry;
+        UPDATE journal_entries
+        SET
+          entry_number = v_entry_prefix || '-' || COALESCE(v_transaction.stripe_transaction_id, v_transaction.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
+          description  = v_entry_description,
+          total_debit  = ABS(v_transaction.amount),
+          total_credit = ABS(v_transaction.amount),
+          updated_at   = now()
+        WHERE id = v_existing_journal_entry;
+      ELSE
+        INSERT INTO journal_entries (
+          restaurant_id, entry_date, entry_number, description,
+          reference_type, reference_id, total_debit, total_credit, created_by
+        ) VALUES (
+          p_restaurant_id,
+          v_transaction.transaction_date,
+          v_entry_prefix || '-' || COALESCE(v_transaction.stripe_transaction_id, v_transaction.id::text) || '-' || TO_CHAR(now(), 'YYYYMMDD-HH24MISS-US'),
+          v_entry_description,
+          'bank_transaction',
+          v_transaction.id,
+          ABS(v_transaction.amount),
+          ABS(v_transaction.amount),
+          auth.uid()   -- NULL in service-role/cron context; column is NULLABLE
+        ) RETURNING id INTO v_journal_entry_id;
+      END IF;
+
+      -- Create journal lines (path-specific)
+      IF v_transaction.is_split_rule AND v_transaction.split_categories IS NOT NULL THEN
+        FOR v_split_rec IN
+          SELECT * FROM jsonb_to_recordset(v_splits_with_amounts)
+            AS x(category_id uuid, amount numeric, description text)
+        LOOP
+          SELECT * INTO v_category
+          FROM chart_of_accounts
+          WHERE id = v_split_rec.category_id
+            AND restaurant_id = p_restaurant_id
+            AND is_active = true;
+
+          IF v_category.id IS NULL THEN
+            RAISE EXCEPTION 'Category not found or inactive: %', v_split_rec.category_id;
+          END IF;
+
+          INSERT INTO bank_transaction_splits (
+            transaction_id, category_id, amount, description
+          ) VALUES (
+            v_transaction.id, v_split_rec.category_id,
+            v_split_rec.amount, v_split_rec.description
+          );
+
+          IF v_transaction.amount < 0 THEN
+            INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
+            VALUES (v_journal_entry_id, v_split_rec.category_id, v_split_rec.amount, 0,
+                    COALESCE(v_split_rec.description, v_category.account_name));
+          ELSE
+            INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
+            VALUES (v_journal_entry_id, v_split_rec.category_id, 0, v_split_rec.amount,
+                    COALESCE(v_split_rec.description, v_category.account_name));
+          END IF;
+        END LOOP;
+
+        -- Offsetting cash line for split
+        IF v_transaction.amount < 0 THEN
+          INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
+          VALUES (v_journal_entry_id, v_cash_account_id, 0, ABS(v_transaction.amount), 'Cash payment (split)');
+        ELSE
+          INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
+          VALUES (v_journal_entry_id, v_cash_account_id, ABS(v_transaction.amount), 0, 'Cash received (split)');
+        END IF;
+
+        UPDATE bank_transactions
+        SET is_split = true, is_categorized = true, category_id = NULL, updated_at = now()
+        WHERE id = v_transaction.id;
+      ELSE
+        -- Non-split journal lines
+        IF v_transaction.amount < 0 THEN
+          INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
+          VALUES
+            (v_journal_entry_id, v_transaction.rule_category_id, ABS(v_transaction.amount), 0, v_category.account_name),
+            (v_journal_entry_id, v_cash_account_id, 0, ABS(v_transaction.amount), 'Cash payment');
+        ELSE
+          INSERT INTO journal_entry_lines (journal_entry_id, account_id, debit_amount, credit_amount, description)
+          VALUES
+            (v_journal_entry_id, v_cash_account_id, ABS(v_transaction.amount), 0, 'Cash received'),
+            (v_journal_entry_id, v_transaction.rule_category_id, 0, ABS(v_transaction.amount), v_category.account_name);
+        END IF;
+
+        UPDATE bank_transactions
+        SET
+          category_id    = v_transaction.rule_category_id,
+          is_categorized = true,
+          notes          = 'Auto-categorized by rule: ' || v_transaction.rule_name,
+          -- Supplier assignment (assign-not-filter semantics from §1):
+          --   1. Transaction's own supplier wins if already set.
+          --   2. Rule's supplier is assigned when the transaction has none.
+          --   3. Database value preserved as last resort (no clobber).
+          supplier_id    = COALESCE(v_transaction.supplier_id, v_transaction.rule_supplier_id, supplier_id),
+          updated_at     = now()
+        WHERE id = v_transaction.id;
+      END IF;
+
+      v_applied_count := v_applied_count + 1;
+      UPDATE categorization_rules
+      SET apply_count = apply_count + 1, last_applied_at = now()
+      WHERE id = v_transaction.rule_id;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'Error categorizing transaction %: %', v_transaction.id, SQLERRM;
+    END;
+  END LOOP;
+
+  IF v_applied_count > 0 THEN
+    PERFORM rebuild_account_balances(p_restaurant_id);
+  END IF;
+
+  RETURN QUERY SELECT v_applied_count, v_total_count;
+END;
+$$;
+
+COMMENT ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer) IS
+  'Auth-free internal bank rule engine. No permission check — restricted to service_role via REVOKE/GRANT. '
+  'Called by service-role edge functions (stripe-sync-transactions), cron backfill, and migration backfill. '
+  'Supplier assignment: COALESCE(txn.supplier_id, rule.supplier_id, db_value) — txn wins, then rule assigns, '
+  'then preserves existing value. The public wrapper apply_rules_to_bank_transactions enforces '
+  'owner/manager membership for interactive calls. '
+  'DEFAULT 100 is the safe interactive batch size; background callers pass larger limits (e.g. 1000).';
+
+-- Prevent PostgREST / client exposure: clients must go through the public wrapper.
+REVOKE EXECUTE ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer) FROM PUBLIC, anon, authenticated;
+-- Service-role callers (edge functions, cron, migration backfill) retain EXECUTE.
+GRANT  EXECUTE ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer) TO service_role;
+
+
+-- Public wrapper: unchanged signature and permission semantics for authenticated clients.
+-- Delegates to the internal function after the ownership check.
+-- DEFAULT 100 is the safe interactive batch size; background callers should
+-- call the internal function directly with a larger limit (e.g. 1000 for stripe sync).
+CREATE OR REPLACE FUNCTION apply_rules_to_bank_transactions(
+  p_restaurant_id UUID,
+  p_batch_limit   INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  applied_count INTEGER,
+  total_count   INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE restaurant_id = p_restaurant_id
+      AND user_id = auth.uid()
+      AND role IN ('owner', 'manager')
+  ) THEN
+    RAISE EXCEPTION 'Permission denied: user does not have access to apply rules for this restaurant';
+  END IF;
+
+  RETURN QUERY SELECT * FROM apply_rules_to_bank_transactions_internal(p_restaurant_id, p_batch_limit);
+END;
+$$;
+
+COMMENT ON FUNCTION apply_rules_to_bank_transactions(uuid, integer) IS
+  'Public bank rule engine for authenticated owner/manager callers. '
+  'Enforces membership then delegates to apply_rules_to_bank_transactions_internal. '
+  'DEFAULT 100 is the safe interactive batch size; background callers should '
+  'call the internal function directly with a larger limit.';

@@ -22,12 +22,29 @@ type ConfidenceTier = 'auto-approved' | 'quick-review' | 'needs-attention';
 const BADGE_CN = 'text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground';
 
 /**
+ * Irregular plurals for container types that appear in distributor invoices.
+ * Covers units from PACKAGE_TYPE_OPTIONS and the AI prompt's parsedUnit examples.
+ */
+const IRREGULAR_PLURALS: Record<string, string> = {
+  each: 'each',
+  box: 'boxes',
+  loaf: 'loaves',
+  leaf: 'leaves',
+  half: 'halves',
+  shelf: 'shelves',
+};
+
+/**
  * Returns the plural form of a unit label when n !== 1.
  * Falls back to "unit" / "units" when the unit is blank.
+ * Uses an irregular-plural lookup table before applying the default +s rule.
  */
 function pluralizeUnit(unit: string | null | undefined, n: number | null): string {
   const u = (unit || '').trim() || 'unit';
-  return (n ?? 0) === 1 ? u : `${u}s`;
+  if ((n ?? 0) === 1) return u;
+  const lower = u.toLowerCase();
+  if (lower in IRREGULAR_PLURALS) return IRREGULAR_PLURALS[lower];
+  return `${u}s`;
 }
 
 interface ReceiptItemRowProps {
@@ -328,11 +345,18 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     className="text-[13px] text-muted-foreground"
                     aria-live="polite"
                   >
-                    {Math.max(1, Math.round((item.parsed_quantity || 0) / item.pack_quantity))}{' '}
-                    {Math.max(1, Math.round((item.parsed_quantity || 0) / item.pack_quantity)) === 1 ? 'case' : 'cases'}
-                    {' × '}{item.pack_quantity}{' = '}
-                    {item.parsed_quantity}{' '}
-                    {pluralizeUnit(item.package_type || item.parsed_unit, item.parsed_quantity)}
+                    {(() => {
+                      const casesCount = Math.max(1, Math.round((item.parsed_quantity ?? 0) / item.pack_quantity!));
+                      return (
+                        <>
+                          {casesCount}{' '}
+                          {casesCount === 1 ? 'case' : 'cases'}
+                          {' × '}{item.pack_quantity}{' = '}
+                          {item.parsed_quantity ?? 0}{' '}
+                          {pluralizeUnit(item.package_type || item.parsed_unit, item.parsed_quantity)}
+                        </>
+                      );
+                    })()}
                   </p>
                 )}
 

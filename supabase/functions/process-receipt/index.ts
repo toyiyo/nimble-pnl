@@ -935,21 +935,32 @@ serve(async (req) => {
     }
 
     // Insert line items with sequence to preserve order
-    const lineItems = parsedData.lineItems.map((item: ParsedLineItem, index: number) => ({
-      receipt_id: receiptId,
-      raw_text: item.rawText,
-      parsed_name: item.parsedName,
-      parsed_quantity: item.parsedQuantity,
-      parsed_unit: item.parsedUnit,
-      package_type: item.packageType || null,
-      size_value: item.sizeValue || null,
-      size_unit: item.sizeUnit || null,
-      parsed_price: item.lineTotal,   // Store lineTotal in parsed_price for backward compat
-      unit_price: item.unitPrice,     // Store actual unit price
-      confidence_score: item.confidenceScore,
-      line_sequence: index + 1,
-      pack_quantity: item.unitsPerPack ?? null,   // Distributor pack (audit/UI only)
-    }));
+    const lineItems = parsedData.lineItems.map((item: ParsedLineItem, index: number) => {
+      // When the AI provides unitsPerPack, deterministically compute parsed_quantity as
+      // casesOrdered × unitsPerPack rather than trusting the LLM-multiplied value.
+      // This prevents a class of LLM errors where the model returns casesOrdered and
+      // unitsPerPack correctly but forgets to multiply them into parsedQuantity.
+      const cases = Math.max(1, item.casesOrdered || 0);
+      const pack = Math.max(1, item.unitsPerPack || 0);
+      const computedQuantity = item.unitsPerPack
+        ? cases * pack          // deterministic when pack size is known
+        : item.parsedQuantity;  // fall back to LLM value when no pack info
+      return {
+        receipt_id: receiptId,
+        raw_text: item.rawText,
+        parsed_name: item.parsedName,
+        parsed_quantity: computedQuantity,
+        parsed_unit: item.parsedUnit,
+        package_type: item.packageType || null,
+        size_value: item.sizeValue || null,
+        size_unit: item.sizeUnit || null,
+        parsed_price: item.lineTotal,   // Store lineTotal in parsed_price for backward compat
+        unit_price: item.unitPrice,     // Store actual unit price
+        confidence_score: item.confidenceScore,
+        line_sequence: index + 1,
+        pack_quantity: item.unitsPerPack ?? null,   // Distributor pack (audit/UI only)
+      };
+    });
 
     const { error: lineItemsError } = await supabase.from("receipt_line_items").insert(lineItems);
 

@@ -7,7 +7,7 @@
  *  - Gate-less: processes with no Authorization header (matches toast/shift4)
  *  - Query: selects only is_active=true AND initial_sync_done=false AND api_key IS NOT NULL
  *  - Query: ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
- *  - Processing: calls processBackfillBatch per restaurant with { maxDays:7 }
+ *  - Processing: calls processBackfillBatch per restaurant with { maxDays:5 }
  *  - Processing: CAS write after each restaurant (sync_cursor unchanged → filters old cursor)
  *  - Processing: on batch error → writes connection_status='error' + last_error
  *  - Processing: 2s inter-restaurant sleep (injectable deps.sleep)
@@ -290,7 +290,7 @@ describe('handleBackfillSync', () => {
 
   // ── processBackfillBatch integration ──────────────────────────────────────────
 
-  it('calls processBackfillBatch with maxDays=7 for each connection', async () => {
+  it('calls processBackfillBatch with maxDays=5 for each connection', async () => {
     const { processBackfillBatch: mockBatch } = await import(
       '../../supabase/functions/_shared/focusBackfillBatch'
     );
@@ -303,7 +303,7 @@ describe('handleBackfillSync', () => {
 
     expect(mockBatch).toHaveBeenCalledTimes(1);
     const callOpts = (mockBatch as ReturnType<typeof vi.fn>).mock.calls[0][2] as Record<string, unknown>;
-    expect(callOpts.maxDays).toBe(7);
+    expect(callOpts.maxDays).toBe(5);
   });
 
   // ── CAS write ────────────────────────────────────────────────────────────────

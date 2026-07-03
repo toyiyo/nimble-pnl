@@ -296,9 +296,13 @@ serve(async (req) => {
         // Internal engine: the public RPC's auth check raises for service-role callers
         // (auth.uid() is NULL). Batch limit 1000 keeps a single call inside edge-fn
         // statement budget; the sync runs frequently so large imports drain over cycles.
+        // p_skip_rebuild=true: this function already calls rebuild_account_balances
+        // explicitly below (after check_reconciliation_boundary), so skipping the
+        // internal engine's default rebuild avoids a redundant second call.
         const { data: rulesResult, error: rulesError } = await supabaseAdmin.rpc('apply_rules_to_bank_transactions_internal', {
           p_restaurant_id: bank.restaurant_id,
           p_batch_limit: 1000,
+          p_skip_rebuild: true,
         });
 
         if (rulesError) {

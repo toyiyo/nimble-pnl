@@ -42,7 +42,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 STABLE
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 BEGIN
   RETURN QUERY
@@ -225,7 +225,7 @@ CREATE OR REPLACE FUNCTION auto_apply_bank_categorization_rules()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_matching_rule RECORD;
@@ -307,7 +307,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_sale                RECORD;
@@ -318,6 +318,11 @@ DECLARE
   v_split               JSONB;
   v_splits_array        JSONB[] := ARRAY[]::JSONB[];
 BEGIN
+  -- Guard: reject NULL or non-positive batch limits (LIMIT NULL removes cap; negative aborts loops).
+  IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
+    RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;
+  END IF;
+
   -- No permission check: this function is for background/service-role callers.
   -- The public wrapper apply_rules_to_pos_sales enforces owner/manager membership.
 
@@ -422,7 +427,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 BEGIN
   IF NOT EXISTS (
@@ -486,7 +491,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_transaction         RECORD;
@@ -505,6 +510,11 @@ DECLARE
   v_entry_prefix        TEXT;
   v_entry_description   TEXT;
 BEGIN
+  -- Guard: reject NULL or non-positive batch limits (LIMIT NULL removes cap; negative aborts loops).
+  IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
+    RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;
+  END IF;
+
   -- No permission check: this function is for background/service-role callers.
   -- The public wrapper apply_rules_to_bank_transactions enforces owner/manager membership.
 
@@ -777,7 +787,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 BEGIN
   IF NOT EXISTS (

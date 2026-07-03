@@ -207,8 +207,11 @@ export const EnhancedCategoryRulesDialog = ({
       }
     }
 
-    // Warn if description pattern is very short (< 3 chars) without an amount range
-    if (descPattern && descPattern.length < 3 && !formData.amountMin && !formData.amountMax) {
+    // Warn if description pattern is very short (< 3 chars) without a meaningful amount range.
+    // Use parseFloat > 0 (mirrors the generic-term guard above) so "0" doesn't bypass the check.
+    const hasAmountBoundCreate = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                                 (formData.amountMax && parseFloat(formData.amountMax) > 0);
+    if (descPattern && descPattern.length < 3 && !hasAmountBoundCreate) {
       toast.error("Description pattern is too short. Use at least 3 characters or add an amount range.");
       return;
     }
@@ -311,7 +314,9 @@ export const EnhancedCategoryRulesDialog = ({
         return;
       }
     }
-    if (descPatternEdit && descPatternEdit.length < 3 && !formData.amountMin && !formData.amountMax) {
+    const hasAmountBoundEdit = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                               (formData.amountMax && parseFloat(formData.amountMax) > 0);
+    if (descPatternEdit && descPatternEdit.length < 3 && !hasAmountBoundEdit) {
       toast.error("Description pattern is too short. Use at least 3 characters or add an amount range.");
       return;
     }

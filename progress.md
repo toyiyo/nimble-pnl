@@ -4,7 +4,7 @@
 Link: docs/superpowers/specs/2026-07-02-categorization-background-and-supplier-assign-design.md
 
 ## Current Phase
-Phase 4–9: dev-build-and-ship workflow — launched
+Phase 7c (CodeRabbit review) — iteration 1 fixes applied
 
 ## Completed Tasks
 - [x] Phase 0: lessons consulted (PR #565 gate-less cron precedent; PR #488 verify_jwt lesson)

@@ -267,6 +267,12 @@ Phase 4–9: dev-build-and-ship workflow — launched
           (iv-a) "tagged with this supplier" help text when description present → element missing (RED)
           (iv-b) "already linked to this supplier" help text when supplier-only → element missing (RED)
         Message: "test(banking): RED RTL tests for EnhancedCategoryRulesDialog supplier-assign UI changes"
+  - [x] Task 7b (plan Task 7 step 2, task 33/36): Run npm run test to verify component tests fail
+        RED confirmed via npm run test -- tests/unit/enhancedCategoryRulesValidation.test.tsx:
+        - 4 FAILED: (i) too-generic gate, (ii) short-pattern guard, (iv-a) tagged help text, (iv-b) filter help text
+        - 1 PASSED: (iii) inline alert suppression (regression guard)
+        - Exact failure reasons match what 7a documented: supplierId in hasOtherSpecificity suppresses (i); !supplierId guard fires (ii); sub-labels missing for (iv-a)/(iv-b)
+        No commit needed — verification only step.
 
 ## CI Status
 - PR: not yet created

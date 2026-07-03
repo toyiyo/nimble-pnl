@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -191,20 +191,21 @@ export const EnhancedCategoryRulesDialog = ({
     const isGenericPattern = descPattern && genericTerms.includes(descPattern);
 
     if (isGenericPattern) {
-      // Generic pattern - check if we have other specificity
-      const hasOtherSpecificity = formData.supplierId ||
-                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+      // Generic pattern - only an amount range provides enough specificity.
+      // Supplier on a bank rule is now an assignment (not a filter), so it does
+      // not make a generic description pattern safe to broad-match.
+      const hasOtherSpecificity = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
                                   (formData.amountMax && parseFloat(formData.amountMax) > 0);
 
       if (!hasOtherSpecificity) {
-        toast.error(`"${formData.descriptionPattern}" is too generic. Add a supplier or amount range to make this rule more specific.`);
+        toast.error(`"${formData.descriptionPattern}" is too generic. Add an amount range to make this rule more specific.`);
         return;
       }
     }
 
-    // Warn if description pattern is very short (< 3 chars) without other criteria
-    if (descPattern && descPattern.length < 3 && !formData.supplierId) {
-      toast.error("Description pattern is too short. Use at least 3 characters or add a supplier.");
+    // Warn if description pattern is very short (< 3 chars) without an amount range
+    if (descPattern && descPattern.length < 3 && !formData.amountMin && !formData.amountMax) {
+      toast.error("Description pattern is too short. Use at least 3 characters or add an amount range.");
       return;
     }
 
@@ -350,9 +351,6 @@ export const EnhancedCategoryRulesDialog = ({
   const renderRuleConditions = (rule: CategorizationRule) => {
     const conditions: string[] = [];
 
-    if (rule.supplier_id && rule.supplier) {
-      conditions.push(`Supplier: ${rule.supplier.name}`);
-    }
     if (rule.description_pattern) {
       conditions.push(`Description ${rule.description_match_type}: "${rule.description_pattern}"`);
     }
@@ -371,6 +369,17 @@ export const EnhancedCategoryRulesDialog = ({
       conditions.push(`Type: ${rule.transaction_type}`);
     }
 
+    if (rule.supplier_id && rule.supplier) {
+      // "Assigns supplier" when the rule has other criteria (description/amount);
+      // "Supplier" (strict filter) when supplier is the only criterion.
+      const hasOtherCriteria = rule.description_pattern || rule.amount_min || rule.amount_max;
+      if (hasOtherCriteria) {
+        conditions.push(`Assigns supplier: ${rule.supplier.name}`);
+      } else {
+        conditions.push(`Supplier: ${rule.supplier.name}`);
+      }
+    }
+
     return conditions.length > 0 ? conditions.join(' · ') : 'No conditions';
   };
 
@@ -387,9 +396,9 @@ export const EnhancedCategoryRulesDialog = ({
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 Categorization Rules
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 Set up automatic categorization rules for bank transactions and POS sales.
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -789,11 +798,12 @@ export const EnhancedCategoryRulesDialog = ({
                           const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
                           const isGeneric = descPattern && genericTerms.includes(descPattern);
                           const isEmpty = !descPattern;
-                          const hasOtherCriteria = formData.supplierId ||
-                                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                          // A supplier-only rule is a valid filter rule — don't warn.
+                          // Only amount range counts as "other criteria" alongside descriptions.
+                          const hasOtherCriteria = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
                                                   (formData.amountMax && parseFloat(formData.amountMax) > 0);
 
-                          if ((isEmpty || isGeneric) && !hasOtherCriteria) {
+                          if ((isEmpty && !formData.supplierId || isGeneric) && !hasOtherCriteria) {
                             return (
                               <Alert className="mt-2 bg-amber-500/10 border-amber-500/20 rounded-lg">
                                 <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
@@ -820,6 +830,24 @@ export const EnhancedCategoryRulesDialog = ({
                           suppliers={suppliers || []}
                           showNewIndicator={true}
                         />
+                        {/* Contextual help text: assign-mode vs filter-mode */}
+                        {(() => {
+                          const hasDescOrAmount = formData.descriptionPattern ||
+                            (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                            (formData.amountMax && parseFloat(formData.amountMax) > 0);
+                          if (hasDescOrAmount) {
+                            return (
+                              <p className="text-[12px] text-muted-foreground">
+                                Matching transactions will be tagged with this supplier.
+                              </p>
+                            );
+                          }
+                          return (
+                            <p className="text-[12px] text-muted-foreground">
+                              Only match transactions already linked to this supplier.
+                            </p>
+                          );
+                        })()}
                       </div>
 
                       <div className="space-y-2">

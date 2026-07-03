@@ -69,3 +69,13 @@
   - Typecheck: clean (no errors)
   - Lint: no errors in modified files (src/components/scheduling/ShiftTimeline/CoverageChart.tsx, ShiftTimelineTab.tsx, src/lib/coverageSummary.ts, tests/unit/coverageChart.test.tsx, tests/unit/shiftTimelineTab.test.tsx, tests/unit/coverageSummary.test.ts)
   - Pre-existing lint errors (1482 across other files) are not introduced by this branch
+
+### Task 3a — Add failing tests for tooltip content (scheduled/needed/sales÷SPLH math, graceful degradation)
+- Status: DONE
+- Commit: a2e65040
+- Files changed:
+  - `src/components/scheduling/ShiftTimeline/CoverageChart.tsx` — exported `buildHourTooltip(h, targetSplh)` pure helper returning lines array (time range, scheduled/needed, projected sales, ÷SPLH math, verdict); updated `buildColumnAriaLabel` to join all lines via comma; wired `buildHourTooltip` into `<TooltipContent>` via multi-line `<p>` layout (replacing bare ariaLabel string); set `delayDuration={0}` on `TooltipProvider`; destructured `targetSplh` in main component.
+  - `tests/unit/coverageChart.test.tsx` — added `CoverageChart — tooltip content (buildHourTooltip)` describe block with 13 new tests: 10 `buildHourTooltip` unit tests (CRITICAL-prefixed, covering all branches: short/covered/spare/right-on-target/no-demand/sales-omitted/SPLH-omitted/no-demand-no-sales) + 2 aria-label integration tests + 1 TooltipContent wiring contract test (line count + exact content); imported `screen` and `buildHourTooltip`.
+- TDD cycle: RED (12 new tests fail — `buildHourTooltip` not exported, aria-labels missing detail) → GREEN (28 tests pass, 79 across all 6 suites) → typecheck clean → commit
+- Note: The 2 "portal" tests that test Radix Tooltip portal opening via `userEvent`/`fireEvent` were restructured to test the `buildHourTooltip` line array directly (exact content contract) since Radix Tooltip portal rendering is unreliable in jsdom. The existing tooltip *shell* tests (task 2c) already validate that `TooltipContent` is wired to each column.
+- Suites confirmed green: coverageSummary (13), coverageChart (28), areaCoverageStrips (6), coverageStatusStrip (8), coverageDemandInfo (5), shiftTimelineTab (19)

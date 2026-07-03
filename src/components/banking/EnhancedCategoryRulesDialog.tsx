@@ -92,7 +92,7 @@ export const EnhancedCategoryRulesDialog = ({
 
   const appliesTo: AppliesTo = activeTab === 'bank' ? 'bank_transactions' : 'pos_sales';
 
-  const { data: rules, isLoading } = useCategorizationRulesV2(appliesTo);
+  const { data: rules, isLoading, error } = useCategorizationRulesV2(appliesTo);
   const { suppliers, createSupplier } = useSuppliers();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const createRule = useCreateRuleV2();
@@ -494,6 +494,14 @@ export const EnhancedCategoryRulesDialog = ({
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
                 <p className="mt-3 text-[13px] text-muted-foreground">Loading rules...</p>
               </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                  <AlertTriangle className="h-6 w-6 text-destructive" />
+                </div>
+                <p className="text-[15px] font-medium text-foreground mb-1">Failed to load rules</p>
+                <p className="text-[13px] text-muted-foreground">Please close and try again.</p>
+              </div>
             ) : rules && rules.length > 0 ? (
               <div className="space-y-2">
                 {rules.map((rule) => (
@@ -618,9 +626,10 @@ export const EnhancedCategoryRulesDialog = ({
                     size="sm"
                     variant="ghost"
                     onClick={() => setShowSuggestions(false)}
+                    aria-label="Dismiss AI suggestions"
                     className="h-7 w-7 p-0 rounded-lg"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
                 <div className="space-y-2 max-h-80 overflow-y-auto">
@@ -758,7 +767,7 @@ export const EnhancedCategoryRulesDialog = ({
                       placeholder="e.g., Food Supplier - Sysco"
                       value={formData.ruleName}
                       onChange={(e) => setFormData({ ...formData, ruleName: e.target.value })}
-                      className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
 
@@ -774,13 +783,13 @@ export const EnhancedCategoryRulesDialog = ({
                             placeholder="e.g., Sysco, Amazon, etc."
                             value={formData.descriptionPattern}
                             onChange={(e) => setFormData({ ...formData, descriptionPattern: e.target.value })}
-                            className="flex-1 h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            className="flex-1 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                           />
                           <Select
                             value={formData.descriptionMatchType}
                             onValueChange={(value) => setFormData({ ...formData, descriptionMatchType: value as MatchType })}
                           >
-                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-background border-border/40 rounded-lg">
+                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-muted/30 border-border/40 rounded-lg">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -858,7 +867,7 @@ export const EnhancedCategoryRulesDialog = ({
                           value={formData.transactionType}
                           onValueChange={(value) => setFormData({ ...formData, transactionType: value as TransactionType })}
                         >
-                          <SelectTrigger className="h-10 text-[14px] bg-background border-border/40 rounded-lg">
+                          <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -883,13 +892,13 @@ export const EnhancedCategoryRulesDialog = ({
                             placeholder="e.g., Burger, Coffee, etc."
                             value={formData.itemNamePattern}
                             onChange={(e) => setFormData({ ...formData, itemNamePattern: e.target.value })}
-                            className="flex-1 h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            className="flex-1 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                           />
                           <Select
                             value={formData.itemNameMatchType}
                             onValueChange={(value) => setFormData({ ...formData, itemNameMatchType: value as MatchType })}
                           >
-                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-background border-border/40 rounded-lg">
+                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-muted/30 border-border/40 rounded-lg">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -910,7 +919,7 @@ export const EnhancedCategoryRulesDialog = ({
                           placeholder="e.g., Beverages, Entrees"
                           value={formData.posCategory}
                           onChange={(e) => setFormData({ ...formData, posCategory: e.target.value })}
-                          className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                          className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                         />
                       </div>
                     </>
@@ -928,7 +937,7 @@ export const EnhancedCategoryRulesDialog = ({
                         placeholder="0.00"
                         value={formData.amountMin}
                         onChange={(e) => setFormData({ ...formData, amountMin: e.target.value })}
-                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
                     <div className="space-y-2">
@@ -941,7 +950,7 @@ export const EnhancedCategoryRulesDialog = ({
                         placeholder="0.00"
                         value={formData.amountMax}
                         onChange={(e) => setFormData({ ...formData, amountMax: e.target.value })}
-                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
                   </div>
@@ -1007,7 +1016,7 @@ export const EnhancedCategoryRulesDialog = ({
                         placeholder="0"
                         value={formData.priority}
                         onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
                     <div className="flex items-end pb-2">

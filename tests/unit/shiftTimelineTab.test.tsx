@@ -210,3 +210,75 @@ describe('ShiftTimelineTab', () => {
     expect(btn).toBeInTheDocument();
   });
 });
+
+// ─── Coverage panel redesign wiring tests ─────────────────────────────────────
+//
+// Task 5: verify that ShiftTimelineTab now renders the new CoverageVerdict,
+// CoverageChart (with its view toggle), and CoverageStatusStrip — and no
+// longer renders the old CoverageCurve / CoverageGapList components.
+//
+// These tests are RED until the wiring is in place.
+
+describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
+  // A day with one shift so we get the full data state (not the empty state).
+  const employees = [makeEmployee('e1', 'Ann')];
+  const shifts = [
+    makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+  ];
+
+  it('renders a CoverageVerdict text in the data state', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+      />,
+    );
+    // CoverageVerdict always renders one of three messages.
+    // With no demand configured, it shows the "Add staffing targets" prompt.
+    expect(
+      screen.getByText(/add staffing targets to see demand/i),
+    ).toBeInTheDocument();
+  });
+
+  it('renders a coverage chart view toggle (Chart | +/- bars)', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+      />,
+    );
+    // The ToggleGroup for coverage view should have both options.
+    expect(screen.getByRole('radio', { name: /chart/i })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /\+\/−/i })).toBeInTheDocument();
+  });
+
+  it('renders the coverage chart (role="img") in the data state', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+      />,
+    );
+    // CoverageChart renders an SVG with role="img"
+    const imgs = screen.getAllByRole('img');
+    // At least one img — the coverage chart
+    expect(imgs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('renders the hourly coverage status strip', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+      />,
+    );
+    // CoverageStatusStrip wraps cells in a group with aria-label "Hourly coverage status"
+    expect(
+      screen.getByRole('group', { name: /hourly coverage status/i }),
+    ).toBeInTheDocument();
+  });
+});

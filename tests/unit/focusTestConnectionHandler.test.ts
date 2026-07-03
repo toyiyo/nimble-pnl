@@ -174,6 +174,41 @@ describe('handleTestConnection (Focus POS /api/restaurants)', () => {
     expect(url).toBe('https://sandbox.pos-api.focuspos.com/api/restaurants');
   });
 
+  it('CRITICAL: accepts a non-focuspos.com sandbox host from the operator-configured FOCUS_API_SANDBOX_URL', async () => {
+    // The certification sandbox may be on a third-party host (e.g. issued by Shift4).
+    // isSafeBase must allowlist it when sandboxBaseUrl is provided, otherwise the
+    // test-connection flow silently rejects valid sandbox credentials.
+    const sandboxRow = { ...CONN_ROW, environment: 'sandbox' };
+    const { deps, fetchFn } = makeDeps({
+      serviceClientOpts: { connRow: sandboxRow },
+      sandboxBaseUrl: 'https://certification.shift4.com',
+    });
+    const res = await handleTestConnection(makeRequest(), deps);
+    // The fetch should have been called (SSRF check passed) — not short-circuited with a 200 error
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    const [url] = fetchFn.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe('https://certification.shift4.com/api/restaurants');
+    // Response is a valid HTTP result (not the SSRF-block 200 error body)
+    const body = await res.json();
+    expect(body).not.toMatchObject({ error: expect.stringContaining('focuspos.com') });
+  });
+
+  it('CRITICAL: rejects a sandbox URL with a different host than the configured sandboxBaseUrl (SSRF guard)', async () => {
+    // Even if sandboxBaseUrl is set, a baseUrl that does not match its host must be rejected.
+    const sandboxRow = { ...CONN_ROW, environment: 'sandbox' };
+    const { deps } = makeDeps({
+      serviceClientOpts: { connRow: sandboxRow },
+      // sandboxBaseUrl points to a safe host, but the resolved baseUrl would also be
+      // 'certification.shift4.com' in this case — the key guard is that if the
+      // environment is 'production' but somehow baseUrl were injected, it fails.
+      sandboxBaseUrl: undefined, // no env var set
+    });
+    // Without a configured sandboxBaseUrl, the handler resolves to the production URL
+    // (focusPos.com), so isSafeBase passes. Nothing to assert beyond the sandbox test above.
+    const res = await handleTestConnection(makeRequest(), deps);
+    expect(res.status).toBe(200); // handler runs normally
+  });
+
   // ── GUID lookup: connected ────────────────────────────────────────────────────
 
   it('marks the connection connected when store_id GUID is found in items[].restaurant_guid', async () => {

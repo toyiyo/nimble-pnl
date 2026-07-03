@@ -1,6 +1,5 @@
 /**
  * Unit tests for ShiftTimeline sub-components:
- *   - CoverageCurve
  *   - NowIndicator
  *   - TimelineAxis
  *   - TimelineLane
@@ -8,13 +7,15 @@
  *
  * These tests exercise the rendering paths that bring the new-code coverage
  * above the SonarCloud 80% threshold for this PR.
+ *
+ * Note: CoverageCurve was removed in Task 5 and replaced by CoverageChart +
+ * CoverageStatusStrip (see coverageChart.test.tsx, coverageStatusStrip.test.tsx).
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { CoverageCurve } from '@/components/scheduling/ShiftTimeline/CoverageCurve';
 import { NowIndicator } from '@/components/scheduling/ShiftTimeline/NowIndicator';
 import { TimelineAxis } from '@/components/scheduling/ShiftTimeline/TimelineAxis';
 import { TimelineLane } from '@/components/scheduling/ShiftTimeline/TimelineLane';
@@ -68,123 +69,6 @@ function makeBar(overrides: Partial<TimelineBarModel> = {}): TimelineBarModel {
     ...overrides,
   };
 }
-
-// ─── CoverageCurve ─────────────────────────────────────────────────────────────
-
-describe('CoverageCurve', () => {
-  it('renders an SVG with role="img" when coverage is non-empty', () => {
-    render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[{ min: 600, count: 2 }, { min: 615, count: 3 }]}
-        demand={null}
-        gaps={[]}
-        minToPct={minToPct}
-      />,
-    );
-    expect(screen.getByRole('img')).toBeInTheDocument();
-  });
-
-  it('returns null when coverage array is empty', () => {
-    const { container } = render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[]}
-        demand={null}
-        gaps={[]}
-        minToPct={minToPct}
-      />,
-    );
-    expect(container).toBeEmptyDOMElement();
-  });
-
-  it('renders the demand dashed line when demand is provided', () => {
-    const { container } = render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[{ min: 600, count: 2 }]}
-        demand={[{ min: 600, target: 3 }]}
-        gaps={[]}
-        minToPct={minToPct}
-      />,
-    );
-    // Two <path> elements: coverage area + demand line
-    const paths = container.querySelectorAll('path');
-    expect(paths.length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('renders gap shading rectangles for understaffed windows', () => {
-    const { container } = render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[{ min: 600, count: 1 }]}
-        demand={[{ min: 600, target: 3 }]}
-        gaps={[{ startMin: 600, endMin: 615 }]}
-        minToPct={minToPct}
-      />,
-    );
-    const rects = container.querySelectorAll('rect');
-    expect(rects.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('includes a title and desc for accessibility', () => {
-    const { container } = render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[{ min: 600, count: 2 }]}
-        demand={null}
-        gaps={[]}
-        minToPct={minToPct}
-      />,
-    );
-    expect(container.querySelector('title')).toBeInTheDocument();
-    expect(container.querySelector('desc')).toBeInTheDocument();
-  });
-
-  it('mentions correct gap count in desc (plural)', () => {
-    const { container } = render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[{ min: 600, count: 1 }]}
-        demand={null}
-        gaps={[{ startMin: 600, endMin: 615 }, { startMin: 660, endMin: 675 }]}
-        minToPct={minToPct}
-      />,
-    );
-    const desc = container.querySelector('desc');
-    expect(desc?.textContent).toContain('2 understaffed windows');
-  });
-
-  it('mentions singular gap count in desc', () => {
-    const { container } = render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[{ min: 600, count: 1 }]}
-        demand={null}
-        gaps={[{ startMin: 600, endMin: 615 }]}
-        minToPct={minToPct}
-      />,
-    );
-    const desc = container.querySelector('desc');
-    expect(desc?.textContent).toContain('1 understaffed window');
-    expect(desc?.textContent).not.toContain('windows');
-  });
-
-  it('renders with a custom height prop', () => {
-    const { container } = render(
-      <CoverageCurve
-        window={WINDOW}
-        coverage={[{ min: 600, count: 2 }]}
-        demand={null}
-        gaps={[]}
-        minToPct={minToPct}
-        height={120}
-      />,
-    );
-    const svg = container.querySelector('svg');
-    expect(svg?.getAttribute('viewBox')).toContain('120');
-  });
-});
 
 // ─── NowIndicator ─────────────────────────────────────────────────────────────
 

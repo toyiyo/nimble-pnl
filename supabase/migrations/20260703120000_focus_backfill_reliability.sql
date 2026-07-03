@@ -1,30 +1,201 @@
--- =====================================================================
--- FOCUS POS TRANSACTION SECURITY HARDENING
+-- =====================================================
+-- Focus POS backfill reliability
+-- =====================================================
+-- Two production problems this fixes:
 --
--- 1. Revoke direct PUBLIC EXECUTE on the SECURITY DEFINER _impl helper
---    so callers are forced through the auth-checked public overloads.
---    PostgreSQL grants EXECUTE to PUBLIC by default on new functions;
---    this migration corrects that for the already-deployed _impl.
+--   1. The focus-backfill-sync / focus-bulk-sync crons were rescheduled by
+--      20260702160000 to build their URL from current_setting('app.settings.supabase_url').
+--      That GUC is not set and CANNOT be set on Supabase (ALTER DATABASE ... SET is
+--      permission-denied for the postgres role), so the cron body's `WHERE url <> ''`
+--      guard is always false → the job "succeeds" with 0 rows and never calls the
+--      worker. (The follow-up edit that hardcoded the URL changed an ALREADY-APPLIED
+--      migration file, which Supabase skips — so it never took effect.) → Hardcode
+--      the public project URL here, in a NEW migration, exactly like the toast/shift4
+--      crons already do.
 --
--- 2. Re-create _impl with discount_amount != 0 predicate fix.
---    The original migration used > 0, which silently missed the common
---    case where Focus stores DiscountAmount as a negative value (e.g. -3.01).
---    Applies to both the UPSERT filter and the stale-row DELETE filter.
--- =====================================================================
+--   2. The backfill worker timed out (HTTP 546 / worker CPU limit) because it ran the
+--      unified_sales aggregation RPC inside the edge function. → Move that aggregation
+--      entirely into Postgres: the worker now only fetches + upserts focus_orders
+--      (fast), and sync_all_focus_transactions_to_unified_sales() does a FULL-range
+--      aggregation for still-backfilling connections, every 5 minutes, in-database
+--      (no edge CPU limit). Companion edge change: processBackfillBatch no longer
+--      calls the RPC.
+--
+-- Idempotent: unschedule guards precede every (re)schedule.
+-- =====================================================
+
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+GRANT USAGE ON SCHEMA cron TO postgres;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 1. Revoke PUBLIC EXECUTE on the internal _impl helper
+-- 1. Hardcoded-URL, gate-less cron reschedule (backfill every 5 min; bulk every 6 h)
 -- ─────────────────────────────────────────────────────────────────────────────
--- Must run before or after CREATE OR REPLACE — same result either way.
-REVOKE ALL ON FUNCTION public._sync_focus_transactions_to_unified_sales_impl(uuid, date, date)
-  FROM PUBLIC, anon, authenticated;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'focus-backfill-sync') THEN
+    PERFORM cron.unschedule('focus-backfill-sync');
+  END IF;
+END $$;
 
-GRANT EXECUTE ON FUNCTION public._sync_focus_transactions_to_unified_sales_impl(uuid, date, date)
+SELECT cron.schedule(
+  'focus-backfill-sync',
+  '*/5 * * * *',
+  $cron$
+  SELECT net.http_post(
+    url     := 'https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/focus-backfill-sync',
+    headers := jsonb_build_object('Content-Type', 'application/json'),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 5000
+  );
+  $cron$
+);
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'focus-bulk-sync') THEN
+    PERFORM cron.unschedule('focus-bulk-sync');
+  END IF;
+END $$;
+
+SELECT cron.schedule(
+  'focus-bulk-sync',
+  '30 1,7,13,19 * * *',
+  $cron$
+  SELECT net.http_post(
+    url     := 'https://ncdujvdgqtaunuyigflp.supabase.co/functions/v1/focus-bulk-sync',
+    headers := jsonb_build_object('Content-Type', 'application/json'),
+    body    := '{}'::jsonb,
+    timeout_milliseconds := 5000
+  );
+  $cron$
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 2. unified_sales aggregation moves fully into Postgres.
+--    Still-backfilling connections (initial_sync_done=false) get a FULL-range
+--    aggregation (NULL date window ⇒ all dates in _impl); connections that have
+--    finished backfilling get the light 3-day incremental window.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.sync_all_focus_transactions_to_unified_sales()
+RETURNS TABLE(restaurant_id uuid, rows_synced integer)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  r record;
+  v_full_range boolean;
+BEGIN
+  FOR r IN
+    SELECT fc.restaurant_id, fc.initial_sync_done
+    FROM public.focus_connections fc
+    WHERE fc.is_active = true
+    ORDER BY fc.last_sync_time ASC NULLS FIRST
+    LIMIT 5
+  LOOP
+    BEGIN
+      restaurant_id := r.restaurant_id;
+
+      -- Full-range when the backfill is still running, OR when HISTORICAL rows
+      -- (older than the 3-day incremental window) were written recently.
+      -- The second condition closes the completion race (Codex P1, PR #567):
+      -- the worker's FINAL batch writes ~5 historical days and flips
+      -- initial_sync_done=true between two cron ticks — without this, those
+      -- days would fall to the 3-day branch and never reach unified_sales.
+      -- It also picks up custom-range re-imports of old dates for free.
+      v_full_range := (NOT r.initial_sync_done) OR EXISTS (
+        SELECT 1
+        FROM public.focus_orders fo
+        WHERE fo.restaurant_id = r.restaurant_id
+          AND fo.updated_at   > now() - interval '15 minutes'
+          AND fo.business_date < (CURRENT_DATE - 3)
+      );
+
+      IF v_full_range THEN
+        -- Aggregate ALL dates stored in focus_orders (NULL bounds ⇒ full range).
+        rows_synced := public._sync_focus_transactions_to_unified_sales_impl(
+                         r.restaurant_id, NULL, NULL
+                       );
+      ELSE
+        -- Incremental: 3-day lookback window (timezone-safe, matches prior behaviour).
+        rows_synced := public._sync_focus_transactions_to_unified_sales_impl(
+                         r.restaurant_id,
+                         (CURRENT_DATE - interval '3 days')::date,
+                         CURRENT_DATE
+                       );
+      END IF;
+      RETURN NEXT;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE WARNING
+        'sync_all_focus_transactions_to_unified_sales: failed for restaurant %: %',
+        r.restaurant_id, SQLERRM;
+    END;
+  END LOOP;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.sync_all_focus_transactions_to_unified_sales()
   TO service_role;
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- 2. Re-create _impl with corrected discount_amount predicate (!= 0)
+-- 3. Run the transaction→unified_sales aggregation every 5 minutes (was every 6 h),
+--    so backfilled days appear in P&L within minutes while the import runs.
 -- ─────────────────────────────────────────────────────────────────────────────
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'focus-transactions-unified-sales-sync') THEN
+    PERFORM cron.unschedule('focus-transactions-unified-sales-sync');
+  END IF;
+END $$;
+
+SELECT cron.schedule(
+  'focus-transactions-unified-sales-sync',
+  '*/5 * * * *',
+  $$SELECT sync_all_focus_transactions_to_unified_sales()$$
+);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 4. Populate unified_sales.sale_time from the Focus check timestamps.
+--
+--    The datafeed parser already captures TimeOpened/TimeClosed into
+--    focus_orders.opened_at_local / closed_at_local (text, restaurant-local,
+--    real feed format 'MM/DD/YYYY HH24:MI:SS'), but the impl never mapped them
+--    to unified_sales.sale_time — so every Focus row had a NULL time and the
+--    POS sales screen / busy-time (staffing) analysis had nothing to work with.
+--    Toast populates sale_time; Focus now mirrors it.
+--
+--    sale_time is added to all three row kinds (sale, discount, tip) and to the
+--    ON CONFLICT updates, so previously-imported rows self-heal on the next
+--    full-range sync (which §2 runs every 5 min while backfilling).
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- Tolerant local-time parser. focus_orders.opened_at_local is free text; a
+-- malformed value must yield NULL, never abort a sync batch.
+--   Accepts:  '06/29/2026 12:26:06'  (real Lynk datafeed, MM/DD/YYYY)
+--             '2026-06-29T12:26:06' / '2026-06-29 12:26:06'  (ISO variants)
+CREATE OR REPLACE FUNCTION public._focus_parse_local_time(p_raw text)
+RETURNS time
+LANGUAGE plpgsql
+IMMUTABLE
+STRICT
+AS $$
+BEGIN
+  IF p_raw ~ '^\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}(:\d{2})?$' THEN
+    RETURN to_timestamp(p_raw, 'MM/DD/YYYY HH24:MI:SS')::time;
+  ELSIF p_raw ~ '^\d{4}-\d{2}-\d{2}[T ]\d{1,2}:\d{2}(:\d{2})?' THEN
+    RETURN (replace(p_raw, 'T', ' ')::timestamp)::time;
+  END IF;
+  RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NULL;  -- belt-and-braces: any parse surprise degrades to NULL
+END;
+$$;
+
+COMMENT ON FUNCTION public._focus_parse_local_time(text) IS
+  'Parses a Focus POS local timestamp string (MM/DD/YYYY HH24:MI:SS or ISO) '
+  'to a time-of-day. Returns NULL for NULL/malformed input — never raises.';
+
 CREATE OR REPLACE FUNCTION public._sync_focus_transactions_to_unified_sales_impl(
   p_restaurant_id uuid,
   p_start_date    date,   -- NULL = all dates
@@ -43,6 +214,7 @@ DECLARE
   v_store_id       text;
   v_order          record;
   v_order_id       text;
+  v_sale_time      time;
   v_current_ids    text[];
 BEGIN
   -- Fetch the store_id from the most-recently-created active connection.
@@ -67,30 +239,10 @@ BEGIN
   -- GUC flag: skip per-row triggers during bulk sync (transaction-local).
   PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
 
-  -- ── Step 0: Delete entire-check orphans ────────────────────────────────
-  -- Removes unified_sales rows whose external_order_id no longer matches
-  -- any focus_orders row in the date range (e.g. voided checks deleted by
-  -- the sync handler). Must run before the per-check loop so the daily
-  -- re-aggregation reflects the correct final state.
-  DELETE FROM public.unified_sales us
-  WHERE us.restaurant_id = p_restaurant_id
-    AND us.pos_system    = 'focus'
-    AND (p_start_date IS NULL OR us.sale_date >= p_start_date)
-    AND (p_end_date   IS NULL OR us.sale_date <= p_end_date)
-    AND NOT EXISTS (
-      SELECT 1
-      FROM public.focus_orders fo
-      WHERE fo.restaurant_id   = p_restaurant_id
-        AND fo.business_date   = us.sale_date
-        AND us.external_order_id =
-              'focus-' || COALESCE(v_store_id, 'unknown')
-              || '-' || to_char(fo.business_date, 'YYYYMMDD')
-              || '-' || fo.focus_check_id
-    );
-
   -- ── Iterate per check (focus_order) ────────────────────────────────────
   FOR v_order IN
-    SELECT fo.business_date, fo.focus_check_id
+    SELECT fo.business_date, fo.focus_check_id,
+           fo.opened_at_local, fo.closed_at_local
     FROM public.focus_orders fo
     WHERE fo.restaurant_id = p_restaurant_id
       AND (p_start_date IS NULL OR fo.business_date >= p_start_date)
@@ -100,6 +252,13 @@ BEGIN
     v_order_id := 'focus-' || COALESCE(v_store_id, 'unknown')
                   || '-' || to_char(v_order.business_date, 'YYYYMMDD')
                   || '-' || v_order.focus_check_id;
+
+    -- Time-of-day for this check: prefer TimeOpened (when the customer
+    -- transacted — the busy-time signal), fall back to TimeClosed.
+    v_sale_time := COALESCE(
+      public._focus_parse_local_time(v_order.opened_at_local),
+      public._focus_parse_local_time(v_order.closed_at_local)
+    );
 
     -- ── Step 1: Collect current external_item_ids (sale rows) ──────────────
     SELECT ARRAY(
@@ -129,13 +288,13 @@ BEGIN
       restaurant_id, pos_system,
       external_order_id, external_item_id,
       item_name, quantity, unit_price, total_price,
-      sale_date, pos_category, item_type, synced_at
+      sale_date, sale_time, pos_category, item_type, synced_at
     )
     SELECT
       foi.restaurant_id, 'focus',
       v_order_id, v_order_id || '__' || foi.item_key,
       foi.name, 1, foi.price, foi.price,
-      foi.business_date, foi.report_group_id, 'sale', now()
+      foi.business_date, v_sale_time, foi.report_group_id, 'sale', now()
     FROM public.focus_order_items foi
     WHERE foi.restaurant_id  = p_restaurant_id
       AND foi.business_date  = v_order.business_date
@@ -149,6 +308,7 @@ BEGIN
       unit_price   = EXCLUDED.unit_price,
       total_price  = EXCLUDED.total_price,
       sale_date    = EXCLUDED.sale_date,
+      sale_time    = EXCLUDED.sale_time,
       pos_category = EXCLUDED.pos_category,
       synced_at    = EXCLUDED.synced_at
       -- category_id + is_categorized intentionally omitted →
@@ -167,14 +327,14 @@ BEGIN
       restaurant_id, pos_system,
       external_order_id, external_item_id,
       item_name, quantity, unit_price, total_price,
-      sale_date, item_type, adjustment_type, synced_at
+      sale_date, sale_time, item_type, adjustment_type, synced_at
     )
     SELECT
       foi.restaurant_id, 'focus',
       v_order_id, v_order_id || '__' || foi.item_key || '_discount',
       'Discount - ' || COALESCE(foi.name, 'Item'), 1,
       -ABS(foi.discount_amount), -ABS(foi.discount_amount),
-      foi.business_date, 'discount', 'discount', now()
+      foi.business_date, v_sale_time, 'discount', 'discount', now()
     FROM public.focus_order_items foi
     WHERE foi.restaurant_id  = p_restaurant_id
       AND foi.business_date  = v_order.business_date
@@ -187,6 +347,7 @@ BEGIN
       unit_price  = EXCLUDED.unit_price,
       total_price = EXCLUDED.total_price,
       sale_date   = EXCLUDED.sale_date,
+      sale_time   = EXCLUDED.sale_time,
       synced_at   = EXCLUDED.synced_at;
 
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
@@ -216,14 +377,14 @@ BEGIN
       restaurant_id, pos_system,
       external_order_id, external_item_id,
       item_name, quantity, unit_price, total_price,
-      sale_date, item_type, adjustment_type, synced_at
+      sale_date, sale_time, item_type, adjustment_type, synced_at
     )
     SELECT
       fp.restaurant_id, 'focus',
       v_order_id, v_order_id || '_' || fp.payment_key || '_tip',
       'Tip - ' || COALESCE(fp.name, 'Payment'), 1,
       fp.tip, fp.tip,
-      fp.business_date, 'tip', 'tip', now()
+      fp.business_date, v_sale_time, 'tip', 'tip', now()
     FROM public.focus_payments fp
     WHERE fp.restaurant_id  = p_restaurant_id
       AND fp.business_date  = v_order.business_date
@@ -236,6 +397,7 @@ BEGIN
       unit_price  = EXCLUDED.unit_price,
       total_price = EXCLUDED.total_price,
       sale_date   = EXCLUDED.sale_date,
+      sale_time   = EXCLUDED.sale_time,
       synced_at   = EXCLUDED.synced_at;
 
     GET DIAGNOSTICS v_row_count = ROW_COUNT;
@@ -286,10 +448,3 @@ BEGIN
   RETURN v_count;
 END;
 $$;
-
--- Re-apply privilege restriction after CREATE OR REPLACE (which resets grants)
-REVOKE ALL ON FUNCTION public._sync_focus_transactions_to_unified_sales_impl(uuid, date, date)
-  FROM PUBLIC, anon, authenticated;
-
-GRANT EXECUTE ON FUNCTION public._sync_focus_transactions_to_unified_sales_impl(uuid, date, date)
-  TO service_role;

@@ -370,7 +370,7 @@ export async function fetchDatafeed(
     return syncAttempt.result;
   }
 
-  const { blobUrl, syncStatus } = syncAttempt;
+  const { blobUrl } = syncAttempt;
 
   // ── 6. SSRF-guard the blob URL ───────────────────────────────────────────────
 

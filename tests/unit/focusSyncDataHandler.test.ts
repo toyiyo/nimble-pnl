@@ -614,6 +614,30 @@ describe('handleSyncData', () => {
     expect(updateArg.sync_cursor).toBe(5);
   });
 
+  // ── Portal path: sync error persisted to connection_status (CodeRabbit, #572) ──
+
+  it('persists connection_status="error" + last_error when a portal sync fails', async () => {
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connection: MOCK_CONNECTION_BACKFILL },
+    });
+    // 503 → processReportDay returns {status:'error'}
+    (deps.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 503,
+      headers: { get: () => null },
+      text: () => Promise.resolve(''),
+    });
+
+    const req = makeRequest({});
+    await handleSyncData(req, deps);
+
+    // Symmetric with the Lynk paths: the failure must reach the DB row, not
+    // just the JSON response, so the frontend banner reflects reality.
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(updateArg.connection_status).toBe('error');
+    expect(typeof updateArg.last_error).toBe('string');
+    expect(updateArg.last_error_at).toBeDefined();
+  });
+
   // ── B3: Lynk path — backfill via processBackfillBatch ────────────────────
 
   describe('Lynk backfill path (B3): delegates to processBackfillBatch', () => {

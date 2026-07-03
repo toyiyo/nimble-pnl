@@ -605,7 +605,13 @@ export async function handleSyncData(
       last_sync_time: nowIso,
       updated_at: nowIso,
     };
-    if (status !== 'error') {
+    if (status === 'error') {
+      // Persist the failure so the frontend banner reflects reality — symmetric
+      // with the Lynk backfill/incremental if/else above (CodeRabbit, PR #572).
+      portalUpdatePayload.connection_status = 'error';
+      portalUpdatePayload.last_error = 'Focus report sync failed';
+      portalUpdatePayload.last_error_at = nowIso;
+    } else {
       portalUpdatePayload.connection_status = 'connected';
       portalUpdatePayload.last_error = null;
       portalUpdatePayload.last_error_at = null;

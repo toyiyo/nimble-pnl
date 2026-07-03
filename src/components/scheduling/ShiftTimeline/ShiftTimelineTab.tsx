@@ -6,12 +6,14 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { CalendarOff } from 'lucide-react';
 
 import { isoToLocalMinutes } from '@/lib/shiftCoverage';
-import { summarizeCoverageHours, buildVerdict } from '@/lib/coverageSummary';
+import { summarizeCoverageHours, buildVerdict, summarizeAreaCoverage } from '@/lib/coverageSummary';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useTimelineModel } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
 import { CoverageStatusStrip } from './CoverageStatusStrip';
+import { CoverageDemandInfo } from './CoverageDemandInfo';
+import { AreaCoverageStrips } from './AreaCoverageStrips';
 import { TimelineAxis } from './TimelineAxis';
 import { TimelineLane } from './TimelineLane';
 import { NowIndicator } from './NowIndicator';
@@ -138,6 +140,15 @@ export function ShiftTimelineTab({
   );
   const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
 
+  // ── Per-area coverage summary (only when grouped by area) ──────────────────
+  const areaCoverage = useMemo(
+    () =>
+      groupBy === 'area'
+        ? summarizeAreaCoverage(dayShifts, employees, selectedDay, tz, model.window)
+        : [],
+    [groupBy, dayShifts, employees, selectedDay, tz, model.window],
+  );
+
   // ── Geometry helper ────────────────────────────────────────────────────────
   const minToPct = useCallback(
     (min: number) =>
@@ -256,8 +267,11 @@ export function ShiftTimelineTab({
               Offset by the 120px lane-label column so the chart x-scale
               aligns with the axis ticks and shift bars. */}
           <div className="px-4 pt-3 pb-1 space-y-2">
-            {/* Plain-language verdict */}
-            <CoverageVerdict verdict={verdict} />
+            {/* Plain-language verdict + demand explainer */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CoverageVerdict verdict={verdict} />
+              <CoverageDemandInfo />
+            </div>
 
             {/* View toggle: area chart vs diverging-bar chart */}
             <div className="flex items-center gap-2">
@@ -286,6 +300,13 @@ export function ShiftTimelineTab({
             <div className="pl-[120px]">
               <CoverageStatusStrip hours={hourlySummary} />
             </div>
+
+            {/* Per-area scheduled strips — only when grouped by area */}
+            {groupBy === 'area' && (
+              <div className="pl-[120px]">
+                <AreaCoverageStrips areas={areaCoverage} />
+              </div>
+            )}
           </div>
 
           {/* Hour axis */}

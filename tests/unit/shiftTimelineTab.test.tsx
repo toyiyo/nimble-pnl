@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee } from '@/types/scheduling';
 
@@ -279,6 +279,119 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
     // CoverageStatusStrip wraps cells in a group with aria-label "Hourly coverage status"
     expect(
       screen.getByRole('group', { name: /hourly coverage status/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+// ─── Task 5: CoverageDemandInfo + AreaCoverageStrips wiring ──────────────────
+//
+// RED tests — will fail until ShiftTimelineTab is updated to:
+//   1. Render <CoverageDemandInfo /> in the coverage panel header.
+//   2. Render <AreaCoverageStrips areas={areaCoverage} /> when groupBy === 'area'.
+//   3. NOT render <AreaCoverageStrips> when groupBy === 'position'.
+
+describe('ShiftTimelineTab — CoverageDemandInfo + AreaCoverageStrips wiring (Task 5)', () => {
+  const empCS = {
+    id: 'e1',
+    restaurant_id: 'r1',
+    name: 'Alice',
+    position: 'Server',
+    area: 'Cold Stone',
+    hourly_rate: 0,
+    hourly_rate_cents: 0,
+    role: 'staff' as const,
+    is_active: true,
+  } as Employee;
+
+  const empWZ = {
+    id: 'e2',
+    restaurant_id: 'r1',
+    name: 'Bob',
+    position: 'Server',
+    area: "Wetzel's",
+    hourly_rate: 0,
+    hourly_rate_cents: 0,
+    role: 'staff' as const,
+    is_active: true,
+  } as Employee;
+
+  // 2026-01-05 10:00–16:00 CST for both employees (UTC: 16:00–22:00)
+  const shifts: Shift[] = [
+    {
+      id: 's1', restaurant_id: 'r1', employee_id: 'e1',
+      start_time: '2026-01-05T16:00:00Z', end_time: '2026-01-05T22:00:00Z',
+      break_duration: 0, position: 'Server', status: 'scheduled',
+      is_published: false, locked: false, source: 'manual',
+      created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+    } as Shift,
+    {
+      id: 's2', restaurant_id: 'r1', employee_id: 'e2',
+      start_time: '2026-01-05T17:00:00Z', end_time: '2026-01-05T23:00:00Z',
+      break_duration: 0, position: 'Server', status: 'scheduled',
+      is_published: false, locked: false, source: 'manual',
+      created_at: '2026-07-01T00:00:00Z', updated_at: '2026-07-01T00:00:00Z',
+    } as Shift,
+  ];
+
+  it('CRITICAL: renders the CoverageDemandInfo "How is needed set?" trigger button in the data state', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={[empCS, empWZ]}
+      />,
+    );
+    // CoverageDemandInfo renders a button with aria-label "How is needed staff calculated?"
+    expect(
+      screen.getByRole('button', { name: /how is needed staff calculated/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('CRITICAL: renders AreaCoverageStrips per-area rows when groupBy === "area" (default)', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={[empCS, empWZ]}
+      />,
+    );
+    // AreaCoverageStrips renders each area as a group with aria-label "{area} hourly coverage"
+    expect(
+      screen.getByRole('group', { name: /cold stone hourly coverage/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('group', { name: /wetzel's hourly coverage/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('CRITICAL: does NOT render AreaCoverageStrips when groupBy === "position"', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={[empCS, empWZ]}
+      />,
+    );
+    // Switch to "Position" group-by
+    const positionToggle = screen.getByRole('radio', { name: /position/i });
+    fireEvent.click(positionToggle);
+
+    // Area strips should not be present when grouped by position
+    expect(
+      screen.queryByRole('group', { name: /cold stone hourly coverage/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders the per-area footnote about whole-location demand when groupBy === "area"', () => {
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={[empCS, empWZ]}
+      />,
+    );
+    expect(
+      screen.getByText(/demand targets are set for the whole location/i),
     ).toBeInTheDocument();
   });
 });

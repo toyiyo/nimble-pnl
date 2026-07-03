@@ -132,6 +132,49 @@ Phase 4–9: dev-build-and-ship workflow — launched
           (m3) _sync_focus_to_unified_sales_impl(uuid,date,date): same assertion
           (m4) _sync_focus_transactions_to_unified_sales_impl(uuid,date,date): same assertion
         Suite result: 1525 passed, 4 failed (new m1–m4), exit code indicates failure as expected.
+  - [x] Task 4b (plan Task 4 step 2, task 19/36): Run npm run test:db to verify tests fail (sync functions not yet patched)
+        RED confirmed via npm run test:db:
+        - Tests (a)-(l): 22/22 PASS (Tasks 1, 2, 3 still all green)
+        - not ok 23 - (m1) sync_toast_to_unified_sales(uuid) categorizes unconditionally via internal engine
+        - not ok 24 - (m2) sync_toast_to_unified_sales(uuid,date,date) categorizes unconditionally via internal engine
+        - not ok 25 - (m3) _sync_focus_to_unified_sales_impl(uuid,date,date) categorizes unconditionally via internal engine
+        - not ok 26 - (m4) _sync_focus_transactions_to_unified_sales_impl(uuid,date,date) categorizes unconditionally via internal engine
+        Total: 1529 tests, 1525 passed, 4 failed — exactly the 4 new m1-m4 tests failing as expected.
+        No commit needed — verification only step.
+  - [x] Task 4c (plan Task 4 step 3, task 20/36): Implement migration §6 — dynamic gate rewrite DO-block — commit 68ce1473
+        File: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§6 appended, +70 lines)
+        GREEN confirmed: npm run test:db → 1529/1529 passed, 0 failed.
+        All 26 tests (a–m4) in categorization_background_rules.test.sql pass:
+          (m1) sync_toast_to_unified_sales(uuid): no gate, calls apply_rules_to_pos_sales_internal
+          (m2) sync_toast_to_unified_sales(uuid,date,date): same
+          (m3) _sync_focus_to_unified_sales_impl(uuid,date,date): same
+          (m4) _sync_focus_transactions_to_unified_sales_impl(uuid,date,date): same
+        Implementation: DO-block reads each sync function via pg_get_functiondef, regexp_replaces
+        the auth-gated categorization block (IF auth.uid() IS NOT NULL THEN PERFORM apply_rules_to_pos_sales...)
+        with unconditional PERFORM apply_rules_to_pos_sales_internal(p_restaurant_id, 10000);
+        Idempotent: skips already-patched functions (LIKE '%apply_rules_to_pos_sales_internal%' guard).
+        Drift guard: RAISE EXCEPTION if gate pattern not found and function not already patched.
+        Authorization header (IF auth.uid() IS NOT NULL AND NOT EXISTS...) preserved — regex only
+        matches the categorization gate (pattern requires IS NOT NULL THEN\s*PERFORM apply_rules_to_pos_sales).
+        Message: "fix(categorization): sync functions categorize unconditionally via internal engine (dynamic gate rewrite)"
+  - [x] Task 4d (plan Task 4 step 4, task 21/36): Run npm run test:db to verify Task 4 tests pass
+        GREEN confirmed: npm run test:db → 1529/1529 passed, 0 failed.
+        All 26 tests (a–m4) in categorization_background_rules.test.sql pass:
+          (m1) ok 23 - sync_toast_to_unified_sales(uuid) categorizes unconditionally via internal engine
+          (m2) ok 24 - sync_toast_to_unified_sales(uuid,date,date) categorizes unconditionally via internal engine
+          (m3) ok 25 - _sync_focus_to_unified_sales_impl(uuid,date,date) categorizes unconditionally via internal engine
+          (m4) ok 26 - _sync_focus_transactions_to_unified_sales_impl(uuid,date,date) categorizes unconditionally via internal engine
+        Tasks 1 (a–h), 2 (g–i), and 3 (j–l) also all green — no regressions.
+        No commit needed — verification only step.
+  - [x] Task 4e (plan Task 4 step 5, task 22/36): Commit Task 4 (sync functions categorize unconditionally via internal engine) — commit 68ce1473
+        Commit message: "fix(categorization): sync functions categorize unconditionally via internal engine (dynamic gate rewrite)"
+        Files: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§6 appended, +70 lines)
+        Migration §6 DO-block reads each of the four gated sync functions via pg_get_functiondef, regexp_replaces
+        the auth-gated categorization block (IF auth.uid() IS NOT NULL THEN PERFORM apply_rules_to_pos_sales...)
+        with unconditional PERFORM apply_rules_to_pos_sales_internal(p_restaurant_id, 10000).
+        Idempotent: skips already-patched functions. Drift guard: RAISE EXCEPTION if gate pattern not found and
+        function not already patched. Authorization header preserved — regex only matches the categorization gate.
+        All 1529/1529 pgTAP tests green; 26 tests (a–m4) in categorization_background_rules.test.sql pass.
 
 ## CI Status
 - PR: not yet created

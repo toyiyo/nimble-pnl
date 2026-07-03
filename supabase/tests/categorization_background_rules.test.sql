@@ -32,9 +32,29 @@
 --       with jwt.claims sub = a UUID NOT in user_restaurants for restaurant G:
 --         assert apply_rules_to_pos_sales(restaurant_g, 10) raises
 --         'Permission denied: user does not have access to apply rules for this restaurant'
+--
+-- Task 3 (tests j–l): apply_rules_to_bank_transactions_internal privilege trio + NULL-auth
+--   batch path with supplier assignment + journal entries + public wrapper enforcement.
+--   Written RED (§5 not yet implemented).
+--   (j) privilege trio:
+--       - authenticated cannot EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer)
+--       - anon cannot EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer)
+--       - service_role CAN EXECUTE apply_rules_to_bank_transactions_internal(uuid,integer)
+--   (k) NULL-auth batch path: with jwt.claims cleared (no auth context), seed an uncategorized
+--       bank_transactions row (description matches 'VENDOR-H', supplier-less) + an active
+--       auto_apply bank_transactions rule (description 'VENDOR-H' contains, with supplier_id=H).
+--       Disable the BEFORE INSERT trigger (auto_categorize_bank_transaction) so the trigger
+--       does NOT pre-categorize the row. Call
+--       apply_rules_to_bank_transactions_internal(restaurant_h, 100) and assert:
+--         applied_count=1
+--         txn.is_categorized=true, category_id set from rule
+--         txn.supplier_id assigned from rule (NULL before; rule supplier after)
+--         a journal_entries row exists with reference_id = txn.id AND created_by IS NULL
+--   (l) public wrapper apply_rules_to_bank_transactions raises 'Permission denied...'
+--       for a sub NOT in user_restaurants for restaurant H.
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(22);
 
 -- ============================================================
 -- Setup
@@ -61,6 +81,7 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00000-...-000000000c01 = Restaurant C  (tests c)
 --   c1a00000-...-000000000e01 = Restaurant E  (tests e, f)
 --   c1a00007-...-000000000701 = Restaurant G  (tests g, h, i; uses c1a00007 prefix for group G)
+--   c1a00008-...-000000000801 = Restaurant H  (tests j, k, l; uses c1a00008 prefix for group H)
 -- Chart-of-accounts
 --   c1a00000-...-000000000f01/0f02 = rest A  (expense + cash)
 --   c1a00000-...-000000000f03      = rest B
@@ -68,12 +89,15 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00000-...-000000000f05      = rest E
 --   c1a00007-...-000000000706      = rest G expense (Sales Tax category)
 --   c1a00007-...-000000000707      = rest G cash account (account_code='1000')
+--   c1a00008-...-000000000806      = rest H expense (Food Costs H)
+--   c1a00008-...-000000000807      = rest H cash account (account_code='1000')
 -- Suppliers
 --   c1a00000-...-000000000d01 = Supplier A (SYGMA)
 --   c1a00000-...-000000000d02 = Supplier B
 --   c1a00000-...-000000000d03 = Supplier C
 --   c1a00000-...-000000000d04 = Supplier E
 --   c1a00000-...-000000000d05 = Supplier E-other (for test f)
+--   c1a00008-...-000000000d08 = Supplier H (VENDOR-H; assigned by rule k)
 -- Rules
 --   c1a00000-...-000000000001 = rule A (description+supplier)
 --   c1a00000-...-000000000002 = rule B supplier-only
@@ -81,14 +105,19 @@ ALTER TABLE public.user_restaurants        DISABLE ROW LEVEL SECURITY;
 --   c1a00000-...-000000000004 = rule B supplier+debit (no description/amount)
 --   c1a00000-...-000000000005 = rule E (description+supplier)
 --   c1a00007-...-000000000700 = rule G (pos_sales, item_name 'Sales Tax', auto_apply)
+--   c1a00008-...-000000000800 = rule H (bank_transactions, description 'VENDOR-H' contains, supplier=d08)
 -- Connected banks
 --   c1a00000-...-0000000000ba = bank A
 --   c1a00000-...-0000000000be = bank E
+--   c1a00008-...-0000000000b8 = bank H (for test k)
 -- Transactions
 --   c1a00000-...-000000000101 = txn e01 (test e)
 --   c1a00000-...-000000000102 = txn e02 (test f)
+--   c1a00008-...-000000000k01 = txn h01 (test k: uncategorized VENDOR-H txn for internal bank engine)
 -- unified_sales
 --   c1a00007-...-000000000201 = sale g01 (test h: uncategorized 'Sales Tax' row for internal engine)
+-- Users / auth (continued)
+--   c1a00008-...-0000000000ab = non-member user (NOT in user_restaurants for rest H; used in test l)
 -- Users / auth
 --   c1a00007-...-0000000000aa = non-member user (NOT in user_restaurants for rest G; used in test i)
 
@@ -99,7 +128,8 @@ VALUES
   ('c1a00000-0000-0000-0000-000000000b01', 'CAT-BG Test Restaurant B'),
   ('c1a00000-0000-0000-0000-000000000c01', 'CAT-BG Test Restaurant C'),
   ('c1a00000-0000-0000-0000-000000000e01', 'CAT-BG Test Restaurant E'),
-  ('c1a00007-0000-0000-0000-000000000701', 'CAT-BG Test Restaurant G')
+  ('c1a00007-0000-0000-0000-000000000701', 'CAT-BG Test Restaurant G'),
+  ('c1a00008-0000-0000-0000-000000000801', 'CAT-BG Test Restaurant H')
 ON CONFLICT (id) DO NOTHING;
 
 -- Chart of accounts
@@ -120,6 +150,11 @@ VALUES
   ('c1a00007-0000-0000-0000-000000000706', 'c1a00007-0000-0000-0000-000000000701', '5200', 'Tax Expense G',
    'expense', 'cost_of_goods_sold', 'debit'),
   ('c1a00007-0000-0000-0000-000000000707', 'c1a00007-0000-0000-0000-000000000701', '1000', 'Cash G',
+   'asset', 'cash', 'debit'),
+  -- Restaurant H: expense account (for bank rule category) + cash account (apply_rules_to_bank needs '1000')
+  ('c1a00008-0000-0000-0000-000000000806', 'c1a00008-0000-0000-0000-000000000801', '5100', 'Food Costs H',
+   'expense', 'cost_of_goods_sold', 'debit'),
+  ('c1a00008-0000-0000-0000-000000000807', 'c1a00008-0000-0000-0000-000000000801', '1000', 'Cash H',
    'asset', 'cash', 'debit')
 ON CONFLICT (id) DO NOTHING;
 
@@ -130,7 +165,9 @@ VALUES
   ('c1a00000-0000-0000-0000-000000000d02', 'c1a00000-0000-0000-0000-000000000b01', 'Supplier B'),
   ('c1a00000-0000-0000-0000-000000000d03', 'c1a00000-0000-0000-0000-000000000c01', 'Supplier C'),
   ('c1a00000-0000-0000-0000-000000000d04', 'c1a00000-0000-0000-0000-000000000e01', 'Supplier E'),
-  ('c1a00000-0000-0000-0000-000000000d05', 'c1a00000-0000-0000-0000-000000000e01', 'Supplier E-other')
+  ('c1a00000-0000-0000-0000-000000000d05', 'c1a00000-0000-0000-0000-000000000e01', 'Supplier E-other'),
+  -- Supplier H: assigned by bank rule H when description matches VENDOR-H
+  ('c1a00008-0000-0000-0000-000000000d08', 'c1a00008-0000-0000-0000-000000000801', 'VENDOR-H Corp')
 ON CONFLICT (id) DO NOTHING;
 
 -- Categorization rules
@@ -223,11 +260,28 @@ VALUES
    10, true, true)
 ON CONFLICT (id) DO NOTHING;
 
+-- Rule H: description+supplier bank rule (for test k: internal bank engine)
+-- description_pattern='VENDOR-H' contains, supplier_id=d08 → assign supplier on match.
+INSERT INTO public.categorization_rules
+  (id, restaurant_id, rule_name, applies_to, description_pattern, description_match_type,
+   supplier_id, category_id, priority, is_active, auto_apply)
+VALUES
+  ('c1a00008-0000-0000-0000-000000000800',
+   'c1a00008-0000-0000-0000-000000000801',
+   'VENDOR-H with supplier assign',
+   'bank_transactions',
+   'VENDOR-H', 'contains',
+   'c1a00008-0000-0000-0000-000000000d08',
+   'c1a00008-0000-0000-0000-000000000806',
+   10, true, true)
+ON CONFLICT (id) DO NOTHING;
+
 -- Connected banks (needed for bank_transactions FK)
 INSERT INTO public.connected_banks (id, restaurant_id, stripe_financial_account_id, institution_name)
 VALUES
   ('c1a00000-0000-0000-0000-0000000000ba', 'c1a00000-0000-0000-0000-000000000a01', 'cbt-stripe-a', 'Test Bank A'),
-  ('c1a00000-0000-0000-0000-0000000000be', 'c1a00000-0000-0000-0000-000000000e01', 'cbt-stripe-e', 'Test Bank E')
+  ('c1a00000-0000-0000-0000-0000000000be', 'c1a00000-0000-0000-0000-000000000e01', 'cbt-stripe-e', 'Test Bank E'),
+  ('c1a00008-0000-0000-0000-0000000000b8', 'c1a00008-0000-0000-0000-000000000801', 'cbt-stripe-h', 'Test Bank H')
 ON CONFLICT (id) DO NOTHING;
 
 -- unified_sales row for test (h): uncategorized 'Sales Tax' row.
@@ -252,6 +306,30 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 SELECT set_config('app.skip_unified_sales_triggers', 'false', true);
+
+-- bank_transactions row for test (k): uncategorized VENDOR-H txn to be processed by
+-- apply_rules_to_bank_transactions_internal. Inserted with the BEFORE INSERT trigger
+-- disabled so the trigger does NOT pre-categorize the row. supplier_id is NULL (the
+-- internal engine must assign it from rule H via assign-not-filter semantics).
+-- RED: the trigger disable is just precautionary here; the internal function doesn't
+--      exist yet so (k) will error at the function call step.
+ALTER TABLE public.bank_transactions DISABLE TRIGGER auto_categorize_bank_transaction;
+
+INSERT INTO public.bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id,
+   transaction_date, description, amount, is_categorized)
+VALUES
+  ('c1a00008-0000-0000-0000-000000000101',
+   'c1a00008-0000-0000-0000-000000000801',
+   'c1a00008-0000-0000-0000-0000000000b8',
+   'cbt-stripe-txn-h01',
+   CURRENT_DATE,
+   'Payment to VENDOR-H Corp for supplies',
+   -500.00,
+   false)
+ON CONFLICT (id) DO NOTHING;
+
+ALTER TABLE public.bank_transactions ENABLE TRIGGER auto_categorize_bank_transaction;
 
 -- ============================================================
 -- Test (a): find_matching_rules_for_bank_transaction
@@ -489,6 +567,98 @@ SELECT throws_ok(
 );
 
 -- Reset JWT claims to NULL (clean up for any subsequent tests)
+SET LOCAL "request.jwt.claims" TO '';
+
+-- ============================================================
+-- Tests (j): privilege trio for apply_rules_to_bank_transactions_internal(uuid,integer)
+-- ============================================================
+-- RED: the function does not exist yet. has_function_privilege will raise (or return false)
+-- for all three because the function is absent.
+-- After §5 lands:
+--   authenticated/anon = false (REVOKE EXECUTE)
+--   service_role       = true  (GRANT EXECUTE)
+
+SELECT ok(
+  NOT has_function_privilege('authenticated', 'apply_rules_to_bank_transactions_internal(uuid,integer)', 'EXECUTE'),
+  '(j) authenticated cannot EXECUTE apply_rules_to_bank_transactions_internal'
+);
+
+SELECT ok(
+  NOT has_function_privilege('anon', 'apply_rules_to_bank_transactions_internal(uuid,integer)', 'EXECUTE'),
+  '(j) anon cannot EXECUTE apply_rules_to_bank_transactions_internal'
+);
+
+SELECT ok(
+  has_function_privilege('service_role', 'apply_rules_to_bank_transactions_internal(uuid,integer)', 'EXECUTE'),
+  '(j) service_role can EXECUTE apply_rules_to_bank_transactions_internal'
+);
+
+-- ============================================================
+-- Test (k): NULL-auth batch path for apply_rules_to_bank_transactions_internal
+-- ============================================================
+-- Clear JWT claims so auth.uid() returns NULL (simulates background/service-role call).
+-- Verify the internal engine:
+--   (k1) applied_count = 1
+--   (k2) bank_transactions.is_categorized = true, category_id from rule H
+--   (k3) supplier_id assigned from rule H (was NULL; assign-not-filter semantics)
+--   (k4) a journal_entries row exists with reference_id = txn.id AND created_by IS NULL
+-- RED: function does not exist yet.
+
+SET LOCAL "request.jwt.claims" TO '';
+
+SELECT is(
+  (SELECT applied_count
+   FROM apply_rules_to_bank_transactions_internal(
+     'c1a00008-0000-0000-0000-000000000801'::uuid,
+     100
+   )),
+  1,
+  '(k) internal bank engine applied_count=1 with NULL auth context'
+);
+
+SELECT is(
+  (SELECT is_categorized
+   FROM public.bank_transactions
+   WHERE id = 'c1a00008-0000-0000-0000-000000000101'),
+  true,
+  '(k) bank txn is_categorized=true after internal engine call'
+);
+
+SELECT is(
+  (SELECT supplier_id
+   FROM public.bank_transactions
+   WHERE id = 'c1a00008-0000-0000-0000-000000000101'),
+  'c1a00008-0000-0000-0000-000000000d08'::uuid,
+  '(k) supplier_id assigned from rule H when txn had none (assign-not-filter semantics)'
+);
+
+SELECT ok(
+  EXISTS (
+    SELECT 1 FROM public.journal_entries
+    WHERE reference_type = 'bank_transaction'
+      AND reference_id = 'c1a00008-0000-0000-0000-000000000101'
+      AND restaurant_id = 'c1a00008-0000-0000-0000-000000000801'
+      AND created_by IS NULL
+  ),
+  '(k) journal_entries row created with created_by IS NULL (NULL-auth cron/service-role context)'
+);
+
+-- ============================================================
+-- Test (l): public wrapper apply_rules_to_bank_transactions still enforces membership
+-- ============================================================
+-- Set JWT claims to a UUID that has no user_restaurants row for restaurant H.
+-- The public wrapper must raise 'Permission denied...' for non-members.
+-- c1a00008-0000-0000-0000-0000000000ab is NOT inserted into user_restaurants for rest H.
+
+SET LOCAL "request.jwt.claims" TO '{"sub": "c1a00008-0000-0000-0000-0000000000ab"}';
+
+SELECT throws_ok(
+  $$SELECT * FROM apply_rules_to_bank_transactions('c1a00008-0000-0000-0000-000000000801'::uuid, 10)$$,
+  'Permission denied: user does not have access to apply rules for this restaurant',
+  '(l) public bank wrapper raises permission denied for non-member sub'
+);
+
+-- Reset JWT claims
 SET LOCAL "request.jwt.claims" TO '';
 
 SELECT * FROM finish();

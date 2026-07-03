@@ -94,9 +94,16 @@ export function summarizeCoverageHours(
   // hour entry with scheduled=0 so buildVerdict surfaces the shortfall.
   const firstHourStart = Math.floor(window.startMin / HOUR) * HOUR;
   for (let start = firstHourStart; start < window.endMin; start += HOUR) {
-    // All 15-min samples whose minute falls within [start, start+60)
+    // All 15-min samples whose minute falls within the intersection of
+    // [start, start+60) and the visible window [window.startMin, window.endMin).
+    // Clamping to window bounds prevents samples outside the visible range from
+    // bleeding into the first or last bucket when the window is not hour-aligned.
     const inHour = hasAnyCoverage
-      ? coverage.filter((c) => c.min >= start && c.min < start + HOUR)
+      ? coverage.filter(
+          (c) =>
+            c.min >= Math.max(start, window.startMin) &&
+            c.min < Math.min(start + HOUR, window.endMin),
+        )
       : [];
 
     const needed = needForHourStart(start);

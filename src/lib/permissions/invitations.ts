@@ -8,8 +8,16 @@
 import type { Role } from './types';
 
 const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
-  owner: ['owner', 'manager', 'operations_manager', 'chef', 'staff'],
-  manager: ['manager', 'operations_manager', 'chef', 'staff'],
+  // owner can invite every internal + collaborator role
+  owner: [
+    'owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+  ],
+  // manager can invite all except owner; collaborators included (separate CollaboratorInvitations UI)
+  manager: [
+    'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+  ],
   operations_manager: ['staff'],
   chef: [],
   staff: [],
@@ -26,5 +34,5 @@ export function getInvitableRoles(inviter: Role): Role[] {
 
 /** Whether `inviter` may invite a member with role `target`. */
 export function canInviteRole(inviter: Role, target: Role): boolean {
-  return INVITABLE_ROLES[inviter].includes(target);
+  return (INVITABLE_ROLES[inviter] ?? []).includes(target);
 }

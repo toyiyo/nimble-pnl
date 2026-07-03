@@ -10,8 +10,16 @@ const corsHeaders = {
 
 // MIRRORS src/lib/permissions/invitations.ts — keep in sync (default-deny).
 const INVITABLE_ROLES: Record<string, string[]> = {
-  owner: ['owner', 'manager', 'operations_manager', 'chef', 'staff'],
-  manager: ['manager', 'operations_manager', 'chef', 'staff'],
+  // owner can invite every internal + collaborator role
+  owner: [
+    'owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+  ],
+  // manager can invite all except owner; collaborators included (separate CollaboratorInvitations UI)
+  manager: [
+    'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+  ],
   operations_manager: ['staff'],
 };
 function canInviteRole(inviter: string, target: string): boolean {

@@ -20,6 +20,19 @@ describe('invite matrix', () => {
     expect(canInviteRole('manager', 'owner')).toBe(false);
   });
 
+  it('owner and manager can invite kiosk and collaborator roles (preserving pre-existing behavior)', () => {
+    for (const target of ['kiosk', 'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef'] as const) {
+      expect(canInviteRole('owner', target)).toBe(true);
+      expect(canInviteRole('manager', target)).toBe(true);
+    }
+  });
+
+  it('operations_manager cannot invite kiosk or collaborator roles', () => {
+    for (const target of ['kiosk', 'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef'] as const) {
+      expect(canInviteRole('operations_manager', target)).toBe(false);
+    }
+  });
+
   it('non-management roles can invite nobody', () => {
     for (const r of ['chef', 'staff', 'kiosk', 'collaborator_accountant'] as const) {
       expect(getInvitableRoles(r)).toEqual([]);

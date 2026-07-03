@@ -59,6 +59,18 @@ Phase 4–9: dev-build-and-ship workflow — launched
           (h) NULL-auth functional path: applied_count=1, sale is_categorized=true
           (i) public wrapper raises 'Permission denied...' for non-member sub
         Message: "fix(categorization): auth-free internal POS rule engine + hardened public wrapper"
+  - [x] Task 2d (plan Task 2 step 4, task 11/36): Run npm run test:db to verify Task 2 tests pass
+        GREEN confirmed: npm run test:db → 1517/1517 passed, 0 failed.
+        All 14 tests (a–i) green; Task 2 (g)(h)(i) POS internal function tests all pass.
+        No commit needed — verification only step.
+  - [x] Task 2e (plan Task 2 step 5, task 12/36): Commit Task 2 (auth-free internal POS rule engine + hardened public wrapper) — commit 8bbfa920
+        Already committed in Task 2c phase. Commit message: "fix(categorization): auth-free internal POS rule engine + hardened public wrapper"
+        Files: supabase/migrations/20260703090000_categorization_background_and_supplier_assign.sql (§4 appended, +170 lines)
+        Migration §4 creates apply_rules_to_pos_sales_internal (SECURITY DEFINER, SET search_path=public, no auth check)
+        and replaces the public apply_rules_to_pos_sales wrapper to delegate to it while keeping owner/manager permission check.
+        REVOKE EXECUTE from PUBLIC/anon/authenticated; GRANT EXECUTE to service_role only.
+        Public wrapper also gains SET search_path=public (fixes unpinned SECURITY DEFINER injection risk).
+        All 1517/1517 pgTAP tests green; 14 tests in categorization_background_rules.test.sql (a–i all pass).
 
 ## CI Status
 - PR: not yet created

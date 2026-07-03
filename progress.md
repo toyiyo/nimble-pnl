@@ -93,3 +93,48 @@ Date: 2026-07-02
 - **Files**: `src/lib/coverageSummary.ts`, `CoverageVerdict.tsx`, `CoverageStatusStrip.tsx`, `CoverageChart.tsx`
 - **Tests**: 40/40 passing; typecheck + lint clean
 - **Net**: −31 lines (39 ins / 70 del)
+
+## Phase: Codex Adversarial Review (Phase 7a) ✅ COMPLETED
+Date: 2026-07-02
+
+### Finding
+- **Severity**: major
+- **File**: `tests/unit/timelineComponents.test.tsx` line 17
+- **Issue**: The test file still imports `CoverageCurve` which was deleted in Task 5. Any Vitest run that includes `timelineComponents.test.tsx` will fail during module resolution before tests execute, breaking CI despite the app code compiling.
+- **Status**: Reported — needs fix in Phase 7b/verify
+
+## Phase: Fold Review Findings (Phase 7b) ✅ COMPLETED
+Date: 2026-07-02
+
+### Findings Fixed (all critical/major)
+
+**Fix 1 — Broken test import (codex/major)**
+- `tests/unit/timelineComponents.test.tsx`: Removed import of deleted `CoverageCurve` and all 8 related tests. The remaining 15 tests (NowIndicator, TimelineAxis, TimelineLane, TimelineShiftPopover) still pass.
+
+**Fix 2 — Demand-gap false-zero (sound-logic/major)**
+- `src/lib/coverageSummary.ts` line 78: Changed `needForHourStart` fallback from `?? 0` to `?? null`. Off-peak hours with no demand entry now return `null` (no-target) instead of `0` (target met), preventing hours without explicit demand from appearing as "fully covered" in the delta view.
+
+**Fix 3 — Delta view wrong scale (sound-logic/major)**
+- `src/components/scheduling/ShiftTimeline/CoverageChart.tsx`: `DeltaView` now computes its own `deltaPeak = max(abs(delta))` and `Axes` receives `deltaPeak` separately for the delta-view scale. The headcount `peak` is only used for the area view. Axis gridline values now correspond to actual bar heights.
+
+**Fix 4 — Invisible zero-delta bar (sound-logic/major)**
+- `CoverageChart.tsx`: When `delta === 0` (demand exactly met), render a 2px success tick at the zero-line rather than a 1px invisible bar, making "precisely met" visually distinguishable from "no bar at all."
+
+**Fix 5 — Label clamp for large shortfalls (sound-logic/minor → also fixes clippped text)**
+- `CoverageChart.tsx`: Capped `barH` at `halfH - 2` and clamped `labelY` to `svgHeight - MARGIN_BOTTOM - 2` so labels stay inside the viewBox for maximum shortfalls.
+
+**Fix 6 — Nested ternaries (ocr-rules/major × 3)**
+- `CoverageChart.tsx` descText: Replaced `hasDemand ? (shortCount > 0 ? ... : ...) : ...` with an if/else block.
+- `CoverageChart.tsx` barClass: Already replaced with if/else when fixing Fix 3/4.
+- `CoverageStatusStrip.tsx` cellColorClass: Replaced nested ternary in `cn(...)` with a pre-computed `cellColorClass` if/else block.
+
+**Fix 7 — Constant inline style (ocr-rules/minor)**
+- `CoverageChart.tsx` Legend dashed line: Replaced `style={{ borderTop: '1.5px dashed' }}` with Tailwind classes `border-t-[1.5px] border-dashed border-muted-foreground`.
+
+**Fix 8 — Stable key for x-axis labels (ocr-rules/minor + maintainability/minor)**
+- `CoverageChart.tsx` Axes: Changed `key={i}` to `key={hours[i].startMin}` for x-axis SVG text labels.
+
+### Tests
+- 58/58 passing (6 test files)
+- TypeScript typecheck: clean
+- Skipped (nits only): IIFE extraction in AreaView (maintainability/minor), redundant `<g>` wrapper (maintainability/minor), useMemo dep list (performance/info), multi-pass in CoverageChart (performance/info)

@@ -58,6 +58,15 @@ export function CoverageStatusStrip({
           const isShort = h.delta !== null && h.delta < 0;
           const hasDemand = h.delta !== null;
 
+          let cellColorClass: string;
+          if (isShort) {
+            cellColorClass = 'bg-destructive/15 text-destructive';
+          } else if (hasDemand) {
+            cellColorClass = 'bg-success/15 text-success';
+          } else {
+            cellColorClass = 'bg-muted/50 text-muted-foreground';
+          }
+
           return (
             <div
               key={h.startMin}
@@ -65,11 +74,7 @@ export function CoverageStatusStrip({
               title={ariaLabel}
               className={cn(
                 'flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded py-1 px-0.5',
-                isShort
-                  ? 'bg-destructive/15 text-destructive'
-                  : hasDemand
-                    ? 'bg-success/15 text-success'
-                    : 'bg-muted/50 text-muted-foreground',
+                cellColorClass,
               )}
             >
               <span className="text-[10px] font-medium leading-none">{label}</span>

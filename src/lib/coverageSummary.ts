@@ -70,12 +70,13 @@ export function summarizeCoverageHours(
   /**
    * Returns the demand target for the hour that contains `min`.
    * Demand entries are keyed by their hour's start minute.
-   * Falls back to 0 if the map exists but has no entry for this hour
-   * (meaning "demand configured but not for this hour").
+   * Returns null if the map exists but has no entry for this hour — this
+   * treats "demand configured but not for this hour" as no-target rather than
+   * zero-target, preventing off-peak hours from being silently reported as met.
    */
   const needForHourStart = (hourStart: number): number | null => {
     if (!demandMap) return null;
-    return demandMap.get(hourStart) ?? 0;
+    return demandMap.get(hourStart) ?? null;
   };
 
   const out: CoverageHour[] = [];

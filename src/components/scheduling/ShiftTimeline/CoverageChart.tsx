@@ -202,21 +202,26 @@ interface DeltaViewProps {
   hours: CoverageHour[];
   plotW: number;
   plotH: number;
-  peak: number;
+  /** Total SVG height (px) — used to clamp label positions inside the viewBox. */
+  svgHeight: number;
 }
 
-function DeltaView({ hours, plotW, plotH, peak }: DeltaViewProps) {
+function DeltaView({ hours, plotW, plotH, svgHeight }: DeltaViewProps) {
   if (hours.length === 0) return null;
 
   const xForIndex = (i: number) => MARGIN_LEFT + (i / hours.length) * plotW;
   const xEnd = MARGIN_LEFT + plotW;
   const barPad = 2; // gap between bars
 
-  // Delta range: from -peak to +peak (symmetric around 0)
+  // Scale bars by the maximum absolute delta so the tallest bar always fills
+  // half the plot height — regardless of the raw headcount peak.
+  const deltaPeak = Math.max(1, ...hours.map((h) => Math.abs(h.delta ?? 0)));
+
+  // Delta range: from -deltaPeak to +deltaPeak (symmetric around 0)
   // Zero baseline in the middle of plotH
   const zeroY = MARGIN_TOP + plotH / 2;
   const halfH = plotH / 2;
-  const pixelsPerUnit = halfH / peak;
+  const pixelsPerUnit = halfH / deltaPeak;
 
   return (
     <>
@@ -256,19 +261,42 @@ function DeltaView({ hours, plotW, plotH, peak }: DeltaViewProps) {
 
         const isShort = h.delta < 0;
         const isOver = h.delta > 0;
+        // Exactly zero (demand met precisely) — render a subtle tick at baseline
+        // so it's visually distinguishable from a no-bar slot.
+        if (!isShort && !isOver) {
+          return (
+            <g key={h.startMin}>
+              <rect
+                data-bar="covered"
+                x={x0}
+                y={zeroY - 2}
+                width={barW}
+                height={2}
+                className="fill-success opacity-40"
+              />
+            </g>
+          );
+        }
+
         const absD = Math.abs(h.delta);
-        const barH = Math.max(1, absD * pixelsPerUnit);
+        // Cap bar height so it doesn't overflow the SVG bottom margin when
+        // the shortfall is very large relative to deltaPeak.
+        const barH = Math.min(halfH - 2, absD * pixelsPerUnit);
 
         const barY = isShort ? zeroY : zeroY - barH;
-        const barClass = isShort
-          ? 'fill-destructive'
-          : isOver
-            ? 'fill-success'
-            : 'fill-muted-foreground/50';
+
+        let barClass: string;
+        if (isShort) {
+          barClass = 'fill-destructive';
+        } else {
+          barClass = 'fill-success';
+        }
         const barState = isShort ? 'short' : 'covered';
 
-        // Label: signed delta, shown above or below bar depending on direction
-        const labelY = isShort ? zeroY + barH + 8 : zeroY - barH - 4;
+        // Label: signed delta, shown above or below bar depending on direction.
+        // Clamp labelY to stay inside the SVG viewBox.
+        const labelYRaw = isShort ? zeroY + barH + 8 : zeroY - barH - 4;
+        const labelY = Math.min(labelYRaw, svgHeight - MARGIN_BOTTOM - 2);
 
         return (
           <g key={h.startMin}>
@@ -304,18 +332,20 @@ interface AxesProps {
   plotW: number;
   plotH: number;
   peak: number;
+  /** Max absolute delta — used for delta-view axis scale (separate from headcount peak). */
+  deltaPeak: number;
   view: 'area' | 'delta';
   hourLabels: string[];
   hours: CoverageHour[];
 }
 
-function Axes({ plotW, plotH, peak, view, hourLabels, hours }: AxesProps) {
+function Axes({ plotW, plotH, peak, deltaPeak, view, hourLabels, hours }: AxesProps) {
   const xEnd = MARGIN_LEFT + plotW;
 
   // X-axis hour labels are identical in both views — render once.
   const xAxisLabels = hourLabels.map((label, i) => (
     <text
-      key={i}
+      key={hours[i].startMin}
       x={MARGIN_LEFT + ((i + 0.5) / hours.length) * plotW}
       y={MARGIN_TOP + plotH + 12}
       textAnchor="middle"
@@ -366,16 +396,16 @@ function Axes({ plotW, plotH, peak, view, hourLabels, hours }: AxesProps) {
     );
   }
 
-  // Delta view axes: symmetric around 0
+  // Delta view axes: symmetric around 0, scaled to deltaPeak so ticks match bars.
   const zeroY = MARGIN_TOP + plotH / 2;
   const halfH = plotH / 2;
-  const gridStep = Math.max(1, Math.ceil(peak / 3));
+  const gridStep = Math.max(1, Math.ceil(deltaPeak / 3));
 
   return (
     <>
       {/* Y gridlines above/below zero */}
       {[-gridStep, 0, gridStep].map((v) => {
-        const y = zeroY - (v / peak) * halfH;
+        const y = zeroY - (v / deltaPeak) * halfH;
         return (
           <g key={v}>
             <line
@@ -432,10 +462,7 @@ function Legend({ hasDemand, view }: { hasDemand: boolean; view: 'area' | 'delta
       {hasDemand && (
         <>
           <span className="flex items-center gap-1">
-            <span
-              className="inline-block h-[1.5px] w-4 bg-muted-foreground"
-              style={{ borderTop: '1.5px dashed' }}
-            />
+            <span className="inline-block h-[1.5px] w-4 border-t-[1.5px] border-dashed border-muted-foreground" />
             Needed
           </span>
           <span className="flex items-center gap-1">
@@ -464,18 +491,24 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
 
   const hasDemand = hours.some((h) => h.needed !== null);
   const peak = computePeak(hours);
+  // Delta view uses its own scale (max absolute delta) so bars aren't dwarfed by
+  // a large headcount peak when the deltas are small.
+  const deltaPeak = Math.max(1, ...hours.map((h) => Math.abs(h.delta ?? 0)));
   const plotW = WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
   const plotH = height - MARGIN_TOP - MARGIN_BOTTOM;
 
   const hourLabels = hours.map((h) => formatCoverageHour(h.hour));
 
-  // Compute accessible description
+  // Compute accessible description — no nested ternaries per project rules.
   const shortCount = hours.filter((h) => h.delta !== null && h.delta < 0).length;
-  const descText = hasDemand
-    ? shortCount > 0
-      ? `Short-staffed in ${shortCount} of ${hours.length} hour${hours.length !== 1 ? 's' : ''}.`
-      : 'Meeting demand all hours.'
-    : `Scheduled headcount over ${hours.length} hour${hours.length !== 1 ? 's' : ''}.`;
+  let descText: string;
+  if (!hasDemand) {
+    descText = `Scheduled headcount over ${hours.length} hour${hours.length !== 1 ? 's' : ''}.`;
+  } else if (shortCount > 0) {
+    descText = `Short-staffed in ${shortCount} of ${hours.length} hour${hours.length !== 1 ? 's' : ''}.`;
+  } else {
+    descText = 'Meeting demand all hours.';
+  }
 
   const titleText = view === 'area' ? 'Coverage vs demand chart' : 'Coverage delta bar chart';
 
@@ -494,6 +527,7 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
           plotW={plotW}
           plotH={plotH}
           peak={peak}
+          deltaPeak={deltaPeak}
           view={view}
           hourLabels={hourLabels}
           hours={hours}
@@ -512,7 +546,7 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
             hours={hours}
             plotW={plotW}
             plotH={plotH}
-            peak={peak}
+            svgHeight={height}
           />
         )}
       </svg>

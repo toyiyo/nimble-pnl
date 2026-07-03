@@ -5,14 +5,14 @@ import { CoverageChart } from '@/components/scheduling/ShiftTimeline/CoverageCha
 
 // Two hours: one short (16 = 4 PM, delta -2) and one covered (17 = 5 PM, delta 0)
 const hours = [
-  { hour: 16, startMin: 960, scheduled: 3, needed: 5, delta: -2 },
-  { hour: 17, startMin: 1020, scheduled: 5, needed: 5, delta: 0 },
+  { hour: 16, startMin: 960, scheduled: 3, needed: 5, delta: -2, projectedSales: null, laborPct: null },
+  { hour: 17, startMin: 1020, scheduled: 5, needed: 5, delta: 0, projectedSales: null, laborPct: null },
 ];
 
 // One hour with no demand (needed = null)
 const hoursNoDemand = [
-  { hour: 10, startMin: 600, scheduled: 3, needed: null, delta: null },
-  { hour: 11, startMin: 660, scheduled: 4, needed: null, delta: null },
+  { hour: 10, startMin: 600, scheduled: 3, needed: null, delta: null, projectedSales: null, laborPct: null },
+  { hour: 11, startMin: 660, scheduled: 4, needed: null, delta: null, projectedSales: null, laborPct: null },
 ];
 
 describe('CoverageChart — area view', () => {
@@ -28,8 +28,8 @@ describe('CoverageChart — area view', () => {
 
   it('does not render a shortfall element when every hour is covered', () => {
     const coveredHours = [
-      { hour: 16, startMin: 960, scheduled: 5, needed: 5, delta: 0 },
-      { hour: 17, startMin: 1020, scheduled: 6, needed: 5, delta: 1 },
+      { hour: 16, startMin: 960, scheduled: 5, needed: 5, delta: 0, projectedSales: null, laborPct: null },
+      { hour: 17, startMin: 1020, scheduled: 6, needed: 5, delta: 1, projectedSales: null, laborPct: null },
     ];
     const { container } = render(<CoverageChart hours={coveredHours} view="area" />);
     expect(container.querySelector('[data-shortfall]')).toBeFalsy();

@@ -4,8 +4,8 @@ import { describe, it, expect } from 'vitest';
 import { CoverageStatusStrip } from '@/components/scheduling/ShiftTimeline/CoverageStatusStrip';
 
 const hours = [
-  { hour: 16, startMin: 960, scheduled: 3, needed: 5, delta: -2 },
-  { hour: 17, startMin: 1020, scheduled: 5, needed: 5, delta: 0 },
+  { hour: 16, startMin: 960, scheduled: 3, needed: 5, delta: -2, projectedSales: null, laborPct: null },
+  { hour: 17, startMin: 1020, scheduled: 5, needed: 5, delta: 0, projectedSales: null, laborPct: null },
 ];
 
 describe('CoverageStatusStrip', () => {
@@ -26,8 +26,8 @@ describe('CoverageStatusStrip', () => {
 
   it('marks covered hours with a "covered" aria-label', () => {
     const allCoveredHours = [
-      { hour: 9, startMin: 540, scheduled: 4, needed: 3, delta: 1 },
-      { hour: 10, startMin: 600, scheduled: 3, needed: 3, delta: 0 },
+      { hour: 9, startMin: 540, scheduled: 4, needed: 3, delta: 1, projectedSales: null, laborPct: null },
+      { hour: 10, startMin: 600, scheduled: 3, needed: 3, delta: 0, projectedSales: null, laborPct: null },
     ];
     render(<CoverageStatusStrip hours={allCoveredHours} />);
     // Both cells should say "covered" — neither should say "short"
@@ -38,7 +38,7 @@ describe('CoverageStatusStrip', () => {
 
   it('does not render an understaffed list when there are no short hours', () => {
     const allCoveredHours = [
-      { hour: 9, startMin: 540, scheduled: 4, needed: 3, delta: 1 },
+      { hour: 9, startMin: 540, scheduled: 4, needed: 3, delta: 1, projectedSales: null, laborPct: null },
     ];
     render(<CoverageStatusStrip hours={allCoveredHours} />);
     // No understaffed list when nothing is short
@@ -47,8 +47,8 @@ describe('CoverageStatusStrip', () => {
 
   it('handles hours with no demand (needed = null) — labels them as "scheduled"', () => {
     const noDemandHours = [
-      { hour: 8, startMin: 480, scheduled: 2, needed: null, delta: null },
-      { hour: 9, startMin: 540, scheduled: 3, needed: null, delta: null },
+      { hour: 8, startMin: 480, scheduled: 2, needed: null, delta: null, projectedSales: null, laborPct: null },
+      { hour: 9, startMin: 540, scheduled: 3, needed: null, delta: null, projectedSales: null, laborPct: null },
     ];
     render(<CoverageStatusStrip hours={noDemandHours} />);
     // Cells exist and have aria-labels mentioning the hour
@@ -67,8 +67,8 @@ describe('CoverageStatusStrip', () => {
     render(
       <CoverageStatusStrip
         hours={[
-          { hour: 17, startMin: 1020, scheduled: 3, needed: 5, delta: -2 },
-          { hour: 18, startMin: 1080, scheduled: 4, needed: null, delta: null },
+          { hour: 17, startMin: 1020, scheduled: 3, needed: 5, delta: -2, projectedSales: null, laborPct: null },
+          { hour: 18, startMin: 1080, scheduled: 4, needed: null, delta: null, projectedSales: null, laborPct: null },
         ]}
       />,
     );
@@ -81,7 +81,7 @@ describe('CoverageStatusStrip', () => {
   it('CRITICAL: aria-label for demand cell includes "N of M" and gap direction', () => {
     render(
       <CoverageStatusStrip
-        hours={[{ hour: 18, startMin: 1080, scheduled: 3, needed: 5, delta: -2 }]}
+        hours={[{ hour: 18, startMin: 1080, scheduled: 3, needed: 5, delta: -2, projectedSales: null, laborPct: null }]}
       />,
     );
     // aria-label should expose "3 of 5, short 2" so screen readers convey the fraction

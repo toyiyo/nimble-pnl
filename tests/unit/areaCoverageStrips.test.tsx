@@ -19,15 +19,15 @@ const makeAreas = (): AreaCoverage[] => [
   {
     area: 'Cold Stone',
     hours: [
-      { hour: 10, startMin: 600, scheduled: 2, needed: null, delta: null },
-      { hour: 11, startMin: 660, scheduled: 3, needed: null, delta: null },
+      { hour: 10, startMin: 600, scheduled: 2, needed: null, delta: null, projectedSales: null, laborPct: null },
+      { hour: 11, startMin: 660, scheduled: 3, needed: null, delta: null, projectedSales: null, laborPct: null },
     ],
   },
   {
     area: "Wetzel's",
     hours: [
-      { hour: 10, startMin: 600, scheduled: 0, needed: null, delta: null },
-      { hour: 11, startMin: 660, scheduled: 1, needed: null, delta: null },
+      { hour: 10, startMin: 600, scheduled: 0, needed: null, delta: null, projectedSales: null, laborPct: null },
+      { hour: 11, startMin: 660, scheduled: 1, needed: null, delta: null, projectedSales: null, laborPct: null },
     ],
   },
 ];
@@ -78,7 +78,7 @@ describe('AreaCoverageStrips', () => {
       {
         area: 'Unassigned',
         hours: [
-          { hour: 9, startMin: 540, scheduled: 1, needed: null, delta: null },
+          { hour: 9, startMin: 540, scheduled: 1, needed: null, delta: null, projectedSales: null, laborPct: null },
         ],
       },
     ];

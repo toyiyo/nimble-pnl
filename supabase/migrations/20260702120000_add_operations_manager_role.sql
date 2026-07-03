@@ -346,26 +346,534 @@ USING (
 );
 
 -- ============================================================================
--- NOTE: Tables NOT changed here (all already capability-gated or intentionally
+-- NOTE: Tables NOT changed here (already capability-gated or intentionally
 -- excluded from operations_manager):
 --   - products, recipes, prep_recipes, production_runs, inventory_transactions,
 --     purchase_orders, invoices, customers, pending_outflows:
 --       already migrated to user_has_capability() in 20260120100100.
 --   - bank_transactions, chart_of_accounts, financial_statement_cache,
---     connected_banks: accounting surface — operations_manager is correctly
---     excluded via user_has_capability().
+--     connected_banks: accounting surface — operations_manager correctly denied.
 --   - unified_sales INSERT: remains owner/manager only (no edit:pos_sales).
---   - tip_splits, tip_split_items, tip_disputes (20251217000001),
---     tip_contribution_pools, tip_server_earnings, tip_pool_allocations
---     (20260221000000), tip_payouts (20260218000000),
---     overtime_adjustments (20260221200001),
---     non_hourly_compensation_allocations / daily_labor_allocations
---     (20251205164747), employee_compensation_history INSERT (20251216093000),
---     time_punches manager-write (20251127100000),
---     staffing_settings (20260306000000), open_shift_claims managers_view +
---     managers_review (20260412145842):
---       covered by operations_manager having edit:tips / edit:payroll /
---       edit:time_punches / edit:scheduling via user_has_capability() which is
---       already in effect via those tables' existing capability-gated policies,
---       OR widened as a follow-up (tracked in plan Task 6 step 3 continuation).
 -- ============================================================================
+
+-- ============================================================================
+-- 5. Remaining hardcoded-role-list operational policies
+--
+-- These tables were NOT migrated to user_has_capability() in 20260120100100.
+-- Their RLS policies still use standalone role IN ('owner','manager') literals
+-- and must be explicitly widened to include operations_manager.
+-- ============================================================================
+
+-- -------------------------------------------------------------------------
+-- tip_splits: "Managers can ..." (view/insert/update/delete)
+-- Source: 20251217000001_create_tip_pooling_tables.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can view tip splits" ON public.tip_splits;
+CREATE POLICY "Managers can view tip splits"
+ON public.tip_splits FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_splits.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can insert tip splits" ON public.tip_splits;
+CREATE POLICY "Managers can insert tip splits"
+ON public.tip_splits FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_splits.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip splits" ON public.tip_splits;
+CREATE POLICY "Managers can update tip splits"
+ON public.tip_splits FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_splits.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can delete tip splits" ON public.tip_splits;
+CREATE POLICY "Managers can delete tip splits"
+ON public.tip_splits FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_splits.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- tip_split_items: manager-level policies
+-- Source: 20251217000001_create_tip_pooling_tables.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can view tip split items" ON public.tip_split_items;
+CREATE POLICY "Managers can view tip split items"
+ON public.tip_split_items FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_split_items.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can insert tip split items" ON public.tip_split_items;
+CREATE POLICY "Managers can insert tip split items"
+ON public.tip_split_items FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_split_items.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip split items" ON public.tip_split_items;
+CREATE POLICY "Managers can update tip split items"
+ON public.tip_split_items FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_split_items.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can delete tip split items" ON public.tip_split_items;
+CREATE POLICY "Managers can delete tip split items"
+ON public.tip_split_items FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_split_items.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- tip_disputes: manager-level policies
+-- Source: 20251217000001_create_tip_pooling_tables.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can view tip disputes" ON public.tip_disputes;
+CREATE POLICY "Managers can view tip disputes"
+ON public.tip_disputes FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_disputes.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip disputes" ON public.tip_disputes;
+CREATE POLICY "Managers can update tip disputes"
+ON public.tip_disputes FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_disputes.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- tip_contribution_pools, tip_server_earnings, tip_pool_allocations
+-- Source: 20260221000000_percentage_tip_pooling.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can view tip contribution pools" ON public.tip_contribution_pools;
+CREATE POLICY "Managers can view tip contribution pools"
+ON public.tip_contribution_pools FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_contribution_pools.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can insert tip contribution pools" ON public.tip_contribution_pools;
+CREATE POLICY "Managers can insert tip contribution pools"
+ON public.tip_contribution_pools FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_contribution_pools.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip contribution pools" ON public.tip_contribution_pools;
+CREATE POLICY "Managers can update tip contribution pools"
+ON public.tip_contribution_pools FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_contribution_pools.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can delete tip contribution pools" ON public.tip_contribution_pools;
+CREATE POLICY "Managers can delete tip contribution pools"
+ON public.tip_contribution_pools FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_contribution_pools.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can view tip server earnings" ON public.tip_server_earnings;
+CREATE POLICY "Managers can view tip server earnings"
+ON public.tip_server_earnings FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_server_earnings.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can insert tip server earnings" ON public.tip_server_earnings;
+CREATE POLICY "Managers can insert tip server earnings"
+ON public.tip_server_earnings FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_server_earnings.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip server earnings" ON public.tip_server_earnings;
+CREATE POLICY "Managers can update tip server earnings"
+ON public.tip_server_earnings FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_server_earnings.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can delete tip server earnings" ON public.tip_server_earnings;
+CREATE POLICY "Managers can delete tip server earnings"
+ON public.tip_server_earnings FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM tip_splits ts
+    JOIN user_restaurants ur ON ur.restaurant_id = ts.restaurant_id
+    WHERE ts.id = tip_server_earnings.tip_split_id
+      AND ur.user_id = auth.uid()
+      AND ur.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can view tip pool allocations" ON public.tip_pool_allocations;
+CREATE POLICY "Managers can view tip pool allocations"
+ON public.tip_pool_allocations FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can insert tip pool allocations" ON public.tip_pool_allocations;
+CREATE POLICY "Managers can insert tip pool allocations"
+ON public.tip_pool_allocations FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip pool allocations" ON public.tip_pool_allocations;
+CREATE POLICY "Managers can update tip pool allocations"
+ON public.tip_pool_allocations FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can delete tip pool allocations" ON public.tip_pool_allocations;
+CREATE POLICY "Managers can delete tip pool allocations"
+ON public.tip_pool_allocations FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_pool_allocations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- tip_payouts: manager-level policies
+-- Source: 20260218000000_create_tip_payouts_table.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can view tip payouts" ON public.tip_payouts;
+CREATE POLICY "Managers can view tip payouts"
+ON public.tip_payouts FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_payouts.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can insert tip payouts" ON public.tip_payouts;
+CREATE POLICY "Managers can insert tip payouts"
+ON public.tip_payouts FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_payouts.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can update tip payouts" ON public.tip_payouts;
+CREATE POLICY "Managers can update tip payouts"
+ON public.tip_payouts FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_payouts.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Managers can delete tip payouts" ON public.tip_payouts;
+CREATE POLICY "Managers can delete tip payouts"
+ON public.tip_payouts FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = tip_payouts.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- overtime_adjustments: "Owners and managers can manage overtime adjustments"
+-- Source: 20260221200001_create_overtime_adjustments.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Owners and managers can manage overtime adjustments" ON public.overtime_adjustments;
+CREATE POLICY "Owners and managers can manage overtime adjustments"
+ON public.overtime_adjustments FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = overtime_adjustments.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- daily_labor_allocations: insert/update/delete policies
+-- Source: 20251205164747_add_non_hourly_compensation.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Users can insert allocations for their restaurants" ON public.daily_labor_allocations;
+CREATE POLICY "Users can insert allocations for their restaurants"
+ON public.daily_labor_allocations FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = daily_labor_allocations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Users can update allocations for their restaurants" ON public.daily_labor_allocations;
+CREATE POLICY "Users can update allocations for their restaurants"
+ON public.daily_labor_allocations FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = daily_labor_allocations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "Users can delete allocations for their restaurants" ON public.daily_labor_allocations;
+CREATE POLICY "Users can delete allocations for their restaurants"
+ON public.daily_labor_allocations FOR DELETE
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = daily_labor_allocations.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- employee_compensation_history: INSERT policy
+-- Source: 20251216093000_add_employee_compensation_history.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers/owners can insert compensation history for their restaurants" ON public.employee_compensation_history;
+CREATE POLICY "Managers/owners can insert compensation history for their restaurants"
+ON public.employee_compensation_history FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = employee_compensation_history.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- time_punches: "Managers can create time punches for employees"
+-- Source: 20251127100000_add_kiosk_service_account.sql
+-- Adds operations_manager alongside the existing kiosk exception.
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can create time punches for employees" ON public.time_punches;
+CREATE POLICY "Managers can create time punches for employees"
+ON public.time_punches FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE public.user_restaurants.restaurant_id = time_punches.restaurant_id
+      AND public.user_restaurants.user_id = auth.uid()
+      AND public.user_restaurants.role IN ('owner', 'manager', 'operations_manager', 'kiosk')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- staffing_settings: "Owners and managers can manage staffing settings"
+-- Source: 20260306000000_create_staffing_settings.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Owners and managers can manage staffing settings" ON public.staffing_settings;
+CREATE POLICY "Owners and managers can manage staffing settings"
+ON public.staffing_settings FOR ALL
+USING (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = staffing_settings.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- open_shift_claims: managers_view_restaurant_claims (SELECT)
+--                    managers_review_claims (UPDATE)
+-- Source: 20260412145842_open_shift_claims.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "managers_view_restaurant_claims" ON public.open_shift_claims;
+CREATE POLICY "managers_view_restaurant_claims"
+ON public.open_shift_claims FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE user_id = auth.uid()
+      AND restaurant_id = open_shift_claims.restaurant_id
+      AND role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+DROP POLICY IF EXISTS "managers_review_claims" ON public.open_shift_claims;
+CREATE POLICY "managers_review_claims"
+ON public.open_shift_claims FOR UPDATE
+USING (
+  EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE user_id = auth.uid()
+      AND restaurant_id = open_shift_claims.restaurant_id
+      AND role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- schedule_change_logs: "Managers can create change logs"
+-- Source: 20251123000000_schedule_publishing.sql
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Managers can create change logs" ON public.schedule_change_logs;
+CREATE POLICY "Managers can create change logs"
+ON public.schedule_change_logs FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM user_restaurants
+    WHERE user_restaurants.restaurant_id = schedule_change_logs.restaurant_id
+      AND user_restaurants.user_id = auth.uid()
+      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
+  )
+);
+
+-- -------------------------------------------------------------------------
+-- user_restaurants UPDATE: prevent self-escalation to privileged roles.
+-- The policy "Owners can manage restaurant associations" in 20250915213019
+-- has WITH CHECK (user_id = auth.uid() OR is_restaurant_owner(...)).
+-- The first branch allows any user to UPDATE their own row to any role.
+-- This guard restricts UPDATE so that non-owners cannot promote themselves
+-- (or others) to 'owner' or 'manager'.
+-- -------------------------------------------------------------------------
+DROP POLICY IF EXISTS "Prevent self-escalation to privileged roles" ON public.user_restaurants;
+CREATE POLICY "Prevent self-escalation to privileged roles"
+ON public.user_restaurants
+FOR UPDATE
+USING (true)
+WITH CHECK (
+  -- Allow if the caller is an owner of this restaurant
+  public.is_restaurant_owner(restaurant_id, auth.uid())
+  OR
+  -- Allow if the new role is not a privileged role (prevents non-owners from
+  -- granting themselves manager/owner access)
+  role NOT IN ('owner', 'manager')
+);

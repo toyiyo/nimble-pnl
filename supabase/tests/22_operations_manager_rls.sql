@@ -19,7 +19,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(9);
+SELECT plan(15);
 
 -- ============================================================================
 -- Fixtures (inserted as superuser before we switch to authenticated role)
@@ -63,6 +63,11 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'operations_manager';
 -- Seed one receipt_imports row (as superuser) so Test 6 can assert visibility
 INSERT INTO public.receipt_imports (id, restaurant_id, status)
 VALUES ('22000000-0000-0000-0000-000000000201', '22000000-0000-0000-0000-000000000099', 'pending')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed one employee (as superuser) so Tests 10-11 can use its id
+INSERT INTO public.employees (id, restaurant_id, name, position, hourly_rate)
+VALUES ('22000000-0000-0000-0000-000000000301', '22000000-0000-0000-0000-000000000099', 'Test Employee 22', 'Server', 15)
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
@@ -193,6 +198,92 @@ SELECT throws_ok(
     NULL,
     NULL,
     'ops-mgr cannot INSERT into unified_sales (no edit:pos_sales)'
+);
+
+-- ============================================================================
+-- Test 10: edit:tips — INSERT into tip_splits (residual role IN policy)
+-- Policy: "Managers can insert tip splits" uses role IN ('owner','manager')
+-- Must be widened to include operations_manager.
+-- ============================================================================
+
+SELECT lives_ok(
+    $$ INSERT INTO public.tip_splits (restaurant_id, split_date, total_amount)
+       VALUES ('22000000-0000-0000-0000-000000000099'::uuid, current_date, 0) $$,
+    'ops-mgr can insert tip_splits (edit:tips)'
+);
+
+-- ============================================================================
+-- Test 11: edit:time_punches — INSERT into time_punches (residual role IN policy)
+-- Policy: "Managers can create time punches for employees" uses role IN ('owner','manager','kiosk')
+-- Must be widened to include operations_manager.
+-- ============================================================================
+
+SELECT lives_ok(
+    $$ INSERT INTO public.time_punches (restaurant_id, employee_id, punch_type, punch_time)
+       VALUES ('22000000-0000-0000-0000-000000000099'::uuid,
+               '22000000-0000-0000-0000-000000000301'::uuid,
+               'clock_in', now()) $$,
+    'ops-mgr can insert time_punches (edit:time_punches)'
+);
+
+-- ============================================================================
+-- Test 12: edit:scheduling — INSERT into staffing_settings (residual role IN policy)
+-- Policy: "Owners and managers can manage staffing settings" uses role IN ('owner','manager')
+-- Must be widened to include operations_manager.
+-- staffing_settings has UNIQUE(restaurant_id) — use ON CONFLICT DO NOTHING.
+-- ============================================================================
+
+SELECT lives_ok(
+    $$ INSERT INTO public.staffing_settings (restaurant_id)
+       VALUES ('22000000-0000-0000-0000-000000000099'::uuid)
+       ON CONFLICT (restaurant_id) DO NOTHING $$,
+    'ops-mgr can insert staffing_settings (edit:scheduling)'
+);
+
+-- ============================================================================
+-- Test 13: edit:scheduling — INSERT into schedule_change_logs (residual role IN policy)
+-- Policy: "Managers can create change logs" uses role IN ('owner','manager')
+-- Must be widened to include operations_manager.
+-- ============================================================================
+
+SELECT lives_ok(
+    $$ INSERT INTO public.schedule_change_logs
+          (restaurant_id, change_type, changed_by)
+       VALUES ('22000000-0000-0000-0000-000000000099'::uuid,
+               'created',
+               '22000000-0000-0000-0000-000000000002'::uuid) $$,
+    'ops-mgr can insert schedule_change_logs (edit:scheduling)'
+);
+
+-- ============================================================================
+-- Test 14: edit:payroll — INSERT into overtime_adjustments (FOR ALL policy)
+-- Policy: "Owners and managers can manage overtime adjustments" uses role IN ('owner','manager')
+-- Must be widened to include operations_manager.
+-- overtime_adjustments has UNIQUE per employee/date/type — use ON CONFLICT DO NOTHING.
+-- ============================================================================
+
+SELECT lives_ok(
+    $$ INSERT INTO public.overtime_adjustments
+          (restaurant_id, employee_id, punch_date, adjustment_type, hours, adjusted_by)
+       VALUES ('22000000-0000-0000-0000-000000000099'::uuid,
+               '22000000-0000-0000-0000-000000000301'::uuid,
+               current_date, 'regular_to_overtime', 1.0,
+               '22000000-0000-0000-0000-000000000002'::uuid)
+       ON CONFLICT (restaurant_id, employee_id, punch_date, adjustment_type) DO NOTHING $$,
+    'ops-mgr can insert overtime_adjustments (edit:payroll)'
+);
+
+-- ============================================================================
+-- Test 15: edit:tips — view tip_splits (SELECT on residual role IN policy)
+-- Verify the SELECT policy is also widened (seeded in Test 10 above).
+-- ============================================================================
+
+SELECT cmp_ok(
+    (SELECT count(*)::int FROM public.tip_splits
+     WHERE restaurant_id = '22000000-0000-0000-0000-000000000099'::uuid),
+    '>',
+    0,
+    'ops-mgr can SELECT tip_splits (edit:tips widened)'
 );
 
 SELECT * FROM finish();

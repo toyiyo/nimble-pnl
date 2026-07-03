@@ -51,6 +51,7 @@ const RESTAURANT_ID = 'rest-123';
 
 function renderInvitations(userRole: string) {
   return render(
+    // cast needed: test helper accepts arbitrary strings for negative-path tests
     <TeamInvitations restaurantId={RESTAURANT_ID} userRole={userRole as any} />
   );
 }

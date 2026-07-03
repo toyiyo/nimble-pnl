@@ -13,7 +13,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(30);
+SELECT plan(31);
 
 -- ============================================================================
 -- Fixtures
@@ -232,6 +232,13 @@ SELECT is(
     public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'manage:subscription'),
     FALSE,
     'ops-mgr denied manage:subscription (admin)'
+);
+
+-- view:collaborators: NOT widened (admin surface — drift guard)
+SELECT is(
+    public.user_has_capability('21000000-0000-0000-0000-000000000099'::uuid, 'view:collaborators'),
+    FALSE,
+    'ops-mgr denied view:collaborators (admin)'
 );
 
 SELECT * FROM finish();

@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone, Briefcase } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { getInvitableRoles } from '@/lib/permissions/invitations';
 import type { Role } from '@/lib/permissions/types';
 
 interface TeamMember {
@@ -26,7 +27,7 @@ interface TeamMember {
 
 interface TeamMembersProps {
   restaurantId: string;
-  userRole: string;
+  userRole: Role;
 }
 
 const roleIcons = {
@@ -52,7 +53,15 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  // Derive from capability system — consistent with ROLE_CAPABILITIES['manage:team']
   const canManageMembers = userRole === 'owner' || userRole === 'manager' || userRole === 'operations_manager';
+
+  // Assignable roles for the role-change dropdown — mirrors the invite matrix
+  // so operations_manager cannot promote members beyond their own invite boundary.
+  // Owners additionally retain the ability to re-assign to 'owner'.
+  const assignableRoles: Role[] = userRole === 'owner'
+    ? [...getInvitableRoles(userRole), 'owner' as Role]
+    : getInvitableRoles(userRole);
 
   useEffect(() => {
     fetchTeamMembers();
@@ -232,15 +241,11 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="staff">Staff</SelectItem>
-                              <SelectItem value="chef">Chef</SelectItem>
-                              <SelectItem value="manager">Manager</SelectItem>
-                              {(userRole === 'owner' || userRole === 'manager') && (
-                                <SelectItem value="operations_manager">Operations Manager</SelectItem>
-                              )}
-                              {userRole === 'owner' && (
-                                <SelectItem value="owner">Owner</SelectItem>
-                              )}
+                              {assignableRoles.map((role) => (
+                                <SelectItem key={role} value={role}>
+                                  {ROLE_METADATA[role]?.label ?? role}
+                                </SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                           {member.role === 'kiosk' && (

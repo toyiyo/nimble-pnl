@@ -293,9 +293,12 @@ serve(async (req) => {
       console.log("[SYNC-TRANSACTIONS] Applying categorization rules to", syncedCount, "new transactions");
       
       try {
-        // First try to apply categorization rules
-        const { data: rulesResult, error: rulesError } = await supabaseAdmin.rpc('apply_rules_to_bank_transactions', {
-          p_restaurant_id: bank.restaurant_id
+        // Internal engine: the public RPC's auth check raises for service-role callers
+        // (auth.uid() is NULL). Batch limit 1000 keeps a single call inside edge-fn
+        // statement budget; the sync runs frequently so large imports drain over cycles.
+        const { data: rulesResult, error: rulesError } = await supabaseAdmin.rpc('apply_rules_to_bank_transactions_internal', {
+          p_restaurant_id: bank.restaurant_id,
+          p_batch_limit: 1000,
         });
 
         if (rulesError) {

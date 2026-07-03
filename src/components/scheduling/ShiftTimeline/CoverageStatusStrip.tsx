@@ -70,6 +70,7 @@ export function CoverageStatusStrip({
           return (
             <div
               key={h.startMin}
+              role="img"
               aria-label={ariaLabel}
               title={ariaLabel}
               className={cn(

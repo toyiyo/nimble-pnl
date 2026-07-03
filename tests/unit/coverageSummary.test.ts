@@ -14,14 +14,14 @@ const demand = [
 ];
 
 describe('summarizeCoverageHours', () => {
-  it('aggregates scheduled as the per-hour minimum and aligns needed', () => {
+  it('CRITICAL: aggregates scheduled as the per-hour minimum and aligns needed', () => {
     const hrs = summarizeCoverageHours(coverage, demand, win);
     expect(hrs.map((h) => h.hour)).toEqual([10, 11, 12]);
     expect(hrs[0]).toMatchObject({ scheduled: 1, needed: 1, delta: 0 });   // covered (met)
     expect(hrs[1]).toMatchObject({ scheduled: 3, needed: 3, delta: 0 });
     expect(hrs[2]).toMatchObject({ scheduled: 2, needed: 4, delta: -2 });  // short 2
   });
-  it('yields null needed/delta when demand is null', () => {
+  it('CRITICAL: yields null needed/delta when demand is null', () => {
     const hrs = summarizeCoverageHours(coverage, null, win);
     expect(hrs[0].needed).toBeNull();
     expect(hrs[0].delta).toBeNull();
@@ -30,21 +30,21 @@ describe('summarizeCoverageHours', () => {
 });
 
 describe('buildVerdict', () => {
-  it('counts short hours and picks the worst', () => {
+  it('CRITICAL: counts short hours and picks the worst', () => {
     const hrs = summarizeCoverageHours(coverage, demand, win);
     const v = buildVerdict(hrs);
     expect(v.metAll).toBe(false);
     expect(v.shortHours).toBe(1);
     expect(v.worst).toEqual({ hour: 12, delta: -2 });
   });
-  it('reports metAll when nothing is short', () => {
+  it('CRITICAL: reports metAll when nothing is short', () => {
     const hrs = summarizeCoverageHours(
       [{ min: 600, count: 5 }, { min: 660, count: 5 }], [{ min: 600, target: 1 }], { startMin: 600, endMin: 720 },
     );
     expect(buildVerdict(hrs).metAll).toBe(true);
     expect(buildVerdict(hrs).worst).toBeNull();
   });
-  it('metAll is false-ish / worst null when demand absent', () => {
+  it('CRITICAL: reports no demand and zero short hours when demand absent', () => {
     const hrs = summarizeCoverageHours([{ min: 600, count: 2 }], null, { startMin: 600, endMin: 660 });
     const v = buildVerdict(hrs);
     expect(v.hasDemand).toBe(false);

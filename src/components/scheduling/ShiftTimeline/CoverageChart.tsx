@@ -3,10 +3,12 @@ import { formatCoverageHour } from '@/lib/coverageSummary';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
-/** Left margin reserved for y-axis labels (in viewBox units). */
-const MARGIN_LEFT = 28;
-/** Right margin for the "Needed" end-label. */
-const MARGIN_RIGHT = 48;
+// Plot spans the full viewBox width so the hour columns line up exactly with
+// the TimelineAxis ticks and shift bars (both share the 120px lane-label offset
+// applied by the parent). Y-axis value labels are drawn inside the top-left of
+// the plot; the "Needed" series is named in the legend rather than an end-label.
+const MARGIN_LEFT = 0;
+const MARGIN_RIGHT = 0;
 /** Top padding so the top gridline isn't clipped. */
 const MARGIN_TOP = 8;
 /** Bottom margin for x-axis hour labels. */
@@ -120,16 +122,6 @@ function AreaView({ hours, plotW, plotH, peak, hasDemand }: AreaViewProps) {
       }, null)
     : null;
 
-  // ── "Needed" direct end-label ─────────────────────────────────────────────
-  const neededLabelY = (() => {
-    if (!hasDemand) return null;
-    // Use the last hour's needed value for vertical placement
-    for (let i = hours.length - 1; i >= 0; i--) {
-      if (hours[i].needed !== null) return yForCount(hours[i].needed as number);
-    }
-    return null;
-  })();
-
   return (
     <>
       {/* Scheduled filled step area */}
@@ -152,19 +144,6 @@ function AreaView({ hours, plotW, plotH, peak, hasDemand }: AreaViewProps) {
           strokeWidth="1.2"
           strokeDasharray="4 3"
         />
-      )}
-
-      {/* "Needed" direct end-label */}
-      {neededLabelY !== null && (
-        <text
-          x={xEnd + 4}
-          y={neededLabelY}
-          dominantBaseline="middle"
-          className="fill-muted-foreground"
-          fontSize="9"
-        >
-          Needed
-        </text>
       )}
 
       {/* Worst-hour deficit label inside the wedge */}
@@ -202,11 +181,13 @@ interface DeltaViewProps {
   hours: CoverageHour[];
   plotW: number;
   plotH: number;
+  /** Headcount peak — scales the "no demand" scheduled bars proportionally. */
+  peak: number;
   /** Total SVG height (px) — used to clamp label positions inside the viewBox. */
   svgHeight: number;
 }
 
-function DeltaView({ hours, plotW, plotH, svgHeight }: DeltaViewProps) {
+function DeltaView({ hours, plotW, plotH, peak, svgHeight }: DeltaViewProps) {
   if (hours.length === 0) return null;
 
   const xForIndex = (i: number) => MARGIN_LEFT + (i / hours.length) * plotW;
@@ -243,9 +224,10 @@ function DeltaView({ hours, plotW, plotH, svgHeight }: DeltaViewProps) {
         const xMid = (x0 + x1) / 2;
 
         if (h.delta === null) {
-          // No demand — render a neutral bar for scheduled (clamped so it never
-          // overflows the plot when deltaPeak is small but scheduled is large).
-          const barH = Math.min(halfH - 2, Math.max(1, h.scheduled * pixelsPerUnit));
+          // No demand — there's no delta to plot, so show scheduled headcount
+          // scaled by the headcount peak (NOT deltaPeak, which collapses to 1
+          // when every hour is demand-less and would peg every bar to max height).
+          const barH = Math.min(halfH - 2, Math.max(1, (h.scheduled / peak) * halfH));
           return (
             <g key={h.startMin}>
               <rect
@@ -379,10 +361,10 @@ function Axes({ plotW, plotH, peak, deltaPeak, view, hourLabels, hours }: AxesPr
                 strokeWidth="0.5"
               />
               <text
-                x={MARGIN_LEFT - 4}
-                y={y}
-                textAnchor="end"
-                dominantBaseline="middle"
+                x={2}
+                y={y - 2}
+                textAnchor="start"
+                dominantBaseline="auto"
                 className="fill-muted-foreground"
                 fontSize="8"
               >
@@ -418,10 +400,10 @@ function Axes({ plotW, plotH, peak, deltaPeak, view, hourLabels, hours }: AxesPr
               strokeWidth="0.5"
             />
             <text
-              x={MARGIN_LEFT - 4}
-              y={y}
-              textAnchor="end"
-              dominantBaseline="middle"
+              x={2}
+              y={y - 2}
+              textAnchor="start"
+              dominantBaseline="auto"
               className="fill-muted-foreground"
               fontSize="8"
             >
@@ -547,6 +529,7 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
             hours={hours}
             plotW={plotW}
             plotH={plotH}
+            peak={peak}
             svgHeight={height}
           />
         )}

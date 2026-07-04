@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
@@ -146,6 +146,48 @@ describe('useCreateTimePunch — photo upload failure', () => {
       title: 'Punch recorded',
       description: expect.stringMatching(/photo could not be uploaded/i),
     });
+  });
+});
+
+describe('useCreateTimePunch — photo upload hangs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+    insertSingleMock.mockResolvedValue(okInsertResponse());
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('proceeds without photo_path after the 10s photo timeout when the upload never resolves', async () => {
+    // Upload never resolves — simulates a hung network request.
+    uploadMock.mockReturnValue(new Promise(() => {}));
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    const mutatePromise = result.current.mutateAsync({
+      ...validPayload(),
+      photoBlob: new Blob(['x']),
+    });
+
+    // Before the timeout elapses, the INSERT must not have fired yet — the
+    // hook is still waiting on the (hung) upload race.
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(insertMock).not.toHaveBeenCalled();
+
+    // Cross the 10s photo-upload timeout threshold.
+    await vi.advanceTimersByTimeAsync(1);
+
+    await vi.waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
+
+    // The punch proceeds without a photo_path — the abandoned upload must
+    // not block or fail the punch.
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ photo_path: undefined }),
+    );
+
+    await mutatePromise;
   });
 });
 

@@ -46,7 +46,21 @@ Phase 4–9: dev-build-and-ship workflow — in-progress
       `npm run lint` shows zero errors in EmployeeTips.tsx (all 1384 errors are pre-existing,
       unrelated files). `npm run typecheck` clean. No violations found — no fixes applied, no
       commit made (working tree already clean).
-- [ ] Phase 6–9: code-simplify, CodeRabbit, verify, PR, CI loop, retrospective
+- [x] Phase 6: code-simplify — reviewed diff (src/pages/EmployeeTips.tsx, 3 line changes)
+      against reuse/simplification/efficiency/altitude:
+      - Reuse: `Boolean(tip.hours) &&` guard duplicates the Breakdown-tab pattern (line ~267)
+        but only 2 call sites with different wrapper markup (span+icon vs p) — extracting a
+        shared component would add more indirection than it removes. Skipped.
+      - Simplification: `periodHours` reduce `sum + (tip.hours || 0)` already matches the
+        existing `totalTeamHours` reduce idiom at line 142 (`sum + (item.hours_worked || 0)`).
+        Already consistent, no change.
+      - Efficiency: pure rendering/reduce fix, no loops/IO to optimize. Nothing to flag.
+      - Altitude: confirmed via useTipSplits.tsx (`hours_worked: share.hours || null`, typed
+        `number | null`) that null is a meaningful "no hours tracked" state, not a bug to
+        coerce upstream — display-layer guard is the correct altitude, matches design doc.
+      Verdict: diff already minimal and idiomatic. No changes applied, no commit needed
+      (working tree confirmed clean via `git status --short`).
+- [ ] Phase 7–9: CodeRabbit, verify, PR, CI loop, retrospective
 
 ## CI Status
 - PR: not yet created

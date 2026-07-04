@@ -149,6 +149,36 @@ describe('useCreateTimePunch — photo upload failure', () => {
   });
 });
 
+describe('useCreateTimePunch — photo upload succeeds', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+  });
+
+  it('sets photo_path from the upload result and fires the normal success toast (regression pin)', async () => {
+    uploadMock.mockResolvedValue({ data: { path: 'r1/e1/punch-123.jpg' }, error: null });
+    insertSingleMock.mockResolvedValue(okInsertResponse({ photo_path: 'r1/e1/punch-123.jpg' }));
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await result.current.mutateAsync({
+      ...validPayload(),
+      photoBlob: new Blob(['x']),
+    });
+
+    // The INSERT must carry the uploaded photo's path.
+    expect(insertMock).toHaveBeenCalledWith(
+      expect.objectContaining({ photo_path: 'r1/e1/punch-123.jpg' }),
+    );
+
+    // Success toast is the normal variant, not the photo-failure copy.
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Punch recorded',
+      description: expect.not.stringMatching(/photo could not be uploaded/i),
+    });
+  });
+});
+
 describe('useCreateTimePunch — photo upload hangs', () => {
   beforeEach(() => {
     vi.clearAllMocks();

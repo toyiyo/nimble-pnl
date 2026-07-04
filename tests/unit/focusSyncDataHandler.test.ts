@@ -201,7 +201,9 @@ function makeServiceClientMock(opts: { connection?: MockConnection } = {}) {
   // Last .eq returns { data: [{id}], error: null } (1 row = CAS success); expose select() for CAS check.
   const casSelectMock = vi.fn().mockResolvedValue({ data: [{ id: 'conn-uuid' }], error: null });
   const eqUpdate3Mock = vi.fn().mockReturnValue({ select: casSelectMock });
-  const eqUpdate2Mock = vi.fn().mockReturnValue({ eq: eqUpdate3Mock });
+  // Second .eq also exposes select() so the 2-eq custom-range chain
+  // (.eq('id').eq('restaurant_id').select() — no cursor CAS) works too.
+  const eqUpdate2Mock = vi.fn().mockReturnValue({ eq: eqUpdate3Mock, select: casSelectMock });
   const eqUpdateMock = vi.fn().mockReturnValue({ eq: eqUpdate2Mock });
   const updateMock = vi.fn().mockReturnValue({ eq: eqUpdateMock });
 
@@ -832,6 +834,44 @@ describe('handleSyncData', () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.daysSynced).toBe(3);
+    });
+
+    it('clears a stale error banner when the range sync succeeds', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: '2026-06-03' },
+      });
+      await handleSyncData(req, deps);
+
+      // The range path must persist connection state like every other path.
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.connection_status).toBe('connected');
+      expect(updateArg.last_error).toBeNull();
+      expect(updateArg.last_error_at).toBeNull();
+      expect(typeof updateArg.last_sync_time).toBe('string');
+    });
+
+    it('persists connection_status="error" + last_error when the range sync fails', async () => {
+      mockProcessDateRangeTransactions.mockResolvedValue({
+        status: 'error',
+        error: 'Focus POS Lynk response did not contain a blob_url',
+        daysSynced: 1,
+      });
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: '2026-06-03' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.connection_status).toBe('error');
+      expect(updateArg.last_error).toBe('Focus POS Lynk response did not contain a blob_url');
+      expect(updateArg.last_error_at).toBeDefined();
     });
   });
 

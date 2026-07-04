@@ -128,33 +128,18 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
   consecutive_failures: number;
 }
 
-/** Minimal Supabase service-role client surface needed by this handler. */
+/**
+ * Minimal Supabase service-role client surface needed by this handler.
+ *
+ * The `select` branch on `from()` is exactly the chain createDatafeedStateStore
+ * needs (focus_datafeed_state lookups for the delta-skip state store), so it's
+ * composed from StateStoreClient rather than hand-duplicated — this also lets
+ * deps.serviceClient satisfy StateStoreClient structurally, no cast required.
+ */
 export interface ServiceClient {
-  from(table: string): {
+  from(table: string): ReturnType<StateStoreClient['from']> & {
     update(data: Record<string, unknown>): {
       eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }>;
-    };
-    upsert(
-      data: Record<string, unknown>,
-      options?: Record<string, unknown>,
-    ): {
-      onConflict(columns: string): {
-        select(): Promise<{ data: unknown; error: { message: string } | null }>;
-      };
-    };
-    /**
-     * select→eq→eq→maybeSingle chain — required by createDatafeedStateStore's
-     * get() (focus_datafeed_state lookups for the delta-skip state store).
-     */
-    select(columns: string): {
-      eq(col: string, val: string): {
-        eq(col: string, val: string): {
-          maybeSingle(): Promise<{
-            data: { checks_bytes: number; checks_sha256: string; fetched_at: string } | null;
-            error: { message: string } | null;
-          }>;
-        };
-      };
     };
   };
   /** RPC surface — used for the atomic claim_focus_sync_batch call. */
@@ -249,9 +234,8 @@ async function processConnection(
     // Delta-skip state store, built once per connection from the service
     // client (design §2 "Delta skip" — only the bulk-sync/cron path wires
     // this; manual/custom-range/backfill callers keep pre-delta-skip behavior).
-    const stateStore = createDatafeedStateStore(
-      deps.serviceClient as unknown as StateStoreClient,
-    );
+    // ServiceClient's from() composes StateStoreClient's shape, so no cast needed.
+    const stateStore = createDatafeedStateStore(deps.serviceClient);
 
     const txDeps = {
       supabase: deps.serviceClient as unknown as Parameters<typeof processDayTransactions>[0]['supabase'],
@@ -269,14 +253,26 @@ async function processConnection(
     // is missing or ≥ 6h stale (lynkIncrementalDates), bounding
     // yesterday-correction staleness at the pre-change freshness level while
     // halving steady-state terminal load.
+    //
+    // TODAY's processDayTransactions doesn't depend on the yesterday-fingerprint
+    // lookup, so the two are kicked off together rather than awaited serially —
+    // shaves one DB round-trip off every connection's critical path under the
+    // handler's 90s wall-clock budget.
     const today = todayInTz(tz, now);
     const yesterday = subtractDays(today, 1);
-    const yesterdayState = await stateStore.get(row.restaurant_id, yesterday);
+    const [todayResult, yesterdayState] = await Promise.all([
+      processDayTransactions(txDeps, txConfig, today),
+      stateStore.get(row.restaurant_id, yesterday),
+    ]);
     const dates = lynkIncrementalDates(tz, now, yesterdayState?.fetchedAt ?? null);
+    const remainingDates = dates.filter((date) => date !== today);
 
-    const results = await Promise.all(
-      dates.map((date) => processDayTransactions(txDeps, txConfig, date)),
-    );
+    const results = [
+      todayResult,
+      ...(await Promise.all(
+        remainingDates.map((date) => processDayTransactions(txDeps, txConfig, date)),
+      )),
+    ];
     const failed = results.find((r) => r.status === 'error');
     if (failed?.status === 'error') {
       const message = failed.error ?? 'Focus transaction incremental sync failed';

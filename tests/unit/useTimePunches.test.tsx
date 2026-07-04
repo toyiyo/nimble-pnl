@@ -312,6 +312,36 @@ describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
       variant: 'destructive',
     });
   });
+
+  it('maps the real postgrest-js abort shape (a resolved plain error object, not a rejection) to the timeout destructive toast', async () => {
+    // This is what actually happens at runtime: PostgrestBuilder only rejects
+    // on abort if `.throwOnError()` was called (it isn't, on this insert
+    // chain). By default it catches the fetch AbortError itself and
+    // *resolves* with `{ data: null, error: { message: 'AbortError: ...' } }`
+    // — a plain object, never a DOMException/Error instance. A test that only
+    // exercises `mockRejectedValue` (as the other cases in this block do)
+    // does not cover this path, since a rejection never happens here in
+    // production.
+    insertSingleMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'AbortError: The user aborted a request.',
+        details: '',
+        hint: '',
+        code: '',
+      },
+    });
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await expect(result.current.mutateAsync(validPayload())).rejects.toBeDefined();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Error recording punch',
+      description: expect.stringMatching(/timed out.*connection|connection.*timed out/i),
+      variant: 'destructive',
+    });
+  });
 });
 
 describe('useCreateTimePunch — onSettled invalidation', () => {

@@ -107,16 +107,37 @@ const PHOTO_UPLOAD_TIMEOUT_MS = 10_000;
 // within this window, the AbortSignal rejects the request instead.
 const PUNCH_INSERT_TIMEOUT_MS = 15_000;
 
-// Recognizes both a genuine AbortController.abort() rejection reason (a
-// DOMException named 'AbortError' or 'TimeoutError') and a plain Error whose
-// message indicates a timeout/abort, so we can map either shape to the same
-// user-facing connection/timeout copy.
+// Recognizes a genuine AbortController.abort() rejection reason (a
+// DOMException named 'AbortError' or 'TimeoutError'), a plain Error whose
+// message indicates a timeout/abort, AND the plain postgrest-js error object
+// shape ({ message, details, hint, code }, not an Error/DOMException
+// instance) that supabase-js actually resolves with on an aborted request.
+//
+// Why the third shape matters: postgrest-js's PostgrestBuilder only calls
+// `.throwOnError()` — which is what would make an abort surface as a real
+// DOMException rejection — when explicitly opted in. This insert chain
+// doesn't opt in, so PostgrestBuilder's default `.then()` catches the
+// underlying fetch rejection itself and *resolves* with
+// `{ data: null, error: { message: 'AbortError: ...', ... } }`, a plain
+// object. `if (error) throw error;` below then throws that plain object,
+// which is neither `instanceof DOMException` nor `instanceof Error` — so
+// without this branch the classification would silently fall through and
+// show the raw technical message instead of the intended connection/timeout
+// copy for exactly the abort case this exists to handle.
 const isTimeoutError = (error: unknown): boolean => {
   if (error instanceof DOMException) {
     return error.name === 'AbortError' || error.name === 'TimeoutError';
   }
   if (error instanceof Error) {
     return /abort|timed?\s?out/i.test(error.message);
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return /abort|timed?\s?out/i.test((error as { message: string }).message);
   }
   return false;
 };

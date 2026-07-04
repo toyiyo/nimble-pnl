@@ -119,7 +119,7 @@ function EmployeeTips() {
       id: string;
       date: string;
       amount: number;
-      hours: number;
+      hours: number | null;
       role: string;
       shareMethod: 'hours' | 'role' | 'manual';
       totalSplit: number;
@@ -148,7 +148,7 @@ function EmployeeTips() {
 
   // Calculate period totals
   const periodTotal = myTips.reduce((sum, tip) => sum + tip.amount, 0);
-  const periodHours = myTips.reduce((sum, tip) => sum + tip.hours, 0);
+  const periodHours = myTips.reduce((sum, tip) => sum + (tip.hours || 0), 0);
 
   if (!restaurantId) {
     return <NoRestaurantState />;
@@ -373,9 +373,11 @@ function EmployeeTips() {
                       <p className="text-[14px] font-medium text-foreground">
                         {format(new Date(tip.date), 'EEE, MMM d, yyyy')}
                       </p>
-                      <p className="text-[13px] text-muted-foreground">
-                        {tip.hours.toFixed(1)} hours
-                      </p>
+                      {Boolean(tip.hours) && (
+                        <p className="text-[13px] text-muted-foreground">
+                          {tip.hours.toFixed(1)} hours
+                        </p>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       {payoutLookup.has(tip.date) && (

@@ -15,7 +15,7 @@
 -- §4  apply_rules_to_pos_sales_internal + hardened public wrapper
 -- §5  apply_rules_to_bank_transactions_internal + supplier assignment + public wrapper
 -- §6  Dynamic gate rewrite of the four sync functions
--- §7  One-time backfill of the stuck backlog
+-- §7  Backlog drain via self-retiring 5-min cron (in-migration drain timed out prod)
 
 
 -- ============================================================
@@ -880,31 +880,49 @@ END;
 $$;
 
 -- ============================================================
--- §7  One-time backfill of the stuck categorization backlog.
+-- §7  Backlog drain — deferred to a self-retiring 5-minute cron.
 --
--- Iterates restaurants that have at least one active auto_apply rule, then
--- drains uncategorized rows in batches until the engine returns 0 (converged)
--- or 50 rounds have been consumed (safety cap against pathological loops).
+-- The original §7 drained the ENTIRE uncategorized backlog synchronously
+-- inside this migration (up to 50 rounds × batch per restaurant, plus
+-- rebuild_account_balances). On production data that exceeded the 2-minute
+-- statement timeout (SQLSTATE 57014, Deploy Supabase #87/#88), rolled the
+-- whole migration back, and blocked every migration queued behind it.
 --
--- Design notes:
---   • Iteration counters (i) are declared ONCE and reset at the start of each
---     restaurant block — a shared never-reset counter would starve later
---     restaurants of their 50-round safety budget.
---   • POS and bank loops are completely separate (different applies_to filter,
---     different internal function, different batch sizes).
---   • Each restaurant is wrapped in BEGIN/EXCEPTION so one failing restaurant
---     does not abort the whole migration — a WARNING is emitted instead.
---   • Empty databases (local CI): zero matching restaurants → no-op.
---   • apply_count on matched rules legitimately grows by ~1 per categorized row
---     (the 9M/14.8M apply_count anomaly is a separate root-cause; untouched here).
+-- Migrations do schema; heavy data work belongs in bounded background jobs
+-- (same pattern as focus-transactions-unified-sales-sync). The drain is now:
+--
+--   drain_categorization_backlog() — ONE bounded tick (~40 s wall budget):
+--     • POS + bank restaurants with active auto_apply rules, a few batches
+--       each per tick; bank batches use p_skip_rebuild=true and each
+--       restaurant gets ONE rebuild_account_balances only when it applied
+--       rows this tick.
+--     • Per-restaurant BEGIN/EXCEPTION so one failure never aborts a tick.
+--     • Returns total rows applied this tick.
+--     • SELF-RETIRES: when a tick applies 0 rows (converged), it unschedules
+--       its own cron job — zero steady-state cost.
+--
+-- The pg_cron job 'categorization-backlog-drain' runs it every 5 minutes;
+-- a large backlog converges within hours instead of blocking deploys.
+-- New rows never need this path: the §3 trigger categorizes bank rows on
+-- arrival, and the §6 gate rewrite applies rules on every POS sync.
 -- ============================================================
-DO $$
+
+CREATE OR REPLACE FUNCTION public.drain_categorization_backlog()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+SET statement_timeout = '120s'
+AS $$
 DECLARE
-  r RECORD;
-  n integer;
-  i integer;
+  r             RECORD;
+  n             integer;
+  i             integer;
+  v_total       integer     := 0;
+  v_started     timestamptz := clock_timestamp();
+  v_budget      interval    := interval '40 seconds';
 BEGIN
-  -- ── POS backlog ──────────────────────────────────────────────────────────
+  -- ── POS backlog (a few batches per restaurant per tick) ──────────────────
   FOR r IN
     SELECT DISTINCT cr.restaurant_id
     FROM categorization_rules cr
@@ -912,23 +930,24 @@ BEGIN
       AND cr.auto_apply
       AND cr.applies_to IN ('pos_sales', 'both')
   LOOP
+    EXIT WHEN clock_timestamp() - v_started > v_budget;
     BEGIN
       i := 0;
       LOOP
         SELECT applied_count INTO n
         FROM apply_rules_to_pos_sales_internal(r.restaurant_id, 5000);
+        v_total := v_total + COALESCE(n, 0);
         i := i + 1;
-        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
+        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 2
+          OR clock_timestamp() - v_started > v_budget;
       END LOOP;
-      RAISE LOG 'categorization backfill (pos): restaurant % done in % rounds',
-        r.restaurant_id, i;
     EXCEPTION WHEN OTHERS THEN
-      RAISE WARNING 'categorization backfill (pos) failed for restaurant %: %',
+      RAISE WARNING 'categorization drain (pos) failed for restaurant %: %',
         r.restaurant_id, SQLERRM;
     END;
   END LOOP;
 
-  -- ── Bank backlog ─────────────────────────────────────────────────────────
+  -- ── Bank backlog (a few batches per restaurant per tick) ─────────────────
   FOR r IN
     SELECT DISTINCT cr.restaurant_id
     FROM categorization_rules cr
@@ -936,28 +955,65 @@ BEGIN
       AND cr.auto_apply
       AND cr.applies_to IN ('bank_transactions', 'both')
   LOOP
+    EXIT WHEN clock_timestamp() - v_started > v_budget;
     BEGIN
       i := 0;
       LOOP
-        -- p_skip_rebuild=true: skip rebuild_account_balances on every batch round.
-        -- With up to 50 rounds per restaurant, calling rebuild each time would
-        -- multiply aggregate scans ~50x and risk migration timeouts. A single
-        -- rebuild after the loop converges is sufficient.
+        -- p_skip_rebuild=true: one rebuild per restaurant per tick (below),
+        -- not one per batch — rebuilds dominate the cost otherwise.
         SELECT applied_count INTO n
         FROM apply_rules_to_bank_transactions_internal(r.restaurant_id, 1000, true);
+        v_total := v_total + COALESCE(n, 0);
         i := i + 1;
-        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 50;
+        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 5
+          OR clock_timestamp() - v_started > v_budget;
       END LOOP;
-      -- Rebuild account balances once after the loop — all batches are done.
-      IF i > 0 THEN
+      -- Rebuild once per tick, only when this restaurant applied rows.
+      IF i > 1 OR COALESCE(n, 0) > 0 THEN
         PERFORM rebuild_account_balances(r.restaurant_id);
       END IF;
-      RAISE LOG 'categorization backfill (bank): restaurant % done in % rounds',
-        r.restaurant_id, i;
     EXCEPTION WHEN OTHERS THEN
-      RAISE WARNING 'categorization backfill (bank) failed for restaurant %: %',
+      RAISE WARNING 'categorization drain (bank) failed for restaurant %: %',
         r.restaurant_id, SQLERRM;
     END;
   END LOOP;
+
+  -- ── Self-retire when converged ────────────────────────────────────────────
+  IF v_total = 0 THEN
+    IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain') THEN
+      PERFORM cron.unschedule('categorization-backlog-drain');
+      RAISE LOG 'categorization drain: backlog converged — job unscheduled';
+    END IF;
+  ELSE
+    RAISE LOG 'categorization drain: applied % rows this tick', v_total;
+  END IF;
+
+  RETURN v_total;
 END;
 $$;
+
+COMMENT ON FUNCTION public.drain_categorization_backlog() IS
+  'Bounded (~40s) tick that drains the pre-existing uncategorized POS/bank '
+  'backlog for restaurants with active auto_apply rules. Scheduled every 5 '
+  'minutes by the categorization-backlog-drain pg_cron job; unschedules that '
+  'job itself once a tick applies 0 rows (converged). Replaces the in-'
+  'migration synchronous backfill that timed out production deploys.';
+
+GRANT EXECUTE ON FUNCTION public.drain_categorization_backlog() TO service_role;
+
+-- Schedule the drain every 5 minutes (idempotent re-run guard). The job
+-- deletes itself via drain_categorization_backlog() once converged.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain') THEN
+    PERFORM cron.unschedule('categorization-backlog-drain');
+  END IF;
+END $$;
+
+SELECT cron.schedule(
+  'categorization-backlog-drain',
+  '*/5 * * * *',
+  $$SELECT public.drain_categorization_backlog()$$
+);

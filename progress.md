@@ -16,7 +16,7 @@ Phase 4–9: dev-build-and-ship workflow — in-progress
       tests/unit/EmployeeTips.nullHours.test.tsx (Case A confirmed RED with
       "Cannot read properties of null (reading 'toFixed')" at EmployeeTips.tsx:377:36
       before fix; Cases B/C passed immediately — those sites were already safe per design doc)
-- [x] Phase 4 task 2 (GREEN): fix EmployeeTips.tsx — commit 1a4f6d3e
+- [x] Phase 4 task 2 (GREEN): fix EmployeeTips.tsx — commit 022c787e
       Type `hours: number` → `hours: number | null` in `myTips` (line ~122);
       History-tab hours `<p>` (line ~377) wrapped in `Boolean(tip.hours) &&` guard
       matching Breakdown tab; `periodHours` reduce (line ~151) made explicit

@@ -15,6 +15,7 @@ import {
   buildReportUrl,
   assertAllowedHost,
   fetchReportHtml,
+  lynkIncrementalDates,
   type FocusConnection,
   type FetchDeps,
 } from '../../supabase/functions/_shared/focusReportClient';
@@ -275,5 +276,29 @@ describe('fetchReportHtml', () => {
     await expect(
       fetchReportHtml(deps, 'https://mfprod-1.myfocuspos.com/ReportServer'),
     ).rejects.toThrow('connection refused');
+  });
+});
+
+// ── lynkIncrementalDates ──────────────────────────────────────────────────────
+
+describe('lynkIncrementalDates', () => {
+  const tz = 'America/Chicago';
+  // 2026-07-04 18:00 UTC = 13:00 in Chicago (CDT)
+  const now = new Date('2026-07-04T18:00:00Z');
+
+  it('returns [today, yesterday] when yesterday has never been fetched', () => {
+    expect(lynkIncrementalDates(tz, now, null)).toEqual(['2026-07-04', '2026-07-03']);
+  });
+
+  it('returns [today, yesterday] when yesterday was fetched ≥ 6h ago', () => {
+    expect(lynkIncrementalDates(tz, now, '2026-07-04T11:59:00Z')).toEqual(['2026-07-04', '2026-07-03']);
+  });
+
+  it('returns [today] only when yesterday was fetched < 6h ago', () => {
+    expect(lynkIncrementalDates(tz, now, '2026-07-04T13:00:00Z')).toEqual(['2026-07-04']);
+  });
+
+  it('treats an unparseable fetchedAt as stale (fail toward re-fetching)', () => {
+    expect(lynkIncrementalDates(tz, now, 'not-a-date')).toEqual(['2026-07-04', '2026-07-03']);
   });
 });

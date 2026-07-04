@@ -148,6 +148,27 @@ export function recentBusinessDays(tz: string, now: Date): [string, string] {
   return [subtractDays(todayStr, 1), subtractDays(todayStr, 2)];
 }
 
+/** Yesterday is re-pulled at most every 6 h (bounded correction staleness). */
+const YESTERDAY_REFRESH_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Business dates for one Lynk incremental sync: TODAY always; YESTERDAY only
+ * when its fingerprint row is missing or stale (fetched ≥ 6 h ago). Replaces
+ * recentBusinessDays() for the Lynk path — that helper never included today,
+ * which meant intraday data only landed after midnight.
+ */
+export function lynkIncrementalDates(
+  tz: string,
+  now: Date,
+  yesterdayFetchedAt: string | null,
+): string[] {
+  const today = todayInTz(tz, now);
+  const yesterday = subtractDays(today, 1);
+  const fetchedMs = yesterdayFetchedAt ? Date.parse(yesterdayFetchedAt) : NaN;
+  const yesterdayIsFresh = Number.isFinite(fetchedMs) && now.getTime() - fetchedMs < YESTERDAY_REFRESH_MS;
+  return yesterdayIsFresh ? [today] : [today, yesterday];
+}
+
 // ── Shared row mapper ─────────────────────────────────────────────────────────
 
 /**

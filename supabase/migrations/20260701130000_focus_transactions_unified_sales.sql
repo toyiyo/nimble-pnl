@@ -13,7 +13,7 @@
 --       → date range for one restaurant
 --   sync_all_focus_transactions_to_unified_sales()
 --       → cron wrapper: round-robin, up to 5 active connections,
---         yesterday + today window
+--         3-day lookback window (CURRENT_DATE - 3 days … CURRENT_DATE)
 --
 -- external_order_id pattern  : focus-{store_id}-{YYYYMMDD}-{check_id}
 -- external_item_id (sale)    : {external_order_id}__{item_key}
@@ -88,6 +88,33 @@ BEGIN
 
   -- GUC flag: skip per-row triggers during bulk sync (transaction-local).
   PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
+
+  -- ── Step 0: Delete entire-check orphans ────────────────────────────────
+  -- When the sync handler deletes a voided check from focus_orders (via
+  -- DELETE … WHERE focus_check_id = voidedCheckId), ON DELETE CASCADE
+  -- cleans focus_order_items and focus_payments automatically, but
+  -- unified_sales rows for that check are NOT part of the cascade and
+  -- would be silently orphaned if not removed here.
+  --
+  -- This pass deletes all unified_sales rows for the restaurant/date-range
+  -- whose external_order_id no longer matches any focus_orders row.
+  -- It runs before the per-check loop so the daily re-aggregation (Step 7)
+  -- reflects the true final state even when only deletions occurred.
+  DELETE FROM public.unified_sales us
+  WHERE us.restaurant_id = p_restaurant_id
+    AND us.pos_system    = 'focus'
+    AND (p_start_date IS NULL OR us.sale_date >= p_start_date)
+    AND (p_end_date   IS NULL OR us.sale_date <= p_end_date)
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.focus_orders fo
+      WHERE fo.restaurant_id   = p_restaurant_id
+        AND fo.business_date   = us.sale_date
+        AND us.external_order_id =
+              'focus-' || COALESCE(v_store_id, 'unknown')
+              || '-' || to_char(fo.business_date, 'YYYYMMDD')
+              || '-' || fo.focus_check_id
+    );
 
   -- ── Iterate per check (focus_order) ────────────────────────────────────
   FOR v_order IN
@@ -352,7 +379,7 @@ $$;
 -- Called by the pg_cron job. Processes up to 5 active connections,
 -- ordered by last_sync_time ASC NULLS FIRST (round-robin fairness,
 -- design §4 / mirror of sync_all_focus_to_unified_sales pattern).
--- Uses last 2 business days for incremental syncs.
+-- Uses last 3 business days for incremental syncs (covers all US timezones).
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.sync_all_focus_transactions_to_unified_sales()
 RETURNS TABLE(restaurant_id uuid, rows_synced integer)
@@ -430,5 +457,5 @@ COMMENT ON FUNCTION public.sync_focus_transactions_to_unified_sales(uuid, date, 
 
 COMMENT ON FUNCTION public.sync_all_focus_transactions_to_unified_sales() IS
   'Round-robin incremental sync for all active Focus connections '
-  '(ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5, last 2 business days). '
+  '(ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5, 3-day lookback window). '
   'Designed to run via pg_cron alongside sync_all_focus_to_unified_sales.';

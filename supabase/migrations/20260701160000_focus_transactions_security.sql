@@ -67,6 +67,27 @@ BEGIN
   -- GUC flag: skip per-row triggers during bulk sync (transaction-local).
   PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
 
+  -- ── Step 0: Delete entire-check orphans ────────────────────────────────
+  -- Removes unified_sales rows whose external_order_id no longer matches
+  -- any focus_orders row in the date range (e.g. voided checks deleted by
+  -- the sync handler). Must run before the per-check loop so the daily
+  -- re-aggregation reflects the correct final state.
+  DELETE FROM public.unified_sales us
+  WHERE us.restaurant_id = p_restaurant_id
+    AND us.pos_system    = 'focus'
+    AND (p_start_date IS NULL OR us.sale_date >= p_start_date)
+    AND (p_end_date   IS NULL OR us.sale_date <= p_end_date)
+    AND NOT EXISTS (
+      SELECT 1
+      FROM public.focus_orders fo
+      WHERE fo.restaurant_id   = p_restaurant_id
+        AND fo.business_date   = us.sale_date
+        AND us.external_order_id =
+              'focus-' || COALESCE(v_store_id, 'unknown')
+              || '-' || to_char(fo.business_date, 'YYYYMMDD')
+              || '-' || fo.focus_check_id
+    );
+
   -- ── Iterate per check (focus_order) ────────────────────────────────────
   FOR v_order IN
     SELECT fo.business_date, fo.focus_check_id

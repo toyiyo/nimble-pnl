@@ -30,9 +30,28 @@ const FOCUS_ALLOWED_ROLES = new Set(['owner', 'manager']);
 
 const TIMEOUT_MS = 20_000;
 
-/** Convenience wrapper: SSRF-check that `url` is a safe focuspos.com base URL. */
-function isSafeBase(url: string): boolean {
-  return isSafeUrl(url, FOCUSPOS_HOST_RE);
+/**
+ * Convenience wrapper: SSRF-check that `url` is a safe Focus POS base URL.
+ *
+ * Primary check: the URL must be https on a `focuspos.com` host (no userinfo).
+ *
+ * Sandbox override: if `sandboxBaseUrl` is provided (sourced from the
+ * FOCUS_API_SANDBOX_URL env var — an operator-controlled value, not user input),
+ * its hostname is extracted and used as an exact-match allowlist entry.  The URL
+ * must still be https with no userinfo; only the host check is widened.
+ */
+function isSafeBase(url: string, sandboxBaseUrl?: string): boolean {
+  if (isSafeUrl(url, FOCUSPOS_HOST_RE)) return true;
+  if (!sandboxBaseUrl) return false;
+  // Build an exact-match regex from the operator-configured sandbox hostname.
+  try {
+    const sbHost = new URL(sandboxBaseUrl).hostname;
+    if (!sbHost) return false;
+    const escapedHost = sbHost.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return isSafeUrl(url, new RegExp(`^${escapedHost}$`, 'i'));
+  } catch {
+    return false;
+  }
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -139,18 +158,35 @@ export async function handleTestConnection(
     return jsonError(404, 'No active Focus POS connection found for this restaurant');
   }
 
-  // ── 5. Decrypt secret ──────────────────────────────────────────────────────
-  const encSvc = await getEncryptionService();
-  const apiSecret = await encSvc.decrypt(conn.api_secret_encrypted);
+  // ── 5–6. Decrypt secret, validate environment, determine base URL ──────────
+  // Wrapped in try/catch: decryption may throw (e.g. after a key rotation),
+  // btoa throws InvalidCharacterError for non-Latin1 credentials, and an
+  // unexpected environment value would silently produce an unknown base URL.
+  // All failures write to connection_status so the UI reflects the real error.
+  let apiSecret: string;
+  let baseUrl: string;
+  let authValue: string;
+  try {
+    const encSvc = await getEncryptionService();
+    apiSecret = await encSvc.decrypt(conn.api_secret_encrypted);
 
-  // ── 6. Determine base URL ─────────────────────────────────────────────────
-  const baseUrl = focusApiBaseUrl(
-    conn.environment as 'production' | 'sandbox',
-    deps.sandboxBaseUrl,
-  );
+    const env = conn.environment as string;
+    if (env !== 'production' && env !== 'sandbox') {
+      throw new Error(`Unknown Focus POS environment stored in database: "${env}"`);
+    }
+    baseUrl = focusApiBaseUrl(env, deps.sandboxBaseUrl);
+    authValue = 'Basic ' + btoa(`${conn.api_key}:${apiSecret}`);
+  } catch (e) {
+    const errMsg = `Failed to prepare Focus POS API request: ${e instanceof Error ? e.message : String(e)}`;
+    await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
+    return new Response(
+      JSON.stringify({ success: false, status: 'error', error: errMsg }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+  }
 
-  if (!isSafeBase(baseUrl)) {
-    const errMsg = 'Focus POS base URL must be https on a focuspos.com host';
+  if (!isSafeBase(baseUrl, deps.sandboxBaseUrl)) {
+    const errMsg = 'Focus POS base URL must be https on a focuspos.com host (or the configured sandbox host)';
     await writeStatus(deps.serviceClient, restaurantId, conn.id, 'error', errMsg);
     return new Response(
       JSON.stringify({ success: false, status: 'error', error: errMsg }),
@@ -160,7 +196,6 @@ export async function handleTestConnection(
 
   // ── 7. GET /api/restaurants ────────────────────────────────────────────────
   const restaurantsUrl = `${baseUrl.replace(/\/+$/, '')}/api/restaurants`;
-  const authValue = 'Basic ' + btoa(`${conn.api_key}:${apiSecret}`);
 
   let apiRes: Response;
   try {

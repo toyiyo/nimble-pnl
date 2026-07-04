@@ -96,6 +96,12 @@ type CreateTimePunchInput =
     silent?: boolean;
   };
 
+// The photo upload must never block or hang the punch itself. If the upload
+// hasn't settled within this window, we abandon it (no-op catch so the
+// rejection doesn't become an unhandled rejection) and proceed without a
+// photo_path.
+const PHOTO_UPLOAD_TIMEOUT_MS = 10_000;
+
 export const useCreateTimePunch = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -109,32 +115,54 @@ export const useCreateTimePunch = () => {
       const userId = session?.user?.id;
 
       let photo_path: string | undefined;
+      let photoUploadFailed = false;
       if (punch.photoBlob) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), PHOTO_UPLOAD_TIMEOUT_MS);
+
+        // Declared outside the try block so the catch handler can still
+        // reach it to attach a no-op rejection handler on the abandoned
+        // promise (relevant when we raced it away via the timeout).
+        let uploadPromise: Promise<{ data: { path: string } | null; error: Error | null }> | undefined;
+
         try {
           const timestamp = Date.now();
           const filename = `punch-${timestamp}.jpg`;
           const filePath = `${punch.restaurant_id}/${punch.employee_id}/${filename}`;
 
-          const { data: uploadData, error: uploadError } = await supabase.storage
+          uploadPromise = supabase.storage
             .from('time-clock-photos')
             .upload(filePath, punch.photoBlob, {
               contentType: 'image/jpeg',
               upsert: false,
             });
 
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            controller.signal.addEventListener('abort', () => {
+              reject(new DOMException('Photo upload timed out', 'TimeoutError'));
+            });
+          });
+
+          const { data: uploadData, error: uploadError } = await Promise.race([
+            uploadPromise,
+            timeoutPromise,
+          ]);
+
           if (uploadError) {
             console.error('Photo upload error:', uploadError);
-            // Don't fail the punch if photo upload fails
-            toast({
-              title: 'Photo upload failed',
-              description: 'Punch recorded without photo',
-              variant: 'default',
-            });
+            photoUploadFailed = true;
           } else {
             photo_path = uploadData.path;
           }
         } catch (error) {
           console.error('Photo upload exception:', error);
+          photoUploadFailed = true;
+          // The upload promise may still resolve/reject after we've moved on
+          // (e.g. after a timeout abandons it) — swallow that so it doesn't
+          // surface as an unhandled rejection.
+          uploadPromise?.catch(() => {});
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
 
@@ -152,7 +180,7 @@ export const useCreateTimePunch = () => {
         .single();
 
       if (error) throw error;
-      return data;
+      return { ...data, photoUploadFailed };
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['timePunches', data.restaurant_id] });
@@ -163,7 +191,9 @@ export const useCreateTimePunch = () => {
       const punchTypeText = data.punch_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
       toast({
         title: 'Punch recorded',
-        description: `${punchTypeText} at ${new Date(data.punch_time).toLocaleTimeString()}`,
+        description: data.photoUploadFailed
+          ? 'Punch recorded — photo could not be uploaded'
+          : `${punchTypeText} at ${new Date(data.punch_time).toLocaleTimeString()}`,
       });
     },
     onError: (error: Error) => {

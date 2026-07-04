@@ -919,6 +919,8 @@ DECLARE
   n             integer;
   i             integer;
   v_total       integer     := 0;
+  v_errors      integer     := 0;
+  v_budget_hit  boolean     := false;
   v_started     timestamptz := clock_timestamp();
   v_budget      interval    := interval '40 seconds';
 BEGIN
@@ -930,7 +932,10 @@ BEGIN
       AND cr.auto_apply
       AND cr.applies_to IN ('pos_sales', 'both')
   LOOP
-    EXIT WHEN clock_timestamp() - v_started > v_budget;
+    IF v_budget_hit OR clock_timestamp() - v_started > v_budget THEN
+      v_budget_hit := true;
+      EXIT;
+    END IF;
     BEGIN
       i := 0;
       LOOP
@@ -938,12 +943,25 @@ BEGIN
         FROM apply_rules_to_pos_sales_internal(r.restaurant_id, 5000);
         v_total := v_total + COALESCE(n, 0);
         i := i + 1;
-        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 2
-          OR clock_timestamp() - v_started > v_budget;
+        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 2;
+        IF clock_timestamp() - v_started > v_budget THEN
+          v_budget_hit := true;
+          EXIT;
+        END IF;
       END LOOP;
-    EXCEPTION WHEN OTHERS THEN
-      RAISE WARNING 'categorization drain (pos) failed for restaurant %: %',
-        r.restaurant_id, SQLERRM;
+    EXCEPTION
+      -- WHEN OTHERS does NOT catch query_canceled (57014); name it explicitly
+      -- so a timed-out batch skips this restaurant instead of aborting the tick.
+      -- Treat it as time exhaustion so the pass is not considered complete.
+      WHEN query_canceled THEN
+        v_errors := v_errors + 1;
+        v_budget_hit := true;
+        RAISE WARNING 'categorization drain (pos) canceled for restaurant %: %',
+          r.restaurant_id, SQLERRM;
+      WHEN OTHERS THEN
+        v_errors := v_errors + 1;
+        RAISE WARNING 'categorization drain (pos) failed for restaurant %: %',
+          r.restaurant_id, SQLERRM;
     END;
   END LOOP;
 
@@ -955,7 +973,10 @@ BEGIN
       AND cr.auto_apply
       AND cr.applies_to IN ('bank_transactions', 'both')
   LOOP
-    EXIT WHEN clock_timestamp() - v_started > v_budget;
+    IF v_budget_hit OR clock_timestamp() - v_started > v_budget THEN
+      v_budget_hit := true;
+      EXIT;
+    END IF;
     BEGIN
       i := 0;
       LOOP
@@ -965,27 +986,41 @@ BEGIN
         FROM apply_rules_to_bank_transactions_internal(r.restaurant_id, 1000, true);
         v_total := v_total + COALESCE(n, 0);
         i := i + 1;
-        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 5
-          OR clock_timestamp() - v_started > v_budget;
+        EXIT WHEN COALESCE(n, 0) = 0 OR i >= 5;
+        IF clock_timestamp() - v_started > v_budget THEN
+          v_budget_hit := true;
+          EXIT;
+        END IF;
       END LOOP;
       -- Rebuild once per tick, only when this restaurant applied rows.
       IF i > 1 OR COALESCE(n, 0) > 0 THEN
         PERFORM rebuild_account_balances(r.restaurant_id);
       END IF;
-    EXCEPTION WHEN OTHERS THEN
-      RAISE WARNING 'categorization drain (bank) failed for restaurant %: %',
-        r.restaurant_id, SQLERRM;
+    EXCEPTION
+      WHEN query_canceled THEN
+        v_errors := v_errors + 1;
+        v_budget_hit := true;
+        RAISE WARNING 'categorization drain (bank) canceled for restaurant %: %',
+          r.restaurant_id, SQLERRM;
+      WHEN OTHERS THEN
+        v_errors := v_errors + 1;
+        RAISE WARNING 'categorization drain (bank) failed for restaurant %: %',
+          r.restaurant_id, SQLERRM;
     END;
   END LOOP;
 
-  -- ── Self-retire when converged ────────────────────────────────────────────
-  IF v_total = 0 THEN
+  -- ── Self-retire ONLY after a complete, error-free, empty pass ─────────────
+  -- v_total=0 alone does not prove convergence: the budget may have expired
+  -- before reaching a backlogged restaurant, or every attempt may have errored.
+  -- Retiring then would strand the backlog forever; keep ticking instead.
+  IF v_total = 0 AND v_errors = 0 AND NOT v_budget_hit THEN
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain') THEN
       PERFORM cron.unschedule('categorization-backlog-drain');
       RAISE LOG 'categorization drain: backlog converged — job unscheduled';
     END IF;
   ELSE
-    RAISE LOG 'categorization drain: applied % rows this tick', v_total;
+    RAISE LOG 'categorization drain: applied % rows this tick (errors=%, budget_hit=%)',
+      v_total, v_errors, v_budget_hit;
   END IF;
 
   RETURN v_total;
@@ -996,9 +1031,15 @@ COMMENT ON FUNCTION public.drain_categorization_backlog() IS
   'Bounded (~40s) tick that drains the pre-existing uncategorized POS/bank '
   'backlog for restaurants with active auto_apply rules. Scheduled every 5 '
   'minutes by the categorization-backlog-drain pg_cron job; unschedules that '
-  'job itself once a tick applies 0 rows (converged). Replaces the in-'
+  'job itself only after a COMPLETE, error-free tick applies 0 rows '
+  '(budget-expired or errored ticks keep the job alive). Replaces the in-'
   'migration synchronous backfill that timed out production deploys.';
 
+-- SECURITY DEFINER hardening: Postgres grants EXECUTE to PUBLIC by default,
+-- which would let anon/authenticated clients run cross-restaurant work or
+-- trigger the self-unschedule. Cron runs as the job owner; only service_role
+-- needs to call it.
+REVOKE ALL ON FUNCTION public.drain_categorization_backlog() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.drain_categorization_backlog() TO service_role;
 
 -- Schedule the drain every 5 minutes (idempotent re-run guard). The job

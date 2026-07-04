@@ -251,4 +251,46 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     const tryAgainButton = screen.getByRole('button', { name: /try again/i });
     expect(tryAgainButton).toBeInTheDocument();
   });
+
+  it('Try Again re-invokes mutate with the identical payload; alert clears on per-call onSuccess', async () => {
+    const user = userEvent.setup();
+
+    // First call: fail (captures the payload for the alert). Second call
+    // (the retry): succeed via onSuccess, which must clear the alert.
+    mutateMock.mockImplementationOnce((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+    mutateMock.mockImplementationOnce((_payload, options) => {
+      options?.onSuccess?.();
+    });
+
+    render(<EmployeeClock />);
+
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    // Alert must be showing before retry.
+    const alertsBeforeRetry = await screen.findAllByRole('alert');
+    expect(
+      alertsBeforeRetry.some((el) => /didn't go through/i.test(el.textContent || ''))
+    ).toBe(true);
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    const [firstPayload] = mutateMock.mock.calls[0];
+
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+
+    // mutate must be re-invoked with the identical payload object (same
+    // punch_time, ids, etc. — no re-collection of context/geofence/photo).
+    expect(mutateMock).toHaveBeenCalledTimes(2);
+    const [secondPayload] = mutateMock.mock.calls[1];
+    expect(secondPayload).toEqual(firstPayload);
+
+    // The per-call onSuccess from the retry must clear the persistent alert.
+    await screen.findByRole('button', { name: /clock in/i });
+    const alertsAfterRetry = screen.queryAllByRole('alert');
+    expect(
+      alertsAfterRetry.some((el) => /didn't go through/i.test(el.textContent || ''))
+    ).toBe(false);
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+  });
 });

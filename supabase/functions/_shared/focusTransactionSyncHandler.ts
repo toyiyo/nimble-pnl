@@ -33,6 +33,12 @@ import {
   type FocusCheck,
 } from './focusDatafeedParser.ts';
 
+import {
+  computeChecksFingerprint,
+  type DatafeedStateStore,
+  type ChecksFingerprint,
+} from './focusDatafeedFingerprint.ts';
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Minimal Supabase client surface needed by this handler. */
@@ -63,11 +69,16 @@ export interface TransactionSupabaseDeps {
  *
  * - supabase:      Supabase client (service-role in production; mock in tests).
  * - fetchDatafeed: The Lynk client function. Injectable for tests.
+ * - stateStore:    Optional delta-skip fingerprint store. Only the bulk-sync
+ *                  handler wires this; manual/custom-range/backfill callers
+ *                  omit it and get exactly today's (pre-delta-skip) behavior.
  */
 export interface TransactionSyncDeps {
   supabase: TransactionSupabaseDeps;
   /** Injectable Lynk fetcher — production: the imported fetchDatafeed from focusLynkClient. */
   fetchDatafeed: typeof fetchDatafeed;
+  /** Optional: when present, skip parse/upserts/RPC if the <Checks> block is unchanged. */
+  stateStore?: DatafeedStateStore;
 }
 
 /**
@@ -107,6 +118,7 @@ export interface TransactionSyncOptions {
 export type TransactionSyncResult =
   | { status: 'ok'; checksWritten: number }
   | { status: 'empty' }
+  | { status: 'unchanged' }
   | { status: 'inprogress' }
   | { status: 'error'; error?: string };
 
@@ -262,6 +274,21 @@ export async function processDayTransactions(
       };
     }
 
+    // ── 2.5 Delta skip (optional; bulk-sync wires a stateStore) ───────────────
+    // Fingerprint the <Checks> block; if it matches the stored state, nothing
+    // changed since the last pull — skip parse, upserts, and the day RPC, so
+    // focus_orders.updated_at stays untouched and unified_sales sees no
+    // phantom churn. Fail-open: store errors → prev=null → normal processing.
+    let fingerprint: ChecksFingerprint | null = null;
+    if (deps.stateStore) {
+      fingerprint = await computeChecksFingerprint(result.xml);
+      const prev = await deps.stateStore.get(config.restaurantId, businessDate);
+      if (prev && prev.bytes === fingerprint.bytes && prev.sha256 === fingerprint.sha256) {
+        await deps.stateStore.touch(config.restaurantId, businessDate, fingerprint);
+        return { status: 'unchanged' };
+      }
+    }
+
     // ── 3. Parse the XML ──────────────────────────────────────────────────────
 
     const { checks, deletedCheckIds } = parseFocusDatafeed(result.xml);
@@ -297,6 +324,10 @@ export async function processDayTransactions(
       await upsertOrder(deps.supabase, check, config.restaurantId, businessDate);
       await upsertItems(deps.supabase, check, config.restaurantId, businessDate);
       await upsertPayments(deps.supabase, check, config.restaurantId, businessDate);
+    }
+
+    if (deps.stateStore && fingerprint) {
+      await deps.stateStore.record(config.restaurantId, businessDate, fingerprint);
     }
 
     // ── 6. Sync to unified_sales ──────────────────────────────────────────────
@@ -409,7 +440,11 @@ export async function processDateRangeTransactions(
     }
 
     daysSynced++;
-    lastStatus = result.status as 'ok' | 'empty';
+    // 'unchanged' cannot actually occur here — this path never wires a
+    // stateStore (design: range/backfill/manual paths don't delta-skip) — but
+    // TransactionSyncResult is a shared type, so fold it into 'ok' rather
+    // than widening DateRangeSyncResult['status'] for an unreachable case.
+    lastStatus = result.status === 'empty' ? 'empty' : 'ok';
   }
 
   // unified_sales aggregation is handled by the Postgres cron

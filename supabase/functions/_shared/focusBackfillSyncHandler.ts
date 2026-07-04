@@ -15,7 +15,7 @@
  *  3. Per connection:
  *       a. Wall-clock budget check (80s). Break if exceeded.
  *       b. Decrypt api_secret_encrypted.
- *       c. processBackfillBatch({ budgetMs: ~50_000, maxDays: 7 }).
+ *       c. processBackfillBatch({ budgetMs: ~50_000, maxDays: 5 }).
  *       d. Persist cursor/flag/last_sync_time via CAS (§8.1).
  *       e. On batch error: also write connection_status='error' + last_error (§8.3).
  *       f. Per-restaurant exception caught → recorded in errors[], continue.
@@ -47,8 +47,10 @@ const LIMIT = 5;
 /** Total wall-clock budget for the entire cron run (80 seconds per spec §8.3). */
 const BUDGET_MS = 80_000;
 
-/** Maximum days to process per connection per tick (spec §8.3). */
-const MAX_DAYS_PER_CONNECTION = 7;
+/** Maximum days to process per connection per tick (spec §8.3).
+ *  Lowered 7→5: the worker no longer runs the unified_sales RPC (moved to a
+ *  Postgres cron), but fewer XML parses per tick keeps CPU well under the limit. */
+const MAX_DAYS_PER_CONNECTION = 5;
 
 /** Delay between restaurants in milliseconds. */
 const INTER_RESTAURANT_DELAY_MS = 2_000;
@@ -277,10 +279,16 @@ export async function handleBackfillSync(
       };
 
       // On error, persist the stall details so the frontend can stop polling (§8.3).
+      // On success (ok/empty), clear any stale error banner from a prior failed
+      // tick — connection_status reverts to 'connected', last_error reset to null.
       if (batchResult.status === 'error') {
         updatePayload.connection_status = 'error';
         updatePayload.last_error = batchResult.lastError ?? 'Unknown backfill error';
         updatePayload.last_error_at = nowIso;
+      } else {
+        updatePayload.connection_status = 'connected';
+        updatePayload.last_error = null;
+        updatePayload.last_error_at = null;
       }
 
       // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent

@@ -14,14 +14,16 @@ interface ReceiptProcessRequest {
 interface ParsedLineItem {
   rawText: string;
   parsedName: string;
-  parsedQuantity: number;
+  parsedQuantity: number;      // TOTAL inner units = casesOrdered × unitsPerPack
   parsedUnit: string;
-  packageType?: string;    // NEW: Type of container (bottle, bag, case)
-  sizeValue?: number;      // NEW: Amount per package (750 for 750ml)
-  sizeUnit?: string;       // NEW: Unit of measurement (ml, oz, lb)
-  unitPrice?: number;      // NEW: Price per unit
-  lineTotal?: number;      // NEW: Total for this line (qty × unit price)
-  parsedPrice?: number;    // DEPRECATED: Keep for backward compatibility
+  casesOrdered?: number;       // Purchasing containers on the line (PFG "Ordered", Sygma "N CS")
+  unitsPerPack?: number;       // Inner units per case (PFG "Pack" column, Sygma numerator)
+  packageType?: string;        // Inner/stocking unit (packet, can, bottle, bag)
+  sizeValue?: number;          // Amount per SINGLE inner unit (.32, 5, 750)
+  sizeUnit?: string;           // Measurement unit (oz, lb, ml)
+  unitPrice?: number;          // Price per inner unit
+  lineTotal?: number;          // Line extension total
+  parsedPrice?: number;        // DEPRECATED: Keep for backward compatibility
   confidenceScore: number;
 }
 
@@ -125,6 +127,19 @@ We use THREE separate fields to capture package information:
 - packageType = "bottle" means "what container is it in" (container type)
 - sizeValue + sizeUnit = "how big is each container" (package size)
 
+**DISTRIBUTOR PACK/SIZE (PFG, Sygma, US Foods, Sysco):**
+Wholesale invoices ship items in CASES that contain multiple inner units you stock and use.
+- casesOrdered = the number of CASES ordered/shipped (PFG "Ordered"/"Shipped" column; Sygma leftmost "N CS").
+- unitsPerPack = how many INNER units are inside ONE case (PFG "Pack" column; Sygma the number BEFORE the slash in a "pack/size" token like "8/32 OZ" → 8).
+- parsedQuantity = casesOrdered × unitsPerPack  (TOTAL inner units received — this is what we stock).
+- packageType = the INNER unit you stock and sell (packet, can, bottle, bag, jar) — NOT "case" or "box".
+- sizeValue + sizeUnit = the size of ONE inner unit (PFG "Size" column; Sygma the part AFTER the slash, e.g. "32 OZ").
+- unitPrice = lineTotal / parsedQuantity (price per inner unit).
+Sygma "pack/size" examples: "1/20 LB" → pack 1, size 20 lb; "8/32 OZ" → pack 8, size 32 oz; "2/2.5GAL" → pack 2, size 2.5 gal.
+
+**IF NO CASE/PACK IS PRESENT (retail receipts, produce by weight):**
+Set casesOrdered=parsedQuantity and unitsPerPack=1, so parsedQuantity is unchanged.
+
 **CORRECT EXTRACTION EXAMPLES:**
 
 Example 1: "2 bottles 750ML VODKA"
@@ -135,9 +150,9 @@ Example 2: "6.86 @ 4.64 CHEEK MEAT"
 → parsedQuantity=6.86, parsedUnit="lb", packageType=null, sizeValue=6.86, sizeUnit="lb"
 (Buying 6.86 pounds of meat, sold by weight, no container)
 
-Example 3: "1 case 12x355ML BEER"
-→ parsedQuantity=1, parsedUnit="each", packageType="case", sizeValue=355, sizeUnit="ml"
-(Buying 1 case, which contains 12 cans of 355ml each - extract the per-can size)
+Example 3: "1 case 12x355ML BEER"  (PFG: Ordered 1, Pack 12, Size 355 ML)
+→ casesOrdered=1, unitsPerPack=12, parsedQuantity=12, parsedUnit="each", packageType="can", sizeValue=355, sizeUnit="ml"
+(1 case × 12 = 12 cans received; each can is 355 ml)
 
 Example 4: "5LB BAG RICE"
 → parsedQuantity=1, parsedUnit="each", packageType="bag", sizeValue=5, sizeUnit="lb"
@@ -158,6 +173,15 @@ Example 7: "2 @ 10.98 CHORIZO"
 Example 8: "ROMA TOMATOES 0.62 Lbs @ 0.82"
 → parsedQuantity=0.62, parsedUnit="lb", packageType=null, sizeValue=0.62, sizeUnit="lb"
 (Buying 0.62 pounds of tomatoes, sold by weight)
+
+Example 9 (PFG mustard): Item 87750 "GULDENS MUSTARD PACKET"  Ordered 1, Pack 500, Size .32 OZ, Ext 29.96
+→ casesOrdered=1, unitsPerPack=500, parsedQuantity=500, parsedUnit="each", packageType="packet", sizeValue=0.32, sizeUnit="oz", unitPrice=0.0599, lineTotal=29.96
+
+Example 10 (PFG baking soda): "PACKER BAKING SODA"  Ordered 1, Pack 12, Size 2 LB, Ext 33.30
+→ casesOrdered=1, unitsPerPack=12, parsedQuantity=12, parsedUnit="each", packageType="can", sizeValue=2, sizeUnit="lb", unitPrice=2.775, lineTotal=33.30
+
+Example 11 (PFG butter): "WTZLPRTZ BUTTER CLARIFIED"  Ordered 2, Pack 4, Size 5 LB, Ext 152.40
+→ casesOrdered=2, unitsPerPack=4, parsedQuantity=8, parsedUnit="each", packageType="can", sizeValue=5, sizeUnit="lb", unitPrice=19.05, lineTotal=152.40
 
 **KEY RULES:**
 - ALWAYS extract packageType when container is explicitly mentioned (bottle, bag, box, case, can, jar)
@@ -223,6 +247,8 @@ RESPONSE FORMAT (JSON ONLY - NO EXTRA TEXT):
       "rawText": "exact text from receipt (max 50 chars)",
       "parsedName": "standardized product name",
       "parsedQuantity": numeric_quantity,
+      "casesOrdered": numeric_cases_ordered,
+      "unitsPerPack": numeric_inner_units_per_case,
       "parsedUnit": "standard_unit_from_lists_above",
       "packageType": "container_type_if_visible",
       "sizeValue": numeric_amount_per_package,
@@ -909,20 +935,32 @@ serve(async (req) => {
     }
 
     // Insert line items with sequence to preserve order
-    const lineItems = parsedData.lineItems.map((item: ParsedLineItem, index: number) => ({
-      receipt_id: receiptId,
-      raw_text: item.rawText,
-      parsed_name: item.parsedName,
-      parsed_quantity: item.parsedQuantity,
-      parsed_unit: item.parsedUnit,
-      package_type: item.packageType || null,
-      size_value: item.sizeValue || null,
-      size_unit: item.sizeUnit || null,
-      parsed_price: item.lineTotal,   // Store lineTotal in parsed_price for backward compat
-      unit_price: item.unitPrice,     // NEW: Store actual unit price
-      confidence_score: item.confidenceScore,
-      line_sequence: index + 1,
-    }));
+    const lineItems = parsedData.lineItems.map((item: ParsedLineItem, index: number) => {
+      // When the AI provides unitsPerPack, deterministically compute parsed_quantity as
+      // casesOrdered × unitsPerPack rather than trusting the LLM-multiplied value.
+      // This prevents a class of LLM errors where the model returns casesOrdered and
+      // unitsPerPack correctly but forgets to multiply them into parsedQuantity.
+      const cases = Math.max(1, item.casesOrdered || 0);
+      const pack = Math.max(1, item.unitsPerPack || 0);
+      const computedQuantity = item.unitsPerPack
+        ? cases * pack          // deterministic when pack size is known
+        : item.parsedQuantity;  // fall back to LLM value when no pack info
+      return {
+        receipt_id: receiptId,
+        raw_text: item.rawText,
+        parsed_name: item.parsedName,
+        parsed_quantity: computedQuantity,
+        parsed_unit: item.parsedUnit,
+        package_type: item.packageType || null,
+        size_value: item.sizeValue || null,
+        size_unit: item.sizeUnit || null,
+        parsed_price: item.lineTotal,   // Store lineTotal in parsed_price for backward compat
+        unit_price: item.unitPrice,     // Store actual unit price
+        confidence_score: item.confidenceScore,
+        line_sequence: index + 1,
+        pack_quantity: item.unitsPerPack ?? null,   // Distributor pack (audit/UI only)
+      };
+    });
 
     const { error: lineItemsError } = await supabase.from("receipt_line_items").insert(lineItems);
 

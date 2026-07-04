@@ -299,7 +299,12 @@ describe('fetchDatafeed', () => {
     const fetchFn = makeFetch({
       syncBody: JSON.stringify({ pos_response: { payload: {} } }),
     });
-    const result = await fetchDatafeed({ fetch: fetchFn }, CONFIG, BUSINESS_DATE);
+    // Inject a no-op sleep so the retry doesn't add 1 500ms of wall time
+    const result = await fetchDatafeed(
+      { fetch: fetchFn, sleep: () => Promise.resolve() },
+      CONFIG,
+      BUSINESS_DATE,
+    );
     expect(result).toMatchObject({ ok: false, kind: 'parse' });
   });
 
@@ -411,5 +416,77 @@ describe('fetchDatafeed', () => {
     );
     expect(result).toMatchObject({ ok: false, kind: 'config' });
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  // ── Transient no-blob_url retry ───────────────────────────────────────────────
+
+  it('retries once when the first Lynk response is missing blob_url and the second succeeds', async () => {
+    // First POST: 200 with no blob_url (transient Focus back-end issue)
+    // Second POST: 200 with blob_url (retry succeeds)
+    // Blob download: returns XML
+    let postCallCount = 0;
+    const fetchFn = vi.fn(async (url: string) => {
+      // The blob GET has a different URL (blob.core.windows.net)
+      if (url !== `${PROD_BASE}/api/lynk/sync`) {
+        // Blob download — always succeeds
+        return {
+          status: 200,
+          ok: true,
+          text: async () => SAMPLE_XML,
+        } as Response;
+      }
+      postCallCount++;
+      if (postCallCount === 1) {
+        // First attempt: missing blob_url
+        return {
+          status: 200,
+          ok: true,
+          text: async () => JSON.stringify({ pos_response: { payload: {} } }),
+        } as Response;
+      }
+      // Second attempt: has blob_url
+      return {
+        status: 200,
+        ok: true,
+        text: async () => JSON.stringify({ pos_response: { payload: { blob_url: BLOB_URL } } }),
+      } as Response;
+    });
+
+    const sleepMock = vi.fn().mockResolvedValue(undefined);
+    const result = await fetchDatafeed({ fetch: fetchFn, sleep: sleepMock }, CONFIG, BUSINESS_DATE);
+
+    expect(result).toMatchObject({ ok: true, xml: SAMPLE_XML });
+    // Two POSTs to the Lynk sync endpoint + one blob GET
+    expect(postCallCount).toBe(2);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+    // sleep was called once between the two POST attempts
+    expect(sleepMock).toHaveBeenCalledTimes(1);
+    expect(sleepMock).toHaveBeenCalledWith(expect.any(Number));
+  });
+
+  it('returns kind=parse error after two attempts when both Lynk responses are missing blob_url', async () => {
+    // Both POST attempts are missing blob_url — should give up after 2 attempts.
+    let postCallCount = 0;
+    const noBlobBody = JSON.stringify({ pos_response: { payload: {} } });
+    const fetchFn = vi.fn(async () => {
+      postCallCount++;
+      return {
+        status: 200,
+        ok: true,
+        text: async () => noBlobBody,
+      } as Response;
+    });
+
+    const sleepMock = vi.fn().mockResolvedValue(undefined);
+    const result = await fetchDatafeed({ fetch: fetchFn, sleep: sleepMock }, CONFIG, BUSINESS_DATE);
+
+    expect(result).toMatchObject({ ok: false, kind: 'parse' });
+    if (!result.ok) {
+      expect(result.error).toMatch(/blob_url/);
+    }
+    // Exactly 2 POSTs (original + 1 retry) — no third attempt
+    expect(postCallCount).toBe(2);
+    // sleep was called once (before the retry)
+    expect(sleepMock).toHaveBeenCalledTimes(1);
   });
 });

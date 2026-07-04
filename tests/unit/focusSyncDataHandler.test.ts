@@ -24,7 +24,7 @@
  *  - Status propagated from processReportDay (ok / empty / error)
  *
  *  B3 additions (spec §5.2, §8.1, §8.2, §8.3):
- *  - Lynk backfill: delegates to processBackfillBatch(budgetMs=12_000, maxDays=5)
+ *  - Lynk backfill: delegates to processBackfillBatch(budgetMs=12_000, maxDays=3)
  *  - Lynk backfill: cursor write uses CAS (§8.1) — filters eq('sync_cursor', readCursor)
  *  - Lynk backfill error: writes connection_status='error' + last_error (§8.3)
  *  - Lynk backfill: response includes backgrounded=true when not done
@@ -614,6 +614,30 @@ describe('handleSyncData', () => {
     expect(updateArg.sync_cursor).toBe(5);
   });
 
+  // ── Portal path: sync error persisted to connection_status (CodeRabbit, #572) ──
+
+  it('persists connection_status="error" + last_error when a portal sync fails', async () => {
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connection: MOCK_CONNECTION_BACKFILL },
+    });
+    // 503 → processReportDay returns {status:'error'}
+    (deps.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      status: 503,
+      headers: { get: () => null },
+      text: () => Promise.resolve(''),
+    });
+
+    const req = makeRequest({});
+    await handleSyncData(req, deps);
+
+    // Symmetric with the Lynk paths: the failure must reach the DB row, not
+    // just the JSON response, so the frontend banner reflects reality.
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(updateArg.connection_status).toBe('error');
+    expect(typeof updateArg.last_error).toBe('string');
+    expect(updateArg.last_error_at).toBeDefined();
+  });
+
   // ── B3: Lynk path — backfill via processBackfillBatch ────────────────────
 
   describe('Lynk backfill path (B3): delegates to processBackfillBatch', () => {
@@ -628,7 +652,7 @@ describe('handleSyncData', () => {
       });
     });
 
-    it('calls processBackfillBatch with budgetMs=12_000 and maxDays=5', async () => {
+    it('calls processBackfillBatch with budgetMs=12_000 and maxDays=3', async () => {
       const { deps } = makeDeps({
         serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
       });
@@ -638,7 +662,7 @@ describe('handleSyncData', () => {
       expect(mockProcessBackfillBatch).toHaveBeenCalledOnce();
       const [, , opts] = mockProcessBackfillBatch.mock.calls[0] as [unknown, unknown, Record<string, unknown>];
       expect(opts.budgetMs).toBe(12_000);
-      expect(opts.maxDays).toBe(5);
+      expect(opts.maxDays).toBe(3);
     });
 
     it('passes the read syncCursor to processBackfillBatch', async () => {
@@ -935,6 +959,55 @@ describe('handleSyncData', () => {
 
       const body = await res.json();
       expect(body.status).toBe('error');
+    });
+  });
+
+  // ── Error hygiene: successful sync clears stale error banner ──────────────────
+
+  describe('error hygiene: successful sync clears connection_status=error banner', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      // fetchDatafeed succeeds (returns ok:true)
+      vi.mocked(focusLynkClient.fetchDatafeed).mockResolvedValue({
+        ok: true,
+        status: 200,
+        xml: '<DailyData><Checks></Checks></DailyData>',
+      });
+    });
+
+    it('sets connection_status="connected" and last_error=null on a successful Lynk incremental sync', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.connection_status).toBe('connected');
+      expect(updateArg.last_error).toBeNull();
+      expect(updateArg.last_error_at).toBeNull();
+    });
+
+    it('sets connection_status="connected" and last_error=null on a successful Lynk backfill batch', async () => {
+      vi.clearAllMocks();
+      mockProcessBackfillBatch.mockResolvedValue({
+        syncCursor: 10,
+        initialSyncDone: false,
+        daysProcessed: 5,
+        status: 'ok',
+      });
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_BACKFILL as any },
+      });
+      const req = makeRequest({});
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateArg.connection_status).toBe('connected');
+      expect(updateArg.last_error).toBeNull();
+      expect(updateArg.last_error_at).toBeNull();
     });
   });
 });

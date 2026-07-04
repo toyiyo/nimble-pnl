@@ -73,3 +73,94 @@ export function calculateUnitPrice(item: UnitPriceInput): number {
 
   return item.parsed_price || 0;
 }
+
+export interface ImportedQuantityInput {
+  casesOrdered?: number | null;
+  unitsPerPack?: number | null;
+}
+
+/**
+ * Total inner units received = cases ordered × units per pack.
+ * Both inputs default to 1 so a missing/zero value never zeroes the quantity.
+ */
+export function computeImportedQuantity({ casesOrdered, unitsPerPack }: ImportedQuantityInput): number {
+  const cases = Math.max(1, casesOrdered || 0);
+  const pack = Math.max(1, unitsPerPack || 0);
+  return cases * pack;
+}
+
+export interface ParsedPackSize {
+  unitsPerPack: number;
+  sizeValue: number;
+  sizeUnit: string;
+}
+
+/**
+ * Parse a Sygma-style "pack/size unit" token, e.g. "8/32 OZ", "1/20 LB", "2/2.5GAL".
+ * A token with no slash (e.g. "20 LB") is treated as pack = 1.
+ * Returns null when no numeric size can be found.
+ */
+export function parsePackSizeToken(token: string): ParsedPackSize | null {
+  if (!token) return null;
+  const trimmed = token.trim();
+  const hasSlash = trimmed.includes('/');
+  const [packPart, sizePart] = hasSlash ? trimmed.split('/', 2) : ['1', trimmed];
+
+  // parseInt('1') === 1 when !hasSlash; Math.max guards against malformed pack numbers.
+  const unitsPerPack = Math.max(1, Number.parseInt(packPart, 10) || 1);
+
+  // size like "2.5GAL", ".32 OZ", or "32 OZ" → number then unit (parseFloat keeps decimals).
+  // Unit group must start with a letter so the optional space is unambiguous (no backtracking).
+  const sizeMatch = /^(\d*\.?\d+) ?([a-zA-Z][a-zA-Z ]*)$/.exec(sizePart.trim());
+  if (!sizeMatch) return null;
+  const sizeValue = Number.parseFloat(sizeMatch[1]);
+  if (Number.isNaN(sizeValue)) return null;
+  const sizeUnit = sizeMatch[2].trim().toLowerCase();
+
+  return { unitsPerPack, sizeValue, sizeUnit };
+}
+
+/**
+ * Input type matching ParsedLineItem from process-receipt/index.ts.
+ * Defined here so the mapping can be tested in isolation.
+ */
+export interface ParsedLineItemInput {
+  rawText: string;
+  parsedName: string;
+  parsedQuantity: number;
+  parsedUnit: string;
+  casesOrdered?: number | null;
+  unitsPerPack?: number | null;
+  packageType?: string | null;
+  sizeValue?: number | null;
+  sizeUnit?: string | null;
+  unitPrice?: number | null;
+  lineTotal?: number | null;
+  parsedPrice?: number | null;
+  confidenceScore: number;
+}
+
+/**
+ * Build a receipt_line_items DB insert row from a parsed AI line item.
+ *
+ * - pack_quantity maps from item.unitsPerPack (the distributor pack count).
+ * - line_sequence is 1-based (index + 1).
+ * - pack_quantity is null when unitsPerPack is absent or not provided.
+ */
+export function buildLineItemInsert(receiptId: string, item: ParsedLineItemInput, index: number) {
+  return {
+    receipt_id: receiptId,
+    raw_text: item.rawText,
+    parsed_name: item.parsedName,
+    parsed_quantity: item.parsedQuantity,
+    parsed_unit: item.parsedUnit,
+    package_type: item.packageType ?? null,
+    size_value: item.sizeValue ?? null,
+    size_unit: item.sizeUnit ?? null,
+    parsed_price: item.lineTotal ?? null,   // lineTotal in parsed_price for backward compat
+    unit_price: item.unitPrice ?? null,
+    confidence_score: item.confidenceScore,
+    line_sequence: index + 1,
+    pack_quantity: item.unitsPerPack ?? null, // Distributor pack (audit/UI only)
+  };
+}

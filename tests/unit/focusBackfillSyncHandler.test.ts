@@ -7,7 +7,7 @@
  *  - Gate-less: processes with no Authorization header (matches toast/shift4)
  *  - Query: selects only is_active=true AND initial_sync_done=false AND api_key IS NOT NULL
  *  - Query: ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
- *  - Processing: calls processBackfillBatch per restaurant with { maxDays:7 }
+ *  - Processing: calls processBackfillBatch per restaurant with { maxDays:5 }
  *  - Processing: CAS write after each restaurant (sync_cursor unchanged → filters old cursor)
  *  - Processing: on batch error → writes connection_status='error' + last_error
  *  - Processing: 2s inter-restaurant sleep (injectable deps.sleep)
@@ -290,7 +290,7 @@ describe('handleBackfillSync', () => {
 
   // ── processBackfillBatch integration ──────────────────────────────────────────
 
-  it('calls processBackfillBatch with maxDays=7 for each connection', async () => {
+  it('calls processBackfillBatch with maxDays=5 for each connection', async () => {
     const { processBackfillBatch: mockBatch } = await import(
       '../../supabase/functions/_shared/focusBackfillBatch'
     );
@@ -303,7 +303,7 @@ describe('handleBackfillSync', () => {
 
     expect(mockBatch).toHaveBeenCalledTimes(1);
     const callOpts = (mockBatch as ReturnType<typeof vi.fn>).mock.calls[0][2] as Record<string, unknown>;
-    expect(callOpts.maxDays).toBe(7);
+    expect(callOpts.maxDays).toBe(5);
   });
 
   // ── CAS write ────────────────────────────────────────────────────────────────
@@ -588,5 +588,24 @@ describe('handleBackfillSync', () => {
     expect(typeof updateArg.last_sync_time).toBe('string');
     expect(updateArg.connection_status).toBe('error');
     expect(typeof updateArg.last_error).toBe('string');
+  });
+
+  // ── Error hygiene: successful backfill tick clears stale error banner ─────────
+
+  it('sets connection_status="connected" and last_error=null on a successful backfill batch tick', async () => {
+    // Default mock returns status='ok' — verify the CAS update payload
+    // includes the healing fields to clear a prior error banner.
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+      nowFn: makeClock(1_000_000, 0),
+    });
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    await handleBackfillSync(req, deps);
+
+    expect(mocks.updateMock).toHaveBeenCalledTimes(1);
+    const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
+    expect(updateArg.connection_status).toBe('connected');
+    expect(updateArg.last_error).toBeNull();
+    expect(updateArg.last_error_at).toBeNull();
   });
 });

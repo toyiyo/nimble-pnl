@@ -4912,6 +4912,7 @@ export type Database = {
           line_sequence: number | null
           mapping_status: string
           matched_product_id: string | null
+          pack_quantity: number | null
           package_type: string | null
           parsed_name: string | null
           parsed_price: number | null
@@ -4932,6 +4933,7 @@ export type Database = {
           line_sequence?: number | null
           mapping_status?: string
           matched_product_id?: string | null
+          pack_quantity?: number | null
           package_type?: string | null
           parsed_name?: string | null
           parsed_price?: number | null
@@ -4952,6 +4954,7 @@ export type Database = {
           line_sequence?: number | null
           mapping_status?: string
           matched_product_id?: string | null
+          pack_quantity?: number | null
           package_type?: string | null
           parsed_name?: string | null
           parsed_price?: number | null

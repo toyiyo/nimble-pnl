@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,13 @@ import { SearchableAccountSelector } from "@/components/banking/SearchableAccoun
 import { SplitCategoryInput } from "@/components/banking/SplitCategoryInput";
 import { Badge } from "@/components/ui/badge";
 import { useAISuggestRules, type SuggestedRule } from "@/hooks/useAISuggestRules";
+
+// Generic bank description terms that are too broad to be the sole matching criterion.
+// Supplier is an assignment (not a filter) on bank rules, so it does not add specificity.
+const GENERIC_BANK_TERMS = [
+  'withdrawal', 'deposit', 'payment', 'transfer',
+  'debit', 'credit', 'ach', 'wire', 'check', 'atm',
+];
 
 interface EnhancedCategoryRulesDialogProps {
   open: boolean;
@@ -92,7 +99,7 @@ export const EnhancedCategoryRulesDialog = ({
 
   const appliesTo: AppliesTo = activeTab === 'bank' ? 'bank_transactions' : 'pos_sales';
 
-  const { data: rules, isLoading } = useCategorizationRulesV2(appliesTo);
+  const { data: rules, isLoading, error } = useCategorizationRulesV2(appliesTo);
   const { suppliers, createSupplier } = useSuppliers();
   const { accounts } = useChartOfAccounts(selectedRestaurant?.restaurant_id || null);
   const createRule = useCreateRuleV2();
@@ -101,8 +108,6 @@ export const EnhancedCategoryRulesDialog = ({
   const applyRules = useApplyRulesV2();
   const aiSuggestRules = useAISuggestRules();
 
-  // Constants
-  const RULE_NAME_MAX_LENGTH = 30;
   const FORM_SCROLL_DELAY_MS = 100;
 
   // Handle prefilled rule data
@@ -186,25 +191,28 @@ export const EnhancedCategoryRulesDialog = ({
     }
 
     // Check for overly generic rules (safety check)
-    const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
     const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
-    const isGenericPattern = descPattern && genericTerms.includes(descPattern);
+    const isGenericPattern = descPattern && GENERIC_BANK_TERMS.includes(descPattern);
 
     if (isGenericPattern) {
-      // Generic pattern - check if we have other specificity
-      const hasOtherSpecificity = formData.supplierId ||
-                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+      // Generic pattern - only an amount range provides enough specificity.
+      // Supplier on a bank rule is now an assignment (not a filter), so it does
+      // not make a generic description pattern safe to broad-match.
+      const hasOtherSpecificity = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
                                   (formData.amountMax && parseFloat(formData.amountMax) > 0);
 
       if (!hasOtherSpecificity) {
-        toast.error(`"${formData.descriptionPattern}" is too generic. Add a supplier or amount range to make this rule more specific.`);
+        toast.error(`"${formData.descriptionPattern}" is too generic. Add an amount range to make this rule more specific.`);
         return;
       }
     }
 
-    // Warn if description pattern is very short (< 3 chars) without other criteria
-    if (descPattern && descPattern.length < 3 && !formData.supplierId) {
-      toast.error("Description pattern is too short. Use at least 3 characters or add a supplier.");
+    // Warn if description pattern is very short (< 3 chars) without a meaningful amount range.
+    // Use parseFloat > 0 (mirrors the generic-term guard above) so "0" doesn't bypass the check.
+    const hasAmountBoundCreate = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                                 (formData.amountMax && parseFloat(formData.amountMax) > 0);
+    if (descPattern && descPattern.length < 3 && !hasAmountBoundCreate) {
+      toast.error("Description pattern is too short. Use at least 3 characters or add an amount range.");
       return;
     }
 
@@ -295,6 +303,24 @@ export const EnhancedCategoryRulesDialog = ({
       }
     }
 
+    // Mirror the same pattern-quality guards as handleCreateRule so edits cannot
+    // produce a rule that the create path would reject.
+    const descPatternEdit = formData.descriptionPattern?.trim().toLowerCase() || '';
+    if (descPatternEdit && GENERIC_BANK_TERMS.includes(descPatternEdit)) {
+      const hasAmountRange = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                             (formData.amountMax && parseFloat(formData.amountMax) > 0);
+      if (!hasAmountRange) {
+        toast.error(`"${formData.descriptionPattern}" is too generic. Add an amount range to make this rule more specific.`);
+        return;
+      }
+    }
+    const hasAmountBoundEdit = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                               (formData.amountMax && parseFloat(formData.amountMax) > 0);
+    if (descPatternEdit && descPatternEdit.length < 3 && !hasAmountBoundEdit) {
+      toast.error("Description pattern is too short. Use at least 3 characters or add an amount range.");
+      return;
+    }
+
     await updateRule.mutateAsync({
       ruleId: editingRuleId,
       ruleName: formData.ruleName,
@@ -350,9 +376,6 @@ export const EnhancedCategoryRulesDialog = ({
   const renderRuleConditions = (rule: CategorizationRule) => {
     const conditions: string[] = [];
 
-    if (rule.supplier_id && rule.supplier) {
-      conditions.push(`Supplier: ${rule.supplier.name}`);
-    }
     if (rule.description_pattern) {
       conditions.push(`Description ${rule.description_match_type}: "${rule.description_pattern}"`);
     }
@@ -371,6 +394,17 @@ export const EnhancedCategoryRulesDialog = ({
       conditions.push(`Type: ${rule.transaction_type}`);
     }
 
+    if (rule.supplier_id && rule.supplier) {
+      // "Assigns supplier" when the rule has other criteria (description/amount);
+      // "Supplier" (strict filter) when supplier is the only criterion.
+      const hasOtherCriteria = rule.description_pattern || rule.amount_min || rule.amount_max;
+      if (hasOtherCriteria) {
+        conditions.push(`Assigns supplier: ${rule.supplier.name}`);
+      } else {
+        conditions.push(`Supplier: ${rule.supplier.name}`);
+      }
+    }
+
     return conditions.length > 0 ? conditions.join(' · ') : 'No conditions';
   };
 
@@ -387,9 +421,9 @@ export const EnhancedCategoryRulesDialog = ({
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 Categorization Rules
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 Set up automatic categorization rules for bank transactions and POS sales.
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -484,6 +518,14 @@ export const EnhancedCategoryRulesDialog = ({
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
                 <p className="mt-3 text-[13px] text-muted-foreground">Loading rules...</p>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+                  <AlertTriangle className="h-6 w-6 text-destructive" />
+                </div>
+                <p className="text-[15px] font-medium text-foreground mb-1">Failed to load rules</p>
+                <p className="text-[13px] text-muted-foreground">Please close and try again.</p>
               </div>
             ) : rules && rules.length > 0 ? (
               <div className="space-y-2">
@@ -609,9 +651,10 @@ export const EnhancedCategoryRulesDialog = ({
                     size="sm"
                     variant="ghost"
                     onClick={() => setShowSuggestions(false)}
+                    aria-label="Dismiss AI suggestions"
                     className="h-7 w-7 p-0 rounded-lg"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-4 w-4" aria-hidden="true" />
                   </Button>
                 </div>
                 <div className="space-y-2 max-h-80 overflow-y-auto">
@@ -749,7 +792,7 @@ export const EnhancedCategoryRulesDialog = ({
                       placeholder="e.g., Food Supplier - Sysco"
                       value={formData.ruleName}
                       onChange={(e) => setFormData({ ...formData, ruleName: e.target.value })}
-                      className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                      className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                     />
                   </div>
 
@@ -765,13 +808,13 @@ export const EnhancedCategoryRulesDialog = ({
                             placeholder="e.g., Sysco, Amazon, etc."
                             value={formData.descriptionPattern}
                             onChange={(e) => setFormData({ ...formData, descriptionPattern: e.target.value })}
-                            className="flex-1 h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            className="flex-1 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                           />
                           <Select
                             value={formData.descriptionMatchType}
                             onValueChange={(value) => setFormData({ ...formData, descriptionMatchType: value as MatchType })}
                           >
-                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-background border-border/40 rounded-lg">
+                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-muted/30 border-border/40 rounded-lg">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -785,28 +828,23 @@ export const EnhancedCategoryRulesDialog = ({
 
                         {/* Warning for generic patterns */}
                         {(() => {
-                          const genericTerms = ['withdrawal', 'deposit', 'payment', 'transfer', 'debit', 'credit', 'ach', 'wire', 'check', 'atm'];
-                          const descPattern = formData.descriptionPattern?.trim().toLowerCase() || '';
-                          const isGeneric = descPattern && genericTerms.includes(descPattern);
-                          const isEmpty = !descPattern;
-                          const hasOtherCriteria = formData.supplierId ||
-                                                  (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
-                                                  (formData.amountMax && parseFloat(formData.amountMax) > 0);
-
-                          if ((isEmpty || isGeneric) && !hasOtherCriteria) {
-                            return (
-                              <Alert className="mt-2 bg-amber-500/10 border-amber-500/20 rounded-lg">
-                                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                                <AlertDescription className="text-[12px] text-amber-700 dark:text-amber-300">
-                                  {isEmpty
-                                    ? "Add a pattern, supplier, or amount range to target specific transactions."
-                                    : `"${formData.descriptionPattern}" is generic. Add more specificity.`
-                                  }
-                                </AlertDescription>
-                              </Alert>
-                            );
-                          }
-                          return null;
+                          const desc = formData.descriptionPattern?.trim().toLowerCase() || '';
+                          const isEmpty = !desc;
+                          const isGeneric = !!desc && GENERIC_BANK_TERMS.includes(desc);
+                          const hasAmountRange = (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                                                 (formData.amountMax && parseFloat(formData.amountMax) > 0);
+                          if (!((isEmpty && !formData.supplierId) || isGeneric) || hasAmountRange) return null;
+                          return (
+                            <Alert className="mt-2 bg-amber-500/10 border-amber-500/20 rounded-lg">
+                              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                              <AlertDescription className="text-[12px] text-amber-700 dark:text-amber-300">
+                                {isEmpty
+                                  ? "Add a description pattern or amount range to target specific transactions."
+                                  : `"${formData.descriptionPattern}" is generic. Add more specificity.`
+                                }
+                              </AlertDescription>
+                            </Alert>
+                          );
                         })()}
                       </div>
 
@@ -820,6 +858,15 @@ export const EnhancedCategoryRulesDialog = ({
                           suppliers={suppliers || []}
                           showNewIndicator={true}
                         />
+                        {/* Contextual help text: assign-mode vs filter-mode */}
+                        <p className="text-[12px] text-muted-foreground">
+                          {formData.descriptionPattern ||
+                           (formData.amountMin && parseFloat(formData.amountMin) > 0) ||
+                           (formData.amountMax && parseFloat(formData.amountMax) > 0)
+                            ? "Matching transactions will be tagged with this supplier."
+                            : "Only match transactions already linked to this supplier."
+                          }
+                        </p>
                       </div>
 
                       <div className="space-y-2">
@@ -830,7 +877,7 @@ export const EnhancedCategoryRulesDialog = ({
                           value={formData.transactionType}
                           onValueChange={(value) => setFormData({ ...formData, transactionType: value as TransactionType })}
                         >
-                          <SelectTrigger className="h-10 text-[14px] bg-background border-border/40 rounded-lg">
+                          <SelectTrigger className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -855,13 +902,13 @@ export const EnhancedCategoryRulesDialog = ({
                             placeholder="e.g., Burger, Coffee, etc."
                             value={formData.itemNamePattern}
                             onChange={(e) => setFormData({ ...formData, itemNamePattern: e.target.value })}
-                            className="flex-1 h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                            className="flex-1 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                           />
                           <Select
                             value={formData.itemNameMatchType}
                             onValueChange={(value) => setFormData({ ...formData, itemNameMatchType: value as MatchType })}
                           >
-                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-background border-border/40 rounded-lg">
+                            <SelectTrigger className="w-[130px] h-10 text-[13px] bg-muted/30 border-border/40 rounded-lg">
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -882,7 +929,7 @@ export const EnhancedCategoryRulesDialog = ({
                           placeholder="e.g., Beverages, Entrees"
                           value={formData.posCategory}
                           onChange={(e) => setFormData({ ...formData, posCategory: e.target.value })}
-                          className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                          className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                         />
                       </div>
                     </>
@@ -900,7 +947,7 @@ export const EnhancedCategoryRulesDialog = ({
                         placeholder="0.00"
                         value={formData.amountMin}
                         onChange={(e) => setFormData({ ...formData, amountMin: e.target.value })}
-                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
                     <div className="space-y-2">
@@ -913,7 +960,7 @@ export const EnhancedCategoryRulesDialog = ({
                         placeholder="0.00"
                         value={formData.amountMax}
                         onChange={(e) => setFormData({ ...formData, amountMax: e.target.value })}
-                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
                   </div>
@@ -979,7 +1026,7 @@ export const EnhancedCategoryRulesDialog = ({
                         placeholder="0"
                         value={formData.priority}
                         onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
-                        className="h-10 text-[14px] bg-background border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
+                        className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       />
                     </div>
                     <div className="flex items-end pb-2">

@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/collapsible';
 
 import {
+  AlertTriangle,
   Briefcase,
   Calendar,
   Clock,
@@ -29,6 +30,7 @@ import { useOpenShiftClaims, useClaimOpenShift } from '@/hooks/useOpenShiftClaim
 import { useShifts } from '@/hooks/useShifts';
 import { useAcceptShiftTrade } from '@/hooks/useShiftTrades';
 import { useToast } from '@/hooks/use-toast';
+import { getAreaMismatch, type AreaMismatch } from '@/lib/shiftTradeArea';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -52,6 +54,7 @@ interface TradeCardProps {
   onAccept: (tradeId: string) => void;
   isAccepting: boolean;
   currentEmployeeId: string;
+  areaMismatch?: AreaMismatch | null;
 }
 
 function formatTradeTime(startTime: string, endTime: string): string {
@@ -60,13 +63,12 @@ function formatTradeTime(startTime: string, endTime: string): string {
   return `${format(start, 'h:mm a')} - ${format(end, 'h:mm a')}`;
 }
 
-import { memo } from 'react';
-
 const TradeCard = memo(function TradeCard({
   trade,
   onAccept,
   isAccepting,
   currentEmployeeId,
+  areaMismatch,
 }: TradeCardProps) {
   if (!trade?.offered_shift) return null;
 
@@ -74,60 +76,100 @@ const TradeCard = memo(function TradeCard({
   const isPast = shiftStart < new Date();
   const dateLabel = format(shiftStart, 'EEE, MMM d');
   const timeLabel = formatTradeTime(trade.offered_shift.start_time, trade.offered_shift.end_time);
+  const name = trade.offered_by?.name ?? 'teammate';
+
+  const mismatchId = `area-mismatch-${trade.id}`;
 
   return (
     <div
       className={cn(
-        'group flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors',
+        'group flex flex-col gap-2 p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors',
         isPast && 'opacity-60',
       )}
     >
-      <div className="min-w-0 space-y-1.5">
-        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium">
-          SHIFT TRADE
-        </span>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
-            {dateLabel}
+      {/* Row 1: shift info + action button */}
+      <div className="flex items-center justify-between">
+        <div className="min-w-0 space-y-1.5">
+          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium">
+            SHIFT TRADE
           </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-            {timeLabel}
-          </span>
-          <span className="flex items-center gap-1">
-            <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-            {trade.offered_shift.position}
-          </span>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
+            <span className="flex items-center gap-1">
+              <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+              {dateLabel}
+            </span>
+            <span className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+              {timeLabel}
+            </span>
+            <span className="flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+              {trade.offered_shift.position}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
+            <User className="h-3.5 w-3.5" aria-hidden="true" />
+            <span>From: {name}</span>
+          </div>
+          {trade.reason && (
+            <div className="text-[12px] text-muted-foreground italic">{trade.reason}</div>
+          )}
         </div>
-        <div className="flex items-center gap-1.5 text-[13px] text-muted-foreground">
-          <User className="h-3.5 w-3.5" aria-hidden="true" />
-          <span>From: {trade.offered_by?.name ?? 'Unknown'}</span>
+
+        <div className="ml-4 flex-shrink-0">
+          {(() => {
+            if (trade.status === 'pending_approval') {
+              return (
+                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium">
+                  Pending Approval
+                </span>
+              );
+            }
+            if (areaMismatch) {
+              return (
+                <Button
+                  onClick={() => onAccept(trade.id)}
+                  disabled={isPast || isAccepting}
+                  className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  aria-label={`Claim anyway — trade from ${name} on ${dateLabel}`}
+                  aria-describedby={mismatchId}
+                >
+                  {isAccepting ? 'Claiming...' : 'Claim anyway'}
+                </Button>
+              );
+            }
+            return (
+              <Button
+                onClick={() => onAccept(trade.id)}
+                disabled={isPast || isAccepting}
+                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                aria-label={`Accept trade from ${name} on ${dateLabel}`}
+              >
+                {isAccepting ? 'Accepting...' : 'Accept'}
+              </Button>
+            );
+          })()}
+          {trade.target_employee_id === currentEmployeeId && (
+            <div className="text-[11px] text-muted-foreground mt-1">Offered to you</div>
+          )}
         </div>
-        {trade.reason && (
-          <div className="text-[12px] text-muted-foreground italic">{trade.reason}</div>
-        )}
       </div>
 
-      <div className="ml-4 flex-shrink-0">
-        {trade.status === 'pending_approval' ? (
-          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-amber-500/10 text-amber-600 font-medium">
-            Pending Approval
+      {/* Row 2: area-mismatch warning panel (full-width, only when mismatch) */}
+      {areaMismatch && (
+        <div
+          id={mismatchId}
+          className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20"
+        >
+          <AlertTriangle
+            className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0"
+            aria-hidden="true"
+          />
+          <span className="text-[13px] text-amber-600">
+            This is a {areaMismatch.offeredArea} shift — you work {areaMismatch.claimerArea}.
           </span>
-        ) : (
-          <Button
-            onClick={() => onAccept(trade.id)}
-            disabled={isPast || isAccepting}
-            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-            aria-label={`Accept trade from ${trade.offered_by?.name ?? 'teammate'} on ${dateLabel}`}
-          >
-            {isAccepting ? 'Accepting...' : 'Accept'}
-          </Button>
-        )}
-        {trade.target_employee_id === currentEmployeeId && (
-          <div className="text-[11px] text-muted-foreground mt-1">Offered to you</div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }, (prev, next) => {
@@ -135,7 +177,9 @@ const TradeCard = memo(function TradeCard({
     prev.trade?.id === next.trade?.id &&
     prev.trade?.status === next.trade?.status &&
     prev.isAccepting === next.isAccepting &&
-    prev.currentEmployeeId === next.currentEmployeeId
+    prev.currentEmployeeId === next.currentEmployeeId &&
+    prev.areaMismatch?.offeredArea === next.areaMismatch?.offeredArea &&
+    prev.areaMismatch?.claimerArea === next.areaMismatch?.claimerArea
   );
 });
 
@@ -374,6 +418,7 @@ export default function AvailableShiftsPage() {
                           onAccept={handleAcceptTrade}
                           isAccepting={isAcceptingTrade && acceptingTradeId === item.trade.id}
                           currentEmployeeId={currentEmployee.id}
+                          areaMismatch={getAreaMismatch(item.trade.offered_by?.area, currentEmployee.area)}
                         />
                       ) : null}
                     </div>

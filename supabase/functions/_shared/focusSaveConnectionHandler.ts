@@ -39,7 +39,7 @@ export interface ServiceClient {
     upsert(
       data: Record<string, unknown>,
       options?: Record<string, unknown>,
-    ): { select(): Promise<{ data: unknown; error: { message: string } | null }> };
+    ): { select(columns?: string): Promise<{ data: unknown; error: { message: string } | null }> };
   };
 }
 

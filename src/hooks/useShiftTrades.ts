@@ -30,6 +30,7 @@ export interface ShiftTrade {
     name: string;
     email: string | null;
     position: string;
+    area: string | null;
   };
   accepted_by?: {
     id: string;
@@ -468,7 +469,8 @@ export const useMarketplaceTrades = (
           offered_by:employees!offered_by_employee_id(
             id,
             name,
-            position
+            position,
+            area
           )
         `)
         .eq('restaurant_id', restaurantId)

@@ -17,7 +17,7 @@
  *          - Call processDateRangeTransactions synchronously.
  *          - Return { daysSynced, status }.
  *       b. Backfill (initial_sync_done=false):
- *          - Delegate to processBackfillBatch({ budgetMs:12_000, maxDays:5 }).
+ *          - Delegate to processBackfillBatch({ budgetMs:12_000, maxDays:3 }).
  *          - Persist cursor/flag/last_sync_time via CAS (§8.1).
  *          - On error: also write connection_status='error' + last_error (§8.3).
  *          - Return { syncCursor, initialSyncDone, status, backgrounded }.
@@ -391,7 +391,7 @@ export async function handleSyncData(
         timezone: tz,
         now,
         budgetMs: 12_000,
-        maxDays: 5,
+        maxDays: 3,
       });
 
       // Single timestamp shared across all fields in this update.
@@ -405,11 +405,17 @@ export async function handleSyncData(
         updated_at: nowIso,
       };
 
-      // On error, persist the stall details so the frontend can stop polling (§8.3)
+      // On error, persist the stall details so the frontend can stop polling (§8.3).
+      // On success, clear any stale error banner from a prior failed sync —
+      // connection_status reverts to 'connected', last_error/last_error_at reset to null.
       if (batchResult.status === 'error') {
         updatePayload.connection_status = 'error';
         updatePayload.last_error = batchResult.lastError ?? 'Unknown backfill error';
         updatePayload.last_error_at = nowIso;
+      } else {
+        updatePayload.connection_status = 'connected';
+        updatePayload.last_error = null;
+        updatePayload.last_error_at = null;
       }
 
       // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent
@@ -466,6 +472,8 @@ export async function handleSyncData(
 
       // Build update payload: always refresh last_sync_time; also persist error
       // state when incremental sync fails so the frontend / ops can surface it.
+      // On success (ok/empty), clear any stale error banner from a previous
+      // failed sync — connection_status reverts to 'connected'.
       const incUpdatePayload: Record<string, unknown> = {
         last_sync_time: nowIso,
         updated_at: nowIso,
@@ -477,6 +485,10 @@ export async function handleSyncData(
           (r2.status === 'error' ? r2.error : undefined) ??
           'Incremental sync failed';
         incUpdatePayload.last_error_at = nowIso;
+      } else {
+        incUpdatePayload.connection_status = 'connected';
+        incUpdatePayload.last_error = null;
+        incUpdatePayload.last_error_at = null;
       }
 
       const { error: casIncErr } = await deps.serviceClient
@@ -583,16 +595,30 @@ export async function handleSyncData(
     }
 
     // ── 9. Update connection state via service-role client ─────────────────────
+    // On a successful (ok/empty) sync also clear any stale error banner so the
+    // frontend does not linger on a prior failure indefinitely.
 
     const nowIso = now.toISOString();
+    const portalUpdatePayload: Record<string, unknown> = {
+      sync_cursor: newSyncCursor,
+      initial_sync_done: newInitialSyncDone,
+      last_sync_time: nowIso,
+      updated_at: nowIso,
+    };
+    if (status === 'error') {
+      // Persist the failure so the frontend banner reflects reality — symmetric
+      // with the Lynk backfill/incremental if/else above (CodeRabbit, PR #572).
+      portalUpdatePayload.connection_status = 'error';
+      portalUpdatePayload.last_error = 'Focus report sync failed';
+      portalUpdatePayload.last_error_at = nowIso;
+    } else {
+      portalUpdatePayload.connection_status = 'connected';
+      portalUpdatePayload.last_error = null;
+      portalUpdatePayload.last_error_at = null;
+    }
     await deps.serviceClient
       .from('focus_connections')
-      .update({
-        sync_cursor: newSyncCursor,
-        initial_sync_done: newInitialSyncDone,
-        last_sync_time: nowIso,
-        updated_at: nowIso,
-      })
+      .update(portalUpdatePayload)
       .eq('id', connRow.id)
       .eq('restaurant_id', restaurantId)
       .eq('sync_cursor', connRow.sync_cursor)

@@ -6,13 +6,17 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { CalendarOff } from 'lucide-react';
 
 import { isoToLocalMinutes } from '@/lib/shiftCoverage';
+import { summarizeCoverageHours, buildVerdict, summarizeAreaCoverage } from '@/lib/coverageSummary';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useTimelineModel } from './useTimelineModel';
-import { CoverageCurve } from './CoverageCurve';
+import { CoverageVerdict } from './CoverageVerdict';
+import { CoverageChart } from './CoverageChart';
+import { CoverageStatusStrip } from './CoverageStatusStrip';
+import { CoverageDemandInfo } from './CoverageDemandInfo';
+import { AreaCoverageStrips } from './AreaCoverageStrips';
 import { TimelineAxis } from './TimelineAxis';
 import { TimelineLane } from './TimelineLane';
 import { NowIndicator } from './NowIndicator';
-import { CoverageGapList } from './CoverageGapList';
 import { TimelineShiftPopover } from './TimelineShiftPopover';
 import { formatDayLabel } from '@/lib/shiftInterval';
 
@@ -113,9 +117,10 @@ export function ShiftTimelineTab({
   const selectedDay = weekDays.includes(selectedDayState) ? selectedDayState : defaultDay(weekDays);
   const [groupBy, setGroupBy] = useState<GroupByMode>('area');
   const [activeShift, setActiveShift] = useState<Shift | null>(null);
+  const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
 
   // ── Staffing recommendations ───────────────────────────────────────────────
-  const { daySuggestions } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
+  const { daySuggestions, activeSettings } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
 
   const dayRecommendations = useMemo(() => {
     const result = daySuggestions.get(selectedDay);
@@ -127,6 +132,23 @@ export function ShiftTimelineTab({
 
   // ── Timeline model (pure transform) ───────────────────────────────────────
   const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
+
+  // ── Hourly coverage summary + verdict (feeds the new coverage panel) ───────
+  const targetSplh = activeSettings?.target_splh ?? null;
+  const hourlySummary = useMemo(
+    () => summarizeCoverageHours(model.coverage, model.demand, model.window, dayRecommendations),
+    [model.coverage, model.demand, model.window, dayRecommendations],
+  );
+  const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
+
+  // ── Per-area coverage summary (only when grouped by area) ──────────────────
+  const areaCoverage = useMemo(
+    () =>
+      groupBy === 'area'
+        ? summarizeAreaCoverage(dayShifts, employees, selectedDay, tz, model.window)
+        : [],
+    [groupBy, dayShifts, employees, selectedDay, tz, model.window],
+  );
 
   // ── Geometry helper ────────────────────────────────────────────────────────
   const minToPct = useCallback(
@@ -215,23 +237,22 @@ export function ShiftTimelineTab({
     </div>
   );
 
-  // ── Empty state ────────────────────────────────────────────────────────────
-  if (model.lanes.length === 0) {
-    return (
-      <div className="space-y-3">
-        {controls}
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
-            <CalendarOff className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <p className="text-[15px] font-medium text-foreground">No shifts scheduled</p>
-          <p className="text-[13px] text-muted-foreground mt-1">
-            Switch to Plan to add coverage.
-          </p>
+  // ── Empty-lane sentinel: shown inside the data layout when no shifts exist ───
+  // We do NOT bail out early here: even with zero lanes, the coverage panel must
+  // render so managers can see demand shortfalls on a fully unstaffed day.
+  // The empty state message is inlined below the coverage panel instead.
+  const noShiftsMessage =
+    model.lanes.length === 0 ? (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
+          <CalendarOff className="h-5 w-5 text-muted-foreground" />
         </div>
+        <p className="text-[15px] font-medium text-foreground">No shifts scheduled</p>
+        <p className="text-[13px] text-muted-foreground mt-1">
+          Switch to Plan to add coverage.
+        </p>
       </div>
-    );
-  }
+    ) : null;
 
   // ── Data state — full timeline ─────────────────────────────────────────────
   return (
@@ -242,16 +263,56 @@ export function ShiftTimelineTab({
       <div className="overflow-x-auto rounded-xl border border-border/40">
         <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
 
-          {/* Coverage curve — offset by the 120px lane-label column so its
-              minToPct x-scale aligns with the axis ticks and shift bars. */}
-          <div className="pl-[120px] pt-2">
-            <CoverageCurve
-              window={model.window}
-              coverage={model.coverage}
-              demand={model.demand}
-              gaps={model.gaps}
-              minToPct={minToPct}
-            />
+          {/* Coverage panel — verdict → view toggle → chart → status strip.
+              No horizontal padding here: the pl-[120px] children must start at
+              the same left offset as TimelineAxis and shift lanes so the chart
+              x-scale aligns with the axis ticks below. */}
+          <div className="pt-3 pb-1 space-y-2 px-0">
+            {/* Plain-language verdict + demand explainer */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <CoverageVerdict verdict={verdict} />
+              <CoverageDemandInfo />
+            </div>
+
+            {/* View toggle: area chart vs diverging-bar chart */}
+            <div className="flex items-center gap-2">
+              <ToggleGroup
+                type="single"
+                value={coverageView}
+                onValueChange={(v) => { if (v === 'area' || v === 'delta') setCoverageView(v); }}
+                className="h-7"
+                aria-label="Coverage chart view"
+              >
+                <ToggleGroupItem value="area" className="h-7 px-3 text-[12px]">
+                  Chart
+                </ToggleGroupItem>
+                <ToggleGroupItem value="delta" className="h-7 px-3 text-[12px]">
+                  +/−
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+
+            {/* Coverage chart — offset to align with the axis ticks */}
+            <div className="pl-[120px]">
+              <CoverageChart
+                hours={hourlySummary}
+                view={coverageView}
+                minToPct={minToPct}
+                targetSplh={targetSplh}
+              />
+            </div>
+
+            {/* Per-hour status strip */}
+            <div className="pl-[120px]">
+              <CoverageStatusStrip hours={hourlySummary} />
+            </div>
+
+            {/* Per-area scheduled strips — only when grouped by area */}
+            {groupBy === 'area' && (
+              <div className="pl-[120px]">
+                <AreaCoverageStrips areas={areaCoverage} />
+              </div>
+            )}
           </div>
 
           {/* Hour axis */}
@@ -259,32 +320,31 @@ export function ShiftTimelineTab({
             <TimelineAxis window={model.window} minToPct={minToPct} />
           </div>
 
-          {/* Lanes + NowIndicator overlay */}
-          <div className="relative">
-            {/* NowIndicator sits over the lanes plot region, offset for label column */}
-            <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
-              <NowIndicator
-                dateStr={selectedDay}
-                tz={tz}
-                window={model.window}
-                minToPct={minToPct}
-              />
-            </div>
+          {/* Lanes + NowIndicator overlay, or empty-day message */}
+          {noShiftsMessage ?? (
+            <div className="relative">
+              {/* NowIndicator sits over the lanes plot region, offset for label column */}
+              <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
+                <NowIndicator
+                  dateStr={selectedDay}
+                  tz={tz}
+                  window={model.window}
+                  minToPct={minToPct}
+                />
+              </div>
 
-            {model.lanes.map((lane) => (
-              <TimelineLane
-                key={lane.key}
-                lane={lane}
-                minToPct={minToPct}
-                onSelect={setActiveShift}
-              />
-            ))}
-          </div>
+              {model.lanes.map((lane) => (
+                <TimelineLane
+                  key={lane.key}
+                  lane={lane}
+                  minToPct={minToPct}
+                  onSelect={setActiveShift}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {/* Gap list (text alternative to color-based curve) */}
-      <CoverageGapList gaps={model.gaps} />
 
       {/* Single popover instance per CLAUDE.md pattern */}
       <TimelineShiftPopover

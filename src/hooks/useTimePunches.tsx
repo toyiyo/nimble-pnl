@@ -129,7 +129,11 @@ const isTimeoutError = (error: unknown): boolean => {
     return error.name === 'AbortError' || error.name === 'TimeoutError';
   }
   if (error instanceof Error) {
-    return /abort|timed?\s?out/i.test(error.message);
+    return (
+      error.name === 'AbortError' ||
+      error.name === 'TimeoutError' ||
+      /abort|timed?\s?out/i.test(error.message)
+    );
   }
   if (
     typeof error === 'object' &&

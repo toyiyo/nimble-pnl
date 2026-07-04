@@ -299,6 +299,27 @@ describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
     });
   });
 
+  it('CRITICAL: maps a plain Error whose .name is AbortError/TimeoutError but whose message has no timeout keyword to the timeout destructive toast', async () => {
+    // Some runtimes/wrappers preserve the DOMException `.name` on a plain
+    // Error instance without a message that matches the timeout/abort regex
+    // (e.g. a generic "fetch failed"). The classification must key off
+    // `.name` too, not just the message text, or this falls through to the
+    // raw technical message instead of the intended connection/timeout copy.
+    const namedError = new Error('fetch failed');
+    namedError.name = 'AbortError';
+    insertSingleMock.mockRejectedValue(namedError);
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await expect(result.current.mutateAsync(validPayload())).rejects.toBeDefined();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Error recording punch',
+      description: expect.stringMatching(/timed out.*connection|connection.*timed out/i),
+      variant: 'destructive',
+    });
+  });
+
   it('CRITICAL: keeps the ordinary "Error recording punch" toast for a non-abort, non-timeout error (regression pin)', async () => {
     insertSingleMock.mockRejectedValue(new Error('permission denied for table time_punches'));
 

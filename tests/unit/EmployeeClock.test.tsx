@@ -466,4 +466,24 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     ).toBe(false);
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
+
+  it('shows a "Recording punch…" pending indicator while createPunch.isPending is true', async () => {
+    // Not pending: no indicator.
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+    const { rerender } = render(<EmployeeClock />);
+
+    expect(screen.queryByText(/recording punch/i)).toBeNull();
+
+    // Flip to pending (mutation in flight) — indicator must appear.
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: true });
+    rerender(<EmployeeClock />);
+
+    expect(await screen.findByText(/recording punch/i)).toBeInTheDocument();
+
+    // Flip back to settled — indicator must disappear.
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+    rerender(<EmployeeClock />);
+
+    expect(screen.queryByText(/recording punch/i)).toBeNull();
+  });
 });

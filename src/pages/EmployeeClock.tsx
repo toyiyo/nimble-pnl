@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTimePunches, type CreateTimePunchInput } from '@/hooks/useTimePunches';
-import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle } from 'lucide-react';
+import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { collectPunchContext, mergePunchLocation } from '@/utils/punchContext';
@@ -446,6 +446,15 @@ const EmployeeClock = () => {
               <LogOut className="mr-2 h-6 w-6" />
               Clock Out
             </Button>
+          )}
+
+          {/* Pending indicator: fills the closed-dialog dead zone while the
+              punch mutation is in flight. */}
+          {createPunch.isPending && (
+            <div className="flex items-center justify-center gap-2 mt-3 text-[13px] text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Recording punch…
+            </div>
           )}
 
           {/* Info about verification */}

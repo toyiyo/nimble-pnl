@@ -368,4 +368,65 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
 
     dateNowSpy.mockRestore();
   });
+
+  it('opening and cancelling the camera dialog does NOT clear a stale failure alert; a newly confirmed punch (mutate firing) does', async () => {
+    const user = userEvent.setup();
+
+    // First punch attempt fails, producing the persistent alert.
+    mutateMock.mockImplementationOnce((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+
+    render(<EmployeeClock />);
+
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    // Alert must be showing after the first failed punch.
+    const alertsAfterFailure = await screen.findAllByRole('alert');
+    expect(
+      alertsAfterFailure.some((el) => /didn't go through/i.test(el.textContent || ''))
+    ).toBe(true);
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+
+    // Now open the camera dialog again and cancel it (via the dialog's
+    // onOpenChange close path) WITHOUT confirming a punch. Merely
+    // initiating and cancelling a new attempt must not clear the stale
+    // failure alert — it clears only when `mutate` actually fires again.
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await screen.findByRole('button', { name: /skip photo/i });
+    // Close the dialog without clicking Skip Photo / Take Photo (simulates
+    // the user backing out, e.g. pressing Escape or the dialog's close
+    // affordance) by firing the Dialog's onOpenChange(false) via Escape.
+    await user.keyboard('{Escape}');
+    // The camera dialog should be closed and the "Skip Photo" button gone.
+    expect(screen.queryByRole('button', { name: /skip photo/i })).toBeNull();
+    // mutate must NOT have been called again just from opening/cancelling.
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+    // The stale failure alert must still be present.
+    const alertsAfterCancel = screen.queryAllByRole('alert');
+    expect(
+      alertsAfterCancel.some((el) => /didn't go through/i.test(el.textContent || ''))
+    ).toBe(true);
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+
+    // Now drive a fresh, newly-confirmed punch (mutate firing again) — this
+    // must clear the stale alert once the per-call onSuccess fires, even
+    // though the payload/attempt is a brand new one, not a Try Again retry.
+    mutateMock.mockImplementationOnce((_payload, options) => {
+      options?.onSuccess?.();
+    });
+
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    expect(mutateMock).toHaveBeenCalledTimes(2);
+
+    await screen.findByRole('button', { name: /clock in/i });
+    const alertsAfterNewPunch = screen.queryAllByRole('alert');
+    expect(
+      alertsAfterNewPunch.some((el) => /didn't go through/i.test(el.textContent || ''))
+    ).toBe(false);
+    expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
+  });
 });

@@ -1,24 +1,104 @@
+import { forwardRef, memo, type ReactNode } from 'react';
+
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
-// ── Constants ──────────────────────────────────────────────────────────────────
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-// Plot spans the full viewBox width so the hour columns line up exactly with
-// the TimelineAxis ticks and shift bars (both share the 120px lane-label offset
-// applied by the parent). Y-axis value labels are drawn inside the top-left of
-// the plot; the "Needed" series is named in the legend rather than an end-label.
-const MARGIN_LEFT = 0;
-const MARGIN_RIGHT = 0;
-/** Top padding so the top gridline isn't clipped. */
-const MARGIN_TOP = 8;
-/** Bottom margin for x-axis hour labels. */
-const MARGIN_BOTTOM = 20;
+interface CoverageChartProps {
+  /** Hourly coverage summary from `summarizeCoverageHours`. */
+  readonly hours: CoverageHour[];
+  /** Which chart variant to render. */
+  readonly view: 'area' | 'delta';
+  /**
+   * Maps a minute offset to a percentage of the total plot width.
+   * Uses the same scale as TimelineBar/TimelineAxis so columns align with the
+   * hour grid at every viewport width, including horizontal scroll.
+   * When omitted (legacy callers), columns are sized equally.
+   */
+  readonly minToPct?: (min: number) => number;
+  /**
+   * Target SPLH (sales per labor-hour) from active staffing settings.
+   * Displayed in the per-hour tooltip. Null when settings are not configured.
+   */
+  readonly targetSplh?: number | null;
+  /** Chart height in px (default 120). */
+  readonly height?: number;
+}
 
-/** Total viewBox width. The plot area is [MARGIN_LEFT, WIDTH - MARGIN_RIGHT]. */
-const WIDTH = 400;
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 /**
- * Compute a nice maximum for the y-axis, rounding up to the next integer ≥ 1.
+ * Build the per-hour tooltip lines for an hour column.
+ *
+ * Returns an array of strings — one per visual line — so callers can join them
+ * as needed (aria-label uses comma-join; TooltipContent renders each on its own line).
+ *
+ * Content follows the design spec:
+ *   Line 1: "10 AM–11 AM"  (time range)
+ *   Line 2: "3 scheduled · 5 needed"  (or "4 scheduled" when no demand)
+ *   Line 3: "Projected sales $480"  (when projectedSales != null)
+ *   Line 4: "÷ $95/labor-hr target ≈ 5 needed"  (when targetSplh and projectedSales)
+ *   Line 5: verdict — "Short 2 — add staff" / "Covered · +1 spare" / "Right on target" /
+ *            "No demand target — set staffing targets to see needed staff."
+ *
+ * Exported so it can be unit-tested directly (pure function, no React).
+ */
+export function buildHourTooltip(h: CoverageHour, targetSplh: number | null): string[] {
+  const lines: string[] = [];
+
+  // Line 1: time range, e.g. "10 AM–11 AM"
+  const startLabel = formatCoverageHour(h.hour);
+  const endLabel = formatCoverageHour(h.hour + 1);
+  lines.push(`${startLabel}–${endLabel}`);
+
+  // Line 2: scheduled / needed summary
+  if (h.needed !== null) {
+    lines.push(`${h.scheduled} scheduled · ${h.needed} needed`);
+  } else {
+    lines.push(`${h.scheduled} scheduled`);
+  }
+
+  // Lines 3–4: sales and SPLH math (only when rec data is present)
+  if (h.projectedSales !== null && h.needed !== null) {
+    const salesFmt = h.projectedSales.toLocaleString('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    });
+    lines.push(`Projected sales ${salesFmt}`);
+
+    if (targetSplh !== null && targetSplh > 0) {
+      // Use h.needed (the authoritative value, already computed with Math.ceil + minimum
+      // crew rules) rather than re-dividing here, which would use Math.round and produce
+      // a contradictory number on the same tooltip.
+      lines.push(`÷ $${targetSplh}/labor-hr target ≈ ${h.needed} needed`);
+    }
+  }
+
+  // Line 5: verdict
+  if (h.needed === null) {
+    lines.push('No demand target — set staffing targets to see needed staff.');
+  } else if (h.delta !== null && h.delta < 0) {
+    lines.push(`Short ${Math.abs(h.delta)} — add staff`);
+  } else if (h.delta === 0) {
+    lines.push('Right on target');
+  } else if (h.delta !== null && h.delta > 0) {
+    lines.push(`Covered · +${h.delta} spare`);
+  }
+
+  return lines;
+}
+
+/**
+ * Compute peak headcount across all hours (used for bar height scaling).
+ * Always returns at least 1 to avoid divide-by-zero.
  */
 function computePeak(hours: CoverageHour[]): number {
   const peak = hours.reduce((acc, h) => {
@@ -29,394 +109,172 @@ function computePeak(hours: CoverageHour[]): number {
   return Math.max(Math.ceil(peak), 1);
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────────
+// ── Per-Hour Column (area view) ────────────────────────────────────────────────
 
-interface CoverageChartProps {
-  /** Hourly coverage summary from `summarizeCoverageHours`. */
-  readonly hours: CoverageHour[];
-  /** Which chart variant to render. */
-  readonly view: 'area' | 'delta';
-  /** Fixed SVG height in px (default 120). */
-  readonly height?: number;
-}
-
-// ── Area View ──────────────────────────────────────────────────────────────────
-
-interface AreaViewProps {
-  hours: CoverageHour[];
-  plotW: number;
-  plotH: number;
+interface AreaColumnProps {
+  h: CoverageHour;
+  left: number;
+  width: number;
   peak: number;
-  hasDemand: boolean;
+  ariaLabel: string;
 }
 
-function AreaView({ hours, plotW, plotH, peak, hasDemand }: AreaViewProps) {
-  if (hours.length === 0) return null;
+const AreaColumn = forwardRef<HTMLDivElement, AreaColumnProps>(
+  function AreaColumn({ h, left, width, peak, ariaLabel }, ref) {
+    const scheduledPct = (h.scheduled / peak) * 100;
+    const neededPct = h.needed !== null ? (h.needed / peak) * 100 : null;
+    const isShort = h.delta !== null && h.delta < 0 && neededPct !== null;
 
-  /** X position for a given hour index (left edge of the hour column). */
-  const xForIndex = (i: number) => MARGIN_LEFT + (i / hours.length) * plotW;
-  /** X position for the right edge of the last hour. */
-  const xEnd = MARGIN_LEFT + plotW;
-  /** Y position for a headcount value (0 = bottom plot baseline). */
-  const yForCount = (count: number) => MARGIN_TOP + plotH - (count / peak) * plotH;
-
-  // ── Scheduled stepped area path ──────────────────────────────────────────
-  const bottomY = MARGIN_TOP + plotH;
-
-  const scheduledPath = (() => {
-    const parts: string[] = [`M ${xForIndex(0)} ${bottomY}`];
-    for (let i = 0; i < hours.length; i++) {
-      const x0 = xForIndex(i);
-      const x1 = i + 1 < hours.length ? xForIndex(i + 1) : xEnd;
-      const y = yForCount(hours[i].scheduled);
-      parts.push(`L ${x0} ${y} L ${x1} ${y}`);
-    }
-    parts.push(`L ${xEnd} ${bottomY} Z`);
-    return parts.join(' ');
-  })();
-
-  // ── Needed dashed step line ───────────────────────────────────────────────
-  const neededPath = (() => {
-    if (!hasDemand) return null;
-    const parts: string[] = [];
-    for (let i = 0; i < hours.length; i++) {
-      if (hours[i].needed === null) continue;
-      const x0 = xForIndex(i);
-      const x1 = i + 1 < hours.length ? xForIndex(i + 1) : xEnd;
-      const y = yForCount(hours[i].needed as number);
-      const cmd = parts.length === 0 ? 'M' : 'L';
-      parts.push(`${cmd} ${x0} ${y} L ${x1} ${y}`);
-    }
-    return parts.length > 0 ? parts.join(' ') : null;
-  })();
-
-  // ── Shortfall wedges (between needed and scheduled where delta < 0) ───────
-  const shortfallRects = hours
-    .map((h, i) => {
-      if (h.delta === null || h.delta >= 0 || h.needed === null) return null;
-      const x0 = xForIndex(i);
-      const x1 = i + 1 < hours.length ? xForIndex(i + 1) : xEnd;
-      const yNeeded = yForCount(h.needed);
-      const yScheduled = yForCount(h.scheduled);
-      // wedge spans from scheduled up to needed (scheduled < needed here)
-      return (
-        <rect
-          key={h.startMin}
-          data-shortfall=""
-          x={x0}
-          y={yNeeded}
-          width={x1 - x0}
-          height={yScheduled - yNeeded}
-          className="fill-destructive/70"
-        />
-      );
-    })
-    .filter(Boolean);
-
-  // ── Worst-hour deficit label ──────────────────────────────────────────────
-  const worstIndex = hasDemand
-    ? hours.reduce<number | null>((worst, h, i) => {
-        if (h.delta === null || h.delta >= 0) return worst;
-        if (worst === null) return i;
-        return (h.delta as number) < (hours[worst].delta as number) ? i : worst;
-      }, null)
-    : null;
-
-  return (
-    <>
-      {/* Scheduled filled step area */}
-      <path
-        d={scheduledPath}
-        className="fill-primary/15 stroke-primary"
-        strokeWidth="1"
-        strokeLinejoin="round"
-      />
-
-      {/* Shortfall wedges */}
-      {shortfallRects}
-
-      {/* Needed dashed step line */}
-      {neededPath && (
-        <path
-          d={neededPath}
-          fill="none"
-          className="stroke-muted-foreground"
-          strokeWidth="1.2"
-          strokeDasharray="4 3"
-        />
-      )}
-
-      {/* Worst-hour deficit label inside the wedge */}
-      {worstIndex !== null && (() => {
-        const h = hours[worstIndex];
-        if (h.delta === null || h.needed === null) return null;
-        const x0 = xForIndex(worstIndex);
-        const x1 = worstIndex + 1 < hours.length ? xForIndex(worstIndex + 1) : xEnd;
-        const xMid = (x0 + x1) / 2;
-        const yNeeded = yForCount(h.needed);
-        const yScheduled = yForCount(h.scheduled);
-        const yMid = (yNeeded + yScheduled) / 2;
-        const wedgeH = yScheduled - yNeeded;
-        if (wedgeH < 10) return null; // skip label if wedge too thin
-        return (
-          <text
-            x={xMid}
-            y={yMid}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            className="fill-background font-medium"
-            fontSize="9"
-          >
-            {h.delta}
-          </text>
-        );
-      })()}
-    </>
-  );
-}
-
-// ── Delta (diverging bar) View ─────────────────────────────────────────────────
-
-interface DeltaViewProps {
-  hours: CoverageHour[];
-  plotW: number;
-  plotH: number;
-  /** Headcount peak — scales the "no demand" scheduled bars proportionally. */
-  peak: number;
-  /** Total SVG height (px) — used to clamp label positions inside the viewBox. */
-  svgHeight: number;
-}
-
-function DeltaView({ hours, plotW, plotH, peak, svgHeight }: DeltaViewProps) {
-  if (hours.length === 0) return null;
-
-  const xForIndex = (i: number) => MARGIN_LEFT + (i / hours.length) * plotW;
-  const xEnd = MARGIN_LEFT + plotW;
-  const barPad = 2; // gap between bars
-
-  // Scale bars by the maximum absolute delta so the tallest bar always fills
-  // half the plot height — regardless of the raw headcount peak.
-  const deltaPeak = Math.max(1, ...hours.map((h) => Math.abs(h.delta ?? 0)));
-
-  // Delta range: from -deltaPeak to +deltaPeak (symmetric around 0)
-  // Zero baseline in the middle of plotH
-  const zeroY = MARGIN_TOP + plotH / 2;
-  const halfH = plotH / 2;
-  const pixelsPerUnit = halfH / deltaPeak;
-
-  return (
-    <>
-      {/* Zero baseline */}
-      <line
-        x1={MARGIN_LEFT}
-        y1={zeroY}
-        x2={xEnd}
-        y2={zeroY}
-        className="stroke-border/60"
-        strokeWidth="0.8"
-        strokeDasharray="2 2"
-      />
-
-      {hours.map((h, i) => {
-        const x0 = xForIndex(i) + barPad / 2;
-        const x1 = (i + 1 < hours.length ? xForIndex(i + 1) : xEnd) - barPad / 2;
-        const barW = x1 - x0;
-        const xMid = (x0 + x1) / 2;
-
-        if (h.delta === null) {
-          // No demand — there's no delta to plot, so show scheduled headcount
-          // scaled by the headcount peak (NOT deltaPeak, which collapses to 1
-          // when every hour is demand-less and would peg every bar to max height).
-          const barH = Math.min(halfH - 2, Math.max(1, (h.scheduled / peak) * halfH));
-          return (
-            <g key={h.startMin}>
-              <rect
-                data-bar="no-demand"
-                x={x0}
-                y={zeroY - barH}
-                width={barW}
-                height={barH}
-                className="fill-muted/60"
-              />
-            </g>
-          );
-        }
-
-        const isShort = h.delta < 0;
-        const isOver = h.delta > 0;
-        // Exactly zero (demand met precisely) — render a subtle tick at baseline
-        // so it's visually distinguishable from a no-bar slot.
-        if (!isShort && !isOver) {
-          return (
-            <g key={h.startMin}>
-              <rect
-                data-bar="covered"
-                x={x0}
-                y={zeroY - 2}
-                width={barW}
-                height={2}
-                className="fill-success opacity-40"
-              />
-            </g>
-          );
-        }
-
-        const absD = Math.abs(h.delta);
-        // Cap bar height so it doesn't overflow the SVG bottom margin when
-        // the shortfall is very large relative to deltaPeak.
-        const barH = Math.min(halfH - 2, absD * pixelsPerUnit);
-
-        const barY = isShort ? zeroY : zeroY - barH;
-
-        let barClass: string;
-        if (isShort) {
-          barClass = 'fill-destructive';
-        } else {
-          barClass = 'fill-success';
-        }
-        const barState = isShort ? 'short' : 'covered';
-
-        // Label: signed delta, shown above or below bar depending on direction.
-        // Clamp labelY to stay inside the SVG viewBox.
-        const labelYRaw = isShort ? zeroY + barH + 8 : zeroY - barH - 4;
-        const labelY = Math.min(labelYRaw, svgHeight - MARGIN_BOTTOM - 2);
-
-        return (
-          <g key={h.startMin}>
-            <rect
-              data-bar={barState}
-              x={x0}
-              y={barY}
-              width={barW}
-              height={barH}
-              className={barClass}
-            />
-            {/* Signed delta label */}
-            <text
-              x={xMid}
-              y={labelY}
-              textAnchor="middle"
-              dominantBaseline="auto"
-              className="fill-foreground/80"
-              fontSize="8"
-            >
-              {h.delta > 0 ? `+${h.delta}` : h.delta}
-            </text>
-          </g>
-        );
-      })}
-    </>
-  );
-}
-
-// ── Shared: Y-axis + X-axis labels, gridlines ──────────────────────────────────
-
-interface AxesProps {
-  plotW: number;
-  plotH: number;
-  peak: number;
-  /** Max absolute delta — used for delta-view axis scale (separate from headcount peak). */
-  deltaPeak: number;
-  view: 'area' | 'delta';
-  hourLabels: string[];
-  hours: CoverageHour[];
-}
-
-function Axes({ plotW, plotH, peak, deltaPeak, view, hourLabels, hours }: AxesProps) {
-  const xEnd = MARGIN_LEFT + plotW;
-
-  // X-axis hour labels are identical in both views — render once.
-  const xAxisLabels = hourLabels.map((label, i) => (
-    <text
-      key={hours[i].startMin}
-      x={MARGIN_LEFT + ((i + 0.5) / hours.length) * plotW}
-      y={MARGIN_TOP + plotH + 12}
-      textAnchor="middle"
-      className="fill-muted-foreground"
-      fontSize="8"
-    >
-      {label}
-    </text>
-  ));
-
-  if (view === 'area') {
-    // Y: 0…peak, gridlines at integer steps (max 5 lines to avoid clutter)
-    const step = Math.max(1, Math.ceil(peak / 5));
-    const gridVals: number[] = [];
-    for (let v = 0; v <= peak; v += step) gridVals.push(v);
-    const yForCount = (count: number) => MARGIN_TOP + plotH - (count / peak) * plotH;
+    // Shortfall block spans from "scheduled" height up to "needed" height
+    const shortfallHeightPct = isShort && neededPct !== null ? neededPct - scheduledPct : 0;
 
     return (
-      <>
-        {gridVals.map((v) => {
-          const y = yForCount(v);
-          return (
-            <g key={v}>
-              <line
-                x1={MARGIN_LEFT}
-                y1={y}
-                x2={xEnd}
-                y2={y}
-                className="stroke-border/30"
-                strokeWidth="0.5"
-              />
-              <text
-                x={2}
-                y={y - 2}
-                textAnchor="start"
-                dominantBaseline="auto"
-                className="fill-muted-foreground"
-                fontSize="8"
-              >
-                {v}
-              </text>
-            </g>
-          );
-        })}
+      <div
+        ref={ref}
+        data-hour-col=""
+        tabIndex={0}
+        aria-label={ariaLabel}
+        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        style={{ left: `${left}%`, width: `${width}%` }}
+      >
+        {/* Bottom-anchored scheduled block */}
+        <div
+          data-scheduled=""
+          className="absolute bottom-0 left-0 right-0 bg-primary/15 border-t border-primary"
+          style={{ height: `${scheduledPct}%` }}
+        />
 
-        {xAxisLabels}
-      </>
+        {/* Shortfall block — spans from scheduled up to needed (red fill) */}
+        {isShort && (
+          <div
+            data-shortfall=""
+            className="absolute left-0 right-0 bg-destructive/70 flex items-center justify-center"
+            style={{
+              bottom: `${scheduledPct}%`,
+              height: `${shortfallHeightPct}%`,
+            }}
+          >
+            {shortfallHeightPct > 10 && h.delta !== null && (
+              <span className="text-[9px] text-background font-medium">{h.delta}</span>
+            )}
+          </div>
+        )}
+
+        {/* Dashed needed tick line */}
+        {neededPct !== null && (
+          <div
+            data-needed=""
+            className="absolute left-0 right-0 border-t border-dashed border-muted-foreground"
+            style={{ bottom: `${neededPct}%` }}
+          />
+        )}
+      </div>
     );
-  }
+  },
+);
 
-  // Delta view axes: symmetric around 0, scaled to deltaPeak so ticks match bars.
-  const zeroY = MARGIN_TOP + plotH / 2;
-  const halfH = plotH / 2;
-  const gridStep = Math.max(1, Math.ceil(deltaPeak / 3));
+// ── Per-Hour Column (delta view) ───────────────────────────────────────────────
 
-  return (
-    <>
-      {/* Y gridlines above/below zero */}
-      {[-gridStep, 0, gridStep].map((v) => {
-        const y = zeroY - (v / deltaPeak) * halfH;
-        return (
-          <g key={v}>
-            <line
-              x1={MARGIN_LEFT}
-              y1={y}
-              x2={xEnd}
-              y2={y}
-              className="stroke-border/30"
-              strokeWidth="0.5"
-            />
-            <text
-              x={2}
-              y={y - 2}
-              textAnchor="start"
-              dominantBaseline="auto"
-              className="fill-muted-foreground"
-              fontSize="8"
-            >
-              {v > 0 ? `+${v}` : v}
-            </text>
-          </g>
-        );
-      })}
-
-      {xAxisLabels}
-    </>
-  );
+interface DeltaColumnProps {
+  h: CoverageHour;
+  left: number;
+  width: number;
+  peak: number;
+  deltaPeak: number;
+  ariaLabel: string;
 }
+
+const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
+  function DeltaColumn({ h, left, width, peak, deltaPeak, ariaLabel }, ref) {
+    // Compute inner content once; all three branches share the same outer wrapper.
+    let innerContent: ReactNode;
+
+    if (h.delta === null) {
+      // No-demand hour — show scheduled headcount as an upward bar from the zero line,
+      // scaled by peak (not deltaPeak). height is % of the full column height.
+      const barPct = Math.min(50, Math.max(0.5, (h.scheduled / peak) * 50));
+      innerContent = (
+        <div
+          data-bar="no-demand"
+          className="absolute left-0 right-0 bg-muted/60"
+          style={{ bottom: '50%', height: `${barPct}%` }}
+        />
+      );
+    } else if (h.delta === 0) {
+      innerContent = (
+        // Tick at zero baseline (50%)
+        <div
+          className="absolute left-0 right-0"
+          style={{ top: 'calc(50% - 2px)', height: '2px' }}
+        >
+          <div
+            data-bar="covered"
+            className="bg-success opacity-40 w-full h-full"
+          />
+        </div>
+      );
+    } else {
+      const isShort = h.delta < 0;
+      const absD = Math.abs(h.delta);
+      // cap at 48% (2% headroom for delta label above zero line)
+      const barPct = Math.min(48, (absD / deltaPeak) * 50);
+      const barState = isShort ? 'short' : 'covered';
+      const barClass = isShort ? 'bg-destructive' : 'bg-success';
+      const label = h.delta > 0 ? `+${h.delta}` : String(h.delta);
+
+      innerContent = isShort ? (
+        <>
+          {/* Bar grows downward from zero line (50% from top).
+              height is a percentage of the full column height, so barPct=48 means
+              the bar occupies 48% of the whole chart — not 48% of the lower half. */}
+          <div
+            data-bar={barState}
+            className={`absolute left-0 right-0 ${barClass}`}
+            style={{ top: '50%', height: `${barPct}%` }}
+          />
+          {/* Label sits just below the bar's bottom edge */}
+          <div
+            className="absolute left-0 right-0 flex justify-center"
+            style={{ top: `calc(50% + ${barPct}% + 1px)` }}
+          >
+            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* Bar grows upward from zero line (50% from top).
+              height is a percentage of the full column height. */}
+          <div
+            data-bar={barState}
+            className={`absolute left-0 right-0 ${barClass}`}
+            style={{ bottom: '50%', height: `${barPct}%` }}
+          />
+          {/* Label sits just above the bar's top edge */}
+          <div
+            className="absolute left-0 right-0 flex justify-center"
+            style={{ bottom: `calc(50% + ${barPct}% + 1px)` }}
+          >
+            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
+          </div>
+        </>
+      );
+    }
+
+    // Shared outer wrapper — only innerContent differs across the three branches
+    return (
+      <div
+        ref={ref}
+        data-hour-col=""
+        tabIndex={0}
+        aria-label={ariaLabel}
+        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        style={{ left: `${left}%`, width: `${width}%` }}
+      >
+        {innerContent}
+      </div>
+    );
+  },
+);
 
 // ── Legend ────────────────────────────────────────────────────────────────────
 
@@ -461,15 +319,28 @@ function Legend({ hasDemand, view }: { hasDemand: boolean; view: 'area' | 'delta
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 /**
- * SVG chart with two toggleable views:
- * - **area**: stepped scheduled area + dashed needed line + red shortfall wedges.
- * - **delta**: diverging bar chart, one bar per hour, red for short / teal for covered.
+ * Grid-aligned HTML column chart with two toggleable views:
+ * - **area**: per-hour bottom-anchored scheduled blocks + shortfall fill + dashed needed tick.
+ * - **delta**: diverging bars (short below, covered/spare above the zero line).
  *
- * Accessible via `role="img"` + `<title>` / `<desc>`.
+ * Columns are positioned with the shared `minToPct` scale (same as TimelineBar /
+ * TimelineAxis) so they line up exactly with hour-grid ticks at every viewport
+ * width, including horizontal scroll.
+ *
+ * Accessible via `role="img"` + `aria-label` on the container.
  * Colors use semantic Tailwind tokens (never direct color literals).
- * Uses a proper viewBox — no `preserveAspectRatio="none"`.
+ *
+ * Wrapped in React.memo: all inputs are stable primitives/arrays derived from
+ * useMemo in ShiftTimelineTab, so setActiveShift calls (popover open/close) do
+ * not re-run the O(H) column computations unnecessarily.
  */
-export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps) {
+export const CoverageChart = memo(function CoverageChart({
+  hours,
+  view,
+  minToPct,
+  targetSplh = null,
+  height = 120,
+}: CoverageChartProps) {
   if (hours.length === 0) return null;
 
   const hasDemand = hours.some((h) => h.needed !== null);
@@ -477,10 +348,6 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
   // Delta view uses its own scale (max absolute delta) so bars aren't dwarfed by
   // a large headcount peak when the deltas are small.
   const deltaPeak = Math.max(1, ...hours.map((h) => Math.abs(h.delta ?? 0)));
-  const plotW = WIDTH - MARGIN_LEFT - MARGIN_RIGHT;
-  const plotH = height - MARGIN_TOP - MARGIN_BOTTOM;
-
-  const hourLabels = hours.map((h) => formatCoverageHour(h.hour));
 
   // Compute accessible description — no nested ternaries per project rules.
   const shortCount = hours.filter((h) => h.delta !== null && h.delta < 0).length;
@@ -493,49 +360,60 @@ export function CoverageChart({ hours, view, height = 120 }: CoverageChartProps)
     descText = 'Meeting demand all hours.';
   }
 
-  const titleText = view === 'area' ? 'Coverage vs demand chart' : 'Coverage delta bar chart';
+  // Fallback minToPct: distribute hours equally when no scale is provided
+  // (backward-compatible with callers that don't yet pass minToPct).
+  const effectiveMinToPct =
+    minToPct ??
+    ((min: number) => {
+      const startMin = hours[0]?.startMin ?? min;
+      const totalMin = hours.length * 60;
+      return ((min - startMin) / totalMin) * 100;
+    });
 
   return (
-    <div>
-      <svg
-        role="img"
-        viewBox={`0 0 ${WIDTH} ${height}`}
-        className="w-full"
-        style={{ height }}
-      >
-        <title>{titleText}</title>
-        <desc>{descText}</desc>
+    <TooltipProvider delayDuration={0}>
+      <div>
+        <div
+          role="img"
+          aria-label={descText}
+          className="relative w-full"
+          style={{ height }}
+        >
+          {hours.map((h) => {
+              const left = effectiveMinToPct(h.startMin);
+              const width = effectiveMinToPct(h.startMin + 60) - left;
+              const tooltipLines = buildHourTooltip(h, targetSplh);
+              const ariaLabel = tooltipLines.join(', ');
+              const col =
+                view === 'area' ? (
+                  <AreaColumn h={h} left={left} width={width} peak={peak} ariaLabel={ariaLabel} />
+                ) : (
+                  <DeltaColumn
+                    h={h}
+                    left={left}
+                    width={width}
+                    peak={peak}
+                    deltaPeak={deltaPeak}
+                    ariaLabel={ariaLabel}
+                  />
+                );
+              return (
+                <Tooltip key={h.startMin}>
+                  <TooltipTrigger asChild>{col}</TooltipTrigger>
+                  <TooltipContent side="top" className="text-[12px] max-w-[220px]">
+                    <div className="space-y-0.5">
+                      {tooltipLines.map((line, i) => (
+                        <p key={i} className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{line}</p>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
+        </div>
 
-        <Axes
-          plotW={plotW}
-          plotH={plotH}
-          peak={peak}
-          deltaPeak={deltaPeak}
-          view={view}
-          hourLabels={hourLabels}
-          hours={hours}
-        />
-
-        {view === 'area' ? (
-          <AreaView
-            hours={hours}
-            plotW={plotW}
-            plotH={plotH}
-            peak={peak}
-            hasDemand={hasDemand}
-          />
-        ) : (
-          <DeltaView
-            hours={hours}
-            plotW={plotW}
-            plotH={plotH}
-            peak={peak}
-            svgHeight={height}
-          />
-        )}
-      </svg>
-
-      <Legend hasDemand={hasDemand} view={view} />
-    </div>
+        <Legend hasDemand={hasDemand} view={view} />
+      </div>
+    </TooltipProvider>
   );
-}
+});

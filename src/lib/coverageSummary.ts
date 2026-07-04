@@ -6,6 +6,10 @@
  * they consume pre-computed minute values, not wall-clock times.
  */
 
+import { computeDayCoverage } from '@/lib/shiftCoverage';
+import { UNASSIGNED_LABEL } from '@/lib/scheduleGrouping';
+import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
+
 export interface CoverageHour {
   /** 0–23 clock hour (use Math.floor(startMin / 60) % 24 for the display label) */
   hour: number;
@@ -17,6 +21,10 @@ export interface CoverageHour {
   needed: number | null;
   /** scheduled − needed, or null when needed is null */
   delta: number | null;
+  /** Projected sales for this hour from staffing recommendations (null when unavailable). */
+  projectedSales: number | null;
+  /** Estimated labor % for this hour (null when unavailable). */
+  laborPct: number | null;
 }
 
 export interface CoverageVerdict {
@@ -54,18 +62,30 @@ export function formatCoverageHour(hour: number): string {
  * @param demand    Array of { min, target } — one entry per demand hour start,
  *                  or null if no demand is configured.
  * @param window    { startMin, endMin } — the visible day window in minutes.
+ * @param recs      Optional staffing recommendations; when provided, each hour
+ *                  entry gains projectedSales and laborPct from the matching rec.
  */
 export function summarizeCoverageHours(
   coverage: { min: number; count: number }[],
   demand: { min: number; target: number }[] | null,
   window: { startMin: number; endMin: number },
+  recs?: HourlyStaffingRecommendation[],
 ): CoverageHour[] {
-  if (coverage.length === 0) return [];
+  // Do NOT short-circuit on empty coverage — when demand is configured but no
+  // shifts are scheduled, every hour must be returned with scheduled=0 so that
+  // buildVerdict reports hasDemand:true and the correct shortfall count, rather
+  // than silently hiding a fully-unstaffed period.
+  const hasAnyCoverage = coverage.length > 0;
 
   // Build a lookup: hourStart → demand target
   const demandMap: Map<number, number> | null = demand
     ? new Map(demand.map((d) => [d.min, d.target]))
     : null;
+
+  // Build a lookup: clock hour (0–23) → staffing recommendation
+  const recByHour: Map<number, HourlyStaffingRecommendation> = new Map(
+    recs?.map((r) => [r.hour, r]) ?? [],
+  );
 
   /**
    * Returns the demand target for the hour that contains `min`.
@@ -81,22 +101,42 @@ export function summarizeCoverageHours(
 
   const out: CoverageHour[] = [];
 
-  // Iterate over each complete hour bucket within the window
+  // Iterate over each complete hour bucket within the window.
+  // When there is no coverage but demand IS configured, we must still emit an
+  // hour entry with scheduled=0 so buildVerdict surfaces the shortfall.
   const firstHourStart = Math.floor(window.startMin / HOUR) * HOUR;
   for (let start = firstHourStart; start < window.endMin; start += HOUR) {
-    // All 15-min samples whose minute falls within [start, start+60)
-    const inHour = coverage.filter((c) => c.min >= start && c.min < start + HOUR);
-    if (inHour.length === 0) continue;
+    // All 15-min samples whose minute falls within the intersection of
+    // [start, start+60) and the visible window [window.startMin, window.endMin).
+    // Clamping to window bounds prevents samples outside the visible range from
+    // bleeding into the first or last bucket when the window is not hour-aligned.
+    const inHour = hasAnyCoverage
+      ? coverage.filter(
+          (c) =>
+            c.min >= Math.max(start, window.startMin) &&
+            c.min < Math.min(start + HOUR, window.endMin),
+        )
+      : [];
 
-    const scheduled = Math.min(...inHour.map((c) => c.count));
     const needed = needForHourStart(start);
 
+    // Skip the hour only when there is neither coverage data nor a demand
+    // target — i.e. an hour completely outside the operating window.
+    if (inHour.length === 0 && needed === null) continue;
+
+    const scheduled = inHour.length > 0 ? Math.min(...inHour.map((c) => c.count)) : 0;
+
+    const clockHour = Math.floor(start / HOUR) % 24;
+    const rec = recByHour.get(clockHour) ?? null;
+
     out.push({
-      hour: Math.floor(start / HOUR) % 24,
+      hour: clockHour,
       startMin: start,
       scheduled,
       needed,
       delta: needed === null ? null : scheduled - needed,
+      projectedSales: rec?.projectedSales ?? null,
+      laborPct: rec?.laborPct ?? null,
     });
   }
 
@@ -112,8 +152,8 @@ export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
 
   let worst: { hour: number; delta: number } | null = null;
   for (const h of shortHours) {
-    if (worst === null || (h.delta as number) < worst.delta) {
-      worst = { hour: h.hour, delta: h.delta as number };
+    if (worst === null || h.delta! < worst.delta) {
+      worst = { hour: h.hour, delta: h.delta! };
     }
   }
 
@@ -124,4 +164,72 @@ export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
     totalHours: hours.length,
     worst,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Per-area scheduled coverage (no per-area demand)
+// ---------------------------------------------------------------------------
+
+export interface AreaCoverage {
+  area: string;
+  /** Scheduled-only hours (needed and delta are always null). */
+  hours: CoverageHour[];
+}
+
+const AREA_STEP = 15;
+
+/**
+ * Per-area SCHEDULED coverage (no per-area demand). Groups shifts by the
+ * employee's `area` (same key as buildRosterDay), then reuses computeDayCoverage
+ * + summarizeCoverageHours with demand=null. Areas sorted alphabetically,
+ * Unassigned last.
+ */
+export function summarizeAreaCoverage(
+  shifts: Shift[],
+  employees: Employee[],
+  dateStr: string,
+  tz: string,
+  window: { startMin: number; endMin: number },
+): AreaCoverage[] {
+  if (shifts.length === 0) return [];
+
+  // Build a lookup: employeeId → area key (empty string for unassigned)
+  const areaById = new Map(
+    employees.map((e) => [e.id, (e.area ?? '').trim()]),
+  );
+
+  // Group non-cancelled shifts by area
+  const byArea = new Map<string, Shift[]>();
+  for (const s of shifts) {
+    if (s.status === 'cancelled') continue;
+    const key = areaById.get(s.employee_id) ?? '';
+    const arr = byArea.get(key);
+    if (arr) arr.push(s);
+    else byArea.set(key, [s]);
+  }
+
+  if (byArea.size === 0) return [];
+
+  // Sort: alphabetical, Unassigned (empty string) last
+  const keys = Array.from(byArea.keys()).sort((a, b) => {
+    if (a === '') return 1;
+    if (b === '') return -1;
+    return a.localeCompare(b);
+  });
+
+  return keys.map((key) => {
+    const areaShifts = byArea.get(key)!;
+    const coverage = computeDayCoverage(
+      areaShifts,
+      dateStr,
+      tz,
+      AREA_STEP,
+      window.startMin,
+      window.endMin,
+    );
+    return {
+      area: key || UNASSIGNED_LABEL,
+      hours: summarizeCoverageHours(coverage, null, window),
+    };
+  });
 }

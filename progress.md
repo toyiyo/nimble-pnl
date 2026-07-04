@@ -22,7 +22,21 @@ Phase 4–9: dev-build-and-ship workflow — in-progress
       matching Breakdown tab; `periodHours` reduce (line ~151) made explicit
       `sum + (tip.hours || 0)`. `npx vitest run tests/unit/EmployeeTips.nullHours.test.tsx`
       — all 3 cases (A/B/C) GREEN. `npm run typecheck` clean.
-- [ ] Phase 4 task 3 (REFACTOR + full local suite sanity, commit)
+- [x] Phase 4 task 3 (REFACTOR + sanity) — no new commit (zero code delta; see below)
+      `grep -n "hours" src/pages/EmployeeTips.tsx` confirmed all `.hours` consumers already
+      handled: type `hours: number | null` (line 122), `totalTeamHours` reduce already used
+      `|| 0` pre-existing (line 142), `periodHours` reduce fixed in task 2 (line 151), both
+      display sites guarded with `Boolean(tip.hours) &&` (lines 267/270 Breakdown, 376/378
+      History). No other consumers in the file. `npm run typecheck` clean project-wide.
+      `npx vitest run tests/unit/EmployeeTips.nullHours.test.tsx` — 3/3 GREEN. Full
+      `npm run test` — 410 files / 5421 tests passed; 5 pre-existing failures
+      (focusBackfillSyncHandler, focusDatafeedParser, focusBulkSyncHandler,
+      focusSyncDataHandler, focusTransactionSyncHandler) all due to unrelated missing
+      `fast-xml-parser` module in node_modules (declared in package.json, not installed) —
+      confirmed unrelated to EmployeeTips.tsx via git log/grep. Working tree was already
+      clean after task 2's commit 022c787e (which already carries the message
+      "fix(tips): guard null hours in employee tips history tab (BUG-002)" required by this
+      task) — no further code changes were required, so no additional commit was made.
 - [ ] Phase 5–9: UI review, code-simplify, CodeRabbit, verify, PR, CI loop, retrospective
 
 ## CI Status

@@ -9,6 +9,7 @@ const {
   getSessionMock,
   insertMock,
   insertSingleMock,
+  abortSignalMock,
   toastMock,
   uploadMock,
 } = vi.hoisted(() => ({
@@ -16,6 +17,7 @@ const {
   getSessionMock: vi.fn(),
   insertMock: vi.fn(),
   insertSingleMock: vi.fn(),
+  abortSignalMock: vi.fn(),
   toastMock: vi.fn(),
   uploadMock: vi.fn(),
 }));
@@ -31,6 +33,12 @@ vi.mock('@/integrations/supabase/client', () => ({
         insertMock(...args);
         return {
           select: () => ({
+            abortSignal: (...signalArgs: unknown[]) => {
+              abortSignalMock(...signalArgs);
+              return {
+                single: insertSingleMock,
+              };
+            },
             single: insertSingleMock,
           }),
         };
@@ -176,6 +184,27 @@ describe('useCreateTimePunch — photo upload succeeds', () => {
       title: 'Punch recorded',
       description: expect.not.stringMatching(/photo could not be uploaded/i),
     });
+  });
+});
+
+describe('useCreateTimePunch — INSERT abort signal wiring', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+    insertSingleMock.mockResolvedValue(okInsertResponse());
+  });
+
+  it('chains .insert().select().abortSignal(signal).single() and passes a real AbortSignal', async () => {
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await result.current.mutateAsync(validPayload());
+
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    expect(abortSignalMock).toHaveBeenCalledTimes(1);
+    expect(insertSingleMock).toHaveBeenCalledTimes(1);
+
+    const [signal] = abortSignalMock.mock.calls[0];
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal.aborted).toBe(false);
   });
 });
 

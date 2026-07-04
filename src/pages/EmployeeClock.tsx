@@ -261,9 +261,15 @@ const EmployeeClock = () => {
     // re-sent — the punch context (location, device info) it captured may no
     // longer be valid. Restart the normal punch flow instead.
     if (Date.now() - failedPunch.failedAt > RETRY_MAX_AGE_MS) {
+      // EmployeeClock only ever builds clock_in/clock_out payloads (see
+      // handleConfirmPunch), so this narrowing is safe at runtime — the
+      // stored field type is the broader TimePunch['punch_type'] because
+      // CreateTimePunchInput is shared with break-punch call sites elsewhere.
       const punchType = failedPunch.payload.punch_type;
       setFailedPunch(null);
-      handleInitiatePunch(punchType);
+      if (punchType === 'clock_in' || punchType === 'clock_out') {
+        handleInitiatePunch(punchType);
+      }
       return;
     }
 

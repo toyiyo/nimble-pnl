@@ -194,7 +194,7 @@ export const useCreateTimePunch = () => {
         PUNCH_INSERT_TIMEOUT_MS,
       );
 
-      let data: Record<string, unknown>;
+      let data: TimePunch;
       let error: Error | null;
       try {
         ({ data, error } = await supabase
@@ -206,7 +206,7 @@ export const useCreateTimePunch = () => {
           })
           .select()
           .abortSignal(insertController.signal)
-          .single());
+          .single() as unknown as { data: TimePunch; error: Error | null });
       } finally {
         clearTimeout(insertTimeoutId);
       }

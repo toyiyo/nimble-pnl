@@ -250,6 +250,61 @@ describe('useCreateTimePunch — photo upload hangs', () => {
   });
 });
 
+describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+  });
+
+  it('maps a genuine AbortController.abort() rejection reason to the timeout destructive toast', async () => {
+    // Produce a real abort reason the way the browser/runtime actually does,
+    // rather than a hand-built Error with .name set — supabase-js may not
+    // preserve the DOMException shape across its fetch wrapper, so the
+    // mapping must be exercised against the real thing.
+    const controller = new AbortController();
+    controller.abort();
+    insertSingleMock.mockRejectedValue(controller.signal.reason);
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await expect(result.current.mutateAsync(validPayload())).rejects.toBeDefined();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Error recording punch',
+      description: expect.stringMatching(/timed out.*connection|connection.*timed out/i),
+      variant: 'destructive',
+    });
+  });
+
+  it('maps a fallback plain Error("The operation timed out") to the same timeout destructive toast', async () => {
+    insertSingleMock.mockRejectedValue(new Error('The operation timed out'));
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await expect(result.current.mutateAsync(validPayload())).rejects.toBeDefined();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Error recording punch',
+      description: expect.stringMatching(/timed out.*connection|connection.*timed out/i),
+      variant: 'destructive',
+    });
+  });
+
+  it('keeps the ordinary "Error recording punch" toast for a non-abort, non-timeout error (regression pin)', async () => {
+    insertSingleMock.mockRejectedValue(new Error('permission denied for table time_punches'));
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await expect(result.current.mutateAsync(validPayload())).rejects.toBeDefined();
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Error recording punch',
+      description: 'permission denied for table time_punches',
+      variant: 'destructive',
+    });
+  });
+});
+
 describe('useCreateTimePunch — silent toast', () => {
   beforeEach(() => {
     vi.clearAllMocks();

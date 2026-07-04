@@ -107,6 +107,20 @@ const PHOTO_UPLOAD_TIMEOUT_MS = 10_000;
 // within this window, the AbortSignal rejects the request instead.
 const PUNCH_INSERT_TIMEOUT_MS = 15_000;
 
+// Recognizes both a genuine AbortController.abort() rejection reason (a
+// DOMException named 'AbortError' or 'TimeoutError') and a plain Error whose
+// message indicates a timeout/abort, so we can map either shape to the same
+// user-facing connection/timeout copy.
+const isTimeoutError = (error: unknown): boolean => {
+  if (error instanceof DOMException) {
+    return error.name === 'AbortError' || error.name === 'TimeoutError';
+  }
+  if (error instanceof Error) {
+    return /abort|timed?\s?out/i.test(error.message);
+  }
+  return false;
+};
+
 export const useCreateTimePunch = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -217,7 +231,9 @@ export const useCreateTimePunch = () => {
     onError: (error: Error) => {
       toast({
         title: 'Error recording punch',
-        description: error.message,
+        description: isTimeoutError(error)
+          ? 'Connection timed out — please check your connection and try again.'
+          : error.message,
         variant: 'destructive',
       });
     },

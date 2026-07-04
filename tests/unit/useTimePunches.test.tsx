@@ -4,6 +4,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 import { useCreateTimePunch } from '@/hooks/useTimePunches';
 
+// Renders the hook against a QueryClient we retain a reference to, so tests
+// can spy on `invalidateQueries` directly rather than inferring cache state.
+const renderWithClient = (qc: QueryClient) => {
+  const localWrapper = ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  return renderHook(() => useCreateTimePunch(), { wrapper: localWrapper });
+};
+
 const {
   getUserMock,
   getSessionMock,
@@ -302,6 +311,55 @@ describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
       description: 'permission denied for table time_punches',
       variant: 'destructive',
     });
+  });
+});
+
+describe('useCreateTimePunch — onSettled invalidation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+  });
+
+  it('invalidates timePunches and punchStatus queries (keyed by variables) even when the INSERT fails', async () => {
+    insertSingleMock.mockRejectedValue(new Error('permission denied for table time_punches'));
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+
+    const { result } = renderWithClient(qc);
+    await expect(
+      result.current.mutateAsync(validPayload()),
+    ).rejects.toBeDefined();
+
+    // The row never came back from a failed INSERT, so the ids used to scope
+    // the invalidation must come from the mutation's variables, not `data`.
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['timePunches', 'r1'] }),
+      );
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['punchStatus', 'e1'] }),
+    );
+  });
+
+  it('still invalidates timePunches and punchStatus queries when the INSERT succeeds', async () => {
+    insertSingleMock.mockResolvedValue(okInsertResponse());
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries');
+
+    const { result } = renderWithClient(qc);
+    await result.current.mutateAsync(validPayload());
+
+    await waitFor(() => {
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ['timePunches', 'r1'] }),
+      );
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ queryKey: ['punchStatus', 'e1'] }),
+    );
   });
 });
 

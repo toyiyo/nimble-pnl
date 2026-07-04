@@ -384,4 +384,41 @@ describe('useCreateTimePunch — silent toast', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(toastMock).not.toHaveBeenCalled();
   });
+
+  it('suppresses both the normal and photo-failure success toast variants when silent: true, even when the photo upload fails', async () => {
+    uploadMock.mockResolvedValue({ data: null, error: new Error('upload failed') });
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await result.current.mutateAsync({
+      ...validPayload(),
+      photoBlob: new Blob(['x']),
+      silent: true,
+    });
+
+    // Allow onSuccess to flush.
+    await new Promise((r) => setTimeout(r, 0));
+
+    // Neither the normal success toast nor the "photo could not be
+    // uploaded" variant may fire — kiosk (silent: true) surfaces punch
+    // outcomes through its own inline UI, not the global toast.
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
+  it('still fires the destructive error toast on INSERT failure even when silent: true', async () => {
+    insertSingleMock.mockRejectedValue(new Error('permission denied for table time_punches'));
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    await expect(
+      result.current.mutateAsync({ ...validPayload(), silent: true }),
+    ).rejects.toBeDefined();
+
+    // `silent` only suppresses the success toast — error surfacing must
+    // remain intact regardless of the kiosk's silent contract.
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Error recording punch',
+      description: 'permission denied for table time_punches',
+      variant: 'destructive',
+    });
+  });
 });

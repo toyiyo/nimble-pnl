@@ -27,6 +27,17 @@ Three render sites consume `tip.hours`:
 | `EmployeeTips.tsx:377` — **History tab** | **none** | **Yes — `null.toFixed(1)`** |
 | `TipTransparency.tsx:51` | `employeeTip.hours && …` (line 47) | No |
 
+Adjacent sites audited and confirmed safe (per Phase 2.5 frontend review):
+
+- `totalTeamHours` — the reduce at `EmployeeTips.tsx:142` already coerces with
+  `(item.hours_worked || 0)`, so `TipTransparency.tsx:52`'s unconditional
+  `totalTeamHours.toFixed(1)` always receives a number. No change needed.
+- `TipDispute.tsx` — renders in the same card row but does not consume
+  `hours`/`hours_worked` at all. Non-consumer, no change needed.
+- `TipTransparency`'s `EmployeeTip` interface already types
+  `hours?: number | null` (`TipTransparency.tsx:16`), so the nullable type
+  crosses that component boundary without any prop-contract change.
+
 So the crash fires exactly when an employee with an approved **manual** tip split
 (no hours recorded) opens the **History** tab. "Android Chrome only" is a
 population artifact — employees view this page on phones — not a browser bug.
@@ -43,8 +54,15 @@ population artifact — employees view this page on phones — not a browser bug
    already has an established idiom for it. Additionally:
    - Type the `myTips` entry as `hours: number | null` so the compiler enforces
      guards at every consumption site (this is what would have prevented the bug).
-   - Harden the `periodHours` reduce with `(tip.hours || 0)` so its behavior is
-     explicit rather than relying on `+ null` coercion.
+   - Make the `periodHours` reduce explicit with `(tip.hours || 0)`. Note: this
+     is **not** a bug fix — `sum + null` already coerces to a number, so
+     `EmployeeTips.tsx:187` was never broken. It only removes implicit `+ null`
+     coercion for readability once the field is typed nullable.
+
+Accepted trade-off: hiding the hours line makes History-tab card heights vary
+between rows with and without recorded hours. Accepted — it matches the
+Breakdown tab's existing behavior for the same data, and is preferable to a
+fabricated "0.0 hours".
 
 Approach 2 fixes the crash, keeps display semantics consistent across both tabs,
 and turns the latent type hole into a compile-time check. No DB, hook, or
@@ -55,6 +73,9 @@ edge-function changes; `TipTransparency` already accepts `hours?: number | null`
 - Unit test (Vitest + RTL) rendering `EmployeeTips` History tab with a mocked
   approved split whose item has `hours_worked: null` — asserts no crash and no
   "hours" text; a second case with real hours asserts "X.X hours" renders.
+- Aggregate case: a split whose `items` mix null and non-null `hours_worked` —
+  asserts the period-summary hours total and `totalTeamHours` treat nulls as 0
+  (renders without crash, sums only real hours).
 - Typecheck enforces the new `number | null` at all `tip.hours` usages.
 
 ## Scope

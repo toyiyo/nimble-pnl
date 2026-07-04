@@ -79,12 +79,12 @@ const EmployeeClock = () => {
   const focusMainActionAfterUnmountRef = useRef(false);
 
   useLayoutEffect(() => {
-    if (failedPunch) return;
+    if (failedPunch || createPunch.isPending) return;
     if (!focusMainActionAfterUnmountRef.current) return;
 
     focusMainActionAfterUnmountRef.current = false;
     mainActionButtonRef.current?.focus();
-  }, [failedPunch]);
+  }, [failedPunch, createPunch.isPending]);
 
   const startCamera = async () => {
     try {

@@ -201,6 +201,15 @@ describe('EmployeeClock — break UI removed', () => {
 describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // `clearAllMocks` only resets call history — it leaves any queued
+    // `mockImplementationOnce`/persistent `mockImplementation` behavior from a
+    // prior test in place. Reset the suite-controlled mocks explicitly before
+    // reapplying defaults so tests can't leak implementations into each other.
+    mutateMock.mockReset();
+    useCreateTimePunchMock.mockReset();
+    useCurrentEmployeeMock.mockReset();
+    useEmployeePunchStatusMock.mockReset();
+    checkLocationMock.mockReset();
 
     useCurrentEmployeeMock.mockReturnValue({
       employee: EMPLOYEE,
@@ -219,7 +228,7 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
   });
 
-  it('punch failure (per-call onError) shows a role="alert" failure alert with a Try Again button', async () => {
+  it('CRITICAL: punch failure (per-call onError) shows a role="alert" failure alert with a Try Again button', async () => {
     const user = userEvent.setup();
 
     // Simulate the mutation rejecting: whenever `mutate` is called with
@@ -252,7 +261,7 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     expect(tryAgainButton).toBeInTheDocument();
   });
 
-  it('Try Again re-invokes mutate with the identical payload; alert clears on per-call onSuccess', async () => {
+  it('CRITICAL: Try Again re-invokes mutate with the identical payload; alert clears on per-call onSuccess', async () => {
     const user = userEvent.setup();
 
     // First call: fail (captures the payload for the alert). Second call
@@ -294,7 +303,7 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
 
-  it('moves focus to the main Clock In/Out button when the alert unmounts after a successful retry, if focus was inside the alert', async () => {
+  it('CRITICAL: moves focus to the main Clock In/Out button when the alert unmounts after a successful retry, if focus was inside the alert', async () => {
     const user = userEvent.setup();
 
     // First call: fail (captures the payload, renders the alert + Try Again
@@ -329,7 +338,7 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     expect(clockInOutButton).toHaveFocus();
   });
 
-  it('Try Again button is disabled while createPunch.isPending is true', async () => {
+  it('CRITICAL: Try Again button is disabled while createPunch.isPending is true', async () => {
     const user = userEvent.setup();
 
     // First call fails, producing the persistent alert + Try Again button.
@@ -358,7 +367,7 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     expect(tryAgainButtons[tryAgainButtons.length - 1]).toBeDisabled();
   });
 
-  it('Try Again on a payload older than RETRY_MAX_AGE_MS (5 min) discards it and restarts the punch flow instead of mutating with a stale payload', async () => {
+  it('CRITICAL: Try Again on a payload older than RETRY_MAX_AGE_MS (5 min) discards it and restarts the punch flow instead of mutating with a stale payload', async () => {
     const user = userEvent.setup();
 
     // Fail on the first (and only, from this test's perspective) mutate call
@@ -372,41 +381,43 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     // clicking Try Again.
     const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
 
-    render(<EmployeeClock />);
+    try {
+      render(<EmployeeClock />);
 
-    await user.click(screen.getByRole('button', { name: /clock in/i }));
-    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+      await user.click(screen.getByRole('button', { name: /clock in/i }));
+      await user.click(await screen.findByRole('button', { name: /skip photo/i }));
 
-    await screen.findByRole('button', { name: /try again/i });
-    expect(mutateMock).toHaveBeenCalledTimes(1);
+      await screen.findByRole('button', { name: /try again/i });
+      expect(mutateMock).toHaveBeenCalledTimes(1);
 
-    // Advance the injected clock past RETRY_MAX_AGE_MS (5 min = 300_000ms).
-    dateNowSpy.mockReturnValue(1_000_000 + 5 * 60 * 1000 + 1);
+      // Advance the injected clock past RETRY_MAX_AGE_MS (5 min = 300_000ms).
+      dateNowSpy.mockReturnValue(1_000_000 + 5 * 60 * 1000 + 1);
 
-    await user.click(screen.getByRole('button', { name: /try again/i }));
+      await user.click(screen.getByRole('button', { name: /try again/i }));
 
-    // The stale payload must be discarded, not re-sent to mutate — Try Again
-    // must NOT re-invoke mutate a second time with the old payload.
-    expect(mutateMock).toHaveBeenCalledTimes(1);
+      // The stale payload must be discarded, not re-sent to mutate — Try Again
+      // must NOT re-invoke mutate a second time with the old payload.
+      expect(mutateMock).toHaveBeenCalledTimes(1);
 
-    // Instead, the normal punch flow restarts: the camera dialog reopens
-    // (handleInitiatePunch(punchType) with a fresh timestamp), evidenced by
-    // the "Skip Photo" / verification dialog reappearing.
-    expect(
-      await screen.findByRole('button', { name: /skip photo/i })
-    ).toBeInTheDocument();
+      // Instead, the normal punch flow restarts: the camera dialog reopens
+      // (handleInitiatePunch(punchType) with a fresh timestamp), evidenced by
+      // the "Skip Photo" / verification dialog reappearing.
+      expect(
+        await screen.findByRole('button', { name: /skip photo/i })
+      ).toBeInTheDocument();
 
-    // The stale failure alert must no longer be showing once the flow has
-    // restarted (it's been discarded, not just left dangling).
-    const alertsAfterRestart = screen.queryAllByRole('alert');
-    expect(
-      alertsAfterRestart.some((el) => /didn't go through/i.test(el.textContent || ''))
-    ).toBe(false);
-
-    dateNowSpy.mockRestore();
+      // The stale failure alert must no longer be showing once the flow has
+      // restarted (it's been discarded, not just left dangling).
+      const alertsAfterRestart = screen.queryAllByRole('alert');
+      expect(
+        alertsAfterRestart.some((el) => /didn't go through/i.test(el.textContent || ''))
+      ).toBe(false);
+    } finally {
+      dateNowSpy.mockRestore();
+    }
   });
 
-  it('opening and cancelling the camera dialog does NOT clear a stale failure alert; a newly confirmed punch (mutate firing) does', async () => {
+  it('CRITICAL: opening and cancelling the camera dialog does NOT clear a stale failure alert; a newly confirmed punch (mutate firing) does', async () => {
     const user = userEvent.setup();
 
     // First punch attempt fails, producing the persistent alert.
@@ -467,7 +478,7 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
 
-  it('shows a "Recording punch…" pending indicator while createPunch.isPending is true', async () => {
+  it('CRITICAL: shows a "Recording punch…" pending indicator while createPunch.isPending is true', async () => {
     // Not pending: no indicator.
     useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
     const { rerender } = render(<EmployeeClock />);

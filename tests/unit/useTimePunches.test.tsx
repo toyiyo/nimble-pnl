@@ -127,7 +127,7 @@ describe('useCreateTimePunch — photo upload failure', () => {
     getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
   });
 
-  it('runs the INSERT even when the photo upload rejects, fires no toast before the INSERT resolves, and the success toast is the photo-failure variant', async () => {
+  it('CRITICAL: runs the INSERT even when the photo upload rejects, fires no toast before the INSERT resolves, and the success toast is the photo-failure variant', async () => {
     uploadMock.mockResolvedValue({ data: null, error: new Error('upload failed') });
 
     // Defer the INSERT resolution so we can assert on toast state at the
@@ -172,7 +172,7 @@ describe('useCreateTimePunch — photo upload succeeds', () => {
     getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
   });
 
-  it('sets photo_path from the upload result and fires the normal success toast (regression pin)', async () => {
+  it('CRITICAL: sets photo_path from the upload result and fires the normal success toast (regression pin)', async () => {
     uploadMock.mockResolvedValue({ data: { path: 'r1/e1/punch-123.jpg' }, error: null });
     insertSingleMock.mockResolvedValue(okInsertResponse({ photo_path: 'r1/e1/punch-123.jpg' }));
 
@@ -203,7 +203,7 @@ describe('useCreateTimePunch — INSERT abort signal wiring', () => {
     insertSingleMock.mockResolvedValue(okInsertResponse());
   });
 
-  it('chains .insert().select().abortSignal(signal).single() and passes a real AbortSignal', async () => {
+  it('CRITICAL: chains .insert().select().abortSignal(signal).single() and passes a real AbortSignal', async () => {
     const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
     await result.current.mutateAsync(validPayload());
 
@@ -229,7 +229,7 @@ describe('useCreateTimePunch — photo upload hangs', () => {
     vi.useRealTimers();
   });
 
-  it('proceeds without photo_path after the 10s photo timeout when the upload never resolves', async () => {
+  it('CRITICAL: proceeds without photo_path after the 10s photo timeout when the upload never resolves', async () => {
     // Upload never resolves — simulates a hung network request.
     uploadMock.mockReturnValue(new Promise(() => {}));
 
@@ -250,10 +250,10 @@ describe('useCreateTimePunch — photo upload hangs', () => {
     await vi.waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
 
     // The punch proceeds without a photo_path — the abandoned upload must
-    // not block or fail the punch.
-    expect(insertMock).toHaveBeenCalledWith(
-      expect.objectContaining({ photo_path: undefined }),
-    );
+    // not block or fail the punch. Assert the field is undefined whether
+    // it's omitted from the payload or present as `undefined`.
+    const [insertPayload] = insertMock.mock.calls[0] as [Record<string, unknown>];
+    expect(insertPayload.photo_path).toBeUndefined();
 
     await mutatePromise;
   });
@@ -265,7 +265,7 @@ describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
     getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
   });
 
-  it('maps a genuine AbortController.abort() rejection reason to the timeout destructive toast', async () => {
+  it('CRITICAL: maps a genuine AbortController.abort() rejection reason to the timeout destructive toast', async () => {
     // Produce a real abort reason the way the browser/runtime actually does,
     // rather than a hand-built Error with .name set — supabase-js may not
     // preserve the DOMException shape across its fetch wrapper, so the
@@ -285,7 +285,7 @@ describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
     });
   });
 
-  it('maps a fallback plain Error("The operation timed out") to the same timeout destructive toast', async () => {
+  it('CRITICAL: maps a fallback plain Error("The operation timed out") to the same timeout destructive toast', async () => {
     insertSingleMock.mockRejectedValue(new Error('The operation timed out'));
 
     const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
@@ -299,7 +299,7 @@ describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
     });
   });
 
-  it('keeps the ordinary "Error recording punch" toast for a non-abort, non-timeout error (regression pin)', async () => {
+  it('CRITICAL: keeps the ordinary "Error recording punch" toast for a non-abort, non-timeout error (regression pin)', async () => {
     insertSingleMock.mockRejectedValue(new Error('permission denied for table time_punches'));
 
     const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
@@ -313,7 +313,7 @@ describe('useCreateTimePunch — INSERT abort/timeout error mapping', () => {
     });
   });
 
-  it('maps the real postgrest-js abort shape (a resolved plain error object, not a rejection) to the timeout destructive toast', async () => {
+  it('CRITICAL: maps the real postgrest-js abort shape (a resolved plain error object, not a rejection) to the timeout destructive toast', async () => {
     // This is what actually happens at runtime: PostgrestBuilder only rejects
     // on abort if `.throwOnError()` was called (it isn't, on this insert
     // chain). By default it catches the fetch AbortError itself and
@@ -350,7 +350,7 @@ describe('useCreateTimePunch — onSettled invalidation', () => {
     getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
   });
 
-  it('invalidates timePunches and punchStatus queries (keyed by variables) even when the INSERT fails', async () => {
+  it('CRITICAL: invalidates timePunches and punchStatus queries (keyed by variables) even when the INSERT fails', async () => {
     insertSingleMock.mockRejectedValue(new Error('permission denied for table time_punches'));
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -373,7 +373,7 @@ describe('useCreateTimePunch — onSettled invalidation', () => {
     );
   });
 
-  it('still invalidates timePunches and punchStatus queries when the INSERT succeeds', async () => {
+  it('CRITICAL: still invalidates timePunches and punchStatus queries when the INSERT succeeds', async () => {
     insertSingleMock.mockResolvedValue(okInsertResponse());
 
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -415,7 +415,7 @@ describe('useCreateTimePunch — silent toast', () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it('suppresses both the normal and photo-failure success toast variants when silent: true, even when the photo upload fails', async () => {
+  it('CRITICAL: suppresses both the normal and photo-failure success toast variants when silent: true, even when the photo upload fails', async () => {
     uploadMock.mockResolvedValue({ data: null, error: new Error('upload failed') });
 
     const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
@@ -434,7 +434,7 @@ describe('useCreateTimePunch — silent toast', () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it('still fires the destructive error toast on INSERT failure even when silent: true', async () => {
+  it('CRITICAL: still fires the destructive error toast on INSERT failure even when silent: true', async () => {
     insertSingleMock.mockRejectedValue(new Error('permission denied for table time_punches'));
 
     const { result } = renderHook(() => useCreateTimePunch(), { wrapper });

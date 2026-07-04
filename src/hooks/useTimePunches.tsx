@@ -191,8 +191,10 @@ export const useCreateTimePunch = () => {
           if (uploadError) {
             console.error('Photo upload error:', uploadError);
             photoUploadFailed = true;
-          } else {
+          } else if (uploadData?.path) {
             photo_path = uploadData.path;
+          } else {
+            photoUploadFailed = true;
           }
         } catch (error) {
           console.error('Photo upload exception:', error);

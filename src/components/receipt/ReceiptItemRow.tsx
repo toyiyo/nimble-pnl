@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -17,6 +17,35 @@ import { PACKAGE_TYPE_OPTIONS } from '@/lib/packageTypes';
 import { GroupedUnitSelector } from '@/components/GroupedUnitSelector';
 
 type ConfidenceTier = 'auto-approved' | 'quick-review' | 'needs-attention';
+
+/** Shared className for intent-status badges (keeps all 6 badge nodes consistent). */
+const BADGE_CN = 'text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground';
+
+/**
+ * Irregular plurals for container types that appear in distributor invoices.
+ * Covers units from PACKAGE_TYPE_OPTIONS and the AI prompt's parsedUnit examples.
+ */
+const IRREGULAR_PLURALS: Record<string, string> = {
+  each: 'each',
+  box: 'boxes',
+  loaf: 'loaves',
+  leaf: 'leaves',
+  half: 'halves',
+  shelf: 'shelves',
+};
+
+/**
+ * Returns the plural form of a unit label when n !== 1.
+ * Falls back to "unit" / "units" when the unit is blank.
+ * Uses an irregular-plural lookup table before applying the default +s rule.
+ */
+function pluralizeUnit(unit: string | null | undefined, n: number | null): string {
+  const u = (unit || '').trim() || 'unit';
+  if ((n ?? 0) === 1) return u;
+  const lower = u.toLowerCase();
+  if (lower in IRREGULAR_PLURALS) return IRREGULAR_PLURALS[lower];
+  return `${u}s`;
+}
 
 interface ReceiptItemRowProps {
   item: ReceiptLineItem;
@@ -68,54 +97,53 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
   const getIntentLabel = (item: ReceiptLineItem) => {
     // Already resolved
     if (item.mapping_status === 'mapped') {
-      return <Badge variant="secondary" className="text-xs bg-green-50 text-green-700 border-green-200">Looks correct</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Looks correct</Badge>;
     }
     if (item.mapping_status === 'skipped') {
-      return <Badge variant="secondary" className="text-xs bg-muted text-muted-foreground">Skipped</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Skipped</Badge>;
     }
     if (item.mapping_status === 'new_item' && (item.confidence_score || 0) >= 0.8) {
-      return <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">New item</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>New item</Badge>;
     }
-    
+
     // Needs attention indicators
     if (!item.matched_product_id && item.mapping_status === 'pending') {
       if ((item.confidence_score || 0) < 0.5) {
-        return <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">No match found</Badge>;
+        return <Badge variant="secondary" className={BADGE_CN}>No match found</Badge>;
       }
-      return <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">Check mapping</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Check mapping</Badge>;
     }
-    
+
     // Size/unit issues
     if (!item.size_value && !item.size_unit) {
-      return <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">Add size info</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Add size info</Badge>;
     }
-    
+
     // Price anomaly (simple heuristic - if price seems unusual)
     if (item.parsed_price && item.parsed_price > 100) {
-      return <Badge variant="secondary" className="text-xs bg-amber-50 text-amber-700 border-amber-200">Check price</Badge>;
+      return <Badge variant="secondary" className={BADGE_CN}>Check price</Badge>;
     }
     
     return null;
   };
 
   const formatPrice = (price: number | null) => {
-    if (!price) return '$0.00';
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD'
-    }).format(price);
+    }).format(price ?? 0);
   };
 
   const getStatusIcon = () => {
     switch (item.mapping_status) {
       case 'mapped':
-        return <CheckCircle className="h-4 w-4 text-green-600" />;
+        return <CheckCircle className="h-4 w-4 text-foreground" />;
       case 'new_item':
-        return <Plus className="h-4 w-4 text-blue-600" />;
+        return <Plus className="h-4 w-4 text-foreground" />;
       case 'skipped':
         return <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/50" />;
       default:
-        return <AlertCircle className="h-4 w-4 text-amber-500" />;
+        return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
     }
   };
 
@@ -124,9 +152,9 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
       case 'auto-approved':
         return 'bg-muted/30 hover:bg-muted/50';
       case 'quick-review':
-        return 'bg-background border-l-2 border-l-amber-400';
+        return 'bg-background border-l-2 border-l-foreground/30';
       case 'needs-attention':
-        return 'bg-amber-50 dark:bg-amber-900/10 border-l-4 border-l-amber-500';
+        return 'bg-muted/50 border-l-4 border-l-foreground/40';
       default:
         return '';
     }
@@ -186,7 +214,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
               {getStatusIcon()}
               <span className="font-medium">{item.parsed_name || item.raw_text}</span>
               {linkedCount > 1 && (
-                <Badge variant="outline" className="text-xs bg-blue-50 dark:bg-blue-900/20 border-blue-200">
+                <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted border-border/40">
                   <Link2 className="h-3 w-3 mr-1" />
                   {linkedCount} linked
                 </Badge>
@@ -222,7 +250,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
             {/* Quick fill pills for items needing size info */}
             {needsSizeInfo && categoryQuickFills.length > 0 && (
               <div className="space-y-1.5">
-                <span className="text-xs text-muted-foreground">Quick fill:</span>
+                <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Quick fill:</span>
                 <div className="flex flex-wrap gap-1.5">
                   {categoryQuickFills.slice(0, 5).map((qf, i) => (
                     <Button
@@ -244,7 +272,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <Label htmlFor={`name-${item.id}`} className="text-xs text-muted-foreground">
+                    <Label htmlFor={`name-${item.id}`} className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                       Item Name
                     </Label>
                     <Input
@@ -274,7 +302,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
 
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <Label htmlFor={`qty-${item.id}`} className="text-xs text-muted-foreground">
+                    <Label htmlFor={`qty-${item.id}`} className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                       Qty
                     </Label>
                     <Input
@@ -288,7 +316,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`price-${item.id}`} className="text-xs text-muted-foreground">
+                    <Label htmlFor={`price-${item.id}`} className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                       Total Price
                     </Label>
                     <Input
@@ -311,10 +339,31 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                   </div>
                 </div>
 
+                {/* Pack summary — shown only when pack_quantity > 1 */}
+                {(item.pack_quantity ?? 0) > 1 && (
+                  <p
+                    className="text-[13px] text-muted-foreground"
+                    aria-live="polite"
+                  >
+                    {(() => {
+                      const casesCount = Math.max(1, Math.round((item.parsed_quantity ?? 0) / item.pack_quantity!));
+                      return (
+                        <>
+                          {casesCount}{' '}
+                          {casesCount === 1 ? 'case' : 'cases'}
+                          {' × '}{item.pack_quantity}{' = '}
+                          {item.parsed_quantity ?? 0}{' '}
+                          {pluralizeUnit(item.package_type || item.parsed_unit, item.parsed_quantity)}
+                        </>
+                      );
+                    })()}
+                  </p>
+                )}
+
                 {/* Size & Package - only show when needed or expanded */}
                 <div className="grid grid-cols-3 gap-2">
                   <div>
-                    <Label htmlFor={`size-${item.id}`} className="text-xs text-muted-foreground">
+                    <Label htmlFor={`size-${item.id}`} className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                       Size
                     </Label>
                     <Input
@@ -328,7 +377,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`unit-${item.id}`} className="text-xs text-muted-foreground">
+                    <Label htmlFor={`unit-${item.id}`} className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                       Unit
                     </Label>
                     <GroupedUnitSelector
@@ -339,7 +388,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     />
                   </div>
                   <div>
-                    <Label htmlFor={`pkg-${item.id}`} className="text-xs text-muted-foreground">
+                    <Label htmlFor={`pkg-${item.id}`} className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                       Package
                     </Label>
                     <Select
@@ -368,16 +417,27 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
 
                 {/* Package Definition - matches inventory details format */}
                 {item.size_value && item.size_unit && (item.package_type || item.parsed_unit) && (
-                  <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-md">
+                  <div className="p-3 bg-muted/30 border border-border/40 rounded-md">
                     <div className="flex items-center gap-2 mb-1">
-                      <div className="w-5 h-5 bg-green-600 rounded-full flex items-center justify-center">
-                        <span className="text-white text-xs font-bold">✓</span>
+                      <div className="w-5 h-5 bg-foreground rounded-full flex items-center justify-center">
+                        <span aria-hidden="true" className="text-background text-xs font-bold">✓</span>
                       </div>
-                      <span className="text-sm font-semibold text-green-800 dark:text-green-200">Your Package Definition:</span>
+                      <span className="text-[13px] font-semibold text-foreground">Your Package Definition:</span>
                     </div>
-                    <div className="text-base font-medium text-green-800 dark:text-green-200 pl-7">
-                      1 {item.package_type || item.parsed_unit || 'unit'} containing{' '}
-                      <span className="bg-green-200 dark:bg-green-800 px-2 py-0.5 rounded">{item.size_value} {item.size_unit}</span>
+                    <div className="text-[14px] font-medium text-foreground pl-7">
+                      {item.pack_quantity && item.pack_quantity > 1 ? (
+                        <>
+                          {item.parsed_quantity}{' '}
+                          {pluralizeUnit(item.package_type || item.parsed_unit, item.parsed_quantity)},
+                          {' '}each containing{' '}
+                          <span className="bg-muted px-2 py-0.5 rounded">{item.size_value} {item.size_unit}</span>
+                        </>
+                      ) : (
+                        <>
+                          1 {item.package_type || item.parsed_unit || 'unit'} containing{' '}
+                          <span className="bg-muted px-2 py-0.5 rounded">{item.size_value} {item.size_unit}</span>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -386,13 +446,13 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
               {/* Right column: Product mapping */}
               <div className="space-y-3">
                 <div>
-                  <Label className="text-xs text-muted-foreground">
+                  <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Map to Inventory
                   </Label>
                   {isImported ? (
                     <div className="p-2 bg-muted rounded-md text-sm mt-1">
                       {item.mapping_status === 'new_item' ? (
-                        <span className="text-blue-600">Created as new product</span>
+                        <span className="text-foreground">Created as new product</span>
                       ) : item.mapping_status === 'mapped' && matchedProduct ? (
                         <span>{matchedProduct.name}</span>
                       ) : (
@@ -416,15 +476,15 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
 
                 {/* New item preview */}
                 {item.mapping_status === 'new_item' && (
-                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
-                    <div className="flex items-center gap-2 text-sm">
-                      <Plus className="h-4 w-4 text-blue-600" />
-                      <span className="text-blue-700 dark:text-blue-300">
+                  <div className="p-3 bg-muted/30 rounded-lg border border-border/40">
+                    <div className="flex items-center gap-2">
+                      <Plus className="h-4 w-4 text-foreground" />
+                      <span className="text-[13px] text-foreground">
                         Will create: <strong>{item.parsed_name || 'Unnamed item'}</strong>
                       </span>
                     </div>
                     {item.size_value && item.size_unit && (
-                      <div className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                      <div className="mt-1 text-[12px] text-muted-foreground">
                         with size: {item.size_value} {item.size_unit} per {item.package_type || 'unit'}
                       </div>
                     )}
@@ -432,7 +492,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                 )}
 
                 {/* Raw text reference */}
-                <div className="text-xs text-muted-foreground">
+                <div className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                   <span className="font-medium">Raw: </span>
                   "{item.raw_text}"
                 </div>

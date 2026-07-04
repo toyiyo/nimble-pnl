@@ -6,7 +6,9 @@
  *
  * Coverage:
  *  - Gate-less: processes with no Authorization header (matches toast/shift4)
- *  - Processing: queries active connections ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
+ *  - Processing: selects connections via the atomic claim_focus_sync_batch RPC
+ *    (p_limit 5) — the RPC's own ORDER BY last_sync_time ASC NULLS FIRST +
+ *    SKIP LOCKED is covered by pgTAP (supabase/tests/51_focus_sync_scheduler.sql).
  *  - Processing: processes each connection via processReportDay (backfill or incremental)
  *  - Processing: respects 2s inter-restaurant delay (injectable deps.sleep)
  *  - Processing: stops when wall-clock budget (90s) is exceeded (injectable deps.now)
@@ -14,11 +16,14 @@
  *  - Incremental path: calls processReportDay twice (last 2 business days)
  *  - Result: returns { processed, errors, elapsedMs }
  *  - Errors: catches per-connection exceptions; continues to next; surfaced in errors[]
- *  - At most 5 connections processed per run (LIMIT 5)
+ *  - Backoff contract: a failed connection writes consecutive_failures+1 and a
+ *    future next_attempt_at (capped at 6h); a success resets both to 0 / null.
+ *    The claim RPC already bumped last_sync_time, so the failure path no
+ *    longer bumps it separately.
  *
- * Design ref: plan Task 10; spec §8 (focus-bulk-sync), §9 (sync orchestration);
- * review S5 (LIMIT 5, round-robin), design §8 ("2s delay", "90s wall-clock budget").
- * Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer).
+ * Design ref: plan Task 5; design doc §2 ("Worker changes"), design review #1
+ * (atomic claim) and #4 (backoff contract). Gate-less cron worker: matches
+ * toast-bulk-sync / shift4-bulk-sync (no Bearer).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -69,7 +74,14 @@ const RESTAURANT_ID_1 = '00000000-0000-0000-0000-000000000001';
 const RESTAURANT_ID_2 = '00000000-0000-0000-0000-000000000002';
 const SERVICE_ROLE_KEY = 'test-service-role-key-for-unit-tests';
 
-/** A minimal focus_connections row for an incremental connection. */
+/**
+ * A minimal focus_connections row for an incremental connection.
+ *
+ * claim_focus_sync_batch returns SETOF focus_connections (full rows), so
+ * fixtures carry the scheduling columns the claim RPC guarantees are present:
+ * sync_interval_minutes / next_attempt_at / consecutive_failures. Consumed
+ * by column name only (never positionally) per design review #9.
+ */
 const MOCK_CONN_INCREMENTAL = {
   id: 'conn-uuid-1',
   restaurant_id: RESTAURANT_ID_1,
@@ -86,6 +98,9 @@ const MOCK_CONN_INCREMENTAL = {
   last_sync_time: '2026-06-26T00:00:00.000Z',
   username: 'sample.user',
   password_encrypted: 'enc',
+  sync_interval_minutes: 30,
+  next_attempt_at: null as string | null,
+  consecutive_failures: 0,
 };
 
 /** A minimal focus_connections row for a backfill connection. */
@@ -118,6 +133,9 @@ const MOCK_LYNK_BACKFILLING = {
   api_key: 'lynk-api-key',
   api_secret_encrypted: 'encrypted-secret-for-lynk',
   environment: 'production',
+  sync_interval_minutes: 30,
+  next_attempt_at: null as string | null,
+  consecutive_failures: 0,
 };
 
 /** A Lynk API row that has completed backfill (initial_sync_done=true, api_key set). */
@@ -129,6 +147,11 @@ const MOCK_LYNK_INCREMENTAL = {
   sync_cursor: 90,
   last_sync_time: '2026-07-01T00:00:00Z',
 };
+
+/** Convenience builder for the backoff-contract tests: a claimed incremental Lynk row. */
+function lynkRow(overrides: Partial<typeof MOCK_LYNK_INCREMENTAL> = {}) {
+  return { ...MOCK_LYNK_INCREMENTAL, ...overrides };
+}
 
 /** Minimal valid Revenue Center HTML — enough for the real parser to succeed. */
 const VALID_HTML = `<html><body><table>
@@ -150,22 +173,20 @@ const VALID_HTML = `<html><body><table>
 // ── Mock builders ─────────────────────────────────────────────────────────────
 
 function makeServiceClientMock(opts: {
-  connections?: unknown[];
-  queryError?: { message: string } | null;
+  /** Rows returned by claim_focus_sync_batch (replaces the old select-chain). */
+  claimRows?: unknown[];
+  claimError?: { message: string } | null;
 } = {}) {
-  const connections = opts.connections !== undefined ? opts.connections : [MOCK_CONN_INCREMENTAL];
-  const queryError = opts.queryError ?? null;
+  const claimRows = opts.claimRows !== undefined ? opts.claimRows : [MOCK_CONN_INCREMENTAL];
+  const claimError = opts.claimError ?? null;
 
-  // SELECT focus_connections (round-robin LIMIT 5)
-  const limitMock = vi.fn().mockResolvedValue({
-    data: connections,
-    error: queryError,
-  });
-  const orderMock = vi.fn().mockReturnValue({ limit: limitMock });
-  const eqActiveMock = vi.fn().mockReturnValue({ order: orderMock });
-  const selectMock = vi.fn().mockReturnValue({ eq: eqActiveMock });
+  // rpc('claim_focus_sync_batch', { p_limit }) — atomic UPDATE…SKIP LOCKED…
+  // RETURNING claim (supabase/migrations/20260704200320_focus_sync_frequency.sql).
+  // Its own ORDER BY last_sync_time ASC NULLS FIRST + SKIP LOCKED semantics are
+  // exercised by pgTAP (supabase/tests/51_focus_sync_scheduler.sql), not here.
+  const rpcMock = vi.fn().mockResolvedValue({ data: claimRows, error: claimError });
 
-  // UPDATE focus_connections (last_sync_time, sync_cursor, initial_sync_done)
+  // UPDATE focus_connections (backoff / success reset / error-state / legacy auth-error)
   // Chain supports two .eq() calls: .eq('id', ...).eq('restaurant_id', ...)
   const eqUpdate2Mock = vi.fn().mockResolvedValue({ data: null, error: null });
   const eqUpdateMock = vi.fn().mockReturnValue({ eq: eqUpdate2Mock });
@@ -178,24 +199,26 @@ function makeServiceClientMock(opts: {
 
   const fromMock = vi.fn().mockImplementation((table: string) => {
     if (table === 'focus_connections') {
-      return { select: selectMock, update: updateMock };
+      return { update: updateMock };
     }
     if (table === 'focus_daily_reports') {
       return { upsert: upsertMock };
     }
-    return { select: selectMock, update: updateMock, upsert: upsertMock };
+    return { update: updateMock, upsert: upsertMock };
   });
 
   return {
-    client: { from: fromMock },
+    client: { from: fromMock, rpc: rpcMock },
     mocks: {
       fromMock,
-      selectMock,
-      orderMock,
-      limitMock,
+      rpcMock,
       updateMock,
       eqUpdateMock,
       upsertMock,
+      /** Flattened view of every focus_connections update payload, in call order. */
+      get updateCalls() {
+        return updateMock.mock.calls.map(([payload]: [Record<string, unknown>]) => ({ payload }));
+      },
     },
   };
 }
@@ -239,6 +262,9 @@ function makeClock(startMs: number, stepMs: number = 0) {
   };
 }
 
+/** Fixed "now" used by tests that assert on absolute next_attempt_at timestamps. */
+const NOW_MS = 1_720_000_000_000; // 2026-07-03T09:46:40.000Z — arbitrary, fixed instant
+
 function makeDeps(opts: {
   serviceClientOpts?: Parameters<typeof makeServiceClientMock>[0];
   fetchHtml?: string;
@@ -254,7 +280,7 @@ function makeDeps(opts: {
       serviceClient: serviceClient as any,
       fetch: fetchMock,
       sleep: sleepMock,
-      now: opts.nowFn ?? makeClock(Date.now()),
+      now: opts.nowFn ?? makeClock(NOW_MS),
     },
     mocks,
     sleepMock,
@@ -268,7 +294,7 @@ describe('handleBulkSync', () => {
   // ── Gate-less: processes with no Authorization header (matches toast/shift4) ──
 
   it('processes with NO Authorization header (no Bearer gate)', async () => {
-    const { deps } = makeDeps({ serviceClientOpts: { connections: [] } });
+    const { deps } = makeDeps({ serviceClientOpts: { claimRows: [] } });
     const req = makeRequest({ authHeader: null });
     const res = await handleBulkSync(req, deps);
 
@@ -289,7 +315,7 @@ describe('handleBulkSync', () => {
 
     beforeEach(async () => {
       const result = makeDeps({
-        serviceClientOpts: { connections: [MOCK_CONN_INCREMENTAL] },
+        serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL] },
         nowFn: makeClock(1000000, 0), // time doesn't advance → no budget exceeded
       });
       mocks = result.mocks;
@@ -321,22 +347,8 @@ describe('handleBulkSync', () => {
       expect(body.errors).toHaveLength(0);
     });
 
-    it('queries focus_connections with is_active=true filter', () => {
-      expect(mocks.fromMock).toHaveBeenCalledWith('focus_connections');
-      expect(mocks.selectMock).toHaveBeenCalled();
-      // eq('is_active', true) or eq('is_active', 'true')
-      const eqArg = mocks.selectMock.mock.results[0].value;
-      expect(eqArg).toBeTruthy();
-    });
-
-    it('calls LIMIT 5 on the connection query', () => {
-      expect(mocks.limitMock).toHaveBeenCalledWith(5);
-    });
-
-    it('orders by last_sync_time ascending nulls first', () => {
-      const orderArg = mocks.orderMock.mock.calls[0];
-      expect(orderArg[0]).toBe('last_sync_time');
-      expect(orderArg[1]).toMatchObject({ ascending: true, nullsFirst: true });
+    it('selects the claim batch via the claim_focus_sync_batch RPC with p_limit 5', () => {
+      expect(mocks.rpcMock).toHaveBeenCalledWith('claim_focus_sync_batch', { p_limit: 5 });
     });
 
     it('incremental path: makes 2 fetch calls (one per recent business day)', () => {
@@ -344,11 +356,12 @@ describe('handleBulkSync', () => {
       expect(fetchMock.mock.calls.length).toBe(2);
     });
 
-    it('updates focus_connections with last_sync_time for the processed restaurant', () => {
+    it('updates focus_connections resetting consecutive_failures/next_attempt_at for the processed restaurant', () => {
       expect(mocks.fromMock).toHaveBeenCalledWith('focus_connections');
       expect(mocks.updateMock).toHaveBeenCalledTimes(1);
       const updateArg = mocks.updateMock.mock.calls[0][0] as Record<string, unknown>;
-      expect(typeof updateArg.last_sync_time).toBe('string');
+      expect(updateArg.consecutive_failures).toBe(0);
+      expect(updateArg.next_attempt_at).toBeNull();
     });
   });
 
@@ -356,7 +369,7 @@ describe('handleBulkSync', () => {
 
   it('backfill path: makes 1 fetch call (one cursor day) when initial_sync_done=false', async () => {
     const { deps, fetchMock } = makeDeps({
-      serviceClientOpts: { connections: [MOCK_CONN_BACKFILL] },
+      serviceClientOpts: { claimRows: [MOCK_CONN_BACKFILL] },
     });
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
     await handleBulkSync(req, deps);
@@ -367,7 +380,7 @@ describe('handleBulkSync', () => {
 
   it('backfill path: increments sync_cursor in the DB update', async () => {
     const { deps, mocks } = makeDeps({
-      serviceClientOpts: { connections: [MOCK_CONN_BACKFILL] },
+      serviceClientOpts: { claimRows: [MOCK_CONN_BACKFILL] },
     });
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
     await handleBulkSync(req, deps);
@@ -380,7 +393,7 @@ describe('handleBulkSync', () => {
 
   it('sleeps 2000ms between restaurants when there are multiple connections', async () => {
     const { deps, sleepMock } = makeDeps({
-      serviceClientOpts: { connections: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL] },
+      serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL] },
     });
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
     await handleBulkSync(req, deps);
@@ -392,7 +405,7 @@ describe('handleBulkSync', () => {
 
   it('does NOT sleep when only one connection is processed', async () => {
     const { deps, sleepMock } = makeDeps({
-      serviceClientOpts: { connections: [MOCK_CONN_INCREMENTAL] },
+      serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL] },
     });
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
     await handleBulkSync(req, deps);
@@ -420,7 +433,7 @@ describe('handleBulkSync', () => {
     };
 
     const { deps, fetchMock } = makeDeps({
-      serviceClientOpts: { connections: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL] },
+      serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL] },
       nowFn: nowMock,
     });
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
@@ -437,7 +450,7 @@ describe('handleBulkSync', () => {
 
   it('returns 200 with processed=0 when there are no active connections', async () => {
     const { deps } = makeDeps({
-      serviceClientOpts: { connections: [] },
+      serviceClientOpts: { claimRows: [] },
     });
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
     const res = await handleBulkSync(req, deps);
@@ -457,7 +470,7 @@ describe('handleBulkSync', () => {
     // Approach: make the serviceClient.from('focus_connections').update() throw for the first restaurant.
 
     const { client: sc, mocks: scMocks } = makeServiceClientMock({
-      connections: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL],
+      claimRows: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL],
     });
     const fetchMock = makeFetchMock(VALID_HTML);
     const sleepMock = makeSleepMock();
@@ -505,14 +518,16 @@ describe('handleBulkSync', () => {
     expect(body.errors[0]).toMatch(/DB write failure/);
   });
 
-  // ── LIMIT 5 enforced ─────────────────────────────────────────────────────────
+  // ── p_limit 5 enforced regardless of batch size returned ────────────────────
+  // (equivalent of the old "LIMIT 5 enforced" test: the RPC's own LIMIT/SKIP
+  // LOCKED shape means the p_limit argument doesn't vary with the fixture's
+  // row count — see "selects the claim batch via the claim_focus_sync_batch
+  // RPC with p_limit 5" in the happy-path describe above.)
 
-  it('passes LIMIT 5 to the query regardless of how many active connections exist', async () => {
-    // The query mock only returns the connections we give it; the LIMIT is passed to
-    // the query builder. We verify the mock's limit() call received 5.
+  it('calls the claim RPC with p_limit 5 regardless of how many connections the claim returns', async () => {
     const { deps, mocks } = makeDeps({
       serviceClientOpts: {
-        connections: Array.from({ length: 3 }, (_, i) => ({
+        claimRows: Array.from({ length: 3 }, (_, i) => ({
           ...MOCK_CONN_INCREMENTAL,
           id: `conn-${i}`,
           restaurant_id: `00000000-0000-0000-0000-0000000000${String(i).padStart(2, '0')}`,
@@ -522,7 +537,7 @@ describe('handleBulkSync', () => {
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
     await handleBulkSync(req, deps);
 
-    expect(mocks.limitMock).toHaveBeenCalledWith(5);
+    expect(mocks.rpcMock).toHaveBeenCalledWith('claim_focus_sync_batch', { p_limit: 5 });
   });
 
   // ── Auth gate: FocusAuthError → restaurant skipped, surfaces in errors[] ────────
@@ -541,7 +556,7 @@ describe('handleBulkSync', () => {
       .mockResolvedValue({ cookie: 'session-cookie' });
 
     const { deps, mocks } = makeDeps({
-      serviceClientOpts: { connections: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL] },
+      serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL, MOCK_CONN_BACKFILL] },
     });
 
     const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
@@ -565,7 +580,7 @@ describe('handleBulkSync', () => {
   it('does NOT advance sync_cursor when backfill fetch returns 503', async () => {
     // MOCK_CONN_BACKFILL has sync_cursor=5; fetch returns 503 → error → cursor unchanged
     const { deps, mocks } = makeDeps({
-      serviceClientOpts: { connections: [MOCK_CONN_BACKFILL] },
+      serviceClientOpts: { claimRows: [MOCK_CONN_BACKFILL] },
       fetchHtml: '', // will be overridden below
     });
     // Return 503 so processReportDay returns {status:'error'}
@@ -603,7 +618,7 @@ describe('handleBulkSync', () => {
 
     it('skips a backfilling Lynk row: no datafeed fetch AND no DB write (owned by focus-backfill-sync)', async () => {
       const { deps, mocks } = makeDeps({
-        serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+        serviceClientOpts: { claimRows: [MOCK_LYNK_BACKFILLING] },
       });
       const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
       await handleBulkSync(req, deps);
@@ -619,7 +634,7 @@ describe('handleBulkSync', () => {
 
     it('counts a skipped backfilling Lynk row as processed (no error)', async () => {
       const { deps } = makeDeps({
-        serviceClientOpts: { connections: [MOCK_LYNK_BACKFILLING] },
+        serviceClientOpts: { claimRows: [MOCK_LYNK_BACKFILLING] },
       });
       const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
       const res = await handleBulkSync(req, deps);
@@ -631,7 +646,7 @@ describe('handleBulkSync', () => {
 
     it('still processes an incremental Lynk row (initial_sync_done=true): processDayTransactions IS called', async () => {
       const { deps } = makeDeps({
-        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+        serviceClientOpts: { claimRows: [MOCK_LYNK_INCREMENTAL] },
       });
       const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
       await handleBulkSync(req, deps);
@@ -642,7 +657,7 @@ describe('handleBulkSync', () => {
 
     it('still processes a portal backfilling row (no api_key): fetch IS called', async () => {
       const { deps, fetchMock } = makeDeps({
-        serviceClientOpts: { connections: [MOCK_CONN_BACKFILL] },
+        serviceClientOpts: { claimRows: [MOCK_CONN_BACKFILL] },
       });
       const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
       await handleBulkSync(req, deps);
@@ -658,7 +673,7 @@ describe('handleBulkSync', () => {
       mockedProcessDayTransactions.mockResolvedValue({ status: 'error', error: 'Lynk API 503' });
 
       const { deps, mocks } = makeDeps({
-        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+        serviceClientOpts: { claimRows: [MOCK_LYNK_INCREMENTAL] },
       });
       const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
       await handleBulkSync(req, deps);
@@ -676,12 +691,12 @@ describe('handleBulkSync', () => {
       expect(typeof errorPayload.last_error).toBe('string');
     });
 
-    it('bumps last_sync_time on failed connections to prevent round-robin starvation (9d fix)', async () => {
+    it('writes exponential backoff (consecutive_failures/next_attempt_at) on failed connections instead of bumping last_sync_time (9d fix, superseded by the backoff contract)', async () => {
       // Make the incremental sync fail so the catch block runs
       mockedProcessDayTransactions.mockResolvedValue({ status: 'error', error: 'Network error' });
 
       const { deps, mocks } = makeDeps({
-        serviceClientOpts: { connections: [MOCK_LYNK_INCREMENTAL] },
+        serviceClientOpts: { claimRows: [MOCK_LYNK_INCREMENTAL] },
       });
       const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
       const res = await handleBulkSync(req, deps);
@@ -691,18 +706,115 @@ describe('handleBulkSync', () => {
       expect(body.processed).toBe(0);
       expect(body.errors.length).toBeGreaterThan(0);
 
-      // last_sync_time bump fires asynchronously; wait for microtasks
+      // Backoff write fires asynchronously; wait for microtasks
       await Promise.resolve();
 
-      // update must have been called at least once for the starvation-prevention bump
+      // update must have been called at least once for the backoff write.
+      // The claim already bumped last_sync_time, so the failure path writes
+      // consecutive_failures/next_attempt_at instead — never last_sync_time
+      // (round-robin starvation prevention is now handled by the claim itself).
       expect(mocks.updateMock).toHaveBeenCalled();
       const updateCalls = mocks.updateMock.mock.calls as [Record<string, unknown>][];
-      const bumpCall = updateCalls.find(
+      const backoffCall = updateCalls.find(
         ([payload]: [Record<string, unknown>]) =>
-          typeof payload.last_sync_time === 'string' &&
-          payload.connection_status === undefined,
+          payload.consecutive_failures !== undefined && payload.connection_status === undefined,
       );
-      expect(bumpCall).toBeDefined();
+      expect(backoffCall).toBeDefined();
+      const backoffPayload = backoffCall![0] as Record<string, unknown>;
+      expect(backoffPayload.last_sync_time).toBeUndefined();
+      expect(typeof backoffPayload.next_attempt_at).toBe('string');
+    });
+  });
+
+  // ── Claim-RPC selection (design review #1: atomic UPDATE…SKIP LOCKED…RETURNING) ──
+
+  describe('claim-based selection', () => {
+    it('selects connections via claim_focus_sync_batch RPC with p_limit 5', async () => {
+      const { deps, mocks } = makeDeps({ serviceClientOpts: { claimRows: [lynkRow()] } });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+      expect(mocks.rpcMock).toHaveBeenCalledWith('claim_focus_sync_batch', { p_limit: 5 });
+    });
+
+    it('returns 500 when the claim RPC errors', async () => {
+      const { deps } = makeDeps({ serviceClientOpts: { claimRows: [], claimError: { message: 'rpc down' } } });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      const res = await handleBulkSync(req, deps);
+      expect(res.status).toBe(500);
+    });
+
+    it('returns processed:0 when the claim returns no rows', async () => {
+      const { deps } = makeDeps({ serviceClientOpts: { claimRows: [] } });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      const res = await handleBulkSync(req, deps);
+      expect(await res.json()).toMatchObject({ processed: 0, errors: [] });
+    });
+  });
+
+  // ── Backoff contract (design review #4) ─────────────────────────────────────────
+  //
+  // The claim RPC bumps last_sync_time unconditionally when it claims a row, so
+  // backoff only exists if the worker's failure path POSITIVELY writes both
+  // consecutive_failures and next_attempt_at — this replaces the old best-effort
+  // "bump last_sync_time on failure" (deleted; see the B5 test above for the
+  // pre-change behavior this supersedes).
+
+  describe('backoff contract (design review #4)', () => {
+    beforeEach(async () => {
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      vi.mocked(txModule.processDayTransactions).mockResolvedValue({ status: 'ok' });
+    });
+
+    it('a failed connection writes consecutive_failures+1 and a future next_attempt_at (NOT a bare last_sync_time bump)', async () => {
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      vi.mocked(txModule.processDayTransactions).mockResolvedValue({ status: 'error', error: 'boom' });
+
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { claimRows: [lynkRow({ consecutive_failures: 1 })] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+      await Promise.resolve(); // best-effort writes fire asynchronously
+
+      const update = mocks.updateCalls.find((c) => c.payload.consecutive_failures !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.consecutive_failures).toBe(2);
+      // 15 min × 2^2 = 60 min
+      const delta = Date.parse(update!.payload.next_attempt_at as string) - NOW_MS;
+      expect(delta).toBeGreaterThanOrEqual(59 * 60 * 1000);
+      expect(delta).toBeLessThanOrEqual(61 * 60 * 1000);
+      expect(update!.payload.last_sync_time).toBeUndefined(); // claim already bumped it
+    });
+
+    it('backoff caps at 6 hours', async () => {
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      vi.mocked(txModule.processDayTransactions).mockResolvedValue({ status: 'error', error: 'boom' });
+
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { claimRows: [lynkRow({ consecutive_failures: 9 })] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+      await Promise.resolve();
+
+      const update = mocks.updateCalls.find((c) => c.payload.consecutive_failures !== undefined);
+      expect(update).toBeDefined();
+      expect(Date.parse(update!.payload.next_attempt_at as string) - NOW_MS).toBe(6 * 60 * 60 * 1000);
+    });
+
+    it('a successful connection resets consecutive_failures to 0 and next_attempt_at to null', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: {
+          claimRows: [lynkRow({ consecutive_failures: 3, next_attempt_at: '2026-07-04T12:00:00Z' })],
+        },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const update = mocks.updateCalls.find((c) => c.payload.initial_sync_done !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.consecutive_failures).toBe(0);
+      expect(update!.payload.next_attempt_at).toBeNull();
     });
   });
 });

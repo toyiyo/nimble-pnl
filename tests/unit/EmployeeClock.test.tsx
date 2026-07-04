@@ -13,6 +13,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import React from 'react';
 import EmployeeClock from '@/pages/EmployeeClock';
 
@@ -23,11 +24,17 @@ const {
   mutateMock,
   useCurrentEmployeeMock,
   useEmployeePunchStatusMock,
+  useCreateTimePunchMock,
   checkLocationMock,
 } = vi.hoisted(() => ({
   mutateMock: vi.fn(),
   useCurrentEmployeeMock: vi.fn(),
   useEmployeePunchStatusMock: vi.fn(),
+  // `useCreateTimePunch()` mock — most tests only care that `mutate` was
+  // invoked with the right payload (isPending: false is the default).
+  // Tests that exercise per-call onError/onSuccess/isPending behavior
+  // override this via `useCreateTimePunchMock.mockReturnValue(...)`.
+  useCreateTimePunchMock: vi.fn(() => ({ mutate: mutateMock, isPending: false })),
   checkLocationMock: vi.fn(),
 }));
 
@@ -54,7 +61,7 @@ vi.mock('@/hooks/useTimePunches', async () => {
     useCurrentEmployee: (...args: unknown[]) => useCurrentEmployeeMock(...args),
     useEmployeePunchStatus: (...args: unknown[]) =>
       useEmployeePunchStatusMock(...args),
-    useCreateTimePunch: () => ({ mutate: mutateMock, isPending: false }),
+    useCreateTimePunch: () => useCreateTimePunchMock(),
     useTimePunches: () => ({ punches: [] }),
   };
 });
@@ -178,5 +185,70 @@ describe('EmployeeClock — break UI removed', () => {
     expect(screen.queryByRole('button', { name: /start break/i })).toBeNull();
     expect(screen.queryByRole('button', { name: /end break/i })).toBeNull();
     expect(screen.queryByText(/on break/i)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test suite — BUG-003: persistent punch-failure alert + retry
+//
+// Design spec: docs/superpowers/specs/2026-07-04-employee-clock-punch-error-surfacing-design.md
+//
+// `useCreateTimePunch` is mocked so `mutate(payload, { onError, onSuccess })`
+// can be driven per-call from the test: invoking the captured `onError`
+// synchronously simulates the mutation rejecting, without needing a real
+// QueryClient/mutation lifecycle.
+// ---------------------------------------------------------------------------
+describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    useCurrentEmployeeMock.mockReturnValue({
+      employee: EMPLOYEE,
+      loading: false,
+    });
+
+    useEmployeePunchStatusMock.mockReturnValue({
+      status: { is_clocked_in: false, on_break: false, last_punch_time: null },
+      loading: false,
+    });
+
+    checkLocationMock.mockResolvedValue({ action: 'allow', checked: false });
+
+    // Default: mutate is a no-op spy; individual tests reassign
+    // `mutateMock`'s implementation to synchronously fire onError/onSuccess.
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: false });
+  });
+
+  it('punch failure (per-call onError) shows a role="alert" failure alert with a Try Again button', async () => {
+    const user = userEvent.setup();
+
+    // Simulate the mutation rejecting: whenever `mutate` is called with
+    // per-call options, invoke `onError` synchronously (as React Query does
+    // for a rejected mutationFn, modulo microtask timing which doesn't
+    // matter for this assertion).
+    mutateMock.mockImplementation((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+
+    render(<EmployeeClock />);
+
+    // Clock In → opens the camera dialog → Skip Photo triggers the punch
+    // (handleSkipVerification -> handleConfirmPunch -> createPunch.mutate).
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    // The persistent failure alert must render with role="alert" and
+    // contain a "Try Again" button. Scope the query to the alert whose
+    // accessible name/description mentions the punch failure, to avoid
+    // colliding with the pre-existing "Why we verify" informational alert
+    // (which also has role="alert" per the shadcn Alert primitive).
+    const alerts = await screen.findAllByRole('alert');
+    const failureAlert = alerts.find((el) =>
+      /didn't go through/i.test(el.textContent || '')
+    );
+    expect(failureAlert).toBeDefined();
+
+    const tryAgainButton = screen.getByRole('button', { name: /try again/i });
+    expect(tryAgainButton).toBeInTheDocument();
   });
 });

@@ -294,6 +294,41 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
 
+  it('moves focus to the main Clock In/Out button when the alert unmounts after a successful retry, if focus was inside the alert', async () => {
+    const user = userEvent.setup();
+
+    // First call: fail (captures the payload, renders the alert + Try Again
+    // button). Second call (the retry, triggered by clicking Try Again):
+    // succeed via onSuccess, which unmounts the alert.
+    mutateMock.mockImplementationOnce((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+    mutateMock.mockImplementationOnce((_payload, options) => {
+      options?.onSuccess?.();
+    });
+
+    render(<EmployeeClock />);
+
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    const tryAgainButton = await screen.findByRole('button', { name: /try again/i });
+    // Focus must be inside the alert (on the Try Again button) before the
+    // retry — this is the precondition the design calls out: "if focus was
+    // inside it". Clicking the button with userEvent already focuses it,
+    // but assert explicitly so the precondition is unambiguous.
+    tryAgainButton.focus();
+    expect(tryAgainButton).toHaveFocus();
+
+    await user.click(tryAgainButton);
+
+    // The retry succeeded (per-call onSuccess), so the alert (and the Try
+    // Again button that was focused) unmounts. Focus must not be dropped to
+    // <body> — it must land on the main Clock In/Out action button.
+    const clockInOutButton = await screen.findByRole('button', { name: /clock in/i });
+    expect(clockInOutButton).toHaveFocus();
+  });
+
   it('Try Again button is disabled while createPunch.isPending is true', async () => {
     const user = userEvent.setup();
 

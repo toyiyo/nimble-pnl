@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -31,6 +31,8 @@ const EmployeeClock = () => {
   const [failedPunch, setFailedPunch] = useState<{ payload: CreateTimePunchInput; failedAt: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const failureAlertRef = useRef<HTMLDivElement>(null);
+  const mainActionButtonRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
   const MAX_PHOTO_WIDTH = 480;
   const PHOTO_QUALITY = 0.6;
@@ -63,6 +65,26 @@ const EmployeeClock = () => {
     if (cameraStream && !showCameraDialog) stopCamera();
     return stopCamera;
   }, [cameraStream, showCameraDialog, stopCamera]);
+
+  // Focus management: the failure alert never steals focus on appear (it's
+  // a live region — screen readers announce it without moving focus). But
+  // when it unmounts after a successful retry, if focus was resting inside
+  // it (i.e. on the Try Again button that's about to disappear), the
+  // browser would otherwise drop focus to <body>. `handleTryAgain` captures
+  // whether focus was inside the alert *before* clearing the state that
+  // unmounts it (checking in an effect after the fact would be too late —
+  // React will have already removed the alert's DOM node by then) into this
+  // ref; the layout effect below moves focus once the retry succeeds and
+  // the main action button is back in the (post-alert) DOM.
+  const focusMainActionAfterUnmountRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (failedPunch) return;
+    if (!focusMainActionAfterUnmountRef.current) return;
+
+    focusMainActionAfterUnmountRef.current = false;
+    mainActionButtonRef.current?.focus();
+  }, [failedPunch]);
 
   const startCamera = async () => {
     try {
@@ -246,10 +268,17 @@ const EmployeeClock = () => {
     }
 
     const payload = failedPunch.payload;
+    // Capture whether focus was inside the alert (e.g. on the Try Again
+    // button that's about to disappear) before clearing the state that
+    // unmounts it — the layout effect below uses this to decide whether to
+    // move focus to the main action button once the retry succeeds.
+    focusMainActionAfterUnmountRef.current =
+      failureAlertRef.current?.contains(document.activeElement) ?? false;
     setFailedPunch(null);
 
     createPunch.mutate(payload, {
       onError: () => {
+        focusMainActionAfterUnmountRef.current = false;
         setFailedPunch({ payload, failedAt: Date.now() });
       },
       onSuccess: () => {
@@ -369,7 +398,7 @@ const EmployeeClock = () => {
 
       {/* Persistent punch-failure alert (BUG-003) */}
       {failedPunch && (
-        <Alert variant="destructive">
+        <Alert variant="destructive" ref={failureAlertRef}>
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>Punch failed</AlertTitle>
           <AlertDescription className="space-y-3">
@@ -396,6 +425,7 @@ const EmployeeClock = () => {
         <CardContent>
           {!isClockedIn ? (
             <Button
+              ref={mainActionButtonRef}
               size="lg"
               className="h-24 text-xl w-full"
               onClick={() => handleInitiatePunch('clock_in')}
@@ -406,6 +436,7 @@ const EmployeeClock = () => {
             </Button>
           ) : (
             <Button
+              ref={mainActionButtonRef}
               size="lg"
               variant="destructive"
               className="h-24 text-xl w-full"

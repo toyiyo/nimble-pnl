@@ -9,7 +9,7 @@ export function useApproverCount(restaurantId: string | undefined) {
         .from('user_restaurants')
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', restaurantId!)
-        .in('role', ['owner', 'manager']);
+        .in('role', ['owner', 'manager', 'operations_manager']);
       if (error) throw error;
       return count ?? 0;
     },

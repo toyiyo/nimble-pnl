@@ -20,6 +20,7 @@ describe('Permission System Integrity', () => {
     const ALL_EXPECTED_ROLES: Role[] = [
       'owner',
       'manager',
+      'operations_manager',
       'chef',
       'staff',
       'kiosk',
@@ -470,16 +471,16 @@ describe('getInternalRoles', () => {
   it('returns only internal roles', () => {
     const roles = getInternalRoles();
     expect(roles).toEqual(
-      expect.arrayContaining(['owner', 'manager', 'chef', 'staff', 'kiosk'])
+      expect.arrayContaining(['owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk'])
     );
     expect(roles).not.toContain('collaborator_accountant');
     expect(roles).not.toContain('collaborator_inventory');
     expect(roles).not.toContain('collaborator_chef');
   });
 
-  it('returns exactly 5 internal roles', () => {
+  it('returns exactly 6 internal roles', () => {
     const roles = getInternalRoles();
-    expect(roles.length).toBe(5);
+    expect(roles.length).toBe(6);
   });
 });
 

@@ -11,6 +11,7 @@
  * Internal roles (full team members):
  * - owner: Full access to all features
  * - manager: Most features except some admin
+ * - operations_manager: All operations except accounting and admin
  * - chef: Recipes and inventory focus
  * - staff: Employee self-service only
  * - kiosk: Time clock only
@@ -23,6 +24,7 @@
 export type Role =
   | 'owner'
   | 'manager'
+  | 'operations_manager'
   | 'chef'
   | 'staff'
   | 'kiosk'

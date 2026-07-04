@@ -215,9 +215,6 @@ export const useCreateTimePunch = () => {
       return { ...data, photoUploadFailed };
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['timePunches', data.restaurant_id] });
-      queryClient.invalidateQueries({ queryKey: ['punchStatus', data.employee_id] });
-
       if (variables?.silent) return;
 
       const punchTypeText = data.punch_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
@@ -236,6 +233,19 @@ export const useCreateTimePunch = () => {
           : error.message,
         variant: 'destructive',
       });
+    },
+    // Invalidate regardless of outcome: a failed INSERT never returns `data`,
+    // so a failed punch would otherwise leave stale timePunches/punchStatus
+    // caches around. Prefer `data`'s ids when the INSERT succeeded (they're
+    // the authoritative server-confirmed values); fall back to `variables`
+    // (the request we sent) when it didn't.
+    onSettled: (data, _error, variables) => {
+      const restaurantId = data?.restaurant_id ?? variables?.restaurant_id;
+      const employeeId = data?.employee_id ?? variables?.employee_id;
+      if (!restaurantId || !employeeId) return;
+
+      queryClient.invalidateQueries({ queryKey: ['timePunches', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['punchStatus', employeeId] });
     },
   });
 };

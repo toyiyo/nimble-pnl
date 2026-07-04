@@ -13,8 +13,15 @@
  *       a. Check wall-clock budget (90s). Break if exceeded.
  *       b. Determine sync mode from initial_sync_done:
  *          - false (backfill): one cursor day per call (mirrors focusSyncDataHandler).
- *          - true (incremental): last 2 business days in connection's timezone.
- *       c. Call processReportDay for each day.
+ *          - true (incremental), legacy portal path: last 2 business days in
+ *            connection's timezone (unchanged).
+ *          - true (incremental), Lynk API path: TODAY always, YESTERDAY only
+ *            when its focus_datafeed_state fingerprint is missing or ≥ 6h
+ *            stale (lynkIncrementalDates) — closes the "today is never
+ *            pulled" gap. Wires a per-connection delta-skip state store
+ *            (createDatafeedStateStore) into processDayTransactions so
+ *            unchanged feeds skip parse/upserts/RPC entirely.
+ *       c. Call processReportDay (portal) / processDayTransactions (Lynk) for each day.
  *       d. On success: update sync_cursor / initial_sync_done / last_sync_time and
  *          reset consecutive_failures=0 / next_attempt_at=null via serviceClient.
  *       e. Per-connection exception caught — writes exponential backoff
@@ -24,7 +31,8 @@
  *  5. Return 200 { processed, errors, elapsedMs }.
  *
  * Design references:
- *  - Plan Task 10; Focus sync frequency plan Task 5 (claim-RPC + backoff contract)
+ *  - Plan Task 10; Focus sync frequency plan Task 5 (claim-RPC + backoff contract),
+ *    Task 6 (today-inclusive Lynk window + state store)
  *  - Spec §8 (focus-bulk-sync), §9 (sync orchestration)
  *  - §16 S5 (LIMIT 5 round-robin), review design ("2s delay", "90s wall-clock budget")
  *  - Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer)
@@ -43,6 +51,7 @@ import {
   todayInTz,
   subtractDays,
   recentBusinessDays,
+  lynkIncrementalDates,
   type FocusConnection,
   type FocusConnectionRow as SharedFocusConnectionRow,
   type FetchDeps,
@@ -53,6 +62,7 @@ import {
   processDayTransactions,
   type TransactionSyncConfig,
 } from './focusTransactionSyncHandler.ts';
+import { createDatafeedStateStore, type StateStoreClient } from './focusDatafeedFingerprint.ts';
 import { focusApiBaseUrl, fetchDatafeed as realFetchDatafeed } from './focusLynkClient.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -130,6 +140,20 @@ export interface ServiceClient {
     ): {
       onConflict(columns: string): {
         select(): Promise<{ data: unknown; error: { message: string } | null }>;
+      };
+    };
+    /**
+     * select→eq→eq→maybeSingle chain — required by createDatafeedStateStore's
+     * get() (focus_datafeed_state lookups for the delta-skip state store).
+     */
+    select(columns: string): {
+      eq(col: string, val: string): {
+        eq(col: string, val: string): {
+          maybeSingle(): Promise<{
+            data: { checks_bytes: number; checks_sha256: string; fetched_at: string } | null;
+            error: { message: string } | null;
+          }>;
+        };
       };
     };
   };
@@ -222,20 +246,37 @@ async function processConnection(
       ),
     };
 
+    // Delta-skip state store, built once per connection from the service
+    // client (design §2 "Delta skip" — only the bulk-sync/cron path wires
+    // this; manual/custom-range/backfill callers keep pre-delta-skip behavior).
+    const stateStore = createDatafeedStateStore(
+      deps.serviceClient as unknown as StateStoreClient,
+    );
+
     const txDeps = {
       supabase: deps.serviceClient as unknown as Parameters<typeof processDayTransactions>[0]['supabase'],
       fetchDatafeed: realFetchDatafeed,
+      stateStore,
     };
 
     // At this point initial_sync_done=true is guaranteed (B5 skip guard at top
     // of processConnection returns early for backfilling rows). The Lynk backfill
     // is owned exclusively by the 5-min focus-backfill-sync cron (design §8.7).
-    // Incremental: last 2 business days in parallel.
-    const [yesterday, dayBefore] = recentBusinessDays(tz, now);
-    const results = await Promise.all([
-      processDayTransactions(txDeps, txConfig, yesterday),
-      processDayTransactions(txDeps, txConfig, dayBefore),
-    ]);
+    //
+    // Incremental window (design §2 "Lynk incremental window"): TODAY always
+    // (fixes the "today is never pulled" gap — recentBusinessDays() never
+    // included it); YESTERDAY only when its focus_datafeed_state fingerprint
+    // is missing or ≥ 6h stale (lynkIncrementalDates), bounding
+    // yesterday-correction staleness at the pre-change freshness level while
+    // halving steady-state terminal load.
+    const today = todayInTz(tz, now);
+    const yesterday = subtractDays(today, 1);
+    const yesterdayState = await stateStore.get(row.restaurant_id, yesterday);
+    const dates = lynkIncrementalDates(tz, now, yesterdayState?.fetchedAt ?? null);
+
+    const results = await Promise.all(
+      dates.map((date) => processDayTransactions(txDeps, txConfig, date)),
+    );
     const failed = results.find((r) => r.status === 'error');
     if (failed?.status === 'error') {
       const message = failed.error ?? 'Focus transaction incremental sync failed';

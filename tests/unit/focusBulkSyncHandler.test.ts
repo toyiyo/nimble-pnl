@@ -176,6 +176,12 @@ function makeServiceClientMock(opts: {
   /** Rows returned by claim_focus_sync_batch (replaces the old select-chain). */
   claimRows?: unknown[];
   claimError?: { message: string } | null;
+  /**
+   * fetched_at to return from focus_datafeed_state.select().eq().eq().maybeSingle()
+   * (the yesterday-fingerprint lookup createDatafeedStateStore().get() performs).
+   * null/undefined → no stored row (fail-open "never fetched" case).
+   */
+  stateFetchedAt?: string | null;
 } = {}) {
   const claimRows = opts.claimRows !== undefined ? opts.claimRows : [MOCK_CONN_INCREMENTAL];
   const claimError = opts.claimError ?? null;
@@ -197,12 +203,28 @@ function makeServiceClientMock(opts: {
   const upsertSelectMock = vi.fn().mockResolvedValue({ data: [], error: null });
   const upsertMock = vi.fn().mockReturnValue({ select: upsertSelectMock });
 
+  // focus_datafeed_state select→eq→eq→maybeSingle (createDatafeedStateStore().get()
+  // — used by the Lynk branch to decide whether yesterday's fingerprint is stale).
+  const stateRow = opts.stateFetchedAt
+    ? { checks_bytes: 1, checks_sha256: '0'.repeat(64), fetched_at: opts.stateFetchedAt }
+    : null;
+  const maybeSingleMock = vi.fn().mockResolvedValue({ data: stateRow, error: null });
+  const stateEq2Mock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+  const stateEq1Mock = vi.fn().mockReturnValue({ eq: stateEq2Mock });
+  const stateSelectMock = vi.fn().mockReturnValue({ eq: stateEq1Mock });
+  // focus_datafeed_state upsert (createDatafeedStateStore().touch()/record())
+  const stateUpsertSelectMock = vi.fn().mockResolvedValue({ data: [], error: null });
+  const stateUpsertMock = vi.fn().mockReturnValue({ select: stateUpsertSelectMock });
+
   const fromMock = vi.fn().mockImplementation((table: string) => {
     if (table === 'focus_connections') {
       return { update: updateMock };
     }
     if (table === 'focus_daily_reports') {
       return { upsert: upsertMock };
+    }
+    if (table === 'focus_datafeed_state') {
+      return { select: stateSelectMock, upsert: stateUpsertMock };
     }
     return { update: updateMock, upsert: upsertMock };
   });
@@ -215,6 +237,8 @@ function makeServiceClientMock(opts: {
       updateMock,
       eqUpdateMock,
       upsertMock,
+      stateSelectMock,
+      stateUpsertMock,
       /** Flattened view of every focus_connections update payload, in call order. */
       get updateCalls() {
         return updateMock.mock.calls.map(([payload]: [Record<string, unknown>]) => ({ payload }));
@@ -748,6 +772,83 @@ describe('handleBulkSync', () => {
       const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
       const res = await handleBulkSync(req, deps);
       expect(await res.json()).toMatchObject({ processed: 0, errors: [] });
+    });
+  });
+
+  // ── Lynk incremental window (today + conditional yesterday) ─────────────────
+  //
+  // Task 6: the Lynk branch of processConnection must sync TODAY every claim
+  // and YESTERDAY only when its focus_datafeed_state fingerprint is missing or
+  // ≥ 6h stale (lynkIncrementalDates), and must wire a stateStore into
+  // processDayTransactions so the cron path delta-skips unchanged feeds.
+  //
+  // deps.now() is pinned to 2026-07-04T18:00:00Z; America/Chicago → today = 2026-07-04,
+  // yesterday = 2026-07-03 (verified against lynkIncrementalDates' own fixture instant).
+
+  describe('Lynk incremental window (today + conditional yesterday)', () => {
+    const WINDOW_NOW_MS = Date.parse('2026-07-04T18:00:00Z');
+
+    beforeEach(async () => {
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      vi.mocked(txModule.processDayTransactions).mockReset();
+      vi.mocked(txModule.processDayTransactions).mockResolvedValue({ status: 'ok', checksWritten: 1 });
+    });
+
+    it('syncs TODAY and YESTERDAY when yesterday has no fingerprint row', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { claimRows: [lynkRow()], stateFetchedAt: null },
+        nowFn: () => WINDOW_NOW_MS,
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      const processedDates = vi.mocked(txModule.processDayTransactions).mock.calls.map((call) => call[2]);
+      expect(processedDates).toEqual(['2026-07-04', '2026-07-03']);
+    });
+
+    it('syncs only TODAY when yesterday was fingerprinted < 6h ago', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { claimRows: [lynkRow()], stateFetchedAt: '2026-07-04T13:00:00Z' },
+        nowFn: () => WINDOW_NOW_MS,
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      const processedDates = vi.mocked(txModule.processDayTransactions).mock.calls.map((call) => call[2]);
+      expect(processedDates).toEqual(['2026-07-04']);
+    });
+
+    it('passes the stateStore through to processDayTransactions (delta-skip active on the cron path)', async () => {
+      const { deps } = makeDeps({
+        serviceClientOpts: { claimRows: [lynkRow()], stateFetchedAt: '2026-07-04T13:00:00Z' },
+        nowFn: () => WINDOW_NOW_MS,
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      const txDepsSeen = vi.mocked(txModule.processDayTransactions).mock.calls.map((call) => call[0]);
+      expect(txDepsSeen.length).toBeGreaterThan(0);
+      expect(txDepsSeen[0].stateStore).toBeDefined();
+    });
+
+    it("an 'unchanged' day result counts as success (connection state resets, no error)", async () => {
+      const txModule = await import('../../supabase/functions/_shared/focusTransactionSyncHandler');
+      vi.mocked(txModule.processDayTransactions).mockResolvedValue({ status: 'unchanged' });
+
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { claimRows: [lynkRow()], stateFetchedAt: '2026-07-04T13:00:00Z' },
+        nowFn: () => WINDOW_NOW_MS,
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      const res = await handleBulkSync(req, deps);
+
+      const body = await res.json();
+      expect(body.processed).toBe(1);
+      const errorWrites = mocks.updateCalls.filter((c) => c.payload.connection_status === 'error');
+      expect(errorWrites).toHaveLength(0);
     });
   });
 

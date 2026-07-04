@@ -386,12 +386,20 @@ export async function handleSyncData(
         rangeUpdatePayload.last_error = null;
         rangeUpdatePayload.last_error_at = null;
       }
-      await deps.serviceClient
+      // Best-effort: the sync itself already succeeded/failed on its own merits,
+      // so a transient state-write failure must not flip the response — but it
+      // must be visible, and the banner self-heals on the next sync's write.
+      const { error: rangeStateErr } = await deps.serviceClient
         .from('focus_connections')
         .update(rangeUpdatePayload)
         .eq('id', connRow.id)
         .eq('restaurant_id', restaurantId)
         .select();
+      if (rangeStateErr) {
+        console.warn(
+          `focus-sync-data: custom-range connection-state write failed: ${rangeStateErr.message}`,
+        );
+      }
 
       return new Response(
         JSON.stringify({

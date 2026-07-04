@@ -873,6 +873,27 @@ describe('handleSyncData', () => {
       expect(updateArg.last_error).toBe('Focus POS Lynk response did not contain a blob_url');
       expect(updateArg.last_error_at).toBeDefined();
     });
+
+    it('still returns the sync result (200) when the state write itself fails', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { connection: MOCK_CONNECTION_LYNK_INCREMENTAL as any },
+      });
+      // Transient DB failure on the connection-state write — must be logged,
+      // never flip the (already successful) sync response.
+      mocks.casSelectMock.mockResolvedValueOnce({
+        data: null,
+        error: { message: 'connection reset' },
+      });
+      const req = makeRequest({
+        body: { restaurantId: RESTAURANT_ID, startDate: '2026-06-01', endDate: '2026-06-03' },
+      });
+      const res = await handleSyncData(req, deps);
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.daysSynced).toBe(3);
+      expect(body.status).toBe('ok');
+    });
   });
 
   // ── B3: Custom range — invalid → 400 (§8.2) ─────────────────────────────────

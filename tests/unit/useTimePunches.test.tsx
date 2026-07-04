@@ -104,6 +104,51 @@ describe('useCreateTimePunch — auth source', () => {
   });
 });
 
+describe('useCreateTimePunch — photo upload failure', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getSessionMock.mockResolvedValue({ data: { session: { user: { id: 'u1' } } } });
+  });
+
+  it('runs the INSERT even when the photo upload rejects, fires no toast before the INSERT resolves, and the success toast is the photo-failure variant', async () => {
+    uploadMock.mockResolvedValue({ data: null, error: new Error('upload failed') });
+
+    // Defer the INSERT resolution so we can assert on toast state at the
+    // moment insert() is invoked but before it has resolved.
+    let resolveInsert!: (value: unknown) => void;
+    const insertPromise = new Promise((resolve) => {
+      resolveInsert = resolve;
+    });
+    insertSingleMock.mockReturnValue(insertPromise);
+
+    const { result } = renderHook(() => useCreateTimePunch(), { wrapper });
+    const mutatePromise = result.current.mutateAsync({
+      ...validPayload(),
+      photoBlob: new Blob(['x']),
+    });
+
+    // Let the photo-upload rejection and mutationFn's synchronous work flush,
+    // without letting the deferred INSERT resolve yet.
+    await waitFor(() => expect(insertMock).toHaveBeenCalledTimes(1));
+
+    // The INSERT must have been invoked (punch proceeds without a photo)...
+    expect(insertMock).toHaveBeenCalledTimes(1);
+    // ...and no toast may have fired yet — the old behavior toasted
+    // "Photo upload failed" synchronously inside mutationFn, before the
+    // INSERT even ran.
+    expect(toastMock).not.toHaveBeenCalled();
+
+    resolveInsert(okInsertResponse());
+    await mutatePromise;
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalled());
+    expect(toastMock.mock.calls[0]?.[0]).toMatchObject({
+      title: 'Punch recorded',
+      description: expect.stringMatching(/photo could not be uploaded/i),
+    });
+  });
+});
+
 describe('useCreateTimePunch — silent toast', () => {
   beforeEach(() => {
     vi.clearAllMocks();

@@ -102,6 +102,11 @@ type CreateTimePunchInput =
 // photo_path.
 const PHOTO_UPLOAD_TIMEOUT_MS = 10_000;
 
+// The punch INSERT itself must never hang indefinitely on a black-holed
+// fetch (e.g. dropped connection with no response). If it hasn't settled
+// within this window, the AbortSignal rejects the request instead.
+const PUNCH_INSERT_TIMEOUT_MS = 15_000;
+
 export const useCreateTimePunch = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -169,15 +174,28 @@ export const useCreateTimePunch = () => {
       // Remove photoBlob and silent from the punch data; both are local-only.
       const { photoBlob, silent, ...punchData } = punch;
 
-      const { data, error } = await supabase
-        .from('time_punches')
-        .insert({
-          ...punchData,
-          photo_path,
-          created_by: userId,
-        })
-        .select()
-        .single();
+      const insertController = new AbortController();
+      const insertTimeoutId = setTimeout(
+        () => insertController.abort(),
+        PUNCH_INSERT_TIMEOUT_MS,
+      );
+
+      let data: Record<string, unknown>;
+      let error: Error | null;
+      try {
+        ({ data, error } = await supabase
+          .from('time_punches')
+          .insert({
+            ...punchData,
+            photo_path,
+            created_by: userId,
+          })
+          .select()
+          .abortSignal(insertController.signal)
+          .single());
+      } finally {
+        clearTimeout(insertTimeoutId);
+      }
 
       if (error) throw error;
       return { ...data, photoUploadFailed };

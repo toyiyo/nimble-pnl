@@ -60,7 +60,24 @@ Phase 4–9: dev-build-and-ship workflow — in-progress
         coerce upstream — display-layer guard is the correct altitude, matches design doc.
       Verdict: diff already minimal and idiomatic. No changes applied, no commit needed
       (working tree confirmed clean via `git status --short`).
-- [ ] Phase 7–9: CodeRabbit, verify, PR, CI loop, retrospective
+- [x] Phase 7b: fold findings — 6 reviewers (security, performance, maintainability,
+      sound-logic, ocr-rules, codex). Zero critical/major findings. All findings info/minor:
+      - maintainability (info, tsconfig.json:13) + sound-logic (info, EmployeeTips.tsx:122):
+        both flag that the design doc's claim "typing hours as number|null enforces guards
+        at every consumption site" / "compile-time check" is inaccurate because
+        strictNullChecks is false project-wide (tsconfig.json, tsconfig.app.json) — so the
+        `Boolean(tip.hours) &&` guard is a runtime-only safety net, not compiler-enforced.
+        True observation about the design doc's rationale, but not a defect in the diff
+        itself (runtime fix is correct); no code change warranted, documented here instead
+        of editing the already-approved design doc.
+      - codex (minor, EmployeeTips.tsx:376): `Boolean(tip.hours)` treats real `hours_worked: 0`
+        same as null, hiding the row instead of showing "0.0 hours". Verified NOT reachable in
+        practice: useTipSplits.tsx:181 stores `share.hours || null`, so any falsy/zero hours
+        value already collapses to `null` upstream before reaching EmployeeTips.tsx — `0` can
+        never arrive at this guard. Minor severity, deferred to CodeRabbit pass (7c) per fold
+        policy (style/nit-level, not an actionable bug).
+      No fixes applied — working tree unchanged aside from dev-tools/ review artifacts.
+- [ ] Phase 7c–9: CodeRabbit, verify, PR, CI loop, retrospective
 
 ## CI Status
 - PR: not yet created

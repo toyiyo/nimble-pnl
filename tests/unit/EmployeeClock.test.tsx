@@ -293,4 +293,31 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     ).toBe(false);
     expect(screen.queryByRole('button', { name: /try again/i })).toBeNull();
   });
+
+  it('Try Again button is disabled while createPunch.isPending is true', async () => {
+    const user = userEvent.setup();
+
+    // First call fails, producing the persistent alert + Try Again button.
+    mutateMock.mockImplementation((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+
+    render(<EmployeeClock />);
+
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    const tryAgainButton = await screen.findByRole('button', { name: /try again/i });
+    expect(tryAgainButton).toBeEnabled();
+
+    // Simulate the retry mutation now being in flight: isPending flips true.
+    useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: true });
+    // Re-render is required since the mock return value is only read on render;
+    // EmployeeClock re-renders internally already from the onError state update,
+    // but we force a fresh render pass to read the updated mock value.
+    render(<EmployeeClock />);
+
+    const tryAgainButtons = screen.getAllByRole('button', { name: /try again/i });
+    expect(tryAgainButtons[tryAgainButtons.length - 1]).toBeDisabled();
+  });
 });

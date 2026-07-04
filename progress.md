@@ -37,7 +37,16 @@ Phase 4–9: dev-build-and-ship workflow — in-progress
       clean after task 2's commit 022c787e (which already carries the message
       "fix(tips): guard null hours in employee tips history tab (BUG-002)" required by this
       task) — no further code changes were required, so no additional commit was made.
-- [ ] Phase 5–9: UI review, code-simplify, CodeRabbit, verify, PR, CI loop, retrospective
+- [x] Phase 5: UI review — only src/pages/EmployeeTips.tsx changed (UI file); reviewed against
+      CLAUDE.md Apple/Notion guidelines. Diff is a minimal null-safety fix: type widened to
+      `number | null`, `periodHours` reduce coerces null, History tab hours line wrapped in
+      `Boolean(tip.hours) &&` — exactly mirroring the pre-existing Breakdown-tab guard/typography
+      (`text-[13px] text-muted-foreground`). No new colors, no new interactive elements, no
+      three-state-rendering regressions (loading/empty/error states untouched and already correct).
+      `npm run lint` shows zero errors in EmployeeTips.tsx (all 1384 errors are pre-existing,
+      unrelated files). `npm run typecheck` clean. No violations found — no fixes applied, no
+      commit made (working tree already clean).
+- [ ] Phase 6–9: code-simplify, CodeRabbit, verify, PR, CI loop, retrospective
 
 ## CI Status
 - PR: not yet created

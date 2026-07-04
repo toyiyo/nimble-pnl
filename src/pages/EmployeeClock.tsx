@@ -459,7 +459,11 @@ const EmployeeClock = () => {
           {/* Pending indicator: fills the closed-dialog dead zone while the
               punch mutation is in flight. */}
           {createPunch.isPending && (
-            <div className="flex items-center justify-center gap-2 mt-3 text-[13px] text-muted-foreground">
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-center gap-2 mt-3 text-[13px] text-muted-foreground"
+            >
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Recording punch…
             </div>

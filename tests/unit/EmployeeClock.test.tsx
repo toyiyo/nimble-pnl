@@ -320,4 +320,52 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
     const tryAgainButtons = screen.getAllByRole('button', { name: /try again/i });
     expect(tryAgainButtons[tryAgainButtons.length - 1]).toBeDisabled();
   });
+
+  it('Try Again on a payload older than RETRY_MAX_AGE_MS (5 min) discards it and restarts the punch flow instead of mutating with a stale payload', async () => {
+    const user = userEvent.setup();
+
+    // Fail on the first (and only, from this test's perspective) mutate call
+    // so the alert + Try Again button render with a captured `failedAt`.
+    mutateMock.mockImplementation((_payload, options) => {
+      options?.onError?.(new Error('Network request failed'));
+    });
+
+    // Freeze the clock so `failedAt` (captured via Date.now() in onError) is
+    // deterministic, then move it past the 5-minute freshness window before
+    // clicking Try Again.
+    const dateNowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000);
+
+    render(<EmployeeClock />);
+
+    await user.click(screen.getByRole('button', { name: /clock in/i }));
+    await user.click(await screen.findByRole('button', { name: /skip photo/i }));
+
+    await screen.findByRole('button', { name: /try again/i });
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+
+    // Advance the injected clock past RETRY_MAX_AGE_MS (5 min = 300_000ms).
+    dateNowSpy.mockReturnValue(1_000_000 + 5 * 60 * 1000 + 1);
+
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+
+    // The stale payload must be discarded, not re-sent to mutate — Try Again
+    // must NOT re-invoke mutate a second time with the old payload.
+    expect(mutateMock).toHaveBeenCalledTimes(1);
+
+    // Instead, the normal punch flow restarts: the camera dialog reopens
+    // (handleInitiatePunch(punchType) with a fresh timestamp), evidenced by
+    // the "Skip Photo" / verification dialog reappearing.
+    expect(
+      await screen.findByRole('button', { name: /skip photo/i })
+    ).toBeInTheDocument();
+
+    // The stale failure alert must no longer be showing once the flow has
+    // restarted (it's been discarded, not just left dangling).
+    const alertsAfterRestart = screen.queryAllByRole('alert');
+    expect(
+      alertsAfterRestart.some((el) => /didn't go through/i.test(el.textContent || ''))
+    ).toBe(false);
+
+    dateNowSpy.mockRestore();
+  });
 });

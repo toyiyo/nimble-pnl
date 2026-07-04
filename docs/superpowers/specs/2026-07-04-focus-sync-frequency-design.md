@@ -76,42 +76,71 @@ CREATE TABLE focus_datafeed_state (
   checks_bytes   integer NOT NULL,
   checks_sha256  text NOT NULL,
   fetched_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (restaurant_id, business_date)
 );
 ALTER TABLE focus_datafeed_state ENABLE ROW LEVEL SECURITY;
 -- No client policies: service-role-only internal state.
 ```
 
+No `updated_at` column — `fetched_at` is the only timestamp with meaning here
+(design review #5: an `updated_at` nothing maintains is dead weight).
+Retention: accepted unbounded growth — one ~100-byte row per restaurant per
+business day (~73 MB/year even at 2,000 restaurants). A pruning cron is not
+worth its surface area today; revisit if the table ever matters
+(design review #6, accepted trade-off).
+
 **Due predicate + claim RPC** (the predicate lives in exactly one function so
 the cron fan-out and the claim can never drift):
 
 ```sql
--- STABLE helper; the single source of truth for "is this connection due?"
-CREATE FUNCTION _focus_connection_is_due(fc focus_connections) RETURNS boolean ...
-  fc.is_active
-  AND (fc.next_attempt_at IS NULL OR fc.next_attempt_at <= now())
-  AND (fc.last_sync_time IS NULL
-       OR fc.last_sync_time <= now() - make_interval(mins => fc.sync_interval_minutes))
-  -- Lynk rows still backfilling are owned by focus-backfill-sync:
-  AND (fc.api_key IS NULL OR fc.initial_sync_done)
+-- The single source of truth for "is this connection due?".
+-- MUST be LANGUAGE sql, STABLE, single-expression, and NOT STRICT so the
+-- planner INLINES it into callers (plpgsql or STRICT would block inlining
+-- and force an opaque per-row filter — design review #2). Inlined, the
+-- claim query walks the existing partial index
+-- focus_connections_active_sync_idx (last_sync_time ASC NULLS FIRST
+-- WHERE is_active) and stops at LIMIT.
+CREATE FUNCTION _focus_connection_is_due(fc focus_connections) RETURNS boolean
+LANGUAGE sql STABLE AS $$
+  SELECT fc.is_active
+    AND (fc.next_attempt_at IS NULL OR fc.next_attempt_at <= now())
+    AND (fc.last_sync_time IS NULL
+         OR fc.last_sync_time <= now() - make_interval(mins => fc.sync_interval_minutes))
+    -- Lynk rows still backfilling are owned by focus-backfill-sync:
+    AND (fc.api_key IS NULL OR fc.initial_sync_done)
+$$;
 
 CREATE FUNCTION focus_due_sync_count() RETURNS integer ...   -- COUNT(*) over the predicate
 
+-- CRITICAL (design review #1): the claim is ONE atomic statement — the
+-- canonical job-queue shape. No separate SELECT-then-UPDATE-then-re-SELECT;
+-- any multi-statement variant reopens the race SKIP LOCKED exists to close.
 CREATE FUNCTION claim_focus_sync_batch(p_limit integer DEFAULT 5)
 RETURNS SETOF focus_connections
-SECURITY DEFINER SET search_path = public ...
-  -- SELECT ... WHERE _focus_connection_is_due(fc)
-  -- ORDER BY last_sync_time ASC NULLS FIRST
-  -- LIMIT p_limit
-  -- FOR UPDATE SKIP LOCKED               ← parallel workers never double-claim
-  -- then UPDATE last_sync_time = now() on the claimed rows (claim marker)
-  -- and RETURN the claimed rows.
+LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public AS $$
+  UPDATE focus_connections
+     SET last_sync_time = now()          -- claim marker; updated_at handled by trigger
+   WHERE id IN (
+     SELECT fc.id
+       FROM focus_connections fc
+      WHERE _focus_connection_is_due(fc)
+      ORDER BY fc.last_sync_time ASC NULLS FIRST
+      LIMIT p_limit
+      FOR UPDATE SKIP LOCKED             -- parallel workers never double-claim
+   )
+  RETURNING *;
+$$;
 ```
 
 Privileges follow the #577 hardening pattern: `REVOKE ALL ... FROM PUBLIC,
 anon, authenticated; GRANT EXECUTE ... TO service_role;` on all three
-functions.
+functions, with `SET search_path = pg_catalog, public` (the stronger form
+adopted after #573's CodeRabbit pass).
+
+The worker consumes the RPC result **by column name only** (supabase-js
+returns objects, never tuples) — a future `ALTER TABLE focus_connections ADD
+COLUMN` widens the SETOF contract silently, which is fine for named access
+and fatal for positional (design review #9).
 
 **Cron reschedule** (same `DO $$ unschedule-if-exists $$` + hardcoded-URL
 pattern as `20260703120000_focus_backfill_reliability.sql`):
@@ -142,6 +171,14 @@ one-line change if the fleet outgrows it. When a burst exceeds capacity, the
 most-stale-first ordering degrades gracefully (intervals stretch, nothing is
 starved).
 
+**pg_net failure model (design review #7):** `net.http_post` is
+fire-and-forget — the tick never blocks on worker responses, and response
+rows in `net._http_response` self-expire (pg_net TTL). If one of the K
+dispatches is lost at the pg_net layer, nothing retries it *within* the tick;
+the affected connections simply stay "due" and are claimed by the next tick's
+workers 5 minutes later. Accepted degradation — no per-dispatch observability
+is added.
+
 ### 2. Worker changes (`focusBulkSyncHandler.ts`)
 
 - **Selection:** replace the `select().order().limit(5)` query with
@@ -155,19 +192,35 @@ starved).
   halving steady-state terminal load. Both dates computed in the connection's
   timezone (existing `todayInTz`/`subtractDays` helpers).
 - **Delta skip:** after downloading the XML and extracting the `<Checks>`
-  block (the parser already pre-extracts it for CPU reasons), compute byte
-  length + SHA-256. If they match the stored `focus_datafeed_state` row,
-  update `fetched_at` and **skip** parse + upserts entirely — no
+  block (the parser already pre-extracts it for CPU reasons —
+  `extractChecksBlock` in `focusDatafeedParser.ts:191` gets **exported**),
+  compute byte length + SHA-256. If they match the stored
+  `focus_datafeed_state` row, update `fetched_at` and **skip** parse +
+  upserts + the day-scoped unified_sales RPC entirely — no
   `focus_orders.updated_at` churn, so the unified-sales aggregation sees no
   phantom changes. On mismatch (or no state row), process normally and upsert
-  the fingerprint. SHA-256 via Web Crypto (`crypto.subtle`), available in both
-  Deno and the Vitest environment.
+  the fingerprint. SHA-256 via Web Crypto (`crypto.subtle`), available in
+  both Deno and the Vitest environment.
+  **Integration point:** inside `processDayTransactions`
+  (`focusTransactionSyncHandler.ts`) between fetch (step 2) and parse
+  (step 3), returning a new discriminated result `{ status: 'unchanged' }`.
+  The state store is an **optional injectable dep** — only the bulk handler
+  wires it initially; the manual-sync, custom-range, and backfill paths keep
+  current behavior and existing test mocks unbroken. (A manual sync that
+  processes a feed without recording a fingerprint merely causes one
+  redundant reprocess on the next tick — no correctness issue.)
 - **Backoff:** on a failed connection, write
   `consecutive_failures = n+1` and
   `next_attempt_at = now() + LEAST(6 h, 15 min × 2^(n+1))`
   (→ 30 m, 1 h, 2 h, 4 h, 6 h cap). On success, reset both (`0` / `NULL`).
   An offline store (`UnreachableHost`) decays to one poll per 6 h until it
   comes back.
+  **Explicit contract (design review #4):** the claim RPC bumps
+  `last_sync_time` unconditionally, so backoff only exists if the worker's
+  failure path *positively writes* both columns — this write replaces the old
+  best-effort "bump last_sync_time on failure" (which is deleted). A unit test
+  MUST assert that a simulated failure writes `consecutive_failures = n+1`
+  and a future `next_attempt_at`, and that a success resets them.
 - **Legacy portal branch:** logic unchanged; it is now paced by
   `sync_interval_minutes = 360` through the shared predicate instead of the
   6-hour cron schedule. The B5 "skip Lynk backfill rows" guard stays as a
@@ -207,17 +260,27 @@ starved).
   success; budget/delay behavior unchanged.
 - **pgTAP (`supabase/tests/`):** `_focus_connection_is_due` truth table
   (inactive, interval not elapsed, backoff in future, Lynk-backfill
-  exclusion, legacy row with 360); `claim_focus_sync_batch` claims +
-  bumps `last_sync_time` + second immediate call returns 0 rows;
-  privileges revoked from `anon`/`authenticated`; `focus_datafeed_state`
-  RLS enabled with no client access; cron job present with `*/5 * * * *`.
+  exclusion, legacy row with 360); `claim_focus_sync_batch` claims and
+  bumps `last_sync_time`, and a second immediate call returns 0 rows —
+  **which proves "claiming removes a row from the due set", NOT the SKIP
+  LOCKED cross-session guarantee** (a transaction cannot contend with
+  itself; the second call returns nothing because the bump made the row
+  not-due — design review #3). True concurrent-session contention is a
+  deliberate scope cut: the claim uses the canonical single-statement
+  job-queue shape, and pgTAP has no two-session harness. Name the test
+  accordingly. Also: privileges revoked from `anon`/`authenticated`;
+  `focus_datafeed_state` RLS enabled with no client access; cron job
+  present with `*/5 * * * *`.
   **Live-cron caveat (#577 lesson):** the pgTAP DB runs a live pg_cron —
   (re)schedule the job inside the rolled-back transaction before asserting
   its schedule.
-- **Migration hygiene:** timestamp generated at file-creation; re-check
-  `git ls-tree origin/main supabase/migrations/` for prefix collision
-  immediately before opening the PR (`migrationVersionUniqueness.test.ts` is
-  the backstop).
+- **Migration hygiene (explicit pre-PR checklist, design review #8 — this
+  exact collision broke prod this week and `20260704010000_...` already
+  occupies today's date):**
+  1. Generate the timestamp at file-creation time (never from the plan doc).
+  2. Immediately before `gh pr create`: `git fetch && git ls-tree
+     origin/main supabase/migrations/ | grep <prefix>` must return nothing.
+  3. `migrationVersionUniqueness.test.ts` is the CI backstop, not the check.
 
 ### 6. Rollout
 

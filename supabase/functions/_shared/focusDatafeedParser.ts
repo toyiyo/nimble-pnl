@@ -188,7 +188,7 @@ function parseCheck(check: any): FocusCheck {
  * Returns the content string if the block is found, or null when it is
  * absent (config-only feed for very old dates).
  */
-function extractChecksBlock(xml: string): string | null {
+export function extractChecksBlock(xml: string): string | null {
   const startTag = '<Checks>';
   const endTag = '</Checks>';
   const start = xml.indexOf(startTag);

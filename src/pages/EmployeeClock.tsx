@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTimePunches } from '@/hooks/useTimePunches';
+import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTimePunches, type CreateTimePunchInput } from '@/hooks/useTimePunches';
 import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
@@ -28,6 +28,7 @@ const EmployeeClock = () => {
     distanceMeters?: number;
   } | null>(null);
   const [pendingLocationUnavailable, setPendingLocationUnavailable] = useState(false);
+  const [failedPunch, setFailedPunch] = useState<{ payload: CreateTimePunchInput; failedAt: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { toast } = useToast();
@@ -199,7 +200,7 @@ const EmployeeClock = () => {
       Promise.all([contextPromise, photoBlobPromise]),
       new Promise<[undefined, undefined]>(resolve => setTimeout(() => resolve([undefined, undefined]), 3000))
     ]).then(([context, photoBlob]) => {
-      createPunch.mutate({
+      const payload: CreateTimePunchInput = {
         restaurant_id: restaurantId,
         employee_id: employee.id,
         punch_type: punchType,
@@ -207,6 +208,20 @@ const EmployeeClock = () => {
         location: mergePunchLocation(context?.location, geofenceResult, locationUnavailable),
         device_info: context?.device_info,
         photoBlob,
+      };
+
+      // Clear any stale failure alert as soon as a mutation actually fires
+      // (retry or a brand-new confirmed punch) — merely initiating/cancelling
+      // a new attempt (without reaching this point) must not clear it.
+      setFailedPunch(null);
+
+      createPunch.mutate(payload, {
+        onError: (error: Error) => {
+          setFailedPunch({ payload, failedAt: Date.now() });
+        },
+        onSuccess: () => {
+          setFailedPunch(null);
+        },
       });
     });
   };

@@ -87,7 +87,7 @@ export const useEmployeePunchStatus = (employeeId: string | null) => {
   };
 };
 
-type CreateTimePunchInput =
+export type CreateTimePunchInput =
   Omit<TimePunch, 'id' | 'created_at' | 'updated_at' | 'employee'>
   & {
     photoBlob?: Blob;

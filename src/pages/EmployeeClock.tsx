@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -34,6 +34,7 @@ const EmployeeClock = () => {
   const { toast } = useToast();
   const MAX_PHOTO_WIDTH = 480;
   const PHOTO_QUALITY = 0.6;
+  const RETRY_MAX_AGE_MS = 5 * 60 * 1000;
 
   const { employee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const { status, loading: statusLoading } = useEmployeePunchStatus(employee?.id || null);
@@ -231,6 +232,32 @@ const EmployeeClock = () => {
     handleConfirmPunch();
   };
 
+  const handleTryAgain = () => {
+    if (!failedPunch) return;
+
+    // A stale payload (older than RETRY_MAX_AGE_MS) is discarded rather than
+    // re-sent — the punch context (location, device info) it captured may no
+    // longer be valid. Restart the normal punch flow instead.
+    if (Date.now() - failedPunch.failedAt > RETRY_MAX_AGE_MS) {
+      const punchType = failedPunch.payload.punch_type;
+      setFailedPunch(null);
+      handleInitiatePunch(punchType);
+      return;
+    }
+
+    const payload = failedPunch.payload;
+    setFailedPunch(null);
+
+    createPunch.mutate(payload, {
+      onError: () => {
+        setFailedPunch({ payload, failedAt: Date.now() });
+      },
+      onSuccess: () => {
+        setFailedPunch(null);
+      },
+    });
+  };
+
   if (!restaurantId) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -339,6 +366,26 @@ const EmployeeClock = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Persistent punch-failure alert (BUG-003) */}
+      {failedPunch && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Punch failed</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>Your {failedPunch.payload.punch_type === 'clock_out' ? 'clock out' : 'clock in'} didn't go through. Please try again.</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              onClick={handleTryAgain}
+              disabled={createPunch.isPending}
+            >
+              Try Again
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Action Buttons */}
       <Card>

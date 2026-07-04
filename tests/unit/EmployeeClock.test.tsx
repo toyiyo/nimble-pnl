@@ -302,7 +302,7 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
       options?.onError?.(new Error('Network request failed'));
     });
 
-    render(<EmployeeClock />);
+    const { rerender } = render(<EmployeeClock />);
 
     await user.click(screen.getByRole('button', { name: /clock in/i }));
     await user.click(await screen.findByRole('button', { name: /skip photo/i }));
@@ -312,10 +312,12 @@ describe('EmployeeClock — persistent punch-failure alert (BUG-003)', () => {
 
     // Simulate the retry mutation now being in flight: isPending flips true.
     useCreateTimePunchMock.mockReturnValue({ mutate: mutateMock, isPending: true });
-    // Re-render is required since the mock return value is only read on render;
-    // EmployeeClock re-renders internally already from the onError state update,
-    // but we force a fresh render pass to read the updated mock value.
-    render(<EmployeeClock />);
+    // Re-render the SAME component instance (not a fresh mount) so its
+    // `failedPunch` state (set by onError above) survives; a fresh `render()`
+    // call would mount a brand-new instance with reset state, leaving no
+    // Try Again button at all in that tree. `rerender` is what forces the
+    // existing instance to read the updated mock value.
+    rerender(<EmployeeClock />);
 
     const tryAgainButtons = screen.getAllByRole('button', { name: /try again/i });
     expect(tryAgainButtons[tryAgainButtons.length - 1]).toBeDisabled();

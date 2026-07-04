@@ -189,6 +189,23 @@ const EmployeeClock = () => {
     setPendingLocationUnavailable(false);
   };
 
+  // Shared by the initial confirm and Try Again: records the payload on
+  // failure (for retry) and clears it on success. `resetFocusRef` is only
+  // relevant for the retry path — resets the focus-preservation flag if the
+  // retry itself fails, so a subsequent unmount doesn't move focus based on
+  // stale state.
+  const mutatePunch = (payload: CreateTimePunchInput, resetFocusRef = false) => {
+    createPunch.mutate(payload, {
+      onError: () => {
+        if (resetFocusRef) focusMainActionAfterUnmountRef.current = false;
+        setFailedPunch({ payload, failedAt: Date.now() });
+      },
+      onSuccess: () => {
+        setFailedPunch(null);
+      },
+    });
+  };
+
   const handleConfirmPunch = async () => {
     if (!restaurantId || !employee || !pendingPunchType) return;
 
@@ -238,14 +255,7 @@ const EmployeeClock = () => {
       // a new attempt (without reaching this point) must not clear it.
       setFailedPunch(null);
 
-      createPunch.mutate(payload, {
-        onError: (error: Error) => {
-          setFailedPunch({ payload, failedAt: Date.now() });
-        },
-        onSuccess: () => {
-          setFailedPunch(null);
-        },
-      });
+      mutatePunch(payload);
     });
   };
 
@@ -282,15 +292,7 @@ const EmployeeClock = () => {
       failureAlertRef.current?.contains(document.activeElement) ?? false;
     setFailedPunch(null);
 
-    createPunch.mutate(payload, {
-      onError: () => {
-        focusMainActionAfterUnmountRef.current = false;
-        setFailedPunch({ payload, failedAt: Date.now() });
-      },
-      onSuccess: () => {
-        setFailedPunch(null);
-      },
-    });
+    mutatePunch(payload, /* resetFocusRef */ true);
   };
 
   if (!restaurantId) {

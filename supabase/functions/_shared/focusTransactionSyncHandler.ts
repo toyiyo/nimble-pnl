@@ -39,6 +39,36 @@ import {
   type ChecksFingerprint,
 } from './focusDatafeedFingerprint.ts';
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Run a DatafeedStateStore operation, swallowing any rejection.
+ *
+ * The real implementation (createDatafeedStateStore) is already internally
+ * fail-open — get/touch/record never throw. This wrapper defends the fail-open
+ * CONTRACT at the call site too, so a future/alternate DatafeedStateStore that
+ * *does* throw can't turn a bookkeeping hiccup into a false sync failure (e.g.
+ * a `record()` throwing after a fully-successful upsert+RPC would otherwise
+ * surface as `{ status: 'error' }` here, causing the bulk handler to write
+ * exponential backoff onto an otherwise-healthy connection — CodeRabbit major
+ * finding).
+ */
+async function safeStateStoreCall<T>(
+  label: string,
+  restaurantId: string,
+  businessDate: string,
+  op: () => Promise<T>,
+): Promise<T | undefined> {
+  try {
+    return await op();
+  } catch (err: unknown) {
+    console.warn(
+      `focus_datafeed_state ${label} threw for ${restaurantId}/${businessDate}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Minimal Supabase client surface needed by this handler. */
@@ -282,9 +312,16 @@ export async function processDayTransactions(
     let fingerprint: ChecksFingerprint | null = null;
     if (deps.stateStore) {
       fingerprint = await computeChecksFingerprint(result.xml);
-      const prev = await deps.stateStore.get(config.restaurantId, businessDate);
+      const stateStore = deps.stateStore;
+      const prev = await safeStateStoreCall(
+        'get', config.restaurantId, businessDate,
+        () => stateStore.get(config.restaurantId, businessDate),
+      );
       if (prev && prev.bytes === fingerprint.bytes && prev.sha256 === fingerprint.sha256) {
-        await deps.stateStore.touch(config.restaurantId, businessDate, fingerprint);
+        await safeStateStoreCall(
+          'touch', config.restaurantId, businessDate,
+          () => stateStore.touch(config.restaurantId, businessDate, fingerprint as ChecksFingerprint),
+        );
         return { status: 'unchanged' };
       }
     }
@@ -300,7 +337,12 @@ export async function processDayTransactions(
       // — e.g. "today" before a restaurant opens — never gets a state row,
       // so the fingerprint match at step 2.5 can never trigger for it).
       if (deps.stateStore && fingerprint) {
-        await deps.stateStore.record(config.restaurantId, businessDate, fingerprint);
+        const stateStore = deps.stateStore;
+        const fp = fingerprint;
+        await safeStateStoreCall(
+          'record', config.restaurantId, businessDate,
+          () => stateStore.record(config.restaurantId, businessDate, fp),
+        );
       }
       return { status: 'empty' };
     }
@@ -362,7 +404,12 @@ export async function processDayTransactions(
     // forever (codex review: prevents unified_sales — a P&L-critical table —
     // from silently drifting stale after a transient RPC failure).
     if (deps.stateStore && fingerprint && !unifiedSalesSyncFailed) {
-      await deps.stateStore.record(config.restaurantId, businessDate, fingerprint);
+      const stateStore = deps.stateStore;
+      const fp = fingerprint;
+      await safeStateStoreCall(
+        'record', config.restaurantId, businessDate,
+        () => stateStore.record(config.restaurantId, businessDate, fp),
+      );
     }
 
     return { status: 'ok', checksWritten: checks.length };

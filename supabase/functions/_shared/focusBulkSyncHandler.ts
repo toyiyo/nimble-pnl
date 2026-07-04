@@ -129,6 +129,19 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
 }
 
 /**
+ * `.eq(...)` filter chain returned by `update(...)`. Every real call site here
+ * filters by both `id` and `restaurant_id` (multi-tenant contract) before
+ * awaiting, so this must stay chainable across at least two `.eq()` calls
+ * while still being directly awaitable at any point in the chain — hence the
+ * `Promise` extension rather than a single-shot `eq(): Promise<...>` (which
+ * does not type-check past the first filter; CodeRabbit critical finding).
+ */
+interface UpdateFilterBuilder
+  extends Promise<{ data: unknown; error: { message: string } | null }> {
+  eq(col: string, val: string): UpdateFilterBuilder;
+}
+
+/**
  * Minimal Supabase service-role client surface needed by this handler.
  *
  * The `select` branch on `from()` is exactly the chain createDatafeedStateStore
@@ -138,9 +151,7 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
  */
 export interface ServiceClient {
   from(table: string): ReturnType<StateStoreClient['from']> & {
-    update(data: Record<string, unknown>): {
-      eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }>;
-    };
+    update(data: Record<string, unknown>): UpdateFilterBuilder;
   };
   /** RPC surface — used for the atomic claim_focus_sync_batch call. */
   rpc(fn: string, args: Record<string, unknown>): Promise<{
@@ -473,23 +484,27 @@ export async function handleBulkSync(
         row.consecutive_failures ?? 0,
         deps.now(),
       );
-      deps.serviceClient
-        .from('focus_connections')
-        .update({
-          consecutive_failures,
-          next_attempt_at,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', row.id)
-        .eq('restaurant_id', row.restaurant_id)
-        .then(({ error: tsErr }: { error: { message: string } | null }) => {
-          if (tsErr) {
-            console.warn(`focus-bulk-sync: backoff write failed for ${row.restaurant_id}:`, tsErr.message);
-          }
-        })
-        .catch((e: unknown) => {
-          console.warn(`focus-bulk-sync: backoff write threw for ${row.restaurant_id}:`, e instanceof Error ? e.message : String(e));
-        });
+      // Awaited (not fire-and-forget): on the last row in the batch, the handler
+      // returns immediately after this catch block — a dangling write here could
+      // lose the race against the response, letting a failed connection re-enter
+      // the claim pool without its backoff delay (CodeRabbit major finding).
+      // Still best-effort — a write failure only logs, never throws further.
+      try {
+        const { error: tsErr } = await deps.serviceClient
+          .from('focus_connections')
+          .update({
+            consecutive_failures,
+            next_attempt_at,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('restaurant_id', row.restaurant_id);
+        if (tsErr) {
+          console.warn(`focus-bulk-sync: backoff write failed for ${row.restaurant_id}:`, tsErr.message);
+        }
+      } catch (e: unknown) {
+        console.warn(`focus-bulk-sync: backoff write threw for ${row.restaurant_id}:`, e instanceof Error ? e.message : String(e));
+      }
     }
   }
 

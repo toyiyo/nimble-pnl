@@ -89,6 +89,17 @@ SELECT is(
     WHERE public._focus_connection_is_due(fc) AND fc.restaurant_id::text LIKE 'c5100000-%'),
   3, 'exactly the 3 expected fixtures are due');
 
+-- claim_focus_sync_batch operates unscoped over the whole table (that's the
+-- point — a real cron worker has no restaurant filter), so tests 13/15/16
+-- below need any OTHER due connection in the shared test DB pushed out of
+-- the due set for the rest of this transaction, or a coincidental match
+-- (e.g. another NULL last_sync_time row) could make claim(1) return a
+-- different row nondeterministically. Rolled back with everything else.
+UPDATE public.focus_connections
+   SET next_attempt_at = now() + interval '1 day'
+ WHERE restaurant_id::text NOT LIKE 'c5100000-%'
+   AND public._focus_connection_is_due(focus_connections);
+
 -- ── 13: NULLS FIRST — claim(1) takes the never-synced row ────────────────────
 SELECT is(
   (SELECT (public.claim_focus_sync_batch(1)).id),

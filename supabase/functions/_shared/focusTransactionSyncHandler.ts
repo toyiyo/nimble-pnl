@@ -294,6 +294,14 @@ export async function processDayTransactions(
     const { checks, deletedCheckIds } = parseFocusDatafeed(result.xml);
 
     if (checks.length === 0 && deletedCheckIds.length === 0) {
+      // Record the (empty) fingerprint so a subsequent quiet pull for this
+      // date can delta-skip via step 2.5 above instead of re-parsing forever
+      // (sound-logic review: without this, a repeatedly-empty business date
+      // — e.g. "today" before a restaurant opens — never gets a state row,
+      // so the fingerprint match at step 2.5 can never trigger for it).
+      if (deps.stateStore && fingerprint) {
+        await deps.stateStore.record(config.restaurantId, businessDate, fingerprint);
+      }
       return { status: 'empty' };
     }
 
@@ -326,12 +334,9 @@ export async function processDayTransactions(
       await upsertPayments(deps.supabase, check, config.restaurantId, businessDate);
     }
 
-    if (deps.stateStore && fingerprint) {
-      await deps.stateStore.record(config.restaurantId, businessDate, fingerprint);
-    }
-
     // ── 6. Sync to unified_sales ──────────────────────────────────────────────
 
+    let unifiedSalesSyncFailed = false;
     if (!options.skipUnifiedSalesSync) {
       const { error: rpcError } = await deps.supabase.rpc(
         'sync_focus_transactions_to_unified_sales',
@@ -346,7 +351,18 @@ export async function processDayTransactions(
         console.warn(
           `sync_focus_transactions_to_unified_sales warning: ${rpcError.message}`,
         );
+        unifiedSalesSyncFailed = true;
       }
+    }
+
+    // Record the fingerprint only once the day is fully synced (data written
+    // AND unified_sales caught up). If the RPC failed above, deliberately
+    // skip the record so the next tick re-fetches, re-parses, and retries the
+    // RPC instead of matching a "stale-success" fingerprint and delta-skipping
+    // forever (codex review: prevents unified_sales — a P&L-critical table —
+    // from silently drifting stale after a transient RPC failure).
+    if (deps.stateStore && fingerprint && !unifiedSalesSyncFailed) {
+      await deps.stateStore.record(config.restaurantId, businessDate, fingerprint);
     }
 
     return { status: 'ok', checksWritten: checks.length };

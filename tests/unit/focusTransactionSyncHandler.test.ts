@@ -616,17 +616,55 @@ describe('processDayTransactions', () => {
       expect(stateStore.touch).toHaveBeenCalledWith(RESTAURANT_ID, BUSINESS_DATE, emptyFp);
     });
 
-    it('still returns empty when there is no prior state (first-ever pull of a quiet feed)', async () => {
+    it('returns empty AND records the empty-block fingerprint when there is no prior state (first-ever pull of a quiet feed)', async () => {
       const stateStore = makeStateStore(null);
       const { deps } = makeDeps({ xml: SAMPLE_XML_EMPTY });
 
       const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
 
       // No prior fingerprint → not a delta-skip candidate → falls through to
-      // the normal empty-datafeed path (no checks/deletes → 'empty'); no
-      // fingerprint record for an empty feed (nothing was written).
+      // the normal empty-datafeed path (no checks/deletes → 'empty'). The
+      // empty-block fingerprint IS recorded here (review fix) so that a
+      // subsequent quiet pull for this date can delta-skip via step 2.5
+      // instead of re-parsing an empty feed on every tick indefinitely.
+      const emptyFp = await computeChecksFingerprint(SAMPLE_XML_EMPTY);
       expect(result).toEqual({ status: 'empty' });
+      expect(stateStore.record).toHaveBeenCalledWith(RESTAURANT_ID, BUSINESS_DATE, emptyFp);
+    });
+
+    it('does NOT record the fingerprint when the unified_sales RPC fails, so the next tick retries the RPC', async () => {
+      // Regression test (codex review): recording the fingerprint before the
+      // RPC's success is confirmed would let a transient RPC failure go
+      // permanently unretried — the next tick would see a matching
+      // fingerprint and delta-skip, silently leaving unified_sales stale.
+      const stateStore = makeStateStore(null);
+      const { client, mocks } = makeSupabaseMock();
+      mocks.rpcFn.mockResolvedValue({ data: null, error: { message: 'unified_sales RPC timeout' } });
+      const fetchDatafeedMock = makeFetchDatafeedMock(XML);
+      const deps: TransactionSyncDeps = {
+        supabase: client as unknown as TransactionSupabaseDeps,
+        fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
+        stateStore,
+      };
+
+      const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+
+      // Data is still written (RPC failure is logged, not fatal) ...
+      expect(result).toEqual({ status: 'ok', checksWritten: 1 });
+      expect(mocks.ordersUpsert).toHaveBeenCalled();
+      // ... but the fingerprint must NOT be recorded, so the next tick
+      // re-processes this date and retries the unified_sales RPC.
       expect(stateStore.record).not.toHaveBeenCalled();
+    });
+
+    it('records the fingerprint when the unified_sales RPC succeeds', async () => {
+      const stateStore = makeStateStore(null);
+      const { deps } = makeDeps({ xml: XML });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result).toEqual({ status: 'ok', checksWritten: 1 });
+      expect(stateStore.record).toHaveBeenCalledOnce();
     });
   });
 });

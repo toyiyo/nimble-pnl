@@ -74,43 +74,83 @@ failure was network-level and generic to both the photo and skip paths.
 
 ### 1. `useCreateTimePunch` (`src/hooks/useTimePunches.tsx`)
 
-- **Photo upload**: wrap the storage upload in a timeout race
-  (`PHOTO_UPLOAD_TIMEOUT_MS = 10_000`). On failure **or timeout**: do NOT toast
-  inside `mutationFn`; record `photoUploadFailed = true` and continue without a
-  photo (existing non-fatal semantics preserved).
-- **INSERT timeout**: chain `.abortSignal(AbortSignal.timeout(15_000))` onto the
-  `time_punches` INSERT so a black-holed fetch rejects instead of hanging
-  (supabase-js ≥ 2.x supports `abortSignal` on PostgREST builders).
-- **`onSuccess`**: keep invalidations. When not `silent`: if
-  `photoUploadFailed`, toast *"Punch recorded — photo could not be uploaded"*;
-  otherwise the existing success toast. (Kiosk passes `silent: true` and keeps
-  its own UI; it no longer gets a stray photo-upload toast, which matches the
-  kiosk pattern of surfacing its own feedback.)
-- **`onError`**: keep the destructive toast; map abort/timeout errors
-  (`error.name === 'AbortError' || 'TimeoutError'`) to a human message:
-  *"Request timed out. Check your connection and try again."*
+- **Photo upload**: wrap the storage upload in a timeout
+  (`PHOTO_UPLOAD_TIMEOUT_MS = 10_000`) driven by an `AbortController` +
+  `setTimeout` (not `AbortSignal.timeout`, for older-WebKit tablet compat).
+  Pass the signal to the storage upload if the pinned storage-js version
+  supports it (verify at implementation time); otherwise `Promise.race` with a
+  documented fire-and-forget on the loser. Either way the losing/abandoned
+  upload promise gets a no-op `.catch()` so late rejections don't surface as
+  unhandled-rejection noise. On failure **or timeout**: do NOT toast inside
+  `mutationFn`; record `photoUploadFailed = true` and continue without a photo
+  (existing non-fatal semantics preserved). An upload that completes after the
+  timeout leaves an orphaned storage object — accepted (photos are advisory).
+- **INSERT timeout**: abort the `time_punches` INSERT after
+  `PUNCH_INSERT_TIMEOUT_MS = 15_000` so a black-holed fetch rejects instead of
+  hanging. Exact chain order (abortSignal lives on the transform builder):
+  `supabase.from('time_punches').insert(...).select().abortSignal(controller.signal).single()`.
+  Use `AbortController` + `setTimeout` (cleared on settle), not
+  `AbortSignal.timeout`.
+- **Invalidations move to `onSettled`** (not `onSuccess`): if the client aborts
+  at 15s but the INSERT actually landed server-side, invalidating
+  `['punchStatus', …]` and `['timePunches', …]` on error reconciles the badge
+  on the next fetch instead of waiting out the 30s poll. `onSettled` derives
+  ids from `variables` since `data` is undefined on error.
+- **`onSuccess`**: when not `silent`: if `photoUploadFailed`, toast
+  *"Punch recorded — photo could not be uploaded"*; otherwise the existing
+  success toast. (Kiosk passes `silent: true` and keeps its own UI; it no
+  longer gets a stray photo-upload toast — kiosk surfaces punch failures
+  through its own inline UI, per the comment contract in `KioskMode.tsx`, so
+  this is not a silent kiosk regression.)
+- **`onError`**: keep the destructive toast; classify abort/timeout errors
+  defensively — `error instanceof DOMException`, `error.name` of
+  `'AbortError'`/`'TimeoutError'`, or message matching `/abort|timed?\s?out/i`
+  — and map to *"Request timed out. Check your connection and try again."*
+  supabase-js may not preserve the DOMException shape across its fetch
+  wrapper, so tests must exercise a genuinely-aborted rejection (an
+  `AbortController.abort()` reason), not only a hand-built `Error` with
+  `.name` set.
 - The mutation **result** carries `photoUploadFailed` so callers can render
   their own messaging if needed.
 
 ### 2. `EmployeeClock` (`src/pages/EmployeeClock.tsx`)
 
 - Track the last attempted payload and failure:
-  `const [failedPunch, setFailedPunch] = useState<CreateTimePunchInput | null>(null)`.
-  Set it via `createPunch.mutate(payload, { onError })` per-call callbacks;
-  clear on success and when a new attempt starts.
+  `const [failedPunch, setFailedPunch] = useState<{ payload: CreateTimePunchInput; failedAt: number } | null>(null)`.
+  Set it via `createPunch.mutate(payload, { onError })` per-call callbacks.
+  It clears **only when a subsequent `mutate()` actually fires** (retry or a
+  new confirmed punch) or on success — NOT merely when a new attempt is
+  initiated, so a user who opens and cancels the camera dialog keeps the Try
+  Again affordance.
 - **Persistent failure alert** (rendered above Quick Actions when
-  `failedPunch` is set): `role="alert"`, destructive variant —
-  *"Your clock-in/out didn't go through. Check your connection and try
-  again."* — with a **Try Again** button that re-fires
-  `createPunch.mutate(failedPunch)` (same payload, including the photo blob and
-  original `punch_time`, so the punch reflects when the employee actually
-  punched, not when the retry succeeded).
+  `failedPunch` is set): shadcn `Alert` with `variant="destructive"` (implies
+  `role="alert"` live-region announcement without stealing focus), composed of
+  `AlertTitle` + `AlertDescription` — *"Your clock-in/out didn't go through.
+  Check your connection and try again."* — with a **Try Again** button
+  (`h-9 px-4 rounded-lg text-[13px] font-medium`, tab-reachable,
+  `disabled={createPunch.isPending}` to prevent concurrent duplicate
+  mutations) that re-fires `createPunch.mutate(failedPunch.payload)`.
+- **Retry timestamp policy**: retries reuse the original `punch_time` — the
+  original tap is when the employee actually punched, which is the truthful
+  payroll time (re-stamping would inflate the shift by the retry delay).
+  To bound staleness, Try Again enforces a freshness window
+  (`RETRY_MAX_AGE_MS = 5 min`): past it, the click discards the stale payload
+  and restarts the normal punch flow (`handleInitiatePunch(punchType)`) with a
+  fresh timestamp.
+- **Focus management**: the alert does not steal focus on appear (live region
+  announces it). When the alert unmounts after a successful retry and focus
+  was inside it, move focus to the main Clock In/Out button so it isn't
+  dropped to `<body>`.
+- **Failure source of truth**: `EmployeeClock` does NOT pass `silent: true`;
+  the hook's toasts still fire, but with `TOAST_LIMIT = 1` they are
+  best-effort. The persistent alert — not the toast — is the authoritative
+  failure surface.
 - **Pending indicator**: while `createPunch.isPending`, show a small inline
-  "Recording punch…" status (with spinner) near the action button so the
+  "Recording punch…" status (`text-[13px] text-muted-foreground` with a
+  `Loader2` spinner, `text-muted-foreground`) near the action button so the
   closed-dialog window isn't a dead zone. Buttons already disable on
   `isPending`.
-- Three-state rendering, semantic tokens, and a11y (`role="alert"`, button
-  labels) per CLAUDE.md.
+- Three-state rendering, semantic tokens, and a11y per CLAUDE.md.
 
 ### Out of scope
 
@@ -126,24 +166,45 @@ failure was network-level and generic to both the photo and skip paths.
    resolves**; success toast mentions the photo wasn't uploaded.
 2. Photo upload hangs → punch proceeds without photo after the upload timeout.
 3. INSERT rejects → destructive "Error recording punch" toast.
-4. INSERT aborts (simulated `AbortError`/`TimeoutError`) → destructive toast
-   with the connection/timeout message.
-5. INSERT is invoked with an abort signal (pin the timeout wiring).
+4. INSERT aborts → destructive toast with the connection/timeout message.
+   The abort must be produced by a real `AbortController.abort()` rejection
+   reason (plus a fallback case for a plain error whose message matches the
+   timeout regex), not only a hand-built `Error` with `.name` set.
+5. INSERT is invoked with an abort signal (pin the timeout wiring and the
+   `.insert().select().abortSignal().single()` chain order).
 6. `silent: true` (kiosk) still suppresses success toasts including the
    photo-failure variant.
+6b. Query invalidations fire on error too (onSettled) so an
+   aborted-but-server-completed INSERT reconciles the status badge.
 
 `tests/unit/EmployeeClock.test.tsx` (extend existing suite):
 
 7. Punch failure → `role="alert"` failure alert visible with Try Again.
 8. Try Again → `mutate` re-invoked with the identical payload; alert clears on
-   success.
-9. New punch attempt clears a stale failure alert.
+   success; Try Again is disabled while the retry is pending.
+9. A newly confirmed punch (mutate firing) clears a stale failure alert;
+   merely opening/cancelling the camera dialog does not.
+10. Try Again on a payload older than `RETRY_MAX_AGE_MS` discards it and
+    restarts the punch flow instead of inserting a stale-timestamped punch.
 
 ## Decided trade-offs
 
-- The INSERT timeout (15s) can theoretically abort a request the server later
-  completes, so a retry could double-punch. Accepted: `time_punches` has no
-  uniqueness constraint on (employee, punch_time) today, the same risk already
-  exists with the user's manual new-tab retry (the observed workaround), and a
-  duplicate punch is visible/fixable in the manager UI, whereas a silent
-  missing clock-out corrupts payroll invisibly.
+- The INSERT timeout (15s) can abort a request the server later completes, so
+  a retry could double-punch. Note this is a **new, more frequent window** —
+  it fires on every slow-but-alive request (~15–20s restaurant Wi-Fi), not
+  only when a human gives up and retries in a new tab. Accepted because:
+  `time_punches` has no uniqueness constraint on manual punches (verified —
+  the only unique index, `idx_time_punches_source_dedup`, is partial on
+  `source_type/source_id IS NOT NULL` and doesn't cover the employee-clock
+  path); Try Again is disabled while pending (no concurrent duplicates);
+  `onSettled` invalidation reconciles the badge quickly; and a duplicate punch
+  is visible/fixable in the manager UI, whereas a silent missing clock-out
+  corrupts payroll invisibly. A server-side idempotency key is noted as future
+  work if duplicates show up in practice.
+- Retries reuse the original `punch_time` within a 5-minute freshness window
+  (see Retry timestamp policy above): the original tap time is the accurate
+  payroll fact; the window bounds the abandoned-tab case.
+- An aborted photo upload that completes server-side after timeout leaves an
+  orphaned object in `time-clock-photos` with no DB reference. Accepted:
+  advisory data, negligible volume; cancellation via storage-js signal support
+  is attempted first.

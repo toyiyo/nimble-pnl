@@ -538,27 +538,25 @@ describe('processDayTransactions', () => {
 
 describe('processDateRangeTransactions', () => {
   /**
-   * Build a deps object with a mocked processDayTransactions and supabase (for
-   * the final unified_sales RPC call).
+   * Build a deps object with a mocked processDayTransactions.
+   *
+   * NOTE: The range function no longer calls the unified_sales RPC at the end.
+   * Aggregation is handled by the Postgres cron (focus-transactions-unified-sales-sync).
+   * The supabase mock's rpcFn is still wired up so tests can assert it is NOT called.
    */
   function makeDateRangeDeps(opts: {
     dayResults?: Record<string, { status: 'ok' | 'empty' | 'error' | 'inprogress'; error?: string }>;
-    rpcError?: { message: string } | null;
   } = {}) {
     const { client, mocks } = makeSupabaseMock();
 
-    // processDateRangeTransactions calls deps.processDayTransactions for each date,
-    // then calls supabase.rpc once for the range.
+    // processDateRangeTransactions calls deps.processDayTransactions for each date.
+    // It does NOT call supabase.rpc — aggregation deferred to Postgres cron.
     const processDayMock = vi.fn().mockImplementation(
       async (_deps: unknown, _config: unknown, date: string) => {
         const overrides = opts.dayResults ?? {};
         return overrides[date] ?? { status: 'ok', checksWritten: 1 };
       },
     );
-
-    if (opts.rpcError !== undefined) {
-      mocks.rpcFn.mockResolvedValue({ data: null, error: opts.rpcError });
-    }
 
     return {
       deps: {
@@ -589,23 +587,19 @@ describe('processDateRangeTransactions', () => {
     }
   });
 
-  it('calls the unified_sales RPC once at the end with the full range', async () => {
+  it('does NOT call the unified_sales RPC from the range path (aggregation deferred to Postgres cron)', async () => {
+    // The in-worker RPC call was removed as part of the HTTP 546 CPU-limit fix.
+    // The Postgres cron (focus-transactions-unified-sales-sync) handles
+    // unified_sales aggregation asynchronously after the data lands in focus_orders.
     const { deps, mocks } = makeDateRangeDeps();
     await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29');
-    expect(mocks.rpcFn).toHaveBeenCalledOnce();
-    expect(mocks.rpcFn).toHaveBeenCalledWith(
-      'sync_focus_transactions_to_unified_sales',
-      expect.objectContaining({
-        p_restaurant_id: RESTAURANT_ID,
-        p_start_date: '2026-06-27',
-        p_end_date: '2026-06-29',
-      }),
-    );
+    expect(mocks.rpcFn).not.toHaveBeenCalled();
   });
 
-  it('does NOT call the RPC when skipUnifiedSalesSync=true', async () => {
+  it('does NOT call the RPC even when skipUnifiedSalesSync=false (range always skips it)', async () => {
+    // skipUnifiedSalesSync is accepted for API compatibility but unused in the range path.
     const { deps, mocks } = makeDateRangeDeps();
-    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29', { skipUnifiedSalesSync: true });
+    await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-27', '2026-06-29', { skipUnifiedSalesSync: false });
     expect(mocks.rpcFn).not.toHaveBeenCalled();
   });
 
@@ -614,7 +608,8 @@ describe('processDateRangeTransactions', () => {
     const result = await processDateRangeTransactions(deps, MOCK_CONFIG, '2026-06-29', '2026-06-29');
     expect(processDayMock).toHaveBeenCalledOnce();
     expect(processDayMock.mock.calls[0][2]).toBe('2026-06-29');
-    expect(mocks.rpcFn).toHaveBeenCalledOnce();
+    // No RPC call even for a single day
+    expect(mocks.rpcFn).not.toHaveBeenCalled();
     expect(result).toMatchObject({ status: 'ok', daysSynced: 1 });
   });
 
@@ -624,7 +619,7 @@ describe('processDateRangeTransactions', () => {
     expect(result).toMatchObject({ status: 'ok', daysSynced: 3 });
   });
 
-  it('stops on a day error and returns { status: "error" }', async () => {
+  it('stops on a day error and returns { status: "error" } without calling the RPC', async () => {
     const { deps, processDayMock, mocks } = makeDateRangeDeps({
       dayResults: {
         '2026-06-28': { status: 'error', error: 'datafeed error' },
@@ -634,9 +629,7 @@ describe('processDateRangeTransactions', () => {
     // Processes 06-27 (ok), then 06-28 (error → stops)
     expect(processDayMock.mock.calls.length).toBeLessThan(3);
     expect(result).toMatchObject({ status: 'error' });
-    // RPC should still be called for the days that did succeed (or not — design choice).
-    // Per spec §8.2: "Each day is committed as it goes, so it is durable."
-    // The RPC is called once at the end regardless; check it was NOT called on error-stop.
+    // RPC is never called from the range path regardless of outcome.
     expect(mocks.rpcFn).not.toHaveBeenCalled();
   });
 

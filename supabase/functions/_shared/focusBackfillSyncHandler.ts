@@ -279,10 +279,16 @@ export async function handleBackfillSync(
       };
 
       // On error, persist the stall details so the frontend can stop polling (§8.3).
+      // On success (ok/empty), clear any stale error banner from a prior failed
+      // tick — connection_status reverts to 'connected', last_error reset to null.
       if (batchResult.status === 'error') {
         updatePayload.connection_status = 'error';
         updatePayload.last_error = batchResult.lastError ?? 'Unknown backfill error';
         updatePayload.last_error_at = nowIso;
+      } else {
+        updatePayload.connection_status = 'connected';
+        updatePayload.last_error = null;
+        updatePayload.last_error_at = null;
       }
 
       // CAS write: filter on (id, restaurant_id, sync_cursor=readCursor) so concurrent

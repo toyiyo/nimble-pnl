@@ -12,6 +12,7 @@ import { TemplateRowHeader } from './TemplateRowHeader';
 import { ShiftCell } from './ShiftCell';
 import { AreaSectionHeader } from './AreaSectionHeader';
 import { OffTemplateRow } from './OffTemplateRow';
+import { HiddenTemplatesRow } from './HiddenTemplatesRow';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const AREA_COLLAPSE_KEY = 'shift-planner-area-collapse';
@@ -30,10 +31,8 @@ interface TemplateGridProps {
   gridData: Map<string, Map<string, Shift[]>>;
   onRemoveShift: (shiftId: string) => void;
   onEditTemplate: (template: ShiftTemplate) => void;
-  // TODO(task 7): rename to onHideTemplate/onRestoreTemplate + wire ghost rows
-  // and the hidden-templates lane. Placeholder shim so the build stays green
-  // between tasks (see progress.md Task 1 notes for the same pattern).
-  onDeleteTemplate: (templateId: string) => void;
+  onHideTemplate: (template: ShiftTemplate) => void;
+  onRestoreTemplate: (templateId: string) => void;
   onAddTemplate: () => void;
   highlightCellId?: string | null;
   /** Mobile tap-to-assign */
@@ -53,6 +52,11 @@ interface TemplateGridProps {
   ghostByCell?: Map<string, CoveringEmployee[]>;
   /** Unmatched shifts grouped by area → day (off-template lane). */
   offTemplateByArea?: Map<string, Map<string, Shift[]>>;
+  /** Merged shifts across all hidden templates, keyed by day (shown only when
+   *  `showHidden === false` at the tab level and the lane has shifts). */
+  hiddenLaneByDay?: Map<string, Shift[]>;
+  /** Called when the "Show templates" button in the hidden-templates lane is clicked. */
+  onShowHidden?: () => void;
 }
 
 export function TemplateGrid({
@@ -61,7 +65,8 @@ export function TemplateGrid({
   gridData,
   onRemoveShift,
   onEditTemplate,
-  onDeleteTemplate,
+  onHideTemplate,
+  onRestoreTemplate,
   onAddTemplate,
   highlightCellId,
   onMobileCellTap,
@@ -74,6 +79,8 @@ export function TemplateGrid({
   onCoverageClick,
   ghostByCell,
   offTemplateByArea,
+  hiddenLaneByDay,
+  onShowHidden,
 }: Readonly<TemplateGridProps>) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
     try {
@@ -109,6 +116,14 @@ export function TemplateGrid({
       : [...offTemplateByArea.keys()];
     return candidateAreas.filter((area) => !groupAreaSet.has(area));
   }, [offTemplateByArea, groups, areaFilter]);
+
+  const hasHiddenLaneShifts = useMemo(() => {
+    if (!hiddenLaneByDay) return false;
+    for (const shifts of hiddenLaneByDay.values()) {
+      if (shifts.length > 0) return true;
+    }
+    return false;
+  }, [hiddenLaneByDay]);
 
   return (
     <div className="rounded-xl border border-border/40 overflow-x-auto">
@@ -164,54 +179,67 @@ export function TemplateGrid({
               />
             )}
             {(!showSectionHeaders || !collapsed[group.area]) &&
-              group.templates.map((template) => (
-                <div
-                  key={template.id}
-                  className="contents"
-                >
-                  <div className="group border-t border-border/40">
-                    <TemplateRowHeader
-                      template={template}
-                      onEdit={onEditTemplate}
-                      // TODO(task 7): pass real onHide/onRestore split by
-                      // template.is_active; placeholder keeps build green.
-                      onHide={(t) => onDeleteTemplate(t.id)}
-                      onRestore={onDeleteTemplate}
-                    />
+              group.templates.map((template) => {
+                const isHiddenTemplate = !template.is_active;
+                return (
+                  <div
+                    key={template.id}
+                    className="contents"
+                  >
+                    <div
+                      className={cn(
+                        'group border-t border-border/40',
+                        isHiddenTemplate && 'opacity-60 bg-muted/20',
+                      )}
+                    >
+                      <TemplateRowHeader
+                        template={template}
+                        onEdit={onEditTemplate}
+                        onHide={onHideTemplate}
+                        onRestore={onRestoreTemplate}
+                      />
+                    </div>
+                    {weekDays.map((day) => {
+                      const isActiveDay = templateAppliesToDay(template, day);
+                      const shifts = gridData.get(template.id)?.get(day) ?? [];
+                      // Full weekday name for screen-reader aria-label (e.g. "Monday").
+                      // Parsed as local midnight to avoid UTC-offset day shifts.
+                      const [y, mo, d] = day.split('-').map(Number);
+                      const fullDayLabel = new Date(y, mo - 1, d).toLocaleDateString('en-US', { weekday: 'long' });
+                      return (
+                        <div
+                          key={day}
+                          className={cn(
+                            'border-t border-l border-border/40',
+                            isHiddenTemplate && 'opacity-60 bg-muted/20',
+                          )}
+                        >
+                          <ShiftCell
+                            templateId={template.id}
+                            day={day}
+                            isActiveDay={isActiveDay}
+                            shifts={shifts}
+                            capacity={template.capacity ?? 1}
+                            onRemoveShift={onRemoveShift}
+                            isHighlighted={highlightCellId === `${template.id}:${day}`}
+                            onMobileTap={onMobileCellTap}
+                            hasMobileSelection={hasMobileSelection}
+                            allocationStatus={allocationStatuses?.get(`${template.id}:${day}`) ?? 'none'}
+                            pickedEmployeeName={pickedEmployeeName}
+                            coverage={coverageByTemplateDay?.get(template.id)?.get(day)}
+                            onCoverageClick={onCoverageClick}
+                            slotName={`${template.area ? template.area + ' ' : ''}${template.position}`}
+                            dayLabel={fullDayLabel}
+                            cellArea={template.area ?? null}
+                            ghostLoanedOut={ghostByCell?.get(`${template.id}:${day}`)}
+                            isHiddenTemplate={isHiddenTemplate}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
-                  {weekDays.map((day) => {
-                    const isActiveDay = templateAppliesToDay(template, day);
-                    const shifts = gridData.get(template.id)?.get(day) ?? [];
-                    // Full weekday name for screen-reader aria-label (e.g. "Monday").
-                    // Parsed as local midnight to avoid UTC-offset day shifts.
-                    const [y, mo, d] = day.split('-').map(Number);
-                    const fullDayLabel = new Date(y, mo - 1, d).toLocaleDateString('en-US', { weekday: 'long' });
-                    return (
-                      <div key={day} className="border-t border-l border-border/40">
-                        <ShiftCell
-                          templateId={template.id}
-                          day={day}
-                          isActiveDay={isActiveDay}
-                          shifts={shifts}
-                          capacity={template.capacity ?? 1}
-                          onRemoveShift={onRemoveShift}
-                          isHighlighted={highlightCellId === `${template.id}:${day}`}
-                          onMobileTap={onMobileCellTap}
-                          hasMobileSelection={hasMobileSelection}
-                          allocationStatus={allocationStatuses?.get(`${template.id}:${day}`) ?? 'none'}
-                          pickedEmployeeName={pickedEmployeeName}
-                          coverage={coverageByTemplateDay?.get(template.id)?.get(day)}
-                          onCoverageClick={onCoverageClick}
-                          slotName={`${template.area ? template.area + ' ' : ''}${template.position}`}
-                          dayLabel={fullDayLabel}
-                          cellArea={template.area ?? null}
-                          ghostLoanedOut={ghostByCell?.get(`${template.id}:${day}`)}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                );
+              })}
             {(!showSectionHeaders || !collapsed[group.area]) &&
               !!offTemplateByArea?.get(group.area)?.size && (
                 <OffTemplateRow
@@ -236,6 +264,16 @@ export function TemplateGrid({
             />
           ) : null;
         })}
+        {/* "From hidden templates" lane — rendered after all area groups and
+         *  orphan off-template lanes, only when it has shifts this week. */}
+        {hasHiddenLaneShifts && onShowHidden && (
+          <HiddenTemplatesRow
+            weekDays={weekDays}
+            shiftsByDay={hiddenLaneByDay!}
+            onRemoveShift={onRemoveShift}
+            onShowHidden={onShowHidden}
+          />
+        )}
       </div>
 
       {/* Add template button */}

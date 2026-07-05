@@ -90,7 +90,8 @@ const baseGridProps = {
   gridData: new Map([['t1', new Map([['2026-07-04', []]])]]),
   onRemoveShift: vi.fn(),
   onEditTemplate: vi.fn(),
-  onDeleteTemplate: vi.fn(),
+  onHideTemplate: vi.fn(),
+  onRestoreTemplate: vi.fn(),
   onAddTemplate: vi.fn(),
 };
 
@@ -115,6 +116,205 @@ describe('TemplateGrid source-text invariants — task 8', () => {
 
   it('passes ghostLoanedOut to ShiftCell', () => {
     expect(SRC).toMatch(/ghostLoanedOut/);
+  });
+});
+
+describe('TemplateGrid source-text invariants — task 7', () => {
+  it('no longer accepts an onDeleteTemplate prop', () => {
+    expect(SRC).not.toMatch(/onDeleteTemplate/);
+  });
+
+  it('accepts onHideTemplate and onRestoreTemplate props', () => {
+    expect(SRC).toMatch(/onHideTemplate/);
+    expect(SRC).toMatch(/onRestoreTemplate/);
+  });
+
+  it('imports HiddenTemplatesRow', () => {
+    expect(SRC).toMatch(/HiddenTemplatesRow/);
+  });
+
+  it('accepts hiddenLaneByDay and onShowHidden props', () => {
+    expect(SRC).toMatch(/hiddenLaneByDay/);
+    expect(SRC).toMatch(/onShowHidden/);
+  });
+
+  it('passes isHiddenTemplate to ShiftCell', () => {
+    expect(SRC).toMatch(/isHiddenTemplate/);
+  });
+});
+
+// ── ghost row wiring (task 7) ─────────────────────────────────────────────────
+
+describe('TemplateGrid ghost row rendering — task 7', () => {
+  it('applies ghost styling (opacity-60 bg-muted/20) to a hidden template row header', () => {
+    const hiddenTemplate = makeTemplate('t1', 'Cold Stone');
+    hiddenTemplate.is_active = false;
+    const { container } = render(
+      <TemplateGrid
+        {...baseGridProps}
+        templates={[hiddenTemplate]}
+        areaFilter={null}
+      />,
+    );
+    const header = container.querySelector('.group.border-t.border-border\\/40');
+    expect(header).toBeTruthy();
+    expect(header?.className).toMatch(/opacity-60/);
+    expect(header?.className).toMatch(/bg-muted\/20/);
+  });
+
+  it('does not apply ghost styling to an active template row header', () => {
+    const { container } = render(
+      <TemplateGrid {...baseGridProps} areaFilter={null} />,
+    );
+    const header = container.querySelector('.group.border-t.border-border\\/40');
+    expect(header).toBeTruthy();
+    expect(header?.className).not.toMatch(/opacity-60/);
+    expect(header?.className).not.toMatch(/bg-muted\/20/);
+  });
+
+  it('calls onHideTemplate (not onDeleteTemplate) when TemplateRowHeader fires onHide for an active template', () => {
+    const onHideTemplate = vi.fn();
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        onHideTemplate={onHideTemplate}
+        areaFilter={null}
+      />,
+    );
+    // TemplateRowHeader's actions button is hidden until hover in CSS only (opacity-0
+    // group-hover:opacity-100), it's still present in the DOM and clickable in jsdom.
+    const trigger = screen.getByRole('button', { name: 'Actions for t1 shift' });
+    trigger.click();
+  });
+
+  it('passes isHiddenTemplate=true to ShiftCell for a hidden template (ghost aria-label)', () => {
+    const hiddenTemplate = makeTemplate('t1', 'Cold Stone');
+    hiddenTemplate.is_active = false;
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        templates={[hiddenTemplate]}
+        areaFilter={null}
+      />,
+    );
+    // ShiftCell renders aria-label={`${dayLabel}, hidden template`} when isHiddenTemplate.
+    expect(screen.getByLabelText(/hidden template/i)).toBeTruthy();
+  });
+
+  it('does not set a ghost aria-label on cells for an active template', () => {
+    render(<TemplateGrid {...baseGridProps} areaFilter={null} />);
+    expect(screen.queryByLabelText(/hidden template/i)).toBeNull();
+  });
+});
+
+// ── HiddenTemplatesRow lane wiring (task 7) ───────────────────────────────────
+
+describe('TemplateGrid HiddenTemplatesRow lane — task 7', () => {
+  it('renders HiddenTemplatesRow when hiddenLaneByDay has shifts', () => {
+    const hiddenShift = makeShift('hs1');
+    const hiddenLaneByDay = new Map<string, Shift[]>([
+      ['2026-07-04', [hiddenShift]],
+    ]);
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter={null}
+        hiddenLaneByDay={hiddenLaneByDay}
+        onShowHidden={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('From hidden templates')).toBeTruthy();
+  });
+
+  it('does not render HiddenTemplatesRow when hiddenLaneByDay is empty', () => {
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter={null}
+        hiddenLaneByDay={new Map()}
+        onShowHidden={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('From hidden templates')).toBeNull();
+  });
+
+  it('does not render HiddenTemplatesRow when hiddenLaneByDay is undefined', () => {
+    render(<TemplateGrid {...baseGridProps} areaFilter={null} />);
+    expect(screen.queryByText('From hidden templates')).toBeNull();
+  });
+
+  it('does not render HiddenTemplatesRow when hiddenLaneByDay has only empty day arrays', () => {
+    const hiddenLaneByDay = new Map<string, Shift[]>([['2026-07-04', []]]);
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter={null}
+        hiddenLaneByDay={hiddenLaneByDay}
+        onShowHidden={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText('From hidden templates')).toBeNull();
+  });
+
+  it('renders HiddenTemplatesRow after all area groups and orphan off-template lanes', () => {
+    const hiddenShift = makeShift('hs1');
+    const hiddenLaneByDay = new Map<string, Shift[]>([
+      ['2026-07-04', [hiddenShift]],
+    ]);
+    const offShift = makeShift('s2', 'Bar');
+    const offTemplateByArea = new Map<string, Map<string, Shift[]>>([
+      ['Bar', new Map([['2026-07-04', [offShift]]])],
+    ]);
+    const { container } = render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter={null}
+        offTemplateByArea={offTemplateByArea}
+        hiddenLaneByDay={hiddenLaneByDay}
+        onShowHidden={vi.fn()}
+      />,
+    );
+    const text = container.textContent ?? '';
+    const offIdx = text.indexOf('Off-template');
+    const hiddenIdx = text.indexOf('From hidden templates');
+    expect(offIdx).toBeGreaterThan(-1);
+    expect(hiddenIdx).toBeGreaterThan(-1);
+    expect(hiddenIdx).toBeGreaterThan(offIdx);
+  });
+
+  it('wires onShowHidden to the "Show templates" button inside HiddenTemplatesRow', () => {
+    const onShowHidden = vi.fn();
+    const hiddenLaneByDay = new Map<string, Shift[]>([
+      ['2026-07-04', [makeShift('hs1')]],
+    ]);
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter={null}
+        hiddenLaneByDay={hiddenLaneByDay}
+        onShowHidden={onShowHidden}
+      />,
+    );
+    screen.getByRole('button', { name: 'Show templates' }).click();
+    expect(onShowHidden).toHaveBeenCalledTimes(1);
+  });
+
+  it('wires onRemoveShift from HiddenTemplatesRow chips', () => {
+    const onRemoveShift = vi.fn();
+    const hiddenLaneByDay = new Map<string, Shift[]>([
+      ['2026-07-04', [makeShift('hs1')]],
+    ]);
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        areaFilter={null}
+        hiddenLaneByDay={hiddenLaneByDay}
+        onShowHidden={vi.fn()}
+        onRemoveShift={onRemoveShift}
+      />,
+    );
+    screen.getByLabelText(/Remove .* from hidden-template shift/).click();
+    expect(onRemoveShift).toHaveBeenCalledWith('hs1');
   });
 });
 

@@ -100,12 +100,16 @@ export function ShiftPlannerTab({
     createTemplate,
     updateTemplate,
     hideTemplate,
+    restoreTemplate,
   } = useShiftTemplates(restaurantId);
 
   // TODO(task-8): replace with full hide/restore wiring (name + keptShiftCount,
-  // showHidden toggle, ghost rows) per docs/superpowers/plans/2026-07-05-hide-shift-templates-plan.md.
-  const deleteTemplate = useCallback(
-    (templateId: string) => hideTemplate({ id: templateId, name: '', keptShiftCount: 0 }),
+  // showHidden toggle, ghost rows, hiddenLaneByDay/onShowHidden) per
+  // docs/superpowers/plans/2026-07-05-hide-shift-templates-plan.md. This placeholder
+  // keeps the build green between task 7 (TemplateGrid's onHideTemplate/onRestoreTemplate
+  // prop rename) and task 8 (ShiftPlannerTab's real state/derivation).
+  const handleHideTemplate = useCallback(
+    (template: ShiftTemplate) => hideTemplate({ id: template.id, name: template.name, keptShiftCount: 0 }),
     [hideTemplate],
   );
 
@@ -660,7 +664,8 @@ export function ShiftPlannerTab({
                   gridData={templateGridData}
                   onRemoveShift={deleteShift}
                   onEditTemplate={handleEditTemplate}
-                  onDeleteTemplate={deleteTemplate}
+                  onHideTemplate={handleHideTemplate}
+                  onRestoreTemplate={restoreTemplate}
                   onAddTemplate={handleAddTemplate}
                   highlightCellId={highlightCellId}
                   onMobileCellTap={isMobile ? handleMobileCellTap : undefined}

@@ -188,6 +188,80 @@ export function groupUnmatchedByArea(
   return out;
 }
 
+export interface PartitionedTemplatesForDisplay {
+  activeTemplates: ShiftTemplate[];
+  hiddenTemplates: ShiftTemplate[];
+  displayTemplates: ShiftTemplate[];
+}
+
+/**
+ * Partitions templates into active/hidden buckets for the planner grid.
+ *
+ * `displayTemplates` is a stable active-first ordering (relative order within
+ * each partition is preserved — no re-sorting beyond the active/hidden split)
+ * so ghost (hidden) rows sink to the bottom of each area group. When
+ * `showHidden` is false, `displayTemplates` is exactly `activeTemplates` (no
+ * hidden rows rendered at all).
+ */
+export function partitionTemplatesForDisplay(
+  templates: ShiftTemplate[],
+  showHidden: boolean,
+): PartitionedTemplatesForDisplay {
+  const activeTemplates: ShiftTemplate[] = [];
+  const hiddenTemplates: ShiftTemplate[] = [];
+
+  for (const t of templates) {
+    if (t.is_active) {
+      activeTemplates.push(t);
+    } else {
+      hiddenTemplates.push(t);
+    }
+  }
+
+  const displayTemplates = showHidden
+    ? [...activeTemplates, ...hiddenTemplates]
+    : activeTemplates;
+
+  return { activeTemplates, hiddenTemplates, displayTemplates };
+}
+
+/**
+ * Merges the per-template grid buckets (from buildTemplateGridData) of the
+ * given hidden templates into a single Map<day, Shift[]> for the "From
+ * hidden templates" lane. Honors areaFilter using the same `t.area ||
+ * UNASSIGNED` nullish convention as groupTemplatesByArea. Day arrays are
+ * merged in template order. Returns an empty Map when nothing matches.
+ */
+export function collectHiddenLane(
+  grid: Map<string, Map<string, Shift[]>>,
+  hiddenTemplates: ShiftTemplate[],
+  areaFilter: string | null | undefined,
+): Map<string, Shift[]> {
+  const lane = new Map<string, Shift[]>();
+
+  for (const t of hiddenTemplates) {
+    if (areaFilter) {
+      const area = t.area || UNASSIGNED;
+      if (area !== areaFilter) continue;
+    }
+
+    const byDay = grid.get(t.id);
+    if (!byDay) continue;
+
+    for (const [day, shifts] of byDay) {
+      if (shifts.length === 0) continue;
+      const existing = lane.get(day);
+      if (existing) {
+        existing.push(...shifts);
+      } else {
+        lane.set(day, [...shifts]);
+      }
+    }
+  }
+
+  return lane;
+}
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

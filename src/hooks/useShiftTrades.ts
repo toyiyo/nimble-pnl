@@ -47,6 +47,9 @@ export interface ShiftTrade {
 
 export type ShiftTradeStatus = ShiftTrade['status'];
 
+/** Guard against ghost joins: drop trades whose poster or shift row was deleted. */
+const hasValidJoins = (t: ShiftTrade) => t.offered_by != null && t.offered_shift != null;
+
 type ShiftTradeNotificationAction =
   | 'created'
   | 'accepted'
@@ -172,10 +175,7 @@ export const useShiftTrades = (
       const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) throw error;
-      // Filter out trades with null joined data (e.g., deleted employees)
-      return (data as ShiftTrade[]).filter(
-        (t) => t.offered_by != null && t.offered_shift != null
-      );
+      return (data as ShiftTrade[]).filter(hasValidJoins);
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds
@@ -260,10 +260,7 @@ export const useMyTradeActivity = (
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      // Drop rows whose joined poster/shift was deleted (same guard as useShiftTrades).
-      return (data as ShiftTrade[]).filter(
-        (t) => t.offered_by != null && t.offered_shift != null
-      );
+      return (data as ShiftTrade[]).filter(hasValidJoins);
     },
     enabled: !!restaurantId && !!employeeId,
     staleTime: 30000,
@@ -591,10 +588,7 @@ export const useMarketplaceTrades = (
 
       if (tradesError) throw tradesError;
 
-      // Filter out trades with null joined data (e.g., deleted employees)
-      const validTrades = (trades || []).filter(
-        (t) => t.offered_by != null && t.offered_shift != null
-      );
+      const validTrades = (trades || []).filter(hasValidJoins);
 
       if (!currentEmployeeId || validTrades.length === 0) {
         return validTrades;

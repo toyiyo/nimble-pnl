@@ -33,20 +33,14 @@ export function getPosterTradeProgress(trade: {
   const claimant = trade.accepted_by?.name ?? FALLBACK_CLAIMANT;
   const claimedLabel = `Claimed by ${claimant}`;
 
-  const step = (
-    key: TradeStep['key'],
-    label: string,
-    state: TradeStepState,
-  ): TradeStep => ({ key, label, state });
-
   switch (trade.status) {
     case 'open':
       return {
         steps: [
-          step('posted', 'Posted', 'done'),
-          step('claimed', 'Waiting for a claimant', 'current'),
-          step('review', 'Manager review', 'upcoming'),
-          step('transferred', 'Transferred', 'upcoming'),
+          { key: 'posted', label: 'Posted', state: 'done' },
+          { key: 'claimed', label: 'Waiting for a claimant', state: 'current' },
+          { key: 'review', label: 'Manager review', state: 'upcoming' },
+          { key: 'transferred', label: 'Transferred', state: 'upcoming' },
         ],
         summary: 'Posted — waiting for a claimant',
         outcome: 'active',
@@ -54,10 +48,10 @@ export function getPosterTradeProgress(trade: {
     case 'pending_approval':
       return {
         steps: [
-          step('posted', 'Posted', 'done'),
-          step('claimed', claimedLabel, 'done'),
-          step('review', 'Manager review', 'current'),
-          step('transferred', 'Transferred', 'upcoming'),
+          { key: 'posted', label: 'Posted', state: 'done' },
+          { key: 'claimed', label: claimedLabel, state: 'done' },
+          { key: 'review', label: 'Manager review', state: 'current' },
+          { key: 'transferred', label: 'Transferred', state: 'upcoming' },
         ],
         summary: `${claimedLabel} — awaiting manager review`,
         outcome: 'active',
@@ -65,10 +59,10 @@ export function getPosterTradeProgress(trade: {
     case 'approved':
       return {
         steps: [
-          step('posted', 'Posted', 'done'),
-          step('claimed', claimedLabel, 'done'),
-          step('review', 'Manager review', 'done'),
-          step('transferred', 'Transferred', 'done'),
+          { key: 'posted', label: 'Posted', state: 'done' },
+          { key: 'claimed', label: claimedLabel, state: 'done' },
+          { key: 'review', label: 'Manager review', state: 'done' },
+          { key: 'transferred', label: 'Transferred', state: 'done' },
         ],
         summary: `Approved — shift transferred to ${claimant}`,
         outcome: 'approved',
@@ -76,10 +70,10 @@ export function getPosterTradeProgress(trade: {
     case 'rejected':
       return {
         steps: [
-          step('posted', 'Posted', 'done'),
-          step('claimed', claimedLabel, 'done'),
-          step('review', 'Rejected', 'rejected'),
-          step('transferred', 'Transferred', 'upcoming'),
+          { key: 'posted', label: 'Posted', state: 'done' },
+          { key: 'claimed', label: claimedLabel, state: 'done' },
+          { key: 'review', label: 'Rejected', state: 'rejected' },
+          { key: 'transferred', label: 'Transferred', state: 'upcoming' },
         ],
         summary: 'Rejected by manager',
         outcome: 'rejected',
@@ -88,10 +82,10 @@ export function getPosterTradeProgress(trade: {
       // Defensive only — the activity query excludes cancelled trades.
       return {
         steps: [
-          step('posted', 'Posted', 'done'),
-          step('claimed', 'Claimed', 'upcoming'),
-          step('review', 'Manager review', 'upcoming'),
-          step('transferred', 'Transferred', 'upcoming'),
+          { key: 'posted', label: 'Posted', state: 'done' },
+          { key: 'claimed', label: 'Claimed', state: 'upcoming' },
+          { key: 'review', label: 'Manager review', state: 'upcoming' },
+          { key: 'transferred', label: 'Transferred', state: 'upcoming' },
         ],
         summary: 'Withdrawn',
         outcome: 'withdrawn',

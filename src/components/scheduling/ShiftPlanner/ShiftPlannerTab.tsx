@@ -698,7 +698,7 @@ export function ShiftPlannerTab({
       >
         <div className="relative flex gap-0">
           <div className="flex-1 min-w-0 overflow-x-auto">
-            {displayTemplates.length === 0 ? (
+            {displayTemplates.length === 0 && hiddenTemplates.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-border/40">
                 <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
                   <CalendarOff className="h-5 w-5 text-muted-foreground" />

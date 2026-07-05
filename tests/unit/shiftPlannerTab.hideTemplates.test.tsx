@@ -259,7 +259,7 @@ describe('ShiftPlannerTab — hide/restore templates (task 8)', () => {
     expect(screen.getByText('Ghost Slot')).toBeInTheDocument();
   });
 
-  it('uses only active templates for the "no templates" empty state (all-hidden case)', () => {
+  it('does not show the "no templates" empty state when a hidden template exists (all-hidden case)', () => {
     mockUseShiftTemplates.mockReturnValue({
       templates: [makeTemplate({ id: 't1', is_active: false })],
       loading: false,
@@ -269,9 +269,28 @@ describe('ShiftPlannerTab — hide/restore templates (task 8)', () => {
       restoreTemplate: mockRestoreTemplate,
     });
     renderTab();
-    // Only a hidden template exists and showHidden defaults to false, so the
-    // grid should present its "no templates" empty state, not the hidden one.
-    expect(screen.getByText(/no shift templates yet/i)).toBeInTheDocument();
+    // A hidden template exists (even with no shifts this week) and showHidden
+    // defaults to false, so displayTemplates is empty — but the grid must NOT
+    // fall back to the "no templates" empty state, since that would bypass the
+    // "From hidden templates" lane whenever every template is hidden. The empty
+    // state is reserved for the true zero-templates case.
+    expect(screen.queryByText(/no shift templates yet/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the "From hidden templates" lane (not the empty state) when every template is hidden and has shifts this week', () => {
+    mockShifts.length = 0;
+    mockShifts.push(makeShift({ id: 's1', shift_template_id: 't1' }));
+    mockUseShiftTemplates.mockReturnValue({
+      templates: [makeTemplate({ id: 't1', is_active: false })],
+      loading: false,
+      createTemplate: vi.fn(),
+      updateTemplate: vi.fn(),
+      hideTemplate: mockHideTemplate,
+      restoreTemplate: mockRestoreTemplate,
+    });
+    renderTab();
+    expect(screen.queryByText(/no shift templates yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/from hidden templates/i)).toBeInTheDocument();
   });
 
   it('computes a real keptShiftCount and calls hideTemplate with id/name/keptShiftCount', async () => {

@@ -29,19 +29,21 @@ SELECT function_lang_is(
 );
 
 -- Test process_unified_inventory_deduction function exists
--- Current signature: (uuid, text, integer, text, text, text, text, text, text) with 5 DEFAULT params
--- Includes p_transaction_type and p_reason_prefix for production runs (transfer) vs POS (usage)
+-- Current signature: (uuid, text, integer, text, text, text, text, text, text, uuid) with 6 DEFAULT params
+-- Includes p_transaction_type and p_reason_prefix for production runs (transfer) vs POS (usage),
+-- plus trailing p_recipe_id (uuid, DEFAULT NULL) added for the prep shadow-recipe self-heal fix
+-- (deduct by prep.recipe_id directly instead of relying on a by-name/is_active lookup).
 SELECT has_function(
     'public',
     'process_unified_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text', 'text', 'text'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text', 'text', 'text', 'uuid'],
     'process_unified_inventory_deduction function should exist'
 );
 
 SELECT function_returns(
     'public',
     'process_unified_inventory_deduction',
-    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text', 'text', 'text'],
+    ARRAY['uuid', 'text', 'integer', 'text', 'text', 'text', 'text', 'text', 'text', 'uuid'],
     'jsonb',
     'process_unified_inventory_deduction should return jsonb'
 );

@@ -73,21 +73,39 @@ export const useRecipes = (restaurantId: string | null) => {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('recipes')
-        .select(`
-          *,
-          ingredients:recipe_ingredients(product_id, quantity, unit)
-        `)
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true)
-        .order('name');
+      // Shadow recipes (rows backing prep_recipes) are managed from the Prep
+      // page and must not appear here. Fail closed: if the prep_recipes query
+      // errors we abort the whole fetch rather than leak shadows back in.
+      const [recipesResult, prepLinksResult] = await Promise.all([
+        supabase
+          .from('recipes')
+          .select(`
+            *,
+            ingredients:recipe_ingredients(product_id, quantity, unit)
+          `)
+          .eq('restaurant_id', restaurantId)
+          .eq('is_active', true)
+          .order('name'),
+        supabase
+          .from('prep_recipes')
+          .select('recipe_id')
+          .eq('restaurant_id', restaurantId)
+          .not('recipe_id', 'is', null),
+      ]);
 
-      if (error) throw error;
-      
+      if (recipesResult.error) throw recipesResult.error;
+      if (prepLinksResult.error) throw prepLinksResult.error;
+
+      const shadowRecipeIds = new Set(
+        (prepLinksResult.data || []).map((link) => link.recipe_id)
+      );
+      const data = (recipesResult.data || []).filter(
+        (recipe) => !shadowRecipeIds.has(recipe.id)
+      );
+
       // Enhance recipes with updated costs and profitability data
       const enhancedRecipes = await Promise.all(
-        (data || []).map(async (recipe) => {
+        data.map(async (recipe) => {
           // Recalculate cost using the updated calculation function
           const updatedCost = await calculateRecipeCost(recipe.id);
           const recipeWithUpdatedCost = {
@@ -116,6 +134,10 @@ export const useRecipes = (restaurantId: string | null) => {
       setRecipes(enhancedRecipes);
     } catch (error: any) {
       console.error('Error fetching recipes:', error);
+      // Fail closed: clear any previously-loaded recipes (e.g. from a prior
+      // restaurant selection or a stale successful fetch) so a failed
+      // refetch never leaves cross-tenant/stale data on screen.
+      setRecipes([]);
       toast({
         title: "Error fetching recipes",
         description: error.message,
@@ -316,6 +338,27 @@ export const useRecipes = (restaurantId: string | null) => {
 
   const deleteRecipe = async (id: string): Promise<boolean> => {
     try {
+      // Shadow recipes back a prep (batch) recipe; soft-deleting one silently
+      // breaks production deduction/costing. Blocked here AND by a DB trigger.
+      const { data: prepLink, error: prepLinkError } = await supabase
+        .from('prep_recipes')
+        .select('name')
+        .eq('recipe_id', id)
+        .eq('restaurant_id', restaurantId)
+        .limit(1)
+        .maybeSingle();
+
+      if (prepLinkError) throw prepLinkError;
+
+      if (prepLink) {
+        toast({
+          title: "Can't delete this recipe",
+          description: `It is managed by the batch recipe "${prepLink.name}". Go to the Prep page to manage it.`,
+          variant: "destructive",
+        });
+        return false;
+      }
+
       const { error } = await supabase
         .from('recipes')
         .update({ is_active: false })
@@ -482,7 +525,14 @@ export const useRecipes = (restaurantId: string | null) => {
   useEffect(() => {
     if (!restaurantId) return;
 
-    // Set up real-time subscription for recipe updates
+    // Set up real-time subscription for recipe updates. Also listen on
+    // prep_recipes: fetchRecipes filters shadow recipes out by checking
+    // prep_recipes, and usePrepRecipes.createPrepRecipe inserts the backing
+    // recipes row before the prep_recipes link row. Without this second
+    // subscription, an open Recipes page can refetch on that recipes INSERT
+    // (before the link exists) and never refetch again once the link lands,
+    // leaving the shadow recipe visible until an unrelated change or manual
+    // refresh.
     const channel = supabase
       .channel(`recipe-changes:${restaurantId}`)
       .on(
@@ -491,6 +541,18 @@ export const useRecipes = (restaurantId: string | null) => {
           event: '*',
           schema: 'public',
           table: 'recipes',
+          filter: `restaurant_id=eq.${restaurantId}`
+        },
+        () => {
+          fetchRecipesRef.current();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'prep_recipes',
           filter: `restaurant_id=eq.${restaurantId}`
         },
         () => {

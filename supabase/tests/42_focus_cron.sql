@@ -1,11 +1,16 @@
 -- Tests for Focus POS pg_cron schedules
 -- Migrations: 20260627140000_focus_cron.sql (create)
 --             20260702160000_focus_crons_gateless.sql (gate-less reschedule)
+--             20260704200320_focus_sync_frequency.sql (due-based claim
+--               scheduler — focus-bulk-sync moves from a fixed 6-hour offset
+--               schedule to a 5-minute tick that fans out ceil(due/5) claim
+--               workers; see supabase/tests/51_focus_sync_scheduler.sql for
+--               the due-predicate/claim-RPC coverage)
 --
 -- Test plan:
 --  1  focus-bulk-sync job exists in cron.job
 --  2  focus-unified-sales-sync job exists in cron.job
---  3  focus-bulk-sync schedule is every 6 hours (offset from Toast/Shift4)
+--  3  focus-bulk-sync schedule is every 5 minutes (due-based claim fan-out)
 --  4  focus-unified-sales-sync schedule is every 5 minutes
 --  5  gate-less: focus-bulk-sync cron body sends no Authorization header
 --  6  focus-bulk-sync cron body has no app.settings.service_role_key dependency
@@ -25,14 +30,14 @@ SELECT ok(
   'cron job focus-unified-sales-sync exists'
 );
 
--- Test 3: focus-bulk-sync schedule is every 6 hours offset from Toast/Shift4
--- Toast runs at 0 0,2,4,...,22  (even hours on the hour)
--- Shift4 runs at 0 1,3,5,...,23 (odd hours on the hour)
--- Focus runs at 30 1,7,13,19   (every 6 hours, at :30 of hours 1,7,13,19)
+-- Test 3: focus-bulk-sync schedule is every 5 minutes (due-based claim
+-- scheduler, 20260704200320_focus_sync_frequency.sql). The old fixed 6-hour
+-- offset (30 1,7,13,19 * * *) is replaced by a 5-minute tick that fans out
+-- ceil(focus_due_sync_count()/5) parallel claim workers, capped at 20.
 SELECT is(
   (SELECT schedule FROM cron.job WHERE jobname = 'focus-bulk-sync'),
-  '30 1,7,13,19 * * *',
-  'focus-bulk-sync runs every 6 hours at offset schedule (30 1,7,13,19 * * *)'
+  '*/5 * * * *',
+  'focus-bulk-sync ticks every 5 minutes (due-based claim fan-out)'
 );
 
 -- Test 4: focus-unified-sales-sync schedule is every 5 minutes

@@ -8,6 +8,24 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// MIRRORS src/lib/permissions/invitations.ts — keep in sync (default-deny).
+const INVITABLE_ROLES: Record<string, string[]> = {
+  // owner can invite every internal + collaborator role
+  owner: [
+    'owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+  ],
+  // manager can invite all except owner; collaborators included (separate CollaboratorInvitations UI)
+  manager: [
+    'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+  ],
+  operations_manager: ['staff'],
+};
+function canInviteRole(inviter: string, target: string): boolean {
+  return (INVITABLE_ROLES[inviter] ?? []).includes(target);
+}
+
 interface RequestBody {
   restaurantId: string;
   email: string;
@@ -81,8 +99,17 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('user_id', user.id)
       .single();
 
-    if (roleError || !userRole || !['owner', 'manager'].includes(userRole.role)) {
+    if (roleError || !userRole || !INVITABLE_ROLES[userRole.role]) {
       throw new Error('Insufficient permissions to send invitations');
+    }
+
+    // Default-deny: reject any (inviter, target) pair not in the matrix
+    // BEFORE inserting the invitation row (prevents storing escalated-role invites).
+    if (!canInviteRole(userRole.role, role)) {
+      return new Response(
+        JSON.stringify({ error: 'role_not_allowed' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     // Cancel any existing pending invitations for this email and restaurant
@@ -156,6 +183,7 @@ const handler = async (req: Request): Promise<Response> => {
     const roleLabels: Record<string, string> = {
       'owner': 'Owner',
       'manager': 'Manager',
+      'operations_manager': 'Operations Manager',
       'chef': 'Chef',
       'staff': 'Staff Member',
       'kiosk': 'Kiosk',

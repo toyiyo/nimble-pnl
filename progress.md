@@ -126,10 +126,12 @@ Phase 4–9: dev-build-and-ship workflow — in-progress
       - Working tree: only `dev-tools/codex-review-output.md`, `dev-tools/phase7-diff.patch`
         (Phase 7 tooling artifacts, expected) and `progress.md` modified; no code changes needed
         in this phase — no new commit created for Phase 8 beyond this progress.md update.
-- [ ] Phase 9: PR, CI loop, retrospective
+- [x] Phase 9a: Ship — branch pushed to origin, PR #580 opened
+      (https://github.com/toyiyo/nimble-pnl/pull/580)
+- [ ] Phase 9b: CI feedback loop, retrospective
 
 ## CI Status
-- PR: not yet created
+- PR: #580 — https://github.com/toyiyo/nimble-pnl/pull/580
 
 ## Blockers
 - none

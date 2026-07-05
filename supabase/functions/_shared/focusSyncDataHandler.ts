@@ -366,6 +366,41 @@ export async function handleSyncData(
         endDate,
       );
 
+      // Persist connection state, mirroring the backfill/incremental paths:
+      // success clears any stale error banner, failure records it. Without this
+      // a range sync left the banner untouched (stale error shown after a clean
+      // run, or a clean status shown after a failed one). No cursor CAS — the
+      // range path never touches sync_cursor.
+      const rangeNowIso = now.toISOString();
+      const rangeUpdatePayload: Record<string, unknown> = {
+        last_sync_time: rangeNowIso,
+        updated_at: rangeNowIso,
+      };
+      if (rangeResult.status === 'error') {
+        rangeUpdatePayload.connection_status = 'error';
+        rangeUpdatePayload.last_error =
+          rangeResult.error ?? 'Focus custom-range sync failed';
+        rangeUpdatePayload.last_error_at = rangeNowIso;
+      } else {
+        rangeUpdatePayload.connection_status = 'connected';
+        rangeUpdatePayload.last_error = null;
+        rangeUpdatePayload.last_error_at = null;
+      }
+      // Best-effort: the sync itself already succeeded/failed on its own merits,
+      // so a transient state-write failure must not flip the response — but it
+      // must be visible, and the banner self-heals on the next sync's write.
+      const { error: rangeStateErr } = await deps.serviceClient
+        .from('focus_connections')
+        .update(rangeUpdatePayload)
+        .eq('id', connRow.id)
+        .eq('restaurant_id', restaurantId)
+        .select();
+      if (rangeStateErr) {
+        console.warn(
+          `focus-sync-data: custom-range connection-state write failed: ${rangeStateErr.message}`,
+        );
+      }
+
       return new Response(
         JSON.stringify({
           daysSynced: rangeResult.daysSynced,

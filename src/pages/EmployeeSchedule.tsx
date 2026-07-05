@@ -7,8 +7,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useShifts } from '@/hooks/useShifts';
-import { useShiftTrades } from '@/hooks/useShiftTrades';
 import { TradeRequestDialog } from '@/components/schedule/TradeRequestDialog';
+import { MyShiftTradesCard } from '@/components/schedule/MyShiftTradesCard';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -123,11 +123,6 @@ const EmployeeSchedule = () => {
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
-  const { trades: pendingTrades, loading: tradesLoading } = useShiftTrades(
-    restaurantId,
-    'pending_approval',
-    currentEmployee?.id || null
-  );
 
   // Filter shifts to only show current employee's shifts
   const myShifts = useMemo(() => {
@@ -230,55 +225,8 @@ const EmployeeSchedule = () => {
         </Link>
       </div>
 
-      {/* Pending Trade Requests */}
-      {!tradesLoading && pendingTrades && pendingTrades.length > 0 && (
-        <Card className="bg-gradient-to-br from-yellow-500/5 to-orange-500/5 border-yellow-500/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <ClockIcon className="h-5 w-5 text-yellow-600" />
-              Pending Trade Requests
-            </CardTitle>
-            <CardDescription>
-              These shifts are awaiting manager approval. They will appear in your schedule once approved.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {pendingTrades.map((trade) => (
-                <div
-                  key={trade.id}
-                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 p-3 rounded-lg bg-background border border-yellow-500/20"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="text-center">
-                      <div className="text-sm font-medium text-muted-foreground">
-                        {format(parseISO(trade.offered_shift.start_time), 'EEE')}
-                      </div>
-                      <div className="text-2xl font-bold">
-                        {format(parseISO(trade.offered_shift.start_time), 'd')}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {format(parseISO(trade.offered_shift.start_time), 'MMM')}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="font-medium">{trade.offered_shift.position}</div>
-                      <div className="text-sm text-muted-foreground">
-                        {format(parseISO(trade.offered_shift.start_time), 'h:mm a')} -{' '}
-                        {format(parseISO(trade.offered_shift.end_time), 'h:mm a')}
-                      </div>
-                    </div>
-                  </div>
-                  <Badge className="bg-gradient-to-r from-yellow-500 to-orange-600 text-white">
-                    <ClockIcon className="w-3 h-3 mr-1" />
-                    Pending Approval
-                  </Badge>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* My shift trades — poster tracker + claimant status */}
+      <MyShiftTradesCard restaurantId={restaurantId} employeeId={currentEmployee.id} />
 
       {/* Upcoming Shifts */}
       {upcomingShifts.length > 0 && (

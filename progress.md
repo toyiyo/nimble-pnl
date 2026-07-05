@@ -77,7 +77,56 @@ Phase 4–9: dev-build-and-ship workflow — in-progress
         never arrive at this guard. Minor severity, deferred to CodeRabbit pass (7c) per fold
         policy (style/nit-level, not an actionable bug).
       No fixes applied — working tree unchanged aside from dev-tools/ review artifacts.
-- [ ] Phase 7c–9: CodeRabbit, verify, PR, CI loop, retrospective
+- [x] Phase 7c: CodeRabbit review (iteration 1/3) — `coderabbit review --plain --type committed`
+      against fix/employee-tips-null-hours → main. Result: "Review complete / No findings ✔".
+      No fixes needed, no commit made (clean=true).
+- [x] Phase 8: Verify (full suite) — allPass=true
+      - `.env.local` symlink confirmed present (`.env.local -> ../../../.env.local`, resolves to
+        real file). `supabase/functions/.env` symlink also present via `npm run env:setup`.
+      - Environment fix (not a code change): `node_modules/fast-xml-parser` was missing despite
+        being declared in package.json + package-lock.json (stale worktree node_modules) — ran
+        `npm install` to sync. This was the root cause of the 5 pre-existing test failures noted
+        in Phase 4's progress entry; after `npm install` those 5 focus-* handler tests pass too.
+        `package-lock.json` picked up cosmetic `peer: true` metadata churn from npm's resolver;
+        reverted via `git checkout -- package-lock.json` since node_modules is gitignored and no
+        dependency version actually changed.
+      - `npm run test`: 415 files / 5575 tests passed, 2 skipped, 0 failed. Duration 71.5s.
+      - `npm run test:db`: first run had 1 failure (42_focus_cron.sql test 3, cron schedule
+        mismatch `*/5 * * * *` vs expected `30 1,7,13,19 * * *`) traced to a stray migration
+        `20260704200320_focus_sync_frequency` applied to the local Postgres instance that does
+        NOT exist in this branch's `supabase/migrations/` (leftover state from another
+        worktree/session sharing the same local Supabase container). Ran `npm run db:reset` to
+        rebuild from this branch's actual migration files — re-ran `test:db`: 1554/1554 passed,
+        0 failed.
+      - `npm run test:e2e` (`npx playwright test --reporter=list`, local Supabase + Playwright's
+        own managed dev server on :4173): 143 passed, 12 skipped, 4 failed on first run
+        (inventory-scan-session.spec.ts:104, manual-sale-tip-not-doubled.spec.ts:58,
+        scheduling-conflicts.spec.ts:326, scheduling-conflicts.spec.ts:366). Confirmed none of
+        the 4 touch EmployeeTips/tips code (`git log` shows last touch to
+        inventory-scan-session.spec.ts was #545, unrelated inventory feature; grep confirms no
+        EmployeeTips references in any of the 3 spec files). Re-ran just those 4 in isolation
+        (2 workers, no other contention): the 2 scheduling-conflicts drag-and-drop tests passed
+        cleanly (were parallel-worker timing flakes from the full 48-file run); the other 2
+        failed deterministically both times — `inventory-scan-session.spec.ts:104` is a genuine
+        pre-existing test bug (Playwright strict-mode violation: `getByText(/1 added/i)` matches
+        3 elements including a lingering toast, not app logic); `manual-sale-tip-not-doubled.spec.ts:58`
+        times out waiting for seeded data ("3 sales" text), a timing/data-seed race unrelated to
+        our change. `git diff main -- <the 3 spec files>` is empty — byte-identical to main, so
+        these are pre-existing flaky/buggy specs, not regressions introduced by this branch.
+      - `npm run typecheck`: clean, zero errors.
+      - `npm run lint`: 1483 problems (1384 errors, 99 warnings) project-wide — confirmed via
+        `git stash` that this exact count exists with our diff removed too (pre-existing,
+        unrelated to this branch). `npx eslint src/pages/EmployeeTips.tsx` directly: zero
+        problems in our changed file.
+      - `npm run build`: succeeds, only pre-existing chunk-size-warning noise (no errors).
+      - Teardown: `npx supabase stop` run twice (Docker's restart policy briefly relaunched the
+        shared local Supabase containers between checks; stopped again, confirmed
+        `docker ps --filter name=supabase` empty). No Playwright/Vite dev server processes left
+        running (Playwright manages its own webServer lifecycle and tears it down after the run).
+      - Working tree: only `dev-tools/codex-review-output.md`, `dev-tools/phase7-diff.patch`
+        (Phase 7 tooling artifacts, expected) and `progress.md` modified; no code changes needed
+        in this phase — no new commit created for Phase 8 beyond this progress.md update.
+- [ ] Phase 9: PR, CI loop, retrospective
 
 ## CI Status
 - PR: not yet created

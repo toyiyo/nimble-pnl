@@ -75,22 +75,39 @@ on non-interactive `<div>`s is unreliable across screen readers. Rejected.
    `<td>` class list.
 2. `src/pages/Scheduling.tsx`: add `relative` to the schedule grid's
    `div.overflow-x-auto` wrapper (defense in depth for the whole table).
-3. No visual change: neither element has absolutely positioned children that
-   were relying on a higher containing block for on-screen placement — the
-   sr-only spans are invisible (1×1, clipped) and everything else in the cells
-   is static/flow content. The Radix Tooltip/Popover content portals to
-   `document.body`, so it is unaffected by the new positioning contexts.
+3. No visual change: no abspos descendant currently depends on a containing
+   block further up than its own component. `ShiftCard` establishes its own
+   `relative` root for its hover actions and selection checkbox; the mobile
+   avatar span is `relative` for its badge dots; the dnd-kit drop highlight is
+   a `ring` (box-shadow, not abspos). The day `<td>` gains `relative` with no
+   `z-index`, so it does not create a stacking context and cannot interfere
+   with the sticky name column's `z-10`. Radix Tooltip/Popover content portals
+   to `document.body` (no `container=` override in this file), so it is
+   unaffected by the new positioning contexts.
+4. The fix is width-independent: it addresses containment, not layout sizing,
+   so verifying at one mobile width proves the behavior at every width
+   (320–767px inclusive).
 
 ## Testing
 
+Per design review, tests pin the **structural containment invariant**, not
+class-string presence (a class-grep would pass even if `relative` moved to a
+sibling or the sr-only span moved outside the td). Precedent:
+`tests/unit/shiftTimelineTab.mobileLayout.test.tsx` walks the rendered DOM to
+assert ancestor/descendant relationships without booting the full page.
+
 - **Unit (regression pin):** render `DroppableDayCell` inside a minimal
-  `DndContext`/`table` harness and assert the `<td>` carries the `relative`
-  class, with a comment explaining the containment invariant it pins (jsdom
-  has no layout engine, so asserting the class is the pragmatic proxy for
-  "absolutely positioned sr-only descendants cannot escape the scroller").
-- **Unit:** source-text assertion that the schedule grid scroller in
-  `Scheduling.tsx` pairs `overflow-x-auto` with `relative` (same style as the
-  PR #504 breakpoint-policy tests; page-level rendering is prohibitively
+  `DndContext`/`table` harness with a `span.sr-only` child (mirroring the
+  production markup), then walk from the sr-only span up to its nearest
+  ancestor whose class list contains a positioning class (`relative`,
+  `sticky`, etc.) and assert that ancestor is the `<td>` itself — i.e. the
+  cell is the containing block that keeps abspos descendants inside the
+  scroller. (jsdom has no layout engine; class-token analysis on the
+  ancestor chain is the closest structural proxy.)
+- **Unit:** parse `Scheduling.tsx` source for the single `className="..."`
+  token containing `overflow-x-auto` (the schedule-grid scroller) and assert
+  `relative` appears among its whitespace-split class tokens — same element,
+  not a loose file-wide regex (page-level rendering is prohibitively
   hook-heavy per memory/lessons.md).
 - **Manual/visual:** local seed with a multi-day approved time-off request at
   375px viewport — `documentElement.scrollWidth` must equal 375 and the page

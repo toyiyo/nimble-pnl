@@ -9,6 +9,7 @@ vi.mock('@/hooks/useRecipes', () => ({
 }));
 
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
+import type { Recipe } from '@/hooks/useRecipes';
 
 const recipe = {
   id: 'r-1',
@@ -19,7 +20,7 @@ const recipe = {
   is_active: true,
   created_at: '',
   updated_at: '',
-} as any;
+} satisfies Recipe;
 
 beforeEach(() => {
   vi.clearAllMocks();

@@ -525,7 +525,14 @@ export const useRecipes = (restaurantId: string | null) => {
   useEffect(() => {
     if (!restaurantId) return;
 
-    // Set up real-time subscription for recipe updates
+    // Set up real-time subscription for recipe updates. Also listen on
+    // prep_recipes: fetchRecipes filters shadow recipes out by checking
+    // prep_recipes, and usePrepRecipes.createPrepRecipe inserts the backing
+    // recipes row before the prep_recipes link row. Without this second
+    // subscription, an open Recipes page can refetch on that recipes INSERT
+    // (before the link exists) and never refetch again once the link lands,
+    // leaving the shadow recipe visible until an unrelated change or manual
+    // refresh.
     const channel = supabase
       .channel(`recipe-changes:${restaurantId}`)
       .on(
@@ -534,6 +541,18 @@ export const useRecipes = (restaurantId: string | null) => {
           event: '*',
           schema: 'public',
           table: 'recipes',
+          filter: `restaurant_id=eq.${restaurantId}`
+        },
+        () => {
+          fetchRecipesRef.current();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'prep_recipes',
           filter: `restaurant_id=eq.${restaurantId}`
         },
         () => {

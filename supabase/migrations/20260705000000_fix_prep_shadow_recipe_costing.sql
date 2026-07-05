@@ -19,8 +19,8 @@
 -- overload ambiguity.
 DROP FUNCTION IF EXISTS public.process_unified_inventory_deduction(uuid, text, integer, text, text, text, text, text, text);
 
--- Recreate with new parameters for transaction type and reason prefix
--- This allows production runs to use 'transfer' (not COGS) vs POS using 'usage' (COGS)
+-- Recreate the function to add p_recipe_id (see §1 note above); all other
+-- parameters/behavior are unchanged from the prior signature.
 CREATE OR REPLACE FUNCTION public.process_unified_inventory_deduction(
     p_restaurant_id uuid,
     p_pos_item_name text,
@@ -107,14 +107,28 @@ BEGIN
     );
 
     IF p_recipe_id IS NOT NULL THEN
-        -- Production-run path: direct by-id lookup. Deliberately NO is_active
-        -- filter — the shadow recipe is an implementation detail and a
-        -- soft-deleted shadow row must not silently disable deductions.
-        -- Tenant guard (restaurant_id) is preserved.
+        -- Production-run path: direct by-id lookup. The is_active filter is
+        -- bypassed ONLY when the recipe is confirmed to be a prep-linked
+        -- "shadow" recipe (backs a row in prep_recipes) — that's the sole
+        -- case a soft-deleted row must not silently disable deductions for.
+        -- This gate is required because process_unified_inventory_deduction
+        -- is SECURITY DEFINER and callable directly via PostgREST RPC by any
+        -- authenticated client with restaurant access: without it, a caller
+        -- could pass an arbitrary p_recipe_id to deduct against any
+        -- soft-deleted/hidden recipe, bypassing the is_active gate POS sales
+        -- are held to (flagged in review, see PR #582).
+        -- Tenant guard (restaurant_id) is preserved in all cases.
         SELECT * INTO v_recipe_record
-        FROM recipes
-        WHERE id = p_recipe_id
-          AND restaurant_id = p_restaurant_id;
+        FROM recipes r
+        WHERE r.id = p_recipe_id
+          AND r.restaurant_id = p_restaurant_id
+          AND (
+            r.is_active = true
+            OR EXISTS (
+              SELECT 1 FROM prep_recipes pr
+              WHERE pr.recipe_id = r.id AND pr.restaurant_id = r.restaurant_id
+            )
+          );
     ELSE
         -- POS-sale path: unchanged name-based lookup, active recipes only.
         SELECT * INTO v_recipe_record
@@ -609,7 +623,10 @@ SET search_path TO 'public'
 AS $$
 BEGIN
   IF OLD.is_active = true AND NEW.is_active = false
-     AND EXISTS (SELECT 1 FROM prep_recipes WHERE recipe_id = OLD.id) THEN
+     AND EXISTS (
+       SELECT 1 FROM prep_recipes pr
+       WHERE pr.recipe_id = OLD.id AND pr.restaurant_id = OLD.restaurant_id
+     ) THEN
     RAISE EXCEPTION 'Recipe "%" backs a prep (batch) recipe and cannot be deactivated. Manage it from the Prep page.', OLD.name;
   END IF;
   RETURN NEW;
@@ -628,7 +645,7 @@ EXECUTE FUNCTION public.prevent_shadow_recipe_deactivation();
 -- NOTE: no explicit GRANT EXECUTE existed on the prior signature (default
 -- privileges apply); intentionally not adding one here.
 COMMENT ON FUNCTION public.process_unified_inventory_deduction(uuid, text, integer, text, text, text, text, text, text, uuid) IS
-'Unified inventory deduction for POS sales and production runs. When p_recipe_id is provided (production runs), the recipe is resolved by id with no is_active filter (self-healing against soft-deleted shadow recipes); otherwise by POS item name among active recipes. Supports usage (POS/COGS) and transfer (production, not COGS until sold) transaction types.';
+'Unified inventory deduction for POS sales and production runs. When p_recipe_id is provided (production runs), the recipe is resolved by id, bypassing is_active ONLY when it is confirmed to be a prep-linked shadow recipe (self-healing against soft-deleted shadow recipes); otherwise the recipe must be active (this gate also applies to the by-id path, since the function is directly callable via RPC). POS sales are resolved by item name among active recipes. Supports usage (POS/COGS) and transfer (production, not COGS until sold) transaction types.';
 
 COMMENT ON FUNCTION public.prevent_shadow_recipe_deactivation() IS
 'Backstop: blocks is_active true->false on recipes referenced by prep_recipes.recipe_id. Shadow recipes must stay active or production deduction/costing would silently break (2026-07 Cold Stone incident).';

@@ -1,9 +1,10 @@
 -- Prep Shadow-Recipe Costing Tests
--- Covers migration 20260705000000_fix_prep_shadow_recipe_costing.sql:
+-- Covers migration 20260705000000_fix_prep_shadow_recipe_costing.sql, in the
+-- order the sections below actually run:
 -- 1. Self-heal: production run deducts + costs even when shadow recipe is inactive
--- 2. Loud failure: prep has ingredients but deduction yields none -> exception
--- 3. Idempotency (completed run): early return, no double deduction
--- 4. Idempotency (in_progress retry with existing transactions): no exception
+-- 2. Idempotency (completed run): early return, no double deduction
+-- 3. Idempotency (in_progress retry with existing transactions): no exception
+-- 4. Loud failure: prep has ingredients but deduction yields none -> exception
 -- 5. Data repair UPDATE reactivates prep-linked inactive recipes
 -- 6. Backstop trigger blocks deactivating prep-linked recipes
 
@@ -28,10 +29,14 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- INCIDENT STATE: shadow recipe inserted ALREADY INACTIVE (bypasses the new
--- backstop trigger, which only guards true->false UPDATE flips).
+-- backstop trigger, which only guards true->false UPDATE flips). Use DO
+-- UPDATE (not DO NOTHING) so this fixture's is_active=false is always
+-- (re-)applied even if a prior non-rolled-back run left this row active --
+-- otherwise Section 1's self-heal assertions would silently test the wrong
+-- starting state.
 INSERT INTO recipes (id, restaurant_id, name, serving_size, is_active)
 VALUES ('26000000-0000-0000-0000-000000000100', '26000000-0000-0000-0000-000000000001', 'Sweet Cream Pans Prep', 2, false)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET is_active = EXCLUDED.is_active;
 
 INSERT INTO recipe_ingredients (recipe_id, product_id, quantity, unit)
 VALUES ('26000000-0000-0000-0000-000000000100', '26000000-0000-0000-0000-000000000010', 2.5, 'gal')

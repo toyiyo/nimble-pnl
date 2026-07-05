@@ -117,7 +117,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
     expect(result.current.recipes.map((r) => r.id)).toEqual(['r-menu']);
   });
 
-  it('fails closed: prep_recipes query error -> no recipes leak, error toast fires', async () => {
+  it('CRITICAL: fails closed: prep_recipes query error -> no recipes leak, error toast fires', async () => {
     recipesResponse = {
       data: [makeRecipe('r-menu', 'Menu Item'), makeRecipe('r-shadow', 'Sweet Cream - pans')],
       error: null,
@@ -162,7 +162,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
 });
 
 describe('useRecipes shadow-recipe guard (deleteRecipe)', () => {
-  it('blocks deleting a prep-linked recipe: destructive toast, returns false, no update', async () => {
+  it('CRITICAL: blocks deleting a prep-linked recipe: destructive toast, returns false, no update', async () => {
     prepLinkSingleResponse = { data: { name: 'Sweet Cream - pans' }, error: null };
 
     const { result } = renderHook(() => useRecipes('rest-1'));

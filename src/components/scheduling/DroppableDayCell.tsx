@@ -28,7 +28,7 @@ export function DroppableDayCell({
     <td
       ref={setNodeRef}
       className={cn(
-        'p-2 align-top transition-colors',
+        'relative p-2 align-top transition-colors',
         dayIsToday && 'bg-primary/5',
         isOver && 'bg-primary/5 ring-1 ring-inset ring-primary/30 rounded-lg',
         isHighlighted && 'bg-success/10 transition-colors duration-500',

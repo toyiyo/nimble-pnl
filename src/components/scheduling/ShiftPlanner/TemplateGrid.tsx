@@ -30,6 +30,9 @@ interface TemplateGridProps {
   gridData: Map<string, Map<string, Shift[]>>;
   onRemoveShift: (shiftId: string) => void;
   onEditTemplate: (template: ShiftTemplate) => void;
+  // TODO(task 7): rename to onHideTemplate/onRestoreTemplate + wire ghost rows
+  // and the hidden-templates lane. Placeholder shim so the build stays green
+  // between tasks (see progress.md Task 1 notes for the same pattern).
   onDeleteTemplate: (templateId: string) => void;
   onAddTemplate: () => void;
   highlightCellId?: string | null;
@@ -170,7 +173,10 @@ export function TemplateGrid({
                     <TemplateRowHeader
                       template={template}
                       onEdit={onEditTemplate}
-                      onDelete={onDeleteTemplate}
+                      // TODO(task 7): pass real onHide/onRestore split by
+                      // template.is_active; placeholder keeps build green.
+                      onHide={(t) => onDeleteTemplate(t.id)}
+                      onRestore={onDeleteTemplate}
                     />
                   </div>
                   {weekDays.map((day) => {

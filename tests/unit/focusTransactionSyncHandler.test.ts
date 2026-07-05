@@ -35,6 +35,7 @@ import {
   type TransactionSyncConfig,
   type TransactionSupabaseDeps,
 } from '../../supabase/functions/_shared/focusTransactionSyncHandler';
+import { computeChecksFingerprint } from '../../supabase/functions/_shared/focusDatafeedFingerprint';
 
 // Narrowed return type for the fetchDatafeed mock used in tests
 type FetchDatafeedFn = TransactionSyncDeps['fetchDatafeed'];
@@ -531,6 +532,140 @@ describe('processDayTransactions', () => {
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     expect(result).toMatchObject({ status: 'error' });
     expect((result as { error?: string }).error).toMatch(/payments write failed/);
+  });
+
+  // ── Delta skip (optional stateStore dep) — Task 3 ────────────────────────────
+  // The stateStore is opt-in: only present in these tests. Existing tests above
+  // (deps without a stateStore) prove behavior is unchanged when it's absent.
+
+  describe('delta skip (optional stateStore dep)', () => {
+    const XML = '<DailyData><Checks><Check><CheckRecord><ID>10</ID><Total>12.50</Total></CheckRecord><Seats><Seat><SeatRecord><Key>5</Key></SeatRecord><CheckItemRecord><SeatKey>5</SeatKey><Key>3</Key><RecordNumber>100</RecordNumber><ID>Scoop</ID><GuestCheckName>Scoop Single</GuestCheckName><ReportGroupID>10</ReportGroupID><Price>4.99</Price></CheckItemRecord><PaymentRecord><SeatKey>5</SeatKey><Key>1</Key><ID>5</ID><Name>Visa</Name><Amount>12.50</Amount></PaymentRecord></Seat></Seats></Check></Checks></DailyData>';
+
+    function makeStateStore(stored: { bytes: number; sha256: string; fetchedAt: string } | null) {
+      return {
+        get: vi.fn().mockResolvedValue(stored),
+        touch: vi.fn().mockResolvedValue(undefined),
+        record: vi.fn().mockResolvedValue(undefined),
+      };
+    }
+
+    it('returns unchanged and skips ALL writes when the fingerprint matches', async () => {
+      const fp = await computeChecksFingerprint(XML);
+      const stateStore = makeStateStore({ ...fp, fetchedAt: '2026-07-04T10:00:00Z' });
+      const { deps, mocks } = makeDeps({ xml: XML });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result).toEqual({ status: 'unchanged' });
+      expect(mocks.ordersUpsert).not.toHaveBeenCalled();
+      expect(mocks.itemsUpsert).not.toHaveBeenCalled();
+      expect(mocks.paymentsUpsert).not.toHaveBeenCalled();
+      expect(mocks.rpcFn).not.toHaveBeenCalled();
+      expect(stateStore.touch).toHaveBeenCalledWith(RESTAURANT_ID, BUSINESS_DATE, fp);
+      expect(stateStore.record).not.toHaveBeenCalled();
+    });
+
+    it('processes normally and records the fingerprint on mismatch', async () => {
+      const stateStore = makeStateStore({ bytes: 1, sha256: '0'.repeat(64), fetchedAt: '2026-07-04T10:00:00Z' });
+      const { deps, mocks } = makeDeps({ xml: XML });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result).toEqual({ status: 'ok', checksWritten: 1 });
+      expect(mocks.ordersUpsert).toHaveBeenCalled();
+      expect(stateStore.record).toHaveBeenCalledOnce();
+      const [restaurantId, businessDate, fp] = stateStore.record.mock.calls[0];
+      expect(restaurantId).toBe(RESTAURANT_ID);
+      expect(businessDate).toBe(BUSINESS_DATE);
+      expect(fp.bytes).toBeGreaterThan(0);
+      expect(stateStore.touch).not.toHaveBeenCalled();
+    });
+
+    it('processes normally when no prior fingerprint exists (get returns null)', async () => {
+      const stateStore = makeStateStore(null);
+      const { deps } = makeDeps({ xml: XML });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result.status).toBe('ok');
+      expect(stateStore.get).toHaveBeenCalledWith(RESTAURANT_ID, BUSINESS_DATE);
+      expect(stateStore.record).toHaveBeenCalledOnce();
+    });
+
+    it('without a stateStore dep, behavior is exactly as before (no state calls, normal processing)', async () => {
+      const { deps, mocks } = makeDeps({ xml: XML });
+
+      const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result.status).toBe('ok');
+      expect(mocks.ordersUpsert).toHaveBeenCalled();
+    });
+
+    it('returns unchanged (not empty) when an empty datafeed matches its prior empty-block fingerprint', async () => {
+      // The delta-skip check runs before the parse/empty-check (step 2.5,
+      // ahead of step 3), so a feed whose <Checks> block is empty both now
+      // and previously matches on fingerprint and short-circuits to
+      // 'unchanged' before the parser ever runs — same as any other match.
+      const emptyFp = await computeChecksFingerprint(SAMPLE_XML_EMPTY);
+      const stateStore = makeStateStore({ ...emptyFp, fetchedAt: '2026-07-04T10:00:00Z' });
+      const { deps } = makeDeps({ xml: SAMPLE_XML_EMPTY });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result).toEqual({ status: 'unchanged' });
+      expect(stateStore.touch).toHaveBeenCalledWith(RESTAURANT_ID, BUSINESS_DATE, emptyFp);
+    });
+
+    it('returns empty AND records the empty-block fingerprint when there is no prior state (first-ever pull of a quiet feed)', async () => {
+      const stateStore = makeStateStore(null);
+      const { deps } = makeDeps({ xml: SAMPLE_XML_EMPTY });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      // No prior fingerprint → not a delta-skip candidate → falls through to
+      // the normal empty-datafeed path (no checks/deletes → 'empty'). The
+      // empty-block fingerprint IS recorded here (review fix) so that a
+      // subsequent quiet pull for this date can delta-skip via step 2.5
+      // instead of re-parsing an empty feed on every tick indefinitely.
+      const emptyFp = await computeChecksFingerprint(SAMPLE_XML_EMPTY);
+      expect(result).toEqual({ status: 'empty' });
+      expect(stateStore.record).toHaveBeenCalledWith(RESTAURANT_ID, BUSINESS_DATE, emptyFp);
+    });
+
+    it('does NOT record the fingerprint when the unified_sales RPC fails, so the next tick retries the RPC', async () => {
+      // Regression test (codex review): recording the fingerprint before the
+      // RPC's success is confirmed would let a transient RPC failure go
+      // permanently unretried — the next tick would see a matching
+      // fingerprint and delta-skip, silently leaving unified_sales stale.
+      const stateStore = makeStateStore(null);
+      const { client, mocks } = makeSupabaseMock();
+      mocks.rpcFn.mockResolvedValue({ data: null, error: { message: 'unified_sales RPC timeout' } });
+      const fetchDatafeedMock = makeFetchDatafeedMock(XML);
+      const deps: TransactionSyncDeps = {
+        supabase: client as unknown as TransactionSupabaseDeps,
+        fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
+        stateStore,
+      };
+
+      const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+
+      // Data is still written (RPC failure is logged, not fatal) ...
+      expect(result).toEqual({ status: 'ok', checksWritten: 1 });
+      expect(mocks.ordersUpsert).toHaveBeenCalled();
+      // ... but the fingerprint must NOT be recorded, so the next tick
+      // re-processes this date and retries the unified_sales RPC.
+      expect(stateStore.record).not.toHaveBeenCalled();
+    });
+
+    it('records the fingerprint when the unified_sales RPC succeeds', async () => {
+      const stateStore = makeStateStore(null);
+      const { deps } = makeDeps({ xml: XML });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result).toEqual({ status: 'ok', checksWritten: 1 });
+      expect(stateStore.record).toHaveBeenCalledOnce();
+    });
   });
 });
 

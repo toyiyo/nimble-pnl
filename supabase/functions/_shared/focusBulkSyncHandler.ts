@@ -5,21 +5,34 @@
  *
  * Responsibilities:
  *  1. No inbound auth gate (mirrors toast-bulk-sync / shift4-bulk-sync). verify_jwt=false.
- *  2. Query: SELECT active focus_connections ORDER BY last_sync_time ASC NULLS FIRST LIMIT 5
- *     (round-robin per spec §9 / review S5).
+ *  2. Claim up to LIMIT due connections atomically via the claim_focus_sync_batch
+ *     RPC (single UPDATE ... FOR UPDATE SKIP LOCKED RETURNING * statement — safe
+ *     under concurrent invocations, design review #1). The claim's due predicate
+ *     already accounts for sync_interval_minutes and next_attempt_at backoff.
  *  3. For each connection:
  *       a. Check wall-clock budget (90s). Break if exceeded.
  *       b. Determine sync mode from initial_sync_done:
  *          - false (backfill): one cursor day per call (mirrors focusSyncDataHandler).
- *          - true (incremental): last 2 business days in connection's timezone.
- *       c. Call processReportDay for each day.
- *       d. Update sync_cursor / initial_sync_done / last_sync_time via serviceClient.
- *       e. Per-connection exception caught — continues to next restaurant.
+ *          - true (incremental), legacy portal path: last 2 business days in
+ *            connection's timezone (unchanged).
+ *          - true (incremental), Lynk API path: TODAY always, YESTERDAY only
+ *            when its focus_datafeed_state fingerprint is missing or ≥ 6h
+ *            stale (lynkIncrementalDates) — closes the "today is never
+ *            pulled" gap. Wires a per-connection delta-skip state store
+ *            (createDatafeedStateStore) into processDayTransactions so
+ *            unchanged feeds skip parse/upserts/RPC entirely.
+ *       c. Call processReportDay (portal) / processDayTransactions (Lynk) for each day.
+ *       d. On success: update sync_cursor / initial_sync_done / last_sync_time and
+ *          reset consecutive_failures=0 / next_attempt_at=null via serviceClient.
+ *       e. Per-connection exception caught — writes exponential backoff
+ *          (consecutive_failures+1, next_attempt_at = now + 15min*2^n capped at
+ *          6h, design review #4) and continues to the next restaurant.
  *  4. Inject sleep(2000ms) between restaurants (injectable for tests per plan Task 10).
  *  5. Return 200 { processed, errors, elapsedMs }.
  *
  * Design references:
- *  - Plan Task 10
+ *  - Plan Task 10; Focus sync frequency plan Task 5 (claim-RPC + backoff contract),
+ *    Task 6 (today-inclusive Lynk window + state store)
  *  - Spec §8 (focus-bulk-sync), §9 (sync orchestration)
  *  - §16 S5 (LIMIT 5 round-robin), review design ("2s delay", "90s wall-clock budget")
  *  - Gate-less cron worker: matches toast-bulk-sync / shift4-bulk-sync (no Bearer)
@@ -38,6 +51,7 @@ import {
   todayInTz,
   subtractDays,
   recentBusinessDays,
+  lynkIncrementalDates,
   type FocusConnection,
   type FocusConnectionRow as SharedFocusConnectionRow,
   type FetchDeps,
@@ -48,6 +62,7 @@ import {
   processDayTransactions,
   type TransactionSyncConfig,
 } from './focusTransactionSyncHandler.ts';
+import { createDatafeedStateStore, type StateStoreClient } from './focusDatafeedFingerprint.ts';
 import { focusApiBaseUrl, fetchDatafeed as realFetchDatafeed } from './focusLynkClient.ts';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -63,6 +78,30 @@ const INTER_RESTAURANT_DELAY_MS = 2_000;
 
 /** Days to backfill before marking initial_sync_done=true. */
 const TARGET_DAYS = 90;
+
+/** Backoff base/cap: 15 min × 2^n, capped at 6 h (30 m, 1 h, 2 h, 4 h, 6 h…). */
+const BACKOFF_BASE_MS = 15 * 60 * 1000;
+const BACKOFF_CAP_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Compute the next backoff state after a connection failure (design review #4).
+ *
+ * Exponential backoff: 15min * 2^failures, capped at 6h. The claim RPC's due
+ * predicate (`_focus_connection_is_due`) excludes rows until `next_attempt_at`
+ * has passed, so this is how failing connections get spaced out instead of
+ * being re-claimed on every fan-out tick.
+ */
+function backoffAfterFailure(
+  priorFailures: number,
+  nowMs: number,
+): { consecutive_failures: number; next_attempt_at: string } {
+  const failures = priorFailures + 1;
+  const delay = Math.min(BACKOFF_CAP_MS, BACKOFF_BASE_MS * 2 ** failures);
+  return {
+    consecutive_failures: failures,
+    next_attempt_at: new Date(nowMs + delay).toISOString(),
+  };
+}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -81,33 +120,44 @@ interface FocusConnectionRow extends SharedFocusConnectionRow {
   api_secret_encrypted: string | null;
   /** Environment: 'production' | 'sandbox'. */
   environment: string | null;
+  /** Configured sync cadence in minutes (scheduler column, consumed by name only). */
+  sync_interval_minutes: number;
+  /** Backoff gate: claim predicate excludes rows until this timestamp. */
+  next_attempt_at: string | null;
+  /** Consecutive failure count driving exponential backoff. */
+  consecutive_failures: number;
 }
 
-/** Minimal Supabase service-role client surface needed by this handler. */
+/**
+ * `.eq(...)` filter chain returned by `update(...)`. Every real call site here
+ * filters by both `id` and `restaurant_id` (multi-tenant contract) before
+ * awaiting, so this must stay chainable across at least two `.eq()` calls
+ * while still being directly awaitable at any point in the chain — hence the
+ * `Promise` extension rather than a single-shot `eq(): Promise<...>` (which
+ * does not type-check past the first filter; CodeRabbit critical finding).
+ */
+interface UpdateFilterBuilder
+  extends Promise<{ data: unknown; error: { message: string } | null }> {
+  eq(col: string, val: string): UpdateFilterBuilder;
+}
+
+/**
+ * Minimal Supabase service-role client surface needed by this handler.
+ *
+ * The `select` branch on `from()` is exactly the chain createDatafeedStateStore
+ * needs (focus_datafeed_state lookups for the delta-skip state store), so it's
+ * composed from StateStoreClient rather than hand-duplicated — this also lets
+ * deps.serviceClient satisfy StateStoreClient structurally, no cast required.
+ */
 export interface ServiceClient {
-  from(table: string): {
-    select(columns: string): {
-      eq(col: string, val: unknown): {
-        order(col: string, opts: { ascending: boolean; nullsFirst: boolean }): {
-          limit(n: number): Promise<{
-            data: FocusConnectionRow[] | null;
-            error: { message: string } | null;
-          }>;
-        };
-      };
-    };
-    update(data: Record<string, unknown>): {
-      eq(col: string, val: string): Promise<{ data: unknown; error: { message: string } | null }>;
-    };
-    upsert(
-      data: Record<string, unknown>,
-      options?: Record<string, unknown>,
-    ): {
-      onConflict(columns: string): {
-        select(): Promise<{ data: unknown; error: { message: string } | null }>;
-      };
-    };
+  from(table: string): ReturnType<StateStoreClient['from']> & {
+    update(data: Record<string, unknown>): UpdateFilterBuilder;
   };
+  /** RPC surface — used for the atomic claim_focus_sync_batch call. */
+  rpc(fn: string, args: Record<string, unknown>): Promise<{
+    data: FocusConnectionRow[] | null;
+    error: { message: string } | null;
+  }>;
 }
 
 /**
@@ -192,20 +242,48 @@ async function processConnection(
       ),
     };
 
+    // Delta-skip state store, built once per connection from the service
+    // client (design §2 "Delta skip" — only the bulk-sync/cron path wires
+    // this; manual/custom-range/backfill callers keep pre-delta-skip behavior).
+    // ServiceClient's from() composes StateStoreClient's shape, so no cast needed.
+    const stateStore = createDatafeedStateStore(deps.serviceClient);
+
     const txDeps = {
       supabase: deps.serviceClient as unknown as Parameters<typeof processDayTransactions>[0]['supabase'],
       fetchDatafeed: realFetchDatafeed,
+      stateStore,
     };
 
     // At this point initial_sync_done=true is guaranteed (B5 skip guard at top
     // of processConnection returns early for backfilling rows). The Lynk backfill
     // is owned exclusively by the 5-min focus-backfill-sync cron (design §8.7).
-    // Incremental: last 2 business days in parallel.
-    const [yesterday, dayBefore] = recentBusinessDays(tz, now);
-    const results = await Promise.all([
-      processDayTransactions(txDeps, txConfig, yesterday),
-      processDayTransactions(txDeps, txConfig, dayBefore),
+    //
+    // Incremental window (design §2 "Lynk incremental window"): TODAY always
+    // (fixes the "today is never pulled" gap — recentBusinessDays() never
+    // included it); YESTERDAY only when its focus_datafeed_state fingerprint
+    // is missing or ≥ 6h stale (lynkIncrementalDates), bounding
+    // yesterday-correction staleness at the pre-change freshness level while
+    // halving steady-state terminal load.
+    //
+    // TODAY's processDayTransactions doesn't depend on the yesterday-fingerprint
+    // lookup, so the two are kicked off together rather than awaited serially —
+    // shaves one DB round-trip off every connection's critical path under the
+    // handler's 90s wall-clock budget.
+    const today = todayInTz(tz, now);
+    const yesterday = subtractDays(today, 1);
+    const [todayResult, yesterdayState] = await Promise.all([
+      processDayTransactions(txDeps, txConfig, today),
+      stateStore.get(row.restaurant_id, yesterday),
     ]);
+    const dates = lynkIncrementalDates(tz, now, yesterdayState?.fetchedAt ?? null);
+    const remainingDates = dates.filter((date) => date !== today);
+
+    const results = [
+      todayResult,
+      ...(await Promise.all(
+        remainingDates.map((date) => processDayTransactions(txDeps, txConfig, date)),
+      )),
+    ];
     const failed = results.find((r) => r.status === 'error');
     if (failed?.status === 'error') {
       const message = failed.error ?? 'Focus transaction incremental sync failed';
@@ -314,23 +392,22 @@ export async function handleBulkSync(
 
   const startMs = deps.now();
 
-  // ── Fetch active connections (round-robin LIMIT 5) ────────────────────────
+  // ── Claim a batch of due connections atomically (design review #1) ────────
+  //
+  // claim_focus_sync_batch performs an atomic UPDATE ... WHERE id IN (SELECT
+  // ... FOR UPDATE SKIP LOCKED) RETURNING * inside a single SQL statement, so
+  // concurrent invocations never double-claim the same connection. It also
+  // bumps last_sync_time as a claim marker (Key Decisions: "Claim bumps
+  // last_sync_time ... replaces worker-side failure-bump").
 
-  const { data: rows, error: queryError } = await deps.serviceClient
-    .from('focus_connections')
-    .select(
-      'id, restaurant_id, report_base_url, report_path, db_server, db_catalog, ' +
-        'report_user_id, store_id, revenue_center, timezone, initial_sync_done, ' +
-        'sync_cursor, last_sync_time, username, password_encrypted, ' +
-        'api_key, api_secret_encrypted, environment',
-    )
-    .eq('is_active', true)
-    .order('last_sync_time', { ascending: true, nullsFirst: true })
-    .limit(LIMIT);
+  const { data: rows, error: queryError } = await deps.serviceClient.rpc(
+    'claim_focus_sync_batch',
+    { p_limit: LIMIT },
+  );
 
   if (queryError) {
-    console.error('focus-bulk-sync: failed to fetch connections:', queryError.message);
-    return jsonResponse({ error: `Failed to fetch connections: ${queryError.message}` }, 500);
+    console.error('focus-bulk-sync: failed to claim connections:', queryError.message);
+    return jsonResponse({ error: `Failed to claim connections: ${queryError.message}` }, 500);
   }
 
   if (!rows || rows.length === 0) {
@@ -381,6 +458,11 @@ export async function handleBulkSync(
             initial_sync_done: newInitialSyncDone,
             last_sync_time: new Date().toISOString(),
             updated_at: new Date().toISOString(),
+            // Reset backoff state on success (design review #4) — a healthy
+            // sync clears the failure streak so the connection resumes its
+            // normal sync_interval_minutes cadence via the due predicate.
+            consecutive_failures: 0,
+            next_attempt_at: null,
           })
           .eq('id', row.id)
           .eq('restaurant_id', row.restaurant_id);
@@ -393,22 +475,36 @@ export async function handleBulkSync(
       // Do not increment result.processed on error — processed means succeeded.
       // The caller can compute attempted = processed + errors.length.
       result.errors.push(`${row.restaurant_id}: ${message}`);
-      // Bump last_sync_time even on failure so this connection doesn't get
-      // re-selected ahead of healthy connections on every run (round-robin
-      // ORDER BY last_sync_time ASC starvation prevention). Best-effort only.
-      deps.serviceClient
-        .from('focus_connections')
-        .update({ last_sync_time: new Date().toISOString(), updated_at: new Date().toISOString() })
-        .eq('id', row.id)
-        .eq('restaurant_id', row.restaurant_id)
-        .then(({ error: tsErr }: { error: { message: string } | null }) => {
-          if (tsErr) {
-            console.warn(`focus-bulk-sync: last_sync_time bump failed for ${row.restaurant_id}:`, tsErr.message);
-          }
-        })
-        .catch((e: unknown) => {
-          console.warn(`focus-bulk-sync: last_sync_time bump threw for ${row.restaurant_id}:`, e instanceof Error ? e.message : String(e));
-        });
+      // Write exponential backoff state instead of bumping last_sync_time
+      // (design review #4). The claim already bumped last_sync_time as a claim
+      // marker, so re-bumping it here is redundant; next_attempt_at is what
+      // actually keeps the due predicate from re-selecting this connection
+      // ahead of healthy ones. Best-effort only — never blocks the loop.
+      const { consecutive_failures, next_attempt_at } = backoffAfterFailure(
+        row.consecutive_failures ?? 0,
+        deps.now(),
+      );
+      // Awaited (not fire-and-forget): on the last row in the batch, the handler
+      // returns immediately after this catch block — a dangling write here could
+      // lose the race against the response, letting a failed connection re-enter
+      // the claim pool without its backoff delay (CodeRabbit major finding).
+      // Still best-effort — a write failure only logs, never throws further.
+      try {
+        const { error: tsErr } = await deps.serviceClient
+          .from('focus_connections')
+          .update({
+            consecutive_failures,
+            next_attempt_at,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', row.id)
+          .eq('restaurant_id', row.restaurant_id);
+        if (tsErr) {
+          console.warn(`focus-bulk-sync: backoff write failed for ${row.restaurant_id}:`, tsErr.message);
+        }
+      } catch (e: unknown) {
+        console.warn(`focus-bulk-sync: backoff write threw for ${row.restaurant_id}:`, e instanceof Error ? e.message : String(e));
+      }
     }
   }
 

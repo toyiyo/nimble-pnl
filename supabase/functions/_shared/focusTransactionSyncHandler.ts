@@ -33,6 +33,42 @@ import {
   type FocusCheck,
 } from './focusDatafeedParser.ts';
 
+import {
+  computeChecksFingerprint,
+  type DatafeedStateStore,
+  type ChecksFingerprint,
+} from './focusDatafeedFingerprint.ts';
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Run a DatafeedStateStore operation, swallowing any rejection.
+ *
+ * The real implementation (createDatafeedStateStore) is already internally
+ * fail-open — get/touch/record never throw. This wrapper defends the fail-open
+ * CONTRACT at the call site too, so a future/alternate DatafeedStateStore that
+ * *does* throw can't turn a bookkeeping hiccup into a false sync failure (e.g.
+ * a `record()` throwing after a fully-successful upsert+RPC would otherwise
+ * surface as `{ status: 'error' }` here, causing the bulk handler to write
+ * exponential backoff onto an otherwise-healthy connection — CodeRabbit major
+ * finding).
+ */
+async function safeStateStoreCall<T>(
+  label: string,
+  restaurantId: string,
+  businessDate: string,
+  op: () => Promise<T>,
+): Promise<T | undefined> {
+  try {
+    return await op();
+  } catch (err: unknown) {
+    console.warn(
+      `focus_datafeed_state ${label} threw for ${restaurantId}/${businessDate}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return undefined;
+  }
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Minimal Supabase client surface needed by this handler. */
@@ -63,11 +99,16 @@ export interface TransactionSupabaseDeps {
  *
  * - supabase:      Supabase client (service-role in production; mock in tests).
  * - fetchDatafeed: The Lynk client function. Injectable for tests.
+ * - stateStore:    Optional delta-skip fingerprint store. Only the bulk-sync
+ *                  handler wires this; manual/custom-range/backfill callers
+ *                  omit it and get exactly today's (pre-delta-skip) behavior.
  */
 export interface TransactionSyncDeps {
   supabase: TransactionSupabaseDeps;
   /** Injectable Lynk fetcher — production: the imported fetchDatafeed from focusLynkClient. */
   fetchDatafeed: typeof fetchDatafeed;
+  /** Optional: when present, skip parse/upserts/RPC if the <Checks> block is unchanged. */
+  stateStore?: DatafeedStateStore;
 }
 
 /**
@@ -107,6 +148,7 @@ export interface TransactionSyncOptions {
 export type TransactionSyncResult =
   | { status: 'ok'; checksWritten: number }
   | { status: 'empty' }
+  | { status: 'unchanged' }
   | { status: 'inprogress' }
   | { status: 'error'; error?: string };
 
@@ -262,11 +304,46 @@ export async function processDayTransactions(
       };
     }
 
+    // ── 2.5 Delta skip (optional; bulk-sync wires a stateStore) ───────────────
+    // Fingerprint the <Checks> block; if it matches the stored state, nothing
+    // changed since the last pull — skip parse, upserts, and the day RPC, so
+    // focus_orders.updated_at stays untouched and unified_sales sees no
+    // phantom churn. Fail-open: store errors → prev=null → normal processing.
+    let fingerprint: ChecksFingerprint | null = null;
+    if (deps.stateStore) {
+      fingerprint = await computeChecksFingerprint(result.xml);
+      const stateStore = deps.stateStore;
+      const prev = await safeStateStoreCall(
+        'get', config.restaurantId, businessDate,
+        () => stateStore.get(config.restaurantId, businessDate),
+      );
+      if (prev && prev.bytes === fingerprint.bytes && prev.sha256 === fingerprint.sha256) {
+        await safeStateStoreCall(
+          'touch', config.restaurantId, businessDate,
+          () => stateStore.touch(config.restaurantId, businessDate, fingerprint as ChecksFingerprint),
+        );
+        return { status: 'unchanged' };
+      }
+    }
+
     // ── 3. Parse the XML ──────────────────────────────────────────────────────
 
     const { checks, deletedCheckIds } = parseFocusDatafeed(result.xml);
 
     if (checks.length === 0 && deletedCheckIds.length === 0) {
+      // Record the (empty) fingerprint so a subsequent quiet pull for this
+      // date can delta-skip via step 2.5 above instead of re-parsing forever
+      // (sound-logic review: without this, a repeatedly-empty business date
+      // — e.g. "today" before a restaurant opens — never gets a state row,
+      // so the fingerprint match at step 2.5 can never trigger for it).
+      if (deps.stateStore && fingerprint) {
+        const stateStore = deps.stateStore;
+        const fp = fingerprint;
+        await safeStateStoreCall(
+          'record', config.restaurantId, businessDate,
+          () => stateStore.record(config.restaurantId, businessDate, fp),
+        );
+      }
       return { status: 'empty' };
     }
 
@@ -301,6 +378,7 @@ export async function processDayTransactions(
 
     // ── 6. Sync to unified_sales ──────────────────────────────────────────────
 
+    let unifiedSalesSyncFailed = false;
     if (!options.skipUnifiedSalesSync) {
       const { error: rpcError } = await deps.supabase.rpc(
         'sync_focus_transactions_to_unified_sales',
@@ -315,7 +393,23 @@ export async function processDayTransactions(
         console.warn(
           `sync_focus_transactions_to_unified_sales warning: ${rpcError.message}`,
         );
+        unifiedSalesSyncFailed = true;
       }
+    }
+
+    // Record the fingerprint only once the day is fully synced (data written
+    // AND unified_sales caught up). If the RPC failed above, deliberately
+    // skip the record so the next tick re-fetches, re-parses, and retries the
+    // RPC instead of matching a "stale-success" fingerprint and delta-skipping
+    // forever (codex review: prevents unified_sales — a P&L-critical table —
+    // from silently drifting stale after a transient RPC failure).
+    if (deps.stateStore && fingerprint && !unifiedSalesSyncFailed) {
+      const stateStore = deps.stateStore;
+      const fp = fingerprint;
+      await safeStateStoreCall(
+        'record', config.restaurantId, businessDate,
+        () => stateStore.record(config.restaurantId, businessDate, fp),
+      );
     }
 
     return { status: 'ok', checksWritten: checks.length };
@@ -409,7 +503,11 @@ export async function processDateRangeTransactions(
     }
 
     daysSynced++;
-    lastStatus = result.status as 'ok' | 'empty';
+    // 'unchanged' cannot actually occur here — this path never wires a
+    // stateStore (design: range/backfill/manual paths don't delta-skip) — but
+    // TransactionSyncResult is a shared type, so fold it into 'ok' rather
+    // than widening DateRangeSyncResult['status'] for an unreachable case.
+    lastStatus = result.status === 'empty' ? 'empty' : 'ok';
   }
 
   // unified_sales aggregation is handled by the Postgres cron

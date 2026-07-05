@@ -72,68 +72,129 @@ END IF;
 - All existing named-param callers (`useInventoryDeduction`,
   `useAutomaticInventoryDeduction`, `supabase/functions/_shared/inventoryConversion.ts`)
   are unaffected: the new param defaults to NULL and the POS behavior is unchanged.
-- Re-apply the existing GRANT/COMMENT statements for the new signature.
+- **Grants (design-review note):** the current function has no explicit `GRANT EXECUTE`
+  (it relies on default PUBLIC execute); the migration re-applies only the existing
+  `COMMENT ON FUNCTION` for the new signature and states this explicitly in a comment —
+  do not invent grants that don't exist today.
 
 **b. `complete_production_run` passes the id and fails loudly.**
 - `CREATE OR REPLACE` (signature unchanged). Pass `v_prep.recipe_id` as `p_recipe_id`.
-- After the deduction call, guard against silent no-ops:
+- **Ordering constraint (design-review major):** part (a)'s DROP+CREATE must precede
+  this `CREATE OR REPLACE` in the migration file — the new body references the 10-arg
+  call. Add an explicit comment in the migration stating the required order.
+- After the deduction call, guard against silent no-ops. **The guard checks
+  `prep_recipe_ingredients` (the prep-side source of truth, keyed by `v_prep.id`), NOT
+  `recipe_ingredients`** (design-review major: the shadow list can itself desync — the
+  same class of bug as this incident — and a guard that trusts it would silently pass
+  the exact failure mode being fixed):
 
 ```sql
 IF COALESCE((v_deduction_result->>'already_processed')::boolean, false) = false
    AND jsonb_array_length(COALESCE(v_deduction_result->'ingredients_deducted', '[]'::jsonb)) = 0
-   AND EXISTS (SELECT 1 FROM recipe_ingredients WHERE recipe_id = v_prep.recipe_id) THEN
-  RAISE EXCEPTION 'Production run %: ingredient deduction failed for recipe % — no ingredients were deducted', p_run_id, v_prep.recipe_id;
+   AND EXISTS (SELECT 1 FROM prep_recipe_ingredients WHERE prep_recipe_id = v_prep.id) THEN
+  RAISE EXCEPTION 'Production run %: ingredient deduction failed for recipe % (%) — no ingredients were deducted', p_run_id, v_prep.recipe_id, v_recipe.name;
 END IF;
 ```
 
-  - `already_processed = true` (idempotent retry) must NOT raise.
-  - A recipe with zero `recipe_ingredients` rows must NOT raise here (some preps may
+  - `already_processed = true` (retry of a not-yet-`completed` run whose transfer
+    transactions already exist) must NOT raise.
+  - A prep with zero `prep_recipe_ingredients` rows must NOT raise (some preps may
     legitimately have no tracked ingredients); zero-cost ingredients also do not raise —
-    only "ingredients exist but none were deducted".
+    only "ingredients expected but none were deducted".
+  - Genuine desync (prep has ingredients, shadow `recipe_ingredients` empty/dangling)
+    DOES raise — that is intentional loud failure, and the exception message includes
+    the recipe name for log triage.
 
-**c. Data repair (idempotent):**
+**c. Data repair (idempotent, with visible count):**
 
 ```sql
-UPDATE recipes r
-SET is_active = true, updated_at = now()
-FROM prep_recipes pr
-WHERE pr.recipe_id = r.id AND r.is_active = false;
+DO $$
+DECLARE v_count integer;
+BEGIN
+  UPDATE recipes r
+  SET is_active = true, updated_at = now()
+  FROM prep_recipes pr
+  WHERE pr.recipe_id = r.id AND r.is_active = false;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RAISE NOTICE 'Reactivated % prep-linked shadow recipe(s)', v_count;
+END $$;
 ```
 
-This reactivates the Cold Stone shadow recipe on deploy (currently the only affected row).
+This reactivates the Cold Stone shadow recipe on deploy (currently the only affected row)
+and logs the affected-row count in deploy output.
+
+**d. DB-level backstop trigger (design-review suggestion, adopted):** a `BEFORE UPDATE`
+trigger on `recipes` raising a clear error when `is_active` flips `true → false` while a
+`prep_recipes` row references the recipe. This closes the incident vector for ALL
+surfaces (direct REST, service scripts, future UI), not just the Recipes page.
+`deletePrepRecipe` is unaffected (it hard-DELETEs the shadow row; the trigger only
+guards UPDATE). Created AFTER the repair UPDATE in (c) within the migration.
 
 ### 2. Client: stop the leak
 
-**a. `useRecipes.fetchRecipes`** (src/hooks/useRecipes.tsx): fetch
-`prep_recipes.select('recipe_id')` for the restaurant alongside the recipes query and
-filter out any recipe whose id is a prep `recipe_id`. Shadow recipes disappear from the
-Recipes page (they are managed from the Batch/Prep page).
+**a. `useRecipes.fetchRecipes`** (src/hooks/useRecipes.tsx): run
+`Promise.all([recipesQuery, prepRecipesQuery])` (where `prepRecipesQuery` is
+`prep_recipes.select('recipe_id')` scoped to the restaurant), **filter shadow recipes
+out BEFORE the per-row cost-recalculation map** (design-review major: otherwise shadow
+rows get cost recomputes and `UPDATE recipes` writes just before being hidden).
+**Failure contract (design-review major): fail closed** — if the `prep_recipes` query
+errors, the whole fetch throws into the existing catch (error toast), rather than
+treating it as "no shadow recipes", which would leak shadows back onto the page. The
+existing `!restaurantId || !user` early return covers the new query too. Both
+supporting indexes already exist (`idx_prep_recipes_restaurant`,
+`idx_prep_recipes_recipe_id`).
 
 **b. `useRecipes.deleteRecipe`**: before soft-deleting, check
 `prep_recipes` for `recipe_id = id` (scoped to the restaurant). If linked, show a
-destructive toast — "This recipe belongs to the batch recipe <name>. Manage it from the
-Prep page." — and return `false` without updating. Defense in depth in case a shadow
+destructive toast — "<name> is managed by a batch (prep) recipe. Go to the Prep page to
+manage it." — and return `false` without updating. Defense in depth in case a shadow
 recipe is reachable through another surface (direct link, stale cache).
+
+**c. `DeleteRecipeDialog.handleDelete`** (src/components/DeleteRecipeDialog.tsx,
+design-review major): branch on the boolean — `const ok = await deleteRecipe(recipe.id);
+if (ok) onClose();`. Today the dialog closes unconditionally, so a blocked delete would
+look like success with only a fleeting toast behind it. Keeping the dialog open anchors
+the rejection.
+
+**d. Intentionally NOT migrating `useRecipes` to React Query** (design-review note):
+the hook is useState/useEffect + realtime channel today with six call sites; migrating
+is out of scope for this incident fix and is recorded here so later reviewers know the
+deviation from CLAUDE.md's React Query pattern is a pre-existing, consciously deferred
+gap.
 
 ### 3. Tests
 
 **pgTAP** (`supabase/tests/26_prep_shadow_recipe_costing.sql`):
 1. Setup: restaurant, user, ingredient product with cost, prep recipe + shadow recipe +
    `recipe_ingredients` + `prep_recipe_ingredients`, output product.
+   (Note: the backstop trigger from 1d means the test soft-deletes the shadow recipe by
+   disabling/deferring around the trigger OR by deleting the `prep_recipes` link first —
+   simplest is to set `is_active = false` BEFORE inserting the `prep_recipes` row, or
+   use `ALTER TABLE recipes DISABLE TRIGGER` within the test transaction. Decide in
+   implementation; the test must still prove self-heal against an inactive shadow row.)
 2. Soft-delete the shadow recipe (`is_active = false`), create + complete a production
    run → assert: deduction transaction exists (negative qty), output product
    `cost_per_unit > 0`, run `actual_total_cost > 0`. (Self-heal proven.)
-3. Delete the `recipe_ingredients` rows, new run → `throws_ok` on
-   `complete_production_run`. (Loud failure proven.)
-4. Idempotency: re-call `complete_production_run` on a completed run → no error,
-   no double deduction (existing behavior preserved).
-5. Data repair: insert an inactive prep-linked recipe, run the repair UPDATE → active.
+3. Delete the `recipe_ingredients` rows (shadow-side desync), new run → `throws_ok` on
+   `complete_production_run`. (Loud failure proven; guard keyed on
+   `prep_recipe_ingredients`.)
+4. Idempotency path 1: re-call `complete_production_run` on a `completed` run → no
+   error, no double deduction (early return preserved).
+5. Idempotency path 2 (design-review major): run left `in_progress` with matching
+   transfer `inventory_transactions` already present (simulated partial retry) →
+   `already_processed = true` short-circuit means NO exception and no double deduction.
+6. Data repair: prep-linked inactive recipe, run the repair UPDATE → active.
+7. Backstop trigger: `UPDATE recipes SET is_active = false` on a prep-linked recipe →
+   `throws_ok`; on a non-linked recipe → `lives_ok`.
 
 **Vitest** (`tests/unit/useRecipesShadowFilter.test.tsx` or similar):
 1. `fetchRecipes` excludes recipes whose ids appear in `prep_recipes.recipe_id`.
-2. `deleteRecipe` on a prep-linked recipe: no `recipes` update issued, error toast shown,
+2. `fetchRecipes` fails closed: `prep_recipes` query error → error path, shadows do NOT
+   leak into the list.
+3. `deleteRecipe` on a prep-linked recipe: no `recipes` update issued, error toast shown,
    returns false.
-3. `deleteRecipe` on a normal recipe still soft-deletes.
+4. `deleteRecipe` on a normal recipe still soft-deletes.
+5. `DeleteRecipeDialog`: stays open when `deleteRecipe` returns false; closes on true.
 
 ## Error handling
 

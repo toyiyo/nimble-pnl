@@ -245,6 +245,26 @@ Notes:
 - The focus fan-out subquery runs on previews too, but returns ≥1 row of a
   no-op helper call — fine.
 
+### E2. Close the client-callable RPC bypass (added by Phase 7 Codex pass 2)
+
+`trigger_square_periodic_sync()` (from `20251011012229…`) hardcoded the prod
+URL inside a SECURITY DEFINER RPC that still carried PostgreSQL's default
+PUBLIC EXECUTE grant — any client role via PostgREST, and any preview/local
+DB, could fire prod's Square sync around the cron guard. It has zero
+application call sites (manual ops helper). Rewrapped:
+
+```sql
+CREATE OR REPLACE FUNCTION public.trigger_square_periodic_sync() ... AS $$
+BEGIN
+  PERFORM public.cron_invoke_edge('square-periodic-sync', '{"manual": true}'::jsonb);
+END; $$;
+REVOKE ALL ... FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ... TO service_role;
+```
+
+Environment guard + single URL source now apply to it; clients are locked
+out; prod manual use (SQL editor / service role) keeps working.
+
 ### F. Non-prod-only: unschedule jobs that can never work off-prod
 
 ```sql
@@ -398,6 +418,17 @@ live-reproduced before fixing:
   and impossible on previews (rows can't predate the branch; max observed
   preview lifetime 43 days). pgTAP section 3b now pins both directions of the
   predicate.
+- **Codex pass 2 (major, fixed):** after the predicate fix, a re-run surfaced
+  `trigger_square_periodic_sync()` — a legacy SECURITY DEFINER RPC hardcoding
+  the prod URL with default PUBLIC EXECUTE (client-callable prod-worker
+  trigger + guard bypass; zero app call sites). Rewrapped through
+  `cron_invoke_edge` + REVOKEd (design §E2, migration §G, pgTAP section 10).
+- **CodeRabbit 7c (2 majors, fixed):** plan-doc drift — Task 2 still showed
+  the pre-fix predicate and SECURITY INVOKER guard. Synced; iteration 2
+  returned zero findings.
+- **Independent re-verification agent:** RESOLVED verdict on the predicate
+  fix across 5 attack vectors (created_at forgery paths, prod-side failure,
+  E2E/pgTAP fixture collisions, test tautology).
 
 ## Test plan
 

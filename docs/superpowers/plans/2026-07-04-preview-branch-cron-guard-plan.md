@@ -83,6 +83,10 @@ design §A–§F in order (SQL is spelled out in the design):
   `'{"scheduled": true}'::jsonb`).
 - §F non-prod-only `DO` block unscheduling `sling-bulk-sync`,
   `trial-expiry-emails`, `process-weekly-brief-queue`.
+- §G (Phase 7 Codex pass-2 fix) rewrap `trigger_square_periodic_sync()`
+  through `cron_invoke_edge` + REVOKE from PUBLIC/anon/authenticated (legacy
+  RPC hardcoded the prod URL with default PUBLIC EXECUTE — client-callable
+  guard bypass); pgTAP section 10 pins it (51 assertions total).
 
 GREEN check: `npx supabase db reset` (replays all migrations) then
 `npm run test:db` → ALL files green including 53. Commit.

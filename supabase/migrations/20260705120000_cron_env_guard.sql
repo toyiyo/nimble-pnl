@@ -291,3 +291,29 @@ BEGIN
                        'process-weekly-brief-queue');
   END IF;
 END $$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- §G. Close the client-callable RPC bypass (Codex pass-2 finding).
+--
+-- trigger_square_periodic_sync() (20251011012229) hardcoded the prod URL in a
+-- SECURITY DEFINER RPC that still carried the default PUBLIC EXECUTE grant:
+-- any client role via PostgREST — and any preview/local DB — could fire
+-- prod's Square sync directly, bypassing the environment guard above. No
+-- application code calls it (manual ops helper only; grep: src/ has zero call
+-- sites), so it is rewrapped through cron_invoke_edge (environment-guarded,
+-- single URL source) and locked to postgres/service_role.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.trigger_square_periodic_sync()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+  -- Env guard + prod URL live in cron_invoke_edge; NULL return (non-prod
+  -- skip) is discarded by PERFORM, so this stays a clean no-op off-prod.
+  PERFORM public.cron_invoke_edge('square-periodic-sync', '{"manual": true}'::jsonb);
+END;
+$$;
+REVOKE ALL ON FUNCTION public.trigger_square_periodic_sync() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.trigger_square_periodic_sync() TO service_role;

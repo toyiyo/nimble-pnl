@@ -28,7 +28,7 @@
 -- read/write semantics in-txn without depending on that global fact alone.
 
 BEGIN;
-SELECT plan(46);
+SELECT plan(51);
 
 -- ── 1: deploy_env table — existence, RLS, zero policies, CHECK constraint ───
 SELECT has_table('public', 'deploy_env', 'public.deploy_env exists');
@@ -312,6 +312,36 @@ SELECT ok(
 SELECT ok(
   NOT has_table_privilege('authenticated', 'public.deploy_env', 'SELECT'),
   'authenticated has no SELECT privilege on deploy_env'
+);
+
+-- ── 10: client-callable RPC bypass closed — trigger_square_periodic_sync ───
+--        (Codex pass-2 finding: the legacy SECURITY DEFINER RPC hardcoded the
+--        prod URL and kept the default PUBLIC EXECUTE grant, so any client —
+--        or any preview/local DB — could fire prod's Square sync around the
+--        cron guard. Now routed through cron_invoke_edge and locked down.)
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.trigger_square_periodic_sync()', 'EXECUTE'),
+  'anon cannot execute trigger_square_periodic_sync (client bypass closed)'
+);
+SELECT ok(
+  NOT has_function_privilege('authenticated', 'public.trigger_square_periodic_sync()', 'EXECUTE'),
+  'authenticated cannot execute trigger_square_periodic_sync (client bypass closed)'
+);
+SELECT ok(
+  (SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public' AND p.proname = 'trigger_square_periodic_sync')
+    LIKE '%cron_invoke_edge%',
+  'trigger_square_periodic_sync routes through cron_invoke_edge'
+);
+SELECT ok(
+  (SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid
+    WHERE n.nspname = 'public' AND p.proname = 'trigger_square_periodic_sync')
+    NOT LIKE '%ncdujvdgqtaunuyigflp%',
+  'trigger_square_periodic_sync no longer inlines the hardcoded prod URL'
+);
+SELECT lives_ok(
+  $$SELECT public.trigger_square_periodic_sync()$$,
+  'trigger_square_periodic_sync no-ops without error while non-production'
 );
 
 SELECT * FROM finish();

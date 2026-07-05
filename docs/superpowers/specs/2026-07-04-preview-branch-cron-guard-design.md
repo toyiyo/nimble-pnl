@@ -66,13 +66,25 @@ Facts established (prod SQL + Supabase docs, 2026-07-04):
      four `INSERT INTO public.restaurants` occurrences in migration history are
      all inside `create_restaurant_*()` RPC function bodies, which only run
      when a user invokes them.
-  Therefore, at the instant this migration runs: **prod has restaurants rows;
-  a preview branch or fresh local stack has zero.** `list_branches` confirms
-  previews are `with_data: false`.
+  Therefore, at the instant this migration runs: **prod has restaurants rows
+  older than 90 days; no preview branch or local stack can.** A preview starts
+  empty (`list_branches` confirms `with_data: false`), so any row created
+  there has `created_at` ≥ the branch's own creation time — and per-PR
+  previews live days-to-weeks (observed max: 43 days). Prod verified
+  2026-07-04 via prod SQL: 30 of 35 restaurants are >90 days old, oldest
+  2025-09-15 (~10 months of margin).
+
+  The **≥90-day age qualification** (added after the Phase 7 Codex finding)
+  covers the one ordering bare `EXISTS(restaurants)` got wrong: a preview
+  branch created before this migration existed, that accumulated a QA-created
+  restaurant, and only later received this migration via rebase — bare EXISTS
+  would have latched it to "production"; the age bar cannot be met there.
 
 The migration snapshots that fact into a durable marker. The runtime guard
-reads the **marker**, never live data — a preview user creating a restaurant
-later (manual QA, E2E) must not flip the environment to "production".
+reads the **marker**, never live data — nothing a preview user does after
+migration-apply time (manual QA, E2E) can flip the environment to
+"production". Wrong-latch remedy, should it ever be needed:
+`DELETE FROM public.deploy_env WHERE key = 'environment'`.
 
 ## Design
 
@@ -112,12 +124,17 @@ REVOKE ALL ON public.deploy_env FROM PUBLIC, anon, authenticated;
 ```sql
 INSERT INTO public.deploy_env (key, value)
 SELECT 'environment', 'production'
-WHERE EXISTS (SELECT 1 FROM public.restaurants)
+WHERE EXISTS (
+  SELECT 1 FROM public.restaurants
+  WHERE created_at < now() - interval '90 days'
+)
 ON CONFLICT (key) DO NOTHING;
 ```
 
 Runs in the same transaction as the cron rewrap — prod flips atomically with
-zero gap; previews/local never seed the row.
+zero gap; previews/local never seed the row (their restaurants rows, if any,
+are always younger than the branch itself; the 90-day bar is >2× the longest
+observed preview lifetime, while prod passes with ~10 months of margin).
 
 ### C. Runtime guard
 
@@ -308,7 +325,8 @@ New subsection under Integrations/architecture docs:
 | New preview branch after merge | Migration runs on empty DB → no marker → helper no-ops from first tick. |
 | Existing open PRs (previews already created) | Keep firing old hardcoded commands until the PR rebases onto main (previews apply only new migrations on new commits) or the PR closes. Ops note in PR; stale #510 preview flagged to user. |
 | Local `npm run db:reset` | Same as preview — quiet. |
-| Preview user creates a restaurant during QA | Marker decision already made at migration time → still quiet. |
+| Preview user creates a restaurant during QA (after this migration applied there) | Marker decision already made at migration time → still quiet. |
+| Pre-existing preview accumulated a QA restaurant BEFORE receiving this migration (rebase ordering — Codex Phase 7 finding) | QA rows are younger than the branch itself (previews start empty; max observed lifetime 43 days) → the ≥90-day seed predicate stays false → still quiet. Deliberate `created_at` forgery is the only remaining path; remedy: `DELETE FROM public.deploy_env WHERE key='environment'`. |
 | Prod DR rebuild (replay migrations on empty DB, then restore data) | Marker won't seed → crons quiet until manual re-seed (documented in migration header + CLAUDE.md). Better than the inverse failure (previews spamming prod silently). |
 | Vault/branching platform changes | No dependency — guard uses only a plain table. |
 | Future cron migration forgets the helper | CLAUDE.md pattern + this migration's header call it out; reviewer checklists (ocr rules) see CLAUDE.md. |
@@ -355,6 +373,28 @@ no UI surface). All findings folded in:
 - **decided during fold-in:** name validation runs BEFORE the environment
   guard in `cron_invoke_edge`, so typo'd job names fail in CI/local/preview
   instead of surfacing first in prod.
+
+## Multi-model review (Phase 7, 2026-07-04)
+
+Six reviewers ran against the implementation (security, performance,
+maintainability, sound-logic: zero findings). Two findings, both
+live-reproduced before fixing:
+
+- **ocr-rules (major, fixed in-workflow):** `is_production()` was SECURITY
+  INVOKER while only `service_role` gets EXECUTE — and `service_role` has no
+  table privileges on RLS-locked `deploy_env`, so it errored
+  (`permission denied`) instead of returning the documented fail-safe `false`.
+  Fixed with `SECURITY DEFINER` (matches the `focus_due_sync_count()`
+  precedent).
+- **Codex (major, fixed post-workflow):** bare `EXISTS(restaurants)` seeding
+  wrongly latched "production" on a pre-existing preview that accumulated a
+  QA restaurant before receiving this migration (reproduced via incremental
+  `supabase migration up` on a dirtied local DB). Resolution kept the approved
+  mechanism and sharpened the predicate to `created_at < now() - interval
+  '90 days'` — verified against prod (30/35 rows qualify, oldest 2025-09-15)
+  and impossible on previews (rows can't predate the branch; max observed
+  preview lifetime 43 days). pgTAP section 3b now pins both directions of the
+  predicate.
 
 ## Test plan
 

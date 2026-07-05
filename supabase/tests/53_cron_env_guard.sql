@@ -5,8 +5,10 @@
 -- Background: Supabase preview branches and local `supabase db reset` stacks
 -- apply every migration, including cron.schedule(...) calls that
 -- net.http_post the hardcoded PRODUCTION project URL. This guard adds a
--- durable `deploy_env` marker (seeded ONLY when `restaurants` has rows at
--- migration-apply time — true only in prod) and a central dispatch helper
+-- durable `deploy_env` marker (seeded ONLY when `restaurants` has rows OLDER
+-- THAN 90 DAYS at migration-apply time — true only in prod: preview/local
+-- rows can never predate the branch itself, and previews live days-to-weeks)
+-- and a central dispatch helper
 -- `cron_invoke_edge()` that no-ops off-prod, so preview/local crons never
 -- reach prod's edge functions.
 --
@@ -26,7 +28,7 @@
 -- read/write semantics in-txn without depending on that global fact alone.
 
 BEGIN;
-SELECT plan(42);
+SELECT plan(46);
 
 -- ── 1: deploy_env table — existence, RLS, zero policies, CHECK constraint ───
 SELECT has_table('public', 'deploy_env', 'public.deploy_env exists');
@@ -80,6 +82,62 @@ SELECT is(
   public.is_production(),
   false,
   'is_production() reverts to false once the marker is deleted'
+);
+
+-- ── 3b: seed-predicate semantics — the migration's exact INSERT must ignore
+--        young (QA/preview-age) restaurants and fire only for rows older than
+--        90 days (the prod signature). Directly covers the Codex-review
+--        ordering: pre-existing preview + QA restaurant + later migration
+--        apply must NOT latch 'production'. RLS is no obstacle here (test
+--        runs as postgres, the table owner); rollback discards everything.
+INSERT INTO public.restaurants (name)
+VALUES ('pgTAP young QA restaurant (rolled back)');
+
+INSERT INTO public.deploy_env (key, value)
+SELECT 'environment', 'production'
+WHERE EXISTS (
+  SELECT 1 FROM public.restaurants
+  WHERE created_at < now() - interval '90 days'
+)
+ON CONFLICT (key) DO NOTHING;
+
+SELECT is(
+  (SELECT count(*)::int FROM public.deploy_env WHERE key = 'environment'),
+  0,
+  'seed predicate ignores restaurants younger than 90 days (QA-on-preview ordering cannot latch production)'
+);
+
+INSERT INTO public.restaurants (name, created_at)
+VALUES ('pgTAP prod-age restaurant (rolled back)', now() - interval '100 days');
+
+INSERT INTO public.deploy_env (key, value)
+SELECT 'environment', 'production'
+WHERE EXISTS (
+  SELECT 1 FROM public.restaurants
+  WHERE created_at < now() - interval '90 days'
+)
+ON CONFLICT (key) DO NOTHING;
+
+SELECT is(
+  (SELECT count(*)::int FROM public.deploy_env WHERE key = 'environment'),
+  1,
+  'seed predicate fires when a restaurant older than 90 days exists (prod signature)'
+);
+
+SELECT is(
+  public.is_production(),
+  true,
+  'is_production() reflects the freshly seeded marker'
+);
+
+-- Restore the non-prod state the remaining sections depend on.
+DELETE FROM public.deploy_env WHERE key = 'environment';
+DELETE FROM public.restaurants WHERE name LIKE 'pgTAP %(rolled back)';
+
+SELECT is(
+  public.is_production(),
+  false,
+  'non-prod state restored after seed-predicate checks (marker removed)'
 );
 
 -- ── 4: cron_invoke_edge no-ops (returns NULL, no error) while non-prod ─────

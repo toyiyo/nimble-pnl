@@ -14,13 +14,25 @@
 --
 -- Mechanism (see design doc for full investigation): a durable marker table
 -- `public.deploy_env` is seeded, ONCE, AT MIGRATION-APPLY TIME, iff
--- `public.restaurants` already has rows. That is true only in prod at the
--- instant this migration runs (no seed.sql in this repo; no migration
--- INSERTs into restaurants outside RPC bodies; Supabase branching docs:
--- preview branches copy no production data). The runtime guard
--- `public.is_production()` reads the MARKER, never live data, so a preview
--- user creating a restaurant later (manual QA, E2E) can never flip an
--- environment to "production" after the fact.
+-- `public.restaurants` has rows OLDER THAN 90 DAYS. Only prod can satisfy
+-- that predicate:
+--   • prod (verified 2026-07-04 via prod SQL): 30 of 35 restaurants are
+--     >90 days old; the oldest dates to 2025-09-15 (~10 months) — huge margin;
+--   • previews/local start EMPTY (no seed.sql in this repo; no migration
+--     INSERTs into restaurants outside RPC bodies; Supabase branching docs:
+--     preview branches copy no production data), and any row created later
+--     (manual QA, E2E) has created_at ≥ the branch's own creation time, so it
+--     can never be older than the branch itself — and per-PR previews live
+--     days-to-weeks (observed max 43 days), never 90.
+-- The age qualification exists for one specific ordering (Codex review
+-- finding): a preview branch created BEFORE this migration existed, that
+-- accumulated a QA-created restaurant, and only later received this migration
+-- via rebase — a bare EXISTS(restaurants) would have latched that preview to
+-- "production". The runtime guard `public.is_production()` reads the MARKER,
+-- never live data, so nothing a preview user does after migration-apply time
+-- can flip an environment to "production".
+-- Wrong-latch remedy (belt-and-braces; requires deliberate created_at forgery
+-- to ever occur): DELETE FROM public.deploy_env WHERE key = 'environment';
 --
 -- The five worker-invoking cron jobs that build a hardcoded/broken prod URL
 -- are rewrapped to go through `public.cron_invoke_edge(fn, body, timeout)` —
@@ -71,11 +83,19 @@ REVOKE ALL ON public.deploy_env FROM PUBLIC, anon, authenticated;
 -- §B. Self-seeding — the one-time environment decision, made ONLY here.
 -- Runs in the SAME transaction as the cron rewrap below (one migration file
 -- = one transaction under `supabase db push`), so prod flips atomically with
--- zero gap; previews/local (empty restaurants table) never seed this row.
+-- zero gap. The ≥90-day age qualification makes the predicate false on ANY
+-- preview/local DB — including one that already accumulated QA-created
+-- restaurants before receiving this migration (rows there can never be older
+-- than the branch itself; previews live days-to-weeks). Prod passes with
+-- ~10 months of margin (verified 2026-07-04: oldest restaurant 2025-09-15,
+-- 30 rows >90d old).
 -- ─────────────────────────────────────────────────────────────────────────────
 INSERT INTO public.deploy_env (key, value)
 SELECT 'environment', 'production'
-WHERE EXISTS (SELECT 1 FROM public.restaurants)
+WHERE EXISTS (
+  SELECT 1 FROM public.restaurants
+  WHERE created_at < now() - interval '90 days'
+)
 ON CONFLICT (key) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────────────────────

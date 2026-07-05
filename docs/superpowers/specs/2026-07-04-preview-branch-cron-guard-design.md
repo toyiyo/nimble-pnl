@@ -279,6 +279,9 @@ any HTTP work). Tests (inside `BEGIN…ROLLBACK`):
    `('environment', 'prod')`.
 2. Fresh non-prod state: marker row absent → `is_production()` = false.
 3. Insert marker in-txn → `is_production()` = true (delete → false again).
+3b. Seed-predicate semantics (Codex-finding coverage): a young restaurant
+   row must NOT seed the marker (QA-on-preview ordering); a 100-day-old row
+   must; state restored afterwards (all in-txn, rolled back).
 4. `cron_invoke_edge('focus-bulk-sync')` while non-prod: returns NULL,
    `lives_ok` (no error, no failed-run noise).
 5. `cron_edge_url('focus-backfill-sync')` returns exactly

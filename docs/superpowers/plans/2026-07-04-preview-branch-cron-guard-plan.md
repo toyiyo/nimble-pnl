@@ -20,7 +20,8 @@ folded design-review decisions).
 ## Task 1 — pgTAP tests (RED)
 
 Create `supabase/tests/53_cron_env_guard.sql` implementing design §G exactly
-(9 groups; follow the style of `supabase/tests/51_focus_sync_scheduler.sql`
+(9 groups + §3b seed-predicate semantics added by the Phase 7 Codex fix —
+46 assertions total; follow the style of `supabase/tests/51_focus_sync_scheduler.sql`
 and `52_focus_legacy_cron_no_claim_bump.sql`: `BEGIN; SELECT plan(N); …
 SELECT * FROM finish(); ROLLBACK;`). Key assertions:
 
@@ -62,9 +63,16 @@ design §A–§F in order (SQL is spelled out in the design):
 - `CREATE EXTENSION IF NOT EXISTS pg_cron;` / `pg_net;` + `GRANT USAGE ON
   SCHEMA cron TO postgres;` (matches sibling migrations).
 - §A `deploy_env` (+ RLS + REVOKE + CHECK).
-- §B self-seed `WHERE EXISTS (SELECT 1 FROM public.restaurants)`.
-- §C `is_production()` (sql, STABLE, `SET search_path = pg_catalog, public`,
-  fail-safe comment, REVOKE + GRANT service_role).
+- §B self-seed — age-qualified predicate (Phase 7 Codex fix; a bare
+  `EXISTS(restaurants)` would latch 'production' on a pre-existing preview
+  that accumulated a QA restaurant before receiving this migration):
+  `WHERE EXISTS (SELECT 1 FROM public.restaurants WHERE created_at < now() -
+  interval '90 days')`.
+- §C `is_production()` (sql, STABLE, **SECURITY DEFINER** — Phase 7 ocr-rules
+  fix: `service_role` has EXECUTE but no table privileges on the RLS-locked
+  `deploy_env`, so SECURITY INVOKER errored instead of returning the
+  fail-safe `false`; `SET search_path = pg_catalog, public`, fail-safe
+  comment, REVOKE + GRANT service_role).
 - §D `cron_edge_url()` (plpgsql IMMUTABLE, name regex `^[a-z0-9-]+$`) and
   `cron_invoke_edge()` (plpgsql VOLATILE; validate FIRST via cron_edge_url,
   then env-guard with RAISE LOG + NULL, else `net.http_post`); both

@@ -51,7 +51,11 @@ identify a crash-looping third-party SDK.
   imports, and the `enableSpeedInsights` flag from `src/App.tsx`.
 - Remove `@vercel/analytics` and `@vercel/speed-insights` from `package.json`.
 - Regression guard: negative source-text test asserting `src/App.tsx` no longer
-  references `@vercel/`.
+  imports the two exact specifiers `@vercel/analytics` and
+  `@vercel/speed-insights` (scoped per design review — do not blanket-ban the
+  `@vercel/` prefix so a deliberate future reintroduction stays legible).
+- Sweep `.env*`, `docs/`, and deployment config for orphaned
+  `VITE_ENABLE_SPEED_INSIGHTS` references and remove them.
 
 ### 2. Suppress unactionable masked exceptions client-side
 
@@ -61,8 +65,15 @@ identify a crash-looping third-party SDK.
   synthetic, stack-frame-less entries with the CORS-masked message
   (`Script error.` variants: `Script error`, `Script error.`, browser-prefixed
   forms). Everything else passes through untouched.
-- Wire it as `before_send` in the PostHog options in `src/main.tsx`
-  (return `null` to drop, else return the event unchanged).
+- Wire it as `before_send` **inside the existing module-level `posthogOptions`
+  object literal** in `src/main.tsx` (return `null` to drop, else return the
+  event unchanged) — not via a separate init call or post-hoc mutation. Add a
+  one-line code comment noting the options object is intentionally a
+  module-level constant and must be memoized if ever moved into a component
+  (design-review major).
+- Unit tests must enumerate the exact message literals the predicate matches
+  (`Script error.`, `Script error`, and any browser-prefixed variants chosen)
+  so the predicate's scope is auditable at a glance (design-review minor).
 - Rationale: every script we control already reports unmasked; remaining masked
   events are third-party-injected noise with zero diagnostic content. This is the
   same default posture Sentry ships with (`ignoreErrors: ['Script error.']`).
@@ -76,13 +87,25 @@ identify a crash-looping third-party SDK.
   `SheetHeader` with `SheetTitle` ("Navigation") and `SheetDescription`
   (matches the upstream shadcn fix). Kills both Radix console errors
   (missing title + missing description).
+- Placement (design-review major): the sr-only header goes as the **first
+  direct child of `SheetContent`, as a sibling before the existing
+  `flex h-full w-full flex-col` wrapper div** — matching the upstream shadcn
+  patch — so focus order and screen-reader announcement stay natural.
 - Unit test: render mobile sidebar (mock `useIsMobile` → true), assert the
   dialog has an accessible name.
 
 ### Post-merge operational step
 
 - Suppress PostHog issue `019e27d4-4df3-7a83-8fa5-9c9bb2b80a66` (user-approved)
-  once the PR ships, so stale-bundle stragglers don't re-page.
+  once the PR ships, so stale-bundle stragglers don't re-page. This is manual —
+  add it as a checklist item in the PR description so it isn't forgotten
+  (design-review minor).
+
+### Bonus hygiene (found during Phase 1)
+
+- `progress.md` from the categorization task is tracked on `main` (leaked via
+  PR #573 despite `.gitignore` — recurrence of the 2026-06-19/28 lessons).
+  `git rm --cached progress.md` on this branch so it leaves the repo.
 
 ## Non-goals / decided trade-offs
 

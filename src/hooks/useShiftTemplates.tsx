@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
@@ -26,28 +27,58 @@ export function templateAppliesToDay(
   return template.days.includes(dayOfWeek);
 }
 
+/** Builds the "N assigned shift(s) kept" description for the hide toast. */
+function keptShiftDescription(keptShiftCount: number): string {
+  if (keptShiftCount === 0) return 'Assigned shifts are kept';
+  if (keptShiftCount === 1) return '1 assigned shift kept';
+  return `${keptShiftCount} assigned shifts kept`;
+}
+
 // ---------------------------------------------------------------------------
 // The hook
 // ---------------------------------------------------------------------------
 
+export type TemplateStatusFilter = 'active' | 'inactive' | 'all';
+
+interface UseShiftTemplatesOptions {
+  status?: TemplateStatusFilter;
+}
+
 type TemplateInput = Omit<ShiftTemplate, 'id' | 'created_at' | 'updated_at'>;
 
-export function useShiftTemplates(restaurantId: string | null) {
+interface HideTemplateInput {
+  id: string;
+  name: string;
+  keptShiftCount: number;
+}
+
+export function useShiftTemplates(
+  restaurantId: string | null,
+  options: UseShiftTemplatesOptions = {},
+) {
+  const { status = 'active' } = options;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['shift_templates', restaurantId],
+    queryKey: ['shift_templates', restaurantId, status],
     queryFn: async () => {
       if (!restaurantId) return [];
       // Generated types may not have the `days` column yet (migration ahead of codegen),
       // so we cast to `any` for the query and type the result manually.
-      const { data, error } = await (supabase
+      let query = (supabase
         .from('shift_templates') as any)
         .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true)
-        .order('start_time');
+        .eq('restaurant_id', restaurantId);
+
+      if (status === 'active') {
+        query = query.eq('is_active', true);
+      } else if (status === 'inactive') {
+        query = query.eq('is_active', false);
+      }
+      // 'all' = no is_active filter
+
+      const { data, error } = await query.order('start_time');
       if (error) throw error;
       return data as ShiftTemplate[];
     },
@@ -55,6 +86,10 @@ export function useShiftTemplates(restaurantId: string | null) {
     staleTime: 30000,
     refetchOnWindowFocus: true,
   });
+
+  const invalidateAllStatuses = () => {
+    queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
+  };
 
   const createMutation = useMutation({
     mutationFn: async (input: TemplateInput) => {
@@ -67,7 +102,7 @@ export function useShiftTemplates(restaurantId: string | null) {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
+      invalidateAllStatuses();
       toast({ title: 'Template created', description: 'Shift template has been added.' });
     },
     onError: (error: Error) => {
@@ -87,7 +122,7 @@ export function useShiftTemplates(restaurantId: string | null) {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
+      invalidateAllStatuses();
       toast({ title: 'Template updated' });
     },
     onError: (error: Error) => {
@@ -95,17 +130,47 @@ export function useShiftTemplates(restaurantId: string | null) {
     },
   });
 
-  const deleteMutation = useMutation({
+  const restoreMutation = useMutation({
     mutationFn: async (id: string) => {
+      const { error } = await (supabase
+        .from('shift_templates') as any)
+        .update({ is_active: true })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      invalidateAllStatuses();
+      toast({ title: 'Template restored' });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const hideMutation = useMutation({
+    mutationFn: async ({ id }: HideTemplateInput) => {
       const { error } = await (supabase
         .from('shift_templates') as any)
         .update({ is_active: false })
         .eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
-      toast({ title: 'Template removed' });
+    onSuccess: (_data, variables) => {
+      invalidateAllStatuses();
+      const { id, name, keptShiftCount } = variables;
+      toast({
+        title: `"${name}" hidden`,
+        description: keptShiftDescription(keptShiftCount),
+        duration: 8000,
+        action: (
+          <ToastAction
+            altText={`Undo hiding ${name}`}
+            onClick={() => restoreMutation.mutate(id)}
+          >
+            Undo
+          </ToastAction>
+        ),
+      });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -118,6 +183,7 @@ export function useShiftTemplates(restaurantId: string | null) {
     error,
     createTemplate: createMutation.mutateAsync,
     updateTemplate: updateMutation.mutateAsync,
-    deleteTemplate: deleteMutation.mutateAsync,
+    hideTemplate: hideMutation.mutateAsync,
+    restoreTemplate: restoreMutation.mutateAsync,
   };
 }

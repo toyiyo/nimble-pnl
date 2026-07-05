@@ -99,8 +99,15 @@ export function ShiftPlannerTab({
     loading: templatesLoading,
     createTemplate,
     updateTemplate,
-    deleteTemplate,
+    hideTemplate,
   } = useShiftTemplates(restaurantId);
+
+  // TODO(task-8): replace with full hide/restore wiring (name + keptShiftCount,
+  // showHidden toggle, ghost rows) per docs/superpowers/plans/2026-07-05-hide-shift-templates-plan.md.
+  const deleteTemplate = useCallback(
+    (templateId: string) => hideTemplate({ id: templateId, name: '', keptShiftCount: 0 }),
+    [hideTemplate],
+  );
 
   const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId);
 

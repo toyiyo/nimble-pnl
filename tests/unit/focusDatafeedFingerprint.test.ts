@@ -64,6 +64,23 @@ describe('createDatafeedStateStore', () => {
     expect(await store.get('r1', '2026-07-04')).toBeNull();
   });
 
+  it('get logs a warning on query error (observability parity with touch/record, CodeRabbit nitpick)', async () => {
+    // A persistent read failure silently degrades delta-skip to "always
+    // reprocess" — that should still fail open (null), but it deserves an
+    // operational signal instead of being swallowed entirely.
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const { client } = makeClient(null, { message: 'boom' });
+      const store = createDatafeedStateStore(client);
+      const got = await store.get('r1', '2026-07-04');
+      expect(got).toBeNull();
+      expect(warnSpy).toHaveBeenCalledOnce();
+      expect(warnSpy.mock.calls[0][0]).toMatch(/focus_datafeed_state get failed for r1\/2026-07-04.*boom/);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it('record upserts the fingerprint on the composite key', async () => {
     const { client, mocks } = makeClient(null);
     const store = createDatafeedStateStore(client);

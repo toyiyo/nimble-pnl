@@ -161,6 +161,21 @@ describe('handleSaveConnection (FocusLink API)', () => {
     });
   });
 
+  it('pins the 30-min sync cadence and clears backoff state on save (codex review)', async () => {
+    // A legacy portal row seeded with a 360-min (6h) interval by the scheduler
+    // migration must NOT keep that cadence after converting to API credentials
+    // via this handler — otherwise it silently syncs 12x slower than intended.
+    // Any accumulated backoff (next_attempt_at/consecutive_failures) must also
+    // be cleared so fresh credentials get an immediate clean slate.
+    const { deps, mocks } = makeDeps();
+    await handleSaveConnection(makeRequest({}), deps);
+    expect(mocks.upsertMock.mock.calls[0][0]).toMatchObject({
+      sync_interval_minutes: 30,
+      next_attempt_at: null,
+      consecutive_failures: 0,
+    });
+  });
+
   it('returns 500 when the upsert fails', async () => {
     const { deps } = makeDeps({ serviceClientOpts: { error: 'unique constraint violated' } });
     const res = await handleSaveConnection(makeRequest({}), deps);

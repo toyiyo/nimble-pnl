@@ -666,6 +666,60 @@ describe('processDayTransactions', () => {
       expect(result).toEqual({ status: 'ok', checksWritten: 1 });
       expect(stateStore.record).toHaveBeenCalledOnce();
     });
+
+    // ── voidDeleteFailed gate (codex review) ──────────────────────────────────
+    // A feed containing a DeleteRecord (voided check) whose focus_orders delete
+    // fails must NOT record the fingerprint — otherwise the next tick sees a
+    // matching fingerprint and delta-skips, leaving the voided check stranded
+    // in focus_orders / unified_sales indefinitely.
+
+    const XML_WITH_DELETE = `<DailyData><Checks>
+<Check><CheckRecord><ID>10</ID><Total>12.50</Total></CheckRecord>
+<Seats><Seat><SeatRecord><Key>1</Key></SeatRecord>
+<CheckItemRecord><SeatKey>1</SeatKey><Key>3</Key><RecordNumber>100</RecordNumber>
+  <ID>Scoop</ID><GuestCheckName>Scoop Single</GuestCheckName>
+  <ReportGroupID>10</ReportGroupID><Price>4.99</Price>
+</CheckItemRecord>
+<PaymentRecord><SeatKey>1</SeatKey><Key>1</Key><ID>5</ID>
+  <Name>Visa</Name><Amount>12.50</Amount></PaymentRecord>
+</Seat></Seats></Check>
+<DeleteRecord><ID>99</ID></DeleteRecord>
+</Checks></DailyData>`;
+
+    it('does NOT record the fingerprint when a voided-check delete fails, so the next tick retries the void', async () => {
+      const stateStore = makeStateStore(null);
+      const { client, mocks } = makeSupabaseMock();
+      // Make the focus_orders delete chain resolve with an error (the check
+      // "may not exist locally yet" case the handler tolerates non-fatally).
+      mocks.deleteEqInnermost.mockResolvedValue({ error: { message: 'boom' } });
+      const fetchDatafeedMock = makeFetchDatafeedMock(XML_WITH_DELETE);
+      const deps: TransactionSyncDeps = {
+        supabase: client as unknown as TransactionSupabaseDeps,
+        fetchDatafeed: fetchDatafeedMock as unknown as FetchDatafeedFn,
+        stateStore,
+      };
+
+      const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+
+      // Non-fatal for this run: the live check is still processed and the
+      // overall result is still 'ok', not 'error'.
+      expect(result).toEqual({ status: 'ok', checksWritten: 1 });
+      expect(mocks.ordersDelete).toHaveBeenCalledOnce();
+      // But the fingerprint must NOT be recorded — the next tick must re-fetch
+      // and retry the void instead of delta-skipping this identical feed.
+      expect(stateStore.record).not.toHaveBeenCalled();
+    });
+
+    it('records the fingerprint when the voided-check delete succeeds', async () => {
+      const stateStore = makeStateStore(null);
+      const { deps, mocks } = makeDeps({ xml: XML_WITH_DELETE });
+
+      const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
+
+      expect(result).toEqual({ status: 'ok', checksWritten: 1 });
+      expect(mocks.ordersDelete).toHaveBeenCalledOnce();
+      expect(stateStore.record).toHaveBeenCalledOnce();
+    });
   });
 });
 

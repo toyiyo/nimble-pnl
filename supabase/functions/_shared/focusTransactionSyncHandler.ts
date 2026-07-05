@@ -352,6 +352,7 @@ export async function processDayTransactions(
     // focus_order_items and focus_payments automatically.
     // unified_sales orphan-delete is handled by _sync_focus_transactions_to_unified_sales_impl.
 
+    let voidDeleteFailed = false;
     for (const voidedCheckId of deletedCheckIds) {
       const { error: delError } = await deps.supabase
         .from('focus_orders')
@@ -360,7 +361,12 @@ export async function processDayTransactions(
         .eq('business_date', businessDate)
         .eq('focus_check_id', voidedCheckId);
       if (delError) {
-        // Non-fatal: log and continue — the check may not exist locally yet.
+        // Non-fatal for THIS run: log and continue — the check may not exist
+        // locally yet. But remember the failure: recording the fingerprint
+        // below would make the next tick delta-skip this identical feed and
+        // never retry the void, leaving the voided check in focus_orders /
+        // unified_sales indefinitely (codex review).
+        voidDeleteFailed = true;
         console.warn(
           `focus_orders delete (voided check ${voidedCheckId}): ${delError.message}`,
         );
@@ -397,13 +403,14 @@ export async function processDayTransactions(
       }
     }
 
-    // Record the fingerprint only once the day is fully synced (data written
-    // AND unified_sales caught up). If the RPC failed above, deliberately
-    // skip the record so the next tick re-fetches, re-parses, and retries the
-    // RPC instead of matching a "stale-success" fingerprint and delta-skipping
-    // forever (codex review: prevents unified_sales — a P&L-critical table —
-    // from silently drifting stale after a transient RPC failure).
-    if (deps.stateStore && fingerprint && !unifiedSalesSyncFailed) {
+    // Record the fingerprint only once the day is fully synced (voids applied,
+    // data written, AND unified_sales caught up). If the RPC or any void
+    // delete failed above, deliberately skip the record so the next tick
+    // re-fetches, re-parses, and retries instead of matching a
+    // "stale-success" fingerprint and delta-skipping forever (codex review:
+    // prevents unified_sales — a P&L-critical table — and voided checks from
+    // silently drifting stale after a transient failure).
+    if (deps.stateStore && fingerprint && !unifiedSalesSyncFailed && !voidDeleteFailed) {
       const stateStore = deps.stateStore;
       const fp = fingerprint;
       await safeStateStoreCall(

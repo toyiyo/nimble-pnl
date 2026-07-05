@@ -131,6 +131,14 @@ export async function handleSaveConnection(
     sync_cursor: 0,
     initial_sync_done: false,
     last_sync_time: null,
+    // This handler only saves Lynk API connections — pin the fast cadence and
+    // clear any accumulated backoff. Without this, a legacy portal row
+    // (seeded 360 by the scheduler migration) that converts to API
+    // credentials would keep syncing every 6 h instead of every 30 min
+    // (codex review).
+    sync_interval_minutes: 30,
+    next_attempt_at: null,
+    consecutive_failures: 0,
     updated_at: new Date().toISOString(),
   };
 

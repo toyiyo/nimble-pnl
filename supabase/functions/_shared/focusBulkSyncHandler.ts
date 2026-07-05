@@ -368,6 +368,45 @@ async function processConnection(
   return { newSyncCursor, newInitialSyncDone };
 }
 
+// ── Budget-break requeue ──────────────────────────────────────────────────────
+
+/**
+ * Re-queue claimed-but-unprocessed rows after a wall-clock budget break.
+ *
+ * claim_focus_sync_batch bumps last_sync_time on every claimed row up front,
+ * so a row the loop never reached would otherwise wait a full
+ * sync_interval_minutes despite not having synced. Setting last_sync_time
+ * back past the row's own interval makes it immediately due again AND sorts
+ * it to the front of the next tick's stalest-first claim.
+ *
+ * Best-effort: a failed write just means that row waits one interval — the
+ * same cost as the pre-fix behavior.
+ */
+async function requeueUnprocessed(
+  rows: FocusConnectionRow[],
+  deps: BulkSyncDeps,
+): Promise<void> {
+  for (const row of rows) {
+    try {
+      await deps.serviceClient
+        .from('focus_connections')
+        .update({
+          last_sync_time: new Date(
+            deps.now() - row.sync_interval_minutes * 60_000,
+          ).toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id);
+    } catch (err: unknown) {
+      console.warn(
+        `focus-bulk-sync: requeue after budget break failed for ${row.restaurant_id}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 /**
@@ -434,6 +473,12 @@ export async function handleBulkSync(
       // Wall-clock budget check (design §8: "90s wall-clock budget guard")
       if (deps.now() - startMs > BUDGET_MS) {
         console.log('focus-bulk-sync: wall-clock budget exceeded, stopping early');
+        // The claim already bumped last_sync_time on EVERY returned row, so
+        // rows we break on before processing would silently wait a full
+        // interval. Re-queue them: push last_sync_time back past their own
+        // interval so the next tick's claim picks them up first
+        // (stalest-first ordering). (CodeRabbit Major on PR #579.)
+        await requeueUnprocessed(rows.slice(i), deps);
         break;
       }
       await deps.sleep(INTER_RESTAURANT_DELAY_MS);

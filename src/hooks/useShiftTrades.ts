@@ -47,8 +47,13 @@ export interface ShiftTrade {
 
 export type ShiftTradeStatus = ShiftTrade['status'];
 
-/** Guard against ghost joins: drop trades whose poster or shift row was deleted. */
-const hasValidJoins = (t: ShiftTrade) => t.offered_by != null && t.offered_shift != null;
+/**
+ * Guard against ghost joins: drop trades whose poster or shift row was deleted.
+ * Structurally typed (not `ShiftTrade`) because useMarketplaceTrades filters
+ * supabase-inferred rows whose `status: string` is wider than the union.
+ */
+const hasValidJoins = (t: { offered_by?: unknown; offered_shift?: unknown }) =>
+  t.offered_by != null && t.offered_shift != null;
 
 type ShiftTradeNotificationAction =
   | 'created'
@@ -223,7 +228,20 @@ export const useMyTradeActivity = (
       const { data, error } = await supabase
         .from('shift_trades')
         .select(`
-          *,
+          id,
+          restaurant_id,
+          offered_shift_id,
+          offered_by_employee_id,
+          requested_shift_id,
+          target_employee_id,
+          accepted_by_employee_id,
+          status,
+          reason,
+          manager_note,
+          reviewed_by,
+          reviewed_at,
+          created_at,
+          updated_at,
           offered_shift:shifts!offered_shift_id(
             id,
             start_time,

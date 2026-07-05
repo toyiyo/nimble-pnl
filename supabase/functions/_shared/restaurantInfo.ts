@@ -31,6 +31,12 @@ interface RestaurantsQueryClient {
 
 /**
  * Fetch a restaurant's name and IANA timezone, falling back per-field.
+ *
+ * Errors deliberately degrade to the defaults instead of throwing: this
+ * helper feeds notification emails, where "generic name + default timezone"
+ * is strictly better for the recipient than the whole send failing over a
+ * cosmetic lookup. The error is logged server-side for operators.
+ *
  * The timezone value is further validated downstream by formatDateTime's
  * Intl probe (invalid IANA → UTC), so a bad stored value cannot throw.
  */

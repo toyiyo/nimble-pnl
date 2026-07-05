@@ -33,6 +33,8 @@ import type { ShiftTrade } from '@/hooks/useShiftTrades';
 
 const ME = 'emp-me';
 
+// Test fixture: fully-populated defaults + per-test overrides; the `as
+// ShiftTrade` cast is safe because every required field has a default here.
 const makeTrade = (overrides: Partial<ShiftTrade>): ShiftTrade =>
   ({
     id: 'trade-1',

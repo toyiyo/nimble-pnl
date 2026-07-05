@@ -29,6 +29,12 @@ import { cn } from '@/lib/utils';
 interface MyShiftTradesCardProps {
   restaurantId: string;
   employeeId: string;
+  /**
+   * Focused after a withdraw empties the "Posted by you" section — the section
+   * header (the usual focus-restore target) unmounts along with the last row,
+   * so focus needs a stable page-level anchor to land on.
+   */
+  fallbackFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
 const STEP_DOT_CLASS: Record<TradeStepState, string> = {
@@ -66,8 +72,12 @@ const TradeStepper = ({ progress }: { progress: PosterTradeProgress }) => (
 );
 
 const ShiftDateBlock = ({ trade }: { trade: ShiftTrade }) => {
-  const start = parseISO(trade.offered_shift!.start_time);
-  const end = parseISO(trade.offered_shift!.end_time);
+  // The activity hook filters ghost joins upstream, but that guarantee lives
+  // in another file — guard locally instead of asserting with `!`.
+  const shift = trade.offered_shift;
+  if (!shift) return null;
+  const start = parseISO(shift.start_time);
+  const end = parseISO(shift.end_time);
   return (
     <div className="flex items-center gap-4 min-w-0">
       <div className="text-center flex-shrink-0">
@@ -76,7 +86,7 @@ const ShiftDateBlock = ({ trade }: { trade: ShiftTrade }) => {
         <div className="text-[11px] text-muted-foreground">{format(start, 'MMM')}</div>
       </div>
       <div className="min-w-0">
-        <div className="text-[14px] font-medium text-foreground">{trade.offered_shift!.position}</div>
+        <div className="text-[14px] font-medium text-foreground">{shift.position}</div>
         <div className="text-[13px] text-muted-foreground">
           {format(start, 'h:mm a')} - {format(end, 'h:mm a')}
         </div>
@@ -97,7 +107,11 @@ const ManagerNote = ({ note }: { note: string }) => (
  * claimant's view of trades they picked up. Resolved trades stay visible for
  * the hook's bounded window so outcomes are seen instead of vanishing.
  */
-export const MyShiftTradesCard = ({ restaurantId, employeeId }: MyShiftTradesCardProps) => {
+export const MyShiftTradesCard = ({
+  restaurantId,
+  employeeId,
+  fallbackFocusRef,
+}: MyShiftTradesCardProps) => {
   const { trades, loading, isError } = useMyTradeActivity(restaurantId, employeeId);
   const { mutate: cancelTrade, isPending: isWithdrawing } = useCancelShiftTrade();
 
@@ -120,16 +134,26 @@ export const MyShiftTradesCard = ({ restaurantId, employeeId }: MyShiftTradesCar
     return { postedByMe: posted, claimedByMe: claimed };
   }, [trades, employeeId]);
 
-  const closeConfirm = () => {
+  const closeConfirm = (target: 'section' | 'fallback' = 'section') => {
     setConfirmTarget(null);
-    requestAnimationFrame(() => postedHeaderRef.current?.focus());
+    requestAnimationFrame(() => {
+      const el =
+        target === 'fallback'
+          ? fallbackFocusRef?.current ?? postedHeaderRef.current
+          : postedHeaderRef.current ?? fallbackFocusRef?.current;
+      el?.focus();
+    });
   };
 
   const handleConfirmWithdraw = () => {
     if (!confirmTarget) return;
+    // Withdrawing the LAST posted trade unmounts the whole section (and its
+    // header) once the refetch lands, so the usual focus target disappears —
+    // send focus to the page-level fallback instead.
+    const focusTarget = postedByMe.length <= 1 ? 'fallback' : 'section';
     cancelTrade(
       { tradeId: confirmTarget.id, employeeId },
-      { onSettled: closeConfirm }
+      { onSettled: () => closeConfirm(focusTarget) }
     );
   };
 
@@ -252,7 +276,7 @@ export const MyShiftTradesCard = ({ restaurantId, employeeId }: MyShiftTradesCar
             <Button
               variant="outline"
               className="h-9 px-4 rounded-lg text-[13px] font-medium"
-              onClick={closeConfirm}
+              onClick={() => closeConfirm()}
               disabled={isWithdrawing}
             >
               Keep post

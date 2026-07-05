@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -116,6 +116,7 @@ const EmployeeSchedule = () => {
     startOfWeek(new Date(), { weekStartsOn: WEEK_STARTS_ON })
   );
   const [tradeDialogOpen, setTradeDialogOpen] = useState(false);
+  const pageHeaderRef = useRef<HTMLDivElement>(null);
   const [selectedShiftForTrade, setSelectedShiftForTrade] = useState<Shift | null>(null);
 
   const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: WEEK_STARTS_ON });
@@ -210,8 +211,13 @@ const EmployeeSchedule = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+      {/* Header — focusable anchor: MyShiftTradesCard returns focus here when a
+          withdraw removes its last posted row (its own section header unmounts). */}
+      <div
+        ref={pageHeaderRef}
+        tabIndex={-1}
+        className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center outline-none"
+      >
         <EmployeePageHeader
           icon={CalendarDays}
           title="My Schedule"
@@ -226,7 +232,11 @@ const EmployeeSchedule = () => {
       </div>
 
       {/* My shift trades — poster tracker + claimant status */}
-      <MyShiftTradesCard restaurantId={restaurantId} employeeId={currentEmployee.id} />
+      <MyShiftTradesCard
+        restaurantId={restaurantId}
+        employeeId={currentEmployee.id}
+        fallbackFocusRef={pageHeaderRef}
+      />
 
       {/* Upcoming Shifts */}
       {upcomingShifts.length > 0 && (

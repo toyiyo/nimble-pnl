@@ -225,7 +225,7 @@ Expected: clean exit for both.
 
 The main checkout's dev server (port 8080) and local Supabase already have
 the repro data seeded (restaurant `a1e1d70c-236f-4f85-b51f-edcda986d7dd`,
-user mobiletest@example.com, employee "Termora Johnson" with an approved
+a local-only test user, employee "Termora Johnson" with an approved
 Mon–Sun time-off in the current week). This task's changes live in the
 worktree, so serve the worktree on port 8081:
 
@@ -235,8 +235,9 @@ ln -sfn /Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules node_modules
 npx vite --port 8081
 ```
 
-Then in a 375px-wide browser context, log in as mobiletest@example.com /
-testpass123! and load `http://localhost:8081/scheduling`. Measure:
+Then in a 375px-wide browser context, log in as the local-only test user
+created for this repro (obtain credentials out of band — do not commit them
+to this doc) and load `http://localhost:8081/scheduling`. Measure:
 
 ```js
 ({ docW: document.documentElement.scrollWidth, innerW: window.innerWidth })

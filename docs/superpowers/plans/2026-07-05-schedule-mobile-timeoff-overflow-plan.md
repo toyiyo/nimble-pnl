@@ -224,14 +224,14 @@ Expected: clean exit for both.
 - [ ] **Step 3: Live mobile verification (evidence, not assertion)**
 
 The main checkout's dev server (port 8080) and local Supabase already have
-the repro data seeded (restaurant `a1e1d70c-236f-4f85-b51f-edcda986d7dd`,
-a local-only test user, employee "Termora Johnson" with an approved
-Mon–Sun time-off in the current week). This task's changes live in the
-worktree, so serve the worktree on port 8081:
+the repro data seeded (restaurant `<REDACTED_RESTAURANT_ID>`, a local-only
+test user, employee `<REDACTED_EMPLOYEE>` with an approved Mon–Sun time-off
+in the current week). This task's changes live in the worktree, so serve
+the worktree on port 8081:
 
 ```bash
-ln -sf /Users/josedelgado/Documents/GitHub/nimble-pnl/.env.local .env.local
-ln -sfn /Users/josedelgado/Documents/GitHub/nimble-pnl/node_modules node_modules
+ln -sf "$(pwd)/.env.local" .env.local
+ln -sfn "$(pwd)/node_modules" node_modules
 npx vite --port 8081
 ```
 

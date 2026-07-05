@@ -60,6 +60,11 @@ Query (same select/joins fragment as `useShiftTrades` — `offered_shift`,
 - Multiple `.or()` calls are AND-ed by PostgREST — unresolved trades have
   `reviewed_at = null` (kept), resolved ones are kept only within the window.
   The window is enforced **server-side** (bounded payload, no client growth).
+  **(Frontend review, major):** this AND-of-two-OR-groups is the most fragile
+  line in the hook — a future refactor merging both into ONE `.or()` with a
+  comma would silently flip the semantics to OR. Add a code comment at the
+  call site stating that the two `.or()` calls are intentionally separate and
+  AND-ed, plus the unit test asserting both appear as sibling filters.
 - **`cutoffIso` is computed INSIDE `queryFn`** (`new Date(Date.now() - days*864e5)`),
   not in the query key — the key stays stable
   (`['my_trade_activity', restaurantId, employeeId, resolvedWithinDays]`) while
@@ -67,11 +72,20 @@ Query (same select/joins fragment as `useShiftTrades` — `offered_shift`,
   both the frozen-`now` lesson and query-key churn.
 - `enabled: !!restaurantId && !!employeeId`, `staleTime: 30000`,
   `refetchOnWindowFocus: true` (house pattern).
-- Existing mutations already invalidate `['shift_trades']`; they must also
-  invalidate `['my_trade_activity']` — add that key to the `onSuccess`
-  invalidations of `useCreateShiftTrade`, `useCancelShiftTrade`,
-  `useAcceptShiftTrade`, `useApproveShiftTrade`, `useRejectShiftTrade`, and
-  `useDeleteShiftTrade` (all in the same file).
+- **Invalidation via ONE shared helper (frontend review, major):** instead of
+  editing six `onSuccess` blocks to add a second key (drift-prone), add a
+  module-level `invalidateShiftTradeQueries(queryClient)` in
+  `useShiftTrades.ts` that invalidates `['shift_trades']`,
+  `['marketplace_trades']`, and `['my_trade_activity']`, and call it from the
+  `onSuccess` of all six mutations (`useCreateShiftTrade`,
+  `useCancelShiftTrade`, `useAcceptShiftTrade`, `useApproveShiftTrade`,
+  `useRejectShiftTrade`, `useDeleteShiftTrade`). This also de-duplicates the
+  existing repeated invalidations. Mutations that additionally invalidate
+  `['shifts']` keep that extra call.
+- **Type note (frontend review, minor):** export a named
+  `type ShiftTradeStatus = ShiftTrade['status']` from `useShiftTrades.ts`; the
+  pure helper imports the type only (type-only import of a hook module is fine
+  and keeps one source of truth).
 
 ### Pure helper — `src/lib/tradeStatusProgress.ts` (new, unit-tested)
 
@@ -101,6 +115,15 @@ Mapping:
 | `rejected` | Posted ✓ → Claimed ✓ → Review (rejected) → Transferred (upcoming) | "Rejected by manager" |
 
 `accepted_by` null (ghost) degrades to "a teammate" in labels — never crashes.
+State-machine note (confirmed in design review against the SQL): `rejected` can
+only be reached from `pending_approval`, which atomically sets `accepted_by`,
+so a rejected trade never has a null claimant — the "a teammate" fallback is
+purely defensive. Self-accept is likewise blocked at the RLS layer; the
+partition's `offered_by !== me` clause is a second, defensive guard.
+Known interaction (accepted): a **ghost** `pending_approval` trade (claimant
+employee deleted) renders to the poster as "Claimed by a teammate — awaiting
+manager review" while the manager's queue has exiled it to "Needs cleanup"; it
+resolves when the manager removes it. Acceptable — no special poster-side copy.
 
 Claimant rows don't need the stepper; a small status line suffices:
 `pending_approval` → "Awaiting manager approval"; `approved` → "Approved — this
@@ -122,13 +145,26 @@ established amber pattern):
     `text-destructive`. The stepper container gets
     `role="img"` + `aria-label={progress.summary}` (text alternative — the
     per-step dots are decorative, `aria-hidden`).
-  - `manager_note` shown for rejected (existing blue-note pattern used in
-    TradeApprovalQueue).
+  - **Narrow widths / 200% zoom (frontend review, minor):** step labels are
+    hidden below the `sm` breakpoint (dots-only) with `progress.summary`
+    rendered as an adjacent visible `text-[12px] text-muted-foreground` line —
+    so low-vision/zoomed users get the same information as screen-reader
+    users, and labels never wrap awkwardly.
+  - `manager_note` shown for rejected in a neutral `bg-muted/30 border
+    border-border/40 rounded-lg p-2.5 text-[13px]` block prefixed "Manager
+    note:" (frontend review, minor: no existing manager-note display pattern
+    exists to copy — the TradeApprovalQueue blue block is for the employee's
+    *reason*; do not invent a colored block for this).
   - **Withdraw** button (`variant="outline"`, `text-destructive` accent) only
     when `status === 'open'`, opening ONE page-level confirm dialog
     (single-dialog pattern; `ConfirmTarget = { trade } | null`), confirming via
     `useCancelShiftTrade({ tradeId, employeeId })`. Disable confirm+trigger
-    while `isPending`. Restore focus to the card section header on close.
+    while `isPending`.
+  - **Focus restore (frontend review, minor):** a successful withdraw unmounts
+    the row (and its Withdraw button), so Radix's default return-to-trigger
+    would target a removed element. Use the `TradeApprovalQueue`
+    `bulkRemoveBtnRef` pattern: a stable ref on the "Posted by you" section
+    header, explicitly focused on dialog close (both cancel and success).
 - **Claimed by you** section: existing row layout + the status line above +
   `manager_note` when rejected.
 - Loading: existing `tradesLoading` skeleton behavior (card hidden while
@@ -182,6 +218,29 @@ No config/verify_jwt changes; the function's auth/settings flow is untouched.
   without ids.
 - Existing mutation-invalidation tests extended for the new query key where
   such tests exist.
+
+## Review notes folded in
+
+- **Interpolation safety (Supabase review, minor):** both values interpolated
+  into `.or()` strings are non-user-controlled — `employeeId` is a UUID from
+  our own `employees.id`, `cutoffIso` is `Date.toISOString()` output (no
+  commas/parens). Add a code comment saying so, since PostgREST treats commas
+  and parens as syntax.
+- **`manager_note` visibility (Supabase review, minor):** the existing SELECT
+  policy is restaurant-scoped, so ANY active employee in the restaurant can
+  already read every trade's `manager_note`/`reviewed_at` via existing
+  queries. This feature changes what is *rendered*, not the exposure surface —
+  no new access decision is being made here.
+- **pgTAP for the RLS assumption (Supabase review, optional):** declined for
+  this PR — the policy is pre-existing and unchanged, and this PR has no SQL
+  diff; adding RLS tests for unchanged policies is a separate hardening pass.
+- **Composite `(restaurant_id, status)` index (Supabase review, optional):**
+  declined — `shift_trades` volume per restaurant is small; noted as a watch
+  item if scale changes.
+- **Style seam (frontend review, minor, accepted):** the new flat
+  Apple/Notion card will sit next to the page's older gradient cards
+  (Upcoming Shifts etc.), which are NOT in scope. The seam is an accepted,
+  scoped trade-off — modernizing the rest of the page is a separate task.
 
 ## Decided trade-offs
 

@@ -216,7 +216,7 @@ async function processConnection(
 
   let newSyncCursor = row.sync_cursor;
   let newInitialSyncDone = row.initial_sync_done;
-  const syncedCleanly = true;
+  let syncedCleanly = true;
 
   if (isLynkPath) {
     // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────

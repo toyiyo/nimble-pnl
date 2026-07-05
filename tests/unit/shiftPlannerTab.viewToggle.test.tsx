@@ -53,7 +53,8 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
       loading: false,
       createTemplate: vi.fn(),
       updateTemplate: vi.fn(),
-      deleteTemplate: vi.fn(),
+      hideTemplate: vi.fn(),
+      restoreTemplate: vi.fn(),
     }),
   };
 });

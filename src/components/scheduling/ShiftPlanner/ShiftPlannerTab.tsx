@@ -7,9 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
-import { AlertCircle, CalendarOff, Users, X } from 'lucide-react';
+import { AlertCircle, CalendarOff, EyeOff, Users, X } from 'lucide-react';
 
-import { useShiftPlanner, buildTemplateGridData, getActiveDaysForWeek, groupUnmatchedByArea } from '@/hooks/useShiftPlanner';
+import {
+  useShiftPlanner,
+  buildTemplateGridData,
+  getActiveDaysForWeek,
+  groupUnmatchedByArea,
+  partitionTemplatesForDisplay,
+  collectHiddenLane,
+} from '@/hooks/useShiftPlanner';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useToast } from '@/hooks/use-toast';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -95,30 +102,38 @@ export function ShiftPlannerTab({
   });
 
   const {
-    templates,
+    templates: allTemplates,
     loading: templatesLoading,
     createTemplate,
     updateTemplate,
     hideTemplate,
     restoreTemplate,
-  } = useShiftTemplates(restaurantId);
+  } = useShiftTemplates(restaurantId, { status: 'all' });
 
-  // TODO(task-8): replace with full hide/restore wiring (name + keptShiftCount,
-  // showHidden toggle, ghost rows, hiddenLaneByDay/onShowHidden) per
-  // docs/superpowers/plans/2026-07-05-hide-shift-templates-plan.md. This placeholder
-  // keeps the build green between task 7 (TemplateGrid's onHideTemplate/onRestoreTemplate
-  // prop rename) and task 8 (ShiftPlannerTab's real state/derivation).
-  const handleHideTemplate = useCallback(
-    (template: ShiftTemplate) => hideTemplate({ id: template.id, name: template.name, keptShiftCount: 0 }),
-    [hideTemplate],
+  // View filter — never persisted (CLAUDE.md: no manual caching). Determines whether
+  // hidden (is_active === false) template rows render inline in the grid.
+  const [showHidden, setShowHidden] = useState(false);
+
+  const { activeTemplates, hiddenTemplates, displayTemplates } = useMemo(
+    () => partitionTemplatesForDisplay(allTemplates, showHidden),
+    [allTemplates, showHidden],
   );
+
+  // `templates` is the math-facing name used throughout this component's existing
+  // coverage/allocation/position derivations below — always active-only so hiding a
+  // template can never change labor numbers or open-shift affordances.
+  const templates = activeTemplates;
+
+  const handleShowHidden = useCallback(() => setShowHidden(true), []);
+  const handleToggleShowHidden = useCallback(() => setShowHidden((prev) => !prev), []);
 
   const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId);
 
-  // Compute template grid data
+  // Compute template grid data — built with ALL templates (active + hidden) so a
+  // hidden template's FK-linked shifts keep bucketing under it (not `__unmatched__`).
   const templateGridData = useMemo(
-    () => buildTemplateGridData(shifts, templates, weekDays),
-    [shifts, templates, weekDays],
+    () => buildTemplateGridData(shifts, allTemplates, weekDays),
+    [shifts, allTemplates, weekDays],
   );
 
   // Derive coverage index for CoverageStrip and overview panel
@@ -203,6 +218,14 @@ export function ShiftPlannerTab({
     () => groupUnmatchedByArea(templateGridData.get('__unmatched__') ?? new Map()),
     [templateGridData],
   );
+
+  // "From hidden templates" lane: only needed when hidden rows are NOT shown inline
+  // (showHidden === false). Merges every hidden template's grid bucket into one
+  // Map<day, Shift[]>, honoring the current area filter.
+  const hiddenLaneByDay = useMemo(() => {
+    if (showHidden) return undefined;
+    return collectHiddenLane(templateGridData, hiddenTemplates, areaFilter);
+  }, [showHidden, templateGridData, hiddenTemplates, areaFilter]);
 
   // Lifted coverage detail state — single Popover/Drawer instance (Single Dialog Pattern)
   const [coverageDetail, setCoverageDetail] = useState<{ templateId: string; day: string; anchorRect?: DOMRect } | null>(null);
@@ -436,6 +459,21 @@ export function ShiftPlannerTab({
     setTemplateDialogOpen(true);
   }, []);
 
+  // Hide/restore handlers — hide computes the current week's real kept-shift count
+  // from templateGridData (built with all templates) so the toast/undo description
+  // reflects what's actually about to be ghosted, not a placeholder.
+  const handleHideTemplate = useCallback((template: ShiftTemplate) => {
+    const byDay = templateGridData.get(template.id);
+    const keptShiftCount = byDay
+      ? Array.from(byDay.values()).reduce((sum, dayShifts) => sum + dayShifts.length, 0)
+      : 0;
+    hideTemplate({ id: template.id, name: template.name, keptShiftCount });
+  }, [templateGridData, hideTemplate]);
+
+  const handleRestoreTemplate = useCallback((templateId: string) => {
+    restoreTemplate(templateId);
+  }, [restoreTemplate]);
+
   const handleTemplateSubmit = useCallback(async (data: {
     name: string;
     start_time: string;
@@ -571,7 +609,7 @@ export function ShiftPlannerTab({
       />
 
       {/* Plan | Timeline view toggle — shared across both modes */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <ToggleGroup
           type="single"
           value={view}
@@ -586,6 +624,31 @@ export function ShiftPlannerTab({
             Timeline
           </ToggleGroupItem>
         </ToggleGroup>
+
+        {hiddenTemplates.length > 0 && (
+          <button
+            type="button"
+            onClick={handleToggleShowHidden}
+            aria-pressed={showHidden}
+            aria-label={`${showHidden ? 'Hide' : 'Show'} hidden templates (${hiddenTemplates.length})`}
+            className={cn(
+              'h-8 px-3 rounded-lg text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors',
+              showHidden
+                ? 'bg-foreground text-background hover:bg-foreground/90'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+            )}
+          >
+            <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+            Hidden
+            <span className={cn(
+              'text-[11px] px-1.5 py-0.5 rounded-md',
+              showHidden ? 'bg-background/20' : 'bg-muted',
+            )}
+            >
+              {hiddenTemplates.length}
+            </span>
+          </button>
+        )}
       </div>
 
       {/* Timeline view — replaces editing tree when active */}
@@ -635,7 +698,7 @@ export function ShiftPlannerTab({
       >
         <div className="relative flex gap-0">
           <div className="flex-1 min-w-0 overflow-x-auto">
-            {templates.length === 0 ? (
+            {displayTemplates.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-center rounded-xl border border-border/40">
                 <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
                   <CalendarOff className="h-5 w-5 text-muted-foreground" />
@@ -660,12 +723,12 @@ export function ShiftPlannerTab({
                 />
                 <TemplateGrid
                   weekDays={weekDays}
-                  templates={templates}
+                  templates={displayTemplates}
                   gridData={templateGridData}
                   onRemoveShift={deleteShift}
                   onEditTemplate={handleEditTemplate}
                   onHideTemplate={handleHideTemplate}
-                  onRestoreTemplate={restoreTemplate}
+                  onRestoreTemplate={handleRestoreTemplate}
                   onAddTemplate={handleAddTemplate}
                   highlightCellId={highlightCellId}
                   onMobileCellTap={isMobile ? handleMobileCellTap : undefined}
@@ -678,6 +741,8 @@ export function ShiftPlannerTab({
                   onCoverageClick={handleCoverageClick}
                   ghostByCell={ghostByCell}
                   offTemplateByArea={offTemplateByArea}
+                  hiddenLaneByDay={hiddenLaneByDay}
+                  onShowHidden={handleShowHidden}
                 />
               </div>
             )}

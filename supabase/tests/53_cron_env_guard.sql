@@ -28,7 +28,7 @@
 -- read/write semantics in-txn without depending on that global fact alone.
 
 BEGIN;
-SELECT plan(51);
+SELECT plan(53);
 
 -- ── 1: deploy_env table — existence, RLS, zero policies, CHECK constraint ───
 SELECT has_table('public', 'deploy_env', 'public.deploy_env exists');
@@ -342,6 +342,19 @@ SELECT ok(
 SELECT lives_ok(
   $$SELECT public.trigger_square_periodic_sync()$$,
   'trigger_square_periodic_sync no-ops without error while non-production'
+);
+
+-- ── 11: weekly-brief queue pump RPC locked down (Codex PR-review P2) ───────
+--        (Live definition hardcodes the prod URL + anon-key auth fallback and
+--        had default PUBLIC EXECUTE — client roles could pump prod worker
+--        dispatches. Cron (postgres) and service_role keep EXECUTE.)
+SELECT ok(
+  NOT has_function_privilege('anon', 'public.process_weekly_brief_queue()', 'EXECUTE'),
+  'anon cannot execute process_weekly_brief_queue (client pump closed)'
+);
+SELECT ok(
+  NOT has_function_privilege('authenticated', 'public.process_weekly_brief_queue()', 'EXECUTE'),
+  'authenticated cannot execute process_weekly_brief_queue (client pump closed)'
 );
 
 SELECT * FROM finish();

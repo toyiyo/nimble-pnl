@@ -31,7 +31,7 @@ worker is not race-safe.
 | `shift4-bulk-sync` | odd hours | same unset GUC | No — errors |
 | `sling-bulk-sync` | 4×/day | same unset GUC | No — errors |
 | `trial-expiry-emails` | daily 09:00 | same unset GUC | No — errors |
-| `process-weekly-brief-queue` | every minute | same unset GUC (inside `process_weekly_brief_queue()`) | No — errors |
+| `process-weekly-brief-queue` | every minute | hardcoded prod URL + anon-key auth fallback (live fn def is `20260217031454`, which replaced the unset-GUC version) | Runs, but dispatches only when pgmq `weekly_brief_jobs` has messages — empty on previews (no restaurants/sales), so no observed prod traffic. Cron unscheduled off-prod by §F; the SECURITY DEFINER fn's default PUBLIC EXECUTE closed by §H. |
 | pure-SQL jobs (`*-unified-sales-sync`, `categorization-backlog-drain`, `enqueue-weekly-briefs`) | various | local SQL only | Harmless everywhere |
 
 Correction to the task premise: the toast/shift4 cron *commands in the repo*
@@ -141,7 +141,7 @@ observed preview lifetime, while prod passes with ~10 months of margin).
 ```sql
 CREATE OR REPLACE FUNCTION public.is_production()
 RETURNS boolean
-LANGUAGE sql STABLE
+LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
   SELECT EXISTS (
@@ -153,12 +153,17 @@ REVOKE ALL ON FUNCTION public.is_production() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.is_production() TO service_role;
 ```
 
-Security-invoker is fine: cron jobs run as `postgres` (table owner, bypasses
-RLS); `service_role` has BYPASSRLS. **Fail-safe direction (code comment in
-migration):** if this function cannot read the marker for any privilege/RLS
-reason it returns `false` — i.e. errs toward "non-production", which no-ops
-crons rather than firing at prod. A future permission change must not flip
-that direction.
+**SECURITY DEFINER is required, not stylistic** (Phase 7 ocr-rules finding):
+`service_role` is granted EXECUTE but has zero table privileges on the
+RLS-locked `deploy_env`, so an invoker-rights version errors
+(`permission denied for table deploy_env`) instead of returning the
+documented fail-safe `false` — same pattern and fix as
+`focus_due_sync_count()` reading the RLS-locked `focus_datafeed_state`.
+Safe: fixed, parameterless, read-only body. **Fail-safe direction (code
+comment in migration):** if this function cannot read the marker for any
+privilege/RLS reason it returns `false` — i.e. errs toward "non-production",
+which no-ops crons rather than firing at prod. A future permission change
+must not flip that direction.
 
 ### D. Central dispatch helpers — the single source of the prod URL
 
@@ -321,6 +326,13 @@ any HTTP work). Tests (inside `BEGIN…ROLLBACK`):
 9. Privileges: `has_function_privilege('authenticated'|'anon', ..., 'EXECUTE')`
    = false for `cron_invoke_edge` and `cron_edge_url`; no client SELECT
    privilege on `deploy_env`.
+10. §E2 closure: `trigger_square_periodic_sync()` — anon/authenticated cannot
+   EXECUTE; body routes through `cron_invoke_edge` and no longer inlines the
+   prod URL; `lives_ok` no-op while non-prod.
+11. §H closure: `process_weekly_brief_queue()` — anon/authenticated cannot
+   EXECUTE (client pump surface removed; internals untouched).
+
+(53 assertions total.)
 
 ### H. CLAUDE.md pattern documentation
 
@@ -429,6 +441,18 @@ live-reproduced before fixing:
 - **Independent re-verification agent:** RESOLVED verdict on the predicate
   fix across 5 attack vectors (created_at forgery paths, prod-side failure,
   E2E/pgTAP fixture collisions, test tautology).
+
+## PR-review triage (Phase 9d, PR #583)
+
+- **Codex GitHub bot (P2, fixed):** the live `process_weekly_brief_queue()`
+  (def `20260217031454` — which replaced the unset-GUC version this doc
+  originally described) hardcodes the prod URL + anon-key auth fallback,
+  SECURITY DEFINER, default PUBLIC EXECUTE, no REVOKE anywhere — client roles
+  could pump prod worker dispatches. Fixed by §H (REVOKE-only; internals left
+  to the weekly-brief follow-up task). Jobs table above corrected accordingly.
+- **CodeRabbit (minor, fixed):** §C snippet/prose still showed the pre-fix
+  SECURITY INVOKER rationale; §G catalogue lacked the §E2/§H closure tests.
+  Both synced.
 
 ## Test plan
 

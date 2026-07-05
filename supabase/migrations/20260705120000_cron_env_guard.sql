@@ -317,3 +317,20 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.trigger_square_periodic_sync() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.trigger_square_periodic_sync() TO service_role;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- §H. Lock down the weekly-brief queue pump RPC (Codex PR-review P2, #583).
+--
+-- The live process_weekly_brief_queue() definition (20260217031454) is
+-- SECURITY DEFINER, hardcodes the prod URL plus an anon-key Authorization
+-- fallback, and carried PostgreSQL's default PUBLIC EXECUTE grant — any
+-- client role via PostgREST could pump queued weekly-brief dispatches at
+-- prod's generate-weekly-brief-worker (and consume/dead-letter pgmq messages
+-- as a side effect). Zero application call sites; only the every-minute prod
+-- cron uses it (§F already unschedules that cron off-prod). Its INTERNALS
+-- (vault-key auth, dead-letter flow, hardcoded URL) are deliberately left
+-- untouched — the weekly-brief pipeline rework is a separate follow-up task;
+-- this section only removes the client-callable surface.
+-- ─────────────────────────────────────────────────────────────────────────────
+REVOKE ALL ON FUNCTION public.process_weekly_brief_queue() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.process_weekly_brief_queue() TO service_role;

@@ -134,6 +134,10 @@ export const useRecipes = (restaurantId: string | null) => {
       setRecipes(enhancedRecipes);
     } catch (error: any) {
       console.error('Error fetching recipes:', error);
+      // Fail closed: clear any previously-loaded recipes (e.g. from a prior
+      // restaurant selection or a stale successful fetch) so a failed
+      // refetch never leaves cross-tenant/stale data on screen.
+      setRecipes([]);
       toast({
         title: "Error fetching recipes",
         description: error.message,

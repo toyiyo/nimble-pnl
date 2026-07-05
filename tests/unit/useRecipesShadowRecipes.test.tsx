@@ -130,6 +130,33 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
       expect.objectContaining({ variant: 'destructive' })
     );
   });
+
+  it('fails closed on a later refetch: stale recipes from a prior successful fetch are cleared, not left on screen', async () => {
+    recipesResponse = {
+      data: [makeRecipe('r-menu', 'Menu Item')],
+      error: null,
+    };
+    prepLinksResponse = { data: [], error: null };
+
+    const { result, rerender } = renderHook(
+      ({ restaurantId }: { restaurantId: string }) => useRecipes(restaurantId),
+      { initialProps: { restaurantId: 'rest-1' } }
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.recipes.map((r) => r.id)).toEqual(['r-menu']);
+
+    // Simulate switching restaurants (or a realtime refetch) where the new
+    // prep_recipes query fails. Stale data from the prior successful fetch
+    // must not remain visible.
+    prepLinksResponse = { data: null, error: { message: 'prep_recipes unavailable' } };
+    rerender({ restaurantId: 'rest-2' });
+
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ variant: 'destructive' })
+    ));
+    expect(result.current.recipes).toEqual([]);
+  });
 });
 
 describe('useRecipes shadow-recipe guard (deleteRecipe)', () => {

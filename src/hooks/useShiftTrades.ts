@@ -45,6 +45,8 @@ export interface ShiftTrade {
   };
 }
 
+export type ShiftTradeStatus = ShiftTrade['status'];
+
 type ShiftTradeNotificationAction =
   | 'created'
   | 'accepted'

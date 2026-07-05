@@ -22,7 +22,8 @@
 -- Unlike open_shift_coverage.test.sql (which tests claim_open_shift alone and
 -- skips schedule_publications), this file also asserts on get_open_shifts,
 -- which requires a published week. published_by FKs to auth.users, so the
--- fixture borrows an existing local auth.users row rather than inserting one.
+-- fixture inserts a dedicated auth.users row (ON CONFLICT DO NOTHING) rather
+-- than relying on some other row already existing in the test database.
 
 BEGIN;
 
@@ -36,6 +37,7 @@ ALTER TABLE public.shifts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shift_templates DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.open_shift_claims DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_publications DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staffing_settings DISABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
@@ -46,13 +48,16 @@ DECLARE
   v_ghost  uuid := '00000000-0000-0000-0000-0000000000d4'; -- nonexistent template id
   v_d      date := CURRENT_DATE + 3;
   v_dow    int;
-  v_user   uuid;
+  v_user   uuid := '00000000-0000-0000-0000-0000000000d9';
 BEGIN
   v_dow := EXTRACT(DOW FROM v_d)::int;
 
-  -- Borrow any existing auth.users row for the publisher FK (this fixture
-  -- never authenticates as this user; it's only satisfying a NOT NULL FK).
-  SELECT id INTO v_user FROM auth.users LIMIT 1;
+  -- Dedicated auth.users row for the publisher FK (this fixture never
+  -- authenticates as this user; it's only satisfying a NOT NULL FK). Insert
+  -- deterministically rather than borrowing whatever row happens to exist.
+  INSERT INTO auth.users (id, email)
+    VALUES (v_user, 'active-guard-test-publisher@example.com')
+    ON CONFLICT (id) DO NOTHING;
 
   -- Clean up in FK order before inserting.
   DELETE FROM public.open_shift_claims     WHERE restaurant_id = v_rid;
@@ -118,7 +123,8 @@ SELECT ok(
 -- ── Test 2: hide the template (is_active = false) ────────────────────────────
 UPDATE public.shift_templates
   SET is_active = false
-  WHERE id = '00000000-0000-0000-0000-0000000000d3';
+  WHERE id = '00000000-0000-0000-0000-0000000000d3'
+    AND restaurant_id = '00000000-0000-0000-0000-0000000000da';
 
 SELECT ok(
   NOT EXISTS (
@@ -180,7 +186,8 @@ SELECT is(
 -- ── Test 6: restore the template (is_active = true) ─────────────────────────
 UPDATE public.shift_templates
   SET is_active = true
-  WHERE id = '00000000-0000-0000-0000-0000000000d3';
+  WHERE id = '00000000-0000-0000-0000-0000000000d3'
+    AND restaurant_id = '00000000-0000-0000-0000-0000000000da';
 
 SELECT ok(
   EXISTS (

@@ -112,12 +112,14 @@ export function useShiftTemplates(
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<ShiftTemplate> & { id: string }) => {
-      const { data, error } = await (supabase
+      let query = (supabase
         .from('shift_templates') as any)
         .update(updates)
-        .eq('id', id)
-        .select()
-        .single();
+        .eq('id', id);
+      if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
+      }
+      const { data, error } = await query.select().single();
       if (error) throw error;
       return data;
     },
@@ -132,10 +134,14 @@ export function useShiftTemplates(
 
   const restoreMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase
+      let query = (supabase
         .from('shift_templates') as any)
         .update({ is_active: true })
         .eq('id', id);
+      if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
+      }
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: () => {
@@ -149,10 +155,14 @@ export function useShiftTemplates(
 
   const hideMutation = useMutation({
     mutationFn: async ({ id }: HideTemplateInput) => {
-      const { error } = await (supabase
+      let query = (supabase
         .from('shift_templates') as any)
         .update({ is_active: false })
         .eq('id', id);
+      if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
+      }
+      const { error } = await query;
       if (error) throw error;
     },
     onSuccess: (_data, variables) => {

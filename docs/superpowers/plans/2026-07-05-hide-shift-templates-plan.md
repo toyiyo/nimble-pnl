@@ -10,7 +10,7 @@ Conventions: CLAUDE.md Apple/Notion styling, semantic tokens only, import order,
 
 ## Task 1 — `useShiftTemplates`: status filter + hide/restore mutations
 
-**Files:** `src/hooks/useShiftTemplates.ts`, `tests/unit/useShiftTemplates.test.ts`
+**Files:** `src/hooks/useShiftTemplates.tsx`, `tests/unit/useShiftTemplates.test.ts`
 
 - Add `export type TemplateStatusFilter = 'active' | 'inactive' | 'all'` and an options
   param `useShiftTemplates(restaurantId, { status = 'active' } = {})`.
@@ -51,7 +51,7 @@ Conventions: CLAUDE.md Apple/Notion styling, semantic tokens only, import order,
 
 ## Task 3 — SQL: `claim_open_shift` active guard + pgTAP
 
-**Files:** `supabase/migrations/20260705120000_claim_open_shift_active_guard.sql`,
+**Files:** `supabase/migrations/20260705130000_claim_open_shift_active_guard.sql`,
 `supabase/tests/60_claim_open_shift_active_guard.test.sql` (follow local numbering style)
 
 - Recreate `claim_open_shift` copying the **latest** definition from

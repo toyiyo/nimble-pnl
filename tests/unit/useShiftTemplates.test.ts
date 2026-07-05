@@ -80,9 +80,22 @@ function makeSelectBuilder(data: unknown[]): MockQueryBuilder {
   return builder;
 }
 
-/** Builds a chainable mock for `.update(...).eq(...)` (no `.select()` chained — resolves directly). */
+/**
+ * Builds a chainable mock for `.update(...).eq('id', id).eq('restaurant_id', id)`
+ * (no `.select()` chained). The mutation code calls `.eq('id', id)` once, then
+ * conditionally a second `.eq('restaurant_id', restaurantId)` — so the object
+ * returned by the first `.eq()` call must itself be both awaitable (thenable)
+ * and further chainable via a second `.eq()`.
+ */
 function makeUpdateBuilder() {
-  const eq = vi.fn().mockResolvedValue({ error: null });
+  const resolved = Promise.resolve({ error: null });
+  const chain = {
+    eq: vi.fn().mockReturnValue(resolved),
+    then: resolved.then.bind(resolved),
+    catch: resolved.catch.bind(resolved),
+    finally: resolved.finally.bind(resolved),
+  };
+  const eq = vi.fn().mockReturnValue(chain);
   const update = vi.fn().mockReturnValue({ eq });
   return { update, eq };
 }
@@ -178,6 +191,10 @@ describe('useShiftTemplates', () => {
 
       expect(update).toHaveBeenCalledWith({ is_active: false });
       expect(eq).toHaveBeenCalledWith('id', 't1');
+      // Defense-in-depth: also scope the update by restaurant_id, matching the
+      // restaurant_id filter every read query on this hook already applies.
+      const chain = eq.mock.results[0].value;
+      expect(chain.eq).toHaveBeenCalledWith('restaurant_id', 'r1');
     });
 
     it('invalidates the restaurant-scoped prefix (no status segment)', async () => {
@@ -375,7 +392,11 @@ describe('useShiftTemplates', () => {
       const selectBuilder = makeSelectBuilder([]);
       const single = vi.fn().mockResolvedValue({ data: { id: 't1' }, error: null });
       const updateSelect = vi.fn().mockReturnValue({ single });
-      const update = vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ select: updateSelect }) });
+      // updateMutation chains .eq('id', id).eq('restaurant_id', id).select().single()
+      const secondEq = vi.fn().mockReturnValue({ select: updateSelect });
+      const update = vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({ eq: secondEq, select: updateSelect }),
+      });
 
       vi.mocked(supabase.from).mockReturnValue({
         ...selectBuilder,

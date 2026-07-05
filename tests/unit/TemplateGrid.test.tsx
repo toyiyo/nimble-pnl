@@ -9,6 +9,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -172,7 +173,8 @@ describe('TemplateGrid ghost row rendering — task 7', () => {
     expect(header?.className).not.toMatch(/bg-muted\/20/);
   });
 
-  it('calls onHideTemplate (not onDeleteTemplate) when TemplateRowHeader fires onHide for an active template', () => {
+  it('calls onHideTemplate (not onDeleteTemplate) when TemplateRowHeader fires onHide for an active template', async () => {
+    const user = userEvent.setup();
     const onHideTemplate = vi.fn();
     render(
       <TemplateGrid
@@ -184,7 +186,9 @@ describe('TemplateGrid ghost row rendering — task 7', () => {
     // TemplateRowHeader's actions button is hidden until hover in CSS only (opacity-0
     // group-hover:opacity-100), it's still present in the DOM and clickable in jsdom.
     const trigger = screen.getByRole('button', { name: 'Actions for t1 shift' });
-    trigger.click();
+    await user.click(trigger);
+    await user.click(await screen.findByRole('menuitem', { name: /Hide template/i }));
+    expect(onHideTemplate).toHaveBeenCalledTimes(1);
   });
 
   it('passes isHiddenTemplate=true to ShiftCell for a hidden template (ghost aria-label)', () => {

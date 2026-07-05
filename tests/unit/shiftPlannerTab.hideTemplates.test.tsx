@@ -25,7 +25,16 @@ import type { ShiftTemplate, Shift } from '@/types/scheduling';
 
 // ─── Mock all heavy hook / component dependencies ─────────────────────────────
 
-const mockShifts: Shift[] = [];
+// vi.mock factories are hoisted above regular top-level consts, so any shared
+// mock state referenced inside a factory must be declared via vi.hoisted to
+// avoid a TDZ/module-initialization failure.
+const { mockShifts, mockHideTemplate, mockRestoreTemplate, mockUseShiftTemplates, mockIsMobile } = vi.hoisted(() => ({
+  mockShifts: [] as Shift[],
+  mockHideTemplate: vi.fn(),
+  mockRestoreTemplate: vi.fn(),
+  mockUseShiftTemplates: vi.fn(),
+  mockIsMobile: vi.fn(() => false),
+}));
 
 vi.mock('@/hooks/useShiftPlanner', async () => {
   const actual = await vi.importActual('@/hooks/useShiftPlanner') as Record<string, unknown>;
@@ -54,10 +63,6 @@ vi.mock('@/hooks/useShiftPlanner', async () => {
     }),
   };
 });
-
-const mockHideTemplate = vi.fn();
-const mockRestoreTemplate = vi.fn();
-const mockUseShiftTemplates = vi.fn();
 
 vi.mock('@/hooks/useShiftTemplates', async () => {
   const actual = await vi.importActual('@/hooks/useShiftTemplates') as Record<string, unknown>;
@@ -91,7 +96,6 @@ vi.mock('@/hooks/usePlannerShiftsIndex', async () => {
   };
 });
 
-const mockIsMobile = vi.fn(() => false);
 vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => mockIsMobile(),
 }));
@@ -186,6 +190,7 @@ function renderTab(props = DEFAULT_PROPS) {
 describe('ShiftPlannerTab — hide/restore templates (task 8)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockShifts.length = 0;
     mockIsMobile.mockReturnValue(false);
     mockUseShiftTemplates.mockReturnValue({
       templates: [],

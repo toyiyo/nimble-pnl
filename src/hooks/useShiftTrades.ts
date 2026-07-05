@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -96,6 +96,19 @@ const executeShiftTradeAction = async ({
 };
 
 /**
+ * Invalidate every shift-trade query family in one place.
+ *
+ * All trade mutations must call this instead of hand-listing keys — a missed
+ * key silently desyncs whichever view reads it (this is how the "My shift
+ * trades" card would go stale).
+ */
+export const invalidateShiftTradeQueries = (queryClient: QueryClient) => {
+  queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
+  queryClient.invalidateQueries({ queryKey: ['marketplace_trades'] });
+  queryClient.invalidateQueries({ queryKey: ['my_trade_activity'] });
+};
+
+/**
  * Hook to fetch shift trades for a restaurant
  * @param restaurantId - Restaurant ID
  * @param status - Optional status filter ('open', 'pending_approval', etc.)
@@ -177,6 +190,95 @@ export const useShiftTrades = (
   };
 };
 
+/** Statuses shown in the "My shift trades" activity view. `cancelled` is
+ * deliberately excluded — the poster withdrew it themselves. */
+const MY_TRADE_ACTIVITY_STATUSES: ShiftTradeStatus[] = [
+  'open',
+  'pending_approval',
+  'approved',
+  'rejected',
+];
+
+/**
+ * Trades the employee is a party to (poster or claimant), across the active
+ * lifecycle plus a bounded window of recently-resolved outcomes.
+ *
+ * @param resolvedWithinDays - approved/rejected trades are included only when
+ *   reviewed_at is within this many days (default 7), enforced server-side.
+ */
+export const useMyTradeActivity = (
+  restaurantId: string | null,
+  employeeId: string | null,
+  resolvedWithinDays = 7
+) => {
+  const { data, isLoading, isError, error } = useQuery({
+    // The cutoff is intentionally NOT in the key: the key stays stable while
+    // every refetch recomputes a fresh window inside queryFn.
+    queryKey: ['my_trade_activity', restaurantId, employeeId, resolvedWithinDays],
+    queryFn: async () => {
+      const cutoffIso = new Date(
+        Date.now() - resolvedWithinDays * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      const { data, error } = await supabase
+        .from('shift_trades')
+        .select(`
+          *,
+          offered_shift:shifts!offered_shift_id(
+            id,
+            start_time,
+            end_time,
+            position,
+            break_duration
+          ),
+          offered_by:employees!offered_by_employee_id(
+            id,
+            name,
+            email,
+            position,
+            area
+          ),
+          accepted_by:employees!accepted_by_employee_id(
+            id,
+            name,
+            email,
+            position
+          )
+        `)
+        .eq('restaurant_id', restaurantId!)
+        // The two .or() calls below are INTENTIONALLY separate: PostgREST ANDs
+        // sibling or= params. Merging them into one comma-joined .or() would
+        // silently flip the semantics to a single big OR. Both interpolated
+        // values are non-user-controlled (employeeId is a UUID from our own
+        // employees table; cutoffIso is Date.toISOString() output), so the
+        // comma/paren-sensitive .or() syntax cannot be broken by them.
+        .or(
+          `offered_by_employee_id.eq.${employeeId},accepted_by_employee_id.eq.${employeeId}`
+        )
+        .in('status', MY_TRADE_ACTIVITY_STATUSES)
+        .or(`reviewed_at.is.null,reviewed_at.gte.${cutoffIso}`)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      // Drop rows whose joined poster/shift was deleted (same guard as useShiftTrades).
+      return (data as ShiftTrade[]).filter(
+        (t) => t.offered_by != null && t.offered_shift != null
+      );
+    },
+    enabled: !!restaurantId && !!employeeId,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
+
+  return {
+    trades: data || [],
+    loading: isLoading,
+    isError,
+    error,
+  };
+};
+
 /**
  * Hook to create a new shift trade request
  */
@@ -210,7 +312,7 @@ export const useCreateShiftTrade = () => {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
+      invalidateShiftTradeQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
       toast({
         title: 'Shift trade posted',
@@ -254,7 +356,7 @@ export const useAcceptShiftTrade = () => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
+      invalidateShiftTradeQueries(queryClient);
       toast({
         title: 'Trade request sent',
         description: 'Your request has been sent to management for approval.',
@@ -300,7 +402,7 @@ export const useApproveShiftTrade = () => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
+      invalidateShiftTradeQueries(queryClient);
       queryClient.invalidateQueries({ queryKey: ['shifts'] });
       toast({
         title: 'Trade approved',
@@ -347,7 +449,7 @@ export const useRejectShiftTrade = () => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
+      invalidateShiftTradeQueries(queryClient);
       toast({
         title: 'Trade rejected',
         description: 'The trade request has been rejected.',
@@ -384,7 +486,7 @@ export const useCancelShiftTrade = () => {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
+      invalidateShiftTradeQueries(queryClient);
       toast({
         title: 'Trade cancelled',
         description: 'Your shift trade has been cancelled.',
@@ -433,8 +535,7 @@ export const useDeleteShiftTrade = () => {
     onSuccess: () => {
       // The shift never moved (ownership only transfers in approve_shift_trade),
       // so NO ['shifts'] invalidation is needed here.
-      queryClient.invalidateQueries({ queryKey: ['shift_trades'] });
-      queryClient.invalidateQueries({ queryKey: ['marketplace_trades'] });
+      invalidateShiftTradeQueries(queryClient);
       toast({ title: 'Trade removed', description: 'The stale trade request was removed.' });
     },
     onError: (error: Error) => {

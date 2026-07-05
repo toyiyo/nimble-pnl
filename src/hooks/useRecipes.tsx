@@ -344,6 +344,7 @@ export const useRecipes = (restaurantId: string | null) => {
         .from('prep_recipes')
         .select('name')
         .eq('recipe_id', id)
+        .eq('restaurant_id', restaurantId)
         .limit(1)
         .maybeSingle();
 

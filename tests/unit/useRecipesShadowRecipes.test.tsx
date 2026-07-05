@@ -44,11 +44,13 @@ vi.mock('@/integrations/supabase/client', () => ({
         return {
           select: vi.fn().mockReturnValue({
             // fetch chain: .select('recipe_id').eq().not()
+            // deleteRecipe guard chain: .select('name').eq('recipe_id', id).eq('restaurant_id', restaurantId).limit().maybeSingle()
             eq: vi.fn().mockReturnValue({
               not: vi.fn().mockImplementation(() => Promise.resolve(prepLinksResponse)),
-              // deleteRecipe guard chain: .select('name').eq().limit().maybeSingle()
-              limit: vi.fn().mockReturnValue({
-                maybeSingle: vi.fn().mockImplementation(() => Promise.resolve(prepLinkSingleResponse)),
+              eq: vi.fn().mockReturnValue({
+                limit: vi.fn().mockReturnValue({
+                  maybeSingle: vi.fn().mockImplementation(() => Promise.resolve(prepLinkSingleResponse)),
+                }),
               }),
             }),
           }),

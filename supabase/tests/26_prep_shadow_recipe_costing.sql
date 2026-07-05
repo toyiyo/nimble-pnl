@@ -8,7 +8,7 @@
 -- 6. Backstop trigger blocks deactivating prep-linked recipes
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(16);
 
 -- ============================================================
 -- Setup: auth context, restaurant, membership
@@ -109,6 +109,12 @@ SELECT is(
   'Idempotency: no double deduction on completed-run retry'
 );
 
+SELECT is(
+  (SELECT current_stock::numeric FROM products WHERE id = '26000000-0000-0000-0000-000000000011'),
+  2::numeric,
+  'Idempotency: output stock not doubled on completed-run retry'
+);
+
 -- ============================================================
 -- Section 3: Idempotency path 2 — in_progress retry whose transactions exist
 -- (simulates a retry after partial failure: deduction committed, status not
@@ -126,6 +132,12 @@ SELECT is(
   (SELECT current_stock::numeric FROM products WHERE id = '26000000-0000-0000-0000-000000000010'),
   74.5::numeric,
   'Idempotency: still no double deduction after in_progress retry'
+);
+
+SELECT is(
+  (SELECT current_stock::numeric FROM products WHERE id = '26000000-0000-0000-0000-000000000011'),
+  2::numeric,
+  'Idempotency: output stock still not doubled after in_progress retry'
 );
 
 -- ============================================================

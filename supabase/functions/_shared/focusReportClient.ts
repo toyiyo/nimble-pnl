@@ -165,7 +165,11 @@ export function lynkIncrementalDates(
   const today = todayInTz(tz, now);
   const yesterday = subtractDays(today, 1);
   const fetchedMs = yesterdayFetchedAt ? Date.parse(yesterdayFetchedAt) : NaN;
-  const yesterdayIsFresh = Number.isFinite(fetchedMs) && now.getTime() - fetchedMs < YESTERDAY_REFRESH_MS;
+  // ageMs >= 0: a FUTURE fetched_at (clock skew, bad state repair) counts as
+  // stale, not fresh — otherwise yesterday could be skipped far too long.
+  const ageMs = now.getTime() - fetchedMs;
+  const yesterdayIsFresh =
+    Number.isFinite(fetchedMs) && ageMs >= 0 && ageMs < YESTERDAY_REFRESH_MS;
   return yesterdayIsFresh ? [today] : [today, yesterday];
 }
 

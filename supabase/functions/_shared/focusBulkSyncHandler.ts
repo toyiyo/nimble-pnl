@@ -196,13 +196,27 @@ interface BulkSyncResult {
 async function processConnection(
   row: FocusConnectionRow,
   deps: BulkSyncDeps,
-): Promise<{ newSyncCursor: number; newInitialSyncDone: boolean; skipped?: boolean }> {
+): Promise<{
+  newSyncCursor: number;
+  newInitialSyncDone: boolean;
+  skipped?: boolean;
+  /**
+   * True only when every attempted day synced without an error result.
+   * Gates the caller's error-banner clear: the legacy portal branch reports
+   * day failures as non-throwing {status:'error'} results, and clearing
+   * connection_status/last_error on such a run would mask the failure
+   * (Codex P2 on PR #581). The Lynk branch throws on failed days, so
+   * reaching the final return there implies clean.
+   */
+  syncedCleanly: boolean;
+}> {
   const tz = row.timezone || 'America/Chicago';
   const now = new Date(deps.now());
   const isLynkPath = !!row.api_key;
 
   let newSyncCursor = row.sync_cursor;
   let newInitialSyncDone = row.initial_sync_done;
+  let syncedCleanly = true;
 
   if (isLynkPath) {
     // ── Lynk API path (Focus POS API with api_key / api_secret) ──────────────
@@ -220,6 +234,7 @@ async function processConnection(
         newSyncCursor: row.sync_cursor,
         newInitialSyncDone: row.initial_sync_done,
         skipped: true,
+        syncedCleanly: true, // no write happens for skipped rows anyway
       };
     }
 
@@ -355,17 +370,63 @@ async function processConnection(
         if (newSyncCursor >= TARGET_DAYS) {
           newInitialSyncDone = true;
         }
+      } else {
+        // Non-throwing failure (legacy tolerance): the cursor stays put and
+        // the caller must NOT clear the error banner for this run.
+        syncedCleanly = false;
       }
     } else {
       const [yesterday, dayBefore] = recentBusinessDays(tz, now);
-      await Promise.all([
+      const dayResults = await Promise.all([
         processReportDay(syncDeps, conn, yesterday),
         processReportDay(syncDeps, conn, dayBefore),
       ]);
+      if (dayResults.some((r) => r.status === 'error')) {
+        syncedCleanly = false;
+      }
     }
   }
 
-  return { newSyncCursor, newInitialSyncDone };
+  return { newSyncCursor, newInitialSyncDone, syncedCleanly };
+}
+
+// ── Budget-break requeue ──────────────────────────────────────────────────────
+
+/**
+ * Re-queue claimed-but-unprocessed rows after a wall-clock budget break.
+ *
+ * claim_focus_sync_batch bumps last_sync_time on every claimed row up front,
+ * so a row the loop never reached would otherwise wait a full
+ * sync_interval_minutes despite not having synced. Setting last_sync_time
+ * back past the row's own interval makes it immediately due again AND sorts
+ * it to the front of the next tick's stalest-first claim.
+ *
+ * Best-effort: a failed write just means that row waits one interval — the
+ * same cost as the pre-fix behavior.
+ */
+async function requeueUnprocessed(
+  rows: FocusConnectionRow[],
+  deps: BulkSyncDeps,
+): Promise<void> {
+  for (const row of rows) {
+    try {
+      await deps.serviceClient
+        .from('focus_connections')
+        .update({
+          last_sync_time: new Date(
+            deps.now() - row.sync_interval_minutes * 60_000,
+          ).toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', row.id)
+        .eq('restaurant_id', row.restaurant_id);
+    } catch (err: unknown) {
+      console.warn(
+        `focus-bulk-sync: requeue after budget break failed for ${row.restaurant_id}:`,
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
 }
 
 // ── Handler ───────────────────────────────────────────────────────────────────
@@ -434,6 +495,12 @@ export async function handleBulkSync(
       // Wall-clock budget check (design §8: "90s wall-clock budget guard")
       if (deps.now() - startMs > BUDGET_MS) {
         console.log('focus-bulk-sync: wall-clock budget exceeded, stopping early');
+        // The claim already bumped last_sync_time on EVERY returned row, so
+        // rows we break on before processing would silently wait a full
+        // interval. Re-queue them: push last_sync_time back past their own
+        // interval so the next tick's claim picks them up first
+        // (stalest-first ordering). (CodeRabbit Major on PR #579.)
+        await requeueUnprocessed(rows.slice(i), deps);
         break;
       }
       await deps.sleep(INTER_RESTAURANT_DELAY_MS);
@@ -442,28 +509,41 @@ export async function handleBulkSync(
     const row = rows[i];
 
     try {
-      const { newSyncCursor, newInitialSyncDone, skipped } = await processConnection(row, deps);
+      const { newSyncCursor, newInitialSyncDone, skipped, syncedCleanly } =
+        await processConnection(row, deps);
 
       // Skipped rows (Lynk backfill — owned by focus-backfill-sync) get NO write:
       // persisting the stale cursor could regress the cron's progress and bumping
       // last_sync_time would perturb the round-robin. Still counted as processed
       // (it was handled without error). (CodeRabbit Major, 9d.)
       if (!skipped) {
+        const successPayload: Record<string, unknown> = {
+          sync_cursor: newSyncCursor,
+          initial_sync_done: newInitialSyncDone,
+          last_sync_time: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          // Reset backoff state on success (design review #4) — a healthy
+          // sync clears the failure streak so the connection resumes its
+          // normal sync_interval_minutes cadence via the due predicate.
+          consecutive_failures: 0,
+          next_attempt_at: null,
+        };
+        // A CLEAN scheduled sync also clears the error banner — without this,
+        // a stale last_error (e.g. one transient blob_url failure) stays on
+        // screen forever even while every subsequent 30-min sync succeeds.
+        // Gated on syncedCleanly: the legacy portal branch reports day
+        // failures as non-throwing {status:'error'} results, and clearing the
+        // banner on such a run would mask a real failure (Codex P2, PR #581).
+        if (syncedCleanly) {
+          successPayload.connection_status = 'connected';
+          successPayload.last_error = null;
+          successPayload.last_error_at = null;
+        }
         // Update the connection row with the new cursor + sync time (review S3).
         // Filter by both id and restaurant_id to satisfy multi-tenant contract.
         await deps.serviceClient
           .from('focus_connections')
-          .update({
-            sync_cursor: newSyncCursor,
-            initial_sync_done: newInitialSyncDone,
-            last_sync_time: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            // Reset backoff state on success (design review #4) — a healthy
-            // sync clears the failure streak so the connection resumes its
-            // normal sync_interval_minutes cadence via the due predicate.
-            consecutive_failures: 0,
-            next_attempt_at: null,
-          })
+          .update(successPayload)
           .eq('id', row.id)
           .eq('restaurant_id', row.restaurant_id);
       }

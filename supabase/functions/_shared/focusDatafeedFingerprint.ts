@@ -102,9 +102,22 @@ export function createDatafeedStateStore(client: StateStoreClient): DatafeedStat
           .eq('restaurant_id', restaurantId)
           .eq('business_date', businessDate)
           .maybeSingle();
-        if (error || !data) return null;
+        if (error) {
+          // Fail open (null ⇒ reprocess), but LOG it — a persistent read
+          // failure silently degrades delta-skip to "always reprocess" and
+          // deserves an operational signal (observability parity with
+          // touch/record, CodeRabbit nitpick).
+          console.warn(
+            `focus_datafeed_state get failed for ${restaurantId}/${businessDate}: ${error.message}`,
+          );
+          return null;
+        }
+        if (!data) return null;
         return { bytes: data.checks_bytes, sha256: data.checks_sha256, fetchedAt: data.fetched_at };
-      } catch {
+      } catch (err: unknown) {
+        console.warn(
+          `focus_datafeed_state get threw for ${restaurantId}/${businessDate}: ${err instanceof Error ? err.message : String(err)}`,
+        );
         return null;
       }
     },

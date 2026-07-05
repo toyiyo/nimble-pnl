@@ -301,4 +301,13 @@ describe('lynkIncrementalDates', () => {
   it('treats an unparseable fetchedAt as stale (fail toward re-fetching)', () => {
     expect(lynkIncrementalDates(tz, now, 'not-a-date')).toEqual(['2026-07-04', '2026-07-03']);
   });
+
+  it('treats a FUTURE fetchedAt as stale, not fresh (clock skew / bad state repair)', () => {
+    // now + 1h — a fetchedAt strictly after "now" would otherwise satisfy the
+    // old `ageMs < YESTERDAY_REFRESH_MS` check by producing a large negative
+    // ageMs, incorrectly marking yesterday "fresh" and skipping it far longer
+    // than the intended 6h window.
+    const futureFetchedAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+    expect(lynkIncrementalDates(tz, now, futureFetchedAt)).toEqual(['2026-07-04', '2026-07-03']);
+  });
 });

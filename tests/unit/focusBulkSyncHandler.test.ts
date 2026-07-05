@@ -470,6 +470,80 @@ describe('handleBulkSync', () => {
     expect(fetchMock.mock.calls.length).toBe(2);
   });
 
+  // ── Budget-break requeue (CodeRabbit Major on PR #579) ───────────────────────
+  //
+  // claim_focus_sync_batch bumps last_sync_time on EVERY claimed row up front.
+  // A row the loop breaks on before ever calling processConnection would
+  // otherwise silently wait a full sync_interval_minutes despite never having
+  // synced this tick. requeueUnprocessed must push last_sync_time back past
+  // that row's own interval so it's immediately due again on the next claim.
+
+  it('requeues an unprocessed row after a budget break: last_sync_time is set into the past, filtered by that row id', async () => {
+    // Two claimed Lynk rows with distinct ids/restaurant_ids. The clock goes
+    // over budget right after the first row completes, so the second row is
+    // never passed to processConnection — it must be requeued instead.
+    const startMs = 1_000_000;
+    let callCount = 0;
+    const nowMock = () => {
+      callCount++;
+      if (callCount === 1) return startMs; // initial startMs capture
+      return startMs + 91_000; // over budget for every call after
+    };
+
+    const row1 = lynkRow({ id: 'conn-lynk-1', restaurant_id: RESTAURANT_ID_1, sync_interval_minutes: 30 });
+    const row2 = lynkRow({ id: 'conn-lynk-2', restaurant_id: RESTAURANT_ID_2, sync_interval_minutes: 45 });
+
+    const { deps, mocks } = makeDeps({
+      serviceClientOpts: { claimRows: [row1, row2] },
+      nowFn: nowMock,
+    });
+    const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+    const res = await handleBulkSync(req, deps);
+
+    const body = await res.json();
+    // Only the first row was processed; the second was requeued, not synced.
+    expect(body.processed).toBe(1);
+
+    // Find the update call scoped to row2's id (the requeue write) — the
+    // chain is .update(payload).eq('id', val).eq('restaurant_id', val), so
+    // row2's id/restaurant_id appear as the arguments to the two .eq() calls
+    // that immediately follow the update() call carrying last_sync_time.
+    const updateCallForRow2Index = mocks.updateMock.mock.calls.findIndex(
+      (_call: unknown[], idx: number) =>
+        mocks.eqUpdateMock.mock.calls[idx]?.[0] === 'id' &&
+        mocks.eqUpdateMock.mock.calls[idx]?.[1] === row2.id,
+    );
+    expect(updateCallForRow2Index).toBeGreaterThanOrEqual(0);
+
+    const requeuePayload = mocks.updateMock.mock.calls[updateCallForRow2Index][0] as Record<string, unknown>;
+    expect(requeuePayload.last_sync_time).toBeTruthy();
+    expect(typeof requeuePayload.updated_at).toBe('string');
+
+    // The "now at check" the handler used for the budget check (and reused by
+    // requeueUnprocessed for deps.now()) is startMs + 91_000. The requeued
+    // last_sync_time must equal that instant minus row2's own interval — and,
+    // regardless of the exact clock-mock plumbing, it must land safely in the
+    // past relative to the pinned "now at check" instant so the row is
+    // immediately due again.
+    const nowAtCheck = startMs + 91_000;
+    const expected = new Date(nowAtCheck - row2.sync_interval_minutes * 60_000).toISOString();
+    expect(requeuePayload.last_sync_time).toBe(expected);
+    expect(Date.parse(requeuePayload.last_sync_time as string)).toBeLessThan(nowAtCheck);
+
+    // row1 (the processed row) must NOT have been requeued — only row2 should
+    // carry a bare last_sync_time-only requeue payload for its id.
+    const updateCallForRow1Index = mocks.updateMock.mock.calls.findIndex(
+      (_call: unknown[], idx: number) =>
+        mocks.eqUpdateMock.mock.calls[idx]?.[0] === 'id' &&
+        mocks.eqUpdateMock.mock.calls[idx]?.[1] === row1.id,
+    );
+    expect(updateCallForRow1Index).toBeGreaterThanOrEqual(0);
+    const row1Payload = mocks.updateMock.mock.calls[updateCallForRow1Index][0] as Record<string, unknown>;
+    // row1's write is the normal success-path update (has sync_cursor etc.),
+    // not the requeue shape (which carries ONLY last_sync_time/updated_at).
+    expect(row1Payload).toHaveProperty('consecutive_failures');
+  });
+
   // ── Empty connection list ─────────────────────────────────────────────────────
 
   it('returns 200 with processed=0 when there are no active connections', async () => {
@@ -916,6 +990,55 @@ describe('handleBulkSync', () => {
       expect(update).toBeDefined();
       expect(update!.payload.consecutive_failures).toBe(0);
       expect(update!.payload.next_attempt_at).toBeNull();
+    });
+
+    it('a successful connection clears the error banner (connected + null last_error)', async () => {
+      // Regression: prod kept showing a stale "blob_url" error banner because
+      // the success-path update never wrote connection_status/last_error.
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: {
+          claimRows: [lynkRow({ consecutive_failures: 1 })],
+        },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const update = mocks.updateCalls.find((c) => c.payload.initial_sync_done !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.connection_status).toBe('connected');
+      expect(update!.payload.last_error).toBeNull();
+      expect(update!.payload.last_error_at).toBeNull();
+    });
+
+    it('a portal run with a failed day does NOT clear the error banner (Codex P2, PR #581)', async () => {
+      // Garbage HTML → processReportDay returns a non-throwing
+      // {status:'error'} (legacy tolerance). The success update still runs,
+      // but writing connected/null last_error would mask the failure.
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL] },
+        fetchHtml: '<html><body>SSRS exploded</body></html>',
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const update = mocks.updateCalls.find((c) => c.payload.initial_sync_done !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.connection_status).toBeUndefined();
+      expect(update!.payload.last_error).toBeUndefined();
+      expect(update!.payload.last_error_at).toBeUndefined();
+    });
+
+    it('a clean portal run clears the error banner (parity with the Lynk path)', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const update = mocks.updateCalls.find((c) => c.payload.initial_sync_done !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.connection_status).toBe('connected');
+      expect(update!.payload.last_error).toBeNull();
     });
   });
 });

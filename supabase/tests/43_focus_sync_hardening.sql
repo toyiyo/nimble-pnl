@@ -8,7 +8,9 @@
 --  4  sync_focus_to_unified_sales(uuid) IS executable by authenticated role
 --  5  Tax offset external_item_id includes revenue_center slug
 --  6  Tip offset external_item_id includes revenue_center slug
---  7  sync_all_focus_to_unified_sales updates last_sync_time
+--  7  sync_all_focus_to_unified_sales leaves last_sync_time UNTOUCHED
+--     (inverted 2026-07-05: the old "Fix 2" bump starved the claim scheduler
+--      — see 20260705003631_focus_legacy_cron_no_claim_bump.sql)
 
 BEGIN;
 SELECT plan(7);
@@ -166,7 +168,14 @@ SELECT ok(
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Test 7: sync_all_focus_to_unified_sales advances last_sync_time (Fix 2)
+-- Test 7: sync_all_focus_to_unified_sales leaves last_sync_time UNTOUCHED.
+--
+-- INVERTED 2026-07-05. The original test pinned the "Fix 2" round-robin bump
+-- (SET last_sync_time = now()). Since 20260704200320_focus_sync_frequency.sql,
+-- last_sync_time is the claim scheduler's due-marker — the bump made
+-- _focus_connection_is_due permanently false and stopped ALL incremental
+-- Focus ingestion in production. 20260705003631 removed the bump; this test
+-- now pins its absence.
 -- ─────────────────────────────────────────────────────────────────────────────
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '';
@@ -181,22 +190,21 @@ BEGIN
   FROM public.focus_connections
   WHERE restaurant_id = '00000000-0000-0000-0000-f0c000000111';
 
-  -- Run sync_all (operates on last 2 UTC days; daily report is for 2026-06-02
-  -- so may not overlap — what matters is last_sync_time is updated regardless)
+  -- Run sync_all: it must aggregate WITHOUT touching the claim due-marker.
   PERFORM * FROM public.sync_all_focus_to_unified_sales();
 
   SELECT last_sync_time INTO v_after
   FROM public.focus_connections
   WHERE restaurant_id = '00000000-0000-0000-0000-f0c000000111';
 
-  IF v_after IS NULL OR v_after <= v_before THEN
-    RAISE EXCEPTION 'last_sync_time was not advanced by sync_all (before=%, after=%)',
+  IF v_after IS DISTINCT FROM v_before THEN
+    RAISE EXCEPTION 'sync_all must not write last_sync_time (claim due-marker); before=%, after=%',
       v_before, v_after;
   END IF;
 END;
 $$;
 
-SELECT ok(TRUE, 'sync_all_focus_to_unified_sales advances last_sync_time (round-robin fix)');
+SELECT ok(TRUE, 'sync_all_focus_to_unified_sales leaves last_sync_time untouched (claim due-marker)');
 
 SELECT * FROM finish();
 ROLLBACK;

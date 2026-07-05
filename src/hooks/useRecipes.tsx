@@ -334,6 +334,26 @@ export const useRecipes = (restaurantId: string | null) => {
 
   const deleteRecipe = async (id: string): Promise<boolean> => {
     try {
+      // Shadow recipes back a prep (batch) recipe; soft-deleting one silently
+      // breaks production deduction/costing. Blocked here AND by a DB trigger.
+      const { data: prepLink, error: prepLinkError } = await supabase
+        .from('prep_recipes')
+        .select('name')
+        .eq('recipe_id', id)
+        .limit(1)
+        .maybeSingle();
+
+      if (prepLinkError) throw prepLinkError;
+
+      if (prepLink) {
+        toast({
+          title: "Can't delete this recipe",
+          description: `It is managed by the batch recipe "${prepLink.name}". Go to the Prep page to manage it.`,
+          variant: "destructive",
+        });
+        return false;
+      }
+
       const { error } = await supabase
         .from('recipes')
         .update({ is_active: false })

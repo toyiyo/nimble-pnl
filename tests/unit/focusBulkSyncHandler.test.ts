@@ -1009,5 +1009,36 @@ describe('handleBulkSync', () => {
       expect(update!.payload.last_error).toBeNull();
       expect(update!.payload.last_error_at).toBeNull();
     });
+
+    it('a portal run with a failed day does NOT clear the error banner (Codex P2, PR #581)', async () => {
+      // Garbage HTML → processReportDay returns a non-throwing
+      // {status:'error'} (legacy tolerance). The success update still runs,
+      // but writing connected/null last_error would mask the failure.
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL] },
+        fetchHtml: '<html><body>SSRS exploded</body></html>',
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const update = mocks.updateCalls.find((c) => c.payload.initial_sync_done !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.connection_status).toBeUndefined();
+      expect(update!.payload.last_error).toBeUndefined();
+      expect(update!.payload.last_error_at).toBeUndefined();
+    });
+
+    it('a clean portal run clears the error banner (parity with the Lynk path)', async () => {
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: { claimRows: [MOCK_CONN_INCREMENTAL] },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const update = mocks.updateCalls.find((c) => c.payload.initial_sync_done !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.connection_status).toBe('connected');
+      expect(update!.payload.last_error).toBeNull();
+    });
   });
 });

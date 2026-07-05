@@ -1,14 +1,14 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTimePunches } from '@/hooks/useTimePunches';
-import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle } from 'lucide-react';
+import { useCurrentEmployee, useEmployeePunchStatus, useCreateTimePunch, useTimePunches, type CreateTimePunchInput } from '@/hooks/useTimePunches';
+import { Clock, LogIn, LogOut, Coffee, PlayCircle, AlertCircle, Camera, MapPin, MapPinOff, Shield, CheckCircle, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { collectPunchContext, mergePunchLocation } from '@/utils/punchContext';
@@ -28,11 +28,15 @@ const EmployeeClock = () => {
     distanceMeters?: number;
   } | null>(null);
   const [pendingLocationUnavailable, setPendingLocationUnavailable] = useState(false);
+  const [failedPunch, setFailedPunch] = useState<{ payload: CreateTimePunchInput; failedAt: number } | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const failureAlertRef = useRef<HTMLDivElement>(null);
+  const mainActionButtonRef = useRef<HTMLButtonElement>(null);
   const { toast } = useToast();
   const MAX_PHOTO_WIDTH = 480;
   const PHOTO_QUALITY = 0.6;
+  const RETRY_MAX_AGE_MS = 5 * 60 * 1000;
 
   const { employee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const { status, loading: statusLoading } = useEmployeePunchStatus(employee?.id || null);
@@ -61,6 +65,26 @@ const EmployeeClock = () => {
     if (cameraStream && !showCameraDialog) stopCamera();
     return stopCamera;
   }, [cameraStream, showCameraDialog, stopCamera]);
+
+  // Focus management: the failure alert never steals focus on appear (it's
+  // a live region — screen readers announce it without moving focus). But
+  // when it unmounts after a successful retry, if focus was resting inside
+  // it (i.e. on the Try Again button that's about to disappear), the
+  // browser would otherwise drop focus to <body>. `handleTryAgain` captures
+  // whether focus was inside the alert *before* clearing the state that
+  // unmounts it (checking in an effect after the fact would be too late —
+  // React will have already removed the alert's DOM node by then) into this
+  // ref; the layout effect below moves focus once the retry succeeds and
+  // the main action button is back in the (post-alert) DOM.
+  const focusMainActionAfterUnmountRef = useRef(false);
+
+  useLayoutEffect(() => {
+    if (failedPunch || createPunch.isPending) return;
+    if (!focusMainActionAfterUnmountRef.current) return;
+
+    focusMainActionAfterUnmountRef.current = false;
+    mainActionButtonRef.current?.focus();
+  }, [failedPunch, createPunch.isPending]);
 
   const startCamera = async () => {
     try {
@@ -165,6 +189,23 @@ const EmployeeClock = () => {
     setPendingLocationUnavailable(false);
   };
 
+  // Shared by the initial confirm and Try Again: records the payload on
+  // failure (for retry) and clears it on success. `resetFocusRef` is only
+  // relevant for the retry path — resets the focus-preservation flag if the
+  // retry itself fails, so a subsequent unmount doesn't move focus based on
+  // stale state.
+  const mutatePunch = (payload: CreateTimePunchInput, resetFocusRef = false) => {
+    createPunch.mutate(payload, {
+      onError: () => {
+        if (resetFocusRef) focusMainActionAfterUnmountRef.current = false;
+        setFailedPunch({ payload, failedAt: Date.now() });
+      },
+      onSuccess: () => {
+        setFailedPunch(null);
+      },
+    });
+  };
+
   const handleConfirmPunch = async () => {
     if (!restaurantId || !employee || !pendingPunchType) return;
 
@@ -199,7 +240,7 @@ const EmployeeClock = () => {
       Promise.all([contextPromise, photoBlobPromise]),
       new Promise<[undefined, undefined]>(resolve => setTimeout(() => resolve([undefined, undefined]), 3000))
     ]).then(([context, photoBlob]) => {
-      createPunch.mutate({
+      const payload: CreateTimePunchInput = {
         restaurant_id: restaurantId,
         employee_id: employee.id,
         punch_type: punchType,
@@ -207,13 +248,51 @@ const EmployeeClock = () => {
         location: mergePunchLocation(context?.location, geofenceResult, locationUnavailable),
         device_info: context?.device_info,
         photoBlob,
-      });
+      };
+
+      // Clear any stale failure alert as soon as a mutation actually fires
+      // (retry or a brand-new confirmed punch) — merely initiating/cancelling
+      // a new attempt (without reaching this point) must not clear it.
+      setFailedPunch(null);
+
+      mutatePunch(payload);
     });
   };
 
   const handleSkipVerification = () => {
     // Allow punch without photo
     handleConfirmPunch();
+  };
+
+  const handleTryAgain = () => {
+    if (!failedPunch) return;
+
+    // A stale payload (older than RETRY_MAX_AGE_MS) is discarded rather than
+    // re-sent — the punch context (location, device info) it captured may no
+    // longer be valid. Restart the normal punch flow instead.
+    if (Date.now() - failedPunch.failedAt > RETRY_MAX_AGE_MS) {
+      // EmployeeClock only ever builds clock_in/clock_out payloads (see
+      // handleConfirmPunch), so this narrowing is safe at runtime — the
+      // stored field type is the broader TimePunch['punch_type'] because
+      // CreateTimePunchInput is shared with break-punch call sites elsewhere.
+      const punchType = failedPunch.payload.punch_type;
+      setFailedPunch(null);
+      if (punchType === 'clock_in' || punchType === 'clock_out') {
+        handleInitiatePunch(punchType);
+      }
+      return;
+    }
+
+    const payload = failedPunch.payload;
+    // Capture whether focus was inside the alert (e.g. on the Try Again
+    // button that's about to disappear) before clearing the state that
+    // unmounts it — the layout effect below uses this to decide whether to
+    // move focus to the main action button once the retry succeeds.
+    focusMainActionAfterUnmountRef.current =
+      failureAlertRef.current?.contains(document.activeElement) ?? false;
+    setFailedPunch(null);
+
+    mutatePunch(payload, /* resetFocusRef */ true);
   };
 
   if (!restaurantId) {
@@ -325,6 +404,26 @@ const EmployeeClock = () => {
         </CardContent>
       </Card>
 
+      {/* Persistent punch-failure alert (BUG-003) */}
+      {failedPunch && (
+        <Alert variant="destructive" ref={failureAlertRef}>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Punch failed</AlertTitle>
+          <AlertDescription className="space-y-3">
+            <p>Your {failedPunch.payload.punch_type === 'clock_out' ? 'clock out' : 'clock in'} didn't go through. Please try again.</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              onClick={handleTryAgain}
+              disabled={createPunch.isPending}
+            >
+              Try Again
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Action Buttons */}
       <Card>
         <CardHeader>
@@ -334,6 +433,7 @@ const EmployeeClock = () => {
         <CardContent>
           {!isClockedIn ? (
             <Button
+              ref={mainActionButtonRef}
               size="lg"
               className="h-24 text-xl w-full"
               onClick={() => handleInitiatePunch('clock_in')}
@@ -344,6 +444,7 @@ const EmployeeClock = () => {
             </Button>
           ) : (
             <Button
+              ref={mainActionButtonRef}
               size="lg"
               variant="destructive"
               className="h-24 text-xl w-full"
@@ -353,6 +454,19 @@ const EmployeeClock = () => {
               <LogOut className="mr-2 h-6 w-6" />
               Clock Out
             </Button>
+          )}
+
+          {/* Pending indicator: fills the closed-dialog dead zone while the
+              punch mutation is in flight. */}
+          {createPunch.isPending && (
+            <div
+              role="status"
+              aria-live="polite"
+              className="flex items-center justify-center gap-2 mt-3 text-[13px] text-muted-foreground"
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Recording punch…
+            </div>
           )}
 
           {/* Info about verification */}

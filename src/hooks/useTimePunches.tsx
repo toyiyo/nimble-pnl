@@ -87,7 +87,7 @@ export const useEmployeePunchStatus = (employeeId: string | null) => {
   };
 };
 
-type CreateTimePunchInput =
+export type CreateTimePunchInput =
   Omit<TimePunch, 'id' | 'created_at' | 'updated_at' | 'employee'>
   & {
     photoBlob?: Blob;
@@ -95,6 +95,56 @@ type CreateTimePunchInput =
     // their own success UI use this to avoid stacking a toast on top.
     silent?: boolean;
   };
+
+// The photo upload must never block or hang the punch itself. If the upload
+// hasn't settled within this window, we abandon it (no-op catch so the
+// rejection doesn't become an unhandled rejection) and proceed without a
+// photo_path.
+const PHOTO_UPLOAD_TIMEOUT_MS = 10_000;
+
+// The punch INSERT itself must never hang indefinitely on a black-holed
+// fetch (e.g. dropped connection with no response). If it hasn't settled
+// within this window, the AbortSignal rejects the request instead.
+const PUNCH_INSERT_TIMEOUT_MS = 15_000;
+
+// Recognizes a genuine AbortController.abort() rejection reason (a
+// DOMException named 'AbortError' or 'TimeoutError'), a plain Error whose
+// message indicates a timeout/abort, AND the plain postgrest-js error object
+// shape ({ message, details, hint, code }, not an Error/DOMException
+// instance) that supabase-js actually resolves with on an aborted request.
+//
+// Why the third shape matters: postgrest-js's PostgrestBuilder only calls
+// `.throwOnError()` — which is what would make an abort surface as a real
+// DOMException rejection — when explicitly opted in. This insert chain
+// doesn't opt in, so PostgrestBuilder's default `.then()` catches the
+// underlying fetch rejection itself and *resolves* with
+// `{ data: null, error: { message: 'AbortError: ...', ... } }`, a plain
+// object. `if (error) throw error;` below then throws that plain object,
+// which is neither `instanceof DOMException` nor `instanceof Error` — so
+// without this branch the classification would silently fall through and
+// show the raw technical message instead of the intended connection/timeout
+// copy for exactly the abort case this exists to handle.
+const isTimeoutError = (error: unknown): boolean => {
+  if (error instanceof DOMException) {
+    return error.name === 'AbortError' || error.name === 'TimeoutError';
+  }
+  if (error instanceof Error) {
+    return (
+      error.name === 'AbortError' ||
+      error.name === 'TimeoutError' ||
+      /abort|timed?\s?out/i.test(error.message)
+    );
+  }
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'message' in error &&
+    typeof (error as { message: unknown }).message === 'string'
+  ) {
+    return /abort|timed?\s?out/i.test((error as { message: string }).message);
+  }
+  return false;
+};
 
 export const useCreateTimePunch = () => {
   const queryClient = useQueryClient();
@@ -109,69 +159,120 @@ export const useCreateTimePunch = () => {
       const userId = session?.user?.id;
 
       let photo_path: string | undefined;
+      let photoUploadFailed = false;
       if (punch.photoBlob) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), PHOTO_UPLOAD_TIMEOUT_MS);
+
+        // Declared outside the try block so the catch handler can still
+        // reach it to attach a no-op rejection handler on the abandoned
+        // promise (relevant when we raced it away via the timeout).
+        let uploadPromise: Promise<{ data: { path: string } | null; error: Error | null }> | undefined;
+
         try {
           const timestamp = Date.now();
           const filename = `punch-${timestamp}.jpg`;
           const filePath = `${punch.restaurant_id}/${punch.employee_id}/${filename}`;
 
-          const { data: uploadData, error: uploadError } = await supabase.storage
+          uploadPromise = supabase.storage
             .from('time-clock-photos')
             .upload(filePath, punch.photoBlob, {
               contentType: 'image/jpeg',
               upsert: false,
             });
 
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            controller.signal.addEventListener('abort', () => {
+              reject(new DOMException('Photo upload timed out', 'TimeoutError'));
+            });
+          });
+
+          const { data: uploadData, error: uploadError } = await Promise.race([
+            uploadPromise,
+            timeoutPromise,
+          ]);
+
           if (uploadError) {
             console.error('Photo upload error:', uploadError);
-            // Don't fail the punch if photo upload fails
-            toast({
-              title: 'Photo upload failed',
-              description: 'Punch recorded without photo',
-              variant: 'default',
-            });
-          } else {
+            photoUploadFailed = true;
+          } else if (uploadData?.path) {
             photo_path = uploadData.path;
+          } else {
+            photoUploadFailed = true;
           }
         } catch (error) {
           console.error('Photo upload exception:', error);
+          photoUploadFailed = true;
+          // The upload promise may still resolve/reject after we've moved on
+          // (e.g. after a timeout abandons it) — swallow that so it doesn't
+          // surface as an unhandled rejection.
+          uploadPromise?.catch(() => {});
+        } finally {
+          clearTimeout(timeoutId);
         }
       }
 
       // Remove photoBlob and silent from the punch data; both are local-only.
       const { photoBlob, silent, ...punchData } = punch;
 
-      const { data, error } = await supabase
-        .from('time_punches')
-        .insert({
-          ...punchData,
-          photo_path,
-          created_by: userId,
-        })
-        .select()
-        .single();
+      const insertController = new AbortController();
+      const insertTimeoutId = setTimeout(
+        () => insertController.abort(),
+        PUNCH_INSERT_TIMEOUT_MS,
+      );
+
+      let data: TimePunch;
+      let error: Error | null;
+      try {
+        ({ data, error } = await supabase
+          .from('time_punches')
+          .insert({
+            ...punchData,
+            photo_path,
+            created_by: userId,
+          })
+          .select()
+          .abortSignal(insertController.signal)
+          .single() as unknown as { data: TimePunch; error: Error | null });
+      } finally {
+        clearTimeout(insertTimeoutId);
+      }
 
       if (error) throw error;
-      return data;
+      return { ...data, photoUploadFailed };
     },
     onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['timePunches', data.restaurant_id] });
-      queryClient.invalidateQueries({ queryKey: ['punchStatus', data.employee_id] });
-
       if (variables?.silent) return;
 
       const punchTypeText = data.punch_type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
       toast({
         title: 'Punch recorded',
-        description: `${punchTypeText} at ${new Date(data.punch_time).toLocaleTimeString()}`,
+        description: data.photoUploadFailed
+          ? 'Punch recorded — photo could not be uploaded'
+          : `${punchTypeText} at ${new Date(data.punch_time).toLocaleTimeString()}`,
       });
     },
     onError: (error: Error) => {
       toast({
         title: 'Error recording punch',
-        description: error.message,
+        description: isTimeoutError(error)
+          ? 'Connection timed out — please check your connection and try again.'
+          : error.message,
         variant: 'destructive',
       });
+    },
+    // Invalidate regardless of outcome: a failed INSERT never returns `data`,
+    // so a failed punch would otherwise leave stale timePunches/punchStatus
+    // caches around. Prefer `data`'s ids when the INSERT succeeded (they're
+    // the authoritative server-confirmed values); fall back to `variables`
+    // (the request we sent) when it didn't.
+    onSettled: (data, _error, variables) => {
+      const restaurantId = data?.restaurant_id ?? variables?.restaurant_id;
+      const employeeId = data?.employee_id ?? variables?.employee_id;
+      if (!restaurantId || !employeeId) return;
+
+      queryClient.invalidateQueries({ queryKey: ['timePunches', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['punchStatus', employeeId] });
     },
   });
 };

@@ -611,9 +611,17 @@ New:
     }
 ```
 
-with:
+with (NOTE: `AlertDialogAction` is Radix `Dialog.Close` — it closes the dialog
+synchronously on click unless the handler calls `event.preventDefault()` BEFORE any
+`await`; the signature change below is required, see design doc §2c addendum):
 
 ```typescript
+  const handleDelete = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    // AlertDialogAction is Radix's Dialog.Close: without preventDefault it
+    // closes the dialog synchronously on click, before deleteRecipe resolves.
+    event.preventDefault();
+    if (!recipe) return;
+
     setLoading(true);
     try {
       const deleted = await deleteRecipe(recipe.id);
@@ -625,6 +633,7 @@ with:
     } finally {
       setLoading(false);
     }
+  };
 ```
 
 - [ ] **Step 4: Run the tests**

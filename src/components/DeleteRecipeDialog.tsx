@@ -22,13 +22,18 @@ export function DeleteRecipeDialog({ isOpen, onClose, recipe }: DeleteRecipeDial
   const { deleteRecipe } = useRecipes(recipe?.restaurant_id || null);
   const [loading, setLoading] = useState(false);
 
-  const handleDelete = async () => {
+  const handleDelete = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    // AlertDialogAction is Radix's Dialog.Close: without preventDefault it
+    // closes the dialog synchronously on click, before deleteRecipe resolves.
+    event.preventDefault();
     if (!recipe) return;
 
     setLoading(true);
     try {
-      await deleteRecipe(recipe.id);
-      onClose();
+      const deleted = await deleteRecipe(recipe.id);
+      if (deleted) {
+        onClose();
+      }
     } catch (error) {
       console.error('Error deleting recipe:', error);
     } finally {

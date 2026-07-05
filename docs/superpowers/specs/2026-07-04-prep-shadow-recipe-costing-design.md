@@ -151,10 +151,17 @@ manage it." — and return `false` without updating. Defense in depth in case a 
 recipe is reachable through another surface (direct link, stale cache).
 
 **c. `DeleteRecipeDialog.handleDelete`** (src/components/DeleteRecipeDialog.tsx,
-design-review major): branch on the boolean — `const ok = await deleteRecipe(recipe.id);
-if (ok) onClose();`. Today the dialog closes unconditionally, so a blocked delete would
-look like success with only a fleeting toast behind it. Keeping the dialog open anchors
-the rejection.
+design-review major): branch on the boolean — only call `onClose()` when
+`deleteRecipe` resolves `true`. Today the dialog closes unconditionally, so a blocked
+delete would look like success with only a fleeting toast behind it. Keeping the dialog
+open anchors the rejection.
+
+> **Implementation addendum (build-phase finding):** `AlertDialogAction` is Radix's
+> `Dialog.Close` under the hood — clicking it fires Radix's own `onOpenChange(false)`
+> synchronously, so an async boolean branch alone cannot keep the dialog open. The
+> handler must call `event.preventDefault()` synchronously before the `await` (the
+> standard Radix pattern for async confirmation), then call `onClose()` itself on
+> success. The `AlertDialogAction` primitive is kept.
 
 **d. Intentionally NOT migrating `useRecipes` to React Query** (design-review note):
 the hook is useState/useEffect + realtime channel today with six call sites; migrating

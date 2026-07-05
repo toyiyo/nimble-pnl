@@ -30,8 +30,13 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
 
 - Add a status filter following the `useEmployees` convention:
   `useShiftTemplates(restaurantId, { status: 'active' | 'inactive' | 'all' } = { status: 'active' })`.
-  Status is part of the query key. Default stays `'active'` so every existing consumer
-  (Scheduling.tsx open-shift count, coverage, AI scheduler context, etc.) is unchanged.
+  Status is part of the query key: `['shift_templates', restaurantId, status]`. Default
+  stays `'active'` so every existing consumer (Scheduling.tsx open-shift count, coverage,
+  AI scheduler context, etc.) is unchanged. `staleTime: 30000` is preserved as-is.
+- **Cross-key invalidation (design-review major):** every mutation (`create`, `update`,
+  `hide`, `restore`) invalidates the **prefix** `['shift_templates', restaurantId]` (no
+  status segment) so all status variants — the `'active'` callers and the planner's
+  `'all'` — refetch together (same pattern as `useEmployees`' bare-prefix invalidation).
 - Rename the `deleteTemplate` mutation to `hideTemplate` (same `is_active: false` update).
 - Add `restoreTemplate` (`is_active: true` update).
 - Toasts:
@@ -41,6 +46,11 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
   - Restore: title `Template restored`.
   - The kept-shift count for the current week is computed by the caller
     (ShiftPlannerTab has `gridData`) and passed to `hideTemplate({ id, name, keptShiftCount })`.
+  - **Undo reliability (design-review major):** `use-toast.ts` has `TOAST_LIMIT = 1`, so
+    any subsequent toast evicts the Undo. Set an explicit `duration` (~8s) on the hide
+    toast; accept as a known limitation that hiding two templates back-to-back drops the
+    first Undo (the Hidden toggle + Restore menu item is the durable recovery path —
+    Undo is a convenience, not the only way back).
 
 ### Planner container — `ShiftPlannerTab`
 
@@ -51,6 +61,13 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
   - `displayTemplates = showHidden ? templates : activeTemplates` — drives grid rows.
 - `const [showHidden, setShowHidden] = useState(false)` — a **view filter**, session-scoped,
   never persisted, never mutates data.
+- `displayTemplates` uses a **stable sort** placing active templates before hidden ones
+  (preserving relative order within each partition) so ghosts sink to the bottom of each
+  area group — `groupTemplatesByArea` preserves caller order and must not be changed.
+- Row handlers passed to `TemplateGrid`/`TemplateRowHeader` (`onHideTemplate`,
+  `onRestoreTemplate` — replacing `onDeleteTemplate`) are wrapped in `useCallback`
+  (the hide handler closes over `gridData` to compute `keptShiftCount`; keep deps minimal
+  so the `memo` on row headers isn't defeated on unrelated re-renders).
 - Build the grid with **all** templates (`buildTemplateGridData(shifts, templates, weekDays)`),
   so shifts keep bucketing under their hidden template (explicit `shift_template_id` first,
   legacy time-match fallback — both already work when the template is in the list). Derive:
@@ -64,8 +81,9 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
 
 ### Toolbar toggle — "Hidden (n)"
 
-- Pill button in the planner toolbar (next to the existing controls), rendered **only when
-  `hiddenTemplates.length > 0`**: `EyeOff` icon + `Hidden` + count badge.
+- Pill button rendered in the existing Plan/Timeline `ToggleGroup` row of
+  `ShiftPlannerTab` (right-aligned in that same row — do not add a third toolbar row),
+  shown **only when `hiddenTemplates.length > 0`**: `EyeOff` icon + `Hidden` + count badge.
 - `aria-pressed` reflects state; pressed style `bg-foreground text-background` (CLAUDE.md
   primary), unpressed ghost style. Keyboard accessible (it's a `<Button>`).
 
@@ -77,8 +95,10 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
   decision: no permanent delete).
 - Hidden template (ghost row): `Edit` / **`Restore template`** (`Eye` icon).
 - Hidden row header also shows a `Hidden` badge: `text-[10px] uppercase tracking-wider
-  border border-dashed border-border rounded-md px-1.5` with inline `EyeOff` glyph
-  (desktop; mobile shows the badge dot only — mobile header is 56px).
+  border border-dashed border-border rounded-md px-1.5` with inline `EyeOff` glyph.
+  The badge's **text** ("Hidden") is the accessible label; the icon gets `aria-hidden`.
+  On mobile the template **column is only 56px wide** (grid column width, not row
+  height), so mobile shows the badge text without the icon.
 - `memo` comparison must add `prev.template.is_active === next.template.is_active`
   (updated_at changes on hide, but Undo/restore round-trips can race the timestamp).
 
@@ -89,6 +109,10 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
 - Ghost cells are **read-only**: no drag/drop assignment, no mobile tap-to-assign, no
   open-slot affordances, no coverage indicator (`coverage` is only computed for active
   templates anyway). Pass `isHiddenTemplate` down to `ShiftCell`; chips render dimmed.
+- **Screen-reader treatment (design-review major):** ghost cells carry
+  `aria-label={`${dayLabel}, hidden template`}` (mirroring the existing inactive-day
+  branch's `aria-label` pattern in `ShiftCell`), so a ghost cell is distinguishable from
+  a normal empty cell without sight of the dimmed styling.
 - Sorting: hidden rows sort after active rows within their area group so ghosts sink to
   the bottom of each section (`groupTemplatesByArea` input ordering: active first).
 
@@ -100,7 +124,9 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
   `EyeOff` icon, subtitle `N shift(s) kept · Show templates` where "Show templates" is a
   button that sets `showHidden = true`. Chips render in the ghost (dimmed) treatment.
 - New component `HiddenTemplatesRow.tsx` (sibling of `OffTemplateRow.tsx`, same grid
-  column contract). Shift chips keep their remove action (they are real shifts).
+  column contract). Shift chips keep their remove action (they are real shifts), and the
+  dimmed chip treatment must preserve the same `focus-visible` outline as
+  `OffTemplateRow` chips so keyboard focus stays visible against reduced opacity.
 - The `__unmatched__` off-template lane behavior is unchanged — shifts linked to hidden
   templates no longer land there because the grid is built with all templates.
 
@@ -119,16 +145,33 @@ Give the existing `is_active` state a complete UX. No schema migration needed.
 
 ### SQL — close the claim hole
 
-New migration `2026xxxx_claim_open_shift_active_guard.sql`:
+New migration `20260705120000_claim_open_shift_active_guard.sql` (timestamp must sort
+after `20260626120000` and reflect the actual authoring date):
 - Recreate `claim_open_shift` **from the latest version in
   `20260626120000_open_shift_coverage.sql`** (per the 2026-05-01 "diff, don't believe"
-  lesson: copy the current definition, change only the guard), adding
-  `AND is_active = true` to the template fetch. Error message:
-  `'This shift is no longer available'` (distinct from `'Template not found'` so support
-  can tell the cases apart; both return `success: false`).
+  lesson: copy the current definition, change only the guard), same signature /
+  `SECURITY DEFINER` / `SET search_path` / re-issued `GRANT EXECUTE`.
+- The `is_active = true` clause is added to the **existing template fetch inside the
+  advisory-locked section** (`pg_advisory_xact_lock` first, then read-under-lock) — no
+  cheap pre-check before the lock, which would reintroduce the TOCTOU class of bug the
+  coverage migration's header describes.
+- Branching stays two-way and is pinned by tests: template row not visible to the fetch
+  by id+restaurant ⇒ `'Template not found'`; row exists but `is_active = false` ⇒
+  `'This shift is no longer available'`. The inactive branch's message must not vary by
+  any other condition (no cross-tenant enumeration through message shape); both return
+  `success: false`.
 - pgTAP test (`supabase/tests/`): hidden template ⇒ (a) `get_open_shifts` excludes its
-  slots, (b) `claim_open_shift` returns the new error, (c) restoring flips both back.
-  Dates computed from `CURRENT_DATE` (2026-04-21 lesson — no hardcoded dates).
+  slots, (b) `claim_open_shift` returns `'This shift is no longer available'` (and a
+  **nonexistent** template id still returns `'Template not found'`), (c) restoring flips
+  both back — the restore-path claim uses a **different employee** than earlier tests so
+  a schedule-conflict rejection can't mask a false pass. Dates computed from
+  `CURRENT_DATE` (2026-04-21 lesson — no hardcoded dates).
+
+**Scope note (design-review):** hiding is a display/behavior filter, **not a privacy
+boundary** — the `shift_templates` SELECT RLS policy has no `is_active` or role filter,
+so any restaurant member could already read inactive rows via PostgREST. The planner's
+`status: 'all'` fetch adds no new exposure. The UPDATE policy restricts `is_active`
+flips to owner/manager, which is the correct write boundary; no RLS changes needed.
 
 ## Alternatives considered
 

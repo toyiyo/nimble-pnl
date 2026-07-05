@@ -73,21 +73,39 @@ export const useRecipes = (restaurantId: string | null) => {
 
     try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('recipes')
-        .select(`
-          *,
-          ingredients:recipe_ingredients(product_id, quantity, unit)
-        `)
-        .eq('restaurant_id', restaurantId)
-        .eq('is_active', true)
-        .order('name');
+      // Shadow recipes (rows backing prep_recipes) are managed from the Prep
+      // page and must not appear here. Fail closed: if the prep_recipes query
+      // errors we abort the whole fetch rather than leak shadows back in.
+      const [recipesResult, prepLinksResult] = await Promise.all([
+        supabase
+          .from('recipes')
+          .select(`
+            *,
+            ingredients:recipe_ingredients(product_id, quantity, unit)
+          `)
+          .eq('restaurant_id', restaurantId)
+          .eq('is_active', true)
+          .order('name'),
+        supabase
+          .from('prep_recipes')
+          .select('recipe_id')
+          .eq('restaurant_id', restaurantId)
+          .not('recipe_id', 'is', null),
+      ]);
 
-      if (error) throw error;
-      
+      if (recipesResult.error) throw recipesResult.error;
+      if (prepLinksResult.error) throw prepLinksResult.error;
+
+      const shadowRecipeIds = new Set(
+        (prepLinksResult.data || []).map((link) => link.recipe_id)
+      );
+      const data = (recipesResult.data || []).filter(
+        (recipe) => !shadowRecipeIds.has(recipe.id)
+      );
+
       // Enhance recipes with updated costs and profitability data
       const enhancedRecipes = await Promise.all(
-        (data || []).map(async (recipe) => {
+        data.map(async (recipe) => {
           // Recalculate cost using the updated calculation function
           const updatedCost = await calculateRecipeCost(recipe.id);
           const recipeWithUpdatedCost = {

@@ -917,5 +917,23 @@ describe('handleBulkSync', () => {
       expect(update!.payload.consecutive_failures).toBe(0);
       expect(update!.payload.next_attempt_at).toBeNull();
     });
+
+    it('a successful connection clears the error banner (connected + null last_error)', async () => {
+      // Regression: prod kept showing a stale "blob_url" error banner because
+      // the success-path update never wrote connection_status/last_error.
+      const { deps, mocks } = makeDeps({
+        serviceClientOpts: {
+          claimRows: [lynkRow({ consecutive_failures: 1 })],
+        },
+      });
+      const req = makeRequest({ authHeader: `Bearer ${SERVICE_ROLE_KEY}` });
+      await handleBulkSync(req, deps);
+
+      const update = mocks.updateCalls.find((c) => c.payload.initial_sync_done !== undefined);
+      expect(update).toBeDefined();
+      expect(update!.payload.connection_status).toBe('connected');
+      expect(update!.payload.last_error).toBeNull();
+      expect(update!.payload.last_error_at).toBeNull();
+    });
   });
 });

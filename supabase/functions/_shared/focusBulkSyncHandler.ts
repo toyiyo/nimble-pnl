@@ -463,6 +463,13 @@ export async function handleBulkSync(
             // normal sync_interval_minutes cadence via the due predicate.
             consecutive_failures: 0,
             next_attempt_at: null,
+            // A successful scheduled sync also clears the error banner —
+            // without this, a stale last_error (e.g. one transient blob_url
+            // failure) stays on screen forever even while every subsequent
+            // 30-min sync succeeds.
+            connection_status: 'connected',
+            last_error: null,
+            last_error_at: null,
           })
           .eq('id', row.id)
           .eq('restaurant_id', row.restaurant_id);

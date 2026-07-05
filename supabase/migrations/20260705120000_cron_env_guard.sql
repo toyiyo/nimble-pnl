@@ -85,10 +85,21 @@ ON CONFLICT (key) DO NOTHING;
 -- privilege/RLS reason, it returns false — i.e. errs toward "non-production",
 -- which no-ops crons rather than firing at prod. A future permission change
 -- must not flip that direction.
+--
+-- SECURITY DEFINER (required, not stylistic): deploy_env has RLS enabled with
+-- zero policies and zero table-level GRANTs to service_role (by design — see
+-- §A). service_role is the only role granted EXECUTE on this function below,
+-- so without SECURITY DEFINER it runs as service_role's own (nonexistent)
+-- privileges and errors `permission denied for table deploy_env` instead of
+-- returning the documented fail-safe `false` — the exact same pattern (and
+-- fix) as `focus_due_sync_count()` reading the analogous RLS-locked
+-- `focus_datafeed_state` in 20260704200320_focus_sync_frequency.sql. Safe
+-- here: the function body is a fixed, parameterless, read-only EXISTS check
+-- with no caller-controlled input.
 -- ─────────────────────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.is_production()
 RETURNS boolean
-LANGUAGE sql STABLE
+LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
   SELECT EXISTS (

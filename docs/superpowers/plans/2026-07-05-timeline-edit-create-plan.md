@@ -88,10 +88,24 @@
 - Visually-hidden per-lane "Add shift to <lane>" button as keyboard entry (opens quick-add
   with lane defaults).
 
+### C3a. Add TZ-safe create path to the pipeline (design C3-halt resolution)
+- New `validateAndCreateAtTime` / `forceCreateAtTime` in `useValidatedShiftMutations.ts`:
+  accept `{ employeeId, restaurantId, startIso, endIso, businessDate, position,
+  breakDuration?, notes?, shiftTemplateId? }`, build the interval via
+  `ShiftInterval.fromTimestamps` (never host-local `.create`), run all three validation
+  layers via `collectShiftIssues`, return the same pending-confirmation shape as
+  `validateAndCreate`. Additive only — `validateAndCreate`/`forceCreate` untouched, so A3/A4
+  stay green.
+- Tests (append to `tests/unit/useValidatedShiftMutations.test.tsx`): pending-confirmation
+  contract + immediate-create-when-clean + a TZ regression pinning restaurant-local
+  wall-clock when host TZ ≠ restaurant TZ (parity with the update-path regression test).
+
 ### C3. Quick-add popover (create variant)
 - Reuse `TimelineShiftEditor` in create mode anchored to the ghost; "On shift" badge from
-  local day shifts; commit via `validateAndCreate` (input built with `minutesToIso`) →
-  conflict dialog → `forceCreate`.
+  local day shifts; commit via `validateAndCreateAtTime` (ISO instants from `minutesToIso`) →
+  conflict dialog → `forceCreateAtTime`. Never the host-local `validateAndCreate`.
+- Renders the create-variant `TimelineShiftPopover` from `ShiftTimelineTab`'s `activeOverlay`
+  `{mode:'create', draft, laneContext, anchorRect}` (already staged by C2's `handlePaintCommit`).
 
 ## Stage D — Drag-move / edge-resize with live coverage
 

@@ -65,8 +65,16 @@ Hook contract (create path keeps the existing planner shape; update/reassign gai
 pending-confirmation shape plus force variants):
 
 ```ts
+// Planner create path — host-local HH:MM, UNCHANGED (planner parity, see trade-offs)
 validateAndCreate(input: ShiftCreateInput)          // unchanged shape
 forceCreate(input: ShiftCreateInput)                // unchanged shape
+
+// Timeline create path — TZ-safe ISO instants (added; mirrors update/reassign)
+validateAndCreateAtTime({ employeeId, restaurantId, startIso, endIso,
+  businessDate, position, breakDuration?, notes?, shiftTemplateId? })
+  → { created: boolean; pendingConflicts?; pendingWarnings?; pendingInput? }
+forceCreateAtTime(input: CreateAtTimeInput) → boolean
+
 validateAndUpdateTime({ shift, startIso, endIso, businessDate })
   → { updated: boolean; pendingConflicts?; pendingWarnings? }
 forceUpdateTime({ shift, startIso, endIso, businessDate }) → boolean
@@ -76,6 +84,18 @@ forceReassign({ shift, newEmployeeId }) → boolean
 deleteShift(shiftId)
 validationResult / clearValidation                  // unchanged
 ```
+
+**Create-path TZ conflict resolution (C3 halt, decided 2026-07-06):** the Stage-A
+create contract (`validateAndCreate`, host-local `ShiftInterval.create` from `HH:MM`)
+cannot itself carry the Timeline's restaurant-TZ ISO instants without a fragile host-TZ
+back-shift. Resolution is **additive**: new `validateAndCreateAtTime` / `forceCreateAtTime`
+build the interval via `ShiftInterval.fromTimestamps` (the same TZ-safe pattern as
+`validateAndUpdateTime`/`forceUpdateTime`), taking `startIso`/`endIso` produced by
+`minutesToIso`. The existing HH:MM `validateAndCreate`/`forceCreate` stay byte-identical for
+the planner and `ShiftPlannerTab` — no shared-type or contract change, so A3/A4 stay green.
+The Timeline's quick-add (C3) and gap-click (E2) call **only** the `AtTime` variants. A TZ
+regression test pins that a host-TZ ≠ restaurant-TZ create through `validateAndCreateAtTime`
+writes the restaurant-local wall-clock (parity with the update-path regression test).
 
 All update/reassign paths now run **all three layers** (interval rules + validateShift with
 `excludeShiftId` + RPC conflicts) and return pending issues for the
@@ -154,8 +174,8 @@ cancel → back to editing).
   from its employee — `shifts` has no area column).
 - "On shift" badge computed locally from the day's loaded shifts; live RPC conflict badge for
   the **selected** candidate only (no N× RPC fan-out).
-- Save → `validateAndCreate` (input built with `minutesToIso`) → conflict dialog on pending →
-  `forceCreate` on confirm.
+- Save → `validateAndCreateAtTime` (ISO instants built with `minutesToIso`) → conflict dialog
+  on pending → `forceCreateAtTime` on confirm. (Never the host-local `validateAndCreate`.)
 
 ### 4. Drag-move / edge-resize with live coverage
 

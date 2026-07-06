@@ -132,6 +132,95 @@ describe('useValidatedShiftMutations — create', () => {
   });
 });
 
+describe('useValidatedShiftMutations — createAtTime (TZ-safe timeline path)', () => {
+  it('validateAndCreateAtTime mutates immediately when there are no issues', async () => {
+    const checkConflicts = vi.fn().mockResolvedValue(NO_CONFLICTS);
+    const { result } = renderPipeline([], checkConflicts);
+
+    const outcome = await result.current.validateAndCreateAtTime({
+      employeeId: 'emp-2',
+      startIso: '2026-02-01T17:00:00.000Z',
+      endIso: '2026-02-02T01:00:00.000Z',
+      businessDate: '2026-02-01',
+      position: 'server',
+    });
+
+    expect(outcome.created).toBe(true);
+    expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mockCreateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        restaurant_id: 'rest-1',
+        employee_id: 'emp-2',
+        start_time: '2026-02-01T17:00:00.000Z',
+        end_time: '2026-02-02T01:00:00.000Z',
+        position: 'server',
+        source: 'manual',
+      }),
+    );
+    expect(result.current.validationResult).toBeNull();
+  });
+
+  it('validateAndCreateAtTime returns pending issues (does not mutate) when the RPC reports a conflict', async () => {
+    const rpcConflicts: ConflictCheck[] = [
+      { has_conflict: true, conflict_type: 'time-off', message: 'on approved time off' },
+    ];
+    const checkConflicts = vi.fn().mockResolvedValue({ conflicts: rpcConflicts, hasConflicts: true });
+    const { result } = renderPipeline([], checkConflicts);
+
+    const outcome = await result.current.validateAndCreateAtTime({
+      employeeId: 'emp-2',
+      startIso: '2026-02-01T17:00:00.000Z',
+      endIso: '2026-02-02T01:00:00.000Z',
+      businessDate: '2026-02-01',
+      position: 'server',
+    });
+
+    expect(outcome.created).toBe(false);
+    expect(outcome.pendingConflicts).toEqual(rpcConflicts);
+    expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('forceCreateAtTime mutates regardless of pending issues', async () => {
+    const checkConflicts = vi.fn().mockResolvedValue({
+      conflicts: [{ has_conflict: true, conflict_type: 'time-off', message: 'c' }],
+      hasConflicts: true,
+    });
+    const { result } = renderPipeline([], checkConflicts);
+
+    const created = await result.current.forceCreateAtTime({
+      employeeId: 'emp-2',
+      startIso: '2026-02-01T17:00:00.000Z',
+      endIso: '2026-02-02T01:00:00.000Z',
+      businessDate: '2026-02-01',
+      position: 'server',
+    });
+
+    expect(created).toBe(true);
+    expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('TZ regression: writes the restaurant-local wall clock via fromTimestamps, not a host-TZ reconstruction', async () => {
+    // Same ISO instants regardless of host TZ — fromTimestamps must round-trip them byte-identically.
+    const { result } = renderPipeline([]);
+
+    const startIso = '2026-11-01T05:00:00.000Z';
+    const endIso = '2026-11-01T14:00:00.000Z';
+
+    const created = await result.current.forceCreateAtTime({
+      employeeId: 'emp-9',
+      startIso,
+      endIso,
+      businessDate: '2026-10-31',
+      position: 'cook',
+    });
+
+    expect(created).toBe(true);
+    expect(mockCreateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ start_time: startIso, end_time: endIso }),
+    );
+  });
+});
+
 describe('useValidatedShiftMutations — validateAndUpdateTime', () => {
   it('updates immediately when there are no issues', async () => {
     const { result } = renderPipeline([]);

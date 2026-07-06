@@ -192,26 +192,58 @@ export function groupUnmatchedByArea(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Metadata subset shared by every shift-insert payload builder — the fields that
+ * don't come from the time interval. Lets the host-local (`buildShiftPayload`) and
+ * ISO-instant (timeline) create paths share one payload shape without duplication.
+ */
+export interface ShiftInsertMeta {
+  employeeId: string;
+  position: string;
+  breakDuration?: number;
+  notes?: string;
+  shiftTemplateId?: string | null;
+}
+
+/** Build the shift-insert payload from an interval + non-time metadata. */
+export function buildShiftInsert(
+  restaurantId: string,
+  meta: ShiftInsertMeta,
+  interval: ShiftInterval,
+) {
+  return {
+    restaurant_id: restaurantId,
+    employee_id: meta.employeeId,
+    start_time: interval.startAt.toISOString(),
+    end_time: interval.endAt.toISOString(),
+    position: meta.position,
+    break_duration: meta.breakDuration ?? 0,
+    notes: meta.notes,
+    status: 'scheduled' as const,
+    is_published: false,
+    locked: false,
+    source: (meta.shiftTemplateId ? 'template' : 'manual') as 'template' | 'manual',
+    shift_template_id: meta.shiftTemplateId ?? null,
+  };
+}
+
 /** Build the mutation payload for creating a shift from validated inputs. */
 export function buildShiftPayload(
   restaurantId: string,
   input: ShiftCreateInput,
   interval: ShiftInterval,
 ) {
-  return {
-    restaurant_id: restaurantId,
-    employee_id: input.employeeId,
-    start_time: interval.startAt.toISOString(),
-    end_time: interval.endAt.toISOString(),
-    position: input.position,
-    break_duration: input.breakDuration ?? 0,
-    notes: input.notes,
-    status: 'scheduled' as const,
-    is_published: false,
-    locked: false,
-    source: (input.shiftTemplateId ? 'template' : 'manual') as 'template' | 'manual',
-    shift_template_id: input.shiftTemplateId ?? null,
-  };
+  return buildShiftInsert(
+    restaurantId,
+    {
+      employeeId: input.employeeId,
+      position: input.position,
+      breakDuration: input.breakDuration,
+      notes: input.notes,
+      shiftTemplateId: input.shiftTemplateId ?? null,
+    },
+    interval,
+  );
 }
 
 /**

@@ -23,10 +23,26 @@ import {
   assertNotLockedClient,
   type ConflictChecker,
 } from '@/lib/shiftMutationPipeline';
-import { buildShiftPayload, type ShiftCreateInput } from '@/hooks/useShiftPlanner';
+import { buildShiftPayload, buildShiftInsert, type ShiftCreateInput } from '@/hooks/useShiftPlanner';
 
 import type { Shift, ConflictCheck } from '@/types/scheduling';
 import type { ValidationIssue } from '@/lib/shiftValidator';
+
+/**
+ * TZ-safe create input for the Timeline surface: carries UTC ISO instants (built
+ * upstream by `minutesToIso`) rather than host-local `HH:MM`, so the shift is
+ * anchored in the restaurant's timezone regardless of the manager's device TZ.
+ */
+export interface CreateAtTimeInput {
+  employeeId: string;
+  startIso: string;
+  endIso: string;
+  businessDate: string;
+  position: string;
+  breakDuration?: number;
+  notes?: string;
+  shiftTemplateId?: string;
+}
 
 export interface UpdateTimeInput {
   shift: Shift;
@@ -45,6 +61,13 @@ export interface CreateOutcome {
   pendingConflicts?: ConflictCheck[];
   pendingWarnings?: ValidationIssue[];
   pendingInput?: ShiftCreateInput;
+}
+
+export interface CreateAtTimeOutcome {
+  created: boolean;
+  pendingConflicts?: ConflictCheck[];
+  pendingWarnings?: ValidationIssue[];
+  pendingInput?: CreateAtTimeInput;
 }
 
 export interface UpdateTimeOutcome {
@@ -67,6 +90,8 @@ export interface UseValidatedShiftMutationsOptions {
 export interface UseValidatedShiftMutationsReturn {
   validateAndCreate: (input: ShiftCreateInput) => Promise<CreateOutcome>;
   forceCreate: (input: ShiftCreateInput) => Promise<boolean>;
+  validateAndCreateAtTime: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
+  forceCreateAtTime: (input: CreateAtTimeInput) => Promise<boolean>;
   validateAndUpdateTime: (input: UpdateTimeInput) => Promise<UpdateTimeOutcome>;
   forceUpdateTime: (input: UpdateTimeInput) => Promise<boolean>;
   validateAndReassign: (input: ReassignInput) => Promise<ReassignOutcome>;
@@ -83,6 +108,25 @@ function errorToValidationResult(err: unknown, fallback: string): ValidationResu
     errors: [{ code: message, message }],
     warnings: [],
   };
+}
+
+/** Build the insert payload for a TZ-safe (ISO-instant) timeline create. */
+function buildAtTimeInsert(
+  restaurantId: string,
+  input: CreateAtTimeInput,
+  interval: ShiftInterval,
+) {
+  return buildShiftInsert(
+    restaurantId,
+    {
+      employeeId: input.employeeId,
+      position: input.position,
+      breakDuration: input.breakDuration,
+      notes: input.notes,
+      shiftTemplateId: input.shiftTemplateId ?? null,
+    },
+    interval,
+  );
 }
 
 /** Find a shift by id in the current in-memory list, throwing if it's missing. */
@@ -163,6 +207,77 @@ export function useValidatedShiftMutations(
         const interval = ShiftInterval.create(input.date, input.startTime, input.endTime);
 
         await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
+
+        setValidationResult(null);
+        return true;
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Failed to create shift'));
+        return false;
+      }
+    },
+    [restaurantId, createShift],
+  );
+
+  // ---------------------------------------------------------------------------
+  // Create at time — TZ-safe timeline path. Builds the interval via
+  // ShiftInterval.fromTimestamps (never host-local .create), so ISO instants
+  // produced by minutesToIso are anchored in the restaurant's timezone.
+  // ---------------------------------------------------------------------------
+
+  const validateAndCreateAtTime = useCallback(
+    async (input: CreateAtTimeInput): Promise<CreateAtTimeOutcome> => {
+      if (!restaurantId) return { created: false };
+
+      try {
+        const interval = ShiftInterval.fromTimestamps(
+          input.startIso,
+          input.endIso,
+          input.businessDate,
+        );
+
+        const { warnings, conflicts } = await collectShiftIssues({
+          employeeId: input.employeeId,
+          restaurantId,
+          interval,
+          shifts,
+          checkConflicts,
+        });
+
+        setValidationResult({ valid: true, errors: [], warnings });
+
+        if (warnings.length > 0 || conflicts.length > 0) {
+          return {
+            created: false,
+            pendingConflicts: conflicts,
+            pendingWarnings: warnings,
+            pendingInput: input,
+          };
+        }
+
+        await createShift.mutateAsync(buildAtTimeInsert(restaurantId, input, interval));
+
+        setValidationResult(null);
+        return { created: true };
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Invalid shift'));
+        return { created: false };
+      }
+    },
+    [restaurantId, shifts, checkConflicts, createShift],
+  );
+
+  const forceCreateAtTime = useCallback(
+    async (input: CreateAtTimeInput): Promise<boolean> => {
+      if (!restaurantId) return false;
+
+      try {
+        const interval = ShiftInterval.fromTimestamps(
+          input.startIso,
+          input.endIso,
+          input.businessDate,
+        );
+
+        await createShift.mutateAsync(buildAtTimeInsert(restaurantId, input, interval));
 
         setValidationResult(null);
         return true;
@@ -343,6 +458,8 @@ export function useValidatedShiftMutations(
   return {
     validateAndCreate,
     forceCreate,
+    validateAndCreateAtTime,
+    forceCreateAtTime,
     validateAndUpdateTime,
     forceUpdateTime,
     validateAndReassign,

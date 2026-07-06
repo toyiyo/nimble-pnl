@@ -16,6 +16,7 @@ import { checkConflictsImperative } from '@/hooks/useConflictDetection';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { UNASSIGNED } from '@/lib/templateAreaGrouping';
+import { findAreaAwareTemplate } from '@/lib/templateAreaMatch';
 
 import type { Shift, ShiftTemplate, ConflictCheck } from '@/types/scheduling';
 import type { ValidationIssue } from '@/lib/shiftValidator';
@@ -97,27 +98,28 @@ export function buildGridData(
   return grid;
 }
 
-/** Find the first template that matches a shift's time, position, and active day. */
+/**
+ * Find the template that matches a shift's time, position, and active day, and
+ * is area-compatible with the employee. Thin wrapper over the shared
+ * `findAreaAwareTemplate` so the grid and the export (plannerExport) select
+ * templates identically.
+ */
 function findMatchingTemplate(
   templates: ShiftTemplate[],
   shiftStart: string,
   shiftEnd: string,
   position: string,
   dayOfWeek: number,
+  employeeArea: string | null,
 ): ShiftTemplate | undefined {
-  return templates.find(
-    (t) =>
-      t.start_time === shiftStart &&
-      t.end_time === shiftEnd &&
-      t.position === position &&
-      t.days.includes(dayOfWeek),
-  );
+  return findAreaAwareTemplate(templates, { shiftStart, shiftEnd, position, dayOfWeek, employeeArea });
 }
 
 /**
  * Groups shifts into a Map<templateId, Map<dayString, Shift[]>>.
  * Matches shifts to templates by comparing start_time (HH:MM:SS),
- * end_time (HH:MM:SS), and position.
+ * end_time (HH:MM:SS), position, active day, and area compatibility
+ * (employee home area vs template area; null on either side is permissive).
  * Unmatched shifts go under '__unmatched__'. Cancelled shifts are excluded.
  */
 export function buildTemplateGridData(
@@ -157,7 +159,14 @@ export function buildTemplateGridData(
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();
-    const match = findMatchingTemplate(templates, shiftStart, shiftEnd, shift.position, dayOfWeek);
+    const match = findMatchingTemplate(
+      templates,
+      shiftStart,
+      shiftEnd,
+      shift.position,
+      dayOfWeek,
+      shift.employee?.area ?? null,
+    );
 
     const bucketKey = match ? match.id : '__unmatched__';
     pushToGridBucket(grid.get(bucketKey)!, dayStr, shift);

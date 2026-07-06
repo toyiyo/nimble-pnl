@@ -339,6 +339,10 @@ export function ShiftTimelineTab({
           })
           .then(() => {
             toast({ title: 'Shift restored' });
+          })
+          .catch(() => {
+            // Restore failed — useCreateShift's own onError toast surfaces the
+            // failure to the user; swallow here so the rejection isn't unhandled.
           });
       };
 

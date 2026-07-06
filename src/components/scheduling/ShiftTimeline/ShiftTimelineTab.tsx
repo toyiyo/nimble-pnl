@@ -16,13 +16,14 @@ import { CoverageStatusStrip } from './CoverageStatusStrip';
 import { CoverageDemandInfo } from './CoverageDemandInfo';
 import { AreaCoverageStrips } from './AreaCoverageStrips';
 import { TimelineAxis } from './TimelineAxis';
-import { TimelineLane } from './TimelineLane';
+import { TimelineLane, type LanePaintContext } from './TimelineLane';
 import { NowIndicator } from './NowIndicator';
 import { TimelineShiftPopover } from './TimelineShiftPopover';
 import { formatDayLabel } from '@/lib/shiftInterval';
 
 import type { Shift, Employee } from '@/types/scheduling';
 import type { GroupByMode } from '@/lib/scheduleGrouping';
+import type { PaintRange } from '@/lib/timelineDraft';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,15 +46,19 @@ interface ShiftTimelineTabProps {
 
 /**
  * Single union state driving the ONE `TimelineShiftPopover` instance across every
- * entry point (edit via bar click today; quick-add via paint/gap-click in Stage C).
- * Mutually exclusive by construction — never two popovers/overlays mounted at once.
- * `create` has no producer yet (paint-to-create lands in Stage C); the variant is
- * declared now so the popover's eventual create-mode prop threading doesn't require
- * another state-shape migration.
+ * entry point (edit via bar click; quick-add via paint/gap-click/keyboard "Add
+ * shift" button, wired in C2). Mutually exclusive by construction — never two
+ * popovers/overlays mounted at once.
+ *
+ * `create`'s `draft` + `laneContext` are now produced by `TimelineLane`'s paint
+ * layer (C2), but `TimelineShiftPopover` doesn't yet render a create-mode form
+ * (that's C3) — so `activeShift` stays null for `create` today and the popover
+ * renders nothing, same as before C2. The state shape is final so C3 only needs
+ * to add rendering, not another migration.
  */
 type ActiveOverlay =
   | { mode: 'edit'; shift: Shift; anchorRect: DOMRect | null }
-  | { mode: 'create'; anchorRect: DOMRect | null }
+  | { mode: 'create'; draft: PaintRange; laneContext: LanePaintContext; anchorRect: DOMRect | null }
   | null;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -218,6 +223,18 @@ export function ShiftTimelineTab({
   }, []);
   const handleSelectShift = useCallback((shift: Shift) => {
     setActiveOverlay({ mode: 'edit', shift, anchorRect: pendingAnchorRectRef.current });
+  }, []);
+
+  /**
+   * Paint-to-create commit (C2): a lane's paint gesture (drag/click) or its
+   * visually-hidden "Add shift" button committed a range. Stage the `create`
+   * overlay with that range + lane context; `TimelineShiftPopover` doesn't
+   * render a create-mode form yet (C3), so this is a no-op visually until then.
+   * No anchor rect is available from the lane's plot region today — C3 wires
+   * proper ghost-bar anchoring alongside the popover's create variant.
+   */
+  const handlePaintCommit = useCallback((draft: PaintRange, laneContext: LanePaintContext) => {
+    setActiveOverlay({ mode: 'create', draft, laneContext, anchorRect: null });
   }, []);
 
   // ── Loading state ──────────────────────────────────────────────────────────
@@ -394,7 +411,9 @@ export function ShiftTimelineTab({
                   key={lane.key}
                   lane={lane}
                   minToPct={minToPct}
+                  window={model.window}
                   onSelect={handleSelectShift}
+                  onPaintCommit={handlePaintCommit}
                 />
               ))}
             </div>

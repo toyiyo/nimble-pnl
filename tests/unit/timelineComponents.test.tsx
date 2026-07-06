@@ -197,17 +197,26 @@ function makeLane(overrides: Partial<TimelineLaneModel> = {}): TimelineLaneModel
   };
 }
 
+// TimelineLane's paint-to-create pointer layer (drag/click/long-press/Escape)
+// and its "Add shift to <lane>" keyboard entry point are covered exhaustively
+// in tests/unit/timelineLanePaint.test.tsx. These tests only need the lane's
+// pre-existing label/count/select rendering, so `window`/`onPaintCommit` are
+// supplied as inert defaults.
+function laneExtraProps() {
+  return { window: WINDOW, onPaintCommit: vi.fn() };
+}
+
 describe('TimelineLane', () => {
   it('renders the lane label', () => {
     render(
-      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText('Front')).toBeInTheDocument();
   });
 
   it('shows "Unassigned" when label is empty', () => {
     render(
-      <TimelineLane lane={makeLane({ key: 'unknown', label: '', hours: 0, bars: [] })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ key: 'unknown', label: '', hours: 0, bars: [] })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText('Unassigned')).toBeInTheDocument();
   });
@@ -218,21 +227,21 @@ describe('TimelineLane', () => {
       makeBar({ shift: makeShift({ id: 's2' }), row: 1 }),
     ];
     render(
-      <TimelineLane lane={makeLane({ hours: 12, bars })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ hours: 12, bars })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText(/2 shifts/)).toBeInTheDocument();
   });
 
   it('shows singular "shift" when there is one bar', () => {
     render(
-      <TimelineLane lane={makeLane({ key: 'Back', label: 'Back', hours: 8 })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ key: 'Back', label: 'Back', hours: 8 })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText(/1 shift\b/)).toBeInTheDocument();
   });
 
   it('displays the total hours for the lane', () => {
     render(
-      <TimelineLane lane={makeLane({ key: 'Bar', label: 'Bar', hours: 7.5 })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ key: 'Bar', label: 'Bar', hours: 7.5 })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText(/7\.5h/)).toBeInTheDocument();
   });
@@ -241,9 +250,9 @@ describe('TimelineLane', () => {
     const onSelect = vi.fn();
     const user = userEvent.setup();
     render(
-      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={onSelect} />,
+      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={onSelect} {...laneExtraProps()} />,
     );
-    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button', { name: makeBar().ariaLabel }));
     expect(onSelect).toHaveBeenCalledOnce();
   });
 });

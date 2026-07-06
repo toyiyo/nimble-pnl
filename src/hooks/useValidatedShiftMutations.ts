@@ -208,6 +208,7 @@ export function useValidatedShiftMutations(
 
         await updateShift.mutateAsync({
           id: input.shift.id,
+          restaurant_id: restaurantId,
           start_time: interval.startAt.toISOString(),
           end_time: interval.endAt.toISOString(),
         });
@@ -237,6 +238,7 @@ export function useValidatedShiftMutations(
 
         await updateShift.mutateAsync({
           id: input.shift.id,
+          restaurant_id: restaurantId,
           start_time: interval.startAt.toISOString(),
           end_time: interval.endAt.toISOString(),
         });
@@ -285,6 +287,7 @@ export function useValidatedShiftMutations(
 
         await updateShift.mutateAsync({
           id: input.shift.id,
+          restaurant_id: restaurantId,
           employee_id: input.newEmployeeId,
         });
 
@@ -307,6 +310,7 @@ export function useValidatedShiftMutations(
       try {
         await updateShift.mutateAsync({
           id: input.shift.id,
+          restaurant_id: restaurantId,
           employee_id: input.newEmployeeId,
         });
 

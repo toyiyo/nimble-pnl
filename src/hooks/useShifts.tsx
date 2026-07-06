@@ -184,7 +184,11 @@ export function useUpdateShift() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Shift> & { id: string }) => {
+    mutationFn: async ({
+      id,
+      restaurant_id: restaurantId,
+      ...updates
+    }: Partial<Shift> & { id: string; restaurant_id: string }) => {
       await assertShiftNotLocked(id);
 
       const { employee: _employee, ...shiftUpdates } = updates;
@@ -196,6 +200,7 @@ export function useUpdateShift() {
           recurrence_pattern: shiftUpdates.recurrence_pattern as unknown as Json,
         })
         .eq('id', id)
+        .eq('restaurant_id', restaurantId)
         .select()
         .single();
 
@@ -239,7 +244,11 @@ export function useDeleteShift() {
 
   return useMutation({
     mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { error } = await supabase.from('shifts').delete().eq('id', id);
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('id', id)
+        .eq('restaurant_id', restaurantId);
 
       if (error) throw error;
       return { id, restaurantId };

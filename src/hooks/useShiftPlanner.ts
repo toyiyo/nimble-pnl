@@ -566,6 +566,7 @@ export function useShiftPlanner(
 
         await updateShift.mutateAsync({
           id: input.shift.id,
+          restaurant_id: restaurantId,
           start_time: interval.startAt.toISOString(),
           end_time: interval.endAt.toISOString(),
         });
@@ -606,6 +607,7 @@ export function useShiftPlanner(
 
         await updateShift.mutateAsync({
           id: input.shift.id,
+          restaurant_id: restaurantId,
           employee_id: input.newEmployeeId,
         });
 

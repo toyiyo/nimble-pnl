@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { minutesToIso, snapToStep } from '@/lib/shiftTimeMath';
+import { minutesToIso, snapToStep, timeToMinutes, minutesToHHMM, resolveOvernightMinutes } from '@/lib/shiftTimeMath';
 
 // ---------------------------------------------------------------------------
 // minutesToIso — restaurant-local minutes -> UTC ISO
@@ -146,5 +146,88 @@ describe('snapToStep', () => {
   it('handles negative minutes by snapping toward the nearest step', () => {
     expect(snapToStep(-7, 15)).toBe(0);
     expect(snapToStep(-8, 15)).toBe(-15);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// timeToMinutes — "HH:MM" -> minutes-since-midnight
+// ---------------------------------------------------------------------------
+describe('timeToMinutes', () => {
+  it('parses a simple morning time', () => {
+    expect(timeToMinutes('09:00')).toBe(9 * 60);
+  });
+
+  it('parses midnight', () => {
+    expect(timeToMinutes('00:00')).toBe(0);
+  });
+
+  it('parses a time with nonzero minutes', () => {
+    expect(timeToMinutes('14:30')).toBe(14 * 60 + 30);
+  });
+
+  it('parses the last minute of the day', () => {
+    expect(timeToMinutes('23:59')).toBe(23 * 60 + 59);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// minutesToHHMM — minutes-since-midnight (possibly >= 1440) -> "HH:MM"
+// ---------------------------------------------------------------------------
+describe('minutesToHHMM', () => {
+  it('formats a simple morning time', () => {
+    expect(minutesToHHMM(9 * 60)).toBe('09:00');
+  });
+
+  it('formats midnight (0 minutes)', () => {
+    expect(minutesToHHMM(0)).toBe('00:00');
+  });
+
+  it('wraps an overnight value (>= 1440) back to the time-of-day', () => {
+    // 25:30 -> 01:30
+    expect(minutesToHHMM(25 * 60 + 30)).toBe('01:30');
+  });
+
+  it('wraps a value at exactly the midnight boundary (1440)', () => {
+    expect(minutesToHHMM(1440)).toBe('00:00');
+  });
+
+  it('handles negative minutes by wrapping to the previous day time-of-day', () => {
+    expect(minutesToHHMM(-30)).toBe('23:30');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveOvernightMinutes — "HH:MM"/"HH:MM" -> { startMin, endMin }, rolling
+// endMin past 1440 whenever end <= start (overnight shift convention).
+// ---------------------------------------------------------------------------
+describe('resolveOvernightMinutes', () => {
+  it('resolves a same-day range unchanged (end after start)', () => {
+    const { startMin, endMin } = resolveOvernightMinutes('09:00', '17:00');
+    expect(startMin).toBe(9 * 60);
+    expect(endMin).toBe(17 * 60);
+  });
+
+  it('rolls the end forward past 1440 when end equals start (24h shift)', () => {
+    const { startMin, endMin } = resolveOvernightMinutes('09:00', '09:00');
+    expect(startMin).toBe(9 * 60);
+    expect(endMin).toBe(9 * 60 + 1440);
+  });
+
+  it('rolls the end forward past 1440 for an overnight shift (end before start)', () => {
+    const { startMin, endMin } = resolveOvernightMinutes('22:00', '06:00');
+    expect(startMin).toBe(22 * 60);
+    expect(endMin).toBe(6 * 60 + 1440);
+  });
+
+  it('handles the midnight boundary case (start at midnight, end just after)', () => {
+    const { startMin, endMin } = resolveOvernightMinutes('00:00', '00:15');
+    expect(startMin).toBe(0);
+    expect(endMin).toBe(15);
+  });
+
+  it('rolls over when both start and end are midnight', () => {
+    const { startMin, endMin } = resolveOvernightMinutes('00:00', '00:00');
+    expect(startMin).toBe(0);
+    expect(endMin).toBe(1440);
   });
 });

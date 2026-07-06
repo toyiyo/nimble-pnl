@@ -120,6 +120,26 @@ function filterToDay(shifts: Shift[], dayStr: string, tz: string): Shift[] {
   });
 }
 
+/** Lane context resolved for the `create` overlay's `TimelineCreateDraft`. */
+interface ResolvedLaneContext {
+  position: string | null;
+  area: string | null;
+}
+
+/**
+ * Resolve a lane's grouping key into `{ position, area }` for the `create`
+ * overlay: `laneKey` maps to `position` when grouped by position, or `area`
+ * when grouped by area (a shift's area is derived from its employee, never
+ * stored directly). `laneKey === null` means no lane context at all
+ * (gap-click entry point) — both resolve to null so the employee picker is
+ * unfiltered and position starts blank.
+ */
+export function resolveLaneContext(laneKey: string | null, groupBy: GroupByMode): ResolvedLaneContext {
+  if (laneKey === null) return { position: null, area: null };
+  if (groupBy === 'position') return { position: laneKey, area: null };
+  return { position: null, area: laneKey };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 /**
@@ -185,20 +205,18 @@ export function ShiftTimelineTab({
   const dayShifts = useMemo(() => filterToDay(shifts, selectedDay, tz), [shifts, selectedDay, tz]);
 
   // ── Validated mutation pipeline — the single instance shared by the popover's
-  // edit/delete flows (create/reassign are mounted here too, ahead of Stage C's
-  // quick-add wiring, so this hook call site never needs to migrate again).
+  // edit/delete flows. The timeline only uses the `*AtTime` create variants and
+  // `validateAndUpdateTime`/`forceUpdateTime` for drag/edit — it has no reassign
+  // UI, so `validateAndReassign`/`forceReassign`/`validateAndCreate`/`forceCreate`
+  // are intentionally not destructured here.
   // Toasts on success/failure come from the underlying useShifts mutation hooks
   // (useCreateShift/useUpdateShift/useDeleteShift) — this component doesn't call
   // useToast directly.
   const {
-    validateAndCreate,
-    forceCreate,
     validateAndCreateAtTime,
     forceCreateAtTime,
     validateAndUpdateTime,
     forceUpdateTime,
-    validateAndReassign,
-    forceReassign,
     deleteShift,
     validationResult,
     clearValidation,
@@ -402,12 +420,7 @@ export function ShiftTimelineTab({
     if (activeOverlay?.mode !== 'create') return null;
 
     const laneKey = activeOverlay.laneContext?.key ?? null;
-    const resolvedLaneContext =
-      laneKey === null
-        ? { position: null, area: null }
-        : groupBy === 'position'
-          ? { position: laneKey, area: null }
-          : { position: null, area: laneKey };
+    const resolvedLaneContext = resolveLaneContext(laneKey, groupBy);
 
     return {
       values: buildDraftShiftValues(activeOverlay.draft, { laneContext: resolvedLaneContext }),

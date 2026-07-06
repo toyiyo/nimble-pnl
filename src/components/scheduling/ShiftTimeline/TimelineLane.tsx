@@ -92,7 +92,12 @@ function TimelineLaneImpl({
   const draftRef = useRef<PaintDraft | null>(null);
   draftRef.current = draft;
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const touchStartRef = useRef<{ clientX: number; pointerId: number } | null>(null);
+  // Tracks pointer-down clientX for BOTH mouse and touch gestures (renamed
+  // from `touchStartRef`, which the touch long-press logic still uses to
+  // detect a pre-long-press scroll) — `handlePointerMove` needs this for
+  // EVERY pointer type to compute `movedPx` in pixels; using it only for
+  // touch left mouse gestures with no baseline clientX to diff against.
+  const pointerStartRef = useRef<{ clientX: number; pointerId: number } | null>(null);
 
   const clearLongPressTimer = useCallback(() => {
     if (longPressTimerRef.current !== null) {
@@ -115,7 +120,7 @@ function TimelineLaneImpl({
       if (event.target !== event.currentTarget) return;
 
       if (event.pointerType === 'touch') {
-        touchStartRef.current = { clientX: event.clientX, pointerId: event.pointerId };
+        pointerStartRef.current = { clientX: event.clientX, pointerId: event.pointerId };
         clearLongPressTimer();
         longPressTimerRef.current = setTimeout(() => {
           longPressTimerRef.current = null;
@@ -124,6 +129,7 @@ function TimelineLaneImpl({
         return;
       }
 
+      pointerStartRef.current = { clientX: event.clientX, pointerId: event.pointerId };
       startPaint(event.clientX);
     },
     [clearLongPressTimer, startPaint],
@@ -134,7 +140,7 @@ function TimelineLaneImpl({
       // Pending long-press (touch, timer not yet fired): cancel on movement
       // past the threshold so a horizontal scroll isn't hijacked as a paint.
       if (longPressTimerRef.current !== null) {
-        const start = touchStartRef.current;
+        const start = pointerStartRef.current;
         if (start && Math.abs(event.clientX - start.clientX) > LONG_PRESS_MOVE_CANCEL_PX) {
           clearLongPressTimer();
         }
@@ -147,7 +153,12 @@ function TimelineLaneImpl({
       const rect = plotRef.current?.getBoundingClientRect();
       if (!rect) return;
       const pointerMin = pointerToMinutes(event.clientX, rect, windowRef.current);
-      const movedPx = Math.abs(event.clientX - (touchStartRef.current?.clientX ?? current.pointerDownMin));
+      // `movedPx` MUST be a pixel delta from the pointer-down clientX — never
+      // `current.pointerDownMin` (restaurant-local minutes-since-midnight,
+      // ~600-1380), which would mix units and misclassify a stationary click
+      // as a drag (or vice versa). Falls back to `event.clientX` (zero delta)
+      // only if pointerdown's start somehow wasn't recorded.
+      const movedPx = Math.abs(event.clientX - (pointerStartRef.current?.clientX ?? event.clientX));
       setDraft(updatePaint(current, pointerMin, windowRef.current, movedPx));
     },
     [clearLongPressTimer],
@@ -155,7 +166,7 @@ function TimelineLaneImpl({
 
   const handlePointerUp = useCallback(() => {
     clearLongPressTimer();
-    touchStartRef.current = null;
+    pointerStartRef.current = null;
 
     const current = draftRef.current;
     if (!current) return;

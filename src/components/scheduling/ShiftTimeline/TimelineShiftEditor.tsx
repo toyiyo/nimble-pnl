@@ -16,7 +16,7 @@ import { AlertTriangle } from 'lucide-react';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { validateShift } from '@/lib/shiftValidator';
 import { ShiftInterval } from '@/lib/shiftInterval';
-import { minutesToIso } from '@/lib/shiftTimeMath';
+import { minutesToIso, resolveOvernightMinutes } from '@/lib/shiftTimeMath';
 import { rankEmployeesForShift } from '@/lib/employeeRanking';
 import { formatConflictLine } from '@/lib/conflictFormatUtils';
 
@@ -95,10 +95,7 @@ export function TimelineShiftEditor({
   // convention `minutesToIso` expects.
   const minutes = useMemo(() => {
     if (!values.startTime || !values.endTime) return null;
-    const startMin = timeToMinutes(values.startTime);
-    let endMin = timeToMinutes(values.endTime);
-    if (endMin <= startMin) endMin += 1440;
-    return { startMin, endMin };
+    return resolveOvernightMinutes(values.startTime, values.endTime);
   }, [values.startTime, values.endTime]);
 
   // ---------------------------------------------------------------------------
@@ -236,10 +233,4 @@ export function TimelineShiftEditor({
       </div>
     </div>
   );
-}
-
-/** Parse "HH:MM" into minutes-since-midnight. */
-function timeToMinutes(time: string): number {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
 }

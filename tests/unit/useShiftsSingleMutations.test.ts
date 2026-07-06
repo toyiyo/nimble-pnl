@@ -113,6 +113,139 @@ describe('useUpdateShift — explicit restaurant_id filter', () => {
   });
 });
 
+describe('useUpdateShift — optimistic cache update', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function setupDeferredUpdateChain() {
+    // assertShiftNotLocked: select().eq('id', id).single()
+    const lockCheckSingle = vi.fn().mockResolvedValue({ data: { locked: false }, error: null });
+    const lockCheckEq = vi.fn().mockReturnValue({ single: lockCheckSingle });
+    const lockCheckSelect = vi.fn().mockReturnValue({ eq: lockCheckEq });
+
+    // The actual DB update only resolves once the test calls `resolveUpdate`,
+    // so the test can assert on the cache DURING the in-flight mutation (i.e.
+    // the optimistic patch applied by onMutate, before onSuccess/onSettled).
+    let resolveUpdate!: (value: { data: Record<string, unknown>; error: null }) => void;
+    const updatePromise = new Promise<{ data: Record<string, unknown>; error: null }>((resolve) => {
+      resolveUpdate = resolve;
+    });
+    const updateSingle = vi.fn().mockReturnValue(updatePromise);
+    const updateSelect = vi.fn().mockReturnValue({ single: updateSingle });
+    const updateEqRestaurant = vi.fn().mockReturnValue({ select: updateSelect });
+    const updateEqId = vi.fn().mockReturnValue({ eq: updateEqRestaurant });
+    const update = vi.fn().mockReturnValue({ eq: updateEqId });
+
+    mockSupabase.from.mockReturnValue({
+      select: lockCheckSelect,
+      update,
+    });
+
+    return { resolveUpdate };
+  }
+
+  function seedShiftsCache(queryClient: QueryClient, restaurantId: string, shifts: Record<string, unknown>[]) {
+    queryClient.setQueryData(['shifts', restaurantId, undefined, undefined], shifts);
+  }
+
+  it('patches the matching shift in the cache synchronously on mutate (before the mutation resolves)', async () => {
+    const { resolveUpdate } = setupDeferredUpdateChain();
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const Wrapper = ({ children }: { children: ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children);
+
+    const original = {
+      id: 'shift-1',
+      restaurant_id: 'rest-123',
+      employee_id: 'emp-1',
+      start_time: '2026-01-10T09:00:00Z',
+      end_time: '2026-01-10T17:00:00Z',
+      status: 'scheduled',
+    };
+    seedShiftsCache(queryClient, 'rest-123', [original]);
+
+    const { result } = renderHook(() => useUpdateShift(), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.mutate({
+        id: 'shift-1',
+        restaurant_id: 'rest-123',
+        start_time: '2026-01-10T10:00:00Z',
+        end_time: '2026-01-10T18:00:00Z',
+      });
+    });
+
+    // While the mutation is still in flight (update() hasn't resolved yet),
+    // the cache should already reflect the optimistic patch.
+    await waitFor(() => {
+      const cached = queryClient.getQueryData<Record<string, unknown>[]>(['shifts', 'rest-123', undefined, undefined]);
+      expect(cached?.[0]).toMatchObject({
+        id: 'shift-1',
+        start_time: '2026-01-10T10:00:00Z',
+        end_time: '2026-01-10T18:00:00Z',
+      });
+    });
+
+    // Resolve the underlying update so the mutation settles cleanly.
+    resolveUpdate({
+      data: { ...original, start_time: '2026-01-10T10:00:00Z', end_time: '2026-01-10T18:00:00Z' },
+      error: null,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  });
+
+  it('rolls back the cache to the previous snapshot when the update errors', async () => {
+    const lockCheckSingle = vi.fn().mockResolvedValue({ data: { locked: false }, error: null });
+    const lockCheckEq = vi.fn().mockReturnValue({ single: lockCheckSingle });
+    const lockCheckSelect = vi.fn().mockReturnValue({ eq: lockCheckEq });
+
+    const updateSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const updateSelect = vi.fn().mockReturnValue({ single: updateSingle });
+    const updateEqRestaurant = vi.fn().mockReturnValue({ select: updateSelect });
+    const updateEqId = vi.fn().mockReturnValue({ eq: updateEqRestaurant });
+    const update = vi.fn().mockReturnValue({ eq: updateEqId });
+
+    mockSupabase.from.mockReturnValue({ select: lockCheckSelect, update });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const Wrapper = ({ children }: { children: ReactNode }) =>
+      React.createElement(QueryClientProvider, { client: queryClient }, children);
+
+    const original = {
+      id: 'shift-1',
+      restaurant_id: 'rest-123',
+      employee_id: 'emp-1',
+      start_time: '2026-01-10T09:00:00Z',
+      end_time: '2026-01-10T17:00:00Z',
+      status: 'scheduled',
+    };
+    seedShiftsCache(queryClient, 'rest-123', [original]);
+
+    const { result } = renderHook(() => useUpdateShift(), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.mutate({
+        id: 'shift-1',
+        restaurant_id: 'rest-123',
+        start_time: '2026-01-10T10:00:00Z',
+        end_time: '2026-01-10T18:00:00Z',
+      });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    const cached = queryClient.getQueryData<Record<string, unknown>[]>(['shifts', 'rest-123', undefined, undefined]);
+    expect(cached).toEqual([original]);
+  });
+});
+
 describe('useDeleteShift — explicit restaurant_id filter', () => {
   beforeEach(() => {
     vi.clearAllMocks();

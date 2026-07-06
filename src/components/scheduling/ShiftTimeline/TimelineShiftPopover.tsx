@@ -21,7 +21,7 @@ import { Lock, AlertTriangle } from 'lucide-react';
 
 import { minutesToCompact, isoToLocalMinutes } from '@/lib/shiftCoverage';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
-import { minutesToIso } from '@/lib/shiftTimeMath';
+import { minutesToIso, minutesToHHMM, resolveOvernightMinutes } from '@/lib/shiftTimeMath';
 import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 import { TimelineShiftEditor, type TimelineShiftEditorValues } from './TimelineShiftEditor';
 
@@ -95,20 +95,6 @@ interface TimelineShiftPopoverProps {
   readonly anchorRect?: DOMRect | null;
   /** The scrollable plot container, used as the Radix collision boundary. */
   readonly collisionBoundary?: Element | null;
-}
-
-/** Parse "HH:MM" into minutes-since-midnight. */
-function timeToMinutes(time: string): number {
-  const [h, m] = time.split(':').map(Number);
-  return h * 60 + m;
-}
-
-/** Format minutes-since-midnight (may be >= 1440 for overnight) as 24h "HH:MM" for TimeInput. */
-function minutesToHHMM(min: number): string {
-  const norm = ((min % 1440) + 1440) % 1440;
-  const h = Math.floor(norm / 60);
-  const m = norm % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 /** Build the initial editor values from a shift + the day's timezone. */
@@ -210,7 +196,6 @@ export function TimelineShiftPopover({
   useEffect(() => {
     setCreateValues(createDraft?.values ?? null);
     setPendingIssues(null);
-     
   }, [createDraft]);
 
   const isCreateMode = !activeShift && Boolean(createDraft);
@@ -289,9 +274,7 @@ export function TimelineShiftPopover({
   const handleSave = async () => {
     if (!editValues) return;
 
-    const startMin = timeToMinutes(editValues.startTime);
-    let endMinValue = timeToMinutes(editValues.endTime);
-    if (endMinValue <= startMin) endMinValue += 1440;
+    const { startMin, endMin: endMinValue } = resolveOvernightMinutes(editValues.startTime, editValues.endTime);
 
     const startIso = minutesToIso(dateStr, startMin, tz);
     const endIso = minutesToIso(dateStr, endMinValue, tz);
@@ -324,9 +307,7 @@ export function TimelineShiftPopover({
   const handleConfirmConflicts = async () => {
     if (!editValues) return;
 
-    const startMin = timeToMinutes(editValues.startTime);
-    let endMinValue = timeToMinutes(editValues.endTime);
-    if (endMinValue <= startMin) endMinValue += 1440;
+    const { startMin, endMin: endMinValue } = resolveOvernightMinutes(editValues.startTime, editValues.endTime);
 
     const startIso = minutesToIso(dateStr, startMin, tz);
     const endIso = minutesToIso(dateStr, endMinValue, tz);
@@ -619,9 +600,7 @@ function TimelineCreatePopoverContent({
 
   const buildIso = useCallback(
     (values: TimelineShiftEditorValues) => {
-      const startMin = timeToMinutes(values.startTime);
-      let endMinValue = timeToMinutes(values.endTime);
-      if (endMinValue <= startMin) endMinValue += 1440;
+      const { startMin, endMin: endMinValue } = resolveOvernightMinutes(values.startTime, values.endTime);
 
       return {
         startIso: minutesToIso(businessDate, startMin, tz),

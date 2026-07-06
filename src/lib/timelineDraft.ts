@@ -7,7 +7,7 @@
  * wiring and simply feed `clientX`/rects/window through these helpers.
  */
 import { STEP_MIN, type TimelineWindow } from '@/lib/timelineModel';
-import { snapToStep, minutesToIso } from '@/lib/shiftTimeMath';
+import { snapToStep, minutesToIso, minutesToHHMM } from '@/lib/shiftTimeMath';
 import type { TimelineShiftEditorValues } from '@/components/scheduling/ShiftTimeline/TimelineShiftEditor';
 import type { Shift } from '@/types/scheduling';
 
@@ -157,14 +157,6 @@ export function endPaint(draft: PaintDraft, window: TimelineWindow): PaintRange 
 
 // ─── Draft-shift builder ────────────────────────────────────────────────────────
 
-/** Format restaurant-local minutes-since-midnight (may be >= 1440) as "HH:MM" of that day. */
-function minutesToTimeOfDay(min: number): string {
-  const norm = ((min % 1440) + 1440) % 1440;
-  const h = Math.floor(norm / 60);
-  const m = norm % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
 export interface DraftShiftValues extends TimelineShiftEditorValues {
   /** Prefilled position, derived from lane context (blank for gap-click entry, no lane). */
   position: string;
@@ -189,8 +181,8 @@ export function buildDraftShiftValues(
 ): DraftShiftValues {
   return {
     employeeId: options.defaultEmployeeId ?? '',
-    startTime: minutesToTimeOfDay(range.startMin),
-    endTime: minutesToTimeOfDay(range.endMin),
+    startTime: minutesToHHMM(range.startMin),
+    endTime: minutesToHHMM(range.endMin),
     breakDuration: '',
     notes: '',
     position: options.laneContext?.position ?? '',

@@ -172,6 +172,43 @@ describe('TimelineLane paint layer — mouse drag', () => {
     expect(range.endMin - range.startMin).toBe(120);
   });
 
+  it('commits the default-duration click range after a small (<5px) mouse jitter move', () => {
+    // Regression test: `handlePointerMove` must compute `movedPx` from the
+    // pointer-down clientX for MOUSE gestures too (not just touch). Before the
+    // fix, `touchStartRef` was null on mouse, so `movedPx` was computed as
+    // `|event.clientX - pointerDownMin|` — mixing pixels with minutes-since-
+    // midnight (~600-1380) — which produced a huge bogus `movedPx` that always
+    // classified as a drag, even for a near-stationary mouse click.
+    const onPaintCommit = vi.fn();
+    const { plot } = renderLane({ onPaintCommit });
+
+    fireEvent.pointerDown(plot, { clientX: 100, pointerId: 1, pointerType: 'mouse' });
+    // Jitter of 3px — below CLICK_DRAG_THRESHOLD_PX (5) — should still count as a click.
+    fireEvent.pointerMove(plot, { clientX: 103, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerUp(plot, { clientX: 103, pointerId: 1, pointerType: 'mouse' });
+
+    expect(onPaintCommit).toHaveBeenCalledTimes(1);
+    const [range] = onPaintCommit.mock.calls[0];
+    expect(range.endMin - range.startMin).toBe(120);
+  });
+
+  it('commits the dragged (snapped) range after a mouse move past the 5px threshold', () => {
+    const onPaintCommit = vi.fn();
+    const { plot } = renderLane({ onPaintCommit });
+
+    fireEvent.pointerDown(plot, { clientX: 100, pointerId: 1, pointerType: 'mouse' });
+    // 50px move — comfortably past the 5px click/drag threshold.
+    fireEvent.pointerMove(plot, { clientX: 150, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerUp(plot, { clientX: 150, pointerId: 1, pointerType: 'mouse' });
+
+    expect(onPaintCommit).toHaveBeenCalledTimes(1);
+    const [range] = onPaintCommit.mock.calls[0];
+    // A real drag never collapses to the fixed 120-min default — its width is
+    // whatever the pointer travel (mapped through minToPct's inverse) snapped to.
+    expect(range.endMin - range.startMin).not.toBe(120);
+    expect(range.startMin).toBeLessThan(range.endMin);
+  });
+
   it('does not start a paint gesture when clicking an existing bar', async () => {
     const onSelect = vi.fn();
     const onPaintCommit = vi.fn();

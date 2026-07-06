@@ -49,3 +49,37 @@ export function snapToStep(min: number, step: number = STEP_MIN): number {
   const snapped = Math.round(min / step) * step;
   return snapped === 0 ? 0 : snapped;
 }
+
+/** Parse a 24h "HH:MM" string into minutes-since-midnight. */
+export function timeToMinutes(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * Format minutes-since-midnight (may be negative or >= 1440, e.g. an
+ * overnight shift's end minute) as 24h "HH:MM" of that wrapped time-of-day.
+ */
+export function minutesToHHMM(min: number): string {
+  const norm = ((min % 1440) + 1440) % 1440;
+  const h = Math.floor(norm / 60);
+  const m = norm % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+/**
+ * Parse a shift's "HH:MM" start/end pair into minutes-since-midnight,
+ * resolving overnight shifts by rolling `endMin` past 1440 whenever
+ * `end <= start` (the timeline's overnight convention — e.g. a shift from
+ * 22:00 to 06:00 becomes `{ startMin: 1320, endMin: 1800 }`, and a 24h shift
+ * from 09:00 to 09:00 becomes `{ startMin: 540, endMin: 1980 }`).
+ */
+export function resolveOvernightMinutes(
+  startHHMM: string,
+  endHHMM: string,
+): { startMin: number; endMin: number } {
+  const startMin = timeToMinutes(startHHMM);
+  let endMin = timeToMinutes(endHHMM);
+  if (endMin <= startMin) endMin += 1440;
+  return { startMin, endMin };
+}

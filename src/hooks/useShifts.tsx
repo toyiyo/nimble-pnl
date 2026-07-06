@@ -207,18 +207,43 @@ export function useUpdateShift() {
       if (error) throw error;
       return toTypedShift(data);
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });
-      toast({
-        title: 'Shift updated',
-        description: 'The shift has been updated.',
+    onMutate: async ({ id, restaurant_id: restaurantId, ...updates }) => {
+      await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
+
+      const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
+
+      const { employee: _employee, ...optimisticUpdates } = updates;
+
+      queryClient.setQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] }, (old) => {
+        if (!old) return old;
+
+        return old.map((s) => (s.id === id ? { ...s, ...optimisticUpdates } : s));
       });
+
+      return { previousData };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _variables, context) => {
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
       toast({
         title: 'Error updating shift',
         description: error.message,
         variant: 'destructive',
+      });
+    },
+    onSettled: (data, _error, variables) => {
+      const restaurantId = data?.restaurant_id ?? variables?.restaurant_id;
+      if (restaurantId) {
+        queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+      }
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Shift updated',
+        description: 'The shift has been updated.',
       });
     },
   });

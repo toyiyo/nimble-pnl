@@ -53,6 +53,21 @@ function makeShift(overrides: Partial<Shift> = {}): Shift {
   };
 }
 
+/** Shared required props for TimelineShiftPopover (B2 added edit-mode plumbing). */
+function popoverProps(overrides: Partial<React.ComponentProps<typeof TimelineShiftPopover>> = {}) {
+  return {
+    employees: [],
+    restaurantId: 'r1',
+    dayShifts: [] as Shift[],
+    validateAndUpdateTime: vi.fn(),
+    forceUpdateTime: vi.fn(),
+    deleteShift: vi.fn(),
+    validationResult: null,
+    clearValidation: vi.fn(),
+    ...overrides,
+  };
+}
+
 function makeBar(overrides: Partial<TimelineBarModel> = {}): TimelineBarModel {
   return {
     shift: makeShift(),
@@ -243,6 +258,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(container).toBeEmptyDOMElement();
@@ -255,6 +271,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.getByText('Bartender')).toBeInTheDocument();
@@ -267,6 +284,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.getByText('Scheduled')).toBeInTheDocument();
@@ -279,6 +297,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.getByText('Check inventory')).toBeInTheDocument();
@@ -291,6 +310,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.queryByText('Notes')).not.toBeInTheDocument();
@@ -304,6 +324,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={onClose}
+        {...popoverProps()}
       />,
     );
     // The popover is open; pressing Escape should close it

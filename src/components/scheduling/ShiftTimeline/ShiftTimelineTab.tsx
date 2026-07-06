@@ -8,6 +8,7 @@ import { CalendarOff } from 'lucide-react';
 import { isoToLocalMinutes } from '@/lib/shiftCoverage';
 import { summarizeCoverageHours, buildVerdict, summarizeAreaCoverage } from '@/lib/coverageSummary';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
+import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useTimelineModel } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
@@ -129,6 +130,18 @@ export function ShiftTimelineTab({
 
   // ── Filter shifts to the selected day ─────────────────────────────────────
   const dayShifts = useMemo(() => filterToDay(shifts, selectedDay, tz), [shifts, selectedDay, tz]);
+
+  // ── Validated mutation pipeline for the popover's edit/delete actions.
+  // Full overlay-state wiring (anchor-rect capture, single union activeOverlay,
+  // toast copy) is Stage B3 — this call site only needs to satisfy
+  // TimelineShiftPopover's save/delete props for now.
+  const {
+    validateAndUpdateTime,
+    forceUpdateTime,
+    deleteShift,
+    validationResult,
+    clearValidation,
+  } = useValidatedShiftMutations(restaurantId, dayShifts);
 
   // ── Timeline model (pure transform) ───────────────────────────────────────
   const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
@@ -351,7 +364,15 @@ export function ShiftTimelineTab({
         activeShift={activeShift}
         tz={tz}
         dateStr={selectedDay}
+        employees={employees}
+        restaurantId={restaurantId}
+        dayShifts={dayShifts}
         onClose={handlePopoverClose}
+        validateAndUpdateTime={validateAndUpdateTime}
+        forceUpdateTime={forceUpdateTime}
+        deleteShift={deleteShift}
+        validationResult={validationResult}
+        clearValidation={clearValidation}
       />
     </div>
   );

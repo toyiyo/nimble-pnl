@@ -27,6 +27,25 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
 // useRestaurantContext used indirectly (via useWeekStaffingSuggestions chain) — safe
 // to leave unmocked because the mock above covers the hook that reads it.
 
+// useValidatedShiftMutations pulls in React Query mutation hooks (useCreateShift,
+// useUpdateShift, useDeleteShift, useCheckConflicts) which need a QueryClientProvider
+// this test harness doesn't set up. This file tests layout/coverage wiring, not the
+// mutation pipeline (that's covered by useValidatedShiftMutations.test.tsx and
+// TimelineShiftPopover.test.tsx), so a lightweight stub is sufficient here.
+vi.mock('@/hooks/useValidatedShiftMutations', () => ({
+  useValidatedShiftMutations: vi.fn(() => ({
+    validateAndCreate: vi.fn(),
+    forceCreate: vi.fn(),
+    validateAndUpdateTime: vi.fn(),
+    forceUpdateTime: vi.fn(),
+    validateAndReassign: vi.fn(),
+    forceReassign: vi.fn(),
+    deleteShift: vi.fn(),
+    validationResult: null,
+    clearValidation: vi.fn(),
+  })),
+}));
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 // Use a past week so defaultDay() never selects "today" and breaks the assertions.

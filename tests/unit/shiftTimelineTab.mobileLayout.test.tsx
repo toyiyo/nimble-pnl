@@ -30,6 +30,22 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   }),
 }));
 
+// useValidatedShiftMutations pulls in React Query mutation hooks that need a
+// QueryClientProvider this layout-focused test harness doesn't set up.
+vi.mock('@/hooks/useValidatedShiftMutations', () => ({
+  useValidatedShiftMutations: () => ({
+    validateAndCreate: vi.fn(),
+    forceCreate: vi.fn(),
+    validateAndUpdateTime: vi.fn(),
+    forceUpdateTime: vi.fn(),
+    validateAndReassign: vi.fn(),
+    forceReassign: vi.fn(),
+    deleteShift: vi.fn(),
+    validationResult: null,
+    clearValidation: vi.fn(),
+  }),
+}));
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 // Use a past week so defaultDay() never selects "today" and breaks the assertions.

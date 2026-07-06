@@ -87,7 +87,12 @@ export function formatTemplateTime(time: string): string {
 
 /**
  * Find the first template that matches a shift by comparing local times,
- * position, and the day-of-week.
+ * position, the day-of-week, and area compatibility. A template with an area
+ * only matches an employee from the same area (or with no area); null on
+ * either side is permissive. Mirrors `findMatchingTemplate` in
+ * useShiftPlanner.ts so the exported grid buckets shifts the same way the
+ * on-screen planner does — a cross-area unlinked shift never borrows another
+ * area's row.
  */
 export function findTemplateForShift(
   shift: Shift,
@@ -99,13 +104,15 @@ export function findTemplateForShift(
   const endDate = new Date(shift.end_time);
   const shiftEnd = `${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:${pad(endDate.getSeconds())}`;
   const dayOfWeek = startDate.getDay();
+  const employeeArea = shift.employee?.area ?? null;
 
   return templates.find(
     (t) =>
       t.start_time === shiftStart &&
       t.end_time === shiftEnd &&
       t.position === shift.position &&
-      t.days.includes(dayOfWeek),
+      t.days.includes(dayOfWeek) &&
+      (!t.area || !employeeArea || t.area === employeeArea),
   );
 }
 

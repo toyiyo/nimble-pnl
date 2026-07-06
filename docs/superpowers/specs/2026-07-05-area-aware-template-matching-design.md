@@ -50,7 +50,16 @@ Make the fallback matcher area-compatible:
 ## Impact surface
 
 - `buildTemplateGridData` / `findMatchingTemplate` in
-  `src/hooks/useShiftPlanner.ts` — the only code change site.
+  `src/hooks/useShiftPlanner.ts` — the on-screen grid change site.
+- `findTemplateForShift` / `buildGridExportData` in
+  `src/utils/plannerExport.ts` — **added to scope during Phase 7b** (Codex
+  MAJOR finding). This is an independent, separately-tested function that
+  drives PDF/CSV export and carried the identical area-blind matching. Without
+  it, the on-screen grid would be fixed but the exported file for the same
+  Josiah/Justin repro week would still mis-bucket the shifts into the Cold
+  Stone row. The same `!t.area || !employeeArea || t.area === employeeArea`
+  predicate is mirrored in, reading `shift.employee?.area` directly (no extra
+  parameter — the function already receives the full shift).
 - Downstream consumers referencing the same matching assumption
   (`usePlannerShiftsIndex.ts`, `Scheduling.tsx` `computeOpenSpots`,
   `shiftAllocation.ts` comments) reference the exact-match path for

@@ -237,6 +237,47 @@ describe('findTemplateForShift', () => {
     });
     expect(findTemplateForShift(shift, templates)).toBeUndefined();
   });
+
+  // Area-aware matching — mirrors the on-screen planner grid
+  // (buildTemplateGridData). A cross-area unlinked shift must NOT borrow
+  // another area's template row in the exported file.
+  describe('area compatibility', () => {
+    // Josiah repro: Cold Stone is the only exact time/position match, but the
+    // shift belongs to a Wetzel's employee.
+    const cscPrep = mockTemplate({
+      id: 't-csc', name: 'Prep-weekend', start_time: '10:00:00', end_time: '16:00:00',
+      position: 'Server', days: [0, 5, 6], area: 'Cold Stone',
+    });
+    const wtzOpen = mockTemplate({
+      id: 't-wtz', name: 'Open-weekend-wtz', start_time: '10:00:00', end_time: '16:00:00',
+      position: 'Server', days: [0, 5, 6], area: "Wetzel's",
+    });
+    // Saturday 2026-03-07, 10:00-16:00, Server
+    const wtzShift = (overrides: Partial<Shift> = {}) => mockShift({
+      start_time: '2026-03-07T10:00:00', end_time: '2026-03-07T16:00:00', position: 'Server',
+      employee: { id: 'e-w', name: 'Josiah', area: "Wetzel's" } as Shift['employee'],
+      ...overrides,
+    });
+
+    it('does not match a cross-area template', () => {
+      expect(findTemplateForShift(wtzShift(), [cscPrep])).toBeUndefined();
+    });
+
+    it('prefers the same-area template over a cross-area one listed first', () => {
+      const result = findTemplateForShift(wtzShift(), [cscPrep, wtzOpen]);
+      expect(result?.id).toBe('t-wtz');
+    });
+
+    it('matches permissively when the employee has no area', () => {
+      const shift = wtzShift({ employee: { id: 'e-n', name: 'NoArea' } as Shift['employee'] });
+      expect(findTemplateForShift(shift, [cscPrep])?.id).toBe('t-csc');
+    });
+
+    it('matches permissively when the template has no area', () => {
+      const noArea = mockTemplate({ ...cscPrep, id: 't-none', area: null });
+      expect(findTemplateForShift(wtzShift(), [noArea])?.id).toBe('t-none');
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -378,6 +419,27 @@ describe('buildGridExportData', () => {
     const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
     // All cells for the one template should be empty (shift didn't match it)
     expect(rows[0].cells[0]).toBe('');
+  });
+
+  it('does not place a cross-area shift into another area\'s template row', () => {
+    // Josiah repro: a Wetzel's employee's unlinked Sat 10-16 Server shift must
+    // not appear in the Cold Stone "Prep-weekend" row of the exported grid.
+    const cscPrep = mockTemplate({
+      id: 't-csc', name: 'Prep-weekend', start_time: '10:00:00', end_time: '16:00:00',
+      position: 'Server', days: [0, 5, 6], area: 'Cold Stone',
+    });
+    const shifts = [
+      mockShift({
+        start_time: '2026-03-07T10:00:00', // Sat
+        end_time: '2026-03-07T16:00:00',
+        position: 'Server',
+        employee: { id: 'e-w', name: 'Josiah', area: "Wetzel's" } as Shift['employee'],
+      }),
+    ];
+
+    const { rows } = buildGridExportData(shifts, [cscPrep], WEEK_DAYS);
+    // Saturday is WEEK_DAYS index 5; the Cold Stone row must stay empty there.
+    expect(rows[0].cells[5]).toBe('');
   });
 });
 

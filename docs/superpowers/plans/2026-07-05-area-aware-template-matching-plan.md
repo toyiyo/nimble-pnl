@@ -12,7 +12,7 @@
 
 ---
 
-### Task 1: Failing tests for area-aware fallback matching
+## Task 1: Failing tests for area-aware fallback matching
 
 **Files:**
 - Test: `tests/unit/useShiftPlanner.test.ts` (inside the existing `describe('buildTemplateGridData', ...)` block, after the `'should fall back to time-based matching when shift_template_id is absent'` test)
@@ -83,7 +83,7 @@ Add employee fixtures via the existing `mockShift` helper's `employee` override.
 Run: `npx vitest run tests/unit/useShiftPlanner.test.ts`
 Expected: the first three new tests FAIL (shift currently buckets into `t-csc-prep`); the two permissive-null tests PASS (current behavior already permissive); all pre-existing tests PASS.
 
-### Task 2: Implement area-compatible matching
+## Task 2: Implement area-compatible matching
 
 **Files:**
 - Modify: `src/hooks/useShiftPlanner.ts:100-167` (`findMatchingTemplate` + its caller in `buildTemplateGridData`)
@@ -147,7 +147,7 @@ git commit -m "fix(scheduling): area-aware fallback template matching in planner
 Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
 ```
 
-### Task 3: Full local verification
+## Task 3: Full local verification
 
 - [ ] **Step 1: Run the full unit suite, typecheck, lint**
 

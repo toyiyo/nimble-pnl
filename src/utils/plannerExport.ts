@@ -3,7 +3,8 @@ import autoTable from 'jspdf-autotable';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { formatLocalDate } from '@/lib/shiftInterval';
-import { isAreaCompatible, pickAreaPreferredMatch } from '@/lib/templateAreaMatch';
+import { UNASSIGNED } from '@/lib/templateAreaGrouping';
+import { findAreaAwareTemplate } from '@/lib/templateAreaMatch';
 import { exportToCSV } from '@/utils/csvExport';
 
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
@@ -106,17 +107,14 @@ export function findTemplateForShift(
   const endDate = new Date(shift.end_time);
   const shiftEnd = `${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:${pad(endDate.getSeconds())}`;
   const dayOfWeek = startDate.getDay();
-  const employeeArea = shift.employee?.area ?? null;
 
-  const candidates = templates.filter(
-    (t) =>
-      t.start_time === shiftStart &&
-      t.end_time === shiftEnd &&
-      t.position === shift.position &&
-      t.days.includes(dayOfWeek) &&
-      isAreaCompatible(t.area, employeeArea),
-  );
-  return pickAreaPreferredMatch(candidates, employeeArea);
+  return findAreaAwareTemplate(templates, {
+    shiftStart,
+    shiftEnd,
+    position: shift.position,
+    dayOfWeek,
+    employeeArea: shift.employee?.area ?? null,
+  });
 }
 
 /**
@@ -137,9 +135,19 @@ export function buildGridExportData(
     return `${name} ${date.getMonth() + 1}/${date.getDate()}`;
   });
 
-  // Index non-cancelled shifts by templateId → day → employee names
+  // Index non-cancelled shifts by templateId → day → employee names. Shifts
+  // that don't resolve to a template go to an off-template bucket keyed by the
+  // employee's home area, mirroring the grid's off-template lane so exports
+  // never silently omit coverage.
   const shiftsByTemplate = new Map<string, Map<string, string[]>>();
+  const offTemplateByArea = new Map<string, Map<string, string[]>>();
   const templateById = new Map(templates.map((t) => [t.id, t]));
+
+  const pushName = (byDay: Map<string, string[]>, dateStr: string, name: string) => {
+    const names = byDay.get(dateStr) ?? [];
+    if (names.length === 0) byDay.set(dateStr, names);
+    names.push(name);
+  };
 
   for (const shift of shifts) {
     if (shift.status === 'cancelled') continue;
@@ -150,21 +158,26 @@ export function buildGridExportData(
     // like buildTemplateGridData: an assigned shift — including a deliberate
     // cross-area cover — stays under its linked template. Fall back to
     // area-aware time matching only for unlinked shifts. A link to an archived
-    // template (not in the list) is skipped, never re-matched by time.
+    // template (not in the list) is treated as off-template, never re-matched
+    // by time.
     const template = shift.shift_template_id
       ? templateById.get(shift.shift_template_id)
       : findTemplateForShift(shift, templates);
-    if (!template) continue;
+    const employeeName = shift.employee?.name || 'Unassigned';
 
-    if (!shiftsByTemplate.has(template.id)) {
-      shiftsByTemplate.set(template.id, new Map());
+    if (template) {
+      const dayMap = shiftsByTemplate.get(template.id) ?? new Map<string, string[]>();
+      shiftsByTemplate.set(template.id, dayMap);
+      pushName(dayMap, dateStr, employeeName);
+    } else {
+      const area = shift.employee?.area || UNASSIGNED;
+      const dayMap = offTemplateByArea.get(area) ?? new Map<string, string[]>();
+      offTemplateByArea.set(area, dayMap);
+      pushName(dayMap, dateStr, employeeName);
     }
-    const dayMap = shiftsByTemplate.get(template.id)!;
-    if (!dayMap.has(dateStr)) {
-      dayMap.set(dateStr, []);
-    }
-    dayMap.get(dateStr)!.push(shift.employee?.name || 'Unassigned');
   }
+
+  const sortNames = (names: string[]) => names.sort((a, b) => a.localeCompare(b)).join('\n');
 
   // Build rows in template order
   const rows: GridRow[] = templates.map((template) => {
@@ -175,11 +188,22 @@ export function buildGridExportData(
       if (!templateAppliesToDay(template, day)) return '\u2014'; // em-dash for inactive
       const names = dayMap?.get(day);
       if (!names || names.length === 0) return '';
-      return names.sort((a, b) => a.localeCompare(b)).join('\n');
+      return sortNames(names);
     });
 
     return { shiftLabel, cells };
   });
+
+  // Append one off-template row per area (sorted by area name for determinism)
+  // so unmatched shifts are preserved in the export instead of being dropped.
+  for (const area of [...offTemplateByArea.keys()].sort((a, b) => a.localeCompare(b))) {
+    const dayMap = offTemplateByArea.get(area)!;
+    const cells = weekDays.map((day) => {
+      const names = dayMap.get(day);
+      return names && names.length > 0 ? sortNames(names) : '';
+    });
+    rows.push({ shiftLabel: `Off-template \u00b7 ${area}`, cells });
+  }
 
   return { dayHeaders, rows };
 }

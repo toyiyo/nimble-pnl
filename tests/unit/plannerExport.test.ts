@@ -413,7 +413,7 @@ describe('buildGridExportData', () => {
     expect(rows[0].cells[0]).toBe('Unassigned');
   });
 
-  it('skips shifts that do not match any template', () => {
+  it('routes a shift that matches no template into an off-template row instead of dropping it', () => {
     const shifts = [
       mockShift({
         start_time: '2026-03-02T06:00:00', // 6AM, no template match
@@ -423,8 +423,12 @@ describe('buildGridExportData', () => {
     ];
 
     const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
-    // All cells for the one template should be empty (shift didn't match it)
+    // Not under any template row...
     expect(rows[0].cells[0]).toBe('');
+    // ...but preserved in an off-template row (mockShift's default employee has
+    // no area, so it lands under Unassigned).
+    const offRow = rows.find((r) => r.shiftLabel.includes('Unassigned'));
+    expect(offRow?.cells[0]).toBe('Alice Smith');
   });
 
   it('CRITICAL: should not place a cross-area shift into another area\'s template row', () => {
@@ -471,9 +475,10 @@ describe('buildGridExportData', () => {
     expect(rows[0].cells[5]).toBe('Josiah');
   });
 
-  it('should skip a shift whose explicit shift_template_id is archived (not in the list)', () => {
+  it('should route a shift whose explicit shift_template_id is archived to the off-template section', () => {
     // Mirrors the grid's __unmatched__ handling: an explicit link to a template
-    // that is no longer active must NOT fall through to time-based matching.
+    // that is no longer active must NOT fall through to time-based matching, and
+    // must still be preserved (in the off-template section), not dropped.
     const shifts = [
       mockShift({
         start_time: '2026-03-02T09:00:00', // Mon, would match t1 by time
@@ -485,8 +490,61 @@ describe('buildGridExportData', () => {
     ];
 
     const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
-    // Must NOT appear under t1 via time-based fallback.
+    // Must NOT appear under t1 via time-based fallback...
     expect(rows[0].cells[0]).toBe('');
+    // ...but must be preserved in an off-template row (no area → Unassigned).
+    const offRow = rows.find((r) => r.shiftLabel.includes('Unassigned'));
+    expect(offRow?.cells[0]).toBe('Alice');
+  });
+
+  // Off-template section — parity with the on-screen grid's off-template lane.
+  // A shift that doesn't resolve to a template must still appear in the export,
+  // grouped by the employee's home area, not silently omitted.
+  describe('off-template section', () => {
+    const cscPrep = mockTemplate({
+      id: 't-csc', name: 'Prep-weekend', start_time: '10:00:00', end_time: '16:00:00',
+      position: 'Server', days: [0, 5, 6], area: 'Cold Stone',
+    });
+    // Saturday 2026-03-07 (WEEK_DAYS index 5), 10:00-16:00 Server.
+    const sat = (name: string, area?: string) => mockShift({
+      start_time: '2026-03-07T10:00:00', end_time: '2026-03-07T16:00:00', position: 'Server',
+      employee: { id: name, name, area } as Shift['employee'],
+    });
+
+    it('CRITICAL: should place a cross-area unlinked shift in an off-template row for its home area', () => {
+      const { rows } = buildGridExportData([sat('Josiah', "Wetzel's")], [cscPrep], WEEK_DAYS);
+      const offRow = rows.find((r) => r.shiftLabel.includes("Wetzel's"));
+      expect(offRow).toBeDefined();
+      expect(offRow!.cells[5]).toBe('Josiah');
+      // and NOT under the Cold Stone template row
+      const cscRow = rows.find((r) => r.shiftLabel.startsWith('Prep-weekend'));
+      expect(cscRow!.cells[5]).toBe('');
+    });
+
+    it('should label the off-template row Unassigned when the employee has no area', () => {
+      // A no-area employee is area-compatible with any template, so to land
+      // off-template the shift must fail to match for a non-area reason — here a
+      // position no template covers.
+      const noMatch = mockShift({
+        start_time: '2026-03-07T10:00:00', end_time: '2026-03-07T16:00:00', position: 'Dishwasher',
+        employee: { id: 'e0', name: 'Sam' } as Shift['employee'],
+      });
+      const { rows } = buildGridExportData([noMatch], [cscPrep], WEEK_DAYS);
+      const offRow = rows.find((r) => r.shiftLabel.includes('Unassigned'));
+      expect(offRow?.cells[5]).toBe('Sam');
+    });
+
+    it('should not add any off-template rows when every shift matches a template', () => {
+      const { rows } = buildGridExportData([sat('Cory', 'Cold Stone')], [cscPrep], WEEK_DAYS);
+      expect(rows).toHaveLength(1); // only the template row
+      expect(rows[0].cells[5]).toBe('Cory');
+    });
+
+    it('should group multiple off-template employees by area and sort names within a cell', () => {
+      const { rows } = buildGridExportData([sat('Zed', "Wetzel's"), sat('Amy', "Wetzel's")], [cscPrep], WEEK_DAYS);
+      const offRow = rows.find((r) => r.shiftLabel.includes("Wetzel's"));
+      expect(offRow?.cells[5]).toBe('Amy\nZed');
+    });
   });
 });
 

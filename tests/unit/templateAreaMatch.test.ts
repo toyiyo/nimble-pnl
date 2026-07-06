@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { isAreaCompatible, pickAreaPreferredMatch } from '@/lib/templateAreaMatch';
+import { isAreaCompatible, pickAreaPreferredMatch, findAreaAwareTemplate } from '@/lib/templateAreaMatch';
+import type { ShiftMatchKey } from '@/lib/templateAreaMatch';
 
 describe('isAreaCompatible', () => {
   it('should match when template and employee share the same area', () => {
@@ -42,5 +43,38 @@ describe('pickAreaPreferredMatch', () => {
 
   it('should return undefined when there are no candidates', () => {
     expect(pickAreaPreferredMatch([], "Wetzel's")).toBeUndefined();
+  });
+});
+
+describe('findAreaAwareTemplate', () => {
+  const cscPrep = { id: 't-csc', start_time: '10:00:00', end_time: '16:00:00', position: 'Server', days: [0, 5, 6], area: 'Cold Stone' };
+  const wtzOpen = { id: 't-wtz', start_time: '10:00:00', end_time: '16:00:00', position: 'Server', days: [0, 5, 6], area: "Wetzel's" };
+  const generic = { id: 't-gen', start_time: '10:00:00', end_time: '16:00:00', position: 'Server', days: [0, 5, 6], area: null };
+  // Saturday is day 6.
+  const key = (employeeArea: string | null): ShiftMatchKey => ({
+    shiftStart: '10:00:00', shiftEnd: '16:00:00', position: 'Server', dayOfWeek: 6, employeeArea,
+  });
+
+  it('CRITICAL: should not match a cross-area template', () => {
+    expect(findAreaAwareTemplate([cscPrep], key("Wetzel's"))).toBeUndefined();
+  });
+
+  it('CRITICAL: should prefer the same-area template over a cross-area and an area-agnostic one', () => {
+    expect(findAreaAwareTemplate([generic, cscPrep, wtzOpen], key("Wetzel's"))?.id).toBe('t-wtz');
+  });
+
+  it('should not match when the day is not in template.days', () => {
+    // Monday (day 1) is not in [0,5,6].
+    expect(findAreaAwareTemplate([wtzOpen], { ...key("Wetzel's"), dayOfWeek: 1 })).toBeUndefined();
+  });
+
+  it('should not match when start/end/position differ', () => {
+    expect(findAreaAwareTemplate([wtzOpen], { ...key("Wetzel's"), shiftEnd: '17:00:00' })).toBeUndefined();
+    expect(findAreaAwareTemplate([wtzOpen], { ...key("Wetzel's"), position: 'Cook' })).toBeUndefined();
+  });
+
+  it('should match permissively when employee or template area is null', () => {
+    expect(findAreaAwareTemplate([cscPrep], key(null))?.id).toBe('t-csc');
+    expect(findAreaAwareTemplate([generic], key("Wetzel's"))?.id).toBe('t-gen');
   });
 });

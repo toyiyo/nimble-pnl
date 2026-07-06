@@ -16,7 +16,7 @@ import { checkConflictsImperative } from '@/hooks/useConflictDetection';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { UNASSIGNED } from '@/lib/templateAreaGrouping';
-import { isAreaCompatible, pickAreaPreferredMatch } from '@/lib/templateAreaMatch';
+import { findAreaAwareTemplate } from '@/lib/templateAreaMatch';
 
 import type { Shift, ShiftTemplate, ConflictCheck } from '@/types/scheduling';
 import type { ValidationIssue } from '@/lib/shiftValidator';
@@ -100,10 +100,9 @@ export function buildGridData(
 
 /**
  * Find the template that matches a shift's time, position, and active day, and
- * is area-compatible with the employee: a template with an area only matches an
- * employee from the same area (or with no area). An exact same-area match is
- * preferred over an area-agnostic (null-area) template. Prevents an unlinked
- * shift from rendering under another area's template row.
+ * is area-compatible with the employee. Thin wrapper over the shared
+ * `findAreaAwareTemplate` so the grid and the export (plannerExport) select
+ * templates identically.
  */
 function findMatchingTemplate(
   templates: ShiftTemplate[],
@@ -113,15 +112,7 @@ function findMatchingTemplate(
   dayOfWeek: number,
   employeeArea: string | null,
 ): ShiftTemplate | undefined {
-  const candidates = templates.filter(
-    (t) =>
-      t.start_time === shiftStart &&
-      t.end_time === shiftEnd &&
-      t.position === position &&
-      t.days.includes(dayOfWeek) &&
-      isAreaCompatible(t.area, employeeArea),
-  );
-  return pickAreaPreferredMatch(candidates, employeeArea);
+  return findAreaAwareTemplate(templates, { shiftStart, shiftEnd, position, dayOfWeek, employeeArea });
 }
 
 /**

@@ -177,7 +177,9 @@ export function buildGridExportData(
     }
   }
 
-  const sortNames = (names: string[]) => names.sort((a, b) => a.localeCompare(b)).join('\n');
+  // Copy before sorting: the arrays live in the day maps and we must not mutate
+  // them in place while building cells.
+  const sortNames = (names: string[]) => [...names].sort((a, b) => a.localeCompare(b)).join('\n');
 
   // Build rows in template order
   const rows: GridRow[] = templates.map((template) => {

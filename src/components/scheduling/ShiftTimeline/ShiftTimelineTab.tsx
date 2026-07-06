@@ -38,8 +38,15 @@ import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
 
 // ─── Constants (Fix 2 — visible "Add shift" button) ────────────────────────────
 
-/** Default 09:00–17:00 range dropped by the visible "Add shift" button (clamped into the day's window). */
-const DEFAULT_ADD_RANGE: PaintRange = { startMin: 9 * 60, endMin: 17 * 60 };
+/**
+ * Default 10:00–18:00 range dropped by the visible "Add shift" button (clamped
+ * into the day's window). Starts at 10:00 (600) rather than 09:00 (540) so it
+ * survives unclamped on an empty day: `deriveWindow` (src/lib/timelineModel.ts)
+ * returns a 10:00–23:00 fallback window when a day has zero shifts, and a
+ * range starting before that window's start would otherwise get silently
+ * shrunk by `clampRangeToWindow` before the popover ever opens.
+ */
+const DEFAULT_ADD_RANGE: PaintRange = { startMin: 10 * 60, endMin: 18 * 60 };
 
 /** How long a bar shows its transient change-highlight ring (design doc §Fix 3). */
 const HIGHLIGHT_DURATION_MS = 2000;
@@ -91,7 +98,6 @@ type ActiveOverlay =
       mode: 'create';
       draft: PaintRange;
       laneContext: LanePaintContext | null;
-      anchorRect: DOMRect | null;
     }
   | null;
 
@@ -273,12 +279,12 @@ export function ShiftTimelineTab({
     forceUpdateTime,
     validateAndUpdateShift,
     forceUpdateShift,
-    deleteShift,
+    deleteShiftAsync,
     validationResult,
     clearValidation,
   } = useValidatedShiftMutations(restaurantId, shifts, { silentDelete: true });
 
-  // ── Undo-delete flow (Fix 1) ───────────────────────────────────────────────
+  // ── Undo-delete flow (Fix 1 + Fix B — critical data-integrity fixes) ──────
   // Re-creates via useCreateShift directly (not the validated pipeline — the
   // shift existed moments ago, no re-validation needed on Undo). `silent:
   // true` suppresses useCreateShift's own "Shift created" toast; the "Shift
@@ -287,10 +293,27 @@ export function ShiftTimelineTab({
   const { toast } = useToast();
 
   const deleteShiftWithUndo = useCallback(
-    (shift: Shift) => {
-      deleteShift(shift.id);
+    async (shift: Shift) => {
+      // Await the lock-guarded delete BEFORE offering undo: if the delete
+      // fails (or the shift is locked), the mutation's own onError toast
+      // already fired — showing our own "Shift deleted" + Undo toast here
+      // would let the user "undo" a delete that never happened, duplicating
+      // the still-existing shift.
+      try {
+        await deleteShiftAsync(shift.id);
+      } catch {
+        return;
+      }
+
+      // One-shot guard (Fix B): a double-click on Undo must never create the
+      // shift twice. `alreadyUndone` is captured per-toast in this closure.
+      let alreadyUndone = false;
 
       const handleUndo = () => {
+        if (alreadyUndone) return;
+        alreadyUndone = true;
+        dismiss();
+
         void createShift
           .mutateAsync({
             restaurant_id: shift.restaurant_id,
@@ -305,13 +328,21 @@ export function ShiftTimelineTab({
             locked: shift.locked,
             source: shift.source,
             shift_template_id: shift.shift_template_id,
+            // Fix C — preserve recurrence series linkage on restore, but
+            // deliberately OMIT recurrence_pattern: useCreateShift only takes
+            // the createRecurringShifts (whole-series) branch when BOTH
+            // recurrence_pattern AND is_recurring are truthy (see
+            // src/hooks/useShifts.tsx). Undo must restore exactly the ONE
+            // deleted shift, not regenerate its entire series.
+            is_recurring: shift.is_recurring,
+            recurrence_parent_id: shift.recurrence_parent_id,
           })
           .then(() => {
             toast({ title: 'Shift restored' });
           });
       };
 
-      toast({
+      const { dismiss } = toast({
         title: 'Shift deleted',
         action: (
           <ToastAction altText="Undo shift delete" onClick={handleUndo}>
@@ -320,7 +351,7 @@ export function ShiftTimelineTab({
         ),
       });
     },
-    [deleteShift, createShift, toast],
+    [deleteShiftAsync, createShift, toast],
   );
 
   // ── Live-drag merge (Stage D2) ─────────────────────────────────────────────
@@ -392,13 +423,13 @@ export function ShiftTimelineTab({
   /**
    * Paint-to-create commit (C2): a lane's paint gesture (drag/click) or its
    * visually-hidden "Add shift" button committed a range. Stage the `create`
-   * overlay with that range + lane context. `anchorRect` is unused for create
-   * (the create form renders as a centered Dialog, not an anchored popover —
-   * see `TimelineCreateDialog`); it's carried on `ActiveOverlay` only because
-   * the union is shared with the `edit` case.
+   * overlay with that range + lane context. The `create` variant of
+   * `ActiveOverlay` carries no `anchorRect` (the create form renders as a
+   * centered Dialog, not an anchored popover — see `TimelineCreateDialog`);
+   * that field only exists on the `edit` variant, still used by the popover.
    */
   const handlePaintCommit = useCallback((draft: PaintRange, laneContext: LanePaintContext) => {
-    setActiveOverlay({ mode: 'create', draft, laneContext, anchorRect: null });
+    setActiveOverlay({ mode: 'create', draft, laneContext });
   }, []);
 
   /**
@@ -413,34 +444,25 @@ export function ShiftTimelineTab({
   const handleGapClick = useCallback(
     (startMin: number) => {
       const range = mergeUnderStaffedRange(hourlySummary, startMin);
-      setActiveOverlay({ mode: 'create', draft: range, laneContext: null, anchorRect: null });
+      setActiveOverlay({ mode: 'create', draft: range, laneContext: null });
     },
     [hourlySummary],
   );
 
   /**
    * Visible "Add shift" button (Fix 2): opens the same `create` overlay as
-   * paint-to-create/gap-click, seeded with a default 09:00–17:00 range
+   * paint-to-create/gap-click, seeded with a default 10:00–18:00 range
    * clamped into the day's visible window, no lane context (unfiltered
-   * employee picker, blank position). `anchorRect` is carried on `ActiveOverlay`
-   * for the `edit` case (the Popover anchors to the clicked bar) but is unused
-   * for `create`: the create form now renders as a centered `Dialog` (see
-   * `TimelineCreateDialog` in TimelineShiftPopover.tsx) since the tall form's
-   * submit button was landing below the viewport fold when anchored to a
-   * small trigger on short/laptop screens.
+   * employee picker, blank position). No `anchorRect` here: the create form
+   * now renders as a centered `Dialog` (see `TimelineCreateDialog` in
+   * TimelineShiftPopover.tsx) since the tall form's submit button was landing
+   * below the viewport fold when anchored to a small trigger on short/laptop
+   * screens.
    */
-  const handleAddShiftClick = useCallback(
-    () => {
-      const range = clampRangeToWindow(DEFAULT_ADD_RANGE, model.window);
-      setActiveOverlay({
-        mode: 'create',
-        draft: range,
-        laneContext: null,
-        anchorRect: null,
-      });
-    },
-    [model.window],
-  );
+  const handleAddShiftClick = useCallback(() => {
+    const range = clampRangeToWindow(DEFAULT_ADD_RANGE, model.window);
+    setActiveOverlay({ mode: 'create', draft: range, laneContext: null });
+  }, [model.window]);
 
   /**
    * Live drag-draft update (Stage D2): `TimelineBar` calls this on every
@@ -773,7 +795,7 @@ export function ShiftTimelineTab({
       <TimelineShiftPopover
         activeShift={activeOverlay?.mode === 'edit' ? activeOverlay.shift : null}
         createDraft={createDraft}
-        anchorRect={activeOverlay?.anchorRect ?? null}
+        anchorRect={activeOverlay?.mode === 'edit' ? activeOverlay.anchorRect : null}
         tz={tz}
         dateStr={selectedDay}
         employees={employees}

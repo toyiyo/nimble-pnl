@@ -45,6 +45,7 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
 }));
 
 const mockDeleteShift = vi.fn();
+const mockDeleteShiftAsync = vi.fn();
 const mockUseValidatedShiftMutations = vi.fn(() => ({
   validateAndCreate: vi.fn(),
   forceCreate: vi.fn(),
@@ -57,6 +58,7 @@ const mockUseValidatedShiftMutations = vi.fn(() => ({
   validateAndReassign: vi.fn(),
   forceReassign: vi.fn(),
   deleteShift: mockDeleteShift,
+  deleteShiftAsync: mockDeleteShiftAsync,
   validationResult: null,
   clearValidation: vi.fn(),
 }));
@@ -186,6 +188,11 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       employeePositions: [],
       actualSplh: null,
     });
+    mockDeleteShiftAsync.mockResolvedValue(undefined);
+    // Matches the real useToast()'s toast() return shape ({id, dismiss, update})
+    // so deleteShiftWithUndo's `const { dismiss } = toast(...)` destructure
+    // doesn't throw in tests that don't need to assert on dismiss directly.
+    mockToast.mockReturnValue({ id: 'toast-1', dismiss: vi.fn(), update: vi.fn() });
   });
 
   it('mounts useValidatedShiftMutations once with (restaurantId, shifts)', () => {
@@ -388,7 +395,7 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
     it('opens the create overlay for the selected day with a default range clamped to the window and no lane context', () => {
       const employees = [makeEmployee('e1', 'Ann')];
       // A wide shift (07:00-19:00 local) so the derived window comfortably
-      // contains the 09:00-17:00 default range unchanged — this test covers
+      // contains the 10:00-18:00 default range unchanged — this test covers
       // the "no clamping needed" case. The "clamping actually shrinks the
       // range" case is covered by the narrower-window test below.
       const shifts = [makeShift('s1', 'e1', '2026-01-05T13:00:00Z', '2026-01-06T01:00:00Z')];
@@ -405,9 +412,11 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       expect(draft.laneContext).toEqual({ position: null, area: null });
       expect(draft.businessDate).toBe('2026-01-05');
 
-      // Default range is 09:00-17:00, expressed as HH:MM in the built editor values.
-      expect(draft.values.startTime).toBe('09:00');
-      expect(draft.values.endTime).toBe('17:00');
+      // Default range is 10:00-18:00, expressed as HH:MM in the built editor values
+      // (Fix E — shifted from 09:00-17:00 so it survives unclamped on an empty day,
+      // whose fallback window starts at 10:00).
+      expect(draft.values.startTime).toBe('10:00');
+      expect(draft.values.endTime).toBe('18:00');
 
       // No anchor rect: the create form renders as a centered Dialog, not an
       // anchored popover, so it's never pinned to the triggering button's rect
@@ -420,7 +429,7 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       const employees = [makeEmployee('e1', 'Ann')];
       // 16:00Z-22:00Z on 2026-01-05 in America/Chicago (UTC-6 in January) is
       // 10:00-16:00 local, so deriveWindow yields {startMin: 600, endMin: 960}
-      // — narrower than the 09:00-17:00 (540-1020) default range on both ends.
+      // — narrower than the 10:00-18:00 (600-1080) default range on the end.
       const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
 
       render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
@@ -438,23 +447,85 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       expect(draft.values.startTime).toBe('10:00');
       expect(draft.values.endTime).toBe('16:00');
     });
+
+    it('opens the create overlay with the full default range on a day with zero shifts (Fix E)', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      // No shifts anywhere: deriveWindow has nothing to derive from, so it
+      // falls back to a fixed {startMin: 600, endMin: 1380} (10:00-23:00)
+      // window. Fix E moved DEFAULT_ADD_RANGE to start at 10:00 (600) instead
+      // of 09:00 (540) specifically so it lands fully inside that fallback
+      // window and survives unclamped — before the fix, the 09:00 start was
+      // before the window's 10:00 start, so clampRangeToWindow silently
+      // shifted the whole range later while preserving only its duration,
+      // landing on 10:00-18:00 instead of the intended 09:00-17:00.
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Add shift' }));
+
+      const draftJson = screen.getByTestId('popover-create-draft').textContent;
+      expect(draftJson).toBeTruthy();
+      const draft = JSON.parse(draftJson as string);
+
+      expect(draft.laneContext).toEqual({ position: null, area: null });
+      expect(draft.businessDate).toBe('2026-01-05');
+
+      // Unclamped default range: 10:00-18:00, fully within the 10:00-23:00
+      // fallback window, preserving the intended 8-hour default duration.
+      expect(draft.values.startTime).toBe('10:00');
+      expect(draft.values.endTime).toBe('18:00');
+    });
   });
 
-  describe('deleteShiftWithUndo (Fix 1)', () => {
-    it('deletes the shift via the pipeline and shows exactly one toast with an Undo action', () => {
+  describe('deleteShiftWithUndo (Fix 1 — await delete before offering undo)', () => {
+    it('awaits deleteShiftAsync and shows exactly one toast with an Undo action only after a confirmed successful delete', async () => {
       const employees = [makeEmployee('e1', 'Ann')];
       const shift = makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z');
+      let resolveDelete: () => void = () => {};
+      mockDeleteShiftAsync.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveDelete = resolve;
+        }),
+      );
 
       render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
 
       fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
       fireEvent.click(screen.getByText('stub-delete'));
 
-      expect(mockDeleteShift).toHaveBeenCalledWith('s1');
-      expect(mockToast).toHaveBeenCalledTimes(1);
+      expect(mockDeleteShiftAsync).toHaveBeenCalledWith('s1');
+      // No toast yet — the delete hasn't resolved.
+      expect(mockToast).not.toHaveBeenCalled();
+
+      resolveDelete();
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
       const call = mockToast.mock.calls[0][0];
       expect(call.title).toMatch(/shift deleted/i);
       expect(call.action).toBeTruthy();
+    });
+
+    it('CRITICAL: a failed delete shows NO undo toast and never calls createShift', async () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift = makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z');
+      mockDeleteShiftAsync.mockRejectedValue(new Error('delete failed'));
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
+      fireEvent.click(screen.getByText('stub-delete'));
+
+      await waitFor(() => expect(mockDeleteShiftAsync).toHaveBeenCalledWith('s1'));
+
+      // Give the rejected promise's .catch a tick to run.
+      await waitFor(() => {
+        // no-op assertion to flush microtasks
+        expect(mockDeleteShiftAsync).toHaveBeenCalledTimes(1);
+      });
+
+      // The delete mutation's own onError toast is expected to fire elsewhere
+      // (useDeleteShift's mutation) — deleteShiftWithUndo itself must NOT show
+      // its own "Shift deleted" + Undo toast on failure.
+      expect(mockToast).not.toHaveBeenCalled();
+      expect(mockCreateShiftMutateAsync).not.toHaveBeenCalled();
     });
 
     it('Undo re-creates the shift with the exact captured payload, then toasts "Shift restored"', async () => {
@@ -475,7 +546,7 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
       fireEvent.click(screen.getByText('stub-delete'));
 
-      expect(mockToast).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
       const { action } = mockToast.mock.calls[0][0];
 
       // Render the toast action (a ToastAction element) and click it.
@@ -501,7 +572,7 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       expect(restoredCall.title).toMatch(/shift restored/i);
     });
 
-    it('published-shift delete still confirms via the popover, then routes through the same undo-toast path', () => {
+    it('published-shift delete still confirms via the popover, then routes through the same undo-toast path', async () => {
       const employees = [makeEmployee('e1', 'Ann')];
       const shift = {
         ...makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
@@ -517,8 +588,90 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       // onDelete (deleteShiftWithUndo) regardless of published state.
       fireEvent.click(screen.getByText('stub-delete'));
 
-      expect(mockDeleteShift).toHaveBeenCalledWith('s1');
-      expect(mockToast).toHaveBeenCalledTimes(1);
+      expect(mockDeleteShiftAsync).toHaveBeenCalledWith('s1');
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
+    });
+  });
+
+  describe('deleteShiftWithUndo — one-shot Undo guard (Fix B)', () => {
+    it('CRITICAL: invoking the Undo action twice results in createShift.mutateAsync being called exactly once', async () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift = makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z');
+      mockCreateShiftMutateAsync.mockResolvedValue({ ...shift, id: 's1-restored' });
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
+      fireEvent.click(screen.getByText('stub-delete'));
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
+      const { action } = mockToast.mock.calls[0][0];
+
+      const { getByText } = render(action);
+      const undoButton = getByText(/undo/i);
+      fireEvent.click(undoButton);
+      fireEvent.click(undoButton);
+
+      await waitFor(() => expect(mockCreateShiftMutateAsync).toHaveBeenCalledTimes(1));
+      // Give any in-flight microtasks a chance to resolve, then assert it's
+      // still exactly one call (no delayed second invocation).
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(mockCreateShiftMutateAsync).toHaveBeenCalledTimes(1);
+    });
+
+    it('dismisses the toast on the first Undo click', async () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift = makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z');
+      mockCreateShiftMutateAsync.mockResolvedValue({ ...shift, id: 's1-restored' });
+      const mockDismiss = vi.fn();
+      mockToast.mockReturnValue({ dismiss: mockDismiss });
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
+      fireEvent.click(screen.getByText('stub-delete'));
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
+      const { action } = mockToast.mock.calls[0][0];
+
+      const { getByText } = render(action);
+      fireEvent.click(getByText(/undo/i));
+
+      expect(mockDismiss).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('deleteShiftWithUndo — recurrence linkage on Undo (Fix C)', () => {
+    it('re-creates ONE shift carrying is_recurring/recurrence_parent_id, without regenerating a series', async () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift: Shift = {
+        ...makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+        is_recurring: true,
+        recurrence_parent_id: 'series-parent-1',
+        recurrence_pattern: { frequency: 'weekly', daysOfWeek: [1], endDate: '2026-06-01' },
+      };
+      mockCreateShiftMutateAsync.mockResolvedValue({ ...shift, id: 's1-restored' });
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
+      fireEvent.click(screen.getByText('stub-delete'));
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(1));
+      const { action } = mockToast.mock.calls[0][0];
+      const { getByText } = render(action);
+      fireEvent.click(getByText(/undo/i));
+
+      await waitFor(() => expect(mockCreateShiftMutateAsync).toHaveBeenCalledTimes(1));
+      const input = mockCreateShiftMutateAsync.mock.calls[0][0];
+
+      // Series linkage preserved...
+      expect(input.is_recurring).toBe(true);
+      expect(input.recurrence_parent_id).toBe('series-parent-1');
+      // ...but recurrence_pattern must be OMITTED so useCreateShift's
+      // `shift.recurrence_pattern && shift.is_recurring` branch takes the
+      // single-insert path (createSingleShift), not createRecurringShifts.
+      expect(input.recurrence_pattern).toBeFalsy();
     });
   });
 

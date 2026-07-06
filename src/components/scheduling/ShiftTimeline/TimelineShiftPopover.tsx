@@ -169,12 +169,13 @@ function shiftToEditorValues(shift: Shift, dateStr: string, tz: string): Timelin
  * shift bar sets the active shift via `onSelect`; this component opens/closes
  * based on whether `activeShift` is non-null.
  *
- * Anchoring: bound to the interacted element's rect (`anchorRect`) via Radix
- * `PopoverAnchor`'s `virtualRef`; falls back to the legacy zero-size trigger
- * when no rect is supplied yet (e.g. tests, or before B3 wires rect capture).
- * `modal={false}` so it never traps focus or blocks the page; the scrollable
- * plot region is passed as `collisionBoundary` so positioning stays correct
- * inside `overflow-x-auto`.
+ * Anchoring (view/edit Popover only — the create form below is a centered
+ * Dialog and has no anchor rect): bound to the interacted element's rect
+ * (`anchorRect`) via Radix `PopoverAnchor`'s `virtualRef`; falls back to the
+ * legacy zero-size trigger when no rect is supplied yet (e.g. tests, or
+ * before B3 wires rect capture). `modal={false}` so it never traps focus or
+ * blocks the page; the scrollable plot region is passed as `collisionBoundary`
+ * so positioning stays correct inside `overflow-x-auto`.
  *
  * Conflict-dialog stacking: when Save surfaces pending issues, this component
  * stays mounted and open (still in edit mode) behind `AvailabilityConflictDialog`.

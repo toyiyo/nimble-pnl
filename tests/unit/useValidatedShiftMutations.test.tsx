@@ -19,11 +19,12 @@ import type { Shift, ConflictCheck } from '@/types/scheduling';
 const mockCreateMutateAsync = vi.hoisted(() => vi.fn());
 const mockUpdateMutateAsync = vi.hoisted(() => vi.fn());
 const mockDeleteMutate = vi.hoisted(() => vi.fn());
+const mockDeleteMutateAsync = vi.hoisted(() => vi.fn());
 
 vi.mock('@/hooks/useShifts', () => ({
   useCreateShift: () => ({ mutateAsync: mockCreateMutateAsync }),
   useUpdateShift: () => ({ mutateAsync: mockUpdateMutateAsync }),
-  useDeleteShift: () => ({ mutate: mockDeleteMutate }),
+  useDeleteShift: () => ({ mutate: mockDeleteMutate, mutateAsync: mockDeleteMutateAsync }),
 }));
 
 const NO_CONFLICTS = { conflicts: [] as ConflictCheck[], hasConflicts: false };
@@ -68,6 +69,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockCreateMutateAsync.mockResolvedValue(makeShift());
   mockUpdateMutateAsync.mockResolvedValue(makeShift());
+  mockDeleteMutateAsync.mockResolvedValue({ id: 'shift-9', restaurantId: 'rest-1' });
 });
 
 describe('useValidatedShiftMutations — create', () => {
@@ -619,6 +621,33 @@ describe('useValidatedShiftMutations — deleteShift', () => {
 
     expect(() => result.current.deleteShift('shift-locked')).toThrow(LockedShiftError);
     expect(mockDeleteMutate).not.toHaveBeenCalled();
+  });
+});
+
+describe('useValidatedShiftMutations — deleteShiftAsync (awaitable, lock-guarded)', () => {
+  it('awaits useDeleteShift.mutateAsync with id + restaurantId and resolves on success', async () => {
+    const shift = makeShift({ id: 'shift-9', locked: false });
+    const { result } = renderPipeline([shift]);
+
+    await expect(result.current.deleteShiftAsync('shift-9')).resolves.toBeUndefined();
+
+    expect(mockDeleteMutateAsync).toHaveBeenCalledWith({ id: 'shift-9', restaurantId: 'rest-1' });
+  });
+
+  it('rejects with LockedShiftError and does not call the mutation for a locked shift', async () => {
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+    const { result } = renderPipeline([lockedShift]);
+
+    await expect(result.current.deleteShiftAsync('shift-locked')).rejects.toBeInstanceOf(LockedShiftError);
+    expect(mockDeleteMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('rejects when the underlying mutateAsync rejects', async () => {
+    const shift = makeShift({ id: 'shift-9', locked: false });
+    const { result } = renderPipeline([shift]);
+    mockDeleteMutateAsync.mockRejectedValueOnce(new Error('network error'));
+
+    await expect(result.current.deleteShiftAsync('shift-9')).rejects.toThrow('network error');
   });
 });
 

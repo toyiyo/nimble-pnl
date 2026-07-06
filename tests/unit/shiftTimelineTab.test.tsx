@@ -43,6 +43,7 @@ vi.mock('@/hooks/useValidatedShiftMutations', () => ({
     validateAndReassign: vi.fn(),
     forceReassign: vi.fn(),
     deleteShift: vi.fn(),
+    deleteShiftAsync: vi.fn().mockResolvedValue(undefined),
     validationResult: null,
     clearValidation: vi.fn(),
   })),

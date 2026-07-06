@@ -127,6 +127,16 @@ export interface UseValidatedShiftMutationsReturn {
   validateAndReassign: (input: ReassignInput) => Promise<ReassignOutcome>;
   forceReassign: (input: ReassignInput) => Promise<boolean>;
   deleteShift: (shiftId: string) => void;
+  /**
+   * Awaitable, lock-guarded delete: runs the same `assertNotLockedClient` guard
+   * as `deleteShift`, then awaits the underlying mutation and resolves only
+   * once the row is actually gone (or rejects on failure/lock). Used by the
+   * Timeline's `deleteShiftWithUndo` flow so the undo affordance is only ever
+   * offered for a delete that's confirmed to have succeeded — the fire-and-forget
+   * `deleteShift` above can't provide that guarantee, so it's kept for callers
+   * (e.g. the planner) that don't need to await/react to the outcome.
+   */
+  deleteShiftAsync: (shiftId: string) => Promise<void>;
   validationResult: ValidationResult | null;
   clearValidation: () => void;
 }
@@ -574,6 +584,18 @@ export function useValidatedShiftMutations(
     [restaurantId, shifts, deleteShiftMutation],
   );
 
+  const deleteShiftAsync = useCallback(
+    async (shiftId: string): Promise<void> => {
+      if (!restaurantId) return;
+
+      const shift = findShiftOrThrow(shifts, shiftId);
+      assertNotLockedClient(shift);
+
+      await deleteShiftMutation.mutateAsync({ id: shiftId, restaurantId });
+    },
+    [restaurantId, shifts, deleteShiftMutation],
+  );
+
   return {
     validateAndCreate,
     forceCreate,
@@ -586,6 +608,7 @@ export function useValidatedShiftMutations(
     validateAndReassign,
     forceReassign,
     deleteShift: handleDeleteShift,
+    deleteShiftAsync,
     validationResult,
     clearValidation,
   };

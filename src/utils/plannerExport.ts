@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { formatLocalDate } from '@/lib/shiftInterval';
+import { isAreaCompatible, pickAreaPreferredMatch } from '@/lib/templateAreaMatch';
 import { exportToCSV } from '@/utils/csvExport';
 
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
@@ -86,12 +87,13 @@ export function formatTemplateTime(time: string): string {
 }
 
 /**
- * Find the first template that matches a shift by comparing local times,
- * position, the day-of-week, and area compatibility. A template with an area
- * only matches an employee from the same area (or with no area); null on
- * either side is permissive. Mirrors `findMatchingTemplate` in
- * useShiftPlanner.ts so the exported grid buckets shifts the same way the
- * on-screen planner does — a cross-area unlinked shift never borrows another
+ * Find the template that matches a shift by comparing local times, position,
+ * the day-of-week, and area compatibility. A template with an area only matches
+ * an employee from the same area (or with no area); an exact same-area match is
+ * preferred over an area-agnostic (null-area) template. Mirrors
+ * `findMatchingTemplate` in useShiftPlanner.ts (via the shared
+ * `templateAreaMatch` helpers) so the exported grid buckets shifts the same way
+ * the on-screen planner does — a cross-area unlinked shift never borrows another
  * area's row.
  */
 export function findTemplateForShift(
@@ -106,14 +108,15 @@ export function findTemplateForShift(
   const dayOfWeek = startDate.getDay();
   const employeeArea = shift.employee?.area ?? null;
 
-  return templates.find(
+  const candidates = templates.filter(
     (t) =>
       t.start_time === shiftStart &&
       t.end_time === shiftEnd &&
       t.position === shift.position &&
       t.days.includes(dayOfWeek) &&
-      (!t.area || !employeeArea || t.area === employeeArea),
+      isAreaCompatible(t.area, employeeArea),
   );
+  return pickAreaPreferredMatch(candidates, employeeArea);
 }
 
 /**

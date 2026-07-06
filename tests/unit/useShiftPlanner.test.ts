@@ -335,35 +335,54 @@ describe('useShiftPlanner utilities', () => {
         ...overrides,
       });
 
-      it('does not bucket a cross-area unlinked shift into another area\'s template row', () => {
+      it('CRITICAL: should not bucket a cross-area unlinked shift into another area\'s template row', () => {
         const grid = buildTemplateGridData([unlinkedWtzShift()], [cscPrepWeekend], weekDays);
         expect(grid.get('t-csc-prep')?.get('2026-03-07') ?? []).toHaveLength(0);
         expect(grid.get('__unmatched__')?.get('2026-03-07')).toHaveLength(1);
       });
 
-      it('lanes the rejected cross-area shift under the employee home area via groupUnmatchedByArea', () => {
+      it('CRITICAL: should lane the rejected cross-area shift under the employee home area', () => {
         const grid = buildTemplateGridData([unlinkedWtzShift()], [cscPrepWeekend], weekDays);
         const lanes = groupUnmatchedByArea(grid.get('__unmatched__')!);
         expect(lanes.get("Wetzel's")?.get('2026-03-07')).toHaveLength(1);
       });
 
-      it('matches the same-area template even when a cross-area template with identical times comes first', () => {
+      it('CRITICAL: should match the same-area template when a cross-area template with identical times comes first', () => {
         const grid = buildTemplateGridData([unlinkedWtzShift()], [cscPrepWeekend, wtzOpenWeekend], weekDays);
         expect(grid.get('t-wtz-open')?.get('2026-03-07')).toHaveLength(1);
         expect(grid.get('t-csc-prep')?.get('2026-03-07') ?? []).toHaveLength(0);
       });
 
-      it('matches permissively when the employee has no area', () => {
+      it('CRITICAL: should prefer the same-area template over an area-agnostic one when both match', () => {
+        // A null-area (generic) template listed first must not win over the
+        // employee's exact-area template.
+        const genericTemplate: ShiftTemplate = { ...cscPrepWeekend, id: 't-generic', area: null };
+        const grid = buildTemplateGridData([unlinkedWtzShift()], [genericTemplate, wtzOpenWeekend], weekDays);
+        expect(grid.get('t-wtz-open')?.get('2026-03-07')).toHaveLength(1);
+        expect(grid.get('t-generic')?.get('2026-03-07') ?? []).toHaveLength(0);
+      });
+
+      it('should match permissively when the employee has no area', () => {
         const noAreaEmployee = { id: 'e-n', name: 'NoArea' } as Shift['employee'];
         const shift = unlinkedWtzShift({ employee_id: 'e-n', employee: noAreaEmployee });
         const grid = buildTemplateGridData([shift], [cscPrepWeekend], weekDays);
         expect(grid.get('t-csc-prep')?.get('2026-03-07')).toHaveLength(1);
       });
 
-      it('matches permissively when the template has no area', () => {
+      it('should match permissively when the template has no area', () => {
         const noAreaTemplate: ShiftTemplate = { ...cscPrepWeekend, id: 't-no-area', area: null };
         const grid = buildTemplateGridData([unlinkedWtzShift()], [noAreaTemplate], weekDays);
         expect(grid.get('t-no-area')?.get('2026-03-07')).toHaveLength(1);
+      });
+
+      it('CRITICAL: should still bucket a cross-area shift under its explicit shift_template_id (covering flow)', () => {
+        // A Wetzel's employee deliberately assigned to the Cold Stone template
+        // (explicit link) must stay in that row — area mismatch only affects the
+        // unlinked fallback, never an explicit assignment.
+        const covering = unlinkedWtzShift({ shift_template_id: 't-csc-prep' });
+        const grid = buildTemplateGridData([covering], [cscPrepWeekend, wtzOpenWeekend], weekDays);
+        expect(grid.get('t-csc-prep')?.get('2026-03-07')).toHaveLength(1);
+        expect(grid.get('t-wtz-open')?.get('2026-03-07') ?? []).toHaveLength(0);
       });
     });
   });

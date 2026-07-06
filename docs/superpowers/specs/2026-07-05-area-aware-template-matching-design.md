@@ -30,6 +30,15 @@ Make the fallback matcher area-compatible:
   - Null/undefined on either side stays permissive — legacy data without
     areas keeps today's behavior.
   - Both sides non-null and different → not a match.
+- **Priority among candidates** (added in Phase 7c, CodeRabbit finding): an
+  exact same-area match is preferred over an area-agnostic (null-area)
+  template, so a generic template listed earlier in the array never wins over
+  the employee's own-area template. When the employee has no area, input order
+  is preserved.
+- Both rules live in a shared helper `src/lib/templateAreaMatch.ts`
+  (`isAreaCompatible` + `pickAreaPreferredMatch`) used by **both** the grid
+  (`useShiftPlanner.ts`) and the export (`plannerExport.ts`) so the two paths
+  can never drift.
 - If no area-compatible template matches, the shift buckets under
   `__unmatched__`, which `groupUnmatchedByArea` already groups into the
   off-template lane keyed by the employee's home area. So Josiah's shifts

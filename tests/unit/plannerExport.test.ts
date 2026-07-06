@@ -259,21 +259,27 @@ describe('findTemplateForShift', () => {
       ...overrides,
     });
 
-    it('does not match a cross-area template', () => {
+    it('CRITICAL: should not match a cross-area template', () => {
       expect(findTemplateForShift(wtzShift(), [cscPrep])).toBeUndefined();
     });
 
-    it('prefers the same-area template over a cross-area one listed first', () => {
+    it('CRITICAL: should prefer the same-area template over a cross-area one listed first', () => {
       const result = findTemplateForShift(wtzShift(), [cscPrep, wtzOpen]);
       expect(result?.id).toBe('t-wtz');
     });
 
-    it('matches permissively when the employee has no area', () => {
+    it('CRITICAL: should prefer the same-area template over an area-agnostic one listed first', () => {
+      const generic = mockTemplate({ ...cscPrep, id: 't-generic', area: null });
+      const result = findTemplateForShift(wtzShift(), [generic, wtzOpen]);
+      expect(result?.id).toBe('t-wtz');
+    });
+
+    it('should match permissively when the employee has no area', () => {
       const shift = wtzShift({ employee: { id: 'e-n', name: 'NoArea' } as Shift['employee'] });
       expect(findTemplateForShift(shift, [cscPrep])?.id).toBe('t-csc');
     });
 
-    it('matches permissively when the template has no area', () => {
+    it('should match permissively when the template has no area', () => {
       const noArea = mockTemplate({ ...cscPrep, id: 't-none', area: null });
       expect(findTemplateForShift(wtzShift(), [noArea])?.id).toBe('t-none');
     });
@@ -421,7 +427,7 @@ describe('buildGridExportData', () => {
     expect(rows[0].cells[0]).toBe('');
   });
 
-  it('does not place a cross-area shift into another area\'s template row', () => {
+  it('CRITICAL: should not place a cross-area shift into another area\'s template row', () => {
     // Josiah repro: a Wetzel's employee's unlinked Sat 10-16 Server shift must
     // not appear in the Cold Stone "Prep-weekend" row of the exported grid.
     const cscPrep = mockTemplate({

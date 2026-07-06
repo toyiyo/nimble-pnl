@@ -80,7 +80,20 @@ validationResult / clearValidation                  // unchanged
 All update/reassign paths now run **all three layers** (interval rules + validateShift with
 `excludeShiftId` + RPC conflicts) and return pending issues for the
 `AvailabilityConflictDialog` instead of silently proceeding. Locked shifts short-circuit with
-an error result.
+an error result — including the **delete** path (client-side lock guard for parity with
+update; `useDeleteShift` has no server-side `assertShiftNotLocked` today).
+
+**Design-review fold-ins (Supabase):**
+
+- The pipeline's `validateAndUpdateTime` builds its interval via
+  `ShiftInterval.fromTimestamps(startIso, endIso, businessDate)` — it must NOT inherit the
+  current `useShiftPlanner` implementation's `split('T')` + `ShiftInterval.create()`
+  reconstruction, which re-anchors in host TZ. A regression test pins that a
+  host-TZ ≠ restaurant-TZ round trip preserves the restaurant-local wall-clock time.
+- `useUpdateShift` and `useDeleteShift` gain an explicit `restaurant_id` filter
+  (`.eq('restaurant_id', restaurantId)`) matching the `useDeleteShiftSeries` /
+  `useUpdateShiftSeries` pattern and lesson 2026-07-02 — RLS remains the security boundary;
+  the explicit filter is defense-in-depth. The pipeline threads `restaurantId` to both.
 
 New TZ helper in `src/lib/shiftTimeMath.ts` (pure, tested):
 
@@ -95,13 +108,33 @@ snapToStep(min: number, step = STEP_MIN): number
 `TimelineShiftPopover` gains an edit mode and actions while staying the single instance owned
 by `ShiftTimelineTab` (single-dialog pattern):
 
+**Overlay state machine (design-review fold-in):** one union state drives the single popover
+instance across all entry points:
+`activeOverlay: { mode: 'edit'; shift; anchorRect } | { mode: 'create'; draft; anchorRect } | null`.
+Edit (bar click), quick-add (paint/click), and gap-click all set this state — they are
+mutually exclusive by construction; never two popovers mounted.
+
+**Anchoring:** the current zero-size `sr-only` trigger cannot anchor edit/create popovers.
+Use Radix `PopoverAnchor` bound to the interacted element (bar / ghost / gap segment) via a
+virtual anchor rect stored in `activeOverlay`, with `modal={false}` and the scrollable plot
+container as `collisionBoundary` so positioning works inside `overflow-x-auto`.
+
+**Conflict dialog stacking:** when Save surfaces pending issues, the popover **stays mounted
+and open** behind `AvailabilityConflictDialog`; outside-click dismissal of the popover is
+suppressed while the dialog is open; Escape closes only the topmost overlay (the dialog).
+The popover closes only after the dialog resolves (confirm → force mutation → close;
+cancel → back to editing).
+
 - **View mode** (existing) + footer actions: Edit, Delete. Lock icon + disabled actions when
   `shift.locked`. Recurring shifts show "Changes apply to this shift only" hint
   (series editing stays in the Scheduler's ShiftDialog; out of scope here).
 - **Edit mode:** start/end time fields (reuse `TimeInput`), employee select (active employees,
   sorted: position match first), break, notes. Live advisory conflicts via reactive
   `useCheckConflicts` for the currently selected employee (same pattern as `ShiftDialog`) +
-  local `validateShift` warnings — rendered as amber chips (CLAUDE.md amber pattern).
+  local `validateShift` warnings — rendered as amber chips using the exact
+  `AvailabilityConflictDialog` classes (`bg-amber-500/10 border border-amber-500/20`), no new
+  amber shade. New popover/quick-add markup follows the CLAUDE.md typography scale already
+  used by `TimelineShiftPopover` (build-time checklist item).
 - **Save** routes through `validateAndUpdateTime` / `validateAndReassign`; pending issues open
   the shared `AvailabilityConflictDialog`; confirm calls the force variant.
 - **Delete:** immediate for unpublished; `AlertDialog` confirm for published shifts
@@ -129,12 +162,27 @@ by `ShiftTimelineTab` (single-dialog pattern):
 - Raw pointer events + `setPointerCapture` on `TimelineBar` (no dnd-kit — continuous 15-min
   snapping is simpler with pointers). Body drag moves; edge handles (desktop) resize; floating
   time readout while dragging. Locked bars don't drag.
+- **Render budget (design-review fold-in):** draft state commits are throttled to one per
+  `requestAnimationFrame` (never per raw pointermove), and `TimelineBar` + `TimelineLane` are
+  wrapped in `React.memo` with comparators keyed on shift id + geometry, so a drag frame
+  re-renders only the affected row while the coverage chart recomputes at the rAF cadence.
+- **Stale-closure discipline:** pointer-capture handlers registered at `pointerdown` read
+  `dayShifts` / overlay state through render-synced refs, never through values closed over
+  when the gesture began (lesson 2026-06-04).
+- **Touch strategy:** bar bodies and edge handles get `touch-action: none` scoped to their
+  own hit areas only; lane background and the plot container keep `pan-x pan-y` so
+  scroll-to-navigate is not regressed. On `pointerType === 'touch'` bars do not drag at all —
+  tap opens the popover, which reaches every drag outcome via time fields.
 - **Draft state:** `ShiftTimelineTab` keeps `draftShift` (create ghost or in-flight
   moved/resized copy). The memoized `useTimelineModel` input becomes
   `dayShifts (minus dragged original) + draft`, so the coverage chart, verdict, and status
   strip update live during the drag — you watch the gap fill before committing.
 - Release → `validateAndUpdateTime`; on pending issues the bar snaps back visually and the
   conflict dialog offers override.
+- **Commit path:** drag commits use the existing `useUpdateShift` mutation, which already
+  performs optimistic `setQueriesData` updates before invalidation — the draft is cleared
+  when the optimistic cache write lands (mutation `onSettled`), so the bar never jumps while
+  waiting for refetch, and no new invalidation behavior is introduced.
 - The draft never writes to React Query caches or localStorage (no manual caching); commit
   goes through mutations, and draft state is cleared on success/cancel. A background refetch
   must not clobber an in-flight draft: the draft lives in local state keyed by shift id and is
@@ -145,16 +193,22 @@ by `ShiftTimelineTab` (single-dialog pattern):
 - `CoverageStatusStrip` segments with status `under` become buttons. Clicking one merges
   adjacent under-staffed hours into a contiguous range and opens the quick-add popover
   prefilled with that window (no lane context: employee picker unfiltered, position blank).
+- Adjacency is computed within the single **day-wide hourly status strip** (the strip is not
+  per-lane/per-area); the merged range never crosses non-`under` hours.
 - Pure helper `mergeUnderStaffedRange(hours, clickedHourMin)` in `src/lib` with tests.
 
 ## Accessibility
 
 - Bars stay `<button>`s; popover editing is fully keyboard accessible (drag is an
   enhancement, not the only path — every drag outcome is achievable via popover time fields).
+  Pointer-drag wiring must not intercept keyboard activation (Enter/Space still opens the
+  popover; no keyboard trap is introduced by making a bar both click target and drag handle).
 - Paint layer: lanes get a visually-hidden "Add shift to <lane> lane" button per lane as the
   keyboard entry to the quick-add popover.
-- All new inputs labeled; conflict chips use text, not color alone; `aria-live` polite region
-  announces validation results in the popover.
+- All new inputs labeled; conflict chips use text, not color alone. The popover owns exactly
+  ONE `aria-live="polite"` region that coalesces all dynamic signals ("on shift" badge +
+  async RPC conflict result + client warnings) into a single composed announcement, so a
+  picker interaction never produces multiple disjoint announcements.
 
 ## Out of scope
 
@@ -163,6 +217,14 @@ by `ShiftTimelineTab` (single-dialog pattern):
   extraction makes it possible).
 - Overtime/labor-budget gating (no such validation exists anywhere today).
 - Multi-day timeline editing (timeline is single-day by design).
+
+## Follow-ups flagged by design review (separate PRs)
+
+- Pin `SET search_path = public, pg_temp` on `check_timeoff_conflict` /
+  `check_availability_conflict` (and siblings) — pre-existing, defense-in-depth.
+- `check_timeoff_conflict` takes only `p_employee_id` (no tenant scoping param) — pre-existing
+  read-surface hardening candidate.
+- Planner's host-local `ShiftInterval.create` convention for template-based creates.
 
 ## Decided trade-offs
 
@@ -177,13 +239,16 @@ by `ShiftTimelineTab` (single-dialog pattern):
 
 - `src/lib/shiftTimeMath.ts`: `minutesToIso` across DST transitions (America/Chicago Mar/Nov),
   overnight (minutes > 1440), TZ-portable fixtures (`new Date(y,m,d)` per lesson 2026-05-10);
-  `snapToStep` edges.
+  `snapToStep` edges. Must include the COMBINED case: overnight minutes > 1440 crossing a
+  fall-back DST boundary (e.g. 23:00 start the night before the transition).
 - `src/lib/shiftMutationPipeline.ts`: `collectShiftIssues` with injected conflict checker —
   warning aggregation, excludeShiftId, RPC conflict merge, locked rejection.
 - `src/lib` gap-merge + picker-sort helpers: unit tests.
 - `useValidatedShiftMutations`: hook tests (mocked mutations + DI'd checker) pinning the
   pending-confirmation contract for create/update/reassign, and that `useShiftPlanner`'s
   delegated API is byte-compatible (existing planner tests keep passing).
+- TZ regression: `validateAndUpdateTime` under a host TZ ≠ restaurant TZ preserves the
+  restaurant-local wall-clock (pins the `fromTimestamps`-not-`create` requirement).
 - Component: quick-add popover renders three states (idle/warnings/saving); drag math helpers
   (pixel→minute mapping) are pure and unit-tested; E2E drag choreography is not covered
   (Playwright drag flake risk), popover-based create/edit path covered by an E2E smoke test.

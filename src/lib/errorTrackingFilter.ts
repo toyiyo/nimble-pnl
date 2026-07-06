@@ -9,6 +9,8 @@
  * This mirrors Sentry's default posture (`ignoreErrors: ['Script error.']`).
  */
 
+import type { CaptureResult } from 'posthog-js';
+
 /** Exact masked-message literals this predicate matches. Kept exported and
  * exhaustive so the filter's scope stays auditable at a glance. */
 export const MASKED_SCRIPT_ERROR_MESSAGES = ['Script error.', 'Script error'];
@@ -27,15 +29,6 @@ interface ExceptionListEntry {
     [key: string]: unknown;
   };
   stacktrace?: ExceptionStacktrace;
-  [key: string]: unknown;
-}
-
-interface CaptureResultLike {
-  event?: string;
-  properties?: {
-    $exception_list?: unknown;
-    [key: string]: unknown;
-  };
   [key: string]: unknown;
 }
 
@@ -67,7 +60,7 @@ function isMaskedScriptErrorEntry(entry: unknown): boolean {
  * left alone (returns `false`).
  */
 export function isUnactionableScriptError(
-  event: CaptureResultLike | null | undefined
+  event: CaptureResult | null | undefined
 ): boolean {
   if (!event) return false;
   if (event.event !== '$exception') return false;

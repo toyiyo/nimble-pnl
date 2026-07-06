@@ -89,6 +89,22 @@ describe('isUnactionableScriptError', () => {
     expect(isUnactionableScriptError(event)).toBe(false);
   });
 
+  it('keeps a synthetic, stack-frame-less entry whose value is a different message', () => {
+    // A browser-prefixed / non-masked variant must fall through to "keep",
+    // never get mis-dropped just because it is synthetic + frame-less.
+    const event = makeExceptionEvent([
+      syntheticNoStackEntry('Script error: uncaught exception in handler'),
+    ]);
+    expect(isUnactionableScriptError(event)).toBe(false);
+  });
+
+  it('keeps a synthetic, stack-frame-less entry with no message value', () => {
+    const event = makeExceptionEvent([
+      { type: 'Error', mechanism: { type: 'generic', synthetic: true } },
+    ]);
+    expect(isUnactionableScriptError(event)).toBe(false);
+  });
+
   it('keeps a mixed list where one entry is a real error', () => {
     const event = makeExceptionEvent([
       syntheticNoStackEntry('Script error.'),

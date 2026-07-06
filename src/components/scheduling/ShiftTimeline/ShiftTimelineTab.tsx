@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -42,6 +42,19 @@ interface ShiftTimelineTabProps {
   /** Forwarded from the parent's error state; renders an inline message. */
   readonly error: Error | null;
 }
+
+/**
+ * Single union state driving the ONE `TimelineShiftPopover` instance across every
+ * entry point (edit via bar click today; quick-add via paint/gap-click in Stage C).
+ * Mutually exclusive by construction — never two popovers/overlays mounted at once.
+ * `create` has no producer yet (paint-to-create lands in Stage C); the variant is
+ * declared now so the popover's eventual create-mode prop threading doesn't require
+ * another state-shape migration.
+ */
+type ActiveOverlay =
+  | { mode: 'edit'; shift: Shift; anchorRect: DOMRect | null }
+  | { mode: 'create'; anchorRect: DOMRect | null }
+  | null;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -117,7 +130,9 @@ export function ShiftTimelineTab({
   // when the stored day is outside the current week.
   const selectedDay = weekDays.includes(selectedDayState) ? selectedDayState : defaultDay(weekDays);
   const [groupBy, setGroupBy] = useState<GroupByMode>('area');
-  const [activeShift, setActiveShift] = useState<Shift | null>(null);
+  // Single union overlay state (design doc "Overlay state machine") — edit mode is
+  // wired here; create mode's producer (paint/gap-click) lands in Stage C.
+  const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null);
   const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
 
   // ── Staffing recommendations ───────────────────────────────────────────────
@@ -131,13 +146,19 @@ export function ShiftTimelineTab({
   // ── Filter shifts to the selected day ─────────────────────────────────────
   const dayShifts = useMemo(() => filterToDay(shifts, selectedDay, tz), [shifts, selectedDay, tz]);
 
-  // ── Validated mutation pipeline for the popover's edit/delete actions.
-  // Full overlay-state wiring (anchor-rect capture, single union activeOverlay,
-  // toast copy) is Stage B3 — this call site only needs to satisfy
-  // TimelineShiftPopover's save/delete props for now.
+  // ── Validated mutation pipeline — the single instance shared by the popover's
+  // edit/delete flows (create/reassign are mounted here too, ahead of Stage C's
+  // quick-add wiring, so this hook call site never needs to migrate again).
+  // Toasts on success/failure come from the underlying useShifts mutation hooks
+  // (useCreateShift/useUpdateShift/useDeleteShift) — this component doesn't call
+  // useToast directly.
   const {
+    validateAndCreate,
+    forceCreate,
     validateAndUpdateTime,
     forceUpdateTime,
+    validateAndReassign,
+    forceReassign,
     deleteShift,
     validationResult,
     clearValidation,
@@ -175,7 +196,29 @@ export function ShiftTimelineTab({
   const plotMinWidth = spanHours * MIN_PX_PER_HOUR;
 
   // ── Callbacks ──────────────────────────────────────────────────────────────
-  const handlePopoverClose = useCallback(() => setActiveShift(null), []);
+  const handlePopoverClose = useCallback(() => setActiveOverlay(null), []);
+
+  /**
+   * Anchor-rect capture for edit mode: `TimelineBar`/`TimelineLane`'s `onSelect`
+   * contract is `(shift) => void` (pinned by existing tests — see
+   * tests/unit/timelineBarLabel.test.tsx / timelineComponents.test.tsx), so the
+   * rect can't be threaded through that prop without a breaking signature change.
+   * Instead, a click-capture listener on the lanes wrapper (below) runs in the
+   * capture phase — BEFORE `TimelineBar`'s own onClick calls onSelect — and
+   * stashes the clicked bar's rect in a ref that `handleSelectShift` reads
+   * synchronously afterward. `closest('button')` finds the bar element (each bar
+   * renders as a `<button>`); a click that reaches onSelect without a bar
+   * ancestor shouldn't happen (only TimelineBar calls onSelect), but if it did,
+   * the popover still opens, anchored on the legacy zero-size fallback trigger.
+   */
+  const pendingAnchorRectRef = useRef<DOMRect | null>(null);
+  const handleLanesClickCapture = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const barEl = (event.target as HTMLElement).closest('button');
+    pendingAnchorRectRef.current = barEl ? barEl.getBoundingClientRect() : null;
+  }, []);
+  const handleSelectShift = useCallback((shift: Shift) => {
+    setActiveOverlay({ mode: 'edit', shift, anchorRect: pendingAnchorRectRef.current });
+  }, []);
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
@@ -335,7 +378,7 @@ export function ShiftTimelineTab({
 
           {/* Lanes + NowIndicator overlay, or empty-day message */}
           {noShiftsMessage ?? (
-            <div className="relative">
+            <div className="relative" onClickCapture={handleLanesClickCapture}>
               {/* NowIndicator sits over the lanes plot region, offset for label column */}
               <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
                 <NowIndicator
@@ -351,7 +394,7 @@ export function ShiftTimelineTab({
                   key={lane.key}
                   lane={lane}
                   minToPct={minToPct}
-                  onSelect={setActiveShift}
+                  onSelect={handleSelectShift}
                 />
               ))}
             </div>
@@ -359,9 +402,13 @@ export function ShiftTimelineTab({
         </div>
       </div>
 
-      {/* Single popover instance per CLAUDE.md pattern */}
+      {/* Single popover instance per CLAUDE.md pattern — driven entirely by the
+          activeOverlay union so edit/create/null are mutually exclusive. Only
+          the 'edit' variant has a producer today; 'create' (paint/gap-click)
+          lands in Stage C. */}
       <TimelineShiftPopover
-        activeShift={activeShift}
+        activeShift={activeOverlay?.mode === 'edit' ? activeOverlay.shift : null}
+        anchorRect={activeOverlay?.anchorRect ?? null}
         tz={tz}
         dateStr={selectedDay}
         employees={employees}

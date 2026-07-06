@@ -69,7 +69,6 @@ interface BluetoothCharacteristicProperties {
 }
 
 interface ImportMetaEnv {
-  readonly VITE_ENABLE_SPEED_INSIGHTS?: string;
   readonly VITE_FARO_ENABLE_LOCAL?: string;
   readonly VITE_FARO_DISABLED?: string;
 }

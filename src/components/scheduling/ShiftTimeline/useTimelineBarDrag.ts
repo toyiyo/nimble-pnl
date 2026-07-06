@@ -136,6 +136,17 @@ export function useTimelineBarDrag({
     const target = event.currentTarget as { releasePointerCapture?: (id: number) => void } | null;
     target?.releasePointerCapture?.(gesture.pointerId);
 
+    // gesture.latestRange is only updated inside the rAF callback
+    // (scheduleFrame) — if pointerup arrives before that frame has run (a
+    // fast drag, or any pointerup dispatched with no intervening animation
+    // frame), latestRange would still be the untouched original range even
+    // though the pointer clearly moved past the drag threshold. Recompute
+    // synchronously from the last known pointer position — BEFORE clearing
+    // gestureRef, since computeRange reads gestureRef.current.grabPointerMin
+    // as its move-delta baseline — so the commit always reflects where the
+    // pointer actually ended up.
+    const finalRange = computeRange(gesture.mode, gesture.lastClientX) ?? gesture.latestRange;
+
     gestureRef.current = null;
     setDragState(null);
     onDraftChangeRef.current(null);
@@ -145,8 +156,8 @@ export function useTimelineBarDrag({
     // calling onSelect ourselves, which would double-fire it.
     if (gesture.movedPx < DRAG_THRESHOLD_PX) return;
 
-    onCommitRef.current(gesture.latestRange);
-  }, []);
+    onCommitRef.current(finalRange);
+  }, [computeRange]);
 
   const makePointerDownHandler = useCallback(
     (mode: DragMode) => (event: React.PointerEvent<HTMLElement>) => {

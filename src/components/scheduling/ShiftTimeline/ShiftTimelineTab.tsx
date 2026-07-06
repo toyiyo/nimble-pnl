@@ -372,8 +372,9 @@ export function ShiftTimelineTab({
         return;
       }
 
-      // Validation failed outright (e.g. a thrown lock/interval error) with no
-      // pending issues to confirm — snap back rather than leave a dangling draft.
+      // Validation failed outright (e.g. a locked shift returns `updated:
+      // false`, or an interval-construction error) with no pending issues to
+      // confirm — snap back rather than leave a dangling draft.
       setDragDraft(null);
     },
     [dayShifts, selectedDay, tz, validateAndUpdateTime],

@@ -311,6 +311,85 @@ describe('TimelineBar drag — move (body drag)', () => {
   });
 });
 
+describe('TimelineBar drag — commit without an intervening rAF flush', () => {
+  it('commits the MOVED range (not the original) when pointerup fires before any rAF tick runs', () => {
+    // Regression test: gesture.latestRange is only populated inside the rAF
+    // callback (scheduleFrame). If pointerup arrives before that frame has
+    // run — a fast drag, or a test that never flushes rAF — endGesture must
+    // still compute the final range synchronously from the last known
+    // pointer position rather than silently re-committing the untouched
+    // original range.
+    rafSpy.mockRestore();
+    // No-op rAF: schedules nothing synchronously, simulating a pointerup
+    // that beats the browser's next animation frame.
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation(() => 1);
+
+    const bar = makeBar({ leftMin: 600, endMin: 960 }); // 6h shift
+    const { button, onDragCommit } = renderBar({ bar });
+
+    fireEvent.pointerDown(button, { pointerId: 1, clientX: 700, pointerType: 'mouse' });
+    // 60px move — comfortably past the 5px drag threshold — but rAF never fires.
+    fireEvent.pointerMove(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+    fireEvent.pointerUp(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+
+    expect(onDragCommit).toHaveBeenCalledTimes(1);
+    const [, range] = onDragCommit.mock.calls[0] as [string, { startMin: number; endMin: number }];
+    // The original range was 600-960; a committed no-op would replay that
+    // exactly. The moved range must differ (60min move, snapped to STEP_MIN).
+    expect(range).not.toEqual({ startMin: 600, endMin: 960 });
+    expect(range.endMin - range.startMin).toBe(360); // duration preserved
+    expect(range.startMin).toBeGreaterThan(600);
+  });
+});
+
+describe('TimelineBar drag — overnight readout formatting', () => {
+  it('renders a wrapped 12-hour start time in the readout when startMin extends past 1440 (overnight)', () => {
+    // A shift dragged into the overnight window extension can have startMin
+    // > 1440 (e.g. 1530 = 25:30 raw minutes-since-midnight). The floating
+    // readout must show the wrapped wall-clock time ("1:30a"), not a raw
+    // 25:30-style value — `minutesToCompact` normalizes via `% 1440`
+    // internally, but the call site should apply it explicitly too (matching
+    // the endMin convention) so the readout is correct regardless of that
+    // internal detail.
+    const overnightWindow = { startMin: 1200, endMin: 1800 }; // 20:00-06:00 next day
+    const overnightMinToPct = (min: number) =>
+      ((min - overnightWindow.startMin) / (overnightWindow.endMin - overnightWindow.startMin)) * 100;
+    const overnightPlotRect = {
+      left: overnightWindow.startMin,
+      width: overnightWindow.endMin - overnightWindow.startMin,
+      top: 0,
+      height: 28,
+      right: overnightWindow.endMin,
+      bottom: 28,
+      x: overnightWindow.startMin,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
+
+    const bar = makeBar({ leftMin: 1470, endMin: 1590 }); // 24:30-26:30 (00:30-02:30 wrapped)
+    const utils = render(
+      <TimelineBar
+        bar={bar}
+        minToPct={overnightMinToPct}
+        onSelect={vi.fn()}
+        window={overnightWindow}
+        getPlotRect={() => overnightPlotRect}
+        onDraftChange={vi.fn()}
+        onDragCommit={vi.fn()}
+      />,
+    );
+    const button = utils.getByRole('button');
+
+    fireEvent.pointerDown(button, { pointerId: 1, clientX: 1470, pointerType: 'mouse' });
+    // 60min move -> startMin 1530 (25:30 raw), endMin 1650 (27:30 raw).
+    fireEvent.pointerMove(button, { pointerId: 1, clientX: 1530, pointerType: 'mouse' });
+
+    const readout = utils.getByTestId('drag-time-readout');
+    expect(readout.textContent).not.toMatch(/25:30|24:/);
+    expect(readout.textContent).toContain('1:30a');
+  });
+});
+
 describe('TimelineBar drag — resize handles', () => {
   it('dragging the start handle resizes only startMin, leaving endMin untouched', () => {
     const bar = makeBar({ leftMin: 600, endMin: 960 });

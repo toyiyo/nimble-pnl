@@ -278,20 +278,27 @@ describe('useValidatedShiftMutations — validateAndUpdateTime', () => {
     expect(outcome.updated).toBe(true);
   });
 
-  it('rejects with a LockedShiftError for a locked shift and does not mutate', async () => {
+  it('returns {updated:false} with a lock validationResult for a locked shift and does not mutate', async () => {
     const { result } = renderPipeline([]);
     const lockedShift = makeShift({ id: 'shift-locked', locked: true });
 
-    await expect(
-      result.current.validateAndUpdateTime({
-        shift: lockedShift,
-        startIso: '2026-02-01T15:00:00.000Z',
-        endIso: '2026-02-01T23:00:00.000Z',
-        businessDate: '2026-02-01',
-      }),
-    ).rejects.toBeInstanceOf(LockedShiftError);
+    const outcome = await result.current.validateAndUpdateTime({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+    });
 
+    expect(outcome).toEqual({ updated: false });
     expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.validationResult).toEqual(
+        expect.objectContaining({
+          valid: false,
+          errors: [expect.objectContaining({ message: expect.stringMatching(/locked/i) })],
+        }),
+      ),
+    );
   });
 
   it('TZ regression: builds the interval via ShiftInterval.fromTimestamps (restaurant-local wall clock preserved), not host-TZ split+create', async () => {
@@ -345,19 +352,27 @@ describe('useValidatedShiftMutations — forceUpdateTime', () => {
     expect(mockUpdateMutateAsync).toHaveBeenCalledTimes(1);
   });
 
-  it('rejects with LockedShiftError for a locked shift', async () => {
+  it('returns false with a lock validationResult for a locked shift', async () => {
     const { result } = renderPipeline([]);
     const lockedShift = makeShift({ id: 'shift-locked', locked: true });
 
-    await expect(
-      result.current.forceUpdateTime({
-        shift: lockedShift,
-        startIso: '2026-02-01T15:00:00.000Z',
-        endIso: '2026-02-01T23:00:00.000Z',
-        businessDate: '2026-02-01',
-      }),
-    ).rejects.toBeInstanceOf(LockedShiftError);
+    const updated = await result.current.forceUpdateTime({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+    });
+
+    expect(updated).toBe(false);
     expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.validationResult).toEqual(
+        expect.objectContaining({
+          valid: false,
+          errors: [expect.objectContaining({ message: expect.stringMatching(/locked/i) })],
+        }),
+      ),
+    );
   });
 });
 

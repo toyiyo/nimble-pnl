@@ -226,6 +226,24 @@ describe('TimelineLane paint layer — mouse drag', () => {
   });
 });
 
+// ─── pointercancel aborts ────────────────────────────────────────────────────
+
+describe('TimelineLane paint layer — pointercancel abort', () => {
+  it('a pointercancel mid-drag clears the ghost and does NOT commit', () => {
+    const onPaintCommit = vi.fn();
+    const { plot, container } = renderLane({ onPaintCommit });
+
+    fireEvent.pointerDown(plot, { clientX: 100, pointerId: 1, pointerType: 'mouse' });
+    fireEvent.pointerMove(plot, { clientX: 300, pointerId: 1, pointerType: 'mouse' });
+    expect(container.querySelector('[data-testid="paint-ghost"]')).toBeInTheDocument();
+
+    fireEvent.pointerCancel(plot, { clientX: 300, pointerId: 1, pointerType: 'mouse' });
+
+    expect(container.querySelector('[data-testid="paint-ghost"]')).not.toBeInTheDocument();
+    expect(onPaintCommit).not.toHaveBeenCalled();
+  });
+});
+
 // ─── Escape cancels ──────────────────────────────────────────────────────────
 
 describe('TimelineLane paint layer — Escape cancel', () => {

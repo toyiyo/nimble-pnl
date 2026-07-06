@@ -176,6 +176,16 @@ function TimelineLaneImpl({
     onPaintCommit(range, laneContext);
   }, [clearLongPressTimer, onPaintCommit, laneContext]);
 
+  const handlePointerCancel = useCallback(() => {
+    // A browser-initiated pointercancel (e.g. an OS gesture takes over the
+    // pointer) must DISCARD the in-progress paint, not commit it — unlike
+    // pointerup, which is a deliberate release. Clear the long-press timer
+    // and the draft directly, without calling endPaint/onPaintCommit.
+    clearLongPressTimer();
+    pointerStartRef.current = null;
+    if (draftRef.current) setDraft(null);
+  }, [clearLongPressTimer]);
+
   const handlePointerLeave = useCallback(() => {
     // A pointer leaving the plot mid-drag (without pointerup) shouldn't
     // silently commit — treat it like Escape: cancel the in-progress paint.
@@ -225,7 +235,7 @@ function TimelineLaneImpl({
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
         onPointerLeave={handlePointerLeave}
         onKeyDown={handleKeyDown}
       >

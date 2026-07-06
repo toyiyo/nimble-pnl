@@ -52,11 +52,19 @@ export function moveShiftDraft(
   let startMin = original.startMin + snappedDelta;
   let endMin = startMin + duration;
 
-  if (startMin < window.startMin) {
+  // Oversized-duration case first: when the shift's own duration is >= the
+  // window's span (e.g. a near-24h shift dragged into a shorter visible
+  // window), the two sequential clamps below would fight each other — each
+  // re-derives the other edge from the fixed `duration`, which no longer
+  // fits — and can leave startMin < window.startMin. Snap the whole range to
+  // the window's bounds instead of clamping edge-by-edge.
+  if (duration >= window.endMin - window.startMin) {
+    startMin = window.startMin;
+    endMin = window.endMin;
+  } else if (startMin < window.startMin) {
     startMin = window.startMin;
     endMin = startMin + duration;
-  }
-  if (endMin > window.endMin) {
+  } else if (endMin > window.endMin) {
     endMin = window.endMin;
     startMin = endMin - duration;
   }

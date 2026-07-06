@@ -155,7 +155,7 @@ function TimelineBarImpl({
             'pointer-events-none z-10',
           )}
         >
-          {minutesToCompact(dragState.startMin)} – {minutesToCompact(dragState.endMin % 1440)}
+          {minutesToCompact(dragState.startMin % 1440)} – {minutesToCompact(dragState.endMin % 1440)}
         </div>
       )}
     </div>

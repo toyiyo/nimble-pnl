@@ -297,9 +297,9 @@ export function useValidatedShiftMutations(
     async (input: UpdateTimeInput): Promise<UpdateTimeOutcome> => {
       if (!restaurantId) return { updated: false };
 
-      assertNotLockedClient(input.shift);
-
       try {
+        assertNotLockedClient(input.shift);
+
         const interval = ShiftInterval.fromTimestamps(
           input.startIso,
           input.endIso,
@@ -342,9 +342,9 @@ export function useValidatedShiftMutations(
     async (input: UpdateTimeInput): Promise<boolean> => {
       if (!restaurantId) return false;
 
-      assertNotLockedClient(input.shift);
-
       try {
+        assertNotLockedClient(input.shift);
+
         const interval = ShiftInterval.fromTimestamps(
           input.startIso,
           input.endIso,

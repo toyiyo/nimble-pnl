@@ -75,6 +75,25 @@ describe('moveShiftDraft', () => {
     expect(result.endMin - result.startMin).toBe(120);
   });
 
+  it('keeps the result within [window.startMin, window.endMin] when duration exceeds the window span (sequential clamps must not fight)', () => {
+    // Regression test: original span is 800 min, wider than the 780-min
+    // visible window. Sequentially clamping startMin-then-endMin (or vice
+    // versa) can push startMin below window.startMin because each clamp
+    // re-derives the other edge from the fixed `duration`, which no longer
+    // fits inside the window. The oversized-duration case must be handled
+    // first by snapping the whole range to the window's bounds.
+    const original = { startMin: 600, endMin: 1400 }; // 800 min duration > 780 min window span
+    const result = moveShiftDraft(
+      original,
+      { grabPointerMin: 600, currentPointerMin: 600 },
+      WINDOW,
+    );
+    expect(result.startMin).toBeGreaterThanOrEqual(WINDOW.startMin);
+    expect(result.endMin).toBeLessThanOrEqual(WINDOW.endMin);
+    expect(result.startMin).toBe(WINDOW.startMin);
+    expect(result.endMin).toBe(WINDOW.endMin);
+  });
+
   it('allows an overnight bar (endMin > 1440) to be dragged within an overnight window', () => {
     const overnightWindow: TimelineWindow = { startMin: 1200, endMin: 1800 }; // 20:00-06:00 next day
     const result = moveShiftDraft(

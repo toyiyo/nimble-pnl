@@ -5,11 +5,13 @@ import {
   updatePaint,
   endPaint,
   buildDraftShiftValues,
+  mergeDraftShift,
   MIN_PAINT_DURATION_MIN,
   DEFAULT_CLICK_DURATION_MIN,
   CLICK_DRAG_THRESHOLD_PX,
 } from '@/lib/timelineDraft';
 import type { TimelineWindow } from '@/lib/timelineModel';
+import type { Shift } from '@/types/scheduling';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -223,5 +225,105 @@ describe('buildDraftShiftValues', () => {
       { defaultEmployeeId: 'emp-1' },
     );
     expect(values.employeeId).toBe('emp-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeDraftShift — Stage D2 live-coverage draft merge
+// ---------------------------------------------------------------------------
+
+const DATE_STR = '2026-07-11';
+const TZ = 'America/Chicago';
+
+function makeShift(overrides: Partial<Shift> = {}): Shift {
+  return {
+    id: 's1',
+    restaurant_id: 'r1',
+    employee_id: 'e1',
+    start_time: '2026-07-11T15:00:00Z', // 10:00 CDT
+    end_time: '2026-07-11T21:00:00Z', // 16:00 CDT
+    break_duration: 0,
+    position: 'Server',
+    status: 'scheduled',
+    is_published: false,
+    locked: false,
+    source: 'manual',
+    notes: '',
+    created_at: '2026-07-01T00:00:00Z',
+    updated_at: '2026-07-01T00:00:00Z',
+    ...overrides,
+  };
+}
+
+describe('mergeDraftShift', () => {
+  it('returns dayShifts unchanged when draft is null', () => {
+    const shifts = [makeShift()];
+    expect(mergeDraftShift(shifts, null, DATE_STR, TZ)).toBe(shifts);
+  });
+
+  it('replaces the dragged shift by id with drafted start/end minutes', () => {
+    const shifts = [makeShift({ id: 's1' })];
+    const merged = mergeDraftShift(
+      shifts,
+      { shiftId: 's1', startMin: 660, endMin: 900 }, // 11:00-15:00 local
+      DATE_STR,
+      TZ,
+    );
+    expect(merged).not.toBe(shifts);
+    expect(merged[0].id).toBe('s1');
+    // 11:00 CDT -> 16:00Z, 15:00 CDT -> 20:00Z
+    expect(merged[0].start_time).toBe('2026-07-11T16:00:00.000Z');
+    expect(merged[0].end_time).toBe('2026-07-11T20:00:00.000Z');
+  });
+
+  it('leaves all other shifts untouched (same object reference)', () => {
+    const other = makeShift({ id: 'other', employee_id: 'e2' });
+    const target = makeShift({ id: 's1' });
+    const shifts = [other, target];
+    const merged = mergeDraftShift(
+      shifts,
+      { shiftId: 's1', startMin: 660, endMin: 900 },
+      DATE_STR,
+      TZ,
+    );
+    expect(merged[0]).toBe(other);
+    expect(merged[1]).not.toBe(target);
+  });
+
+  it('preserves all non-time fields on the drafted shift', () => {
+    const shifts = [makeShift({ id: 's1', position: 'Bartender', notes: 'VIP table' })];
+    const merged = mergeDraftShift(
+      shifts,
+      { shiftId: 's1', startMin: 660, endMin: 900 },
+      DATE_STR,
+      TZ,
+    );
+    expect(merged[0].position).toBe('Bartender');
+    expect(merged[0].notes).toBe('VIP table');
+    expect(merged[0].employee_id).toBe('e1');
+  });
+
+  it('returns dayShifts unchanged when the draft shift id is not found (stale draft)', () => {
+    const shifts = [makeShift({ id: 's1' })];
+    const merged = mergeDraftShift(
+      shifts,
+      { shiftId: 'does-not-exist', startMin: 660, endMin: 900 },
+      DATE_STR,
+      TZ,
+    );
+    expect(merged).toBe(shifts);
+  });
+
+  it('handles an overnight draft (endMin > 1440) by rolling to the next calendar day', () => {
+    const shifts = [makeShift({ id: 's1' })];
+    const merged = mergeDraftShift(
+      shifts,
+      { shiftId: 's1', startMin: 1380, endMin: 1500 }, // 23:00-01:00(+1) local
+      DATE_STR,
+      TZ,
+    );
+    // 23:00 CDT -> 2026-07-12T04:00:00Z; 01:00(+1) CDT -> 2026-07-12T06:00:00Z
+    expect(merged[0].start_time).toBe('2026-07-12T04:00:00.000Z');
+    expect(merged[0].end_time).toBe('2026-07-12T06:00:00.000Z');
   });
 });

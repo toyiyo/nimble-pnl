@@ -1,10 +1,11 @@
-import { useRef, useState, useCallback, useMemo } from 'react';
+import { useRef, useState, useCallback, useMemo, memo } from 'react';
 
 import type { TimelineLane as TimelineLaneModel } from './useTimelineModel';
 import type { TimelineWindow } from '@/lib/timelineModel';
 import type { Shift } from '@/types/scheduling';
 import type { PaintDraft, PaintRange } from '@/lib/timelineDraft';
 import { pointerToMinutes, beginPaint, updatePaint, endPaint, DEFAULT_CLICK_DURATION_MIN } from '@/lib/timelineDraft';
+import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
 import { TimelineBar } from './TimelineBar';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +30,10 @@ interface TimelineLaneProps {
    * The parent opens the quick-add popover with this range + lane context.
    */
   readonly onPaintCommit: (range: PaintRange, laneContext: LanePaintContext) => void;
+  /** Forwarded to each `TimelineBar` — rAF-throttled live drag-draft updates (Stage D2). */
+  readonly onBarDraftChange: (shiftId: string, range: ShiftMinuteRange | null) => void;
+  /** Forwarded to each `TimelineBar` — fires on drag/resize release (Stage D3). */
+  readonly onBarDragCommit: (shiftId: string, range: ShiftMinuteRange) => void;
 }
 
 /** Height in pixels for each stacked bar row within a lane. */
@@ -57,7 +62,15 @@ const LONG_PRESS_MOVE_CANCEL_PX = 10;
  * paint. A visually-hidden "Add shift to <lane>" button gives keyboard users
  * the same entry point without any pointer gesture.
  */
-export function TimelineLane({ lane, minToPct, window, onSelect, onPaintCommit }: TimelineLaneProps) {
+function TimelineLaneImpl({
+  lane,
+  minToPct,
+  window,
+  onSelect,
+  onPaintCommit,
+  onBarDraftChange,
+  onBarDragCommit,
+}: TimelineLaneProps) {
   const { label, hours, bars } = lane;
   const maxRow = bars.reduce((max, b) => Math.max(max, b.row), 0);
   const plotHeight = (maxRow + 1) * ROW_HEIGHT_PX;
@@ -68,6 +81,9 @@ export function TimelineLane({ lane, minToPct, window, onSelect, onPaintCommit }
   const displayLabel = label || 'Unassigned';
 
   const plotRef = useRef<HTMLDivElement>(null);
+  // Stable callback (never recreated) so it's a safe prop for TimelineBar's
+  // memo comparator — reads the ref fresh on every call, never a stale rect.
+  const getPlotRect = useCallback(() => plotRef.current?.getBoundingClientRect() ?? null, []);
   const [draft, setDraft] = useState<PaintDraft | null>(null);
   // Refs so pointer handlers registered at pointerdown always read the latest
   // window/draft rather than a stale closure (lesson 2026-06-04).
@@ -215,6 +231,10 @@ export function TimelineLane({ lane, minToPct, window, onSelect, onPaintCommit }
               bar={bar}
               minToPct={minToPct}
               onSelect={onSelect}
+              window={window}
+              getPlotRect={getPlotRect}
+              onDraftChange={onBarDraftChange}
+              onDragCommit={onBarDragCommit}
             />
           </div>
         ))}
@@ -239,3 +259,26 @@ export function TimelineLane({ lane, minToPct, window, onSelect, onPaintCommit }
     </div>
   );
 }
+
+function areLaneEqual(prev: TimelineLaneProps, next: TimelineLaneProps): boolean {
+  return (
+    prev.lane === next.lane &&
+    prev.minToPct === next.minToPct &&
+    prev.window.startMin === next.window.startMin &&
+    prev.window.endMin === next.window.endMin &&
+    prev.onSelect === next.onSelect &&
+    prev.onPaintCommit === next.onPaintCommit &&
+    prev.onBarDraftChange === next.onBarDraftChange &&
+    prev.onBarDragCommit === next.onBarDragCommit
+  );
+}
+
+/**
+ * Memoized (Stage D1b): `lane` is a fresh object per `useTimelineModel` recompute,
+ * so this comparator relies on reference equality of `lane` itself (stable
+ * unless that lane's bars/hours actually changed) plus the primitive window
+ * bounds and stable callback identities — a drag frame's rAF-throttled model
+ * recompute only produces a new `lane` object for the lane containing the
+ * dragged bar, so sibling lanes skip re-rendering.
+ */
+export const TimelineLane = memo(TimelineLaneImpl, areLaneEqual);

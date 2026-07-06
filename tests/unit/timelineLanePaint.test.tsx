@@ -103,6 +103,10 @@ function renderLane(overrides: {
 } = {}) {
   const onSelect = overrides.onSelect ?? vi.fn();
   const onPaintCommit = overrides.onPaintCommit ?? vi.fn();
+  // The drag-move/edge-resize pointer layer (Stage D) on TimelineBar is
+  // covered exhaustively in tests/unit/timelineBarDrag.test.tsx — these tests
+  // only exercise TimelineLane's own paint-to-create layer, so the bar-drag
+  // callbacks are supplied as inert no-ops.
   const utils = render(
     <TimelineLane
       lane={overrides.lane ?? makeLane()}
@@ -110,6 +114,8 @@ function renderLane(overrides: {
       window={WINDOW}
       onSelect={onSelect}
       onPaintCommit={onPaintCommit}
+      onBarDraftChange={vi.fn()}
+      onBarDragCommit={vi.fn()}
     />,
   );
   const plot = stubPlotRect(utils.container);

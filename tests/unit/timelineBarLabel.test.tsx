@@ -4,7 +4,25 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TimelineBar } from '@/components/scheduling/ShiftTimeline/TimelineBar';
 import type { TimelineBar as TimelineBarModel } from '@/components/scheduling/ShiftTimeline/useTimelineModel';
+import type { TimelineWindow } from '@/lib/timelineModel';
 import type { Shift } from '@/types/scheduling';
+
+const WINDOW: TimelineWindow = { startMin: 600, endMin: 960 };
+
+// TimelineBar's pointer drag-move/edge-resize gesture (Stage D) is covered
+// exhaustively in tests/unit/timelineBarDrag.test.tsx. These tests only need
+// the bar's pre-existing label/color/select rendering, so the drag-related
+// props are supplied as inert defaults (a null plot rect means every drag
+// computation bails out early, leaving click-to-select as the only reachable
+// interaction here).
+function dragExtraProps() {
+  return {
+    window: WINDOW,
+    getPlotRect: () => null,
+    onDraftChange: vi.fn(),
+    onDragCommit: vi.fn(),
+  };
+}
 
 function makeShift(overrides: Partial<Shift> = {}): Shift {
   return {
@@ -52,6 +70,7 @@ describe('TimelineBar', () => {
         bar={makeBar()}
         minToPct={minToPct}
         onSelect={onSelect}
+        {...dragExtraProps()}
       />,
     );
     const btn = screen.getByRole('button', { name: /Carolina Sanchez, Server/i });
@@ -68,6 +87,7 @@ describe('TimelineBar', () => {
         bar={bar}
         minToPct={minToPct}
         onSelect={onSelect}
+        {...dragExtraProps()}
       />,
     );
     await user.click(screen.getByRole('button'));
@@ -81,6 +101,7 @@ describe('TimelineBar', () => {
         bar={makeBar({ label: 'Jane Doe' })}
         minToPct={minToPct}
         onSelect={vi.fn()}
+        {...dragExtraProps()}
       />,
     );
     expect(screen.getByText('Jane Doe')).toBeInTheDocument();
@@ -92,6 +113,7 @@ describe('TimelineBar', () => {
         bar={makeBar()}
         minToPct={minToPct}
         onSelect={vi.fn()}
+        {...dragExtraProps()}
       />,
     );
     const btn = screen.getByRole('button');

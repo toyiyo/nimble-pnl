@@ -199,11 +199,17 @@ function makeLane(overrides: Partial<TimelineLaneModel> = {}): TimelineLaneModel
 
 // TimelineLane's paint-to-create pointer layer (drag/click/long-press/Escape)
 // and its "Add shift to <lane>" keyboard entry point are covered exhaustively
-// in tests/unit/timelineLanePaint.test.tsx. These tests only need the lane's
-// pre-existing label/count/select rendering, so `window`/`onPaintCommit` are
-// supplied as inert defaults.
+// in tests/unit/timelineLanePaint.test.tsx. The drag-move/edge-resize pointer
+// layer (Stage D) is covered in tests/unit/timelineBarDrag.test.tsx. These
+// tests only need the lane's pre-existing label/count/select rendering, so
+// all of these are supplied as inert defaults.
 function laneExtraProps() {
-  return { window: WINDOW, onPaintCommit: vi.fn() };
+  return {
+    window: WINDOW,
+    onPaintCommit: vi.fn(),
+    onBarDraftChange: vi.fn(),
+    onBarDragCommit: vi.fn(),
+  };
 }
 
 describe('TimelineLane', () => {

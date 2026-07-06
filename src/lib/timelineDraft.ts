@@ -7,8 +7,9 @@
  * wiring and simply feed `clientX`/rects/window through these helpers.
  */
 import { STEP_MIN, type TimelineWindow } from '@/lib/timelineModel';
-import { snapToStep } from '@/lib/shiftTimeMath';
+import { snapToStep, minutesToIso } from '@/lib/shiftTimeMath';
 import type { TimelineShiftEditorValues } from '@/components/scheduling/ShiftTimeline/TimelineShiftEditor';
+import type { Shift } from '@/types/scheduling';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -194,4 +195,51 @@ export function buildDraftShiftValues(
     notes: '',
     position: options.laneContext?.position ?? '',
   };
+}
+
+// ─── Drag-draft merge (Stage D2 — live coverage feedback) ──────────────────────
+
+/** An in-flight drag-move/resize draft for a single existing shift. */
+export interface DragShiftDraft {
+  /** The id of the shift being dragged — used to find and replace it in `dayShifts`. */
+  shiftId: string;
+  /** Drafted restaurant-local minutes-since-midnight (may exceed 1440 for overnight bars). */
+  startMin: number;
+  endMin: number;
+}
+
+/**
+ * Merge an in-flight drag draft into the day's shifts, replacing the dragged
+ * shift's `start_time`/`end_time` with the drafted (moved/resized) minutes —
+ * converted back to UTC ISO via `minutesToIso` so the merged array is a valid
+ * `Shift[]` that `buildTimelineModel` can consume unchanged. All other shifts
+ * pass through untouched (same object references, so `React.memo` comparators
+ * keyed on shift identity/geometry skip re-rendering unaffected rows).
+ *
+ * Pure — does not mutate `dayShifts` or any shift within it. If `draft` is
+ * null, or its `shiftId` isn't present in `dayShifts` (e.g. a stale draft
+ * surviving a day switch), the original array is returned unchanged so a
+ * dangling draft can never inject a phantom shift into the model.
+ */
+export function mergeDraftShift(
+  dayShifts: Shift[],
+  draft: DragShiftDraft | null,
+  dateStr: string,
+  tz: string,
+): Shift[] {
+  if (!draft) return dayShifts;
+
+  const index = dayShifts.findIndex((s) => s.id === draft.shiftId);
+  if (index === -1) return dayShifts;
+
+  const original = dayShifts[index];
+  const draftedShift: Shift = {
+    ...original,
+    start_time: minutesToIso(dateStr, draft.startMin, tz),
+    end_time: minutesToIso(dateStr, draft.endMin, tz),
+  };
+
+  const merged = dayShifts.slice();
+  merged[index] = draftedShift;
+  return merged;
 }

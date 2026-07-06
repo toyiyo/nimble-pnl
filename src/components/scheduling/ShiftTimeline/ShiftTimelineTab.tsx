@@ -19,11 +19,14 @@ import { TimelineAxis } from './TimelineAxis';
 import { TimelineLane, type LanePaintContext } from './TimelineLane';
 import { NowIndicator } from './NowIndicator';
 import { TimelineShiftPopover, type TimelineCreateDraft } from './TimelineShiftPopover';
+import { AvailabilityConflictDialog, type ConflictDialogData } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 import { formatDayLabel } from '@/lib/shiftInterval';
+import { minutesToIso } from '@/lib/shiftTimeMath';
 
 import type { Shift, Employee } from '@/types/scheduling';
 import type { GroupByMode } from '@/lib/scheduleGrouping';
-import { buildDraftShiftValues, type PaintRange } from '@/lib/timelineDraft';
+import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
+import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -139,6 +142,25 @@ export function ShiftTimelineTab({
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null);
   const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
 
+  // ── Drag-move / edge-resize draft (Stage D2/D3) ───────────────────────────
+  // The in-flight drafted range for a bar currently being dragged/resized, or
+  // null when no drag is in progress. Merged into the model input below so
+  // the coverage chart/verdict/status strip update live during the drag
+  // (design doc §4 "Draft state"). Never written to React Query/localStorage —
+  // plain React state, cleared on commit/cancel.
+  const [dragDraft, setDragDraft] = useState<DragShiftDraft | null>(null);
+  // Pending conflict/warning issues surfaced by a drag-commit release, shown
+  // via the same AvailabilityConflictDialog the edit popover stacks (design
+  // doc §4 "Commit path"). Cancel snaps back (clears the draft without
+  // committing); confirm calls forceUpdateTime.
+  const [dragConflict, setDragConflict] = useState<{
+    shift: Shift;
+    startIso: string;
+    endIso: string;
+    conflicts: ConflictDialogData['conflicts'];
+    warnings: ConflictDialogData['warnings'];
+  } | null>(null);
+
   // ── Staffing recommendations ───────────────────────────────────────────────
   const { daySuggestions, activeSettings } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
 
@@ -170,8 +192,18 @@ export function ShiftTimelineTab({
     clearValidation,
   } = useValidatedShiftMutations(restaurantId, dayShifts);
 
+  // ── Live-drag merge (Stage D2) ─────────────────────────────────────────────
+  // Replaces the dragged shift's committed start/end with the drafted minutes
+  // so the model — and therefore the coverage chart/verdict/status strip —
+  // reflects the in-flight drag on every rAF-throttled frame. Falls through
+  // to `dayShifts` unchanged when no drag is in progress.
+  const modelInputShifts = useMemo(
+    () => mergeDraftShift(dayShifts, dragDraft, selectedDay, tz),
+    [dayShifts, dragDraft, selectedDay, tz],
+  );
+
   // ── Timeline model (pure transform) ───────────────────────────────────────
-  const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
+  const model = useTimelineModel(modelInputShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
 
   // ── Hourly coverage summary + verdict (feeds the new coverage panel) ───────
   const targetSplh = activeSettings?.target_splh ?? null;
@@ -236,6 +268,90 @@ export function ShiftTimelineTab({
   const handlePaintCommit = useCallback((draft: PaintRange, laneContext: LanePaintContext) => {
     setActiveOverlay({ mode: 'create', draft, laneContext, anchorRect: null });
   }, []);
+
+  /**
+   * Live drag-draft update (Stage D2): `TimelineBar` calls this on every
+   * rAF-throttled pointermove frame with the in-flight range, and once more
+   * with `null` when the gesture ends/cancels. Feeds `modelInputShifts` above
+   * so coverage recomputes live during the drag.
+   */
+  const handleBarDraftChange = useCallback((shiftId: string, range: ShiftMinuteRange | null) => {
+    setDragDraft(range ? { shiftId, startMin: range.startMin, endMin: range.endMin } : null);
+  }, []);
+
+  /**
+   * Drag/resize release (Stage D3): builds ISO instants via `minutesToIso`
+   * and routes through the same `validateAndUpdateTime` pipeline the edit
+   * popover's Save uses. On success the draft is cleared (the mutation's own
+   * optimistic `setQueriesData` update means the bar never jumps waiting for
+   * a refetch). On pending conflicts/warnings, the draft is KEPT (so the bar
+   * stays at the drafted position while the dialog is open) and the shared
+   * `AvailabilityConflictDialog` opens; cancel snaps back by clearing the
+   * draft, confirm force-applies the same ISO instants.
+   */
+  const handleBarDragCommit = useCallback(
+    async (shiftId: string, range: ShiftMinuteRange) => {
+      const shift = dayShifts.find((s) => s.id === shiftId);
+      if (!shift) {
+        setDragDraft(null);
+        return;
+      }
+
+      const startIso = minutesToIso(selectedDay, range.startMin, tz);
+      const endIso = minutesToIso(selectedDay, range.endMin, tz);
+
+      const outcome = await validateAndUpdateTime({
+        shift,
+        startIso,
+        endIso,
+        businessDate: selectedDay,
+      });
+
+      if (outcome.updated) {
+        setDragDraft(null);
+        return;
+      }
+
+      if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
+        setDragConflict({
+          shift,
+          startIso,
+          endIso,
+          conflicts: outcome.pendingConflicts ?? [],
+          warnings: outcome.pendingWarnings ?? [],
+        });
+        return;
+      }
+
+      // Validation failed outright (e.g. a thrown lock/interval error) with no
+      // pending issues to confirm — snap back rather than leave a dangling draft.
+      setDragDraft(null);
+    },
+    [dayShifts, selectedDay, tz, validateAndUpdateTime],
+  );
+
+  const handleDragConflictCancel = useCallback(() => {
+    setDragConflict(null);
+    setDragDraft(null);
+  }, []);
+
+  const handleDragConflictConfirm = useCallback(async () => {
+    if (!dragConflict) return;
+    const { shift, startIso, endIso } = dragConflict;
+    const ok = await forceUpdateTime({ shift, startIso, endIso, businessDate: selectedDay });
+    if (ok) {
+      setDragConflict(null);
+      setDragDraft(null);
+    }
+  }, [dragConflict, forceUpdateTime, selectedDay]);
+
+  const dragConflictData: ConflictDialogData | null = dragConflict
+    ? {
+        employeeName: employees.find((e) => e.id === dragConflict.shift.employee_id)?.name ?? 'This employee',
+        conflicts: dragConflict.conflicts,
+        warnings: dragConflict.warnings,
+      }
+    : null;
 
   /**
    * Resolve the `create` overlay into `TimelineShiftPopover`'s `createDraft`
@@ -437,6 +553,8 @@ export function ShiftTimelineTab({
                   window={model.window}
                   onSelect={handleSelectShift}
                   onPaintCommit={handlePaintCommit}
+                  onBarDraftChange={handleBarDraftChange}
+                  onBarDragCommit={handleBarDragCommit}
                 />
               ))}
             </div>
@@ -463,6 +581,18 @@ export function ShiftTimelineTab({
         deleteShift={deleteShift}
         validationResult={validationResult}
         clearValidation={clearValidation}
+      />
+
+      {/* Drag-commit conflict dialog (Stage D3) — the same AvailabilityConflictDialog
+          the edit popover stacks, mounted separately here since a bar drag never
+          opens the popover. Mutually exclusive with the popover's own instance in
+          practice: dragging a bar doesn't set activeOverlay. */}
+      <AvailabilityConflictDialog
+        open={dragConflict !== null}
+        data={dragConflictData}
+        timezone={tz}
+        onConfirm={handleDragConflictConfirm}
+        onCancel={handleDragConflictCancel}
       />
     </div>
   );

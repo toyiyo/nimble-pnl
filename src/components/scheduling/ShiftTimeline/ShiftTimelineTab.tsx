@@ -6,7 +6,12 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { CalendarOff } from 'lucide-react';
 
 import { isoToLocalMinutes } from '@/lib/shiftCoverage';
-import { summarizeCoverageHours, buildVerdict, summarizeAreaCoverage } from '@/lib/coverageSummary';
+import {
+  summarizeCoverageHours,
+  buildVerdict,
+  summarizeAreaCoverage,
+  mergeUnderStaffedRange,
+} from '@/lib/coverageSummary';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useTimelineModel } from './useTimelineModel';
@@ -53,14 +58,21 @@ interface ShiftTimelineTabProps {
  * shift" button). Mutually exclusive by construction — never two
  * popovers/overlays mounted at once.
  *
- * `create`'s `draft` + `laneContext` are produced by `TimelineLane`'s paint layer
- * (C2) and resolved into `TimelineShiftPopover`'s `createDraft` prop (C3) via the
- * `createDraft` memo below, which maps the lane's grouping key to `position` or
- * `area` depending on `groupBy`.
+ * `create`'s `draft` + `laneContext` are produced either by `TimelineLane`'s paint
+ * layer (C2, `laneContext` always present) or by the coverage strip's gap-click
+ * (E, `laneContext` is `null` — no lane context: employee picker unfiltered,
+ * position blank) and resolved into `TimelineShiftPopover`'s `createDraft` prop
+ * via the `createDraft` memo below, which maps the lane's grouping key to
+ * `position` or `area` depending on `groupBy` when a lane context is present.
  */
 type ActiveOverlay =
   | { mode: 'edit'; shift: Shift; anchorRect: DOMRect | null }
-  | { mode: 'create'; draft: PaintRange; laneContext: LanePaintContext; anchorRect: DOMRect | null }
+  | {
+      mode: 'create';
+      draft: PaintRange;
+      laneContext: LanePaintContext | null;
+      anchorRect: DOMRect | null;
+    }
   | null;
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -270,6 +282,25 @@ export function ShiftTimelineTab({
   }, []);
 
   /**
+   * Gap-click commit (Stage E): a short (`delta < 0`) coverage-strip cell was
+   * clicked. `mergeUnderStaffedRange` expands the clicked hour into the
+   * contiguous understaffed run containing it (design doc §5 — adjacency is
+   * computed within the single day-wide hourly status strip; the merged range
+   * never crosses a covered/no-demand hour). Opens the same `create` overlay
+   * as paint-to-create, but with `laneContext: null` — no lane context, so the
+   * popover's employee picker is unfiltered and position starts blank. No
+   * anchor rect is available from the strip cell today (same limitation as
+   * paint-to-create); the popover falls back to its zero-size trigger.
+   */
+  const handleGapClick = useCallback(
+    (startMin: number) => {
+      const range = mergeUnderStaffedRange(hourlySummary, startMin);
+      setActiveOverlay({ mode: 'create', draft: range, laneContext: null, anchorRect: null });
+    },
+    [hourlySummary],
+  );
+
+  /**
    * Live drag-draft update (Stage D2): `TimelineBar` calls this on every
    * rAF-throttled pointermove frame with the in-flight range, and once more
    * with `null` when the gesture ends/cancels. Feeds `modelInputShifts` above
@@ -361,13 +392,22 @@ export function ShiftTimelineTab({
    * doc's "Paint-to-create + quick-add popover" section). `buildDraftShiftValues`
    * derives the initial editor values (+ prefilled position) from the
    * committed minute range.
+   *
+   * Gap-click (Stage E) commits with `laneContext: null` — no lane, so both
+   * `position` and `area` resolve to `null` (employee picker unfiltered,
+   * position starts blank; `TimelineShiftEditor`/`TimelineCreatePopoverContent`
+   * already treat `laneContext.position`/`.area` as optional/nullable).
    */
   const createDraft: TimelineCreateDraft | null = useMemo(() => {
     if (activeOverlay?.mode !== 'create') return null;
 
-    const laneKey = activeOverlay.laneContext.key;
+    const laneKey = activeOverlay.laneContext?.key ?? null;
     const resolvedLaneContext =
-      groupBy === 'position' ? { position: laneKey, area: null } : { position: null, area: laneKey };
+      laneKey === null
+        ? { position: null, area: null }
+        : groupBy === 'position'
+          ? { position: laneKey, area: null }
+          : { position: null, area: laneKey };
 
     return {
       values: buildDraftShiftValues(activeOverlay.draft, { laneContext: resolvedLaneContext }),
@@ -516,7 +556,7 @@ export function ShiftTimelineTab({
 
             {/* Per-hour status strip */}
             <div className="pl-[120px]">
-              <CoverageStatusStrip hours={hourlySummary} />
+              <CoverageStatusStrip hours={hourlySummary} onGapClick={handleGapClick} />
             </div>
 
             {/* Per-area scheduled strips — only when grouped by area */}

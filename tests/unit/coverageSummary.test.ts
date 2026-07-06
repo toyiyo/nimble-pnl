@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { summarizeCoverageHours, buildVerdict, summarizeAreaCoverage } from '@/lib/coverageSummary';
+import {
+  summarizeCoverageHours,
+  buildVerdict,
+  summarizeAreaCoverage,
+  mergeUnderStaffedRange,
+  type CoverageHour,
+} from '@/lib/coverageSummary';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 
 // window 10:00–13:00 (600–780), 15-min samples
@@ -174,5 +180,127 @@ describe('summarizeCoverageHours — sales context', () => {
     const hrs = summarizeCoverageHours(coverage, demand, win);
     expect(hrs[0].projectedSales).toBeNull();
     expect(hrs[0].laborPct).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// mergeUnderStaffedRange (Stage E1 — clickable coverage gaps)
+// ---------------------------------------------------------------------------
+
+/** Build a minimal CoverageHour fixture; delta/needed derived unless overridden. */
+function hourFixture(
+  startMin: number,
+  opts: { needed?: number | null; scheduled?: number } = {},
+): CoverageHour {
+  const needed = opts.needed === undefined ? 5 : opts.needed;
+  const scheduled = opts.scheduled ?? 0;
+  return {
+    hour: Math.floor(startMin / 60) % 24,
+    startMin,
+    scheduled,
+    needed,
+    delta: needed === null ? null : scheduled - needed,
+    projectedSales: null,
+    laborPct: null,
+  };
+}
+
+/** Short (under-staffed) hour: scheduled < needed. */
+function shortHour(startMin: number, deficit = 2, needed = 5): CoverageHour {
+  return hourFixture(startMin, { needed, scheduled: needed - deficit });
+}
+
+/** Covered hour: scheduled >= needed. */
+function coveredHour(startMin: number, needed = 5): CoverageHour {
+  return hourFixture(startMin, { needed, scheduled: needed });
+}
+
+/** No-demand hour: needed is null. */
+function noDemandHour(startMin: number, scheduled = 2): CoverageHour {
+  return hourFixture(startMin, { needed: null, scheduled });
+}
+
+describe('mergeUnderStaffedRange', () => {
+  it('CRITICAL: a lone short hour with covered neighbors merges to just itself', () => {
+    const hours = [coveredHour(540), shortHour(600), coveredHour(660)];
+    const result = mergeUnderStaffedRange(hours, 600);
+    expect(result).toEqual({ startMin: 600, endMin: 660 });
+  });
+
+  it('CRITICAL: a contiguous run of short hours merges fully when clicking the first hour', () => {
+    const hours = [shortHour(600), shortHour(660), shortHour(720), coveredHour(780)];
+    const result = mergeUnderStaffedRange(hours, 600);
+    expect(result).toEqual({ startMin: 600, endMin: 780 });
+  });
+
+  it('CRITICAL: a contiguous run of short hours merges fully when clicking the last hour', () => {
+    const hours = [coveredHour(540), shortHour(600), shortHour(660), shortHour(720)];
+    const result = mergeUnderStaffedRange(hours, 720);
+    expect(result).toEqual({ startMin: 600, endMin: 780 });
+  });
+
+  it('CRITICAL: clicking the middle hour of a run expands in both directions', () => {
+    const hours = [coveredHour(540), shortHour(600), shortHour(660), shortHour(720), coveredHour(780)];
+    const result = mergeUnderStaffedRange(hours, 660);
+    expect(result).toEqual({ startMin: 600, endMin: 780 });
+  });
+
+  it('CRITICAL: non-adjacent short hours — only the contiguous run containing the click merges', () => {
+    // Two separate short runs: [600] and [720,780] separated by a covered hour at 660.
+    const hours = [
+      shortHour(600),
+      coveredHour(660),
+      shortHour(720),
+      shortHour(780),
+    ];
+    const clickedFirstRun = mergeUnderStaffedRange(hours, 600);
+    expect(clickedFirstRun).toEqual({ startMin: 600, endMin: 660 });
+
+    const clickedSecondRun = mergeUnderStaffedRange(hours, 720);
+    expect(clickedSecondRun).toEqual({ startMin: 720, endMin: 840 });
+  });
+
+  it('stops at a no-demand hour — never merges across it', () => {
+    const hours = [shortHour(600), noDemandHour(660), shortHour(720)];
+    const result = mergeUnderStaffedRange(hours, 600);
+    expect(result).toEqual({ startMin: 600, endMin: 660 });
+  });
+
+  it('clicked hour at the left edge of the strip merges forward only', () => {
+    const hours = [shortHour(0), shortHour(60), coveredHour(120)];
+    const result = mergeUnderStaffedRange(hours, 0);
+    expect(result).toEqual({ startMin: 0, endMin: 120 });
+  });
+
+  it('clicked hour at the right edge of the strip merges backward only', () => {
+    const hours = [coveredHour(1260), shortHour(1320), shortHour(1380)];
+    const result = mergeUnderStaffedRange(hours, 1380);
+    expect(result).toEqual({ startMin: 1320, endMin: 1440 });
+  });
+
+  it('all-covered strip: clicking a short single hour (edge case with no other short hours) returns just that hour', () => {
+    const hours = [coveredHour(540), shortHour(600), coveredHour(660), coveredHour(720)];
+    const result = mergeUnderStaffedRange(hours, 600);
+    expect(result).toEqual({ startMin: 600, endMin: 660 });
+  });
+
+  it('never merges across a non-adjacent gap even if both sides are short (missing hour in between)', () => {
+    // hours array itself has a startMin gap (720 -> 840, skipping 780) simulating
+    // a window boundary; both 720 and 840 are short but not adjacent by 60min step.
+    const hours = [shortHour(720), shortHour(840)];
+    const result = mergeUnderStaffedRange(hours, 720);
+    expect(result).toEqual({ startMin: 720, endMin: 780 });
+  });
+
+  it('defensive fallback: clickedStartMin not present in hours returns a single 60-min window', () => {
+    const hours = [shortHour(600), shortHour(660)];
+    const result = mergeUnderStaffedRange(hours, 9999);
+    expect(result).toEqual({ startMin: 9999, endMin: 10059 });
+  });
+
+  it('defensive fallback: clicked hour exists but is not short (covered) returns just that hour', () => {
+    const hours = [shortHour(600), coveredHour(660)];
+    const result = mergeUnderStaffedRange(hours, 660);
+    expect(result).toEqual({ startMin: 660, endMin: 720 });
   });
 });

@@ -166,6 +166,70 @@ export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
   };
 }
 
+/**
+ * Expand a clicked understaffed hour into the contiguous run of understaffed
+ * (`delta < 0`) hours adjacent to it within the single day-wide hourly status
+ * strip, and return the merged `[startMin, endMin)` range covering that run.
+ *
+ * "Adjacent" means consecutive entries in `hours` whose `startMin` values are
+ * exactly 60 minutes apart — i.e. back-to-back cells in the strip, with no
+ * covered/no-demand hour in between. The walk stops as soon as it hits a
+ * non-short hour (covered or no-demand) or a gap in `startMin` continuity, so
+ * the merged range never crosses into a covered hour or jumps across a gap to
+ * reach a non-adjacent short run.
+ *
+ * If `clickedStartMin` doesn't match any hour in `hours` (shouldn't happen —
+ * only short cells are clickable), or the matching hour isn't itself short,
+ * the single matching (or nearest) hour is returned unchanged as a 60-minute
+ * range — this is a defensive fallback, not an expected call path.
+ */
+export function mergeUnderStaffedRange(
+  hours: CoverageHour[],
+  clickedStartMin: number,
+): { startMin: number; endMin: number } {
+  const clickedIndex = hours.findIndex((h) => h.startMin === clickedStartMin);
+
+  // Defensive fallback: no matching hour found — degrade to a single 60-min
+  // window at the requested minute rather than throwing.
+  if (clickedIndex === -1) {
+    return { startMin: clickedStartMin, endMin: clickedStartMin + HOUR };
+  }
+
+  const isShort = (h: CoverageHour) => h.delta !== null && h.delta < 0;
+
+  // Defensive fallback: the clicked hour isn't short — return just that hour.
+  if (!isShort(hours[clickedIndex])) {
+    return { startMin: clickedStartMin, endMin: clickedStartMin + HOUR };
+  }
+
+  // Walk backward from the clicked hour while the previous entry is short AND
+  // exactly one hour earlier (no gap).
+  let firstIndex = clickedIndex;
+  while (
+    firstIndex > 0 &&
+    isShort(hours[firstIndex - 1]) &&
+    hours[firstIndex - 1].startMin === hours[firstIndex].startMin - HOUR
+  ) {
+    firstIndex -= 1;
+  }
+
+  // Walk forward from the clicked hour while the next entry is short AND
+  // exactly one hour later (no gap).
+  let lastIndex = clickedIndex;
+  while (
+    lastIndex < hours.length - 1 &&
+    isShort(hours[lastIndex + 1]) &&
+    hours[lastIndex + 1].startMin === hours[lastIndex].startMin + HOUR
+  ) {
+    lastIndex += 1;
+  }
+
+  return {
+    startMin: hours[firstIndex].startMin,
+    endMin: hours[lastIndex].startMin + HOUR,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Per-area scheduled coverage (no per-area demand)
 // ---------------------------------------------------------------------------

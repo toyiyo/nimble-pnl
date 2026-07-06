@@ -268,4 +268,61 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       expect(screen.getByTestId('popover-create-draft').textContent).toBe('');
     });
   });
+
+  describe('gap-click -> createDraft mapping (E)', () => {
+    it('CRITICAL: clicking a short coverage-strip cell opens the create overlay with a null lane context', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      // 1 employee scheduled 10:00-16:00 America/Chicago (16:00Z-22:00Z).
+      const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+
+      // Recommend 2 staff for the 10 AM hour — only 1 is scheduled, so that
+      // hour renders as a short (delta < 0) coverage-strip cell.
+      mockUseWeekStaffingSuggestions.mockReturnValue({
+        daySuggestions: new Map([
+          [
+            '2026-01-05',
+            {
+              recommendations: [
+                {
+                  hour: 10,
+                  projectedSales: 500,
+                  recommendedStaff: 2,
+                  estimatedLaborCost: 0,
+                  laborPct: 20,
+                  overTarget: false,
+                },
+              ],
+            },
+          ],
+        ]),
+        isLoading: false,
+        error: null,
+        hasSalesData: false,
+        hasHourlyBreakdown: false,
+        activeSettings: null,
+        updateSettings: vi.fn(),
+        isSaving: false,
+        employeePositions: [],
+        actualSplh: null,
+      });
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+      const gapCell = screen.getByRole('button', { name: /short 1/i });
+      fireEvent.click(gapCell);
+
+      const draftJson = screen.getByTestId('popover-create-draft').textContent;
+      expect(draftJson).not.toBe('');
+      const draft = JSON.parse(draftJson as string);
+
+      // No lane context: both position and area resolve to null/blank.
+      expect(draft.laneContext.position ?? null).toBeNull();
+      expect(draft.laneContext.area ?? null).toBeNull();
+      expect(draft.values.position).toBe('');
+      // The merged range covers the clicked (only-short) 10 AM hour: 10:00-11:00.
+      expect(draft.values.startTime).toBe('10:00');
+      expect(draft.values.endTime).toBe('11:00');
+      expect(draft.businessDate).toBe('2026-01-05');
+    });
+  });
 });

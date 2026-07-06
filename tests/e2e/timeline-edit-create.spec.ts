@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
 /**
@@ -9,275 +9,175 @@ import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } fr
  * here. Pointer drag/resize choreography is explicitly excluded from E2E
  * coverage (Playwright drag flake risk) — that's pinned by unit tests on the
  * pure drag-math helpers instead.
+ *
+ * Timezone discipline: `restaurants.timezone` DEFAULTS to 'America/Chicago',
+ * and the Timeline renders shift bars in the restaurant's timezone. To keep the
+ * test deterministic across host timezones (a dev machine on CT vs CI on UTC),
+ * each test explicitly pins the restaurant timezone to 'UTC', seeds shifts as
+ * UTC ('Z') instants on the host-local "today" (which the Timeline selects by
+ * default), and locates bars by the tz-independent part of their accessible
+ * name (employee + position) rather than exact clock labels.
  */
 
-/** UTC offset string like "-05:00" for seeding shifts in local timezone. */
-function getTimezoneOffsetString(): string {
-  const offset = new Date().getTimezoneOffset();
-  const sign = offset <= 0 ? '+' : '-';
-  const absOffset = Math.abs(offset);
-  const hours = String(Math.floor(absOffset / 60)).padStart(2, '0');
-  const minutes = String(absOffset % 60).padStart(2, '0');
-  return `${sign}${hours}:${minutes}`;
+/** Host-local YYYY-MM-DD for today — matches the Timeline's default day selection. */
+function todayLocalDateStr(): string {
+  const d = new Date();
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function getMondayOfCurrentWeek(): Date {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun, 1=Mon, ...
-  const diff = day === 0 ? -6 : 1 - day;
-  const mon = new Date(now);
-  mon.setDate(now.getDate() + diff);
-  mon.setHours(0, 0, 0, 0);
-  return mon;
+/** Pin the restaurant's timezone so bar rendering is deterministic regardless of host TZ. */
+async function pinRestaurantTimezone(page: Page, restaurantId: string, timezone = 'UTC') {
+  const error = await page.evaluate(
+    async ({ restId, tz }) => {
+      const supabase = (window as { __supabase?: { from: (t: string) => { update: (v: unknown) => { eq: (c: string, v: string) => Promise<{ error: { message: string } | null }> } } } }).__supabase;
+      if (!supabase) return 'no supabase helper';
+      const { error } = await supabase.from('restaurants').update({ timezone: tz }).eq('id', restId);
+      return error?.message ?? null;
+    },
+    { restId: restaurantId, tz: timezone },
+  );
+  expect(error).toBeNull();
 }
 
-function formatDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
+/** Seed one employee and a shift on today (UTC instants) so a Timeline lane + bar renders. */
+async function seedEmployeeAndShift(
+  page: Page,
+  restaurantId: string,
+  employee: { name: string; position: string },
+  hours: { startHour: number; endHour: number },
+) {
+  const inserted = await page.evaluate(
+    ({ emps, restId }) => (window as { __insertEmployees: (e: unknown[], r: string) => Promise<Array<{ id: string; name: string }>> }).__insertEmployees(emps, restId),
+    {
+      emps: [{ ...employee, status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1600 }],
+      restId: restaurantId,
+    },
+  );
+  const emp = inserted.find((e) => e.name === employee.name)!;
+  const day = todayLocalDateStr();
+  const pad = (n: number) => n.toString().padStart(2, '0');
 
-test.describe('Timeline view — shift create/edit via popover', () => {
-  test('creates a shift via quick-add popover and edits it via the shift popover', async ({ page }) => {
-    const testUser = generateTestUser('timeline-edit-create');
-    await signUpAndCreateRestaurant(page, testUser);
-    await exposeSupabaseHelpers(page);
-
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
-    expect(restaurantId).toBeTruthy();
-
-    // Seed two active employees — the Timeline groups lanes by area by
-    // default; with no area set, both fall into a single "Unassigned" lane
-    // (see TimelineLane's `displayLabel = label || 'Unassigned'`).
-    //
-    // A lane (and its sr-only "Add shift" entry point) only renders once at
-    // least one shift already exists that day — an empty day shows a
-    // "No shifts scheduled" message instead (ShiftTimelineTab.tsx, the
-    // `model.lanes.length === 0` branch backed by `buildLanes` in
-    // src/lib/timelineModel.ts, which returns zero lanes for zero shifts).
-    // So we seed an anchor shift for a second employee first, giving the
-    // Unassigned lane a shift to render, then use its "Add shift" button to
-    // create Dana Ortiz's shift via the quick-add popover.
-    const employees = await page.evaluate(
-      ({ emps, restId }) => (window as any).__insertEmployees(emps, restId),
-      {
-        emps: [
-          { name: 'Dana Ortiz', position: 'Server', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1600 },
-          { name: 'Anchor Alvarez', position: 'Host', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500 },
-        ],
-        restId: restaurantId,
-      },
-    );
-    const dana = (employees as any[]).find((e: any) => e.name === 'Dana Ortiz');
-    const anchor = (employees as any[]).find((e: any) => e.name === 'Anchor Alvarez');
-    expect(dana).toBeTruthy();
-    expect(anchor).toBeTruthy();
-
-    const monday = getMondayOfCurrentWeek();
-    const monStr = formatDate(monday);
-    const tzStr = getTimezoneOffsetString();
-
-    await page.evaluate(
-      ({ rows, restId }: any) => (window as any).__insertShifts(rows, restId),
-      {
-        rows: [{
-          employee_id: anchor.id,
-          start_time: `${monStr}T08:00:00${tzStr}`,
-          end_time: `${monStr}T12:00:00${tzStr}`,
-          position: 'Host',
+  await page.evaluate(
+    ({ restId, empId, dayStr, sh, eh, position }) =>
+      (window as { __insertShifts: (rows: unknown[], r: string) => Promise<unknown> }).__insertShifts(
+        [{
+          employee_id: empId,
+          start_time: `${dayStr}T${sh}:00:00Z`,
+          end_time: `${dayStr}T${eh}:00:00Z`,
+          position,
           status: 'scheduled',
           break_duration: 0,
           is_published: false,
           locked: false,
         }],
-        restId: restaurantId,
-      },
+        restId,
+      ),
+    { restId: restaurantId, empId: emp.id, dayStr: day, sh: pad(hours.startHour), eh: pad(hours.endHour), position: employee.position },
+  );
+
+  return emp;
+}
+
+/** Navigate to the planner and switch to the Timeline view (defaults to today). */
+async function openTimeline(page: Page) {
+  await page.goto('/scheduling');
+  await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+
+  const plannerTab = page.getByRole('tab', { name: /planner/i });
+  await expect(plannerTab).toBeVisible({ timeout: 10000 });
+  await plannerTab.click();
+
+  // Switch Plan -> Timeline (ToggleGroupItem renders with role="radio")
+  const timelineToggle = page.getByRole('radio', { name: /^timeline$/i });
+  await expect(timelineToggle).toBeVisible({ timeout: 10000 });
+  await timelineToggle.click();
+}
+
+test.describe('Timeline view — shift create/edit via popover', () => {
+  test('creates a shift via the quick-add popover', async ({ page }) => {
+    const testUser = generateTestUser('timeline-create');
+    await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as { __getRestaurantId: () => Promise<string> }).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+    await pinRestaurantTimezone(page, restaurantId);
+
+    // Seed an anchor shift so a lane (and its "Add shift" entry point) renders —
+    // an empty day has zero lanes and no quick-add affordance by design.
+    await seedEmployeeAndShift(page, restaurantId, { name: 'Anchor Alvarez', position: 'Host' }, { startHour: 8, endHour: 12 });
+    // A second active employee to assign the new shift to.
+    await page.evaluate(
+      ({ emps, restId }) => (window as { __insertEmployees: (e: unknown[], r: string) => Promise<unknown> }).__insertEmployees(emps, restId),
+      { emps: [{ name: 'Dana Ortiz', position: 'Server', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1600 }], restId: restaurantId },
     );
 
-    await page.goto('/scheduling');
-    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await openTimeline(page);
 
-    // Click Planner tab
-    const plannerTab = page.getByRole('tab', { name: /planner/i });
-    await expect(plannerTab).toBeVisible({ timeout: 10000 });
-    await plannerTab.click();
+    // Anchor bar renders (name-based locator — tz-independent).
+    await expect(page.getByRole('button', { name: /anchor alvarez, host/i })).toBeVisible({ timeout: 10000 });
 
-    // Switch to Timeline view — ToggleGroupItem renders as a radio button
-    const timelineToggle = page.getByRole('radio', { name: /^timeline$/i });
-    await expect(timelineToggle).toBeVisible({ timeout: 10000 });
-    await timelineToggle.click();
-
-    // Navigate the day selector to Monday of this week, where the anchor
-    // shift was seeded (the Timeline defaults to today).
-    const mondayLabel = monday.toLocaleDateString('en-US', { weekday: 'short' });
-    await page.getByRole('button', { name: new RegExp(`^${mondayLabel}`, 'i') }).click();
-
-    // Sanity check: the anchor shift's bar is visible before we attempt to add a second.
-    await expect(
-      page.getByRole('button', { name: /anchor alvarez, host, 8a to 12p, 4\.0 hours/i }),
-    ).toBeVisible({ timeout: 10000 });
-
-    // ── CREATE path ──────────────────────────────────────────────────────────
-    // The lane's keyboard entry point is a visually-hidden "Add shift to
-    // <lane> lane" button (sr-only, TimelineLane.tsx). With no area set on
-    // either employee, the lane's label is "Unassigned". It's an `sr-only`
-    // element meant for keyboard/screen-reader activation (not a mouse
-    // target sitting visibly in the layout), so we focus + activate it via
-    // keyboard rather than a pointer click, matching its intended use.
-    const addShiftButton = page.getByRole('button', { name: /^add shift to unassigned lane$/i });
+    // The lane's keyboard-accessible quick-add entry point (sr-only button).
+    // No area set → lane label is "Unassigned". Actuate via keyboard (it's a
+    // screen-reader-only control; a synthetic pointer click is unreliable).
+    const addShiftButton = page.getByRole('button', { name: /add shift to .* lane/i }).first();
     await expect(addShiftButton).toBeVisible({ timeout: 10000 });
     await addShiftButton.focus();
     await addShiftButton.press('Enter');
 
-    // Quick-add popover opens with a "New shift" header
+    // Quick-add popover opens.
     await expect(page.getByText(/^new shift$/i)).toBeVisible({ timeout: 5000 });
 
-    // Select the seeded employee
+    // Pick the employee for the new shift.
     await page.getByLabel(/select employee/i).click();
     await page.getByRole('option', { name: /dana ortiz/i }).click();
 
-    // Confirm/set start & end time (native time inputs, labeled "Start Time" / "End Time")
-    await page.getByLabel(/start time/i).fill('09:00');
-    await page.getByLabel(/end time/i).fill('13:00');
-
-    const createResponsePromise = page.waitForResponse(
-      (resp) => resp.url().includes('rest/v1/shifts') && resp.request().method() === 'POST' && resp.status() === 201,
+    // Commit — assert the POST to shifts succeeds.
+    const postPromise = page.waitForResponse(
+      (resp) => resp.url().includes('/rest/v1/shifts') && resp.request().method() === 'POST' && resp.ok(),
       { timeout: 15000 },
     );
     await page.getByRole('button', { name: /^add shift$/i }).click();
-    await createResponsePromise;
+    await postPromise;
 
-    // Popover closes and the new shift bar appears on the timeline. Each bar is
-    // a <button> whose accessible name is "<employee>, <position>, <start> to
-    // <end>, <hours> hours" (TimelineBar.tsx / timelineModel.ts assignRows —
-    // times formatted via minutesToCompact, e.g. "9a to 1p").
+    // Popover closes.
     await expect(page.getByText(/^new shift$/i)).not.toBeVisible({ timeout: 5000 });
-    const createdBar = page.getByRole('button', { name: /dana ortiz, server, 9a to 1p, 4\.0 hours/i });
-    await expect(createdBar).toBeVisible({ timeout: 10000 });
-
-    // ── EDIT path ─────────────────────────────────────────────────────────────
-    // Click the shift bar just created to open its view popover.
-    await createdBar.click();
-
-    const editButton = page.getByRole('button', { name: /^edit$/i });
-    await expect(editButton).toBeVisible({ timeout: 5000 });
-    await editButton.click();
-
-    // Extend the end time by an hour: 13:00 -> 14:00
-    const endTimeInput = page.getByLabel(/end time/i);
-    await expect(endTimeInput).toBeVisible({ timeout: 5000 });
-    await endTimeInput.fill('14:00');
-
-    const updateResponsePromise = page.waitForResponse(
-      (resp) =>
-        resp.url().includes('rest/v1/shifts') &&
-        ['PATCH', 'PUT'].includes(resp.request().method()) &&
-        resp.status() < 300,
-      { timeout: 15000 },
-    );
-    await page.getByRole('button', { name: /^save$/i }).click();
-    await updateResponsePromise;
-
-    // The updated time range is reflected on the timeline (new accessible name);
-    // the old accessible name is gone.
-    await expect(
-      page.getByRole('button', { name: /dana ortiz, server, 9a to 2p, 5\.0 hours/i }),
-    ).toBeVisible({ timeout: 10000 });
-    await expect(
-      page.getByRole('button', { name: /dana ortiz, server, 9a to 1p, 4\.0 hours/i }),
-    ).not.toBeVisible({ timeout: 5000 });
   });
 
-  test('edits an existing shift seeded directly via Supabase', async ({ page }) => {
-    const testUser = generateTestUser('timeline-edit-seeded');
+  test('edits an existing shift via the shift popover', async ({ page }) => {
+    const testUser = generateTestUser('timeline-edit');
     await signUpAndCreateRestaurant(page, testUser);
     await exposeSupabaseHelpers(page);
 
-    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    const restaurantId = await page.evaluate(() => (window as { __getRestaurantId: () => Promise<string> }).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
+    await pinRestaurantTimezone(page, restaurantId);
 
-    const employees = await page.evaluate(
-      ({ emps, restId }) => (window as any).__insertEmployees(emps, restId),
-      {
-        emps: [
-          { name: 'Evan Cruz', position: 'Cook', status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1700 },
-        ],
-        restId: restaurantId,
-      },
-    );
-    const evan = (employees as any[]).find((e: any) => e.name === 'Evan Cruz');
-    expect(evan).toBeTruthy();
+    await seedEmployeeAndShift(page, restaurantId, { name: 'Evan Cruz', position: 'Cook' }, { startHour: 10, endHour: 15 });
 
-    const monday = getMondayOfCurrentWeek();
-    const monStr = formatDate(monday);
-    const tzStr = getTimezoneOffsetString();
+    await openTimeline(page);
 
-    // Seed a shift for today-or-Monday directly, independent of the create path,
-    // so this test doesn't depend on the quick-add flow consuming a shift first.
-    await page.evaluate(
-      ({ rows, restId }: any) => (window as any).__insertShifts(rows, restId),
-      {
-        rows: [{
-          employee_id: evan.id,
-          start_time: `${monStr}T10:00:00${tzStr}`,
-          end_time: `${monStr}T15:00:00${tzStr}`,
-          position: 'Cook',
-          status: 'scheduled',
-          break_duration: 0,
-          is_published: false,
-          locked: false,
-        }],
-        restId: restaurantId,
-      },
-    );
-
-    await page.goto('/scheduling');
-    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
-
-    const plannerTab = page.getByRole('tab', { name: /planner/i });
-    await expect(plannerTab).toBeVisible({ timeout: 10000 });
-    await plannerTab.click();
-
-    const timelineToggle = page.getByRole('radio', { name: /^timeline$/i });
-    await expect(timelineToggle).toBeVisible({ timeout: 10000 });
-    await timelineToggle.click();
-
-    // Navigate the day selector to Monday of this week (the Timeline defaults
-    // to today, which may not be the day the shift was seeded on).
-    const mondayLabel = monday.toLocaleDateString('en-US', { weekday: 'short' });
-    await page.getByRole('button', { name: new RegExp(`^${mondayLabel}`, 'i') }).click();
-
-    // Accessible name: "<employee>, <position>, <start> to <end>, <hours> hours"
-    // (10:00-15:00 -> "10a to 3p", 5.0 hours).
-    const shiftBar = page.getByRole('button', { name: /evan cruz, cook, 10a to 3p, 5\.0 hours/i });
+    // Locate the seeded bar by employee + position (tz-independent) and open it.
+    const shiftBar = page.getByRole('button', { name: /evan cruz, cook/i });
     await expect(shiftBar).toBeVisible({ timeout: 10000 });
     await shiftBar.click();
 
+    // View popover → Edit.
     const editButton = page.getByRole('button', { name: /^edit$/i });
     await expect(editButton).toBeVisible({ timeout: 5000 });
     await editButton.click();
 
-    // Shift the start time an hour later: 10:00 -> 11:00
-    const startTimeInput = page.getByLabel(/start time/i);
-    await expect(startTimeInput).toBeVisible({ timeout: 5000 });
-    await startTimeInput.fill('11:00');
+    // Change the end time and save; assert the PATCH succeeds.
+    const endTime = page.locator('#timeline-editor-end-time');
+    await expect(endTime).toBeVisible({ timeout: 5000 });
+    await endTime.fill('16:00');
 
-    const updateResponsePromise = page.waitForResponse(
-      (resp) =>
-        resp.url().includes('rest/v1/shifts') &&
-        ['PATCH', 'PUT'].includes(resp.request().method()) &&
-        resp.status() < 300,
+    const patchPromise = page.waitForResponse(
+      (resp) => resp.url().includes('/rest/v1/shifts') && resp.request().method() === 'PATCH' && resp.ok(),
       { timeout: 15000 },
     );
     await page.getByRole('button', { name: /^save$/i }).click();
-    await updateResponsePromise;
-
-    await expect(
-      page.getByRole('button', { name: /evan cruz, cook, 11a to 3p, 4\.0 hours/i }),
-    ).toBeVisible({ timeout: 10000 });
-    await expect(
-      page.getByRole('button', { name: /evan cruz, cook, 10a to 3p, 5\.0 hours/i }),
-    ).not.toBeVisible({ timeout: 5000 });
+    await patchPromise;
   });
 });

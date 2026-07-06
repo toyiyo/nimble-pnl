@@ -74,7 +74,7 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof TimelineShi
     forceUpdateTime: vi.fn(),
     validateAndUpdateShift: vi.fn(),
     forceUpdateShift: vi.fn(),
-    deleteShift: vi.fn(),
+    onDelete: vi.fn(),
     validationResult: null,
     clearValidation: vi.fn(),
     ...overrides,
@@ -152,45 +152,47 @@ describe('TimelineShiftPopover', () => {
 
   it('clicking Delete on an unpublished shift deletes immediately (no confirm dialog)', async () => {
     const user = userEvent.setup();
-    const deleteShift = vi.fn();
+    const onDelete = vi.fn();
+    const shift = makeShift({ is_published: false });
     render(
       <TimelineShiftPopover
-        {...defaultProps({ activeShift: makeShift({ is_published: false }), deleteShift })}
+        {...defaultProps({ activeShift: shift, onDelete })}
       />,
     );
 
     await user.click(screen.getByRole('button', { name: /^delete$/i }));
 
-    expect(deleteShift).toHaveBeenCalledWith('shift-1');
+    expect(onDelete).toHaveBeenCalledWith(shift);
     // No AlertDialog should have appeared.
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
   it('clicking Delete on a published shift opens an AlertDialog confirm, and only deletes on confirm', async () => {
     const user = userEvent.setup();
-    const deleteShift = vi.fn();
+    const onDelete = vi.fn();
+    const shift = makeShift({ is_published: true });
     render(
       <TimelineShiftPopover
-        {...defaultProps({ activeShift: makeShift({ is_published: true }), deleteShift })}
+        {...defaultProps({ activeShift: shift, onDelete })}
       />,
     );
 
     await user.click(screen.getByRole('button', { name: /^delete$/i }));
 
     expect(screen.getByRole('alertdialog')).toBeTruthy();
-    expect(deleteShift).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole('button', { name: /^delete shift$/i }));
 
-    await waitFor(() => expect(deleteShift).toHaveBeenCalledWith('shift-1'));
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(shift));
   });
 
   it('published-shift delete confirm dismisses without deleting on Cancel', async () => {
     const user = userEvent.setup();
-    const deleteShift = vi.fn();
+    const onDelete = vi.fn();
     render(
       <TimelineShiftPopover
-        {...defaultProps({ activeShift: makeShift({ is_published: true }), deleteShift })}
+        {...defaultProps({ activeShift: makeShift({ is_published: true }), onDelete })}
       />,
     );
 
@@ -199,7 +201,7 @@ describe('TimelineShiftPopover', () => {
 
     await user.click(screen.getByRole('button', { name: /^cancel$/i }));
 
-    expect(deleteShift).not.toHaveBeenCalled();
+    expect(onDelete).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   });
 

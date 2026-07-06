@@ -10,7 +10,7 @@ import React, { ReactNode } from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useUpdateShift, useDeleteShift } from '@/hooks/useShifts';
+import { useCreateShift, useUpdateShift, useDeleteShift } from '@/hooks/useShifts';
 
 const mockToast = vi.hoisted(() => vi.fn());
 
@@ -286,5 +286,160 @@ describe('useDeleteShift — explicit restaurant_id filter', () => {
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
+  });
+});
+
+describe('useCreateShift / useDeleteShift — silent option (timeline undo-delete flow)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function setupDeleteChain(deleteResult: { error: { message: string } | null }) {
+    const deleteEqRestaurant = vi.fn().mockResolvedValue(deleteResult);
+    const deleteEqId = vi.fn().mockReturnValue({ eq: deleteEqRestaurant });
+    const del = vi.fn().mockReturnValue({ eq: deleteEqId });
+
+    mockSupabase.from.mockReturnValue({ delete: del });
+
+    return { deleteEqId, deleteEqRestaurant, del };
+  }
+
+  it('useCreateShift shows the generic success toast by default', async () => {
+    const insertSingle = vi.fn().mockResolvedValue({
+      data: { id: 'shift-2', restaurant_id: 'rest-123', is_recurring: false },
+      error: null,
+    });
+    const insertSelect = vi.fn().mockReturnValue({ single: insertSingle });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+    mockSupabase.from.mockReturnValue({ insert });
+
+    const { result } = renderHook(() => useCreateShift(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({
+        restaurant_id: 'rest-123',
+        employee_id: 'emp-1',
+        start_time: '2026-01-10T09:00:00Z',
+        end_time: '2026-01-10T17:00:00Z',
+        break_duration: 0,
+        position: 'Server',
+        status: 'scheduled',
+        is_published: false,
+        locked: false,
+        source: 'manual',
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Shift created' }),
+    );
+  });
+
+  it('useCreateShift({ silent: true }) suppresses the generic success toast', async () => {
+    const insertSingle = vi.fn().mockResolvedValue({
+      data: { id: 'shift-2', restaurant_id: 'rest-123', is_recurring: false },
+      error: null,
+    });
+    const insertSelect = vi.fn().mockReturnValue({ single: insertSingle });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+    mockSupabase.from.mockReturnValue({ insert });
+
+    const { result } = renderHook(() => useCreateShift({ silent: true }), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({
+        restaurant_id: 'rest-123',
+        employee_id: 'emp-1',
+        start_time: '2026-01-10T09:00:00Z',
+        end_time: '2026-01-10T17:00:00Z',
+        break_duration: 0,
+        position: 'Server',
+        status: 'scheduled',
+        is_published: false,
+        locked: false,
+        source: 'manual',
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Shift created' }),
+    );
+  });
+
+  it('useCreateShift({ silent: true }) still shows the error toast on failure', async () => {
+    const insertSingle = vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } });
+    const insertSelect = vi.fn().mockReturnValue({ single: insertSingle });
+    const insert = vi.fn().mockReturnValue({ select: insertSelect });
+    mockSupabase.from.mockReturnValue({ insert });
+
+    const { result } = renderHook(() => useCreateShift({ silent: true }), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({
+        restaurant_id: 'rest-123',
+        employee_id: 'emp-1',
+        start_time: '2026-01-10T09:00:00Z',
+        end_time: '2026-01-10T17:00:00Z',
+        break_duration: 0,
+        position: 'Server',
+        status: 'scheduled',
+        is_published: false,
+        locked: false,
+        source: 'manual',
+      });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Error creating shift' }),
+    );
+  });
+
+  it('useDeleteShift shows the generic success toast by default', async () => {
+    const { deleteEqRestaurant } = setupDeleteChain({ error: null });
+
+    const { result } = renderHook(() => useDeleteShift(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({ id: 'shift-1', restaurantId: 'rest-123' });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(deleteEqRestaurant).toHaveBeenCalledWith('restaurant_id', 'rest-123');
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Shift deleted' }),
+    );
+  });
+
+  it('useDeleteShift({ silent: true }) suppresses the generic success toast', async () => {
+    setupDeleteChain({ error: null });
+
+    const { result } = renderHook(() => useDeleteShift({ silent: true }), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({ id: 'shift-1', restaurantId: 'rest-123' });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockToast).not.toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Shift deleted' }),
+    );
+  });
+
+  it('useDeleteShift({ silent: true }) still shows the error toast on failure', async () => {
+    setupDeleteChain({ error: { message: 'permission denied' } });
+
+    const { result } = renderHook(() => useDeleteShift({ silent: true }), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({ id: 'shift-1', restaurantId: 'rest-123' });
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Error deleting shift' }),
+    );
   });
 });

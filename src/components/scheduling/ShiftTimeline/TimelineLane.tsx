@@ -34,6 +34,11 @@ interface TimelineLaneProps {
   readonly onBarDraftChange: (shiftId: string, range: ShiftMinuteRange | null) => void;
   /** Forwarded to each `TimelineBar` — fires on drag/resize release (Stage D3). */
   readonly onBarDragCommit: (shiftId: string, range: ShiftMinuteRange) => void;
+  /**
+   * The shift id that should render a transient change highlight, or null
+   * (design doc §Fix 3). Forwarded to the matching `TimelineBar` as `highlighted`.
+   */
+  readonly highlightedShiftId?: string | null;
 }
 
 /** Height in pixels for each stacked bar row within a lane. */
@@ -70,6 +75,7 @@ function TimelineLaneImpl({
   onPaintCommit,
   onBarDraftChange,
   onBarDragCommit,
+  highlightedShiftId = null,
 }: TimelineLaneProps) {
   const { label, hours, bars } = lane;
   const maxRow = bars.reduce((max, b) => Math.max(max, b.row), 0);
@@ -256,6 +262,7 @@ function TimelineLaneImpl({
               getPlotRect={getPlotRect}
               onDraftChange={onBarDraftChange}
               onDragCommit={onBarDragCommit}
+              highlighted={bar.shift.id === highlightedShiftId}
             />
           </div>
         ))}
@@ -290,7 +297,8 @@ function areLaneEqual(prev: TimelineLaneProps, next: TimelineLaneProps): boolean
     prev.onSelect === next.onSelect &&
     prev.onPaintCommit === next.onPaintCommit &&
     prev.onBarDraftChange === next.onBarDraftChange &&
-    prev.onBarDragCommit === next.onBarDragCommit
+    prev.onBarDragCommit === next.onBarDragCommit &&
+    prev.highlightedShiftId === next.highlightedShiftId
   );
 }
 

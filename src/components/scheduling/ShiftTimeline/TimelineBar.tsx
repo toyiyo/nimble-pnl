@@ -27,6 +27,13 @@ interface TimelineBarProps {
   readonly onDraftChange: (shiftId: string, range: ShiftMinuteRange | null) => void;
   /** Called on pointerup with the final drafted range — the caller commits it via validateAndUpdateTime. */
   readonly onDragCommit: (shiftId: string, range: ShiftMinuteRange) => void;
+  /**
+   * True for ~2s right after this bar's shift was moved/resized/edited
+   * (design doc §Fix 3 — transient change highlight). Renders a brief
+   * `ring-2 ring-ring` outline; never set for brand-new CREATEd shifts (their
+   * id isn't known client-side until refetch).
+   */
+  readonly highlighted?: boolean;
 }
 
 /**
@@ -64,6 +71,7 @@ function TimelineBarImpl({
   getPlotRect,
   onDraftChange,
   onDragCommit,
+  highlighted = false,
 }: TimelineBarProps) {
   const { leftMin, endMin, label, ariaLabel, color, shift } = bar;
   const locked = shift.locked;
@@ -124,6 +132,7 @@ function TimelineBarImpl({
           'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
           'transition-opacity hover:opacity-90 active:opacity-80',
           !locked && 'cursor-grab touch-none',
+          highlighted && 'ring-2 ring-ring',
           color.bg,
           color.border,
           color.text,
@@ -188,7 +197,8 @@ function areEqual(prev: TimelineBarProps, next: TimelineBarProps): boolean {
     prev.window.endMin === next.window.endMin &&
     prev.getPlotRect === next.getPlotRect &&
     prev.onDraftChange === next.onDraftChange &&
-    prev.onDragCommit === next.onDragCommit
+    prev.onDragCommit === next.onDragCommit &&
+    prev.highlighted === next.highlighted
   );
 }
 

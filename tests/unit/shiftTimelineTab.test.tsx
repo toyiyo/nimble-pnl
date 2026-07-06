@@ -48,6 +48,17 @@ vi.mock('@/hooks/useValidatedShiftMutations', () => ({
   })),
 }));
 
+// ShiftTimelineTab's undo-delete flow (Fix 1) calls useCreateShift directly,
+// which needs a QueryClientProvider this lightweight harness doesn't set up —
+// stubbed out for the same reason as useValidatedShiftMutations above.
+vi.mock('@/hooks/useShifts', () => ({
+  useCreateShift: vi.fn(() => ({ mutateAsync: vi.fn() })),
+}));
+
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: vi.fn(() => ({ toast: vi.fn() })),
+}));
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 // Use a past week so defaultDay() never selects "today" and breaks the assertions.

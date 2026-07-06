@@ -119,4 +119,37 @@ describe('TimelineBar', () => {
     const btn = screen.getByRole('button');
     expect(btn.className).toContain('bg-blue-500/15');
   });
+
+  // Fix 3 (transient change highlight, design doc §Fix 3): a bar renders a
+  // ring outline when the parent marks it as recently changed.
+  it('does not render the highlight ring by default', () => {
+    render(
+      <TimelineBar
+        bar={makeBar()}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    // focus-visible:ring-2 is always present (keyboard focus styling) — the
+    // Fix 3 highlight adds an UNCONDITIONAL "ring-2 ring-ring" pair (no
+    // focus-visible: prefix), so check for that exact unprefixed pairing.
+    expect(btn.className).not.toMatch(/(^| )ring-2( |$)/);
+  });
+
+  it('renders a ring-2 ring-ring outline when highlighted is true', () => {
+    render(
+      <TimelineBar
+        bar={makeBar()}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        highlighted
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    expect(btn.className).toContain('ring-2');
+    expect(btn.className).toContain('ring-ring');
+  });
 });

@@ -1,9 +1,10 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { ToastAction } from '@/components/ui/toast';
 
-import { CalendarOff } from 'lucide-react';
+import { CalendarOff, Plus } from 'lucide-react';
 
 import { isoToLocalMinutes } from '@/lib/shiftCoverage';
 import {
@@ -14,6 +15,8 @@ import {
 } from '@/lib/coverageSummary';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
+import { useCreateShift } from '@/hooks/useShifts';
+import { useToast } from '@/hooks/use-toast';
 import { useTimelineModel } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
@@ -32,6 +35,23 @@ import type { Shift, Employee } from '@/types/scheduling';
 import type { GroupByMode } from '@/lib/scheduleGrouping';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
 import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
+
+// ─── Constants (Fix 2 — visible "Add shift" button) ────────────────────────────
+
+/** Default 09:00–17:00 range dropped by the visible "Add shift" button (clamped into the day's window). */
+const DEFAULT_ADD_RANGE: PaintRange = { startMin: 9 * 60, endMin: 17 * 60 };
+
+/** How long a bar shows its transient change-highlight ring (design doc §Fix 3). */
+const HIGHLIGHT_DURATION_MS = 2000;
+
+/** Clamp a minute range into `window`, preserving its duration where possible. */
+function clampRangeToWindow(range: PaintRange, window: { startMin: number; endMin: number }): PaintRange {
+  const duration = Math.min(range.endMin - range.startMin, window.endMin - window.startMin);
+  let startMin = Math.min(Math.max(range.startMin, window.startMin), window.endMin - duration);
+  startMin = Math.max(startMin, window.startMin);
+  const endMin = startMin + duration;
+  return { startMin, endMin };
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -193,6 +213,34 @@ export function ShiftTimelineTab({
     warnings: ConflictDialogData['warnings'];
   } | null>(null);
 
+  // ── Transient change highlight (Fix 3) ─────────────────────────────────────
+  // The id of the shift most recently moved/resized/edited, or null. Cleared
+  // automatically ~2s after being set. Never set for brand-new CREATEd shifts
+  // (their id is unknown client-side until the list refetches).
+  const [recentlyChangedShiftId, setRecentlyChangedShiftId] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flashHighlight = useCallback((shiftId: string) => {
+    if (highlightTimeoutRef.current !== null) {
+      clearTimeout(highlightTimeoutRef.current);
+    }
+    setRecentlyChangedShiftId(shiftId);
+    highlightTimeoutRef.current = setTimeout(() => {
+      setRecentlyChangedShiftId(null);
+      highlightTimeoutRef.current = null;
+    }, HIGHLIGHT_DURATION_MS);
+  }, []);
+
+  // Clear any in-flight highlight timeout on unmount so it never fires a
+  // setState against an unmounted component.
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current !== null) {
+        clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
   // ── Staffing recommendations ───────────────────────────────────────────────
   const { daySuggestions, activeSettings } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
 
@@ -209,9 +257,12 @@ export function ShiftTimelineTab({
   // `validateAndUpdateTime`/`forceUpdateTime` for drag/edit — it has no reassign
   // UI, so `validateAndReassign`/`forceReassign`/`validateAndCreate`/`forceCreate`
   // are intentionally not destructured here.
-  // Toasts on success/failure come from the underlying useShifts mutation hooks
-  // (useCreateShift/useUpdateShift/useDeleteShift) — this component doesn't call
-  // useToast directly.
+  // `silentDelete: true` suppresses the pipeline's own generic delete toast —
+  // `deleteShiftWithUndo` below shows the ONE toast with the Undo action
+  // instead (design doc §Fix 1 — avoid double-toasting).
+  // Toasts on update/create success/failure still come from the underlying
+  // useShifts mutation hooks — this component only calls useToast directly
+  // for the undo-delete flow.
   // Uses the full-week `shifts` (not `dayShifts`) so overlap/rest-gap checks also
   // see overnight shifts spilling in from the previous day and early-next-day
   // shifts spilling out from this one — a day-scoped array would miss both.
@@ -225,7 +276,52 @@ export function ShiftTimelineTab({
     deleteShift,
     validationResult,
     clearValidation,
-  } = useValidatedShiftMutations(restaurantId, shifts);
+  } = useValidatedShiftMutations(restaurantId, shifts, { silentDelete: true });
+
+  // ── Undo-delete flow (Fix 1) ───────────────────────────────────────────────
+  // Re-creates via useCreateShift directly (not the validated pipeline — the
+  // shift existed moments ago, no re-validation needed on Undo). `silent:
+  // true` suppresses useCreateShift's own "Shift created" toast; the "Shift
+  // restored" toast below stands in for it.
+  const createShift = useCreateShift({ silent: true });
+  const { toast } = useToast();
+
+  const deleteShiftWithUndo = useCallback(
+    (shift: Shift) => {
+      deleteShift(shift.id);
+
+      const handleUndo = () => {
+        void createShift
+          .mutateAsync({
+            restaurant_id: shift.restaurant_id,
+            employee_id: shift.employee_id,
+            start_time: shift.start_time,
+            end_time: shift.end_time,
+            position: shift.position,
+            break_duration: shift.break_duration,
+            notes: shift.notes,
+            status: shift.status,
+            is_published: shift.is_published,
+            locked: shift.locked,
+            source: shift.source,
+            shift_template_id: shift.shift_template_id,
+          })
+          .then(() => {
+            toast({ title: 'Shift restored' });
+          });
+      };
+
+      toast({
+        title: 'Shift deleted',
+        action: (
+          <ToastAction altText="Undo shift delete" onClick={handleUndo}>
+            Undo
+          </ToastAction>
+        ),
+      });
+    },
+    [deleteShift, createShift, toast],
+  );
 
   // ── Live-drag merge (Stage D2) ─────────────────────────────────────────────
   // Replaces the dragged shift's committed start/end with the drafted minutes
@@ -324,6 +420,26 @@ export function ShiftTimelineTab({
   );
 
   /**
+   * Visible "Add shift" button (Fix 2): opens the same `create` overlay as
+   * paint-to-create/gap-click, seeded with a default 09:00–17:00 range
+   * clamped into the day's visible window, no lane context (unfiltered
+   * employee picker, blank position), anchored to the button itself so the
+   * popover opens right below it.
+   */
+  const handleAddShiftClick = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const range = clampRangeToWindow(DEFAULT_ADD_RANGE, model.window);
+      setActiveOverlay({
+        mode: 'create',
+        draft: range,
+        laneContext: null,
+        anchorRect: event.currentTarget.getBoundingClientRect(),
+      });
+    },
+    [model.window],
+  );
+
+  /**
    * Live drag-draft update (Stage D2): `TimelineBar` calls this on every
    * rAF-throttled pointermove frame with the in-flight range, and once more
    * with `null` when the gesture ends/cancels. Feeds `modelInputShifts` above
@@ -363,6 +479,7 @@ export function ShiftTimelineTab({
 
       if (outcome.updated) {
         setDragDraft(null);
+        flashHighlight(shiftId);
         return;
       }
 
@@ -382,7 +499,7 @@ export function ShiftTimelineTab({
       // confirm — snap back rather than leave a dangling draft.
       setDragDraft(null);
     },
-    [dayShifts, selectedDay, tz, validateAndUpdateTime],
+    [dayShifts, selectedDay, tz, validateAndUpdateTime, flashHighlight],
   );
 
   const handleDragConflictCancel = useCallback(() => {
@@ -397,8 +514,9 @@ export function ShiftTimelineTab({
     if (ok) {
       setDragConflict(null);
       setDragDraft(null);
+      flashHighlight(shift.id);
     }
-  }, [dragConflict, forceUpdateTime, selectedDay]);
+  }, [dragConflict, forceUpdateTime, selectedDay, flashHighlight]);
 
   const dragConflictData: ConflictDialogData | null = dragConflict
     ? {
@@ -434,6 +552,18 @@ export function ShiftTimelineTab({
       businessDate: selectedDay,
     };
   }, [activeOverlay, groupBy, selectedDay]);
+
+  /**
+   * Edit-mode Save success (Fix 3): flashes the transient highlight on the
+   * edited shift's bar. Never fired for create — `TimelineShiftPopover` only
+   * calls `onSaved` from its edit-mode Save/confirm-conflicts success paths.
+   */
+  const handleShiftSaved = useCallback(
+    (shift: Shift) => {
+      flashHighlight(shift.id);
+    },
+    [flashHighlight],
+  );
 
   // ── Loading state ──────────────────────────────────────────────────────────
   if (loading) {
@@ -490,21 +620,34 @@ export function ShiftTimelineTab({
         ))}
       </fieldset>
 
-      {/* Group-by toggle */}
-      <ToggleGroup
-        type="single"
-        value={groupBy}
-        onValueChange={(v) => { if (v === 'area' || v === 'position') setGroupBy(v); }}
-        className="h-8"
-        aria-label="Group shifts by"
-      >
-        <ToggleGroupItem value="area" className="h-8 px-3 text-[12px]">
-          Area
-        </ToggleGroupItem>
-        <ToggleGroupItem value="position" className="h-8 px-3 text-[12px]">
-          Position
-        </ToggleGroupItem>
-      </ToggleGroup>
+      <div className="flex items-center gap-2">
+        {/* Group-by toggle */}
+        <ToggleGroup
+          type="single"
+          value={groupBy}
+          onValueChange={(v) => { if (v === 'area' || v === 'position') setGroupBy(v); }}
+          className="h-8"
+          aria-label="Group shifts by"
+        >
+          <ToggleGroupItem value="area" className="h-8 px-3 text-[12px]">
+            Area
+          </ToggleGroupItem>
+          <ToggleGroupItem value="position" className="h-8 px-3 text-[12px]">
+            Position
+          </ToggleGroupItem>
+        </ToggleGroup>
+
+        {/* Visible "Add shift" button (Fix 2) — opens the create overlay for
+            the selected day with a default 09:00-17:00 range, no lane context. */}
+        <button
+          type="button"
+          onClick={handleAddShiftClick}
+          className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium inline-flex items-center gap-1.5"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+          Add shift
+        </button>
+      </div>
     </div>
   );
 
@@ -614,6 +757,7 @@ export function ShiftTimelineTab({
                   onPaintCommit={handlePaintCommit}
                   onBarDraftChange={handleBarDraftChange}
                   onBarDragCommit={handleBarDragCommit}
+                  highlightedShiftId={recentlyChangedShiftId}
                 />
               ))}
             </div>
@@ -639,7 +783,8 @@ export function ShiftTimelineTab({
         forceUpdateShift={forceUpdateShift}
         validateAndCreateAtTime={validateAndCreateAtTime}
         forceCreateAtTime={forceCreateAtTime}
-        deleteShift={deleteShift}
+        onDelete={deleteShiftWithUndo}
+        onSaved={handleShiftSaved}
         validationResult={validationResult}
         clearValidation={clearValidation}
       />

@@ -105,6 +105,14 @@ export interface ReassignOutcome {
 export interface UseValidatedShiftMutationsOptions {
   /** DI'd conflict checker for tests; defaults to the real `checkConflictsImperative`. */
   checkConflicts?: ConflictChecker | false;
+  /**
+   * When true, suppresses the underlying `useDeleteShift` mutation's generic
+   * "Shift deleted" success toast. Used by the Timeline's `deleteShiftWithUndo`
+   * flow, which shows its own single toast (with an Undo action) instead of
+   * stacking a second, non-undoable one. Defaults to false — the planner's
+   * usage (no undo affordance) is unaffected.
+   */
+  silentDelete?: boolean;
 }
 
 export interface UseValidatedShiftMutationsReturn {
@@ -165,13 +173,13 @@ export function useValidatedShiftMutations(
   shifts: Shift[],
   options: UseValidatedShiftMutationsOptions = {},
 ): UseValidatedShiftMutationsReturn {
-  const { checkConflicts } = options;
+  const { checkConflicts, silentDelete = false } = options;
 
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
   const createShift = useCreateShift();
   const updateShift = useUpdateShift();
-  const deleteShiftMutation = useDeleteShift();
+  const deleteShiftMutation = useDeleteShift({ silent: silentDelete });
 
   const clearValidation = useCallback(() => {
     setValidationResult(null);

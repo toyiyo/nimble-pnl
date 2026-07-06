@@ -111,8 +111,20 @@ interface TimelineShiftPopoverProps {
   readonly validateAndCreateAtTime?: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
   /** Force-apply a create-at-time request after the user confirms the conflict dialog. */
   readonly forceCreateAtTime?: (input: CreateAtTimeInput) => Promise<boolean>;
-  /** Delete a shift by id (immediate — the confirm gate lives in this component for published shifts). */
-  readonly deleteShift: (shiftId: string) => void;
+  /**
+   * Delete the given shift (immediate for unpublished shifts — the confirm gate
+   * lives in this component for published shifts). Receives the full `Shift`
+   * (not just its id) so the caller can capture the payload for an undo
+   * affordance (design doc §Fix 1).
+   */
+  readonly onDelete: (shift: Shift) => void;
+  /**
+   * Called with the shift right after an edit-mode Save/confirm-conflicts
+   * succeeds (design doc §Fix 3 — transient change highlight). Not called for
+   * create — a brand-new shift's id isn't known here (assigned server-side),
+   * so the highlight only ever tracks MOVE/RESIZE/EDIT commits, never CREATE.
+   */
+  readonly onSaved?: (shift: Shift) => void;
   /** Surfaced validation errors (e.g. a thrown lock/interval error) from the pipeline hook. */
   readonly validationResult: ValidationResult | null;
   /** Clears `validationResult` — called when the popover closes or edit mode is cancelled. */
@@ -179,7 +191,8 @@ export function TimelineShiftPopover({
   forceUpdateShift,
   validateAndCreateAtTime,
   forceCreateAtTime,
-  deleteShift,
+  onDelete,
+  onSaved,
   validationResult,
   clearValidation,
   anchorRect,
@@ -288,7 +301,7 @@ export function TimelineShiftPopover({
     if (activeShift.is_published) {
       setShowDeleteConfirm(true);
     } else {
-      deleteShift(activeShift.id);
+      onDelete(activeShift);
       handleClose();
     }
   };
@@ -297,7 +310,7 @@ export function TimelineShiftPopover({
     // AlertDialogAction is Radix's Dialog.Close: without preventDefault it
     // closes the dialog synchronously on click, before the mutation resolves.
     event.preventDefault();
-    deleteShift(activeShift.id);
+    onDelete(activeShift);
     setShowDeleteConfirm(false);
     handleClose();
   };
@@ -323,6 +336,7 @@ export function TimelineShiftPopover({
       });
 
       if (outcome.updated) {
+        onSaved?.(activeShift);
         handleClose();
         return;
       }
@@ -360,6 +374,7 @@ export function TimelineShiftPopover({
 
       if (outcome.updated) {
         setPendingIssues(null);
+        onSaved?.(activeShift);
         handleClose();
       }
     } finally {

@@ -20,8 +20,8 @@
  * TimelineShiftPopover.test.tsx).
  */
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 
@@ -44,6 +44,7 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: (...args: unknown[]) => mockUseWeekStaffingSuggestions(...args),
 }));
 
+const mockDeleteShift = vi.fn();
 const mockUseValidatedShiftMutations = vi.fn(() => ({
   validateAndCreate: vi.fn(),
   forceCreate: vi.fn(),
@@ -55,7 +56,7 @@ const mockUseValidatedShiftMutations = vi.fn(() => ({
   forceUpdateShift: vi.fn(),
   validateAndReassign: vi.fn(),
   forceReassign: vi.fn(),
-  deleteShift: vi.fn(),
+  deleteShift: mockDeleteShift,
   validationResult: null,
   clearValidation: vi.fn(),
 }));
@@ -64,12 +65,30 @@ vi.mock('@/hooks/useValidatedShiftMutations', () => ({
   useValidatedShiftMutations: (...args: unknown[]) => mockUseValidatedShiftMutations(...args),
 }));
 
+// ShiftTimelineTab's undo-delete flow (Fix 1) creates the restored shift via
+// useCreateShift directly (not the validated pipeline — the shift existed
+// moments ago, no re-validation needed). Mocked here so no QueryClientProvider
+// is required in this lightweight test harness.
+const mockCreateShiftMutateAsync = vi.fn();
+vi.mock('@/hooks/useShifts', () => ({
+  useCreateShift: () => ({ mutateAsync: mockCreateShiftMutateAsync }),
+}));
+
+// useToast — captured so undo-toast assertions don't depend on the real
+// shadcn toast dispatcher/state machine.
+const mockToast = vi.fn();
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: mockToast }),
+}));
+
 // Mock the popover so we can inspect the exact props ShiftTimelineTab passes down,
 // without depending on Radix Popover/PopoverAnchor internals.
 interface PopoverStubProps {
   activeShift: Shift | null;
   anchorRect?: DOMRect | null;
   onClose: () => void;
+  onDelete: (shift: Shift) => void;
+  onSaved?: (shift: Shift) => void;
   createDraft?: {
     values: { employeeId: string; startTime: string; endTime: string; breakDuration: string; notes: string };
     laneContext: { position?: string | null; area?: string | null };
@@ -87,6 +106,16 @@ const mockTimelineShiftPopover = vi.fn((props: PopoverStubProps) => (
     <button type="button" onClick={props.onClose}>
       close-popover
     </button>
+    {props.activeShift && (
+      <button type="button" onClick={() => props.onDelete(props.activeShift as Shift)}>
+        stub-delete
+      </button>
+    )}
+    {props.activeShift && props.onSaved && (
+      <button type="button" onClick={() => props.onSaved?.(props.activeShift as Shift)}>
+        stub-save
+      </button>
+    )}
   </div>
 ));
 
@@ -352,6 +381,178 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       expect(draft.values.startTime).toBe('10:00');
       expect(draft.values.endTime).toBe('11:00');
       expect(draft.businessDate).toBe('2026-01-05');
+    });
+  });
+
+  describe('visible "Add shift" button (Fix 2)', () => {
+    it('opens the create overlay for the selected day with a default range clamped to the window and no lane context', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      // A wide shift (07:00-19:00 local) so the derived window comfortably
+      // contains the 09:00-17:00 default range unchanged — this test covers
+      // the "no clamping needed" case. The "clamping actually shrinks the
+      // range" case is covered by the narrower-window test below.
+      const shifts = [makeShift('s1', 'e1', '2026-01-05T13:00:00Z', '2026-01-06T01:00:00Z')];
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Add shift' }));
+
+      const draftJson = screen.getByTestId('popover-create-draft').textContent;
+      expect(draftJson).toBeTruthy();
+      const draft = JSON.parse(draftJson as string);
+
+      // No lane context: laneContext resolves to {position: null, area: null}.
+      expect(draft.laneContext).toEqual({ position: null, area: null });
+      expect(draft.businessDate).toBe('2026-01-05');
+
+      // Default range is 09:00-17:00, expressed as HH:MM in the built editor values.
+      expect(draft.values.startTime).toBe('09:00');
+      expect(draft.values.endTime).toBe('17:00');
+
+      // Anchored to the button itself (a real DOMRect, not the zero-size fallback).
+      expect(screen.getByTestId('popover-anchor-present').textContent).toBe('yes');
+    });
+
+    it('clamps the default range into a narrower window when the day has a short shift', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      // 16:00Z-22:00Z on 2026-01-05 in America/Chicago (UTC-6 in January) is
+      // 10:00-16:00 local, so deriveWindow yields {startMin: 600, endMin: 960}
+      // — narrower than the 09:00-17:00 (540-1020) default range on both ends.
+      const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Add shift' }));
+
+      const draftJson = screen.getByTestId('popover-create-draft').textContent;
+      expect(draftJson).toBeTruthy();
+      const draft = JSON.parse(draftJson as string);
+
+      expect(draft.laneContext).toEqual({ position: null, area: null });
+      expect(draft.businessDate).toBe('2026-01-05');
+
+      // Clamped into the 10:00-16:00 window (duration preserved: 6 hours).
+      expect(draft.values.startTime).toBe('10:00');
+      expect(draft.values.endTime).toBe('16:00');
+    });
+  });
+
+  describe('deleteShiftWithUndo (Fix 1)', () => {
+    it('deletes the shift via the pipeline and shows exactly one toast with an Undo action', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift = makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z');
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
+      fireEvent.click(screen.getByText('stub-delete'));
+
+      expect(mockDeleteShift).toHaveBeenCalledWith('s1');
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      const call = mockToast.mock.calls[0][0];
+      expect(call.title).toMatch(/shift deleted/i);
+      expect(call.action).toBeTruthy();
+    });
+
+    it('Undo re-creates the shift with the exact captured payload, then toasts "Shift restored"', async () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift: Shift = {
+        ...makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+        break_duration: 30,
+        notes: 'Cover the rush',
+        status: 'scheduled',
+        is_published: false,
+        source: 'manual',
+        shift_template_id: null,
+      };
+      mockCreateShiftMutateAsync.mockResolvedValue({ ...shift, id: 's1-restored' });
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
+      fireEvent.click(screen.getByText('stub-delete'));
+
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      const { action } = mockToast.mock.calls[0][0];
+
+      // Render the toast action (a ToastAction element) and click it.
+      const { getByText } = render(action);
+      fireEvent.click(getByText(/undo/i));
+
+      await waitFor(() => expect(mockCreateShiftMutateAsync).toHaveBeenCalledTimes(1));
+      const input = mockCreateShiftMutateAsync.mock.calls[0][0];
+      expect(input.restaurant_id).toBe('r1');
+      expect(input.employee_id).toBe('e1');
+      expect(input.start_time).toBe('2026-01-05T16:00:00Z');
+      expect(input.end_time).toBe('2026-01-05T22:00:00Z');
+      expect(input.position).toBe('Server');
+      expect(input.break_duration).toBe(30);
+      expect(input.notes).toBe('Cover the rush');
+      expect(input.status).toBe('scheduled');
+      expect(input.is_published).toBe(false);
+      expect(input.source).toBe('manual');
+      expect(input.shift_template_id).toBeNull();
+
+      await waitFor(() => expect(mockToast).toHaveBeenCalledTimes(2));
+      const restoredCall = mockToast.mock.calls[1][0];
+      expect(restoredCall.title).toMatch(/shift restored/i);
+    });
+
+    it('published-shift delete still confirms via the popover, then routes through the same undo-toast path', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift = {
+        ...makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+        is_published: true,
+      };
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      fireEvent.click(screen.getByRole('button', { name: /Ann/i }));
+      // The stub popover doesn't re-implement the AlertDialog confirm gate
+      // (that's TimelineShiftPopover.test.tsx's job) — it always calls onDelete
+      // directly. This test only pins that ShiftTimelineTab wires the SAME
+      // onDelete (deleteShiftWithUndo) regardless of published state.
+      fireEvent.click(screen.getByText('stub-delete'));
+
+      expect(mockDeleteShift).toHaveBeenCalledWith('s1');
+      expect(mockToast).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('transient change highlight (Fix 3)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('highlights the bar after a successful edit-mode save, then clears the highlight after ~2s', () => {
+      vi.useFakeTimers();
+
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shift = makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z');
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={[shift]} employees={employees} />);
+
+      const bar = screen.getByRole('button', { name: /Ann/i });
+      expect(bar.className).not.toMatch(/(^| )ring-2( |$)/);
+
+      fireEvent.click(bar);
+      fireEvent.click(screen.getByText('stub-save'));
+
+      // Highlight applied immediately after the save commits.
+      expect(bar.className).toContain('ring-2');
+      expect(bar.className).toContain('ring-ring');
+
+      // Still highlighted just before the 2s window elapses.
+      act(() => {
+        vi.advanceTimersByTime(1999);
+      });
+      expect(bar.className).toContain('ring-ring');
+
+      // Cleared once the full 2s has elapsed.
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(bar.className).not.toMatch(/(^| )ring-2( |$)/);
     });
   });
 });

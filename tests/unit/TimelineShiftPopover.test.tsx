@@ -79,6 +79,23 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof TimelineShi
   };
 }
 
+function defaultCreateDraft(
+  overrides: Partial<NonNullable<React.ComponentProps<typeof TimelineShiftPopover>['createDraft']>> = {},
+) {
+  return {
+    values: {
+      employeeId: '',
+      startTime: '15:00',
+      endTime: '17:00',
+      breakDuration: '',
+      notes: '',
+    },
+    laneContext: { position: 'Server', area: null },
+    businessDate: '2026-03-10',
+    ...overrides,
+  };
+}
+
 describe('TimelineShiftPopover', () => {
   beforeEach(() => {
     mockUseCheckConflicts.mockReset();
@@ -285,5 +302,295 @@ describe('TimelineShiftPopover', () => {
     // Still in edit mode, still mounted.
     expect(screen.getByLabelText(/select employee/i)).toBeTruthy();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('create mode', () => {
+    function createProps(
+      overrides: Partial<React.ComponentProps<typeof TimelineShiftPopover>> = {},
+    ) {
+      return defaultProps({
+        activeShift: null,
+        createDraft: defaultCreateDraft(),
+        validateAndCreateAtTime: vi.fn(),
+        forceCreateAtTime: vi.fn(),
+        ...overrides,
+      });
+    }
+
+    it('renders nothing when both activeShift and createDraft are absent', () => {
+      const { container } = render(
+        <TimelineShiftPopover {...createProps({ createDraft: null })} />,
+      );
+      expect(container.querySelector('[role="dialog"]')).toBeNull();
+    });
+
+    it('renders a "New shift" header and the create form when createDraft is present', () => {
+      render(<TimelineShiftPopover {...createProps()} />);
+
+      expect(screen.getByText(/^new shift$/i)).toBeTruthy();
+      expect(screen.getByLabelText(/select employee/i)).toBeTruthy();
+      expect(screen.getByLabelText(/start time/i)).toBeTruthy();
+      expect(screen.getByLabelText(/end time/i)).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^add shift$/i })).toBeTruthy();
+    });
+
+    it('shows the lane position as a subtitle when present', () => {
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            createDraft: defaultCreateDraft({
+              laneContext: { position: 'Cook', area: null },
+            }),
+          })}
+        />,
+      );
+
+      expect(screen.getByText(/^cook$/i)).toBeTruthy();
+    });
+
+    it('disables Add shift until an employee is selected', () => {
+      render(<TimelineShiftPopover {...createProps()} />);
+
+      expect(screen.getByRole('button', { name: /^add shift$/i })).toBeDisabled();
+    });
+
+    it('enables Add shift once an employee is selected', async () => {
+      const user = userEvent.setup();
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            createDraft: defaultCreateDraft({
+              values: {
+                employeeId: 'e1',
+                startTime: '15:00',
+                endTime: '17:00',
+                breakDuration: '',
+                notes: '',
+              },
+            }),
+          })}
+        />,
+      );
+
+      expect(screen.getByRole('button', { name: /^add shift$/i })).not.toBeDisabled();
+    });
+
+    it('Add shift calls validateAndCreateAtTime with correct ISO instants and the lane position', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      const validateAndCreateAtTime = vi.fn().mockResolvedValue({ created: true });
+
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            onClose,
+            validateAndCreateAtTime,
+            createDraft: defaultCreateDraft({
+              values: {
+                employeeId: 'e1',
+                startTime: '15:00',
+                endTime: '17:00',
+                breakDuration: '30',
+                notes: 'Cover the rush',
+              },
+              laneContext: { position: 'Server', area: null },
+            }),
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^add shift$/i }));
+
+      await waitFor(() => expect(validateAndCreateAtTime).toHaveBeenCalledTimes(1));
+      const input = validateAndCreateAtTime.mock.calls[0][0];
+      expect(input.employeeId).toBe('e1');
+      expect(input.businessDate).toBe('2026-03-10');
+      expect(input.position).toBe('Server');
+      expect(input.breakDuration).toBe(30);
+      expect(input.notes).toBe('Cover the rush');
+      // 15:00 America/Chicago (CDT, UTC-5) -> 20:00Z; 17:00 -> 22:00Z.
+      expect(input.startIso).toBe('2026-03-10T20:00:00.000Z');
+      expect(input.endIso).toBe('2026-03-10T22:00:00.000Z');
+
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it('derives position from the selected employee when the lane has no position (area grouping)', async () => {
+      const user = userEvent.setup();
+      const validateAndCreateAtTime = vi.fn().mockResolvedValue({ created: true });
+
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            validateAndCreateAtTime,
+            createDraft: defaultCreateDraft({
+              values: {
+                employeeId: 'e2',
+                startTime: '15:00',
+                endTime: '17:00',
+                breakDuration: '',
+                notes: '',
+              },
+              laneContext: { position: null, area: 'Front' },
+            }),
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^add shift$/i }));
+
+      await waitFor(() => expect(validateAndCreateAtTime).toHaveBeenCalledTimes(1));
+      const input = validateAndCreateAtTime.mock.calls[0][0];
+      // e2 is Cody Cook, position 'Cook' — falls back to the employee's own position.
+      expect(input.position).toBe('Cook');
+    });
+
+    it('rolls the end time past midnight for an overnight create range', async () => {
+      const user = userEvent.setup();
+      const validateAndCreateAtTime = vi.fn().mockResolvedValue({ created: true });
+
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            validateAndCreateAtTime,
+            createDraft: defaultCreateDraft({
+              values: {
+                employeeId: 'e1',
+                startTime: '22:00',
+                endTime: '02:00',
+                breakDuration: '',
+                notes: '',
+              },
+            }),
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^add shift$/i }));
+
+      await waitFor(() => expect(validateAndCreateAtTime).toHaveBeenCalledTimes(1));
+      const input = validateAndCreateAtTime.mock.calls[0][0];
+      // 22:00 CDT -> 2026-03-11T03:00:00Z; 02:00 next day CDT -> 2026-03-11T07:00:00Z.
+      expect(input.startIso).toBe('2026-03-11T03:00:00.000Z');
+      expect(input.endIso).toBe('2026-03-11T07:00:00.000Z');
+    });
+
+    it('pending conflicts open the shared AvailabilityConflictDialog and keep the create form mounted', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      const validateAndCreateAtTime = vi.fn().mockResolvedValue({
+        created: false,
+        pendingConflicts: [
+          { has_conflict: true, conflict_type: 'time-off', message: 'Employee has approved time-off' },
+        ] as ConflictCheck[],
+        pendingWarnings: [],
+      });
+
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            onClose,
+            validateAndCreateAtTime,
+            createDraft: defaultCreateDraft({
+              values: {
+                employeeId: 'e1',
+                startTime: '15:00',
+                endTime: '17:00',
+                breakDuration: '',
+                notes: '',
+              },
+            }),
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^add shift$/i }));
+
+      await waitFor(() => expect(screen.getByRole('dialog', { name: /scheduling warning/i })).toBeTruthy());
+      expect(screen.getByLabelText(/select employee/i)).toBeTruthy();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('confirming the conflict dialog calls forceCreateAtTime and then closes the popover', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      const validateAndCreateAtTime = vi.fn().mockResolvedValue({
+        created: false,
+        pendingConflicts: [
+          { has_conflict: true, conflict_type: 'time-off', message: 'Employee has approved time-off' },
+        ] as ConflictCheck[],
+        pendingWarnings: [],
+      });
+      const forceCreateAtTime = vi.fn().mockResolvedValue(true);
+
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            onClose,
+            validateAndCreateAtTime,
+            forceCreateAtTime,
+            createDraft: defaultCreateDraft({
+              values: {
+                employeeId: 'e1',
+                startTime: '15:00',
+                endTime: '17:00',
+                breakDuration: '',
+                notes: '',
+              },
+            }),
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^add shift$/i }));
+      await waitFor(() => expect(screen.getByRole('dialog', { name: /scheduling warning/i })).toBeTruthy());
+
+      await user.click(screen.getByRole('button', { name: /assign anyway/i }));
+
+      await waitFor(() => expect(forceCreateAtTime).toHaveBeenCalledTimes(1));
+      const input = forceCreateAtTime.mock.calls[0][0];
+      expect(input.employeeId).toBe('e1');
+      expect(input.position).toBe('Server');
+      await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it('cancelling the conflict dialog returns to the create form without closing the popover', async () => {
+      const user = userEvent.setup();
+      const onClose = vi.fn();
+      const validateAndCreateAtTime = vi.fn().mockResolvedValue({
+        created: false,
+        pendingConflicts: [
+          { has_conflict: true, conflict_type: 'time-off', message: 'Employee has approved time-off' },
+        ] as ConflictCheck[],
+        pendingWarnings: [],
+      });
+
+      render(
+        <TimelineShiftPopover
+          {...createProps({
+            onClose,
+            validateAndCreateAtTime,
+            createDraft: defaultCreateDraft({
+              values: {
+                employeeId: 'e1',
+                startTime: '15:00',
+                endTime: '17:00',
+                breakDuration: '',
+                notes: '',
+              },
+            }),
+          })}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /^add shift$/i }));
+      await waitFor(() => expect(screen.getByRole('dialog', { name: /scheduling warning/i })).toBeTruthy());
+
+      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: /scheduling warning/i })).toBeNull());
+      expect(screen.getByLabelText(/select employee/i)).toBeTruthy();
+      expect(onClose).not.toHaveBeenCalled();
+    });
   });
 });

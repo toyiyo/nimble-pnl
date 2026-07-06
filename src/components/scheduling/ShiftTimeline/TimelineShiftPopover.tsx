@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import {
   Popover,
@@ -28,16 +28,30 @@ import { TimelineShiftEditor, type TimelineShiftEditorValues } from './TimelineS
 import type { Shift, Employee, ConflictCheck } from '@/types/scheduling';
 import type { ValidationIssue } from '@/lib/shiftValidator';
 import type { ValidationResult } from '@/lib/shiftValidator';
-import type { UpdateTimeOutcome } from '@/hooks/useValidatedShiftMutations';
+import type {
+  UpdateTimeOutcome,
+  CreateAtTimeOutcome,
+  CreateAtTimeInput,
+} from '@/hooks/useValidatedShiftMutations';
 
 /** Minimal shape needed to anchor the Radix popper to an arbitrary rect. */
 interface VirtualAnchor {
   getBoundingClientRect: () => DOMRect;
 }
 
+/** Prefilled draft for the paint-to-create quick-add flow — mutually exclusive with `activeShift`. */
+export interface TimelineCreateDraft {
+  values: TimelineShiftEditorValues;
+  laneContext: { position?: string | null; area?: string | null };
+  /** The calendar date (YYYY-MM-DD) the draft's times are relative to. */
+  businessDate: string;
+}
+
 interface TimelineShiftPopoverProps {
   /** The currently active shift to show, or null when none is selected. */
   readonly activeShift: Shift | null;
+  /** Prefilled create-mode draft (paint-to-create quick-add), or null/absent when not in create mode. */
+  readonly createDraft?: TimelineCreateDraft | null;
   /** Restaurant IANA timezone for displaying local times. */
   readonly tz: string;
   /** The calendar date string (YYYY-MM-DD) of the selected day. */
@@ -64,6 +78,10 @@ interface TimelineShiftPopoverProps {
     endIso: string;
     businessDate: string;
   }) => Promise<boolean>;
+  /** Validate a create-at-time (quick-add) request; returns pending issues instead of throwing. */
+  readonly validateAndCreateAtTime?: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
+  /** Force-apply a create-at-time request after the user confirms the conflict dialog. */
+  readonly forceCreateAtTime?: (input: CreateAtTimeInput) => Promise<boolean>;
   /** Delete a shift by id (immediate — the confirm gate lives in this component for published shifts). */
   readonly deleteShift: (shiftId: string) => void;
   /** Surfaced validation errors (e.g. a thrown lock/interval error) from the pipeline hook. */
@@ -133,6 +151,7 @@ function shiftToEditorValues(shift: Shift, dateStr: string, tz: string): Timelin
  */
 export function TimelineShiftPopover({
   activeShift,
+  createDraft,
   tz,
   dateStr,
   employees,
@@ -141,6 +160,8 @@ export function TimelineShiftPopover({
   onClose,
   validateAndUpdateTime,
   forceUpdateTime,
+  validateAndCreateAtTime,
+  forceCreateAtTime,
   deleteShift,
   validationResult,
   clearValidation,
@@ -149,6 +170,9 @@ export function TimelineShiftPopover({
 }: TimelineShiftPopoverProps) {
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [editValues, setEditValues] = useState<TimelineShiftEditorValues | null>(null);
+  const [createValues, setCreateValues] = useState<TimelineShiftEditorValues | null>(
+    createDraft?.values ?? null,
+  );
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [pendingIssues, setPendingIssues] = useState<{
     conflicts: ConflictCheck[];
@@ -178,6 +202,44 @@ export function TimelineShiftPopover({
     resetLocalState();
     onClose();
   }, [resetLocalState, onClose]);
+
+  // Re-seed create-mode local state whenever the caller stages a fresh draft
+  // (a new paint gesture) — keeps the form controlled by `createValues` alone
+  // once mounted, so an in-progress create form isn't left dangling if a new
+  // draft replaces the old one while the popover is open.
+  useEffect(() => {
+    setCreateValues(createDraft?.values ?? null);
+    setPendingIssues(null);
+     
+  }, [createDraft]);
+
+  const isCreateMode = !activeShift && Boolean(createDraft);
+
+  if (!activeShift && !createDraft) return null;
+
+  if (isCreateMode) {
+    return (
+      <TimelineCreatePopoverContent
+        createDraft={createDraft as TimelineCreateDraft}
+        createValues={createValues}
+        onChangeValues={setCreateValues}
+        tz={tz}
+        employees={employees}
+        restaurantId={restaurantId}
+        dayShifts={dayShifts}
+        anchorRect={anchorRect ?? null}
+        collisionBoundary={collisionBoundary}
+        virtualAnchorRef={virtualAnchorRef}
+        validateAndCreateAtTime={validateAndCreateAtTime}
+        forceCreateAtTime={forceCreateAtTime}
+        pendingIssues={pendingIssues}
+        setPendingIssues={setPendingIssues}
+        saving={saving}
+        setSaving={setSaving}
+        onClose={handleClose}
+      />
+    );
+  }
 
   if (!activeShift) return null;
 
@@ -491,5 +553,229 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
       </span>
       <span className="text-[13px] text-foreground">{value}</span>
     </div>
+  );
+}
+
+interface TimelineCreatePopoverContentProps {
+  readonly createDraft: TimelineCreateDraft;
+  readonly createValues: TimelineShiftEditorValues | null;
+  readonly onChangeValues: (values: TimelineShiftEditorValues) => void;
+  readonly tz: string;
+  readonly employees: Employee[];
+  readonly restaurantId: string;
+  readonly dayShifts: Shift[];
+  readonly anchorRect: DOMRect | null;
+  readonly collisionBoundary?: Element | null;
+  readonly virtualAnchorRef: { current: VirtualAnchor | null };
+  readonly validateAndCreateAtTime?: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
+  readonly forceCreateAtTime?: (input: CreateAtTimeInput) => Promise<boolean>;
+  readonly pendingIssues: { conflicts: ConflictCheck[]; warnings: ValidationIssue[] } | null;
+  readonly setPendingIssues: (
+    issues: { conflicts: ConflictCheck[]; warnings: ValidationIssue[] } | null,
+  ) => void;
+  readonly saving: boolean;
+  readonly setSaving: (saving: boolean) => void;
+  readonly onClose: () => void;
+}
+
+/**
+ * Create-mode variant of the single Timeline popover instance (Stage C3). Rendered by
+ * `TimelineShiftPopover` when `createDraft` is present and `activeShift` is null — mutually
+ * exclusive with the view/edit branch, so only one `Popover` is ever mounted.
+ *
+ * Resolves the shift's `position` at commit time: the lane's own position (position-grouped
+ * lane) wins; otherwise falls back to the selected employee's `position` (area-grouped lane,
+ * where a shift's area is derived from its employee rather than stored directly).
+ */
+function TimelineCreatePopoverContent({
+  createDraft,
+  createValues,
+  onChangeValues,
+  tz,
+  employees,
+  restaurantId,
+  dayShifts,
+  anchorRect,
+  collisionBoundary,
+  virtualAnchorRef,
+  validateAndCreateAtTime,
+  forceCreateAtTime,
+  pendingIssues,
+  setPendingIssues,
+  saving,
+  setSaving,
+  onClose,
+}: TimelineCreatePopoverContentProps) {
+  const { businessDate, laneContext } = createDraft;
+
+  const resolvePosition = useCallback(
+    (values: TimelineShiftEditorValues): string => {
+      if (laneContext.position) return laneContext.position;
+      const employee = employees.find((e) => e.id === values.employeeId);
+      return employee?.position ?? '';
+    },
+    [laneContext.position, employees],
+  );
+
+  const buildIso = useCallback(
+    (values: TimelineShiftEditorValues) => {
+      const startMin = timeToMinutes(values.startTime);
+      let endMinValue = timeToMinutes(values.endTime);
+      if (endMinValue <= startMin) endMinValue += 1440;
+
+      return {
+        startIso: minutesToIso(businessDate, startMin, tz),
+        endIso: minutesToIso(businessDate, endMinValue, tz),
+      };
+    },
+    [businessDate, tz],
+  );
+
+  const buildCreateInput = useCallback(
+    (values: TimelineShiftEditorValues): CreateAtTimeInput => {
+      const { startIso, endIso } = buildIso(values);
+      return {
+        employeeId: values.employeeId,
+        startIso,
+        endIso,
+        businessDate,
+        position: resolvePosition(values),
+        breakDuration: Number(values.breakDuration) || 0,
+        notes: values.notes,
+      };
+    },
+    [buildIso, businessDate, resolvePosition],
+  );
+
+  const handleAdd = async () => {
+    if (!createValues || !validateAndCreateAtTime) return;
+
+    setSaving(true);
+    try {
+      const outcome = await validateAndCreateAtTime(buildCreateInput(createValues));
+
+      if (outcome.created) {
+        onClose();
+        return;
+      }
+
+      if (outcome.pendingConflicts?.length || outcome.pendingWarnings?.length) {
+        setPendingIssues({
+          conflicts: outcome.pendingConflicts ?? [],
+          warnings: outcome.pendingWarnings ?? [],
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleConfirmConflicts = async () => {
+    if (!createValues || !forceCreateAtTime) return;
+
+    setSaving(true);
+    try {
+      const ok = await forceCreateAtTime(buildCreateInput(createValues));
+
+      if (ok) {
+        setPendingIssues(null);
+        onClose();
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelConflicts = () => {
+    setPendingIssues(null);
+  };
+
+  const conflictDialogOpen = pendingIssues !== null;
+  const conflictDialogData = pendingIssues
+    ? {
+        employeeName:
+          employees.find((e) => e.id === createValues?.employeeId)?.name ?? 'This employee',
+        conflicts: pendingIssues.conflicts,
+        warnings: pendingIssues.warnings,
+      }
+    : null;
+
+  const subtitle = laneContext.position || laneContext.area || null;
+
+  return (
+    <>
+      <Popover
+        open
+        modal={false}
+        onOpenChange={(open) => {
+          if (!open && !conflictDialogOpen) onClose();
+        }}
+      >
+        {anchorRect ? (
+          <PopoverAnchor virtualRef={virtualAnchorRef as unknown as React.RefObject<VirtualAnchor>} />
+        ) : (
+          <PopoverTrigger asChild>
+            <span className="sr-only" />
+          </PopoverTrigger>
+        )}
+
+        <PopoverContent
+          className="w-72 p-0 gap-0 border-border/40"
+          align="center"
+          sideOffset={8}
+          collisionBoundary={collisionBoundary ?? undefined}
+        >
+          <div className="px-4 pt-4 pb-3 border-b border-border/40">
+            <p className="text-[14px] font-semibold text-foreground">New shift</p>
+            {subtitle && (
+              <p className="text-[12px] text-muted-foreground mt-0.5">{subtitle}</p>
+            )}
+          </div>
+
+          <div className="px-4 py-4">
+            {createValues && (
+              <TimelineShiftEditor
+                mode="create"
+                shift={null}
+                employees={employees}
+                restaurantId={restaurantId}
+                dateStr={businessDate}
+                tz={tz}
+                existingShifts={dayShifts}
+                values={createValues}
+                onChange={onChangeValues}
+                laneContext={laneContext}
+              />
+            )}
+          </div>
+
+          <div className="px-4 py-3 border-t border-border/40 flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              onClick={onClose}
+              disabled={saving}
+              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAdd}
+              disabled={saving || !createValues?.employeeId}
+              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+            >
+              Add shift
+            </Button>
+          </div>
+        </PopoverContent>
+      </Popover>
+
+      <AvailabilityConflictDialog
+        open={conflictDialogOpen}
+        data={conflictDialogData}
+        timezone={tz}
+        onConfirm={handleConfirmConflicts}
+        onCancel={handleCancelConflicts}
+      />
+    </>
   );
 }

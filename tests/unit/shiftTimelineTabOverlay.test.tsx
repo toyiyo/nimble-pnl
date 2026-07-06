@@ -45,6 +45,8 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
 const mockUseValidatedShiftMutations = vi.fn(() => ({
   validateAndCreate: vi.fn(),
   forceCreate: vi.fn(),
+  validateAndCreateAtTime: vi.fn(),
+  forceCreateAtTime: vi.fn(),
   validateAndUpdateTime: vi.fn(),
   forceUpdateTime: vi.fn(),
   validateAndReassign: vi.fn(),
@@ -60,23 +62,32 @@ vi.mock('@/hooks/useValidatedShiftMutations', () => ({
 
 // Mock the popover so we can inspect the exact props ShiftTimelineTab passes down,
 // without depending on Radix Popover/PopoverAnchor internals.
-const mockTimelineShiftPopover = vi.fn(
-  (props: { activeShift: Shift | null; anchorRect?: DOMRect | null; onClose: () => void }) => (
-    <div data-testid="popover-stub">
-      <span data-testid="popover-active-shift-id">{props.activeShift?.id ?? ''}</span>
-      <span data-testid="popover-anchor-present">{props.anchorRect ? 'yes' : 'no'}</span>
-      <button type="button" onClick={props.onClose}>
-        close-popover
-      </button>
-    </div>
-  ),
-);
+interface PopoverStubProps {
+  activeShift: Shift | null;
+  anchorRect?: DOMRect | null;
+  onClose: () => void;
+  createDraft?: {
+    values: { employeeId: string; startTime: string; endTime: string; breakDuration: string; notes: string };
+    laneContext: { position?: string | null; area?: string | null };
+    businessDate: string;
+  } | null;
+}
+
+const mockTimelineShiftPopover = vi.fn((props: PopoverStubProps) => (
+  <div data-testid="popover-stub">
+    <span data-testid="popover-active-shift-id">{props.activeShift?.id ?? ''}</span>
+    <span data-testid="popover-anchor-present">{props.anchorRect ? 'yes' : 'no'}</span>
+    <span data-testid="popover-create-draft">
+      {props.createDraft ? JSON.stringify(props.createDraft) : ''}
+    </span>
+    <button type="button" onClick={props.onClose}>
+      close-popover
+    </button>
+  </div>
+));
 
 vi.mock('@/components/scheduling/ShiftTimeline/TimelineShiftPopover', () => ({
-  TimelineShiftPopover: (props: unknown) =>
-    mockTimelineShiftPopover(
-      props as { activeShift: Shift | null; anchorRect?: DOMRect | null; onClose: () => void },
-    ),
+  TimelineShiftPopover: (props: unknown) => mockTimelineShiftPopover(props as PopoverStubProps),
 }));
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -201,5 +212,60 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
 
     expect(screen.getByTestId('popover-active-shift-id').textContent).toBe('');
     expect(screen.getByTestId('popover-anchor-present').textContent).toBe('no');
+  });
+
+  describe('paint-to-create -> createDraft mapping (C3)', () => {
+    it('maps the lane key to laneContext.position when grouped by position', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+      // Default groupBy is 'area'; switch to 'position' via the ToggleGroup.
+      fireEvent.click(screen.getByRole('radio', { name: /^position$/i }));
+
+      const addShiftButton = screen.getAllByText(/add shift to .* lane/i)[0];
+      fireEvent.click(addShiftButton);
+
+      const draftJson = screen.getByTestId('popover-create-draft').textContent;
+      expect(draftJson).not.toBe('');
+      const draft = JSON.parse(draftJson as string);
+      expect(draft.businessDate).toBe('2026-01-05');
+      expect(draft.laneContext.position).toBeTruthy();
+      expect(draft.laneContext.area ?? null).toBeNull();
+      expect(draft.values.startTime).toBeTruthy();
+      expect(draft.values.endTime).toBeTruthy();
+    });
+
+    it('maps the lane key to laneContext.area when grouped by area', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+      // Default groupBy is 'area' already.
+      const addShiftButton = screen.getAllByText(/add shift to .* lane/i)[0];
+      fireEvent.click(addShiftButton);
+
+      const draftJson = screen.getByTestId('popover-create-draft').textContent;
+      expect(draftJson).not.toBe('');
+      const draft = JSON.parse(draftJson as string);
+      expect(draft.laneContext.area).toBeTruthy();
+      expect(draft.laneContext.position ?? null).toBeNull();
+    });
+
+    it('clears createDraft when the popover closes', () => {
+      const employees = [makeEmployee('e1', 'Ann')];
+      const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+      const addShiftButton = screen.getAllByText(/add shift to .* lane/i)[0];
+      fireEvent.click(addShiftButton);
+      expect(screen.getByTestId('popover-create-draft').textContent).not.toBe('');
+
+      fireEvent.click(screen.getByText('close-popover'));
+      expect(screen.getByTestId('popover-create-draft').textContent).toBe('');
+    });
   });
 });

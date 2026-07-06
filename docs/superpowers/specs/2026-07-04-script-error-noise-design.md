@@ -62,9 +62,13 @@ identify a crash-looping third-party SDK.
 - New pure helper `src/lib/errorTrackingFilter.ts`:
   `isUnactionableScriptError(event: CaptureResult | null): boolean` — true only
   when the event is a `$exception` whose exception list consists solely of
-  synthetic, stack-frame-less entries with the CORS-masked message
-  (`Script error.` variants: `Script error`, `Script error.`, browser-prefixed
-  forms). Everything else passes through untouched.
+  synthetic, stack-frame-less entries whose message is **exactly** one of the
+  two masked literals `Script error.` or `Script error` (the exhaustive set,
+  exported as `MASKED_SCRIPT_ERROR_MESSAGES`). Everything else passes through
+  untouched. Decided scope: we do **not** match browser-prefixed or otherwise
+  wrapped variants — an unmatched variant safely falls through to "keep" (still
+  reported) rather than risk mis-dropping a real error, so widening the set is a
+  future change gated on real-world evidence, not a guess.
 - Wire it as `before_send` **inside the existing module-level `posthogOptions`
   object literal** in `src/main.tsx` (return `null` to drop, else return the
   event unchanged) — not via a separate init call or post-hoc mutation. Add a
@@ -72,8 +76,10 @@ identify a crash-looping third-party SDK.
   module-level constant and must be memoized if ever moved into a component
   (design-review major).
 - Unit tests must enumerate the exact message literals the predicate matches
-  (`Script error.`, `Script error`, and any browser-prefixed variants chosen)
-  so the predicate's scope is auditable at a glance (design-review minor).
+  (`Script error.` and `Script error`) so the predicate's scope is auditable at
+  a glance, and must include keep-path cases proving a synthetic frame-less
+  entry with a non-matching or absent message is NOT dropped (design-review +
+  sound-logic minor).
 - Rationale: every script we control already reports unmasked; remaining masked
   events are third-party-injected noise with zero diagnostic content. This is the
   same default posture Sentry ships with (`ignoreErrors: ['Script error.']`).

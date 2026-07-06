@@ -66,9 +66,15 @@ Make the fallback matcher area-compatible:
   drives PDF/CSV export and carried the identical area-blind matching. Without
   it, the on-screen grid would be fixed but the exported file for the same
   Josiah/Justin repro week would still mis-bucket the shifts into the Cold
-  Stone row. The same `!t.area || !employeeArea || t.area === employeeArea`
-  predicate is mirrored in, reading `shift.employee?.area` directly (no extra
-  parameter — the function already receives the full shift).
+  Stone row. The area-aware fallback is mirrored via the shared
+  `templateAreaMatch` helpers, reading `shift.employee?.area` directly.
+  **Explicit-link precedence (Phase 9d, Codex P2):** `buildGridExportData` now
+  resolves `shift.shift_template_id` first — exactly like the grid's
+  `buildTemplateGridData` — so a deliberate cross-area cover (an assigned shift
+  whose area differs from its linked template) stays under its linked row in
+  exports instead of being dropped by the area filter. A link to an archived
+  template is skipped (never re-matched by time), mirroring the grid's
+  `__unmatched__` handling.
 - Downstream consumers referencing the same matching assumption
   (`usePlannerShiftsIndex.ts`, `Scheduling.tsx` `computeOpenSpots`,
   `shiftAllocation.ts` comments) reference the exact-match path for

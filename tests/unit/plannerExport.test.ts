@@ -447,6 +447,47 @@ describe('buildGridExportData', () => {
     // Saturday is WEEK_DAYS index 5; the Cold Stone row must stay empty there.
     expect(rows[0].cells[5]).toBe('');
   });
+
+  it('CRITICAL: should keep an explicit cross-area cover under its linked template row', () => {
+    // A Wetzel's employee deliberately assigned (shift_template_id) to the Cold
+    // Stone template is a real cover — the export must place them under that row,
+    // mirroring the on-screen grid, even though the areas differ. The area filter
+    // only governs UNLINKED shifts, never an explicit assignment.
+    const cscPrep = mockTemplate({
+      id: 't-csc', name: 'Prep-weekend', start_time: '10:00:00', end_time: '16:00:00',
+      position: 'Server', days: [0, 5, 6], area: 'Cold Stone',
+    });
+    const shifts = [
+      mockShift({
+        start_time: '2026-03-07T10:00:00', // Sat
+        end_time: '2026-03-07T16:00:00',
+        position: 'Server',
+        shift_template_id: 't-csc',
+        employee: { id: 'e-w', name: 'Josiah', area: "Wetzel's" } as Shift['employee'],
+      }),
+    ];
+
+    const { rows } = buildGridExportData(shifts, [cscPrep], WEEK_DAYS);
+    expect(rows[0].cells[5]).toBe('Josiah');
+  });
+
+  it('should skip a shift whose explicit shift_template_id is archived (not in the list)', () => {
+    // Mirrors the grid's __unmatched__ handling: an explicit link to a template
+    // that is no longer active must NOT fall through to time-based matching.
+    const shifts = [
+      mockShift({
+        start_time: '2026-03-02T09:00:00', // Mon, would match t1 by time
+        end_time: '2026-03-02T17:00:00',
+        position: 'Server',
+        shift_template_id: 'archived-id',
+        employee: { id: 'e1', name: 'Alice' } as Shift['employee'],
+      }),
+    ];
+
+    const { rows } = buildGridExportData(shifts, templates, WEEK_DAYS);
+    // Must NOT appear under t1 via time-based fallback.
+    expect(rows[0].cells[0]).toBe('');
+  });
 });
 
 // ---------------------------------------------------------------------------

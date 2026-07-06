@@ -139,13 +139,21 @@ export function buildGridExportData(
 
   // Index non-cancelled shifts by templateId → day → employee names
   const shiftsByTemplate = new Map<string, Map<string, string[]>>();
+  const templateById = new Map(templates.map((t) => [t.id, t]));
 
   for (const shift of shifts) {
     if (shift.status === 'cancelled') continue;
     const dateStr = formatLocalDate(new Date(shift.start_time));
     if (!weekDaySet.has(dateStr)) continue;
 
-    const template = findTemplateForShift(shift, templates);
+    // Prefer an explicit template link (set during planner assignment) exactly
+    // like buildTemplateGridData: an assigned shift — including a deliberate
+    // cross-area cover — stays under its linked template. Fall back to
+    // area-aware time matching only for unlinked shifts. A link to an archived
+    // template (not in the list) is skipped, never re-matched by time.
+    const template = shift.shift_template_id
+      ? templateById.get(shift.shift_template_id)
+      : findTemplateForShift(shift, templates);
     if (!template) continue;
 
     if (!shiftsByTemplate.has(template.id)) {

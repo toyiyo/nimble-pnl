@@ -6,7 +6,9 @@
  *
  * Mounts SidebarProvider + Sidebar with useIsMobile forced to true, opens the
  * mobile sheet via setOpenMobile(true), and asserts the resulting dialog has
- * an accessible name mentioning "navigation".
+ * both an accessible name (SheetTitle) and an accessible description
+ * (SheetDescription) — the fix adds both, and Radix warns if either is
+ * missing, so the guard must fail if either is removed later.
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
@@ -29,7 +31,7 @@ function OpenMobileSidebarOnMount() {
 }
 
 describe('mobile sidebar accessibility', () => {
-  it('gives the mobile sheet dialog an accessible name mentioning navigation', () => {
+  it('gives the mobile sheet dialog an accessible name and description', () => {
     render(
       <SidebarProvider>
         <OpenMobileSidebarOnMount />
@@ -41,5 +43,6 @@ describe('mobile sidebar accessibility', () => {
 
     const dialog = screen.getByRole('dialog');
     expect(dialog).toHaveAccessibleName(/navigation/i);
+    expect(dialog).toHaveAccessibleDescription(/navigation/i);
   });
 });

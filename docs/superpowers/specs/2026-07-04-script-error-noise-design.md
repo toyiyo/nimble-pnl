@@ -60,7 +60,8 @@ identify a crash-looping third-party SDK.
 ### 2. Suppress unactionable masked exceptions client-side
 
 - New pure helper `src/lib/errorTrackingFilter.ts`:
-  `isUnactionableScriptError(event: CaptureResult | null): boolean` — true only
+  `isUnactionableScriptError(event: CaptureResult | null | undefined): boolean`
+  — true only
   when the event is a `$exception` whose exception list consists solely of
   synthetic, stack-frame-less entries whose message is **exactly** one of the
   two masked literals `Script error.` or `Script error` (the exhaustive set,
@@ -85,7 +86,7 @@ identify a crash-looping third-party SDK.
   same default posture Sentry ships with (`ignoreErrors: ['Script error.']`).
 - Unit tests: drops synthetic no-stack "Script error."; keeps real exceptions;
   keeps "Script error." that has stack frames; passes through non-exception
-  events and `null`.
+  events and both `null` and `undefined` (both are supported no-op inputs).
 
 ### 3. Mobile sidebar accessible title
 

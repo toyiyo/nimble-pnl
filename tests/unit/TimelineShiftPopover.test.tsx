@@ -68,10 +68,12 @@ function defaultProps(overrides: Partial<React.ComponentProps<typeof TimelineShi
     dateStr: '2026-03-10',
     employees,
     restaurantId: 'r1',
-    dayShifts: [] as Shift[],
+    existingShifts: [] as Shift[],
     onClose: vi.fn(),
     validateAndUpdateTime: vi.fn(),
     forceUpdateTime: vi.fn(),
+    validateAndUpdateShift: vi.fn(),
+    forceUpdateShift: vi.fn(),
     deleteShift: vi.fn(),
     validationResult: null,
     clearValidation: vi.fn(),
@@ -201,28 +203,69 @@ describe('TimelineShiftPopover', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   });
 
-  it('Save with no pending issues calls forceUpdateTime-free validateAndUpdateTime and closes the popover', async () => {
+  it('Save with no pending issues calls validateAndUpdateShift and closes the popover', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    const validateAndUpdateTime = vi.fn().mockResolvedValue({ updated: true });
+    const validateAndUpdateShift = vi.fn().mockResolvedValue({ updated: true });
 
     render(
       <TimelineShiftPopover
-        {...defaultProps({ onClose, validateAndUpdateTime })}
+        {...defaultProps({ onClose, validateAndUpdateShift })}
       />,
     );
 
     await user.click(screen.getByRole('button', { name: /^edit$/i }));
     await user.click(screen.getByRole('button', { name: /^save$/i }));
 
-    await waitFor(() => expect(validateAndUpdateTime).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(validateAndUpdateShift).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
+  });
+
+  it('Save persists employee/break/notes changes made in the edit form, not just start/end time (regression: these silently vanished before)', async () => {
+    const user = userEvent.setup();
+    const onClose = vi.fn();
+    const validateAndUpdateShift = vi.fn().mockResolvedValue({ updated: true });
+
+    render(
+      <TimelineShiftPopover
+        {...defaultProps({
+          onClose,
+          validateAndUpdateShift,
+          activeShift: makeShift({ id: 'shift-1', employee_id: 'e1', break_duration: 30, notes: 'old notes' }),
+        })}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+
+    // Change employee.
+    await user.click(screen.getByLabelText(/select employee/i));
+    await user.click(await screen.findByRole('option', { name: /cody cook/i }));
+
+    // Change break duration.
+    const breakInput = screen.getByLabelText(/break duration/i);
+    await user.clear(breakInput);
+    await user.type(breakInput, '45');
+
+    // Change notes.
+    const notesInput = screen.getByLabelText(/shift notes/i);
+    await user.clear(notesInput);
+    await user.type(notesInput, 'new notes');
+
+    await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(validateAndUpdateShift).toHaveBeenCalledTimes(1));
+    const input = validateAndUpdateShift.mock.calls[0][0];
+    expect(input.employeeId).toBe('e2');
+    expect(input.breakDuration).toBe(45);
+    expect(input.notes).toBe('new notes');
+    expect(input.shift.id).toBe('shift-1');
   });
 
   it('Save with pending conflicts keeps the popover mounted and open behind the conflict dialog', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    const validateAndUpdateTime = vi.fn().mockResolvedValue({
+    const validateAndUpdateShift = vi.fn().mockResolvedValue({
       updated: false,
       pendingConflicts: [
         { has_conflict: true, conflict_type: 'time-off', message: 'Employee has approved time-off' },
@@ -232,7 +275,7 @@ describe('TimelineShiftPopover', () => {
 
     render(
       <TimelineShiftPopover
-        {...defaultProps({ onClose, validateAndUpdateTime })}
+        {...defaultProps({ onClose, validateAndUpdateShift })}
       />,
     );
 
@@ -245,21 +288,21 @@ describe('TimelineShiftPopover', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it('confirming the conflict dialog calls forceUpdateTime and then closes the popover', async () => {
+  it('confirming the conflict dialog calls forceUpdateShift and then closes the popover', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    const validateAndUpdateTime = vi.fn().mockResolvedValue({
+    const validateAndUpdateShift = vi.fn().mockResolvedValue({
       updated: false,
       pendingConflicts: [
         { has_conflict: true, conflict_type: 'time-off', message: 'Employee has approved time-off' },
       ] as ConflictCheck[],
       pendingWarnings: [],
     });
-    const forceUpdateTime = vi.fn().mockResolvedValue(true);
+    const forceUpdateShift = vi.fn().mockResolvedValue({ updated: true });
 
     render(
       <TimelineShiftPopover
-        {...defaultProps({ onClose, validateAndUpdateTime, forceUpdateTime })}
+        {...defaultProps({ onClose, validateAndUpdateShift, forceUpdateShift })}
       />,
     );
 
@@ -270,14 +313,14 @@ describe('TimelineShiftPopover', () => {
 
     await user.click(screen.getByRole('button', { name: /assign anyway/i }));
 
-    await waitFor(() => expect(forceUpdateTime).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(forceUpdateShift).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
   it('cancelling the conflict dialog returns to the edit form without closing the popover', async () => {
     const user = userEvent.setup();
     const onClose = vi.fn();
-    const validateAndUpdateTime = vi.fn().mockResolvedValue({
+    const validateAndUpdateShift = vi.fn().mockResolvedValue({
       updated: false,
       pendingConflicts: [
         { has_conflict: true, conflict_type: 'time-off', message: 'Employee has approved time-off' },
@@ -287,7 +330,7 @@ describe('TimelineShiftPopover', () => {
 
     render(
       <TimelineShiftPopover
-        {...defaultProps({ onClose, validateAndUpdateTime })}
+        {...defaultProps({ onClose, validateAndUpdateShift })}
       />,
     );
 
@@ -355,7 +398,6 @@ describe('TimelineShiftPopover', () => {
     });
 
     it('enables Add shift once an employee is selected', async () => {
-      const user = userEvent.setup();
       render(
         <TimelineShiftPopover
           {...createProps({

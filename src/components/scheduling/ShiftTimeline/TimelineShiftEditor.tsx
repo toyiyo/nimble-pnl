@@ -72,10 +72,19 @@ export function TimelineShiftEditor({
   onChange,
   laneContext,
 }: TimelineShiftEditorProps) {
-  const activeEmployees = useMemo(
-    () => employees.filter((emp) => emp.is_active),
-    [employees],
-  );
+  // Active employees, plus (in edit mode only) the shift's currently-assigned
+  // employee even if they've since become inactive — otherwise editing a shift
+  // whose employee was deactivated silently drops them from the Select,
+  // making it look like the shift has no assignee (CodeRabbit Major).
+  // Create mode has no "currently assigned" employee, so it stays active-only.
+  const activeEmployees = useMemo(() => {
+    const active = employees.filter((emp) => emp.is_active);
+    if (mode !== 'edit' || !shift) return active;
+    const alreadyIncluded = active.some((emp) => emp.id === shift.employee_id);
+    if (alreadyIncluded) return active;
+    const currentEmployee = employees.find((emp) => emp.id === shift.employee_id);
+    return currentEmployee ? [...active, currentEmployee] : active;
+  }, [employees, mode, shift]);
 
   const rankingContext = useMemo(
     () => ({

@@ -311,6 +311,85 @@ describe('TimelineBar drag — move (body drag)', () => {
   });
 });
 
+describe('TimelineBar drag — suppress synthetic click after a real drag', () => {
+  it('does NOT call onSelect on the trailing click the browser dispatches after a real (past-threshold) drag', () => {
+    // Regression (Codex P2): after a real drag commits, the browser still
+    // dispatches a `click` on the bar (pointerup without pointer movement
+    // between down/up is a click per spec, but browsers also synthesize one
+    // after a drag-release in many real-world sequences/tests that fire
+    // pointerdown/move/up then a trailing click). That synthetic click must
+    // NOT reopen the edit popover via onSelect.
+    const bar = makeBar({ leftMin: 600, endMin: 960 });
+    const { button, onSelect, onDragCommit } = renderBar({ bar });
+
+    fireEvent.pointerDown(button, { pointerId: 1, clientX: 700, pointerType: 'mouse' });
+    fireEvent.pointerMove(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' }); // 60px, past threshold
+    fireEvent.pointerUp(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+    expect(onDragCommit).toHaveBeenCalledTimes(1);
+
+    // The browser dispatches this trailing click after the pointerup sequence.
+    fireEvent.click(button);
+
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('a plain click with no preceding drag still calls onSelect (suppression only applies right after a real drag)', () => {
+    const bar = makeBar({ leftMin: 600, endMin: 960 });
+    const { button, onSelect } = renderBar({ bar });
+
+    fireEvent.click(button);
+
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith(bar.shift);
+  });
+
+  it('a click AFTER a suppressed post-drag click fires onSelect again (the suppression is a one-shot flag, not a permanent lock)', () => {
+    const bar = makeBar({ leftMin: 600, endMin: 960 });
+    const { button, onSelect } = renderBar({ bar });
+
+    fireEvent.pointerDown(button, { pointerId: 1, clientX: 700, pointerType: 'mouse' });
+    fireEvent.pointerMove(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+    fireEvent.pointerUp(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+    fireEvent.click(button); // suppressed trailing click
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.click(button); // a genuine, later click
+    expect(onSelect).toHaveBeenCalledOnce();
+  });
+});
+
+describe('TimelineBar drag — unmount cleanup', () => {
+  it('cancels a pending rAF handle on unmount and does not throw or call setState after unmount (regression: CodeRabbit Major)', () => {
+    // rafSpy from beforeEach synchronously flushes the callback, so it never
+    // leaves a genuinely pending rAF handle. Override it here to simulate a
+    // real animation frame that hasn't fired yet by the time we unmount.
+    rafSpy.mockRestore();
+    let pendingCallback: FrameRequestCallback | null = null;
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+      pendingCallback = cb;
+      return 42;
+    });
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame');
+
+    const bar = makeBar({ leftMin: 600, endMin: 960 });
+    const { button, unmount } = renderBar({ bar });
+
+    fireEvent.pointerDown(button, { pointerId: 1, clientX: 700, pointerType: 'mouse' });
+    // Past-threshold move schedules a frame (rafSpy above never flushes it).
+    fireEvent.pointerMove(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+    expect(pendingCallback).not.toBeNull();
+
+    expect(() => unmount()).not.toThrow();
+
+    expect(cancelSpy).toHaveBeenCalledWith(42);
+
+    // The rAF the component scheduled fires AFTER unmount (as it would in a
+    // real browser when cancelAnimationFrame is a no-op mock) — calling it
+    // must not throw or attempt a setState on the unmounted component.
+    expect(() => pendingCallback?.(0)).not.toThrow();
+  });
+});
+
 describe('TimelineBar drag — commit without an intervening rAF flush', () => {
   it('commits the MOVED range (not the original) when pointerup fires before any rAF tick runs', () => {
     // Regression test: gesture.latestRange is only populated inside the rAF

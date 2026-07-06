@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { pointerToMinutes } from '@/lib/timelineDraft';
 import { moveShiftDraft, resizeShiftStart, resizeShiftEnd, type ShiftMinuteRange } from '@/lib/timelineDragMath';
@@ -49,6 +49,12 @@ const DRAG_THRESHOLD_PX = 5;
  *   bar's native `<button onClick>` (this hook never calls `onSelect`
  *   itself), so a real click event — from a mouse click, a tap, or keyboard
  *   Enter/Space — always reaches it exactly once.
+ * - Suppressing the post-drag synthetic click (Codex P2 fix): a past-threshold
+ *   drag sets a one-shot flag, read via the returned `consumeJustDragged()`.
+ *   The caller (`TimelineBar`) must call it from its own `onClick` handler and
+ *   skip forwarding to `onSelect` when it returns true — otherwise the
+ *   trailing `click` the browser dispatches after the drag's pointerup would
+ *   reopen the edit popover right after every drag.
  * - Touch (`pointerType === 'touch'`) never drags: pointerdown on touch is a
  *   no-op here (the bar's own `onClick` handles the tap-to-edit path via the
  *   browser's native click synthesis), so the popover is the only way to
@@ -59,6 +65,9 @@ const DRAG_THRESHOLD_PX = 5;
  * - rAF throttle: draft-state commits (both the `onDraftChange` callback and
  *   this hook's own `dragState` for the floating time readout) happen at most
  *   once per animation frame, never per raw pointermove.
+ * - Unmount cleanup: any in-flight rAF handle is cancelled on unmount so no
+ *   frame callback fires (and calls setState) after the owning component is
+ *   gone.
  */
 export function useTimelineBarDrag({
   original,
@@ -90,6 +99,18 @@ export function useTimelineBarDrag({
     rafHandle: number | null;
     latestRange: ShiftMinuteRange;
   } | null>(null);
+
+  // Set for exactly one trailing click after a real (past-threshold) drag
+  // commits, so the caller can skip that browser-synthesized click instead of
+  // reopening the edit popover via onSelect. `consumeJustDragged` clears the
+  // flag as soon as it's read, so it only ever suppresses a single click.
+  const justDraggedRef = useRef(false);
+
+  const consumeJustDragged = useCallback(() => {
+    const was = justDraggedRef.current;
+    justDraggedRef.current = false;
+    return was;
+  }, []);
 
   const computeRange = useCallback((mode: DragMode, clientX: number): ShiftMinuteRange | null => {
     const rect = getPlotRect();
@@ -155,6 +176,12 @@ export function useTimelineBarDrag({
     // native onClick (fired by the browser after this pointerup) rather than
     // calling onSelect ourselves, which would double-fire it.
     if (gesture.movedPx < DRAG_THRESHOLD_PX) return;
+
+    // Past-threshold: a real drag. The browser still dispatches a trailing
+    // `click` on the bar after this pointerup — flag it so the caller's
+    // onClick handler can skip forwarding that one click to onSelect
+    // (otherwise every drag would also reopen the edit popover).
+    justDraggedRef.current = true;
 
     onCommitRef.current(finalRange);
   }, [computeRange]);
@@ -230,6 +257,19 @@ export function useTimelineBarDrag({
     [],
   );
 
+  // Unmount cleanup: cancel any in-flight rAF so a frame never fires after
+  // this hook's owner has unmounted (which would call setDragState on an
+  // unmounted component and touch a stale gestureRef). Runs once, on
+  // unmount only — deliberately not re-run per gesture start/end.
+  useEffect(() => {
+    return () => {
+      if (gestureRef.current?.rafHandle != null) {
+        cancelAnimationFrame(gestureRef.current.rafHandle);
+      }
+      gestureRef.current = null;
+    };
+  }, []);
+
   return useMemo(
     () => ({
       dragState,
@@ -239,7 +279,8 @@ export function useTimelineBarDrag({
       handlePointerMove,
       handlePointerUp,
       handlePointerCancel,
+      consumeJustDragged,
     }),
-    [dragState, makePointerDownHandler, handlePointerMove, handlePointerUp, handlePointerCancel],
+    [dragState, makePointerDownHandler, handlePointerMove, handlePointerUp, handlePointerCancel, consumeJustDragged],
   );
 }

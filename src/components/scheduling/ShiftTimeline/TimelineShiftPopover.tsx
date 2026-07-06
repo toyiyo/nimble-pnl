@@ -30,6 +30,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 import type { ValidationResult } from '@/lib/shiftValidator';
 import type {
   UpdateTimeOutcome,
+  UpdateShiftOutcome,
   CreateAtTimeOutcome,
   CreateAtTimeInput,
 } from '@/hooks/useValidatedShiftMutations';
@@ -60,24 +61,52 @@ interface TimelineShiftPopoverProps {
   readonly employees: Employee[];
   /** Restaurant ID, forwarded to TimelineShiftEditor's conflict checks. */
   readonly restaurantId: string;
-  /** All shifts for the day, used for local overlap/rest-gap warnings while editing. */
-  readonly dayShifts: Shift[];
+  /**
+   * Full-week shifts (not day-scoped), used for local overlap/rest-gap warnings
+   * while editing — must include adjacent days so overnight shifts spilling in
+   * from the previous day, and early-next-day shifts, are still checked.
+   */
+  readonly existingShifts: Shift[];
   /** Called when the popover is closed or dismissed. */
   readonly onClose: () => void;
-  /** Validate a time-change; returns pending issues instead of throwing. */
+  /** Validate a time-change; returns pending issues instead of throwing. Used by the DRAG path (time-only). */
   readonly validateAndUpdateTime: (input: {
     shift: Shift;
     startIso: string;
     endIso: string;
     businessDate: string;
   }) => Promise<UpdateTimeOutcome>;
-  /** Force-apply a time change after the user confirms the conflict dialog. */
+  /** Force-apply a time change after the user confirms the conflict dialog. Used by the DRAG path (time-only). */
   readonly forceUpdateTime: (input: {
     shift: Shift;
     startIso: string;
     endIso: string;
     businessDate: string;
   }) => Promise<boolean>;
+  /**
+   * Validate a full-field edit (time + employee + break + notes); returns
+   * pending issues instead of throwing. Used by the edit-mode popover's Save
+   * so employee/break/notes changes are never silently dropped.
+   */
+  readonly validateAndUpdateShift: (input: {
+    shift: Shift;
+    startIso: string;
+    endIso: string;
+    businessDate: string;
+    employeeId: string;
+    breakDuration: number;
+    notes: string;
+  }) => Promise<UpdateShiftOutcome>;
+  /** Force-apply a full-field edit after the user confirms the conflict dialog. */
+  readonly forceUpdateShift: (input: {
+    shift: Shift;
+    startIso: string;
+    endIso: string;
+    businessDate: string;
+    employeeId: string;
+    breakDuration: number;
+    notes: string;
+  }) => Promise<UpdateShiftOutcome>;
   /** Validate a create-at-time (quick-add) request; returns pending issues instead of throwing. */
   readonly validateAndCreateAtTime?: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
   /** Force-apply a create-at-time request after the user confirms the conflict dialog. */
@@ -142,10 +171,12 @@ export function TimelineShiftPopover({
   dateStr,
   employees,
   restaurantId,
-  dayShifts,
+  existingShifts,
   onClose,
   validateAndUpdateTime,
   forceUpdateTime,
+  validateAndUpdateShift,
+  forceUpdateShift,
   validateAndCreateAtTime,
   forceCreateAtTime,
   deleteShift,
@@ -211,7 +242,7 @@ export function TimelineShiftPopover({
         tz={tz}
         employees={employees}
         restaurantId={restaurantId}
-        dayShifts={dayShifts}
+        existingShifts={existingShifts}
         anchorRect={anchorRect ?? null}
         collisionBoundary={collisionBoundary}
         virtualAnchorRef={virtualAnchorRef}
@@ -281,11 +312,14 @@ export function TimelineShiftPopover({
 
     setSaving(true);
     try {
-      const outcome = await validateAndUpdateTime({
+      const outcome = await validateAndUpdateShift({
         shift: activeShift,
         startIso,
         endIso,
         businessDate: dateStr,
+        employeeId: editValues.employeeId,
+        breakDuration: Number(editValues.breakDuration) || 0,
+        notes: editValues.notes,
       });
 
       if (outcome.updated) {
@@ -314,14 +348,17 @@ export function TimelineShiftPopover({
 
     setSaving(true);
     try {
-      const ok = await forceUpdateTime({
+      const outcome = await forceUpdateShift({
         shift: activeShift,
         startIso,
         endIso,
         businessDate: dateStr,
+        employeeId: editValues.employeeId,
+        breakDuration: Number(editValues.breakDuration) || 0,
+        notes: editValues.notes,
       });
 
-      if (ok) {
+      if (outcome.updated) {
         setPendingIssues(null);
         handleClose();
       }
@@ -451,7 +488,7 @@ export function TimelineShiftPopover({
                     restaurantId={restaurantId}
                     dateStr={dateStr}
                     tz={tz}
-                    existingShifts={dayShifts}
+                    existingShifts={existingShifts}
                     values={editValues}
                     onChange={setEditValues}
                   />
@@ -544,7 +581,7 @@ interface TimelineCreatePopoverContentProps {
   readonly tz: string;
   readonly employees: Employee[];
   readonly restaurantId: string;
-  readonly dayShifts: Shift[];
+  readonly existingShifts: Shift[];
   readonly anchorRect: DOMRect | null;
   readonly collisionBoundary?: Element | null;
   readonly virtualAnchorRef: { current: VirtualAnchor | null };
@@ -575,7 +612,7 @@ function TimelineCreatePopoverContent({
   tz,
   employees,
   restaurantId,
-  dayShifts,
+  existingShifts,
   anchorRect,
   collisionBoundary,
   virtualAnchorRef,
@@ -720,7 +757,7 @@ function TimelineCreatePopoverContent({
                 restaurantId={restaurantId}
                 dateStr={businessDate}
                 tz={tz}
-                existingShifts={dayShifts}
+                existingShifts={existingShifts}
                 values={createValues}
                 onChange={onChangeValues}
                 laneContext={laneContext}

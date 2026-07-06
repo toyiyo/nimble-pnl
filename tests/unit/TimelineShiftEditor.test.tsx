@@ -95,6 +95,68 @@ describe('TimelineShiftEditor', () => {
     expect(screen.getByLabelText(/notes/i)).toBeTruthy();
   });
 
+  it('edit mode: still lists (and keeps selected) the shift\'s currently-assigned employee even after they become inactive (regression: CodeRabbit Major)', async () => {
+    const user = userEvent.setup();
+    const inactiveEmployee = makeEmployee({ id: 'e-inactive', name: 'Ivy Inactive', position: 'Server', is_active: false });
+    const employeesWithInactive: Employee[] = [...employees, inactiveEmployee];
+
+    render(
+      <TimelineShiftEditor
+        mode="edit"
+        shift={makeShift({ employee_id: 'e-inactive' })}
+        employees={employeesWithInactive}
+        restaurantId="r1"
+        dateStr="2026-03-10"
+        tz="America/Chicago"
+        existingShifts={[]}
+        onChange={() => {}}
+        values={{
+          employeeId: 'e-inactive',
+          startTime: '09:00',
+          endTime: '17:00',
+          breakDuration: '30',
+          notes: '',
+        }}
+      />,
+    );
+
+    await user.click(screen.getByLabelText(/select employee/i));
+
+    const options = screen.getAllByRole('option').map((el) => el.textContent);
+    expect(options.some((t) => t?.includes('Ivy Inactive'))).toBe(true);
+  });
+
+  it('create mode: does NOT list inactive employees (active-only filter still applies when there is no currently-assigned shift)', async () => {
+    const user = userEvent.setup();
+    const inactiveEmployee = makeEmployee({ id: 'e-inactive', name: 'Ivy Inactive', position: 'Server', is_active: false });
+    const employeesWithInactive: Employee[] = [...employees, inactiveEmployee];
+
+    render(
+      <TimelineShiftEditor
+        mode="create"
+        shift={null}
+        employees={employeesWithInactive}
+        restaurantId="r1"
+        dateStr="2026-03-10"
+        tz="America/Chicago"
+        existingShifts={[]}
+        onChange={() => {}}
+        values={{
+          employeeId: '',
+          startTime: '09:00',
+          endTime: '17:00',
+          breakDuration: '0',
+          notes: '',
+        }}
+      />,
+    );
+
+    await user.click(screen.getByLabelText(/select employee/i));
+
+    const options = screen.getAllByRole('option').map((el) => el.textContent);
+    expect(options.some((t) => t?.includes('Ivy Inactive'))).toBe(false);
+  });
+
   it('ranks employees via rankEmployeesForShift using the shift position as context', async () => {
     const user = userEvent.setup();
 

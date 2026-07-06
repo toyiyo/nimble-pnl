@@ -10,7 +10,7 @@
  * runs its own inline validation/mutation logic.
  */
 import React, { ReactNode } from 'react';
-import { renderHook, waitFor, act } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 

@@ -47,7 +47,10 @@ interface TimelineBarProps {
  * real drag (calls `onDraftChange` each frame, `onDragCommit` on release).
  * Locked shifts and touch pointers never drag — `touch-action: none` is
  * scoped to the body + handles only so the lane's own pan-to-scroll behavior
- * is unaffected.
+ * is unaffected. After a real drag, the browser still dispatches a trailing
+ * `click` on the bar; `handleTap` consults `consumeJustDragged()` and skips
+ * `onSelect` for exactly that one click (Codex P2 fix) so a drag never also
+ * reopens the edit popover.
  *
  * Memoized (Stage D1b): re-renders only when this bar's identity/geometry/
  * label/color actually changes, so a drag frame only re-renders the dragged
@@ -65,8 +68,6 @@ function TimelineBarImpl({
   const { leftMin, endMin, label, ariaLabel, color, shift } = bar;
   const locked = shift.locked;
 
-  const handleTap = useCallback(() => onSelect(shift), [onSelect, shift]);
-
   const handleDraftChange = useCallback(
     (range: ShiftMinuteRange | null) => onDraftChange(shift.id, range),
     [onDraftChange, shift.id],
@@ -79,7 +80,7 @@ function TimelineBarImpl({
 
   const getWindow = useCallback(() => window, [window]);
 
-  const { dragState, handleBodyPointerDown, handleStartHandlePointerDown, handleEndHandlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel } =
+  const { dragState, handleBodyPointerDown, handleStartHandlePointerDown, handleEndHandlePointerDown, handlePointerMove, handlePointerUp, handlePointerCancel, consumeJustDragged } =
     useTimelineBarDrag({
       original: { startMin: leftMin, endMin },
       locked,
@@ -88,6 +89,15 @@ function TimelineBarImpl({
       onDraftChange: handleDraftChange,
       onCommit: handleCommit,
     });
+
+  const handleTap = useCallback(() => {
+    // Skip the browser's trailing synthetic click after a real drag commits
+    // (Codex P2 fix) — otherwise every drag-release would also reopen the
+    // edit popover via onSelect. consumeJustDragged() is one-shot: it only
+    // ever suppresses the single click immediately following a drag.
+    if (consumeJustDragged()) return;
+    onSelect(shift);
+  }, [consumeJustDragged, onSelect, shift]);
 
   const displayLeftMin = dragState?.startMin ?? leftMin;
   const displayEndMin = dragState?.endMin ?? endMin;

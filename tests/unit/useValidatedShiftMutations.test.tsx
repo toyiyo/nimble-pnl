@@ -332,6 +332,165 @@ describe('useValidatedShiftMutations — validateAndUpdateTime', () => {
   });
 });
 
+describe('useValidatedShiftMutations — validateAndUpdateShift (persists employee/break/notes)', () => {
+  it('persists start/end/employee/break/notes together in a single update when there are no issues', async () => {
+    const { result } = renderPipeline([]);
+    const shift = makeShift({ id: 'shift-9', employee_id: 'emp-1', break_duration: 0, notes: '' });
+
+    const outcome = await result.current.validateAndUpdateShift({
+      shift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: 'emp-1',
+      breakDuration: 45,
+      notes: 'Cover the rush',
+    });
+
+    expect(outcome.updated).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'shift-9',
+        restaurant_id: 'rest-1',
+        start_time: '2026-02-01T15:00:00.000Z',
+        end_time: '2026-02-01T23:00:00.000Z',
+        employee_id: 'emp-1',
+        break_duration: 45,
+        notes: 'Cover the rush',
+      }),
+    );
+  });
+
+  it('validates against the NEW employee (reassign-on-save), not the original employee', async () => {
+    const checkConflicts = vi.fn().mockResolvedValue(NO_CONFLICTS);
+    const shift = makeShift({ id: 'shift-9', employee_id: 'emp-1' });
+    const { result } = renderPipeline([shift], checkConflicts);
+
+    await result.current.validateAndUpdateShift({
+      shift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: 'emp-2',
+      breakDuration: 0,
+      notes: '',
+    });
+
+    expect(checkConflicts).toHaveBeenCalledWith(
+      expect.objectContaining({ employeeId: 'emp-2' }),
+    );
+  });
+
+  it('excludes the shift being edited from overlap detection (excludeShiftId)', async () => {
+    const shift = makeShift({ id: 'shift-9' });
+    const { result } = renderPipeline([shift]);
+
+    const outcome = await result.current.validateAndUpdateShift({
+      shift,
+      startIso: shift.start_time,
+      endIso: shift.end_time,
+      businessDate: '2026-01-15',
+      employeeId: shift.employee_id,
+      breakDuration: 0,
+      notes: '',
+    });
+
+    expect(outcome.updated).toBe(true);
+  });
+
+  it('returns pending issues without mutating when warnings/conflicts exist', async () => {
+    const rpcConflicts: ConflictCheck[] = [
+      { has_conflict: true, conflict_type: 'time-off', message: 'Employee has approved time-off' },
+    ];
+    const checkConflicts = vi.fn().mockResolvedValue({ conflicts: rpcConflicts, hasConflicts: true });
+    const { result } = renderPipeline([], checkConflicts);
+    const shift = makeShift({ id: 'shift-9' });
+
+    const outcome = await result.current.validateAndUpdateShift({
+      shift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: shift.employee_id,
+      breakDuration: 0,
+      notes: '',
+    });
+
+    expect(outcome.updated).toBe(false);
+    expect(outcome.pendingConflicts).toEqual(rpcConflicts);
+    expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it('returns {updated:false} with a lock validationResult for a locked shift and does not mutate', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const outcome = await result.current.validateAndUpdateShift({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: lockedShift.employee_id,
+      breakDuration: 0,
+      notes: '',
+    });
+
+    expect(outcome).toEqual({ updated: false });
+    expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe('useValidatedShiftMutations — forceUpdateShift', () => {
+  it('mutates all fields regardless of pending issues', async () => {
+    const rpcConflicts: ConflictCheck[] = [
+      { has_conflict: true, conflict_type: 'time-off', message: 'conflict' },
+    ];
+    const checkConflicts = vi.fn().mockResolvedValue({ conflicts: rpcConflicts, hasConflicts: true });
+    const { result } = renderPipeline([], checkConflicts);
+    const shift = makeShift({ id: 'shift-9' });
+
+    const outcome = await result.current.forceUpdateShift({
+      shift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: 'emp-2',
+      breakDuration: 60,
+      notes: 'forced',
+    });
+
+    expect(outcome.updated).toBe(true);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledTimes(1);
+    expect(mockUpdateMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'shift-9',
+        employee_id: 'emp-2',
+        break_duration: 60,
+        notes: 'forced',
+      }),
+    );
+  });
+
+  it('returns {updated:false} for a locked shift', async () => {
+    const { result } = renderPipeline([]);
+    const lockedShift = makeShift({ id: 'shift-locked', locked: true });
+
+    const outcome = await result.current.forceUpdateShift({
+      shift: lockedShift,
+      startIso: '2026-02-01T15:00:00.000Z',
+      endIso: '2026-02-01T23:00:00.000Z',
+      businessDate: '2026-02-01',
+      employeeId: lockedShift.employee_id,
+      breakDuration: 0,
+      notes: '',
+    });
+
+    expect(outcome.updated).toBe(false);
+    expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+  });
+});
+
 describe('useValidatedShiftMutations — forceUpdateTime', () => {
   it('mutates regardless of pending issues', async () => {
     const rpcConflicts: ConflictCheck[] = [

@@ -51,6 +51,23 @@ export interface UpdateTimeInput {
   businessDate: string;
 }
 
+/**
+ * Full-field edit input for the Timeline popover's edit-mode Save: carries
+ * every field `TimelineShiftEditor` exposes (employee, break, notes) in
+ * addition to the time range, so a single Save persists all of them together
+ * instead of silently dropping the non-time fields (the bug `validateAndUpdateTime`
+ * alone produced — it only ever wrote start_time/end_time).
+ */
+export interface UpdateShiftInput {
+  shift: Shift;
+  startIso: string;
+  endIso: string;
+  businessDate: string;
+  employeeId: string;
+  breakDuration: number;
+  notes: string;
+}
+
 export interface ReassignInput {
   shift: Shift;
   newEmployeeId: string;
@@ -76,6 +93,9 @@ export interface UpdateTimeOutcome {
   pendingWarnings?: ValidationIssue[];
 }
 
+/** Same shape as `UpdateTimeOutcome` — the full-field edit pipeline mirrors the time-only one. */
+export type UpdateShiftOutcome = UpdateTimeOutcome;
+
 export interface ReassignOutcome {
   reassigned: boolean;
   pendingConflicts?: ConflictCheck[];
@@ -94,6 +114,8 @@ export interface UseValidatedShiftMutationsReturn {
   forceCreateAtTime: (input: CreateAtTimeInput) => Promise<boolean>;
   validateAndUpdateTime: (input: UpdateTimeInput) => Promise<UpdateTimeOutcome>;
   forceUpdateTime: (input: UpdateTimeInput) => Promise<boolean>;
+  validateAndUpdateShift: (input: UpdateShiftInput) => Promise<UpdateShiftOutcome>;
+  forceUpdateShift: (input: UpdateShiftInput) => Promise<UpdateShiftOutcome>;
   validateAndReassign: (input: ReassignInput) => Promise<ReassignOutcome>;
   forceReassign: (input: ReassignInput) => Promise<boolean>;
   deleteShift: (shiftId: string) => void;
@@ -369,6 +391,95 @@ export function useValidatedShiftMutations(
   );
 
   // ---------------------------------------------------------------------------
+  // Update shift (full-field edit — the Timeline popover's edit-mode Save).
+  // Unlike validateAndUpdateTime (time-only), this persists every field
+  // TimelineShiftEditor exposes — employee, break duration, notes — in a
+  // single mutateAsync call, and validates against the possibly-NEW employee
+  // (a reassign-on-save), not the shift's original one.
+  // ---------------------------------------------------------------------------
+
+  const validateAndUpdateShift = useCallback(
+    async (input: UpdateShiftInput): Promise<UpdateShiftOutcome> => {
+      if (!restaurantId) return { updated: false };
+
+      try {
+        assertNotLockedClient(input.shift);
+
+        const interval = ShiftInterval.fromTimestamps(
+          input.startIso,
+          input.endIso,
+          input.businessDate,
+        );
+
+        const { warnings, conflicts } = await collectShiftIssues({
+          employeeId: input.employeeId,
+          restaurantId,
+          interval,
+          shifts,
+          excludeShiftId: input.shift.id,
+          checkConflicts,
+        });
+
+        setValidationResult({ valid: true, errors: [], warnings });
+
+        if (warnings.length > 0 || conflicts.length > 0) {
+          return { updated: false, pendingConflicts: conflicts, pendingWarnings: warnings };
+        }
+
+        await updateShift.mutateAsync({
+          id: input.shift.id,
+          restaurant_id: restaurantId,
+          start_time: interval.startAt.toISOString(),
+          end_time: interval.endAt.toISOString(),
+          employee_id: input.employeeId,
+          break_duration: input.breakDuration,
+          notes: input.notes,
+        });
+
+        setValidationResult(null);
+        return { updated: true };
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Invalid shift'));
+        return { updated: false };
+      }
+    },
+    [restaurantId, shifts, checkConflicts, updateShift],
+  );
+
+  const forceUpdateShift = useCallback(
+    async (input: UpdateShiftInput): Promise<UpdateShiftOutcome> => {
+      if (!restaurantId) return { updated: false };
+
+      try {
+        assertNotLockedClient(input.shift);
+
+        const interval = ShiftInterval.fromTimestamps(
+          input.startIso,
+          input.endIso,
+          input.businessDate,
+        );
+
+        await updateShift.mutateAsync({
+          id: input.shift.id,
+          restaurant_id: restaurantId,
+          start_time: interval.startAt.toISOString(),
+          end_time: interval.endAt.toISOString(),
+          employee_id: input.employeeId,
+          break_duration: input.breakDuration,
+          notes: input.notes,
+        });
+
+        setValidationResult(null);
+        return { updated: true };
+      } catch (err) {
+        setValidationResult(errorToValidationResult(err, 'Failed to update shift'));
+        return { updated: false };
+      }
+    },
+    [restaurantId, updateShift],
+  );
+
+  // ---------------------------------------------------------------------------
   // Reassign
   // ---------------------------------------------------------------------------
 
@@ -462,6 +573,8 @@ export function useValidatedShiftMutations(
     forceCreateAtTime,
     validateAndUpdateTime,
     forceUpdateTime,
+    validateAndUpdateShift,
+    forceUpdateShift,
     validateAndReassign,
     forceReassign,
     deleteShift: handleDeleteShift,

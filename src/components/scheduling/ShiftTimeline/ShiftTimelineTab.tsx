@@ -212,15 +212,20 @@ export function ShiftTimelineTab({
   // Toasts on success/failure come from the underlying useShifts mutation hooks
   // (useCreateShift/useUpdateShift/useDeleteShift) — this component doesn't call
   // useToast directly.
+  // Uses the full-week `shifts` (not `dayShifts`) so overlap/rest-gap checks also
+  // see overnight shifts spilling in from the previous day and early-next-day
+  // shifts spilling out from this one — a day-scoped array would miss both.
   const {
     validateAndCreateAtTime,
     forceCreateAtTime,
     validateAndUpdateTime,
     forceUpdateTime,
+    validateAndUpdateShift,
+    forceUpdateShift,
     deleteShift,
     validationResult,
     clearValidation,
-  } = useValidatedShiftMutations(restaurantId, dayShifts);
+  } = useValidatedShiftMutations(restaurantId, shifts);
 
   // ── Live-drag merge (Stage D2) ─────────────────────────────────────────────
   // Replaces the dragged shift's committed start/end with the drafted minutes
@@ -626,10 +631,12 @@ export function ShiftTimelineTab({
         dateStr={selectedDay}
         employees={employees}
         restaurantId={restaurantId}
-        dayShifts={dayShifts}
+        existingShifts={shifts}
         onClose={handlePopoverClose}
         validateAndUpdateTime={validateAndUpdateTime}
         forceUpdateTime={forceUpdateTime}
+        validateAndUpdateShift={validateAndUpdateShift}
+        forceUpdateShift={forceUpdateShift}
         validateAndCreateAtTime={validateAndCreateAtTime}
         forceCreateAtTime={forceCreateAtTime}
         deleteShift={deleteShift}

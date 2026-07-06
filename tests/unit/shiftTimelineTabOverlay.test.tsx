@@ -3,7 +3,9 @@
  * 2026-07-05-timeline-edit-create-design.md, plan task B3).
  *
  * Verifies:
- *  1. `useValidatedShiftMutations(restaurantId, dayShifts)` is mounted once, and its full
+ *  1. `useValidatedShiftMutations(restaurantId, shifts)` is mounted once with the full-week
+ *     `shifts` array (not the day-scoped `dayShifts`) — so overlap/rest-gap validation also
+ *     sees adjacent-day shifts (e.g. an overnight shift from the previous day) — and its full
  *     return (validateAndCreate/forceCreate included, not just the update/delete slice B2
  *     needed) is available at the ShiftTimelineTab level.
  *  2. Clicking a shift bar opens the single `TimelineShiftPopover` instance with a non-null
@@ -49,6 +51,8 @@ const mockUseValidatedShiftMutations = vi.fn(() => ({
   forceCreateAtTime: vi.fn(),
   validateAndUpdateTime: vi.fn(),
   forceUpdateTime: vi.fn(),
+  validateAndUpdateShift: vi.fn(),
+  forceUpdateShift: vi.fn(),
   validateAndReassign: vi.fn(),
   forceReassign: vi.fn(),
   deleteShift: vi.fn(),
@@ -155,7 +159,7 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
     });
   });
 
-  it('mounts useValidatedShiftMutations once with (restaurantId, dayShifts)', () => {
+  it('mounts useValidatedShiftMutations once with (restaurantId, shifts)', () => {
     const employees = [makeEmployee('e1', 'Ann')];
     const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
 
@@ -166,6 +170,31 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
     expect(restaurantIdArg).toBe('r1');
     expect(Array.isArray(shiftsArg)).toBe(true);
     expect((shiftsArg as Shift[])[0]?.id).toBe('s1');
+  });
+
+  it('mounts useValidatedShiftMutations with the full-week shifts array, not filtered to the selected day (regression: adjacent-day overnight shifts must still be validated)', () => {
+    const employees = [makeEmployee('e1', 'Ann')];
+    // Selected day defaults to weekDays[0] = '2026-01-05' (today isn't in WEEK_DAYS).
+    // `s-overnight` starts the PREVIOUS day (2026-01-04, in America/Chicago) and is
+    // therefore excluded by the day-scoped `dayShifts` filter, but must still reach
+    // useValidatedShiftMutations so overlap/rest-gap checks against it aren't silently
+    // dropped when editing/creating a shift that starts on 2026-01-05.
+    const overnightShift = makeShift(
+      's-overnight',
+      'e1',
+      '2026-01-05T04:00:00Z', // 2026-01-04 22:00 America/Chicago (CST, UTC-6)
+      '2026-01-05T12:00:00Z', // 2026-01-05 06:00 America/Chicago
+    );
+    const sameDayShift = makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z');
+    const shifts = [overnightShift, sameDayShift];
+
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+    expect(mockUseValidatedShiftMutations).toHaveBeenCalledOnce();
+    const [, shiftsArg] = mockUseValidatedShiftMutations.mock.calls[0];
+    const ids = (shiftsArg as Shift[]).map((s) => s.id);
+    expect(ids).toContain('s-overnight');
+    expect(ids).toContain('s1');
   });
 
   it('renders exactly one TimelineShiftPopover instance with activeShift null before any bar click', () => {

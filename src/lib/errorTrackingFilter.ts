@@ -13,12 +13,9 @@
  * exhaustive so the filter's scope stays auditable at a glance. */
 export const MASKED_SCRIPT_ERROR_MESSAGES = ['Script error.', 'Script error'];
 
-interface ExceptionStackFrame {
-  [key: string]: unknown;
-}
-
 interface ExceptionStacktrace {
-  frames?: ExceptionStackFrame[];
+  /** Frame shape is never inspected here, only counted. */
+  frames?: unknown[];
   [key: string]: unknown;
 }
 

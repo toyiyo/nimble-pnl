@@ -7,6 +7,13 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -248,7 +255,7 @@ export function TimelineShiftPopover({
 
   if (isCreateMode) {
     return (
-      <TimelineCreatePopoverContent
+      <TimelineCreateDialog
         createDraft={createDraft as TimelineCreateDraft}
         createValues={createValues}
         onChangeValues={setCreateValues}
@@ -256,9 +263,6 @@ export function TimelineShiftPopover({
         employees={employees}
         restaurantId={restaurantId}
         existingShifts={existingShifts}
-        anchorRect={anchorRect ?? null}
-        collisionBoundary={collisionBoundary}
-        virtualAnchorRef={virtualAnchorRef}
         validateAndCreateAtTime={validateAndCreateAtTime}
         forceCreateAtTime={forceCreateAtTime}
         pendingIssues={pendingIssues}
@@ -422,7 +426,7 @@ export function TimelineShiftPopover({
         )}
 
         <PopoverContent
-          className="w-72 p-0 gap-0 border-border/40"
+          className="w-72 max-h-[85vh] overflow-y-auto p-0 gap-0 border-border/40"
           align="center"
           sideOffset={8}
           collisionBoundary={collisionBoundary ?? undefined}
@@ -589,7 +593,7 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
   );
 }
 
-interface TimelineCreatePopoverContentProps {
+interface TimelineCreateDialogProps {
   readonly createDraft: TimelineCreateDraft;
   readonly createValues: TimelineShiftEditorValues | null;
   readonly onChangeValues: (values: TimelineShiftEditorValues) => void;
@@ -597,9 +601,6 @@ interface TimelineCreatePopoverContentProps {
   readonly employees: Employee[];
   readonly restaurantId: string;
   readonly existingShifts: Shift[];
-  readonly anchorRect: DOMRect | null;
-  readonly collisionBoundary?: Element | null;
-  readonly virtualAnchorRef: { current: VirtualAnchor | null };
   readonly validateAndCreateAtTime?: (input: CreateAtTimeInput) => Promise<CreateAtTimeOutcome>;
   readonly forceCreateAtTime?: (input: CreateAtTimeInput) => Promise<boolean>;
   readonly pendingIssues: { conflicts: ConflictCheck[]; warnings: ValidationIssue[] } | null;
@@ -612,15 +613,23 @@ interface TimelineCreatePopoverContentProps {
 }
 
 /**
- * Create-mode variant of the single Timeline popover instance (Stage C3). Rendered by
+ * Create-mode variant of the single Timeline overlay (Stage C3, revised). Rendered by
  * `TimelineShiftPopover` when `createDraft` is present and `activeShift` is null — mutually
- * exclusive with the view/edit branch, so only one `Popover` is ever mounted.
+ * exclusive with the view/edit branch, so only one overlay is ever mounted.
+ *
+ * Unlike the view/edit overlay (an anchored `Popover`, bound to the bar it edits), create mode
+ * has no natural anchor point — it can be triggered from the top controls row, a lane's paint
+ * gesture, or a gap-click on the coverage strip, and the form is tall enough (~760px with all
+ * fields) that anchoring it to a small trigger pushed the "Add shift" submit button below the
+ * viewport fold on short/laptop screens (verified via E2E: the button's box had y=874 in a
+ * 720px-tall viewport). A centered `Dialog` is always fully in-viewport and scrolls internally
+ * (`max-h-[80vh] overflow-y-auto`) instead, per the CLAUDE.md form-dialog pattern.
  *
  * Resolves the shift's `position` at commit time: the lane's own position (position-grouped
  * lane) wins; otherwise falls back to the selected employee's `position` (area-grouped lane,
  * where a shift's area is derived from its employee rather than stored directly).
  */
-function TimelineCreatePopoverContent({
+function TimelineCreateDialog({
   createDraft,
   createValues,
   onChangeValues,
@@ -628,9 +637,6 @@ function TimelineCreatePopoverContent({
   employees,
   restaurantId,
   existingShifts,
-  anchorRect,
-  collisionBoundary,
-  virtualAnchorRef,
   validateAndCreateAtTime,
   forceCreateAtTime,
   pendingIssues,
@@ -638,7 +644,7 @@ function TimelineCreatePopoverContent({
   saving,
   setSaving,
   onClose,
-}: TimelineCreatePopoverContentProps) {
+}: TimelineCreateDialogProps) {
   const { businessDate, laneContext } = createDraft;
 
   const resolvePosition = useCallback(
@@ -735,35 +741,26 @@ function TimelineCreatePopoverContent({
 
   return (
     <>
-      <Popover
+      <Dialog
         open
-        modal={false}
         onOpenChange={(open) => {
+          // Suppress dismissal while the stacked conflict dialog is on top — it
+          // owns Escape/outside-click while open (topmost dialog), same
+          // suppression pattern as the edit-mode Popover above.
           if (!open && !conflictDialogOpen) onClose();
         }}
       >
-        {anchorRect ? (
-          <PopoverAnchor virtualRef={virtualAnchorRef as unknown as React.RefObject<VirtualAnchor>} />
-        ) : (
-          <PopoverTrigger asChild>
-            <span className="sr-only" />
-          </PopoverTrigger>
-        )}
-
-        <PopoverContent
-          className="w-72 p-0 gap-0 border-border/40"
-          align="center"
-          sideOffset={8}
-          collisionBoundary={collisionBoundary ?? undefined}
-        >
-          <div className="px-4 pt-4 pb-3 border-b border-border/40">
-            <p className="text-[14px] font-semibold text-foreground">New shift</p>
+        <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
+          <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
+            <DialogTitle className="text-[17px] font-semibold text-foreground">New shift</DialogTitle>
             {subtitle && (
-              <p className="text-[12px] text-muted-foreground mt-0.5">{subtitle}</p>
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
+                {subtitle}
+              </DialogDescription>
             )}
-          </div>
+          </DialogHeader>
 
-          <div className="px-4 py-4">
+          <div className="px-6 py-5">
             {createValues && (
               <TimelineShiftEditor
                 mode="create"
@@ -780,7 +777,7 @@ function TimelineCreatePopoverContent({
             )}
           </div>
 
-          <div className="px-4 py-3 border-t border-border/40 flex items-center justify-end gap-2">
+          <div className="px-6 pb-6 flex items-center justify-end gap-2">
             <Button
               variant="ghost"
               onClick={onClose}
@@ -797,8 +794,8 @@ function TimelineCreatePopoverContent({
               Add shift
             </Button>
           </div>
-        </PopoverContent>
-      </Popover>
+        </DialogContent>
+      </Dialog>
 
       <AvailabilityConflictDialog
         open={conflictDialogOpen}

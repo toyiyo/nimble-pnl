@@ -118,30 +118,28 @@ test.describe('Timeline view — shift create/edit via popover', () => {
     // Anchor bar renders (name-based locator — tz-independent).
     await expect(page.getByRole('button', { name: /anchor alvarez, host/i })).toBeVisible({ timeout: 10000 });
 
-    // The lane's keyboard-accessible quick-add entry point (sr-only button).
-    // No area set → lane label is "Unassigned". Actuate via keyboard (it's a
-    // screen-reader-only control; a synthetic pointer click is unreliable).
-    const addShiftButton = page.getByRole('button', { name: /add shift to .* lane/i }).first();
-    await expect(addShiftButton).toBeVisible({ timeout: 10000 });
-    await addShiftButton.focus();
-    await addShiftButton.press('Enter');
+    // Open quick-add via the visible "Add shift" control (the discoverable entry
+    // point). Before the popover opens, this is the only "Add shift" button.
+    await page.getByRole('button', { name: /^add shift$/i }).click();
 
     // Quick-add popover opens.
-    await expect(page.getByText(/^new shift$/i)).toBeVisible({ timeout: 5000 });
+    const createPopover = page.getByRole('dialog').filter({ hasText: /new shift/i });
+    await expect(createPopover.getByText(/^new shift$/i)).toBeVisible({ timeout: 5000 });
 
     // Pick the employee for the new shift.
-    await page.getByLabel(/select employee/i).click();
+    await createPopover.getByLabel(/select employee/i).click();
     await page.getByRole('option', { name: /dana ortiz/i }).click();
 
-    // Commit — assert the POST to shifts succeeds.
+    // Commit — assert the POST to shifts succeeds. Scope the submit to the
+    // dialog so it isn't ambiguous with the controls-row "Add shift" button.
     const postPromise = page.waitForResponse(
       (resp) => resp.url().includes('/rest/v1/shifts') && resp.request().method() === 'POST' && resp.ok(),
       { timeout: 15000 },
     );
-    await page.getByRole('button', { name: /^add shift$/i }).click();
+    await createPopover.getByRole('button', { name: /^add shift$/i }).click();
     await postPromise;
 
-    // Popover closes.
+    // Dialog closes.
     await expect(page.getByText(/^new shift$/i)).not.toBeVisible({ timeout: 5000 });
   });
 

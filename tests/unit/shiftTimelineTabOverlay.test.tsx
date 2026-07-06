@@ -409,8 +409,11 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
       expect(draft.values.startTime).toBe('09:00');
       expect(draft.values.endTime).toBe('17:00');
 
-      // Anchored to the button itself (a real DOMRect, not the zero-size fallback).
-      expect(screen.getByTestId('popover-anchor-present').textContent).toBe('yes');
+      // No anchor rect: the create form renders as a centered Dialog, not an
+      // anchored popover, so it's never pinned to the triggering button's rect
+      // (anchoring the tall form to a top-row button pushed its submit button
+      // below the viewport fold on short screens).
+      expect(screen.getByTestId('popover-anchor-present').textContent).toBe('no');
     });
 
     it('clamps the default range into a narrower window when the day has a short shift', () => {

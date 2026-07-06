@@ -392,9 +392,10 @@ export function ShiftTimelineTab({
   /**
    * Paint-to-create commit (C2): a lane's paint gesture (drag/click) or its
    * visually-hidden "Add shift" button committed a range. Stage the `create`
-   * overlay with that range + lane context. No anchor rect is available from
-   * the lane's plot region today — a future stage wires proper ghost-bar
-   * anchoring; the popover falls back to its zero-size trigger until then.
+   * overlay with that range + lane context. `anchorRect` is unused for create
+   * (the create form renders as a centered Dialog, not an anchored popover —
+   * see `TimelineCreateDialog`); it's carried on `ActiveOverlay` only because
+   * the union is shared with the `edit` case.
    */
   const handlePaintCommit = useCallback((draft: PaintRange, laneContext: LanePaintContext) => {
     setActiveOverlay({ mode: 'create', draft, laneContext, anchorRect: null });
@@ -407,9 +408,7 @@ export function ShiftTimelineTab({
    * computed within the single day-wide hourly status strip; the merged range
    * never crosses a covered/no-demand hour). Opens the same `create` overlay
    * as paint-to-create, but with `laneContext: null` — no lane context, so the
-   * popover's employee picker is unfiltered and position starts blank. No
-   * anchor rect is available from the strip cell today (same limitation as
-   * paint-to-create); the popover falls back to its zero-size trigger.
+   * form's employee picker is unfiltered and position starts blank.
    */
   const handleGapClick = useCallback(
     (startMin: number) => {
@@ -423,17 +422,21 @@ export function ShiftTimelineTab({
    * Visible "Add shift" button (Fix 2): opens the same `create` overlay as
    * paint-to-create/gap-click, seeded with a default 09:00–17:00 range
    * clamped into the day's visible window, no lane context (unfiltered
-   * employee picker, blank position), anchored to the button itself so the
-   * popover opens right below it.
+   * employee picker, blank position). `anchorRect` is carried on `ActiveOverlay`
+   * for the `edit` case (the Popover anchors to the clicked bar) but is unused
+   * for `create`: the create form now renders as a centered `Dialog` (see
+   * `TimelineCreateDialog` in TimelineShiftPopover.tsx) since the tall form's
+   * submit button was landing below the viewport fold when anchored to a
+   * small trigger on short/laptop screens.
    */
   const handleAddShiftClick = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+    () => {
       const range = clampRangeToWindow(DEFAULT_ADD_RANGE, model.window);
       setActiveOverlay({
         mode: 'create',
         draft: range,
         laneContext: null,
-        anchorRect: event.currentTarget.getBoundingClientRect(),
+        anchorRect: null,
       });
     },
     [model.window],

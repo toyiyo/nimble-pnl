@@ -18,6 +18,18 @@ function matchesCaseInsensitive(value: string | null | undefined, target: string
 }
 
 /**
+ * Score when BOTH area and position context are supplied: area match ranks
+ * above a position-only match. Extracted so `rankScore` stays within Sonar's
+ * cognitive-complexity budget.
+ */
+function scoreBothContext(areaMatch: boolean, positionMatch: boolean): number {
+  if (areaMatch && positionMatch) return 0;
+  if (areaMatch) return 1;
+  if (positionMatch) return 2;
+  return 3;
+}
+
+/**
  * Rank a score for sort ordering: lower sorts first.
  * 0 = matches both area and position (when both context values are given)
  * 1 = matches area only (area context takes priority over position)
@@ -30,21 +42,9 @@ function rankScore(employee: Employee, context: ShiftRankingContext): number {
     ? matchesCaseInsensitive(employee.position, context.position)
     : false;
 
-  if (context.area && context.position) {
-    if (areaMatch && positionMatch) return 0;
-    if (areaMatch) return 1;
-    if (positionMatch) return 2;
-    return 3;
-  }
-
-  if (context.area) {
-    return areaMatch ? 0 : 1;
-  }
-
-  if (context.position) {
-    return positionMatch ? 0 : 1;
-  }
-
+  if (context.area && context.position) return scoreBothContext(areaMatch, positionMatch);
+  if (context.area) return areaMatch ? 0 : 1;
+  if (context.position) return positionMatch ? 0 : 1;
   return 0;
 }
 

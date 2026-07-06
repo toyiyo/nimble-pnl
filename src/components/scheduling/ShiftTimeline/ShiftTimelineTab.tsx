@@ -17,7 +17,7 @@ import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useCreateShift } from '@/hooks/useShifts';
 import { useToast } from '@/hooks/use-toast';
-import { useTimelineModel } from './useTimelineModel';
+import { useTimelineModel, computeCoverage } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
 import { CoverageStatusStrip } from './CoverageStatusStrip';
@@ -358,24 +358,37 @@ export function ShiftTimelineTab({
     [deleteShiftAsync, createShift, toast],
   );
 
-  // ── Live-drag merge (Stage D2) ─────────────────────────────────────────────
-  // Replaces the dragged shift's committed start/end with the drafted minutes
-  // so the model — and therefore the coverage chart/verdict/status strip —
-  // reflects the in-flight drag on every rAF-throttled frame. Falls through
-  // to `dayShifts` unchanged when no drag is in progress.
-  const modelInputShifts = useMemo(
-    () => mergeDraftShift(dayShifts, dragDraft, selectedDay, tz),
-    [dayShifts, dragDraft, selectedDay, tz],
-  );
-
   // ── Timeline model (pure transform) ───────────────────────────────────────
-  const model = useTimelineModel(modelInputShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
+  // Fix 1 (bar-jumping regression): lanes + window are derived from the
+  // STABLE, committed `dayShifts` only — never from the in-flight drag draft.
+  // Previously the draft was merged in BEFORE this call, so `assignRows`'
+  // first-fit row-packing (src/lib/timelineModel.ts) re-sorted by start_time
+  // and re-packed EVERY bar's row on every rAF frame (bars visibly jumped
+  // rows/hopped around), and `deriveWindow` rescaled the horizontal axis
+  // mid-drag. The dragged bar's own live horizontal position still comes from
+  // its `dragState` in TimelineBar (`displayLeftMin = dragState?.startMin ??
+  // leftMin`, via this stable `model.window`'s minToPct) — so drag feedback
+  // stays smooth without lanes/window ever moving.
+  const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
+
+  // ── Live-drag coverage (Stage D2, preserved) ───────────────────────────────
+  // The lanes/window above are frozen, but the coverage chart/verdict/status
+  // strip should still show the drag's live effect ("watch the gap fill while
+  // dragging"). Compute coverage for the DRAFTED shifts against the frozen
+  // `model.window` — never rebuilding lanes — so this recomputes cheaply on
+  // every rAF frame. When there's no drag in progress, reuse `model.coverage`/
+  // `model.demand` directly (zero extra work).
+  const liveCoverage = useMemo(() => {
+    if (!dragDraft) return { coverage: model.coverage, demand: model.demand };
+    const draftedShifts = mergeDraftShift(dayShifts, dragDraft, selectedDay, tz);
+    return computeCoverage(draftedShifts, selectedDay, tz, model.window, dayRecommendations);
+  }, [dragDraft, dayShifts, selectedDay, tz, model.window, model.coverage, model.demand, dayRecommendations]);
 
   // ── Hourly coverage summary + verdict (feeds the new coverage panel) ───────
   const targetSplh = activeSettings?.target_splh ?? null;
   const hourlySummary = useMemo(
-    () => summarizeCoverageHours(model.coverage, model.demand, model.window, dayRecommendations),
-    [model.coverage, model.demand, model.window, dayRecommendations],
+    () => summarizeCoverageHours(liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations),
+    [liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations],
   );
   const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
 
@@ -471,8 +484,8 @@ export function ShiftTimelineTab({
   /**
    * Live drag-draft update (Stage D2): `TimelineBar` calls this on every
    * rAF-throttled pointermove frame with the in-flight range, and once more
-   * with `null` when the gesture ends/cancels. Feeds `modelInputShifts` above
-   * so coverage recomputes live during the drag.
+   * with `null` when the gesture ends/cancels. Feeds `liveCoverage` above so
+   * coverage recomputes live during the drag — lanes/window are unaffected.
    */
   const handleBarDraftChange = useCallback((shiftId: string, range: ShiftMinuteRange | null) => {
     setDragDraft(range ? { shiftId, startMin: range.startMin, endMin: range.endMin } : null);

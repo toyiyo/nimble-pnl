@@ -356,6 +356,33 @@ describe('TimelineBar drag — suppress synthetic click after a real drag', () =
     fireEvent.click(button); // a genuine, later click
     expect(onSelect).toHaveBeenCalledOnce();
   });
+
+  it('a fresh pointerdown after a drag with NO trailing click clears the stale suppression flag, so the next click reaches onSelect', () => {
+    // Regression: when the bar-jumping bug (frozen-lanes Fix 1) made bars
+    // relayout under the pointer mid-drag, the browser's trailing `click`
+    // after pointerup often never fired (the element under the pointer
+    // moved/changed), leaving `justDraggedRef` stuck `true` forever — so the
+    // NEXT legitimate click on the bar (to open the edit popover) was
+    // silently eaten by `consumeJustDragged()`. A new pointerdown on the bar
+    // is a fresh interaction and must reset that stale flag.
+    const bar = makeBar({ leftMin: 600, endMin: 960 });
+    const { button, onSelect } = renderBar({ bar });
+
+    // Real drag past the threshold, sets justDraggedRef = true on release.
+    fireEvent.pointerDown(button, { pointerId: 1, clientX: 700, pointerType: 'mouse' });
+    fireEvent.pointerMove(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+    fireEvent.pointerUp(button, { pointerId: 1, clientX: 760, pointerType: 'mouse' });
+    // No trailing click fires here (simulating the bar-jump swallowing it).
+
+    // A fresh pointerdown/up with sub-threshold movement (a plain click-like
+    // gesture) starts a new interaction — it must clear the stale flag.
+    fireEvent.pointerDown(button, { pointerId: 2, clientX: 500, pointerType: 'mouse' });
+    fireEvent.pointerUp(button, { pointerId: 2, clientX: 500, pointerType: 'mouse' });
+    fireEvent.click(button);
+
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(onSelect).toHaveBeenCalledWith(bar.shift);
+  });
 });
 
 describe('TimelineBar drag — unmount cleanup', () => {

@@ -188,6 +188,13 @@ export function useTimelineBarDrag({
 
   const makePointerDownHandler = useCallback(
     (mode: DragMode) => (event: React.PointerEvent<HTMLElement>) => {
+      // Fix 2 (stale click-suppression regression): a fresh pointerdown is a
+      // brand-new interaction, so any leftover "just finished a drag" flag from
+      // a PRIOR gesture is stale and must be cleared here — otherwise, if the
+      // browser's trailing synthetic `click` after a previous drag's pointerup
+      // never fired (e.g. the bar relaid out under the pointer), the flag would
+      // stay `true` forever and silently eat the next legitimate click.
+      justDraggedRef.current = false;
       if (locked) return;
       // Touch never drags — a tap opens the popover via the bar's own onClick;
       // every drag outcome is reachable through the popover's time fields.

@@ -77,15 +77,6 @@ serve(async (req) => {
 
     const payload = JSON.parse(rawBody);
 
-    if (eventId) {
-      await supabase.from('revel_webhook_events').insert({
-        restaurant_id: connection.restaurant_id,
-        event_id: eventId,
-        event_type: eventType,
-        raw_json: payload,
-      });
-    }
-
     // Only order.finalized carries sales; ignore other event types for v1.
     if (eventType === 'order.finalized' || payload.Order || payload.order) {
       await processOrder(
@@ -95,6 +86,18 @@ serve(async (req) => {
         instance,
         establishmentId ?? connection.establishment_id ?? null,
       );
+    }
+
+    // Record the event as processed ONLY after successful processing, so a processing
+    // failure (500) lets Revel retry instead of being short-circuited by the idempotency
+    // check above. ignoreDuplicates avoids a unique-violation throw on concurrent delivery.
+    if (eventId) {
+      await supabase.from('revel_webhook_events').upsert({
+        restaurant_id: connection.restaurant_id,
+        event_id: eventId,
+        event_type: eventType,
+        raw_json: payload,
+      }, { onConflict: 'restaurant_id,event_id', ignoreDuplicates: true });
     }
 
     await logSecurityEvent(supabase, 'REVEL_WEBHOOK_PROCESSED', undefined, connection.restaurant_id, { eventType, eventId });

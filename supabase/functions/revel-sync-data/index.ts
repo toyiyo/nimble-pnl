@@ -71,7 +71,9 @@ serve(async (req) => {
       try {
         await processOrder(service, order, restaurantId, connection.revel_instance, connection.establishment_id ?? null, { skipUnifiedSalesSync: true });
         processed++;
-      } catch (_e) { /* skip a bad order, continue */ }
+      } catch (e) {
+        console.error(`revel-sync-data: failed to process order for restaurant ${restaurantId}:`, e);
+      }
     }
 
     const { data: synced } = await service.rpc('sync_revel_to_unified_sales', {

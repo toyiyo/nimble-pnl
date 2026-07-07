@@ -61,30 +61,38 @@ serve(async (req) => {
 
       try {
         const res = await revelFetch(service, conn.revel_instance, ordersPath(start, end));
-        if (res.ok) {
+        if (!res.ok) {
+          // Do NOT advance the cursor or clear errors on a failed fetch — record it and
+          // let the next cron run retry this same batch.
+          await service.from('revel_connections')
+            .update({ last_error: `bulk fetch failed: ${res.status}`, last_error_at: new Date().toISOString() })
+            .eq('id', conn.id);
+        } else {
           const body = await res.json();
           const orders: any[] = body.objects ?? body.results ?? body.orders ?? (Array.isArray(body) ? body : []);
           for (const order of orders) {
             try {
               await processOrder(service, order, conn.restaurant_id, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
               totalProcessed++;
-            } catch (_e) { /* continue */ }
+            } catch (e) {
+              console.error(`revel-bulk-sync: failed to process order for restaurant ${conn.restaurant_id}:`, e);
+            }
           }
           await service.rpc('sync_revel_to_unified_sales', { p_restaurant_id: conn.restaurant_id, p_start_date: start, p_end_date: end });
-        }
 
-        // Advance cursor / mark backfill complete
-        const update: Record<string, unknown> = { last_sync_time: new Date().toISOString(), last_error: null, last_error_at: null };
-        if (!conn.initial_sync_done) {
-          const nextCursor = new Date(new Date(end).getTime() + 86400000);
-          if (nextCursor >= today) {
-            update.initial_sync_done = true;
-            update.sync_cursor = null;
-          } else {
-            update.sync_cursor = nextCursor.toISOString();
+          // Advance cursor / mark backfill complete — only after a successful fetch.
+          const update: Record<string, unknown> = { last_sync_time: new Date().toISOString(), last_error: null, last_error_at: null };
+          if (!conn.initial_sync_done) {
+            const nextCursor = new Date(new Date(end).getTime() + 86400000);
+            if (nextCursor >= today) {
+              update.initial_sync_done = true;
+              update.sync_cursor = null;
+            } else {
+              update.sync_cursor = nextCursor.toISOString();
+            }
           }
+          await service.from('revel_connections').update(update).eq('id', conn.id);
         }
-        await service.from('revel_connections').update(update).eq('id', conn.id);
       } catch (e: any) {
         await service.from('revel_connections')
           .update({ last_error: e?.message ?? 'bulk sync error', last_error_at: new Date().toISOString() })

@@ -60,7 +60,7 @@ serve(async (req) => {
     const { error: upsertError } = await service.from('revel_connections').upsert({
       restaurant_id: restaurantId,
       revel_instance: instance,
-      establishment_id: establishmentId ?? null,
+      establishment_id: establishmentId ? String(establishmentId).trim() : '',
       is_active: true,
       connection_status: 'connected',
       webhook_active: true,

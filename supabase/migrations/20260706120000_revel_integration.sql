@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS public.revel_connections (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
   revel_instance TEXT NOT NULL,            -- Client-Id subdomain, e.g. 'joesdiner'
-  establishment_id TEXT,                   -- Revel establishment id (nullable until known)
+  establishment_id TEXT NOT NULL DEFAULT '',  -- '' = single-establishment merchant (NULL breaks unique dedup)
   is_active BOOLEAN NOT NULL DEFAULT true,
   connection_status TEXT NOT NULL DEFAULT 'connected',
   initial_sync_done BOOLEAN NOT NULL DEFAULT false,
@@ -179,6 +179,13 @@ DECLARE
   v_rows INTEGER := 0;
   v_order public.revel_orders%ROWTYPE;
 BEGIN
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
+  END IF;
+
   SELECT * INTO v_order
   FROM public.revel_orders
   WHERE restaurant_id = p_restaurant_id AND revel_order_id = p_order_id;
@@ -282,6 +289,13 @@ AS $$
 DECLARE
   v_synced_count INTEGER := 0;
 BEGIN
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
+  END IF;
+
   INSERT INTO public.unified_sales (
     restaurant_id, pos_system, external_order_id, external_item_id,
     item_name, quantity, unit_price, total_price,
@@ -328,3 +342,9 @@ GRANT SELECT ON public.revel_orders TO anon;
 GRANT SELECT ON public.revel_order_items TO anon;
 GRANT SELECT ON public.revel_payments TO anon;
 GRANT SELECT ON public.revel_webhook_events TO anon;
+
+-- Lock down SECURITY DEFINER RPC execution: block PUBLIC (covers anon), allow intended roles.
+REVOKE ALL ON FUNCTION public.revel_sync_financial_breakdown(text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.sync_revel_to_unified_sales(uuid, date, date) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.revel_sync_financial_breakdown(text, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.sync_revel_to_unified_sales(uuid, date, date) TO authenticated, service_role;

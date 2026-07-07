@@ -252,3 +252,6 @@ verify_jwt = false
 
 [functions.focus-backfill-sync]
 verify_jwt = false
+
+[functions.revel-webhook]
+verify_jwt = false

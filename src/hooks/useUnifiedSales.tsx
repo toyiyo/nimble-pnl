@@ -158,7 +158,8 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
   } = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam = 0 }) => fetchUnifiedSalesPage({ pageParam: pageParam as number }),
-    getNextPageParam: (lastPage: any) => (lastPage?.hasMore ? (lastPage?.nextPage || 0) : undefined),
+    getNextPageParam: (lastPage: any, allPages: any[]) =>
+      lastPage?.hasMore ? allPages.length * PAGE_SIZE : undefined,
     initialPageParam: 0,
     enabled: !!restaurantId && !!user,
     staleTime: 60000,

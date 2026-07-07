@@ -49,7 +49,7 @@ export const useRevelSalesAdapter = (restaurantId: string | null): POSAdapter =>
     try {
       const syncEnd = endDate || new Date().toISOString().split('T')[0];
       const syncStart = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-      const { data, error } = await supabase.rpc('sync_revel_to_unified_sales' as any, {
+      const { data, error } = await supabase.rpc('sync_revel_to_unified_sales', {
         p_restaurant_id: rid,
         p_start_date: syncStart,
         p_end_date: syncEnd,

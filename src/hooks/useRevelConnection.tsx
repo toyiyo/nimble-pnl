@@ -27,13 +27,13 @@ export function useRevelConnection(restaurantId?: string | null) {
     queryFn: async () => {
       if (!restaurantId) return null;
       const { data, error } = await supabase
-        .from('revel_connections' as any)
+        .from('revel_connections')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('is_active', true)
         .maybeSingle();
       if (error && error.code !== 'PGRST116') throw error;
-      return (data as unknown as RevelConnection) ?? null;
+      return data ?? null;
     },
     enabled: !!restaurantId,
     staleTime: 30000,
@@ -46,12 +46,12 @@ export function useRevelConnection(restaurantId?: string | null) {
   async function checkConnectionStatus(id: string): Promise<RevelConnection | null> {
     if (!id) return null;
     const { data } = await supabase
-      .from('revel_connections' as any)
+      .from('revel_connections')
       .select('*')
       .eq('restaurant_id', id)
       .eq('is_active', true)
       .maybeSingle();
-    return (data as unknown as RevelConnection) ?? null;
+    return data ?? null;
   }
 
   async function connect(id: string, revelInstance: string, establishmentId?: string): Promise<Record<string, unknown>> {
@@ -88,7 +88,7 @@ export function useRevelConnection(restaurantId?: string | null) {
 
   const disconnectMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('revel_connections' as any).update({ is_active: false }).eq('restaurant_id', id);
+      const { error } = await supabase.from('revel_connections').update({ is_active: false }).eq('restaurant_id', id);
       if (error) throw error;
     },
     onSuccess: (_, id) => {

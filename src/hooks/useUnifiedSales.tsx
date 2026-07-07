@@ -96,6 +96,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
       query = query
         .order('sale_date', { ascending: false })
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .range(from, to);
 
       const { data, error } = await query;

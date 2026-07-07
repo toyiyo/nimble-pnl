@@ -305,3 +305,26 @@ BEGIN
   RETURN v_synced_count;
 END;
 $$;
+
+-- =====================================================
+-- Table-level privileges
+-- Local Supabase CLI runs migrations as `postgres`, whose default-privilege
+-- entry only grants DELETE/TRUNCATE/TRIGGER/REFERENCES to authenticated/anon
+-- (not SELECT/INSERT/UPDATE). Without these grants, RLS USING clauses that
+-- subquery user_restaurants fail with "permission denied for table X" instead
+-- of the RLS policy simply filtering rows. See migration
+-- 20260628000000_grant_user_restaurants_select.sql for the full explanation;
+-- new tables must carry their own grants going forward.
+-- =====================================================
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_connections TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_orders TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_order_items TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_payments TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_webhook_events TO authenticated;
+-- revel_auth_cache intentionally has NO authenticated grants (service-role only).
+
+GRANT SELECT ON public.revel_connections TO anon;
+GRANT SELECT ON public.revel_orders TO anon;
+GRANT SELECT ON public.revel_order_items TO anon;
+GRANT SELECT ON public.revel_payments TO anon;
+GRANT SELECT ON public.revel_webhook_events TO anon;

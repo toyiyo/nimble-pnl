@@ -10,6 +10,13 @@ interface CoverageStatusStripProps {
    * string, e.g. `17 → "5 PM"`.  Defaults to a built-in 12-hour formatter.
    */
   readonly formatHour?: (hour: number) => string;
+  /**
+   * Called with a short (`delta < 0`) hour's `startMin` when its cell is
+   * clicked or activated via keyboard. When omitted, short cells render as
+   * plain (non-interactive) cells exactly as before — back-compat for
+   * existing callers that don't yet support gap-click quick-add.
+   */
+  readonly onGapClick?: (startMin: number) => void;
 }
 
 /**
@@ -39,11 +46,18 @@ function cellAriaLabel(hour: CoverageHour, label: string): string {
  * short hour for screen readers, preserving the former `CoverageGapList`
  * accessibility guarantee.
  *
+ * When `onGapClick` is supplied, short (`delta < 0`) cells render as real
+ * `<button>`s (keyboard-activatable, no keyboard trap) that call it with the
+ * hour's `startMin` — the gap-click quick-add entry point (design doc §5).
+ * Covered and no-demand cells never become interactive. Omitting `onGapClick`
+ * keeps every cell a plain, non-interactive `<div>` (back-compat).
+ *
  * Returns null when `hours` is empty.
  */
 export function CoverageStatusStrip({
   hours,
   formatHour = formatCoverageHour,
+  onGapClick,
 }: CoverageStatusStripProps) {
   if (hours.length === 0) return null;
 
@@ -72,6 +86,38 @@ export function CoverageStatusStrip({
             cellColorClass = 'bg-muted/50 text-muted-foreground';
           }
 
+          const cellContent = (
+            <>
+              <span className="text-[9px] font-medium leading-none">{label}</span>
+              <span className="text-[11px] leading-none tabular-nums">
+                {hasDemand ? `${h.scheduled}/${h.needed!}` : `${h.scheduled}`}
+              </span>
+            </>
+          );
+
+          // Short hours become clickable buttons (quick-add entry point) only
+          // when the caller opts in via `onGapClick` — covered/no-demand cells
+          // never become interactive, and without `onGapClick` a short cell
+          // renders exactly as before (plain, non-interactive `<div>`).
+          if (isShort && onGapClick) {
+            return (
+              <button
+                key={h.startMin}
+                type="button"
+                aria-label={ariaLabel}
+                title={ariaLabel}
+                onClick={() => onGapClick(h.startMin)}
+                className={cn(
+                  'flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded py-1 px-0.5',
+                  'cursor-pointer transition-colors hover:bg-destructive/25 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  cellColorClass,
+                )}
+              >
+                {cellContent}
+              </button>
+            );
+          }
+
           return (
             <div
               key={h.startMin}
@@ -83,10 +129,7 @@ export function CoverageStatusStrip({
                 cellColorClass,
               )}
             >
-              <span className="text-[9px] font-medium leading-none">{label}</span>
-              <span className="text-[11px] leading-none tabular-nums">
-                {hasDemand ? `${h.scheduled}/${h.needed!}` : `${h.scheduled}`}
-              </span>
+              {cellContent}
             </div>
           );
         })}

@@ -248,6 +248,44 @@ export function computeGaps(
   return gaps;
 }
 
+// ─── Coverage assembly (window-only — no lanes) ─────────────────────────────────
+
+/** The coverage/demand/gaps slice of a `TimelineModel`, without lanes/window. */
+export type TimelineCoverage = Pick<TimelineModel, 'coverage' | 'demand' | 'gaps'>;
+
+/**
+ * Compute coverage, demand and gaps for `shifts` against an ALREADY-DERIVED,
+ * fixed `window` — never derives its own window and never builds lanes.
+ *
+ * Extracted so a live in-flight drag draft can recompute coverage against the
+ * timeline's committed (frozen) window without re-running `deriveWindow` or
+ * `buildLanes` on every rAF frame — that repacking was what made every bar
+ * jump row/position mid-drag (see `ShiftTimelineTab`'s `model` vs
+ * `liveCoverage` split). Pure — no React, no DOM.
+ */
+export function computeCoverage(
+  shifts: Shift[],
+  dateStr: string,
+  tz: string,
+  window: TimelineWindow,
+  recommendations: HourlyStaffingRecommendation[],
+): TimelineCoverage {
+  const dayShifts = shifts.filter((s) => s.status !== 'cancelled');
+  // Shift structurally satisfies the fields computeDayCoverage reads
+  // (start_time, end_time, status) so the cast is safe.
+  const coverage = computeDayCoverage(
+    dayShifts as Parameters<typeof computeDayCoverage>[0],
+    dateStr,
+    tz,
+    STEP_MIN,
+    window.startMin,
+    window.endMin,
+  );
+  const demand = expandDemand(recommendations, window.startMin, window.endMin);
+  const gaps = computeGaps(coverage, demand);
+  return { coverage, demand, gaps };
+}
+
 // ─── Full model assembly ────────────────────────────────────────────────────────
 
 /**
@@ -265,17 +303,6 @@ export function buildTimelineModel(
   const dayShifts = shifts.filter((s) => s.status !== 'cancelled');
   const window = deriveWindow(dayShifts, dateStr, tz);
   const lanes = buildLanes(dayShifts, employees, dateStr, tz, groupBy);
-  // Shift structurally satisfies the fields computeDayCoverage reads
-  // (start_time, end_time, status) so the cast is safe.
-  const coverage = computeDayCoverage(
-    dayShifts as Parameters<typeof computeDayCoverage>[0],
-    dateStr,
-    tz,
-    STEP_MIN,
-    window.startMin,
-    window.endMin,
-  );
-  const demand = expandDemand(recommendations, window.startMin, window.endMin);
-  const gaps = computeGaps(coverage, demand);
+  const { coverage, demand, gaps } = computeCoverage(dayShifts, dateStr, tz, window, recommendations);
   return { window, lanes, coverage, demand, gaps };
 }

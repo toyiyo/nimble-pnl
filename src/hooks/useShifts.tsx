@@ -86,7 +86,19 @@ export function useShifts(
 
 type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
 
-export function useCreateShift() {
+export interface UseCreateShiftOptions {
+  /**
+   * When true, suppresses the generic "Shift created"/"Recurring shifts
+   * created successfully" success toast (the error toast still fires on
+   * failure). Used by the Timeline's undo-delete restore flow, which shows
+   * its own "Shift restored" toast instead. Defaults to false — every other
+   * caller's behavior is unchanged.
+   */
+  silent?: boolean;
+}
+
+export function useCreateShift(options: UseCreateShiftOptions = {}) {
+  const { silent = false } = options;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -99,6 +111,8 @@ export function useCreateShift() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });
+
+      if (silent) return;
 
       const isRecurring = data.is_recurring && data.recurrence_parent_id === null;
       toast({
@@ -184,7 +198,11 @@ export function useUpdateShift() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Shift> & { id: string }) => {
+    mutationFn: async ({
+      id,
+      restaurant_id: restaurantId,
+      ...updates
+    }: Partial<Shift> & { id: string; restaurant_id: string }) => {
       await assertShiftNotLocked(id);
 
       const { employee: _employee, ...shiftUpdates } = updates;
@@ -196,24 +214,50 @@ export function useUpdateShift() {
           recurrence_pattern: shiftUpdates.recurrence_pattern as unknown as Json,
         })
         .eq('id', id)
+        .eq('restaurant_id', restaurantId)
         .select()
         .single();
 
       if (error) throw error;
       return toTypedShift(data);
     },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurant_id] });
-      toast({
-        title: 'Shift updated',
-        description: 'The shift has been updated.',
+    onMutate: async ({ id, restaurant_id: restaurantId, ...updates }) => {
+      await queryClient.cancelQueries({ queryKey: ['shifts', restaurantId] });
+
+      const previousData = queryClient.getQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] });
+
+      const { employee: _employee, ...optimisticUpdates } = updates;
+
+      queryClient.setQueriesData<Shift[]>({ queryKey: ['shifts', restaurantId] }, (old) => {
+        if (!old) return old;
+
+        return old.map((s) => (s.id === id ? { ...s, ...optimisticUpdates } : s));
       });
+
+      return { previousData };
     },
-    onError: (error: Error) => {
+    onError: (error: Error, _variables, context) => {
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
       toast({
         title: 'Error updating shift',
         description: error.message,
         variant: 'destructive',
+      });
+    },
+    onSettled: (data, _error, variables) => {
+      const restaurantId = data?.restaurant_id ?? variables?.restaurant_id;
+      if (restaurantId) {
+        queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+      }
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Shift updated',
+        description: 'The shift has been updated.',
       });
     },
   });
@@ -233,19 +277,38 @@ async function assertShiftNotLocked(shiftId: string): Promise<void> {
   }
 }
 
-export function useDeleteShift() {
+export interface UseDeleteShiftOptions {
+  /**
+   * When true, suppresses the generic "Shift deleted" success toast (the
+   * error toast still fires on failure). Used by the Timeline's
+   * undo-delete flow, which shows its own "Shift deleted" toast with an
+   * Undo action instead. Defaults to false — every other caller's behavior
+   * is unchanged.
+   */
+  silent?: boolean;
+}
+
+export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
+  const { silent = false } = options;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { error } = await supabase.from('shifts').delete().eq('id', id);
+      const { error } = await supabase
+        .from('shifts')
+        .delete()
+        .eq('id', id)
+        .eq('restaurant_id', restaurantId);
 
       if (error) throw error;
       return { id, restaurantId };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+
+      if (silent) return;
+
       toast({
         title: 'Shift deleted',
         description: 'The shift has been removed from the schedule.',

@@ -7,12 +7,12 @@
  */
 import { useState, useMemo, useCallback } from 'react';
 
-import { useShifts, useCreateShift, useUpdateShift, useDeleteShift } from '@/hooks/useShifts';
+import { useShifts } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 
 import { ShiftInterval, formatLocalDate } from '@/lib/shiftInterval';
-import { validateShift, ValidationResult } from '@/lib/shiftValidator';
-import { checkConflictsImperative } from '@/hooks/useConflictDetection';
+import { ValidationResult } from '@/lib/shiftValidator';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { UNASSIGNED } from '@/lib/templateAreaGrouping';
@@ -201,12 +201,38 @@ export function groupUnmatchedByArea(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function errorToValidationResult(err: unknown, fallback: string): ValidationResult {
-  const message = err instanceof Error ? err.message : fallback;
+/**
+ * Metadata subset shared by every shift-insert payload builder — the fields that
+ * don't come from the time interval. Lets the host-local (`buildShiftPayload`) and
+ * ISO-instant (timeline) create paths share one payload shape without duplication.
+ */
+export interface ShiftInsertMeta {
+  employeeId: string;
+  position: string;
+  breakDuration?: number;
+  notes?: string;
+  shiftTemplateId?: string | null;
+}
+
+/** Build the shift-insert payload from an interval + non-time metadata. */
+export function buildShiftInsert(
+  restaurantId: string,
+  meta: ShiftInsertMeta,
+  interval: ShiftInterval,
+) {
   return {
-    valid: false,
-    errors: [{ code: message, message }],
-    warnings: [],
+    restaurant_id: restaurantId,
+    employee_id: meta.employeeId,
+    start_time: interval.startAt.toISOString(),
+    end_time: interval.endAt.toISOString(),
+    position: meta.position,
+    break_duration: meta.breakDuration ?? 0,
+    notes: meta.notes,
+    status: 'scheduled' as const,
+    is_published: false,
+    locked: false,
+    source: (meta.shiftTemplateId ? 'template' : 'manual') as 'template' | 'manual',
+    shift_template_id: meta.shiftTemplateId ?? null,
   };
 }
 
@@ -216,20 +242,17 @@ export function buildShiftPayload(
   input: ShiftCreateInput,
   interval: ShiftInterval,
 ) {
-  return {
-    restaurant_id: restaurantId,
-    employee_id: input.employeeId,
-    start_time: interval.startAt.toISOString(),
-    end_time: interval.endAt.toISOString(),
-    position: input.position,
-    break_duration: input.breakDuration ?? 0,
-    notes: input.notes,
-    status: 'scheduled' as const,
-    is_published: false,
-    locked: false,
-    source: (input.shiftTemplateId ? 'template' : 'manual') as 'template' | 'manual',
-    shift_template_id: input.shiftTemplateId ?? null,
-  };
+  return buildShiftInsert(
+    restaurantId,
+    {
+      employeeId: input.employeeId,
+      position: input.position,
+      breakDuration: input.breakDuration,
+      notes: input.notes,
+      shiftTemplateId: input.shiftTemplateId ?? null,
+    },
+    interval,
+  );
 }
 
 /**
@@ -407,10 +430,6 @@ export function useShiftPlanner(
   const weekEnd = useMemo(() => getWeekEnd(weekStart), [weekStart]);
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart]);
 
-  // Validation state
-  const [validationResult, setValidationResult] =
-    useState<ValidationResult | null>(null);
-
   // Data hooks
   const { shifts, loading: shiftsLoading, error: shiftsError } = useShifts(
     restaurantId,
@@ -421,10 +440,8 @@ export function useShiftPlanner(
     status: 'active',
   });
 
-  // Mutation hooks
-  const createShift = useCreateShift();
-  const updateShift = useUpdateShift();
-  const deleteShiftMutation = useDeleteShift();
+  // Validated mutation pipeline (shared with the Timeline edit/create surface).
+  const pipeline = useValidatedShiftMutations(restaurantId, shifts);
 
   // Computed data
   const totalHours = useMemo(() => computeTotalHours(shifts), [shifts]);
@@ -457,86 +474,13 @@ export function useShiftPlanner(
     setWeekStart(getMondayOfWeek(monday));
   }, [setWeekStart]);
 
-  // Validation helper
-  const clearValidation = useCallback(() => {
-    setValidationResult(null);
-  }, []);
+  // Validation helper — delegates to the pipeline hook's own state.
+  const clearValidation = pipeline.clearValidation;
 
-  // Validated mutations
-  const validateAndCreate = useCallback(
-    async (input: ShiftCreateInput) => {
-      if (!restaurantId) return { created: false };
-
-      try {
-        const interval = ShiftInterval.create(
-          input.date,
-          input.startTime,
-          input.endTime,
-        );
-
-        const result = validateShift(
-          { employeeId: input.employeeId, interval },
-          shifts,
-        );
-
-        setValidationResult(result);
-
-        // Collect client-side warnings
-        const clientWarnings = [...result.warnings];
-
-        // Check availability/time-off conflicts via RPC
-        const { conflicts } = await checkConflictsImperative({
-          employeeId: input.employeeId,
-          restaurantId,
-          startTime: interval.startAt.toISOString(),
-          endTime: interval.endAt.toISOString(),
-        });
-
-        // If any warnings or conflicts, return them for confirmation dialog
-        if (clientWarnings.length > 0 || conflicts.length > 0) {
-          return {
-            created: false,
-            pendingConflicts: conflicts,
-            pendingWarnings: clientWarnings,
-            pendingInput: input,
-          };
-        }
-
-        // No issues — create immediately
-        await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
-
-        setValidationResult(null);
-        return { created: true };
-      } catch (err) {
-        setValidationResult(errorToValidationResult(err, 'Invalid shift'));
-        return { created: false };
-      }
-    },
-    [restaurantId, shifts, createShift],
-  );
-
-  const forceCreate = useCallback(
-    async (input: ShiftCreateInput): Promise<boolean> => {
-      if (!restaurantId) return false;
-
-      try {
-        const interval = ShiftInterval.create(
-          input.date,
-          input.startTime,
-          input.endTime,
-        );
-
-        await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
-
-        setValidationResult(null);
-        return true;
-      } catch (err) {
-        setValidationResult(errorToValidationResult(err, 'Failed to create shift'));
-        return false;
-      }
-    },
-    [restaurantId, createShift],
-  );
+  // Validated mutations — delegate to the shared pipeline (byte-compatible
+  // public API; see useValidatedShiftMutations for the actual logic).
+  const validateAndCreate = pipeline.validateAndCreate;
+  const forceCreate = pipeline.forceCreate;
 
   const validateAndUpdateTime = useCallback(
     async (input: {
@@ -544,49 +488,37 @@ export function useShiftPlanner(
       newStartTime: string;
       newEndTime: string;
     }): Promise<boolean> => {
-      if (!restaurantId) return false;
+      const [date, startTimePart] = input.newStartTime.split('T');
+      const [, endTimePart] = input.newEndTime.split('T');
+
+      if (!startTimePart || !endTimePart) {
+        return false;
+      }
+
+      const startHHMM = startTimePart.substring(0, 5);
+      const endHHMM = endTimePart.substring(0, 5);
 
       try {
-        const [date, startTimePart] = input.newStartTime.split('T');
-        const [, endTimePart] = input.newEndTime.split('T');
-
-        if (!startTimePart || !endTimePart) {
-          setValidationResult(errorToValidationResult(
-            new Error('Invalid time format'),
-            'Invalid shift time',
-          ));
-          return false;
-        }
-
-        const startHHMM = startTimePart.substring(0, 5);
-        const endHHMM = endTimePart.substring(0, 5);
-
+        // Reconstruct the host-local interval the same way the planner always
+        // has, then hand its ISO instants to the pipeline (fromTimestamps),
+        // preserving this hook's existing host-local create semantics.
         const interval = ShiftInterval.create(date, startHHMM, endHHMM);
 
-        const result = validateShift(
-          { employeeId: input.shift.employee_id, interval },
-          shifts,
-          { excludeShiftId: input.shift.id },
-        );
-
-        setValidationResult(result);
-
-        if (!result.valid) return false;
-
-        await updateShift.mutateAsync({
-          id: input.shift.id,
-          start_time: interval.startAt.toISOString(),
-          end_time: interval.endAt.toISOString(),
+        const { updated } = await pipeline.validateAndUpdateTime({
+          shift: input.shift,
+          startIso: interval.startAt.toISOString(),
+          endIso: interval.endAt.toISOString(),
+          businessDate: date,
         });
 
-        setValidationResult(null);
-        return true;
-      } catch (err) {
-        setValidationResult(errorToValidationResult(err, 'Invalid shift time'));
+        return updated;
+      } catch {
+        // ShiftInterval.create validation failure (e.g. invalid/zero duration).
+        // Matches this hook's pre-refactor contract: never throws, returns false.
         return false;
       }
     },
-    [restaurantId, shifts, updateShift],
+    [pipeline],
   );
 
   const validateAndReassign = useCallback(
@@ -594,47 +526,13 @@ export function useShiftPlanner(
       shift: Shift;
       newEmployeeId: string;
     }): Promise<boolean> => {
-      if (!restaurantId) return false;
-
-      try {
-        const interval = ShiftInterval.fromTimestamps(
-          input.shift.start_time,
-          input.shift.end_time,
-          input.shift.start_time.split('T')[0],
-        );
-
-        const result = validateShift(
-          { employeeId: input.newEmployeeId, interval },
-          shifts,
-          { excludeShiftId: input.shift.id },
-        );
-
-        setValidationResult(result);
-
-        if (!result.valid) return false;
-
-        await updateShift.mutateAsync({
-          id: input.shift.id,
-          employee_id: input.newEmployeeId,
-        });
-
-        setValidationResult(null);
-        return true;
-      } catch (err) {
-        setValidationResult(errorToValidationResult(err, 'Cannot reassign this shift'));
-        return false;
-      }
+      const { reassigned } = await pipeline.validateAndReassign(input);
+      return reassigned;
     },
-    [restaurantId, shifts, updateShift],
+    [pipeline],
   );
 
-  const handleDeleteShift = useCallback(
-    (shiftId: string) => {
-      if (!restaurantId) return;
-      deleteShiftMutation.mutate({ id: shiftId, restaurantId });
-    },
-    [restaurantId, deleteShiftMutation],
-  );
+  const handleDeleteShift = pipeline.deleteShift;
 
   return {
     weekStart,
@@ -653,7 +551,7 @@ export function useShiftPlanner(
     validateAndUpdateTime,
     validateAndReassign,
     deleteShift: handleDeleteShift,
-    validationResult,
+    validationResult: pipeline.validationResult,
     clearValidation,
     totalHours,
   };

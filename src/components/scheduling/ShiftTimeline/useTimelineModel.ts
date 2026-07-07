@@ -11,6 +11,7 @@ export {
   expandDemand,
   computeGaps,
   buildTimelineModel,
+  computeCoverage,
   STEP_MIN,
 } from '@/lib/timelineModel';
 export type {
@@ -19,6 +20,7 @@ export type {
   TimelineLane,
   TimelineGap,
   TimelineModel,
+  TimelineCoverage,
 } from '@/lib/timelineModel';
 
 /**

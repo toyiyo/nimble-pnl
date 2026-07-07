@@ -27,6 +27,7 @@ const logoMap: Record<string, { icon: any; color: string }> = {
 // Emoji fallbacks for logos not available as images or SVG icons
 const emojiMap: Record<string, string> = {
   'toast-pos': '🍞',
+  'revel-pos': '🔔',
   'square-pos': '⬜',
   'clover-pos': '🍀',
   'sling-scheduling': '📋',

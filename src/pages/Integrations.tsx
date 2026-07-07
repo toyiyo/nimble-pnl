@@ -10,6 +10,8 @@ import { useShift4Integration } from '@/hooks/useShift4Integration';
 import { useToastIntegration } from '@/hooks/useToastIntegration';
 import { useSlingIntegration } from '@/hooks/useSlingIntegration';
 import { useFocusConnection } from '@/hooks/useFocusConnection';
+import { useRevelIntegration } from '@/hooks/useRevelIntegration';
+import { REVEL_ENABLED } from '@/config/revel';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -23,6 +25,7 @@ const Integrations = () => {
   const { isConnected: toastConnected } = useToastIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: slingConnected } = useSlingIntegration(selectedRestaurant?.restaurant_id || null);
   const { isConnected: focusConnected } = useFocusConnection(selectedRestaurant?.restaurant_id || null);
+  const { isConnected: revelConnected } = useRevelIntegration(selectedRestaurant?.restaurant_id || null);
 
   const handleRestaurantSelect = (restaurant: any) => {
     setSelectedRestaurant(restaurant);
@@ -75,6 +78,16 @@ const Integrations = () => {
       features: ['Daily Sales', 'Revenue Center Reports', 'Tax & Tips', 'Order Types']
     },
     {
+      id: 'revel-pos',
+      name: 'Revel POS',
+      description: 'Sync sales in real time from Revel POS via webhooks',
+      category: 'Point of Sale',
+      logo: '🔔',
+      connected: revelConnected,
+      comingSoon: !REVEL_ENABLED,
+      features: ['Real-time Sales', 'Order Items', 'Payments', 'Webhook-first']
+    },
+    {
       id: 'sling-scheduling',
       name: 'Sling',
       description: 'Sync employee schedules and time punches from Sling',
@@ -119,7 +132,7 @@ const Integrations = () => {
       connected: false,
       features: ['Purchase Orders', 'Food Costs', 'Inventory', 'Delivery Tracking']
     }
-  ], [toastConnected, squareConnected, cloverConnected, shift4Connected, focusConnected, slingConnected]);
+  ], [toastConnected, squareConnected, cloverConnected, shift4Connected, focusConnected, revelConnected, slingConnected]);
 
   const groupedIntegrations = useMemo(() => {
     return integrations.reduce((acc, integration) => {

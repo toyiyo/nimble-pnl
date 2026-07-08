@@ -1,0 +1,62 @@
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { ChevronDown, Download } from 'lucide-react';
+
+import type { PayrollPeriod } from '@/utils/payrollCalculations';
+import type { PayrollExportFormat } from '@/utils/payrollExportFormats';
+import { PAYROLL_EXPORT_FORMATS } from '@/utils/payrollExportFormats';
+
+interface PayrollExportMenuProps {
+  /** The ordered/grouped period to export, or null while loading/empty. */
+  period: PayrollPeriod | null;
+  start: Date;
+  end: Date;
+  disabled?: boolean;
+}
+
+/**
+ * "Export ▾" dropdown offering each registered payroll export format.
+ * Mirrors the export-picker precedent in src/pages/Inventory.tsx.
+ */
+export function PayrollExportMenu({ period, start, end, disabled }: PayrollExportMenuProps) {
+  const handleExport = (format: PayrollExportFormat) => {
+    if (!period) return;
+    const csv = format.build(period);
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = format.filename(start, end);
+    a.click();
+    // Revoke after a tick so the browser can schedule the download first.
+    setTimeout(() => window.URL.revokeObjectURL(url), 100);
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button disabled={disabled}>
+          <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+          Export
+          <ChevronDown className="h-4 w-4 ml-2" aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="bg-background z-50">
+        {PAYROLL_EXPORT_FORMATS.map((format) => (
+          <DropdownMenuItem
+            key={format.id}
+            className="cursor-pointer"
+            onClick={() => handleExport(format)}
+          >
+            {format.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

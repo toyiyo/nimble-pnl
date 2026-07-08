@@ -7,6 +7,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown, Download } from 'lucide-react';
 
+import { useToast } from '@/hooks/use-toast';
+
 import type { PayrollPeriod } from '@/utils/payrollCalculations';
 import type { PayrollExportFormat } from '@/utils/payrollExportFormats';
 import { PAYROLL_EXPORT_FORMATS } from '@/utils/payrollExportFormats';
@@ -24,9 +26,21 @@ interface PayrollExportMenuProps {
  * Mirrors the export-picker precedent in src/pages/Inventory.tsx.
  */
 export function PayrollExportMenu({ period, start, end, disabled }: PayrollExportMenuProps) {
+  const { toast } = useToast();
+
   const handleExport = (exportFormat: PayrollExportFormat) => {
-    if (!period) return;
-    const csv = exportFormat.build(period);
+    if (!period) {
+      toast({ title: 'Nothing to export', description: 'There is no payroll data for this period yet.', variant: 'destructive' });
+      return;
+    }
+    let csv: string;
+    try {
+      csv = exportFormat.build(period);
+    } catch (err) {
+      console.error('Payroll export failed', err);
+      toast({ title: 'Export failed', description: 'Could not build the export file. Please try again.', variant: 'destructive' });
+      return;
+    }
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');

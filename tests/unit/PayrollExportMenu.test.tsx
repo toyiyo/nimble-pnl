@@ -6,6 +6,12 @@ import userEvent from '@testing-library/user-event';
 import { PayrollExportMenu } from '@/components/payroll/PayrollExportMenu';
 import { GUSTO_CSV_HEADERS } from '@/utils/payrollGustoExport';
 import type { EmployeePayroll, PayrollPeriod } from '@/utils/payrollCalculations';
+import * as payrollExportFormats from '@/utils/payrollExportFormats';
+
+const toastMock = vi.fn();
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: toastMock }),
+}));
 
 function employee(overrides: Partial<EmployeePayroll> = {}): EmployeePayroll {
   return {
@@ -39,7 +45,10 @@ function stubDownload() {
   return { getBlob: () => blob, getDownload: () => download };
 }
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  toastMock.mockClear();
+});
 
 /** jsdom's Blob has no .text(); read via the arrayBuffer() polyfill in tests/setup.ts. */
 async function readBlobText(blob: Blob): Promise<string> {
@@ -77,5 +86,34 @@ describe('PayrollExportMenu', () => {
   it('disables the trigger when there are no employees to export', () => {
     render(<PayrollExportMenu period={null} start={new Date(2026, 5, 8)} end={new Date(2026, 5, 14)} disabled />);
     expect(screen.getByRole('button', { name: /export/i })).toBeDisabled();
+  });
+
+  it('surfaces a toast instead of silently no-oping when period is null and the caller forgot disabled', async () => {
+    const user = userEvent.setup();
+    // Intentionally omit `disabled` even though period is null, to exercise the guard clause directly.
+    render(<PayrollExportMenu period={null} start={new Date(2026, 5, 8)} end={new Date(2026, 5, 14)} />);
+
+    await user.click(screen.getByRole('button', { name: /export/i }));
+    await user.click(await screen.findByText('Gusto CSV'));
+
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
+  });
+
+  it('surfaces a toast instead of throwing when the export format builder throws', async () => {
+    const dl = stubDownload();
+    const user = userEvent.setup();
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(payrollExportFormats.PAYROLL_EXPORT_FORMATS[0], 'build').mockImplementation(() => {
+      throw new Error('boom');
+    });
+
+    render(<PayrollExportMenu period={period()} start={new Date(2026, 5, 8)} end={new Date(2026, 5, 14)} />);
+
+    await user.click(screen.getByRole('button', { name: /export/i }));
+    await user.click(await screen.findByText(payrollExportFormats.PAYROLL_EXPORT_FORMATS[0].label));
+
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
+    expect(dl.getDownload()).toBe('');
+    consoleErrorSpy.mockRestore();
   });
 });

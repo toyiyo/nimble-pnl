@@ -131,6 +131,16 @@ export function buildTemplateGridData(
   const grid = new Map<string, Map<string, Shift[]>>();
   const templateIds = new Set(templates.map((t) => t.id));
 
+  // Legacy (no shift_template_id) shifts are matched by time/position/day/area
+  // below. That fallback must only ever consider active templates: if a
+  // restaurant hides a template and creates an active replacement in the same
+  // slot, matching against the full (active + hidden) list would let the
+  // hidden template win the match non-deterministically and swallow a live
+  // shift into the hidden lane. FK-linked shifts are unaffected — they still
+  // bucket against `templates` (which may include hidden ones) so a hidden
+  // template's own shifts keep bucketing under it instead of `__unmatched__`.
+  const activeTemplatesForFallback = templates.filter((t) => t.is_active);
+
   for (const t of templates) {
     grid.set(t.id, new Map());
   }
@@ -156,11 +166,12 @@ export function buildTemplateGridData(
     // Fallback: match by time/position/day for legacy shifts (no
     // shift_template_id). Still needed for manually-created shifts and any
     // rows inserted by older bundles before AI generation persisted the FK.
+    // Restricted to active templates only — see comment above.
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();
     const match = findMatchingTemplate(
-      templates,
+      activeTemplatesForFallback,
       shiftStart,
       shiftEnd,
       shift.position,

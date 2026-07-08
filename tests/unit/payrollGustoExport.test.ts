@@ -155,4 +155,14 @@ describe('buildGustoCSV', () => {
     // single token → lastName blank, firstName carries the neutralized formula; title has an embedded comma + quotes
     expect(row).toBe('"","\'=cmd","Line, ""Cook""",,,,,,,,,,,,,');
   });
+
+  it('is CSV-injection safe against a leading-whitespace/tab formula bypass', () => {
+    // `position` is not trimmed by a name-splitting heuristic, so the leading
+    // tab survives into the escaper and must still be neutralized there.
+    const csv = buildGustoCSV(period([
+      employee({ employeeName: 'Ann Lee', position: '\t=HYPERLINK("https://evil")' }),
+    ]));
+    const [, row] = csv.split('\n');
+    expect(row).toBe('"Lee","Ann","\'\t=HYPERLINK(""https://evil"")",,,,,,,,,,,,,');
+  });
 });

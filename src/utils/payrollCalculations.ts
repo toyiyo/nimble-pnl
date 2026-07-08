@@ -648,14 +648,19 @@ export function calculatePayrollPeriod(
  * - Doubles embedded quotes per RFC 4180
  * - Strips carriage returns and newlines to prevent row splitting
  * - Prefixes formula-triggering characters (=, +, -, @) with a single quote
- *   to block spreadsheet formula injection
+ *   to block spreadsheet formula injection. Leading whitespace/tab characters
+ *   before a trigger char are also neutralized, since Excel/Sheets can still
+ *   parse `\t=cmd(...)` or ` =cmd(...)` as a live formula.
  * Returns the value wrapped in double quotes.
+ *
+ * Exported for reuse by other export formats (e.g. `payrollGustoExport.ts`)
+ * so the injection-safety fix stays in one place.
  */
-function escapeCsvCell(value: string | null | undefined): string {
+export function escapeCsvCell(value: string | null | undefined): string {
   const raw = value ?? '';
   const noNewlines = raw.replace(/\r?\n/g, ' ');
   const escapedQuotes = noNewlines.replace(/"/g, '""');
-  const neutralized = /^[=+\-@]/.test(escapedQuotes) ? `'${escapedQuotes}` : escapedQuotes;
+  const neutralized = /^\s*[=+\-@]/.test(escapedQuotes) ? `'${escapedQuotes}` : escapedQuotes;
   return `"${neutralized}"`;
 }
 

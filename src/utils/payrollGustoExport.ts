@@ -1,3 +1,4 @@
+import { escapeCsvCell } from '@/utils/payrollCalculations';
 import type { EmployeePayroll, PayrollPeriod } from '@/utils/payrollCalculations';
 
 /**
@@ -39,21 +40,6 @@ export function splitEmployeeName(full: string): { firstName: string; lastName: 
   };
 }
 
-/**
- * Escape a free-text CSV cell, Gusto-safe: RFC-4180 quote/double-quote and
- * neutralize a leading `= + - @` (formula injection) with a leading `'`.
- * Mirrors the internal export's `escapeCsvCell` (always quotes) but is
- * duplicated locally so this module has no coupling to
- * `payrollCalculations.ts` formatting.
- */
-function escapeGustoCsvCell(value: string | null | undefined): string {
-  const raw = value ?? '';
-  const noNewlines = raw.replace(/\r?\n/g, ' ');
-  const escapedQuotes = noNewlines.replace(/"/g, '""');
-  const neutralized = /^[=+\-@]/.test(escapedQuotes) ? `'${escapedQuotes}` : escapedQuotes;
-  return `"${neutralized}"`;
-}
-
 /** Format cents as a plain dollar string with 2 decimals; zero → blank. */
 function formatGustoMoney(cents: number): string {
   if (!cents) return '';
@@ -76,9 +62,9 @@ export function buildGustoCSV(period: PayrollPeriod): string {
   const rows = period.employees.map((ep: EmployeePayroll) => {
     const { firstName, lastName } = splitEmployeeName(ep.employeeName);
     return [
-      escapeGustoCsvCell(lastName),
-      escapeGustoCsvCell(firstName),
-      escapeGustoCsvCell(ep.position),
+      escapeCsvCell(lastName),
+      escapeCsvCell(firstName),
+      escapeCsvCell(ep.position),
       '', // gusto_employee_id — no mapping; Gusto name-matches
       formatGustoHours(ep.regularHours),
       formatGustoHours(ep.overtimeHours),

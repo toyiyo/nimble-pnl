@@ -7,6 +7,7 @@ import {
   calculateEmployeePay,
   calculatePayrollPeriod,
   exportPayrollToCSV,
+  escapeCsvCell,
   type ManualPayment,
   type WorkPeriod,
 } from '@/utils/payrollCalculations';
@@ -594,6 +595,29 @@ describe('payrollCalculations - Additional Coverage', () => {
       expect(result.totalTips).toBe(50000);
       expect(result.totalTipsPaidOut).toBe(0);
       expect(result.totalTipsOwed).toBe(50000);
+    });
+  });
+
+  describe('escapeCsvCell — CSV injection safety', () => {
+    it('neutralizes a leading formula-trigger character', () => {
+      expect(escapeCsvCell('=cmd')).toBe('"\'=cmd"');
+      expect(escapeCsvCell('+1+1')).toBe('"\'+1+1"');
+      expect(escapeCsvCell('-1-1')).toBe('"\'-1-1"');
+      expect(escapeCsvCell('@SUM(A1)')).toBe('"\'@SUM(A1)"');
+    });
+
+    it('neutralizes a formula-trigger character preceded by leading whitespace/tab', () => {
+      // Excel/Sheets can still parse a leading tab or space before "=" as a live formula.
+      expect(escapeCsvCell('\t=HYPERLINK("https://evil")')).toBe(
+        '"\'\t=HYPERLINK(""https://evil"")"'
+      );
+      expect(escapeCsvCell('  =cmd')).toBe('"\'  =cmd"');
+    });
+
+    it('leaves non-formula text untouched aside from quoting', () => {
+      expect(escapeCsvCell('Alice')).toBe('"Alice"');
+      expect(escapeCsvCell(null)).toBe('""');
+      expect(escapeCsvCell(undefined)).toBe('""');
     });
   });
 

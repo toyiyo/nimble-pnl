@@ -15,10 +15,10 @@ import { PAYROLL_EXPORT_FORMATS } from '@/utils/payrollExportFormats';
 
 interface PayrollExportMenuProps {
   /** The ordered/grouped period to export, or null while loading/empty. */
-  period: PayrollPeriod | null;
-  start: Date;
-  end: Date;
-  disabled?: boolean;
+  readonly period: PayrollPeriod | null;
+  readonly start: Date;
+  readonly end: Date;
+  readonly disabled?: boolean;
 }
 
 /**

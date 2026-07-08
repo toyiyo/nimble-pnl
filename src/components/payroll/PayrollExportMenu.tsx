@@ -24,14 +24,14 @@ interface PayrollExportMenuProps {
  * Mirrors the export-picker precedent in src/pages/Inventory.tsx.
  */
 export function PayrollExportMenu({ period, start, end, disabled }: PayrollExportMenuProps) {
-  const handleExport = (format: PayrollExportFormat) => {
+  const handleExport = (exportFormat: PayrollExportFormat) => {
     if (!period) return;
-    const csv = format.build(period);
+    const csv = exportFormat.build(period);
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = format.filename(start, end);
+    a.download = exportFormat.filename(start, end);
     a.click();
     // Revoke after a tick so the browser can schedule the download first.
     setTimeout(() => window.URL.revokeObjectURL(url), 100);
@@ -47,13 +47,13 @@ export function PayrollExportMenu({ period, start, end, disabled }: PayrollExpor
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="bg-background z-50">
-        {PAYROLL_EXPORT_FORMATS.map((format) => (
+        {PAYROLL_EXPORT_FORMATS.map((exportFormat) => (
           <DropdownMenuItem
-            key={format.id}
+            key={exportFormat.id}
             className="cursor-pointer"
-            onClick={() => handleExport(format)}
+            onClick={() => handleExport(exportFormat)}
           >
-            {format.label}
+            {exportFormat.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

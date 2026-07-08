@@ -258,6 +258,57 @@ describe('useShiftPlanner utilities', () => {
       expect(grid.get('t-csc')?.get('2026-03-07') ?? []).toHaveLength(0);
     });
 
+    it('should never bucket a legacy (unlinked) shift under a hidden template, even when a hidden and an active template share the same time/position/day/area slot', () => {
+      // Restaurant hid a template and created an active replacement in the exact
+      // same slot. A legacy shift (no shift_template_id) at that slot must always
+      // fall through to the active replacement, never the hidden original —
+      // otherwise it would disappear into the hidden lane when showHidden=false.
+      const hiddenTemplate: ShiftTemplate = {
+        id: 't-hidden', start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+        days: [1, 2, 3, 4, 5], name: 'Old Morning Server', area: null,
+        restaurant_id: 'r1', break_duration: 0, capacity: 2, is_active: false, created_at: '', updated_at: '',
+      };
+      const activeReplacement: ShiftTemplate = {
+        id: 't-active', start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+        days: [1, 2, 3, 4, 5], name: 'New Morning Server', area: null,
+        restaurant_id: 'r1', break_duration: 0, capacity: 2, is_active: true, created_at: '', updated_at: '',
+      };
+
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-02T10:00:00', end_time: '2026-03-02T16:30:00',
+        position: 'Server', status: 'scheduled',
+        shift_template_id: null as unknown as string,
+      });
+
+      // Hidden template listed first so a naive "first match wins" fallback
+      // would incorrectly pick it.
+      const grid = buildTemplateGridData([shift], [hiddenTemplate, activeReplacement], weekDays);
+
+      expect(grid.get('t-active')?.get('2026-03-02')).toHaveLength(1);
+      expect(grid.get('t-hidden')?.get('2026-03-02') ?? []).toHaveLength(0);
+    });
+
+    it('should still bucket a legacy shift under __unmatched__ when only a hidden template matches the slot (no active fallback wins)', () => {
+      const hiddenTemplate: ShiftTemplate = {
+        id: 't-hidden-only', start_time: '10:00:00', end_time: '16:30:00', position: 'Server',
+        days: [1, 2, 3, 4, 5], name: 'Old Morning Server', area: null,
+        restaurant_id: 'r1', break_duration: 0, capacity: 2, is_active: false, created_at: '', updated_at: '',
+      };
+
+      const shift = mockShift({
+        id: 's1', employee_id: 'e1',
+        start_time: '2026-03-02T10:00:00', end_time: '2026-03-02T16:30:00',
+        position: 'Server', status: 'scheduled',
+        shift_template_id: null as unknown as string,
+      });
+
+      const grid = buildTemplateGridData([shift], [hiddenTemplate], weekDays);
+
+      expect(grid.get('t-hidden-only')?.get('2026-03-02') ?? []).toHaveLength(0);
+      expect(grid.get('__unmatched__')?.get('2026-03-02')).toHaveLength(1);
+    });
+
     it('should fall back to time-based matching when shift_template_id is absent', () => {
       // Legacy shift without shift_template_id — should still match by time/position/day
       const shift = mockShift({

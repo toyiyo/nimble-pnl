@@ -127,12 +127,34 @@ export const PAYROLL_EXPORT_FORMATS: readonly PayrollExportFormat[];
 - `gusto` uses `buildGustoCSV`; filename `payroll_gusto_<start>_to_<end>.csv`.
 
 ### `src/pages/Payroll.tsx`
-- Replace the single `Export CSV` button with a shadcn `DropdownMenu`
-  ("Export ▾") whose items come from `PAYROLL_EXPORT_FORMATS`.
-- One shared handler: build via the selected format against the
-  page's grouped/ordered employees (same `orderedEmployees` the current handler
-  uses), blob-download with the format's filename. Keep the existing
-  disabled-when-no-employees guard.
+- Replace the single `Export CSV` button with a shadcn `DropdownMenu`, following
+  the **existing precedent in `src/pages/Inventory.tsx`** (Export ▾ → CSV/PDF
+  picker) so this stays consistent with the codebase rather than inventing a new
+  pattern.
+- Trigger: `DropdownMenuTrigger asChild` wrapping the existing `<Button>`, with
+  visible text `Export` + a decorative `ChevronDown` icon (`aria-hidden`, matching
+  the current `Download` icon usage). The button text self-labels it — no extra
+  `aria-label`. Keep the existing `disabled={!payrollPeriod || employees.length === 0}`
+  guard on the trigger.
+- Content: `DropdownMenuContent align="end" className="bg-background z-50"`
+  (matches Inventory exactly; prevents overflow past the right edge of the header
+  row) with one `DropdownMenuItem` per entry in `PAYROLL_EXPORT_FORMATS`, labelled
+  by `format.label` (items placed directly under the content, mirroring the
+  Inventory precedent — no `DropdownMenuGroup` wrapper for a flat two-item menu).
+- One shared handler `handleExport(format: PayrollExportFormat)`: build via the
+  selected format against the page's grouped/ordered employees (same
+  `orderedEmployees` the current handler uses), blob-download with
+  `format.filename(start, end)`.
+- **Interaction tradeoff (accepted):** today `Enter`/`Space` on the button exports
+  immediately; after this change the same keystroke opens the menu and a second
+  action (arrow + Enter, or type-ahead) performs the export. Radix
+  `DropdownMenu` provides Escape-to-close, arrow-key navigation, type-ahead, and
+  focus-return-to-trigger for free. The extra step is the deliberate cost of
+  supporting multiple formats.
+- **Filename date formatting** is centralized: both formats' `filename` functions
+  call one shared `formatDateRange(start, end)` helper (or the same
+  `format(d, 'yyyy-MM-dd')` call site) so the internal and Gusto filenames can't
+  drift in date formatting if one is later edited.
 
 ## Data flow
 
@@ -157,8 +179,19 @@ Unit (Vitest):
   line; injection escaping of a malicious name; hours formatting.
 - `PAYROLL_EXPORT_FORMATS`: contains `internal` + `gusto`, filenames well-formed.
 
-No DB / edge-function / RLS surface, so no pgTAP. UI wiring covered by the
-existing Payroll page E2E path (button → dropdown is a minor structural change).
+- `PAYROLL_EXPORT_FORMATS`: contains `internal` + `gusto`, filenames well-formed.
+
+**UI wiring (RTL component test, `tests/unit`):** because `handleExportCSV` is
+being forked into two `build` functions with two filenames, a wrong-wiring
+regression (Gusto item calling the internal builder, or a filename collision)
+would ship silently on payroll data. Add a test that renders the export
+dropdown, opens the menu, clicks the **Gusto CSV** item, and asserts (a) the
+triggered download's `download` attribute matches `payroll_gusto_<start>_to_<end>.csv`
+and (b) the produced blob text starts with the exact Gusto header line. Do the
+same for the Standard item. Mock the anchor click / `URL.createObjectURL` as
+needed. This replaces the earlier vague "existing E2E covers it" deferral.
+
+No DB / edge-function / RLS surface, so no pgTAP.
 
 ## Decided trade-offs
 

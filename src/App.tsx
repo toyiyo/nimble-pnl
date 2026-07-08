@@ -3,8 +3,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { Analytics } from "@vercel/analytics/react";
-import { SpeedInsights } from "@vercel/speed-insights/react";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { RestaurantProvider, useRestaurantContext } from "@/contexts/RestaurantContext";
 import { AiChatProvider } from "@/contexts/AiChatContext";
@@ -76,7 +74,6 @@ import WeeklyBrief from "./pages/WeeklyBrief";
 import { queryClientConfig } from "@/lib/react-query-config";
 
 const queryClient = new QueryClient(queryClientConfig);
-const enableSpeedInsights = import.meta.env.VITE_ENABLE_SPEED_INSIGHTS === "true";
 
 // Layout switcher - chooses between mobile employee layout, desktop layout, or no-chrome
 function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.ReactNode; noChrome: boolean; isMobile: boolean }) {
@@ -243,8 +240,6 @@ const App = () => (
       <TooltipProvider>
         <Toaster />
         <Sonner />
-        <Analytics />
-        {enableSpeedInsights && <SpeedInsights />}
         <BrowserRouter>
           <InstallBanner />
           <Routes>

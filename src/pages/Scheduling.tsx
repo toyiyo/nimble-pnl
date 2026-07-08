@@ -1475,7 +1475,11 @@ const Scheduling = () => {
               onDragEnd={handleDragEnd}
               onDragCancel={handleDragCancel}
             >
-            <div className="overflow-x-auto">
+            {/* `relative` makes this scroller the containing block for any absolutely
+                positioned descendant of the table (e.g. sr-only time-off overflow spans),
+                so they're clipped/scrolled here instead of leaking into document scroll
+                width on mobile. Defense in depth alongside DroppableDayCell's `relative`. */}
+            <div className="relative overflow-x-auto">
               <table className="w-full border-collapse min-w-[600px] md:min-w-[900px]">
                 <thead>
                   <tr className="bg-muted/30">

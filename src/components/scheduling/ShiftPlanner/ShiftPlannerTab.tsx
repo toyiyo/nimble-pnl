@@ -70,6 +70,38 @@ function buildSlotLabel(t: ShiftTemplate): string {
     : `${t.position} · ${timeRange} (all areas)`;
 }
 
+/** Toolbar pill that toggles ghost-row visibility for hidden templates. */
+function HiddenTemplatesToggle({
+  count,
+  showHidden,
+  onToggle,
+}: Readonly<{ count: number; showHidden: boolean; onToggle: () => void }>) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={showHidden}
+      aria-label={`${showHidden ? 'Hide' : 'Show'} hidden templates (${count})`}
+      className={cn(
+        'h-8 px-3 rounded-lg text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors',
+        showHidden
+          ? 'bg-foreground text-background hover:bg-foreground/90'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+      )}
+    >
+      <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
+      Hidden
+      <span className={cn(
+        'text-[11px] px-1.5 py-0.5 rounded-md',
+        showHidden ? 'bg-background/20' : 'bg-muted',
+      )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 export function ShiftPlannerTab({
   restaurantId,
   weekStart: externalWeekStart,
@@ -626,28 +658,11 @@ export function ShiftPlannerTab({
         </ToggleGroup>
 
         {hiddenTemplates.length > 0 && (
-          <button
-            type="button"
-            onClick={handleToggleShowHidden}
-            aria-pressed={showHidden}
-            aria-label={`${showHidden ? 'Hide' : 'Show'} hidden templates (${hiddenTemplates.length})`}
-            className={cn(
-              'h-8 px-3 rounded-lg text-[12px] font-medium inline-flex items-center gap-1.5 transition-colors',
-              showHidden
-                ? 'bg-foreground text-background hover:bg-foreground/90'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-            )}
-          >
-            <EyeOff className="h-3.5 w-3.5" aria-hidden="true" />
-            Hidden
-            <span className={cn(
-              'text-[11px] px-1.5 py-0.5 rounded-md',
-              showHidden ? 'bg-background/20' : 'bg-muted',
-            )}
-            >
-              {hiddenTemplates.length}
-            </span>
-          </button>
+          <HiddenTemplatesToggle
+            count={hiddenTemplates.length}
+            showHidden={showHidden}
+            onToggle={handleToggleShowHidden}
+          />
         )}
       </div>
 

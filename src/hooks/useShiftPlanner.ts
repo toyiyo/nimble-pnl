@@ -259,12 +259,11 @@ export function collectHiddenLane(
 ): Map<string, Shift[]> {
   const lane = new Map<string, Shift[]>();
 
-  for (const t of hiddenTemplates) {
-    if (areaFilter) {
-      const area = t.area || UNASSIGNED;
-      if (area !== areaFilter) continue;
-    }
+  const laneTemplates = areaFilter
+    ? hiddenTemplates.filter((t) => (t.area || UNASSIGNED) === areaFilter)
+    : hiddenTemplates;
 
+  for (const t of laneTemplates) {
     const byDay = grid.get(t.id);
     if (!byDay) continue;
 

@@ -39,14 +39,14 @@ interface MyShiftTradesCardProps {
 
 const STEP_DOT_CLASS: Record<TradeStepState, string> = {
   done: 'bg-foreground',
-  current: 'bg-amber-500',
+  current: 'bg-warning',
   upcoming: 'bg-muted-foreground/30',
   rejected: 'bg-destructive',
 };
 
 const STEP_LABEL_CLASS: Record<TradeStepState, string> = {
   done: 'text-foreground',
-  current: 'text-amber-600',
+  current: 'text-warning',
   upcoming: 'text-muted-foreground',
   rejected: 'text-destructive',
 };
@@ -148,12 +148,16 @@ export const MyShiftTradesCard = ({
   const handleConfirmWithdraw = () => {
     if (!confirmTarget) return;
     // Withdrawing the LAST posted trade unmounts the whole section (and its
-    // header) once the refetch lands, so the usual focus target disappears —
-    // send focus to the page-level fallback instead.
-    const focusTarget = postedByMe.length <= 1 ? 'fallback' : 'section';
+    // header) once the refetch lands, so on SUCCESS focus the page-level
+    // fallback. On ERROR the section stays mounted, so keep focus on its
+    // header — the outcome is only known in onSuccess/onError, not onSettled.
+    const successTarget = postedByMe.length <= 1 ? 'fallback' : 'section';
     cancelTrade(
       { tradeId: confirmTarget.id, employeeId },
-      { onSettled: () => closeConfirm(focusTarget) }
+      {
+        onSuccess: () => closeConfirm(successTarget),
+        onError: () => closeConfirm('section'),
+      }
     );
   };
 

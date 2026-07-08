@@ -171,7 +171,10 @@ describe('MyShiftTradesCard', () => {
 
     expect(mockCancelMutate).toHaveBeenCalledWith(
       { tradeId: 'trade-9', employeeId: ME },
-      expect.objectContaining({ onSettled: expect.any(Function) }),
+      expect.objectContaining({
+        onSuccess: expect.any(Function),
+        onError: expect.any(Function),
+      }),
     );
   });
 });

@@ -456,8 +456,9 @@ test.describe('Payroll Page Functionality', () => {
     await page.goto('/payroll');
     await expect(page.getByRole('heading', { name: 'Payroll', exact: true })).toBeVisible({ timeout: 10000 });
 
-    // Export button should exist (may be disabled without data)
-    const exportButton = page.getByRole('button', { name: /export csv/i });
+    // Export dropdown trigger should exist (disabled here since this fresh
+    // account has no payroll data yet — see PayrollExportMenu's disabled prop).
+    const exportButton = page.getByRole('button', { name: /^export$/i });
     await expect(exportButton).toBeVisible();
   });
 });

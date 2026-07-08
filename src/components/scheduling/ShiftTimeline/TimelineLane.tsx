@@ -248,7 +248,13 @@ function TimelineLaneImpl({
         {bars.map((bar) => (
           <div
             key={bar.shift.id}
-            className="absolute left-0 right-0"
+            // Full-width row band is `pointer-events-none` so it never
+            // intercepts events over a sibling bar sharing this row: the
+            // later-rendered wrapper would otherwise cover the earlier bar's
+            // rect and swallow its hover/click/drag. Empty space falls
+            // through to the lane's paint-to-create handlers; only the bar
+            // rect itself (in TimelineBar) re-enables pointer events.
+            className="absolute left-0 right-0 pointer-events-none"
             style={{
               top: bar.row * ROW_HEIGHT_PX,
               height: ROW_HEIGHT_PX,

@@ -116,7 +116,11 @@ function TimelineBarImpl({
 
   return (
     <div
-      className="absolute inset-y-0.5"
+      // Re-enable pointer events on the actual bar rect (its parent row band
+      // is `pointer-events-none`). Scoped by left%/width%, so only this bar's
+      // real extent captures events — siblings sharing the row no longer
+      // overlap in the hit-test region.
+      className="absolute inset-y-0.5 pointer-events-auto"
       style={{ left: `${left}%`, width: `${Math.max(width, 1)}%` }}
     >
       <button

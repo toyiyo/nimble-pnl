@@ -40,15 +40,23 @@ export function splitEmployeeName(full: string): { firstName: string; lastName: 
   };
 }
 
-/** Format cents as a plain dollar string with 2 decimals; zero → blank. */
+/**
+ * Format cents as a plain dollar string with 2 decimals (no `$`/separators).
+ * Emits an explicit "0.00" for zero — NOT blank — so that correcting a value
+ * down to zero and re-exporting overwrites the prior amount in Gusto. Gusto's
+ * Smart Import treats a blank cell as "leave unchanged" and an explicit 0 as
+ * "set to 0". Only used for columns we compute (tips); columns we don't manage
+ * stay blank in buildGustoCSV so we never clobber values kept in Gusto.
+ */
 function formatGustoMoney(cents: number): string {
-  if (!cents) return '';
   return (cents / 100).toFixed(2);
 }
 
-/** Format decimal hours to up to 2 decimals; zero → blank. */
+/**
+ * Format decimal hours to 2 decimals. Emits an explicit "0.00" for zero — NOT
+ * blank — for the same overwrite-on-re-import reason as formatGustoMoney.
+ */
 function formatGustoHours(hours: number): string {
-  if (!hours) return '';
   return hours.toFixed(2);
 }
 

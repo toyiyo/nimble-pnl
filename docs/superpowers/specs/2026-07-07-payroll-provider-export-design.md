@@ -74,8 +74,21 @@ once and reports the cash portion for taxes — no employee is paid twice.
 - **Plain numbers only** — no `$`, no thousands separators. Gusto parses these
   as numbers. Money: `cents / 100` to 2 decimals (`1250 → "12.50"`). Hours: up to
   2 decimals (`2.23`).
-- **Zero → blank cell.** Mirrors Gusto's own template (all-blank) and avoids
-  filling the sheet with `0.00` for employees who didn't work in the period.
+- **Zero handling — differs by column ownership (revised after CodeRabbit P1):**
+  Gusto's Smart Import treats a **blank cell as "leave unchanged"** and an
+  **explicit `0` as "set to 0"**.
+  - **Columns we compute** (`regular_hours`, `overtime_hours`,
+    `double_overtime_hours`, `paycheck_tips`, `cash_tips`) emit an explicit
+    `0.00` even when zero, so that correcting a value down to zero and
+    re-exporting **overwrites** the prior (stale) amount in Gusto rather than
+    silently leaving it.
+  - **Columns we never populate** (`gusto_employee_id`, `missed_break_hours`,
+    `owners_draw`, `bonus`, `commission`, `correction_payment`, `reimbursement`,
+    `personal_note`) stay **blank** (no-op) so a re-import never clobbers values
+    the user manages directly in Gusto.
+  - This split is robust under either interpretation of blank semantics, and
+    supersedes the original "zero → blank everywhere" decision (which optimized
+    for template-matching readability but risked stale values on re-import).
 - **No TOTAL row, no blank lines.** A total row would import as a phantom
   employee. Output is header + exactly one row per employee.
 - **All employees included** (roster parity with the template), even
@@ -175,10 +188,9 @@ Unit (Vitest):
   spaces, empty.
 - `buildGustoCSV`: exact header line; tips split (`paycheck_tips=tipsOwed`,
   `cash_tips=tipsPaidOut`); `title` = position; `gusto_employee_id` blank;
-  cents→dollars formatting; zero→blank; **no** TOTAL row / no trailing blank
-  line; injection escaping of a malicious name; hours formatting.
-- `PAYROLL_EXPORT_FORMATS`: contains `internal` + `gusto`, filenames well-formed.
-
+  cents→dollars formatting; computed columns emit explicit `0.00` while untracked
+  columns stay blank; **no** TOTAL row / no trailing blank line; injection
+  escaping of a malicious name; hours formatting.
 - `PAYROLL_EXPORT_FORMATS`: contains `internal` + `gusto`, filenames well-formed.
 
 **UI wiring (RTL component test, `tests/unit`):** because `handleExportCSV` is

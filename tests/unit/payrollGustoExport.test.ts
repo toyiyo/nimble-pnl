@@ -82,7 +82,7 @@ describe('buildGustoCSV', () => {
       employee({ employeeName: 'Jose Delgado', position: 'Server' }),
     ]));
     const [, row] = csv.split('\n');
-    expect(row).toBe('"Delgado","Jose","Server",,,,,,,,,,,,,');
+    expect(row).toBe('"Delgado","Jose","Server",,0.00,0.00,0.00,,,,,0.00,0.00,,,');
   });
 
   it('splits tips: paycheck_tips = tipsOwed, cash_tips = tipsPaidOut (cents → dollars)', () => {
@@ -120,19 +120,28 @@ describe('buildGustoCSV', () => {
     expect(cols[6]).toBe('1.10');
   });
 
-  it('renders zero money/hours values as blank cells, not "0" or "0.00"', () => {
+  it('renders zero for the columns we compute as an explicit "0.00" (overwrites on re-import), never blank', () => {
+    // Gusto Smart Import treats a blank cell as "leave unchanged" and an
+    // explicit 0 as "set to 0". Columns we compute must therefore emit 0.00 so
+    // that correcting a value down to zero clears the prior amount in Gusto.
     const csv = buildGustoCSV(period([
       employee({ employeeName: 'Ann Lee', regularHours: 0, overtimeHours: 0, doubleTimeHours: 0, tipsOwed: 0, tipsPaidOut: 0 }),
     ]));
     const [, row] = csv.split('\n');
-    expect(row).toBe('"Lee","Ann","",,,,,,,,,,,,,');
+    const cols = row.split(',');
+    expect(cols[4]).toBe('0.00');  // regular_hours
+    expect(cols[5]).toBe('0.00');  // overtime_hours
+    expect(cols[6]).toBe('0.00');  // double_overtime_hours
+    expect(cols[11]).toBe('0.00'); // paycheck_tips
+    expect(cols[12]).toBe('0.00'); // cash_tips
   });
 
-  it('leaves missed_break_hours, owners_draw, bonus, commission, correction_payment, reimbursement, personal_note blank', () => {
+  it('keeps untracked columns blank even when adjacent computed columns are 0.00 (no-op, never clobbers Gusto-managed values)', () => {
+    // The columns we never populate (owners_draw, bonus, reimbursement, …) stay
+    // blank so a re-import does NOT overwrite values the user manages in Gusto.
     const csv = buildGustoCSV(period([employee({ employeeName: 'Ann Lee' })]));
     const [, row] = csv.split('\n');
     const cols = row.split(',');
-    // indices: 7 missed_break_hours, 8 owners_draw, 9 bonus, 10 commission, 13 correction_payment, 14 reimbursement, 15 personal_note
     expect([cols[7], cols[8], cols[9], cols[10], cols[13], cols[14], cols[15]]).toEqual(['', '', '', '', '', '', '']);
   });
 
@@ -153,7 +162,7 @@ describe('buildGustoCSV', () => {
     ]));
     const [, row] = csv.split('\n');
     // single token → lastName blank, firstName carries the neutralized formula; title has an embedded comma + quotes
-    expect(row).toBe('"","\'=cmd","Line, ""Cook""",,,,,,,,,,,,,');
+    expect(row).toBe('"","\'=cmd","Line, ""Cook""",,0.00,0.00,0.00,,,,,0.00,0.00,,,');
   });
 
   it('is CSV-injection safe against a leading-whitespace/tab formula bypass', () => {
@@ -163,6 +172,6 @@ describe('buildGustoCSV', () => {
       employee({ employeeName: 'Ann Lee', position: '\t=HYPERLINK("https://evil")' }),
     ]));
     const [, row] = csv.split('\n');
-    expect(row).toBe('"Lee","Ann","\'\t=HYPERLINK(""https://evil"")",,,,,,,,,,,,,');
+    expect(row).toBe('"Lee","Ann","\'\t=HYPERLINK(""https://evil"")",,0.00,0.00,0.00,,,,,0.00,0.00,,,');
   });
 });

@@ -29,7 +29,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(14);
+SELECT plan(15);
 
 -- ============================================================================
 -- Fixtures (inserted as superuser before we switch to authenticated role)
@@ -80,6 +80,27 @@ INSERT INTO public.employees (id, restaurant_id, name, position, hourly_rate)
 VALUES ('24000000-0000-0000-0000-000000000301', '24000000-0000-0000-0000-000000000099', 'Test Employee 24', 'Server', 15)
 ON CONFLICT (id) DO NOTHING;
 
+-- Seed one chart_of_accounts row (as superuser) so the accounting DENY tests
+-- below assert an actual RLS denial, not empty-table vacuity.
+INSERT INTO public.chart_of_accounts
+    (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance)
+VALUES ('24000000-0000-0000-0000-000000000401', '24000000-0000-0000-0000-000000000099',
+        'TEST-24', 'Test Account 24', 'expense', 'other_expenses', 'debit')
+ON CONFLICT (id) DO NOTHING;
+
+-- Seed one connected_banks + bank_transactions row (as superuser) so the
+-- bank_transactions DENY test below asserts an actual RLS denial.
+INSERT INTO public.connected_banks (id, restaurant_id, stripe_financial_account_id, institution_name)
+VALUES ('24000000-0000-0000-0000-000000000402', '24000000-0000-0000-0000-000000000099',
+        'test-stripe-account-24', 'Test Bank 24')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.bank_transactions
+    (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date, description, amount)
+VALUES ('24000000-0000-0000-0000-000000000403', '24000000-0000-0000-0000-000000000099',
+        '24000000-0000-0000-0000-000000000402', 'test-stripe-txn-24', current_date, 'Test txn 24', 100.00)
+ON CONFLICT (id) DO NOTHING;
+
 -- ============================================================================
 -- Switch to the authenticated role and set JWT claims for
 -- collaborator_operations_manager. All subsequent DML runs under RLS exactly
@@ -125,6 +146,18 @@ SELECT lives_ok(
        WHERE restaurant_id = '24000000-0000-0000-0000-000000000099'::uuid
          AND employee_id = '24000000-0000-0000-0000-000000000301'::uuid $$,
     'collab-ops-mgr can UPDATE shifts (edit:scheduling, core table widened)'
+);
+
+-- lives_ok only proves the statement didn't error — under RLS a USING clause
+-- mismatch can silently affect 0 rows. Confirm the UPDATE actually took effect.
+SELECT cmp_ok(
+    (SELECT count(*)::int FROM public.shifts
+     WHERE restaurant_id = '24000000-0000-0000-0000-000000000099'::uuid
+       AND employee_id = '24000000-0000-0000-0000-000000000301'::uuid
+       AND end_time > now() + interval '8 hours'),
+    '>',
+    0,
+    'collab-ops-mgr UPDATE on shifts actually affected the row (not silently a no-op under RLS)'
 );
 
 -- ============================================================================
@@ -192,7 +225,8 @@ SELECT throws_ok(
 -- ============================================================================
 -- Test 9: Accounting DENY — bank_transactions SELECT returns 0 rows.
 -- RLS SELECT policy uses user_has_capability('view:banking') which excludes
--- collaborator_operations_manager. No rows should be visible.
+-- collaborator_operations_manager. A row WAS seeded above (as superuser), so
+-- a 0 count here is a real RLS denial, not table-emptiness vacuity.
 -- ============================================================================
 
 SELECT is(
@@ -205,7 +239,8 @@ SELECT is(
 -- ============================================================================
 -- Test 10: Accounting DENY — chart_of_accounts SELECT returns 0 rows.
 -- RLS SELECT policy uses user_has_capability('view:chart_of_accounts') which
--- excludes collaborator_operations_manager.
+-- excludes collaborator_operations_manager. A row WAS seeded above (as
+-- superuser), so a 0 count here is a real RLS denial, not vacuity.
 -- ============================================================================
 
 SELECT is(

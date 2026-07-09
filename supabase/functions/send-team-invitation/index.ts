@@ -192,7 +192,7 @@ const handler = async (req: Request): Promise<Response> => {
       'collaborator_accountant': 'Accountant',
       'collaborator_inventory': 'Inventory Helper',
       'collaborator_chef': 'Recipe Consultant',
-      'collaborator_operations_manager': 'Operations Manager',
+      'collaborator_operations_manager': 'Operations Manager (Collaborator)',
     };
     const friendlyRole = roleLabels[role] || role;
     const isCollaborator = role.startsWith('collaborator_');

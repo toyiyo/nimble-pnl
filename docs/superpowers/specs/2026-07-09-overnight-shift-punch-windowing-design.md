@@ -46,11 +46,16 @@ split before the pairing engine ever sees it:
 | Open Sessions | `src/pages/TimePunchesManager.tsx` | False "open session" → Force-Out corruption |
 | Employee Timecard | `src/pages/EmployeeTimecard.tsx` | **Per-day bucketing**; silently halves overnight hours, no warning |
 | Dashboard labor cost | `src/hooks/useLaborCostsFromTimeTracking.tsx` | Overnight hours dropped at range edges |
+| AI tool: P&L labor | `supabase/functions/ai-execute-tool/index.ts` (~L231) | Split-shift hours in AI "profit & loss" labor line |
+| AI tool: payroll summary | `supabase/functions/ai-execute-tool/index.ts` (~L2242) | Split-shift hours in AI "payroll summary" |
 
-The one path that already does it right is `fetchLaborData` in
-`supabase/functions/ai-execute-tool/index.ts` (`endLookaheadHours: 18`) →
-`calculateHoursPerEmployee` filters periods by `startTime` in
-`[startDate, endDate]`. This design generalizes that proven pattern.
+The one path that already does it right is `fetchLaborData` in the **same**
+edge file (`endLookaheadHours: 18`) → `calculateHoursPerEmployee`/
+`calculateActualLaborCost` filter periods by clock-in day within
+`[startDate, endDate]`. This design generalizes that proven pattern; the two
+sibling handlers above (`executeGetProfitLoss`-family L231 and
+`executeGetPayrollSummary` L2242) were added without going through
+`fetchLaborData` and so still fetch unbuffered.
 
 ## Approach
 
@@ -98,16 +103,41 @@ Pure, dependency-light helpers (unit-tested):
 Window bounds are inclusive on both ends (`>= start && <= end`), matching the
 existing `.gte/.lte` query semantics.
 
+### Data-lineage rule (applies to every site)
+
+Two derived data sets, never conflated:
+
+- **Buffered set** — punches fetched across `[start−18h, end+18h]`. Feeds
+  **pairing only** (`parseWorkPeriods` / `processPunchesForPeriod`). Pairing
+  needs both punches of a boundary-crossing shift.
+- **Window set** — data filtered back to the caller's logical `[start, end]`.
+  Feeds **every display and every total**: raw punch tables, CSV export,
+  manual-editor overlap checks, photo-thumbnail loads, per-employee hour
+  summaries, and the "hours" headline metrics.
+
+The pairing output (periods / sessions) is then attributed to the window by
+**clock-in day** and everything with a clock-in outside `[start, end]` is
+dropped. A period/session is "in window" iff its clock-in ∈ `[start, end]`
+(inclusive both ends, matching `.gte/.lte`).
+
 ### 2. Payroll — `usePayroll.tsx` + `calculateEmployeePay`
 
-- `usePayroll` fetches `bufferPunchFetchRange(startDate, endDate)` instead of
-  the raw window.
-- `calculateEmployeePay`: after `parseWorkPeriods(punches)`, when
-  `periodStartDate`/`periodEndDate` are present (they already are — passed by
-  `calculatePayrollPeriod`), filter `parsed.periods` via `periodsInWindow` and
-  `parsed.incompleteShifts` via `incompleteShiftsInWindow` before the OT/hours
-  computation. The daily-rate branch already guards `punchDate` within the
-  period, so buffered punches are safe there.
+- `usePayroll` widens the inline `.gte/.lte` to `bufferPunchFetchRange(startDate,
+  endDate)`. The React Query **key stays keyed on the logical `startDate`/
+  `endDate`** (buffering is encapsulated in `queryFn`) — no cache-key change.
+- `calculateEmployeePay`, hourly branch: immediately after
+  `parseWorkPeriods(punches)` (payrollCalculations.ts:430), and **before** the
+  `hoursByDate` loop at :433, reassign `parsed.periods = periodsInWindow(parsed.periods,
+  periodStartDate, periodEndDate)` and `parsed.incompleteShifts =
+  incompleteShiftsInWindow(parsed.incompleteShifts, …)` — but only when both
+  window bounds are provided (they always are from `calculatePayrollPeriod`).
+  All downstream OT-bucketing and tip-proration then operate on in-window
+  periods unchanged. This is a real logic change inside the 55-line hourly
+  block, **not** mere range-widening — it gets dedicated OT/tip-proration test
+  coverage (see Testing).
+- Daily-rate branch already guards `punchDate` within
+  `[periodStartDate, periodEndDate]` (payrollCalculations.ts:496–508); buffered
+  punches are safe there with no change.
 
 Result: a Sun 20:00→Mon 02:00 shift is counted once in the Sunday week; the
 Monday-week run fetches the Sunday clock-in via look-back, pairs it, and drops
@@ -115,39 +145,88 @@ it (clock-in < Monday start) — no double count, no false warning.
 
 ### 3. Open Sessions — `TimePunchesManager.tsx`
 
-- Fetch the buffered range via `useTimePunches`.
-- Derive `windowPunches = punches.filter(inWindow)` for the raw punch table /
-  photo / display logic; pair sessions on the full buffered `punches`.
-- `incompleteSessions` (and `todaySessions` open detection) = sessions with
-  `clock_in` in the viewed `[dateRange.start, dateRange.end]` **and**
-  `!is_complete`, via `sessionsWithClockInInWindow`.
+Current lineage: `filteredPunches = punches.filter(searchMatch)` (:308) →
+feeds `processPunchesForPeriod` (:317), the Punch List table (:800), CSV export
+(:517), `ManualTimelineEditor existingPunches` (:705), and the photo effect
+(:333). `processedData.sessions`/`.processedPunches` feed the visualization
+views and `todaySessions`/`totalWeekHours`/`incompleteSessions`.
 
-Result: a Jul-4 shift whose clock-out lands 12:06 AM Jul 5 is now paired →
-`is_complete` → not surfaced as an open session; "Force Out" is only offered
-for genuinely open shifts.
+Changes:
+- Fetch the buffered range via `useTimePunches(restaurantId, empId,
+  bufferedStart, bufferedEnd)`. `punches` is now the buffered set.
+- `filteredPunches = punches.filter(searchMatch)` stays the **buffered**
+  search-filtered set and feeds `processPunchesForPeriod` (pairing needs
+  buffer).
+- Add `windowPunches = filteredPunches.filter(p => inWindow(p.punch_time,
+  rangeStart, rangeEnd))`. **Repoint all display consumers to `windowPunches`**:
+  the Punch List table, `handleExportCSV`, `ManualTimelineEditor existingPunches`,
+  and the photo-thumbnail effect (:333). This keeps buffer-period punches out of
+  tables, exported files, overlap checks, and Storage signed-URL calls.
+- Add `windowProcessedPunches = processedData.processedPunches.filter(p =>
+  inWindow(p.punch_time, …))` for `PunchStreamView` (:747).
+- Add `windowSessions = sessionsWithClockInInWindow(processedData.sessions,
+  rangeStart, rangeEnd)`. Use it for **all** viewModes as the source for
+  `EmployeeCardView`/`BarcodeStripeView`/`ReceiptStyleView`, `todaySessions`,
+  `totalWeekHours` (:564), and `incompleteSessions` (:322). `incompleteSessions
+  = windowSessions.filter(s => !s.is_complete)`. The day-view `todaySessions`
+  filter switches from `isSameDay(...)` to the same `sessionsWithClockInInWindow`
+  helper for consistent inclusive-boundary semantics.
+
+Result: a Jul-4 shift whose clock-out lands 12:06 AM Jul 5 is paired →
+`is_complete` → not surfaced as an open session, and its hours count in the
+Jul-4 window total; "Force Out" is only offered for genuinely open shifts.
+Week/month `totalWeekHours` no longer leaks neighbouring-period hours.
 
 ### 4. Employee Timecard — `EmployeeTimecard.tsx`
 
-- Replace the per-day `calculateDayHours` + `punchesByDay` **hours** path with
-  `parseWorkPeriods` over buffered punches, attributed to clock-in day.
-- Extract a pure `hoursByClockInDay(periods, days)` (or reuse period grouping)
-  returning `{ totalHours, breakHours, netHours }` per calendar day — unit
-  tested for overnight attribution.
-- Keep the visual per-day punch *list* (`punchesByDay`) unchanged; only the
-  hours numbers now come from paired periods. `useTimePunches` is called with a
-  buffered `startDate`/`endDate`.
+Explicit dual-source split:
+- Call `useTimePunches(restaurantId, empId, bufferedStart, bufferedEnd)` where
+  `{bufferedStart, bufferedEnd} = bufferPunchFetchRange(startDate, endDate)`.
+  This **adds an `endDate` bound** (today only `startDate` is passed, so the
+  fetch is unbounded-after-start) — a deliberate change that also *reduces*
+  over-fetch for far-past periods.
+- **Display list (window):** keep `periodPunches` (:124, `punchDate` in
+  `[startDate, endDate]`) → `punchesByDay` → the visual per-punch timeline,
+  unchanged.
+- **Hours (buffered → attributed):** add pure
+  `hoursByClockInDay(periods, weekDays)` where `periods = parseWorkPeriods(punches)`
+  runs on the **buffered** hook `punches` (NOT `periodPunches` — feeding it the
+  filtered set would reintroduce the split bug). It buckets each period by its
+  clock-in **local** calendar day (`format(startTime, 'yyyy-MM-dd')`, matching
+  the existing local-day list grouping) into the `weekDays` set, returning
+  `{ totalHours, breakHours, netHours }` per day; days outside the period are
+  ignored. Per-day rows and `weeklyTotals` read from this.
+- Delete the now-dead `calculateDayHours`.
 
 ### 5. Dashboard — `useLaborCostsFromTimeTracking.tsx`
 
-- Fetch `bufferPunchFetchRange(dateFrom, dateTo)`.
-  `calculateActualLaborCost` already keys costs by clock-in day and ignores
-  out-of-window periods (date-map membership), so no further change needed.
+- Widen the inline fetch to `bufferPunchFetchRange(dateFrom, dateTo)`; query key
+  stays on the logical `dateFrom`/`dateTo`. `calculateActualLaborCost` already
+  keys costs by clock-in day and ignores out-of-window periods (date-map
+  membership), so no further change.
+
+### 6. AI edge tools — `ai-execute-tool/index.ts` (Deno)
+
+- Two handlers fetch `time_punches` unbuffered and feed `calculateActualLaborCost`:
+  L231 (P&L labor) and L2242 (`executeGetPayrollSummary`).
+- Add `LABOR_FETCH_LOOKAHEAD_HOURS = 18` to
+  `supabase/functions/_shared/laborCalculations.ts` and widen each fetch's
+  upper bound to `endDate + LABOR_FETCH_LOOKAHEAD_HOURS` (look-ahead only, in
+  parity with the sibling `fetchLaborData`; `calculateActualLaborCost` already
+  drops out-of-window periods by clock-in-day date-map, so a shift starting
+  before the window is not double-counted and no user-facing "orphan" warning
+  is produced by these read-only aggregation tools). This is a Deno module, so
+  the constant is defined Deno-side, mirroring the TS `OVERNIGHT_BUFFER_HOURS`;
+  a drift-guard note lives beside both constants.
 
 ### Not touched
 
 - `get_employee_punch_status` RPC — already unbounded (last punch), correct.
 - The pairing engines (`parseWorkPeriods`, `identifyWorkSessions`) — correct in
   isolation; no change to pairing logic.
+- `select('*')` on `time_punches` in `usePayroll`/`useLaborCostsFromTimeTracking`
+  and Punch-List virtualization — pre-existing, left as documented follow-ups
+  (see Decided trade-offs) to keep this fix focused.
 
 ## Data flow (payroll example)
 
@@ -179,30 +258,71 @@ usePayroll(start, end)
 
 ## Testing
 
-Pure-function unit tests carry the correctness weight (hook changes are
-mechanical range widening):
+Pure-function unit tests carry the correctness weight. The `calculateEmployeePay`
+and `hoursByClockInDay` changes are genuine logic changes (not mere range
+widening) and get dedicated coverage.
 
-1. `punchWindow.test.ts` — `bufferPunchFetchRange` offsets; each filter keeps
-   in-window / drops out-of-window (boundary-inclusive); `OVERNIGHT_BUFFER_HOURS
-   >= MAX_SHIFT_GAP_HOURS` drift guard.
+1. `punchWindow.test.ts` — `bufferPunchFetchRange` offsets (±18h, epoch-ms);
+   each filter keeps in-window / drops out-of-window with **inclusive**
+   boundaries (a period whose clock-in == `start` or == `end` is kept);
+   `OVERNIGHT_BUFFER_HOURS >= MAX_SHIFT_GAP_HOURS` drift guard.
 2. `payrollCalculations.test.ts` — new cases:
-   - Sun 20:00→Mon 02:00 shift counted once in the Sunday-week run.
+   - Sun 20:00→Mon 02:00 shift counted **once** in the Sunday-week run (full
+     hours, attributed to Sunday).
    - Monday-week run with look-back Sunday clock-in → shift dropped, **no**
-     double count, **no** "no matching clock-in" incomplete shift.
-   - Genuine missing clock-out still flagged when clock-in is in-window.
-3. `timePunchProcessing.test.ts` / timecard hours — a clock-out just after the
-   window end reads `is_complete` (not open) once buffered; `hoursByClockInDay`
-   attributes a Thu 23:00→Fri 07:00 shift entirely to Thursday.
+     double count, **no** "no matching clock-in" incomplete shift emitted.
+   - **OT/tip-proration path**: a week whose in-window periods push past 40h,
+     with a buffered-but-out-of-window neighbouring shift present in the input,
+     yields the same OT split and tip-prorated base rate as if the neighbour
+     were never fetched (proves the window filter sits correctly ahead of the
+     OT/tip math).
+   - Genuine missing clock-out still flagged when the clock-in is in-window.
+3. `timePunchProcessing` / open-sessions — a clock-out just after the window end:
+   (a) the session reads `is_complete` (not open), **and** (b) once paired, its
+   hours count toward the window's `totalWeekHours` (the two consumers —
+   `incompleteSessions` and `windowSessions` totals — are asserted separately).
+4. `hoursByClockInDay` — a Thu 23:00→Fri 07:00 shift attributes **entirely to
+   Thursday** (local day); a **DST-transition** case (clock-in at a local
+   midnight on a spring-forward/fall-back day, constructed via
+   `new Date(year, month, day, …)` for TZ-portability per lessons.md) asserts
+   attribution lands on the correct local calendar day regardless of process TZ.
 
-Existing 58 tests in the target area must stay green.
+Existing 58 tests in the target area must stay green. Run in UTC and at least
+one offset TZ (e.g. `TZ=America/Chicago`) for the timecard/attribution suite,
+per the DST lessons in `memory/lessons.md`.
+
+## Timezone discipline
+
+Fetch bounds use `Date.toISOString()` (UTC) and the ±18h buffer is epoch-ms, so
+fetch widening is TZ-invariant. **Attribution/day-bucketing is local**: the
+window `Date` boundaries (`startDate`/`endDate`) are constructed from local
+calendar days upstream, and `hoursByClockInDay` buckets by the punch's *local*
+calendar day — the two are compared consistently. This must be preserved: never
+bucket attribution by the UTC date portion of `punch_time`, or overnight shifts
+near local midnight in offset zones land on the wrong day (see `memory/lessons.md`
+`parseDateOnly`/`getUTC*` entries).
 
 ## Decided trade-offs
 
-- **Symmetric buffer** (vs look-ahead-only like `fetchLaborData`): chosen for
-  uniform reasoning and to suppress the payroll start-boundary warning; the
-  attribution filters make the extra look-back harmless.
+- **Symmetric buffer** on the UI/payroll sites (vs look-ahead-only like
+  `fetchLaborData`): chosen for uniform reasoning and to suppress the payroll
+  start-boundary "no matching clock-in" warning; the attribution filters make
+  the extra look-back harmless. The AI edge tools (read-only aggregation, no
+  user-facing orphan warning) use **look-ahead only**, matching their sibling
+  `fetchLaborData`.
+- **Fetch-volume increase (accepted):** buffering widens each query by ~1.5 days
+  *on top of* the queried span (a 1-day view fetches ~2.5 days), and the shifting
+  buffered boundary reduces cross-navigation cache overlap. Correctness outweighs
+  this; the `(restaurant_id, punch_time)` index keeps the scan cheap and payload
+  stays small at restaurant scale. The React Query key stays on the *logical*
+  window so cache identity is unaffected.
 - **No historical data cleanup** in this PR: the fix prevents *future* false
   warnings and dropped pay. Cleaning the already-created duplicate/force-out
   punches is a separate, data-only follow-up.
 - **Attribute to clock-in day** (vs splitting hours across two calendar days):
   matches existing conventions and keeps a shift's OT in a single week bucket.
+- **Deferred follow-ups** (flagged by design review, intentionally out of scope
+  to keep the fix focused): narrow `select('*')` → explicit columns in
+  `usePayroll`/`useLaborCostsFromTimeTracking`; virtualize the `TimePunchesManager`
+  Punch List table (CLAUDE.md 100+-item rule). Neither is newly triggered by
+  this change once `windowPunches` wiring keeps row counts at pre-buffer size.

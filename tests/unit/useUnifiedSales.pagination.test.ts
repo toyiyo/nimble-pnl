@@ -59,10 +59,20 @@ function pageForOffset(from: number, size: number) {
   }));
 }
 
+type QueryResult = { data: unknown; error: unknown };
+type MockBuilder = {
+  __range?: [number, number];
+  then: (
+    onFulfilled: (value: QueryResult) => unknown,
+    onRejected?: (reason: unknown) => unknown,
+  ) => Promise<unknown>;
+  [method: string]: unknown;
+};
+
 // Chainable builder: every method returns the builder; awaiting it resolves
 // via `resolver`. `.range`/`.order` calls are captured for assertions.
-function makeBuilder(resolver: (b: any) => { data: any; error: any }) {
-  const builder: any = {};
+function makeBuilder(resolver: (b: MockBuilder) => QueryResult) {
+  const builder = {} as MockBuilder;
   for (const m of ['select', 'eq', 'ilike', 'gte', 'lte', 'not']) {
     builder[m] = vi.fn(() => builder);
   }
@@ -75,7 +85,7 @@ function makeBuilder(resolver: (b: any) => { data: any; error: any }) {
     rangeCalls.push([from, to]);
     return builder;
   });
-  builder.then = (onFulfilled: any, onRejected: any) =>
+  builder.then = (onFulfilled, onRejected) =>
     Promise.resolve(resolver(builder)).then(onFulfilled, onRejected);
   return builder;
 }

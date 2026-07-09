@@ -48,4 +48,13 @@ describe('invite matrix', () => {
     // Force an unknown role via type assertion to exercise the ?? [] fallback branch
     expect(canInviteRole('unknown_role' as unknown as import('@/lib/permissions/types').Role, 'staff')).toBe(false);
   });
+
+  it('owner and manager can invite the operations manager collaborator', () => {
+    expect(canInviteRole('owner', 'collaborator_operations_manager')).toBe(true);
+    expect(canInviteRole('manager', 'collaborator_operations_manager')).toBe(true);
+  });
+
+  it('operations manager collaborator can invite nobody', () => {
+    expect(getInvitableRoles('collaborator_operations_manager')).toEqual([]);
+  });
 });

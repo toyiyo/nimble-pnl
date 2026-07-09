@@ -211,46 +211,31 @@ export const operationsManagerNav: NavGroup[] = navigationGroups
   }));
 
 // Collaborator Operations Manager: bespoke, scoped nav for the external ops
-// collaborator role. Do NOT reuse operationsManagerNav — that still includes
-// the Admin group's /team, which this role must never see (fail-open risk
-// flagged in Phase 2.5 design review). /employees is intentionally omitted
-// here (stays in the route allow-list for scheduling context, but is not
-// surfaced in the sidebar to avoid an admin-flavored page).
-export const collaboratorOperationsManagerNav: NavGroup[] = [
-  {
-    label: 'Operations',
-    items: [
-      { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
-      { path: '/time-punches', label: 'Time Clock', icon: ClipboardList },
-      { path: '/tips', label: 'Tip Pooling', icon: Coins },
-      { path: '/payroll', label: 'Payroll', icon: Wallet },
-    ],
-  },
-  {
-    label: 'Inventory',
-    items: [
-      { path: '/recipes', label: 'Recipes', icon: ChefHat },
-      { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
-      { path: '/inventory', label: 'Inventory', icon: Package },
-      { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
-      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
-      { path: '/reports', label: 'Reports', icon: FileText },
-    ],
-  },
-  {
-    label: 'Main',
-    items: [
-      { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
-    ],
-  },
-  {
-    label: 'Settings',
-    items: [
-      { path: '/settings', label: 'Settings', icon: Settings },
-      { path: '/help', label: 'Help Center', icon: LifeBuoy },
-    ],
-  },
-];
+// collaborator role. DERIVED from navigationGroups (same pattern as
+// operationsManagerNav) rather than re-declaring item objects — keeps a single
+// source of truth for paths/labels/icons. Do NOT reuse operationsManagerNav:
+// that still includes the Admin group's /team, which this role must never see
+// (fail-open risk flagged in Phase 2.5 design review).
+//   - Accounting group: dropped entirely.
+//   - Main: trimmed to POS Sales only (no Dashboard, Integrations, Ops Inbox).
+//   - Admin: relabelled "Settings", trimmed to Settings + Help — /team and
+//     /employees are intentionally excluded (/employees stays in the route
+//     allow-list for scheduling context, but is not surfaced in the sidebar).
+//   - Operations + Inventory: kept as-is.
+export const collaboratorOperationsManagerNav: NavGroup[] = navigationGroups
+  .filter((group) => group.label !== 'Accounting')
+  .map((group) => {
+    if (group.label === 'Main') {
+      return { ...group, items: group.items.filter((item) => item.path === '/pos-sales') };
+    }
+    if (group.label === 'Admin') {
+      return {
+        label: 'Settings',
+        items: group.items.filter((item) => item.path === '/settings' || item.path === '/help'),
+      };
+    }
+    return group;
+  });
 
 // Get navigation groups based on role
 export function getNavigationForRole(role: string | undefined): NavGroup[] {

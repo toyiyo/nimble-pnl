@@ -153,3 +153,11 @@ describe('COLLABORATOR_PRESETS', () => {
     expect(preset!.features.length).toBeGreaterThan(0);
   });
 });
+
+describe('collaborator preset icon coverage (guard)', () => {
+  it('every preset role is a known collaborator role', () => {
+    for (const p of COLLABORATOR_PRESETS) {
+      expect(isCollaboratorRole(p.role)).toBe(true);
+    }
+  });
+});

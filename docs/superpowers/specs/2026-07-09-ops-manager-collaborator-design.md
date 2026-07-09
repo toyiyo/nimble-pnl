@@ -65,7 +65,9 @@ branches dropped**, **`manage:employees` dropped** (`view:employees` kept),
   union and update the doc comment.
 - `src/lib/permissions/definitions.ts`:
   - `ROLE_CAPABILITIES`: add the capability array above.
-  - `ROLE_METADATA`: `label: 'Operations Manager'`, `description` (external ops),
+  - `ROLE_METADATA`: `label: 'Operations Manager (Collaborator)'` (distinct from the
+    internal `operations_manager` label to avoid an invite-dropdown collision — see
+    "Post-review scope corrections"), `description` (external ops),
     `category: 'collaborator'`, `landingPath: '/scheduling'`, `color: 'outline'`.
   - `COLLABORATOR_PRESETS`: append a 4th preset (`title: 'Operations Manager'`,
     description "Can run scheduling, labor, tips, and inventory operations", `features`

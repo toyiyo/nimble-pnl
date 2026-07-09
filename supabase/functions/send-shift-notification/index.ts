@@ -10,11 +10,11 @@ import {
   handleCorsPreflightRequest,
   errorResponse,
   successResponse,
-  getRestaurantName,
   shouldSendNotification,
   NOTIFICATION_FROM,
   APP_URL
 } from "../_shared/notificationHelpers.ts";
+import { getRestaurantInfo } from "../_shared/restaurantInfo.ts";
 import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
 
 interface RequestBody {
@@ -160,15 +160,17 @@ const handler = async (req: Request): Promise<Response> => {
       return successResponse({ message: 'No employee email found' });
     }
 
-    // Get restaurant name
-    const restaurantName = await getRestaurantName(supabase, shift.restaurant_id);
+    // Get restaurant name + timezone so shift times render in the
+    // restaurant's local time, not the edge runtime's UTC.
+    const { name: restaurantName, timezone: restaurantTimezone } =
+      await getRestaurantInfo(supabase, shift.restaurant_id);
 
     // Build details card
     const detailsItems = [
       { label: 'Restaurant', value: restaurantName },
       { label: 'Position', value: shift.position },
-      { label: 'Start', value: formatDateTime(shift.start_time) },
-      { label: 'End', value: formatDateTime(shift.end_time) },
+      { label: 'Start', value: formatDateTime(shift.start_time, restaurantTimezone) },
+      { label: 'End', value: formatDateTime(shift.end_time, restaurantTimezone) },
     ];
 
     // Add previous details if modified
@@ -177,8 +179,8 @@ const handler = async (req: Request): Promise<Response> => {
       detailsItems.push(
         { label: '', value: '--- Previous ---' },
         { label: 'Previous Position', value: previousShift!.position },
-        { label: 'Previous Start', value: formatDateTime(previousShift!.start_time) },
-        { label: 'Previous End', value: formatDateTime(previousShift!.end_time) },
+        { label: 'Previous Start', value: formatDateTime(previousShift!.start_time, restaurantTimezone) },
+        { label: 'Previous End', value: formatDateTime(previousShift!.end_time, restaurantTimezone) },
       );
     }
 

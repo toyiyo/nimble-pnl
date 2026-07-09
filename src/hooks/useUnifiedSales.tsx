@@ -16,6 +16,11 @@ type UseUnifiedSalesOptions = {
   endDate?: string;
 };
 
+type UnifiedSalesPage = {
+  sales: UnifiedSaleItem[];
+  hasMore: boolean;
+};
+
 export const useUnifiedSales = (restaurantId: string | null, options: UseUnifiedSalesOptions = {}) => {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -96,6 +101,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
       query = query
         .order('sale_date', { ascending: false })
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
         .range(from, to);
 
       const { data, error } = await query;
@@ -157,7 +163,8 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
   } = useInfiniteQuery({
     queryKey,
     queryFn: ({ pageParam = 0 }) => fetchUnifiedSalesPage({ pageParam: pageParam as number }),
-    getNextPageParam: (lastPage: any) => (lastPage?.hasMore ? (lastPage?.nextPage || 0) : undefined),
+    getNextPageParam: (lastPage: UnifiedSalesPage, allPages: UnifiedSalesPage[]) =>
+      lastPage?.hasMore ? allPages.length * PAGE_SIZE : undefined,
     initialPageParam: 0,
     enabled: !!restaurantId && !!user,
     staleTime: 60000,
@@ -168,7 +175,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
   });
 
   const flatSales = useMemo(() => {
-    const salesList = data?.pages.flatMap((page: any) => page?.sales || []) ?? [];
+    const salesList = data?.pages.flatMap((page: UnifiedSalesPage) => page?.sales || []) ?? [];
     if (!salesList.length) return [];
 
     // Build child splits across pages to avoid missing links

@@ -38,6 +38,9 @@ interface ShiftCellProps {
   cellArea?: string | null;
   /** De-duped loaned-out ghosts for this cell (employees from this area working elsewhere). */
   ghostLoanedOut?: CoveringEmployee[];
+  /** True when this cell's row template is hidden (`is_active === false`).
+   *  Renders read-only: no drop/assign affordances, no coverage indicator, dimmed chips. */
+  isHiddenTemplate?: boolean;
 }
 
 /** Tiny badge shown when coverage data is unavailable and capacity > 1. */
@@ -79,11 +82,12 @@ export const ShiftCell = memo(
     dayLabel,
     cellArea,
     ghostLoanedOut,
+    isHiddenTemplate,
   }: ShiftCellProps) {
     const { isOver, setNodeRef } = useDroppable({
       id: `${templateId}:${day}`,
       data: { templateId, day },
-      disabled: !isActiveDay,
+      disabled: !isActiveDay || !!isHiddenTemplate,
     });
 
     if (!isActiveDay) {
@@ -105,20 +109,25 @@ export const ShiftCell = memo(
     // Two-tier treatment prevents visual noise:
     //   • Fully covered (openSpots === 0): quiet — Check icon, N/N count, text-muted-foreground, no bar.
     //   • Under-covered (openSpots > 0): prominent — AlertTriangle, progress bar, text-destructive.
-    const showCoverageIndicator = coverage !== undefined;
+    // Ghost cells (isHiddenTemplate) never show the coverage indicator or open-slot affordances —
+    // hidden templates don't count toward or accept coverage.
+    const showCoverageIndicator = coverage !== undefined && !isHiddenTemplate;
     const filledCount = coverage !== undefined ? capacity - coverage.openSpots : 0;
+    const allowMobileTap = !isHiddenTemplate && hasMobileSelection && onMobileTap;
 
     return (
       <div
         ref={setNodeRef}
-        onClick={hasMobileSelection && onMobileTap ? () => onMobileTap(templateId, day) : undefined}
+        onClick={allowMobileTap ? () => onMobileTap(templateId, day) : undefined}
         data-allocation-status={allocationStatus ?? 'none'}
+        aria-label={isHiddenTemplate ? `${dayLabel ?? day}, hidden template` : undefined}
         className={cn(
           'min-h-[64px] p-1.5 space-y-1 transition-colors duration-200 relative',
           'border-l-2 border-primary/40',
           isOver && 'bg-foreground/5 ring-1 ring-foreground/20 rounded',
           isHighlighted && 'bg-primary/10',
-          hasMobileSelection && 'bg-primary/5 ring-1 ring-primary/30 rounded cursor-pointer',
+          allowMobileTap && 'bg-primary/5 ring-1 ring-primary/30 rounded cursor-pointer',
+          isHiddenTemplate && 'opacity-60',
           overlayClass,
         )}
       >
@@ -204,8 +213,8 @@ export const ShiftCell = memo(
           </button>
         )}
 
-        {/* Fallback capacity badge (only when no coverage data and capacity > 1) */}
-        {!coverage && capacity > 1 && (
+        {/* Fallback capacity badge (only when no coverage data and capacity > 1; suppressed for ghost cells) */}
+        {!coverage && capacity > 1 && !isHiddenTemplate && (
           <FallbackCapacityBadge shifts={shifts} capacity={capacity} />
         )}
       </div>
@@ -228,5 +237,6 @@ export const ShiftCell = memo(
     prev.slotName === next.slotName &&
     prev.dayLabel === next.dayLabel &&
     prev.cellArea === next.cellArea &&
-    prev.ghostLoanedOut === next.ghostLoanedOut,
+    prev.ghostLoanedOut === next.ghostLoanedOut &&
+    prev.isHiddenTemplate === next.isHiddenTemplate,
 );

@@ -131,6 +131,16 @@ export function buildTemplateGridData(
   const grid = new Map<string, Map<string, Shift[]>>();
   const templateIds = new Set(templates.map((t) => t.id));
 
+  // Legacy (no shift_template_id) shifts are matched by time/position/day/area
+  // below. That fallback must only ever consider active templates: if a
+  // restaurant hides a template and creates an active replacement in the same
+  // slot, matching against the full (active + hidden) list would let the
+  // hidden template win the match non-deterministically and swallow a live
+  // shift into the hidden lane. FK-linked shifts are unaffected — they still
+  // bucket against `templates` (which may include hidden ones) so a hidden
+  // template's own shifts keep bucketing under it instead of `__unmatched__`.
+  const activeTemplatesForFallback = templates.filter((t) => t.is_active);
+
   for (const t of templates) {
     grid.set(t.id, new Map());
   }
@@ -156,11 +166,12 @@ export function buildTemplateGridData(
     // Fallback: match by time/position/day for legacy shifts (no
     // shift_template_id). Still needed for manually-created shifts and any
     // rows inserted by older bundles before AI generation persisted the FK.
+    // Restricted to active templates only — see comment above.
     const shiftStart = formatLocalTime(shift.start_time);
     const shiftEnd = formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();
     const match = findMatchingTemplate(
-      templates,
+      activeTemplatesForFallback,
       shiftStart,
       shiftEnd,
       shift.position,
@@ -195,6 +206,79 @@ export function groupUnmatchedByArea(
     }
   }
   return out;
+}
+
+export interface PartitionedTemplatesForDisplay {
+  activeTemplates: ShiftTemplate[];
+  hiddenTemplates: ShiftTemplate[];
+  displayTemplates: ShiftTemplate[];
+}
+
+/**
+ * Partitions templates into active/hidden buckets for the planner grid.
+ *
+ * `displayTemplates` is a stable active-first ordering (relative order within
+ * each partition is preserved — no re-sorting beyond the active/hidden split)
+ * so ghost (hidden) rows sink to the bottom of each area group. When
+ * `showHidden` is false, `displayTemplates` is exactly `activeTemplates` (no
+ * hidden rows rendered at all).
+ */
+export function partitionTemplatesForDisplay(
+  templates: ShiftTemplate[],
+  showHidden: boolean,
+): PartitionedTemplatesForDisplay {
+  const activeTemplates: ShiftTemplate[] = [];
+  const hiddenTemplates: ShiftTemplate[] = [];
+
+  for (const t of templates) {
+    if (t.is_active) {
+      activeTemplates.push(t);
+    } else {
+      hiddenTemplates.push(t);
+    }
+  }
+
+  const displayTemplates = showHidden
+    ? [...activeTemplates, ...hiddenTemplates]
+    : activeTemplates;
+
+  return { activeTemplates, hiddenTemplates, displayTemplates };
+}
+
+/**
+ * Merges the per-template grid buckets (from buildTemplateGridData) of the
+ * given hidden templates into a single Map<day, Shift[]> for the "From
+ * hidden templates" lane. Honors areaFilter using the same `t.area ||
+ * UNASSIGNED` nullish convention as groupTemplatesByArea. Day arrays are
+ * merged in template order. Returns an empty Map when nothing matches.
+ */
+export function collectHiddenLane(
+  grid: Map<string, Map<string, Shift[]>>,
+  hiddenTemplates: ShiftTemplate[],
+  areaFilter: string | null | undefined,
+): Map<string, Shift[]> {
+  const lane = new Map<string, Shift[]>();
+
+  const laneTemplates = areaFilter
+    ? hiddenTemplates.filter((t) => (t.area || UNASSIGNED) === areaFilter)
+    : hiddenTemplates;
+
+  for (const t of laneTemplates) {
+    const byDay = grid.get(t.id);
+    if (!byDay) continue;
+
+    for (const [day, shifts] of byDay) {
+      if (shifts.length === 0) continue;
+      const existing = lane.get(day);
+      if (existing) {
+        existing.push(...shifts);
+      } else {
+        lane.set(day, [...shifts]);
+      }
+    }
+  }
+
+  return lane;
 }
 
 // ---------------------------------------------------------------------------

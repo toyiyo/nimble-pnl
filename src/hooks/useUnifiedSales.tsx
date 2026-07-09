@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo } from 'react';
-import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -14,6 +14,7 @@ type UseUnifiedSalesOptions = {
   searchTerm?: string;
   startDate?: string;
   endDate?: string;
+  categorizationFilter?: 'all' | 'uncategorized' | 'pending-review' | 'categorized';
 };
 
 type UnifiedSalesPage = {
@@ -29,9 +30,17 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
   const normalizedSearchTerm = options.searchTerm?.trim();
   const normalizedStartDate = options.startDate?.trim();
   const normalizedEndDate = options.endDate?.trim();
+  const normalizedCategorizationFilter = options.categorizationFilter || 'all';
   const queryKey = useMemo(
-    () => ['unified-sales', restaurantId, normalizedSearchTerm || '', normalizedStartDate || '', normalizedEndDate || ''],
-    [restaurantId, normalizedSearchTerm, normalizedStartDate, normalizedEndDate]
+    () => [
+      'unified-sales',
+      restaurantId,
+      normalizedSearchTerm || '',
+      normalizedStartDate || '',
+      normalizedEndDate || '',
+      normalizedCategorizationFilter,
+    ],
+    [restaurantId, normalizedSearchTerm, normalizedStartDate, normalizedEndDate, normalizedCategorizationFilter]
   );
 
   const fetchUnifiedSalesPage = useCallback(
@@ -98,6 +107,22 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
         query = query.lte('sale_date', normalizedEndDate);
       }
 
+      // Predicate parity with the SQL RPC `get_unified_sales_totals`
+      // (supabase/migrations/20260523000000_unified_sales_totals_categorization_counts.sql:91,95).
+      // `is_categorized` is nullable, so "not categorized" must be
+      // `IS NOT TRUE` (false OR null) — `.not('is_categorized', 'is', true)` —
+      // to match the RPC and the client's `!sale.is_categorized` check.
+      // See docs/superpowers/specs/2026-07-08-uncategorized-list-server-filter-design.md
+      // for the full parity table. Keep these predicates in lockstep with the
+      // RPC if it ever changes.
+      if (normalizedCategorizationFilter === 'uncategorized') {
+        query = query.not('is_categorized', 'is', true).is('suggested_category_id', null);
+      } else if (normalizedCategorizationFilter === 'pending-review') {
+        query = query.not('is_categorized', 'is', true).not('suggested_category_id', 'is', null);
+      } else if (normalizedCategorizationFilter === 'categorized') {
+        query = query.is('is_categorized', true);
+      }
+
       query = query
         .order('sale_date', { ascending: false })
         .order('created_at', { ascending: false })
@@ -150,13 +175,14 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
 
       return { sales: salesWithSplits, hasMore: (data?.length ?? 0) === PAGE_SIZE };
     },
-    [restaurantId, user, normalizedSearchTerm, normalizedStartDate, normalizedEndDate]
+    [restaurantId, user, normalizedSearchTerm, normalizedStartDate, normalizedEndDate, normalizedCategorizationFilter]
   );
 
   const {
     data,
     isLoading: loading,
     isFetchingNextPage: loadingMore,
+    isFetching,
     error,
     fetchNextPage,
     hasNextPage,
@@ -172,6 +198,10 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     refetchOnWindowFocus: false,
     refetchOnMount: false,
     refetchOnReconnect: false,
+    // Keep the previous tab's rows visible while the new categorizationFilter
+    // (part of queryKey) refetches, instead of dropping to the full-page
+    // loading/empty state. See design doc's "keepPreviousData flicker" note.
+    placeholderData: keepPreviousData,
   });
 
   const flatSales = useMemo(() => {
@@ -301,11 +331,20 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     queryClient.invalidateQueries({ queryKey });
   }, [queryClient, queryKey]);
 
+  // Suppress "Load more" while a non-next-page fetch (e.g. the initial fetch for
+  // a newly selected categorizationFilter tab) is in flight. With
+  // placeholderData: keepPreviousData, hasNextPage/getNextPageParam can still
+  // reflect the *previous* tab's placeholder pages for the brief window before
+  // the new tab's first page resolves — so both the exposed hasMore flag AND
+  // loadMoreSales must share this guard, or a caller could fetch the new filter
+  // at an offset computed from the stale placeholder page count.
+  const canLoadMore = !!hasNextPage && !(isFetching && !loadingMore);
+
   const loadMoreSales = useCallback(() => {
-    if (hasNextPage) {
+    if (canLoadMore) {
       fetchNextPage();
     }
-  }, [fetchNextPage, hasNextPage]);
+  }, [fetchNextPage, canLoadMore]);
 
   const createManualSale = async (saleData: {
     itemName: string;
@@ -582,7 +621,9 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     sales: flatSales,
     loading,
     loadingMore,
-    hasMore: !!hasNextPage,
+    // Guarded so the "Load more" affordance and loadMoreSales stay consistent
+    // (see canLoadMore above).
+    hasMore: canLoadMore,
     loadMoreSales,
     unmappedItems,
     fetchUnifiedSales: refetchSales,

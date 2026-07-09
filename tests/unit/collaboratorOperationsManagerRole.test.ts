@@ -16,6 +16,7 @@ import {
   isCollaboratorRole,
   getCollaboratorRoles,
 } from '@/lib/permissions/definitions';
+import { getInvitableRoles } from '@/lib/permissions/invitations';
 import type { Role, Capability } from '@/lib/permissions/types';
 
 // Compile-time check: assigning the literal to Role must not be a type error.
@@ -112,12 +113,23 @@ describe('collaborator_operations_manager capabilities', () => {
 describe('collaborator_operations_manager metadata', () => {
   const meta = ROLE_METADATA['collaborator_operations_manager'];
 
-  it('has label "Operations Manager"', () => {
-    expect(meta.label).toBe('Operations Manager');
+  it('has a label distinct from the internal operations_manager role', () => {
+    // Must NOT equal the internal role's label, or the two collide in the
+    // TeamInvitations dropdown (both invitable by owner/manager) and on badges.
+    expect(meta.label).toBe('Operations Manager (Collaborator)');
+    expect(meta.label).not.toBe(ROLE_METADATA['operations_manager'].label);
   });
 
   it('is categorised as collaborator', () => {
     expect(meta.category).toBe('collaborator');
+  });
+
+  // Regression guard for the duplicate-"Operations Manager" dropdown bug:
+  // TeamInvitations renders every invitable role by ROLE_METADATA[r].label, so
+  // any two roles an owner can invite MUST have distinct labels.
+  it('owner-invitable roles all have unique labels', () => {
+    const labels = getInvitableRoles('owner').map((r) => ROLE_METADATA[r].label);
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('lands on /scheduling', () => {

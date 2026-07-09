@@ -124,7 +124,11 @@ describe('TeamInvitations – owner invite dropdown', () => {
     await user.click(screen.getByRole('combobox'));
     // owner can invite owner, manager, operations_manager, chef, staff
     expect(screen.getByRole('option', { name: /owner/i })).toBeDefined();
-    expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
+    // The internal role and the collaborator role have DISTINCT labels, so an
+    // exact-match query resolves each unambiguously (regression guard for the
+    // duplicate-"Operations Manager" dropdown bug).
+    expect(screen.getByRole('option', { name: /^operations manager$/i })).toBeDefined();
+    expect(screen.getByRole('option', { name: /^operations manager \(collaborator\)$/i })).toBeDefined();
   });
 
   it('opens invite dialog for operations_manager and shows only Staff option', async () => {
@@ -153,7 +157,7 @@ describe('TeamInvitations – owner invite dropdown', () => {
 
     // manager cannot invite owner
     expect(screen.queryByRole('option', { name: /^owner$/i })).toBeNull();
-    // but can invite operations_manager
-    expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
+    // but can invite operations_manager (exact match — distinct from the collaborator)
+    expect(screen.getByRole('option', { name: /^operations manager$/i })).toBeDefined();
   });
 });

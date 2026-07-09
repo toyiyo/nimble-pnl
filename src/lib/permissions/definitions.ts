@@ -365,7 +365,11 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
   },
   collaborator_operations_manager: {
     role: 'collaborator_operations_manager',
-    label: 'Operations Manager',
+    // Distinct from the internal 'operations_manager' (also labeled "Operations
+    // Manager") so the two never collide in the invite dropdown or on badges.
+    // The Collaborators-tab preset CARD title stays "Operations Manager" (see
+    // COLLABORATOR_PRESETS below).
+    label: 'Operations Manager (Collaborator)',
     description: 'Run scheduling, labor, tips, and inventory operations',
     category: 'collaborator',
     landingPath: '/scheduling',

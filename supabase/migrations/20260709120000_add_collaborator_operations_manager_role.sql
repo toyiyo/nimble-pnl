@@ -598,74 +598,18 @@ USING (
 );
 
 -- -------------------------------------------------------------------------
--- overtime_rules: "Owners and managers can manage overtime rules"
+-- PAYROLL-COST MUTATION TABLES — collaborator_operations_manager INTENTIONALLY
+-- EXCLUDED (Codex P1 review, PR #596).
+--
+-- overtime_rules, overtime_adjustments, and daily_labor_allocations all mutate
+-- pay amounts (daily_labor_allocations.allocated_cost is written by the Payroll
+-- page's Add-Payment flow, src/hooks/usePayroll.tsx). This role is payroll
+-- READ-ONLY (has view:payroll, NOT edit:payroll), so it must not write them.
+-- These tables keep their existing owner/manager/operations_manager policies
+-- from 20260702170000 untouched — no DROP/CREATE here. The role's write grants
+-- are limited to tables backed by a capability it actually holds
+-- (edit:scheduling, edit:tips, edit:time_punches, edit:inventory, edit:recipes).
 -- -------------------------------------------------------------------------
-DROP POLICY IF EXISTS "Owners and managers can manage overtime rules" ON public.overtime_rules;
-CREATE POLICY "Owners and managers can manage overtime rules"
-ON public.overtime_rules
-FOR ALL
-USING (
-  EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = overtime_rules.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')
-  )
-);
-
--- -------------------------------------------------------------------------
--- overtime_adjustments: "Owners and managers can manage overtime adjustments"
--- -------------------------------------------------------------------------
-DROP POLICY IF EXISTS "Owners and managers can manage overtime adjustments" ON public.overtime_adjustments;
-CREATE POLICY "Owners and managers can manage overtime adjustments"
-ON public.overtime_adjustments FOR ALL
-USING (
-  EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = overtime_adjustments.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')
-  )
-);
-
--- -------------------------------------------------------------------------
--- daily_labor_allocations: insert/update/delete policies
--- -------------------------------------------------------------------------
-DROP POLICY IF EXISTS "Users can insert allocations for their restaurants" ON public.daily_labor_allocations;
-CREATE POLICY "Users can insert allocations for their restaurants"
-ON public.daily_labor_allocations FOR INSERT
-WITH CHECK (
-  EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = daily_labor_allocations.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')
-  )
-);
-
-DROP POLICY IF EXISTS "Users can update allocations for their restaurants" ON public.daily_labor_allocations;
-CREATE POLICY "Users can update allocations for their restaurants"
-ON public.daily_labor_allocations FOR UPDATE
-USING (
-  EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = daily_labor_allocations.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')
-  )
-);
-
-DROP POLICY IF EXISTS "Users can delete allocations for their restaurants" ON public.daily_labor_allocations;
-CREATE POLICY "Users can delete allocations for their restaurants"
-ON public.daily_labor_allocations FOR DELETE
-USING (
-  EXISTS (
-    SELECT 1 FROM user_restaurants
-    WHERE user_restaurants.restaurant_id = daily_labor_allocations.restaurant_id
-      AND user_restaurants.user_id = auth.uid()
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')
-  )
-);
 
 -- -------------------------------------------------------------------------
 -- schedule_publications: "Managers can create schedule publications"

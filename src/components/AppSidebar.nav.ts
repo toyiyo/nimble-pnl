@@ -221,12 +221,18 @@ export const operationsManagerNav: NavGroup[] = navigationGroups
 //   - Admin: relabelled "Settings", trimmed to Settings + Help — /team and
 //     /employees are intentionally excluded (/employees stays in the route
 //     allow-list for scheduling context, but is not surfaced in the sidebar).
-//   - Operations + Inventory: kept as-is.
+//   - Operations: kept as-is.
+//   - Inventory: kept, minus /reports — the Reports page is P&L (defaults to
+//     P&L Trends), which this accounting-excluded role must not reach
+//     (Codex P1, PR #596).
 export const collaboratorOperationsManagerNav: NavGroup[] = navigationGroups
   .filter((group) => group.label !== 'Accounting')
   .map((group) => {
     if (group.label === 'Main') {
       return { ...group, items: group.items.filter((item) => item.path === '/pos-sales') };
+    }
+    if (group.label === 'Inventory') {
+      return { ...group, items: group.items.filter((item) => item.path !== '/reports') };
     }
     if (group.label === 'Admin') {
       return {

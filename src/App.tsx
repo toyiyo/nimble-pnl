@@ -192,7 +192,11 @@ export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: str
       '/tips',
       '/payroll', // read-only labor context
       '/pos-sales',
-      '/reports',
+      // NOTE: '/reports' is intentionally EXCLUDED — Reports.tsx defaults to
+      // P&L Trends and exposes P&L Detail (revenue/COGS/labor/margin), which
+      // this accounting-excluded external role must not see (Codex P1, PR #596).
+      // Mirrors collaborator_inventory, which also holds view:reports but is not
+      // routed to /reports.
       '/inventory',
       '/inventory-audit',
       '/purchase-orders',

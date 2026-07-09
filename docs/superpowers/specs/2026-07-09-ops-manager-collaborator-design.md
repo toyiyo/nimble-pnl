@@ -216,3 +216,24 @@ they resolve automatically once the capability function includes the new role.
 - **Sync drift:** three sources must agree — `ROLE_CAPABILITIES` (TS),
   `user_has_capability` (SQL), and the invite matrix (TS + edge fn). The plan sequences
   these together and tests pin the SQL side.
+
+## Post-review scope corrections (PR #596)
+
+Codex flagged two over-grants from the "parity with `operations_manager`" rule
+(which holds because `operations_manager` has `edit:payroll` and accounting-adjacent
+access that this role does NOT):
+
+1. **Payroll-cost write tables excluded.** `daily_labor_allocations`,
+   `overtime_rules`, and `overtime_adjustments` mutate pay amounts
+   (`daily_labor_allocations.allocated_cost` is written by the Payroll Add-Payment
+   flow). This role is payroll **read-only** (`view:payroll`, no `edit:payroll`), so
+   it is NOT added to those write policies. Its write grants are limited to tables
+   backed by a capability it actually holds (`edit:scheduling`, `edit:tips`,
+   `edit:time_punches`, `edit:inventory`, `edit:recipes`). pgTAP Test 15 pins the
+   `daily_labor_allocations` denial.
+2. **`/reports` route excluded.** `Reports.tsx` defaults to P&L Trends and exposes a
+   P&L Detail tab (revenue/COGS/labor/margin) — a financial surface this
+   accounting-excluded role must not reach. `/reports` is removed from
+   `COLLABORATOR_ROUTES` and the sidebar nav (matching `collaborator_inventory`,
+   which holds `view:reports` but is likewise not routed there). The `view:reports`
+   capability is retained for parity but grants no reachable P&L surface.

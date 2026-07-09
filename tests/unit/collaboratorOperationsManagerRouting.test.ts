@@ -15,7 +15,9 @@ describe('collaborator_operations_manager route guard', () => {
     for (const p of ['/scheduling', '/time-punches', '/tips', '/inventory', '/recipes', '/settings']) {
       expect(allowed, `should allow ${p}`).toContain(p);
     }
-    for (const p of ['/team', '/integrations', '/transactions', '/banking', '/chart-of-accounts', '/']) {
+    // '/reports' is a P&L page (Reports.tsx defaults to P&L Trends) — must be denied
+    // to this accounting-excluded role (Codex P1, PR #596).
+    for (const p of ['/team', '/integrations', '/transactions', '/banking', '/chart-of-accounts', '/reports', '/']) {
       expect(allowed, `should NOT allow ${p}`).not.toContain(p);
     }
   });
@@ -34,10 +36,11 @@ describe('collaborator_operations_manager sidebar nav', () => {
     const nav = getNavigationForRole(ROLE);
     const paths = nav.flatMap((group) => group.items.map((item) => item.path));
 
-    for (const p of ['/scheduling', '/time-punches', '/tips', '/payroll', '/recipes', '/prep-recipes', '/inventory', '/inventory-audit', '/purchase-orders', '/reports', '/pos-sales', '/settings', '/help']) {
+    for (const p of ['/scheduling', '/time-punches', '/tips', '/payroll', '/recipes', '/prep-recipes', '/inventory', '/inventory-audit', '/purchase-orders', '/pos-sales', '/settings', '/help']) {
       expect(paths, `should include ${p}`).toContain(p);
     }
-    for (const p of ['/', '/team', '/integrations', '/employees', '/transactions', '/banking', '/chart-of-accounts', '/invoices', '/customers', '/expenses', '/budget', '/assets', '/financial-intelligence', '/financial-statements', '/stripe-account', '/print-checks']) {
+    // '/reports' excluded — it is a P&L page, not inventory reports (Codex P1, PR #596).
+    for (const p of ['/', '/reports', '/team', '/integrations', '/employees', '/transactions', '/banking', '/chart-of-accounts', '/invoices', '/customers', '/expenses', '/budget', '/assets', '/financial-intelligence', '/financial-statements', '/stripe-account', '/print-checks']) {
       expect(paths, `should NOT include ${p}`).not.toContain(p);
     }
   });

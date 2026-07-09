@@ -29,7 +29,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(15);
+SELECT plan(16);
 
 -- ============================================================================
 -- Fixtures (inserted as superuser before we switch to authenticated role)
@@ -311,6 +311,26 @@ SELECT throws_ok(
     NULL,
     NULL,
     'collab-ops-mgr cannot self-grant collaborator_accountant (financial access) via UPDATE'
+);
+
+-- ============================================================================
+-- Test 15: Payroll DENY — daily_labor_allocations INSERT is denied.
+-- daily_labor_allocations.allocated_cost is written by the Payroll page's
+-- Add-Payment flow (src/hooks/usePayroll.tsx). This role is payroll READ-ONLY
+-- (no edit:payroll), so the Task 8 migration intentionally does NOT add it to
+-- this table's write policies (Codex P1, PR #596). This asserts the denial so
+-- the exclusion can never silently regress.
+-- ============================================================================
+
+SELECT throws_ok(
+    $$ INSERT INTO public.daily_labor_allocations
+          (restaurant_id, employee_id, date, allocated_cost)
+       VALUES ('24000000-0000-0000-0000-000000000099'::uuid,
+               '24000000-0000-0000-0000-000000000301'::uuid,
+               current_date, 100.00) $$,
+    NULL,
+    NULL,
+    'collab-ops-mgr cannot INSERT into daily_labor_allocations (no edit:payroll)'
 );
 
 SELECT * FROM finish();

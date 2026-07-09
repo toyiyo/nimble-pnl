@@ -84,11 +84,42 @@ branches dropped**, **`manage:employees` dropped** (`view:employees` kept),
 
 ### 3. UI
 
+Three files hold hardcoded per-role maps/switches; two of them **fail open** if the
+new role is missing (caught in Phase 2.5 frontend review). All three must be updated:
+
 - `src/components/CollaboratorInvitations.tsx`: add an icon to `roleIcons`
-  (`collaborator_operations_manager: ClipboardList` — imported from `lucide-react`).
-  The role-selection grid already maps over `COLLABORATOR_PRESETS`; it uses
-  `md:grid-cols-3`. With 4 presets, change to `md:grid-cols-2 lg:grid-cols-4` so the
-  cards wrap cleanly on all breakpoints instead of leaving an orphan card.
+  (`collaborator_operations_manager: Briefcase` — `Briefcase` is already the
+  established `operations_manager` icon in `TeamMembers.tsx`, and avoids the
+  `ClipboardList` collision with the time-punches nav icon). The role-selection grid
+  uses `md:grid-cols-3`; with 4 presets change to
+  `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` for a clean 1/2/4 progression with no
+  orphan card at any breakpoint (verify at 375 / 768 / 1024 / 1280). Also add
+  `aria-pressed={isSelected}` to each preset `<button>` (small a11y win while the
+  render is being touched; the selected state is otherwise color-only).
+
+- `src/App.tsx` — **`COLLABORATOR_ROUTES`** (route allow-list consumed by
+  `StaffRoleChecker`). **Fail-open risk:** if a collaborator role has no entry,
+  `StaffRoleChecker` skips the redirect block entirely and the collaborator can
+  navigate to any route (admin, accounting, settings). Add an entry:
+  `landing: '/scheduling'`, `allowed:` `['/scheduling', '/time-punches', '/tips',
+  '/payroll', '/pos-sales', '/reports', '/inventory', '/inventory-audit',
+  '/purchase-orders', '/receipt-import', '/recipes', '/prep-recipes', '/employees',
+  '/settings', '/help']`. **Not** `/` (root dashboard shows P&L — keep external
+  collaborator off it, consistent with the other three collaborator roles), and not
+  `/team`, `/integrations`, or any accounting route.
+
+- `src/components/AppSidebar.nav.ts` — **`getNavigationForRole`** switch + a new
+  bespoke nav array. **Fail-open risk:** the `default:` branch returns the full
+  internal `navigationGroups` (Accounting, Team, Integrations, Settings), so a missing
+  `case` shows the external collaborator the entire internal nav. Add
+  `collaboratorOperationsManagerNav` (bespoke — do **not** reuse `operationsManagerNav`,
+  which still includes the Admin group's `/team`) with groups: **Operations**
+  (`/scheduling`, `/time-punches`, `/tips`, `/payroll`), **Inventory** (`/recipes`,
+  `/prep-recipes`, `/inventory`, `/inventory-audit`, `/purchase-orders`, `/reports`),
+  **Main** (`/pos-sales`), **Settings** (`/settings`, `/help`), plus a
+  `case 'collaborator_operations_manager': return collaboratorOperationsManagerNav;`.
+  (`/employees` stays in the route allow-list for scheduling context but is omitted
+  from the sidebar to avoid surfacing an admin-flavored page.)
 
 ### 4. SQL migration `supabase/migrations/<ts>_add_collaborator_operations_manager_role.sql`
 
@@ -119,11 +150,17 @@ Ordered: constraint → `user_has_capability` → RLS policies.
    `edit:scheduling`. It is a one-literal-per-policy change and leaving the internal
    role broken while the external collaborator works would be incoherent. Documented in
    the migration header.
-5. **`employees` SELECT** — ensure `collaborator_operations_manager` can read the
-   employee list (required for scheduling). Mirror however `collaborator_accountant`
-   currently gets `view:employees` read access (capability-gated or role-list); add the
-   new role to the same SELECT policy. Do **not** grant employee INSERT/UPDATE/DELETE.
-6. Update the `COMMENT ON FUNCTION user_has_capability` to document the new role.
+5. **`employees` SELECT — NO RLS change needed.** (Corrected in Phase 2.5 Supabase
+   review.) A permissive policy `"Team members can view coworkers in their restaurant"`
+   (`20260411100000`) already grants SELECT to *any* `user_restaurants` member with no
+   role filter, OR'd with the capability-gated policy. The new collaborator therefore
+   reads the employee list automatically. The `view:employees` branch we add to
+   `user_has_capability` (step 2) is for **app-level UI gating only**, not RLS
+   enforcement. Do **not** grant employee INSERT/UPDATE/DELETE (those stay
+   owner/manager/operations_manager).
+6. Update the `COMMENT ON FUNCTION user_has_capability` to document the new role, and
+   add a migration-header note that the constraint drop/recreate takes a brief lock on
+   `user_restaurants` (acceptable — small per-tenant table).
 
 Capability-gated tables (products, recipes, prep_recipes, production_runs,
 inventory_transactions, purchase_orders, invoices, customers, pending_outflows — all
@@ -147,7 +184,12 @@ they resolve automatically once the capability function includes the new role.
   and `('manager', ...)` are TRUE; `getInvitableRoles('collaborator_operations_manager')`
   is empty; `isCollaboratorRole('collaborator_operations_manager')` is TRUE;
   `getCollaboratorRoles()` includes it; `COLLABORATOR_PRESETS` has 4 entries and the new
-  one has non-empty `features`.
+  one has non-empty `features`; `ROLE_CAPABILITIES['collaborator_operations_manager']`
+  includes `edit:scheduling`/`edit:tips` and excludes `manage:team`/`edit:payroll`.
+- **Vitest** (`tests/unit/`): assert `COLLABORATOR_ROUTES` (App.tsx export) and
+  `getNavigationForRole` return a scoped (non-`navigationGroups`) result for the new
+  role — a regression guard against the fail-open default. Assert every
+  `COLLABORATOR_PRESETS[].role` has a `roleIcons` entry (icon-map coverage).
 
 ## Non-goals
 
@@ -157,6 +199,14 @@ they resolve automatically once the capability function includes the new role.
 - Not renaming or removing the internal `operations_manager` role.
 - Not changing collaborator acceptance / onboarding flow (handled generically by
   `accept-invitation`, which is role-agnostic and writes with the service role).
+- Not reconciling `CollaboratorInvitations.tsx` to the current Apple/Notion typography
+  and spacing conventions (`text-[17px]`, `border-border/40`, `bg-muted/30`, etc.). The
+  component predates those conventions; this change only adds a 4th card and does not
+  attempt a styling refresh.
+- Exception to "no unrelated change": the `operations_manager` widening on the three
+  scheduling tables (see RLS step 4) IS a behavior change to an existing internal role.
+  It must be called out **prominently in the PR description**, not just the SQL comment,
+  so a reviewer skimming "add collaborator role" does not miss it.
 
 ## Risks
 

@@ -1,5 +1,5 @@
 import { useEffect, useCallback, useMemo } from 'react';
-import { useInfiniteQuery, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -201,7 +201,14 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     // Keep the previous tab's rows visible while the new categorizationFilter
     // (part of queryKey) refetches, instead of dropping to the full-page
     // loading/empty state. See design doc's "keepPreviousData flicker" note.
-    placeholderData: keepPreviousData,
+    // BUT never reuse rows across a restaurant switch — queryKey[1] is the
+    // restaurantId, and showing another tenant's sales (even briefly) would
+    // break multi-tenant isolation. On a restaurant change, drop the
+    // placeholder so the list shows its loading state instead.
+    placeholderData: (previousData, previousQuery) =>
+      previousQuery && previousQuery.queryKey[1] !== restaurantId
+        ? undefined
+        : previousData,
   });
 
   const flatSales = useMemo(() => {

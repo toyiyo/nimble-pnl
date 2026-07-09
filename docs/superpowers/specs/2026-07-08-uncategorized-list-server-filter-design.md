@@ -180,6 +180,12 @@ written by Toast sync.
   previous tab's rows (further narrowed by the new client-side filter) for the
   ~30 ms until the server responds. Acceptable, and strictly better than a blank
   full-page spinner.
+- **keepPreviousData across tenants**: `restaurantId` is part of the same
+  queryKey, so a naive `placeholderData: keepPreviousData` would briefly show
+  the *previous restaurant's* sales on a restaurant switch — a multi-tenant
+  isolation break. `placeholderData` is therefore a guard function returning
+  `undefined` (drop to loading) when `previousQuery.queryKey[1] !== restaurantId`,
+  keeping rows only for same-restaurant filter changes. Pinned by a test.
 
 ## Decided trade-offs
 

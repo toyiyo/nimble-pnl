@@ -136,4 +136,41 @@ describe('useUnifiedSales keepPreviousData (tab-switch UX)', () => {
 
     await waitFor(() => expect(result.current.sales[0].id).toBe('row-pending-review'));
   });
+
+  it('does NOT reuse the previous restaurant\'s rows across a restaurant switch (multi-tenant isolation)', async () => {
+    // A row tagged by restaurant so we can detect any cross-tenant bleed by id.
+    const rowForRestaurant = (rid: string) => ({ ...rowFor('uncategorized'), id: `row-${rid}`, restaurant_id: rid });
+
+    // rest-1 resolves immediately.
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'recipes') return makeBuilder(() => Promise.resolve({ data: [], error: null }));
+      return makeBuilder(() => Promise.resolve({ data: [rowForRestaurant('rest-1')], error: null }));
+    });
+
+    const wrapper = createWrapper();
+    const { result, rerender } = renderHook(
+      ({ restaurantId }: { restaurantId: string }) =>
+        useUnifiedSales(restaurantId, { categorizationFilter: 'uncategorized' }),
+      { wrapper, initialProps: { restaurantId: 'rest-1' } }
+    );
+
+    await waitFor(() => expect(result.current.sales[0]?.id).toBe('row-rest-1'));
+
+    // Switch restaurants; gate rest-2's fetch so we can inspect mid-flight.
+    const gate = defer<{ data: any; error: any }>();
+    mockSupabase.from.mockImplementation((table: string) => {
+      if (table === 'recipes') return makeBuilder(() => Promise.resolve({ data: [], error: null }));
+      return makeBuilder(() => gate.promise);
+    });
+
+    rerender({ restaurantId: 'rest-2' });
+
+    // While rest-2's fetch is pending, the hook must NOT keep showing rest-1's
+    // row — the restaurant-scoped placeholder guard drops it (loading state).
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.sales.find((s) => s.id === 'row-rest-1')).toBeUndefined();
+
+    gate.resolve({ data: [rowForRestaurant('rest-2')], error: null });
+    await waitFor(() => expect(result.current.sales[0]?.id).toBe('row-rest-2'));
+  });
 });

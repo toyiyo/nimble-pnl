@@ -143,7 +143,7 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
 
 // Collaborator route configurations
 // Each collaborator role has a landing page and list of allowed paths
-const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }> = {
+export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }> = {
   collaborator_accountant: {
     landing: '/transactions',
     allowed: [
@@ -180,6 +180,26 @@ const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }
       '/recipes',
       '/prep-recipes',
       '/inventory', // View-only for ingredient context
+      '/settings',
+      '/help',
+    ],
+  },
+  collaborator_operations_manager: {
+    landing: '/scheduling',
+    allowed: [
+      '/scheduling',
+      '/time-punches',
+      '/tips',
+      '/payroll', // read-only labor context
+      '/pos-sales',
+      '/reports',
+      '/inventory',
+      '/inventory-audit',
+      '/purchase-orders',
+      '/receipt-import',
+      '/recipes',
+      '/prep-recipes',
+      '/employees', // read-only, scheduling context
       '/settings',
       '/help',
     ],

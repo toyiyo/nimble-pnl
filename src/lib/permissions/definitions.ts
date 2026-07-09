@@ -251,6 +251,40 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:inventory', // View-only for recipe ingredient context
     'view:settings',
   ],
+
+  collaborator_operations_manager: [
+    // Mirrors internal operations_manager minus team/manage-employees/edit-payroll.
+    // Full operational breadth (inventory + recipe ops + view payroll + AI assistant).
+    'view:dashboard',
+    'view:ai_assistant',
+    'view:inventory',
+    'edit:inventory',
+    'view:inventory_audit',
+    'edit:inventory_audit',
+    'view:purchase_orders',
+    'edit:purchase_orders',
+    'view:receipt_import',
+    'edit:receipt_import',
+    'view:reports',
+    'view:inventory_transactions',
+    'edit:inventory_transactions',
+    'view:recipes',
+    'edit:recipes',
+    'view:prep_recipes',
+    'edit:prep_recipes',
+    'view:batches',
+    'edit:batches',
+    'view:pos_sales',
+    'view:scheduling',
+    'edit:scheduling',
+    'view:time_punches',
+    'edit:time_punches',
+    'view:tips',
+    'edit:tips',
+    'view:payroll', // Read-only payroll for labor context
+    'view:employees', // Read-only, required to assign shifts
+    'view:settings',
+  ],
 } as const;
 
 /**
@@ -329,6 +363,14 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     landingPath: '/recipes',
     color: 'outline',
   },
+  collaborator_operations_manager: {
+    role: 'collaborator_operations_manager',
+    label: 'Operations Manager',
+    description: 'Run scheduling, labor, tips, and inventory operations',
+    category: 'collaborator',
+    landingPath: '/scheduling',
+    color: 'outline',
+  },
 };
 
 /**
@@ -369,6 +411,17 @@ export const COLLABORATOR_PRESETS: CollaboratorPreset[] = [
       'Manage prep recipes',
       'Manage production batches',
       'View inventory for ingredient context',
+    ],
+  },
+  {
+    role: 'collaborator_operations_manager',
+    title: 'Operations Manager',
+    description: 'Can run scheduling, labor, tips, and inventory operations',
+    features: [
+      'Build and edit the schedule',
+      'Manage time punches and tips',
+      'View payroll for labor context',
+      'Manage inventory, purchase orders, and recipes',
     ],
   },
 ];

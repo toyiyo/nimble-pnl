@@ -20,6 +20,9 @@
  * - collaborator_accountant: Financial data access
  * - collaborator_inventory: Inventory management access
  * - collaborator_chef: Recipe development access
+ * - collaborator_operations_manager: Scheduling, labor, tips, and inventory
+ *   operations access (view-only payroll/employees), isolated from admin
+ *   and accounting surfaces
  */
 export type Role =
   | 'owner'
@@ -30,7 +33,8 @@ export type Role =
   | 'kiosk'
   | 'collaborator_accountant'
   | 'collaborator_inventory'
-  | 'collaborator_chef';
+  | 'collaborator_chef'
+  | 'collaborator_operations_manager';
 
 /**
  * Fine-grained capabilities that roles can have.

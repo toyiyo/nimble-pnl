@@ -55,17 +55,36 @@ returns `"Shift already deleted, notification skipped"`.
   export interface SchedulePushEmployee { user_id?: string | null }
   export type WebPushSend = (userId: string) => Promise<unknown>;
 
-  /** Fan a "Schedule Updated" push out to every scheduled employee with a user_id.
+  const PUSH_CONCURRENCY = 20; // bounded fan-out — see "CPU/timeout" note below
+
+  /** Fan a "Schedule Updated" push out to every scheduled employee with a user_id,
+   *  in bounded-concurrency chunks so a 100+-employee restaurant doesn't open 100+
+   *  simultaneous push round-trips inside one edge-function invocation.
    *  Sender is injected so the Deno-only web-push call stays out of this module. */
   export async function notifySchedulePublishedPush(
     employees: SchedulePushEmployee[],
     send: WebPushSend,
+    concurrency = PUSH_CONCURRENCY,
   ): Promise<{ attempted: number }> {
     const targets = employees.filter((e): e is { user_id: string } => !!e.user_id);
-    await Promise.allSettled(targets.map((e) => send(e.user_id)));
+    for (let i = 0; i < targets.length; i += concurrency) {
+      const chunk = targets.slice(i, i + concurrency);
+      await Promise.allSettled(chunk.map((e) => send(e.user_id)));
+    }
     return { attempted: targets.length };
   }
   ```
+
+  **CPU/timeout note (Supabase review, major).** `sendWebPushToUser` does a
+  `web_push_subscriptions` `SELECT` **plus** a `webpush.sendNotification` round-trip *per
+  employee*, and this function already fans a Resend email out per employee in the same
+  invocation. Unbounded `Promise.allSettled` over 100+ employees risks the edge-function
+  budget. Bounded concurrency (chunks of 20) caps simultaneous outbound work. **Follow-up
+  (out of scope):** replace the per-employee subscription `SELECT` inside `sendWebPushToUser`
+  with a single bulk `web_push_subscriptions.select().in('user_id', userIds)` up front — a
+  change to a 4-caller shared helper, deferred. If a restaurant exceeds a few hundred
+  scheduled employees the fan-out should move to the 6-hourly cron (mirroring the
+  unified-sales pattern); logged for future measurement.
 
 - **Modify** `supabase/functions/notify-schedule-published/index.ts`:
   - Build a **service-role** client (needed: `web_push_subscriptions` RLS restricts rows to
@@ -93,11 +112,33 @@ employee's real email/user_id server-side and verifies the caller is an **owner/
 that restaurant** (new — the function previously only validated that the JWT was a real
 user).
 
+**Residual abuse (Supabase review, major) — explicitly accepted this round.** Identity is
+server-authoritative, so an authed caller can *not* redirect a "shift removed" message to an
+arbitrary recipient or across tenants. What remains: an owner/manager could replay the
+endpoint to re-send "shift removed" to *their own* employee with fabricated display fields
+(a same-restaurant harassment / compromised-session vector, not a privilege-escalation or
+cross-tenant one — a manager can already message their own staff through many channels).
+Mitigations applied now: (a) the push carries `tag: shift-deleted-${shiftId}` so repeat
+pushes for one shift collapse on-device; (b) documented as accepted residual risk.
+**Follow-up (out of scope):** tie the notification to a real logged deletion by reading
+`schedule_change_logs` (the `log_shift_change` trigger writes a `deleted` row with
+`before_data` for exactly published-shift deletes) and/or per-`(restaurant_id, employee_id)`
+rate-limiting — deferred because the `schedule_change_logs.shift_id` FK was recently
+reworked (`20260617120000_fix_schedule_change_logs_delete_fk.sql`) and the post-delete
+`shift_id` visibility must be verified before relying on it.
+
+**Settings gate default (Supabase review, minor).** `shouldSendNotification` fails *open* (a
+restaurant with no `notification_settings` row → notify). This is intended and consistent:
+`notify_shift_deleted` is `DEFAULT true`. A restaurant that never configured notifications
+still gets the "your shift was removed" message — the desired default for an employee-visible
+change.
+
 - **New** `supabase/functions/_shared/shiftDeletedNotification.ts` (pure; imports only the
   pure `emailTemplates.ts` — vitest-importable):
 
   ```ts
   export interface DeletedShiftNotificationInput {
+    shiftId: string;     // for push tag (dedupe repeat pushes on-device)
     employeeName: string | null;
     employeeEmail: string | null;
     employeeUserId: string | null;
@@ -108,6 +149,7 @@ user).
     endTime: string;     // ISO
     appUrl: string;
   }
+  // push.payload.tag = `shift-deleted-${shiftId}` (collapses duplicate deletes on-device)
   export interface DeletedShiftNotificationPlan {
     email?: { subject: string; html: string; to: string };
     push?: { userId: string; payload: { title; body; url; tag } };
@@ -153,6 +195,10 @@ user).
   export interface DeletableShift {
     id: string;
     restaurant_id: string;
+    // Widened beyond the real Shift type (Shift.employee_id is non-nullable string,
+    // is_published non-nullable boolean) ON PURPOSE — defensive against open/unassigned
+    // and draft shifts. The null/undefined branches are exercised by tests; do NOT
+    // "tighten" these back to match Shift or the guard branches become dead.
     employee_id: string | null;
     is_published?: boolean | null;
     position: string;
@@ -165,7 +211,11 @@ user).
     deletedShift: { restaurant_id; employee_id; position; start_time; end_time };
   }
   /** Returns the invoke body iff the deleted shift was published AND had an assigned
-   *  employee; else null (drafts and open/unassigned shifts never notify). */
+   *  employee; else null (drafts and open/unassigned shifts never notify).
+   *  Gate is `is_published` — the semantic "was the employee already told about this
+   *  shift?" predicate — NOT `locked` (an editing concern). publish/unpublish set both
+   *  flags in lockstep (publish_schedule / unpublish_schedule); a unit test documents
+   *  that assumption so a future divergence is caught. */
   export function buildShiftDeletedInvoke(shift: DeletableShift): ShiftDeletedInvokeBody | null;
   ```
 
@@ -173,19 +223,29 @@ user).
   snapshot so it can decide/notify centrally without an extra fetch:
   ```ts
   mutationFn: async ({ id, restaurantId, shift }:
-    { id: string; restaurantId: string; shift?: DeletableShift }) => { …unchanged delete… }
+    { id: string; restaurantId: string; shift?: DeletableShift }) => {
+      …unchanged delete…
+      return { id, restaurantId, shift };   // thread snapshot to onSuccess
+    }
   onSuccess: (data) => {
     queryClient.invalidateQueries(['shifts', data.restaurantId]);
+
+    // Notify FIRST, unconditionally on snapshot presence — MUST sit above the
+    // `if (silent) return` below. `silent` (suppress toast) and "should notify" are
+    // orthogonal; never nest this invoke inside the toast/!silent branch.
     const body = data.shift ? buildShiftDeletedInvoke(data.shift) : null;
     if (body) {
       supabase.functions.invoke('send-shift-notification', { body })
-        .then(({ error }) => { if (error) console.warn('shift-deleted notify failed', error); })
-        .catch((e) => console.warn('shift-deleted notify failed', e)); // fire-and-forget
+        .then(({ error }) => { if (error) console.warn('shift-deleted notify failed', { shiftId: data.shift?.id, error }); })
+        .catch((e) => console.warn('shift-deleted notify failed', { shiftId: data.shift?.id, error: e })); // fire-and-forget
     }
-    if (!silent) toast({ … });   // unchanged
+
+    if (silent) return;
+    toast({ … });   // unchanged
   }
   ```
-  (Return `{ id, restaurantId, shift }` from `mutationFn` so `onSuccess` has the snapshot.)
+  (`onSuccess`, not `onSettled` — notify only after a confirmed delete, never on error.
+  `useDeleteShift` has no `onMutate`/optimistic path, so there is no rollback interaction.)
 
 - **Modify** `src/pages/Scheduling.tsx` — `confirmDeleteShift` passes the full shift:
   `deleteShift.mutate({ id: shiftToDelete.id, restaurantId, shift: shiftToDelete }, …)`.
@@ -216,8 +276,10 @@ Resend email + `sendWebPushToUser`.
 - `tests/unit/shiftDeletedNotification.test.ts` — all four plan branches (email-only,
   push-only, both, skipped); timezone-correct `formatDateTime` output.
 - `tests/unit/shiftDeleteNotificationClient.test.ts` — `buildShiftDeletedInvoke`: published+
-  assigned ⇒ body; unpublished ⇒ null; `employee_id` null ⇒ null; body shape carries
-  `employee_id` (never email).
+  assigned ⇒ body; unpublished ⇒ null; `is_published` null/undefined ⇒ null; `employee_id`
+  null ⇒ null; body shape carries `employee_id` (never email/user_id) and `shiftId`. A
+  documentation test asserts the gate is `is_published` (not `locked`) and comments the
+  publish/unpublish lockstep assumption.
 - `tests/unit/useShifts.deleteNotify.test.ts(x)` — per the 2026-05-16 lesson, **two** invoke
   mocks: `mockResolvedValue({ data:null, error:{message} })` and `mockRejectedValue(Error)`;
   both assert the delete mutation still resolves and the toast still fires; plus a

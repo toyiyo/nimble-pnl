@@ -12,6 +12,7 @@ import {
   type OvertimeRules as OTRules,
   type OvertimeAdjustment,
 } from '@/lib/overtimeCalculations';
+import { periodsInWindow, incompleteShiftsInWindow } from '@/utils/punchWindow';
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
 const MAX_SHIFT_HOURS = 16;
@@ -407,7 +408,15 @@ export function calculateEmployeePay(
   manualPayments: ManualPayment[] = [],
   tipsPaidOut: number = 0,
   overtimeRules?: OTRules,
-  overtimeAdjustments: OvertimeAdjustment[] = []
+  overtimeAdjustments: OvertimeAdjustment[] = [],
+  // When true, attribute each shift to its clock-in day and drop periods/
+  // incomplete shifts whose anchor punch falls outside [periodStartDate,
+  // periodEndDate]. ONLY the payroll path (calculatePayrollPeriod) opts in — it
+  // fetches a ±18h buffer so boundary-crossing shifts pair whole first.
+  // calculateActualLaborCostForMonth intentionally leaves this false: it
+  // pre-buckets by ISO week and passes NOON-anchored bounds this filter would
+  // misinterpret.
+  attributeToWindow: boolean = false
 ): EmployeePayroll {
   const compensationType = employee.compensation_type || 'hourly';
 
@@ -428,6 +437,10 @@ export function calculateEmployeePay(
   // Calculate based on compensation type
   if (compensationType === 'hourly') {
     const parsed = parseWorkPeriods(punches);
+    if (attributeToWindow && periodStartDate && periodEndDate) {
+      parsed.periods = periodsInWindow(parsed.periods, periodStartDate, periodEndDate);
+      parsed.incompleteShifts = incompleteShiftsInWindow(parsed.incompleteShifts, periodStartDate, periodEndDate);
+    }
     const hoursByDate = new Map<string, number>();
 
     for (const period of parsed.periods) {
@@ -618,7 +631,7 @@ export function calculatePayrollPeriod(
     const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
     const tipsPaidOut = tipPayoutsPerEmployee.get(employee.id) || 0;
     // Pass period dates for salary/contractor calculations
-    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments);
+    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments, true);
   });
 
   const totalRegularHours = employeePayrolls.reduce((sum, ep) => sum + ep.regularHours, 0);

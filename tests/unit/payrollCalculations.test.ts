@@ -898,7 +898,7 @@ describe('calculateEmployeePay overnight window attribution', () => {
       punch('clock_in', '2026-07-12T20:00:00'),  // Sun 8pm (in window)
       punch('clock_out', '2026-07-13T02:00:00'),  // Mon 2am (lookahead)
     ];
-    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd);
+    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd, [], 0, undefined, [], true);
     expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(6, 5);
     expect(pay.incompleteShifts ?? []).toHaveLength(0);
   });
@@ -911,7 +911,7 @@ describe('calculateEmployeePay overnight window attribution', () => {
       punch('clock_in', '2026-07-12T20:00:00'),  // before nextStart → drop
       punch('clock_out', '2026-07-13T02:00:00'),  // in next window, but clock-in owns it
     ];
-    const pay = calculateEmployeePay(employee, punches, 0, nextStart, nextEnd);
+    const pay = calculateEmployeePay(employee, punches, 0, nextStart, nextEnd, [], 0, undefined, [], true);
     expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(0, 5);
     // The paired clock-in suppresses the "no matching clock-in" warning:
     expect(pay.incompleteShifts ?? []).toHaveLength(0);
@@ -919,7 +919,7 @@ describe('calculateEmployeePay overnight window attribution', () => {
 
   it('still flags a genuine missing clock-out when the clock-in is in-window', () => {
     const punches = [punch('clock_in', '2026-07-08T09:00:00')]; // Wed, never clocked out
-    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd);
+    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd, [], 0, undefined, [], true);
     expect(pay.incompleteShifts?.some((s) => s.type === 'missing_clock_out')).toBe(true);
   });
 
@@ -937,7 +937,7 @@ describe('calculateEmployeePay overnight window attribution', () => {
       punch('clock_in', '2026-07-05T08:00:00'), // Sun of prior week → drop
       punch('clock_out', '2026-07-05T15:00:00'),
     ];
-    const pay = calculateEmployeePay(employee, [...neighbour, ...inWindow], 0, weekStart, weekEnd);
+    const pay = calculateEmployeePay(employee, [...neighbour, ...inWindow], 0, weekStart, weekEnd, [], 0, undefined, [], true);
     expect(pay.regularHours).toBeCloseTo(40, 5);
     expect(pay.overtimeHours).toBeCloseTo(2, 5);
   });

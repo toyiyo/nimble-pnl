@@ -137,13 +137,16 @@ export function usePayroll(
     queryFn: async (): Promise<PayrollPeriod | null> => {
       if (!restaurantId) return null;
 
-      // Fetch all time punches for the period
+      // Fetch time punches for the period, widened by ±18h so overnight shifts
+      // that straddle the period boundary are paired whole. calculateEmployeePay
+      // then filters periods back to [startDate, endDate] by clock-in day.
+      const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
       const { data: punches, error: punchesError } = await supabase
         .from('time_punches')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .gte('punch_time', startDate.toISOString())
-        .lte('punch_time', endDate.toISOString())
+        .gte('punch_time', fetchStart.toISOString())
+        .lte('punch_time', fetchEnd.toISOString())
         .order('punch_time', { ascending: true });
 
       if (punchesError) throw punchesError;

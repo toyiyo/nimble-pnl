@@ -63,12 +63,17 @@ movement for a no-op category).
 
 ```sql
 IF v_is_reclassification AND v_original_category_id = p_category_id THEN
-  -- Category unchanged: no journal entry needed, but still persist metadata
-  -- edits (payee / supplier / notes) so a UI "Save" is not a silent no-op.
+  -- Category unchanged: no journal entry needed (skipping rebuild_account_balances
+  -- is correct — no ledger movement), but still persist metadata edits
+  -- (payee / supplier / notes) so a UI "Save" is not a silent no-op.
   UPDATE bank_transactions
   SET
     normalized_payee = COALESCE(p_normalized_payee, normalized_payee),
     supplier_id      = COALESCE(p_supplier_id, supplier_id),
+    -- COALESCE (preserve-on-null), NOT the main path's unconditional
+    -- `notes = p_description`: Transactions.tsx calls this RPC with
+    -- p_description = NULL, so an unconditional write here would wipe a user's
+    -- note on a same-category call. Intentional asymmetry — do not "fix".
     notes            = COALESCE(p_description, notes),
     updated_at       = now()
   WHERE id = p_transaction_id;
@@ -84,7 +89,9 @@ END IF;
 
 Delivered as a new migration that `CREATE OR REPLACE`s the whole function
 (copying the latest body verbatim and inserting only this block). `CREATE OR
-REPLACE` preserves existing GRANTs.
+REPLACE` preserves existing GRANTs. **The inline `notes` comment above must
+appear verbatim in the migration** (Phase 2.5 review) so a future reader does
+not collapse the intentional asymmetry.
 
 ### Decided trade-offs
 

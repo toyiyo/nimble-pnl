@@ -70,6 +70,22 @@ BEGIN
     -- Category unchanged: no journal entry needed (skipping rebuild_account_balances
     -- is correct — no ledger movement), but still persist metadata edits
     -- (payee / supplier / notes) so a UI "Save" is not a silent no-op.
+    -- Tenant-scope p_supplier_id before writing it: this function is
+    -- SECURITY DEFINER (bypasses RLS) and bank_transactions.supplier_id only
+    -- has a plain FK to suppliers(id), so an unscoped write would let a user
+    -- with access to this restaurant link the transaction to another
+    -- tenant's supplier row by UUID. If the supplier isn't visible to this
+    -- restaurant, silently ignore it (fall back to existing supplier_id)
+    -- rather than raising, matching the metadata-preserving intent of this
+    -- branch.
+    IF p_supplier_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM suppliers
+      WHERE id = p_supplier_id
+        AND restaurant_id = v_transaction.restaurant_id
+    ) THEN
+      p_supplier_id := NULL;
+    END IF;
+
     UPDATE bank_transactions
     SET
       normalized_payee = COALESCE(p_normalized_payee, normalized_payee),

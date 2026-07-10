@@ -127,14 +127,26 @@ dropped. A period/session is "in window" iff its clock-in ∈ `[start, end]`
   `endDate`** (buffering is encapsulated in `queryFn`) — no cache-key change.
 - `calculateEmployeePay`, hourly branch: immediately after
   `parseWorkPeriods(punches)` (payrollCalculations.ts:430), and **before** the
-  `hoursByDate` loop at :433, reassign `parsed.periods = periodsInWindow(parsed.periods,
-  periodStartDate, periodEndDate)` and `parsed.incompleteShifts =
-  incompleteShiftsInWindow(parsed.incompleteShifts, …)` — but only when both
-  window bounds are provided (they always are from `calculatePayrollPeriod`).
-  All downstream OT-bucketing and tip-proration then operate on in-window
-  periods unchanged. This is a real logic change inside the 55-line hourly
-  block, **not** mere range-widening — it gets dedicated OT/tip-proration test
-  coverage (see Testing).
+  `hoursByDate` loop at :433, reassign `parsed.periods = periodsInWindow(...)`
+  and `parsed.incompleteShifts = incompleteShiftsInWindow(...)`. This is gated
+  behind an **explicit opt-in flag** `attributeToWindow` (default `false`), NOT
+  merely the presence of `periodStartDate`/`periodEndDate`. Only
+  `calculatePayrollPeriod` (the payroll path, which fetches buffered punches)
+  passes `true`. All downstream OT-bucketing and tip-proration then operate on
+  in-window periods unchanged. This is a real logic change inside the 55-line
+  hourly block, **not** mere range-widening — it gets dedicated OT/tip-proration
+  test coverage (see Testing).
+
+  **Why opt-in (third caller):** `calculateEmployeePay` has a third production
+  caller beyond payroll — `calculateActualLaborCostForMonth`
+  (`src/services/laborCalculations.ts:913`) buckets punches by unbuffered ISO
+  week and passes **noon-anchored** week bounds (`weekKey + 'T12:00:00'`) as a
+  deliberate DST workaround (lessons.md PR #485). Keying the filter on the mere
+  presence of period bounds would wrongly drop that caller's 09:00 clock-ins
+  (09:00 < the noon anchor), shorting a full day of wages. The opt-in flag keeps
+  that caller's behaviour byte-for-byte unchanged. Its own latent overnight bug
+  (a Sun→Mon shift is split across ISO-week buckets) is real but DST-sensitive
+  and out of scope — see Decided trade-offs.
 - Daily-rate branch already guards `punchDate` within
   `[periodStartDate, periodEndDate]` (payrollCalculations.ts:496–508); buffered
   punches are safe there with no change.
@@ -319,6 +331,15 @@ near local midnight in offset zones land on the wrong day (see `memory/lessons.m
 - **No historical data cleanup** in this PR: the fix prevents *future* false
   warnings and dropped pay. Cleaning the already-created duplicate/force-out
   punches is a separate, data-only follow-up.
+- **Monthly labor-cost overnight bug deferred:** `calculateActualLaborCostForMonth`
+  (`src/services/laborCalculations.ts`) buckets punches by unbuffered
+  `startOfWeek` before pairing, so a Sun→Mon shift is split across ISO-week
+  buckets — the same bug class. Fixing it needs buffered re-bucketing AND a
+  decision on the noon-anchor-vs-midnight DST workaround (lessons.md PR #485
+  documents a $2,246 TZ swing in this exact code), so it warrants its own design
+  pass and DST-portable tests. Discovered during Phase 4; tracked as a follow-up
+  rather than improvised into this PR. The opt-in flag ensures this PR does not
+  regress that function.
 - **Attribute to clock-in day** (vs splitting hours across two calendar days):
   matches existing conventions and keeps a shift's OT in a single week bucket.
 - **Deferred follow-ups** (flagged by design review, intentionally out of scope

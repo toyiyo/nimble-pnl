@@ -172,7 +172,11 @@ git commit -m "feat(time-punch): add punchWindow buffer + attribution helpers"
 - Modify: `src/utils/payrollCalculations.ts:429-486` (hourly branch)
 - Test: `tests/unit/payrollCalculations.test.ts`
 
-Background: `calculateEmployeePay(employee, punches, tips, periodStartDate, periodEndDate, …)` already receives the period bounds. The hourly branch calls `parseWorkPeriods(punches)` at :430 then loops `parsed.periods` at :433. We insert the window filter between them so buffered-but-out-of-window shifts don't count and don't warn.
+Background: `calculateEmployeePay` has **three** production callers — `calculatePayrollPeriod` (payroll, fetches buffered punches, wants attribution), and TWO callers inside `src/services/laborCalculations.ts` (`calculateActualLaborCostForMonth`): a salary/contractor call (:884, non-hourly — unaffected) and an **hourly per-ISO-week** call (:913) that pre-buckets punches by unbuffered `startOfWeek` and passes **noon-anchored** week bounds (`weekKey + 'T12:00:00'`) as a deliberate DST workaround (see lessons.md PR #485). A window filter that keys off `periodStartDate`/`periodEndDate` being present would wrongly drop that caller's 09:00 clock-ins (09:00 < the noon anchor).
+
+Therefore the filter is **explicit opt-in** via a new `attributeToWindow` flag (default `false`). Only `calculatePayrollPeriod` passes `true`. The noon-anchored monthly caller stays untouched. (Its own latent overnight bug — bucketing by unbuffered `startOfWeek` splits a Sun→Mon shift across weeks — is real but DST-sensitive and out of scope; tracked as a separate follow-up.)
+
+The hourly branch calls `parseWorkPeriods(punches)` at :430 then loops `parsed.periods` at :433. We insert the flag-guarded window filter between them so buffered-but-out-of-window shifts don't count and don't warn.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -247,16 +251,51 @@ describe('calculateEmployeePay overnight window attribution', () => {
 });
 ```
 
-- [ ] **Step 2: Run to verify failure**
+The 4 overnight tests committed in Task 2.1 call `calculateEmployeePay(employee, punches, 0, weekStart, weekEnd)` — they must opt into the new flag. Update them in this step.
+
+- [ ] **Step 2: Update the 4 overnight tests to opt into `attributeToWindow`**
+
+In `tests/unit/payrollCalculations.test.ts`, in the `describe('calculateEmployeePay overnight window attribution')` block, change each of the 4 `calculateEmployeePay(...)` calls to pass the intermediate defaults and the flag as the final arg. E.g.:
+```ts
+// before:
+const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd);
+// after:
+const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd, [], 0, undefined, [], true);
+```
+Apply the same `, [], 0, undefined, [], true` tail to all 4 calls (the two `weekStart/weekEnd` calls, the `nextStart/nextEnd` call, and the OT/tip-neighbour call at the end of the block).
+
+- [ ] **Step 3: Run to verify failure**
 
 Run: `npx vitest run tests/unit/payrollCalculations.test.ts -t "overnight window attribution"`
-Expected: FAIL — out-of-window shifts currently counted / false orphan emitted.
+Expected: FAIL — 2/4 fail (double-count + OT/tip-neighbour) because the flag param and filter don't exist yet (TS may error on the extra arg — that is also an acceptable RED).
 
-- [ ] **Step 3: Implement the filter**
+- [ ] **Step 4: Implement the opt-in filter**
 
 In `src/utils/payrollCalculations.ts`, add the import near the top (after the existing imports):
 ```ts
 import { periodsInWindow, incompleteShiftsInWindow } from '@/utils/punchWindow';
+```
+Add the `attributeToWindow` parameter to the signature (after `overtimeAdjustments`):
+```ts
+export function calculateEmployeePay(
+  employee: Employee,
+  punches: TimePunch[],
+  tips: number, // In cents
+  periodStartDate?: Date,
+  periodEndDate?: Date,
+  manualPayments: ManualPayment[] = [],
+  tipsPaidOut: number = 0,
+  overtimeRules?: OTRules,
+  overtimeAdjustments: OvertimeAdjustment[] = [],
+  // When true, attribute each shift to its clock-in day and drop periods/
+  // incomplete shifts whose anchor punch falls outside [periodStartDate,
+  // periodEndDate]. ONLY the payroll path (calculatePayrollPeriod) opts in —
+  // it fetches a ±18h buffer so boundary-crossing shifts pair whole first.
+  // calculateActualLaborCostForMonth intentionally leaves this false: it
+  // pre-buckets by ISO week and passes NOON-anchored bounds that this filter
+  // would misinterpret.
+  attributeToWindow: boolean = false,
+): EmployeePayroll {
 ```
 In the hourly branch, replace:
 ```ts
@@ -268,26 +307,31 @@ with:
 ```ts
   if (compensationType === 'hourly') {
     const parsed = parseWorkPeriods(punches);
-    // Attribute each shift to its clock-in day: keep only periods/incomplete
-    // shifts whose anchor punch falls in the pay period. Callers fetch a ±18h
-    // buffer so boundary-crossing shifts pair whole before this filter runs.
-    if (periodStartDate && periodEndDate) {
+    if (attributeToWindow && periodStartDate && periodEndDate) {
       parsed.periods = periodsInWindow(parsed.periods, periodStartDate, periodEndDate);
       parsed.incompleteShifts = incompleteShiftsInWindow(parsed.incompleteShifts, periodStartDate, periodEndDate);
     }
     const hoursByDate = new Map<string, number>();
 ```
 
-- [ ] **Step 4: Run to verify pass**
+- [ ] **Step 5: Opt the payroll path in**
 
-Run: `npx vitest run tests/unit/payrollCalculations.test.ts`
-Expected: PASS (all existing + 4 new).
+In the same file, update `calculatePayrollPeriod`'s call (line ~629) to pass `true` as the final argument:
+```ts
+    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments, true);
+```
+Do NOT modify the two `calculateEmployeePay` calls in `src/services/laborCalculations.ts` — they intentionally keep the default `false`.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Run the FULL suite to verify no regression**
+
+Run: `npx vitest run tests/unit/payrollCalculations.test.ts tests/unit/laborCalculations.calculateActualLaborCostForMonth.test.ts`
+Expected: PASS — all payroll tests (existing + 4 new overnight) green, AND the month-boundary OT test stays green (proves the noon-anchored caller is unaffected). Then `npx vitest run` for the whole suite before committing.
+
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/utils/payrollCalculations.ts tests/unit/payrollCalculations.test.ts
-git commit -m "fix(payroll): attribute overnight shifts to clock-in day, drop out-of-window"
+git commit -m "fix(payroll): opt-in window filter attributes overnight shifts to clock-in day"
 ```
 
 ---

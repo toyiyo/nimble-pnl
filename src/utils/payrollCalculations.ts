@@ -18,7 +18,7 @@ const MAX_SHIFT_HOURS = 16;
 
 // Maximum gap between clock_in and clock_out to be considered a valid shift
 // This prevents pairing Monday's clock_in with Wednesday's clock_out when there's missing punches
-const MAX_SHIFT_GAP_HOURS = 18;
+export const MAX_SHIFT_GAP_HOURS = 18;
 
 export interface WorkPeriod {
   startTime: Date;

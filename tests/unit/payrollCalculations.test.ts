@@ -8,6 +8,7 @@ import {
   calculatePayrollPeriod,
   exportPayrollToCSV,
   escapeCsvCell,
+  MAX_SHIFT_GAP_HOURS,
   type ManualPayment,
   type WorkPeriod,
 } from '@/utils/payrollCalculations';
@@ -866,6 +867,12 @@ describe('payrollCalculations - Additional Coverage', () => {
 
       expect(breakPeriods.length).toBe(2);
       expect(workPeriods.length).toBe(3); // Before first break, between breaks, after second break
+    });
+  });
+
+  describe('MAX_SHIFT_GAP_HOURS', () => {
+    it('is exported as a public constant equal to 18', () => {
+      expect(MAX_SHIFT_GAP_HOURS).toBe(18);
     });
   });
 });

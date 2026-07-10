@@ -4,6 +4,7 @@ import { useEmployees } from './useEmployees';
 import { TimePunch } from '@/types/timeTracking';
 import { format } from 'date-fns';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
+import { bufferPunchFetchRange } from '@/utils/punchWindow';
 
 export interface LaborCostData {
   date: string;
@@ -81,12 +82,15 @@ export function useLaborCostsFromTimeTracking(
       }
 
       // 1. Fetch time punches for the period
+      // ±18h buffer so overnight shifts pair whole; calculateActualLaborCost
+      // attributes hours by clock-in day and drops out-of-window periods.
+      const { fetchStart, fetchEnd } = bufferPunchFetchRange(dateFrom, dateTo);
       const { data: punches, error: punchesError } = await supabase
         .from('time_punches')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .gte('punch_time', dateFrom.toISOString())
-        .lte('punch_time', dateTo.toISOString())
+        .gte('punch_time', fetchStart.toISOString())
+        .lte('punch_time', fetchEnd.toISOString())
         .order('punch_time', { ascending: true });
 
       if (punchesError) throw punchesError;

@@ -876,3 +876,69 @@ describe('payrollCalculations - Additional Coverage', () => {
     });
   });
 });
+
+describe('calculateEmployeePay overnight window attribution', () => {
+  const employee = {
+    id: 'e1', name: 'Night Owl', position: 'Cook', area: null,
+    compensation_type: 'hourly', hourly_rate: 1500, is_active: true,
+  } as unknown as Employee;
+
+  // Payroll week Mon 2026-07-06 .. Sun 2026-07-12 (WEEK_STARTS_ON = Mon)
+  const weekStart = new Date('2026-07-06T00:00:00');
+  const weekEnd = new Date('2026-07-12T23:59:59.999');
+
+  const punch = (type: string, iso: string) => ({
+    id: `${type}-${iso}`, employee_id: 'e1', restaurant_id: 'r1',
+    punch_type: type, punch_time: iso,
+  }) as unknown as TimePunch;
+
+  it('counts a Sun->Mon overnight shift once, attributed to the Sunday week', () => {
+    // Buffered fetch for the Sun-ending week would include Mon 02:00 clock_out.
+    const punches = [
+      punch('clock_in', '2026-07-12T20:00:00'),  // Sun 8pm (in window)
+      punch('clock_out', '2026-07-13T02:00:00'),  // Mon 2am (lookahead)
+    ];
+    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd);
+    expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(6, 5);
+    expect(pay.incompleteShifts ?? []).toHaveLength(0);
+  });
+
+  it('does NOT double-count the same shift in the following week, no false orphan', () => {
+    const nextStart = new Date('2026-07-13T00:00:00'); // Mon
+    const nextEnd = new Date('2026-07-19T23:59:59.999');
+    // Buffered fetch for the next week includes the Sun 20:00 clock_in (lookback).
+    const punches = [
+      punch('clock_in', '2026-07-12T20:00:00'),  // before nextStart → drop
+      punch('clock_out', '2026-07-13T02:00:00'),  // in next window, but clock-in owns it
+    ];
+    const pay = calculateEmployeePay(employee, punches, 0, nextStart, nextEnd);
+    expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(0, 5);
+    // The paired clock-in suppresses the "no matching clock-in" warning:
+    expect(pay.incompleteShifts ?? []).toHaveLength(0);
+  });
+
+  it('still flags a genuine missing clock-out when the clock-in is in-window', () => {
+    const punches = [punch('clock_in', '2026-07-08T09:00:00')]; // Wed, never clocked out
+    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd);
+    expect(pay.incompleteShifts?.some((s) => s.type === 'missing_clock_out')).toBe(true);
+  });
+
+  it('OT/tip base rate ignores a buffered out-of-window neighbour shift', () => {
+    // 42h in-window (Mon-Sat 7h each) → 40 reg + 2 OT; plus an out-of-window
+    // Sunday-of-PRIOR-week shift present in the buffered input must not shift OT.
+    const inWindow = [
+      ['2026-07-06', '2026-07-07'], ['2026-07-07', '2026-07-08'],
+      ['2026-07-08', '2026-07-09'], ['2026-07-09', '2026-07-10'],
+      ['2026-07-10', '2026-07-11'], ['2026-07-11', '2026-07-12'],
+    ].flatMap(([d]) => [
+      punch('clock_in', `${d}T08:00:00`), punch('clock_out', `${d}T15:00:00`),
+    ]);
+    const neighbour = [
+      punch('clock_in', '2026-07-05T08:00:00'), // Sun of prior week → drop
+      punch('clock_out', '2026-07-05T15:00:00'),
+    ];
+    const pay = calculateEmployeePay(employee, [...neighbour, ...inWindow], 0, weekStart, weekEnd);
+    expect(pay.regularHours).toBeCloseTo(40, 5);
+    expect(pay.overtimeHours).toBeCloseTo(2, 5);
+  });
+});

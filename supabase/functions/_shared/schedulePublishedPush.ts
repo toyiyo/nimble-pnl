@@ -17,9 +17,13 @@ export async function notifySchedulePublishedPush(
   send: WebPushSend,
   concurrency = PUSH_CONCURRENCY,
 ): Promise<{ attempted: number }> {
+  // Clamp to a positive integer step — a caller-supplied 0/negative concurrency
+  // would otherwise never advance `i`, spinning the loop until the edge function
+  // times out.
+  const step = Math.max(1, Math.floor(concurrency));
   const targets = employees.filter((e): e is { user_id: string } => !!e.user_id);
-  for (let i = 0; i < targets.length; i += concurrency) {
-    const chunk = targets.slice(i, i + concurrency);
+  for (let i = 0; i < targets.length; i += step) {
+    const chunk = targets.slice(i, i + step);
     await Promise.allSettled(chunk.map((e) => send(e.user_id)));
   }
   return { attempted: targets.length };

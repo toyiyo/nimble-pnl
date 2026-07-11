@@ -73,4 +73,20 @@ describe('notifySchedulePublishedPush', () => {
     expect(result).toEqual({ attempted: 5 });
     expect(maxInFlight).toBeLessThanOrEqual(2);
   });
+
+  it('does not hang on a non-positive concurrency (clamps step to >= 1)', async () => {
+    const employees: SchedulePushEmployee[] = [
+      { user_id: 'user-1' },
+      { user_id: 'user-2' },
+    ];
+    const send = vi.fn().mockResolvedValue(undefined);
+
+    // A 0/negative step would spin forever without the Math.max(1, …) guard.
+    for (const concurrency of [0, -5]) {
+      send.mockClear();
+      const result = await notifySchedulePublishedPush(employees, send, concurrency);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({ attempted: 2 });
+    }
+  });
 });

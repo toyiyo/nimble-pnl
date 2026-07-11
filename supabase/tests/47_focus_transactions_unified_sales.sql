@@ -4,13 +4,13 @@
 -- This RPC syncs focus_orders / focus_order_items / focus_payments →
 -- unified_sales, mirroring sync_toast_to_unified_sales.
 --
--- Note: focus_orders does NOT store an explicit tax_amount — the XML only
--- provides taxableSales (subtotal), not the computed tax. Tax offsets are
--- therefore omitted from this RPC (zero-value skipped per design §4).
--- Tip and discount offsets ARE available from focus_payments and
--- focus_order_items respectively.
+-- focus_orders.tax_amount (added by 20260710120000_focus_orders_tax_amount.sql)
+-- is the sum of SeatRecord.TaxTotal1..5 across all seats on the check,
+-- captured by the parser + persisted on upsert. Step 6 of this RPC (added by
+-- 20260710130000_focus_tax_unified_sales.sql) emits ONE tax offset row per
+-- order when tax_amount != 0, mirroring the tip/discount offset blocks.
 --
--- Test plan (21 tests):
+-- Test plan (24 tests):
 --
 --  1  sync_focus_transactions_to_unified_sales(uuid) exists
 --  2  sync_focus_transactions_to_unified_sales(uuid,date,date) exists
@@ -33,9 +33,12 @@
 -- 19  Service-role (auth.uid() NULL) can call impl without auth check
 -- 20  sync_all_focus_transactions_to_unified_sales() returns a row for the active connection
 -- 21  Date-range overload only syncs rows within the given dates
+-- 22  Tax offset row created for order with tax_amount=5.55 (check 42)
+-- 23  Tax row external_item_id = <order_id>_tax
+-- 24  Tax row adjustment_type = 'tax'
 
 BEGIN;
-SELECT plan(21);
+SELECT plan(24);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup: disable RLS so we can insert test rows freely
@@ -94,20 +97,21 @@ ON CONFLICT (restaurant_id) DO UPDATE SET store_id = 'GUID-TEST-STORE';
 -- ── focus_orders: one check on 2026-06-15 ─────────────────────────────
 -- Check 42 with $12.00 total, $1.20 taxable_sales proxy (we'll use
 -- focus_order_items prices for sale rows; focus_orders.total for tax proxy)
+-- tax_amount=5.55 exercises the Step 6 tax offset row (tests 22-23).
 INSERT INTO public.focus_orders (
   id, restaurant_id, business_date, focus_check_id,
   opened_at_local, closed_at_local,
   order_type_id, revenue_center_id, guests,
-  total, discount_total, taxable_sales
+  total, discount_total, taxable_sales, tax_amount
 ) VALUES (
   '00000000-0000-0000-0000-f0c100000031',
   '00000000-0000-0000-0000-f0c100000011',
   '2026-06-15', '42',
   '2026-06-15T10:00:00', '2026-06-15T10:15:00',
   '1', 'RC1', 2,
-  12.00, 0.50, 11.00
+  12.00, 0.50, 11.00, 5.55
 )
-ON CONFLICT ON CONSTRAINT focus_orders_unique DO UPDATE SET total = 12.00;
+ON CONFLICT ON CONSTRAINT focus_orders_unique DO UPDATE SET total = 12.00, tax_amount = 5.55;
 
 -- ── focus_order_items: 3 rows ──────────────────────────────────────────
 -- Item A: priced, category 'Waffle'
@@ -457,6 +461,42 @@ SELECT ok(
      AND item_type = 'sale'
      AND sale_date = '2026-06-14') >= 1,
   'Date-range overload creates rows only for 2026-06-14'
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Test 22-23: Step 6 tax offset row (check 42, tax_amount = 5.55)
+-- ─────────────────────────────────────────────────────────────────────
+SELECT is(
+  (SELECT total_price FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'tax'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'
+     AND sale_date = '2026-06-15'),
+  5.55::numeric,
+  'Tax offset row created with tax_amount=5.55 for check 42'
+);
+
+SELECT is(
+  (SELECT external_item_id FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'tax'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'
+     AND sale_date = '2026-06-15'),
+  'focus-GUID-TEST-STORE-20260615-42_tax',
+  'Tax row external_item_id = <order_id>_tax'
+);
+
+SELECT is(
+  (SELECT adjustment_type FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'tax'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'
+     AND sale_date = '2026-06-15'),
+  'tax',
+  'Tax row adjustment_type = ''tax'''
 );
 
 SELECT * FROM finish();

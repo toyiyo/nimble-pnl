@@ -13,9 +13,14 @@
 -- See docs/superpowers/specs/2026-07-09-categorize-noop-metadata-design.md
 -- for full root-cause analysis and rationale.
 --
--- This migration is a verbatim CREATE OR REPLACE of the function body from
+-- This migration is a CREATE OR REPLACE of the function body from
 -- supabase/migrations/20251021204739_73ec6be4-bfd6-4f6a-98cc-574c76967421.sql,
--- with only the new UPDATE block added inside the short-circuit IF.
+-- adding: (1) the metadata-preserving UPDATE inside the short-circuit IF, and
+-- (2) a hoisted tenant-scope guard on p_supplier_id (after the membership auth
+-- check) that covers BOTH the no-op short-circuit and the pre-existing main
+-- categorize/reclassify UPDATE — closing the cross-tenant supplier-link gap the
+-- SECURITY DEFINER function had on the plain suppliers(id) FK (codex + CodeRabbit
+-- review finding).
 
 CREATE OR REPLACE FUNCTION public.categorize_bank_transaction(
   p_transaction_id uuid,
@@ -59,6 +64,22 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
   END IF;
 
+  -- Tenant-scope p_supplier_id before ANY write path uses it. This function is
+  -- SECURITY DEFINER (bypasses RLS) and bank_transactions.supplier_id only has a
+  -- plain FK to suppliers(id), so an unscoped write would let a user with access
+  -- to this restaurant link the transaction to another tenant's supplier by UUID.
+  -- If the supplier isn't visible to this restaurant, silently drop it (fall back
+  -- to preserving the existing supplier_id via COALESCE downstream) rather than
+  -- raising. Hoisted here so BOTH the no-op short-circuit and the main
+  -- categorize/reclassify UPDATE below are covered by a single guard.
+  IF p_supplier_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM suppliers
+    WHERE id = p_supplier_id
+      AND restaurant_id = v_transaction.restaurant_id
+  ) THEN
+    p_supplier_id := NULL;
+  END IF;
+
   -- Check if this is a reclassification
   IF v_transaction.is_categorized AND v_transaction.category_id IS NOT NULL THEN
     v_is_reclassification := true;
@@ -70,22 +91,7 @@ BEGIN
     -- Category unchanged: no journal entry needed (skipping rebuild_account_balances
     -- is correct — no ledger movement), but still persist metadata edits
     -- (payee / supplier / notes) so a UI "Save" is not a silent no-op.
-    -- Tenant-scope p_supplier_id before writing it: this function is
-    -- SECURITY DEFINER (bypasses RLS) and bank_transactions.supplier_id only
-    -- has a plain FK to suppliers(id), so an unscoped write would let a user
-    -- with access to this restaurant link the transaction to another
-    -- tenant's supplier row by UUID. If the supplier isn't visible to this
-    -- restaurant, silently ignore it (fall back to existing supplier_id)
-    -- rather than raising, matching the metadata-preserving intent of this
-    -- branch.
-    IF p_supplier_id IS NOT NULL AND NOT EXISTS (
-      SELECT 1 FROM suppliers
-      WHERE id = p_supplier_id
-        AND restaurant_id = v_transaction.restaurant_id
-    ) THEN
-      p_supplier_id := NULL;
-    END IF;
-
+    -- p_supplier_id was already tenant-scoped above (hoisted guard).
     UPDATE bank_transactions
     SET
       normalized_payee = COALESCE(p_normalized_payee, normalized_payee),

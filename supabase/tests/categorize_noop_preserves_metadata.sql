@@ -5,7 +5,7 @@
 -- metadata UPDATE. See docs/superpowers/specs/2026-07-09-categorize-noop-metadata-design.md.
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(12);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000301"}';
@@ -28,7 +28,8 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 --   6000 = Supplies Expense (the category under test)
 INSERT INTO chart_of_accounts (id, restaurant_id, account_code, account_name, account_type, account_subtype, normal_balance) VALUES
   ('00000000-0000-0000-0000-000000000350'::uuid, '00000000-0000-0000-0000-000000000399'::uuid, '1000', 'Cash', 'asset', 'cash', 'debit'),
-  ('00000000-0000-0000-0000-000000000352'::uuid, '00000000-0000-0000-0000-000000000399'::uuid, '6000', 'Supplies Expense', 'expense', 'operating_expenses', 'debit')
+  ('00000000-0000-0000-0000-000000000352'::uuid, '00000000-0000-0000-0000-000000000399'::uuid, '6000', 'Supplies Expense', 'expense', 'operating_expenses', 'debit'),
+  ('00000000-0000-0000-0000-000000000353'::uuid, '00000000-0000-0000-0000-000000000399'::uuid, '6010', 'Repairs Expense', 'expense', 'operating_expenses', 'debit')
 ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
 
 -- Supplier fixture
@@ -165,6 +166,28 @@ SELECT is(
   (SELECT supplier_id FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000000371'::uuid),
   '00000000-0000-0000-0000-000000000360'::uuid,
   'foreign-tenant supplier_id is rejected; existing (own-tenant) supplier_id is preserved'
+);
+
+-- STEP 4 (main-path cross-tenant guard, added for the CodeRabbit finding):
+-- The tenant guard is hoisted to cover the MAIN categorize/reclassify path too,
+-- not just the no-op branch. Reclassify to a DIFFERENT category (6010) while
+-- passing a foreign-tenant supplier UUID (...460). The reclassification succeeds
+-- (category changes) but the foreign supplier must be rejected, leaving the
+-- own-tenant supplier_id (...360) intact.
+SELECT lives_ok(
+  $$ SELECT categorize_bank_transaction(
+       '00000000-0000-0000-0000-000000000371'::uuid,
+       '00000000-0000-0000-0000-000000000353'::uuid,
+       NULL, NULL,
+       '00000000-0000-0000-0000-000000000460'::uuid
+     ) $$,
+  'Reclassify (main path) passing a foreign-tenant supplier_id succeeds'
+);
+
+SELECT is(
+  (SELECT supplier_id FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000000371'::uuid),
+  '00000000-0000-0000-0000-000000000360'::uuid,
+  'main path also rejects foreign-tenant supplier_id; own-tenant supplier_id preserved'
 );
 
 SELECT * FROM finish();

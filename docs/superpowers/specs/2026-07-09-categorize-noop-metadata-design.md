@@ -109,6 +109,21 @@ not collapse the intentional asymmetry.
   value when `NULL` is passed). Unchanged from current behavior; out of scope.
 - **No frontend change.** The React Query invalidation and supplier join
   already exist; once the write persists, the refetch displays it.
+- **Tenant-scope guard hoisted (scope expansion, post-review).** Codex (Phase
+  7b) and CodeRabbit (PR review) both flagged that `p_supplier_id` is written
+  without verifying it belongs to the transaction's restaurant — a cross-tenant
+  supplier-link gap on a `SECURITY DEFINER` function whose `supplier_id` column
+  has only a plain FK to `suppliers(id)`. The gap existed in both the new no-op
+  branch and the pre-existing main path. Rather than guard only the new branch,
+  the guard is **hoisted** to run once right after the membership auth check, so
+  it sanitizes `p_supplier_id` (reset to `NULL` when not visible to the
+  restaurant) for both the short-circuit and the main categorize/reclassify
+  UPDATE. Silently dropping (not raising) matches the metadata-preserving intent
+  and the COALESCE-preserve semantics. Justification for expanding beyond the
+  original "only the new block" scope: two independent reviewers flagged the same
+  defensive gap in the exact function being replaced, and a sibling guard already
+  existed — per `memory/lessons.md`, consistency + security outrank the
+  minimal-diff default here.
 
 ## Test plan
 
@@ -124,5 +139,11 @@ New pgTAP test `supabase/tests/categorize_noop_preserves_metadata.sql`
 3. Assert `notes` is preserved when `p_description` is NULL on a no-op call.
 4. Regression: assert no extra reclassification journal entry was created for
    the no-op call.
+5. Cross-tenant guard (no-op branch): passing a foreign-restaurant supplier UUID
+   on a no-op call leaves the own-tenant `supplier_id` intact.
+6. Cross-tenant guard (main path): reclassifying to a different category while
+   passing a foreign-restaurant supplier UUID also preserves the own-tenant
+   `supplier_id` (proves the hoisted guard covers the main path).
 
 Dates computed relative to `CURRENT_DATE` (no hardcoded future dates).
+12 assertions total.

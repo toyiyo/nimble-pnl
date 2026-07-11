@@ -73,7 +73,14 @@ changes are needed** — only production of the rows.
 ### Layer 2 — Schema + persistence
 - Migration: `ALTER TABLE focus_orders ADD COLUMN tax_amount numeric NOT NULL
   DEFAULT 0`. (Tiny table; metadata-only default in PG11+. Existing 1,484 rows
-  get 0 until re-synced — correct, tax was never captured.)
+  get 0 until re-synced — correct, tax was never captured.) Keep this ALTER in
+  its **own** migration file (not batched with other/larger-table DDL) so the
+  fast-path default is not lost.
+- Migration filenames: timestamps must sort **after** the latest existing
+  migration (`20260708193107_…`) and be repo-wide unique — use
+  `20260710HHMMSS_…` generated at file-creation time; `git ls-tree
+  origin/main supabase/migrations/` immediately before the PR to re-check for
+  collisions (lesson PR #571/#576).
 - `focusTransactionSyncHandler.upsertOrder`: persist
   `tax_amount: check.taxAmount`.
 
@@ -83,16 +90,39 @@ and the report RPC's tax block:
 - Add `fo.tax_amount` to the per-check `FOR` loop `SELECT`.
 - `INSERT … SELECT` one row where `tax_amount != 0`:
   `external_item_id = v_order_id || '_tax'`, `item_name = 'Sales Tax'`,
-  `total_price = tax_amount`, `item_type='tax'`, `adjustment_type='tax'`,
-  `sale_time = v_sale_time`, same `ON CONFLICT … WHERE parent_sale_id IS NULL
-  DO UPDATE` shape.
-- Delete the stale `_tax` row when tax becomes 0 (mirror the tip/discount
-  delete-orphan guard: delete the `_tax` row for this order when the order no
-  longer has non-zero tax). `parent_sale_id IS NULL` guards user split rows.
+  `total_price = tax_amount`, `item_type='tax'`, `adjustment_type='tax'`.
+  **`sale_time = v_sale_time` MUST appear in both the INSERT column list AND
+  the `DO UPDATE SET`** (same as tip/discount — omitting it from `DO UPDATE`
+  leaves the busy-time signal stale on re-sync; this is the exact bug
+  `20260703120000` fixed for the other row kinds). Same `ON CONFLICT …
+  WHERE parent_sale_id IS NULL DO UPDATE` shape; `category_id`/`is_categorized`
+  omitted from `DO UPDATE` to preserve user categorization.
+- **Delete-orphan is simpler than Step 4/5** because tax is **one row per
+  order** (one-to-one), not one-per-item/payment. Use a plain conditional
+  delete keyed off the order having zero tax — delete `external_item_id =
+  v_order_id || '_tax'` when `v_order.tax_amount = 0` (or the guarded INSERT's
+  WHERE excludes it) — **not** a `NOT IN (subquery)` pattern. Add a migration
+  comment explaining *why* the shape differs so a future reader doesn't
+  "normalise" it to the multi-row form. `parent_sale_id IS NULL` still guards
+  user split rows.
 
 Both overloads share the impl, so both the manual and cron paths pick up tax.
-The function is re-created from the **live prod definition** (pulled via
-`pg_get_functiondef`) to avoid repo/prod drift (lesson PR #579/#581).
+
+**Implementation guards (from Phase 2.5 review):**
+1. **Pre-flight, before authoring the migration:** re-pull the live body via
+   `pg_get_functiondef` and assert it is the *ungated* form — contains
+   `apply_rules_to_pos_sales_internal` and does **not** contain an
+   `auth.uid()` gate (the PR #565/#567/#573 regression class). Verified at
+   design time: `ok=true, has_authuid_gate=false`. Re-verify at build time.
+2. **Preserve grants on `CREATE OR REPLACE`** (Postgres resets ACL). Live ACL
+   is `{postgres, service_role}`. Re-apply:
+   `REVOKE ALL ON FUNCTION …_impl(uuid,date,date) FROM PUBLIC;`
+   `GRANT EXECUTE ON FUNCTION …_impl(uuid,date,date) TO service_role;`
+   Do **not** grant the impl to `authenticated` (only the public wrappers are,
+   and they are unchanged — the migration re-creates the impl only).
+3. The function is re-created from the **live prod definition** to avoid
+   repo/prod drift (lesson PR #579/#581); splice Step 6 in with the loop
+   `SELECT` extended by `fo.tax_amount`.
 
 ### Backfill (post-deploy, manual)
 Tax lives only in the raw datafeed, which is not stored — so existing

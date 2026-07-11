@@ -92,6 +92,12 @@ const wrapper = ({ children }: { children: React.ReactNode }) => {
   );
 };
 
+// Since #598 the panel defaults to collapsed (isExpanded=false); its
+// CollapsibleContent (empty state, explainer, retry, legend) is unmounted until
+// opened. Expand it first by clicking the trigger (aria-label "Expand …").
+const expandPanel = () =>
+  fireEvent.click(screen.getByRole('button', { name: /expand staffing suggestions/i }));
+
 describe('<StaffingOverlay> dead-end fixes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -118,6 +124,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
+    expandPanel();
 
     expect(
       screen.getByText(/staffing suggestions need sales history/i),
@@ -134,6 +141,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
+    expandPanel();
 
     const link = screen.getByRole('link', { name: /connect your pos/i });
     expect(link).toBeTruthy();
@@ -150,6 +158,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
+    expandPanel();
 
     expect(screen.getByText(/how this works/i)).toBeTruthy();
   });
@@ -157,6 +166,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
   // ── Test 4: "How it works" explainer also renders with sales data ────────────
   it('renders the "How it works" explainer when hasSalesData is true', () => {
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
+    expandPanel();
 
     expect(screen.getByText(/how this works/i)).toBeTruthy();
   });
@@ -176,6 +186,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
+    expandPanel();
 
     expect(screen.getByRole('button', { name: /retry/i })).toBeTruthy();
   });
@@ -196,6 +207,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
     });
 
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
+    expandPanel();
 
     fireEvent.click(screen.getByRole('button', { name: /retry/i }));
     expect(refetchMock).toHaveBeenCalledOnce();
@@ -204,6 +216,7 @@ describe('<StaffingOverlay> dead-end fixes', () => {
   // ── Test 7: Legend renders on mobile (no hidden md:flex class) ───────────────
   it('renders the On-target/Over-budget legend without hiding it on mobile', () => {
     render(<StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />, { wrapper });
+    expandPanel();
 
     // The legend container should NOT have "hidden" in its className
     const onTargetText = screen.getByText('On target');

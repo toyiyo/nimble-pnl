@@ -17,9 +17,12 @@
 --   34:    focus_payments.payment_key not null
 --   35:    focus_payments.card_last4 CHECK rejects non-4-digit values (PCI boundary)
 --   36:    order-level ON DELETE CASCADE (focus_order_items removed when parent order deleted)
+--   39:    focus_orders.tax_amount column exists
+--   40:    focus_orders.tax_amount defaults to 0 when omitted on INSERT
+-- Migration: 20260710120000_focus_orders_tax_amount.sql
 
 BEGIN;
-SELECT plan(38);
+SELECT plan(40);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup
@@ -332,6 +335,24 @@ SELECT is(
       AND focus_check_id = 'CHK-FK-CASCADE'),
   0,
   'focus_order_items cascade-deleted when parent focus_order is deleted'
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- 39-40: focus_orders.tax_amount column
+-- Migration: 20260710120000_focus_orders_tax_amount.sql
+-- ─────────────────────────────────────────────────────────────────────
+SELECT has_column('public', 'focus_orders', 'tax_amount', 'focus_orders.tax_amount exists');
+
+INSERT INTO public.focus_orders (restaurant_id, business_date, focus_check_id, total)
+VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-07-01', 'CHK-TAX-DEFAULT', 10.00);
+
+SELECT is(
+  (SELECT tax_amount FROM public.focus_orders
+    WHERE restaurant_id = '00000000-0000-0000-0001-f0c0aa000001'
+      AND business_date = '2026-07-01'
+      AND focus_check_id = 'CHK-TAX-DEFAULT'),
+  0::numeric,
+  'focus_orders.tax_amount defaults to 0 when omitted on INSERT'
 );
 
 SELECT * FROM finish();

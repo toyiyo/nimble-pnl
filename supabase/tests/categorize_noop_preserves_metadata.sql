@@ -5,7 +5,7 @@
 -- metadata UPDATE. See docs/superpowers/specs/2026-07-09-categorize-noop-metadata-design.md.
 
 BEGIN;
-SELECT plan(8);
+SELECT plan(10);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000301"}';
@@ -34,6 +34,17 @@ ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
 -- Supplier fixture
 INSERT INTO suppliers (id, restaurant_id, name, is_active) VALUES
   ('00000000-0000-0000-0000-000000000360'::uuid, '00000000-0000-0000-0000-000000000399'::uuid, 'Cold Stone Creamery', true)
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+-- Cross-tenant fixture: a DIFFERENT restaurant with its OWN supplier. The test
+-- user (301) is NOT a member of this restaurant. Used to prove the short-circuit
+-- branch's tenant guard rejects a supplier UUID that belongs to another tenant.
+INSERT INTO restaurants (id, name) VALUES
+  ('00000000-0000-0000-0000-000000000499'::uuid, 'Other Tenant Restaurant')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO suppliers (id, restaurant_id, name, is_active) VALUES
+  ('00000000-0000-0000-0000-000000000460'::uuid, '00000000-0000-0000-0000-000000000499'::uuid, 'Foreign Tenant Supplier', true)
 ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- Connected bank + bank transaction fixture (starts uncategorized)
@@ -133,6 +144,27 @@ SELECT is(
      ) - 'transaction_id'),
   '{"success": true, "journal_entry_id": null, "is_reclassification": false}'::jsonb,
   'No-op-category call returns success=true, is_reclassification=false, journal_entry_id=NULL'
+);
+
+-- STEP 3 (cross-tenant guard, added for the Phase 7b codex finding):
+-- Re-call the no-op-category path passing a supplier UUID that belongs to
+-- ANOTHER restaurant (id ...460, restaurant ...499). The SECURITY DEFINER
+-- function must NOT cross-link it. supplier_id was ...360 from STEP 2, so it
+-- must stay ...360 (foreign supplier silently ignored, existing preserved).
+SELECT lives_ok(
+  $$ SELECT categorize_bank_transaction(
+       '00000000-0000-0000-0000-000000000371'::uuid,
+       '00000000-0000-0000-0000-000000000352'::uuid,
+       NULL, NULL,
+       '00000000-0000-0000-0000-000000000460'::uuid
+     ) $$,
+  'No-op call passing a foreign-tenant supplier_id succeeds (does not raise)'
+);
+
+SELECT is(
+  (SELECT supplier_id FROM bank_transactions WHERE id = '00000000-0000-0000-0000-000000000371'::uuid),
+  '00000000-0000-0000-0000-000000000360'::uuid,
+  'foreign-tenant supplier_id is rejected; existing (own-tenant) supplier_id is preserved'
 );
 
 SELECT * FROM finish();

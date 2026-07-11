@@ -47,6 +47,25 @@ import { useBulkCategorizePosSales } from "@/hooks/useBulkPosSaleActions";
 import { isMultiSelectKey } from "@/utils/bulkEditUtils";
 import { Checkbox } from "@/components/ui/checkbox";
 
+// Lowercase, singular-tab labels for the active Status filter — used to make
+// the results header and empty state name the active tab (e.g. "203
+// uncategorized sales", "No uncategorized sales"). Keep in sync with the
+// Status segmented control's `option.label` values below.
+const CATEGORIZATION_FILTER_LABELS: Record<'uncategorized' | 'pending-review' | 'categorized', string> = {
+  uncategorized: 'uncategorized',
+  'pending-review': 'pending review',
+  categorized: 'categorized',
+};
+
+// Empty-state sub-copy per Status tab. An empty "uncategorized"/"pending review"
+// tab is a done state ("everything reviewed"); an empty "categorized" tab means
+// nothing has been categorized yet — the opposite, so its copy must differ.
+const CATEGORIZATION_EMPTY_SUBCOPY: Record<'uncategorized' | 'pending-review' | 'categorized', string> = {
+  uncategorized: 'Everything in this date range has been reviewed.',
+  'pending-review': 'No AI suggestions are waiting for review.',
+  categorized: 'Nothing has been categorized in this date range yet.',
+};
+
 export default function POSSales() {
   const {
     selectedRestaurant,
@@ -132,6 +151,7 @@ export default function POSSales() {
     searchTerm,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
+    categorizationFilter,
   });
 
   // Server-side aggregated totals for dashboard metrics (independent of pagination).
@@ -1162,11 +1182,16 @@ export default function POSSales() {
               {/* Results header bar */}
               <div className="flex items-center justify-between">
                 <p className="text-[13px] text-muted-foreground">
-                  {filteredSales.length === sales.length ? (
-                    <>{sales.length.toLocaleString()} sales</>
-                  ) : (
-                    <>{filteredSales.length.toLocaleString()} of {sales.length.toLocaleString()} sales</>
-                  )}
+                  {(() => {
+                    const statusLabel = categorizationFilter !== 'all'
+                      ? `${CATEGORIZATION_FILTER_LABELS[categorizationFilter]} `
+                      : '';
+                    return filteredSales.length === sales.length ? (
+                      <>{sales.length.toLocaleString()} {statusLabel}sales</>
+                    ) : (
+                      <>{filteredSales.length.toLocaleString()} of {sales.length.toLocaleString()} {statusLabel}sales</>
+                    );
+                  })()}
                 </p>
                 <div className="flex items-center gap-2">
                   {hasMore && (
@@ -1211,8 +1236,17 @@ export default function POSSales() {
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
                     <Search className="w-6 h-6 text-muted-foreground/50" />
                   </div>
-                  <p className="text-[15px] font-medium text-foreground mb-1">No sales found</p>
-                  <p className="text-[13px] text-muted-foreground">Try adjusting your filters or date range.</p>
+                  {categorizationFilter !== 'all' && !searchTerm && recipeFilter === 'all' ? (
+                    <>
+                      <p className="text-[15px] font-medium text-foreground mb-1">No {CATEGORIZATION_FILTER_LABELS[categorizationFilter]} sales</p>
+                      <p className="text-[13px] text-muted-foreground">{CATEGORIZATION_EMPTY_SUBCOPY[categorizationFilter]}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-[15px] font-medium text-foreground mb-1">No sales found</p>
+                      <p className="text-[13px] text-muted-foreground">Try adjusting your filters or date range.</p>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-0">

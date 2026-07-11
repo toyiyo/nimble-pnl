@@ -36,9 +36,12 @@
 -- 22  Tax offset row created for order with tax_amount=5.55 (check 42)
 -- 23  Tax row external_item_id = <order_id>_tax
 -- 24  Tax row adjustment_type = 'tax'
+-- 25  Order with tax_amount=0 from the start emits no tax row (check 10)
+-- 26  Re-sync after tax_amount is zeroed out deletes the previously-created tax row (check 42)
+-- 27  Zeroed-tax re-sync leaves the order's other rows (sale/tip/discount) untouched
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(27);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup: disable RLS so we can insert test rows freely
@@ -497,6 +500,58 @@ SELECT is(
      AND sale_date = '2026-06-15'),
   'tax',
   'Tax row adjustment_type = ''tax'''
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Test 25: Order with tax_amount=0 from the start emits no tax row.
+-- Check 10 (2026-06-14, synced above in Test 21) was inserted without a
+-- tax_amount, so it defaults to the column's DEFAULT 0.
+-- ─────────────────────────────────────────────────────────────────────
+SELECT is(
+  (SELECT COUNT(*)::integer FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'tax'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260614-10'),
+  0,
+  'Order with tax_amount=0 from the start (check 10) emits no tax row'
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Test 26-27: Zeroing out tax_amount on re-sync deletes the previously
+-- created tax row for check 42, and leaves its other row kinds untouched.
+-- ─────────────────────────────────────────────────────────────────────
+UPDATE public.focus_orders
+SET tax_amount = 0
+WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+  AND business_date = '2026-06-15'
+  AND focus_check_id = '42';
+
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-f0c100000001"}';
+SELECT sync_focus_transactions_to_unified_sales(
+  '00000000-0000-0000-0000-f0c100000011'::uuid,
+  '2026-06-15'::date,
+  '2026-06-15'::date
+);
+
+SELECT is(
+  (SELECT COUNT(*)::integer FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'tax'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'),
+  0,
+  'Re-sync after tax_amount zeroed out deletes the previously-created tax row (check 42)'
+);
+
+SELECT is(
+  (SELECT COUNT(*)::integer FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'
+     AND item_type IN ('sale', 'tip', 'discount')),
+  5,
+  'Zeroed-tax re-sync leaves the order''s other rows (3 sale + 1 tip + 1 discount) untouched'
 );
 
 SELECT * FROM finish();

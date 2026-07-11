@@ -50,7 +50,7 @@ const SAMPLE_XML_ONE_CHECK = `<DailyData><Checks><Check>
 <RevenueCenterID>1</RevenueCenterID><Guests>2</Guests><Total>12.50</Total>
 <DiscountTotalAmount>0</DiscountTotalAmount><TaxableSales1>11.37</TaxableSales1>
 </CheckRecord><Seats><Seat>
-<SeatRecord><Key>5</Key></SeatRecord>
+<SeatRecord><Key>5</Key><TaxTotal1>1.13</TaxTotal1></SeatRecord>
 <CheckItemRecord>
   <SeatKey>5</SeatKey><Key>3</Key><RecordNumber>100</RecordNumber>
   <ID>Scoop</ID><GuestCheckName>Scoop Single</GuestCheckName>
@@ -223,6 +223,14 @@ describe('processDayTransactions', () => {
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
     const row = mocks.ordersUpsert.mock.calls[0][0];
     expect(row.total).toBe(12.50);
+  });
+
+  it('includes tax_amount (from check.taxAmount) in the focus_orders upsert payload', async () => {
+    const { deps, mocks } = makeDeps({});
+    await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    const row = mocks.ordersUpsert.mock.calls[0][0];
+    // SAMPLE_XML_ONE_CHECK seat TaxTotal1 = 1.13 → FocusCheck.taxAmount = 1.13
+    expect(row.tax_amount).toBe(1.13);
   });
 
   it('uses ON CONFLICT on the correct columns for focus_orders', async () => {

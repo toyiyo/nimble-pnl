@@ -136,6 +136,18 @@ describe('buildGustoCSV', () => {
     expect(cols[12]).toBe('0.00'); // cash_tips
   });
 
+  it('formats negative computed values (payroll corrections) rather than blanking them', () => {
+    const csv = buildGustoCSV(period([
+      employee({ employeeName: 'Ann Lee', regularHours: -4.5, overtimeHours: -1.25, tipsOwed: -750, tipsPaidOut: -200 }),
+    ]));
+    const [, row] = csv.split('\n');
+    const cols = row.split(',');
+    expect(cols[4]).toBe('-4.50');   // regular_hours
+    expect(cols[5]).toBe('-1.25');   // overtime_hours
+    expect(cols[11]).toBe('-7.50');  // paycheck_tips
+    expect(cols[12]).toBe('-2.00');  // cash_tips
+  });
+
   it('keeps untracked columns blank even when adjacent computed columns are 0.00 (no-op, never clobbers Gusto-managed values)', () => {
     // The columns we never populate (owners_draw, bonus, reimbursement, …) stay
     // blank so a re-import does NOT overwrite values the user manages in Gusto.

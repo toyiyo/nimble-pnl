@@ -224,15 +224,18 @@ async function executeGetKpis(
 
   // Fetch labor costs using time_punches + employees (same as Dashboard)
   // Import labor calculation module
-  const { calculateActualLaborCost } = await import('../_shared/laborCalculations.ts');
+  const { calculateActualLaborCost, LABOR_FETCH_LOOKAHEAD_HOURS } = await import('../_shared/laborCalculations.ts');
 
-  // Fetch time punches for the period
+  // Fetch time punches for the period, widened by an overnight look-ahead so a
+  // shift whose clock_out lands just after endDate still pairs whole.
+  // calculateActualLaborCost attributes hours by clock-in day and drops
+  // out-of-window periods, so this never double-counts.
   const { data: timePunches, error: punchesError } = await supabase
     .from('time_punches')
     .select('id, employee_id, restaurant_id, punch_time, punch_type')
     .eq('restaurant_id', restaurantId)
     .gte('punch_time', startDate.toISOString())
-    .lte('punch_time', endDate.toISOString())
+    .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
     .order('punch_time', { ascending: true });
 
   if (punchesError) {
@@ -2233,17 +2236,19 @@ async function executeGetPayrollSummary(
   supabase: any
 ): Promise<any> {
   const { period, start_date, end_date, include_employee_details = true } = args;
-  const { calculateActualLaborCost } = await import('../_shared/laborCalculations.ts');
+  const { calculateActualLaborCost, LABOR_FETCH_LOOKAHEAD_HOURS } = await import('../_shared/laborCalculations.ts');
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
 
-  // Fetch all required data in parallel
+  // Fetch all required data in parallel. time_punches upper bound is widened by
+  // an overnight look-ahead so a shift crossing endDate still pairs whole;
+  // calculateActualLaborCost drops periods whose clock-in is out of window.
   const [punchesResult, employeesResult, tipsResult, manualResult] = await Promise.all([
     supabase
       .from('time_punches')
       .select('*')
       .eq('restaurant_id', restaurantId)
       .gte('punch_time', startDate.toISOString())
-      .lte('punch_time', endDate.toISOString())
+      .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
       .order('punch_time', { ascending: true }),
     supabase
       .from('employees')

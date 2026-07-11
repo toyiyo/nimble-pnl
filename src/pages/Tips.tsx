@@ -33,7 +33,8 @@ import { TipPeriodSummary } from '@/components/tips/TipPeriodSummary';
 import { TipPayoutSheet } from '@/components/tips/TipPayoutSheet';
 import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
-import { calculateWorkedHours } from '@/utils/payrollCalculations';
+import { calculateWorkedHoursForClockInDay } from '@/utils/payrollCalculations';
+import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { Info, Settings, RefreshCw, Clock, DollarSign, Lock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -103,7 +104,14 @@ export function Tips() {
     deletePool,
     totalContributionPercentage,
   } = useTipContributionPools(restaurantId, settings?.id ?? null);
-  const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
+  // Fetch punches for the selected service day, widened by the overnight buffer
+  // so a shift that clocks out after midnight is paired whole. Hours are then
+  // attributed to the clock-in day via calculateWorkedHoursForClockInDay.
+  const { fetchStart: punchFetchStart, fetchEnd: punchFetchEnd } = useMemo(
+    () => bufferPunchFetchRange(todayStart, todayEnd),
+    [todayStart, todayEnd],
+  );
+  const { punches } = useTimePunches(restaurantId, undefined, punchFetchStart, punchFetchEnd);
 
   // Query for Daily Entry mode - single day
   const { saveTipSplit, isSaving, splits: dailySplits } = useTipSplits(restaurantId, today, today);
@@ -274,7 +282,7 @@ export function Tips() {
       const employeePunches = punches.filter(p => p.employee_id === emp.id);
       
       if (employeePunches.length > 0) {
-        const hours = calculateWorkedHours(employeePunches);
+        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
         const roundedHours = Math.round(hours * 10) / 10; // Round to 1 decimal
         
         calculatedHours[emp.id] = roundedHours.toString();
@@ -652,7 +660,7 @@ export function Tips() {
                     participants.forEach(emp => {
                       const employeePunches = punches?.filter(p => p.employee_id === emp.id) || [];
                       if (employeePunches.length > 0) {
-                        const hours = calculateWorkedHours(employeePunches);
+                        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
                         const roundedHours = Math.round(hours * 10) / 10;
                         calculatedHours[emp.id] = roundedHours.toString();
                         autoFlags[emp.id] = true;

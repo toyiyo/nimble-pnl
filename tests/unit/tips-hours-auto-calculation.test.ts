@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateWorkedHours } from '@/utils/payrollCalculations';
+import { calculateWorkedHours, calculateWorkedHoursForClockInDay } from '@/utils/payrollCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 
 describe('Tips: Auto-calculate hours from time punches', () => {
@@ -273,5 +273,59 @@ describe('Tips: Auto-calculate hours from time punches', () => {
 
     // Both employees worked 8 hours each
     expect(emp1Hours).toBe(emp2Hours);
+  });
+});
+
+describe('Tips: overnight-safe hours via calculateWorkedHoursForClockInDay', () => {
+  // Service day = 2025-12-17 (UTC bounds for deterministic, TZ-independent test).
+  const dayStart = new Date('2025-12-17T00:00:00.000Z');
+  const dayEnd = new Date('2025-12-17T23:59:59.999Z');
+  const p = (type: string, iso: string, emp = 'emp1'): TimePunch => ({
+    id: `${type}-${iso}`, employee_id: emp, restaurant_id: 'rest1',
+    punch_type: type as TimePunch['punch_type'], punch_time: iso,
+    created_at: iso, updated_at: iso,
+  });
+
+  it('counts an overnight shift (clock-out after midnight) on its clock-in day', () => {
+    // Wed 8pm -> Thu 1am. Buffered fetch supplies both punches; hours land on Wed.
+    const punches = [
+      p('clock_in', '2025-12-17T20:00:00Z'),
+      p('clock_out', '2025-12-18T01:00:00Z'),
+    ];
+    expect(calculateWorkedHoursForClockInDay(punches, dayStart, dayEnd)).toBeCloseTo(5, 5);
+  });
+
+  it('excludes a shift that clocked in the PREVIOUS night (pulled in by the buffer)', () => {
+    const punches = [
+      p('clock_in', '2025-12-16T20:00:00Z'),  // Tue night
+      p('clock_out', '2025-12-17T01:00:00Z'),  // Wed 1am → belongs to Tue
+    ];
+    expect(calculateWorkedHoursForClockInDay(punches, dayStart, dayEnd)).toBeCloseTo(0, 5);
+  });
+
+  it('keeps the whole break-after-midnight shift on the clock-in day, minus breaks', () => {
+    const punches = [
+      p('clock_in', '2025-12-17T18:00:00Z'),
+      p('break_start', '2025-12-18T00:00:00Z'),
+      p('break_end', '2025-12-18T00:30:00Z'),
+      p('clock_out', '2025-12-18T02:00:00Z'),
+    ];
+    // 8h span - 0.5h break = 7.5h, all on 2025-12-17.
+    expect(calculateWorkedHoursForClockInDay(punches, dayStart, dayEnd)).toBeCloseTo(7.5, 5);
+  });
+
+  it('regression: the old per-day-window path returned 0 for these overnight hours', () => {
+    // What Tips.tsx did before: filter punches to the calendar day, then
+    // calculateWorkedHours. The clock-out lands next day, so only a lone
+    // clock-in remained in-window → 0 hours (the reported bug).
+    const punches = [
+      p('clock_in', '2025-12-17T20:00:00Z'),
+      p('clock_out', '2025-12-18T01:00:00Z'),
+    ];
+    const dayOnly = punches.filter(
+      (x) => x.punch_time >= dayStart.toISOString() && x.punch_time <= dayEnd.toISOString(),
+    );
+    expect(calculateWorkedHours(dayOnly)).toBe(0); // old behaviour (bug)
+    expect(calculateWorkedHoursForClockInDay(punches, dayStart, dayEnd)).toBeCloseTo(5, 5); // fixed
   });
 });

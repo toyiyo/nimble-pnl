@@ -4,6 +4,7 @@ import { useEmployees } from './useEmployees';
 import { TimePunch } from '@/types/timeTracking';
 import { format } from 'date-fns';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
+import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 
 export interface LaborCostData {
   date: string;
@@ -80,13 +81,19 @@ export function useLaborCostsFromTimeTracking(
         return { dailyCosts: [], totalCost: 0 };
       }
 
-      // 1. Fetch time punches for the period
+      // 1. Fetch time punches for the period.
+      // Look-AHEAD only (not symmetric): calculateActualLaborCost attributes
+      // hours/active-days to every day a shift touches and does NOT drop shifts
+      // whose clock-in precedes dateFrom. A look-back would pull a prior-period
+      // Sunday-night shift into Monday and overstate labor; the look-ahead still
+      // completes an in-range shift whose clock_out lands just after dateTo.
+      const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
       const { data: punches, error: punchesError } = await supabase
         .from('time_punches')
         .select('*')
         .eq('restaurant_id', restaurantId)
-        .gte('punch_time', dateFrom.toISOString())
-        .lte('punch_time', dateTo.toISOString())
+        .gte('punch_time', fetchStart.toISOString())
+        .lte('punch_time', fetchEnd.toISOString())
         .order('punch_time', { ascending: true });
 
       if (punchesError) throw punchesError;

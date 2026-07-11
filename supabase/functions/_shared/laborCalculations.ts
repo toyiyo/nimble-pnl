@@ -12,6 +12,16 @@
  * - supabase/functions/_shared/recipeAnalytics.ts
  */
 
+/**
+ * Hours past endDate to widen a time_punches fetch so a shift whose clock_out
+ * lands just after the window end still pairs into a complete period.
+ * calculateActualLaborCost / calculateHoursPerEmployee already drop periods
+ * whose clock-in is outside [startDate, endDate], so this look-ahead never
+ * double-counts a shift that started before the window.
+ * MUST stay in parity with src/utils/punchWindow.ts OVERNIGHT_BUFFER_HOURS.
+ */
+export const LABOR_FETCH_LOOKAHEAD_HOURS = 18;
+
 // ============================================================================
 // Type Definitions
 // ============================================================================

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { processPunchesForPeriod } from '@/utils/timePunchProcessing';
+import { sessionsWithClockInInWindow } from '@/utils/punchWindow';
 import type { TimePunch } from '@/types/timeTracking';
 
 const mk = (
@@ -171,5 +172,25 @@ describe('identifyWorkSessions — does not skip the next clock-in', () => {
     const { sessions } = processPunchesForPeriod(punches);
     expect(sessions).toHaveLength(2);
     expect(sessions.filter((s) => s.is_complete)).toHaveLength(2);
+  });
+});
+
+describe('open-session windowing (buffered pairing)', () => {
+  it('a clock-out just after the day end makes the session complete, not open', () => {
+    const dayStart = new Date('2026-07-04T00:00:00');
+    const dayEnd = new Date('2026-07-04T23:59:59.999');
+    // Buffered fetch would include the Jul-5 00:06 clock-out.
+    const punches = [
+      mk('in', 'empA', 'clock_in', '2026-07-04T21:14:00'),
+      mk('out', 'empA', 'clock_out', '2026-07-05T00:06:00'),
+    ];
+    const { sessions } = processPunchesForPeriod(punches);
+    const windowSessions = sessionsWithClockInInWindow(sessions, dayStart, dayEnd);
+    expect(windowSessions).toHaveLength(1);
+    expect(windowSessions[0].is_complete).toBe(true);
+    const openSessions = windowSessions.filter((s) => !s.is_complete);
+    expect(openSessions).toHaveLength(0);
+    // And the hours count toward the day total:
+    expect(windowSessions[0].worked_minutes / 60).toBeCloseTo(2.87, 1);
   });
 });

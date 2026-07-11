@@ -27,7 +27,7 @@ export function StaffingOverlay({
   restaurantId,
   weekDays,
 }: Readonly<StaffingOverlayProps>) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const { toast } = useToast();
   const [localSettings, setLocalSettings] = useState<Partial<StaffingSettings> | null>(null);
 

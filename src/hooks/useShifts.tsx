@@ -9,6 +9,8 @@ import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
 
+import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
+
 import { parseISO } from 'date-fns';
 
 /**
@@ -294,7 +296,15 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
+    mutationFn: async ({
+      id,
+      restaurantId,
+      shift,
+    }: {
+      id: string;
+      restaurantId: string;
+      shift?: DeletableShift;
+    }) => {
       const { error } = await supabase
         .from('shifts')
         .delete()
@@ -302,10 +312,31 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
         .eq('restaurant_id', restaurantId);
 
       if (error) throw error;
-      return { id, restaurantId };
+      return { id, restaurantId, shift };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+
+      // Notify FIRST, unconditionally on snapshot presence — fire-and-forget,
+      // must sit above the `if (silent) return` below. `silent` (suppress
+      // toast) and "should notify" are orthogonal concerns.
+      const notifyBody = data.shift ? buildShiftDeletedInvoke(data.shift) : null;
+      if (notifyBody) {
+        // supabase.functions.invoke resolves with { data, error } on HTTP
+        // failures (it does NOT reject), so both branches must be handled —
+        // this notification is best-effort and must never surface to the
+        // caller of the delete mutation.
+        supabase.functions
+          .invoke('send-shift-notification', { body: notifyBody })
+          .then(({ error }) => {
+            if (error) {
+              console.warn('shift-deleted notify failed', { shiftId: data.shift?.id, error });
+            }
+          })
+          .catch((error) => {
+            console.warn('shift-deleted notify failed', { shiftId: data.shift?.id, error });
+          });
+      }
 
       if (silent) return;
 

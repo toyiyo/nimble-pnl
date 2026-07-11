@@ -94,9 +94,11 @@ once and reports the cash portion for taxes — no employee is paid twice.
 - **All employees included** (roster parity with the template), even
   zero-activity ones.
 - **CSV-injection safe.** Free-text cells (`last_name`, `first_name`, `title`)
-  pass through a formula-neutralizing escaper: prefix a leading `= + - @` with
-  `'` and RFC-4180 quote/double-quote as needed. Numeric cells are emitted
-  unquoted. (Reuses the existing `escapeCsvCell` pattern; an employee named
+  pass through a formula-neutralizing escaper: prefix any leading formula trigger
+  character (`= + - @`) — **including when preceded by spaces or tabs** (e.g.
+  `"\t=HYPERLINK(...)"`) — with `'`, and RFC-4180 quote/double-quote as needed.
+  Numeric cells are emitted unquoted. (Reuses the existing `escapeCsvCell`
+  pattern, whose neutralization matches `^\s*[=+\-@]`; an employee named
   `=cmd|...` must not become a live formula in Excel/Sheets.)
 - **No BOM.** A UTF-8 BOM can corrupt Gusto's header parse (`﻿last_name`).
   Matches the current internal export's blob (which also omits the BOM).

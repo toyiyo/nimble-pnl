@@ -19,10 +19,11 @@
 --   36:    order-level ON DELETE CASCADE (focus_order_items removed when parent order deleted)
 --   39:    focus_orders.tax_amount column exists
 --   40:    focus_orders.tax_amount defaults to 0 when omitted on INSERT
+--   41:    focus_orders.tax_amount rejects NULL (NOT NULL invariant)
 -- Migration: 20260710120000_focus_orders_tax_amount.sql
 
 BEGIN;
-SELECT plan(40);
+SELECT plan(41);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup
@@ -353,6 +354,17 @@ SELECT is(
       AND focus_check_id = 'CHK-TAX-DEFAULT'),
   0::numeric,
   'focus_orders.tax_amount defaults to 0 when omitted on INSERT'
+);
+
+-- 41: NOT NULL invariant — an explicit NULL must be rejected (a regression to
+-- nullable would otherwise pass the existence + default checks above).
+SELECT throws_ok(
+  $$INSERT INTO public.focus_orders
+      (restaurant_id, business_date, focus_check_id, total, tax_amount)
+    VALUES ('00000000-0000-0000-0001-f0c0aa000001', '2026-07-01', 'CHK-TAX-NULL', 10.00, NULL)$$,
+  '23502',
+  NULL,
+  'focus_orders.tax_amount is NOT NULL'
 );
 
 SELECT * FROM finish();

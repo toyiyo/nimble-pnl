@@ -310,7 +310,13 @@ BEGIN
   -- service-role callers defer to the apply-categorization-rules edge function)
   PERFORM apply_rules_to_pos_sales_internal(p_restaurant_id, 10000);
 
-  -- Batch-aggregate daily totals for all dates touched in this sync
+  -- Batch-aggregate daily totals for all dates touched in this sync.
+  -- Union two sources so DELETE-only dates are still re-aggregated: synced_at
+  -- only advances on INSERT/UPDATE, so a date whose only change was a removed
+  -- offset row (e.g. a tax row deleted when tax_amount is zeroed, with no
+  -- sale/tip/discount row re-upserted) would otherwise keep stale daily
+  -- totals. The focus_orders business_date range covers every check processed
+  -- this run, including those pure-delete dates (the order row still exists).
   PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
   FROM (
     SELECT DISTINCT sale_date
@@ -318,6 +324,12 @@ BEGIN
     WHERE restaurant_id = p_restaurant_id
       AND pos_system    = 'focus'
       AND synced_at    >= v_sync_start
+    UNION
+    SELECT DISTINCT fo.business_date
+    FROM public.focus_orders fo
+    WHERE fo.restaurant_id = p_restaurant_id
+      AND (p_start_date IS NULL OR fo.business_date >= p_start_date)
+      AND (p_end_date   IS NULL OR fo.business_date <= p_end_date)
   ) d;
 
   RETURN v_count;

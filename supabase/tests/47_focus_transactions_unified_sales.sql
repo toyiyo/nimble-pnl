@@ -10,7 +10,7 @@
 -- 20260710130000_focus_tax_unified_sales.sql) emits ONE tax offset row per
 -- order when tax_amount != 0, mirroring the tip/discount offset blocks.
 --
--- Test plan (24 tests):
+-- Test plan (28 tests):
 --
 --  1  sync_focus_transactions_to_unified_sales(uuid) exists
 --  2  sync_focus_transactions_to_unified_sales(uuid,date,date) exists
@@ -37,11 +37,12 @@
 -- 23  Tax row external_item_id = <order_id>_tax
 -- 24  Tax row adjustment_type = 'tax'
 -- 25  Order with tax_amount=0 from the start emits no tax row (check 10)
--- 26  Re-sync after tax_amount is zeroed out deletes the previously-created tax row (check 42)
--- 27  Zeroed-tax re-sync leaves the order's other rows (sale/tip/discount) untouched
+-- 26  Check 10's persisted focus_orders.tax_amount is 0 (default, guards test 25)
+-- 27  Re-sync after tax_amount is zeroed out deletes the previously-created tax row (check 42)
+-- 28  Zeroed-tax re-sync leaves the order's 5 non-tax rows intact by identity
 
 BEGIN;
-SELECT plan(27);
+SELECT plan(28);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup: disable RLS so we can insert test rows freely
@@ -517,8 +518,21 @@ SELECT is(
   'Order with tax_amount=0 from the start (check 10) emits no tax row'
 );
 
+-- Test 26: guard for Test 25 — prove check 10's persisted tax_amount is
+-- literally 0 (the column DEFAULT), not NULL. Without this, a regression that
+-- made tax_amount nullable would still satisfy Test 25 (RPC emits rows only
+-- when tax_amount != 0, and NULL != 0 is NULL/false), masking the change.
+SELECT is(
+  (SELECT tax_amount FROM public.focus_orders
+    WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+      AND business_date = '2026-06-14'
+      AND focus_check_id = '10'),
+  0::numeric,
+  'Check 10 persisted focus_orders.tax_amount is 0 (default, not NULL)'
+);
+
 -- ─────────────────────────────────────────────────────────────────────
--- Test 26-27: Zeroing out tax_amount on re-sync deletes the previously
+-- Test 27-28: Zeroing out tax_amount on re-sync deletes the previously
 -- created tax row for check 42, and leaves its other row kinds untouched.
 -- ─────────────────────────────────────────────────────────────────────
 UPDATE public.focus_orders
@@ -544,14 +558,22 @@ SELECT is(
   'Re-sync after tax_amount zeroed out deletes the previously-created tax row (check 42)'
 );
 
-SELECT is(
-  (SELECT COUNT(*)::integer FROM public.unified_sales
-   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
-     AND pos_system = 'focus'
-     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'
-     AND item_type IN ('sale', 'tip', 'discount')),
-  5,
-  'Zeroed-tax re-sync leaves the order''s other rows (3 sale + 1 tip + 1 discount) untouched'
+-- Assert by identity (not just count): the exact set of non-tax rows must be
+-- unchanged. A bare count would still pass if the re-sync deleted one row and
+-- recreated a different one; bag_eq pins each external_item_id + item_type.
+SELECT bag_eq(
+  $$SELECT external_item_id, item_type FROM public.unified_sales
+     WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+       AND pos_system = 'focus'
+       AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'
+       AND item_type IN ('sale', 'tip', 'discount')$$,
+  $$VALUES
+     ('focus-GUID-TEST-STORE-20260615-42__IK-A',          'sale'),
+     ('focus-GUID-TEST-STORE-20260615-42__IK-B',          'sale'),
+     ('focus-GUID-TEST-STORE-20260615-42__IK-D',          'sale'),
+     ('focus-GUID-TEST-STORE-20260615-42__IK-D_discount', 'discount'),
+     ('focus-GUID-TEST-STORE-20260615-42_PK-1_tip',       'tip')$$,
+  'Zeroed-tax re-sync leaves the order''s 5 non-tax rows intact by identity (3 sale + 1 tip + 1 discount)'
 );
 
 SELECT * FROM finish();

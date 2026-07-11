@@ -165,21 +165,25 @@ const handler = async (req: Request): Promise<Response> => {
 
       // Authoritative employee lookup — never trust client-supplied
       // email/user_id. Missing/mismatched employee => skip, not an error
-      // (the delete already succeeded on the client side).
-      const { data: deletedShiftEmployee, error: deletedShiftEmployeeError } = await supabase
-        .from('employees')
-        .select('id, name, email, user_id')
-        .eq('id', deletedShift.employee_id)
-        .eq('restaurant_id', deletedShift.restaurant_id)
-        .single();
+      // (the delete already succeeded on the client side). Independent of
+      // the restaurant info lookup, so run both concurrently.
+      const [
+        { data: deletedShiftEmployee, error: deletedShiftEmployeeError },
+        { name: deletedShiftRestaurantName, timezone: deletedShiftRestaurantTimezone },
+      ] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('id, name, email, user_id')
+          .eq('id', deletedShift.employee_id)
+          .eq('restaurant_id', deletedShift.restaurant_id)
+          .single(),
+        getRestaurantInfo(supabase, deletedShift.restaurant_id),
+      ]);
 
       if (deletedShiftEmployeeError || !deletedShiftEmployee) {
         console.log('Employee not found for deleted shift notification');
         return successResponse({ message: 'Employee not found, notification skipped' });
       }
-
-      const { name: deletedShiftRestaurantName, timezone: deletedShiftRestaurantTimezone } =
-        await getRestaurantInfo(supabase, deletedShift.restaurant_id);
 
       const plan = buildDeletedShiftNotification({
         shiftId,

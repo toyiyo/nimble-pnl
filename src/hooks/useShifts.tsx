@@ -5,11 +5,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
+import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
-
-import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
 
 import { parseISO } from 'date-fns';
 
@@ -330,11 +329,11 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
           .invoke('send-shift-notification', { body: notifyBody })
           .then(({ error }) => {
             if (error) {
-              console.warn('shift-deleted notify failed', { shiftId: data.shift?.id, error });
+              console.warn('shift-deleted notify failed', { shiftId: data.id, error });
             }
           })
           .catch((error) => {
-            console.warn('shift-deleted notify failed', { shiftId: data.shift?.id, error });
+            console.warn('shift-deleted notify failed', { shiftId: data.id, error });
           });
       }
 

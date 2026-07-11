@@ -780,7 +780,7 @@ const Scheduling = () => {
   const confirmDeleteShift = () => {
     if (shiftToDelete && restaurantId) {
       deleteShift.mutate(
-        { id: shiftToDelete.id, restaurantId },
+        { id: shiftToDelete.id, restaurantId, shift: shiftToDelete },
         {
           onSuccess: () => {
             setShiftToDelete(null);

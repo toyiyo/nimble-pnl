@@ -43,6 +43,13 @@ returns `"Shift already deleted, notification skipped"`.
     the server-side gate as the single decision point so a per-user override can slot in
     later without touching callers.
   - Removing the dormant FCM path / dead `notification_settings` columns — cleanup, later.
+  - **Per-restaurant authorization on the legacy `created`/`modified`/`deleted-by-refetch`
+    path of `send-shift-notification`** (Phase 7 Codex finding, pre-existing). This round
+    makes a valid JWT **mandatory** for the whole handler (closes the "unauthenticated call"
+    gap — no behavior change for the sole real caller, which always sends a JWT). The deeper
+    fix — scoping the refetch path to the caller's restaurant/role like the new `deletedShift`
+    branch — is deferred because those actions are dead code (zero callers) and the change
+    touches the shared handler's contract. Tracked here, not shipped.
 
 ## Approach
 

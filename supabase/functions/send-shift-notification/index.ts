@@ -107,20 +107,22 @@ const handler = async (req: Request): Promise<Response> => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // If there's an auth header, verify it's valid
-    let authenticatedUser: { id: string } | null = null;
-    if (authHeader) {
-      const { data: { user }, error: authError } = await supabase.auth.getUser(
-        authHeader.replace('Bearer ', '')
-      );
-
-      if (authError || !user) {
-        return errorResponse('Unauthorized', 401);
-      }
-
-      authenticatedUser = user;
-      console.log(`Authenticated request from user: ${user.id}`);
+    // Require a valid user JWT for EVERY action. This function is only ever
+    // invoked from authenticated client contexts (fire-and-forget with the
+    // caller's own JWT), so a missing/invalid header is rejected up front —
+    // closing the gap where the created/modified/deleted-by-refetch path below
+    // would otherwise proceed unauthenticated via the service-role client.
+    if (!authHeader) {
+      return errorResponse('Unauthorized', 401);
     }
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    if (authError || !user) {
+      return errorResponse('Unauthorized', 401);
+    }
+    const authenticatedUser: { id: string } = user;
+    console.log(`Authenticated request from user: ${user.id}`);
 
     // Parse request body
     const { shiftId, action, previousShift, deletedShift }: RequestBody = await req.json();
@@ -134,14 +136,10 @@ const handler = async (req: Request): Promise<Response> => {
     // snapshot instead of an id we could re-fetch. This branch is fully
     // separate from the created/modified/deleted-by-refetch flow below.
     if (action === 'deleted' && deletedShift) {
-      // A valid JWT is required (checked above) — additionally require the
-      // caller to be an owner/manager of the snapshot's restaurant, mirroring
+      // A valid JWT is guaranteed (mandatory auth above) — additionally require
+      // the caller to be an owner/manager of the snapshot's restaurant, mirroring
       // notify-schedule-published. Without this, any authenticated user could
       // trigger a "shift removed" notification for someone else's restaurant.
-      if (!authenticatedUser) {
-        return errorResponse('Unauthorized', 401);
-      }
-
       const { data: callerRestaurant, error: callerRoleError } = await supabase
         .from('user_restaurants')
         .select('role')

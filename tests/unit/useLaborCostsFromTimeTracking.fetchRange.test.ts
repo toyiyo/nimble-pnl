@@ -1,20 +1,20 @@
 /**
  * Regression: useLaborCostsFromTimeTracking's time_punches fetch must be
- * widened by the overnight buffer (±18h, via bufferPunchFetchRange) so a
- * shift whose clock-in and clock-out straddle the period boundary is
- * fetched whole. calculateActualLaborCost then attributes each shift back
- * to its clock-in day within [dateFrom, dateTo] and drops out-of-window
- * periods.
+ * widened by a LOOK-AHEAD ONLY (via lookaheadPunchFetchRange) so a shift
+ * whose clock_out lands just after dateTo is fetched whole, WITHOUT a
+ * look-back. calculateActualLaborCost attributes hours/active-days to every
+ * day a shift touches and does NOT drop shifts whose clock-in precedes the
+ * window, so a symmetric look-back would pull a prior-period Sunday-night
+ * shift into the first in-range day and overstate labor (Codex P2).
  *
  * The React Query cache key must stay keyed on the *logical* dateFrom/
- * dateTo (not the buffered range) so cache identity is unaffected by the
- * buffer.
+ * dateTo (not the buffered range) so cache identity is unaffected.
  */
 import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 
 // Generic chainable Supabase query-builder mock: every method returns
 // `this` so any chain shape resolves, and the builder is thenable so
@@ -73,12 +73,12 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
     vi.clearAllMocks();
   });
 
-  it('fetches time_punches widened by the overnight buffer, not the raw logical bounds', async () => {
+  it('fetches time_punches with a look-ahead only (start unchanged, end +18h)', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
     const dateFrom = new Date('2026-03-02T00:00:00.000Z');
     const dateTo = new Date('2026-03-08T23:59:59.999Z');
-    const { fetchStart, fetchEnd } = bufferPunchFetchRange(dateFrom, dateTo);
+    const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
 
     const { result } = renderHook(
       () => useLaborCostsFromTimeTracking('rest-1', dateFrom, dateTo),
@@ -88,11 +88,10 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
     expect(fromMock).toHaveBeenCalledWith('time_punches');
-    // The fetch bounds must be the BUFFERED range, not the raw logical dates.
     expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', fetchStart.toISOString());
     expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', fetchEnd.toISOString());
-    // Sanity: the buffered bounds actually differ from the logical bounds.
-    expect(fetchStart.toISOString()).not.toBe(dateFrom.toISOString());
-    expect(fetchEnd.toISOString()).not.toBe(dateTo.toISOString());
+    // Look-ahead only: start is the raw dateFrom (NO look-back), end is +18h.
+    expect(fetchStart.toISOString()).toBe(dateFrom.toISOString());
+    expect(fetchEnd.getTime() - dateTo.getTime()).toBe(18 * 3600 * 1000);
   });
 });

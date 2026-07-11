@@ -41,4 +41,19 @@ describe('hoursByClockInDay', () => {
     ];
     expect(hoursByClockInDay(punches, days).get('2026-07-10')!.netHours).toBeCloseTo(0, 5);
   });
+
+  it('attributes an overnight shift across US spring-forward DST to the clock-in local day', () => {
+    // US DST spring-forward: Sun 2026-03-08 02:00 → 03:00. Shift clock-in the
+    // evening before (Sat Mar 7 23:00 local) → Sun Mar 8 07:00 local crosses the
+    // transition. `new Date(y, m, d, h)` pins to local time in any process TZ, so
+    // this asserts attribution lands on the clock-in local day regardless of TZ.
+    const days = [new Date(2026, 2, 7), new Date(2026, 2, 8)]; // Sat, Sun (local)
+    const punches = [
+      punch('clock_in', new Date(2026, 2, 7, 23, 0).toISOString()),
+      punch('clock_out', new Date(2026, 2, 8, 7, 0).toISOString()),
+    ];
+    const map = hoursByClockInDay(punches, days);
+    expect(map.get('2026-03-07')!.netHours).toBeGreaterThan(0); // whole shift on Mar 7
+    expect(map.get('2026-03-08')!.netHours).toBeCloseTo(0, 5);   // nothing bled to Mar 8
+  });
 });

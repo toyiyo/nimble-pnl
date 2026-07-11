@@ -344,6 +344,13 @@ const TimePunchesManager = () => {
     [processedData.processedPunches, dateRange.start, dateRange.end],
   );
 
+  // Anomaly count for the viewed window only (processedData.totalAnomalies
+  // spans the ±18h buffer and would over-count neighbouring-period noise).
+  const windowAnomalies = useMemo(
+    () => windowSessions.filter((s) => s.has_anomalies).length,
+    [windowSessions],
+  );
+
   // Incomplete sessions (window-filtered)
   const incompleteSessions = useMemo(() => windowSessions.filter(s => !s.is_complete), [windowSessions]);
 
@@ -604,7 +611,7 @@ const TimePunchesManager = () => {
         employeesWithPins={pinLookup.size}
         totalEmployees={employees.length}
         date={getDateRangeLabel()}
-        anomalies={processedData.totalAnomalies}
+        anomalies={windowAnomalies}
         incompleteSessions={incompleteSessions.length}
       />
 

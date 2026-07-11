@@ -1,7 +1,10 @@
+import { readFileSync } from 'fs';
+import { resolve } from 'path';
 import { describe, it, expect } from 'vitest';
 import {
   OVERNIGHT_BUFFER_HOURS,
   bufferPunchFetchRange,
+  lookaheadPunchFetchRange,
   isWithinWindow,
   periodsInWindow,
   incompleteShiftsInWindow,
@@ -21,6 +24,36 @@ describe('punchWindow', () => {
     const { fetchStart, fetchEnd } = bufferPunchFetchRange(start, end);
     expect(start.getTime() - fetchStart.getTime()).toBe(18 * 3600 * 1000);
     expect(fetchEnd.getTime() - end.getTime()).toBe(18 * 3600 * 1000);
+  });
+
+  it('lookaheadPunchFetchRange widens only the end, keeps the start', () => {
+    const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(start, end);
+    expect(fetchStart.getTime()).toBe(start.getTime()); // NO look-back
+    expect(fetchEnd.getTime() - end.getTime()).toBe(18 * 3600 * 1000);
+  });
+
+  it('periodsInWindow filters by clockIn when present (falls back to startTime)', () => {
+    // A post-break work segment whose startTime is out-of-window but whose
+    // shift clockIn is in-window must be KEPT (attributed to the clock-in period).
+    const periods = [
+      { startTime: new Date('2026-07-13T01:00:00Z'), clockIn: new Date('2026-07-12T20:00:00Z') }, // keep
+      { startTime: new Date('2026-07-07T09:00:00Z'), clockIn: new Date('2026-07-13T01:00:00Z') }, // drop
+    ];
+    const kept = periodsInWindow(periods, start, end);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].clockIn.toISOString()).toBe('2026-07-12T20:00:00.000Z');
+  });
+
+  it('Deno LABOR_FETCH_LOOKAHEAD_HOURS stays in parity with OVERNIGHT_BUFFER_HOURS', () => {
+    // The Deno edge module can't import the TS client constant, so guard the
+    // two independent literals against silent drift.
+    const denoSrc = readFileSync(
+      resolve(process.cwd(), 'supabase/functions/_shared/laborCalculations.ts'),
+      'utf8',
+    );
+    const m = denoSrc.match(/LABOR_FETCH_LOOKAHEAD_HOURS\s*=\s*(\d+)/);
+    expect(m, 'LABOR_FETCH_LOOKAHEAD_HOURS declaration not found').not.toBeNull();
+    expect(Number(m![1])).toBe(OVERNIGHT_BUFFER_HOURS);
   });
 
   it('isWithinWindow is inclusive on both boundaries', () => {

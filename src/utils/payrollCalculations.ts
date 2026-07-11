@@ -26,6 +26,12 @@ export interface WorkPeriod {
   endTime: Date;
   hours: number;
   isBreak: boolean;
+  // The originating shift's clock-in time. Unlike startTime — which for a
+  // post-break work segment is the break-end (handleBreakEnd advances the
+  // clock-in anchor) — clockIn stays pinned to the shift's first clock_in.
+  // Window attribution filters by this so a break-after-midnight overnight
+  // shift is attributed whole to its clock-in period, never split.
+  clockIn: Date;
 }
 
 export interface IncompleteShift {
@@ -92,6 +98,8 @@ interface ShiftParsingState {
   incompleteShifts: IncompleteShift[];
   currentClockIn: TimePunch | null;
   currentBreakStart: TimePunch | null;
+  // The current shift's original clock-in time, NOT advanced by breaks.
+  shiftClockIn: Date | null;
 }
 
 /**
@@ -125,6 +133,7 @@ function handleClockIn(
     }
   }
   state.currentClockIn = punch;
+  state.shiftClockIn = punchTime; // Pin the shift's clock-in; breaks won't move it
   state.currentBreakStart = null; // Reset break state
 }
 
@@ -163,6 +172,7 @@ function handleClockOut(
         endTime,
         hours,
         isBreak: false,
+        clockIn: state.shiftClockIn ?? startTime,
       });
     } else {
       // Normal valid shift
@@ -171,9 +181,11 @@ function handleClockOut(
         endTime,
         hours,
         isBreak: false,
+        clockIn: state.shiftClockIn ?? startTime,
       });
     }
     state.currentClockIn = null;
+    state.shiftClockIn = null;
     state.currentBreakStart = null;
   } else {
     // Clock out without a clock in - orphan punch
@@ -205,6 +217,7 @@ function handleBreakStart(
         endTime: punchTime,
         hours,
         isBreak: false,
+        clockIn: state.shiftClockIn ?? startTime,
       });
     }
     state.currentBreakStart = punch;
@@ -229,6 +242,7 @@ function handleBreakEnd(
       endTime: punchTime,
       hours: breakHours,
       isBreak: true,
+      clockIn: state.shiftClockIn ?? breakStartTime,
     });
 
     // Update clock_in to after break for next work period calculation
@@ -274,6 +288,7 @@ export function parseWorkPeriods(punches: TimePunch[]): {
     incompleteShifts: [],
     currentClockIn: null,
     currentBreakStart: null,
+    shiftClockIn: null,
   };
 
   for (const punch of dedupedPunches) {

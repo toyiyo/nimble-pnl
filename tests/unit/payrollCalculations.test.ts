@@ -941,4 +941,25 @@ describe('calculateEmployeePay overnight window attribution', () => {
     expect(pay.regularHours).toBeCloseTo(40, 5);
     expect(pay.overtimeHours).toBeCloseTo(2, 5);
   });
+
+  it('keeps a break-after-midnight overnight shift whole in the clock-in week (Codex P1)', () => {
+    // Sun 20:00 clock-in, break 00:30-01:00 Mon, clock-out 02:00 Mon → 5.5h worked.
+    // handleBreakEnd advances the clock-in anchor, so the post-break work segment
+    // starts Mon 01:00; without clock-in attribution it would be dropped from the
+    // Sunday week and re-counted in the Monday week (split pay/OT).
+    const punches = [
+      punch('clock_in', '2026-07-12T20:00:00'),    // Sun (last day of Mon-Sun week)
+      punch('break_start', '2026-07-13T00:30:00'),  // Mon 00:30
+      punch('break_end', '2026-07-13T01:00:00'),    // Mon 01:00
+      punch('clock_out', '2026-07-13T02:00:00'),    // Mon 02:00
+    ];
+    // Whole shift (5.5h) attributed to the Sunday-containing week.
+    const payA = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd, [], 0, undefined, [], true);
+    expect(payA.regularHours + payA.overtimeHours).toBeCloseTo(5.5, 5);
+    // The following week must not re-count any of it (no double-count).
+    const nextStart = new Date('2026-07-13T00:00:00');
+    const nextEnd = new Date('2026-07-19T23:59:59.999');
+    const payB = calculateEmployeePay(employee, punches, 0, nextStart, nextEnd, [], 0, undefined, [], true);
+    expect(payB.regularHours + payB.overtimeHours).toBeCloseTo(0, 5);
+  });
 });

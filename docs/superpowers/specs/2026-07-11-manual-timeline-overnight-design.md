@@ -106,6 +106,35 @@ real next-day punch.
   page header total (no more 15.9h vs 8h1m split).
 - Existing suite stays green.
 
+## Design-review resolutions (Phase 2.5, folded in)
+
+- **Block body swallows clicks (major).** Only the 2px edge handles
+  `stopPropagation`; a click on a block's *body* bubbles to the timeline
+  container's create-new-block handler (L696). For cross-midnight blocks the
+  clipped bar is a large target, so add `onPointerDown={e => e.stopPropagation()}`
+  to cross-midnight block bodies AND gate the right-edge handle's *handler* out
+  entirely (no-op) when the block crosses midnight — not just visually.
+- **Sliver + marker overlap (major).** A late-night start (11:50 PM) clamps to
+  ~0.7% width. Enforce a `MIN_CROSS_MIDNIGHT_WIDTH_PCT` floor for clipped blocks,
+  and position the "+1d" marker inside the bar with a z-index/max-right offset so
+  it never overlaps the trailing `w-32` Hours column (container has no
+  `overflow-hidden`).
+- **Expanded Block List (major).** L850-910 also lists these blocks as
+  `h:mm a → h:mm a` with no date qualifier and an enabled Delete. Add a "+1d"
+  suffix to the end time there for cross-midnight rows. **Delete stays enabled** —
+  removing a whole shift (both punches) is a legitimate action and is not the
+  "wrong same-day clock-out" corruption the canvas rail guards against.
+- **Minors:** move `getImportSource` into `manualTimelineBlocks.ts` (keep the
+  dependency direction util→types, never util→component); use
+  `isWithinWindow(startTime, startOfDay(date), endOfDay(date))` from
+  `punchWindow.ts` for the clock-in-day filter (reuse the centralized attribution
+  rule, not a fresh `isSameDay`); give the disabled right handle
+  `cursor-not-allowed` + a `title` pointing to the Punch List; the "+1d" marker
+  uses semantic tokens (`text-muted-foreground`/`bg-muted`) and an
+  `aria-label="Ends h:mm a the next day"`.
+- **Noted, not fixed (pre-existing, out of scope):** the component has no
+  `error` state (only `loading`).
+
 ## Decided trade-offs
 - **Clip + tag** display (not an extended "business-day" canvas): correct total
   immediately, minimal risk to the drag editor. Extended canvas is a follow-up.

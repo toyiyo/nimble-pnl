@@ -1,9 +1,9 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@4.0.0";
-import { 
+import {
   generateEmailTemplate,
   formatDateTime,
-  type EmailTemplateData 
+  type EmailTemplateData
 } from "../_shared/emailTemplates.ts";
 import {
   corsHeaders,
@@ -16,6 +16,7 @@ import {
 } from "../_shared/notificationHelpers.ts";
 import { getRestaurantInfo } from "../_shared/restaurantInfo.ts";
 import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
+import { buildDeletedShiftNotification } from '../_shared/shiftDeletedNotification.ts';
 
 interface RequestBody {
   shiftId: string;
@@ -24,6 +25,17 @@ interface RequestBody {
     start_time: string;
     end_time: string;
     position: string;
+  };
+  // Snapshot for a published-shift delete: the row is already gone by the
+  // time this fires, so the client sends what it had. Only display fields
+  // (position/start/end) travel from the client — identity (email/user_id)
+  // is always looked up server-side below, never trusted from the caller.
+  deletedShift?: {
+    restaurant_id: string;
+    employee_id: string;
+    position: string;
+    start_time: string;
+    end_time: string;
   };
 }
 
@@ -96,25 +108,127 @@ const handler = async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // If there's an auth header, verify it's valid
+    let authenticatedUser: { id: string } | null = null;
     if (authHeader) {
       const { data: { user }, error: authError } = await supabase.auth.getUser(
         authHeader.replace('Bearer ', '')
       );
-      
+
       if (authError || !user) {
         return errorResponse('Unauthorized', 401);
       }
-      
+
+      authenticatedUser = user;
       console.log(`Authenticated request from user: ${user.id}`);
     }
 
     // Parse request body
-    const { shiftId, action, previousShift }: RequestBody = await req.json();
+    const { shiftId, action, previousShift, deletedShift }: RequestBody = await req.json();
     if (!shiftId || !action) {
       return errorResponse('Missing required fields: shiftId, action', 400);
     }
 
     console.log(`Processing shift notification: shiftId=${shiftId}, action=${action}`);
+
+    // Published-shift delete: the row is gone, so the caller sends a
+    // snapshot instead of an id we could re-fetch. This branch is fully
+    // separate from the created/modified/deleted-by-refetch flow below.
+    if (action === 'deleted' && deletedShift) {
+      // A valid JWT is required (checked above) — additionally require the
+      // caller to be an owner/manager of the snapshot's restaurant, mirroring
+      // notify-schedule-published. Without this, any authenticated user could
+      // trigger a "shift removed" notification for someone else's restaurant.
+      if (!authenticatedUser) {
+        return errorResponse('Unauthorized', 401);
+      }
+
+      const { data: callerRestaurant, error: callerRoleError } = await supabase
+        .from('user_restaurants')
+        .select('role')
+        .eq('user_id', authenticatedUser.id)
+        .eq('restaurant_id', deletedShift.restaurant_id)
+        .single();
+
+      if (callerRoleError || !callerRestaurant || !['owner', 'manager'].includes(callerRestaurant.role)) {
+        return errorResponse('Access denied', 403);
+      }
+
+      const shouldNotifyDeleted = await shouldSendNotification(
+        supabase,
+        deletedShift.restaurant_id,
+        'notify_shift_deleted'
+      );
+      if (!shouldNotifyDeleted) {
+        console.log('Notification disabled for deleted');
+        return successResponse({ message: 'Notification disabled by settings' });
+      }
+
+      // Authoritative employee lookup — never trust client-supplied
+      // email/user_id. Missing/mismatched employee => skip, not an error
+      // (the delete already succeeded on the client side).
+      const { data: deletedShiftEmployee, error: deletedShiftEmployeeError } = await supabase
+        .from('employees')
+        .select('id, name, email, user_id')
+        .eq('id', deletedShift.employee_id)
+        .eq('restaurant_id', deletedShift.restaurant_id)
+        .single();
+
+      if (deletedShiftEmployeeError || !deletedShiftEmployee) {
+        console.log('Employee not found for deleted shift notification');
+        return successResponse({ message: 'Employee not found, notification skipped' });
+      }
+
+      const { name: deletedShiftRestaurantName, timezone: deletedShiftRestaurantTimezone } =
+        await getRestaurantInfo(supabase, deletedShift.restaurant_id);
+
+      const plan = buildDeletedShiftNotification({
+        shiftId,
+        employeeName: deletedShiftEmployee.name ?? null,
+        employeeEmail: deletedShiftEmployee.email ?? null,
+        employeeUserId: deletedShiftEmployee.user_id ?? null,
+        restaurantName: deletedShiftRestaurantName,
+        timezone: deletedShiftRestaurantTimezone,
+        position: deletedShift.position,
+        startTime: deletedShift.start_time,
+        endTime: deletedShift.end_time,
+        appUrl: APP_URL,
+      });
+
+      if (plan.skipped) {
+        console.log(`Deleted-shift notification skipped: ${plan.skipped}`);
+        return successResponse({ message: plan.skipped });
+      }
+
+      let deletedShiftEmailId: string | undefined;
+      if (plan.email) {
+        const { data: emailResult, error: emailError } = await resend.emails.send({
+          from: NOTIFICATION_FROM,
+          to: [plan.email.to],
+          subject: plan.email.subject,
+          html: plan.email.html,
+        });
+
+        if (emailError) {
+          console.error('Error sending deleted-shift email:', emailError);
+        } else {
+          deletedShiftEmailId = emailResult?.id;
+        }
+      }
+
+      if (plan.push) {
+        try {
+          await sendWebPushToUser(supabase, plan.push.userId, deletedShift.restaurant_id, plan.push.payload);
+        } catch (e) {
+          console.error('Web push failed:', e);
+        }
+      }
+
+      console.log(`Successfully sent deleted-shift notification: emailId=${deletedShiftEmailId}`);
+      return successResponse({
+        message: 'Notification sent',
+        emailId: deletedShiftEmailId,
+      });
+    }
 
     // Get shift details
     const { data: shift, error: shiftError } = await supabase

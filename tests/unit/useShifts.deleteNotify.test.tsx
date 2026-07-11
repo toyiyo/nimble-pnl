@@ -51,14 +51,23 @@ const createWrapper = () => {
   return Wrapper;
 };
 
-function setupDeleteChain(deleteResult: { error: { message: string } | null } = { error: null }) {
-  const deleteEqRestaurant = vi.fn().mockResolvedValue(deleteResult);
+function setupDeleteChain(
+  deleteResult: { data?: Array<{ id: string }> | null; error: { message: string } | null } = {
+    data: [{ id: 'shift-1' }],
+    error: null,
+  },
+) {
+  // The hook's delete ends in `.select('id')` so it can confirm a row was
+  // actually removed before notifying — default to one deleted row.
+  const rows = deleteResult.data === undefined ? [{ id: 'shift-1' }] : deleteResult.data;
+  const selectFn = vi.fn().mockResolvedValue({ data: rows, error: deleteResult.error });
+  const deleteEqRestaurant = vi.fn().mockReturnValue({ select: selectFn });
   const deleteEqId = vi.fn().mockReturnValue({ eq: deleteEqRestaurant });
   const del = vi.fn().mockReturnValue({ eq: deleteEqId });
 
   mockSupabase.from.mockReturnValue({ delete: del });
 
-  return { deleteEqId, deleteEqRestaurant, del };
+  return { deleteEqId, deleteEqRestaurant, del, selectFn };
 }
 
 const publishedAssignedShift: DeletableShift = {
@@ -116,6 +125,21 @@ describe('useDeleteShift — shift-deleted notification (fire-and-forget)', () =
 
     await act(async () => {
       result.current.mutate({ id: 'shift-1', restaurantId: 'rest-123', shift: unpublishedShift });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it('does NOT invoke send-shift-notification when the delete removed zero rows', async () => {
+    // Stale/already-deleted row (or RLS-filtered): delete returns error:null with
+    // no rows. Notifying here would send a false "shift removed" message.
+    setupDeleteChain({ data: [], error: null });
+
+    const { result } = renderHook(() => useDeleteShift(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      result.current.mutate({ id: 'shift-1', restaurantId: 'rest-123', shift: publishedAssignedShift });
     });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));

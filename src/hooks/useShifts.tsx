@@ -304,14 +304,21 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
       restaurantId: string;
       shift?: DeletableShift;
     }) => {
-      const { error } = await supabase
+      const { data: deletedRows, error } = await supabase
         .from('shifts')
         .delete()
         .eq('id', id)
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .select('id');
 
       if (error) throw error;
-      return { id, restaurantId, shift };
+
+      // Only carry the snapshot forward (→ only notify) when a row was actually
+      // removed. A delete against a stale/already-removed row (or one filtered by
+      // RLS) returns error:null with zero rows — notifying there would send a
+      // false "shift removed" message to the employee.
+      const deletedCount = deletedRows?.length ?? 0;
+      return { id, restaurantId, shift: deletedCount > 0 ? shift : undefined };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });

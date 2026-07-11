@@ -48,6 +48,24 @@ split before the pairing engine ever sees it:
 | Dashboard labor cost | `src/hooks/useLaborCostsFromTimeTracking.tsx` | Overnight hours dropped at range edges |
 | AI tool: P&L labor | `supabase/functions/ai-execute-tool/index.ts` (~L231) | Split-shift hours in AI "profit & loss" labor line |
 | AI tool: payroll summary | `supabase/functions/ai-execute-tool/index.ts` (~L2242) | Split-shift hours in AI "payroll summary" |
+| Tips "Calculate from hours" | `src/pages/Tips.tsx` (L106 fetch → L277/L655 calc) | **Zero** tip hours for overnight shifts (single-day fetch → lone punch → no pair) |
+
+### Caller audit (added after user request)
+
+Audited every caller of the punch→hours functions (`calculateWorkedHours`,
+`parseWorkPeriods`, `processPunchesForPeriod`, `calculateActualLaborCost*`):
+
+- **Fixed money surfaces:** payroll, open-sessions, timecard, dashboard, AI
+  tools, and **Tips** (both `calculateWorkedHours` call sites share the one
+  L106 day-window fetch).
+- **Safe — not windowed:** `timePunchImport.ts` parses the *entire uploaded*
+  dataset (bulk-import preview), so overnight shifts pair fine.
+- **Display-only — no hours math:** `EmployeeClock.tsx` renders today's punch
+  *list*; status comes from the unbounded `get_employee_punch_status` RPC.
+- **Deferred (own follow-ups):** `calculateActualLaborCostForMonth`
+  (noon-anchored, DST-sensitive — see trade-offs) and
+  `useWeekStaffingSuggestions` SPLH (a non-payroll *suggestion heuristic*, uses
+  legacy `in`/`out` punch types, `hours<24` guard — not money owed).
 
 The one path that already does it right is `fetchLaborData` in the **same**
 edge file (`endLookaheadHours: 18`) → `calculateHoursPerEmployee`/

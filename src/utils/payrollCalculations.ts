@@ -385,6 +385,28 @@ export function calculateWorkedHoursWithAnomalies(punches: TimePunch[]): {
 }
 
 /**
+ * Worked hours (excluding breaks) for shifts whose CLOCK-IN falls within
+ * [dayStart, dayEnd] — i.e. attributed to the clock-in day, not split at
+ * midnight. Callers pass a ±overnight-buffered punch set (so a shift that
+ * crosses midnight is paired whole) and the day's local bounds; a shift that
+ * started the night before or the next morning is dropped by clock-in
+ * attribution, so it is counted exactly once, on the night it began.
+ *
+ * Used by the Tips "calculate from hours" flow, which is scoped to a single
+ * service day. Mirrors calculateWorkedHours but with clock-in-day windowing.
+ */
+export function calculateWorkedHoursForClockInDay(
+  punches: TimePunch[],
+  dayStart: Date,
+  dayEnd: Date,
+): number {
+  const { periods } = parseWorkPeriods(punches);
+  return periodsInWindow(periods, dayStart, dayEnd)
+    .filter(p => !p.isBreak)
+    .reduce((sum, p) => sum + p.hours, 0);
+}
+
+/**
  * Calculate regular and overtime hours per week
  * Overtime is hours worked beyond 40 in a calendar week at 1.5x rate
  */

@@ -124,15 +124,23 @@ Both overloads share the impl, so both the manual and cron paths pick up tax.
    repo/prod drift (lesson PR #579/#581); splice Step 6 in with the loop
    `SELECT` extended by `fo.tax_amount`.
 
-### Backfill (post-deploy, manual)
+### Backfill
 Tax lives only in the raw datafeed, which is not stored — so existing
-`focus_orders` rows must be **re-fetched + re-parsed** to populate
-`tax_amount`. The custom-range / backfill sync paths do **not** wire the
-delta-skip `stateStore`, so a re-run re-parses fresh.
+`focus_orders` rows must be **re-fetched + re-parsed** to populate `tax_amount`.
 
-Plan: after merge + deploy, run two custom-range Focus syncs (≤14-day cap):
-June 24–Jul 7 and Jul 8–present, for `7c0c76e3-…`. Then verify Cold Stone RC
-June tax ≈ **$555.55**.
+**Automatic (all restaurants), via fingerprint invalidation.** The bulk-cron
+sync delta-skips days whose `<Checks>` XML is unchanged (fingerprint match in
+`focus_datafeed_state`) *before* parsing — so already-fingerprinted closed days
+would keep `tax_amount = 0` forever (Codex P1, PR #600). Migration
+`20260710140000` **clears `focus_datafeed_state`**, so the next cron ticks
+recompute fingerprints, re-parse each day (idempotent upserts), and populate
+tax for **every** Focus restaurant over subsequent runs (bounded by each run's
+per-restaurant day cap; self-healing).
+
+**Manual (faster reconciliation of the target).** The custom-range sync path
+does not wire the delta-skip `stateStore`, so it re-parses immediately. After
+deploy, run two custom-range Focus syncs (≤14-day cap) for `7c0c76e3-…`: June
+24–Jul 7 and Jul 8–present, then verify Cold Stone RC June tax ≈ **$555.55**.
 
 ## Idempotency & edge cases
 - Tax row is one-per-order, fixed key `…_tax`; re-sync UPSERTs, preserving

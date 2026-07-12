@@ -1,6 +1,7 @@
 import { toZonedTime } from 'date-fns-tz';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { formatUTCTimeToLocal } from '@/lib/conflictFormatUtils';
 
 export interface EffectiveSlot {
   isAvailable: boolean;
@@ -142,21 +143,13 @@ export function availabilityColorClasses(effective: EffectiveAvailability): Avai
   return { bg: 'bg-muted/30 hover:bg-muted/50', text: 'text-muted-foreground' };
 }
 
-function toDisplay(time: string, timezone: string, date: Date): string {
-  const local = utcTimeToLocalTime(time, timezone, date); // "HH:MM"
-  const [h, m] = local.split(':').map(Number);
-  const suffix = h < 12 ? 'AM' : 'PM';
-  const hour12 = h % 12 || 12;
-  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`;
-}
-
 /** Localized one-line label for an EffectiveAvailability cell. */
 export function availabilityLabel(effective: EffectiveAvailability, timezone: string, date: Date): string {
   if (effective.type === 'not-set') return 'No availability set';
   const slot = effective.slots[0];
   if (!slot?.isAvailable) return 'Unavailable';
   if (!slot.startTime || !slot.endTime) return 'Available';
-  return `Available ${toDisplay(slot.startTime, timezone, date)} – ${toDisplay(slot.endTime, timezone, date)}`;
+  return `Available ${formatUTCTimeToLocal(slot.startTime, timezone, date)} – ${formatUTCTimeToLocal(slot.endTime, timezone, date)}`;
 }
 
 /**

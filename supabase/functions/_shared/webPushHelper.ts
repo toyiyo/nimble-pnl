@@ -24,7 +24,6 @@ interface BulkWebPushSubscription extends WebPushSubscription {
 // ~10s edge-function CPU budget safe. Matches the codebase's "max N per run" pattern
 // (see e.g. Toast bulk sync's "max 200 orders per restaurant per run").
 const DEFAULT_MAX_TARGETS = 500;
-const BULK_SEND_CONCURRENCY = 20;
 
 /**
  * Send Web Push notifications to all subscriptions for a user at a restaurant.
@@ -175,7 +174,7 @@ export async function sendWebPushToUsers(
         }
       }
     },
-    opts?.concurrency ?? BULK_SEND_CONCURRENCY
+    opts?.concurrency
   );
 
   // Clean up stale subscriptions in one batch.

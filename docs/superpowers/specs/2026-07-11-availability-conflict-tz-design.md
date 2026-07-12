@@ -92,6 +92,13 @@ check_availability_conflict(
 )
 ```
 
+`LANGUAGE plpgsql STABLE`, `SECURITY INVOKER` (both unchanged — RLS on
+`restaurants` / `employee_availability` / `availability_exceptions` stays enforced
+under the caller's role), plus `SET search_path = public, pg_catalog` (new, per
+review — matches repo convention and silences the `function_search_path_mutable`
+advisory). No `DROP` needed: signature/return shape are unchanged, so
+`CREATE OR REPLACE` is a pure catalog update with no lock risk.
+
 ### Algorithm (restaurant-local frame)
 
 1. **Resolve timezone.** `SELECT timezone INTO v_tz FROM restaurants WHERE id =
@@ -123,28 +130,63 @@ check_availability_conflict(
      converted window wraps past midnight into `v_current_date`. If no window
      contains the segment → conflict `recurring`, message *"Shift on <date> is
      outside employee availability"*, returning the nearest stored UTC window in
-     `available_start`/`available_end`.
+     `available_start`/`available_end`. The "nearest window" tracker is updated
+     across **both** the current-day and previous-day-overnight candidate loops, so
+     an early-morning shift outside a prior-day overnight window still returns that
+     window (fixes a pre-existing NULL-window gap flagged in review).
+   - **Known parity gap (documented in the migration comment):** the exception
+     lookup keeps `LIMIT 1`, so an employee with multiple split-window exceptions on
+     one date is not fully modeled the way `computeEffectiveAvailability` (array of
+     slots) is. Out of scope (no schema change); noted so it isn't silently
+     inherited.
 
-### UTC-clock window → local, anchored to a date
+### UTC-clock window → local (mirror the **grid**, not `availability-tz.ts`)
 
-Mirror `availability-tz.ts::utcClockToLocal` / `convertOne`:
+**Correction (from Phase 2.5 review).** The first draft proposed mirroring
+`availability-tz.ts::convertOne`, which *recomputes* the local weekday from the
+converted instant (`zoned.getDay()`) and only compensates for **forward** end-time
+rollover. That is wrong for windows whose local start, converted to UTC, exceeds
+24:00 — e.g. `America/Los_Angeles` Monday 6:00 PM (stored `start_utc=01:00`,
+`end_utc=02:00`, `day_of_week=1`). Anchoring `01:00 UTC` to Monday yields **Sunday**
+18:00 local, so the whole window is misattributed to Sunday and a valid Monday
+6 PM shift produces a false conflict. (This is a latent discrepancy in
+`availability-tz.ts` itself vs. the grid; the AI scheduler inherits it. Logged as an
+out-of-scope follow-up — see "Follow-ups".)
+
+The **Availability grid** — the user's source of truth, which displays correctly —
+does it right, and is what the RPC must match: it **trusts the stored
+`day_of_week`** and converts only the **time-of-day**, never recomputing the day.
+So:
 
 ```
--- start: interpret (anchor_date + start_utc) as a UTC instant, read local wall-clock
-local_start := ((anchor_date + start_utc)::timestamp AT TIME ZONE 'UTC') AT TIME ZONE v_tz;
--- end: if the stored window crosses UTC midnight (end_utc <= start_utc), the end
--- instant is on the next day
-end_anchor  := CASE WHEN end_utc <= start_utc THEN anchor_date + 1 ELSE anchor_date END;
-local_end   := ((end_anchor + end_utc)::timestamp AT TIME ZONE 'UTC') AT TIME ZONE v_tz;
+-- Convert a stored UTC-clock TIME to local time-of-day, anchored to local day D.
+-- The date part may roll; ::time discards it (exactly what the grid does).
+local_start_tod := (((D + start_utc)::timestamp AT TIME ZONE 'UTC') AT TIME ZONE v_tz)::time;
+local_end_tod   := (((D + end_utc)::timestamp   AT TIME ZONE 'UTC') AT TIME ZONE v_tz)::time;
+
+-- Build the concrete local window on day D. A LOCAL overnight window
+-- (local_end_tod <= local_start_tod) ends on D+1.
+window_start_ts := D + local_start_tod;
+window_end_ts   := D + local_end_tod + (CASE WHEN local_end_tod <= local_start_tod
+                                             THEN INTERVAL '1 day' ELSE INTERVAL '0' END);
 ```
 
-`anchor_date = v_current_date` for the current-day row and `v_current_date - 1` for
-the previous-day overnight row. Comparisons use these concrete local `timestamp`
-values, so a window that runs 6:00 PM → 2:00 AM is represented as
-`[D 18:00, D+1 02:00]` and containment "just works" without special-casing
-time-of-day wrap. This anchoring matches how the grid localizes each cell, so the
-RPC and the grid stay consistent (including the documented ±1h edge at a DST
-boundary, which both share).
+Because `local_start_tod` is always a time-of-day in `[00:00, 24:00)`, a window
+occupies day **D** and, if locally overnight, spills into **D+1** — it can never
+spill backward onto D−1. Therefore the candidate set for a shift on local date `X`
+is exactly:
+
+- recurring/exception rows filed under `day_of_week = DOW(X)`, anchored at `X`; **plus**
+- recurring rows filed under `day_of_week = DOW(X − 1)` whose converted window is
+  locally overnight (`local_end_tod <= local_start_tod`), anchored at `X − 1` (their
+  window spills into the morning of `X`).
+
+Containment is tested on concrete local `timestamp`s, so a 6 PM → 2 AM window is
+`[X 18:00, X+1 02:00]` and overnight "just works." This trusts the stored weekday
+and converts only the clock, so the RPC and the grid stay consistent by
+construction (including the documented ±1h DST-boundary edge, which both share).
+There is **no** `zoned.getDay()`-style day recomputation and **no** forward/backward
+anchor guessing.
 
 ### Return contract (unchanged, now correctly populated)
 
@@ -169,38 +211,79 @@ Source of truth: `computeEffectiveAvailability(availability, exceptions, weekSta
 employeeIds)` — the same function the Availability grid uses, so the planner/timeline
 overlay is consistent with that grid by construction.
 
+### Shared color/aria helper (new — kills triplication)
+
+Extract into `src/lib/effectiveAvailability.ts`:
+
+- `availabilityColorClasses(effective): { bg: string; text: string }` returning the
+  **exact** semantic treatment used by `TeamAvailabilityGrid.AvailabilityCell` so the
+  grid, the sidebar strip, and the timeline bar can't drift:
+  - available (recurring or exception) → emerald
+  - **exception-unavailable → amber** (`type === 'exception' && !isAvailable`) —
+    matches the grid; the first draft wrongly collapsed this into red
+  - recurring-unavailable → red (with the hatch below)
+  - not-set → neutral `bg-muted/30`
+- `availabilityLabel(effective, timezone, date): string` producing the localized text
+  ("Available 2:00 PM – 10:30 PM" / "Unavailable" / "No availability set"), reusing
+  `utcTimeToLocalTime(time, timezone, date)`.
+- `TeamAvailabilityGrid.AvailabilityCell` is refactored to consume these helpers too,
+  so "consistent by construction" covers rendering, not just data.
+
+The red-unavailable **hatch** is a `repeating-linear-gradient` referencing a semantic
+color at low alpha (e.g. `hsl(var(--destructive) / 0.12)`), not a hex — so Phase 7a
+has something concrete to check.
+
 ### 3a. `ShiftPlannerTab` wiring
 
 - Already calls `useEmployeeAvailability(restaurantId)`. Add
   `useAvailabilityExceptions(restaurantId)`.
 - `useMemo` an effective-availability map for the planner's `weekStart` over the
-  visible employees, keyed `employeeId → Map<dow, EffectiveAvailability>`.
-- Pass each employee's slice into `EmployeeSidebar` → `EmployeeMiniWeek`, and into
-  the timeline lane model.
+  visible employees, keyed `employeeId → Map<dow, EffectiveAvailability>`. Single
+  `useMemo` so the `Map` identity is stable across renders (avoids invalidating
+  memoized rows spuriously).
+- Thread `restaurantTimezone` (already at `ShiftPlannerTab.tsx:199`) and a per-cell
+  concrete `Date` (not just `weekDays: string[]`) through `ShiftPlannerTab →
+  EmployeeSidebar → DraggableEmployee → EmployeeMiniWeek`, so the DST-correct
+  conversion anchors on the cell's date (mirrors `AvailabilityCell`'s `date` prop).
+  Added to `EmployeeSidebarProps` explicitly.
+- Pass each employee's availability slice into the sidebar, and (for 3c) into the
+  timeline model so each bar knows its employee's effective availability.
 
 ### 3b. `EmployeeMiniWeek` (sidebar strip) — primary surface
 
-- Behind each day's shift bars, paint an availability tint keyed off the day's
-  `EffectiveAvailability`:
-  - available (window) → `bg-emerald-500/10`
-  - unavailable (recurring off / unavailable exception) → `bg-red-500/10` with a
-    faint diagonal hatch
-  - not-set → current neutral `bg-muted/30`
-- Per-day accessibility: replace the blanket `aria-hidden="true"` with a per-day
-  `role="img"` + `aria-label` and a shadcn `Tooltip`: *"Available 2:00 PM – 10:30
-  PM"*, *"Unavailable Tue"*, or *"No availability set."* Times localized via
-  `utcTimeToLocalTime` (restaurant timezone + the cell's date as DST anchor),
-  matching the Availability grid's formatting.
-- Component stays memoized; the availability slice is precomputed in the parent and
-  passed as a prop (no hooks added inside the memoized row).
+- Behind each day's shift bars, paint the tint from `availabilityColorClasses`.
+- **Accessibility (revised per review — no 7-tab-stop explosion):** keep individual
+  day cells non-focusable (`aria-hidden`); expose **one** focusable, SR-visible
+  summary per employee row — a single `aria-label` on the whole strip summarizing the
+  week ("Availability — Mon 2:00–10:30 PM, Tue off, Wed not set, …"), optionally in a
+  single shadcn `Tooltip`. Gives keyboard/AT/touch users the info without ~7 tab
+  stops per employee (≈280 on a 40-person roster). Per-day drill-down already lives
+  in `TeamAvailabilityGrid`; the strip stays a glanceable summary.
+- Component stays memoized; the availability slice + timezone + dates are precomputed
+  in the parent and passed as props (no hooks inside the memoized row).
+- **`DraggableEmployee` memo comparator** (`EmployeeSidebar.tsx:151-161`) enumerates
+  props explicitly — the new `availabilityByDow` (+ timezone/dates) prop **must** be
+  added to the comparator, or a real availability edit won't invalidate the row.
+- Roster virtualization out of scope (typical rosters < 100, CLAUDE.md threshold);
+  noted so the 7×-per-row DOM growth is a conscious, bounded choice.
 
-### 3c. Timeline lanes — secondary surface
+### 3c. Timeline — outside-availability marker on shift **bars** (revised per review)
 
-- In `TimelineLane` (via `useTimelineModel`), render a subtle availability band for
-  the lane's employee/day: a thin left border or low-opacity background over the
-  lane's available window(s), reusing the same effective slice. Unavailable days get
-  a muted/hatched lane background. Keep it low-contrast so shift bars remain the
-  focal point; expose the same `aria-label` semantics.
+The timeline groups bars by area/position, **not** by employee (`buildLanes` in
+`src/lib/timelineModel.ts`), so there is no per-employee lane to tint. Instead the
+per-employee treatment goes on each **`TimelineBar`**, which carries one
+`shift.employee_id`:
+
+- Compute, per bar, whether the shift falls **outside** its employee's effective
+  availability for that local day — reusing the same effective slice and the same
+  local-window predicate as the fixed RPC (a small shared predicate so the bar marker
+  and the drag-commit dialog never disagree).
+- When outside, render a warning treatment (amber left border / stripe) with an
+  `aria-label` suffix ("… — outside availability"). It updates live as a bar is
+  dragged/resized (`useTimelineBarDrag`) — the timeline's analog of "see availability
+  before you commit."
+- Available/normal bars unchanged; marker low-contrast so bars stay legible in light
+  and dark (validated in Phase 5).
 
 ## Testing
 
@@ -208,19 +291,43 @@ overlay is consistent with that grid by construction.
 
 Extend the existing suites (`availability_conflict_utc.sql`,
 `availability_overnight.sql`, `availability_conflict_structured.sql`) and add
-timezone regressions. All dates computed relative to `CURRENT_DATE` (lesson
-2026-04-21); deterministic fixtures — RLS disabled in-txn, delete-before-insert in
-FK order, `ON CONFLICT DO UPDATE` (lesson 2026-04-22). Set the fixture restaurant's
-`timezone` explicitly per case.
+timezone regressions. Deterministic fixtures — RLS disabled in-txn,
+delete-before-insert in FK order, `ON CONFLICT DO UPDATE` (lesson 2026-04-22). Set
+the fixture restaurant's `timezone` explicitly per case.
+
+**Date strategy (corrected from Phase 2.5 review).** The reviewed draft said "dates
+relative to `CURRENT_DATE`," but lesson 2026-04-21 was about a *future-filtering*
+function; `check_availability_conflict` does **no** date filtering, so that lesson
+does not apply here — and `CURRENT_DATE`-relative dates would make a hand-computed
+UTC-clock fixture silently wrong for the months the resolved date lands in the other
+DST regime. Therefore: use **fixed absolute dates** (a fixed date's DST status never
+changes), like the existing suites, AND **derive the stored UTC-clock value from the
+intended local time via inline SQL** rather than hand arithmetic, e.g.
+
+```sql
+-- stored UTC clock for "2:00 PM local on 2027-07-13 in America/New_York"
+(( '2027-07-13 14:00'::timestamp AT TIME ZONE 'America/New_York') AT TIME ZONE 'UTC')::time
+```
+
+so each fixture is internally DST-correct regardless of when CI runs. Pick one
+summer (EDT) and one winter (EST) fixed date so both offsets are exercised.
 
 - **Non-UTC regression (the reported bug):** restaurant `America/New_York`,
   recurring Tuesday available 2:00 PM–10:30 PM (stored as the corresponding UTC
   clock), employee marked unavailable Wednesday. A Tuesday-evening shift must return
   **no conflict** (previously returned the false "not available on this day").
+- **Late-local-start (the backward-rollover regression — the review's critical
+  find):** `America/Los_Angeles`, recurring available **6:00 PM–7:00 PM local**
+  (start converts to a next-UTC-day clock). A same-day 6:00–7:00 PM shift must return
+  **no conflict**. This case would have FAILED the first-draft `convertOne`-mirroring
+  formula; it pins the grid-consistent time-of-day approach. Include a summer and a
+  winter fixed date.
 - **Partial outside-window:** same setup, Tuesday shift 11:00 AM–1:00 PM → conflict
   `recurring` with `available_start`/`available_end` = the stored UTC window.
 - **Overnight local window:** available 6:00 PM–2:00 AM local; a 10:00 PM–1:00 AM
-  shift → no conflict; a 3:00 AM shift → conflict.
+  shift → no conflict; a 3:00 AM shift → conflict; and an **early-morning shift
+  covered only by the prior-day overnight window** returns that window in
+  `available_start`/`available_end` (pins the nearest-window fix).
 - **Exception unavailable / exception window** in a non-UTC tz.
 - **UTC restaurant** cases preserved (existing suites must still pass).
 - **Invalid/empty timezone** → treated as UTC (no throw).
@@ -240,21 +347,44 @@ FK order, `ON CONFLICT DO UPDATE` (lesson 2026-04-22). Set the fixture restauran
 - **New:** `supabase/migrations/<ts>_availability_conflict_local_tz.sql`
 - `supabase/tests/availability_conflict_utc.sql`,
   `availability_overnight.sql`, `availability_conflict_structured.sql` (extend)
-- `src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx` (wire exceptions +
-  effective map)
-- `src/components/scheduling/ShiftPlanner/EmployeeSidebar.tsx`,
-  `EmployeeMiniWeek.tsx` (availability tint + tooltip/aria)
-- `src/components/scheduling/ShiftTimeline/TimelineLane.tsx`,
-  `useTimelineModel.ts` (lane availability band)
-- `tests/unit/effectiveAvailability.test.ts`, `conflictFormatUtils.test.ts` (extend)
+- `src/lib/effectiveAvailability.ts` — add `availabilityColorClasses` +
+  `availabilityLabel` shared helpers; add a small "shift outside effective
+  availability" predicate reused by the timeline bar marker.
+- `src/components/scheduling/TeamAvailabilityGrid.tsx` — refactor `AvailabilityCell`
+  to consume the shared color/label helpers (no visual change).
+- `src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx` — add
+  `useAvailabilityExceptions`, memoize the effective map, thread timezone + dates.
+- `src/components/scheduling/ShiftPlanner/EmployeeSidebar.tsx` — new
+  `availabilityByDow`/`timezone`/`dates` props (+ update `DraggableEmployee` memo
+  comparator).
+- `src/components/scheduling/ShiftPlanner/EmployeeMiniWeek.tsx` — availability tint +
+  single strip-level aria summary.
+- `src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx`,
+  `TimelineBar.tsx`, `useTimelineModel.ts`/`timelineModel.ts` — per-bar
+  outside-availability marker (thread the effective map to bars).
+- `tests/unit/effectiveAvailability.test.ts`, `conflictFormatUtils.test.ts` (extend);
+  new focused test for the shared color/label helpers if warranted.
 - Reference only (unchanged): `src/lib/conflictFormatUtils.ts`,
   `src/hooks/useConflictDetection.tsx`, `src/lib/availabilityTimeUtils.ts`,
   `supabase/functions/_shared/availability-tz.ts`
 
+## Follow-ups (out of scope, logged)
+
+- **`availability-tz.ts` evening-Pacific day-shift:** `convertOne` recomputes the
+  local weekday from the converted instant, so an evening window whose local start
+  rolls to the next UTC day is placed on the *previous* local day — disagreeing with
+  the grid (and now with the fixed RPC). The AI scheduler inherits this. File a
+  separate PR to make `availability-tz.ts` trust the stored `day_of_week` and convert
+  time-of-day only, matching the grid.
+- **Split-window exceptions:** the RPC's exception lookup keeps `LIMIT 1`; multiple
+  same-date exception slots aren't fully modeled. Revisit if/when exceptions gain
+  multi-slot UI.
+
 ## Risks
 
 - **plpgsql timezone math** is the exact class of subtle bug the codebase has been
-  bitten by. Mitigation: mirror `availability-tz.ts` precisely, compare concrete
+  bitten by. Mitigation: mirror the **grid's** semantics (trust stored
+  `day_of_week`, convert time-of-day only), compare concrete
   local `timestamp`s (not time-of-day), and pin behavior with the pgTAP tz suite
   above.
 - **DST ±1h edge:** stored UTC-clock times are anchored to the writer's "today"

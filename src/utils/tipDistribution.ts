@@ -127,10 +127,8 @@ export function aggregateTipDistribution(
  * - `unpaid` — earned something but nothing has been paid yet.
  */
 export function paymentStatus(distribution: EmployeeDistribution): PaymentStatus {
-  const { earnedCents, paidCents, unpaidCents } = distribution;
+  const { paidCents, unpaidCents } = distribution;
 
   if (unpaidCents === 0) return 'paid';
-  if (paidCents > 0 && unpaidCents > 0) return 'partial';
-  if (paidCents === 0 && earnedCents > 0) return 'unpaid';
-  return 'paid';
+  return paidCents > 0 ? 'partial' : 'unpaid';
 }

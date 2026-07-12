@@ -1,6 +1,7 @@
 import { startOfDay, endOfDay } from 'date-fns';
 import { TimePunch } from '@/types/timeTracking';
 import { isWithinWindow } from '@/utils/punchWindow';
+import { MAX_SHIFT_GAP_HOURS } from '@/utils/payrollCalculations';
 
 /**
  * A clock_in→clock_out pair rendered as one editable bar on the Manual timeline.
@@ -50,6 +51,15 @@ export function buildTimelineBlocks(punches: TimePunch[], date: Date): TimeBlock
     if (punch.punch_type !== 'clock_in') continue;
     const next = sorted[i + 1];
     if (next?.punch_type === 'clock_out') {
+      i++; // Consume the clock_out regardless (matches parseWorkPeriods).
+      // Cap the pairable gap the same way payroll/timecard do: a clock_out more
+      // than MAX_SHIFT_GAP_HOURS after the clock_in is a missing-punch artifact
+      // (e.g. a forgotten clock-out force-closed hours later), not a real shift —
+      // don't fabricate a multi-day block from it.
+      const gapHours =
+        (new Date(next.punch_time).getTime() - new Date(punch.punch_time).getTime()) / (1000 * 60 * 60);
+      if (gapHours > MAX_SHIFT_GAP_HOURS) continue;
+
       const importSource = getImportSource(punch) || getImportSource(next);
       blocks.push({
         id: `${punch.id}-${next.id}`,
@@ -63,7 +73,6 @@ export function buildTimelineBlocks(punches: TimePunch[], date: Date): TimeBlock
         isImported: Boolean(importSource),
         importSource: importSource || undefined,
       });
-      i++; // Skip the paired clock_out
     }
   }
 

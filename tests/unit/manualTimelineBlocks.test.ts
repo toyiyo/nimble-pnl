@@ -64,6 +64,24 @@ describe('buildTimelineBlocks', () => {
     expect(buildTimelineBlocks(punches, day)).toHaveLength(0);
   });
 
+  it('excludes a pair whose gap exceeds MAX_SHIFT_GAP_HOURS (missing-punch artifact)', () => {
+    // Jul 10 10:00 clock-in, clock-out 40h later (Jul 11 whole day open, forgot to
+    // clock out, force-closed Jul 12 02:00). Payroll/timecard exclude this; so must we.
+    const punches = [
+      p('clock_in', new Date(2026, 6, 10, 10, 0).toISOString()),
+      p('clock_out', new Date(2026, 6, 12, 2, 0).toISOString()),
+    ];
+    expect(buildTimelineBlocks(punches, day)).toHaveLength(0);
+  });
+
+  it('keeps a genuine overnight shift within the gap cap', () => {
+    const punches = [
+      p('clock_in', new Date(2026, 6, 10, 20, 0).toISOString()),
+      p('clock_out', new Date(2026, 6, 11, 6, 0).toISOString()), // 10h
+    ];
+    expect(buildTimelineBlocks(punches, day)).toHaveLength(1);
+  });
+
   it('flags an imported block from device_info', () => {
     const punches = [
       p('clock_in', new Date(2026, 6, 10, 9, 0).toISOString(), { device_info: 'import:Toast' }),

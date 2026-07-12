@@ -192,4 +192,66 @@ test.describe('Overnight shift hours (punch windowing fix)', () => {
     await expect(hoursInput).toBeVisible({ timeout: 5000 });
     await expect(hoursInput).toHaveValue('5');
   });
+
+  test('Time Clock Manual view counts a cross-midnight shift on its clock-in day', async ({ page }) => {
+    const user = generateTestUser();
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(async () => {
+      const fn = (window as any).__getRestaurantId;
+      return fn ? await fn() : null;
+    });
+    expect(restaurantId).toBeTruthy();
+
+    // Shift day = yesterday (view it by stepping back one day from "Today").
+    const now = new Date();
+    const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yest = new Date(todayMidnight); yest.setDate(yest.getDate() - 1);
+    const at = (base: Date, h: number, m: number) => {
+      const d = new Date(base); d.setHours(h, m, 0, 0); return d.toISOString();
+    };
+
+    const overnightId = randomUUID(); // 4:00 PM yest -> 12:30 AM today = 8h 30m
+    const sameDayId = randomUUID();   // 2:00 PM -> 8:00 PM yest = 6h
+
+    await page.evaluate(
+      async ({ restaurantId, overnightId, sameDayId, punches }) => {
+        const insertEmployees = (window as any).__insertEmployees;
+        const insertTimePunches = (window as any).__insertTimePunches;
+        await insertEmployees([
+          { id: overnightId, name: 'Rana Overnight', position: 'Server', compensation_type: 'hourly', hourly_rate: 1500, status: 'active', is_active: true, tip_eligible: true, requires_time_punch: true, hire_date: '2026-01-01' },
+          { id: sameDayId, name: 'Sam Sameday', position: 'Mixer', compensation_type: 'hourly', hourly_rate: 1500, status: 'active', is_active: true, tip_eligible: true, requires_time_punch: true, hire_date: '2026-01-01' },
+        ], restaurantId);
+        await insertTimePunches(punches, restaurantId);
+      },
+      {
+        restaurantId, overnightId, sameDayId,
+        punches: [
+          { employee_id: overnightId, punch_type: 'clock_in', punch_time: at(yest, 16, 0) },
+          { employee_id: overnightId, punch_type: 'clock_out', punch_time: at(todayMidnight, 0, 30) },
+          { employee_id: sameDayId, punch_type: 'clock_in', punch_time: at(yest, 14, 0) },
+          { employee_id: sameDayId, punch_type: 'clock_out', punch_time: at(yest, 20, 0) },
+        ],
+      }
+    );
+
+    await page.setViewportSize({ width: 1280, height: 1400 });
+    await page.goto('/time-punches');
+    await page.getByRole('heading', { name: /time clock/i }).first().waitFor({ state: 'visible', timeout: 25000 });
+    // Default view is Day + Manual; step back one day to the shift day.
+    await page.getByRole('button', { name: /^previous$/i }).click();
+
+    // Deterministic wait: the value-bearing assertions below poll until the
+    // previous day's buffered punches load and the Manual view recomputes.
+    await expect(page.getByText(/Total hours for/i)).toBeVisible({ timeout: 10000 });
+    // Overnight shift counts its full 8h 30m on the clock-in day (was 0h before).
+    await expect(page.getByText('8h 30m').first()).toBeVisible({ timeout: 10000 });
+    // Same-day contrast shift.
+    await expect(page.getByText('6h', { exact: true }).first()).toBeVisible();
+    // Manual footer total includes BOTH (8h30m + 6h = 14h 30m), not same-day-only;
+    // pre-fix this read 6h (overnight shift dropped). Distinctive value, so a plain
+    // text match is unambiguous.
+    await expect(page.getByText('14h 30m').first()).toBeVisible();
+  });
 });

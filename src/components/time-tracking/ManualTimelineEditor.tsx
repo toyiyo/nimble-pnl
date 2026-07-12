@@ -13,22 +13,7 @@ import { useCreateTimePunch, useUpdateTimePunch, useDeleteTimePunch } from '@/ho
 import { useToast } from '@/hooks/use-toast';
 import { TimePunch } from '@/types/timeTracking';
 import { Employee } from '@/types/scheduling';
-
-interface TimeBlock {
-  id: string; // Unique ID for UI, maps to punch pair
-  startTime: Date;
-  endTime: Date;
-  breakMinutes?: number; // Optional break duration
-  notes?: string; // Optional notes
-  clockInPunchId?: string;
-  clockOutPunchId?: string;
-  hasClockInTime?: boolean;
-  hasClockOutTime?: boolean;
-  isNew?: boolean; // Track if this is unsaved
-  isSaving?: boolean;
-  isImported?: boolean;
-  importSource?: string;
-}
+import { TimeBlock, buildTimelineBlocks } from '@/utils/manualTimelineBlocks';
 
 interface EmployeeDay {
   employee: Employee;
@@ -51,14 +36,11 @@ interface ManualTimelineEditorProps {
 const HOURS_START = 0; // Midnight (12am)
 const HOURS_END = 24; // Midnight (12am next day)
 const TOTAL_HOURS = HOURS_END - HOURS_START;
+// Minimum rendered width (% of the 24h track) for a clipped cross-midnight bar,
+// so a shift that starts just before midnight is still visible/clickable.
+const MIN_CROSS_MIDNIGHT_WIDTH_PCT = 4;
 
-const getImportSource = (punch: TimePunch | undefined) => {
-  if (!punch?.device_info) return null;
-  if (!punch.device_info.startsWith('import:')) return null;
-  return punch.device_info.replace('import:', '').trim() || 'Uploaded';
-};
-
-export const ManualTimelineEditor = ({ 
+export const ManualTimelineEditor = ({
   employees, 
   date, 
   existingPunches, 
@@ -92,46 +74,19 @@ export const ManualTimelineEditor = ({
     const dayMap = new Map<string, EmployeeDay>();
     
     employees.forEach(employee => {
-      const employeePunches = existingPunches.filter(
-        p => p.employee_id === employee.id && isSameDay(new Date(p.punch_time), date)
-      );
-      
-      // Group punches into clock_in/clock_out pairs
-      const blocks: TimeBlock[] = [];
-      const sortedPunches = [...employeePunches].sort(
-        (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
-      );
-      
-      for (let i = 0; i < sortedPunches.length; i++) {
-        const punch = sortedPunches[i];
-        if (punch.punch_type === 'clock_in') {
-          const nextPunch = sortedPunches[i + 1];
-          if (nextPunch?.punch_type === 'clock_out') {
-            const importSource = getImportSource(punch) || getImportSource(nextPunch);
-            blocks.push({
-              id: `${punch.id}-${nextPunch.id}`,
-              startTime: new Date(punch.punch_time),
-              endTime: new Date(nextPunch.punch_time),
-              clockInPunchId: punch.id,
-              clockOutPunchId: nextPunch.id,
-              notes: punch.notes || nextPunch.notes,
-              hasClockInTime: true,
-              hasClockOutTime: true,
-              isImported: Boolean(importSource),
-              importSource: importSource || undefined,
-            });
-            i++; // Skip the clock_out - required for loop control
-          }
-        }
-      }
-      
-      const totalHours = blocks.reduce((sum, block) => 
+      // Pair across midnight and attribute each shift to its clock-in day.
+      // `existingPunches` is the ±18h buffered set, so an overnight shift's
+      // next-day clock-out is present to pair.
+      const employeePunches = existingPunches.filter(p => p.employee_id === employee.id);
+      const blocks = buildTimelineBlocks(employeePunches, date);
+
+      const totalHours = blocks.reduce((sum, block) =>
         sum + getBlockDurationMinutes(block) / 60, 0
       );
-      
+
       const hasWarning = totalHours > 12;
       const warningText = hasWarning ? 'Over 12 hours' : undefined;
-      
+
       dayMap.set(employee.id, {
         employee,
         date,
@@ -152,6 +107,11 @@ export const ManualTimelineEditor = ({
     const relativeHour = hour - HOURS_START;
     return (relativeHour / TOTAL_HOURS) * 100;
   };
+
+  // A block crosses midnight when its clock-out is not on the viewed day.
+  // Such blocks are clipped at the right edge, tagged "+1d", and view-only on
+  // the canvas (edit the clock-out via the Punch List).
+  const crossesMidnight = (block: TimeBlock) => !isSameDay(block.endTime, date);
 
   // Calculate time from position
 const getTimeFromPosition = (positionPercent: number): Date => {
@@ -709,26 +669,38 @@ const getBlockDurationMinutes = (block: TimeBlock) => {
                 
                 {/* Time blocks */}
                 {employeeDay.blocks.map((block) => {
+                  const overnight = crossesMidnight(block);
                   const startPos = getPositionFromTime(block.startTime);
-                  const endPos = getPositionFromTime(block.endTime);
-                  const width = endPos - startPos;
-                  
+                  // Cross-midnight: clip the bar to the right edge (never negative
+                  // width) and shift-left just enough to guarantee a visible/
+                  // clickable min width without overflowing the track.
+                  const left = overnight
+                    ? Math.min(startPos, 100 - MIN_CROSS_MIDNIGHT_WIDTH_PCT)
+                    : startPos;
+                  const width = overnight
+                    ? 100 - left
+                    : getPositionFromTime(block.endTime) - startPos;
+
                   return (
                     <div
                       key={block.id}
                       className={cn(
                         "absolute top-1 bottom-1 rounded-md flex items-center justify-center px-2 text-xs font-medium text-primary-foreground touch-none select-none",
                         !isDragging && "transition-all duration-150", // Only transition when NOT dragging
-                        block.isSaving 
-                          ? "bg-primary/50 animate-pulse" 
+                        block.isSaving
+                          ? "bg-primary/50 animate-pulse"
                           : block.isImported
                           ? "bg-primary/60 hover:bg-primary/70 border border-primary/30"
                           : "bg-primary hover:bg-primary/90"
                       )}
                       style={{
-                        left: `${startPos}%`,
+                        left: `${left}%`,
                         width: `${width}%`,
                       }}
+                      // Cross-midnight blocks are view-only on the canvas: swallow
+                      // body pointer events so a click can't spawn a stray same-day
+                      // block over a real next-day punch.
+                      onPointerDown={overnight ? (e) => e.stopPropagation() : undefined}
                     >
                       {/* Time label inside block */}
                       {width > 8 && (
@@ -736,7 +708,17 @@ const getBlockDurationMinutes = (block: TimeBlock) => {
                           {format(block.startTime, 'HH:mm')} - {format(block.endTime, 'HH:mm')}
                         </span>
                       )}
-                      
+
+                      {/* Cross-midnight end marker (right-anchored, extends left) */}
+                      {overnight && (
+                        <span
+                          className="absolute right-1 top-0 bottom-0 flex items-center whitespace-nowrap text-[10px] px-1 rounded bg-muted text-muted-foreground pointer-events-none z-20"
+                          aria-label={`Ends ${format(block.endTime, 'h:mm a')} the next day`}
+                        >
+                          ↳ {format(block.endTime, 'h:mm a')} +1d
+                        </span>
+                      )}
+
                       {/* Drag handles */}
                       <div
                         className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20 z-10"
@@ -745,13 +727,21 @@ const getBlockDurationMinutes = (block: TimeBlock) => {
                           handlePointerDown(e, employeeDay.employee.id, block.id, 'start');
                         }}
                       />
-                      <div
-                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20 z-10"
-                        onPointerDown={(e) => {
-                          e.stopPropagation();
-                          handlePointerDown(e, employeeDay.employee.id, block.id, 'end');
-                        }}
-                      />
+                      {overnight ? (
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-not-allowed z-10"
+                          title="Ends next day — edit the clock-out in the Punch List"
+                          onPointerDown={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <div
+                          className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-primary-foreground/20 z-10"
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                            handlePointerDown(e, employeeDay.employee.id, block.id, 'end');
+                          }}
+                        />
+                      )}
                     </div>
                   );
                 })}
@@ -866,6 +856,9 @@ const getBlockDurationMinutes = (block: TimeBlock) => {
                               <span className="text-muted-foreground">→</span>
                               <span className="text-sm font-medium">
                                 {format(block.endTime, 'h:mm a')}
+                                {crossesMidnight(block) && (
+                                  <span className="ml-1 text-xs text-muted-foreground">+1d</span>
+                                )}
                               </span>
                               <span className="text-xs text-muted-foreground">
                                 ({formatDuration(workMinutes)})

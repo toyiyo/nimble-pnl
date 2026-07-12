@@ -151,9 +151,10 @@ function TimelineBarImpl({
     const today = dowMap?.get(dow);
     if (!today) return bar.outsideAvailability;
     const prev = dowMap?.get((dow + 6) % 7);
+    const next = dowMap?.get((dow + 1) % 7);
     const draftStart = new Date(minutesToIso(dateStr, dragState.startMin, tz));
     const draftEnd = new Date(minutesToIso(dateStr, dragState.endMin, tz));
-    return shiftOutsideAvailability(today, prev, draftStart, draftEnd, tz, localDate);
+    return shiftOutsideAvailability(today, prev, draftStart, draftEnd, tz, localDate, next);
   }, [dragState, availabilityByEmployee, dateStr, tz, shift.employee_id, bar.outsideAvailability]);
 
   return (

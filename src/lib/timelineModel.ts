@@ -114,6 +114,7 @@ function assignRows(
   const localDate = new Date(dateStr + 'T00:00:00');
   const dow = localDate.getDay();
   const prevDow = (dow + 6) % 7;
+  const nextDow = (dow + 1) % 7;
 
   return pairs.map(({ shift: s, employee: e, hours }) => {
     const leftMin = isoToLocalMinutes(s.start_time, dateStr, tz);
@@ -134,8 +135,9 @@ function assignRows(
     const dowMap = availabilityByEmployee?.get(s.employee_id);
     const today = dowMap?.get(dow);
     const prev = dowMap?.get(prevDow);
+    const next = dowMap?.get(nextDow);
     const outsideAvailability = today
-      ? shiftOutsideAvailability(today, prev, new Date(s.start_time), new Date(s.end_time), tz, localDate)
+      ? shiftOutsideAvailability(today, prev, new Date(s.start_time), new Date(s.end_time), tz, localDate, next)
       : false;
 
     return {

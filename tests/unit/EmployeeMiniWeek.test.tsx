@@ -160,4 +160,41 @@ describe('<EmployeeMiniWeek> availability tint (Task 6)', () => {
       expect(cell!.getAttribute('aria-hidden')).toBe('true');
     }
   });
+
+  // CodeRabbit finding: `weekSummary` indexed `dates[i]` directly (no
+  // optional chaining), unlike the grid render's `dates?.[i]?.getDay()` a
+  // few lines below for the same lookup — a length mismatch between `dates`
+  // and `weekDays` would throw instead of degrading gracefully.
+  it('does not throw and falls back to "No availability set" when dates is shorter than weekDays', () => {
+    const availabilityByDow = new Map<number, EffectiveAvailability>([
+      [
+        1, // Monday
+        {
+          type: 'recurring',
+          slots: [{ isAvailable: true, startTime: '09:00:00', endTime: '17:00:00', sourceRecord: {} as never }],
+        },
+      ],
+    ]);
+    const shortDates = dates.slice(0, 3); // fewer entries than weekDays (7)
+    expect(() =>
+      renderWithTooltip(
+        <EmployeeMiniWeek
+          weekDays={weekDays}
+          employeeShifts={[]}
+          availabilityByDow={availabilityByDow}
+          timezone="UTC"
+          dates={shortDates}
+        />,
+      ),
+    ).not.toThrow();
+
+    // Days beyond shortDates' length (indices 3-6) fall back to a blank
+    // weekday label + "No availability set" (the `d ? ... : ''` branch) —
+    // the important assertion is that rendering didn't throw and Monday's
+    // real availability still made it into the summary.
+    const strip = screen.getByRole('img', {
+      name: /Availability — Mon Available 9:00 AM – 5:00 PM;.*No availability set/,
+    });
+    expect(strip).toBeInTheDocument();
+  });
 });

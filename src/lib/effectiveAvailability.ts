@@ -143,13 +143,22 @@ export function availabilityColorClasses(effective: EffectiveAvailability): Avai
   return { bg: 'bg-muted/30 hover:bg-muted/50', text: 'text-muted-foreground' };
 }
 
-/** Localized one-line label for an EffectiveAvailability cell. */
+/**
+ * Localized one-line label for an EffectiveAvailability cell. Joins every
+ * available slot (not just `slots[0]`) with ' + ', matching
+ * TeamAvailabilityGrid's split-shift display convention — otherwise an
+ * employee with two available windows on the same day loses the second
+ * window in this label's consumers (EmployeeMiniWeek's tooltip/aria-label).
+ */
 export function availabilityLabel(effective: EffectiveAvailability, timezone: string, date: Date): string {
   if (effective.type === 'not-set') return 'No availability set';
   const slot = effective.slots[0];
   if (!slot?.isAvailable) return 'Unavailable';
-  if (!slot.startTime || !slot.endTime) return 'Available';
-  return `Available ${formatUTCTimeToLocal(slot.startTime, timezone, date)} – ${formatUTCTimeToLocal(slot.endTime, timezone, date)}`;
+  const ranges = effective.slots
+    .filter((s) => s.isAvailable && s.startTime && s.endTime)
+    .map((s) => `${formatUTCTimeToLocal(s.startTime!, timezone, date)} – ${formatUTCTimeToLocal(s.endTime!, timezone, date)}`);
+  if (ranges.length === 0) return 'Available';
+  return `Available ${ranges.join(' + ')}`;
 }
 
 /**
@@ -176,7 +185,14 @@ function overnightPrevSlots(
  * day_of_week, convert only time-of-day, and treat a local end <= start as
  * overnight. `prevDay` is the previous local day's EffectiveAvailability
  * (needed so an overnight window from yesterday can cover today's early
- * hours).
+ * hours). `nextDay` is the NEXT local day's EffectiveAvailability — needed
+ * so a hard-unavailable exception/recurring-off on the day the shift's tail
+ * spills into can't be papered over by today's window alone (Codex finding:
+ * without this, a Fri 22:00–Sat 01:00 shift inside Friday's 18:00–02:00
+ * recurring window read as no-conflict here even when Saturday itself has an
+ * unavailable exception, contradicting the RPC's per-local-date walk, which
+ * checks Saturday's own data for the portion of the shift that falls on
+ * Saturday).
  */
 export function shiftOutsideAvailability(
   today: EffectiveAvailability,
@@ -185,6 +201,7 @@ export function shiftOutsideAvailability(
   shiftEnd: Date,
   timezone: string,
   date: Date,
+  nextDay?: EffectiveAvailability,
 ): boolean {
   // `today.slots` is empty for 'not-set', so this only fires for an actual
   // recurring-off / unavailable-exception row. Do NOT early-return for
@@ -204,11 +221,22 @@ export function shiftOutsideAvailability(
   );
   const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * 1440;
 
+  // The shift's tail falls on the NEXT local day — that day's own hard-off
+  // row (recurring-unavailable or unavailable exception) governs that
+  // portion regardless of what today's window covers (RPC's per-date walk
+  // counterpart to block 3c, but forward instead of backward).
+  if (dayDelta > 0 && nextDay) {
+    const nextSlot = nextDay.slots[0];
+    if (nextSlot && !nextSlot.isAvailable) return true;
+  }
+
   // Previous LOCAL calendar date, used (like the RPC's v_prev_date) as the
   // DST-offset anchor for converting prevDay's stored UTC-clock times — using
   // today's date here would pick the wrong UTC offset on a DST-transition day.
   const prevDate = new Date(date);
   prevDate.setDate(prevDate.getDate() - 1);
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + 1);
 
   const windows: Array<[number, number]> = [];
   const pushWindow = (slots: EffectiveSlot[], offsetMin: number, refDate: Date) => {
@@ -224,6 +252,7 @@ export function shiftOutsideAvailability(
   };
   pushWindow(today.slots, 0, date);
   if (prevDay) pushWindow(overnightPrevSlots(prevDay.slots, timezone, prevDate), -1440, prevDate);
+  if (dayDelta > 0 && nextDay) pushWindow(nextDay.slots, 1440, nextDate);
 
   if (windows.length === 0) return false; // available-all-day / unknown
   return !windows.some(([ws, we]) => startMin >= ws && endMin <= we);

@@ -159,6 +159,22 @@ describe('availabilityLabel', () => {
       availabilityLabel(avail(false, null, null, 'not-set'), 'UTC', new Date(2027, 6, 13)),
     ).toBe('No availability set');
   });
+
+  // CodeRabbit finding: split-shift (multi-slot) availability lost the
+  // second window because only slots[0] was read — the same day's second
+  // available window must show up too, matching TeamAvailabilityGrid's
+  // ' + '-joined split-shift display convention.
+  it('joins every available slot for a split-shift day', () => {
+    const splitDay: EffectiveAvailability = {
+      type: 'recurring',
+      slots: [
+        { isAvailable: true, startTime: '13:00:00', endTime: '16:00:00', sourceRecord: {} as never },
+        { isAvailable: true, startTime: '20:00:00', endTime: '23:00:00', sourceRecord: {} as never },
+      ],
+    };
+    const label = availabilityLabel(splitDay, 'UTC', new Date(2027, 6, 13));
+    expect(label).toBe('Available 1:00 PM – 4:00 PM + 8:00 PM – 11:00 PM');
+  });
 });
 
 describe('shiftOutsideAvailability (TZ-portable)', () => {
@@ -263,5 +279,58 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
         new Date(2028, 2, 12), // Sunday Mar 12
       ),
     ).toBe(true);
+  });
+
+  // Codex finding: a shift crossing into the next local day must also be
+  // checked against that NEXT day's own hard-off data — today's window
+  // extended past midnight can't paper over Saturday's own unavailable
+  // exception, mirroring the RPC's per-local-date walk (block 3c's forward
+  // counterpart).
+  describe('next-day override on a shift crossing midnight forward', () => {
+    // Friday recurring window: 6:00 PM - 2:00 AM UTC (stored as one overnight row).
+    const fridayOvernight = avail(true, '18:00:00', '02:00:00');
+    const saturdayUnavailableException = avail(false, null, null, 'exception');
+
+    it('is true when the shift tail falls on a next-day hard-unavailable exception, even though Friday\'s window alone would cover it', () => {
+      expect(
+        shiftOutsideAvailability(
+          fridayOvernight,
+          undefined,
+          new Date('2027-07-16T22:00:00Z'), // Fri 10:00 PM UTC
+          new Date('2027-07-17T01:00:00Z'), // Sat 1:00 AM UTC
+          'UTC',
+          new Date(2027, 6, 16), // Friday
+          saturdayUnavailableException,
+        ),
+      ).toBe(true);
+    });
+
+    it('is false when no next-day data is supplied (same-day-only shifts unaffected by this fix)', () => {
+      expect(
+        shiftOutsideAvailability(
+          fridayOvernight,
+          undefined,
+          new Date('2027-07-16T19:00:00Z'), // Fri 7:00 PM UTC
+          new Date('2027-07-16T20:00:00Z'), // Fri 8:00 PM UTC
+          'UTC',
+          new Date(2027, 6, 16),
+        ),
+      ).toBe(false);
+    });
+
+    it('is false when the next day is available and covers the shift tail', () => {
+      const saturdayAvailable = avail(true, '00:00:00', '06:00:00');
+      expect(
+        shiftOutsideAvailability(
+          fridayOvernight,
+          undefined,
+          new Date('2027-07-16T22:00:00Z'), // Fri 10:00 PM UTC
+          new Date('2027-07-17T01:00:00Z'), // Sat 1:00 AM UTC
+          'UTC',
+          new Date(2027, 6, 16),
+          saturdayAvailable,
+        ),
+      ).toBe(false);
+    });
   });
 });

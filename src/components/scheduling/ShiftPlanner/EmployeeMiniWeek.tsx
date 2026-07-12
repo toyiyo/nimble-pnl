@@ -74,9 +74,13 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
     if (!dates || !timezone || !availabilityByDow) return undefined;
     return weekDays
       .map((day, i) => {
-        const eff = availabilityByDow.get(dates[i].getDay());
-        const dow = dates[i].toLocaleDateString('en-US', { weekday: 'short' });
-        return `${dow} ${eff ? availabilityLabel(eff, timezone, dates[i]) : 'No availability set'}`;
+        // Optional-chained the same way the grid render below (`dates?.[i]?.getDay()`)
+        // already guards this same lookup — if `dates` and `weekDays` ever
+        // diverge in length, this degrades gracefully instead of throwing.
+        const d = dates[i];
+        const eff = d ? availabilityByDow.get(d.getDay()) : undefined;
+        const dow = d?.toLocaleDateString('en-US', { weekday: 'short' }) ?? '';
+        return `${dow} ${eff && d ? availabilityLabel(eff, timezone, d) : 'No availability set'}`;
       })
       .join('; ');
   }, [weekDays, dates, timezone, availabilityByDow]);

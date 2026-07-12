@@ -95,13 +95,21 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
         const tint = eff ? availabilityColorClasses(eff) : undefined;
         const isRecurringUnavailable =
           eff?.type === 'recurring' && !(eff.slots[0]?.isAvailable ?? false);
+        let dayBgClass: string;
+        if (tint) {
+          dayBgClass = tint.bg;
+        } else if (off) {
+          dayBgClass = 'bg-muted/30 border-border/20';
+        } else {
+          dayBgClass = 'bg-muted/50 border-border/30';
+        }
         return (
           <div
             key={day}
             data-mini-week-day={day}
             className={cn(
               'relative rounded-sm overflow-hidden border',
-              tint ? tint.bg : off ? 'bg-muted/30 border-border/20' : 'bg-muted/50 border-border/30',
+              dayBgClass,
               isToday(day) && 'ring-1 ring-primary/40',
             )}
             style={{

@@ -254,6 +254,96 @@ describe('aggregateTipDistribution', () => {
     expect(result.totalUnpaidCents).toBe(5000);
   });
 
+  it('ignores payouts linked to a non-finalized (reopened) split, so a stale payout cannot mask an unpaid finalized split', () => {
+    // Regression: a manager reopens an already-paid split (reopenSplit
+    // reverts status to draft but leaves the tip_payout in place). That
+    // stale payout must NOT count toward a *different* finalized split
+    // for the same employee, or a genuinely-unpaid day reads as "paid".
+    const splits: TipSplitWithItems[] = [
+      makeSplit({
+        id: 'split-reopened',
+        status: 'draft', // was approved+paid, then reopened to fix an error
+        items: [
+          {
+            id: 'item-reopened',
+            tip_split_id: 'split-reopened',
+            employee_id: employee1,
+            amount: 5000,
+            hours_worked: 5,
+            role: 'Server',
+            role_weight: null,
+            manually_edited: false,
+            created_at: '2026-07-06T00:00:00Z',
+            employee: { name: 'Maria Santos', position: 'Server' },
+          },
+        ],
+      }),
+      makeSplit({
+        id: 'split-finalized',
+        split_date: '2026-07-07',
+        status: 'approved',
+        items: [
+          {
+            id: 'item-finalized',
+            tip_split_id: 'split-finalized',
+            employee_id: employee1,
+            amount: 4000,
+            hours_worked: 4,
+            role: 'Server',
+            role_weight: null,
+            manually_edited: false,
+            created_at: '2026-07-07T00:00:00Z',
+            employee: { name: 'Maria Santos', position: 'Server' },
+          },
+        ],
+      }),
+    ];
+    // The stale payout still points at the now-draft split.
+    const payouts: TipPayout[] = [
+      makePayout({ employee_id: employee1, amount: 5000, tip_split_id: 'split-reopened' }),
+    ];
+
+    const result = aggregateTipDistribution(splits, payouts);
+    const maria = result.employees[0];
+    expect(maria.earnedCents).toBe(4000); // only the finalized split
+    expect(maria.paidCents).toBe(0); // stale payout is not counted
+    expect(maria.unpaidCents).toBe(4000); // correctly surfaced as unpaid
+    expect(paymentStatus(maria)).toBe('unpaid');
+  });
+
+  it('counts payouts linked to a finalized split and unlinked (null) payouts', () => {
+    const splits: TipSplitWithItems[] = [
+      makeSplit({
+        id: 'split-finalized',
+        status: 'approved',
+        items: [
+          {
+            id: 'item-1',
+            tip_split_id: 'split-finalized',
+            employee_id: employee1,
+            amount: 10000,
+            hours_worked: 5,
+            role: 'Server',
+            role_weight: null,
+            manually_edited: false,
+            created_at: '2026-07-06T00:00:00Z',
+            employee: { name: 'Maria Santos', position: 'Server' },
+          },
+        ],
+      }),
+    ];
+    const payouts: TipPayout[] = [
+      makePayout({ employee_id: employee1, amount: 3000, tip_split_id: 'split-finalized' }),
+      makePayout({ employee_id: employee1, amount: 2000, tip_split_id: null }),
+    ];
+
+    const result = aggregateTipDistribution(splits, payouts);
+    const maria = result.employees[0];
+    expect(maria.paidCents).toBe(5000); // both counted
+    expect(maria.unpaidCents).toBe(5000);
+    expect(paymentStatus(maria)).toBe('partial');
+  });
+
   it('computes sharePct against the total, guarding divide-by-zero', () => {
     const splits: TipSplitWithItems[] = [
       makeSplit({

@@ -54,9 +54,14 @@ export function aggregateTipDistribution(
   payouts: TipPayout[],
 ): TipDistributionResult {
   const accumulators = new Map<string, EmployeeAccumulator>();
+  // IDs of the splits that actually contribute earnings this period. A
+  // payout only counts as "paid" if it links to one of these (or to no
+  // split at all) — see the payout loop below.
+  const finalizedSplitIds = new Set<string>();
 
   for (const split of splits) {
     if (!FINALIZED_STATUSES.has(split.status)) continue;
+    finalizedSplitIds.add(split.id);
 
     for (const item of split.items) {
       const existing = accumulators.get(item.employee_id) ?? {
@@ -75,6 +80,15 @@ export function aggregateTipDistribution(
 
   const paidByEmployee = new Map<string, number>();
   for (const payout of payouts) {
+    // Skip payouts linked to a split that is NOT part of this period's
+    // finalized set — e.g. a split reopened to draft after being paid
+    // (`reopenSplit`) leaves its payout behind. Counting it would mask a
+    // genuinely-unpaid finalized split for the same employee as "paid".
+    // Ad-hoc payouts with no split link (`tip_split_id === null`) still
+    // count, since they represent money actually paid to the employee.
+    if (payout.tip_split_id !== null && !finalizedSplitIds.has(payout.tip_split_id)) {
+      continue;
+    }
     paidByEmployee.set(
       payout.employee_id,
       (paidByEmployee.get(payout.employee_id) ?? 0) + payout.amount,

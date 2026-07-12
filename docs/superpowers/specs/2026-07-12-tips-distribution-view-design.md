@@ -118,7 +118,10 @@ Rules:
 - Employee display name/role from the item's joined `employee` (fallback
   to "Unknown" / null when the join is missing).
 - `paidCents` sums `payouts` by `employee_id` (payouts already period-scoped
-  by the hook's date filter).
+  by the hook's date filter), **but only counts a payout whose
+  `tip_split_id` is `null` (ad-hoc payment) or references a split in the
+  finalized set built above.** A payout linked to a non-finalized split is
+  skipped — see the reopen-masking hazard below.
 - `unpaidCents = max(0, earnedCents - paidCents)` — clamp so an
   over-payment (manual correction) never renders negative.
 - `sharePct` guarded against divide-by-zero (0 when total is 0).
@@ -248,4 +251,22 @@ forgotten.
   React-Query-ref bugs (Effect 2 hours overwrite). This change only
   *reads* `periodSplits` in a `useMemo`; it introduces no effects and no
   writes, so it can't reintroduce that class of bug.
+
+## Decided trade-off: reopen-after-payout masking (Codex/Phase-7 finding)
+
+`reopenSplit()` (`useTipSplits.tsx`) reverts an `approved` split to
+`draft` (manager corrects an error) but leaves any `tip_payouts` already
+recorded against that split's `tip_split_id` in place. If `paidCents`
+summed *all* an employee's period payouts blindly, that stale payout would
+count toward a *different* still-finalized split for the same employee —
+masking a genuinely-unpaid day behind a "Paid" badge. In a payroll-adjacent
+view that is a wage-accuracy defect, not a cosmetic one.
+
+**Resolution (chosen over deferring):** `paidCents` only counts payouts
+whose `tip_split_id` is `null` or references a split in the finalized set.
+A payout tied to a reopened/draft split is excluded, so the finalized
+split correctly reads as unpaid. Ad-hoc (`null`-linked) payouts still count
+as real money paid. Locked in by regression tests in
+`tests/unit/tipDistribution.test.ts` (reopened-split masking + the
+finalized/null happy path).
 ```

@@ -2,7 +2,8 @@ import { generateHeader, formatDateTime } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
-import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
+import { sendWebPushToUser, sendWebPushToUsers } from '../_shared/webPushHelper.ts';
+import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -270,6 +271,12 @@ const handler = async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       global: { headers: { Authorization: authHeader } }
     });
+    // Bare service-role client (no Authorization override) for data/notification reads —
+    // the JWT-scoped `supabase` client above runs every `.from()` as the caller
+    // (`authenticated`), which silently no-ops against `web_push_subscriptions` RLS
+    // (`USING (auth.uid() = user_id)`) for anyone but the caller. `admin` is used for
+    // all data access after auth; `supabase` stays limited to `auth.getUser()`.
+    const admin = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify user authentication
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -325,6 +332,22 @@ const handler = async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({ error: 'Trade not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Caller authorization: any authenticated user could otherwise POST an arbitrary
+    // tradeId and trigger notifications (including the broadcast) for a restaurant
+    // they have no membership in. Verify the caller belongs to this trade's restaurant.
+    const { data: membership } = await admin
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('restaurant_id', trade.restaurant_id)
+      .maybeSingle();
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
@@ -398,7 +421,27 @@ const handler = async (req: Request): Promise<Response> => {
     const pushUserIds: string[] = [];
 
     if (action === 'created') {
-      // No targeted push for broadcast — skip (would notify all employees)
+      // Broadcast web push to active employees with a subscription, excluding the
+      // poster — bulk fan-out (single subscription lookup + bounded concurrency)
+      // instead of per-employee sendWebPushToUser calls. Email recipients above are
+      // unaffected; this only adds the push channel.
+      const { data: activeEmployees } = await admin
+        .from('employees')
+        .select('user_id')
+        .eq('restaurant_id', trade.restaurant_id)
+        .eq('is_active', true)
+        .not('user_id', 'is', null);
+      const broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
+      try {
+        await sendWebPushToUsers(admin, broadcastTargets, trade.restaurant_id, {
+          title: content.heading,
+          body: 'A teammate offered a shift for trade. Tap to view.',
+          url: '/employee/shifts',
+          tag: `trade-created-${tradeId}`,
+        });
+      } catch (e) {
+        console.error('Broadcast web push failed:', e);
+      }
     } else if (action === 'accepted') {
       // Notify the employee who offered the shift
       if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
@@ -431,7 +474,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       try {
-        await sendWebPushToUser(supabase, userId, trade.restaurant_id, {
+        await sendWebPushToUser(admin, userId, trade.restaurant_id, {
           title: 'Shift Trade Update',
           body: content.subject(employeeName),
           url: '/employee/shifts',

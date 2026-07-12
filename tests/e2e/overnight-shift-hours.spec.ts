@@ -241,9 +241,9 @@ test.describe('Overnight shift hours (punch windowing fix)', () => {
     await page.getByRole('heading', { name: /time clock/i }).first().waitFor({ state: 'visible', timeout: 25000 });
     // Default view is Day + Manual; step back one day to the shift day.
     await page.getByRole('button', { name: /^previous$/i }).click();
-    await page.waitForTimeout(1500);
 
-    // The Manual view footer is present for the shift day.
+    // Deterministic wait: the value-bearing assertions below poll until the
+    // previous day's buffered punches load and the Manual view recomputes.
     await expect(page.getByText(/Total hours for/i)).toBeVisible({ timeout: 10000 });
     // Overnight shift counts its full 8h 30m on the clock-in day (was 0h before).
     await expect(page.getByText('8h 30m').first()).toBeVisible({ timeout: 10000 });

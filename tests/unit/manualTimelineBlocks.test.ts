@@ -17,7 +17,7 @@ const p = (type: string, iso: string, extra: Partial<TimePunch> = {}): TimePunch
 const day = new Date(2026, 6, 10);
 
 describe('buildTimelineBlocks', () => {
-  it('pairs a cross-midnight shift into ONE block on the clock-in day', () => {
+  it('CRITICAL: pairs a cross-midnight shift into ONE block on the clock-in day', () => {
     const punches = [
       p('clock_in', new Date(2026, 6, 10, 16, 45).toISOString()),
       p('clock_out', new Date(2026, 6, 11, 0, 37).toISOString()),
@@ -32,7 +32,7 @@ describe('buildTimelineBlocks', () => {
     expect(blocks[0].clockOutPunchId).toBeTruthy();
   });
 
-  it('excludes the prior-night tail (clock-out lands on this day, clock-in was yesterday)', () => {
+  it('CRITICAL: excludes the prior-night tail (clock-out lands on this day, clock-in was yesterday)', () => {
     const punches = [
       p('clock_in', new Date(2026, 6, 9, 20, 0).toISOString()),   // Jul 9 clock-in
       p('clock_out', new Date(2026, 6, 10, 0, 7).toISOString()),  // Jul 10 00:07 → belongs to Jul 9
@@ -64,7 +64,7 @@ describe('buildTimelineBlocks', () => {
     expect(buildTimelineBlocks(punches, day)).toHaveLength(0);
   });
 
-  it('excludes a pair whose gap exceeds MAX_SHIFT_GAP_HOURS (missing-punch artifact)', () => {
+  it('CRITICAL: excludes a pair whose gap exceeds MAX_SHIFT_GAP_HOURS (missing-punch artifact)', () => {
     // Jul 10 10:00 clock-in, clock-out 40h later (Jul 11 whole day open, forgot to
     // clock out, force-closed Jul 12 02:00). Payroll/timecard exclude this; so must we.
     const punches = [

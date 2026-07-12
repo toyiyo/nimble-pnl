@@ -730,10 +730,13 @@ const TimePunchesManager = () => {
           {viewMode === 'day' ? (
             <>
               <div className="hidden md:block">
+                {/* Buffered (±18h) filteredPunches: the editor attributes each
+                    shift to its clock-in day itself, so an overnight shift's
+                    next-day clock-out is available to pair. */}
                 <ManualTimelineEditor
                   employees={employees}
                   date={currentDate}
-                  existingPunches={windowPunches}
+                  existingPunches={filteredPunches}
                   loading={loading}
                   restaurantId={restaurantId || ''}
                 />

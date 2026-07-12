@@ -74,6 +74,7 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
 
 vi.mock('@/hooks/useAvailability', () => ({
   useEmployeeAvailability: () => ({ availability: [], loading: false }),
+  useAvailabilityExceptions: () => ({ exceptions: [], loading: false }),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({

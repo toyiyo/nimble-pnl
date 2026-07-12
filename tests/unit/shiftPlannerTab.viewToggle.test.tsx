@@ -59,9 +59,10 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
   };
 });
 
-// useEmployeeAvailability — stub
+// useEmployeeAvailability / useAvailabilityExceptions — stub
 vi.mock('@/hooks/useAvailability', () => ({
   useEmployeeAvailability: () => ({ availability: [], loading: false }),
+  useAvailabilityExceptions: () => ({ exceptions: [], loading: false }),
 }));
 
 // useRestaurantContext — provide a minimal restaurant

@@ -1,16 +1,27 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, type CSSProperties } from 'react';
 
 import { cn } from '@/lib/utils';
 
 import { COVERAGE_START_HOUR, COVERAGE_BUCKETS } from '@/hooks/usePlannerShiftsIndex';
 import { toLocalDateKey, toLocalEpoch } from '@/lib/shiftAllocation';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
+import { availabilityColorClasses, availabilityLabel } from '@/lib/effectiveAvailability';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Shift } from '@/types/scheduling';
 
 interface EmployeeMiniWeekProps {
   weekDays: readonly string[];
   employeeShifts: readonly Shift[];
+  availabilityByDow?: Map<number, EffectiveAvailability>;
+  timezone?: string;
+  dates?: readonly Date[]; // concrete Date per weekDays entry (DST anchor)
   size?: 'sm' | 'md';
 }
+
+const UNAVAILABLE_HATCH_STYLE: CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, hsl(var(--destructive) / 0.12) 0 3px, transparent 3px 6px)',
+};
 
 const ROLE_BG: Record<string, string> = {
   server: 'bg-sky-500/70',
@@ -40,6 +51,9 @@ function isToday(day: string): boolean {
 export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
   weekDays,
   employeeShifts,
+  availabilityByDow,
+  timezone,
+  dates,
   size = 'sm',
 }: Readonly<EmployeeMiniWeekProps>) {
   const shiftsByDay = useMemo(() => {
@@ -56,21 +70,44 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
 
   const trackHeight = size === 'md' ? 32 : 28;
 
-  return (
-    <div className="grid grid-cols-7 gap-0.5 mt-1.5">
-      {weekDays.map((day) => {
+  const weekSummary = useMemo(() => {
+    if (!dates || !timezone || !availabilityByDow) return undefined;
+    return weekDays
+      .map((day, i) => {
+        const eff = availabilityByDow.get(dates[i].getDay());
+        const dow = dates[i].toLocaleDateString('en-US', { weekday: 'short' });
+        return `${dow} ${eff ? availabilityLabel(eff, timezone, dates[i]) : 'No availability set'}`;
+      })
+      .join('; ');
+  }, [weekDays, dates, timezone, availabilityByDow]);
+
+  const grid = (
+    <div
+      className="grid grid-cols-7 gap-0.5 mt-1.5"
+      role={weekSummary ? 'img' : undefined}
+      aria-label={weekSummary ? `Availability — ${weekSummary}` : undefined}
+    >
+      {weekDays.map((day, i) => {
         const dayShifts = shiftsByDay.get(day) ?? [];
         const off = dayShifts.length === 0;
+        const dow = dates?.[i]?.getDay();
+        const eff = dow !== undefined ? availabilityByDow?.get(dow) : undefined;
+        const tint = eff ? availabilityColorClasses(eff) : undefined;
+        const isRecurringUnavailable =
+          eff?.type === 'recurring' && !(eff.slots[0]?.isAvailable ?? false);
         return (
           <div
             key={day}
             data-mini-week-day={day}
             className={cn(
               'relative rounded-sm overflow-hidden border',
-              off ? 'bg-muted/30 border-border/20' : 'bg-muted/50 border-border/30',
+              tint ? tint.bg : off ? 'bg-muted/30 border-border/20' : 'bg-muted/50 border-border/30',
               isToday(day) && 'ring-1 ring-primary/40',
             )}
-            style={{ height: trackHeight }}
+            style={{
+              height: trackHeight,
+              ...(isRecurringUnavailable ? UNAVAILABLE_HATCH_STYLE : {}),
+            }}
             aria-hidden="true"
           >
             {dayShifts.map((shift) => {
@@ -95,5 +132,14 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
         );
       })}
     </div>
+  );
+
+  if (!weekSummary) return grid;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{grid}</TooltipTrigger>
+      <TooltipContent className="max-w-xs text-[12px]">{weekSummary}</TooltipContent>
+    </Tooltip>
   );
 });

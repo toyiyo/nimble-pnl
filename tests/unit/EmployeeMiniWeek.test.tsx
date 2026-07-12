@@ -197,4 +197,33 @@ describe('<EmployeeMiniWeek> availability tint (Task 6)', () => {
     });
     expect(strip).toBeInTheDocument();
   });
+
+  // CodeRabbit finding: the strip is a Radix TooltipTrigger (asChild) wrapping
+  // a plain div — without an explicit tabIndex, a div isn't natively
+  // focusable, so a keyboard-only user could never trigger the tooltip that
+  // exposes this same aria-label summary (CLAUDE.md: "Interactive elements
+  // must be keyboard accessible").
+  it('makes the accessible strip keyboard-focusable (tabIndex=0) so its tooltip is reachable without a mouse', () => {
+    const availabilityByDow = new Map<number, EffectiveAvailability>([
+      [
+        1,
+        {
+          type: 'recurring',
+          slots: [{ isAvailable: true, startTime: '09:00:00', endTime: '17:00:00', sourceRecord: {} as never }],
+        },
+      ],
+    ]);
+    const { container } = renderWithTooltip(
+      <EmployeeMiniWeek
+        weekDays={weekDays}
+        employeeShifts={[]}
+        availabilityByDow={availabilityByDow}
+        timezone="UTC"
+        dates={dates}
+      />,
+    );
+    const strip = container.querySelector('[role="img"]');
+    expect(strip).not.toBeNull();
+    expect(strip!.getAttribute('tabindex')).toBe('0');
+  });
 });

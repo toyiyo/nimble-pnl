@@ -90,6 +90,11 @@ export const EmployeeMiniWeek = memo(function EmployeeMiniWeek({
       className="grid grid-cols-7 gap-0.5 mt-1.5"
       role={weekSummary ? 'img' : undefined}
       aria-label={weekSummary ? `Availability — ${weekSummary}` : undefined}
+      // CodeRabbit finding: this strip is a Radix TooltipTrigger (asChild)
+      // wrapping a plain div — divs aren't natively focusable, so without an
+      // explicit tabIndex a keyboard-only user could never reveal the
+      // tooltip that surfaces this same aria-label summary.
+      tabIndex={weekSummary ? 0 : undefined}
     >
       {weekDays.map((day, i) => {
         const dayShifts = shiftsByDay.get(day) ?? [];

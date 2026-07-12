@@ -4,7 +4,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TipDistribution } from '../../src/components/tips/TipDistribution';
 import type { TipSplitWithItems } from '../../src/hooks/useTipSplits';
-import type { TipPayout } from '../../src/hooks/useTipPayouts';
+import type { TipPayoutWithEmployee } from '../../src/hooks/useTipPayouts';
 
 const employee1 = '11111111-1111-1111-1111-111111111111';
 const employee2 = '22222222-2222-2222-2222-222222222222';
@@ -30,7 +30,7 @@ function makeSplit(overrides: Partial<TipSplitWithItems>): TipSplitWithItems {
   };
 }
 
-function makePayout(overrides: Partial<TipPayout>): TipPayout {
+function makePayout(overrides: Partial<TipPayoutWithEmployee>): TipPayoutWithEmployee {
   return {
     id: 'payout-1',
     restaurant_id: 'restaurant-1',
@@ -152,7 +152,7 @@ describe('TipDistribution', () => {
         ],
       }),
     ];
-    const payouts: TipPayout[] = [makePayout({ employee_id: employee1, amount: 8000 })];
+    const payouts: TipPayoutWithEmployee[] = [makePayout({ employee_id: employee1, amount: 8000 })];
 
     render(
       <TipDistribution
@@ -207,7 +207,7 @@ describe('TipDistribution', () => {
         ],
       }),
     ];
-    const payouts: TipPayout[] = [makePayout({ employee_id: employee1, amount: 1000 })];
+    const payouts: TipPayoutWithEmployee[] = [makePayout({ employee_id: employee1, amount: 1000 })];
 
     render(
       <TipDistribution

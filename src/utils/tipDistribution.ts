@@ -9,7 +9,7 @@
  */
 
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
-import type { TipPayout } from '@/hooks/useTipPayouts';
+import type { TipPayoutWithEmployee } from '@/hooks/useTipPayouts';
 
 /** Splits contribute to the distribution once they're no longer a draft. */
 const FINALIZED_STATUSES = new Set<TipSplitWithItems['status']>(['approved', 'archived']);
@@ -51,7 +51,7 @@ interface EmployeeAccumulator {
  */
 export function aggregateTipDistribution(
   splits: TipSplitWithItems[],
-  payouts: TipPayout[],
+  payouts: TipPayoutWithEmployee[],
 ): TipDistributionResult {
   const accumulators = new Map<string, EmployeeAccumulator>();
   // IDs of the splits that actually contribute earnings this period. A
@@ -93,6 +93,19 @@ export function aggregateTipDistribution(
       payout.employee_id,
       (paidByEmployee.get(payout.employee_id) ?? 0) + payout.amount,
     );
+
+    // A payout can reference an employee with no finalized split item this
+    // period (e.g. an ad-hoc payment). Without this, their paid amount
+    // would be silently dropped from `employees` and the totals below.
+    if (!accumulators.has(payout.employee_id)) {
+      accumulators.set(payout.employee_id, {
+        employeeId: payout.employee_id,
+        name: payout.employee?.name ?? 'Unknown',
+        role: payout.employee?.position ?? null,
+        hoursWorked: 0,
+        earnedCents: 0,
+      });
+    }
   }
 
   const totalEarnedCents = Array.from(accumulators.values()).reduce(

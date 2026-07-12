@@ -21,11 +21,11 @@ import { formatCurrencyFromCents } from '@/utils/tipPooling';
 
 // Types
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
-import type { TipPayout } from '@/hooks/useTipPayouts';
+import type { TipPayoutWithEmployee } from '@/hooks/useTipPayouts';
 
 interface TipDistributionProps {
   splits: TipSplitWithItems[] | undefined;
-  payouts: TipPayout[];
+  payouts: TipPayoutWithEmployee[];
   /** periodSplitsLoading || payoutsLoading */
   isLoading: boolean;
   /** !!periodSplitsError || !!payoutsError */
@@ -55,7 +55,12 @@ export function TipDistribution({
 
   if (isLoading) {
     return (
-      <div className="space-y-3" data-testid="tip-distribution-loading">
+      <div
+        className="space-y-3"
+        data-testid="tip-distribution-loading"
+        role="status"
+        aria-live="polite"
+      >
         <Card className="rounded-xl border-border/40">
           <CardContent className="pt-6">
             <Skeleton className="h-16 w-full" />
@@ -220,7 +225,7 @@ function EmployeeRow({ employee }: { employee: EmployeeDistribution }) {
 function StatusBadge({ status, employee }: { status: PaymentStatus; employee: EmployeeDistribution }) {
   if (status === 'paid') {
     return (
-      <Badge className="bg-green-500/10 text-green-700 border-green-500/20">
+      <Badge className="bg-success/10 text-success border-success/20">
         <Check className="mr-1 h-3 w-3" aria-hidden="true" />
         Paid
       </Badge>
@@ -229,7 +234,7 @@ function StatusBadge({ status, employee }: { status: PaymentStatus; employee: Em
 
   if (status === 'partial') {
     return (
-      <Badge className="bg-yellow-500/10 text-yellow-700 border-yellow-500/20">
+      <Badge className="bg-warning/10 text-warning border-warning/20">
         <Clock className="mr-1 h-3 w-3" aria-hidden="true" />
         {formatCurrencyFromCents(employee.paidCents)} / {formatCurrencyFromCents(employee.earnedCents)}
       </Badge>
@@ -237,7 +242,7 @@ function StatusBadge({ status, employee }: { status: PaymentStatus; employee: Em
   }
 
   return (
-    <Badge className="bg-amber-500/10 text-amber-700 border-amber-500/20">
+    <Badge className="bg-muted text-muted-foreground border-border/40">
       <Clock className="mr-1 h-3 w-3" aria-hidden="true" />
       Unpaid
     </Badge>

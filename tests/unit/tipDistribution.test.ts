@@ -5,7 +5,7 @@ import {
   type EmployeeDistribution,
 } from '@/utils/tipDistribution';
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
-import type { TipPayout } from '@/hooks/useTipPayouts';
+import type { TipPayoutWithEmployee } from '@/hooks/useTipPayouts';
 
 const employee1 = '11111111-1111-1111-1111-111111111111';
 const employee2 = '22222222-2222-2222-2222-222222222222';
@@ -32,7 +32,7 @@ function makeSplit(overrides: Partial<TipSplitWithItems>): TipSplitWithItems {
   };
 }
 
-function makePayout(overrides: Partial<TipPayout>): TipPayout {
+function makePayout(overrides: Partial<TipPayoutWithEmployee>): TipPayoutWithEmployee {
   return {
     id: 'payout-1',
     restaurant_id: 'restaurant-1',
@@ -210,7 +210,7 @@ describe('aggregateTipDistribution', () => {
       }),
     ];
     // Overpayment: paid more than earned.
-    const payouts: TipPayout[] = [
+    const payouts: TipPayoutWithEmployee[] = [
       makePayout({ employee_id: employee1, amount: 7000 }),
     ];
 
@@ -241,7 +241,7 @@ describe('aggregateTipDistribution', () => {
         ],
       }),
     ];
-    const payouts: TipPayout[] = [
+    const payouts: TipPayoutWithEmployee[] = [
       makePayout({ employee_id: employee1, amount: 3000 }),
       makePayout({ employee_id: employee1, amount: 2000 }),
     ];
@@ -299,7 +299,7 @@ describe('aggregateTipDistribution', () => {
       }),
     ];
     // The stale payout still points at the now-draft split.
-    const payouts: TipPayout[] = [
+    const payouts: TipPayoutWithEmployee[] = [
       makePayout({ employee_id: employee1, amount: 5000, tip_split_id: 'split-reopened' }),
     ];
 
@@ -332,7 +332,7 @@ describe('aggregateTipDistribution', () => {
         ],
       }),
     ];
-    const payouts: TipPayout[] = [
+    const payouts: TipPayoutWithEmployee[] = [
       makePayout({ employee_id: employee1, amount: 3000, tip_split_id: 'split-finalized' }),
       makePayout({ employee_id: employee1, amount: 2000, tip_split_id: null }),
     ];
@@ -342,6 +342,52 @@ describe('aggregateTipDistribution', () => {
     expect(maria.paidCents).toBe(5000); // both counted
     expect(maria.unpaidCents).toBe(5000);
     expect(paymentStatus(maria)).toBe('partial');
+  });
+
+  it('includes an employee whose only record this period is a payout (no finalized split item)', () => {
+    // Regression: an ad-hoc payout (tip_split_id: null) for an employee who
+    // wasn't part of any finalized split this period must not be silently
+    // dropped from `employees`/totals — they were still paid something.
+    const splits: TipSplitWithItems[] = [
+      makeSplit({
+        items: [
+          {
+            id: 'item-1',
+            tip_split_id: 'split-1',
+            employee_id: employee1,
+            amount: 5000,
+            hours_worked: 5,
+            role: 'Server',
+            role_weight: null,
+            manually_edited: false,
+            created_at: '2026-07-06T00:00:00Z',
+            employee: { name: 'Maria Santos', position: 'Server' },
+          },
+        ],
+      }),
+    ];
+    const payouts: TipPayoutWithEmployee[] = [
+      makePayout({ employee_id: employee1, amount: 5000 }),
+      makePayout({
+        employee_id: employee2,
+        amount: 1500,
+        employee: { name: 'Jordan Lee', position: 'Host' },
+      }),
+    ];
+
+    const result = aggregateTipDistribution(splits, payouts);
+
+    const jordan = result.employees.find((e) => e.employeeId === employee2);
+    expect(jordan).toBeDefined();
+    expect(jordan!.name).toBe('Jordan Lee');
+    expect(jordan!.role).toBe('Host');
+    expect(jordan!.earnedCents).toBe(0);
+    expect(jordan!.paidCents).toBe(1500);
+    expect(jordan!.unpaidCents).toBe(0); // nothing owed, so not "unpaid"
+    expect(paymentStatus(jordan!)).toBe('paid');
+
+    // Their paid amount folds into the totals, not just Maria's.
+    expect(result.totalPaidCents).toBe(6500);
   });
 
   it('computes sharePct against the total, guarding divide-by-zero', () => {
@@ -541,7 +587,7 @@ describe('aggregateTipDistribution', () => {
         ],
       }),
     ];
-    const payouts: TipPayout[] = [
+    const payouts: TipPayoutWithEmployee[] = [
       makePayout({ employee_id: employee1, amount: 10000 }), // fully paid
       makePayout({ employee_id: employee2, amount: 1000 }), // partially paid
     ];

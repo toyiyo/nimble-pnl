@@ -33,9 +33,10 @@ import { TipPeriodSummary } from '@/components/tips/TipPeriodSummary';
 import { TipPayoutSheet } from '@/components/tips/TipPayoutSheet';
 import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
+import { TipDistribution } from '@/components/tips/TipDistribution';
 import { calculateWorkedHoursForClockInDay } from '@/utils/payrollCalculations';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
-import { Info, Settings, RefreshCw, Clock, DollarSign, Lock } from 'lucide-react';
+import { Info, Settings, RefreshCw, Clock, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const defaultWeights: Record<string, number> = {
@@ -45,7 +46,7 @@ const defaultWeights: Record<string, number> = {
   'Host': 1,
 };
 
-type ViewMode = 'overview' | 'daily' | 'history';
+type ViewMode = 'overview' | 'daily' | 'distribution';
 
 export function Tips() {
   // ============ Context Hooks ============
@@ -117,11 +118,11 @@ export function Tips() {
   const { saveTipSplit, isSaving, splits: dailySplits } = useTipSplits(restaurantId, today, today);
 
   // Query for Overview mode - full period range
-  const { splits: periodSplits, isLoading: periodSplitsLoading } = useTipSplits(
-    restaurantId,
-    periodStartStr,
-    periodEndStr
-  );
+  const {
+    splits: periodSplits,
+    isLoading: periodSplitsLoading,
+    error: periodSplitsError,
+  } = useTipSplits(restaurantId, periodStartStr, periodEndStr);
 
   // Payouts for the current period
   const {
@@ -129,10 +130,14 @@ export function Tips() {
     createPayouts,
     isCreating: isCreatingPayouts,
     deletePayout,
+    isLoading: payoutsLoading,
+    error: payoutsError,
   } = useTipPayouts(restaurantId, periodStartStr, periodEndStr);
 
-  // Use appropriate splits based on view mode
-  const splits = viewMode === 'overview' ? periodSplits : dailySplits;
+  // Use appropriate splits based on view mode. Daily Entry is the only mode
+  // scoped to a single day (today); Overview and Distribution both operate
+  // on the full period.
+  const splits = viewMode === 'daily' ? dailySplits : periodSplits;
 
   // Get existing split ID for current day (used for saving server earnings)
   const currentDaySplitId = useMemo(() => {
@@ -803,8 +808,8 @@ export function Tips() {
 
       {/* Apple-style underline tabs */}
       <div className="flex border-b border-border/40">
-        {(['overview', 'daily', 'history'] as const).map((mode) => {
-          const labels: Record<ViewMode, string> = { overview: 'Overview', daily: 'Daily Entry', history: 'History' };
+        {(['overview', 'daily', 'distribution'] as const).map((mode) => {
+          const labels: Record<ViewMode, string> = { overview: 'Overview', daily: 'Daily Entry', distribution: 'Distribution' };
           return (
             <button
               key={mode}
@@ -1080,47 +1085,14 @@ export function Tips() {
         </>
       )}
 
-      {viewMode === 'history' && (
-        <div className="space-y-6">
-          <Card className="rounded-xl border-border/40">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
-                  <Lock className="h-5 w-5 text-foreground" />
-                </div>
-                <div>
-                  <CardTitle className="text-[17px] font-semibold text-foreground">Tip History</CardTitle>
-                  <CardDescription className="text-[13px]">Locked periods and payroll reference</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {splits?.filter(s => s.status === 'archived').length ? (
-                <div className="space-y-2">
-                  {splits.filter(s => s.status === 'archived').map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors">
-                      <div className="space-y-0.5">
-                        <span className="text-[14px] font-medium text-foreground">{format(new Date(s.split_date + 'T00:00:00'), 'MMM d, yyyy')}</span>
-                        <p className="text-[13px] text-muted-foreground">
-                          Payroll snapshot: {s.approved_at ? format(new Date(s.approved_at), 'MMM d, yyyy, h:mm a') : 'N/A'}
-                        </p>
-                      </div>
-                      <span className="text-[14px] font-semibold text-foreground">${(s.total_amount / 100).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-12 text-center">
-                  <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
-                    <Lock className="h-5 w-5 text-muted-foreground/50" />
-                  </div>
-                  <p className="text-[14px] font-medium text-foreground mt-4">No locked periods yet</p>
-                  <p className="text-[13px] text-muted-foreground mt-1">Locked periods will appear here after you lock tips for payroll.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+      {viewMode === 'distribution' && (
+        <TipDistribution
+          splits={periodSplits}
+          payouts={payouts}
+          isLoading={periodSplitsLoading || payoutsLoading}
+          isError={!!periodSplitsError || !!payoutsError}
+          onNavigateToOverview={() => setViewMode('overview')}
+        />
       )}
 
       {/* Tip Payout Sheet */}

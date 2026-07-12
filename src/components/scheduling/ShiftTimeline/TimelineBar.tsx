@@ -1,11 +1,14 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 
 import { cn } from '@/lib/utils';
 import { minutesToCompact } from '@/lib/shiftCoverage';
+import { minutesToIso } from '@/lib/shiftTimeMath';
+import { shiftOutsideAvailability } from '@/lib/effectiveAvailability';
 import { useTimelineBarDrag } from './useTimelineBarDrag';
 import type { TimelineBar as TimelineBarModel } from './useTimelineModel';
 import type { TimelineWindow } from '@/lib/timelineModel';
 import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import type { Shift } from '@/types/scheduling';
 
 interface TimelineBarProps {
@@ -34,6 +37,19 @@ interface TimelineBarProps {
    * id isn't known client-side until refetch).
    */
   readonly highlighted?: boolean;
+  /**
+   * Effective availability per employee/day-of-week, the timeline's local
+   * `dateStr`, and its timezone — when all three are supplied, the
+   * outside-availability marker (amber border + aria-label suffix) is
+   * recomputed live against the in-flight drag/resize range (design doc
+   * §3c: "It updates live as a bar is dragged/resized ... see availability
+   * before you commit"). When any is omitted, the marker stays pinned to
+   * `bar.outsideAvailability` (the pre-drag value) for backward
+   * compatibility with existing callers.
+   */
+  readonly availabilityByEmployee?: Map<string, Map<number, EffectiveAvailability>>;
+  readonly dateStr?: string;
+  readonly tz?: string;
 }
 
 /**
@@ -72,8 +88,11 @@ function TimelineBarImpl({
   onDraftChange,
   onDragCommit,
   highlighted = false,
+  availabilityByEmployee,
+  dateStr,
+  tz,
 }: TimelineBarProps) {
-  const { leftMin, endMin, label, ariaLabel, color, shift, outsideAvailability } = bar;
+  const { leftMin, endMin, label, ariaLabel, color, shift } = bar;
   const locked = shift.locked;
 
   const handleDraftChange = useCallback(
@@ -114,6 +133,29 @@ function TimelineBarImpl({
   const right = minToPct(displayEndMin);
   const width = right - left;
 
+  // Live outside-availability recompute while dragging (design doc §3c: "It
+  // updates live as a bar is dragged/resized ... see availability before you
+  // commit"). Falls back to the static `bar.outsideAvailability` (computed
+  // pre-drag by timelineModel.assignRows) whenever no drag is in flight, or
+  // when the caller hasn't supplied the availability map / dateStr / tz
+  // needed to recompute — same shared `shiftOutsideAvailability` predicate
+  // the fixed RPC uses, so a live drag frame can't disagree with the
+  // drag-commit conflict dialog either.
+  const liveOutsideAvailability = useMemo(() => {
+    if (!dragState || !availabilityByEmployee || !dateStr || !tz) {
+      return bar.outsideAvailability;
+    }
+    const dowMap = availabilityByEmployee.get(shift.employee_id);
+    const localDate = new Date(dateStr + 'T00:00:00');
+    const dow = localDate.getDay();
+    const today = dowMap?.get(dow);
+    if (!today) return bar.outsideAvailability;
+    const prev = dowMap?.get((dow + 6) % 7);
+    const draftStart = new Date(minutesToIso(dateStr, dragState.startMin, tz));
+    const draftEnd = new Date(minutesToIso(dateStr, dragState.endMin, tz));
+    return shiftOutsideAvailability(today, prev, draftStart, draftEnd, tz, localDate);
+  }, [dragState, availabilityByEmployee, dateStr, tz, shift.employee_id, bar.outsideAvailability]);
+
   return (
     <div
       // Re-enable pointer events on the actual bar rect (its parent row band
@@ -125,7 +167,7 @@ function TimelineBarImpl({
     >
       <button
         type="button"
-        aria-label={outsideAvailability ? `${ariaLabel}, outside availability` : ariaLabel}
+        aria-label={liveOutsideAvailability ? `${ariaLabel}, outside availability` : ariaLabel}
         onClick={handleTap}
         onPointerDown={handleBodyPointerDown}
         onPointerMove={handlePointerMove}
@@ -141,7 +183,7 @@ function TimelineBarImpl({
           color.border,
           color.text,
           // Design doc §3c — low-contrast warning treatment; shift color stays the fill.
-          outsideAvailability && 'border-l-2 border-l-amber-500',
+          liveOutsideAvailability && 'border-l-2 border-l-amber-500',
         )}
       >
         {label}
@@ -205,7 +247,10 @@ function areEqual(prev: TimelineBarProps, next: TimelineBarProps): boolean {
     prev.getPlotRect === next.getPlotRect &&
     prev.onDraftChange === next.onDraftChange &&
     prev.onDragCommit === next.onDragCommit &&
-    prev.highlighted === next.highlighted
+    prev.highlighted === next.highlighted &&
+    prev.availabilityByEmployee === next.availabilityByEmployee &&
+    prev.dateStr === next.dateStr &&
+    prev.tz === next.tz
   );
 }
 

@@ -810,6 +810,9 @@ export function ShiftTimelineTab({
                   onBarDraftChange={handleBarDraftChange}
                   onBarDragCommit={handleBarDragCommit}
                   highlightedShiftId={recentlyChangedShiftId}
+                  availabilityByEmployee={availabilityByEmployee}
+                  dateStr={selectedDay}
+                  tz={tz}
                 />
               ))}
             </div>

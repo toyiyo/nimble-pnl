@@ -10,6 +10,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Single source of truth for the in-app deep link every shift-trade notification (email
+// button, FCM data.route, and both web-push payloads) points at.
+const EMPLOYEE_SHIFTS_ROUTE = '/employee/shifts';
+
 interface RequestBody {
   tradeId: string;
   action: 'created' | 'accepted' | 'approved' | 'rejected' | 'cancelled';
@@ -338,12 +342,18 @@ const handler = async (req: Request): Promise<Response> => {
     // Caller authorization: any authenticated user could otherwise POST an arbitrary
     // tradeId and trigger notifications (including the broadcast) for a restaurant
     // they have no membership in. Verify the caller belongs to this trade's restaurant.
-    const { data: membership } = await admin
+    const { data: membership, error: membershipError } = await admin
       .from('user_restaurants')
       .select('role')
       .eq('user_id', user.id)
       .eq('restaurant_id', trade.restaurant_id)
       .maybeSingle();
+    if (membershipError) {
+      // Distinguish a transient DB failure from a genuine "not a member" so auth
+      // failures caused by an infra hiccup are auditable, not silently indistinguishable
+      // from a real 403.
+      console.error('Error checking caller membership:', membershipError);
+    }
     if (!membership) {
       return new Response(
         JSON.stringify({ error: 'Forbidden' }),
@@ -425,18 +435,24 @@ const handler = async (req: Request): Promise<Response> => {
       // poster — bulk fan-out (single subscription lookup + bounded concurrency)
       // instead of per-employee sendWebPushToUser calls. Email recipients above are
       // unaffected; this only adds the push channel.
-      const { data: activeEmployees } = await admin
-        .from('employees')
-        .select('user_id')
-        .eq('restaurant_id', trade.restaurant_id)
-        .eq('is_active', true)
-        .not('user_id', 'is', null);
-      const broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
+      // Both the target lookup and the send are wrapped together so a failure at either
+      // step degrades to a logged, skipped broadcast instead of ever turning the
+      // already-sent email into a false 500.
       try {
+        const { data: activeEmployees, error: employeesError } = await admin
+          .from('employees')
+          .select('user_id')
+          .eq('restaurant_id', trade.restaurant_id)
+          .eq('is_active', true)
+          .not('user_id', 'is', null);
+        if (employeesError) {
+          console.error('Error fetching active employees for broadcast push:', employeesError);
+        }
+        const broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
         await sendWebPushToUsers(admin, broadcastTargets, trade.restaurant_id, {
           title: content.heading,
           body: 'A teammate offered a shift for trade. Tap to view.',
-          url: '/employee/shifts',
+          url: EMPLOYEE_SHIFTS_ROUTE,
           tag: `trade-created-${tradeId}`,
         });
       } catch (e) {
@@ -466,7 +482,7 @@ const handler = async (req: Request): Promise<Response> => {
             user_id: userId,
             title: 'Shift Trade Request',
             body: 'Someone wants to trade a shift with you',
-            data: { route: '/employee/shifts' },
+            data: { route: EMPLOYEE_SHIFTS_ROUTE },
           }),
         });
       } catch (e) {
@@ -477,7 +493,7 @@ const handler = async (req: Request): Promise<Response> => {
         await sendWebPushToUser(admin, userId, trade.restaurant_id, {
           title: 'Shift Trade Update',
           body: content.subject(employeeName),
-          url: '/employee/shifts',
+          url: EMPLOYEE_SHIFTS_ROUTE,
           tag: `trade-${action}-${tradeId}`,
         });
       } catch (e) {

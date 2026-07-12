@@ -188,4 +188,80 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
       ),
     ).toBe(true); // 11 AM-1 PM EDT
   });
+
+  // Codex finding: a `not-set` day (no exception, no recurring row) must
+  // still check the previous local day's overnight window before deciding —
+  // mirrors the RPC's 3c, which runs unconditionally, not only when 3b found
+  // a same-day match/off row.
+  describe('previous-day overnight window on an otherwise not-set day', () => {
+    const notSetToday = avail(false, null, null, 'not-set');
+    // Friday 6:00 PM - 2:00 AM EDT recurring window (stored UTC-clock 22:00-06:00).
+    const fridayOvernight = avail(true, '22:00:00', '06:00:00');
+
+    it('is false (not flagged) when the shift falls inside the carried-over window', () => {
+      expect(
+        shiftOutsideAvailability(
+          notSetToday,
+          fridayOvernight,
+          new Date('2027-07-17T05:00:00Z'), // 1:00 AM EDT Saturday
+          new Date('2027-07-17T05:30:00Z'), // 1:30 AM EDT Saturday
+          'America/New_York',
+          new Date(2027, 6, 17), // Saturday
+        ),
+      ).toBe(false);
+    });
+
+    it('is true (flagged) when the shift falls outside the carried-over window', () => {
+      expect(
+        shiftOutsideAvailability(
+          notSetToday,
+          fridayOvernight,
+          new Date('2027-07-17T07:00:00Z'), // 3:00 AM EDT Saturday — past the 2:00 AM window end
+          new Date('2027-07-17T08:00:00Z'),
+          'America/New_York',
+          new Date(2027, 6, 17),
+        ),
+      ).toBe(true);
+    });
+
+    it('stays false (unknown, not flagged) on a not-set day with no prevDay data at all', () => {
+      expect(
+        shiftOutsideAvailability(
+          notSetToday,
+          undefined,
+          new Date('2027-07-17T15:00:00Z'),
+          new Date('2027-07-17T16:00:00Z'),
+          'America/New_York',
+          new Date(2027, 6, 17),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  // Sound-logic finding: the previous local day's stored UTC-clock times must
+  // be anchored to YESTERDAY's date (like the RPC's v_prev_date), not
+  // today's — otherwise a DST-transition day picks the wrong UTC offset.
+  // America/New_York springs forward on Sun Mar 12, 2028 (2:00 AM -> 3:00 AM).
+  it('anchors the previous day\'s overnight window to yesterday\'s date across a spring-forward transition', () => {
+    const notSetToday = avail(false, null, null, 'not-set');
+    // Saturday Mar 11 (EST, UTC-5) recurring window, stored UTC-clock 23:00-08:00.
+    // Anchored correctly (to Sat, EST): local 6:00 PM Sat - 3:00 AM Sun.
+    // Anchored incorrectly (to Sun, which is EDT for these UTC instants):
+    // local 7:00 PM Sat - 4:00 AM Sun — a full hour later at both ends.
+    const saturdayOvernight = avail(true, '23:00:00', '08:00:00');
+
+    // Sunday 3:15-3:30 AM EDT: inside the WRONG (today-anchored) window
+    // (ends 4:00 AM) but outside the CORRECT (yesterday-anchored) window
+    // (ends 3:00 AM) — so this shift must be flagged (true).
+    expect(
+      shiftOutsideAvailability(
+        notSetToday,
+        saturdayOvernight,
+        new Date('2028-03-12T07:15:00Z'), // 3:15 AM EDT Sunday
+        new Date('2028-03-12T07:30:00Z'), // 3:30 AM EDT Sunday
+        'America/New_York',
+        new Date(2028, 2, 12), // Sunday Mar 12
+      ),
+    ).toBe(true);
+  });
 });

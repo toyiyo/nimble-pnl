@@ -186,8 +186,10 @@ export function shiftOutsideAvailability(
   timezone: string,
   date: Date,
 ): boolean {
-  // not-set / no data => unknown => not flagged (matches the RPC's "no conflict").
-  if (today.type === 'not-set') return false;
+  // `today.slots` is empty for 'not-set', so this only fires for an actual
+  // recurring-off / unavailable-exception row. Do NOT early-return for
+  // 'not-set' here — the RPC (3c) still checks the previous local day's
+  // overnight windows even when today has no exception/recurring row at all.
   const slot = today.slots[0];
   if (slot && !slot.isAvailable) return true; // recurring off / unavailable exception
 
@@ -202,20 +204,26 @@ export function shiftOutsideAvailability(
   );
   const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * 1440;
 
+  // Previous LOCAL calendar date, used (like the RPC's v_prev_date) as the
+  // DST-offset anchor for converting prevDay's stored UTC-clock times — using
+  // today's date here would pick the wrong UTC offset on a DST-transition day.
+  const prevDate = new Date(date);
+  prevDate.setDate(prevDate.getDate() - 1);
+
   const windows: Array<[number, number]> = [];
-  const pushWindow = (slots: EffectiveSlot[], offsetMin: number) => {
+  const pushWindow = (slots: EffectiveSlot[], offsetMin: number, refDate: Date) => {
     for (const s of slots) {
       if (!s.isAvailable || !s.startTime || !s.endTime) continue;
-      const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, date).split(':').map(Number);
-      const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, date).split(':').map(Number);
+      const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, refDate).split(':').map(Number);
+      const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, refDate).split(':').map(Number);
       const ws = sh * 60 + sm + offsetMin;
       let we = eh * 60 + em + offsetMin;
       if (we <= ws) we += 1440; // overnight local window
       windows.push([ws, we]);
     }
   };
-  pushWindow(today.slots, 0);
-  if (prevDay) pushWindow(overnightPrevSlots(prevDay.slots, timezone, date), -1440);
+  pushWindow(today.slots, 0, date);
+  if (prevDay) pushWindow(overnightPrevSlots(prevDay.slots, timezone, prevDate), -1440, prevDate);
 
   if (windows.length === 0) return false; // available-all-day / unknown
   return !windows.some(([ws, we]) => startMin >= ws && endMin <= we);

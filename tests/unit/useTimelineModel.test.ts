@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveWindow, buildLanes, expandDemand, computeGaps, buildTimelineModel, computeCoverage } from '@/lib/timelineModel';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 
 const shift = (start: string, end: string): Shift => ({
   id: start, restaurant_id: 'r', employee_id: 'e', start_time: start, end_time: end,
@@ -222,5 +223,57 @@ describe('computeCoverage (Fix 1 — live coverage against a frozen window, no l
     const at11 = live.coverage.find((c) => c.min === frozenWindow.startMin + 60);
     expect(at10?.count).toBe(0); // no longer covered at 10:00 post-drag
     expect(at11?.count).toBe(1); // covered at 11:00 post-drag
+  });
+});
+
+describe('outsideAvailability marker (Task 7)', () => {
+  const employees = [emp('e1', 'Ann', 'Front', 'Server')];
+  const shiftFor = (id: string, eid: string, start: string, end: string) =>
+    ({ id, restaurant_id: 'r', employee_id: eid, start_time: start, end_time: end, break_duration: 0,
+       position: 'Server', status: 'scheduled', is_published: false, source: 'manual',
+       locked: false, created_at: '', updated_at: '' } as Shift);
+
+  // 2026-07-11 is a Saturday (getDay() === 6).
+  const SAT = 6;
+
+  const availMap = (dow: number, effective: EffectiveAvailability): Map<string, Map<number, EffectiveAvailability>> =>
+    new Map([['e1', new Map([[dow, effective]])]]);
+
+  const recurringOff: EffectiveAvailability = {
+    type: 'recurring',
+    slots: [{ isAvailable: false, startTime: null, endTime: null, sourceRecord: {} as never }],
+  };
+
+  // 14:00Z-19:00Z UTC == 09:00-14:00 America/Chicago (CDT, UTC-5 in July) — comfortably
+  // covers the 10-13 CT test shift below.
+  const recurringOnWideWindow: EffectiveAvailability = {
+    type: 'recurring',
+    slots: [{ isAvailable: true, startTime: '14:00:00', endTime: '19:00:00', sourceRecord: {} as never }],
+  };
+
+  it('flags a bar outsideAvailability=true when the employee is recurring-unavailable that day', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // Sat 10-13 CT
+    const lanes = buildLanes(shifts, employees, '2026-07-11', 'America/Chicago', 'area', availMap(SAT, recurringOff));
+    expect(lanes[0].bars[0].outsideAvailability).toBe(true);
+  });
+
+  it('leaves outsideAvailability false when the shift falls inside the available window', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // Sat 10-13 CT
+    const lanes = buildLanes(shifts, employees, '2026-07-11', 'America/Chicago', 'area', availMap(SAT, recurringOnWideWindow));
+    expect(lanes[0].bars[0].outsideAvailability).toBe(false);
+  });
+
+  it('defaults outsideAvailability to false when no availabilityByEmployee map is supplied (backward-compatible)', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')];
+    const lanes = buildLanes(shifts, employees, '2026-07-11', 'America/Chicago', 'area');
+    expect(lanes[0].bars[0].outsideAvailability).toBe(false);
+  });
+
+  it('threads availabilityByEmployee through buildTimelineModel', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // Sat 10-13 CT
+    const model = buildTimelineModel(
+      shifts, employees, '2026-07-11', 'America/Chicago', 'area', [], availMap(SAT, recurringOff),
+    );
+    expect(model.lanes[0].bars[0].outsideAvailability).toBe(true);
   });
 });

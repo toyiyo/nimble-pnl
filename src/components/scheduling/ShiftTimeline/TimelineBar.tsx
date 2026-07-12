@@ -73,7 +73,7 @@ function TimelineBarImpl({
   onDragCommit,
   highlighted = false,
 }: TimelineBarProps) {
-  const { leftMin, endMin, label, ariaLabel, color, shift } = bar;
+  const { leftMin, endMin, label, ariaLabel, color, shift, outsideAvailability } = bar;
   const locked = shift.locked;
 
   const handleDraftChange = useCallback(
@@ -125,7 +125,7 @@ function TimelineBarImpl({
     >
       <button
         type="button"
-        aria-label={ariaLabel}
+        aria-label={outsideAvailability ? `${ariaLabel}, outside availability` : ariaLabel}
         onClick={handleTap}
         onPointerDown={handleBodyPointerDown}
         onPointerMove={handlePointerMove}
@@ -140,6 +140,8 @@ function TimelineBarImpl({
           color.bg,
           color.border,
           color.text,
+          // Design doc §3c — low-contrast warning treatment; shift color stays the fill.
+          outsideAvailability && 'border-l-2 border-l-amber-500',
         )}
       >
         {label}
@@ -194,6 +196,7 @@ function areEqual(prev: TimelineBarProps, next: TimelineBarProps): boolean {
     prev.bar.label === next.bar.label &&
     prev.bar.ariaLabel === next.bar.ariaLabel &&
     prev.bar.color === next.bar.color &&
+    prev.bar.outsideAvailability === next.bar.outsideAvailability &&
     prev.bar.shift.locked === next.bar.shift.locked &&
     prev.minToPct === next.minToPct &&
     prev.onSelect === next.onSelect &&

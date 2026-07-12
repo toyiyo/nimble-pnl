@@ -124,6 +124,20 @@ Rules:
 - `sharePct` guarded against divide-by-zero (0 when total is 0).
 - Deterministic sort: `earnedCents` desc, tie-break by `name` asc.
 
+### Payment status (three-way, not binary) — folds review major #2
+
+`unpaidCents`/`paidCents` are continuous, so the badge is **three-way**,
+derived by a pure helper `paymentStatus(d): 'paid' | 'partial' | 'unpaid'`:
+
+- `paid` — `earnedCents > 0 && unpaidCents === 0`.
+- `partial` — `paidCents > 0 && unpaidCents > 0` (e.g. $10 of $50 paid).
+- `unpaid` — `paidCents === 0 && earnedCents > 0`.
+
+Rendered with distinct semantic tints + **text label + icon** (color is
+never the sole signal — a11y): paid = success tint + `Check`, partial =
+warning tint + `Clock` + "Partial", unpaid = muted/amber tint + `Clock`.
+Partial rows also show `$paid / $earned` so a manager sees what's left.
+
 ### Component
 
 New `src/components/tips/TipDistribution.tsx`:
@@ -132,30 +146,64 @@ New `src/components/tips/TipDistribution.tsx`:
 interface TipDistributionProps {
   splits: TipSplitWithItems[] | undefined;
   payouts: TipPayout[];
-  isLoading: boolean;
-  isError: boolean;
-  periodLabel: string;
+  isLoading: boolean;   // periodSplitsLoading || payoutsLoading
+  isError: boolean;     // !!periodSplitsError || !!payoutsError
+  onNavigateToOverview: () => void; // for the empty-state CTA
 }
 ```
 
-Renders (Apple/Notion tokens per CLAUDE.md):
-- Summary metric row: total distributed, employee count, paid, unpaid.
-- Per-employee rows: avatar initials, name, role, a share-of-pool bar,
-  hours, earned amount, and a Paid/Unpaid badge (green/amber semantic
-  tint). Matches the approved mockup.
+The aggregation runs inside a `useMemo(() => aggregateTipDistribution(
+splits ?? [], payouts), [splits, payouts])` (review minor).
 
-### Three-state rendering (lesson 2026-xx line 160)
+Renders (Apple/Notion tokens per CLAUDE.md — pinned classes so
+implementation doesn't drift, mirroring `TipPeriodSummary.tsx`):
+- Summary metric row: total distributed, employee count, paid, unpaid.
+  Values `text-[22px] font-semibold`; labels
+  `text-[12px] font-medium text-muted-foreground uppercase tracking-wider`.
+- Per-employee rows rendered as a **semantic list** (`<ul>`/`<li>`), each
+  `<li>` carrying an `aria-label` that reads as one coherent sentence
+  (e.g. "Maria Santos, Server, earned $812, 19% of pool, paid") so a
+  screen reader doesn't announce fragmented spans. Row contents: avatar
+  initials, name (`text-[14px] font-medium text-foreground`), role
+  (`text-[13px] text-muted-foreground`), a share-of-pool bar, hours,
+  earned amount, and the three-way status badge. Matches the approved
+  mockup.
+- **Share-of-pool bar** (review major #3): the numeric `sharePct` renders
+  as visible text next to the bar (e.g. "19.3%"); the bar `<div>` itself
+  is `aria-hidden="true"` since the number already conveys the value. Bar
+  fill uses a semantic token (`bg-foreground`/`bg-primary`), not a raw
+  color. WCAG 1.1.1 satisfied via the text, not the bar.
+
+### Responsive / mobile (review major #4)
+
+Restaurant managers hit this on-shift on a phone, so the row must degrade
+at 375px. Strategy: below `sm:` (640px) the row becomes two lines — line 1
+is avatar + name + earned amount + status badge; line 2 (indented under
+the name) is role · hours · sharePct. The share bar is hidden below `sm:`
+(the `sharePct` text remains, so no information is lost). At `sm:` and up,
+the single-row grid layout from the mockup applies. No horizontal scroll
+at any width.
+
+### Three-state rendering (lesson line 160) — folds review major #1
 
 The view MUST distinguish, in order:
-1. `isLoading` → skeleton.
+1. `isLoading` → **row-shaped** skeleton (placeholder rows matching the
+   final layout, not a single block — avoids the `TipPeriodSummary`
+   single-`h-24`-blob anti-pattern).
 2. `isError` → error message (do NOT render "$0 / nobody" on error).
-3. empty (no finalized allocations in period) → empty state inviting the
-   user to approve/lock tips in Overview.
+3. empty (no finalized allocations in period) → empty state whose CTA is
+   an actionable button that calls `onNavigateToOverview()` (keyboard
+   operable), not just prose.
 4. data → the table.
 
-`Tips.tsx` will additionally destructure `error: periodSplitsError` from
-the `periodSplits` query (currently only `isLoading` is taken) and pass
-`isError={!!periodSplitsError}`.
+**Both** data sources feed the loading/error props. `Tips.tsx` already
+takes `payouts` from `useTipPayouts`; it will additionally destructure
+`isLoading: payoutsLoading, error: payoutsError` there and
+`error: periodSplitsError` from the `periodSplits` query (currently only
+`isLoading` is taken), then pass the combined booleans:
+`isLoading={periodSplitsLoading || payoutsLoading}` and
+`isError={!!periodSplitsError || !!payoutsError}`. This closes the
+"payout fetch slow/failed → everyone shows Unpaid" gap.
 
 ## Tab wiring
 
@@ -176,7 +224,18 @@ the `periodSplits` query (currently only `isLoading` is taken) and pass
   - empty input → zeroed result, empty array.
   - deterministic sort (earned desc, name tie-break).
   - null `hours_worked` and missing `employee` join handled.
+- `paymentStatus(d)` helper: `paid` / `partial` / `unpaid` boundaries,
+  including the partial case ($10 of $50) and the earned-but-nothing-paid
+  case.
 - Component tests optional per CLAUDE.md (util carries the logic).
+
+### Virtualization note
+
+Per-restaurant per-week distribution is typically <30 rows, below
+CLAUDE.md's 100-item virtualization threshold, so a plain mapped list is
+correct here. If a future multi-outlet pool routinely exceeds ~100 rows,
+revisit with `@tanstack/react-virtual` — noted so it isn't silently
+forgotten.
 
 ## Risks / trade-offs
 

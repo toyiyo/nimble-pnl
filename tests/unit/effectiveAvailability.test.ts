@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeEffectiveAvailability,
+  availabilityColorClasses,
+  availabilityLabel,
+  shiftOutsideAvailability,
   EffectiveSlot,
   EffectiveAvailability,
 } from '@/lib/effectiveAvailability';
@@ -113,5 +116,76 @@ describe('computeEffectiveAvailability', () => {
     const result = computeEffectiveAvailability(avail, [], weekStart, ['emp-1', 'emp-2']);
     expect(result.get('emp-1')?.get(1)?.slots[0].startTime).toBe('09:00:00');
     expect(result.get('emp-2')?.get(1)?.slots[0].startTime).toBe('06:00:00');
+  });
+});
+
+const avail = (
+  isAvailable: boolean,
+  start: string | null,
+  end: string | null,
+  type: EffectiveAvailability['type'] = 'recurring',
+): EffectiveAvailability => ({
+  type,
+  slots:
+    type === 'not-set'
+      ? []
+      : [{ isAvailable, startTime: start, endTime: end, sourceRecord: {} as never }],
+});
+
+describe('availabilityColorClasses', () => {
+  it('emerald when available, amber for unavailable exception, red for recurring off, neutral when not-set', () => {
+    expect(availabilityColorClasses(avail(true, '18:00:00', '02:00:00')).bg).toContain('emerald');
+    expect(availabilityColorClasses(avail(false, null, null, 'exception')).bg).toContain('amber');
+    expect(availabilityColorClasses(avail(false, null, null, 'recurring')).bg).toContain('red');
+    expect(availabilityColorClasses(avail(false, null, null, 'not-set')).bg).toContain('muted');
+  });
+});
+
+describe('availabilityLabel', () => {
+  it('formats an available window in restaurant-local time', () => {
+    // 18:00 UTC in America/New_York (EDT) is 2:00 PM on 2027-07-13.
+    const label = availabilityLabel(
+      avail(true, '18:00:00', '02:30:00'),
+      'America/New_York',
+      new Date(2027, 6, 13),
+    );
+    expect(label).toMatch(/Available 2:00 PM/);
+  });
+  it('labels unavailable and not-set', () => {
+    expect(availabilityLabel(avail(false, null, null, 'recurring'), 'UTC', new Date(2027, 6, 13))).toBe(
+      'Unavailable',
+    );
+    expect(
+      availabilityLabel(avail(false, null, null, 'not-set'), 'UTC', new Date(2027, 6, 13)),
+    ).toBe('No availability set');
+  });
+});
+
+describe('shiftOutsideAvailability (TZ-portable)', () => {
+  // Employee available 2:00 PM-10:30 PM local (stored UTC-clock, derived below).
+  const nyAvail = avail(true, '18:00:00', '02:30:00'); // EDT: 2:00 PM - 10:30 PM
+  it('is false when the shift is within the window', () => {
+    expect(
+      shiftOutsideAvailability(
+        nyAvail,
+        undefined,
+        new Date('2027-07-13T21:00:00Z'),
+        new Date('2027-07-14T01:00:00Z'),
+        'America/New_York',
+        new Date(2027, 6, 13),
+      ),
+    ).toBe(false); // 5-9 PM EDT
+  });
+  it('is true when the shift starts before the window', () => {
+    expect(
+      shiftOutsideAvailability(
+        nyAvail,
+        undefined,
+        new Date('2027-07-13T15:00:00Z'),
+        new Date('2027-07-13T17:00:00Z'),
+        'America/New_York',
+        new Date(2027, 6, 13),
+      ),
+    ).toBe(true); // 11 AM-1 PM EDT
   });
 });

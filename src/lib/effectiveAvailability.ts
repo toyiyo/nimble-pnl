@@ -1,4 +1,6 @@
+import { toZonedTime } from 'date-fns-tz';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
+import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 
 export interface EffectiveSlot {
   isAvailable: boolean;
@@ -107,4 +109,121 @@ export function computeEffectiveAvailability(
   }
 
   return result;
+}
+
+export interface AvailabilityClasses {
+  bg: string;
+  text: string;
+}
+
+/**
+ * Semantic tint for an EffectiveAvailability — the exact treatment used by
+ * TeamAvailabilityGrid.AvailabilityCell, extracted here so the grid, the
+ * planner sidebar strip, and the timeline bar marker can't drift apart.
+ */
+export function availabilityColorClasses(effective: EffectiveAvailability): AvailabilityClasses {
+  const slot = effective.slots[0];
+  const isAvailable = slot?.isAvailable ?? false;
+  const isException = effective.type === 'exception';
+  const isExceptionAvailable = isException && isAvailable;
+  const isExceptionUnavailable = isException && !isAvailable;
+  const isRecurringAvailable = effective.type === 'recurring' && isAvailable;
+  const isRecurringUnavailable = effective.type === 'recurring' && !isAvailable;
+
+  if (isRecurringAvailable || isExceptionAvailable) {
+    return { bg: 'bg-emerald-500/10 hover:bg-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-400' };
+  }
+  if (isExceptionUnavailable) {
+    return { bg: 'bg-amber-500/10 hover:bg-amber-500/20', text: 'text-amber-700 dark:text-amber-400' };
+  }
+  if (isRecurringUnavailable) {
+    return { bg: 'bg-red-500/5 hover:bg-red-500/10', text: 'text-red-600/70 dark:text-red-400/70' };
+  }
+  return { bg: 'bg-muted/30 hover:bg-muted/50', text: 'text-muted-foreground' };
+}
+
+function toDisplay(time: string, timezone: string, date: Date): string {
+  const local = utcTimeToLocalTime(time, timezone, date); // "HH:MM"
+  const [h, m] = local.split(':').map(Number);
+  const suffix = h < 12 ? 'AM' : 'PM';
+  const hour12 = h % 12 || 12;
+  return `${hour12}:${String(m).padStart(2, '0')} ${suffix}`;
+}
+
+/** Localized one-line label for an EffectiveAvailability cell. */
+export function availabilityLabel(effective: EffectiveAvailability, timezone: string, date: Date): string {
+  if (effective.type === 'not-set') return 'No availability set';
+  const slot = effective.slots[0];
+  if (!slot?.isAvailable) return 'Unavailable';
+  if (!slot.startTime || !slot.endTime) return 'Available';
+  return `Available ${toDisplay(slot.startTime, timezone, date)} – ${toDisplay(slot.endTime, timezone, date)}`;
+}
+
+/**
+ * Slots from a previous local day whose converted window is locally
+ * overnight (end <= start), i.e. windows that spill into today's early hours.
+ */
+function overnightPrevSlots(
+  slots: EffectiveSlot[],
+  timezone: string,
+  date: Date,
+): EffectiveSlot[] {
+  return slots.filter((s) => {
+    if (!s.isAvailable || !s.startTime || !s.endTime) return false;
+    const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, date).split(':').map(Number);
+    const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, date).split(':').map(Number);
+    return eh * 60 + em <= sh * 60 + sm;
+  });
+}
+
+/**
+ * True when [shiftStart, shiftEnd] (instants) falls outside the employee's
+ * available window(s) for the given local day. Client-side mirror of the
+ * `check_availability_conflict` RPC's local-frame logic: trust the stored
+ * day_of_week, convert only time-of-day, and treat a local end <= start as
+ * overnight. `prevDay` is the previous local day's EffectiveAvailability
+ * (needed so an overnight window from yesterday can cover today's early
+ * hours).
+ */
+export function shiftOutsideAvailability(
+  today: EffectiveAvailability,
+  prevDay: EffectiveAvailability | undefined,
+  shiftStart: Date,
+  shiftEnd: Date,
+  timezone: string,
+  date: Date,
+): boolean {
+  // not-set / no data => unknown => not flagged (matches the RPC's "no conflict").
+  if (today.type === 'not-set') return false;
+  const slot = today.slots[0];
+  if (slot && !slot.isAvailable) return true; // recurring off / unavailable exception
+
+  // Convert the shift INSTANTS to restaurant-local wall clock (NOT host TZ — lesson 2026-05-10).
+  const zStart = toZonedTime(shiftStart, timezone);
+  const zEnd = toZonedTime(shiftEnd, timezone);
+  const startMin = zStart.getHours() * 60 + zStart.getMinutes();
+  const dayDelta = Math.round(
+    (new Date(zEnd.getFullYear(), zEnd.getMonth(), zEnd.getDate()).getTime() -
+      new Date(zStart.getFullYear(), zStart.getMonth(), zStart.getDate()).getTime()) /
+      86_400_000,
+  );
+  const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * 1440;
+
+  const windows: Array<[number, number]> = [];
+  const pushWindow = (slots: EffectiveSlot[], offsetMin: number) => {
+    for (const s of slots) {
+      if (!s.isAvailable || !s.startTime || !s.endTime) continue;
+      const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, date).split(':').map(Number);
+      const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, date).split(':').map(Number);
+      const ws = sh * 60 + sm + offsetMin;
+      let we = eh * 60 + em + offsetMin;
+      if (we <= ws) we += 1440; // overnight local window
+      windows.push([ws, we]);
+    }
+  };
+  pushWindow(today.slots, 0);
+  if (prevDay) pushWindow(overnightPrevSlots(prevDay.slots, timezone, date), -1440);
+
+  if (windows.length === 0) return false; // available-all-day / unknown
+  return !windows.some(([ws, we]) => startMin >= ws && endMin <= we);
 }

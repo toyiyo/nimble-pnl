@@ -100,7 +100,6 @@ ALTER TABLE restaurants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_restaurants ENABLE ROW LEVEL SECURITY;
 
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 
 -- ============================================================================
 -- Test 1: Bystander C sees the DIRECTED trade → 0 rows.
@@ -119,7 +118,6 @@ SELECT is(
 -- Test 2: Target B sees the DIRECTED trade → 1 row.
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000012","role":"authenticated"}', true);
 
@@ -133,7 +131,6 @@ SELECT is(
 -- Test 3: Offerer A sees the DIRECTED trade → 1 row.
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000011","role":"authenticated"}', true);
 
@@ -148,7 +145,6 @@ SELECT is(
 -- confirm B (target-and-accepter) still sees it → 1 row.
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role TO postgres;
 UPDATE shift_trades
   SET accepted_by_employee_id = '53000000-0000-0000-0000-000000000022'
@@ -168,7 +164,6 @@ SELECT is(
 -- Test 5: Manager M sees the DIRECTED trade → 1 row (Policy 4).
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000014","role":"authenticated"}', true);
 
@@ -184,7 +179,6 @@ SELECT is(
 -- currently 0, since O has no employees row and isn't owner/manager.
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000015","role":"authenticated"}', true);
 
@@ -199,7 +193,6 @@ SELECT is(
 -- of the restaurant — A, B, and C each see it.
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000011","role":"authenticated"}', true);
 
@@ -210,7 +203,6 @@ SELECT is(
 );
 
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000012","role":"authenticated"}', true);
 
@@ -221,7 +213,6 @@ SELECT is(
 );
 
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000013","role":"authenticated"}', true);
 
@@ -236,7 +227,6 @@ SELECT is(
 -- neither the directed nor the open trade (both belong to R1).
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000016","role":"authenticated"}', true);
 
@@ -257,7 +247,6 @@ SELECT is(
 -- (the follow-up migration DROPs + recreates it under the same name).
 -- ============================================================================
 RESET ROLE;
-SELECT set_config('request.jwt.claims', NULL, true);
 SET LOCAL role TO postgres;
 
 SELECT policy_cmd_is(

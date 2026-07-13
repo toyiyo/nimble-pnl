@@ -179,3 +179,39 @@ export function buildSplhGrid(
   }
   return cells;
 }
+
+function mondayOf(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  const dow = dt.getUTCDay(); // 0=Sun
+  const diff = (dow + 6) % 7; // days since Monday
+  dt.setUTCDate(dt.getUTCDate() - diff);
+  return dt.toISOString().slice(0, 10);
+}
+
+export function buildSplhTimeseries(
+  sales: SplhSaleRow[], sessions: WorkSession[], tz: string, granularity: 'day' | 'week',
+): SplhPoint[] {
+  const bucketOf = (localDate: string) => granularity === 'week' ? mondayOf(localDate) : localDate;
+  const salesMap = new Map<string, number>();
+  const hoursMap = new Map<string, number>();
+
+  for (const sale of sales) {
+    const bucket = bucketOf(sale.sale_date);
+    salesMap.set(bucket, (salesMap.get(bucket) ?? 0) + Number(sale.total_price));
+  }
+  for (const s of sessions) {
+    for (const c of distributeWorkedHours(s, tz)) {
+      const bucket = bucketOf(c.localDate);
+      hoursMap.set(bucket, (hoursMap.get(bucket) ?? 0) + c.hours);
+    }
+  }
+
+  const buckets = Array.from(new Set([...salesMap.keys(), ...hoursMap.keys()])).sort();
+  return buckets.map((bucketStart) => {
+    const totalSales = salesMap.get(bucketStart) ?? 0;
+    const totalHours = hoursMap.get(bucketStart) ?? 0;
+    const splh = totalHours >= 0.01 ? Math.round(totalSales / totalHours) : null;
+    return { bucketStart, label: bucketStart, totalSales: Math.round(totalSales * 100) / 100, totalHours: Math.round(totalHours * 100) / 100, splh };
+  });
+}

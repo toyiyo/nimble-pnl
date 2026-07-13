@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateTimeZone, distributeWorkedHours, buildSplhGrid, classifySplh } from '@/lib/splhAnalytics';
+import { validateTimeZone, distributeWorkedHours, buildSplhGrid, classifySplh, buildSplhTimeseries } from '@/lib/splhAnalytics';
 import type { WorkSession } from '@/utils/timePunchProcessing';
 
 describe('validateTimeZone', () => {
@@ -117,5 +117,32 @@ describe('buildSplhGrid', () => {
   it('returns a full 7x24 grid', () => {
     const grid = buildSplhGrid([], [], tz, 60);
     expect(grid).toHaveLength(7 * 24);
+  });
+});
+
+describe('buildSplhTimeseries', () => {
+  const tz = 'UTC';
+  const sales = [
+    { sale_date: '2026-07-01', sale_time: null, sold_at: '2026-07-01T17:00:00Z', total_price: 200 },
+    { sale_date: '2026-07-02', sale_time: null, sold_at: '2026-07-02T17:00:00Z', total_price: 400 },
+  ];
+  const sessions = [
+    session({ clock_in: new Date(Date.UTC(2026,6,1,17,0)), clock_out: new Date(Date.UTC(2026,6,1,21,0)), is_complete: true }),
+    session({ clock_in: new Date(Date.UTC(2026,6,2,17,0)), clock_out: new Date(Date.UTC(2026,6,2,21,0)), is_complete: true }),
+  ];
+  it('daily buckets: one point per date with splh = sales/hours', () => {
+    const pts = buildSplhTimeseries(sales, sessions, tz, 'day');
+    const p1 = pts.find(p => p.bucketStart === '2026-07-01')!;
+    expect(p1.totalSales).toBe(200);
+    expect(p1.totalHours).toBeCloseTo(4, 5);
+    expect(p1.splh).toBe(50);
+  });
+  it('weekly buckets group by Monday-start week', () => {
+    const pts = buildSplhTimeseries(sales, sessions, tz, 'week');
+    // 2026-06-29 is the Monday of the week containing Jul 1–2
+    expect(pts).toHaveLength(1);
+    expect(pts[0].bucketStart).toBe('2026-06-29');
+    expect(pts[0].totalSales).toBe(600);
+    expect(pts[0].splh).toBe(75); // 600 / 8h
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateTimeZone, distributeWorkedHours } from '@/lib/splhAnalytics';
+import { validateTimeZone, distributeWorkedHours, buildSplhGrid, classifySplh } from '@/lib/splhAnalytics';
 import type { WorkSession } from '@/utils/timePunchProcessing';
 
 describe('validateTimeZone', () => {
@@ -67,5 +67,55 @@ describe('distributeWorkedHours', () => {
     const dates = new Set(c.map(x => x.localDate));
     expect(dates.has('2026-07-01')).toBe(true); // 22:00,23:00 Wed
     expect(dates.has('2026-07-02')).toBe(true); // 00:00,01:00 Thu
+  });
+});
+
+describe('classifySplh', () => {
+  it('classifies vs target with ±15% band', () => {
+    expect(classifySplh(60, 60)).toBe('balanced');
+    expect(classifySplh(80, 60)).toBe('lean');   // above target
+    expect(classifySplh(40, 60)).toBe('slack');  // below target
+  });
+});
+
+describe('buildSplhGrid', () => {
+  const tz = 'UTC';
+  it('computes cell SPLH = sales/hours and state', () => {
+    const sales = [{ sale_date: '2026-07-01', sale_time: null, sold_at: '2026-07-01T17:00:00Z', total_price: 300 }];
+    const sessions = [session({
+      clock_in: new Date(Date.UTC(2026,6,1,17,0)),
+      clock_out: new Date(Date.UTC(2026,6,1,20,0)),
+      is_complete: true,
+    })];
+    const grid = buildSplhGrid(sales, sessions, tz, 60);
+    const cell = grid.find(c => c.hour === 17 && c.dow === 3)!; // Wed 17:00
+    expect(cell.totalSales).toBe(300);
+    expect(cell.totalHours).toBeCloseTo(1, 5);
+    expect(cell.splh).toBe(300);
+    expect(cell.state).toBe('lean');
+  });
+
+  it('marks sales-without-labor as no-labor (never Infinity)', () => {
+    const sales = [{ sale_date: '2026-07-01', sale_time: null, sold_at: '2026-07-01T17:00:00Z', total_price: 100 }];
+    const grid = buildSplhGrid(sales, [], tz, 60);
+    const cell = grid.find(c => c.totalSales > 0)!; // dow=3 (Wed), hour=17
+    expect(cell.hour).toBe(17);
+    expect(cell.dow).toBe(3);
+    expect(cell.splh).toBeNull();
+    expect(cell.state).toBe('no-labor');
+  });
+
+  it('marks hours with neither sales nor labor as closed', () => {
+    const grid = buildSplhGrid([], [], tz, 60);
+    const cell = grid.find(c => c.hour === 3 && c.dow === 0)!;
+    expect(cell.totalSales).toBe(0);
+    expect(cell.totalHours).toBe(0);
+    expect(cell.splh).toBeNull();
+    expect(cell.state).toBe('closed');
+  });
+
+  it('returns a full 7x24 grid', () => {
+    const grid = buildSplhGrid([], [], tz, 60);
+    expect(grid).toHaveLength(7 * 24);
   });
 });

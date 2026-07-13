@@ -120,3 +120,62 @@ export function distributeWorkedHours(session: WorkSession, tz: string): HourCon
   }
   return out;
 }
+
+export function classifySplh(splh: number, target: number): 'lean' | 'balanced' | 'slack' {
+  if (target <= 0) return 'balanced';
+  if (splh > target * (1 + BALANCED_BAND)) return 'lean';
+  if (splh < target * (1 - BALANCED_BAND)) return 'slack';
+  return 'balanced';
+}
+
+function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
+  if (sale.sold_at) {
+    const h = localParts(new Date(sale.sold_at).getTime(), tz).hour;
+    return Number.isNaN(h) ? null : h;
+  }
+  if (sale.sale_time) {
+    const h = parseInt(sale.sale_time.split(':')[0], 10);
+    return Number.isNaN(h) ? null : h;
+  }
+  return null;
+}
+
+function dowOfDate(dateStr: string): number {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+export function buildSplhGrid(
+  sales: SplhSaleRow[], sessions: WorkSession[], tz: string, target: number,
+): SplhGridCell[] {
+  const key = (dow: number, hour: number) => dow * 24 + hour;
+  const salesMap = new Map<number, number>();
+  const hoursMap = new Map<number, number>();
+
+  for (const sale of sales) {
+    const hour = hourOfSale(sale, tz);
+    if (hour === null) continue;
+    const dow = dowOfDate(sale.sale_date);
+    salesMap.set(key(dow, hour), (salesMap.get(key(dow, hour)) ?? 0) + Number(sale.total_price));
+  }
+  for (const s of sessions) {
+    for (const c of distributeWorkedHours(s, tz)) {
+      hoursMap.set(key(c.dow, c.hour), (hoursMap.get(key(c.dow, c.hour)) ?? 0) + c.hours);
+    }
+  }
+
+  const cells: SplhGridCell[] = [];
+  for (let dow = 0; dow < 7; dow++) {
+    for (let hour = 0; hour < 24; hour++) {
+      const totalSales = salesMap.get(key(dow, hour)) ?? 0;
+      const totalHours = hoursMap.get(key(dow, hour)) ?? 0;
+      let splh: number | null = null;
+      let state: SplhCellState;
+      if (totalSales === 0 && totalHours < 0.01) { state = 'closed'; }
+      else if (totalHours < 0.01) { state = 'no-labor'; }
+      else { splh = Math.round(totalSales / totalHours); state = classifySplh(splh, target); }
+      cells.push({ dow, hour, totalSales: Math.round(totalSales * 100) / 100, totalHours: Math.round(totalHours * 100) / 100, splh, state });
+    }
+  }
+  return cells;
+}

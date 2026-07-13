@@ -15,10 +15,20 @@ const { data: employees } = await supabase.from('employees').select('email')
 ```
 
 But shift trades can be **directed** to one coworker (`shift_trades.target_employee_id`).
-Directed trades are visible only to the target under RLS + the marketplace filter
-(`target_employee_id IS NULL OR target_employee_id = me` — migration
-`20260104120000_create_shift_trades.sql`, `useShiftTrades.ts` marketplace query). So a directed
-`created` trade currently **emails the whole team a private offer** they can't see in-app.
+Directed trades are hidden from non-targets **in the app** by the marketplace query's client-side
+filter (`useShiftTrades.ts`: `.or('target_employee_id.is.null,target_employee_id.eq.<me>')`). So a
+directed `created` trade currently **emails the whole team a private offer** they cannot see in
+the UI — the email is strictly worse than the app, actively pushing the private detail out.
+
+> **Correction (design review):** this visibility is **NOT** enforced by RLS. `shift_trades`
+> Policy 1 (`20260104120000_create_shift_trades.sql`) only checks restaurant membership — it never
+> references `target_employee_id`, so any active employee can `SELECT` a directed trade via a raw
+> query. The privacy boundary is client-side only. This email fix still stands and is a net
+> improvement (it stops the server from *broadcasting* directed offers), but it aligns email with
+> the **app-visible** audience, not an RLS-enforced one. The RLS gap is a **separate** pre-existing
+> security issue — filed as its own ticket (`task` spawned), distinct from `task_344afce3`. The
+> stale "visible only to its target under RLS" comment in the `created` **push** block (added in
+> #606) is corrected in this PR too.
 
 PR #606 already fixed the identical leak on the **push** channel (directed → notify only the
 target; open → broadcast). This applies the same gating to **email**.
@@ -71,6 +81,29 @@ const buildEmails = async (supabase, restaurantId, action,
 };
 ```
 
+### Handler flow — don't let "no email recipients" skip the push (design review, major)
+
+The handler currently early-returns `200 "No recipients"` when `buildEmails` is empty — **before**
+the push block. Today `created` recipients are always non-empty (broadcast), so it never fires; but
+after this change a directed trade whose target has **no email** returns `[]`, and the early return
+would skip the push too — so the target would get *neither* channel. Fix: replace the early return
+with a **conditional email send**, and let the push block run regardless:
+
+```ts
+const content = ACTION_CONTENT[action];
+const employeeName = action === 'accepted' ? acceptedByName : offeredByName; // used by email AND push
+
+if (recipients.length > 0) {
+  const html = generateEmailHtml(content, employeeName, shiftDetails, restaurantName, trade.manager_note);
+  const { data: emailData, error: emailError } = await resend.emails.send({ ...to: recipients... });
+  if (emailError) { console.error(...); return 500; }   // genuine send failure stays a 500 (unchanged)
+  console.log(`...emailId=${emailData?.id}`);
+} else {
+  console.warn('No email recipients; continuing to push');
+}
+// push block runs unconditionally below → the directed target still gets a push
+```
+
 ### Call site — resolve the directed target via the `admin` client
 
 The existing bare service-role `admin` client (added in #606) reliably reads the target's email
@@ -108,3 +141,9 @@ already covers a directed target with no email.
 - **Client discipline:** only the new directed-target lookup uses `admin`; the pre-existing
   open-broadcast and `accepted` queries keep their current client — the broader caller-scoped-client
   audit is `task_344afce3`, deliberately out of scope here.
+- **Target lookup omits `is_active`** (matches the merged push lookup at `index.ts:446-451`) — a
+  directed trade should still notify its target even if a race deactivated them; a one-line comment
+  notes the intentional parity so a reviewer doesn't "fix" one lookup out of sync with the other.
+- **RLS gap is out of scope, filed separately:** tightening `shift_trades` Policy 1 to enforce
+  `target_employee_id` is a distinct security ticket; this PR only fixes the server-side email
+  broadcast + corrects the stale "under RLS" comment.

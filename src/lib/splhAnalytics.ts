@@ -215,3 +215,33 @@ export function buildSplhTimeseries(
     return { bucketStart, label: bucketStart, totalSales: Math.round(totalSales * 100) / 100, totalHours: Math.round(totalHours * 100) / 100, splh };
   });
 }
+
+export function summarizeSplh(
+  grid: SplhGridCell[], target: number, avgHourlyRateCents: number | null,
+): SplhSummary {
+  let totalSales = 0, totalHours = 0;
+  const hireHours: { dow: number; hour: number }[] = [];
+  const trimHours: { dow: number; hour: number }[] = [];
+  for (const c of grid) {
+    totalSales += c.totalSales;
+    totalHours += c.totalHours;
+    if (c.state === 'lean') hireHours.push({ dow: c.dow, hour: c.hour });
+    else if (c.state === 'slack') trimHours.push({ dow: c.dow, hour: c.hour });
+  }
+  const actualSplh = totalHours >= 0.01 ? Math.round(totalSales / totalHours) : null;
+  const laborPct = avgHourlyRateCents && totalSales > 0
+    ? Math.round(((totalHours * (avgHourlyRateCents / 100)) / totalSales) * 10000) / 100
+    : null;
+
+  let verdictTone: SplhSummary['verdictTone'] = 'none';
+  let verdict = 'Not enough data to assess staffing yet.';
+  if (actualSplh !== null) {
+    const tone = classifySplh(actualSplh, target);
+    verdictTone = tone;
+    const pct = Math.round(Math.abs(actualSplh - target) / target * 100);
+    if (tone === 'lean') verdict = `Running lean — ${pct}% above your $${target} target. You may be understaffed at peak.`;
+    else if (tone === 'slack') verdict = `Running slack — ${pct}% below your $${target} target. You may be overstaffed.`;
+    else verdict = `On target — right around your $${target} SPLH goal.`;
+  }
+  return { actualSplh, target, laborPct, verdict, verdictTone, hireHours, trimHours };
+}

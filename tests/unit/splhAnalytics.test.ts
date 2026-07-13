@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateTimeZone, distributeWorkedHours, buildSplhGrid, classifySplh, buildSplhTimeseries } from '@/lib/splhAnalytics';
+import { validateTimeZone, distributeWorkedHours, buildSplhGrid, classifySplh, buildSplhTimeseries, summarizeSplh } from '@/lib/splhAnalytics';
 import type { WorkSession } from '@/utils/timePunchProcessing';
 
 describe('validateTimeZone', () => {
@@ -144,5 +144,30 @@ describe('buildSplhTimeseries', () => {
     expect(pts[0].bucketStart).toBe('2026-06-29');
     expect(pts[0].totalSales).toBe(600);
     expect(pts[0].splh).toBe(75); // 600 / 8h
+  });
+});
+
+describe('summarizeSplh', () => {
+  it('headline SPLH, verdict tone, and labor% when wage provided', () => {
+    const grid = [
+      { dow: 5, hour: 18, totalSales: 900, totalHours: 10, splh: 90, state: 'lean' as const },
+      { dow: 5, hour: 19, totalSales: 900, totalHours: 10, splh: 90, state: 'lean' as const },
+    ];
+    const s = summarizeSplh(grid, 60, 1500);
+    expect(s.actualSplh).toBe(90);
+    expect(s.verdictTone).toBe('lean');
+    // labor% = (20h * $15) / $1800 = 16.67%
+    expect(s.laborPct).toBeCloseTo(16.67, 1);
+    expect(s.hireHours).toContainEqual({ dow: 5, hour: 18 });
+  });
+  it('labor% is null with no wage', () => {
+    const s = summarizeSplh([{ dow: 1, hour: 12, totalSales: 60, totalHours: 1, splh: 60, state: 'balanced' }], 60, null);
+    expect(s.laborPct).toBeNull();
+    expect(s.verdictTone).toBe('balanced');
+  });
+  it('empty grid → null actualSplh, none tone', () => {
+    const s = summarizeSplh([], 60, 1500);
+    expect(s.actualSplh).toBeNull();
+    expect(s.verdictTone).toBe('none');
   });
 });

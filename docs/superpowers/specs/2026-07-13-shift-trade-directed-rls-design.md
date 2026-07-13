@@ -76,6 +76,17 @@ Notes:
 - Offerer inclusion lets a poster see/cancel their own directed trade; accepter inclusion keeps a
   claimed trade visible to whoever accepted it.
 
+### Also widen Policy 4 to `operations_manager` (regression guard)
+
+Policy 4 currently grants `role IN ('owner','manager')`. An `operations_manager` who is *also* an
+`employees` row sees all trades **today** via Policy 1 — tightening Policy 1 would silently reduce
+their visibility. `operations_manager` is a manager-tier role granted scheduling/ops visibility
+elsewhere (`22_operations_manager_rls.sql`), so in the **same migration**, `DROP` + recreate Policy 4
+with `role IN ('owner','manager','operations_manager')` — preserving manager-tier trade visibility
+(and fixing the case where a pure operations_manager, with no employee row, saw nothing). Copy
+Policy 4's body verbatim; change only the role array. Add a pgTAP assertion that an
+operations_manager sees a directed trade they're not party to.
+
 ## No app breakage (verified)
 
 - `useShiftTrades` marketplace query already filters `.or(offered_by.eq.me, accepted_by.eq.me,
@@ -89,8 +100,17 @@ Notes:
 New `supabase/tests/<nn>_directed_shift_trade_rls.sql`, using the
 `SET LOCAL ROLE authenticated` + `SET LOCAL "request.jwt.claims" TO '{"sub":"<user>","role":"authenticated"}'`
 impersonation pattern (from `33_tip_splits_employee_rls.sql` / `22_operations_manager_rls.sql`).
-Seed: one restaurant, employees A(offerer), B(target), C(bystander), M(manager), + a second
-restaurant employee X; one DIRECTED trade (A→B) and one OPEN trade (A→NULL).
+
+> **Must-fix (review):** the sibling `16_shift_trades_security.sql` does
+> `ALTER TABLE shift_trades DISABLE ROW LEVEL SECURITY` for fixture setup and **never re-enables
+> it**, so its assertions don't actually exercise RLS. This test **must** explicitly
+> `ALTER TABLE shift_trades ENABLE ROW LEVEL SECURITY;` after seeding (as postgres) and **before**
+> switching to `SET LOCAL ROLE authenticated` (see `33_tip_splits_employee_rls.sql:114-116`), or
+> every assertion passes vacuously.
+
+Seed: one restaurant, employees A(offerer), B(target), C(bystander), M(manager),
+O(operations_manager), + a second restaurant employee X; one DIRECTED trade (A→B) and one OPEN
+trade (A→NULL).
 
 Assertions (`is (SELECT COUNT(*) ...)`):
 1. Bystander C: directed trade → **0 rows** (the fix).
@@ -98,13 +118,20 @@ Assertions (`is (SELECT COUNT(*) ...)`):
 3. Offerer A: directed trade → 1 row.
 4. Accepter (set `accepted_by_employee_id` = B): directed trade still 1 for B.
 5. Manager M: directed trade → 1 row (Policy 4).
-6. Open trade: visible to A, B, C (all active employees) → each 1 row.
-7. Cross-restaurant X: both trades → 0 rows (restaurant isolation intact).
-8. `policies_are`/`policy_cmd_is` sanity: Policy 1 still exists and is a SELECT policy.
+6. Operations_manager O: directed trade → 1 row (widened Policy 4 — regression guard).
+7. Open trade: visible to A, B, C (all active employees) → each 1 row.
+8. Cross-restaurant X: both trades → 0 rows (restaurant isolation intact).
+9. `policies_are`/`policy_cmd_is` sanity: Policy 1 still exists and is a SELECT policy.
 
 ## Decided trade-offs
 
-- **Managers/owners still see all directed trades** (Policy 4, unchanged) — intended (approval flow).
+- **Managers/owners/operations_managers see all directed trades** (Policy 4, widened to
+  operations_manager) — intended (approval/triage flow) + prevents a visibility regression.
+- **Write-path gap is out of scope, filed separately:** the review found `accept_shift_trade`
+  (SECURITY DEFINER RPC) never verifies the accepting employee belongs to `auth.uid()` or matches a
+  directed trade's target — an offerer could reassign a directed trade onto a third employee (no
+  SELECT needed). That's the write-side complement to this read fix — `task_d9ab7984` — and should
+  land alongside; this migration is SELECT-only.
 - **Offerer + accepter included** beyond just the target — they are legitimate participants; matches
   the UPDATE policy's own offerer/target logic (`20260104120000:95-120`).
 - **RLS is now the backstop, not the primary filter** — the client `.or()` stays (fast, avoids

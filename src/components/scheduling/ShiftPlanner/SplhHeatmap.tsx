@@ -182,7 +182,13 @@ export function SplhHeatmap({ cells, target, estimated }: SplhHeatmapProps) {
                   const cell = cellByDowHour.get(`${dow}-${hour}`);
                   if (!cell) {
                     return (
-                      <div key={hour} role="gridcell" tabIndex={0} className="min-w-10 min-h-10 bg-muted" />
+                      <div
+                        key={hour}
+                        role="gridcell"
+                        tabIndex={0}
+                        aria-label={`${dayName} ${formatCoverageHour(hour)}: no data`}
+                        className="min-w-10 min-h-10 bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                      />
                     );
                   }
                   const { className: bgClassName, style } = getCellBackground(cell, target);

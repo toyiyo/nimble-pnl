@@ -415,46 +415,50 @@ const handler = async (req: Request): Promise<Response> => {
       directedTarget
     );
 
-    if (recipients.length === 0) {
-      console.warn('No recipients found for notification');
-      return new Response(
-        JSON.stringify({ success: true, message: 'No recipients to notify' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Sending shift trade notification to ${recipients.length} recipients`);
-
-    // Get appropriate content for action
+    // Get appropriate content for action — used by both the email below AND the push block
+    // further down, so it's computed unconditionally (recipients being empty must not skip
+    // the push channel, e.g. a directed trade whose target has no email on file).
     const content = ACTION_CONTENT[action];
     const employeeName = action === 'accepted' ? acceptedByName : offeredByName;
 
-    // Generate email HTML
-    const html = generateEmailHtml(
-      content,
-      employeeName,
-      shiftDetails,
-      restaurantName,
-      trade.manager_note
-    );
+    let emailData: { id?: string } | undefined;
 
-    // Send emails via Resend
-    const { data: emailData, error: emailError } = await resend.emails.send({
-      from: 'EasyShiftHQ <notifications@easyshifthq.com>',
-      to: recipients,
-      subject: content.subject(employeeName),
-      html: html,
-    });
+    if (recipients.length > 0) {
+      console.log(`Sending shift trade notification to ${recipients.length} recipients`);
 
-    if (emailError) {
-      console.error('Error sending email:', emailError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to send email', details: emailError }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      // Generate email HTML
+      const html = generateEmailHtml(
+        content,
+        employeeName,
+        shiftDetails,
+        restaurantName,
+        trade.manager_note
       );
-    }
 
-    console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+      // Send emails via Resend
+      const { data, error: emailError } = await resend.emails.send({
+        from: 'EasyShiftHQ <notifications@easyshifthq.com>',
+        to: recipients,
+        subject: content.subject(employeeName),
+        html: html,
+      });
+
+      if (emailError) {
+        console.error('Error sending email:', emailError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to send email', details: emailError }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      emailData = data ?? undefined;
+      console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+    } else {
+      // No email recipients (e.g. a directed trade whose target has no email on file) — this
+      // is not an error. Fall through so the push block below still runs; it's the only
+      // channel that can reach the target.
+      console.warn('No email recipients; continuing to push');
+    }
 
     // Send push notifications to the relevant employees based on action
     const pushUserIds: string[] = [];

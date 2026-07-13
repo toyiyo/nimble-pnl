@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { Resend } from "https://esm.sh/resend@4.0.0";
 import { sendWebPushToUser, sendWebPushToUsers } from '../_shared/webPushHelper.ts';
 import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
+import { resolveCreatedTradeEmailRecipients, type DirectedTarget } from '../_shared/tradeEmailAudience.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,25 +69,32 @@ const buildEmails = async (
   restaurantId: string,
   action: RequestBody['action'],
   offeredByEmployeeEmail?: string,
-  acceptedByEmployeeEmail?: string
+  acceptedByEmployeeEmail?: string,
+  directedTarget: DirectedTarget | null = null
 ) => {
   const emails: string[] = [];
 
   // Notify based on action
   if (action === 'created') {
-    // Notify all active employees about new marketplace trade
-    const { data: employees } = await supabase
-      .from('employees')
-      .select('email')
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true)
-      .not('email', 'is', null);
+    // Notify all active employees about new marketplace trade — but only for OPEN trades.
+    // A DIRECTED trade (target_employee_id set) is private to its target, so skip this
+    // broadcast query entirely and resolve recipients from directedTarget instead.
+    let broadcastEmails: string[] = [];
+    if (!directedTarget) {
+      const { data: employees } = await supabase
+        .from('employees')
+        .select('email')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .not('email', 'is', null);
 
-    if (employees) {
-      employees.forEach((emp: { email: string | null }) => {
-        if (emp.email) emails.push(emp.email);
-      });
+      if (employees) {
+        broadcastEmails = employees
+          .map((emp: { email: string | null }) => emp.email)
+          .filter((email: string | null): email is string => !!email);
+      }
     }
+    emails.push(...resolveCreatedTradeEmailRecipients(directedTarget, broadcastEmails));
   } else if (action === 'accepted') {
     // Notify managers about pending approval
     const { data: managers } = await supabase
@@ -377,65 +385,95 @@ const handler = async (req: Request): Promise<Response> => {
     const offeredByName = trade.offered_by?.name || 'Employee';
     const acceptedByName = trade.accepted_by?.name || '';
 
+    // Resolve the directed-trade target's employee row once — via `admin`, since reading
+    // under RLS with the JWT-scoped `supabase` client can silently return zero rows for
+    // another employee's row. One query serves both the email target (below) and the push
+    // target (further down), instead of two round-trips for the same row. Deliberately omits
+    // `.eq('is_active', true)`: a directed trade should still notify its target even if a
+    // race deactivated them.
+    const isDirectedCreate = action === 'created' && !!trade.target_employee_id;
+    let directedTargetEmployee: { email: string | null; user_id: string | null } | null = null;
+    if (isDirectedCreate) {
+      const { data: t, error: targetErr } = await admin
+        .from('employees')
+        .select('email, user_id')
+        .eq('id', trade.target_employee_id)
+        .eq('restaurant_id', trade.restaurant_id)
+        .maybeSingle();
+      if (targetErr) {
+        console.error('Error resolving directed-trade target:', targetErr);
+      }
+      directedTargetEmployee = t ?? null;
+    }
+    const directedTarget: DirectedTarget | null = isDirectedCreate
+      ? { email: directedTargetEmployee?.email ?? null }
+      : null;
+
     // Determine recipients based on action
     const recipients = await buildEmails(
       supabase,
       trade.restaurant_id,
       action,
       trade.offered_by?.email,
-      trade.accepted_by?.email
+      trade.accepted_by?.email,
+      directedTarget
     );
 
-    if (recipients.length === 0) {
-      console.warn('No recipients found for notification');
-      return new Response(
-        JSON.stringify({ success: true, message: 'No recipients to notify' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Sending shift trade notification to ${recipients.length} recipients`);
-
-    // Get appropriate content for action
+    // Get appropriate content for action — used by both the email below AND the push block
+    // further down, so it's computed unconditionally (recipients being empty must not skip
+    // the push channel, e.g. a directed trade whose target has no email on file).
     const content = ACTION_CONTENT[action];
     const employeeName = action === 'accepted' ? acceptedByName : offeredByName;
 
-    // Generate email HTML
-    const html = generateEmailHtml(
-      content,
-      employeeName,
-      shiftDetails,
-      restaurantName,
-      trade.manager_note
-    );
+    let emailData: { id?: string } | undefined;
 
-    // Send emails via Resend
-    const { data: emailData, error: emailError } = await resend.emails.send({
-      from: 'EasyShiftHQ <notifications@easyshifthq.com>',
-      to: recipients,
-      subject: content.subject(employeeName),
-      html: html,
-    });
+    if (recipients.length > 0) {
+      console.log(`Sending shift trade notification to ${recipients.length} recipients`);
 
-    if (emailError) {
-      console.error('Error sending email:', emailError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to send email', details: emailError }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      // Generate email HTML
+      const html = generateEmailHtml(
+        content,
+        employeeName,
+        shiftDetails,
+        restaurantName,
+        trade.manager_note
       );
-    }
 
-    console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+      // Send emails via Resend
+      const { data, error: emailError } = await resend.emails.send({
+        from: 'EasyShiftHQ <notifications@easyshifthq.com>',
+        to: recipients,
+        subject: content.subject(employeeName),
+        html: html,
+      });
+
+      if (emailError) {
+        console.error('Error sending email:', emailError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to send email', details: emailError }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      emailData = data ?? undefined;
+      console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+    } else {
+      // No email recipients (e.g. a directed trade whose target has no email on file) — this
+      // is not an error. Fall through so the push block below still runs; it's the only
+      // channel that can reach the target.
+      console.warn('No email recipients; continuing to push');
+    }
 
     // Send push notifications to the relevant employees based on action
     const pushUserIds: string[] = [];
 
     if (action === 'created') {
       // Push on a newly-offered trade. A DIRECTED trade ("Specific Coworker",
-      // target_employee_id set) is visible only to its target under RLS + the
-      // marketplace filter — so it must push ONLY that employee, never the whole
-      // team, or we'd leak/noise a private offer. An OPEN marketplace trade
-      // (target_employee_id null) broadcasts to active employees, minus the poster.
+      // target_employee_id set) is hidden from non-targets by the marketplace filter
+      // (client-side; not RLS-enforced — see task_35a15d77) — so it must push ONLY
+      // that employee, never the whole team, or we'd leak/noise a private offer. An
+      // OPEN marketplace trade (target_employee_id null) broadcasts to active
+      // employees, minus the poster.
       // Bulk fan-out (single subscription lookup + bounded concurrency). Email
       // recipients above are unaffected; this only adds the push channel. The
       // whole block is wrapped so a failure at any step degrades to a logged,
@@ -443,17 +481,10 @@ const handler = async (req: Request): Promise<Response> => {
       try {
         let broadcastTargets: string[];
         if (trade.target_employee_id) {
-          const { data: targetEmployee, error: targetError } = await admin
-            .from('employees')
-            .select('user_id')
-            .eq('id', trade.target_employee_id)
-            .eq('restaurant_id', trade.restaurant_id)
-            .maybeSingle();
-          if (targetError) {
-            console.error('Error fetching directed-trade target for push:', targetError);
-          }
+          // Reuses the directed-target row resolved above (email lookup) instead of a
+          // second query for the same employee.
           broadcastTargets = selectBroadcastPushUserIds(
-            targetEmployee ? [targetEmployee] : [],
+            directedTargetEmployee ? [directedTargetEmployee] : [],
             trade.offered_by?.user_id,
           );
         } else {

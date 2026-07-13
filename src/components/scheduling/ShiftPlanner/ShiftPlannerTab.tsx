@@ -6,8 +6,9 @@ import type { DragStartEvent, DragEndEvent, DragCancelEvent } from '@dnd-kit/cor
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
-import { AlertCircle, CalendarOff, EyeOff, Users, X } from 'lucide-react';
+import { AlertCircle, CalendarOff, ChevronDown, EyeOff, TrendingUp, Users, X } from 'lucide-react';
 
 import {
   useShiftPlanner,
@@ -42,6 +43,7 @@ import { ScheduleOverviewPanel } from './ScheduleOverviewPanel';
 
 import { PlannerHeader } from './PlannerHeader';
 import { StaffingOverlay } from './StaffingOverlay';
+import { LaborEfficiencyPanel } from './LaborEfficiencyPanel';
 import { TemplateGrid } from './TemplateGrid';
 import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
@@ -480,6 +482,9 @@ export function ShiftPlannerTab({
   // Plan | Timeline view toggle
   const [view, setView] = useState<'plan' | 'timeline'>('plan');
 
+  // Labor efficiency (SPLH) panel — collapsed by default
+  const [laborEffOpen, setLaborEffOpen] = useState(false);
+
   // Template CRUD handlers
   const handleAddTemplate = useCallback(() => {
     setEditingTemplate(undefined);
@@ -696,6 +701,34 @@ export function ShiftPlannerTab({
 
       {/* Staffing suggestions overlay */}
       <StaffingOverlay restaurantId={restaurantId} weekDays={weekDays} />
+
+      {/* Labor efficiency (SPLH) panel — collapsed by default */}
+      <Collapsible open={laborEffOpen} onOpenChange={setLaborEffOpen}>
+        <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+          <CollapsibleTrigger asChild>
+            <button
+              className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-muted/30 transition-colors"
+              aria-label={laborEffOpen ? 'Collapse Labor efficiency' : 'Expand Labor efficiency'}
+            >
+              <div className="flex items-center gap-2">
+                <div className="h-7 w-7 rounded-lg bg-muted/50 flex items-center justify-center">
+                  <TrendingUp className="h-3.5 w-3.5 text-foreground" />
+                </div>
+                <span className="text-[14px] font-medium text-foreground">Labor efficiency</span>
+              </div>
+              <ChevronDown
+                className={`h-4 w-4 text-muted-foreground transition-transform ${laborEffOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </CollapsibleTrigger>
+
+          <CollapsibleContent>
+            <div className="px-4 pb-4">
+              <LaborEfficiencyPanel restaurantId={restaurantId} />
+            </div>
+          </CollapsibleContent>
+        </div>
+      </Collapsible>
 
       {/* Schedule overview panel — weekly mini-Gantt */}
       <ScheduleOverviewPanel

@@ -23,7 +23,7 @@ export function useSplhSummary(restaurantId: string | null) {
   const target = effectiveSettings.target_splh;
   const avgRate = useMemo(() => computeAvgHourlyRateCents(employees), [employees]);
 
-  const { data, isLoading, isError } = useSplhData(restaurantId, tz, WEEKS);
+  const { data, isLoading, isError, refetch } = useSplhData(restaurantId, tz, WEEKS);
   const sessions = useMemo(
     () => (data?.punches?.length ? identifyWorkSessions(normalizePunches(data.punches)) : []),
     [data?.punches],
@@ -32,5 +32,13 @@ export function useSplhSummary(restaurantId: string | null) {
   const summary = useMemo(() => summarizeSplh(grid, target, avgRate), [grid, target, avgRate]);
   const sparkline = useMemo(() => data ? buildSplhTimeseries(data.sales, sessions, tz, 'day') : [], [data, sessions, tz]);
 
-  return { summary, sparkline, target, isLoading, isError, hasData: (data?.sales?.length ?? 0) > 0 };
+  return {
+    summary,
+    sparkline,
+    target,
+    isLoading,
+    isError,
+    hasData: (data?.sales?.length ?? 0) > 0,
+    refetch,
+  };
 }

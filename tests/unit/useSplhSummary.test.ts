@@ -130,4 +130,12 @@ describe('useSplhSummary', () => {
     expect(result.current.hasData).toBe(false);
     expect(result.current.sparkline).toEqual([]);
   });
+
+  it('forwards useSplhData\'s refetch for the card\'s error-state retry button', () => {
+    setup();
+
+    const { result } = renderHook(() => useSplhSummary('rest-1'), { wrapper: createWrapper() });
+
+    expect(typeof result.current.refetch).toBe('function');
+  });
 });

@@ -222,6 +222,19 @@ describe('Tips page — Distribution tab wiring', () => {
     expect(ids).not.toContain(DAILY_ONLY_SPLIT_ID);
   });
 
+  it('renders period navigation on the Distribution tab so managers can page weeks without leaving it', async () => {
+    const user = userEvent.setup();
+    render(<Tips />);
+
+    await user.click(screen.getByRole('button', { name: 'Distribution' }));
+
+    // The Previous/Next period controls (shared with Overview) must be present
+    // here — the view is period-scoped, so without them Distribution is locked
+    // to whatever week Overview last selected (Codex PR #608 finding).
+    expect(screen.getByRole('button', { name: 'Previous period' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next period' })).toBeInTheDocument();
+  });
+
   it('combines isLoading from periodSplits and payouts queries', async () => {
     const user = userEvent.setup();
     periodSplitsState.isLoading = false;

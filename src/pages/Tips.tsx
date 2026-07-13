@@ -759,6 +759,22 @@ export function Tips() {
     );
   }
 
+  // Shared period navigation for the period-scoped tabs (Overview + Distribution),
+  // so a manager can page through weeks without switching back to Overview.
+  const periodNav = (
+    <div className="flex items-center justify-between pb-2">
+      <Button variant="ghost" aria-label="Previous period" onClick={() => setPeriodOffset(o => o - 1)} className="h-9 rounded-lg text-[13px] font-medium">
+        ← Previous
+      </Button>
+      <span className="text-[14px] font-semibold text-foreground">
+        {`Week of ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`}
+      </span>
+      <Button variant="ghost" aria-label="Next period" onClick={() => setPeriodOffset(o => o + 1)} disabled={periodOffset >= 0} className="h-9 rounded-lg text-[13px] font-medium">
+        Next →
+      </Button>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <header className="flex items-center justify-between">
@@ -831,17 +847,7 @@ export function Tips() {
       {viewMode === 'overview' && (
         <div className="space-y-6">
           {/* Period navigation controls */}
-          <div className="flex items-center justify-between pb-2">
-            <Button variant="ghost" aria-label="Previous period" onClick={() => setPeriodOffset(o => o - 1)} className="h-9 rounded-lg text-[13px] font-medium">
-              ← Previous
-            </Button>
-            <span className="text-[14px] font-semibold text-foreground">
-              {`Week of ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`}
-            </span>
-            <Button variant="ghost" aria-label="Next period" onClick={() => setPeriodOffset(o => o + 1)} disabled={periodOffset >= 0} className="h-9 rounded-lg text-[13px] font-medium">
-              Next →
-            </Button>
-          </div>
+          {periodNav}
 
           {/* Payroll integration guidance */}
           <Alert>
@@ -1086,13 +1092,18 @@ export function Tips() {
       )}
 
       {viewMode === 'distribution' && (
-        <TipDistribution
-          splits={periodSplits}
-          payouts={payouts}
-          isLoading={periodSplitsLoading || payoutsLoading}
-          isError={!!periodSplitsError || !!payoutsError}
-          onNavigateToOverview={() => setViewMode('overview')}
-        />
+        <div className="space-y-6">
+          {/* Period navigation controls (shared with Overview) */}
+          {periodNav}
+
+          <TipDistribution
+            splits={periodSplits}
+            payouts={payouts}
+            isLoading={periodSplitsLoading || payoutsLoading}
+            isError={!!periodSplitsError || !!payoutsError}
+            onNavigateToOverview={() => setViewMode('overview')}
+          />
+        </div>
       )}
 
       {/* Tip Payout Sheet */}

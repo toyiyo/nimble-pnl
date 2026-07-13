@@ -839,21 +839,15 @@ export function EnhancedPrepRecipeDialog({
                                     </span>
                                   </div>
                                   <div className="flex-1">
-                                    <Select
+                                    <SearchableProductSelector
+                                      aria-label={`Ingredient ${index + 1}`}
                                       value={ingredient.product_id}
                                       onValueChange={(value) => handleIngredientChange(index, 'product_id', value)}
-                                    >
-                                      <SelectTrigger className="h-11 bg-background">
-                                        <SelectValue placeholder="Select ingredient" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {products.map((product) => (
-                                          <SelectItem key={product.id} value={product.id}>
-                                            {product.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
+                                      products={products}
+                                      showSkipOption={false}
+                                      showCreateOption={false}
+                                      placeholder="Search inventory items..."
+                                    />
                                   </div>
                                 </div>
 

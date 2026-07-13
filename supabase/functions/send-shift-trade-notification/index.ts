@@ -385,25 +385,28 @@ const handler = async (req: Request): Promise<Response> => {
     const offeredByName = trade.offered_by?.name || 'Employee';
     const acceptedByName = trade.accepted_by?.name || '';
 
-    // Resolve the directed-trade email target (if any) via `admin` — reading under RLS with
-    // the JWT-scoped `supabase` client can silently return zero rows for another employee's
-    // row. Deliberately omits `.eq('is_active', true)`: a directed trade should still notify
-    // its target even if a race deactivated them — this intentionally mirrors the directed-
-    // trade target lookup in the push block below (no `is_active` filter there either) so the
-    // two stay in parity.
-    let directedTarget: DirectedTarget | null = null;
+    // Resolve the directed-trade target's employee row once — via `admin`, since reading
+    // under RLS with the JWT-scoped `supabase` client can silently return zero rows for
+    // another employee's row. One query serves both the email target (below) and the push
+    // target (further down), instead of two round-trips for the same row. Deliberately omits
+    // `.eq('is_active', true)`: a directed trade should still notify its target even if a
+    // race deactivated them.
+    let directedTargetEmployee: { email: string | null; user_id: string | null } | null = null;
     if (action === 'created' && trade.target_employee_id) {
       const { data: t, error: targetErr } = await admin
         .from('employees')
-        .select('email')
+        .select('email, user_id')
         .eq('id', trade.target_employee_id)
         .eq('restaurant_id', trade.restaurant_id)
         .maybeSingle();
       if (targetErr) {
-        console.error('Error resolving directed-trade email target:', targetErr);
+        console.error('Error resolving directed-trade target:', targetErr);
       }
-      directedTarget = { email: t?.email ?? null };
+      directedTargetEmployee = t ?? null;
     }
+    const directedTarget: DirectedTarget | null = action === 'created' && trade.target_employee_id
+      ? { email: directedTargetEmployee?.email ?? null }
+      : null;
 
     // Determine recipients based on action
     const recipients = await buildEmails(
@@ -477,17 +480,10 @@ const handler = async (req: Request): Promise<Response> => {
       try {
         let broadcastTargets: string[];
         if (trade.target_employee_id) {
-          const { data: targetEmployee, error: targetError } = await admin
-            .from('employees')
-            .select('user_id')
-            .eq('id', trade.target_employee_id)
-            .eq('restaurant_id', trade.restaurant_id)
-            .maybeSingle();
-          if (targetError) {
-            console.error('Error fetching directed-trade target for push:', targetError);
-          }
+          // Reuses the directed-target row resolved above (email lookup) instead of a
+          // second query for the same employee.
           broadcastTargets = selectBroadcastPushUserIds(
-            targetEmployee ? [targetEmployee] : [],
+            directedTargetEmployee ? [directedTargetEmployee] : [],
             trade.offered_by?.user_id,
           );
         } else {

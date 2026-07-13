@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SearchableProductSelector } from '@/components/SearchableProductSelector';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -660,26 +661,16 @@ export function EnhancedPrepRecipeDialog({
 
                           <div className="space-y-2">
                             <Label htmlFor="output" className="text-sm font-medium">Output Item</Label>
-                            <Select
+                            <SearchableProductSelector
+                              id="output"
+                              aria-label="Output Item"
                               value={formValues.output_product_id || ''}
                               onValueChange={(value) => setFormValues({ ...formValues, output_product_id: value || undefined })}
-                            >
-                              <SelectTrigger id="output" className="h-11">
-                                <SelectValue placeholder="Select inventory item" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {products.map((product) => (
-                                  <SelectItem key={product.id} value={product.id}>
-                                    <div className="flex items-center gap-2">
-                                      {product.name}
-                                      <Badge variant="outline" className="ml-1 text-xs">
-                                        {product.uom_purchase || 'unit'}
-                                      </Badge>
-                                    </div>
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              products={products}
+                              showSkipOption={false}
+                              showCreateOption={false}
+                              placeholder="Search inventory items..."
+                            />
                           </div>
 
                           <div className="space-y-2">
@@ -848,21 +839,15 @@ export function EnhancedPrepRecipeDialog({
                                     </span>
                                   </div>
                                   <div className="flex-1">
-                                    <Select
+                                    <SearchableProductSelector
+                                      aria-label={`Ingredient ${index + 1}`}
                                       value={ingredient.product_id}
                                       onValueChange={(value) => handleIngredientChange(index, 'product_id', value)}
-                                    >
-                                      <SelectTrigger className="h-11 bg-background">
-                                        <SelectValue placeholder="Select ingredient" />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {products.map((product) => (
-                                          <SelectItem key={product.id} value={product.id}>
-                                            {product.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
+                                      products={products}
+                                      showSkipOption={false}
+                                      showCreateOption={false}
+                                      placeholder="Search inventory items..."
+                                    />
                                   </div>
                                 </div>
 

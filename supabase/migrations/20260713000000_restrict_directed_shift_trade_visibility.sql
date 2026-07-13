@@ -23,27 +23,26 @@ DROP POLICY IF EXISTS "Employees can view shift trades in their restaurant" ON s
 CREATE POLICY "Employees can view shift trades in their restaurant"
   ON shift_trades FOR SELECT
   USING (
-    -- unchanged: must be an active employee of the trade's restaurant
+    -- Single EXISTS: active status and participant identity must be the SAME
+    -- employee row. Splitting these into two separate EXISTS clauses would let
+    -- a user with more than one employees row for this restaurant satisfy the
+    -- active check via one row and the participant check via a different
+    -- (possibly inactive) row.
     EXISTS (
-      SELECT 1 FROM employees e
-      WHERE e.user_id = auth.uid()
-        AND e.restaurant_id = shift_trades.restaurant_id
-        AND e.is_active = true
-    )
-    AND (
-      -- open marketplace trade: visible to every active employee (unchanged)
-      shift_trades.target_employee_id IS NULL
-      -- directed trade: only the target, the offerer, or the accepter may see it
-      OR EXISTS (
-        SELECT 1 FROM employees me
-        WHERE me.user_id = auth.uid()
-          AND me.restaurant_id = shift_trades.restaurant_id
-          AND me.id IN (
+      SELECT 1 FROM employees me
+      WHERE me.user_id = auth.uid()
+        AND me.restaurant_id = shift_trades.restaurant_id
+        AND me.is_active = true
+        AND (
+          -- open marketplace trade: visible to every active employee (unchanged)
+          shift_trades.target_employee_id IS NULL
+          -- directed trade: only the target, the offerer, or the accepter may see it
+          OR me.id IN (
             shift_trades.target_employee_id,
             shift_trades.offered_by_employee_id,
             shift_trades.accepted_by_employee_id
           )
-      )
+        )
     )
   );
 

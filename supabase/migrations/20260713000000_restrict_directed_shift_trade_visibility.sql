@@ -7,13 +7,14 @@
 -- previously enforced only client-side (the marketplace `.or()` filter in
 -- useShiftTrades.ts). This migration makes RLS the backstop.
 --
--- Also widens Policy 4 ("Managers can view all shift trades") to include
--- operations_manager, which is a manager-tier role granted scheduling/ops
--- visibility elsewhere (see 22_operations_manager_rls.sql). Without this,
--- tightening Policy 1 would regress operations_manager visibility for any
--- operations_manager who is also an employees row (they currently see all
--- trades via Policy 1), and a pure operations_manager with no employees row
--- would see nothing at all.
+-- Policy 4 ("Managers can view all shift trades") is intentionally left
+-- unchanged (owner/manager only). operations_manager is NOT added: the
+-- approve/reject RPCs and the delete policy are owner/manager-only
+-- (20260105000100_create_shift_trade_functions.sql), so granting an
+-- operations_manager SELECT on trades they cannot action would only surface a
+-- dead approval queue. Keeping SELECT aligned with the write path is the
+-- consistent choice (see task_d9ab7984 if operations_manager should ever
+-- participate in trade approvals — that's a product decision, not this fix).
 --
 -- Design: docs/superpowers/specs/2026-07-13-shift-trade-directed-rls-design.md
 -- Ticket: task_35a15d77
@@ -48,24 +49,7 @@ CREATE POLICY "Employees can view shift trades in their restaurant"
 
 COMMENT ON POLICY "Employees can view shift trades in their restaurant" ON shift_trades IS
   'Active employees see open (target NULL) trades; a DIRECTED trade is visible only to its target, '
-  'offerer, or accepter. Managers/owners/operations_managers see all via the separate "Managers can '
-  'view all shift trades" policy. Directed-trade privacy was previously client-side only (task_35a15d77).';
+  'offerer, or accepter. Managers/owners see all via the separate "Managers can view all shift '
+  'trades" policy. Directed-trade privacy was previously client-side only (task_35a15d77).';
 
-DROP POLICY IF EXISTS "Managers can view all shift trades" ON shift_trades;
-
-CREATE POLICY "Managers can view all shift trades"
-  ON shift_trades FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM user_restaurants
-      WHERE user_restaurants.user_id = auth.uid()
-      AND user_restaurants.restaurant_id = shift_trades.restaurant_id
-      AND user_restaurants.role IN ('owner', 'manager', 'operations_manager')
-    )
-  );
-
-COMMENT ON POLICY "Managers can view all shift trades" ON shift_trades IS
-  'Owners, managers, and operations_managers see every trade in their restaurant (approval/triage '
-  'flow), bypassing the target/offerer/accepter restriction on the employee-facing policy. Widened to '
-  'operations_manager alongside the directed-trade privacy fix to avoid a visibility regression '
-  '(task_35a15d77).';
+-- Policy 4 ("Managers can view all shift trades") is deliberately NOT modified here.

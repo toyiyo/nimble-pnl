@@ -2,13 +2,14 @@
 -- Test: directed shift_trades visibility (RLS)
 --
 -- Directed trades (target_employee_id set) must be private to the target,
--- offerer, and accepter — plus managers/owners/operations_managers who see
--- everything via the separate "Managers can view all shift trades" policy.
--- Today, Policy 1 ("Employees can view shift trades in their restaurant")
--- only checks restaurant membership, so ANY active employee (a bystander)
--- can read a directed trade. This test proves that gap (RED) and locks in
--- correct visibility once the follow-up migration tightens Policy 1 and
--- widens Policy 4 to operations_manager (GREEN).
+-- offerer, and accepter — plus owners/managers who see everything via the
+-- separate "Managers can view all shift trades" policy (Policy 4, owner/manager
+-- only; operations_manager is deliberately excluded to match the owner/manager-
+-- only approve/reject RPCs). Today, Policy 1 ("Employees can view shift trades
+-- in their restaurant") only checks restaurant membership, so ANY active
+-- employee (a bystander) can read a directed trade. This test proves that gap
+-- (RED) and locks in correct visibility once the follow-up migration tightens
+-- Policy 1 (GREEN). Policy 4 is unchanged.
 --
 -- Migration under test (not yet applied when this test is written):
 --   supabase/migrations/<ts>_restrict_directed_shift_trade_visibility.sql
@@ -141,23 +142,26 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 4: Accepter case — mark B as the accepter of the directed trade, then
--- confirm B (target-and-accepter) still sees it → 1 row.
+-- Test 4: Accepter branch — assign NON-TARGET bystander C as the accepter, then
+-- confirm C (who was denied in Test 1) now sees the directed trade → 1 row.
+-- Using B (the target) here would pass even if the accepted_by clause were
+-- removed from the policy, so the accepter branch must be exercised with a
+-- non-target, non-offerer employee.
 -- ============================================================================
 RESET ROLE;
 SET LOCAL role TO postgres;
 UPDATE shift_trades
-  SET accepted_by_employee_id = '53000000-0000-0000-0000-000000000022'
+  SET accepted_by_employee_id = '53000000-0000-0000-0000-000000000023'  -- C's employee row
   WHERE id = '53000000-0000-0000-0000-000000000051';
 RESET ROLE;
 
 SET LOCAL role = 'authenticated';
-SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000012","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-000000000013","role":"authenticated"}', true);
 
 SELECT is(
   (SELECT COUNT(*) FROM shift_trades WHERE id = '53000000-0000-0000-0000-000000000051'),
   1::bigint,
-  'Accepter B still sees the directed trade after accepting it'
+  'Non-target accepter C sees the directed trade after accepting it (exercises accepted_by clause)'
 );
 
 -- ============================================================================
@@ -174,9 +178,11 @@ SELECT is(
 );
 
 -- ============================================================================
--- Test 6: Operations_manager O sees the DIRECTED trade → 1 row.
--- RED against current Policy 4 (role IN ('owner','manager') only) —
--- currently 0, since O has no employees row and isn't owner/manager.
+-- Test 6: Operations_manager O does NOT see the DIRECTED trade → 0 rows.
+-- Policy 4 is deliberately left owner/manager-only: the approve/reject RPCs and
+-- delete policy are owner/manager-only, so exposing trades to an operations_manager
+-- who cannot action them would only surface a dead approval queue. O has no
+-- employees row, so Policy 1 doesn't grant access either.
 -- ============================================================================
 RESET ROLE;
 SET LOCAL role = 'authenticated';
@@ -184,8 +190,8 @@ SELECT set_config('request.jwt.claims', '{"sub":"53000000-0000-0000-0000-0000000
 
 SELECT is(
   (SELECT COUNT(*) FROM shift_trades WHERE id = '53000000-0000-0000-0000-000000000051'),
-  1::bigint,
-  'Operations_manager O sees the directed trade (manager-tier visibility)'
+  0::bigint,
+  'Operations_manager O does NOT see the directed trade (Policy 4 is owner/manager only)'
 );
 
 -- ============================================================================

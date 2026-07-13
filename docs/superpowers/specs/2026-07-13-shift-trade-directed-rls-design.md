@@ -76,16 +76,17 @@ Notes:
 - Offerer inclusion lets a poster see/cancel their own directed trade; accepter inclusion keeps a
   claimed trade visible to whoever accepted it.
 
-### Also widen Policy 4 to `operations_manager` (regression guard)
+### Policy 4 (managers) — left UNCHANGED (`owner`/`manager` only)
 
-Policy 4 currently grants `role IN ('owner','manager')`. An `operations_manager` who is *also* an
-`employees` row sees all trades **today** via Policy 1 — tightening Policy 1 would silently reduce
-their visibility. `operations_manager` is a manager-tier role granted scheduling/ops visibility
-elsewhere (`22_operations_manager_rls.sql`), so in the **same migration**, `DROP` + recreate Policy 4
-with `role IN ('owner','manager','operations_manager')` — preserving manager-tier trade visibility
-(and fixing the case where a pure operations_manager, with no employee row, saw nothing). Copy
-Policy 4's body verbatim; change only the role array. Add a pgTAP assertion that an
-operations_manager sees a directed trade they're not party to.
+> **Revised after review (Codex P2).** An earlier draft widened Policy 4 to `operations_manager`.
+> That's wrong: the approve/reject RPCs and the delete policy are **owner/manager-only**
+> (`20260105000100_create_shift_trade_functions.sql`), so granting an operations_manager SELECT on
+> trades they cannot action would only surface a dead approval queue. Keeping SELECT aligned with the
+> write path is the consistent choice — Policy 4 stays `role IN ('owner','manager')`, untouched by
+> this migration. Whether operations_managers should participate in trade approvals at all is a
+> product decision (tracked with the write-path ticket `task_d9ab7984`), not this read-privacy fix.
+> The pgTAP test asserts an operations_manager (no employee row) sees **0** rows for a directed
+> trade — documenting the deliberate exclusion.
 
 ## No app breakage (verified)
 
@@ -116,17 +117,20 @@ Assertions (`is (SELECT COUNT(*) ...)`):
 1. Bystander C: directed trade → **0 rows** (the fix).
 2. Target B: directed trade → 1 row.
 3. Offerer A: directed trade → 1 row.
-4. Accepter (set `accepted_by_employee_id` = B): directed trade still 1 for B.
+4. Accepter: set `accepted_by_employee_id` = **C** (non-target bystander), impersonate C → 1 row.
+   (Using B, the target, would pass even if the accepter clause were removed — so use C.)
 5. Manager M: directed trade → 1 row (Policy 4).
-6. Operations_manager O: directed trade → 1 row (widened Policy 4 — regression guard).
+6. Operations_manager O (no employee row): directed trade → **0 rows** (Policy 4 stays
+   owner/manager-only; deliberate exclusion aligned with the owner/manager-only write path).
 7. Open trade: visible to A, B, C (all active employees) → each 1 row.
 8. Cross-restaurant X: both trades → 0 rows (restaurant isolation intact).
 9. `policies_are`/`policy_cmd_is` sanity: Policy 1 still exists and is a SELECT policy.
 
 ## Decided trade-offs
 
-- **Managers/owners/operations_managers see all directed trades** (Policy 4, widened to
-  operations_manager) — intended (approval/triage flow) + prevents a visibility regression.
+- **Managers/owners see all directed trades** (Policy 4, unchanged). operations_manager is
+  deliberately NOT added (see the revised Policy 4 note above) — SELECT stays aligned with the
+  owner/manager-only approve/reject/delete write path.
 - **Write-path gap is out of scope, filed separately:** the review found `accept_shift_trade`
   (SECURITY DEFINER RPC) never verifies the accepting employee belongs to `auth.uid()` or matches a
   directed trade's target — an offerer could reassign a directed trade onto a third employee (no

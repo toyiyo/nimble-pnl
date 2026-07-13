@@ -11,7 +11,7 @@ describe('resolveCreatedTradeEmailRecipients', () => {
     expect(result).toEqual(['target@example.com']);
   });
 
-  it('directed trade with a null target email returns [] (never falls back to broadcast)', () => {
+  it('CRITICAL: directed trade with a null target email returns [] (never falls back to broadcast)', () => {
     const result = resolveCreatedTradeEmailRecipients(
       { email: null },
       ['broadcast1@example.com', 'broadcast2@example.com'],
@@ -20,7 +20,7 @@ describe('resolveCreatedTradeEmailRecipients', () => {
     expect(result).toEqual([]);
   });
 
-  it('directed trade with an undefined target email returns [] (never falls back to broadcast)', () => {
+  it('CRITICAL: directed trade with an undefined target email returns [] (never falls back to broadcast)', () => {
     const result = resolveCreatedTradeEmailRecipients(
       { email: undefined as unknown as null },
       ['broadcast1@example.com', 'broadcast2@example.com'],
@@ -29,7 +29,7 @@ describe('resolveCreatedTradeEmailRecipients', () => {
     expect(result).toEqual([]);
   });
 
-  it('directed trade with an empty-string target email returns [] (never falls back to broadcast)', () => {
+  it('CRITICAL: directed trade with an empty-string target email returns [] (never falls back to broadcast)', () => {
     const result = resolveCreatedTradeEmailRecipients(
       { email: '' },
       ['broadcast1@example.com', 'broadcast2@example.com'],

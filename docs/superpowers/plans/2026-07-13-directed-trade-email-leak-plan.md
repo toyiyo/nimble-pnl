@@ -50,5 +50,4 @@ edited function. No migration, no pgTAP.
 ## Out of scope (follow-ups filed)
 - `task_35a15d77` — enforce directed-trade privacy in `shift_trades` RLS Policy 1 (pgTAP).
 - `task_344afce3` — buildEmails caller-scoped client for `accepted` (profiles embed).
-- `task_26513232` — dedupe the two employees queries.
 - Phase B: admin-only per-type × per-channel resolver.

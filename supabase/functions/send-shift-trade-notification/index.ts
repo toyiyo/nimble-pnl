@@ -391,8 +391,9 @@ const handler = async (req: Request): Promise<Response> => {
     // target (further down), instead of two round-trips for the same row. Deliberately omits
     // `.eq('is_active', true)`: a directed trade should still notify its target even if a
     // race deactivated them.
+    const isDirectedCreate = action === 'created' && !!trade.target_employee_id;
     let directedTargetEmployee: { email: string | null; user_id: string | null } | null = null;
-    if (action === 'created' && trade.target_employee_id) {
+    if (isDirectedCreate) {
       const { data: t, error: targetErr } = await admin
         .from('employees')
         .select('email, user_id')
@@ -404,7 +405,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
       directedTargetEmployee = t ?? null;
     }
-    const directedTarget: DirectedTarget | null = action === 'created' && trade.target_employee_id
+    const directedTarget: DirectedTarget | null = isDirectedCreate
       ? { email: directedTargetEmployee?.email ?? null }
       : null;
 

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { buildTimelineModel } from '@/lib/timelineModel';
 import { type GroupByMode } from '@/lib/scheduleGrouping';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 
 // Pure logic lives in @/lib/timelineModel (measured by coverage). Re-exported
 // here so existing component/test imports of these symbols keep resolving.
@@ -35,9 +36,10 @@ export function useTimelineModel(
   tz: string,
   groupBy: GroupByMode,
   recommendations: HourlyStaffingRecommendation[],
+  availabilityByEmployee?: Map<string, Map<number, EffectiveAvailability>>,
 ) {
   return useMemo(
-    () => buildTimelineModel(shifts, employees, dateStr, tz, groupBy, recommendations),
-    [shifts, employees, dateStr, tz, groupBy, recommendations],
+    () => buildTimelineModel(shifts, employees, dateStr, tz, groupBy, recommendations, availabilityByEmployee),
+    [shifts, employees, dateStr, tz, groupBy, recommendations, availabilityByEmployee],
   );
 }

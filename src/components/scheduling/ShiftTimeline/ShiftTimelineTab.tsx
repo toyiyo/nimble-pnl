@@ -33,6 +33,7 @@ import { minutesToIso } from '@/lib/shiftTimeMath';
 
 import type { Shift, Employee } from '@/types/scheduling';
 import type { GroupByMode } from '@/lib/scheduleGrouping';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
 import type { ShiftMinuteRange } from '@/lib/timelineDragMath';
 
@@ -73,6 +74,14 @@ interface ShiftTimelineTabProps {
   readonly restaurantId: string;
   /** Restaurant IANA timezone (e.g. "America/Chicago"). */
   readonly tz: string;
+  /**
+   * Per-employee effective availability (recurring + exception overrides) for
+   * the visible week, keyed by employee id then day-of-week — computed once
+   * in `ShiftPlannerTab` (Task 4) and shared with the sidebar strip so the
+   * two views can't drift apart. Optional/backward-compatible: omitted, no
+   * bar renders the outside-availability marker (design doc §3c).
+   */
+  readonly availabilityByEmployee?: Map<string, Map<number, EffectiveAvailability>>;
   /** Forwarded from the parent's isLoading state. */
   readonly loading: boolean;
   /** Forwarded from the parent's error state; renders an inline message. */
@@ -185,6 +194,7 @@ export function ShiftTimelineTab({
   weekDays,
   restaurantId,
   tz,
+  availabilityByEmployee,
   loading,
   error,
 }: ShiftTimelineTabProps) {
@@ -369,7 +379,7 @@ export function ShiftTimelineTab({
   // its `dragState` in TimelineBar (`displayLeftMin = dragState?.startMin ??
   // leftMin`, via this stable `model.window`'s minToPct) — so drag feedback
   // stays smooth without lanes/window ever moving.
-  const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations);
+  const model = useTimelineModel(dayShifts, employees, selectedDay, tz, groupBy, dayRecommendations, availabilityByEmployee);
 
   // ── Live-drag coverage (Stage D2, preserved) ───────────────────────────────
   // The lanes/window above are frozen, but the coverage chart/verdict/status
@@ -800,6 +810,9 @@ export function ShiftTimelineTab({
                   onBarDraftChange={handleBarDraftChange}
                   onBarDragCommit={handleBarDragCommit}
                   highlightedShiftId={recentlyChangedShiftId}
+                  availabilityByEmployee={availabilityByEmployee}
+                  dateStr={selectedDay}
+                  tz={tz}
                 />
               ))}
             </div>

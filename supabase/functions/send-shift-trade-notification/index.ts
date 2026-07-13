@@ -465,10 +465,11 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (action === 'created') {
       // Push on a newly-offered trade. A DIRECTED trade ("Specific Coworker",
-      // target_employee_id set) is visible only to its target under RLS + the
-      // marketplace filter — so it must push ONLY that employee, never the whole
-      // team, or we'd leak/noise a private offer. An OPEN marketplace trade
-      // (target_employee_id null) broadcasts to active employees, minus the poster.
+      // target_employee_id set) is hidden from non-targets by the marketplace filter
+      // (client-side; not RLS-enforced — see task_35a15d77) — so it must push ONLY
+      // that employee, never the whole team, or we'd leak/noise a private offer. An
+      // OPEN marketplace trade (target_employee_id null) broadcasts to active
+      // employees, minus the poster.
       // Bulk fan-out (single subscription lookup + bounded concurrency). Email
       // recipients above are unaffected; this only adds the push channel. The
       // whole block is wrapped so a failure at any step degrades to a logged,

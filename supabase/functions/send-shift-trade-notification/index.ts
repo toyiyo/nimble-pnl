@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { Resend } from "https://esm.sh/resend@4.0.0";
 import { sendWebPushToUser, sendWebPushToUsers } from '../_shared/webPushHelper.ts';
 import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
+import { resolveCreatedTradeEmailRecipients, type DirectedTarget } from '../_shared/tradeEmailAudience.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -68,25 +69,32 @@ const buildEmails = async (
   restaurantId: string,
   action: RequestBody['action'],
   offeredByEmployeeEmail?: string,
-  acceptedByEmployeeEmail?: string
+  acceptedByEmployeeEmail?: string,
+  directedTarget: DirectedTarget | null = null
 ) => {
   const emails: string[] = [];
 
   // Notify based on action
   if (action === 'created') {
-    // Notify all active employees about new marketplace trade
-    const { data: employees } = await supabase
-      .from('employees')
-      .select('email')
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true)
-      .not('email', 'is', null);
+    // Notify all active employees about new marketplace trade — but only for OPEN trades.
+    // A DIRECTED trade (target_employee_id set) is private to its target, so skip this
+    // broadcast query entirely and resolve recipients from directedTarget instead.
+    let broadcastEmails: string[] = [];
+    if (!directedTarget) {
+      const { data: employees } = await supabase
+        .from('employees')
+        .select('email')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .not('email', 'is', null);
 
-    if (employees) {
-      employees.forEach((emp: { email: string | null }) => {
-        if (emp.email) emails.push(emp.email);
-      });
+      if (employees) {
+        broadcastEmails = employees
+          .map((emp: { email: string | null }) => emp.email)
+          .filter((email: string | null): email is string => !!email);
+      }
     }
+    emails.push(...resolveCreatedTradeEmailRecipients(directedTarget, broadcastEmails));
   } else if (action === 'accepted') {
     // Notify managers about pending approval
     const { data: managers } = await supabase

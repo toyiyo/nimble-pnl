@@ -20,6 +20,24 @@ describe('resolveCreatedTradeEmailRecipients', () => {
     expect(result).toEqual([]);
   });
 
+  it('directed trade with an undefined target email returns [] (never falls back to broadcast)', () => {
+    const result = resolveCreatedTradeEmailRecipients(
+      { email: undefined as unknown as null },
+      ['broadcast1@example.com', 'broadcast2@example.com'],
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  it('directed trade with an empty-string target email returns [] (never falls back to broadcast)', () => {
+    const result = resolveCreatedTradeEmailRecipients(
+      { email: '' },
+      ['broadcast1@example.com', 'broadcast2@example.com'],
+    );
+
+    expect(result).toEqual([]);
+  });
+
   it('open marketplace trade (null directedTarget) returns the broadcast list verbatim', () => {
     const broadcastEmails = ['broadcast1@example.com', 'broadcast2@example.com'];
 

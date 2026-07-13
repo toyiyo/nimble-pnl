@@ -123,8 +123,9 @@ const recipients = await buildEmails(supabase, trade.restaurant_id, action,
   trade.offered_by?.email, trade.accepted_by?.email, directedTarget);
 ```
 
-Existing empty-recipients guard (`recipients.length === 0` → `200 { message: 'No recipients' }`)
-already covers a directed target with no email.
+An empty `recipients` list (e.g. a directed target with no email) no longer short-circuits the
+handler with an early `200`; per the "Handler flow" fix above, it only skips the email send and
+falls through so the push block still runs.
 
 ## Testing
 

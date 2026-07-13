@@ -1,6 +1,6 @@
 import { useMemo, type CSSProperties } from 'react';
 
-import type { SplhGridCell } from '@/lib/splhAnalytics';
+import { MON_FIRST_DOWS, DOW_LABELS_BY_DOW, type SplhGridCell } from '@/lib/splhAnalytics';
 import { formatCoverageHour } from '@/lib/coverageSummary';
 import { Badge } from '@/components/ui/badge';
 
@@ -9,11 +9,6 @@ interface SplhHeatmapProps {
   readonly target: number;
   readonly estimated: boolean;
 }
-
-// `SplhGridCell.dow` is 0=Sun..6=Sat (JS `getUTCDay()` convention). Displayed
-// Mon-first for readability — this array maps display column -> dow value.
-const MON_FIRST_DOWS = [1, 2, 3, 4, 5, 6, 0];
-const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const OPACITY_MIN = 0.35;
 const OPACITY_MAX = 0.9;
@@ -168,8 +163,8 @@ export function SplhHeatmap({ cells, target, estimated }: SplhHeatmapProps) {
             ))}
           </div>
 
-          {MON_FIRST_DOWS.map((dow, i) => {
-            const dayName = DOW_LABELS[i];
+          {MON_FIRST_DOWS.map((dow) => {
+            const dayName = DOW_LABELS_BY_DOW[dow];
             return (
               <div role="row" key={dow} className="contents">
                 <div

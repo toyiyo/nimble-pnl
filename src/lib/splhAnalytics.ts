@@ -245,3 +245,28 @@ export function summarizeSplh(
   }
   return { actualSplh, target, laborPct, verdict, verdictTone, hireHours, trimHours };
 }
+
+// --- Shared day-of-week + verdict display helpers -------------------------
+// Single source of truth for the two UI modules (`SplhHeatmap`,
+// `LaborEfficiencyPanel`) that both render a Mon-first day-of-week axis, so
+// the display order and the dow->label lookup can never drift apart.
+
+/** `SplhGridCell.dow` codes (0=Sun..6=Sat) in Mon-first display order. */
+export const MON_FIRST_DOWS = [1, 2, 3, 4, 5, 6, 0];
+
+/** Day labels indexed by raw `dow` (0=Sun..6=Sat) — index directly with a
+ * `dow` value, or with `MON_FIRST_DOWS[i]` for Mon-first display order. */
+export const DOW_LABELS_BY_DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/**
+ * Pure: verdict tone -> inline text color. Returns `undefined` for `'none'`
+ * so callers' default `text-muted-foreground` className applies instead of
+ * forcing a color. Shared by the Dashboard card and the Scheduling panel so
+ * their verdict lines always agree on tone->color mapping.
+ */
+export function verdictToneColor(tone: SplhSummary['verdictTone']): string | undefined {
+  if (tone === 'lean') return 'hsl(var(--splh-lean))';
+  if (tone === 'slack') return 'hsl(var(--splh-slack))';
+  if (tone === 'balanced') return 'hsl(var(--splh-balanced))';
+  return undefined;
+}

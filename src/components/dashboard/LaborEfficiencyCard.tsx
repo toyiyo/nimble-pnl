@@ -8,7 +8,12 @@ import { LineChart, Line, ResponsiveContainer } from 'recharts';
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useSplhSummary } from '@/hooks/useSplhSummary';
-import type { SplhPoint, SplhSummary } from '@/lib/splhAnalytics';
+import { verdictToneColor, type SplhPoint } from '@/lib/splhAnalytics';
+
+// Re-exported for this module's own tests — the implementation lives in
+// `@/lib/splhAnalytics` so this card and the Scheduling panel's
+// `LaborEfficiencyPanel` share one tone->color mapping.
+export { verdictToneColor };
 
 interface LaborEfficiencyCardProps {
   readonly restaurantId: string | null;
@@ -27,20 +32,6 @@ export interface SparklineDatum {
  */
 export function buildSparklineData(points: SplhPoint[]): SparklineDatum[] {
   return points.map((point) => ({ date: point.bucketStart, splh: point.splh }));
-}
-
-/**
- * Pure: verdict tone -> inline text color. Returns `undefined` for `'none'`
- * so the caller's default `text-muted-foreground` className applies instead
- * of forcing a color. Mirrors `LaborEfficiencyPanel.verdictToneColor` —
- * colocated rather than shared so the dashboard card and the Scheduling
- * panel stay decoupled (design §11 F-M3, split-hooks rationale).
- */
-export function verdictToneColor(tone: SplhSummary['verdictTone']): string | undefined {
-  if (tone === 'lean') return 'hsl(var(--splh-lean))';
-  if (tone === 'slack') return 'hsl(var(--splh-slack))';
-  if (tone === 'balanced') return 'hsl(var(--splh-balanced))';
-  return undefined;
 }
 
 /**

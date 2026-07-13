@@ -9,18 +9,19 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 import { useSplhAnalytics } from '@/hooks/useSplhAnalytics';
 import { formatCoverageHour } from '@/lib/coverageSummary';
-import type { SplhSummary } from '@/lib/splhAnalytics';
+import { MON_FIRST_DOWS, DOW_LABELS_BY_DOW, verdictToneColor } from '@/lib/splhAnalytics';
 
 import { SplhHeatmap } from './SplhHeatmap';
 import { SplhTimelineChart } from './SplhTimelineChart';
 
+// Re-exported for this module's own tests — the implementation lives in
+// `@/lib/splhAnalytics` so the Dashboard card and this panel share one
+// tone->color mapping (see `LaborEfficiencyCard`'s equivalent re-export).
+export { verdictToneColor };
+
 interface LaborEfficiencyPanelProps {
   readonly restaurantId: string;
 }
-
-// `SplhGridCell.dow` is 0=Sun..6=Sat — same convention as `SplhHeatmap`.
-const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MON_FIRST_DOWS = [1, 2, 3, 4, 5, 6, 0];
 
 interface HourRange {
   dow: number;
@@ -78,19 +79,7 @@ export function groupHoursIntoRanges(
  * rendered directly above this callout.
  */
 export function formatHourRange(range: HourRange): string {
-  return `${DOW_LABELS[range.dow]} ${formatCoverageHour(range.startHour)}–${formatCoverageHour(range.endHour)}`;
-}
-
-/**
- * Pure: verdict tone -> inline text color. Returns `undefined` for `'none'`
- * so the caller's default `text-muted-foreground` className applies instead
- * of forcing a color.
- */
-export function verdictToneColor(tone: SplhSummary['verdictTone']): string | undefined {
-  if (tone === 'lean') return 'hsl(var(--splh-lean))';
-  if (tone === 'slack') return 'hsl(var(--splh-slack))';
-  if (tone === 'balanced') return 'hsl(var(--splh-balanced))';
-  return undefined;
+  return `${DOW_LABELS_BY_DOW[range.dow]} ${formatCoverageHour(range.startHour)}–${formatCoverageHour(range.endHour)}`;
 }
 
 /**

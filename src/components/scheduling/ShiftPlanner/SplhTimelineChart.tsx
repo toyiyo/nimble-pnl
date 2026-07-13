@@ -20,11 +20,15 @@ export interface SplhChartDatum {
 /** Pure transform: SplhPoint[] -> Recharts-ready data. Preserves null `splh`
  * entries (rather than filtering them out) so the x-axis stays aligned to
  * every bucket in the window; the <Line connectNulls={false}> is what turns
- * those nulls into a visual gap instead of a lie (no interpolated segment). */
+ * those nulls into a visual gap instead of a lie (no interpolated segment).
+ * `granularity` is accepted (not just `points`) to keep the call site
+ * symmetric with the component's own props — both day and week buckets use
+ * the same "MMM d" label format today (a Monday-start-of-week date reads
+ * fine as a plain date), so it isn't otherwise branched on here. */
 export function buildSplhChartData(points: SplhPoint[], granularity: 'day' | 'week'): SplhChartDatum[] {
   return points.map((point) => ({
     date: point.bucketStart,
-    dateLabel: format(parseISO(point.bucketStart), granularity === 'week' ? 'MMM d' : 'MMM d'),
+    dateLabel: format(parseISO(point.bucketStart), 'MMM d'),
     splh: point.splh,
     totalSales: point.totalSales,
     totalHours: point.totalHours,

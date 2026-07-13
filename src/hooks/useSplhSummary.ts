@@ -1,12 +1,7 @@
 import { useMemo } from 'react';
 
-import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useStaffingSettings } from '@/hooks/useStaffingSettings';
-import { useEmployees } from '@/hooks/useEmployees';
-import { computeAvgHourlyRateCents } from '@/lib/staffingCalculator';
-import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
-import { validateTimeZone, buildSplhGrid, buildSplhTimeseries, summarizeSplh } from '@/lib/splhAnalytics';
-import { useSplhData } from '@/hooks/useSplhData';
+import { buildSplhTimeseries } from '@/lib/splhAnalytics';
+import { useSplhCore } from '@/hooks/useSplhCore';
 
 const WEEKS = 4; // dashboard summary + ~30-day sparkline
 
@@ -14,23 +9,16 @@ const WEEKS = 4; // dashboard summary + ~30-day sparkline
  * Lightweight SPLH summary for the Dashboard card: headline actual-vs-target
  * SPLH, verdict, labor %, and a daily sparkline. Skips the heatmap grid's
  * weekly timeline (see `useSplhAnalytics` for the full Scheduling dataset).
+ * Builds on the shared `useSplhCore` (tz/target/grid/summary plumbing).
  */
 export function useSplhSummary(restaurantId: string | null) {
-  const { selectedRestaurant } = useRestaurantContext();
-  const tz = validateTimeZone(selectedRestaurant?.restaurant?.timezone);
-  const { effectiveSettings } = useStaffingSettings(restaurantId);
-  const { employees } = useEmployees(restaurantId);
-  const target = effectiveSettings.target_splh;
-  const avgRate = useMemo(() => computeAvgHourlyRateCents(employees), [employees]);
+  const { data, tz, target, sessions, summary, hasData, isLoading, isError, refetch } =
+    useSplhCore(restaurantId, WEEKS);
 
-  const { data, isLoading, isError, refetch } = useSplhData(restaurantId, tz, WEEKS);
-  const sessions = useMemo(
-    () => (data?.punches?.length ? identifyWorkSessions(normalizePunches(data.punches)) : []),
-    [data?.punches],
+  const sparkline = useMemo(
+    () => (data ? buildSplhTimeseries(data.sales, sessions, tz, 'day') : []),
+    [data, sessions, tz],
   );
-  const grid = useMemo(() => data ? buildSplhGrid(data.sales, sessions, tz, target) : [], [data, sessions, tz, target]);
-  const summary = useMemo(() => summarizeSplh(grid, target, avgRate), [grid, target, avgRate]);
-  const sparkline = useMemo(() => data ? buildSplhTimeseries(data.sales, sessions, tz, 'day') : [], [data, sessions, tz]);
 
   return {
     summary,
@@ -38,7 +26,7 @@ export function useSplhSummary(restaurantId: string | null) {
     target,
     isLoading,
     isError,
-    hasData: (data?.sales?.length ?? 0) > 0,
+    hasData,
     refetch,
   };
 }

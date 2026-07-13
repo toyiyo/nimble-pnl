@@ -431,24 +431,43 @@ const handler = async (req: Request): Promise<Response> => {
     const pushUserIds: string[] = [];
 
     if (action === 'created') {
-      // Broadcast web push to active employees with a subscription, excluding the
-      // poster — bulk fan-out (single subscription lookup + bounded concurrency)
-      // instead of per-employee sendWebPushToUser calls. Email recipients above are
-      // unaffected; this only adds the push channel.
-      // Both the target lookup and the send are wrapped together so a failure at either
-      // step degrades to a logged, skipped broadcast instead of ever turning the
-      // already-sent email into a false 500.
+      // Push on a newly-offered trade. A DIRECTED trade ("Specific Coworker",
+      // target_employee_id set) is visible only to its target under RLS + the
+      // marketplace filter — so it must push ONLY that employee, never the whole
+      // team, or we'd leak/noise a private offer. An OPEN marketplace trade
+      // (target_employee_id null) broadcasts to active employees, minus the poster.
+      // Bulk fan-out (single subscription lookup + bounded concurrency). Email
+      // recipients above are unaffected; this only adds the push channel. The
+      // whole block is wrapped so a failure at any step degrades to a logged,
+      // skipped push instead of turning the already-sent email into a false 500.
       try {
-        const { data: activeEmployees, error: employeesError } = await admin
-          .from('employees')
-          .select('user_id')
-          .eq('restaurant_id', trade.restaurant_id)
-          .eq('is_active', true)
-          .not('user_id', 'is', null);
-        if (employeesError) {
-          console.error('Error fetching active employees for broadcast push:', employeesError);
+        let broadcastTargets: string[];
+        if (trade.target_employee_id) {
+          const { data: targetEmployee, error: targetError } = await admin
+            .from('employees')
+            .select('user_id')
+            .eq('id', trade.target_employee_id)
+            .eq('restaurant_id', trade.restaurant_id)
+            .maybeSingle();
+          if (targetError) {
+            console.error('Error fetching directed-trade target for push:', targetError);
+          }
+          broadcastTargets = selectBroadcastPushUserIds(
+            targetEmployee ? [targetEmployee] : [],
+            trade.offered_by?.user_id,
+          );
+        } else {
+          const { data: activeEmployees, error: employeesError } = await admin
+            .from('employees')
+            .select('user_id')
+            .eq('restaurant_id', trade.restaurant_id)
+            .eq('is_active', true)
+            .not('user_id', 'is', null);
+          if (employeesError) {
+            console.error('Error fetching active employees for broadcast push:', employeesError);
+          }
+          broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
         }
-        const broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
         await sendWebPushToUsers(admin, broadcastTargets, trade.restaurant_id, {
           title: content.heading,
           body: 'A teammate offered a shift for trade. Tap to view.',

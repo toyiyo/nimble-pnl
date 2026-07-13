@@ -37,9 +37,18 @@ interface WebPushClient {
   sendNotification(
     subscription: { endpoint: string; keys: { p256dh: string; auth: string } },
     payload: string,
-    options?: { TTL?: number }
+    options?: { TTL?: number; timeout?: number }
   ): Promise<unknown>;
 }
+
+/**
+ * Per-request socket timeout (ms) for web-push. Unset, `timeout` defaults to
+ * undefined, so a slow/unresponsive push endpoint would hang the promise
+ * indefinitely and could stall a whole `runBounded` chunk — risking the
+ * edge-function wall-clock limit. 10s bounds each send; a timeout rejects
+ * (handled like any other non-410/404 failure).
+ */
+const PUSH_REQUEST_TIMEOUT_MS = 10_000;
 
 /** Reads the three VAPID env vars; returns null if any are unset (caller should skip/no-op). */
 function getVapidConfig(): VapidConfig | null {
@@ -68,7 +77,7 @@ async function sendToSubscription(
         keys: { p256dh: sub.p256dh, auth: sub.auth },
       },
       JSON.stringify(payload),
-      { TTL: 86400 } // 24 hour TTL
+      { TTL: 86400, timeout: PUSH_REQUEST_TIMEOUT_MS } // 24h TTL; bounded socket timeout
     );
     return { sent: true, stale: false };
   } catch (err: unknown) {

@@ -1,3 +1,5 @@
+import type { WorkSession } from '@/utils/timePunchProcessing';
+
 export type SplhCellState = 'lean' | 'balanced' | 'slack' | 'no-labor' | 'closed';
 
 export interface HourContribution {
@@ -66,4 +68,55 @@ export function validateTimeZone(tz: string | undefined | null): string {
   } catch {
     return 'UTC';
   }
+}
+
+interface LocalParts { date: string; dow: number; hour: number; minuteOfHour: number; }
+
+function localParts(ms: number, tz: string): LocalParts {
+  const p = partsFormatter(tz).formatToParts(new Date(ms));
+  const get = (t: string) => p.find(x => x.type === t)!.value;
+  const y = +get('year'), mo = +get('month'), d = +get('day');
+  const hour = +get('hour') % 24;
+  const minuteOfHour = +get('minute') + +get('second') / 60;
+  const date = `${y}-${String(mo).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  const dow = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+  return { date, dow, hour, minuteOfHour };
+}
+
+/** [start,end) minus complete breaks → contiguous worked sub-intervals (ms pairs). */
+function workedIntervals(session: WorkSession): [number, number][] {
+  if (!session.clock_out) return [];
+  const start = session.clock_in.getTime();
+  const end = session.clock_out.getTime();
+  if (end <= start) return [];
+  const breaks = session.breaks
+    .filter(b => b.is_complete && b.break_end)
+    .map(b => [b.break_start.getTime(), b.break_end!.getTime()] as [number, number])
+    .filter(([bs, be]) => be > bs)
+    .sort((a, b) => a[0] - b[0]);
+  const out: [number, number][] = [];
+  let cursor = start;
+  for (const [bs, be] of breaks) {
+    const s = Math.max(cursor, bs);
+    if (s > cursor) out.push([cursor, Math.min(s, end)]);
+    cursor = Math.max(cursor, Math.min(be, end));
+    if (cursor >= end) break;
+  }
+  if (cursor < end) out.push([cursor, end]);
+  return out.filter(([a, b]) => b > a);
+}
+
+export function distributeWorkedHours(session: WorkSession, tz: string): HourContribution[] {
+  const out: HourContribution[] = [];
+  for (const [start, end] of workedIntervals(session)) {
+    let cursor = start;
+    while (cursor < end) {
+      const { date, dow, hour, minuteOfHour } = localParts(cursor, tz);
+      const minsLeft = 60 - minuteOfHour;
+      const chunkMs = Math.min(end - cursor, minsLeft * 60000);
+      out.push({ localDate: date, dow, hour, hours: chunkMs / 3600000 });
+      cursor += chunkMs;
+    }
+  }
+  return out;
 }

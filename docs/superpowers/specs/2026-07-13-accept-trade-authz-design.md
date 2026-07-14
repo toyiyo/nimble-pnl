@@ -70,6 +70,35 @@ bodies are otherwise copied verbatim — no logic change.
 Re-`GRANT EXECUTE … TO authenticated` after the `CREATE OR REPLACE` (grants persist across replace,
 but re-granting is idempotent and explicit).
 
+### 3. Fix the EXISTING test `17_shift_trade_functions_security.sql` (design review, major)
+
+That file sets `request.jwt.claims` sub to `…0001` (employee **121**'s user) once at the top, then
+Test 1 calls `accept_shift_trade(trade141, employee 122)` — i.e. accepts **as employee 122** while
+the caller's JWT is employee 121's user. The current unguarded function lets this through; the new
+`user_id = auth.uid()` check will (correctly) return `success:false`, breaking Test 1 and the
+dependent Tests 2–3.
+
+Fix in this branch: before Test 1's accept happy-path, `SET LOCAL "request.jwt.claims" TO
+'{"sub":"…0002"}'` (employee 122's user, the actual accepter) so caller == accepting employee;
+restore to `…0001` before the later cancel/offerer tests that rely on it. Verify all 12 assertions
+still pass. (Note: `17_` runs as `SET LOCAL role TO postgres` — superuser — so it never exercised
+the `authenticated` GRANT boundary; the new dedicated file below, using `SET LOCAL ROLE
+authenticated`, is the rigorous authz test.)
+
+### 4. Signature-drift guard on `CREATE OR REPLACE` (design review, major)
+
+`CREATE OR REPLACE FUNCTION` dispatches by `(name, arg types)`. If a header doesn't reproduce the
+**exact** live signature, Postgres silently creates an *overload*, leaving the old unhardened
+function live. Reproduce verbatim:
+- `accept_shift_trade(UUID, UUID)`
+- `cancel_shift_trade(UUID, UUID)`
+- `approve_shift_trade(UUID, UUID, TEXT DEFAULT NULL)`
+- `reject_shift_trade(UUID, UUID, TEXT DEFAULT NULL)`
+
+Post-`db:reset` verification: `SELECT proname, count(*) FROM pg_proc WHERE proname IN
+('accept_shift_trade','approve_shift_trade','reject_shift_trade','cancel_shift_trade') GROUP BY 1`
+must return **1 each** (no accidental overloads).
+
 ## Testing (pgTAP)
 
 New `supabase/tests/<nn>_accept_shift_trade_authz.sql`, impersonating callers via
@@ -99,3 +128,6 @@ Remember: `npm run db:reset` before `npm run test:db` (a migration was added/edi
 - **`public, pg_temp`** chosen over bare `public` for the hardened form; over `''` (empty) because
   the bodies reference unqualified `public` objects and the codebase convention keeps `public`.
 - Read-side privacy (who can *see* directed trades) shipped in #609; this closes the write side.
+- **`cancel_shift_trade` omits `is_active`** in its ownership check (unlike the new `accept` check).
+  Not a hole (a deactivated employee cancelling their own open trade is low-risk) — left unchanged
+  to keep this migration's diff focused on the `accept` authz gap; noted for a possible follow-up.

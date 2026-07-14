@@ -711,9 +711,9 @@ export function ShiftPlannerTab({
               aria-label={laborEffOpen ? 'Collapse Labor efficiency' : 'Expand Labor efficiency'}
             >
               <div className="flex items-center gap-2">
-                <div className="h-7 w-7 rounded-lg bg-muted/50 flex items-center justify-center">
+                <span className="h-7 w-7 rounded-lg bg-muted/50 flex items-center justify-center">
                   <TrendingUp className="h-3.5 w-3.5 text-foreground" />
-                </div>
+                </span>
                 <span className="text-[14px] font-medium text-foreground">Labor efficiency</span>
               </div>
               <ChevronDown

@@ -63,6 +63,13 @@ INSERT INTO shift_trades (id, restaurant_id, offered_shift_id, offered_by_employ
   VALUES ('00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000AAA', '00000000-0000-0000-0000-000000000131', '00000000-0000-0000-0000-000000000121', 'open')
 ON CONFLICT (id) DO NOTHING;
 
+-- accept_shift_trade now requires the caller to own the accepting employee
+-- (20260713010000_harden_accept_shift_trade.sql), so impersonate employee
+-- 122's user for this happy-path call. Employee 122's existing shifts are
+-- Jan 21 (132) and Jan 23 (134); trade 141 offers Jan 20 (131), so there's no
+-- schedule conflict and the accept should succeed.
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000002"}';
+
 SELECT is(
   (SELECT (accept_shift_trade('00000000-0000-0000-0000-000000000141', '00000000-0000-0000-0000-000000000122')->>'success')::boolean),
   true,
@@ -82,6 +89,10 @@ SELECT is(
   '00000000-0000-0000-0000-000000000122'::uuid,
   'Accepting employee should be recorded'
 );
+
+-- Restore the caller identity to employee 121's user for the remaining
+-- offerer/cancel tests below.
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000001"}';
 
 -- Test 4: Should reject duplicate acceptance (trade no longer open)
 INSERT INTO shift_trades (id, restaurant_id, offered_shift_id, offered_by_employee_id, status)

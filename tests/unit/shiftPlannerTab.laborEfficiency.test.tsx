@@ -7,6 +7,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner/ShiftPlannerTab';
 
 // ─── Mock all heavy hook / component dependencies ─────────────────────────────
@@ -142,7 +143,9 @@ function renderTab(props = DEFAULT_PROPS) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <ShiftPlannerTab {...props} />
+      <TooltipProvider>
+        <ShiftPlannerTab {...props} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

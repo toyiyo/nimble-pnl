@@ -56,8 +56,10 @@ export function getCellBackground(
   if (cell.state === 'no-labor' || cell.state === 'closed') {
     return { className: 'bg-muted' };
   }
-  const token =
-    cell.state === 'lean' ? '--splh-lean' : cell.state === 'slack' ? '--splh-slack' : '--splh-balanced';
+  let token: string;
+  if (cell.state === 'lean') token = '--splh-lean';
+  else if (cell.state === 'slack') token = '--splh-slack';
+  else token = '--splh-balanced';
   const opacity = computeCellOpacity(cell, target);
   return { style: { backgroundColor: `hsl(var(${token}) / ${opacity})` } };
 }

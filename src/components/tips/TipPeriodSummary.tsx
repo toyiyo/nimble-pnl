@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { formatCurrencyFromCents } from '@/utils/tipPooling';
 import { format, differenceInDays } from 'date-fns';
 import { DollarSign, Users, Calendar, AlertTriangle, CheckCircle, Lock, FileText } from 'lucide-react';
+import { TipTopEarners } from '@/components/tips/TipTopEarners';
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
 
 interface TipPeriodSummaryProps {
@@ -14,6 +15,8 @@ interface TipPeriodSummaryProps {
   endDate: Date;
   isLoading: boolean;
   shareMethod: string;
+  /** Navigates to the Distribution tab. Affordance is hidden when omitted. */
+  onViewDistribution?: () => void;
 }
 
 /**
@@ -26,6 +29,7 @@ export function TipPeriodSummary({
   endDate,
   isLoading,
   shareMethod,
+  onViewDistribution,
 }: TipPeriodSummaryProps) {
   const stats = useMemo(() => {
     if (!splits) {
@@ -108,7 +112,7 @@ export function TipPeriodSummary({
     return (
       <Card className="rounded-xl border-border/40">
         <CardContent className="pt-6">
-          <Skeleton className="h-24" />
+          <Skeleton className="h-40" />
         </CardContent>
       </Card>
     );
@@ -167,6 +171,9 @@ export function TipPeriodSummary({
             <p className="text-[14px] font-medium text-foreground">{getShareMethodLabel(shareMethod)}</p>
           </div>
         </div>
+
+        {/* Top earners strip */}
+        <TipTopEarners splits={splits} onViewAll={onViewDistribution} />
 
         {/* Warning if incomplete */}
         {missingDays > 0 && periodStatus !== 'locked' && (

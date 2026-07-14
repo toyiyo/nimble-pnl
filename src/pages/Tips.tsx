@@ -865,6 +865,7 @@ export function Tips() {
             endDate={periodEnd}
             isLoading={periodSplitsLoading}
             shareMethod={shareMethod}
+            onViewDistribution={() => setViewMode('distribution')}
           />
 
           {/* Timeline visualization - clicking navigates to Daily Entry */}

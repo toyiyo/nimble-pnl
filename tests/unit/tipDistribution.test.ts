@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   aggregateTipDistribution,
   paymentStatus,
+  formatSharePct,
+  getInitials,
   type EmployeeDistribution,
 } from '@/utils/tipDistribution';
 import type { TipSplitWithItems } from '@/hooks/useTipSplits';
@@ -597,6 +599,27 @@ describe('aggregateTipDistribution', () => {
     expect(result.totalPaidCents).toBe(11000);
     expect(result.totalUnpaidCents).toBe(4000); // (5000-1000) + (10000-10000)
   });
+
+  it('includes an employee with a payout but no finalized split item (earned 0)', () => {
+    // Ad-hoc payment to someone with no finalized allocation this period —
+    // they must still surface (with earnedCents 0), not be silently dropped.
+    const payouts: TipPayoutWithEmployee[] = [
+      makePayout({
+        employee_id: employee2,
+        amount: 3000,
+        tip_split_id: null,
+        employee: { name: 'Alex Kim', position: 'Cook' },
+      }),
+    ];
+
+    const result = aggregateTipDistribution([], payouts);
+    const alex = result.employees.find((e) => e.employeeId === employee2);
+    expect(alex).toBeDefined();
+    expect(alex!.earnedCents).toBe(0);
+    expect(alex!.paidCents).toBe(3000);
+    expect(alex!.name).toBe('Alex Kim');
+    expect(alex!.role).toBe('Cook');
+  });
 });
 
 describe('paymentStatus', () => {
@@ -634,5 +657,33 @@ describe('paymentStatus', () => {
   it('returns "paid" for the zero-earned edge case (nothing owed, nothing unpaid)', () => {
     const d = makeDistribution({ earnedCents: 0, paidCents: 0, unpaidCents: 0 });
     expect(paymentStatus(d)).toBe('paid');
+  });
+});
+
+describe('formatSharePct', () => {
+  it('formats to one decimal place with a percent sign', () => {
+    expect(formatSharePct(80)).toBe('80.0%');
+    expect(formatSharePct(19.34)).toBe('19.3%');
+    expect(formatSharePct(0)).toBe('0.0%');
+  });
+});
+
+describe('getInitials', () => {
+  it('takes first + last initial for a multi-word name', () => {
+    expect(getInitials('Maria Santos')).toBe('MS');
+    expect(getInitials('Ann Marie Lee')).toBe('AL'); // first + last only
+  });
+
+  it('takes the first two letters for a single-word name', () => {
+    expect(getInitials('Cher')).toBe('CH');
+  });
+
+  it('returns "?" for an empty or whitespace-only name', () => {
+    expect(getInitials('')).toBe('?');
+    expect(getInitials('   ')).toBe('?');
+  });
+
+  it('collapses extra whitespace between name parts', () => {
+    expect(getInitials('  Maria   Santos  ')).toBe('MS');
   });
 });

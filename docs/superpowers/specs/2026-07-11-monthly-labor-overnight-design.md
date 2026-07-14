@@ -90,6 +90,18 @@ look-ahead-only is safe and no look-back is needed. Reuse
   bounds (that's the risk lessons.md PR #485 documents).
 - No DB/RLS/schema/edge-function change (only a client query range widens).
 
+## Design-review resolutions (Phase 2.5, folded in)
+- **Order-dependence (major):** the clock-in-week state machine requires
+  punch_time-sorted input (today only guaranteed by `useMonthlyMetrics`'s
+  `.order('punch_time')`). The pure function must **defensively sort** its own
+  input (mirroring `parseWorkPeriods`); add an out-of-order-input unit test.
+- **weekKey duplication (minor):** compute the week key via a single local
+  `weekKeyFor(date)` helper; the existing noon-anchor reconstruction
+  (`new Date(weekKey + 'T12:00:00')`) consumes that same key unchanged.
+- **KNOWN GAP (minor):** add a `// KNOWN GAP:` comment at the OT-banding site
+  (`calculateEmployeePay` keys OT weeks off `period.startTime`, not `clockIn`)
+  pointing to this design doc, so the deferred compound case isn't lost.
+
 ## Testing
 - **Unit** (`laborCalculations.calculateActualLaborCostForMonth.test.ts`):
   - Sun→Mon overnight shift crossing an ISO-week boundary **within a month** →

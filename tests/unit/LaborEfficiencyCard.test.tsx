@@ -36,7 +36,7 @@ vi.mock('@/hooks/useSplhSummary', () => ({
   useSplhSummary: (restaurantId: string | null) => mockUseSplhSummary(restaurantId),
 }));
 
-import { LaborEfficiencyCard, buildSparklineData, verdictToneColor } from '@/components/dashboard/LaborEfficiencyCard';
+import { LaborEfficiencyCard, buildSparklineData, verdictToneClassName } from '@/components/dashboard/LaborEfficiencyCard';
 
 const sparklinePoints: SplhPoint[] = [
   { bucketStart: '2026-07-06', label: '2026-07-06', totalSales: 1200, totalHours: 20, splh: 60 },
@@ -95,18 +95,18 @@ describe('buildSparklineData', () => {
   });
 });
 
-describe('verdictToneColor', () => {
-  it('returns the lean token for tone=lean', () => {
-    expect(verdictToneColor('lean')).toBe('hsl(var(--splh-lean))');
+describe('verdictToneClassName', () => {
+  it('returns the lean class for tone=lean', () => {
+    expect(verdictToneClassName('lean')).toBe('text-[hsl(var(--splh-lean))]');
   });
-  it('returns the slack token for tone=slack', () => {
-    expect(verdictToneColor('slack')).toBe('hsl(var(--splh-slack))');
+  it('returns the slack class for tone=slack', () => {
+    expect(verdictToneClassName('slack')).toBe('text-[hsl(var(--splh-slack))]');
   });
-  it('returns the balanced token for tone=balanced', () => {
-    expect(verdictToneColor('balanced')).toBe('hsl(var(--splh-balanced))');
+  it('returns the balanced class for tone=balanced', () => {
+    expect(verdictToneClassName('balanced')).toBe('text-[hsl(var(--splh-balanced))]');
   });
-  it('returns undefined for tone=none (falls back to default text color)', () => {
-    expect(verdictToneColor('none')).toBeUndefined();
+  it('returns an empty string for tone=none (falls back to default text color)', () => {
+    expect(verdictToneClassName('none')).toBe('');
   });
 });
 

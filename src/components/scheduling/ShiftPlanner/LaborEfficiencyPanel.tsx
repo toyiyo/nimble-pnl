@@ -8,8 +8,9 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 import { useSplhAnalytics } from '@/hooks/useSplhAnalytics';
+import { cn } from '@/lib/utils';
 import { formatCoverageHour } from '@/lib/coverageSummary';
-import { MON_FIRST_DOWS, DOW_LABELS_BY_DOW, verdictToneColor } from '@/lib/splhAnalytics';
+import { MON_FIRST_DOWS, DOW_LABELS_BY_DOW, verdictToneClassName } from '@/lib/splhAnalytics';
 
 import { SplhHeatmap } from './SplhHeatmap';
 import { SplhTimelineChart } from './SplhTimelineChart';
@@ -17,7 +18,7 @@ import { SplhTimelineChart } from './SplhTimelineChart';
 // Re-exported for this module's own tests — the implementation lives in
 // `@/lib/splhAnalytics` so the Dashboard card and this panel share one
 // tone->color mapping (see `LaborEfficiencyCard`'s equivalent re-export).
-export { verdictToneColor };
+export { verdictToneClassName };
 
 interface LaborEfficiencyPanelProps {
   readonly restaurantId: string;
@@ -161,10 +162,7 @@ export function LaborEfficiencyPanel({ restaurantId }: LaborEfficiencyPanelProps
           {summary.actualSplh !== null ? `$${summary.actualSplh}/labor-hr` : '—'} vs ${target} target
           {summary.laborPct !== null && ` · Labor ${summary.laborPct}% of sales`}
         </p>
-        <p
-          className="text-[13px] font-medium text-muted-foreground"
-          style={{ color: verdictToneColor(summary.verdictTone) }}
-        >
+        <p className={cn('text-[13px] font-medium text-muted-foreground', verdictToneClassName(summary.verdictTone))}>
           {summary.verdict}
         </p>
       </div>

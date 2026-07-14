@@ -357,9 +357,9 @@ export const DOW_LABELS_BY_DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat
  * forcing a color. Shared by the Dashboard card and the Scheduling panel so
  * their verdict lines always agree on tone->color mapping.
  */
-export function verdictToneColor(tone: SplhSummary['verdictTone']): string | undefined {
-  if (tone === 'lean') return 'hsl(var(--splh-lean))';
-  if (tone === 'slack') return 'hsl(var(--splh-slack))';
-  if (tone === 'balanced') return 'hsl(var(--splh-balanced))';
-  return undefined;
+export function verdictToneClassName(tone: SplhSummary['verdictTone']): string {
+  if (tone === 'lean') return 'text-[hsl(var(--splh-lean))]';
+  if (tone === 'slack') return 'text-[hsl(var(--splh-slack))]';
+  if (tone === 'balanced') return 'text-[hsl(var(--splh-balanced))]';
+  return '';
 }

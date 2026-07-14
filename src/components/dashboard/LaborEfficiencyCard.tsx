@@ -7,13 +7,14 @@ import { LineChart, Line, ResponsiveContainer } from 'recharts';
 
 import { Skeleton } from '@/components/ui/skeleton';
 
+import { cn } from '@/lib/utils';
 import { useSplhSummary } from '@/hooks/useSplhSummary';
-import { verdictToneColor, type SplhPoint } from '@/lib/splhAnalytics';
+import { verdictToneClassName, type SplhPoint } from '@/lib/splhAnalytics';
 
 // Re-exported for this module's own tests — the implementation lives in
 // `@/lib/splhAnalytics` so this card and the Scheduling panel's
-// `LaborEfficiencyPanel` share one tone->color mapping.
-export { verdictToneColor };
+// `LaborEfficiencyPanel` share one tone->class mapping.
+export { verdictToneClassName };
 
 interface LaborEfficiencyCardProps {
   readonly restaurantId: string | null;
@@ -105,10 +106,7 @@ export function LaborEfficiencyCard({ restaurantId }: LaborEfficiencyCardProps) 
       {summary.laborPct !== null && (
         <p className="text-[13px] text-muted-foreground">Labor {summary.laborPct}% of sales</p>
       )}
-      <p
-        className="text-[13px] font-medium text-muted-foreground"
-        style={{ color: verdictToneColor(summary.verdictTone) }}
-      >
+      <p className={cn('text-[13px] font-medium text-muted-foreground', verdictToneClassName(summary.verdictTone))}>
         {summary.verdict}
       </p>
       {sparklineData.length > 0 && (

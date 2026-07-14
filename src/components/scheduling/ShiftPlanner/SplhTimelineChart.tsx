@@ -45,7 +45,7 @@ export function SplhTimelineChart({ points, target, granularity }: SplhTimelineC
   const chartData = useMemo(() => buildSplhChartData(points, granularity), [points, granularity]);
 
   return (
-    <div className="h-56">
+    <div className="h-56" role="img" aria-label={`SPLH versus $${target} target over time, ${granularity === 'week' ? 'weekly' : 'daily'} view`}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={chartData} margin={{ top: 12, right: 12, left: 12, bottom: 4 }}>
           <XAxis

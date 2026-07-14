@@ -86,7 +86,7 @@ export function LaborEfficiencyCard({ restaurantId }: LaborEfficiencyCardProps) 
         </p>
         <Link
           to="/integrations"
-          className="text-[13px] font-medium text-blue-600 dark:text-blue-400 hover:underline"
+          className="text-[13px] font-medium text-primary hover:underline"
         >
           Connect your POS
         </Link>

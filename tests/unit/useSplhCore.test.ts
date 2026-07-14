@@ -117,6 +117,18 @@ describe('useSplhCore', () => {
     expect(result.current.isLoading).toBe(true);
   });
 
+  it('CRITICAL: hasData is false when sales exist but zero punches were recorded (time-tracking not set up)', () => {
+    // Per design §6: "empty (no sales or no punches) -> EmptyState inviting
+    // POS connect / time-tracking enable." Sales present + zero punches
+    // anywhere in the window must route to the setup-invite empty state, not
+    // silently render an all-"no-labor" heatmap.
+    setup({ data: { sales: SALES, punches: [], capped: false } });
+
+    const { result } = renderHook(() => useSplhCore('rest-1', 4), { wrapper: createWrapper() });
+
+    expect(result.current.hasData).toBe(false);
+  });
+
   it('surfaces isError/refetch from useSplhData', () => {
     setup({ isError: true });
 

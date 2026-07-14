@@ -148,17 +148,31 @@ export function useWeekStaffingSuggestions(
       // to explicit UTC instants via `tz` first (matches useSplhData.ts).
       const startIso = fromZonedTime(`${dateRange.startStr}T00:00:00`, tz).toISOString();
       const endIso = fromZonedTime(`${dateRange.endStr}T23:59:59.999`, tz).toISOString();
-      const { data, error } = await supabase
-        .from('time_punches')
-        .select('id, restaurant_id, employee_id, punch_type, punch_time')
-        .eq('restaurant_id', restaurantId)
-        .gte('punch_time', startIso)
-        .lte('punch_time', endIso)
-        .in('punch_type', ['clock_in', 'clock_out', 'break_start', 'break_end'])
-        .order('employee_id')
-        .order('punch_time');
-      if (error) throw error;
-      return (data ?? []) as unknown as TimePunch[];
+      // Paginated (matches useSplhData.ts's fetchAllPunches): an unbounded
+      // select is subject to PostgREST's default row cap, which a
+      // multi-employee, multi-week lookback window can plausibly exceed,
+      // silently truncating computeActualSplh's inputs.
+      const PAGE_SIZE = 1000;
+      const MAX_PAGES = 20;
+      const rows: TimePunch[] = [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const from = page * PAGE_SIZE;
+        const { data, error } = await supabase
+          .from('time_punches')
+          .select('id, restaurant_id, employee_id, punch_type, punch_time')
+          .eq('restaurant_id', restaurantId)
+          .gte('punch_time', startIso)
+          .lte('punch_time', endIso)
+          .in('punch_type', ['clock_in', 'clock_out', 'break_start', 'break_end'])
+          .order('employee_id')
+          .order('punch_time')
+          .order('id')
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        rows.push(...((data ?? []) as unknown as TimePunch[]));
+        if (!data || data.length < PAGE_SIZE) break;
+      }
+      return rows;
     },
     enabled: !!restaurantId,
     staleTime: 60000,

@@ -86,4 +86,11 @@ describe('SplhTimelineChart — render', () => {
     // exact stroke path geometry.
     expect(container.querySelector('.recharts-line')).toBeTruthy();
   });
+
+  it('exposes an accessible name so screen reader users get more than an empty SVG', () => {
+    const { getByRole } = render(
+      <SplhTimelineChart points={points} target={95} granularity="week" />,
+    );
+    expect(getByRole('img', { name: /SPLH versus \$95 target over time, weekly view/i })).toBeInTheDocument();
+  });
 });

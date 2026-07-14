@@ -17,12 +17,21 @@ const sonarPropsSrc = readFileSync(resolve(repoRoot, 'sonar-project.properties')
 function parseVitestCoverageExclude(src: string): string[] {
   const match = src.match(/coverage:\s*\{[\s\S]*?exclude:\s*\[([\s\S]*?)\]/);
   if (!match) throw new Error('Could not locate `coverage.exclude` array in vitest.config.ts');
-  return match[1]
-    .split('\n')
-    .map((line) => line.replace(/\/\/.*$/, '').trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/^['"]/, '').replace(/['",]+$/, ''))
-    .filter(Boolean);
+  // Extract each quoted string literal directly rather than splitting on a
+  // delimiter. Splitting on '\n' silently breaks once the array is
+  // reformatted onto one line (defeats the guard with no thrown error);
+  // splitting on ',' is just as broken because entries themselves can
+  // contain commas via glob brace expansion (e.g. '**/*.test.{ts,tsx}').
+  // Matching quoted literals directly is robust to both.
+  const withoutComments = match[1].replace(/\/\/.*$/gm, '');
+  const literalPattern = /'([^'\\]*(?:\\.[^'\\]*)*)'|"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+  const entries: string[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = literalPattern.exec(withoutComments)) !== null) {
+    const value = m[1] ?? m[2];
+    if (value) entries.push(value);
+  }
+  return entries;
 }
 
 function parseSonarCoverageExclusions(src: string): string[] {
@@ -96,5 +105,17 @@ describe('SPLH hooks vs. coverage exclusion configs', () => {
     for (const hookFile of splhHookFiles) {
       expect(isMatch(hookFile)).toBe(false);
     }
+  });
+
+  it('CRITICAL: parseVitestCoverageExclude still parses every entry when the array is formatted on one line', () => {
+    // Regression guard: this parser previously split on `\n`, which silently
+    // corrupted into a single merged pattern (no thrown error) whenever the
+    // exclude array was reformatted onto one line — defeating the whole guard.
+    const oneLineConfig = `export default { test: { coverage: { exclude: ['**/*.d.ts', 'src/hooks/useWeekStaffingSuggestions.ts', "src/legacy/*.ts"] } } };`;
+    expect(parseVitestCoverageExclude(oneLineConfig)).toEqual([
+      '**/*.d.ts',
+      'src/hooks/useWeekStaffingSuggestions.ts',
+      'src/legacy/*.ts',
+    ]);
   });
 });

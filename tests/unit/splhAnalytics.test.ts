@@ -159,6 +159,33 @@ describe('buildSplhGrid', () => {
     // skipped since the fallback only engages when NO sale has an hour.
     expect(totalSales).toBeCloseTo(300, 5);
   });
+
+  it('CRITICAL: does not throw on a malformed sold_at — the row is dropped, other rows still bucket normally', () => {
+    // `Intl.DateTimeFormat.formatToParts` throws a RangeError on an Invalid
+    // Date; `new Date('not-a-real-timestamp')` produces one. Regression guard
+    // for buildSplhGrid crashing on any sale row with a malformed sold_at.
+    //
+    // `hourOfSale` gives `sold_at` priority whenever it's present (even a
+    // malformed one) and does NOT fall back to `sale_time` in that case —
+    // that's the pre-existing, intentional contract this fix preserves; it
+    // only stops the crash, it doesn't change which source wins.
+    const sales = [
+      // Valid sold_at -> bucketed normally (Wed 2026-07-01, hour 18).
+      { sale_date: '2026-07-01', sale_time: null, sold_at: '2026-07-01T18:00:00Z', total_price: 150 },
+      // Malformed sold_at, even with a usable sale_time alongside it -> the
+      // row has no derivable hour (sold_at wins but can't be parsed) and is
+      // dropped, matching the documented "sales without an hour are skipped"
+      // contract. The bug being guarded against is a crash here, not a
+      // fallback to sale_time.
+      { sale_date: '2026-07-02', sale_time: '12:00:00', sold_at: 'not-a-real-timestamp', total_price: 250 },
+    ];
+    expect(() => buildSplhGrid(sales, [], tz, 60)).not.toThrow();
+    const grid = buildSplhGrid(sales, [], tz, 60);
+    const cell = grid.find(c => c.dow === 3 && c.hour === 18)!;
+    expect(cell.totalSales).toBeCloseTo(150, 5);
+    const totalSales = grid.reduce((sum, c) => sum + c.totalSales, 0);
+    expect(totalSales).toBeCloseTo(150, 5);
+  });
 });
 
 describe('buildSplhTimeseries', () => {

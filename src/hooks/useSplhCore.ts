@@ -61,7 +61,12 @@ export function useSplhCore(restaurantId: string | null, weeks: number, options?
     sessions,
     grid,
     summary,
-    hasData: (data?.sales?.length ?? 0) > 0,
+    // Per design §6: "empty (no sales or no punches) -> EmptyState inviting
+    // POS connect / time-tracking enable". A restaurant with sales but zero
+    // punches anywhere in the window hasn't enabled time tracking yet — that's
+    // a setup-invite case, distinct from the per-cell "no-labor" state (some
+    // hours have sales but no punches while others in the window do).
+    hasData: (data?.sales?.length ?? 0) > 0 && (data?.punches?.length ?? 0) > 0,
     isLoading,
     isError,
     error,

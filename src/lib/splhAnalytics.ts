@@ -162,8 +162,14 @@ export function classifySplh(splh: number, target: number): 'lean' | 'balanced' 
 
 function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
   if (sale.sold_at) {
-    const h = localParts(new Date(sale.sold_at).getTime(), tz).hour;
-    return Number.isNaN(h) ? null : h;
+    // `Intl.DateTimeFormat.formatToParts` throws a RangeError on an Invalid
+    // Date rather than returning parts, so the NaN-ms check must happen
+    // *before* calling `localParts` — otherwise a malformed `sold_at` string
+    // crashes `buildSplhGrid` instead of falling through to `sale_time`/the
+    // "no derivable hour" fallback this function is designed to support.
+    const ms = new Date(sale.sold_at).getTime();
+    if (Number.isNaN(ms)) return null;
+    return localParts(ms, tz).hour;
   }
   if (sale.sale_time) {
     const h = parseInt(sale.sale_time.split(':')[0], 10);

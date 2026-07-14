@@ -5,8 +5,20 @@ import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useEmployees } from '@/hooks/useEmployees';
 import { computeAvgHourlyRateCents } from '@/lib/staffingCalculator';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
-import { validateTimeZone, buildSplhGrid, summarizeSplh } from '@/lib/splhAnalytics';
+import { validateTimeZone, buildSplhGrid, summarizeSplh, summarizeSplhTotals } from '@/lib/splhAnalytics';
 import { useSplhData } from '@/hooks/useSplhData';
+
+export interface UseSplhCoreOptions {
+  /**
+   * Build the full 7x24 heatmap grid. Defaults to `true`. Callers that only
+   * need the headline summary (e.g. `useSplhSummary` for the Dashboard card)
+   * should pass `false` — the grid (and the `Intl.DateTimeFormat`-heavy
+   * per-hour bucketing it requires) is never built in that case; the summary
+   * is instead computed directly from totals (design §4: "the grid and the
+   * weekly bucket are never built for the card").
+   */
+  buildGrid?: boolean;
+}
 
 /**
  * Shared setup for the SPLH hooks: restaurant tz/target/avg-rate, the
@@ -16,7 +28,8 @@ import { useSplhData } from '@/hooks/useSplhData';
  * the `weeks` fetch window and which additional timeseries granularities
  * they layer on top (day/week timeline vs. a daily-only sparkline).
  */
-export function useSplhCore(restaurantId: string | null, weeks: number) {
+export function useSplhCore(restaurantId: string | null, weeks: number, options?: UseSplhCoreOptions) {
+  const buildGrid = options?.buildGrid ?? true;
   const { selectedRestaurant } = useRestaurantContext();
   const tz = validateTimeZone(selectedRestaurant?.restaurant?.timezone);
   const { effectiveSettings } = useStaffingSettings(restaurantId);
@@ -31,10 +44,15 @@ export function useSplhCore(restaurantId: string | null, weeks: number) {
     [data?.punches],
   );
   const grid = useMemo(
-    () => (data ? buildSplhGrid(data.sales, sessions, tz, target) : []),
-    [data, sessions, tz, target],
+    () => (data && buildGrid ? buildSplhGrid(data.sales, sessions, tz, target) : []),
+    [data, buildGrid, sessions, tz, target],
   );
-  const summary = useMemo(() => summarizeSplh(grid, target, avgRate), [grid, target, avgRate]);
+  const summary = useMemo(
+    () => (buildGrid
+      ? summarizeSplh(grid, target, avgRate)
+      : summarizeSplhTotals(data?.sales ?? [], sessions, target, avgRate)),
+    [buildGrid, grid, data?.sales, sessions, target, avgRate],
+  );
 
   return {
     data,

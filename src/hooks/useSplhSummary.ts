@@ -13,7 +13,7 @@ const WEEKS = 4; // dashboard summary + ~30-day sparkline
  */
 export function useSplhSummary(restaurantId: string | null) {
   const { data, tz, target, sessions, summary, hasData, isLoading, isError, refetch } =
-    useSplhCore(restaurantId, WEEKS);
+    useSplhCore(restaurantId, WEEKS, { buildGrid: false });
 
   const sparkline = useMemo(
     () => (data ? buildSplhTimeseries(data.sales, sessions, tz, 'day') : []),

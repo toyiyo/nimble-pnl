@@ -46,6 +46,16 @@ export interface SplhSaleRow {
 /** ±band around target counts as "balanced". */
 export const BALANCED_BAND = 0.15;
 
+/**
+ * Default business-hours window used for the daily-spread fallback when no
+ * sale in the window carries usable hour-of-day info. Mirrors
+ * `useHourlySalesPattern.ts`'s `DEFAULT_OPEN_HOUR`/`DEFAULT_CLOSE_HOUR` (kept
+ * as separate constants here — this lib intentionally has no dependency on
+ * the hooks layer — but the values must stay identical).
+ */
+const FALLBACK_OPEN_HOUR = 9;
+const FALLBACK_CLOSE_HOUR = 22; // 10pm
+
 const _fmtCache = new Map<string, Intl.DateTimeFormat>();
 function partsFormatter(tz: string): Intl.DateTimeFormat {
   let f = _fmtCache.get(tz);
@@ -106,7 +116,23 @@ function workedIntervals(session: WorkSession): [number, number][] {
   return out.filter(([a, b]) => b > a);
 }
 
+/**
+ * Per-session memoization keyed by session object identity, then `tz`.
+ * `buildSplhGrid` and `buildSplhTimeseries` (called for both 'day' and
+ * 'week' granularities) each independently re-derive every session's hourly
+ * buckets from the same `sessions`/`tz` inputs on every SPLH data load —
+ * without this cache that's 3x the `Intl.DateTimeFormat.formatToParts` calls
+ * over the same data. `WorkSession` objects are recreated only when the
+ * underlying punches change (see `useSplhCore`'s `sessions` memo), so the
+ * `WeakMap` naturally scopes to one data load and never leaks across it.
+ */
+const _hourContribCache = new WeakMap<WorkSession, Map<string, HourContribution[]>>();
+
 export function distributeWorkedHours(session: WorkSession, tz: string): HourContribution[] {
+  let byTz = _hourContribCache.get(session);
+  const cached = byTz?.get(tz);
+  if (cached) return cached;
+
   const out: HourContribution[] = [];
   for (const [start, end] of workedIntervals(session)) {
     let cursor = start;
@@ -118,6 +144,12 @@ export function distributeWorkedHours(session: WorkSession, tz: string): HourCon
       cursor += chunkMs;
     }
   }
+
+  if (!byTz) {
+    byTz = new Map();
+    _hourContribCache.set(session, byTz);
+  }
+  byTz.set(tz, out);
   return out;
 }
 
@@ -152,11 +184,37 @@ export function buildSplhGrid(
   const salesMap = new Map<number, number>();
   const hoursMap = new Map<number, number>();
 
-  for (const sale of sales) {
-    const hour = hourOfSale(sale, tz);
-    if (hour === null) continue;
-    const dow = dowOfDate(sale.sale_date);
-    salesMap.set(key(dow, hour), (salesMap.get(key(dow, hour)) ?? 0) + Number(sale.total_price));
+  // Derive each sale's hour once. Mirrors `aggregateHourlySales`'s contract
+  // (§4.2 of the design doc): when at least one sale in the window carries a
+  // usable hour, real per-sale (dow,hour) buckets are used (sales without an
+  // hour are skipped, same as before). Only when NONE of the sales have a
+  // derivable hour (e.g. CSV-imported sales lacking both `sold_at` and
+  // `sale_time`) do we fall back to spreading each date's total evenly
+  // across business hours — otherwise every cell would silently read
+  // totalSales=0 while the "Estimated" badge falsely claims a spread was
+  // performed (design §6).
+  const salesWithHour = sales.map((sale) => ({ sale, hour: hourOfSale(sale, tz) }));
+  const hasAnyHour = salesWithHour.some(({ hour }) => hour !== null);
+
+  if (hasAnyHour) {
+    for (const { sale, hour } of salesWithHour) {
+      if (hour === null) continue;
+      const dow = dowOfDate(sale.sale_date);
+      salesMap.set(key(dow, hour), (salesMap.get(key(dow, hour)) ?? 0) + Number(sale.total_price));
+    }
+  } else {
+    const dailyTotals = new Map<string, number>();
+    for (const sale of sales) {
+      dailyTotals.set(sale.sale_date, (dailyTotals.get(sale.sale_date) ?? 0) + Number(sale.total_price));
+    }
+    const businessHours = FALLBACK_CLOSE_HOUR - FALLBACK_OPEN_HOUR;
+    for (const [dateStr, total] of dailyTotals) {
+      const dow = dowOfDate(dateStr);
+      const perHour = total / businessHours;
+      for (let hour = FALLBACK_OPEN_HOUR; hour < FALLBACK_CLOSE_HOUR; hour++) {
+        salesMap.set(key(dow, hour), (salesMap.get(key(dow, hour)) ?? 0) + perHour);
+      }
+    }
   }
   for (const s of sessions) {
     for (const c of distributeWorkedHours(s, tz)) {
@@ -216,18 +274,10 @@ export function buildSplhTimeseries(
   });
 }
 
-export function summarizeSplh(
-  grid: SplhGridCell[], target: number, avgHourlyRateCents: number | null,
+function buildSummary(
+  totalSales: number, totalHours: number, target: number, avgHourlyRateCents: number | null,
+  hireHours: { dow: number; hour: number }[], trimHours: { dow: number; hour: number }[],
 ): SplhSummary {
-  let totalSales = 0, totalHours = 0;
-  const hireHours: { dow: number; hour: number }[] = [];
-  const trimHours: { dow: number; hour: number }[] = [];
-  for (const c of grid) {
-    totalSales += c.totalSales;
-    totalHours += c.totalHours;
-    if (c.state === 'lean') hireHours.push({ dow: c.dow, hour: c.hour });
-    else if (c.state === 'slack') trimHours.push({ dow: c.dow, hour: c.hour });
-  }
   const actualSplh = totalHours >= 0.01 ? Math.round(totalSales / totalHours) : null;
   const laborPct = avgHourlyRateCents && totalSales > 0
     ? Math.round(((totalHours * (avgHourlyRateCents / 100)) / totalSales) * 10000) / 100
@@ -244,6 +294,41 @@ export function summarizeSplh(
     else verdict = `On target — right around your $${target} SPLH goal.`;
   }
   return { actualSplh, target, laborPct, verdict, verdictTone, hireHours, trimHours };
+}
+
+export function summarizeSplh(
+  grid: SplhGridCell[], target: number, avgHourlyRateCents: number | null,
+): SplhSummary {
+  let totalSales = 0, totalHours = 0;
+  const hireHours: { dow: number; hour: number }[] = [];
+  const trimHours: { dow: number; hour: number }[] = [];
+  for (const c of grid) {
+    totalSales += c.totalSales;
+    totalHours += c.totalHours;
+    if (c.state === 'lean') hireHours.push({ dow: c.dow, hour: c.hour });
+    else if (c.state === 'slack') trimHours.push({ dow: c.dow, hour: c.hour });
+  }
+  return buildSummary(totalSales, totalHours, target, avgHourlyRateCents, hireHours, trimHours);
+}
+
+/**
+ * Lighter alternative to `summarizeSplh` for callers that only need the
+ * headline totals (e.g. the Dashboard card) and never render the per-hour
+ * hire/trim callout. Sums sales/worked-hours directly instead of building
+ * the full 7x24 grid — skips `hourOfSale`'s and `distributeWorkedHours`'s
+ * `Intl.DateTimeFormat` bucketing entirely (design §4: "the grid and the
+ * weekly bucket are never built for the card"). `hireHours`/`trimHours` are
+ * always empty since no per-hour classification is computed.
+ */
+export function summarizeSplhTotals(
+  sales: SplhSaleRow[], sessions: WorkSession[], target: number, avgHourlyRateCents: number | null,
+): SplhSummary {
+  const totalSales = sales.reduce((sum, s) => sum + Number(s.total_price), 0);
+  let totalHours = 0;
+  for (const s of sessions) {
+    for (const [start, end] of workedIntervals(s)) totalHours += (end - start) / 3600000;
+  }
+  return buildSummary(totalSales, totalHours, target, avgHourlyRateCents, [], []);
 }
 
 // --- Shared day-of-week + verdict display helpers -------------------------

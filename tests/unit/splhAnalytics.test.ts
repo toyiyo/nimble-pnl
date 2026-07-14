@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateTimeZone, distributeWorkedHours, buildSplhGrid, classifySplh, buildSplhTimeseries, summarizeSplh } from '@/lib/splhAnalytics';
+import { validateTimeZone, distributeWorkedHours, buildSplhGrid, classifySplh, buildSplhTimeseries, summarizeSplh, summarizeSplhTotals } from '@/lib/splhAnalytics';
 import type { WorkSession } from '@/utils/timePunchProcessing';
 
 describe('validateTimeZone', () => {
@@ -118,6 +118,47 @@ describe('buildSplhGrid', () => {
     const grid = buildSplhGrid([], [], tz, 60);
     expect(grid).toHaveLength(7 * 24);
   });
+
+  it('spreads a date\'s total evenly across business hours when NO sale has a derivable hour (design §6)', () => {
+    // Neither sold_at nor sale_time present — e.g. CSV-imported sales.
+    const sales = [
+      { sale_date: '2026-07-01', sale_time: null, sold_at: null, total_price: 1300 }, // Wed
+    ];
+    const sessions = [session({
+      clock_in: new Date(Date.UTC(2026, 6, 1, 17, 0)),
+      clock_out: new Date(Date.UTC(2026, 6, 1, 18, 0)),
+      worked_minutes: 60,
+      is_complete: true,
+    })];
+    const grid = buildSplhGrid(sales, sessions, tz, 60);
+
+    // 1300 spread across the 9am-10pm (13h) fallback window = 100/hr.
+    const spreadCells = grid.filter(c => c.dow === 3 && c.hour >= 9 && c.hour < 22);
+    expect(spreadCells).toHaveLength(13);
+    for (const cell of spreadCells) expect(cell.totalSales).toBeCloseTo(100, 5);
+
+    // Total across the grid still equals the full day's sales — no silent
+    // drop to totalSales=0 (the bug this regression guards against).
+    const totalSales = grid.reduce((sum, c) => sum + c.totalSales, 0);
+    expect(totalSales).toBeCloseTo(1300, 5);
+
+    // The real punch data still lands in its actual (dow, hour) bucket —
+    // only the sales side is spread.
+    const laborCell = grid.find(c => c.dow === 3 && c.hour === 17)!;
+    expect(laborCell.totalHours).toBeCloseTo(1, 5);
+  });
+
+  it('does NOT spread when at least one sale in the window has a derivable hour (mixed data keeps real buckets)', () => {
+    const sales = [
+      { sale_date: '2026-07-01', sale_time: null, sold_at: '2026-07-01T17:00:00Z', total_price: 300 },
+      { sale_date: '2026-07-02', sale_time: null, sold_at: null, total_price: 500 }, // no derivable hour — dropped, not spread
+    ];
+    const grid = buildSplhGrid(sales, [], tz, 60);
+    const totalSales = grid.reduce((sum, c) => sum + c.totalSales, 0);
+    // Only the $300 sale (with a real hour) is counted; the $500 sale is
+    // skipped since the fallback only engages when NO sale has an hour.
+    expect(totalSales).toBeCloseTo(300, 5);
+  });
 });
 
 describe('buildSplhTimeseries', () => {
@@ -167,6 +208,38 @@ describe('summarizeSplh', () => {
   });
   it('empty grid → null actualSplh, none tone', () => {
     const s = summarizeSplh([], 60, 1500);
+    expect(s.actualSplh).toBeNull();
+    expect(s.verdictTone).toBe('none');
+  });
+});
+
+describe('summarizeSplhTotals', () => {
+  it('matches summarizeSplh(buildSplhGrid(...)) without building the grid (dashboard-card fast path)', () => {
+    const tz = 'UTC';
+    const sales = [
+      { sale_date: '2026-07-01', sale_time: null, sold_at: '2026-07-01T17:00:00Z', total_price: 900 },
+    ];
+    const sessions = [session({
+      clock_in: new Date(Date.UTC(2026, 6, 1, 17, 0)),
+      clock_out: new Date(Date.UTC(2026, 6, 1, 20, 0)),
+      worked_minutes: 180,
+      is_complete: true,
+    })];
+
+    const viaGrid = summarizeSplh(buildSplhGrid(sales, sessions, tz, 60), 60, 1500);
+    const viaTotals = summarizeSplhTotals(sales, sessions, 60, 1500);
+
+    expect(viaTotals.actualSplh).toBe(300); // 900 / 3h
+    expect(viaTotals.actualSplh).toBe(viaGrid.actualSplh);
+    expect(viaTotals.laborPct).toBeCloseTo(viaGrid.laborPct!, 5);
+    expect(viaTotals.verdictTone).toBe(viaGrid.verdictTone);
+    // No per-hour classification is computed in the totals-only path.
+    expect(viaTotals.hireHours).toEqual([]);
+    expect(viaTotals.trimHours).toEqual([]);
+  });
+
+  it('empty inputs → null actualSplh, none tone', () => {
+    const s = summarizeSplhTotals([], [], 60, 1500);
     expect(s.actualSplh).toBeNull();
     expect(s.verdictTone).toBe('none');
   });

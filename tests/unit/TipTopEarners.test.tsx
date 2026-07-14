@@ -48,7 +48,7 @@ function makeItem(overrides: Partial<TipSplitWithItems['items'][number]>): TipSp
 }
 
 describe('TipTopEarners', () => {
-  it('renders only the top 3 employees by earnedCents, descending, excluding a lower 4th earner', () => {
+  it('CRITICAL: renders only the top 3 employees by earnedCents, descending, excluding a lower 4th earner', () => {
     const splits: TipSplitWithItems[] = [
       makeSplit({
         id: 'split-1',
@@ -118,7 +118,7 @@ describe('TipTopEarners', () => {
     expect(screen.getAllByText(/20(\.0)?%/).length).toBeGreaterThan(0);
   });
 
-  it('excludes draft-only allocations (a draft split employee must not appear)', () => {
+  it('CRITICAL: excludes draft-only allocations (a draft split employee must not appear)', () => {
     const splits: TipSplitWithItems[] = [
       makeSplit({
         id: 'split-1',

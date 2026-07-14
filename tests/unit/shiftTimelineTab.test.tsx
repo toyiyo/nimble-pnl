@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -255,6 +256,46 @@ describe('ShiftTimelineTab', () => {
     // Bob should be visible on Mon Jan 5 (the local day) — not missing
     const btn = screen.getByRole('button', { name: /Bob/i });
     expect(btn).toBeInTheDocument();
+  });
+
+  // Task 7 — availabilityByEmployee wiring through useTimelineModel into the bar.
+  it('marks a shift bar outside availability when availabilityByEmployee flags that employee/day recurring-unavailable', () => {
+    const employees = [makeEmployee('e1', 'Ann')];
+    // 2026-01-05 (weekDays[0], selected by default) is a Monday (day_of_week 1).
+    const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+    const availabilityByEmployee = new Map<string, Map<number, EffectiveAvailability>>([
+      [
+        'e1',
+        new Map([
+          [1, { type: 'recurring', slots: [{ isAvailable: false, startTime: null, endTime: null, sourceRecord: {} as never }] }],
+        ]),
+      ],
+    ]);
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+        availabilityByEmployee={availabilityByEmployee}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /Ann.*outside availability/i });
+    expect(btn).toBeInTheDocument();
+    expect(btn.className).toContain('border-l-amber-500');
+  });
+
+  it('does not mark a shift bar when availabilityByEmployee is omitted (backward-compatible)', () => {
+    const employees = [makeEmployee('e1', 'Ann')];
+    const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /Ann/i });
+    expect(btn.className).not.toContain('border-l-amber-500');
   });
 });
 

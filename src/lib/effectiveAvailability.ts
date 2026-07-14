@@ -1,4 +1,7 @@
+import { toZonedTime } from 'date-fns-tz';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
+import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { formatUTCTimeToLocal } from '@/lib/conflictFormatUtils';
 
 export interface EffectiveSlot {
   isAvailable: boolean;
@@ -107,4 +110,150 @@ export function computeEffectiveAvailability(
   }
 
   return result;
+}
+
+export interface AvailabilityClasses {
+  bg: string;
+  text: string;
+}
+
+/**
+ * Semantic tint for an EffectiveAvailability — the exact treatment used by
+ * TeamAvailabilityGrid.AvailabilityCell, extracted here so the grid, the
+ * planner sidebar strip, and the timeline bar marker can't drift apart.
+ */
+export function availabilityColorClasses(effective: EffectiveAvailability): AvailabilityClasses {
+  const slot = effective.slots[0];
+  const isAvailable = slot?.isAvailable ?? false;
+  const isException = effective.type === 'exception';
+  const isExceptionAvailable = isException && isAvailable;
+  const isExceptionUnavailable = isException && !isAvailable;
+  const isRecurringAvailable = effective.type === 'recurring' && isAvailable;
+  const isRecurringUnavailable = effective.type === 'recurring' && !isAvailable;
+
+  if (isRecurringAvailable || isExceptionAvailable) {
+    return { bg: 'bg-emerald-500/10 hover:bg-emerald-500/20', text: 'text-emerald-700 dark:text-emerald-400' };
+  }
+  if (isExceptionUnavailable) {
+    return { bg: 'bg-amber-500/10 hover:bg-amber-500/20', text: 'text-amber-700 dark:text-amber-400' };
+  }
+  if (isRecurringUnavailable) {
+    return { bg: 'bg-red-500/5 hover:bg-red-500/10', text: 'text-red-600/70 dark:text-red-400/70' };
+  }
+  return { bg: 'bg-muted/30 hover:bg-muted/50', text: 'text-muted-foreground' };
+}
+
+/**
+ * Localized one-line label for an EffectiveAvailability cell. Joins every
+ * available slot (not just `slots[0]`) with ' + ', matching
+ * TeamAvailabilityGrid's split-shift display convention — otherwise an
+ * employee with two available windows on the same day loses the second
+ * window in this label's consumers (EmployeeMiniWeek's tooltip/aria-label).
+ */
+export function availabilityLabel(effective: EffectiveAvailability, timezone: string, date: Date): string {
+  if (effective.type === 'not-set') return 'No availability set';
+  const slot = effective.slots[0];
+  if (!slot?.isAvailable) return 'Unavailable';
+  const ranges = effective.slots
+    .filter((s) => s.isAvailable && s.startTime && s.endTime)
+    .map((s) => `${formatUTCTimeToLocal(s.startTime!, timezone, date)} – ${formatUTCTimeToLocal(s.endTime!, timezone, date)}`);
+  if (ranges.length === 0) return 'Available';
+  return `Available ${ranges.join(' + ')}`;
+}
+
+/**
+ * Slots from a previous local day whose converted window is locally
+ * overnight (end <= start), i.e. windows that spill into today's early hours.
+ */
+function overnightPrevSlots(
+  slots: EffectiveSlot[],
+  timezone: string,
+  date: Date,
+): EffectiveSlot[] {
+  return slots.filter((s) => {
+    if (!s.isAvailable || !s.startTime || !s.endTime) return false;
+    const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, date).split(':').map(Number);
+    const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, date).split(':').map(Number);
+    return eh * 60 + em <= sh * 60 + sm;
+  });
+}
+
+/**
+ * True when [shiftStart, shiftEnd] (instants) falls outside the employee's
+ * available window(s) for the given local day. Client-side mirror of the
+ * `check_availability_conflict` RPC's local-frame logic: trust the stored
+ * day_of_week, convert only time-of-day, and treat a local end <= start as
+ * overnight. `prevDay` is the previous local day's EffectiveAvailability
+ * (needed so an overnight window from yesterday can cover today's early
+ * hours). `nextDay` is the NEXT local day's EffectiveAvailability — needed
+ * so a hard-unavailable exception/recurring-off on the day the shift's tail
+ * spills into can't be papered over by today's window alone (Codex finding:
+ * without this, a Fri 22:00–Sat 01:00 shift inside Friday's 18:00–02:00
+ * recurring window read as no-conflict here even when Saturday itself has an
+ * unavailable exception, contradicting the RPC's per-local-date walk, which
+ * checks Saturday's own data for the portion of the shift that falls on
+ * Saturday).
+ */
+export function shiftOutsideAvailability(
+  today: EffectiveAvailability,
+  prevDay: EffectiveAvailability | undefined,
+  shiftStart: Date,
+  shiftEnd: Date,
+  timezone: string,
+  date: Date,
+  nextDay?: EffectiveAvailability,
+): boolean {
+  // `today.slots` is empty for 'not-set', so this only fires for an actual
+  // recurring-off / unavailable-exception row. Do NOT early-return for
+  // 'not-set' here — the RPC (3c) still checks the previous local day's
+  // overnight windows even when today has no exception/recurring row at all.
+  const slot = today.slots[0];
+  if (slot && !slot.isAvailable) return true; // recurring off / unavailable exception
+
+  // Convert the shift INSTANTS to restaurant-local wall clock (NOT host TZ — lesson 2026-05-10).
+  const zStart = toZonedTime(shiftStart, timezone);
+  const zEnd = toZonedTime(shiftEnd, timezone);
+  const startMin = zStart.getHours() * 60 + zStart.getMinutes();
+  const dayDelta = Math.round(
+    (new Date(zEnd.getFullYear(), zEnd.getMonth(), zEnd.getDate()).getTime() -
+      new Date(zStart.getFullYear(), zStart.getMonth(), zStart.getDate()).getTime()) /
+      86_400_000,
+  );
+  const endMin = zEnd.getHours() * 60 + zEnd.getMinutes() + dayDelta * 1440;
+
+  // The shift's tail falls on the NEXT local day — that day's own hard-off
+  // row (recurring-unavailable or unavailable exception) governs that
+  // portion regardless of what today's window covers (RPC's per-date walk
+  // counterpart to block 3c, but forward instead of backward).
+  if (dayDelta > 0 && nextDay) {
+    const nextSlot = nextDay.slots[0];
+    if (nextSlot && !nextSlot.isAvailable) return true;
+  }
+
+  // Previous LOCAL calendar date, used (like the RPC's v_prev_date) as the
+  // DST-offset anchor for converting prevDay's stored UTC-clock times — using
+  // today's date here would pick the wrong UTC offset on a DST-transition day.
+  const prevDate = new Date(date);
+  prevDate.setDate(prevDate.getDate() - 1);
+  const nextDate = new Date(date);
+  nextDate.setDate(nextDate.getDate() + 1);
+
+  const windows: Array<[number, number]> = [];
+  const pushWindow = (slots: EffectiveSlot[], offsetMin: number, refDate: Date) => {
+    for (const s of slots) {
+      if (!s.isAvailable || !s.startTime || !s.endTime) continue;
+      const [sh, sm] = utcTimeToLocalTime(s.startTime, timezone, refDate).split(':').map(Number);
+      const [eh, em] = utcTimeToLocalTime(s.endTime, timezone, refDate).split(':').map(Number);
+      const ws = sh * 60 + sm + offsetMin;
+      let we = eh * 60 + em + offsetMin;
+      if (we <= ws) we += 1440; // overnight local window
+      windows.push([ws, we]);
+    }
+  };
+  pushWindow(today.slots, 0, date);
+  if (prevDay) pushWindow(overnightPrevSlots(prevDay.slots, timezone, prevDate), -1440, prevDate);
+  if (dayDelta > 0 && nextDay) pushWindow(nextDay.slots, 1440, nextDate);
+
+  if (windows.length === 0) return false; // available-all-day / unknown
+  return !windows.some(([ws, we]) => startMin >= ws && endMin <= we);
 }

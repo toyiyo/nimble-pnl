@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   computeEffectiveAvailability,
+  availabilityColorClasses,
+  availabilityLabel,
+  shiftOutsideAvailability,
   EffectiveSlot,
   EffectiveAvailability,
 } from '@/lib/effectiveAvailability';
@@ -113,5 +116,221 @@ describe('computeEffectiveAvailability', () => {
     const result = computeEffectiveAvailability(avail, [], weekStart, ['emp-1', 'emp-2']);
     expect(result.get('emp-1')?.get(1)?.slots[0].startTime).toBe('09:00:00');
     expect(result.get('emp-2')?.get(1)?.slots[0].startTime).toBe('06:00:00');
+  });
+});
+
+const avail = (
+  isAvailable: boolean,
+  start: string | null,
+  end: string | null,
+  type: EffectiveAvailability['type'] = 'recurring',
+): EffectiveAvailability => ({
+  type,
+  slots:
+    type === 'not-set'
+      ? []
+      : [{ isAvailable, startTime: start, endTime: end, sourceRecord: {} as never }],
+});
+
+describe('availabilityColorClasses', () => {
+  it('emerald when available, amber for unavailable exception, red for recurring off, neutral when not-set', () => {
+    expect(availabilityColorClasses(avail(true, '18:00:00', '02:00:00')).bg).toContain('emerald');
+    expect(availabilityColorClasses(avail(false, null, null, 'exception')).bg).toContain('amber');
+    expect(availabilityColorClasses(avail(false, null, null, 'recurring')).bg).toContain('red');
+    expect(availabilityColorClasses(avail(false, null, null, 'not-set')).bg).toContain('muted');
+  });
+});
+
+describe('availabilityLabel', () => {
+  it('formats an available window in restaurant-local time', () => {
+    // 18:00 UTC in America/New_York (EDT) is 2:00 PM on 2027-07-13.
+    const label = availabilityLabel(
+      avail(true, '18:00:00', '02:30:00'),
+      'America/New_York',
+      new Date(2027, 6, 13),
+    );
+    expect(label).toMatch(/Available 2:00 PM/);
+  });
+  it('labels unavailable and not-set', () => {
+    expect(availabilityLabel(avail(false, null, null, 'recurring'), 'UTC', new Date(2027, 6, 13))).toBe(
+      'Unavailable',
+    );
+    expect(
+      availabilityLabel(avail(false, null, null, 'not-set'), 'UTC', new Date(2027, 6, 13)),
+    ).toBe('No availability set');
+  });
+
+  // CodeRabbit finding: split-shift (multi-slot) availability lost the
+  // second window because only slots[0] was read — the same day's second
+  // available window must show up too, matching TeamAvailabilityGrid's
+  // ' + '-joined split-shift display convention.
+  it('joins every available slot for a split-shift day', () => {
+    const splitDay: EffectiveAvailability = {
+      type: 'recurring',
+      slots: [
+        { isAvailable: true, startTime: '13:00:00', endTime: '16:00:00', sourceRecord: {} as never },
+        { isAvailable: true, startTime: '20:00:00', endTime: '23:00:00', sourceRecord: {} as never },
+      ],
+    };
+    const label = availabilityLabel(splitDay, 'UTC', new Date(2027, 6, 13));
+    expect(label).toBe('Available 1:00 PM – 4:00 PM + 8:00 PM – 11:00 PM');
+  });
+});
+
+describe('shiftOutsideAvailability (TZ-portable)', () => {
+  // Employee available 2:00 PM-10:30 PM local (stored UTC-clock, derived below).
+  const nyAvail = avail(true, '18:00:00', '02:30:00'); // EDT: 2:00 PM - 10:30 PM
+  it('is false when the shift is within the window', () => {
+    expect(
+      shiftOutsideAvailability(
+        nyAvail,
+        undefined,
+        new Date('2027-07-13T21:00:00Z'),
+        new Date('2027-07-14T01:00:00Z'),
+        'America/New_York',
+        new Date(2027, 6, 13),
+      ),
+    ).toBe(false); // 5-9 PM EDT
+  });
+  it('is true when the shift starts before the window', () => {
+    expect(
+      shiftOutsideAvailability(
+        nyAvail,
+        undefined,
+        new Date('2027-07-13T15:00:00Z'),
+        new Date('2027-07-13T17:00:00Z'),
+        'America/New_York',
+        new Date(2027, 6, 13),
+      ),
+    ).toBe(true); // 11 AM-1 PM EDT
+  });
+
+  // Codex finding: a `not-set` day (no exception, no recurring row) must
+  // still check the previous local day's overnight window before deciding —
+  // mirrors the RPC's 3c, which runs unconditionally, not only when 3b found
+  // a same-day match/off row.
+  describe('previous-day overnight window on an otherwise not-set day', () => {
+    const notSetToday = avail(false, null, null, 'not-set');
+    // Friday 6:00 PM - 2:00 AM EDT recurring window (stored UTC-clock 22:00-06:00).
+    const fridayOvernight = avail(true, '22:00:00', '06:00:00');
+
+    it('is false (not flagged) when the shift falls inside the carried-over window', () => {
+      expect(
+        shiftOutsideAvailability(
+          notSetToday,
+          fridayOvernight,
+          new Date('2027-07-17T05:00:00Z'), // 1:00 AM EDT Saturday
+          new Date('2027-07-17T05:30:00Z'), // 1:30 AM EDT Saturday
+          'America/New_York',
+          new Date(2027, 6, 17), // Saturday
+        ),
+      ).toBe(false);
+    });
+
+    it('is true (flagged) when the shift falls outside the carried-over window', () => {
+      expect(
+        shiftOutsideAvailability(
+          notSetToday,
+          fridayOvernight,
+          new Date('2027-07-17T07:00:00Z'), // 3:00 AM EDT Saturday — past the 2:00 AM window end
+          new Date('2027-07-17T08:00:00Z'),
+          'America/New_York',
+          new Date(2027, 6, 17),
+        ),
+      ).toBe(true);
+    });
+
+    it('stays false (unknown, not flagged) on a not-set day with no prevDay data at all', () => {
+      expect(
+        shiftOutsideAvailability(
+          notSetToday,
+          undefined,
+          new Date('2027-07-17T15:00:00Z'),
+          new Date('2027-07-17T16:00:00Z'),
+          'America/New_York',
+          new Date(2027, 6, 17),
+        ),
+      ).toBe(false);
+    });
+  });
+
+  // Sound-logic finding: the previous local day's stored UTC-clock times must
+  // be anchored to YESTERDAY's date (like the RPC's v_prev_date), not
+  // today's — otherwise a DST-transition day picks the wrong UTC offset.
+  // America/New_York springs forward on Sun Mar 12, 2028 (2:00 AM -> 3:00 AM).
+  it('anchors the previous day\'s overnight window to yesterday\'s date across a spring-forward transition', () => {
+    const notSetToday = avail(false, null, null, 'not-set');
+    // Saturday Mar 11 (EST, UTC-5) recurring window, stored UTC-clock 23:00-08:00.
+    // Anchored correctly (to Sat, EST): local 6:00 PM Sat - 3:00 AM Sun.
+    // Anchored incorrectly (to Sun, which is EDT for these UTC instants):
+    // local 7:00 PM Sat - 4:00 AM Sun — a full hour later at both ends.
+    const saturdayOvernight = avail(true, '23:00:00', '08:00:00');
+
+    // Sunday 3:15-3:30 AM EDT: inside the WRONG (today-anchored) window
+    // (ends 4:00 AM) but outside the CORRECT (yesterday-anchored) window
+    // (ends 3:00 AM) — so this shift must be flagged (true).
+    expect(
+      shiftOutsideAvailability(
+        notSetToday,
+        saturdayOvernight,
+        new Date('2028-03-12T07:15:00Z'), // 3:15 AM EDT Sunday
+        new Date('2028-03-12T07:30:00Z'), // 3:30 AM EDT Sunday
+        'America/New_York',
+        new Date(2028, 2, 12), // Sunday Mar 12
+      ),
+    ).toBe(true);
+  });
+
+  // Codex finding: a shift crossing into the next local day must also be
+  // checked against that NEXT day's own hard-off data — today's window
+  // extended past midnight can't paper over Saturday's own unavailable
+  // exception, mirroring the RPC's per-local-date walk (block 3c's forward
+  // counterpart).
+  describe('next-day override on a shift crossing midnight forward', () => {
+    // Friday recurring window: 6:00 PM - 2:00 AM UTC (stored as one overnight row).
+    const fridayOvernight = avail(true, '18:00:00', '02:00:00');
+    const saturdayUnavailableException = avail(false, null, null, 'exception');
+
+    it('is true when the shift tail falls on a next-day hard-unavailable exception, even though Friday\'s window alone would cover it', () => {
+      expect(
+        shiftOutsideAvailability(
+          fridayOvernight,
+          undefined,
+          new Date('2027-07-16T22:00:00Z'), // Fri 10:00 PM UTC
+          new Date('2027-07-17T01:00:00Z'), // Sat 1:00 AM UTC
+          'UTC',
+          new Date(2027, 6, 16), // Friday
+          saturdayUnavailableException,
+        ),
+      ).toBe(true);
+    });
+
+    it('is false when no next-day data is supplied (same-day-only shifts unaffected by this fix)', () => {
+      expect(
+        shiftOutsideAvailability(
+          fridayOvernight,
+          undefined,
+          new Date('2027-07-16T19:00:00Z'), // Fri 7:00 PM UTC
+          new Date('2027-07-16T20:00:00Z'), // Fri 8:00 PM UTC
+          'UTC',
+          new Date(2027, 6, 16),
+        ),
+      ).toBe(false);
+    });
+
+    it('is false when the next day is available and covers the shift tail', () => {
+      const saturdayAvailable = avail(true, '00:00:00', '06:00:00');
+      expect(
+        shiftOutsideAvailability(
+          fridayOvernight,
+          undefined,
+          new Date('2027-07-16T22:00:00Z'), // Fri 10:00 PM UTC
+          new Date('2027-07-17T01:00:00Z'), // Sat 1:00 AM UTC
+          'UTC',
+          new Date(2027, 6, 16),
+          saturdayAvailable,
+        ),
+      ).toBe(false);
+    });
   });
 });

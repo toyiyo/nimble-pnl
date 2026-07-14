@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -107,6 +107,12 @@ const FAKE_SALES = Array.from({ length: 10 }, (_, i) => ({
   total_price: '500',
 }));
 
+// Since #598 the panel defaults to collapsed (isExpanded=false), so its
+// CollapsibleContent is unmounted until opened. Tests that assert inner content
+// must expand it first by clicking the trigger (aria-label "Expand …").
+const expandPanel = () =>
+  fireEvent.click(screen.getByRole('button', { name: /expand staffing suggestions/i }));
+
 describe('<StaffingOverlay> wiring', () => {
   beforeEach(() => {
     suggestedShiftsProps.length = 0;
@@ -125,16 +131,16 @@ describe('<StaffingOverlay> wiring', () => {
     });
   });
 
-  it('renders with the CollapsibleContent open by default (isExpanded = true)', () => {
+  it('renders collapsed by default (isExpanded = false) — #598', () => {
     render(
       <StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />,
       { wrapper },
     );
-    // CollapsibleTrigger button shows "Collapse" aria-label when expanded
-    const trigger = screen.getByRole('button', { name: /collapse staffing suggestions/i });
+    // Since #598 the panel defaults to collapsed: the trigger shows the
+    // "Expand" aria-label and aria-expanded is false until the user opens it.
+    const trigger = screen.getByRole('button', { name: /expand staffing suggestions/i });
     expect(trigger).toBeTruthy();
-    // The collapsible container should be open
-    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    expect(trigger.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('renders SuggestedShifts when hasSalesData is true', () => {
@@ -142,6 +148,7 @@ describe('<StaffingOverlay> wiring', () => {
       <StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />,
       { wrapper },
     );
+    expandPanel();
     // With hasSalesData=true, SuggestedShifts stub should mount
     expect(screen.getByTestId('suggested-shifts')).toBeTruthy();
   });
@@ -151,6 +158,7 @@ describe('<StaffingOverlay> wiring', () => {
       <StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />,
       { wrapper },
     );
+    expandPanel();
     // SuggestedShifts is rendered and received a blocks prop (array, possibly empty
     // since FAKE_SALES are all the same DOW but the mechanism is wired)
     const el = screen.getByTestId('suggested-shifts');
@@ -174,6 +182,8 @@ describe('<StaffingOverlay> wiring', () => {
       <StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />,
       { wrapper },
     );
+    // Expand first so this asserts the hasSalesData gating, not the collapse.
+    expandPanel();
     expect(screen.queryByTestId('suggested-shifts')).toBeNull();
   });
 
@@ -182,6 +192,7 @@ describe('<StaffingOverlay> wiring', () => {
       <StaffingOverlay restaurantId="my-restaurant-id" weekDays={WEEK_DAYS} />,
       { wrapper },
     );
+    expandPanel();
     expect(suggestedShiftsProps.some((p) => p.restaurantId === 'my-restaurant-id')).toBe(true);
   });
 
@@ -190,6 +201,7 @@ describe('<StaffingOverlay> wiring', () => {
       <StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />,
       { wrapper },
     );
+    expandPanel();
     expect(screen.getByTestId('config-panel')).toBeTruthy();
   });
 });

@@ -63,9 +63,9 @@ test.describe('Prep Production E2E Flow', () => {
     // Navigate to Ingredients tab
     await page.getByRole('tab', { name: 'Ingredients' }).click();
 
-    // Add ingredient - click the ingredient selector
-    await page.getByRole('combobox').filter({ hasText: 'Select Ingredient' }).click();
-    await page.getByText('CHICKEN-BREAST').first().click();
+    // Add ingredient - open the searchable ingredient selector and pick the product
+    await page.getByRole('combobox', { name: 'Ingredient 1' }).click();
+    await page.getByRole('option', { name: /CHICKEN-BREAST/ }).click();
 
     // Set ingredient quantity to 10 (the first 1X QTY field)
     const qtyInputs = page.locator('input[type="number"]');

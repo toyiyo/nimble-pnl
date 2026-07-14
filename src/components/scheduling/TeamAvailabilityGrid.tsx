@@ -5,7 +5,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { computeEffectiveAvailability, EffectiveAvailability } from '@/lib/effectiveAvailability';
+import { computeEffectiveAvailability, EffectiveAvailability, availabilityColorClasses } from '@/lib/effectiveAvailability';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 
@@ -147,20 +147,8 @@ const AvailabilityCell = memo(function AvailabilityCell({
   const isRecurringUnavailable = effective.type === 'recurring' && !isAvailable;
   const isNotSet = effective.type === 'not-set';
 
-  let bgClass = 'bg-muted/30 hover:bg-muted/50';
-  let textClass = 'text-muted-foreground';
   let ariaLabel = 'No availability set — click to add';
-
-  if (isRecurringAvailable || isExceptionAvailable) {
-    bgClass = 'bg-emerald-500/10 hover:bg-emerald-500/20';
-    textClass = 'text-emerald-700 dark:text-emerald-400';
-  } else if (isExceptionUnavailable) {
-    bgClass = 'bg-amber-500/10 hover:bg-amber-500/20';
-    textClass = 'text-amber-700 dark:text-amber-400';
-  } else if (isRecurringUnavailable) {
-    bgClass = 'bg-red-500/5 hover:bg-red-500/10';
-    textClass = 'text-red-600/70 dark:text-red-400/70';
-  }
+  const { bg: bgClass, text: textClass } = availabilityColorClasses(effective);
 
   // Convert UTC times to restaurant timezone for display
   const localizeTime = (t: string | null) => (t ? utcTimeToLocalTime(t, timezone, date) : null);

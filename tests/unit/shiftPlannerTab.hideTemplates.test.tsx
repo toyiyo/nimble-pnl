@@ -20,6 +20,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner/ShiftPlannerTab';
 import type { ShiftTemplate, Shift } from '@/types/scheduling';
 
@@ -74,6 +75,7 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
 
 vi.mock('@/hooks/useAvailability', () => ({
   useEmployeeAvailability: () => ({ availability: [], loading: false }),
+  useAvailabilityExceptions: () => ({ exceptions: [], loading: false }),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
@@ -180,7 +182,9 @@ function renderTab(props = DEFAULT_PROPS) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <ShiftPlannerTab {...props} />
+      <TooltipProvider>
+        <ShiftPlannerTab {...props} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }

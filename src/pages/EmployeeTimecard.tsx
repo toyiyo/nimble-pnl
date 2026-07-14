@@ -29,51 +29,9 @@ import {
   isSameDay,
   parseISO,
 } from 'date-fns';
+import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { hoursByClockInDay } from '@/utils/timecardHours';
 import { TimePunch } from '@/types/timeTracking';
-
-// Calculate worked hours for a single day's punches
-const calculateDayHours = (punches: TimePunch[]) => {
-  let totalMinutes = 0;
-  let breakMinutes = 0;
-  let clockInTime: Date | null = null;
-  let breakStartTime: Date | null = null;
-
-  const sortedPunches = [...punches].sort(
-    (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
-  );
-
-  for (const punch of sortedPunches) {
-    const punchTime = new Date(punch.punch_time);
-
-    switch (punch.punch_type) {
-      case 'clock_in':
-        clockInTime = punchTime;
-        break;
-      case 'clock_out':
-        if (clockInTime) {
-          totalMinutes += (punchTime.getTime() - clockInTime.getTime()) / (1000 * 60);
-          clockInTime = null;
-        }
-        break;
-      case 'break_start':
-        breakStartTime = punchTime;
-        break;
-      case 'break_end':
-        if (breakStartTime) {
-          breakMinutes += (punchTime.getTime() - breakStartTime.getTime()) / (1000 * 60);
-          breakStartTime = null;
-        }
-        break;
-    }
-  }
-
-  const netMinutes = Math.max(totalMinutes - breakMinutes, 0);
-  return {
-    totalHours: totalMinutes / 60,
-    breakHours: breakMinutes / 60,
-    netHours: netMinutes / 60,
-  };
-};
 
 const formatHoursMinutes = (hours: number) => {
   const h = Math.floor(hours);
@@ -114,13 +72,20 @@ const EmployeeTimecard = () => {
 
   const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
 
+  // Fetch punches widened by ±18h so overnight shifts that straddle the
+  // period boundary are paired whole. hoursByClockInDay then attributes
+  // each shift back to [startDate, endDate] by clock-in day.
+  const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
   const { punches, loading: punchesLoading } = useTimePunches(
     restaurantId,
     currentEmployee?.id,
-    startDate
+    fetchStart,
+    fetchEnd
   );
 
-  // Filter punches to the current period
+  // Filter punches to the current period (display list only — visual
+  // per-punch timeline). Hours are computed separately from the buffered
+  // `punches` via `dayHours` below so overnight shifts aren't split.
   const periodPunches = useMemo(() => {
     return punches.filter((punch) => {
       const punchDate = new Date(punch.punch_time);
@@ -147,17 +112,20 @@ const EmployeeTimecard = () => {
     return grouped;
   }, [periodPunches, weekDays]);
 
+  // Hours attributed by clock-in day, computed from the BUFFERED punches so
+  // overnight shifts pair whole before being bucketed to their clock-in day.
+  const dayHours = useMemo(() => hoursByClockInDay(punches, weekDays), [punches, weekDays]);
+
   // Calculate weekly totals
   const weeklyTotals = useMemo(() => {
     let totalHours = 0;
     let breakHours = 0;
     let netHours = 0;
 
-    punchesByDay.forEach((dayPunches) => {
-      const dayStats = calculateDayHours(dayPunches);
-      totalHours += dayStats.totalHours;
-      breakHours += dayStats.breakHours;
-      netHours += dayStats.netHours;
+    dayHours.forEach((d) => {
+      totalHours += d.totalHours;
+      breakHours += d.breakHours;
+      netHours += d.netHours;
     });
 
     // Calculate overtime (over 40 hours)
@@ -165,7 +133,7 @@ const EmployeeTimecard = () => {
     const overtimeHours = Math.max(netHours - 40, 0);
 
     return { totalHours, breakHours, netHours, regularHours, overtimeHours };
-  }, [punchesByDay]);
+  }, [dayHours]);
 
   if (!restaurantId) {
     return <NoRestaurantState />;
@@ -278,7 +246,7 @@ const EmployeeTimecard = () => {
               {weekDays.map((day) => {
                 const dayKey = format(day, 'yyyy-MM-dd');
                 const dayPunches = punchesByDay.get(dayKey) || [];
-                const dayStats = calculateDayHours(dayPunches);
+                const dayStats = dayHours.get(dayKey) ?? { totalHours: 0, breakHours: 0, netHours: 0 };
                 const isToday = isSameDay(day, new Date());
 
                 return (

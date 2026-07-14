@@ -12,19 +12,26 @@ import {
   type OvertimeRules as OTRules,
   type OvertimeAdjustment,
 } from '@/lib/overtimeCalculations';
+import { periodsInWindow, incompleteShiftsInWindow } from '@/utils/punchWindow';
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
 const MAX_SHIFT_HOURS = 16;
 
 // Maximum gap between clock_in and clock_out to be considered a valid shift
 // This prevents pairing Monday's clock_in with Wednesday's clock_out when there's missing punches
-const MAX_SHIFT_GAP_HOURS = 18;
+export const MAX_SHIFT_GAP_HOURS = 18;
 
 export interface WorkPeriod {
   startTime: Date;
   endTime: Date;
   hours: number;
   isBreak: boolean;
+  // The originating shift's clock-in time. Unlike startTime — which for a
+  // post-break work segment is the break-end (handleBreakEnd advances the
+  // clock-in anchor) — clockIn stays pinned to the shift's first clock_in.
+  // Window attribution filters by this so a break-after-midnight overnight
+  // shift is attributed whole to its clock-in period, never split.
+  clockIn: Date;
 }
 
 export interface IncompleteShift {
@@ -91,6 +98,8 @@ interface ShiftParsingState {
   incompleteShifts: IncompleteShift[];
   currentClockIn: TimePunch | null;
   currentBreakStart: TimePunch | null;
+  // The current shift's original clock-in time, NOT advanced by breaks.
+  shiftClockIn: Date | null;
 }
 
 /**
@@ -124,6 +133,7 @@ function handleClockIn(
     }
   }
   state.currentClockIn = punch;
+  state.shiftClockIn = punchTime; // Pin the shift's clock-in; breaks won't move it
   state.currentBreakStart = null; // Reset break state
 }
 
@@ -162,6 +172,7 @@ function handleClockOut(
         endTime,
         hours,
         isBreak: false,
+        clockIn: state.shiftClockIn ?? startTime,
       });
     } else {
       // Normal valid shift
@@ -170,9 +181,11 @@ function handleClockOut(
         endTime,
         hours,
         isBreak: false,
+        clockIn: state.shiftClockIn ?? startTime,
       });
     }
     state.currentClockIn = null;
+    state.shiftClockIn = null;
     state.currentBreakStart = null;
   } else {
     // Clock out without a clock in - orphan punch
@@ -204,6 +217,7 @@ function handleBreakStart(
         endTime: punchTime,
         hours,
         isBreak: false,
+        clockIn: state.shiftClockIn ?? startTime,
       });
     }
     state.currentBreakStart = punch;
@@ -228,6 +242,7 @@ function handleBreakEnd(
       endTime: punchTime,
       hours: breakHours,
       isBreak: true,
+      clockIn: state.shiftClockIn ?? breakStartTime,
     });
 
     // Update clock_in to after break for next work period calculation
@@ -273,6 +288,7 @@ export function parseWorkPeriods(punches: TimePunch[]): {
     incompleteShifts: [],
     currentClockIn: null,
     currentBreakStart: null,
+    shiftClockIn: null,
   };
 
   for (const punch of dedupedPunches) {
@@ -369,6 +385,28 @@ export function calculateWorkedHoursWithAnomalies(punches: TimePunch[]): {
 }
 
 /**
+ * Worked hours (excluding breaks) for shifts whose CLOCK-IN falls within
+ * [dayStart, dayEnd] — i.e. attributed to the clock-in day, not split at
+ * midnight. Callers pass a ±overnight-buffered punch set (so a shift that
+ * crosses midnight is paired whole) and the day's local bounds; a shift that
+ * started the night before or the next morning is dropped by clock-in
+ * attribution, so it is counted exactly once, on the night it began.
+ *
+ * Used by the Tips "calculate from hours" flow, which is scoped to a single
+ * service day. Mirrors calculateWorkedHours but with clock-in-day windowing.
+ */
+export function calculateWorkedHoursForClockInDay(
+  punches: TimePunch[],
+  dayStart: Date,
+  dayEnd: Date,
+): number {
+  const { periods } = parseWorkPeriods(punches);
+  return periodsInWindow(periods, dayStart, dayEnd)
+    .filter(p => !p.isBreak)
+    .reduce((sum, p) => sum + p.hours, 0);
+}
+
+/**
  * Calculate regular and overtime hours per week
  * Overtime is hours worked beyond 40 in a calendar week at 1.5x rate
  */
@@ -407,7 +445,15 @@ export function calculateEmployeePay(
   manualPayments: ManualPayment[] = [],
   tipsPaidOut: number = 0,
   overtimeRules?: OTRules,
-  overtimeAdjustments: OvertimeAdjustment[] = []
+  overtimeAdjustments: OvertimeAdjustment[] = [],
+  // When true, attribute each shift to its clock-in day and drop periods/
+  // incomplete shifts whose anchor punch falls outside [periodStartDate,
+  // periodEndDate]. ONLY the payroll path (calculatePayrollPeriod) opts in — it
+  // fetches a ±18h buffer so boundary-crossing shifts pair whole first.
+  // calculateActualLaborCostForMonth intentionally leaves this false: it
+  // pre-buckets by ISO week and passes NOON-anchored bounds this filter would
+  // misinterpret.
+  attributeToWindow: boolean = false
 ): EmployeePayroll {
   const compensationType = employee.compensation_type || 'hourly';
 
@@ -428,10 +474,18 @@ export function calculateEmployeePay(
   // Calculate based on compensation type
   if (compensationType === 'hourly') {
     const parsed = parseWorkPeriods(punches);
+    if (attributeToWindow && periodStartDate && periodEndDate) {
+      parsed.periods = periodsInWindow(parsed.periods, periodStartDate, periodEndDate);
+      parsed.incompleteShifts = incompleteShiftsInWindow(parsed.incompleteShifts, periodStartDate, periodEndDate);
+    }
     const hoursByDate = new Map<string, number>();
 
     for (const period of parsed.periods) {
       if (period.isBreak) continue;
+      // KNOWN GAP: OT weekly banding keys off period.startTime, not period.clockIn,
+      // so a break-after-midnight shift crossing an ISO-week boundary bands its
+      // pre/post-midnight hours into two weeks. Pre-existing, shared with the
+      // monthly labor calc. See docs/superpowers/specs/2026-07-11-monthly-labor-overnight-design.md
       const dateKey = format(new Date(period.startTime), 'yyyy-MM-dd');
       hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
     }
@@ -618,7 +672,7 @@ export function calculatePayrollPeriod(
     const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
     const tipsPaidOut = tipPayoutsPerEmployee.get(employee.id) || 0;
     // Pass period dates for salary/contractor calculations
-    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments);
+    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments, true);
   });
 
   const totalRegularHours = employeePayrolls.reduce((sum, ep) => sum + ep.regularHours, 0);

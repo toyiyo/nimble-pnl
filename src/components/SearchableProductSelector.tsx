@@ -26,7 +26,10 @@ interface SearchableProductSelectorProps {
   placeholder?: string;
   searchTerm?: string;
   showSkipOption?: boolean;
+  showCreateOption?: boolean;
   onCreateNew?: () => void;
+  id?: string;
+  'aria-label'?: string;
 }
 
 export function SearchableProductSelector({
@@ -37,7 +40,10 @@ export function SearchableProductSelector({
   placeholder = "Search products...",
   searchTerm = "",
   showSkipOption = true,
+  showCreateOption = true,
   onCreateNew,
+  id,
+  'aria-label': ariaLabel,
 }: SearchableProductSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState("");
@@ -60,7 +66,8 @@ export function SearchableProductSelector({
   }, [searchValue, fuse, products]);
 
   const selectedProduct = products.find((product) => product.id === value);
-  
+  const hasActions = showCreateOption || showSkipOption;
+
   // Handle display for special values
   const getDisplayValue = () => {
     if (value === 'new_item') return '+ Create New Item';
@@ -85,6 +92,8 @@ export function SearchableProductSelector({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
+          aria-label={ariaLabel}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -119,37 +128,41 @@ export function SearchableProductSelector({
             </CommandEmpty>
             
             {/* Special actions group */}
-            <CommandGroup heading="Actions">
-              <CommandItem
-                value="new_item"
-                onSelect={() => handleSelect('new_item')}
-                className="cursor-pointer font-medium text-blue-600"
-              >
-                <Check
-                  className={cn(
-                    "mr-2 h-4 w-4 flex-shrink-0",
-                    value === 'new_item' ? "opacity-100" : "opacity-0"
-                  )}
-                />
-                <span>+ Create New Item</span>
-              </CommandItem>
-              {showSkipOption && (
-                <CommandItem
-                  value="skip"
-                  onSelect={() => handleSelect('skip')}
-                  className="cursor-pointer text-muted-foreground"
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4 flex-shrink-0",
-                      value === 'skip' ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  <span>Skip This Item</span>
-                </CommandItem>
-              )}
-            </CommandGroup>
-            
+            {hasActions && (
+              <CommandGroup heading="Actions">
+                {showCreateOption && (
+                  <CommandItem
+                    value="new_item"
+                    onSelect={() => handleSelect('new_item')}
+                    className="cursor-pointer font-medium text-blue-600"
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4 flex-shrink-0",
+                        value === 'new_item' ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <span>+ Create New Item</span>
+                  </CommandItem>
+                )}
+                {showSkipOption && (
+                  <CommandItem
+                    value="skip"
+                    onSelect={() => handleSelect('skip')}
+                    className="cursor-pointer text-muted-foreground"
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4 flex-shrink-0",
+                        value === 'skip' ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    <span>Skip This Item</span>
+                  </CommandItem>
+                )}
+              </CommandGroup>
+            )}
+
             {/* Existing products group */}
             {filteredProducts.length > 0 && (
               <CommandGroup heading="Existing Products">

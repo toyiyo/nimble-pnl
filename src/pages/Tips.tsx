@@ -33,8 +33,10 @@ import { TipPeriodSummary } from '@/components/tips/TipPeriodSummary';
 import { TipPayoutSheet } from '@/components/tips/TipPayoutSheet';
 import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
-import { calculateWorkedHours } from '@/utils/payrollCalculations';
-import { Info, Settings, RefreshCw, Clock, DollarSign, Lock } from 'lucide-react';
+import { TipDistribution } from '@/components/tips/TipDistribution';
+import { calculateWorkedHoursForClockInDay } from '@/utils/payrollCalculations';
+import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { Info, Settings, RefreshCw, Clock, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 const defaultWeights: Record<string, number> = {
@@ -44,7 +46,7 @@ const defaultWeights: Record<string, number> = {
   'Host': 1,
 };
 
-type ViewMode = 'overview' | 'daily' | 'history';
+type ViewMode = 'overview' | 'daily' | 'distribution';
 
 export function Tips() {
   // ============ Context Hooks ============
@@ -103,17 +105,24 @@ export function Tips() {
     deletePool,
     totalContributionPercentage,
   } = useTipContributionPools(restaurantId, settings?.id ?? null);
-  const { punches } = useTimePunches(restaurantId, undefined, todayStart, todayEnd);
+  // Fetch punches for the selected service day, widened by the overnight buffer
+  // so a shift that clocks out after midnight is paired whole. Hours are then
+  // attributed to the clock-in day via calculateWorkedHoursForClockInDay.
+  const { fetchStart: punchFetchStart, fetchEnd: punchFetchEnd } = useMemo(
+    () => bufferPunchFetchRange(todayStart, todayEnd),
+    [todayStart, todayEnd],
+  );
+  const { punches } = useTimePunches(restaurantId, undefined, punchFetchStart, punchFetchEnd);
 
   // Query for Daily Entry mode - single day
   const { saveTipSplit, isSaving, splits: dailySplits } = useTipSplits(restaurantId, today, today);
 
   // Query for Overview mode - full period range
-  const { splits: periodSplits, isLoading: periodSplitsLoading } = useTipSplits(
-    restaurantId,
-    periodStartStr,
-    periodEndStr
-  );
+  const {
+    splits: periodSplits,
+    isLoading: periodSplitsLoading,
+    error: periodSplitsError,
+  } = useTipSplits(restaurantId, periodStartStr, periodEndStr);
 
   // Payouts for the current period
   const {
@@ -121,10 +130,14 @@ export function Tips() {
     createPayouts,
     isCreating: isCreatingPayouts,
     deletePayout,
+    isLoading: payoutsLoading,
+    error: payoutsError,
   } = useTipPayouts(restaurantId, periodStartStr, periodEndStr);
 
-  // Use appropriate splits based on view mode
-  const splits = viewMode === 'overview' ? periodSplits : dailySplits;
+  // Use appropriate splits based on view mode. Daily Entry is the only mode
+  // scoped to a single day (today); Overview and Distribution both operate
+  // on the full period.
+  const splits = viewMode === 'daily' ? dailySplits : periodSplits;
 
   // Get existing split ID for current day (used for saving server earnings)
   const currentDaySplitId = useMemo(() => {
@@ -274,7 +287,7 @@ export function Tips() {
       const employeePunches = punches.filter(p => p.employee_id === emp.id);
       
       if (employeePunches.length > 0) {
-        const hours = calculateWorkedHours(employeePunches);
+        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
         const roundedHours = Math.round(hours * 10) / 10; // Round to 1 decimal
         
         calculatedHours[emp.id] = roundedHours.toString();
@@ -652,7 +665,7 @@ export function Tips() {
                     participants.forEach(emp => {
                       const employeePunches = punches?.filter(p => p.employee_id === emp.id) || [];
                       if (employeePunches.length > 0) {
-                        const hours = calculateWorkedHours(employeePunches);
+                        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
                         const roundedHours = Math.round(hours * 10) / 10;
                         calculatedHours[emp.id] = roundedHours.toString();
                         autoFlags[emp.id] = true;
@@ -746,6 +759,22 @@ export function Tips() {
     );
   }
 
+  // Shared period navigation for the period-scoped tabs (Overview + Distribution),
+  // so a manager can page through weeks without switching back to Overview.
+  const periodNav = (
+    <div className="flex items-center justify-between pb-2">
+      <Button variant="ghost" aria-label="Previous period" onClick={() => setPeriodOffset(o => o - 1)} className="h-9 rounded-lg text-[13px] font-medium">
+        ← Previous
+      </Button>
+      <span className="text-[14px] font-semibold text-foreground">
+        {`Week of ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`}
+      </span>
+      <Button variant="ghost" aria-label="Next period" onClick={() => setPeriodOffset(o => o + 1)} disabled={periodOffset >= 0} className="h-9 rounded-lg text-[13px] font-medium">
+        Next →
+      </Button>
+    </div>
+  );
+
   return (
     <div className="space-y-6">
       <header className="flex items-center justify-between">
@@ -795,8 +824,8 @@ export function Tips() {
 
       {/* Apple-style underline tabs */}
       <div className="flex border-b border-border/40">
-        {(['overview', 'daily', 'history'] as const).map((mode) => {
-          const labels: Record<ViewMode, string> = { overview: 'Overview', daily: 'Daily Entry', history: 'History' };
+        {(['overview', 'daily', 'distribution'] as const).map((mode) => {
+          const labels: Record<ViewMode, string> = { overview: 'Overview', daily: 'Daily Entry', distribution: 'Distribution' };
           return (
             <button
               key={mode}
@@ -818,17 +847,7 @@ export function Tips() {
       {viewMode === 'overview' && (
         <div className="space-y-6">
           {/* Period navigation controls */}
-          <div className="flex items-center justify-between pb-2">
-            <Button variant="ghost" aria-label="Previous period" onClick={() => setPeriodOffset(o => o - 1)} className="h-9 rounded-lg text-[13px] font-medium">
-              ← Previous
-            </Button>
-            <span className="text-[14px] font-semibold text-foreground">
-              {`Week of ${periodStart.toLocaleDateString()} - ${periodEnd.toLocaleDateString()}`}
-            </span>
-            <Button variant="ghost" aria-label="Next period" onClick={() => setPeriodOffset(o => o + 1)} disabled={periodOffset >= 0} className="h-9 rounded-lg text-[13px] font-medium">
-              Next →
-            </Button>
-          </div>
+          {periodNav}
 
           {/* Payroll integration guidance */}
           <Alert>
@@ -1072,46 +1091,18 @@ export function Tips() {
         </>
       )}
 
-      {viewMode === 'history' && (
+      {viewMode === 'distribution' && (
         <div className="space-y-6">
-          <Card className="rounded-xl border-border/40">
-            <CardHeader className="pb-3">
-              <div className="flex items-center gap-3">
-                <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
-                  <Lock className="h-5 w-5 text-foreground" />
-                </div>
-                <div>
-                  <CardTitle className="text-[17px] font-semibold text-foreground">Tip History</CardTitle>
-                  <CardDescription className="text-[13px]">Locked periods and payroll reference</CardDescription>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {splits?.filter(s => s.status === 'archived').length ? (
-                <div className="space-y-2">
-                  {splits.filter(s => s.status === 'archived').map(s => (
-                    <div key={s.id} className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-background hover:border-border transition-colors">
-                      <div className="space-y-0.5">
-                        <span className="text-[14px] font-medium text-foreground">{format(new Date(s.split_date + 'T00:00:00'), 'MMM d, yyyy')}</span>
-                        <p className="text-[13px] text-muted-foreground">
-                          Payroll snapshot: {s.approved_at ? format(new Date(s.approved_at), 'MMM d, yyyy, h:mm a') : 'N/A'}
-                        </p>
-                      </div>
-                      <span className="text-[14px] font-semibold text-foreground">${(s.total_amount / 100).toFixed(2)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="py-12 text-center">
-                  <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center mx-auto">
-                    <Lock className="h-5 w-5 text-muted-foreground/50" />
-                  </div>
-                  <p className="text-[14px] font-medium text-foreground mt-4">No locked periods yet</p>
-                  <p className="text-[13px] text-muted-foreground mt-1">Locked periods will appear here after you lock tips for payroll.</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Period navigation controls (shared with Overview) */}
+          {periodNav}
+
+          <TipDistribution
+            splits={periodSplits}
+            payouts={payouts}
+            isLoading={periodSplitsLoading || payoutsLoading}
+            isError={!!periodSplitsError || !!payoutsError}
+            onNavigateToOverview={() => setViewMode('overview')}
+          />
         </div>
       )}
 

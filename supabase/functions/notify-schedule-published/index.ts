@@ -2,6 +2,8 @@ import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
+import { notifySchedulePublishedPush } from "../_shared/schedulePublishedPush.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -210,27 +212,19 @@ serve(async (req) => {
     ).length;
     const failureCount = results.length - successCount;
 
-    // Send push notifications to all scheduled employees
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const pushPromises = scheduledEmployees
-      .filter((emp) => emp.user_id)
-      .map((employee) =>
-        fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${serviceRoleKey}`,
-          },
-          body: JSON.stringify({
-            user_id: employee.user_id,
-            title: "Schedule Updated",
-            body: "A new schedule has been published",
-            data: { route: "/employee/schedule" },
-          }),
-        }).catch((e) => console.error(`Push notification failed for employee ${employee.id}:`, e))
-      );
-    await Promise.allSettled(pushPromises);
+    // Send web push notifications to all scheduled employees
+    const serviceClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+    await notifySchedulePublishedPush(scheduledEmployees, (userId) =>
+      sendWebPushToUser(serviceClient, userId, restaurantId, {
+        title: "Schedule Updated",
+        body: "A new schedule has been published",
+        url: "/employee/schedule",
+        tag: "schedule-published",
+      })
+    );
 
     // Update the publication record to mark notifications as sent
     await supabase

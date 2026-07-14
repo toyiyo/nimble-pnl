@@ -252,13 +252,19 @@ describe('useDeleteShift — explicit restaurant_id filter', () => {
   });
 
   function setupDeleteChain(deleteResult: { error: { message: string } | null }) {
-    const deleteEqRestaurant = vi.fn().mockResolvedValue(deleteResult);
+    // useDeleteShift ends its delete in `.select('id')` to confirm a row was
+    // actually removed before notifying — model that terminal select here.
+    const deleteSelect = vi.fn().mockResolvedValue({
+      data: deleteResult.error ? null : [{ id: 'shift-1' }],
+      error: deleteResult.error,
+    });
+    const deleteEqRestaurant = vi.fn().mockReturnValue({ select: deleteSelect });
     const deleteEqId = vi.fn().mockReturnValue({ eq: deleteEqRestaurant });
     const del = vi.fn().mockReturnValue({ eq: deleteEqId });
 
     mockSupabase.from.mockReturnValue({ delete: del });
 
-    return { deleteEqId, deleteEqRestaurant, del };
+    return { deleteEqId, deleteEqRestaurant, del, deleteSelect };
   }
 
   it('applies .eq(restaurant_id) after .eq(id) when deleting a shift', async () => {
@@ -295,13 +301,19 @@ describe('useCreateShift / useDeleteShift — silent option (timeline undo-delet
   });
 
   function setupDeleteChain(deleteResult: { error: { message: string } | null }) {
-    const deleteEqRestaurant = vi.fn().mockResolvedValue(deleteResult);
+    // useDeleteShift ends its delete in `.select('id')` to confirm a row was
+    // actually removed before notifying — model that terminal select here.
+    const deleteSelect = vi.fn().mockResolvedValue({
+      data: deleteResult.error ? null : [{ id: 'shift-1' }],
+      error: deleteResult.error,
+    });
+    const deleteEqRestaurant = vi.fn().mockReturnValue({ select: deleteSelect });
     const deleteEqId = vi.fn().mockReturnValue({ eq: deleteEqRestaurant });
     const del = vi.fn().mockReturnValue({ eq: deleteEqId });
 
     mockSupabase.from.mockReturnValue({ delete: del });
 
-    return { deleteEqId, deleteEqRestaurant, del };
+    return { deleteEqId, deleteEqRestaurant, del, deleteSelect };
   }
 
   it('useCreateShift shows the generic success toast by default', async () => {

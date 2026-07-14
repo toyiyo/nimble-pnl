@@ -2,8 +2,10 @@ import { isoToLocalMinutes, minutesToCompact, computeDayCoverage } from '@/lib/s
 import { getPositionColors } from '@/lib/positionColors';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
 import { type GroupByMode, UNASSIGNED_LABEL } from '@/lib/scheduleGrouping';
+import { shiftOutsideAvailability } from '@/lib/effectiveAvailability';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 import type { PositionColors } from '@/lib/positionColors';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,6 +22,15 @@ export interface TimelineBar {
   label: string;
   ariaLabel: string;
   color: PositionColors;
+  /**
+   * True when the shift falls outside its employee's effective availability
+   * for this local day (design doc §3c — per-bar outside-availability
+   * marker). Computed via the same `shiftOutsideAvailability` predicate the
+   * fixed RPC uses, so the bar marker and the drag-commit conflict dialog
+   * never disagree. `undefined`/`false` when no `availabilityByEmployee` map
+   * was supplied (backward-compatible — existing callers are unaffected).
+   */
+  outsideAvailability?: boolean;
 }
 
 export interface TimelineLane {
@@ -95,8 +106,16 @@ function assignRows(
   pairs: Array<{ shift: Shift; employee: Employee; hours: number }>,
   dateStr: string,
   tz: string,
+  availabilityByEmployee?: Map<string, Map<number, EffectiveAvailability>>,
 ): TimelineBar[] {
   const rowEnds: number[] = []; // last endMin per row
+  // Constant across every bar in this call (single dateStr) — hoisted out of
+  // the per-bar map below rather than reconstructed for each pair.
+  const localDate = new Date(dateStr + 'T00:00:00');
+  const dow = localDate.getDay();
+  const prevDow = (dow + 6) % 7;
+  const nextDow = (dow + 1) % 7;
+
   return pairs.map(({ shift: s, employee: e, hours }) => {
     const leftMin = isoToLocalMinutes(s.start_time, dateStr, tz);
     let endMin = isoToLocalMinutes(s.end_time, dateStr, tz);
@@ -112,6 +131,15 @@ function assignRows(
 
     const start12 = minutesToCompact(leftMin);
     const end12 = minutesToCompact(endMin % 1440);
+
+    const dowMap = availabilityByEmployee?.get(s.employee_id);
+    const today = dowMap?.get(dow);
+    const prev = dowMap?.get(prevDow);
+    const next = dowMap?.get(nextDow);
+    const outsideAvailability = today
+      ? shiftOutsideAvailability(today, prev, new Date(s.start_time), new Date(s.end_time), tz, localDate, next)
+      : false;
+
     return {
       shift: s,
       row,
@@ -120,6 +148,7 @@ function assignRows(
       label: e.name,
       ariaLabel: `${e.name}, ${s.position}, ${start12} to ${end12}, ${hours.toFixed(1)} hours`,
       color: getPositionColors(s.position),
+      outsideAvailability,
     };
   });
 }
@@ -140,6 +169,7 @@ export function buildLanes(
   dateStr: string,
   tz: string,
   groupBy: GroupByMode,
+  availabilityByEmployee?: Map<string, Map<number, EffectiveAvailability>>,
 ): TimelineLane[] {
   const empById = new Map(employees.map((e) => [e.id, e]));
 
@@ -156,7 +186,7 @@ export function buildLanes(
   rows.sort((a, b) => a.shift.start_time.localeCompare(b.shift.start_time));
 
   if (groupBy === 'none') {
-    const bars = assignRows(rows, dateStr, tz);
+    const bars = assignRows(rows, dateStr, tz, availabilityByEmployee);
     const totalHours = rows.reduce((sum, r) => sum + r.hours, 0);
     return rows.length ? [{ key: '', label: '', hours: totalHours, bars }] : [];
   }
@@ -185,7 +215,7 @@ export function buildLanes(
       key: key || 'unassigned',
       label: key || UNASSIGNED_LABEL,
       hours: totalHours,
-      bars: assignRows(sectionRows, dateStr, tz),
+      bars: assignRows(sectionRows, dateStr, tz, availabilityByEmployee),
     };
   });
 }
@@ -299,10 +329,11 @@ export function buildTimelineModel(
   tz: string,
   groupBy: GroupByMode,
   recommendations: HourlyStaffingRecommendation[],
+  availabilityByEmployee?: Map<string, Map<number, EffectiveAvailability>>,
 ): TimelineModel {
   const dayShifts = shifts.filter((s) => s.status !== 'cancelled');
   const window = deriveWindow(dayShifts, dateStr, tz);
-  const lanes = buildLanes(dayShifts, employees, dateStr, tz, groupBy);
+  const lanes = buildLanes(dayShifts, employees, dateStr, tz, groupBy, availabilityByEmployee);
   const { coverage, demand, gaps } = computeCoverage(dayShifts, dateStr, tz, window, recommendations);
   return { window, lanes, coverage, demand, gaps };
 }

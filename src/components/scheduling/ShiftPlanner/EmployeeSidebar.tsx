@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Search } from 'lucide-react';
 
 import type { Shift } from '@/types/scheduling';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 
 import { computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
 
@@ -65,6 +66,10 @@ export interface EmployeeSidebarProps {
   shifts: Shift[];
   weekDays: readonly string[];
   shiftsByEmployee: Map<string, Shift[]>;
+  /** Per-employee effective availability for the visible week, keyed by employee id. */
+  availabilityByEmployee: Map<string, Map<number, EffectiveAvailability>>;
+  /** Restaurant IANA timezone for localizing availability windows. */
+  timezone: string;
   className?: string;
   /** Mobile tap-to-assign: called when an employee is tapped instead of dragged */
   onEmployeeSelect?: (employee: { id: string; name: string }) => void;
@@ -88,10 +93,24 @@ interface DraggableEmployeeProps {
   weekDays: readonly string[];
   employeeShifts: readonly Shift[];
   onPick?: (employeeId: string | null) => void;
+  availabilityByDow?: Map<number, EffectiveAvailability>;
+  timezone: string;
+  dates: readonly Date[];
 }
 
 const DraggableEmployee = memo(
-  function DraggableEmployee({ employee, shiftCount, hours, onSelect, weekDays, employeeShifts, onPick }: DraggableEmployeeProps) {
+  function DraggableEmployee({
+    employee,
+    shiftCount,
+    hours,
+    onSelect,
+    weekDays,
+    employeeShifts,
+    onPick,
+    availabilityByDow,
+    timezone,
+    dates,
+  }: DraggableEmployeeProps) {
     const {
       attributes,
       listeners,
@@ -144,7 +163,13 @@ const DraggableEmployee = memo(
             )}
           </div>
         )}
-        <EmployeeMiniWeek weekDays={weekDays} employeeShifts={employeeShifts} />
+        <EmployeeMiniWeek
+          weekDays={weekDays}
+          employeeShifts={employeeShifts}
+          availabilityByDow={availabilityByDow}
+          timezone={timezone}
+          dates={dates}
+        />
       </div>
     );
   },
@@ -158,7 +183,9 @@ const DraggableEmployee = memo(
     prev.onSelect === next.onSelect &&
     prev.onPick === next.onPick &&
     prev.weekDays === next.weekDays &&
-    prev.employeeShifts === next.employeeShifts,
+    prev.employeeShifts === next.employeeShifts &&
+    prev.availabilityByDow === next.availabilityByDow &&
+    prev.timezone === next.timezone,
 );
 
 // ---------------------------------------------------------------------------
@@ -170,6 +197,8 @@ export function EmployeeSidebar({
   shifts,
   weekDays,
   shiftsByEmployee,
+  availabilityByEmployee,
+  timezone,
   className,
   onEmployeeSelect,
   onEmployeePick,
@@ -230,6 +259,15 @@ export function EmployeeSidebar({
   }, [shifts]);
 
   const hoursPerEmployee = useMemo(() => computeHoursPerEmployee(shifts), [shifts]);
+
+  // Concrete per-day Date[] anchor, derived from weekDays once so the
+  // reference stays stable across renders (weekDays only changes on
+  // week navigation) — DraggableEmployee/EmployeeMiniWeek use this for
+  // DST-safe day-of-week lookups instead of re-parsing date strings.
+  const dates = useMemo(
+    () => weekDays.map((d) => new Date(d + 'T00:00:00')),
+    [weekDays],
+  );
 
   const effectiveArea = showAllOverride ? 'all' : area;
 
@@ -327,6 +365,9 @@ export function EmployeeSidebar({
               onPick={onEmployeePick}
               weekDays={weekDays}
               employeeShifts={shiftsByEmployee.get(employee.id) ?? EMPTY_SHIFTS}
+              availabilityByDow={availabilityByEmployee.get(employee.id)}
+              timezone={timezone}
+              dates={dates}
             />
           ))
         )}

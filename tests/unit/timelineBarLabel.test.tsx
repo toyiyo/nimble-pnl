@@ -152,4 +152,37 @@ describe('TimelineBar', () => {
     expect(btn.className).toContain('ring-2');
     expect(btn.className).toContain('ring-ring');
   });
+
+  // Task 7 — per-bar outside-availability marker (design doc §3c).
+  it('does not render the outside-availability marker by default', () => {
+    render(
+      <TimelineBar
+        bar={makeBar()}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    expect(btn.className).not.toContain('border-l-amber-500');
+    expect(btn).toHaveAttribute('aria-label', 'Carolina Sanchez, Server, 10a to 4p, 6.0 hours');
+  });
+
+  it('renders an amber left-border marker and an aria-label suffix when outsideAvailability is true', () => {
+    render(
+      <TimelineBar
+        bar={makeBar({ outsideAvailability: true })}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    expect(btn.className).toContain('border-l-2');
+    expect(btn.className).toContain('border-l-amber-500');
+    expect(btn).toHaveAttribute(
+      'aria-label',
+      'Carolina Sanchez, Server, 10a to 4p, 6.0 hours, outside availability',
+    );
+  });
 });

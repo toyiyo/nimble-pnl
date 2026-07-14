@@ -53,7 +53,8 @@ import { AvailabilityConflictDialog } from './AvailabilityConflictDialog';
 import type { ConflictDialogData } from './AvailabilityConflictDialog';
 import { useGenerateSchedule } from '@/hooks/useGenerateSchedule';
 import type { GenerateScheduleResponse } from '@/hooks/useGenerateSchedule';
-import { useEmployeeAvailability } from '@/hooks/useAvailability';
+import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
+import { computeEffectiveAvailability } from '@/lib/effectiveAvailability';
 import { GenerateScheduleDialog } from './GenerateScheduleDialog';
 import { ShiftTimelineTab } from '../ShiftTimeline/ShiftTimelineTab';
 
@@ -162,6 +163,21 @@ export function ShiftPlannerTab({
   const handleToggleShowHidden = useCallback(() => setShowHidden((prev) => !prev), []);
 
   const { availability, loading: availabilityLoading } = useEmployeeAvailability(restaurantId);
+  const { exceptions } = useAvailabilityExceptions(restaurantId);
+
+  // Per-employee effective availability (recurring + exception overrides) for the
+  // visible week — feeds the sidebar strip tint and timeline outside-availability
+  // marker (Tasks 5–7). Computed once here so both consumers can't drift apart.
+  const availabilityByEmployee = useMemo(
+    () =>
+      computeEffectiveAvailability(
+        availability,
+        exceptions,
+        weekStart,
+        employees.map((e) => e.id),
+      ),
+    [availability, exceptions, weekStart, employees],
+  );
 
   // Compute template grid data — built with ALL templates (active + hidden) so a
   // hidden template's FK-linked shifts keep bucketing under it (not `__unmatched__`).
@@ -681,6 +697,7 @@ export function ShiftPlannerTab({
           tz={restaurantTimezone}
           loading={false}
           error={null}
+          availabilityByEmployee={availabilityByEmployee}
         />
       )}
 
@@ -805,6 +822,8 @@ export function ShiftPlannerTab({
               shiftsByEmployee={shiftsByEmployee}
               plannerAreaFilter={areaFilter}
               onEmployeePick={setPickedEmployeeId}
+              availabilityByEmployee={availabilityByEmployee}
+              timezone={restaurantTimezone}
             />
           )}
 
@@ -845,6 +864,8 @@ export function ShiftPlannerTab({
                   onEmployeeSelect={handleMobileEmployeeSelect}
                   onEmployeePick={setPickedEmployeeId}
                   plannerAreaFilter={areaFilter}
+                  availabilityByEmployee={availabilityByEmployee}
+                  timezone={restaurantTimezone}
                 />
               </div>
             </>

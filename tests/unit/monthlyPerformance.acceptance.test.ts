@@ -85,12 +85,16 @@ describe("Monthly Performance acceptance — Russo's April 2026", () => {
     });
 
     expect(labor.tipsOwedCents).toBe(0);
-    // Pinned 2026-05-03 from canonical OT-D Hybrid pipeline against Russo's
-    // April fixture under TZ=UTC. This number is timezone-dependent because
-    // ISO-week buckets shift across the month boundary; in production each
-    // restaurant's TZ drives the bucketing. Run `TZ=UTC npm run test` locally
-    // to reproduce.
-    expect(labor.wagesCents).toBe(1_058_390);
-    expect(labor.actualLaborCents).toBe(1_058_390);
+    // 1_282_985 (was 1_058_390). The old pin was the BUGGY value: overnight
+    // shifts that cross an ISO-week boundary were bucketed per-punch, splitting
+    // each shift's clock-in and clock-out into different weeks so parseWorkPeriods
+    // dropped it — understating Russo's April labor by $2,245.95 (~22.7h). This
+    // fix buckets by the shift's clock-in week and attributes by clock-in day,
+    // recovering those hours. It also makes the total TIMEZONE-INVARIANT
+    // (verified identical under TZ=UTC, America/Chicago, America/Los_Angeles),
+    // resolving the TZ-dependent week-boundary swing documented in memory/
+    // lessons.md PR #485 (which is exactly the PT↔UTC 1_282_985↔1_058_390 gap).
+    expect(labor.wagesCents).toBe(1_282_985);
+    expect(labor.actualLaborCents).toBe(1_282_985);
   });
 });

@@ -55,17 +55,34 @@ interface TipTopEarnersProps {
 
 ### Rendering (Apple/Notion tokens, semantic only)
 
-- Section heading: `text-[12px] font-medium text-muted-foreground uppercase
-  tracking-wider` — "Top earners". A "View all" ghost affordance on the
-  right calls `onViewAll` (only rendered when the callback is provided).
+- Section heading row: `text-[12px] font-medium text-muted-foreground
+  uppercase tracking-wider` — "Top earners" on the left; a **"View all"**
+  affordance on the right (see below). Directly under the heading, a caption
+  `text-[11px] text-muted-foreground` — "Finalized allocations only" — so a
+  manager understands why the strip's earners need not sum to the card's
+  "Total tips" stat (which includes drafts). (Review major: concrete copy.)
+- `<ul aria-label="Top earners">` wrapping three `<li>` rows.
 - Each of the 3 rows: avatar initials circle, name (`text-[14px]
   font-medium text-foreground`), role (`text-[13px] text-muted-foreground`),
   a thin share-of-pool bar (`bg-foreground` fill on `bg-muted` track,
   `aria-hidden`) with the numeric `sharePct` as visible text, and the
-  earned amount (`text-[14px] font-medium`) right-aligned. Each row is an
-  `<li>` in a `<ul>` with an `aria-label` reading as one sentence.
+  earned amount (`text-[14px] font-medium`) right-aligned. Each `<li>`
+  carries an `aria-label` reading as one sentence.
+- **Role fallback:** `EmployeeDistribution.role` is `string | null`. Mirror
+  `TipDistribution.tsx`: use `role ?? 'No role'` for display and build the
+  `aria-label` from that fallback so a roleless employee never renders or
+  announces `null`.
+- **"View all" affordance:** a real shadcn `Button variant="ghost"`
+  (CLAUDE.md ghost pattern: `h-9 px-4 rounded-lg text-[13px] font-medium
+  text-muted-foreground hover:text-foreground`) with an `aria-label`
+  ("View all earners in Distribution"), keyboard-operable. Rendered only
+  when `onViewAll` is provided.
+- **Responsive (mirror `TipDistribution.tsx`):** at `<sm` (375px) hide the
+  share bar and drop role/share to a condensed second line under the name;
+  at `sm:+` show the single-row layout. Earned amount + name always visible.
+  No horizontal overflow inside the card's grid.
 - Share % renders as text (WCAG 1.1.1 — the bar is decorative/aria-hidden).
-- <30 rows (we show 3), no virtualization.
+- Fixed 3-item list — no virtualization.
 
 ### States (the parent card owns loading)
 
@@ -92,6 +109,9 @@ regressing that is out of scope.)
   already exist from #608).
 - Placement: a new section inside `TipPeriodSummary`'s `CardContent`, after
   the stats grid and before the "missing days" warning alert.
+- **Loading skeleton:** the parent's `<Skeleton className="h-24" />`
+  already under-represents the card; bump it (e.g. `h-40`) so the loading
+  state better approximates the now-taller card with the earners section.
 
 ## Testing
 

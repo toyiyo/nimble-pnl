@@ -144,4 +144,43 @@ describe('calculateActualLaborCostForMonth', () => {
     expect(result.tipsOwedCents).toBe(0);
     expect(result.actualLaborCents).toBe(0);
   });
+
+  it('CRITICAL: counts a Sun->Mon overnight shift that crosses an ISO-week boundary within a month', () => {
+    // 2026-07-05 is Sunday (ISO week Mon Jun29–Sun Jul5); 2026-07-06 is Monday (next week).
+    // Shift Sun 20:00 -> Mon 02:00 = 6h, entirely in July → 6h * $20 = 12,000c.
+    // Before the fix the two punches bucketed into different weeks → shift dropped (0c).
+    const punches = [
+      punch('e1', '2026-07-05T20:00:00', 'clock_in'),
+      punch('e1', '2026-07-06T02:00:00', 'clock_out'),
+    ];
+    const result = calculateActualLaborCostForMonth({
+      employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
+      monthStart: new Date('2026-07-01T00:00:00'), monthEnd: new Date('2026-07-31T23:59:59'),
+    });
+    expect(result.wagesCents).toBe(12_000);
+  });
+
+  it('CRITICAL: attributes the overnight shift to its clock-in day (June excludes it)', () => {
+    const punches = [
+      punch('e1', '2026-07-05T20:00:00', 'clock_in'),
+      punch('e1', '2026-07-06T02:00:00', 'clock_out'),
+    ];
+    const june = calculateActualLaborCostForMonth({
+      employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
+      monthStart: new Date('2026-06-01T00:00:00'), monthEnd: new Date('2026-06-30T23:59:59'),
+    });
+    expect(june.wagesCents).toBe(0); // clock-in day (Jul 5) is outside June
+  });
+
+  it('is order-independent (handles out-of-order punch input)', () => {
+    const punches = [
+      punch('e1', '2026-07-06T02:00:00', 'clock_out'), // deliberately out of order
+      punch('e1', '2026-07-05T20:00:00', 'clock_in'),
+    ];
+    const result = calculateActualLaborCostForMonth({
+      employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
+      monthStart: new Date('2026-07-01T00:00:00'), monthEnd: new Date('2026-07-31T23:59:59'),
+    });
+    expect(result.wagesCents).toBe(12_000);
+  });
 });

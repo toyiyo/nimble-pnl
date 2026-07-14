@@ -271,7 +271,9 @@ export function buildSplhTimeseries(
     }
   }
 
-  const buckets = Array.from(new Set([...salesMap.keys(), ...hoursMap.keys()])).sort();
+  const buckets = Array.from(new Set([...salesMap.keys(), ...hoursMap.keys()])).sort((a, b) =>
+    a.localeCompare(b),
+  );
   return buckets.map((bucketStart) => {
     const totalSales = salesMap.get(bucketStart) ?? 0;
     const totalHours = hoursMap.get(bucketStart) ?? 0;

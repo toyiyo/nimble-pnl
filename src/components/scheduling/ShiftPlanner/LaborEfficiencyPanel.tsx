@@ -52,18 +52,18 @@ export function groupHoursIntoRanges(
     const sorted = Array.from(new Set(dowHours)).sort((a, b) => a - b);
     let rangeStart = sorted[0];
     let prevHour = sorted[0];
-    for (let i = 1; i <= sorted.length; i++) {
-      const hour: number | undefined = sorted[i];
+    for (let i = 1; i < sorted.length; i++) {
+      const hour = sorted[i];
       if (hour === prevHour + 1) {
         prevHour = hour;
         continue;
       }
       ranges.push({ dow, startHour: rangeStart, endHour: prevHour + 1 });
-      if (hour !== undefined) {
-        rangeStart = hour;
-        prevHour = hour;
-      }
+      rangeStart = hour;
+      prevHour = hour;
     }
+    // Flush the final open range (loop stops before the last element).
+    ranges.push({ dow, startHour: rangeStart, endHour: prevHour + 1 });
   }
 
   ranges.sort((a, b) => {

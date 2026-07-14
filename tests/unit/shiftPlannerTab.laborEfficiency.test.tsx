@@ -54,9 +54,19 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
   };
 });
 
-vi.mock('@/hooks/useAvailability', () => ({
-  useEmployeeAvailability: () => ({ availability: [], loading: false }),
-}));
+vi.mock('@/hooks/useAvailability', () => {
+  const noopMutation = () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false });
+  return {
+    useEmployeeAvailability: () => ({ availability: [], loading: false }),
+    useAvailabilityExceptions: () => ({ exceptions: [], loading: false, error: null }),
+    useCreateAvailability: noopMutation,
+    useUpdateAvailability: noopMutation,
+    useDeleteAvailability: noopMutation,
+    useCreateAvailabilityException: noopMutation,
+    useUpdateAvailabilityException: noopMutation,
+    useDeleteAvailabilityException: noopMutation,
+  };
+});
 
 vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: () => ({

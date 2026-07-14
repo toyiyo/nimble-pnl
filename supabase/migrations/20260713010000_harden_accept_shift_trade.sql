@@ -11,8 +11,14 @@
 --
 -- Bodies are copied verbatim from 20260105000100_create_shift_trade_functions.sql
 -- (no other migration has touched these functions since), with only the two
--- changes above. Signatures reproduced EXACTLY so CREATE OR REPLACE replaces
--- the existing functions rather than silently creating overloads:
+-- changes above, PLUS one pre-existing correctness bug fixed in
+-- approve_shift_trade/reject_shift_trade found during review: `v_user_role
+-- NOT IN ('owner', 'manager')` evaluates to NULL (not TRUE) in PL/pgSQL when
+-- the caller has no user_restaurants row at all, so the IF was skipped and
+-- the check failed OPEN for callers with zero restaurant membership. Changed
+-- to `v_user_role IS NULL OR v_user_role NOT IN (...)`. Signatures
+-- reproduced EXACTLY so CREATE OR REPLACE replaces the existing functions
+-- rather than silently creating overloads:
 --   accept_shift_trade(UUID, UUID)
 --   approve_shift_trade(UUID, UUID, TEXT DEFAULT NULL)
 --   reject_shift_trade(UUID, UUID, TEXT DEFAULT NULL)
@@ -138,7 +144,13 @@ BEGIN
   AND restaurant_id = (SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id)
   LIMIT 1;
 
-  IF v_user_role NOT IN ('owner', 'manager') THEN
+  -- v_user_role is NULL when the caller has no user_restaurants row for this
+  -- restaurant (e.g. no membership at all). `NULL NOT IN (...)` evaluates to
+  -- NULL, not TRUE, so a plain `NOT IN` check here would fail OPEN and let
+  -- any authenticated user with zero role/restaurant membership approve a
+  -- trade by passing their own uid as p_manager_user_id. Explicitly reject
+  -- NULL first.
+  IF v_user_role IS NULL OR v_user_role NOT IN ('owner', 'manager') THEN
     RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Manager access required');
   END IF;
 
@@ -209,7 +221,13 @@ BEGIN
   AND restaurant_id = (SELECT restaurant_id FROM shift_trades WHERE id = p_trade_id)
   LIMIT 1;
 
-  IF v_user_role NOT IN ('owner', 'manager') THEN
+  -- v_user_role is NULL when the caller has no user_restaurants row for this
+  -- restaurant (e.g. no membership at all). `NULL NOT IN (...)` evaluates to
+  -- NULL, not TRUE, so a plain `NOT IN` check here would fail OPEN and let
+  -- any authenticated user with zero role/restaurant membership reject a
+  -- trade by passing their own uid as p_manager_user_id. Explicitly reject
+  -- NULL first.
+  IF v_user_role IS NULL OR v_user_role NOT IN ('owner', 'manager') THEN
     RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Manager access required');
   END IF;
 

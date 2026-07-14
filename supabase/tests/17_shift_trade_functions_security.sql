@@ -4,7 +4,7 @@
 -- Note: Full auth.uid() verification requires E2E tests, these focus on function logic
 
 BEGIN;
-SELECT plan(12);
+SELECT plan(14);
 
 -- Setup: Disable RLS for test data creation
 SET LOCAL role TO postgres;
@@ -22,11 +22,14 @@ INSERT INTO restaurants (id, name) VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- Create test users in auth.users
+-- User 4 deliberately gets NO user_restaurants row anywhere below — it's
+-- used to exercise the NULL-role fail-open regression (Test 13/14).
 INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
 VALUES
   ('00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'emp1@security.test', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
   ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'emp2@security.test', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
-  ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'manager@security.test', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+  ('00000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'manager@security.test', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+  ('00000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'norole@security.test', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create employees
@@ -157,6 +160,49 @@ SELECT ok(
   (SELECT status FROM shift_trades WHERE id = '00000000-0000-0000-0000-000000000145') IN ('pending_approval', 'rejected'),
   'Trade should be rejected or remain pending (auth may not work in test context)'
 );
+
+-- ============================================================
+-- TEST CATEGORY 2b/3b: approve_shift_trade / reject_shift_trade -
+-- NULL-role fail-open regression (20260713010000_harden_accept_shift_trade.sql)
+-- `v_user_role NOT IN ('owner', 'manager')` evaluates to NULL (not TRUE) in
+-- PL/pgSQL when the caller has zero user_restaurants rows, so a bare NOT IN
+-- check would silently skip the rejection and let this caller (who owns no
+-- restaurant membership at all) approve/reject the trade. User 4 has no
+-- user_restaurants row anywhere in this fixture.
+-- ============================================================
+
+-- Test 13: approve_shift_trade must reject a caller with NULL role (fail closed)
+-- Clear any still-active trade left on shift 134 by Test 6 first (Test 6
+-- uses `lives_ok` and doesn't assert success, so trade144 may still be
+-- 'pending_approval' and the unique-active-trade-per-shift index would
+-- otherwise reject this insert).
+DELETE FROM shift_trades WHERE offered_shift_id = '00000000-0000-0000-0000-000000000134';
+INSERT INTO shift_trades (id, restaurant_id, offered_shift_id, offered_by_employee_id, accepted_by_employee_id, status)
+  VALUES ('00000000-0000-0000-0000-000000000148', '00000000-0000-0000-0000-000000000AAA', '00000000-0000-0000-0000-000000000134', '00000000-0000-0000-0000-000000000122', '00000000-0000-0000-0000-000000000121', 'pending_approval')
+ON CONFLICT (id) DO NOTHING;
+
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000004"}';
+
+SELECT is(
+  (SELECT approve_shift_trade('00000000-0000-0000-0000-000000000148', '00000000-0000-0000-0000-000000000004')->>'success')::boolean,
+  false,
+  'approve_shift_trade should reject a caller with no user_restaurants role (NULL role fails closed, not open)'
+);
+
+-- Test 14: reject_shift_trade must reject a caller with NULL role (fail closed)
+-- Same clear-first reasoning as Test 13 above, for shift 132 / trade145.
+DELETE FROM shift_trades WHERE offered_shift_id = '00000000-0000-0000-0000-000000000132';
+INSERT INTO shift_trades (id, restaurant_id, offered_shift_id, offered_by_employee_id, accepted_by_employee_id, status)
+  VALUES ('00000000-0000-0000-0000-000000000149', '00000000-0000-0000-0000-000000000AAA', '00000000-0000-0000-0000-000000000132', '00000000-0000-0000-0000-000000000122', '00000000-0000-0000-0000-000000000121', 'pending_approval')
+ON CONFLICT (id) DO NOTHING;
+
+SELECT is(
+  (SELECT reject_shift_trade('00000000-0000-0000-0000-000000000149', '00000000-0000-0000-0000-000000000004')->>'success')::boolean,
+  false,
+  'reject_shift_trade should reject a caller with no user_restaurants role (NULL role fails closed, not open)'
+);
+
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000001"}';
 
 -- ============================================================
 -- TEST CATEGORY 4: cancel_shift_trade - Employee Ownership

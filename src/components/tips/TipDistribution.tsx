@@ -14,6 +14,8 @@ import { AlertTriangle, Check, Clock, Users } from 'lucide-react';
 import {
   aggregateTipDistribution,
   paymentStatus,
+  formatSharePct,
+  getInitials,
   type EmployeeDistribution,
   type PaymentStatus,
 } from '@/utils/tipDistribution';
@@ -259,17 +261,6 @@ function statusAriaText(status: PaymentStatus, employee: EmployeeDistribution): 
   return 'unpaid';
 }
 
-function formatSharePct(pct: number): string {
-  return `${pct.toFixed(1)}%`;
-}
-
 function formatHours(hours: number): string {
   return `${hours.toFixed(1)}h`;
-}
-
-function getInitials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }

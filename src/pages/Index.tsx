@@ -34,6 +34,7 @@ import { useLiquidityMetrics } from '@/hooks/useLiquidityMetrics';
 import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
+import { LaborEfficiencyCard } from '@/components/dashboard/LaborEfficiencyCard';
 import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { WelcomeModal } from '@/components/subscription';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
@@ -141,6 +142,7 @@ const Index = () => {
   const [bankingOpen, setBankingOpen] = useState(true);
   const [operationsOpen, setOperationsOpen] = useState(true);
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
+  const [laborEfficiencyOpen, setLaborEfficiencyOpen] = useState(false);
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'today',
@@ -1123,6 +1125,23 @@ const Index = () => {
                         periodLabel={selectedPeriod.label}
                       />
                     </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+
+              {/* Labor Efficiency - Collapsible */}
+              <Collapsible open={laborEfficiencyOpen} onOpenChange={setLaborEfficiencyOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-[17px] font-semibold text-foreground">Labor efficiency</h2>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={laborEfficiencyOpen ? "Collapse Labor efficiency" : "Expand Labor efficiency"}>
+                        {laborEfficiencyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    <LaborEfficiencyCard restaurantId={selectedRestaurant.restaurant_id} />
                   </CollapsibleContent>
                 </div>
               </Collapsible>

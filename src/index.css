@@ -60,6 +60,11 @@
     --chart-3: 142 55% 45%;
     --chart-4: 38 92% 50%;
     --chart-5: 30 40% 35%;
+
+    /* SPLH heatmap diverging scale */
+    --splh-lean: 0 72% 51%;       /* red — above target, likely understaffed */
+    --splh-slack: 211 72% 53%;    /* blue — below target, likely overstaffed */
+    --splh-balanced: 240 5% 65%;  /* neutral gray — on target */
   }
 
   .dark {
@@ -115,6 +120,11 @@
     --chart-3: 142 55% 50%;
     --chart-4: 38 92% 55%;
     --chart-5: 30 40% 40%;
+
+    /* SPLH heatmap diverging scale */
+    --splh-lean: 0 72% 58%;
+    --splh-slack: 211 78% 62%;
+    --splh-balanced: 240 5% 55%;
   }
 }
 

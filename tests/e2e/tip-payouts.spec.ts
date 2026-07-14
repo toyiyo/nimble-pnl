@@ -122,15 +122,20 @@ test.describe('Tip Payouts - Manager Journey', () => {
     const sheetTitle = page.getByText(/record tip payouts/i);
     await expect(sheetTitle).toBeVisible({ timeout: 5000 });
 
+    // Scope sheet-content assertions to the payout sheet — employee names now
+    // also appear in the Overview "Top earners" strip behind the sheet, so a
+    // bare page.getByText(name) matches two elements (strict-mode violation).
+    const payoutSheet = page.getByLabel('Record Tip Payouts');
+
     // Verify both employees are listed with correct allocations
-    await expect(page.getByText('Sarah Miller')).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Tom Wilson')).toBeVisible({ timeout: 15000 });
+    await expect(payoutSheet.getByText('Sarah Miller')).toBeVisible({ timeout: 15000 });
+    await expect(payoutSheet.getByText('Tom Wilson')).toBeVisible({ timeout: 15000 });
     // $200 split equally = $100 each
-    await expect(page.getByText('Allocated: $100.00').first()).toBeVisible({ timeout: 15000 });
+    await expect(payoutSheet.getByText('Allocated: $100.00').first()).toBeVisible({ timeout: 15000 });
 
     // Verify total payout shows the full amount
-    await expect(page.getByText('Total Payout')).toBeVisible();
-    await expect(page.getByText('$200.00').first()).toBeVisible();
+    await expect(payoutSheet.getByText('Total Payout')).toBeVisible();
+    await expect(payoutSheet.getByText('$200.00').first()).toBeVisible();
 
     // Click Confirm to record payouts
     const confirmButton = page.getByRole('button', { name: /confirm/i });
@@ -263,12 +268,15 @@ test.describe('Tip Payouts - Manager Journey', () => {
 
     await expect(page.getByText(/record tip payouts/i)).toBeVisible({ timeout: 10000 });
 
+    // Scope to the sheet — names also render in the Overview "Top earners" strip.
+    const payoutSheet = page.getByLabel('Record Tip Payouts');
+
     // Verify both employees are listed
-    await expect(page.getByText('Dave Clark')).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Eve Adams')).toBeVisible({ timeout: 15000 });
+    await expect(payoutSheet.getByText('Dave Clark')).toBeVisible({ timeout: 15000 });
+    await expect(payoutSheet.getByText('Eve Adams')).toBeVisible({ timeout: 15000 });
 
     // Each gets $150 ($300 / 2 employees with equal hours)
-    await expect(page.getByText('Allocated: $150.00').first()).toBeVisible({ timeout: 15000 });
+    await expect(payoutSheet.getByText('Allocated: $150.00').first()).toBeVisible({ timeout: 15000 });
 
     // Verify toggle switches exist for each employee
     await expect(page.getByRole('switch', { name: /toggle payout for dave clark/i })).toBeVisible();

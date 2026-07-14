@@ -28,7 +28,7 @@ interface TipTopEarnersProps {
  * Reuses `aggregateTipDistribution` (finalized splits only — no new
  * aggregation, no payout/payment-status data). Presentational only.
  */
-export function TipTopEarners({ splits, onViewAll }: TipTopEarnersProps) {
+export function TipTopEarners({ splits, onViewAll }: Readonly<TipTopEarnersProps>) {
   const topEmployees = useMemo(() => {
     const result = aggregateTipDistribution(splits ?? [], []);
     return result.employees.slice(0, 3);
@@ -68,7 +68,7 @@ export function TipTopEarners({ splits, onViewAll }: TipTopEarnersProps) {
   );
 }
 
-function TopEarnerRow({ employee }: { employee: EmployeeDistribution }) {
+function TopEarnerRow({ employee }: Readonly<{ employee: EmployeeDistribution }>) {
   const initials = getInitials(employee.name);
   const roleLabel = employee.role ?? 'No role';
   const sharePctLabel = formatSharePct(employee.sharePct);

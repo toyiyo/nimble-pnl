@@ -894,15 +894,28 @@ export function calculateActualLaborCostForMonth(
       continue;
     }
 
-    // Hourly: bucket punches by ISO week (matching Payroll's banding semantics).
+    // Hourly: bucket punches by the SHIFT's clock-in ISO week (not each punch's
+    // own week) so an overnight shift clocking out in the next week stays whole
+    // in its clock-in week instead of splitting into two lone-punch buckets that
+    // parseWorkPeriods can't pair (dropping the shift's hours entirely).
+    // Defensively sorted — the clock-in-week state machine requires chronological
+    // order and must not rely on the caller's `.order('punch_time')`.
+    const weekKeyFor = (t: Date) =>
+      formatDate(startOfWeek(t, { weekStartsOn: WEEK_STARTS_ON }), 'yyyy-MM-dd');
+    const sortedPunches = [...employeePunches].sort(
+      (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
+    );
     const punchesByWeek = new Map<string, TimePunch[]>();
-    for (const p of employeePunches) {
-      const punchDate = new Date(p.punch_time);
-      const weekStart = startOfWeek(punchDate, { weekStartsOn: WEEK_STARTS_ON });
-      const weekKey = formatDate(weekStart, 'yyyy-MM-dd');
+    let currentWeekKey: string | null = null;
+    for (const p of sortedPunches) {
+      if (p.punch_type === 'clock_in') {
+        currentWeekKey = weekKeyFor(new Date(p.punch_time)); // open shift → clock-in week
+      }
+      const weekKey = currentWeekKey ?? weekKeyFor(new Date(p.punch_time)); // orphan → own week
       const arr = punchesByWeek.get(weekKey) ?? [];
       arr.push(p);
       punchesByWeek.set(weekKey, arr);
+      if (p.punch_type === 'clock_out') currentWeekKey = null; // shift closed
     }
 
     for (const [weekKey, weekPunches] of punchesByWeek) {
@@ -926,7 +939,10 @@ export function calculateActualLaborCostForMonth(
       const hoursByDate = new Map<string, number>();
       for (const period of periods) {
         if (period.isBreak) continue;
-        const dateKey = formatDateUTC(period.startTime);
+        // Attribute by the shift's clock-in day (not the segment start), so a
+        // break-after-midnight segment's hours land on the clock-in day for both
+        // the proportional split and the [monthStart, monthEnd] clip.
+        const dateKey = formatDateUTC(period.clockIn ?? period.startTime);
         hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
       }
 

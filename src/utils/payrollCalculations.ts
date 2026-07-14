@@ -482,6 +482,10 @@ export function calculateEmployeePay(
 
     for (const period of parsed.periods) {
       if (period.isBreak) continue;
+      // KNOWN GAP: OT weekly banding keys off period.startTime, not period.clockIn,
+      // so a break-after-midnight shift crossing an ISO-week boundary bands its
+      // pre/post-midnight hours into two weeks. Pre-existing, shared with the
+      // monthly labor calc. See docs/superpowers/specs/2026-07-11-monthly-labor-overnight-design.md
       const dateKey = format(new Date(period.startTime), 'yyyy-MM-dd');
       hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
     }

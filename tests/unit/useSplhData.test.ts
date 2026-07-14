@@ -224,8 +224,13 @@ describe('useSplhData', () => {
 
     expect(salesLog.lte).toContainEqual(['sale_date', '2026-07-13']);
     expect(salesLog.gte).toContainEqual(['sale_date', '2026-07-06']);
-    expect(punchesLog.lte).toContainEqual(['punch_time', '2026-07-13T23:59:59']);
-    expect(punchesLog.gte).toContainEqual(['punch_time', '2026-07-06']);
+    // `punch_time` is TIMESTAMPTZ, so its window must be the actual UTC
+    // instants for Honolulu (UTC-10, no DST) local midnight-to-midnight —
+    // NOT the bare local-date strings used for the `sale_date` (DATE
+    // column) filter above, which Postgres would otherwise interpret as
+    // UTC instants and skew by 10 hours.
+    expect(punchesLog.gte).toContainEqual(['punch_time', '2026-07-06T10:00:00.000Z']);
+    expect(punchesLog.lte).toContainEqual(['punch_time', '2026-07-14T09:59:59.999Z']);
   });
 
   it('does not fetch when restaurantId is null', async () => {

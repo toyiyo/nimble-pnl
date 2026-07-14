@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { fromZonedTime } from 'date-fns-tz';
 
 import { supabase } from '@/integrations/supabase/client';
 
@@ -53,7 +54,15 @@ async function fetchAllPunches(
   restaurantId: string,
   startStr: string,
   endStr: string,
+  tz: string,
 ): Promise<PagedResult<TimePunch>> {
+  // `punch_time` is TIMESTAMPTZ (unlike `sale_date`, which is a plain DATE
+  // column): bare `YYYY-MM-DD` strings would be interpreted by
+  // Postgres/PostgREST as UTC instants, not restaurant-local boundaries, for
+  // any restaurant not in UTC (e.g. America/Chicago). Resolve the local
+  // midnight-to-midnight window to explicit UTC instants via `tz` first.
+  const startIso = fromZonedTime(`${startStr}T00:00:00`, tz).toISOString();
+  const endIso = fromZonedTime(`${endStr}T23:59:59.999`, tz).toISOString();
   const rows: TimePunch[] = [];
   for (let page = 0; page < MAX_PAGES; page++) {
     const from = page * PAGE;
@@ -61,8 +70,8 @@ async function fetchAllPunches(
       .from('time_punches')
       .select('id, restaurant_id, employee_id, punch_type, punch_time')
       .eq('restaurant_id', restaurantId)
-      .gte('punch_time', startStr)
-      .lte('punch_time', `${endStr}T23:59:59`)
+      .gte('punch_time', startIso)
+      .lte('punch_time', endIso)
       .order('employee_id')
       .order('punch_time')
       .order('id')
@@ -108,7 +117,7 @@ export function useSplhData(restaurantId: string | null, tz: string, weeks: numb
       const { startStr, endStr } = localWindow(tz, weeks);
       const [sales, punches] = await Promise.all([
         fetchAllSales(restaurantId!, startStr, endStr),
-        fetchAllPunches(restaurantId!, startStr, endStr),
+        fetchAllPunches(restaurantId!, startStr, endStr, tz),
       ]);
       return {
         sales: sales.rows,

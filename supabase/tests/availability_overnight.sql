@@ -69,8 +69,15 @@ SELECT is(
   'Shift 14:00-20:00 UTC within overnight avail 13:00-04:00 — no conflict'
 );
 
--- Test 8: Shift within overnight availability window (after midnight portion) — no conflict
--- Shift: 01:00-03:00 UTC on Monday — within the after-midnight part of the window
+-- Test 8: Shift BEFORE an overnight window's own start, same calendar day — conflict.
+-- Monday's row (13:00-04:00) spans Monday 13:00 -> Tuesday 04:00; its "after-midnight
+-- tail" belongs to TUESDAY (see test 14), not to Monday's own early hours. A shift at
+-- Monday 01:00-03:00 (hours BEFORE the window even starts) is only covered if the
+-- PREVIOUS day (Sunday) has its own overnight window carrying into Monday — it does
+-- not here (Sunday's row from test 1 is a plain 09:00-17:00, non-overnight) — so this
+-- must conflict. (Pre-20260712120000 this incorrectly returned no conflict because the
+-- old function matched same-day times against an overnight row via time-of-day-only
+-- wraparound, without anchoring the window to real dates — see task-1 commit message.)
 SELECT is(
   (SELECT count(*) FROM check_availability_conflict(
     'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
@@ -78,8 +85,8 @@ SELECT is(
     '2026-04-06 01:00:00+00'::timestamptz,
     '2026-04-06 03:00:00+00'::timestamptz
   ))::integer,
-  0,
-  'Shift 01:00-03:00 UTC within after-midnight portion — no conflict'
+  1,
+  'Shift 01:00-03:00 UTC on Monday (before the window''s own start) — conflict, not covered by Monday''s own overnight row'
 );
 
 -- Test 9: Shift outside overnight availability window — conflict

@@ -12,6 +12,7 @@ import {
 } from '@/services/cogsCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -361,12 +362,15 @@ export function useMonthlyMetrics(
 
       // Fetch time punches and employees to calculate labor costs using the same logic as Payroll
       // This ensures Dashboard and Payroll show consistent labor numbers (DRY principle)
+      // Look-ahead buffer so an overnight shift clocking out just after the range
+      // end (e.g. the 1st of the next month) is fetched whole; the per-month
+      // clock-in-day clip drops shifts whose clock-in belongs outside the window.
       const { data: timePunchesData, error: timePunchesError } = await supabase
         .from('time_punches')
         .select('*')
         .eq('restaurant_id', restaurantId)
         .gte('punch_time', dateFrom.toISOString())
-        .lte('punch_time', dateTo.toISOString())
+        .lte('punch_time', lookaheadPunchFetchRange(dateFrom, dateTo).fetchEnd.toISOString())
         .order('punch_time', { ascending: true });
 
       if (timePunchesError) {

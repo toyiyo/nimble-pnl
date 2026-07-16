@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
+import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
@@ -294,18 +295,54 @@ export function useDeleteShift(options: UseDeleteShiftOptions = {}) {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, restaurantId }: { id: string; restaurantId: string }) => {
-      const { error } = await supabase
+    mutationFn: async ({
+      id,
+      restaurantId,
+      shift,
+    }: {
+      id: string;
+      restaurantId: string;
+      shift?: DeletableShift;
+    }) => {
+      const { data: deletedRows, error } = await supabase
         .from('shifts')
         .delete()
         .eq('id', id)
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .select('id');
 
       if (error) throw error;
-      return { id, restaurantId };
+
+      // Only carry the snapshot forward (→ only notify) when a row was actually
+      // removed. A delete against a stale/already-removed row (or one filtered by
+      // RLS) returns error:null with zero rows — notifying there would send a
+      // false "shift removed" message to the employee.
+      const deletedCount = deletedRows?.length ?? 0;
+      return { id, restaurantId, shift: deletedCount > 0 ? shift : undefined };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['shifts', data.restaurantId] });
+
+      // Notify FIRST, unconditionally on snapshot presence — fire-and-forget,
+      // must sit above the `if (silent) return` below. `silent` (suppress
+      // toast) and "should notify" are orthogonal concerns.
+      const notifyBody = data.shift ? buildShiftDeletedInvoke(data.shift) : null;
+      if (notifyBody) {
+        // supabase.functions.invoke resolves with { data, error } on HTTP
+        // failures (it does NOT reject), so both branches must be handled —
+        // this notification is best-effort and must never surface to the
+        // caller of the delete mutation.
+        supabase.functions
+          .invoke('send-shift-notification', { body: notifyBody })
+          .then(({ error }) => {
+            if (error) {
+              console.warn('shift-deleted notify failed', { shiftId: data.id, error });
+            }
+          })
+          .catch((error) => {
+            console.warn('shift-deleted notify failed', { shiftId: data.id, error });
+          });
+      }
 
       if (silent) return;
 

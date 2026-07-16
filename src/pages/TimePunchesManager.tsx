@@ -21,7 +21,7 @@ import {
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, 
-  addDays, addWeeks, addMonths, isSameDay, differenceInMinutes,
+  addDays, addWeeks, addMonths, differenceInMinutes,
   startOfDay, endOfDay
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
@@ -41,6 +41,7 @@ import { Switch } from '@/components/ui/switch';
 import { TimePunch } from '@/types/timeTracking';
 import { cn } from '@/lib/utils';
 import { processPunchesForPeriod } from '@/utils/timePunchProcessing';
+import { bufferPunchFetchRange, isWithinWindow, sessionsWithClockInInWindow } from '@/utils/punchWindow';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useKioskSession } from '@/hooks/useKioskSession';
@@ -292,11 +293,18 @@ const TimePunchesManager = () => {
   }, [viewMode, currentDate]);
 
   const { employees } = useEmployees(restaurantId);
+  // Widen the fetch by ±18h so overnight shifts that straddle the viewed
+  // window's boundary are paired whole; window-filtered sets below re-narrow
+  // to [dateRange.start, dateRange.end] for display/export/editing.
+  const { fetchStart, fetchEnd } = useMemo(
+    () => bufferPunchFetchRange(dateRange.start, dateRange.end),
+    [dateRange.start, dateRange.end],
+  );
   const { punches, loading } = useTimePunches(
     restaurantId,
     selectedEmployee !== 'all' ? selectedEmployee : undefined,
-    dateRange.start,
-    dateRange.end
+    fetchStart,
+    fetchEnd
   );
   const deletePunch = useDeleteTimePunch();
   const updatePunch = useUpdateTimePunch();
@@ -304,7 +312,7 @@ const TimePunchesManager = () => {
   const [forceSessionToClose, setForceSessionToClose] = useState<any | null>(null);
   const [forceOutTime, setForceOutTime] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
-  // Filter punches by search term
+  // Filter punches (buffered) by search term — feeds pairing only.
   const filteredPunches = useMemo(() => {
     return punches.filter((punch) => {
       if (!searchTerm) return true;
@@ -313,27 +321,50 @@ const TimePunchesManager = () => {
     });
   }, [punches, searchTerm]);
 
-  // Process punches
+  // Punches actually inside the viewed window — for tables, export, editor, photos.
+  const windowPunches = useMemo(
+    () => filteredPunches.filter((punch) => isWithinWindow(punch.punch_time, dateRange.start, dateRange.end)),
+    [filteredPunches, dateRange.start, dateRange.end],
+  );
+
+  // Process punches (buffered set, so overnight shifts pair whole)
   const processedData = useMemo(() => {
     return processPunchesForPeriod(filteredPunches);
   }, [filteredPunches]);
 
-  // Incomplete sessions
-  const incompleteSessions = useMemo(() => processedData.sessions.filter(s => !s.is_complete), [processedData.sessions]);
+  // Sessions attributed to the viewed window by clock-in day
+  const windowSessions = useMemo(
+    () => sessionsWithClockInInWindow(processedData.sessions, dateRange.start, dateRange.end),
+    [processedData.sessions, dateRange.start, dateRange.end],
+  );
+
+  // Processed punches attributed to the viewed window
+  const windowProcessedPunches = useMemo(
+    () => processedData.processedPunches.filter((pp) => isWithinWindow(pp.punch_time, dateRange.start, dateRange.end)),
+    [processedData.processedPunches, dateRange.start, dateRange.end],
+  );
+
+  // Anomaly count for the viewed window only (processedData.totalAnomalies
+  // spans the ±18h buffer and would over-count neighbouring-period noise).
+  const windowAnomalies = useMemo(
+    () => windowSessions.filter((s) => s.has_anomalies).length,
+    [windowSessions],
+  );
+
+  // Incomplete sessions (window-filtered)
+  const incompleteSessions = useMemo(() => windowSessions.filter(s => !s.is_complete), [windowSessions]);
 
   // Filter sessions for current day
   const todaySessions = useMemo(() => {
-    if (viewMode !== 'day') return processedData.sessions;
-    return processedData.sessions.filter(session => 
-      isSameDay(session.clock_in, currentDate)
-    );
-  }, [processedData.sessions, viewMode, currentDate]);
+    if (viewMode !== 'day') return windowSessions;
+    return sessionsWithClockInInWindow(windowSessions, startOfDay(currentDate), endOfDay(currentDate));
+  }, [windowSessions, viewMode, currentDate]);
 
-  // Load photo thumbnails
+  // Load photo thumbnails (window-filtered — only punches actually shown)
   useEffect(() => {
     const loadThumbnails = async () => {
       const now = Date.now();
-      const punchesWithPhotos = punches.filter((punch) => {
+      const punchesWithPhotos = windowPunches.filter((punch) => {
         if (!punch.photo_path) return false;
         const cacheKey = `thumb:${punch.photo_path}`;
         const cached = signedUrlCache[cacheKey];
@@ -378,7 +409,7 @@ const TimePunchesManager = () => {
     };
 
     loadThumbnails();
-  }, [punches]);
+  }, [windowPunches]);
 
   // Fetch photo URL when viewing
   useEffect(() => {
@@ -515,7 +546,7 @@ const TimePunchesManager = () => {
   };
 
   const handleExportCSV = () => {
-    if (filteredPunches.length === 0) {
+    if (windowPunches.length === 0) {
       toast({
         title: 'Nothing to export',
         description: 'No time punches found for the selected period.',
@@ -525,7 +556,7 @@ const TimePunchesManager = () => {
     }
 
     const headers = ['Employee', 'Position', 'Punch Type', 'Date', 'Time', 'Notes', 'Location'];
-    const rows = filteredPunches.map((punch) => {
+    const rows = windowPunches.map((punch) => {
       const punchDate = new Date(punch.punch_time);
       return [
         punch.employee?.name || 'Unknown',
@@ -557,7 +588,7 @@ const TimePunchesManager = () => {
 
     toast({
       title: 'Export complete',
-      description: `Exported ${filteredPunches.length} time punch${filteredPunches.length === 1 ? '' : 'es'}.`,
+      description: `Exported ${windowPunches.length} time punch${windowPunches.length === 1 ? '' : 'es'}.`,
     });
   };
 
@@ -580,7 +611,7 @@ const TimePunchesManager = () => {
         employeesWithPins={pinLookup.size}
         totalEmployees={employees.length}
         date={getDateRangeLabel()}
-        anomalies={processedData.totalAnomalies}
+        anomalies={windowAnomalies}
         incompleteSessions={incompleteSessions.length}
       />
 
@@ -699,6 +730,9 @@ const TimePunchesManager = () => {
           {viewMode === 'day' ? (
             <>
               <div className="hidden md:block">
+                {/* Buffered (±18h) filteredPunches: the editor attributes each
+                    shift to its clock-in day itself, so an overnight shift's
+                    next-day clock-out is available to pair. */}
                 <ManualTimelineEditor
                   employees={employees}
                   date={currentDate}
@@ -744,7 +778,7 @@ const TimePunchesManager = () => {
 
         <TabsContent value="stream" className="mt-0">
           <PunchStreamView
-            processedPunches={processedData.processedPunches}
+            processedPunches={windowProcessedPunches}
             loading={loading}
             employeeId={selectedEmployee !== 'all' ? selectedEmployee : undefined}
           />
@@ -779,7 +813,7 @@ const TimePunchesManager = () => {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <TableIcon className="h-5 w-5 text-muted-foreground" />
-                  <CardTitle className="text-base">Punch List ({filteredPunches.length})</CardTitle>
+                  <CardTitle className="text-base">Punch List ({windowPunches.length})</CardTitle>
                 </div>
                 {tableOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
               </div>
@@ -793,11 +827,11 @@ const TimePunchesManager = () => {
                   <Skeleton className="h-16 w-full" />
                   <Skeleton className="h-16 w-full" />
                 </div>
-              ) : filteredPunches.length === 0 ? (
+              ) : windowPunches.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">No time punches found</p>
               ) : (
                 <div className="space-y-2">
-                  {filteredPunches.map((punch) => (
+                  {windowPunches.map((punch) => (
                     <div
                       key={punch.id}
                       className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-muted/30 transition-colors"

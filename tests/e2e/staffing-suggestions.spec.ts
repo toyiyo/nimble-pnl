@@ -1,7 +1,18 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/**
+ * Since #598 ("default staffing suggestions panel to collapsed"), the Staffing
+ * Suggestions panel starts collapsed and its content (empty-state CTA, suggested
+ * shifts, apply dialog) is unmounted until opened. Expand it before asserting.
+ */
+async function expandStaffingPanel(page: Page): Promise<void> {
+  await page
+    .getByRole('button', { name: /expand staffing suggestions/i })
+    .click({ timeout: 10000 });
+}
 
 /**
  * E2E: Staffing suggestions — empty state + seeded-sales → apply flow.
@@ -47,8 +58,9 @@ test.describe('Staffing suggestions', () => {
     await page.getByRole('tab', { name: /planner/i }).click();
     await expect(page.getByText('Ana Costa')).toBeVisible({ timeout: 10000 });
 
-    // The Staffing Overlay is default-expanded (Task 7).
-    // With no sales data, the empty-state CTA should be visible.
+    // The Staffing Overlay defaults to collapsed since #598 — expand it first.
+    // With no sales data, the empty-state CTA should then be visible.
+    await expandStaffingPanel(page);
     await expect(
       page.getByRole('link', { name: /connect your pos/i }),
     ).toBeVisible({ timeout: 10000 });
@@ -120,6 +132,7 @@ test.describe('Staffing suggestions', () => {
 
     await page.getByRole('tab', { name: /planner/i }).click();
     await expect(page.getByText('Marco Rivera')).toBeVisible({ timeout: 10000 });
+    await expandStaffingPanel(page);
 
     // Wait for the staffing overlay to compute shift blocks and show the Suggested shifts section.
     // This proves the sales data was picked up and consolidated into at least one block.
@@ -215,6 +228,7 @@ test.describe('Staffing suggestions', () => {
 
     await page.getByRole('tab', { name: /planner/i }).click();
     await expect(page.getByText('Kim Park')).toBeVisible({ timeout: 10000 });
+    await expandStaffingPanel(page);
 
     await expect(page.getByText('Suggested shifts', { exact: true })).toBeVisible({ timeout: 15000 });
     await page.getByRole('button', { name: /apply suggested shifts/i }).click();

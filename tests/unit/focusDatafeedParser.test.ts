@@ -35,6 +35,43 @@ describe('parseFocusDatafeed', () => {
     expect(c.openedAt).toContain('06/27/2026');
   });
 
+  it('sums SeatRecord.TaxTotal1..5 across all seats into taxAmount', () => {
+    const checks = parseFocusDatafeed(xml).checks;
+    const c1 = checks.find((c) => c.checkId === '1')!;
+    const c2 = checks.find((c) => c.checkId === '2')!;
+    // check 1: TaxTotal1 3.30 + TaxTotal2 0.16
+    expect(c1.taxAmount).toBe(3.46);
+    // check 2: TaxTotal1 0.33
+    expect(c2.taxAmount).toBe(0.33);
+  });
+
+  it('sums TaxTotal1..5 across multiple seats on the same check', () => {
+    const x =
+      '<DailyData><Checks><Check><CheckRecord><ID>10</ID><Total>10.00</Total></CheckRecord>' +
+      '<Seats>' +
+      '<Seat><SeatRecord><TaxTotal1>1.00</TaxTotal1><TaxTotal2>0.50</TaxTotal2></SeatRecord></Seat>' +
+      '<Seat><SeatRecord><TaxTotal1>2.25</TaxTotal1></SeatRecord></Seat>' +
+      '</Seats></Check></Checks></DailyData>';
+    const c = parseFocusDatafeed(x).checks[0];
+    expect(c.taxAmount).toBe(3.75);
+  });
+
+  it('defaults taxAmount to 0 when SeatRecord/TaxTotal fields are absent', () => {
+    const x =
+      '<DailyData><Checks><Check><CheckRecord><ID>11</ID><Total>5.00</Total></CheckRecord>' +
+      '<Seats><Seat><CheckItemRecord><Key>1</Key></CheckItemRecord></Seat></Seats></Check></Checks></DailyData>';
+    const c = parseFocusDatafeed(x).checks[0];
+    expect(c.taxAmount).toBe(0);
+  });
+
+  it('sums negative TaxTotal values for refund checks', () => {
+    const x =
+      '<DailyData><Checks><Check><CheckRecord><ID>12</ID><Total>-5.00</Total></CheckRecord>' +
+      '<Seats><Seat><SeatRecord><TaxTotal1>-0.33</TaxTotal1></SeatRecord></Seat></Seats></Check></Checks></DailyData>';
+    const c = parseFocusDatafeed(x).checks[0];
+    expect(c.taxAmount).toBe(-0.33);
+  });
+
   it('extracts priced line items and their category', () => {
     const c = parseFocusDatafeed(xml).checks.find((c) => c.checkId === '1')!;
     const priced = c.items.filter((i) => i.price != null);

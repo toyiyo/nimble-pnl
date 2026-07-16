@@ -1,0 +1,26 @@
+-- Invalidate Focus datafeed fingerprints so historical tax backfills automatically.
+--
+-- Context: 20260710120000 added focus_orders.tax_amount and 20260710130000 made
+-- the sync RPC emit per-order tax rows. Tax is derived from SeatRecord.TaxTotal*
+-- during parse. But the bulk-cron sync (focusBulkSyncHandler) delta-skips days
+-- whose <Checks> XML is unchanged: computeChecksFingerprint matches the row in
+-- focus_datafeed_state and processDayTransactions returns `unchanged` BEFORE
+-- parsing or upserting. Because the raw feed for a closed day never changes, its
+-- fingerprint already matches — so those already-fingerprinted days would keep
+-- tax_amount = 0 and never emit tax rows on the normal production path.
+--
+-- The fingerprint's invariant ("same XML ⇒ same derived rows ⇒ safe to skip") is
+-- broken by this schema/logic change: the same XML now yields an additional tax
+-- row. Clearing the fingerprints re-establishes the invariant: the next bulk-cron
+-- ticks recompute fingerprints, re-parse each day (idempotent upserts), populate
+-- tax_amount, and emit tax rows — for every Focus restaurant, not just the ones
+-- reprocessed manually via a custom-range sync.
+--
+-- Safe + self-healing: the state store fails open (a missing row ⇒ reprocess), so
+-- deletion only triggers re-parsing. Cost is one-time and bounded by each cron
+-- run's per-restaurant day cap; fetched_at bookkeeping is re-established as days
+-- are reprocessed. The table is small (one row per restaurant/business_date).
+--
+-- Codex P1 (PR #600): "Invalidate fingerprints before depending on tax_amount."
+
+DELETE FROM public.focus_datafeed_state;

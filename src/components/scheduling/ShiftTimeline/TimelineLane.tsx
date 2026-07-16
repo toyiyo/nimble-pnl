@@ -2,6 +2,7 @@ import { useRef, useState, useCallback, useMemo, memo } from 'react';
 
 import type { TimelineLane as TimelineLaneModel } from './useTimelineModel';
 import type { TimelineWindow } from '@/lib/timelineModel';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import type { Shift } from '@/types/scheduling';
 import type { PaintDraft, PaintRange } from '@/lib/timelineDraft';
 import { pointerToMinutes, beginPaint, updatePaint, endPaint, DEFAULT_CLICK_DURATION_MIN } from '@/lib/timelineDraft';
@@ -39,6 +40,15 @@ interface TimelineLaneProps {
    * (design doc §Fix 3). Forwarded to the matching `TimelineBar` as `highlighted`.
    */
   readonly highlightedShiftId?: string | null;
+  /**
+   * Forwarded to each `TimelineBar` so its outside-availability marker can
+   * recompute live against an in-flight drag/resize (design doc §3c).
+   * Optional — omitting all three leaves every bar's marker pinned to its
+   * pre-drag `bar.outsideAvailability` value.
+   */
+  readonly availabilityByEmployee?: Map<string, Map<number, EffectiveAvailability>>;
+  readonly dateStr?: string;
+  readonly tz?: string;
 }
 
 /** Height in pixels for each stacked bar row within a lane. */
@@ -76,6 +86,9 @@ function TimelineLaneImpl({
   onBarDraftChange,
   onBarDragCommit,
   highlightedShiftId = null,
+  availabilityByEmployee,
+  dateStr,
+  tz,
 }: TimelineLaneProps) {
   const { label, hours, bars } = lane;
   const maxRow = bars.reduce((max, b) => Math.max(max, b.row), 0);
@@ -269,6 +282,9 @@ function TimelineLaneImpl({
               onDraftChange={onBarDraftChange}
               onDragCommit={onBarDragCommit}
               highlighted={bar.shift.id === highlightedShiftId}
+              availabilityByEmployee={availabilityByEmployee}
+              dateStr={dateStr}
+              tz={tz}
             />
           </div>
         ))}
@@ -304,7 +320,10 @@ function areLaneEqual(prev: TimelineLaneProps, next: TimelineLaneProps): boolean
     prev.onPaintCommit === next.onPaintCommit &&
     prev.onBarDraftChange === next.onBarDraftChange &&
     prev.onBarDragCommit === next.onBarDragCommit &&
-    prev.highlightedShiftId === next.highlightedShiftId
+    prev.highlightedShiftId === next.highlightedShiftId &&
+    prev.availabilityByEmployee === next.availabilityByEmployee &&
+    prev.dateStr === next.dateStr &&
+    prev.tz === next.tz
   );
 }
 

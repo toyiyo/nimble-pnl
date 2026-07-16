@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { deriveWindow, buildLanes, expandDemand, computeGaps, buildTimelineModel } from '@/lib/timelineModel';
+import { deriveWindow, buildLanes, expandDemand, computeGaps, buildTimelineModel, computeCoverage } from '@/lib/timelineModel';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 
 const shift = (start: string, end: string): Shift => ({
   id: start, restaurant_id: 'r', employee_id: 'e', start_time: start, end_time: end,
@@ -164,5 +165,115 @@ describe('buildTimelineModel', () => {
     expect(model.lanes[0].bars).toHaveLength(1); // cancelled dropped
     expect(model.demand).toBeNull();
     expect(model.gaps).toEqual([]);
+  });
+});
+
+describe('computeCoverage (Fix 1 — live coverage against a frozen window, no lane rebuild)', () => {
+  const employees = [emp('e1', 'Ann', 'Front', 'Server')];
+  const shiftFor = (id: string, eid: string, start: string, end: string) =>
+    ({ id, restaurant_id: 'r', employee_id: eid, start_time: start, end_time: end, break_duration: 0,
+       position: 'Server', status: 'scheduled', is_published: false, source: 'manual',
+       locked: false, created_at: '', updated_at: '' } as Shift);
+
+  it('computes coverage/demand/gaps for the given shifts against a FIXED window (no window/lane derivation)', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // 10-13 CT
+    // Fixed window wider than what deriveWindow would compute for these shifts,
+    // proving computeCoverage never re-derives its own window from the shifts.
+    const fixedWindow = { startMin: 480, endMin: 1440 }; // 08:00-24:00
+    const result = computeCoverage(
+      shifts, '2026-07-11', 'America/Chicago', fixedWindow, [rec(10, 1), rec(11, 1), rec(12, 1)],
+    );
+    expect(result.coverage[0].min).toBe(480); // samples span the FIXED window, not deriveWindow's 600-1020
+    expect(result.coverage[result.coverage.length - 1].min).toBe(1440);
+    expect(result.coverage.some((c) => c.count === 1)).toBe(true);
+    expect(result.demand).not.toBeNull();
+    expect(Array.isArray(result.gaps)).toBe(true);
+  });
+
+  it('matches buildTimelineModel\'s coverage/demand/gaps when given the same window (equivalence, no behavior drift)', () => {
+    const shifts = [
+      shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z'),
+      shiftFor('s2', 'e1', '2026-07-11T19:00:00Z', '2026-07-11T22:00:00Z'),
+    ];
+    const recs = [rec(10, 1), rec(11, 1), rec(12, 1), rec(13, 1), rec(14, 1)];
+    const model = buildTimelineModel(shifts, employees, '2026-07-11', 'America/Chicago', 'area', recs);
+    const coverage = computeCoverage(shifts, '2026-07-11', 'America/Chicago', model.window, recs);
+    expect(coverage.coverage).toEqual(model.coverage);
+    expect(coverage.demand).toEqual(model.demand);
+    expect(coverage.gaps).toEqual(model.gaps);
+  });
+
+  it('reflects a moved shift\'s live position while a DIFFERENT fixed window (from the committed shifts) stays untouched', () => {
+    // Simulates dragging s1 later in time: the committed window (derived from
+    // the ORIGINAL, pre-drag shifts) must stay fixed, while coverage computed
+    // against that same fixed window reflects the drafted position.
+    const committedShifts = [
+      shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z'), // 10-13 CT
+    ];
+    const frozenWindow = deriveWindow(committedShifts, '2026-07-11', 'America/Chicago'); // 10:00-13:00
+
+    // Drafted (in-flight drag) shift moved to 11-14 CT — still within frozenWindow.
+    const draftedShifts = [
+      shiftFor('s1', 'e1', '2026-07-11T16:00:00Z', '2026-07-11T19:00:00Z'), // 11-14 CT
+    ];
+    const live = computeCoverage(draftedShifts, '2026-07-11', 'America/Chicago', frozenWindow, []);
+
+    // Coverage reflects the drafted 11:00 start (not the committed 10:00 start).
+    const at10 = live.coverage.find((c) => c.min === frozenWindow.startMin);
+    const at11 = live.coverage.find((c) => c.min === frozenWindow.startMin + 60);
+    expect(at10?.count).toBe(0); // no longer covered at 10:00 post-drag
+    expect(at11?.count).toBe(1); // covered at 11:00 post-drag
+  });
+});
+
+describe('outsideAvailability marker (Task 7)', () => {
+  const employees = [emp('e1', 'Ann', 'Front', 'Server')];
+  const shiftFor = (id: string, eid: string, start: string, end: string) =>
+    ({ id, restaurant_id: 'r', employee_id: eid, start_time: start, end_time: end, break_duration: 0,
+       position: 'Server', status: 'scheduled', is_published: false, source: 'manual',
+       locked: false, created_at: '', updated_at: '' } as Shift);
+
+  // 2026-07-11 is a Saturday (getDay() === 6).
+  const SAT = 6;
+
+  const availMap = (dow: number, effective: EffectiveAvailability): Map<string, Map<number, EffectiveAvailability>> =>
+    new Map([['e1', new Map([[dow, effective]])]]);
+
+  const recurringOff: EffectiveAvailability = {
+    type: 'recurring',
+    slots: [{ isAvailable: false, startTime: null, endTime: null, sourceRecord: {} as never }],
+  };
+
+  // 14:00Z-19:00Z UTC == 09:00-14:00 America/Chicago (CDT, UTC-5 in July) — comfortably
+  // covers the 10-13 CT test shift below.
+  const recurringOnWideWindow: EffectiveAvailability = {
+    type: 'recurring',
+    slots: [{ isAvailable: true, startTime: '14:00:00', endTime: '19:00:00', sourceRecord: {} as never }],
+  };
+
+  it('flags a bar outsideAvailability=true when the employee is recurring-unavailable that day', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // Sat 10-13 CT
+    const lanes = buildLanes(shifts, employees, '2026-07-11', 'America/Chicago', 'area', availMap(SAT, recurringOff));
+    expect(lanes[0].bars[0].outsideAvailability).toBe(true);
+  });
+
+  it('leaves outsideAvailability false when the shift falls inside the available window', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // Sat 10-13 CT
+    const lanes = buildLanes(shifts, employees, '2026-07-11', 'America/Chicago', 'area', availMap(SAT, recurringOnWideWindow));
+    expect(lanes[0].bars[0].outsideAvailability).toBe(false);
+  });
+
+  it('defaults outsideAvailability to false when no availabilityByEmployee map is supplied (backward-compatible)', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')];
+    const lanes = buildLanes(shifts, employees, '2026-07-11', 'America/Chicago', 'area');
+    expect(lanes[0].bars[0].outsideAvailability).toBe(false);
+  });
+
+  it('threads availabilityByEmployee through buildTimelineModel', () => {
+    const shifts = [shiftFor('s1', 'e1', '2026-07-11T15:00:00Z', '2026-07-11T18:00:00Z')]; // Sat 10-13 CT
+    const model = buildTimelineModel(
+      shifts, employees, '2026-07-11', 'America/Chicago', 'area', [], availMap(SAT, recurringOff),
+    );
+    expect(model.lanes[0].bars[0].outsideAvailability).toBe(true);
   });
 });

@@ -92,20 +92,31 @@ vi.mock('@/hooks/useCurrentEmployee', () => ({
   })),
 }));
 
+// Future-relative fixture dates so the accept/claim buttons aren't disabled by
+// the isPast guard (shiftStart < now). Hardcoded calendar dates silently disable
+// the button once the date passes, which broke the in-flight-label test (8) the
+// day the calendar rolled past 2026-07-10. vi.hoisted so the values exist when
+// the hoisted vi.mock factory below runs.
+const { DAY_A, DAY_B } = vi.hoisted(() => {
+  const iso = (offsetDays: number) =>
+    new Date(Date.now() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+  return { DAY_A: iso(7), DAY_B: iso(8) };
+});
+
 vi.mock('@/hooks/useAvailableShifts', () => ({
   useAvailableShifts: vi.fn(() => ({
     items: [
       {
         key: 'trade-mismatch',
         type: 'trade',
-        date: new Date('2026-07-10'),
+        date: new Date(DAY_A),
         trade: {
           id: 'trade-mismatch',
           status: 'open',
           offered_shift: {
             id: 'shift-1',
-            start_time: '2026-07-10T14:00:00Z',
-            end_time: '2026-07-10T20:00:00Z',
+            start_time: `${DAY_A}T14:00:00Z`,
+            end_time: `${DAY_A}T20:00:00Z`,
             position: 'Bartender',
             break_duration: 0,
           },
@@ -123,14 +134,14 @@ vi.mock('@/hooks/useAvailableShifts', () => ({
       {
         key: 'trade-same-area',
         type: 'trade',
-        date: new Date('2026-07-11'),
+        date: new Date(DAY_B),
         trade: {
           id: 'trade-same-area',
           status: 'open',
           offered_shift: {
             id: 'shift-2',
-            start_time: '2026-07-11T14:00:00Z',
-            end_time: '2026-07-11T20:00:00Z',
+            start_time: `${DAY_B}T14:00:00Z`,
+            end_time: `${DAY_B}T20:00:00Z`,
             position: 'Server',
             break_duration: 0,
           },

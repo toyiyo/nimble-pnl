@@ -8,14 +8,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import { MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, MoreHorizontal, Pencil } from 'lucide-react';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
 interface TemplateRowHeaderProps {
   template: ShiftTemplate;
   onEdit: (template: ShiftTemplate) => void;
-  onDelete: (templateId: string) => void;
+  onHide: (template: ShiftTemplate) => void;
+  onRestore: (templateId: string) => void;
 }
 
 function formatCompactTemplateTime(time: string): string {
@@ -29,14 +30,25 @@ function formatCompactTemplateTime(time: string): string {
 export const TemplateRowHeader = memo(function TemplateRowHeader({
   template,
   onEdit,
-  onDelete,
+  onHide,
+  onRestore,
 }: TemplateRowHeaderProps) {
+  const isHidden = !template.is_active;
+
   return (
     <div className="flex items-center justify-between p-1 md:p-3 min-h-[48px] md:min-h-[64px]">
       {/* Desktop: full name + time + position */}
       <div className="hidden md:block min-w-0">
-        <div className="text-[14px] font-medium text-foreground truncate">
-          {template.name}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <div className="text-[14px] font-medium text-foreground truncate">
+            {template.name}
+          </div>
+          {isHidden && (
+            <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground border border-dashed border-border rounded-md px-1.5 inline-flex items-center gap-1 shrink-0">
+              <EyeOff className="h-3 w-3" aria-hidden="true" />
+              Hidden
+            </span>
+          )}
         </div>
         <div className="text-[12px] text-muted-foreground">
           {formatCompactTemplateTime(template.start_time)}-
@@ -51,7 +63,7 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
           </div>
         )}
       </div>
-      {/* Mobile: abbreviated name + time only */}
+      {/* Mobile: abbreviated name + time only (56px column: badge text only, no icon) */}
       <div className="block md:hidden min-w-0 text-center w-full">
         <div className="text-[11px] font-medium text-foreground truncate">
           {template.name.length > 5 ? template.name.slice(0, 5) + '.' : template.name}
@@ -59,6 +71,11 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
         <div className="text-[10px] text-muted-foreground">
           {formatCompactTemplateTime(template.start_time)}
         </div>
+        {isHidden && (
+          <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Hidden
+          </div>
+        )}
       </div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -75,12 +92,21 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
           <DropdownMenuItem onClick={() => onEdit(template)}>
             <Pencil className="h-4 w-4 mr-2" /> Edit
           </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => onDelete(template.id)}
-            className="text-destructive"
-          >
-            <Trash2 className="h-4 w-4 mr-2" /> Delete
-          </DropdownMenuItem>
+          {isHidden ? (
+            <DropdownMenuItem onClick={() => onRestore(template.id)}>
+              <Eye className="h-4 w-4 mr-2" /> Restore template
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => onHide(template)}
+              className="text-muted-foreground"
+            >
+              <EyeOff className="h-4 w-4 mr-2" /> Hide template
+              <span className="ml-auto pl-3 text-[11px] text-muted-foreground">
+                keeps shifts
+              </span>
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -88,6 +114,7 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
 }, (prev, next) => {
   return (
     prev.template.id === next.template.id &&
-    prev.template.updated_at === next.template.updated_at
+    prev.template.updated_at === next.template.updated_at &&
+    prev.template.is_active === next.template.is_active
   );
 });

@@ -17,17 +17,16 @@ import { FeatureGate } from '@/components/subscription';
 import {
   formatCurrency,
   formatHours,
-  exportPayrollToCSV,
   EmployeePayroll,
 } from '@/utils/payrollCalculations';
 import { sortPayrollRows, groupPayrollRows, computePayrollTotals, regularPayDisplayValue, type PayrollSortKey, type SortDirection, type PayrollGroupMode } from '@/utils/payrollTableView';
 import { isPerJobContractor } from '@/utils/compensationCalculations';
 import { AddManualPaymentDialog } from '@/components/payroll/AddManualPaymentDialog';
 import { AdjustOvertimeDialog } from '@/components/payroll/AdjustOvertimeDialog';
+import { PayrollExportMenu } from '@/components/payroll/PayrollExportMenu';
 import {
   DollarSign,
   Clock,
-  Download,
   Calendar,
   RefreshCw,
   TrendingUp,
@@ -422,23 +421,14 @@ const Payroll = () => {
     setOtSelectedEmployee(null);
   };
 
-  const handleExportCSV = () => {
-    if (!payrollPeriod) return;
-    const orderedEmployees = payrollGroups.flatMap((g) => g.rows);
-    const csv = exportPayrollToCSV({ ...payrollPeriod, employees: orderedEmployees });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payroll_${format(start, 'yyyy-MM-dd')}_to_${format(end, 'yyyy-MM-dd')}.csv`;
-    a.click();
-    // Revoke after a tick so the browser can schedule the download first.
-    setTimeout(() => window.URL.revokeObjectURL(url), 100);
-  };
-
   const payrollGroups = useMemo(
     () => (payrollPeriod ? groupPayrollRows(sortPayrollRows(payrollPeriod.employees, sortKey, sortDir), groupBy) : []),
     [payrollPeriod, sortKey, sortDir, groupBy],
+  );
+
+  const orderedPeriod = useMemo(
+    () => (payrollPeriod ? { ...payrollPeriod, employees: payrollGroups.flatMap((g) => g.rows) } : null),
+    [payrollPeriod, payrollGroups],
   );
 
   const grandTotals = useMemo(
@@ -746,13 +736,12 @@ const Payroll = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                onClick={handleExportCSV}
+              <PayrollExportMenu
+                period={orderedPeriod}
+                start={start}
+                end={end}
                 disabled={!payrollPeriod || payrollPeriod.employees.length === 0}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </Button>
+              />
             </div>
           </div>
         </CardHeader>

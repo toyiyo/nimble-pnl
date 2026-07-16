@@ -62,6 +62,8 @@ export interface FocusCheck {
   total: number;
   discountTotal: number;
   taxableSales: number;
+  /** Sum of SeatRecord.TaxTotal1..5 across all seats (tax collected). */
+  taxAmount: number;
   items: FocusItem[];
   payments: FocusPayment[];
 }
@@ -150,9 +152,15 @@ function parseCheck(check: any): FocusCheck {
   const cr = check.CheckRecord ?? {};
   const items: FocusItem[] = [];
   const payments: FocusPayment[] = [];
+  let taxAmountRaw = 0;
   for (const seat of toArray(check.Seats?.Seat)) {
     for (const cir of toArray(seat.CheckItemRecord)) items.push(parseItem(cir));
     for (const pr of toArray(seat.PaymentRecord)) payments.push(parsePayment(pr));
+    // Tax collected lives on SeatRecord (parallel to CheckRecord.TaxableSales1..5),
+    // summed across every seat on the check.
+    const sr = seat.SeatRecord ?? {};
+    taxAmountRaw +=
+      num(sr.TaxTotal1) + num(sr.TaxTotal2) + num(sr.TaxTotal3) + num(sr.TaxTotal4) + num(sr.TaxTotal5);
   }
   // Round to 2 decimal places after summing to avoid binary float drift
   // (e.g. 0.1 + 0.2 !== 0.3). Math.round * 100 / 100 is the standard JS idiom.
@@ -165,6 +173,7 @@ function parseCheck(check: any): FocusCheck {
         num(cr.TaxableSales5)) *
         100,
     ) / 100;
+  const taxAmount = Math.round(taxAmountRaw * 100) / 100;
   return {
     checkId: str(cr.ID) ?? '',
     openedAt: str(cr.TimeOpened),
@@ -175,6 +184,7 @@ function parseCheck(check: any): FocusCheck {
     total: num(cr.Total),
     discountTotal: num(cr.DiscountTotalAmount),
     taxableSales,
+    taxAmount,
     items,
     payments,
   };

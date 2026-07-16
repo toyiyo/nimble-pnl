@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
+import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
@@ -26,6 +27,39 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
 
 // useRestaurantContext used indirectly (via useWeekStaffingSuggestions chain) — safe
 // to leave unmocked because the mock above covers the hook that reads it.
+
+// useValidatedShiftMutations pulls in React Query mutation hooks (useCreateShift,
+// useUpdateShift, useDeleteShift, useCheckConflicts) which need a QueryClientProvider
+// this test harness doesn't set up. This file tests layout/coverage wiring, not the
+// mutation pipeline (that's covered by useValidatedShiftMutations.test.tsx and
+// TimelineShiftPopover.test.tsx), so a lightweight stub is sufficient here.
+vi.mock('@/hooks/useValidatedShiftMutations', () => ({
+  useValidatedShiftMutations: vi.fn(() => ({
+    validateAndCreate: vi.fn(),
+    forceCreate: vi.fn(),
+    validateAndUpdateTime: vi.fn(),
+    forceUpdateTime: vi.fn(),
+    validateAndUpdateShift: vi.fn(),
+    forceUpdateShift: vi.fn(),
+    validateAndReassign: vi.fn(),
+    forceReassign: vi.fn(),
+    deleteShift: vi.fn(),
+    deleteShiftAsync: vi.fn().mockResolvedValue(undefined),
+    validationResult: null,
+    clearValidation: vi.fn(),
+  })),
+}));
+
+// ShiftTimelineTab's undo-delete flow (Fix 1) calls useCreateShift directly,
+// which needs a QueryClientProvider this lightweight harness doesn't set up —
+// stubbed out for the same reason as useValidatedShiftMutations above.
+vi.mock('@/hooks/useShifts', () => ({
+  useCreateShift: vi.fn(() => ({ mutateAsync: vi.fn() })),
+}));
+
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: vi.fn(() => ({ toast: vi.fn() })),
+}));
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -222,6 +256,46 @@ describe('ShiftTimelineTab', () => {
     // Bob should be visible on Mon Jan 5 (the local day) — not missing
     const btn = screen.getByRole('button', { name: /Bob/i });
     expect(btn).toBeInTheDocument();
+  });
+
+  // Task 7 — availabilityByEmployee wiring through useTimelineModel into the bar.
+  it('marks a shift bar outside availability when availabilityByEmployee flags that employee/day recurring-unavailable', () => {
+    const employees = [makeEmployee('e1', 'Ann')];
+    // 2026-01-05 (weekDays[0], selected by default) is a Monday (day_of_week 1).
+    const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+    const availabilityByEmployee = new Map<string, Map<number, EffectiveAvailability>>([
+      [
+        'e1',
+        new Map([
+          [1, { type: 'recurring', slots: [{ isAvailable: false, startTime: null, endTime: null, sourceRecord: {} as never }] }],
+        ]),
+      ],
+    ]);
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+        availabilityByEmployee={availabilityByEmployee}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /Ann.*outside availability/i });
+    expect(btn).toBeInTheDocument();
+    expect(btn.className).toContain('border-l-amber-500');
+  });
+
+  it('does not mark a shift bar when availabilityByEmployee is omitted (backward-compatible)', () => {
+    const employees = [makeEmployee('e1', 'Ann')];
+    const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
+    render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        shifts={shifts}
+        employees={employees}
+      />,
+    );
+    const btn = screen.getByRole('button', { name: /Ann/i });
+    expect(btn.className).not.toContain('border-l-amber-500');
   });
 });
 
@@ -509,5 +583,125 @@ describe('ShiftTimelineTab — call-site wiring (Task 2d)', () => {
       (col) => col.style.left !== '',
     );
     expect(hasPositioning).toBe(true);
+  });
+});
+
+describe('ShiftTimelineTab — Fix 1: lanes/window frozen during drag, coverage stays live', () => {
+  // Two employees whose shifts overlap, so first-fit row-packing (assignRows)
+  // stacks them onto separate rows (row 0 / row 1). Dragging s1 later in time
+  // (past s2's start) would, under the OLD bug, re-sort by start_time and
+  // re-pack every bar's row on every rAF frame — this is the "bars jump
+  // vertically" regression. With Fix 1, `model` (lanes+window) is built from
+  // the committed `dayShifts`, never the drafted shifts, so bar.row must stay
+  // fixed throughout the drag.
+  const employees = [makeEmployee('e1', 'Ann'), makeEmployee('e2', 'Bob')];
+  const shifts = [
+    makeShift('s1', 'e1', '2026-01-05T15:00:00Z', '2026-01-05T18:00:00Z'), // 09:00-12:00 CST
+    makeShift('s2', 'e2', '2026-01-05T16:00:00Z', '2026-01-05T19:00:00Z'), // 10:00-13:00 CST (overlaps s1)
+  ];
+
+  function mockPlotRect(container: HTMLElement) {
+    // jsdom returns an all-zero rect by default; TimelineLane's getPlotRect
+    // reads plotRef.getBoundingClientRect() fresh on every pointer event, so
+    // stubbing it once here is enough for the whole gesture.
+    const rect = { left: 0, width: 780, top: 0, height: 56, right: 780, bottom: 56, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    for (const el of container.querySelectorAll('[data-testid="lane-plot"]')) {
+      vi.spyOn(el, 'getBoundingClientRect').mockReturnValue(rect);
+    }
+  }
+
+  function barTops(container: HTMLElement): number[] {
+    // Each bar's row is encoded as `top: bar.row * ROW_HEIGHT_PX` on its
+    // absolutely-positioned wrapper (see TimelineLane.tsx).
+    return Array.from(container.querySelectorAll('[data-testid="lane-plot"] > div'))
+      .map((el) => (el as HTMLElement).style.top);
+  }
+
+  let rafSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    // useTimelineBarDrag rAF-throttles onDraftChange; run it synchronously so
+    // a single pointermove is enough to observe the live-drag draft (matches
+    // the pattern in tests/unit/timelineBarDrag.test.tsx).
+    rafSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb: FrameRequestCallback) => {
+      cb(0);
+      return 1;
+    });
+    vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    rafSpy.mockRestore();
+    vi.restoreAllMocks();
+  });
+
+  it('bar rows (top offsets) stay identical during a drag that would otherwise change overlap/packing', () => {
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    mockPlotRect(container);
+
+    const beforeTops = barTops(container);
+    expect(beforeTops).toHaveLength(2);
+
+    const buttons = screen.getAllByRole('button', { name: /Ann|Bob/i });
+    const annBar = buttons.find((b) => /Ann/i.test(b.getAttribute('aria-label') ?? ''))!;
+    expect(annBar).toBeTruthy();
+
+    // Drag Ann's bar far to the right (past threshold) — under the old bug this
+    // would trigger a full model rebuild (re-sort + re-pack) on every frame.
+    fireEvent.pointerDown(annBar, { pointerId: 1, clientX: 100, pointerType: 'mouse' });
+    fireEvent.pointerMove(annBar, { pointerId: 1, clientX: 400, pointerType: 'mouse' });
+
+    const duringTops = barTops(container);
+    expect(duringTops).toEqual(beforeTops); // lanes frozen — no row jump mid-drag
+
+    // End the gesture via pointercancel (not pointerup) so this test only
+    // exercises the in-flight drag/draft path, not the commit/mutation
+    // pipeline (out of scope here — covered by useValidatedShiftMutations
+    // tests, and this file's mutation mocks aren't wired for a real commit).
+    fireEvent.pointerCancel(annBar, { pointerId: 1 });
+  });
+
+  it('coverage chart still reflects the live drag position (D2 behavior preserved) while lanes stay frozen', () => {
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    mockPlotRect(container);
+
+    const beforeTops = barTops(container);
+
+    const buttons = screen.getAllByRole('button', { name: /Ann|Bob/i });
+    const annBar = buttons.find((b) => /Ann/i.test(b.getAttribute('aria-label') ?? ''))!;
+
+    // Snapshot the "9 AM–10 AM" column's scheduled count before the drag —
+    // only Ann's shift (09:00-12:00) covers it (Bob starts at 10:00), so it
+    // should read "1 scheduled".
+    const colsBefore = Array.from(container.querySelectorAll('[data-hour-col]')) as HTMLElement[];
+    const nineAmBeforeEl = colsBefore.find((c) => (c.getAttribute('aria-label') ?? '').includes('9 AM'));
+    expect(nineAmBeforeEl).toBeTruthy();
+    // Snapshot the STRING now — React reconciliation reuses the same DOM node
+    // across renders, so re-reading `nineAmBeforeEl.getAttribute(...)` after
+    // the drag would silently return the POST-drag value (same live node).
+    const nineAmLabelBefore = nineAmBeforeEl!.getAttribute('aria-label');
+    expect(nineAmLabelBefore).toMatch(/1 scheduled/);
+
+    // Drag Ann's bar away from the 9 AM slot.
+    fireEvent.pointerDown(annBar, { pointerId: 1, clientX: 100, pointerType: 'mouse' });
+    fireEvent.pointerMove(annBar, { pointerId: 1, clientX: 500, pointerType: 'mouse' });
+
+    // Lanes are still frozen mid-drag...
+    expect(barTops(container)).toEqual(beforeTops);
+
+    // ...but the coverage chart's 9 AM column no longer counts Ann (live coverage
+    // recomputed from the draft against the frozen window). Note: the column
+    // must still EXIST (the frozen window means the hour grid itself doesn't
+    // shrink/grow mid-drag) — only its scheduled count changes.
+    const colsDuring = Array.from(container.querySelectorAll('[data-hour-col]')) as HTMLElement[];
+    const nineAmDuring = colsDuring.find((c) => (c.getAttribute('aria-label') ?? '').includes('9 AM'));
+    expect(nineAmDuring).toBeTruthy(); // window (hour grid) frozen — 9 AM column still present
+    expect(nineAmDuring!.getAttribute('aria-label')).not.toEqual(nineAmLabelBefore);
+
+    fireEvent.pointerCancel(annBar, { pointerId: 1 });
   });
 });

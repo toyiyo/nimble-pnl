@@ -1,21 +1,22 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@4.0.0";
-import { 
+import {
   generateEmailTemplate,
   formatDateTime,
-  type EmailTemplateData 
+  type EmailTemplateData
 } from "../_shared/emailTemplates.ts";
 import {
   corsHeaders,
   handleCorsPreflightRequest,
   errorResponse,
   successResponse,
-  getRestaurantName,
   shouldSendNotification,
   NOTIFICATION_FROM,
   APP_URL
 } from "../_shared/notificationHelpers.ts";
+import { getRestaurantInfo } from "../_shared/restaurantInfo.ts";
 import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
+import { buildDeletedShiftNotification } from '../_shared/shiftDeletedNotification.ts';
 
 interface RequestBody {
   shiftId: string;
@@ -24,6 +25,17 @@ interface RequestBody {
     start_time: string;
     end_time: string;
     position: string;
+  };
+  // Snapshot for a published-shift delete: the row is already gone by the
+  // time this fires, so the client sends what it had. Only display fields
+  // (position/start/end) travel from the client — identity (email/user_id)
+  // is always looked up server-side below, never trusted from the caller.
+  deletedShift?: {
+    restaurant_id: string;
+    employee_id: string;
+    position: string;
+    start_time: string;
+    end_time: string;
   };
 }
 
@@ -95,26 +107,130 @@ const handler = async (req: Request): Promise<Response> => {
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // If there's an auth header, verify it's valid
-    if (authHeader) {
-      const { data: { user }, error: authError } = await supabase.auth.getUser(
-        authHeader.replace('Bearer ', '')
-      );
-      
-      if (authError || !user) {
-        return errorResponse('Unauthorized', 401);
-      }
-      
-      console.log(`Authenticated request from user: ${user.id}`);
+    // Require a valid user JWT for EVERY action. This function is only ever
+    // invoked from authenticated client contexts (fire-and-forget with the
+    // caller's own JWT), so a missing/invalid header is rejected up front —
+    // closing the gap where the created/modified/deleted-by-refetch path below
+    // would otherwise proceed unauthenticated via the service-role client.
+    if (!authHeader) {
+      return errorResponse('Unauthorized', 401);
     }
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    if (authError || !user) {
+      return errorResponse('Unauthorized', 401);
+    }
+    const authenticatedUser: { id: string } = user;
+    console.log(`Authenticated request from user: ${user.id}`);
 
     // Parse request body
-    const { shiftId, action, previousShift }: RequestBody = await req.json();
+    const { shiftId, action, previousShift, deletedShift }: RequestBody = await req.json();
     if (!shiftId || !action) {
       return errorResponse('Missing required fields: shiftId, action', 400);
     }
 
     console.log(`Processing shift notification: shiftId=${shiftId}, action=${action}`);
+
+    // Published-shift delete: the row is gone, so the caller sends a
+    // snapshot instead of an id we could re-fetch. This branch is fully
+    // separate from the created/modified/deleted-by-refetch flow below.
+    if (action === 'deleted' && deletedShift) {
+      // A valid JWT is guaranteed (mandatory auth above) — additionally require
+      // the caller to be an owner/manager of the snapshot's restaurant, mirroring
+      // notify-schedule-published. Without this, any authenticated user could
+      // trigger a "shift removed" notification for someone else's restaurant.
+      const { data: callerRestaurant, error: callerRoleError } = await supabase
+        .from('user_restaurants')
+        .select('role')
+        .eq('user_id', authenticatedUser.id)
+        .eq('restaurant_id', deletedShift.restaurant_id)
+        .single();
+
+      if (callerRoleError || !callerRestaurant || !['owner', 'manager'].includes(callerRestaurant.role)) {
+        return errorResponse('Access denied', 403);
+      }
+
+      const shouldNotifyDeleted = await shouldSendNotification(
+        supabase,
+        deletedShift.restaurant_id,
+        'notify_shift_deleted'
+      );
+      if (!shouldNotifyDeleted) {
+        console.log('Notification disabled for deleted');
+        return successResponse({ message: 'Notification disabled by settings' });
+      }
+
+      // Authoritative employee lookup — never trust client-supplied
+      // email/user_id. Missing/mismatched employee => skip, not an error
+      // (the delete already succeeded on the client side). Independent of
+      // the restaurant info lookup, so run both concurrently.
+      const [
+        { data: deletedShiftEmployee, error: deletedShiftEmployeeError },
+        { name: deletedShiftRestaurantName, timezone: deletedShiftRestaurantTimezone },
+      ] = await Promise.all([
+        supabase
+          .from('employees')
+          .select('id, name, email, user_id')
+          .eq('id', deletedShift.employee_id)
+          .eq('restaurant_id', deletedShift.restaurant_id)
+          .single(),
+        getRestaurantInfo(supabase, deletedShift.restaurant_id),
+      ]);
+
+      if (deletedShiftEmployeeError || !deletedShiftEmployee) {
+        console.log('Employee not found for deleted shift notification');
+        return successResponse({ message: 'Employee not found, notification skipped' });
+      }
+
+      const plan = buildDeletedShiftNotification({
+        shiftId,
+        employeeName: deletedShiftEmployee.name ?? null,
+        employeeEmail: deletedShiftEmployee.email ?? null,
+        employeeUserId: deletedShiftEmployee.user_id ?? null,
+        restaurantName: deletedShiftRestaurantName,
+        timezone: deletedShiftRestaurantTimezone,
+        position: deletedShift.position,
+        startTime: deletedShift.start_time,
+        endTime: deletedShift.end_time,
+        appUrl: APP_URL,
+      });
+
+      if (plan.skipped) {
+        console.log(`Deleted-shift notification skipped: ${plan.skipped}`);
+        return successResponse({ message: plan.skipped });
+      }
+
+      let deletedShiftEmailId: string | undefined;
+      if (plan.email) {
+        const { data: emailResult, error: emailError } = await resend.emails.send({
+          from: NOTIFICATION_FROM,
+          to: [plan.email.to],
+          subject: plan.email.subject,
+          html: plan.email.html,
+        });
+
+        if (emailError) {
+          console.error('Error sending deleted-shift email:', emailError);
+        } else {
+          deletedShiftEmailId = emailResult?.id;
+        }
+      }
+
+      if (plan.push) {
+        try {
+          await sendWebPushToUser(supabase, plan.push.userId, deletedShift.restaurant_id, plan.push.payload);
+        } catch (e) {
+          console.error('Web push failed:', e);
+        }
+      }
+
+      console.log(`Successfully sent deleted-shift notification: emailId=${deletedShiftEmailId}`);
+      return successResponse({
+        message: 'Notification sent',
+        emailId: deletedShiftEmailId,
+      });
+    }
 
     // Get shift details
     const { data: shift, error: shiftError } = await supabase
@@ -160,15 +276,17 @@ const handler = async (req: Request): Promise<Response> => {
       return successResponse({ message: 'No employee email found' });
     }
 
-    // Get restaurant name
-    const restaurantName = await getRestaurantName(supabase, shift.restaurant_id);
+    // Get restaurant name + timezone so shift times render in the
+    // restaurant's local time, not the edge runtime's UTC.
+    const { name: restaurantName, timezone: restaurantTimezone } =
+      await getRestaurantInfo(supabase, shift.restaurant_id);
 
     // Build details card
     const detailsItems = [
       { label: 'Restaurant', value: restaurantName },
       { label: 'Position', value: shift.position },
-      { label: 'Start', value: formatDateTime(shift.start_time) },
-      { label: 'End', value: formatDateTime(shift.end_time) },
+      { label: 'Start', value: formatDateTime(shift.start_time, restaurantTimezone) },
+      { label: 'End', value: formatDateTime(shift.end_time, restaurantTimezone) },
     ];
 
     // Add previous details if modified
@@ -177,8 +295,8 @@ const handler = async (req: Request): Promise<Response> => {
       detailsItems.push(
         { label: '', value: '--- Previous ---' },
         { label: 'Previous Position', value: previousShift!.position },
-        { label: 'Previous Start', value: formatDateTime(previousShift!.start_time) },
-        { label: 'Previous End', value: formatDateTime(previousShift!.end_time) },
+        { label: 'Previous Start', value: formatDateTime(previousShift!.start_time, restaurantTimezone) },
+        { label: 'Previous End', value: formatDateTime(previousShift!.end_time, restaurantTimezone) },
       );
     }
 

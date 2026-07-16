@@ -1,6 +1,6 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
 import { CoverageStatusStrip } from '@/components/scheduling/ShiftTimeline/CoverageStatusStrip';
 
 const hours = [
@@ -86,5 +86,63 @@ describe('CoverageStatusStrip', () => {
     );
     // aria-label should expose "3 of 5, short 2" so screen readers convey the fraction
     expect(screen.getByLabelText(/3 of 5.*short 2/i)).toBeInTheDocument();
+  });
+
+  // ─── Stage E2: clickable coverage gaps ────────────────────────────────────
+
+  it('CRITICAL: a short hour renders as a button and fires onGapClick(startMin) on click', () => {
+    const onGapClick = vi.fn();
+    render(<CoverageStatusStrip hours={hours} onGapClick={onGapClick} />);
+
+    const shortCell = screen.getByRole('button', { name: /short 2/i });
+    fireEvent.click(shortCell);
+
+    expect(onGapClick).toHaveBeenCalledExactlyOnceWith(960);
+  });
+
+  it('CRITICAL: covered cells are not buttons even when onGapClick is provided', () => {
+    const onGapClick = vi.fn();
+    render(<CoverageStatusStrip hours={hours} onGapClick={onGapClick} />);
+
+    // The covered hour (17, delta 0) must not be a button.
+    const coveredCell = screen.getByLabelText(/covered/i);
+    expect(coveredCell.tagName).not.toBe('BUTTON');
+
+    fireEvent.click(coveredCell);
+    expect(onGapClick).not.toHaveBeenCalled();
+  });
+
+  it('CRITICAL: no-demand cells are not buttons even when onGapClick is provided', () => {
+    const onGapClick = vi.fn();
+    const noDemandHours = [
+      { hour: 8, startMin: 480, scheduled: 2, needed: null, delta: null, projectedSales: null, laborPct: null },
+    ];
+    render(<CoverageStatusStrip hours={noDemandHours} onGapClick={onGapClick} />);
+
+    const cell = screen.getByLabelText(/8 am/i);
+    expect(cell.tagName).not.toBe('BUTTON');
+  });
+
+  it('CRITICAL: without onGapClick, nothing is interactive (back-compat) — short cells stay non-buttons', () => {
+    render(<CoverageStatusStrip hours={hours} />);
+
+    const shortCell = screen.getByLabelText(/short 2/i);
+    expect(shortCell.tagName).not.toBe('BUTTON');
+  });
+
+  it('preserves aria-label and sr-only understaffed list when onGapClick is provided', () => {
+    const onGapClick = vi.fn();
+    render(<CoverageStatusStrip hours={hours} onGapClick={onGapClick} />);
+
+    expect(screen.getByLabelText(/short 2/i)).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: /understaffed/i })).toBeInTheDocument();
+  });
+
+  it('short button cells are keyboard-activatable (real <button>, not a div with onClick)', () => {
+    const onGapClick = vi.fn();
+    render(<CoverageStatusStrip hours={hours} onGapClick={onGapClick} />);
+
+    const shortCell = screen.getByRole('button', { name: /short 2/i });
+    expect(shortCell.tagName).toBe('BUTTON');
   });
 });

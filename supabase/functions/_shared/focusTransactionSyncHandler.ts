@@ -181,6 +181,7 @@ async function upsertOrder(
         total: check.total,
         discount_total: check.discountTotal,
         taxable_sales: check.taxableSales,
+        tax_amount: check.taxAmount,
       },
       { onConflict: 'restaurant_id,business_date,focus_check_id' },
     )

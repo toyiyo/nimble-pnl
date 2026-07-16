@@ -30,6 +30,35 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   }),
 }));
 
+// useValidatedShiftMutations pulls in React Query mutation hooks that need a
+// QueryClientProvider this layout-focused test harness doesn't set up.
+vi.mock('@/hooks/useValidatedShiftMutations', () => ({
+  useValidatedShiftMutations: () => ({
+    validateAndCreate: vi.fn(),
+    forceCreate: vi.fn(),
+    validateAndUpdateTime: vi.fn(),
+    forceUpdateTime: vi.fn(),
+    validateAndUpdateShift: vi.fn(),
+    forceUpdateShift: vi.fn(),
+    validateAndReassign: vi.fn(),
+    forceReassign: vi.fn(),
+    deleteShift: vi.fn(),
+    deleteShiftAsync: vi.fn().mockResolvedValue(undefined),
+    validationResult: null,
+    clearValidation: vi.fn(),
+  }),
+}));
+
+// ShiftTimelineTab's undo-delete flow (Fix 1) calls useCreateShift directly,
+// which needs a QueryClientProvider this layout-focused harness doesn't set up.
+vi.mock('@/hooks/useShifts', () => ({
+  useCreateShift: () => ({ mutateAsync: vi.fn() }),
+}));
+
+vi.mock('@/hooks/use-toast', () => ({
+  useToast: () => ({ toast: vi.fn() }),
+}));
+
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
 // Use a past week so defaultDay() never selects "today" and breaks the assertions.

@@ -259,3 +259,35 @@ describe('formatConflictLine – 2-arg caller contract (ShiftDialog / Availabili
     expect(result.length).toBeGreaterThan(0);
   });
 });
+
+// ─── Conflict-dialog "show the hours" pinning (Task 8) ────────────────────────
+//
+// Pins the contract the drag-commit AvailabilityConflictDialog relies on: a
+// partial-availability conflict (recurring window that doesn't cover the
+// shift) must render the localized available hours, while a hard "not
+// available at all" conflict must render its message as-is, with no window
+// appended. Regression guard for the dialog silently dropping the hours.
+
+describe('formatConflictLine – conflict-dialog show-the-hours pinning (Task 8)', () => {
+  it('renders the localized available window for a partial-availability conflict', () => {
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Shift on 2027-07-13 is outside employee availability',
+      available_start: '18:00:00',
+      available_end: '02:30:00',
+    };
+    const line = formatConflictLine(conflict, 'America/New_York', new Date(2027, 6, 13));
+    expect(line).toMatch(/available 2:00 PM – 10:30 PM/);
+  });
+
+  it('renders the hard-off recurring line without a window', () => {
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Employee is not available on this day of the week',
+    };
+    const line = formatConflictLine(conflict, 'America/New_York');
+    expect(line).toBe('Employee is not available on this day of the week');
+  });
+});

@@ -2,12 +2,18 @@ import { generateHeader, formatDateTime } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
-import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
+import { sendWebPushToUser, sendWebPushToUsers } from '../_shared/webPushHelper.ts';
+import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
+import { resolveCreatedTradeEmailRecipients, type DirectedTarget } from '../_shared/tradeEmailAudience.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Single source of truth for the in-app deep link every shift-trade notification (email
+// button, FCM data.route, and both web-push payloads) points at.
+const EMPLOYEE_SHIFTS_ROUTE = '/employee/shifts';
 
 interface RequestBody {
   tradeId: string;
@@ -63,25 +69,32 @@ const buildEmails = async (
   restaurantId: string,
   action: RequestBody['action'],
   offeredByEmployeeEmail?: string,
-  acceptedByEmployeeEmail?: string
+  acceptedByEmployeeEmail?: string,
+  directedTarget: DirectedTarget | null = null
 ) => {
   const emails: string[] = [];
 
   // Notify based on action
   if (action === 'created') {
-    // Notify all active employees about new marketplace trade
-    const { data: employees } = await supabase
-      .from('employees')
-      .select('email')
-      .eq('restaurant_id', restaurantId)
-      .eq('is_active', true)
-      .not('email', 'is', null);
+    // Notify all active employees about new marketplace trade — but only for OPEN trades.
+    // A DIRECTED trade (target_employee_id set) is private to its target, so skip this
+    // broadcast query entirely and resolve recipients from directedTarget instead.
+    let broadcastEmails: string[] = [];
+    if (!directedTarget) {
+      const { data: employees } = await supabase
+        .from('employees')
+        .select('email')
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .not('email', 'is', null);
 
-    if (employees) {
-      employees.forEach((emp: { email: string | null }) => {
-        if (emp.email) emails.push(emp.email);
-      });
+      if (employees) {
+        broadcastEmails = employees
+          .map((emp: { email: string | null }) => emp.email)
+          .filter((email: string | null): email is string => !!email);
+      }
     }
+    emails.push(...resolveCreatedTradeEmailRecipients(directedTarget, broadcastEmails));
   } else if (action === 'accepted') {
     // Notify managers about pending approval
     const { data: managers } = await supabase
@@ -270,6 +283,12 @@ const handler = async (req: Request): Promise<Response> => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
       global: { headers: { Authorization: authHeader } }
     });
+    // Bare service-role client (no Authorization override) for data/notification reads —
+    // the JWT-scoped `supabase` client above runs every `.from()` as the caller
+    // (`authenticated`), which silently no-ops against `web_push_subscriptions` RLS
+    // (`USING (auth.uid() = user_id)`) for anyone but the caller. `admin` is used for
+    // all data access after auth; `supabase` stays limited to `auth.getUser()`.
+    const admin = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify user authentication
     const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -328,6 +347,28 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Caller authorization: any authenticated user could otherwise POST an arbitrary
+    // tradeId and trigger notifications (including the broadcast) for a restaurant
+    // they have no membership in. Verify the caller belongs to this trade's restaurant.
+    const { data: membership, error: membershipError } = await admin
+      .from('user_restaurants')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('restaurant_id', trade.restaurant_id)
+      .maybeSingle();
+    if (membershipError) {
+      // Distinguish a transient DB failure from a genuine "not a member" so auth
+      // failures caused by an infra hiccup are auditable, not silently indistinguishable
+      // from a real 403.
+      console.error('Error checking caller membership:', membershipError);
+    }
+    if (!membership) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Build shift details object
     const shift = trade.offered_shift;
     // Matches the `restaurants.timezone` column default and Clover/Shift4 fallback.
@@ -344,61 +385,129 @@ const handler = async (req: Request): Promise<Response> => {
     const offeredByName = trade.offered_by?.name || 'Employee';
     const acceptedByName = trade.accepted_by?.name || '';
 
+    // Resolve the directed-trade target's employee row once — via `admin`, since reading
+    // under RLS with the JWT-scoped `supabase` client can silently return zero rows for
+    // another employee's row. One query serves both the email target (below) and the push
+    // target (further down), instead of two round-trips for the same row. Deliberately omits
+    // `.eq('is_active', true)`: a directed trade should still notify its target even if a
+    // race deactivated them.
+    const isDirectedCreate = action === 'created' && !!trade.target_employee_id;
+    let directedTargetEmployee: { email: string | null; user_id: string | null } | null = null;
+    if (isDirectedCreate) {
+      const { data: t, error: targetErr } = await admin
+        .from('employees')
+        .select('email, user_id')
+        .eq('id', trade.target_employee_id)
+        .eq('restaurant_id', trade.restaurant_id)
+        .maybeSingle();
+      if (targetErr) {
+        console.error('Error resolving directed-trade target:', targetErr);
+      }
+      directedTargetEmployee = t ?? null;
+    }
+    const directedTarget: DirectedTarget | null = isDirectedCreate
+      ? { email: directedTargetEmployee?.email ?? null }
+      : null;
+
     // Determine recipients based on action
     const recipients = await buildEmails(
       supabase,
       trade.restaurant_id,
       action,
       trade.offered_by?.email,
-      trade.accepted_by?.email
+      trade.accepted_by?.email,
+      directedTarget
     );
 
-    if (recipients.length === 0) {
-      console.warn('No recipients found for notification');
-      return new Response(
-        JSON.stringify({ success: true, message: 'No recipients to notify' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`Sending shift trade notification to ${recipients.length} recipients`);
-
-    // Get appropriate content for action
+    // Get appropriate content for action — used by both the email below AND the push block
+    // further down, so it's computed unconditionally (recipients being empty must not skip
+    // the push channel, e.g. a directed trade whose target has no email on file).
     const content = ACTION_CONTENT[action];
     const employeeName = action === 'accepted' ? acceptedByName : offeredByName;
 
-    // Generate email HTML
-    const html = generateEmailHtml(
-      content,
-      employeeName,
-      shiftDetails,
-      restaurantName,
-      trade.manager_note
-    );
+    let emailData: { id?: string } | undefined;
 
-    // Send emails via Resend
-    const { data: emailData, error: emailError } = await resend.emails.send({
-      from: 'EasyShiftHQ <notifications@easyshifthq.com>',
-      to: recipients,
-      subject: content.subject(employeeName),
-      html: html,
-    });
+    if (recipients.length > 0) {
+      console.log(`Sending shift trade notification to ${recipients.length} recipients`);
 
-    if (emailError) {
-      console.error('Error sending email:', emailError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to send email', details: emailError }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      // Generate email HTML
+      const html = generateEmailHtml(
+        content,
+        employeeName,
+        shiftDetails,
+        restaurantName,
+        trade.manager_note
       );
-    }
 
-    console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+      // Send emails via Resend
+      const { data, error: emailError } = await resend.emails.send({
+        from: 'EasyShiftHQ <notifications@easyshifthq.com>',
+        to: recipients,
+        subject: content.subject(employeeName),
+        html: html,
+      });
+
+      if (emailError) {
+        console.error('Error sending email:', emailError);
+        return new Response(
+          JSON.stringify({ error: 'Failed to send email', details: emailError }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      emailData = data ?? undefined;
+      console.log(`Successfully sent shift trade notification: emailId=${emailData?.id}`);
+    } else {
+      // No email recipients (e.g. a directed trade whose target has no email on file) — this
+      // is not an error. Fall through so the push block below still runs; it's the only
+      // channel that can reach the target.
+      console.warn('No email recipients; continuing to push');
+    }
 
     // Send push notifications to the relevant employees based on action
     const pushUserIds: string[] = [];
 
     if (action === 'created') {
-      // No targeted push for broadcast — skip (would notify all employees)
+      // Push on a newly-offered trade. A DIRECTED trade ("Specific Coworker",
+      // target_employee_id set) is hidden from non-targets by the marketplace filter
+      // (client-side; not RLS-enforced — see task_35a15d77) — so it must push ONLY
+      // that employee, never the whole team, or we'd leak/noise a private offer. An
+      // OPEN marketplace trade (target_employee_id null) broadcasts to active
+      // employees, minus the poster.
+      // Bulk fan-out (single subscription lookup + bounded concurrency). Email
+      // recipients above are unaffected; this only adds the push channel. The
+      // whole block is wrapped so a failure at any step degrades to a logged,
+      // skipped push instead of turning the already-sent email into a false 500.
+      try {
+        let broadcastTargets: string[];
+        if (trade.target_employee_id) {
+          // Reuses the directed-target row resolved above (email lookup) instead of a
+          // second query for the same employee.
+          broadcastTargets = selectBroadcastPushUserIds(
+            directedTargetEmployee ? [directedTargetEmployee] : [],
+            trade.offered_by?.user_id,
+          );
+        } else {
+          const { data: activeEmployees, error: employeesError } = await admin
+            .from('employees')
+            .select('user_id')
+            .eq('restaurant_id', trade.restaurant_id)
+            .eq('is_active', true)
+            .not('user_id', 'is', null);
+          if (employeesError) {
+            console.error('Error fetching active employees for broadcast push:', employeesError);
+          }
+          broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
+        }
+        await sendWebPushToUsers(admin, broadcastTargets, trade.restaurant_id, {
+          title: content.heading,
+          body: 'A teammate offered a shift for trade. Tap to view.',
+          url: EMPLOYEE_SHIFTS_ROUTE,
+          tag: `trade-created-${tradeId}`,
+        });
+      } catch (e) {
+        console.error('Broadcast web push failed:', e);
+      }
     } else if (action === 'accepted') {
       // Notify the employee who offered the shift
       if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
@@ -423,7 +532,7 @@ const handler = async (req: Request): Promise<Response> => {
             user_id: userId,
             title: 'Shift Trade Request',
             body: 'Someone wants to trade a shift with you',
-            data: { route: '/employee/shifts' },
+            data: { route: EMPLOYEE_SHIFTS_ROUTE },
           }),
         });
       } catch (e) {
@@ -431,10 +540,10 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       try {
-        await sendWebPushToUser(supabase, userId, trade.restaurant_id, {
+        await sendWebPushToUser(admin, userId, trade.restaurant_id, {
           title: 'Shift Trade Update',
           body: content.subject(employeeName),
-          url: '/employee/shifts',
+          url: EMPLOYEE_SHIFTS_ROUTE,
           tag: `trade-${action}-${tradeId}`,
         });
       } catch (e) {

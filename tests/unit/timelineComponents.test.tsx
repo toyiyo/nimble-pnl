@@ -53,6 +53,21 @@ function makeShift(overrides: Partial<Shift> = {}): Shift {
   };
 }
 
+/** Shared required props for TimelineShiftPopover (B2 added edit-mode plumbing). */
+function popoverProps(overrides: Partial<React.ComponentProps<typeof TimelineShiftPopover>> = {}) {
+  return {
+    employees: [],
+    restaurantId: 'r1',
+    dayShifts: [] as Shift[],
+    validateAndUpdateTime: vi.fn(),
+    forceUpdateTime: vi.fn(),
+    deleteShift: vi.fn(),
+    validationResult: null,
+    clearValidation: vi.fn(),
+    ...overrides,
+  };
+}
+
 function makeBar(overrides: Partial<TimelineBarModel> = {}): TimelineBarModel {
   return {
     shift: makeShift(),
@@ -182,17 +197,32 @@ function makeLane(overrides: Partial<TimelineLaneModel> = {}): TimelineLaneModel
   };
 }
 
+// TimelineLane's paint-to-create pointer layer (drag/click/long-press/Escape)
+// and its "Add shift to <lane>" keyboard entry point are covered exhaustively
+// in tests/unit/timelineLanePaint.test.tsx. The drag-move/edge-resize pointer
+// layer (Stage D) is covered in tests/unit/timelineBarDrag.test.tsx. These
+// tests only need the lane's pre-existing label/count/select rendering, so
+// all of these are supplied as inert defaults.
+function laneExtraProps() {
+  return {
+    window: WINDOW,
+    onPaintCommit: vi.fn(),
+    onBarDraftChange: vi.fn(),
+    onBarDragCommit: vi.fn(),
+  };
+}
+
 describe('TimelineLane', () => {
   it('renders the lane label', () => {
     render(
-      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText('Front')).toBeInTheDocument();
   });
 
   it('shows "Unassigned" when label is empty', () => {
     render(
-      <TimelineLane lane={makeLane({ key: 'unknown', label: '', hours: 0, bars: [] })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ key: 'unknown', label: '', hours: 0, bars: [] })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText('Unassigned')).toBeInTheDocument();
   });
@@ -203,21 +233,21 @@ describe('TimelineLane', () => {
       makeBar({ shift: makeShift({ id: 's2' }), row: 1 }),
     ];
     render(
-      <TimelineLane lane={makeLane({ hours: 12, bars })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ hours: 12, bars })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText(/2 shifts/)).toBeInTheDocument();
   });
 
   it('shows singular "shift" when there is one bar', () => {
     render(
-      <TimelineLane lane={makeLane({ key: 'Back', label: 'Back', hours: 8 })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ key: 'Back', label: 'Back', hours: 8 })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText(/1 shift\b/)).toBeInTheDocument();
   });
 
   it('displays the total hours for the lane', () => {
     render(
-      <TimelineLane lane={makeLane({ key: 'Bar', label: 'Bar', hours: 7.5 })} minToPct={minToPct} onSelect={vi.fn()} />,
+      <TimelineLane lane={makeLane({ key: 'Bar', label: 'Bar', hours: 7.5 })} minToPct={minToPct} onSelect={vi.fn()} {...laneExtraProps()} />,
     );
     expect(screen.getByText(/7\.5h/)).toBeInTheDocument();
   });
@@ -226,9 +256,9 @@ describe('TimelineLane', () => {
     const onSelect = vi.fn();
     const user = userEvent.setup();
     render(
-      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={onSelect} />,
+      <TimelineLane lane={makeLane()} minToPct={minToPct} onSelect={onSelect} {...laneExtraProps()} />,
     );
-    await user.click(screen.getByRole('button'));
+    await user.click(screen.getByRole('button', { name: makeBar().ariaLabel }));
     expect(onSelect).toHaveBeenCalledOnce();
   });
 });
@@ -243,6 +273,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(container).toBeEmptyDOMElement();
@@ -255,6 +286,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.getByText('Bartender')).toBeInTheDocument();
@@ -267,6 +299,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.getByText('Scheduled')).toBeInTheDocument();
@@ -279,6 +312,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.getByText('Check inventory')).toBeInTheDocument();
@@ -291,6 +325,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={vi.fn()}
+        {...popoverProps()}
       />,
     );
     expect(screen.queryByText('Notes')).not.toBeInTheDocument();
@@ -304,6 +339,7 @@ describe('TimelineShiftPopover', () => {
         tz="America/Chicago"
         dateStr="2026-07-11"
         onClose={onClose}
+        {...popoverProps()}
       />,
     );
     // The popover is open; pressing Escape should close it

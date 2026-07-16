@@ -4,7 +4,25 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { TimelineBar } from '@/components/scheduling/ShiftTimeline/TimelineBar';
 import type { TimelineBar as TimelineBarModel } from '@/components/scheduling/ShiftTimeline/useTimelineModel';
+import type { TimelineWindow } from '@/lib/timelineModel';
 import type { Shift } from '@/types/scheduling';
+
+const WINDOW: TimelineWindow = { startMin: 600, endMin: 960 };
+
+// TimelineBar's pointer drag-move/edge-resize gesture (Stage D) is covered
+// exhaustively in tests/unit/timelineBarDrag.test.tsx. These tests only need
+// the bar's pre-existing label/color/select rendering, so the drag-related
+// props are supplied as inert defaults (a null plot rect means every drag
+// computation bails out early, leaving click-to-select as the only reachable
+// interaction here).
+function dragExtraProps() {
+  return {
+    window: WINDOW,
+    getPlotRect: () => null,
+    onDraftChange: vi.fn(),
+    onDragCommit: vi.fn(),
+  };
+}
 
 function makeShift(overrides: Partial<Shift> = {}): Shift {
   return {
@@ -52,6 +70,7 @@ describe('TimelineBar', () => {
         bar={makeBar()}
         minToPct={minToPct}
         onSelect={onSelect}
+        {...dragExtraProps()}
       />,
     );
     const btn = screen.getByRole('button', { name: /Carolina Sanchez, Server/i });
@@ -68,6 +87,7 @@ describe('TimelineBar', () => {
         bar={bar}
         minToPct={minToPct}
         onSelect={onSelect}
+        {...dragExtraProps()}
       />,
     );
     await user.click(screen.getByRole('button'));
@@ -81,6 +101,7 @@ describe('TimelineBar', () => {
         bar={makeBar({ label: 'Jane Doe' })}
         minToPct={minToPct}
         onSelect={vi.fn()}
+        {...dragExtraProps()}
       />,
     );
     expect(screen.getByText('Jane Doe')).toBeInTheDocument();
@@ -92,9 +113,76 @@ describe('TimelineBar', () => {
         bar={makeBar()}
         minToPct={minToPct}
         onSelect={vi.fn()}
+        {...dragExtraProps()}
       />,
     );
     const btn = screen.getByRole('button');
     expect(btn.className).toContain('bg-blue-500/15');
+  });
+
+  // Fix 3 (transient change highlight, design doc §Fix 3): a bar renders a
+  // ring outline when the parent marks it as recently changed.
+  it('does not render the highlight ring by default', () => {
+    render(
+      <TimelineBar
+        bar={makeBar()}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    // focus-visible:ring-2 is always present (keyboard focus styling) — the
+    // Fix 3 highlight adds an UNCONDITIONAL "ring-2 ring-ring" pair (no
+    // focus-visible: prefix), so check for that exact unprefixed pairing.
+    expect(btn.className).not.toMatch(/(^| )ring-2( |$)/);
+  });
+
+  it('renders a ring-2 ring-ring outline when highlighted is true', () => {
+    render(
+      <TimelineBar
+        bar={makeBar()}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        highlighted
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    expect(btn.className).toContain('ring-2');
+    expect(btn.className).toContain('ring-ring');
+  });
+
+  // Task 7 — per-bar outside-availability marker (design doc §3c).
+  it('does not render the outside-availability marker by default', () => {
+    render(
+      <TimelineBar
+        bar={makeBar()}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    expect(btn.className).not.toContain('border-l-amber-500');
+    expect(btn).toHaveAttribute('aria-label', 'Carolina Sanchez, Server, 10a to 4p, 6.0 hours');
+  });
+
+  it('renders an amber left-border marker and an aria-label suffix when outsideAvailability is true', () => {
+    render(
+      <TimelineBar
+        bar={makeBar({ outsideAvailability: true })}
+        minToPct={minToPct}
+        onSelect={vi.fn()}
+        {...dragExtraProps()}
+      />,
+    );
+    const btn = screen.getByRole('button');
+    expect(btn.className).toContain('border-l-2');
+    expect(btn.className).toContain('border-l-amber-500');
+    expect(btn).toHaveAttribute(
+      'aria-label',
+      'Carolina Sanchez, Server, 10a to 4p, 6.0 hours, outside availability',
+    );
   });
 });

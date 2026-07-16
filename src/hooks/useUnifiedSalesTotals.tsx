@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import type { POSSystemType } from "@/types/pos";
 
 interface SalesTotals {
   totalCount: number;
@@ -29,16 +30,17 @@ interface UseUnifiedSalesTotalsOptions {
   startDate?: string;
   endDate?: string;
   searchTerm?: string;
+  sourceFilter?: POSSystemType | "all";
 }
 
 export const useUnifiedSalesTotals = (
   restaurantId: string | null,
   options: UseUnifiedSalesTotalsOptions = {}
 ) => {
-  const { startDate, endDate, searchTerm } = options;
+  const { startDate, endDate, searchTerm, sourceFilter } = options;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ["unified-sales-totals", restaurantId, startDate, endDate, searchTerm],
+    queryKey: ["unified-sales-totals", restaurantId, startDate, endDate, searchTerm, sourceFilter],
     queryFn: async (): Promise<SalesTotals> => {
       if (!restaurantId) {
         return EMPTY_TOTALS;
@@ -49,6 +51,7 @@ export const useUnifiedSalesTotals = (
         p_start_date: startDate || null,
         p_end_date: endDate || null,
         p_search_term: searchTerm || null,
+        p_pos_system: sourceFilter && sourceFilter !== "all" ? sourceFilter : null,
       });
 
       if (error) {

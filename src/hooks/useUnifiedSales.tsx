@@ -15,6 +15,7 @@ type UseUnifiedSalesOptions = {
   startDate?: string;
   endDate?: string;
   categorizationFilter?: 'all' | 'uncategorized' | 'pending-review' | 'categorized';
+  sourceFilter?: POSSystemType | 'all';
 };
 
 type UnifiedSalesPage = {
@@ -31,6 +32,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
   const normalizedStartDate = options.startDate?.trim();
   const normalizedEndDate = options.endDate?.trim();
   const normalizedCategorizationFilter = options.categorizationFilter || 'all';
+  const normalizedSourceFilter = options.sourceFilter || 'all';
   const queryKey = useMemo(
     () => [
       'unified-sales',
@@ -39,8 +41,9 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
       normalizedStartDate || '',
       normalizedEndDate || '',
       normalizedCategorizationFilter,
+      normalizedSourceFilter,
     ],
-    [restaurantId, normalizedSearchTerm, normalizedStartDate, normalizedEndDate, normalizedCategorizationFilter]
+    [restaurantId, normalizedSearchTerm, normalizedStartDate, normalizedEndDate, normalizedCategorizationFilter, normalizedSourceFilter]
   );
 
   const fetchUnifiedSalesPage = useCallback(
@@ -105,6 +108,10 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
 
       if (normalizedEndDate) {
         query = query.lte('sale_date', normalizedEndDate);
+      }
+
+      if (normalizedSourceFilter !== 'all') {
+        query = query.eq('pos_system', normalizedSourceFilter);
       }
 
       // Predicate parity with the SQL RPC `get_unified_sales_totals`
@@ -175,7 +182,7 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
 
       return { sales: salesWithSplits, hasMore: (data?.length ?? 0) === PAGE_SIZE };
     },
-    [restaurantId, user, normalizedSearchTerm, normalizedStartDate, normalizedEndDate, normalizedCategorizationFilter]
+    [restaurantId, user, normalizedSearchTerm, normalizedStartDate, normalizedEndDate, normalizedCategorizationFilter, normalizedSourceFilter]
   );
 
   const {

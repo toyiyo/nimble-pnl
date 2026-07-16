@@ -9880,6 +9880,7 @@ export type Database = {
       get_unified_sales_totals: {
         Args: {
           p_end_date?: string
+          p_pos_system?: string
           p_restaurant_id: string
           p_search_term?: string
           p_start_date?: string

@@ -9419,6 +9419,7 @@ export type Database = {
       get_unified_sales_totals: {
         Args: {
           p_end_date?: string
+          p_pos_system?: string
           p_restaurant_id: string
           p_search_term?: string
           p_start_date?: string
@@ -9427,8 +9428,10 @@ export type Database = {
           collected_at_pos: number
           discounts: number
           pass_through_amount: number
+          pending_review_count: number
           revenue: number
           total_count: number
+          uncategorized_count: number
           unique_items: number
           voids: number
         }[]
@@ -10165,4 +10168,3 @@ export const Constants = {
     },
   },
 } as const
-

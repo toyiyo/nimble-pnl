@@ -61,7 +61,7 @@ ON CONFLICT (id) DO UPDATE SET total_price = EXCLUDED.total_price, item_type = E
 
 -- Test 1: Function exists
 SELECT has_function(
-  'public', 'get_unified_sales_totals', ARRAY['uuid', 'date', 'date', 'text'],
+  'public', 'get_unified_sales_totals', ARRAY['uuid', 'date', 'date', 'text', 'text'],
   'get_unified_sales_totals function should exist'
 );
 

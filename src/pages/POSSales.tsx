@@ -25,7 +25,7 @@ import { IntegrationLogo } from "@/components/IntegrationLogo";
 import { format } from "date-fns";
 import { InventoryDeductionDialog } from "@/components/InventoryDeductionDialog";
 import { MapPOSItemDialog } from "@/components/MapPOSItemDialog";
-import { UnifiedSaleItem } from "@/types/pos";
+import type { POSSystemType, UnifiedSaleItem } from "@/types/pos";
 import { ExportDropdown } from "@/components/financial-statements/shared/ExportDropdown";
 import { generateTablePDF } from "@/utils/pdfExport";
 import Papa from "papaparse";
@@ -66,6 +66,27 @@ const CATEGORIZATION_EMPTY_SUBCOPY: Record<'uncategorized' | 'pending-review' | 
   categorized: 'Nothing has been categorized in this date range yet.',
 };
 
+const SOURCE_FILTER_OPTIONS: Array<{ value: POSSystemType | 'all'; label: string }> = [
+  { value: 'all', label: 'All Sources' },
+  { value: 'square', label: 'Square' },
+  { value: 'toast', label: 'Toast' },
+  { value: 'clover', label: 'Clover' },
+  { value: 'shift4', label: 'Shift4' },
+  { value: 'resy', label: 'Resy' },
+  { value: 'manual', label: 'Manual' },
+  { value: 'manual_upload', label: 'Manual Upload' },
+];
+
+const SOURCE_FILTER_LABELS: Record<POSSystemType, string> = {
+  square: 'Square',
+  toast: 'Toast',
+  clover: 'Clover',
+  shift4: 'Shift4',
+  resy: 'Resy',
+  manual: 'Manual',
+  manual_upload: 'Manual Upload',
+};
+
 export default function POSSales() {
   const {
     selectedRestaurant,
@@ -90,6 +111,7 @@ export default function POSSales() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'without-recipe'>('all');
   const [categorizationFilter, setCategorizationFilter] = useState<'all' | 'uncategorized' | 'pending-review' | 'categorized'>('all');
+  const [sourceFilter, setSourceFilter] = useState<POSSystemType | 'all'>('all');
   const [showSaleDialog, setShowSaleDialog] = useState(false);
   const [editingSale, setEditingSale] = useState<{
     id: string;
@@ -152,6 +174,7 @@ export default function POSSales() {
     startDate: startDate || undefined,
     endDate: endDate || undefined,
     categorizationFilter,
+    sourceFilter,
   });
 
   // Server-side aggregated totals for dashboard metrics (independent of pagination).
@@ -163,6 +186,7 @@ export default function POSSales() {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       searchTerm: searchTerm || undefined,
+      sourceFilter,
     }
   );
 
@@ -300,6 +324,10 @@ export default function POSSales() {
     if (endDate) {
       filtered = filtered.filter((sale) => sale.saleDate <= endDate);
     }
+
+    if (sourceFilter !== 'all') {
+      filtered = filtered.filter((sale) => sale.source === sourceFilter);
+    }
     
     // Apply recipe filter
     if (recipeFilter === 'with-recipe') {
@@ -343,7 +371,7 @@ export default function POSSales() {
     });
     
     return filtered;
-  }, [sales, searchTerm, startDate, endDate, recipeFilter, categorizationFilter, recipeByItemName, sortBy, sortDirection]);
+  }, [sales, searchTerm, startDate, endDate, sourceFilter, recipeFilter, categorizationFilter, recipeByItemName, sortBy, sortDirection]);
 
   // Get sales with AI suggestions (still used by the apply-pending-review row UI).
   // Aggregate counts come from server totals, not this list, so they don't
@@ -503,11 +531,12 @@ export default function POSSales() {
         searchTerm,
         recipeFilter,
         categorizationFilter,
+        sourceFilter,
         selectedView,
         sortBy,
         sortDirection,
       }),
-    [startDate, endDate, searchTerm, recipeFilter, categorizationFilter, selectedView, sortBy, sortDirection],
+    [startDate, endDate, searchTerm, recipeFilter, categorizationFilter, sourceFilter, selectedView, sortBy, sortDirection],
   );
 
   const filterSignatureRef = useRef<string | null>(null);
@@ -564,18 +593,24 @@ export default function POSSales() {
 
   const contextDescription = useMemo(() => {
     const countSuffix = serverTotals.totalCount > 0 ? ` (${serverTotals.totalCount.toLocaleString()} sales)` : '';
+    const sourcePrefix = sourceFilter !== "all" ? `${SOURCE_FILTER_LABELS[sourceFilter]} ` : '';
     
     if (startDate && endDate) {
-      return `Totals for ${formatShortDate(startDate)} - ${formatShortDate(endDate)}${countSuffix}`;
+      return `Totals for ${sourcePrefix}${formatShortDate(startDate)} - ${formatShortDate(endDate)}${countSuffix}`;
     }
     if (startDate) {
-      return `Totals since ${formatShortDate(startDate)}${countSuffix}`;
+      return `Totals since ${sourcePrefix}${formatShortDate(startDate)}${countSuffix}`;
     }
     if (endDate) {
-      return `Totals through ${formatShortDate(endDate)}${countSuffix}`;
+      return `Totals through ${sourcePrefix}${formatShortDate(endDate)}${countSuffix}`;
     }
     if (searchTerm) {
-      return `Matching "${searchTerm}"${countSuffix}`;
+      return sourceFilter !== "all"
+        ? `Matching "${searchTerm}" in ${SOURCE_FILTER_LABELS[sourceFilter]} sales${countSuffix}`
+        : `Matching "${searchTerm}"${countSuffix}`;
+    }
+    if (sourceFilter !== "all") {
+      return `${SOURCE_FILTER_LABELS[sourceFilter]} sales${countSuffix}`;
     }
     if (recipeFilter === "with-recipe") {
       return `Totals for mapped recipes${countSuffix}`;
@@ -587,7 +622,7 @@ export default function POSSales() {
       return `Totals by item grouping${countSuffix}`;
     }
     return `All sales${countSuffix}`;
-  }, [startDate, endDate, searchTerm, recipeFilter, selectedView, serverTotals.totalCount]);
+  }, [startDate, endDate, searchTerm, sourceFilter, recipeFilter, selectedView, serverTotals.totalCount]);
 
   const latestSyncTime = useMemo(() => {
     if (!integrationStatuses || integrationStatuses.length === 0) return undefined;
@@ -634,6 +669,7 @@ export default function POSSales() {
     searchTerm,
     startDate,
     endDate,
+    sourceFilter !== 'all' ? 'source' : '',
     recipeFilter !== 'all' ? 'recipe' : '',
     categorizationFilter !== 'all' ? 'categorization' : '',
     sortBy !== 'date' || sortDirection !== 'desc' ? 'sort' : ''
@@ -1037,6 +1073,7 @@ export default function POSSales() {
                     setSearchTerm("");
                     setStartDate("");
                     setEndDate("");
+                    setSourceFilter('all');
                     setRecipeFilter('all');
                     setCategorizationFilter('all');
                     setSortBy('date');
@@ -1086,6 +1123,29 @@ export default function POSSales() {
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Divider */}
+              <div className="h-5 w-px bg-border/60 hidden sm:block" />
+
+              {/* Source filter */}
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Source</span>
+                <Select value={sourceFilter} onValueChange={(value: POSSystemType | 'all') => setSourceFilter(value)}>
+                  <SelectTrigger
+                    aria-label="Filter sales by source"
+                    className="h-8 w-[150px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-50 bg-background">
+                    {SOURCE_FILTER_OPTIONS.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Divider */}

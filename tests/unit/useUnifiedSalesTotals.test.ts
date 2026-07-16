@@ -63,6 +63,42 @@ describe('useUnifiedSalesTotals', () => {
       p_start_date: '2024-07-01',
       p_end_date: '2024-07-31',
       p_search_term: null,
+      p_pos_system: null,
+    });
+  });
+
+  it('passes sourceFilter through to the RPC when provided', async () => {
+    mockSupabase.rpc.mockResolvedValueOnce({
+      data: [
+        {
+          total_count: 10,
+          revenue: 100,
+          discounts: 5,
+          pass_through_amount: 2,
+          unique_items: 4,
+          collected_at_pos: 97,
+          uncategorized_count: 1,
+          pending_review_count: 0,
+        },
+      ],
+      error: null,
+    });
+
+    const { result } = renderHook(
+      () => useUnifiedSalesTotals('rest-1', { sourceFilter: 'toast' }),
+      { wrapper: createWrapper() }
+    );
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('get_unified_sales_totals', {
+      p_restaurant_id: 'rest-1',
+      p_start_date: null,
+      p_end_date: null,
+      p_search_term: null,
+      p_pos_system: 'toast',
     });
   });
 

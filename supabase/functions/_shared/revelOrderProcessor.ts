@@ -94,10 +94,16 @@ export function normalizeOrder(payload: any): NormalizedOrder {
     // Revel classic: the taxable line amount is base price + modifier_amount
     // (e.g. Beach Bowl 12.99 + 3.00 modifiers = 15.99, taxed at the item's rate).
     const modifier = toAmount(it.modifier_amount) ?? 0;
+    const qty = Number(it.quantity ?? it.qty ?? 1) || 1;
+    // Revel's `pure_sales` is its own per-line net sales (already price+modifiers × qty).
+    // Prefer it; otherwise compute (price + modifier) × quantity — both matched Revel exactly.
+    const pureSales = toAmount(it.pure_sales);
     const explicitTotal = toAmount(it.total ?? it.total_price);
-    const lineTotal = explicitTotal != null
+    const lineTotal = pureSales != null
+      ? pureSales
+      : explicitTotal != null
       ? explicitTotal
-      : (basePrice != null ? basePrice + modifier : null);
+      : (basePrice != null ? (basePrice + modifier) * qty : null);
     return {
       itemId: String(it.id ?? it.uuid ?? it.item_id ?? ''),
       // Revel classic OrderItem carries the human name in `product_name_override`.

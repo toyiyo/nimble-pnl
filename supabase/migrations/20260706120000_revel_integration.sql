@@ -311,7 +311,30 @@ BEGIN
     WHERE parent_sale_id IS NULL DO NOTHING;
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
-  -- 2) Tax (header)
+  -- 2) Per-order reconciliation to Revel's authoritative header subtotal.
+  --    Revel removes/refunds some items from the subtotal without an item-level flag;
+  --    this labeled line makes each order's sale total match the POS exactly.
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, synced_at)
+  SELECT g.restaurant_id, 'revel', g.revel_order_id, g.revel_order_id || ':reconcile', 'POS sales adjustment',
+         1, g.adj, g.adj, g.order_date, g.order_time, g.sold_at, 'sale', now()
+  FROM (
+    SELECT o.restaurant_id, o.revel_order_id, o.order_date, o.order_time, o.sold_at,
+           round(COALESCE(o.subtotal_amount,0) - COALESCE(sum(oi.total_price) FILTER (WHERE oi.is_voided = false), 0), 2) AS adj
+    FROM public.revel_orders o
+    LEFT JOIN public.revel_order_items oi ON oi.revel_order_id_fk = o.id
+    WHERE o.restaurant_id = p_restaurant_id
+      AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+      AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+    GROUP BY o.restaurant_id, o.revel_order_id, o.order_date, o.order_time, o.sold_at, o.subtotal_amount
+  ) g
+  WHERE g.adj <> 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 3) Tax (header)
   INSERT INTO public.unified_sales (
     restaurant_id, pos_system, external_order_id, external_item_id, item_name,
     quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)

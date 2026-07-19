@@ -8,7 +8,7 @@
  * stays open on top of the newly-navigated page.
  */
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { AppSidebar } from '@/components/AppSidebar';
@@ -16,6 +16,7 @@ import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  isMobile: true,
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -27,7 +28,7 @@ vi.mock('react-router-dom', async () => {
 });
 
 vi.mock('@/hooks/use-mobile', () => ({
-  useIsMobile: () => true,
+  useIsMobile: () => mocks.isMobile,
 }));
 
 vi.mock('@/hooks/useAuth', () => ({
@@ -76,7 +77,25 @@ function renderMobileSidebar() {
   );
 }
 
+function renderDesktopSidebar() {
+  return render(
+    <MemoryRouter initialEntries={['/']}>
+      <SidebarProvider>
+        <AppSidebar />
+      </SidebarProvider>
+    </MemoryRouter>,
+  );
+}
+
 describe('AppSidebar – mobile close-on-nav', () => {
+  beforeEach(() => {
+    mocks.isMobile = true;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('closes the mobile drawer and navigates when a nav item is tapped', () => {
     renderMobileSidebar();
 
@@ -91,6 +110,31 @@ describe('AppSidebar – mobile close-on-nav', () => {
     expect(mocks.navigate).toHaveBeenCalledWith('/integrations');
     // In this codebase's jsdom env, Radix Presence unmounts synchronously
     // (no CSS animation runs), so the dialog is gone immediately.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+});
+
+describe('AppSidebar – desktop regression guard', () => {
+  beforeEach(() => {
+    mocks.isMobile = false;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('navigates without throwing and leaves drawer state untouched on desktop', () => {
+    // Desktop never renders the mobile Sheet, so there is no drawer to open
+    // or close in the first place.
+    expect(() => renderDesktopSidebar()).not.toThrow();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+
+    const navLink = screen.getByRole('button', { name: /integrations/i });
+    expect(() => fireEvent.click(navLink)).not.toThrow();
+
+    expect(mocks.navigate).toHaveBeenCalledWith('/integrations');
+    // No Sheet ever mounted on desktop, so there's still no dialog to find —
+    // confirms handleNavigate's `setOpenMobile` branch was skipped safely.
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });

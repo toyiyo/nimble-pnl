@@ -17,6 +17,13 @@ import { SidebarProvider, useSidebar } from '@/components/ui/sidebar';
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   isMobile: true,
+  // Spies every `setOpenMobile` call made through AppSidebar's `useSidebar()`
+  // import (see the '@/components/ui/sidebar' mock below). This lets tests
+  // assert *whether the call happened at all*, not just its downstream
+  // effect on `openMobile` state — a plain state/DOM assertion can't tell
+  // the difference between "isMobile guard skipped the call" and "guard
+  // called setOpenMobile(false) while it was already false".
+  setOpenMobileSpy: vi.fn(),
 }));
 
 vi.mock('react-router-dom', async () => {
@@ -30,6 +37,26 @@ vi.mock('react-router-dom', async () => {
 vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => mocks.isMobile,
 }));
+
+vi.mock('@/components/ui/sidebar', async () => {
+  const actual = await vi.importActual<typeof import('@/components/ui/sidebar')>('@/components/ui/sidebar');
+  return {
+    ...actual,
+    // Wrap (not replace) `setOpenMobile` so real Sheet open/close behaviour
+    // is unaffected — we just record every call AppSidebar/test helpers make
+    // through this import.
+    useSidebar: () => {
+      const ctx = actual.useSidebar();
+      return {
+        ...ctx,
+        setOpenMobile: (open: boolean) => {
+          mocks.setOpenMobileSpy(open);
+          ctx.setOpenMobile(open);
+        },
+      };
+    },
+  };
+});
 
 vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({
@@ -108,8 +135,27 @@ describe('AppSidebar – mobile close-on-nav', () => {
     fireEvent.click(navLink);
 
     expect(mocks.navigate).toHaveBeenCalledWith('/integrations');
+    expect(mocks.setOpenMobileSpy).toHaveBeenCalledWith(false);
     // In this codebase's jsdom env, Radix Presence unmounts synchronously
     // (no CSS animation runs), so the dialog is gone immediately.
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('closes the mobile drawer when tapping the link for the current route (same-route tap)', () => {
+    // "/" doesn't map to a nav item, so use the header logo button, whose
+    // handleNavigate('/') target equals the initial route. A pathname-effect
+    // alternative (rejected in the design doc) would miss this case because
+    // the path never changes; the central handleNavigate helper must still
+    // close the drawer.
+    renderMobileSidebar();
+
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    const logoButton = screen.getByRole('button', { name: /easyshifthq/i });
+    fireEvent.click(logoButton);
+
+    expect(mocks.navigate).toHaveBeenCalledWith('/');
+    expect(mocks.setOpenMobileSpy).toHaveBeenCalledWith(false);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 });
@@ -123,18 +169,25 @@ describe('AppSidebar – desktop regression guard', () => {
     vi.clearAllMocks();
   });
 
-  it('navigates without throwing and leaves drawer state untouched on desktop', () => {
+  it('navigates without throwing and skips the setOpenMobile call on desktop', () => {
     // Desktop never renders the mobile Sheet, so there is no drawer to open
-    // or close in the first place.
+    // or close in the first place. NOTE: because of that, `queryByRole
+    // ('dialog')` is absent from this test's assertions on principle — the
+    // Sheet is never mounted on desktop regardless of what `handleNavigate`
+    // does, so that check can't distinguish "isMobile guard worked" from
+    // "isMobile guard was removed" (see mocks.setOpenMobileSpy below for the
+    // assertion that actually pins the guarded branch).
     expect(() => renderDesktopSidebar()).not.toThrow();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
     const navLink = screen.getByRole('button', { name: /integrations/i });
     expect(() => fireEvent.click(navLink)).not.toThrow();
 
     expect(mocks.navigate).toHaveBeenCalledWith('/integrations');
-    // No Sheet ever mounted on desktop, so there's still no dialog to find —
-    // confirms handleNavigate's `setOpenMobile` branch was skipped safely.
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    // The real regression guard: handleNavigate's `if (isMobile)` branch
+    // must skip calling `setOpenMobile` entirely on desktop. If that guard
+    // were ever removed, this assertion (unlike a dialog-role check) would
+    // fail, because AppSidebar's `useSidebar()` import is wrapped above to
+    // record every call.
+    expect(mocks.setOpenMobileSpy).not.toHaveBeenCalled();
   });
 });

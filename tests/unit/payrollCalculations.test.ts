@@ -963,3 +963,39 @@ describe('calculateEmployeePay overnight window attribution', () => {
     expect(payB.regularHours + payB.overtimeHours).toBeCloseTo(0, 5);
   });
 });
+
+describe('calculateEmployeePay — OT banding for break-after-midnight overnight shifts', () => {
+  const emp = {
+    id: 'e1', name: 'Night Owl', position: 'Server', status: 'active', is_active: true,
+    compensation_type: 'hourly', hourly_rate: 2000,
+  } as unknown as Employee;
+  const p = (type: string, iso: string): TimePunch => ({
+    id: `${type}-${iso}`, employee_id: 'e1', restaurant_id: 'r1',
+    punch_type: type, punch_time: iso, created_at: iso, updated_at: iso,
+  } as unknown as TimePunch);
+  const otRules = {
+    weeklyThresholdHours: 4, weeklyOtMultiplier: 1.5,
+    dailyThresholdHours: null, dailyOtMultiplier: 1.5,
+    dailyDoubleThresholdHours: null, dailyDoubleMultiplier: 2, excludeTipsFromOtRate: false,
+  };
+
+  it('CRITICAL: bands a break-after-midnight overnight shift crossing a week boundary into ONE (clock-in) week', () => {
+    // 2026-07-12 is Sunday (last day of the ISO week; WEEK_STARTS_ON=Mon).
+    // Sun 20:00 -> Mon 02:00 with a 00:00-00:30 break = 5.5h worked. Weekly OT threshold 4h.
+    // Whole shift belongs to the clock-in week → 4h reg + 1.5h OT.
+    // Before the fix the post-break 1.5h banded into the NEXT week → 5.5h reg / 0 OT.
+    const punches = [
+      p('clock_in', '2026-07-12T20:00:00'),
+      p('break_start', '2026-07-13T00:00:00'),
+      p('break_end', '2026-07-13T00:30:00'),
+      p('clock_out', '2026-07-13T02:00:00'),
+    ];
+    const pay = calculateEmployeePay(
+      emp, punches, 0,
+      new Date('2026-07-06T00:00:00'), new Date('2026-07-12T23:59:59.999'),
+      [], 0, otRules, []
+    );
+    expect(pay.regularHours).toBeCloseTo(4, 5);
+    expect(pay.overtimeHours).toBeCloseTo(1.5, 5);
+  });
+});

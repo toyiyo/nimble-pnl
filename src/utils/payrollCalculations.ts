@@ -482,11 +482,14 @@ export function calculateEmployeePay(
 
     for (const period of parsed.periods) {
       if (period.isBreak) continue;
-      // KNOWN GAP: OT weekly banding keys off period.startTime, not period.clockIn,
-      // so a break-after-midnight shift crossing an ISO-week boundary bands its
-      // pre/post-midnight hours into two weeks. Pre-existing, shared with the
-      // monthly labor calc. See docs/superpowers/specs/2026-07-11-monthly-labor-overnight-design.md
-      const dateKey = format(new Date(period.startTime), 'yyyy-MM-dd');
+      // Band OT (and prorate tips) by the shift's clock-in day, not the segment
+      // start. handleBreakEnd advances the clock-in anchor, so a break-after-
+      // midnight segment's startTime is the next day/week; keying off clockIn
+      // keeps the whole shift's hours in its clock-in day/week for daily+weekly
+      // OT and tip proration. Same day as startTime for all non-break-crossing
+      // shifts, so only the overnight break case changes. clockIn is a required
+      // WorkPeriod field (set on every parseWorkPeriods push site).
+      const dateKey = format(new Date(period.clockIn), 'yyyy-MM-dd');
       hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
     }
 

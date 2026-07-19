@@ -61,7 +61,7 @@ serve(async (req) => {
     // Validate the credentials against the merchant's own Classic API.
     let res: Response;
     try {
-      res = await revelFetch(instance, String(apiKey).trim(), String(apiSecret).trim(), '/resources/Establishment/?limit=1');
+      res = await revelFetch(instance, String(apiKey).trim(), String(apiSecret).trim(), '/resources/Order/?limit=1');
     } catch (e: any) {
       const reason = e?.name === 'AbortError' ? 'request timed out (15s)' : (e?.message || 'network error');
       await logSecurityEvent(service, 'REVEL_CONNECT_UNREACHABLE', user.id, restaurantId, { instance, reason });
@@ -71,7 +71,7 @@ serve(async (req) => {
       const bodySnippet = (await res.text().catch(() => '')).slice(0, 400);
       await logSecurityEvent(service, 'REVEL_CONNECT_VALIDATION_FAILED', user.id, restaurantId, { instance, status: res.status, body: bodySnippet });
       return json({
-        error: `Revel rejected GET https://${instance}.revelup.com/resources/Establishment/ (status ${res.status}). Double-check the URL, API key, and secret.`,
+        error: `Revel rejected GET https://${instance}.revelup.com/resources/Order/ (status ${res.status}). Double-check the URL, API key, and secret.`,
         status: res.status,
         revelResponse: bodySnippet,
       }, 400);

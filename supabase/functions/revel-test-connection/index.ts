@@ -57,7 +57,7 @@ serve(async (req) => {
 
     let res: Response;
     try {
-      res = await revelFetch(conn.revel_instance, apiKey, apiSecret, '/resources/Establishment/?limit=1');
+      res = await revelFetch(conn.revel_instance, apiKey, apiSecret, '/resources/Order/?limit=1');
     } catch (e: any) {
       const reason = e?.name === 'AbortError' ? 'request timed out (15s)' : (e?.message || 'network error');
       return json({ success: false, error: `Could not reach https://${conn.revel_instance}.revelup.com (${reason})` });

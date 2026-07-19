@@ -57,7 +57,7 @@ Add a single `handleNavigate(path: string)` in `AppSidebar` that navigates and
 then closes the mobile drawer, and route every navigable control through it:
 
 ```tsx
-const { state: sidebarState, isMobile, setOpenMobile } = useSidebar();
+const { isMobile, setOpenMobile } = useSidebar();
 
 const handleNavigate = (path: string) => {
   navigate(path);

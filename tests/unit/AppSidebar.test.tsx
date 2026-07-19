@@ -151,7 +151,7 @@ describe('AppSidebar – mobile close-on-nav', () => {
 
     expect(screen.getByRole('dialog')).toBeInTheDocument();
 
-    const logoButton = screen.getByRole('button', { name: /easyshifthq/i });
+    const logoButton = screen.getByRole('button', { name: /go to dashboard/i });
     fireEvent.click(logoButton);
 
     expect(mocks.navigate).toHaveBeenCalledWith('/');

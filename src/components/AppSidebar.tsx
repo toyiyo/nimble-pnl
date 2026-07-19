@@ -85,6 +85,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b h-14 p-0">
         <button
           onClick={() => handleNavigate('/')}
+          aria-label="Go to dashboard"
           className={`flex items-center gap-3 group transition-all duration-200 hover:scale-105 w-full h-full ${
             collapsed ? 'justify-center px-3' : 'px-4'
           }`}

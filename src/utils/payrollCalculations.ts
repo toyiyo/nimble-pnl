@@ -487,8 +487,9 @@ export function calculateEmployeePay(
       // midnight segment's startTime is the next day/week; keying off clockIn
       // keeps the whole shift's hours in its clock-in day/week for daily+weekly
       // OT and tip proration. Same day as startTime for all non-break-crossing
-      // shifts, so only the overnight break case changes.
-      const dateKey = format(new Date(period.clockIn ?? period.startTime), 'yyyy-MM-dd');
+      // shifts, so only the overnight break case changes. clockIn is a required
+      // WorkPeriod field (set on every parseWorkPeriods push site).
+      const dateKey = format(new Date(period.clockIn), 'yyyy-MM-dd');
       hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
     }
 

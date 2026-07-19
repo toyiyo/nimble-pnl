@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { revelFetch } from "../_shared/revelClient.ts";
+import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
 
 const corsHeaders = {
@@ -11,18 +12,24 @@ const corsHeaders = {
 const MAX_RESTAURANTS_PER_RUN = 5;
 const BACKFILL_DAYS = 90;
 const BATCH_DAYS = 3;
+const ORDER_RESOURCE = '/resources/OrderAllInOne/';
+const DATE_FIELD = 'created_date';
+const PAGE_LIMIT = 200;
+const MAX_PAGES = 20;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
-function ordersPath(startDate: string, endDate: string): string {
+function ordersPath(start: string, end: string, offset: number): string {
   const params = new URLSearchParams({
-    'created_date__gte': `${startDate}T00:00:00`,
-    'created_date__lte': `${endDate}T23:59:59`,
-    'limit': '200',
+    [`${DATE_FIELD}__gte`]: `${start}T00:00:00`,
+    [`${DATE_FIELD}__lte`]: `${end}T23:59:59`,
+    limit: String(PAGE_LIMIT),
+    offset: String(offset),
+    order_by: DATE_FIELD,
   });
-  return `/resources/Order/?${params.toString()}`;
+  return `${ORDER_RESOURCE}?${params.toString()}`;
 }
 
 serve(async (req) => {
@@ -34,7 +41,8 @@ serve(async (req) => {
   );
 
   try {
-    // Round-robin: oldest last_sync_time first
+    const encryption = await getEncryptionService();
+
     const { data: connections } = await service
       .from('revel_connections')
       .select('*')
@@ -45,7 +53,8 @@ serve(async (req) => {
     let totalProcessed = 0;
 
     for (const conn of connections ?? []) {
-      // Determine the window: initial backfill vs incremental
+      if (!conn.api_key_encrypted || !conn.api_secret_encrypted) continue;
+
       let start: string;
       let end: string;
       const today = new Date();
@@ -55,21 +64,20 @@ serve(async (req) => {
         start = cursor.toISOString().split('T')[0];
         end = new Date(cursor.getTime() + BATCH_DAYS * 86400000).toISOString().split('T')[0];
       } else {
-        start = new Date(today.getTime() - 2 * 86400000).toISOString().split('T')[0]; // 48h incremental
+        start = new Date(today.getTime() - 2 * 86400000).toISOString().split('T')[0];
         end = today.toISOString().split('T')[0];
       }
 
       try {
-        const res = await revelFetch(service, conn.revel_instance, ordersPath(start, end));
-        if (!res.ok) {
-          // Do NOT advance the cursor or clear errors on a failed fetch — record it and
-          // let the next cron run retry this same batch.
-          await service.from('revel_connections')
-            .update({ last_error: `bulk fetch failed: ${res.status}`, last_error_at: new Date().toISOString() })
-            .eq('id', conn.id);
-        } else {
+        const apiKey = await encryption.decrypt(conn.api_key_encrypted);
+        const apiSecret = await encryption.decrypt(conn.api_secret_encrypted);
+
+        let fetchFailedStatus: number | null = null;
+        for (let page = 0; page < MAX_PAGES; page++) {
+          const res = await revelFetch(conn.revel_instance, apiKey, apiSecret, ordersPath(start, end, page * PAGE_LIMIT));
+          if (!res.ok) { fetchFailedStatus = res.status; break; }
           const body = await res.json();
-          const orders: any[] = body.objects ?? body.results ?? body.orders ?? (Array.isArray(body) ? body : []);
+          const orders: any[] = body.objects ?? body.results ?? (Array.isArray(body) ? body : []);
           for (const order of orders) {
             try {
               await processOrder(service, order, conn.restaurant_id, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
@@ -78,9 +86,17 @@ serve(async (req) => {
               console.error(`revel-bulk-sync: failed to process order for restaurant ${conn.restaurant_id}:`, e);
             }
           }
+          if (orders.length < PAGE_LIMIT) break;
+        }
+
+        if (fetchFailedStatus !== null) {
+          // Do NOT advance the cursor on a failed fetch — record and retry next run.
+          await service.from('revel_connections')
+            .update({ last_error: `bulk fetch failed: ${fetchFailedStatus}`, last_error_at: new Date().toISOString() })
+            .eq('id', conn.id);
+        } else {
           await service.rpc('sync_revel_to_unified_sales', { p_restaurant_id: conn.restaurant_id, p_start_date: start, p_end_date: end });
 
-          // Advance cursor / mark backfill complete — only after a successful fetch.
           const update: Record<string, unknown> = { last_sync_time: new Date().toISOString(), last_error: null, last_error_at: null };
           if (!conn.initial_sync_done) {
             const nextCursor = new Date(new Date(end).getTime() + 86400000);
@@ -99,7 +115,6 @@ serve(async (req) => {
           .eq('id', conn.id);
       }
 
-      // Gentle pacing between merchants (rate-limit friendliness)
       await new Promise((r) => setTimeout(r, 2000));
     }
 

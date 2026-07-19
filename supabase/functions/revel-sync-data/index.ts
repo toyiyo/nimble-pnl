@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { revelFetch } from "../_shared/revelClient.ts";
+import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
 
 const corsHeaders = {
@@ -8,20 +9,26 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Classic Revel order resource + filter field. UNCONFIRMED against a live account —
+// isolated here so switching resource/field is a one-line change once we see real data.
+const ORDER_RESOURCE = '/resources/OrderAllInOne/';
+const DATE_FIELD = 'created_date';
+const PAGE_LIMIT = 100;
+const MAX_PAGES = 20; // safety cap per invocation
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 }
 
-// NOTE: the exact order-list endpoint + query params are confirmed against Revel's data
-// dictionary (wide_order) during first live sync. Isolated here so only this URL changes.
-function ordersPath(startDate: string, endDate: string): string {
-  // Revel filtering uses double-underscore operators (spec/FAQ): created_date__gte / __lte.
+function ordersPath(start: string, end: string, offset: number): string {
   const params = new URLSearchParams({
-    'created_date__gte': `${startDate}T00:00:00`,
-    'created_date__lte': `${endDate}T23:59:59`,
-    'limit': '100',
+    [`${DATE_FIELD}__gte`]: `${start}T00:00:00`,
+    [`${DATE_FIELD}__lte`]: `${end}T23:59:59`,
+    limit: String(PAGE_LIMIT),
+    offset: String(offset),
+    order_by: DATE_FIELD,
   });
-  return `/resources/Order/?${params.toString()}`;
+  return `${ORDER_RESOURCE}?${params.toString()}`;
 }
 
 serve(async (req) => {
@@ -42,38 +49,59 @@ serve(async (req) => {
     const { restaurantId, startDate, endDate } = await req.json();
     if (!restaurantId) return json({ error: 'restaurantId is required' }, 400);
 
-    const { data: connection } = await userClient
+    // Membership via RLS
+    const { data: membership } = await userClient
       .from('revel_connections')
-      .select('revel_instance, establishment_id')
+      .select('id')
       .eq('restaurant_id', restaurantId)
       .eq('is_active', true)
       .maybeSingle();
-    if (!connection) return json({ error: 'No Revel connection found' }, 404);
+    if (!membership) return json({ error: 'No Revel connection found' }, 404);
 
     const service = createClient(supabaseUrl, serviceKey);
+    const { data: conn } = await service
+      .from('revel_connections')
+      .select('revel_instance, establishment_id, api_key_encrypted, api_secret_encrypted')
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (!conn?.api_key_encrypted || !conn?.api_secret_encrypted) {
+      return json({ error: 'No Revel credentials stored for this restaurant' }, 400);
+    }
+
+    const encryption = await getEncryptionService();
+    const apiKey = await encryption.decrypt(conn.api_key_encrypted);
+    const apiSecret = await encryption.decrypt(conn.api_secret_encrypted);
 
     const end = endDate || new Date().toISOString().split('T')[0];
     const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-    const res = await revelFetch(service, connection.revel_instance, ordersPath(start, end));
-    if (!res.ok) {
-      await service.from('revel_connections')
-        .update({ last_error: `sync failed: ${res.status}`, last_error_at: new Date().toISOString() })
-        .eq('restaurant_id', restaurantId);
-      return json({ error: `Revel order fetch failed (${res.status})` }, 502);
-    }
-
-    const body = await res.json();
-    const orders: any[] = body.objects ?? body.results ?? body.orders ?? (Array.isArray(body) ? body : []);
-
     let processed = 0;
-    for (const order of orders) {
-      try {
-        await processOrder(service, order, restaurantId, connection.revel_instance, connection.establishment_id ?? null, { skipUnifiedSalesSync: true });
-        processed++;
-      } catch (e) {
-        console.error(`revel-sync-data: failed to process order for restaurant ${restaurantId}:`, e);
+    let loggedSample = false;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const res = await revelFetch(conn.revel_instance, apiKey, apiSecret, ordersPath(start, end, page * PAGE_LIMIT));
+      if (!res.ok) {
+        await service.from('revel_connections')
+          .update({ last_error: `sync failed: ${res.status}`, last_error_at: new Date().toISOString() })
+          .eq('restaurant_id', restaurantId);
+        return json({ error: `Revel order fetch failed (${res.status})` }, 502);
       }
+      const body = await res.json();
+      const orders: any[] = body.objects ?? body.results ?? (Array.isArray(body) ? body : []);
+      if (!loggedSample && orders.length) {
+        // One-time shape probe to iterate normalizeOrder against real data.
+        console.log('revel-sync-data: first order object sample:', JSON.stringify(orders[0]).slice(0, 3000));
+        loggedSample = true;
+      }
+      for (const order of orders) {
+        try {
+          await processOrder(service, order, restaurantId, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
+          processed++;
+        } catch (e) {
+          console.error(`revel-sync-data: failed to process order for restaurant ${restaurantId}:`, e);
+        }
+      }
+      if (orders.length < PAGE_LIMIT) break;
     }
 
     const { data: synced } = await service.rpc('sync_revel_to_unified_sales', {

@@ -267,6 +267,9 @@ $$;
 -- RPC: sync_revel_to_unified_sales(p_restaurant_id, p_start_date, p_end_date)
 -- Bulk backfill/reconcile used by the adapter and bulk-sync cron.
 -- =====================================================
+-- Emits the COMPLETE financial breakdown so audits reconcile to Revel's order totals:
+-- sale lines (item price + modifiers), plus header-level tax / tip / discount / service charge.
+-- Identity: sum(sales) = subtotal, and sum(sales) + tax - discount = final_total. Tips sit on top.
 CREATE OR REPLACE FUNCTION public.sync_revel_to_unified_sales(
   p_restaurant_id UUID,
   p_start_date DATE DEFAULT NULL,
@@ -279,6 +282,7 @@ SET search_path = public
 AS $$
 DECLARE
   v_synced_count INTEGER := 0;
+  v_rows INTEGER := 0;
 BEGIN
   IF auth.uid() IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM public.user_restaurants
@@ -287,6 +291,7 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
   END IF;
 
+  -- 1) Sale rows: non-voided line items (total_price includes modifiers)
   INSERT INTO public.unified_sales (
     restaurant_id, pos_system, external_order_id, external_item_id,
     item_name, quantity, unit_price, total_price,
@@ -303,10 +308,65 @@ BEGIN
     AND (p_start_date IS NULL OR o.order_date >= p_start_date)
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
-    WHERE parent_sale_id IS NULL
-  DO NOTHING;
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
-  GET DIAGNOSTICS v_synced_count = ROW_COUNT;
+  -- 2) Tax (header)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':tax', 'Tax',
+         1, o.tax_amount, o.tax_amount, o.order_date, o.order_time, o.sold_at, 'tax', 'tax', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.tax_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 3) Tip / gratuity (header; on top of final_total)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':tip', 'Tip',
+         1, o.tip_amount, o.tip_amount, o.order_date, o.order_time, o.sold_at, 'tip', 'tip', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.tip_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 4) Discount (header; stored negative)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':discount', 'Discount',
+         1, -abs(o.discount_amount), -abs(o.discount_amount), o.order_date, o.order_time, o.sold_at, 'discount', 'discount', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.discount_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 5) Service charge (header)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':service_charge', 'Service Charge',
+         1, o.service_charge_amount, o.service_charge_amount, o.order_date, o.order_time, o.sold_at, 'service_charge', 'service_charge', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.service_charge_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
   RETURN v_synced_count;
 END;
 $$;

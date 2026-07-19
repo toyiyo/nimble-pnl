@@ -89,18 +89,28 @@ export function normalizeOrder(payload: any): NormalizedOrder {
   const itemsRaw = payload.OrderItems ?? payload.order_items ?? order.items ?? [];
   const paymentsRaw = payload.Payments ?? payload.payments ?? order.payments ?? [];
 
-  const items: NormalizedItem[] = (itemsRaw as any[]).map((it) => ({
-    itemId: String(it.id ?? it.uuid ?? it.item_id ?? ''),
-    // Revel classic OrderItem carries the human name in `product_name_override`.
-    itemName: it.product_name_override ?? it.name ?? it.display_name ?? it.item_name ?? 'Unknown Item',
-    quantity: Number(it.quantity ?? it.qty ?? 1),
-    unitPrice: toAmount(it.price ?? it.unit_price ?? it.amount),
-    totalPrice: toAmount(it.total ?? it.total_price ?? it.price),
-    category: it.category ?? it.category_name ?? it.menu_category ?? null,
-    // Revel marks voids via voided_by / voided_date / deleted rather than a boolean.
-    isVoided: Boolean(it.voided ?? it.is_voided ?? (it.voided_by != null || it.voided_date != null || it.deleted === true)),
-    raw: it,
-  }));
+  const items: NormalizedItem[] = (itemsRaw as any[]).map((it) => {
+    const basePrice = toAmount(it.price ?? it.unit_price ?? it.amount);
+    // Revel classic: the taxable line amount is base price + modifier_amount
+    // (e.g. Beach Bowl 12.99 + 3.00 modifiers = 15.99, taxed at the item's rate).
+    const modifier = toAmount(it.modifier_amount) ?? 0;
+    const explicitTotal = toAmount(it.total ?? it.total_price);
+    const lineTotal = explicitTotal != null
+      ? explicitTotal
+      : (basePrice != null ? basePrice + modifier : null);
+    return {
+      itemId: String(it.id ?? it.uuid ?? it.item_id ?? ''),
+      // Revel classic OrderItem carries the human name in `product_name_override`.
+      itemName: it.product_name_override ?? it.name ?? it.display_name ?? it.item_name ?? 'Unknown Item',
+      quantity: Number(it.quantity ?? it.qty ?? 1),
+      unitPrice: basePrice,
+      totalPrice: lineTotal,
+      category: it.category ?? it.category_name ?? it.menu_category ?? null,
+      // Revel marks voids via voided_by / voided_date / deleted rather than a boolean.
+      isVoided: Boolean(it.voided ?? it.is_voided ?? (it.voided_by != null || it.voided_date != null || it.deleted === true)),
+      raw: it,
+    };
+  });
 
   const payments: NormalizedPayment[] = (paymentsRaw as any[]).map((p) => ({
     paymentId: String(p.id ?? p.uuid ?? p.payment_id ?? ''),

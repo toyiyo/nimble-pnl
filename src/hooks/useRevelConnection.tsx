@@ -54,9 +54,9 @@ export function useRevelConnection(restaurantId?: string | null) {
     return data ?? null;
   }
 
-  async function connect(id: string, revelInstance: string, establishmentId?: string): Promise<Record<string, unknown>> {
+  async function connect(id: string, revelInstance: string, apiKey: string, apiSecret: string, establishmentId?: string): Promise<Record<string, unknown>> {
     const { data, error } = await supabase.functions.invoke('revel-connect', {
-      body: { restaurantId: id, revelInstance, establishmentId },
+      body: { restaurantId: id, revelInstance, apiKey, apiSecret, establishmentId },
     });
     if (error) throw error;
     if (data?.error) throw new Error(data.error);

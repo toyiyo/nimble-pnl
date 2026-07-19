@@ -18,19 +18,21 @@ type SetupStep = 'instance' | 'complete';
 export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardProps) => {
   const [currentStep, setCurrentStep] = useState<SetupStep>('instance');
   const [instance, setInstance] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [apiSecret, setApiSecret] = useState('');
   const [establishmentId, setEstablishmentId] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const { connect, testConnection } = useRevelConnection();
 
   const handleConnect = async () => {
-    if (!instance.trim()) {
-      toast({ title: 'Missing information', description: 'Enter your Revel URL or subdomain', variant: 'destructive' });
+    if (!instance.trim() || !apiKey.trim() || !apiSecret.trim()) {
+      toast({ title: 'Missing information', description: 'Enter your Revel URL, API key, and API secret', variant: 'destructive' });
       return;
     }
     setLoading(true);
     try {
-      await connect(restaurantId, instance.trim(), establishmentId.trim() || undefined);
+      await connect(restaurantId, instance.trim(), apiKey.trim(), apiSecret.trim(), establishmentId.trim() || undefined);
       const result = await testConnection(restaurantId);
       if (result.success) {
         setCurrentStep('complete');
@@ -62,9 +64,9 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
                 <div className="space-y-2">
                   <p className="font-semibold">Before you connect:</p>
                   <ol className="list-decimal list-inside space-y-1 text-sm">
-                    <li>Log in to your Revel account and authorize <strong>EasyShiftHQ</strong> as an integration partner</li>
+                    <li>In Revel, go to <strong>Settings → API</strong> and create an API key + secret (or use an existing one)</li>
                     <li>Copy your Revel URL — it looks like <code className="bg-muted px-1 rounded">yourname.revelup.com</code></li>
-                    <li>Paste the URL (or just the <strong>yourname</strong> part) below</li>
+                    <li>Enter the URL, API key, and API secret below</li>
                   </ol>
                   <a
                     href="https://support.revelsystems.com/s/partner-integrations"
@@ -89,6 +91,27 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
                 />
               </div>
               <div>
+                <Label htmlFor="revel-api-key">API key</Label>
+                <Input
+                  id="revel-api-key"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="Your Revel API key"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
+                <Label htmlFor="revel-api-secret">API secret</Label>
+                <Input
+                  id="revel-api-secret"
+                  type="password"
+                  value={apiSecret}
+                  onChange={(e) => setApiSecret(e.target.value)}
+                  placeholder="Your Revel API secret"
+                  autoComplete="off"
+                />
+              </div>
+              <div>
                 <Label htmlFor="revel-establishment">Establishment ID (optional)</Label>
                 <Input
                   id="revel-establishment"
@@ -97,7 +120,7 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
                   placeholder="Leave blank if you have a single establishment"
                 />
               </div>
-              <Button onClick={handleConnect} disabled={loading || !instance.trim()} className="w-full">
+              <Button onClick={handleConnect} disabled={loading || !instance.trim() || !apiKey.trim() || !apiSecret.trim()} className="w-full">
                 {loading ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" />Connecting...</>) : 'Connect & Verify'}
               </Button>
             </div>

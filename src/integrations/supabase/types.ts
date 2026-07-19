@@ -5472,29 +5472,10 @@ export type Database = {
         }
         Relationships: []
       }
-      revel_auth_cache: {
-        Row: {
-          access_token_encrypted: string
-          id: number
-          token_expires_at: string
-          updated_at: string
-        }
-        Insert: {
-          access_token_encrypted: string
-          id?: number
-          token_expires_at: string
-          updated_at?: string
-        }
-        Update: {
-          access_token_encrypted?: string
-          id?: number
-          token_expires_at?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
       revel_connections: {
         Row: {
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
           connection_status: string
           created_at: string
           establishment_id: string | null
@@ -5512,6 +5493,8 @@ export type Database = {
           webhook_active: boolean
         }
         Insert: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
           connection_status?: string
           created_at?: string
           establishment_id?: string | null
@@ -5529,6 +5512,8 @@ export type Database = {
           webhook_active?: boolean
         }
         Update: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
           connection_status?: string
           created_at?: string
           establishment_id?: string | null

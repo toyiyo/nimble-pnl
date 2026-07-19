@@ -84,6 +84,43 @@ grouping (Scheduling / Trades / Time-off / Access / …).
 `notify-pin-changed`. Each splits email/push gating; `send-time-off-notification`'s hand-rolled gate
 is unified onto the resolver.
 
+## Combined scope (user decision) + design-review folds
+
+**User chose "full matrix, all live, one PR":** wire **all currently-firing** notification functions
+to `resolveChannels` (B1+B3) AND ship the **full matrix UI** (B2) so **every visible row is live** —
+no dead toggles. Retire the old time-off event switches (replaced by matrix rows).
+
+### Supabase review folds
+- **COALESCE legacy booleans** in the data-migration: `COALESCE(notify_shift_created, true)` for every
+  mapped column (both channels) — nullable legacy columns would otherwise NULL-violate the NOT NULL
+  channel columns and abort the whole `INSERT..SELECT`; and NULL→true preserves fail-open semantics.
+- **Add an `updated_at` `BEFORE UPDATE` trigger** reusing `update_scheduling_updated_at()` (the source
+  table has one; without it `updated_at` never advances on toggle-saves).
+- **CHECK constraint** `notification_type IN (<17 types>)` — turns a typo (which fail-open would mask
+  as "not configured") into an insert-time error. The TS union is the single hand-maintained source;
+  the CHECK list + UI catalog are reviewed against it in this PR.
+- Drop the redundant single-column `restaurant_id` index (composite UNIQUE covers the prefix).
+- Data-migration seeds **6** types (3 shift + 3 time-off), not "8" (doc-count fix).
+
+### Frontend review folds
+- **No dead rows** (was critical): resolved by the full retrofit — every row controls a live function.
+- **Retire the old time-off toggles** in `NotificationSettings.tsx` (they wrote the legacy table);
+  once `send-time-off-notification` reads only the resolver, the matrix's time-off rows are the single
+  control. Removing avoids two contradictory controls in one tab.
+- **Diff-based Save** (was critical, lost-update race + bloat): upsert **only rows changed vs the
+  fetched snapshot**, never the full 17×2 grid.
+- **Guard the local↔server sync effect** so a background refetch (`refetchOnWindowFocus`/staleTime)
+  never clobbers in-progress edits while `hasChanges` is true.
+- **a11y:** a real `<table>` per domain group (mirror `AvailabilityGrid.tsx`), each `Switch` with a
+  composed `aria-label` (`"Shift deleted — Push"`); `sr-only` column headers, `scope="row"` labels.
+- **Mobile:** verify at 375px; sticky Save/Reset footer given the page height.
+- **Catalog single-source:** `src/lib/notificationTypes.ts` (key + label + group). A vitest asserts its
+  keys exactly match the resolver's `NotificationType` union (drift fails CI, not prod).
+- **States:** loading → table-shaped skeleton; error → explicit retry banner (NOT a silent all-ON
+  fallback, which would look identical to a real fail-open load); no empty state (17 fixed rows).
+- New `NotificationChannelMatrix.tsx` component (don't bloat `NotificationSettings.tsx`); `staleTime:
+  60000`; `hasChanges` by value-comparison; explicit `select` fields.
+
 ## Out of scope / follow-ups
 
 - Per-**employee** channel overrides (a `notification_user_channel_overrides` table layered on top) —

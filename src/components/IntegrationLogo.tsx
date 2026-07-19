@@ -13,7 +13,7 @@ const imageLogoMap: Record<string, string> = {
   'focus-pos': '/logos/focus.svg',
   'toast-pos': '/logos/toast.png',
   'shift4-pos': '/logos/shift4.png',
-  'revel-pos': '/logos/revel.png',
+  'revel-pos': '/logos/revel-icon.png',
   'sling-scheduling': '/logos/sling.svg',
   '7shifts': '/logos/7shifts.png',
   'when-i-work': '/logos/when-i-work.png',

@@ -55,9 +55,16 @@ serve(async (req) => {
     const apiKey = await encryption.decrypt(conn.api_key_encrypted);
     const apiSecret = await encryption.decrypt(conn.api_secret_encrypted);
 
-    const res = await revelFetch(conn.revel_instance, apiKey, apiSecret, '/resources/Establishment/?limit=1');
+    let res: Response;
+    try {
+      res = await revelFetch(conn.revel_instance, apiKey, apiSecret, '/resources/Establishment/?limit=1');
+    } catch (e: any) {
+      const reason = e?.name === 'AbortError' ? 'request timed out (15s)' : (e?.message || 'network error');
+      return json({ success: false, error: `Could not reach https://${conn.revel_instance}.revelup.com (${reason})` });
+    }
     if (!res.ok) {
-      return json({ success: false, error: `Revel access check failed (${res.status})` });
+      const bodySnippet = (await res.text().catch(() => '')).slice(0, 400);
+      return json({ success: false, error: `Revel access check failed (${res.status})`, status: res.status, revelResponse: bodySnippet });
     }
 
     return json({ success: true, instance: conn.revel_instance });

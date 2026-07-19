@@ -59,10 +59,22 @@ serve(async (req) => {
     const service = createClient(supabaseUrl, serviceKey);
 
     // Validate the credentials against the merchant's own Classic API.
-    const res = await revelFetch(instance, String(apiKey).trim(), String(apiSecret).trim(), '/resources/Establishment/?limit=1');
+    let res: Response;
+    try {
+      res = await revelFetch(instance, String(apiKey).trim(), String(apiSecret).trim(), '/resources/Establishment/?limit=1');
+    } catch (e: any) {
+      const reason = e?.name === 'AbortError' ? 'request timed out (15s)' : (e?.message || 'network error');
+      await logSecurityEvent(service, 'REVEL_CONNECT_UNREACHABLE', user.id, restaurantId, { instance, reason });
+      return json({ error: `Could not reach https://${instance}.revelup.com (${reason}). Check the Revel URL/subdomain.` }, 502);
+    }
     if (!res.ok) {
-      await logSecurityEvent(service, 'REVEL_CONNECT_VALIDATION_FAILED', user.id, restaurantId, { instance, status: res.status });
-      return json({ error: `Could not authenticate to https://${instance}.revelup.com with those API credentials (status ${res.status}). Double-check the URL, API key, and secret.` }, 400);
+      const bodySnippet = (await res.text().catch(() => '')).slice(0, 400);
+      await logSecurityEvent(service, 'REVEL_CONNECT_VALIDATION_FAILED', user.id, restaurantId, { instance, status: res.status, body: bodySnippet });
+      return json({
+        error: `Revel rejected GET https://${instance}.revelup.com/resources/Establishment/ (status ${res.status}). Double-check the URL, API key, and secret.`,
+        status: res.status,
+        revelResponse: bodySnippet,
+      }, 400);
     }
 
     const encryption = await getEncryptionService();

@@ -11,6 +11,8 @@ CREATE TABLE IF NOT EXISTS public.revel_connections (
   restaurant_id UUID NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
   revel_instance TEXT NOT NULL,            -- Client-Id subdomain, e.g. 'joesdiner'
   establishment_id TEXT NOT NULL DEFAULT '',  -- '' = single-establishment merchant (NULL breaks unique dedup)
+  api_key_encrypted TEXT,                  -- Classic API key (AES-GCM encrypted)
+  api_secret_encrypted TEXT,               -- Classic API secret (AES-GCM encrypted)
   is_active BOOLEAN NOT NULL DEFAULT true,
   connection_status TEXT NOT NULL DEFAULT 'connected',
   initial_sync_done BOOLEAN NOT NULL DEFAULT false,
@@ -99,15 +101,6 @@ CREATE TABLE IF NOT EXISTS public.revel_webhook_events (
   UNIQUE(restaurant_id, event_id)
 );
 
--- Table: revel_auth_cache (single shared partner bearer token; service-role only)
-CREATE TABLE IF NOT EXISTS public.revel_auth_cache (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  access_token_encrypted TEXT NOT NULL,
-  token_expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
-  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
-  CONSTRAINT revel_auth_cache_singleton CHECK (id = 1)
-);
-
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_revel_connections_restaurant ON public.revel_connections(restaurant_id);
 CREATE INDEX IF NOT EXISTS idx_revel_connections_instance ON public.revel_connections(revel_instance);
@@ -125,8 +118,6 @@ ALTER TABLE public.revel_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.revel_order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.revel_payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.revel_webhook_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.revel_auth_cache ENABLE ROW LEVEL SECURITY;
--- revel_auth_cache: no policies => only service role can read/write.
 
 CREATE POLICY "Users can view their restaurant Revel connections"
   ON public.revel_connections FOR SELECT
@@ -335,7 +326,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_orders TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_order_items TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_payments TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_webhook_events TO authenticated;
--- revel_auth_cache intentionally has NO authenticated grants (service-role only).
 
 GRANT SELECT ON public.revel_connections TO anon;
 GRANT SELECT ON public.revel_orders TO anon;

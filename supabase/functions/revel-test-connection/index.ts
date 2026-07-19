@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { revelFetch } from "../_shared/revelClient.ts";
+import { getEncryptionService } from "../_shared/encryption.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,22 +30,37 @@ serve(async (req) => {
     const { restaurantId } = await req.json();
     if (!restaurantId) return json({ error: 'restaurantId is required' }, 400);
 
-    // Read connection via RLS (confirms membership + existence)
-    const { data: connection } = await userClient
+    // Membership check via RLS
+    const { data: membership } = await userClient
       .from('revel_connections')
-      .select('revel_instance, establishment_id')
+      .select('id')
       .eq('restaurant_id', restaurantId)
       .eq('is_active', true)
       .maybeSingle();
-    if (!connection) return json({ error: 'No Revel connection found' }, 404);
+    if (!membership) return json({ error: 'No Revel connection found' }, 404);
 
+    // Read encrypted creds with the service role
     const service = createClient(supabaseUrl, serviceKey);
-    const res = await revelFetch(service, connection.revel_instance, '/external/integrations');
+    const { data: conn } = await service
+      .from('revel_connections')
+      .select('revel_instance, api_key_encrypted, api_secret_encrypted')
+      .eq('restaurant_id', restaurantId)
+      .eq('is_active', true)
+      .maybeSingle();
+    if (!conn?.api_key_encrypted || !conn?.api_secret_encrypted) {
+      return json({ success: false, error: 'No Revel credentials stored for this restaurant' });
+    }
+
+    const encryption = await getEncryptionService();
+    const apiKey = await encryption.decrypt(conn.api_key_encrypted);
+    const apiSecret = await encryption.decrypt(conn.api_secret_encrypted);
+
+    const res = await revelFetch(conn.revel_instance, apiKey, apiSecret, '/resources/Establishment/?limit=1');
     if (!res.ok) {
       return json({ success: false, error: `Revel access check failed (${res.status})` });
     }
 
-    return json({ success: true, instance: connection.revel_instance });
+    return json({ success: true, instance: conn.revel_instance });
   } catch (error: any) {
     return json({ success: false, error: error.message }, 200);
   }

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { revelFetch } from "../_shared/revelClient.ts";
+import { getEncryptionService } from "../_shared/encryption.ts";
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
 
 const corsHeaders = {
@@ -10,6 +11,16 @@ const corsHeaders = {
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+}
+
+/** Normalize a user-supplied Revel URL or subdomain to just the subdomain slug. */
+function normalizeInstance(input: string): string {
+  return String(input)
+    .replace(/^https?:\/\//, '')
+    .replace(/\.revelup\.com\/?.*$/, '')
+    .replace(/\/.*$/, '')
+    .trim()
+    .toLowerCase();
 }
 
 serve(async (req) => {
@@ -27,8 +38,10 @@ serve(async (req) => {
     const { data: { user } } = await userClient.auth.getUser();
     if (!user) return json({ error: 'Unauthorized' }, 401);
 
-    const { restaurantId, revelInstance, establishmentId } = await req.json();
-    if (!restaurantId || !revelInstance) return json({ error: 'restaurantId and revelInstance are required' }, 400);
+    const { restaurantId, revelInstance, apiKey, apiSecret, establishmentId } = await req.json();
+    if (!restaurantId || !revelInstance || !apiKey || !apiSecret) {
+      return json({ error: 'restaurantId, revelInstance, apiKey and apiSecret are required' }, 400);
+    }
 
     // Permission: owner/manager on this restaurant
     const { data: role } = await userClient
@@ -40,30 +53,31 @@ serve(async (req) => {
       .maybeSingle();
     if (!role) return json({ error: 'Forbidden' }, 403);
 
+    const instance = normalizeInstance(revelInstance);
+    if (!instance) return json({ error: 'Could not parse a Revel subdomain from the URL provided' }, 400);
+
     const service = createClient(supabaseUrl, serviceKey);
 
-    // Normalize instance: strip protocol + '.revelup.com' if user pasted a full URL.
-    const instance = String(revelInstance)
-      .replace(/^https?:\/\//, '')
-      .replace(/\.revelup\.com\/?.*$/, '')
-      .replace(/\/.*$/, '')
-      .trim()
-      .toLowerCase();
-
-    // Validate we actually have partner access to this instance.
-    const res = await revelFetch(service, instance, '/external/integrations');
+    // Validate the credentials against the merchant's own Classic API.
+    const res = await revelFetch(instance, String(apiKey).trim(), String(apiSecret).trim(), '/resources/Establishment/?limit=1');
     if (!res.ok) {
       await logSecurityEvent(service, 'REVEL_CONNECT_VALIDATION_FAILED', user.id, restaurantId, { instance, status: res.status });
-      return json({ error: `Could not verify Revel access for "${instance}". Ensure you authorized EasyShiftHQ in your Revel account.` }, 400);
+      return json({ error: `Could not authenticate to https://${instance}.revelup.com with those API credentials (status ${res.status}). Double-check the URL, API key, and secret.` }, 400);
     }
+
+    const encryption = await getEncryptionService();
+    const apiKeyEncrypted = await encryption.encrypt(String(apiKey).trim());
+    const apiSecretEncrypted = await encryption.encrypt(String(apiSecret).trim());
 
     const { error: upsertError } = await service.from('revel_connections').upsert({
       restaurant_id: restaurantId,
       revel_instance: instance,
       establishment_id: establishmentId ? String(establishmentId).trim() : '',
+      api_key_encrypted: apiKeyEncrypted,
+      api_secret_encrypted: apiSecretEncrypted,
       is_active: true,
       connection_status: 'connected',
-      webhook_active: true,
+      webhook_active: false,
       last_error: null,
       last_error_at: null,
       updated_at: new Date().toISOString(),

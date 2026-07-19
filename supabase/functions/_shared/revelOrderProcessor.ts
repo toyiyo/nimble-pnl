@@ -91,12 +91,14 @@ export function normalizeOrder(payload: any): NormalizedOrder {
 
   const items: NormalizedItem[] = (itemsRaw as any[]).map((it) => ({
     itemId: String(it.id ?? it.uuid ?? it.item_id ?? ''),
-    itemName: it.name ?? it.display_name ?? it.item_name ?? 'Unknown Item',
+    // Revel classic OrderItem carries the human name in `product_name_override`.
+    itemName: it.product_name_override ?? it.name ?? it.display_name ?? it.item_name ?? 'Unknown Item',
     quantity: Number(it.quantity ?? it.qty ?? 1),
     unitPrice: toAmount(it.price ?? it.unit_price ?? it.amount),
     totalPrice: toAmount(it.total ?? it.total_price ?? it.price),
     category: it.category ?? it.category_name ?? it.menu_category ?? null,
-    isVoided: Boolean(it.voided ?? it.is_voided ?? false),
+    // Revel marks voids via voided_by / voided_date / deleted rather than a boolean.
+    isVoided: Boolean(it.voided ?? it.is_voided ?? (it.voided_by != null || it.voided_date != null || it.deleted === true)),
     raw: it,
   }));
 
@@ -118,11 +120,12 @@ export function normalizeOrder(payload: any): NormalizedOrder {
     diningOption: order.dining_option ?? order.diningOption ?? order.order_type ?? null,
     paymentStatus: order.payment_status ?? order.paymentStatus ?? null,
     totals: {
-      totalAmount: toAmount(order.total ?? order.total_amount),
+      // Revel classic header: final_total / subtotal / tax / gratuity / discount_amount (decimal-dollar strings).
+      totalAmount: toAmount(order.total ?? order.total_amount ?? order.final_total),
       subtotalAmount: toAmount(order.subtotal ?? order.subtotal_amount),
       taxAmount: toAmount(order.tax ?? order.tax_amount),
-      tipAmount: toAmount(order.tip ?? order.tip_amount),
-      discountAmount: toAmount(order.discount ?? order.discount_amount),
+      tipAmount: toAmount(order.tip ?? order.tip_amount ?? order.gratuity ?? order.smartpay_tip),
+      discountAmount: toAmount(order.discount_amount ?? order.discount),
       serviceChargeAmount: toAmount(order.service_charge ?? order.service_charge_amount),
     },
     items,

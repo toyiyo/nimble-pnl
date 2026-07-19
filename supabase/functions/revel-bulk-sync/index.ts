@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { revelFetch } from "../_shared/revelClient.ts";
+import { revelFetch, fetchOrderItemsByDate } from "../_shared/revelClient.ts";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
 
@@ -72,6 +72,9 @@ serve(async (req) => {
         const apiKey = await encryption.decrypt(conn.api_key_encrypted);
         const apiSecret = await encryption.decrypt(conn.api_secret_encrypted);
 
+        // Line items live in a separate resource — fetch them for this window once and join by order id.
+        const itemsByOrder = await fetchOrderItemsByDate(conn.revel_instance, apiKey, apiSecret, start, end);
+
         let fetchFailedStatus: number | null = null;
         for (let page = 0; page < MAX_PAGES; page++) {
           const res = await revelFetch(conn.revel_instance, apiKey, apiSecret, ordersPath(start, end, page * PAGE_LIMIT));
@@ -80,6 +83,7 @@ serve(async (req) => {
           const orders: any[] = body.objects ?? body.results ?? (Array.isArray(body) ? body : []);
           for (const order of orders) {
             try {
+              (order as any).OrderItems = itemsByOrder[String(order.id ?? order.uuid)] || [];
               await processOrder(service, order, conn.restaurant_id, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
               totalProcessed++;
             } catch (e) {

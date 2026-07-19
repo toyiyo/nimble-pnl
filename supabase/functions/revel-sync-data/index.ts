@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { revelFetch } from "../_shared/revelClient.ts";
+import { revelFetch, fetchOrderItemsByDate } from "../_shared/revelClient.ts";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
 
@@ -76,6 +76,10 @@ serve(async (req) => {
     const end = endDate || new Date().toISOString().split('T')[0];
     const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+    // Classic Revel keeps line items in a separate resource — fetch them for the range
+    // once and join by order id (Order/OrderAllInOne carry only headers).
+    const itemsByOrder = await fetchOrderItemsByDate(conn.revel_instance, apiKey, apiSecret, start, end);
+
     let processed = 0;
     let loggedSample = false;
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -95,6 +99,7 @@ serve(async (req) => {
       }
       for (const order of orders) {
         try {
+          (order as any).OrderItems = itemsByOrder[String(order.id ?? order.uuid)] || [];
           await processOrder(service, order, restaurantId, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
           processed++;
         } catch (e) {

@@ -16,6 +16,51 @@ export function revelBaseUrl(instance: string): string {
   return `https://${sub}.revelup.com`;
 }
 
+/** Extract the numeric order id from an OrderItem's `order` FK (URI or id). */
+export function extractOrderId(order: unknown): string | null {
+  if (order === null || order === undefined) return null;
+  const s = String(order);
+  const m = s.match(/Order\/(\d+)/) || s.match(/(\d+)/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Fetch all OrderItems in a date range and group them by their parent order id.
+ * Classic Revel does not bundle line items in the Order/OrderAllInOne resource, so
+ * we pull /resources/OrderItem/ separately (Tastypie pagination) and join on order id.
+ */
+export async function fetchOrderItemsByDate(
+  instance: string,
+  apiKey: string,
+  apiSecret: string,
+  start: string,
+  end: string,
+  pageLimit = 500,
+  maxPages = 60,
+): Promise<Record<string, any[]>> {
+  const byOrder: Record<string, any[]> = {};
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({
+      created_date__gte: `${start}T00:00:00`,
+      created_date__lte: `${end}T23:59:59`,
+      limit: String(pageLimit),
+      offset: String(page * pageLimit),
+      order_by: 'created_date',
+    });
+    const res = await revelFetch(instance, apiKey, apiSecret, `/resources/OrderItem/?${params.toString()}`);
+    if (!res.ok) break;
+    const body = await res.json();
+    const items: any[] = body.objects ?? body.results ?? (Array.isArray(body) ? body : []);
+    for (const it of items) {
+      const oid = extractOrderId(it.order);
+      if (!oid) continue;
+      (byOrder[oid] ??= []).push(it);
+    }
+    if (items.length < pageLimit) break;
+  }
+  return byOrder;
+}
+
 /** Authed fetch against a merchant's Classic Revel API. */
 export async function revelFetch(
   instance: string,

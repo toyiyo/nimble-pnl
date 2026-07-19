@@ -90,17 +90,34 @@ const handleNavigate = (path: string) => {
 
 ## Testing
 
-- **Unit (Vitest + Testing Library):** render `AppSidebar` inside
-  `SidebarProvider` with `useIsMobile` mocked to `true`; simulate a nav-item tap
-  and assert the mobile sheet is dismissed (drawer content no longer present /
-  `data-state` closed). Add a desktop case (`useIsMobile` → `false`) asserting
-  navigation still occurs and no error. Keep mocks minimal (auth, restaurant
-  context, subscription) per the existing test patterns.
+- **Unit (Vitest + Testing Library):** render `AppSidebar` **inside a
+  `MemoryRouter`** (required — `AppSidebar` calls `useLocation`/`useNavigate`
+  directly, so without a Router the render throws before any assertion) wrapped
+  in `SidebarProvider`, with `useIsMobile` mocked to `true`. Mock the hooks
+  `AppSidebar` consumes — `useAuth`, `useRestaurantContext` (owner role so the
+  full nav renders), `useSubscription` (`hasFeature: () => true`) — per existing
+  precedent (`tests/unit/CheckSettingsDialog.test.tsx`). Open the mobile sheet
+  via `setOpenMobile(true)` (the `sidebarMobileA11y.test.tsx` pattern), simulate
+  a nav-item tap, and assert the mobile sheet is dismissed. In this codebase's
+  jsdom env Radix Presence unmounts **synchronously** (no CSS animation runs), so
+  `queryByRole('dialog')` → null works directly; use `waitFor`/`findBy` only as a
+  fallback if that proves flaky.
+- Assert navigation happened too (spy on `useNavigate`) so the test pins both
+  effects, not just the close.
+- Add a desktop case (`useIsMobile` → `false`) asserting navigation still occurs
+  and no error/close side effect.
 - **Manual/preview:** mobile viewport — open drawer, tap a link, confirm the
   drawer closes and the target page is interactive without a second tap.
 
 ## Accessibility / motion
 
-No new UI. The existing `Sheet` close animation (slide-out + overlay fade) and
-focus return are reused; Radix restores focus to the trigger on close. Respects
-`prefers-reduced-motion` via the existing sheet styles.
+No new UI. The existing `Sheet` close animation (slide-out + overlay fade) is
+reused and respects `prefers-reduced-motion` via the existing sheet styles.
+Radix restores focus to the Sheet's trigger (the mobile hamburger in
+`AppHeader`) on close — this is the current app-wide behaviour; route-change
+focus management (moving focus into the new page's heading) is a pre-existing
+gap across `App.tsx` and is explicitly **out of scope** for this fix.
+
+Sign-out is intentionally not routed through `handleNavigate`: `signOut()` does
+not call `navigate()`, and the `!user` redirect in `ProtectedRoute` unmounts the
+entire `LayoutSwitcher`/`SidebarProvider` subtree, so no open Sheet can dangle.

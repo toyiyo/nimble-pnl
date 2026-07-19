@@ -333,6 +333,15 @@ GRANT SELECT ON public.revel_order_items TO anon;
 GRANT SELECT ON public.revel_payments TO anon;
 GRANT SELECT ON public.revel_webhook_events TO anon;
 
+-- service_role runs the edge functions (connect/sync/webhook write via the service key).
+-- Hosted Supabase grants service_role ALL by default, but local Supabase does not — so
+-- grant explicitly here or every service-role write is "permission denied" locally.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_connections TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_orders TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_order_items TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_payments TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.revel_webhook_events TO service_role;
+
 -- Lock down SECURITY DEFINER RPC execution: block PUBLIC (covers anon), allow intended roles.
 REVOKE ALL ON FUNCTION public.revel_sync_financial_breakdown(text, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.sync_revel_to_unified_sales(uuid, date, date) FROM PUBLIC;

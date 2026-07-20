@@ -11,7 +11,6 @@ import { useToastIntegration } from '@/hooks/useToastIntegration';
 import { useSlingIntegration } from '@/hooks/useSlingIntegration';
 import { useFocusConnection } from '@/hooks/useFocusConnection';
 import { useRevelIntegration } from '@/hooks/useRevelIntegration';
-import { REVEL_ENABLED } from '@/config/revel';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { IntegrationCard } from '@/components/IntegrationCard';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -84,7 +83,6 @@ const Integrations = () => {
       category: 'Point of Sale',
       logo: '🔔',
       connected: revelConnected,
-      comingSoon: !REVEL_ENABLED,
       features: ['Real-time Sales', 'Order Items', 'Payments', 'Webhook-first']
     },
     {

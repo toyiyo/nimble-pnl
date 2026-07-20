@@ -222,7 +222,7 @@ always present.
 
 | Unit (Vitest, `tests/unit/laborPnlAnalytics.test.ts`) |
 |---|
-| `aggregateFinancialSeries`: day passthrough; week = Monday-start tz grouping; month = calendar month; empty window; labor% = laborCost/netRevenue with 0-revenue → null. |
+| `buildFinancialSeries`: day passthrough; week = Monday-start grouping; month = calendar month; empty window; labor% = laborCost/sales with 0-sales → null. |
 | `classifyBalance`: over/under/balanced band edges (T±BAND boundaries). |
 | `summarizeLaborPnl`: verdict strings per tone; revPerLaborHr; over/under window extraction; 0-sales / 0-hours guards. |
 | `buildSalesVolumeGrid`: intensity scaling; peak flag; estimated flag passthrough. |
@@ -230,15 +230,17 @@ always present.
 | Sort comparators use locale-aware / numeric comparators (SonarCloud S2871 lesson). |
 
 Hooks: `useLaborPnlSummary` / `useLaborPnlAnalytics` — mock the composed hooks,
-assert three states + reconciliation (KPI labor% == usePeriodMetrics labor%).
+assert three states + internal reconciliation (KPI totals == Σ of the period series buckets).
 Components: render tests assert states by **role** (structural-assertion lesson);
 target-edit write calls `updateSettings` with `{ target_labor_pct }`.
 
 ## 9. Decided trade-offs
 
-- **Reuse `usePnLAnalyticsFromSource` daily series over a new SQL RPC** — already
-  reconciled from source; aggregate client-side for week/month. Cost: pulls the
-  daily series. Acceptable (≤~90–180 rows); React-Query cached.
+- **Reuse `useSplhData`'s real per-day `unified_sales` + payroll-grade daily
+  labor over a new SQL RPC** — genuinely per-day (unlike `usePnLAnalyticsFromSource`,
+  which spreads the period total evenly across days; see the §4 correction);
+  aggregate client-side for week/month. Cost: pulls the daily rows. Acceptable
+  (≤~90–180 days); React-Query cached.
 - **Two labor cards on the dashboard** (existing scheduling SPLH + new financial)
   — accepted, placed in different clusters with distinct titles/framing. Rejected
   alternative: merging them (would conflate scheduling vs. financial mental models

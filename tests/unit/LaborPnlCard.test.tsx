@@ -189,10 +189,9 @@ describe('LaborPnlCard — loaded', () => {
     expect(screen.getByRole('img', { name: /labor.*trend/i })).toBeInTheDocument();
   });
 
-  it('navigates to /labor when "Open labor detail" is clicked', () => {
+  it('links to /labor for the "Open labor detail" CTA (native link semantics)', () => {
     mockUseLaborPnlSummary.mockReturnValue(mockHookReturn());
     renderCard();
-    fireEvent.click(screen.getByRole('button', { name: /open labor detail/i }));
-    expect(mockNavigate).toHaveBeenCalledWith('/labor');
+    expect(screen.getByRole('link', { name: /open labor detail/i })).toHaveAttribute('href', '/labor');
   });
 });

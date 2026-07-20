@@ -190,6 +190,23 @@ describe('useLaborPnlAnalytics', () => {
     }
   });
 
+  it('does NOT flag estimated when sales carry sale_time but no sold_at (real hour via sale_time)', async () => {
+    setup({
+      data: {
+        sales: [{ sale_date: '2026-07-07', sale_time: '12:00:00', sold_at: null, total_price: 150 }],
+        punches: PUNCHES,
+        capped: false,
+      },
+    });
+
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    // hourOfSale derives noon from sale_time → buildSplhGrid buckets by real hour,
+    // so the heatmap must not be labelled "Estimated" (CodeRabbit finding).
+    expect(result.current.grid.every((c) => c.estimated === false)).toBe(true);
+  });
+
   it('flags grid cells estimated:true when no sale row carries a derivable hour (daily-spread fallback)', async () => {
     setup({
       data: {

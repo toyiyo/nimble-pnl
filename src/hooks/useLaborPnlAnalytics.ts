@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 
-import { buildSplhGrid } from '@/lib/splhAnalytics';
+import { buildSplhGrid, hourOfSale } from '@/lib/splhAnalytics';
 import {
   buildFinancialSeries,
   buildIntradayFinancialSeries,
@@ -107,7 +107,14 @@ export function useLaborPnlAnalytics(restaurantId: string | null, granularity: L
   const overWindows = useMemo(() => extractBalanceWindows(series, 'over'), [series]);
   const underWindows = useMemo(() => extractBalanceWindows(series, 'under'), [series]);
 
-  const hasHourlyBreakdown = useMemo(() => sales.some((s) => !!s.sold_at), [sales]);
+  // A sale contributes a real hour bucket if `hourOfSale` can derive one — from
+  // `sold_at` OR the legacy `sale_time` (buildSplhGrid uses the same derivation).
+  // Checking only `sold_at` would falsely mark a `sale_time`-only POS's heatmap
+  // as "Estimated" even though buildSplhGrid bucketed it by real hour.
+  const hasHourlyBreakdown = useMemo(
+    () => sales.some((s) => hourOfSale(s, tz) !== null),
+    [sales, tz],
+  );
 
   const grid = useMemo(() => {
     // `buildSplhGrid`'s `target` param only feeds `SplhGridCell.state`

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { AlertCircle } from 'lucide-react';
 import { LineChart, Line, ResponsiveContainer } from 'recharts';
@@ -42,7 +42,6 @@ export function buildLaborSparklineData(points: readonly FinancialPoint[]): Labo
  * financial `--labor-*` tone tokens (never `--splh-lean/slack`) per design §7.
  */
 export function LaborPnlCard({ restaurantId }: LaborPnlCardProps) {
-  const navigate = useNavigate();
   const { summary, sparkline, targetPct, isLoading, isError, hasData, refetch } = useLaborPnlSummary(restaurantId);
   const sparklineData = useMemo(() => buildLaborSparklineData(sparkline), [sparkline]);
   const toneClass = balanceStateClassName(summary.verdictTone);
@@ -122,13 +121,12 @@ export function LaborPnlCard({ restaurantId }: LaborPnlCardProps) {
           </ResponsiveContainer>
         </div>
       )}
-      <button
-        type="button"
-        onClick={() => navigate('/labor')}
+      <Link
+        to="/labor"
         className="text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         Open labor detail →
-      </button>
+      </Link>
     </div>
   );
 }

@@ -32,6 +32,7 @@ import {
   Inbox,
   Newspaper,
   LifeBuoy,
+  Banknote,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -65,6 +66,7 @@ export const navigationGroups: NavGroup[] = [
       { path: '/time-punches', label: 'Time Clock', icon: ClipboardList },
       { path: '/tips', label: 'Tip Pooling', icon: Coins },
       { path: '/payroll', label: 'Payroll', icon: Wallet },
+      { path: '/labor', label: 'Labor', icon: Banknote },
     ],
   },
   {

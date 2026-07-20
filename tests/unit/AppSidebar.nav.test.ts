@@ -60,3 +60,34 @@ describe('AppSidebar.nav – operations_manager', () => {
     expect(kioskNav).toEqual([]);
   });
 });
+
+describe('AppSidebar.nav – Labor entry', () => {
+  it('adds a "Labor" item pointing at /labor in the Operations group, right after Payroll', () => {
+    const operations = navigationGroups.find((g) => g.label === 'Operations');
+    expect(operations).toBeDefined();
+    const paths = operations!.items.map((i) => i.path);
+    const payrollIndex = paths.indexOf('/payroll');
+    expect(payrollIndex).toBeGreaterThanOrEqual(0);
+    expect(paths[payrollIndex + 1]).toBe('/labor');
+
+    const laborItem = operations!.items.find((i) => i.path === '/labor');
+    expect(laborItem?.label).toBe('Labor');
+    expect(laborItem?.icon).toBeDefined();
+  });
+
+  it('surfaces the Labor item for operations_manager (Operations group is retained)', () => {
+    const nav = getNavigationForRole('operations_manager');
+    const operations = nav.find((g) => g.label === 'Operations');
+    const paths = operations?.items.map((i) => i.path) ?? [];
+    expect(paths).toContain('/labor');
+  });
+
+  it('surfaces the Labor item for owner and manager (full nav)', () => {
+    for (const role of ['owner', 'manager']) {
+      const nav = getNavigationForRole(role);
+      const operations = nav.find((g) => g.label === 'Operations');
+      const paths = operations?.items.map((i) => i.path) ?? [];
+      expect(paths).toContain('/labor');
+    }
+  });
+});

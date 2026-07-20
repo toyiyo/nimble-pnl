@@ -1,4 +1,4 @@
-import type { BalanceState, LaborPnlSummary } from '@/lib/laborPnlAnalytics';
+import { balanceStateBgClassName, type BalanceState, type LaborPnlSummary } from '@/lib/laborPnlAnalytics';
 
 interface LaborVerdictProps {
   /**
@@ -12,17 +12,15 @@ interface LaborVerdictProps {
 }
 
 /**
- * Pure: balance tone -> tone-dot background class, using the dedicated
- * `--labor-over` / `--labor-under` / `--labor-balanced` tokens (design §7).
- * `'none'` (no sales in the window, `summarizeLaborPnl`'s no-data case) maps
- * to a neutral dot rather than a `--labor-*` token, mirroring
- * `CoverageVerdict`'s neutral "no demand configured" dot.
+ * Pure: balance tone -> tone-dot background class. Thin wrapper over the
+ * shared `laborPnlAnalytics.balanceStateBgClassName` (also used by
+ * `LaborBalanceRibbon`'s chips) with `'none'` (no sales in the window,
+ * `summarizeLaborPnl`'s no-data case) mapped to a neutral dot rather than a
+ * `--labor-*` token, mirroring `CoverageVerdict`'s neutral "no demand
+ * configured" dot.
  */
 export function verdictDotClassName(tone: BalanceState | 'none'): string {
-  if (tone === 'over') return 'bg-[hsl(var(--labor-over))]';
-  if (tone === 'under') return 'bg-[hsl(var(--labor-under))]';
-  if (tone === 'balanced') return 'bg-[hsl(var(--labor-balanced))]';
-  return 'bg-muted-foreground/50';
+  return balanceStateBgClassName(tone, 'bg-muted-foreground/50');
 }
 
 /**

@@ -339,3 +339,24 @@ export function balanceStateClassName(tone: BalanceState | 'none'): string {
   if (tone === 'balanced') return 'text-[hsl(var(--labor-balanced))]';
   return '';
 }
+
+/**
+ * Pure: balance tone -> Tailwind arbitrary-value **background** class on the
+ * same `--labor-over` / `--labor-under` / `--labor-balanced` tokens (design
+ * §7) — the background counterpart to `balanceStateClassName` above. Shared
+ * by `LaborBalanceRibbon`'s per-bucket chips and `LaborVerdict`'s tone dot,
+ * which otherwise re-implemented the identical over/under/balanced mapping.
+ * `noneClassName` lets each caller pick its own no-data fallback (the ribbon
+ * never sees `'none'` — `FinancialPoint.balanceState` is always a
+ * `BalanceState` — while the verdict dot wants a neutral gray, mirroring
+ * `CoverageVerdict`'s "no demand configured" dot).
+ */
+export function balanceStateBgClassName(
+  tone: BalanceState | 'none',
+  noneClassName: string = 'bg-[hsl(var(--labor-balanced))]',
+): string {
+  if (tone === 'over') return 'bg-[hsl(var(--labor-over))]';
+  if (tone === 'under') return 'bg-[hsl(var(--labor-under))]';
+  if (tone === 'balanced') return 'bg-[hsl(var(--labor-balanced))]';
+  return noneClassName;
+}

@@ -1,4 +1,4 @@
-import type { BalanceState, FinancialPoint } from '@/lib/laborPnlAnalytics';
+import { balanceStateBgClassName, type BalanceState, type FinancialPoint } from '@/lib/laborPnlAnalytics';
 
 interface LaborBalanceRibbonProps {
   readonly points: readonly FinancialPoint[];
@@ -7,15 +7,12 @@ interface LaborBalanceRibbonProps {
 /**
  * Pure: bucket balance state -> Tailwind arbitrary-value background class on
  * the dedicated `--labor-over` / `--labor-under` / `--labor-balanced` tokens
- * (design §7). Deliberately a *background* counterpart to
- * `laborPnlAnalytics.balanceStateClassName` (which is text-color only) —
- * kept local to this component since no other Phase D component needs a
- * chip fill yet; hoist to the lib if a second consumer shows up.
+ * (design §7). Thin wrapper over the shared `laborPnlAnalytics.balanceStateBgClassName`
+ * (also used by `LaborVerdict`'s tone dot) so the tone->background mapping
+ * has one source of truth.
  */
 export function balanceChipClassName(state: BalanceState): string {
-  if (state === 'over') return 'bg-[hsl(var(--labor-over))]';
-  if (state === 'under') return 'bg-[hsl(var(--labor-under))]';
-  return 'bg-[hsl(var(--labor-balanced))]';
+  return balanceStateBgClassName(state);
 }
 
 /** Pure: per-chip aria-label naming the bucket and its balance state. */

@@ -76,6 +76,22 @@ const GRANULARITIES: { value: LaborGranularity; label: string }[] = [
   { value: 'month', label: 'Month' },
 ];
 
+/** One tile of the 4-tile KPI row — pulled out of the page body since all four differ only in label/value. */
+function KpiTile({ label, value }: { readonly label: string; readonly value: string }) {
+  return (
+    <div className="rounded-xl border border-border/40 bg-background p-4 space-y-1">
+      <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
+      <p className="text-[20px] font-semibold text-foreground">{value}</p>
+    </div>
+  );
+}
+
+/** Tone label for a staffing-callout window ("Over target:" / "Under target:"). */
+const CALLOUT_LABEL: Record<'over' | 'under', string> = {
+  over: 'Over target:',
+  under: 'Under target:',
+};
+
 /**
  * `/labor` page (design §2.2): the financial counterpart to the scheduling
  * "Labor efficiency" panel (PR #611) — Day/Week/Month toggle, one-line
@@ -200,30 +216,16 @@ export default function Labor() {
       <LaborVerdict summary={summary} />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-xl border border-border/40 bg-background p-4 space-y-1">
-          <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-            Labor % of sales
-          </p>
-          <p className="text-[20px] font-semibold text-foreground">
-            {summary.laborPct !== null ? `${summary.laborPct}%` : '—'}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border/40 bg-background p-4 space-y-1">
-          <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-            Revenue per labor hour
-          </p>
-          <p className="text-[20px] font-semibold text-foreground">
-            {summary.revPerLaborHr !== null ? formatDollars(summary.revPerLaborHr) : '—'}
-          </p>
-        </div>
-        <div className="rounded-xl border border-border/40 bg-background p-4 space-y-1">
-          <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Net sales</p>
-          <p className="text-[20px] font-semibold text-foreground">{formatDollars(summary.sales)}</p>
-        </div>
-        <div className="rounded-xl border border-border/40 bg-background p-4 space-y-1">
-          <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Labor $</p>
-          <p className="text-[20px] font-semibold text-foreground">{formatDollars(summary.laborCost)}</p>
-        </div>
+        <KpiTile
+          label="Labor % of sales"
+          value={summary.laborPct !== null ? `${summary.laborPct}%` : '—'}
+        />
+        <KpiTile
+          label="Revenue per labor hour"
+          value={summary.revPerLaborHr !== null ? formatDollars(summary.revPerLaborHr) : '—'}
+        />
+        <KpiTile label="Net sales" value={formatDollars(summary.sales)} />
+        <KpiTile label="Labor $" value={formatDollars(summary.laborCost)} />
       </div>
 
       <div className="rounded-xl border border-border/40 bg-background p-4 space-y-3">
@@ -234,20 +236,20 @@ export default function Labor() {
       {(summary.overWindows.length > 0 || summary.underWindows.length > 0) && (
         <div className="rounded-xl border border-border/40 bg-muted/30 p-4 space-y-1.5">
           <h2 className="text-[13px] font-semibold text-foreground">Staffing callouts</h2>
-          {summary.overWindows.map((window) => (
-            <p key={`over-${window.startLabel}`} className="text-[13px] text-foreground">
-              <span className={cn('font-medium', balanceStateClassName('over'))}>Over target:</span>{' '}
-              {formatDollars(estimateWindowDollars(series, window, targetPct))} over target labor spend,{' '}
-              {windowRangeLabel(window)}.
-            </p>
-          ))}
-          {summary.underWindows.map((window) => (
-            <p key={`under-${window.startLabel}`} className="text-[13px] text-foreground">
-              <span className={cn('font-medium', balanceStateClassName('under'))}>Under target:</span>{' '}
-              {formatDollars(estimateWindowDollars(series, window, targetPct))} under target labor spend,{' '}
-              {windowRangeLabel(window)}.
-            </p>
-          ))}
+          {(
+            [
+              ['over', summary.overWindows],
+              ['under', summary.underWindows],
+            ] as const
+          ).flatMap(([tone, windows]) =>
+            windows.map((window) => (
+              <p key={`${tone}-${window.startLabel}`} className="text-[13px] text-foreground">
+                <span className={cn('font-medium', balanceStateClassName(tone))}>{CALLOUT_LABEL[tone]}</span>{' '}
+                {formatDollars(estimateWindowDollars(series, window, targetPct))} {tone} target labor spend,{' '}
+                {windowRangeLabel(window)}.
+              </p>
+            )),
+          )}
         </div>
       )}
 

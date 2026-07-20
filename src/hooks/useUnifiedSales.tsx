@@ -396,6 +396,14 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     if (error) failuresRef.current += 1;
   }, [error]);
 
+  // A page successfully landed (flatSales grew) — clear the failure counter so
+  // only *back-to-back* failures count toward MAX_AUTO_RETRIES. Without this,
+  // independent transient failures across a long ~40-page walk accumulate and
+  // halt the walk permanently mid-window even though each one recovered.
+  useEffect(() => {
+    failuresRef.current = 0;
+  }, [flatSales.length]);
+
   // Retry a failed auto-load page. React Query leaves `error` truthy (and
   // hasNextPage unchanged) after a failed fetchNextPage — nothing else calls
   // fetchNextPage again on its own, so without this effect MAX_AUTO_RETRIES

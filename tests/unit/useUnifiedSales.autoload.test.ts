@@ -78,6 +78,28 @@ function setupWithTransientFailure(nFullPages: number, failPageIndex: number, fa
   });
 }
 
+// Like setup(), but each page index in `failPages` errors on its FIRST
+// attempt only, then succeeds — i.e. independent, non-consecutive transient
+// failures spread across the walk (each one recovers before the next).
+function setupWithNonConsecutiveFailures(nFullPages: number, failPages: number[]) {
+  unifiedFetchCount = 0;
+  const attemptsByPage: Record<number, number> = {};
+  mockSupabase.from.mockImplementation((table: string) => {
+    if (table === 'recipes') return makeBuilder(() => ({ data: [], error: null }));
+    return makeBuilder((b) => {
+      const [from] = b.__range as [number, number];
+      unifiedFetchCount += 1;
+      const pageIndex = from / PAGE_SIZE;
+      attemptsByPage[pageIndex] = (attemptsByPage[pageIndex] || 0) + 1;
+      if (failPages.includes(pageIndex) && attemptsByPage[pageIndex] === 1) {
+        return { data: null, error: { message: 'transient network failure' } };
+      }
+      const size = pageIndex < nFullPages ? PAGE_SIZE : 3;
+      return { data: pageForOffset(from, size), error: null };
+    });
+  });
+}
+
 const createWrapper = () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } } });
   return ({ children }: { children: ReactNode }) =>
@@ -115,6 +137,19 @@ describe('useUnifiedSales autoLoadAll', () => {
       wrapper: createWrapper(),
     });
     await waitFor(() => expect(result.current.sales.length).toBe(PAGE_SIZE * 3 + 3), { timeout: 3000 });
+    expect(result.current.reachedCap).toBe(false);
+  });
+
+  // Regression (CodeRabbit PR #623): failuresRef counts CONSECUTIVE failures.
+  // Three distinct pages each fail once (recovering every time). Without a
+  // reset-on-success, the counter accumulates to MAX_AUTO_RETRIES across the
+  // walk and halts page 3's retry forever, leaving the window incomplete.
+  it('does not halt on non-consecutive single failures (counter resets on success)', async () => {
+    setupWithNonConsecutiveFailures(4, [1, 2, 3]); // pages 1,2,3 each fail once
+    const { result } = renderHook(() => useUnifiedSales('rest-1', { autoLoadAll: true }), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.sales.length).toBe(PAGE_SIZE * 4 + 3), { timeout: 4000 });
     expect(result.current.reachedCap).toBe(false);
   });
 

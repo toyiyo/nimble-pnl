@@ -196,10 +196,13 @@ const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSel
         <TooltipTrigger asChild>
           <div
             data-testid="shift-card"
+            role="button"
+            tabIndex={0}
             className={cn(
               "group relative rounded-lg border-l-4 transition-all duration-200 cursor-pointer",
               "hover:shadow-md hover:scale-[1.02] hover:-translate-y-0.5",
               "bg-gradient-to-r from-card to-card/80",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               shiftStatusClass,
               isSelected && "ring-2 ring-primary bg-primary/10"
             )}
@@ -208,6 +211,16 @@ const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSel
                 onToggleSelect(shift.id);
               } else {
                 onEdit(shift);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (cardSelectionMode && onToggleSelect) {
+                  onToggleSelect(shift.id);
+                } else {
+                  onEdit(shift);
+                }
               }
             }}
           >

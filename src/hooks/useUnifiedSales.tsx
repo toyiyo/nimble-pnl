@@ -233,6 +233,19 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     const salesList = data?.pages.flatMap((page: UnifiedSalesPage) => page?.sales || []) ?? [];
     if (!salesList.length) return [];
 
+    // Fast path: this memo re-runs on every auto-load page arrival (up to
+    // ~40 times walking to MAX_AUTO_ROWS), each time over the FULL
+    // accumulated list. Most restaurants have no split sales in a given
+    // window, so skip the allocation-heavy reduce+map (child-split linking)
+    // entirely when there's nothing to link — output is identical to the
+    // full path's result in that case (every sale already has
+    // is_split/parent_sale_id falsy, so the map below would be a no-op
+    // passthrough anyway). This keeps the common "busy restaurant, no
+    // splits" walk cheap; restaurants with split sales still get full,
+    // correct cross-page linking via the path below.
+    const hasSplits = salesList.some(sale => sale.parent_sale_id || sale.is_split);
+    if (!hasSplits) return salesList;
+
     // Build child splits across pages to avoid missing links
     const childrenByParent = salesList.reduce((acc, sale) => {
       if (sale.parent_sale_id) {

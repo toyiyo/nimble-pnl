@@ -211,14 +211,15 @@ export function useShiftTemplates(
   // safe to add `.select()` here — contrast the shared delete-chain lesson).
   const deleteMutation = useMutation({
     mutationFn: async ({ id }: DeleteTemplateInput) => {
-      let query = (supabase
-        .from('shift_templates') as any)
-        .delete()
-        .eq('id', id);
-      if (restaurantId) {
-        query = query.eq('restaurant_id', restaurantId);
+      if (!restaurantId) {
+        throw new Error('Restaurant context is required to delete a template');
       }
-      const { data, error } = await query.select('id');
+      const { data, error } = await supabase
+        .from('shift_templates')
+        .delete()
+        .eq('id', id)
+        .eq('restaurant_id', restaurantId)
+        .select('id');
       if (error) throw error;
       return { deletedCount: data?.length ?? 0 };
     },

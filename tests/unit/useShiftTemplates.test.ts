@@ -493,6 +493,26 @@ describe('useShiftTemplates', () => {
       );
       expect(invalidateSpy).not.toHaveBeenCalled();
     });
+
+    it('rejects without querying supabase when restaurantId is null (never deletes unscoped)', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates(null), { wrapper });
+
+      await act(async () => {
+        await expect(
+          result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 }),
+        ).rejects.toThrow('Restaurant context is required to delete a template');
+      });
+
+      expect(del).not.toHaveBeenCalled();
+    });
   });
 
   // Control-group gating (design doc "Friction & gating rules"): the delete

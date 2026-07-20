@@ -195,7 +195,7 @@ describe('TemplateGrid ghost row rendering — task 7', () => {
     expect(onHideTemplate).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onDeleteTemplate when TemplateRowHeader fires onDelete', async () => {
+  it('CRITICAL: calls onDeleteTemplate when TemplateRowHeader fires onDelete', async () => {
     const user = userEvent.setup();
     const onDeleteTemplate = vi.fn();
     render(

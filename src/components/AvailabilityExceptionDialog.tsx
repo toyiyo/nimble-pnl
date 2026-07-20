@@ -185,6 +185,7 @@ export const AvailabilityExceptionDialog = ({
                 type="button"
                 variant="ghost"
                 className="text-destructive hover:text-destructive/80"
+                disabled={createException.isPending || updateException.isPending}
                 onClick={() => {
                   onOpenChange(false);
                   onRemove(exception);

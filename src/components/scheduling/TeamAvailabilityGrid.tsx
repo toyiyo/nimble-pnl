@@ -128,10 +128,14 @@ const AvailabilityCell = memo(function AvailabilityCell({
       return exc ? { kind: 'exception', row: exc, personName: employeeName } : null;
     }
     if (effective.type === 'recurring') {
-      const avail = availability.find(
+      const matches = availability.filter(
         (a) => a.employee_id === employeeId && a.day_of_week === dow,
       );
-      return avail ? { kind: 'availability', row: avail, personName: employeeName } : null;
+      // Ambiguous target when split shifts exist for this day — bail out so
+      // the delete button is hidden rather than deleting the wrong row.
+      return matches.length === 1
+        ? { kind: 'availability', row: matches[0], personName: employeeName }
+        : null;
     }
     return null;
   }, [effective.type, exceptions, availability, employeeId, dateStr, dow, employeeName]);

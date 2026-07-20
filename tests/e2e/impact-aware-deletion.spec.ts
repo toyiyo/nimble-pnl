@@ -133,10 +133,12 @@ test.describe('Impact-Aware Deletion', () => {
       const { data: templates } = await supabase
         .from('shift_templates')
         .select('id')
+        .eq('restaurant_id', args.restId)
         .eq('id', args.templateId);
       const { data: claims } = await supabase
         .from('open_shift_claims')
         .select('id')
+        .eq('restaurant_id', args.restId)
         .eq('shift_template_id', args.templateId);
       return { templateCount: templates?.length ?? -1, claimCount: claims?.length ?? -1 };
     }, { restId: restaurantId as string, templateId: seed.templateId });
@@ -234,7 +236,7 @@ test.describe('Impact-Aware Deletion', () => {
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
 
     // Row reverts to the "no availability" empty state for Casey Morgan.
-    await expect(page.getByText(/no availability set/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(employeeRow.getByText(/no availability set/i)).toBeVisible({ timeout: 10000 });
 
     const remaining = await page.evaluate(async (args: { restId: string; employeeId: string }) => {
       const supabase = (window as any).__supabase;

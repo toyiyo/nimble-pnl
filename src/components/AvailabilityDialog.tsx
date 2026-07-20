@@ -194,6 +194,7 @@ export const AvailabilityDialog = ({
                 type="button"
                 variant="ghost"
                 className="text-destructive hover:text-destructive/80"
+                disabled={createAvailability.isPending || updateAvailability.isPending}
                 onClick={() => {
                   onOpenChange(false);
                   onRemove(availability);

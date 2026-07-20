@@ -600,13 +600,29 @@ const Scheduling = () => {
   // shared DeleteAvailabilityDialog.
   const handleRemoveAvailability = useCallback((availability: EmployeeAvailability) => {
     const target = buildAvailabilityDeletionTarget('availability', availability, allEmployees);
-    if (target) setDeletionTarget(target);
-  }, [allEmployees]);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
 
   const handleRemoveException = useCallback((exception: AvailabilityException) => {
     const target = buildAvailabilityDeletionTarget('exception', exception, allEmployees);
-    if (target) setDeletionTarget(target);
-  }, [allEmployees]);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));

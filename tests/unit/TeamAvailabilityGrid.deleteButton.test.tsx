@@ -29,7 +29,9 @@ const employee: Employee = {
 };
 
 // Monday recurring availability (day_of_week: 1) — a "filled" recurring cell.
-const availability: EmployeeAvailability[] = [
+// `let` (not `const`) so the split-shift describe block below can swap in
+// multiple same-day rows without a second vi.mock/module reset.
+let availability: EmployeeAvailability[] = [
   {
     id: 'avail-1',
     restaurant_id: 'r1',
@@ -37,6 +39,25 @@ const availability: EmployeeAvailability[] = [
     day_of_week: 1,
     start_time: '09:00:00',
     end_time: '17:00:00',
+    is_available: true,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  },
+];
+const SINGLE_MONDAY_AVAILABILITY = availability;
+
+// Two rows for the same employee+day (split shift, e.g. AM + PM) — used by
+// the ambiguity describe block below to prove the delete button hides
+// itself rather than guessing which row to delete.
+const SPLIT_MONDAY_AVAILABILITY: EmployeeAvailability[] = [
+  SINGLE_MONDAY_AVAILABILITY[0],
+  {
+    id: 'avail-2',
+    restaurant_id: 'r1',
+    employee_id: 'emp-1',
+    day_of_week: 1,
+    start_time: '18:00:00',
+    end_time: '21:00:00',
     is_available: true,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
@@ -143,5 +164,38 @@ describe('TeamAvailabilityGrid — delete button (T7)', () => {
       row: exceptions[0],
       personName: 'Ann Employee',
     });
+  });
+});
+
+describe('TeamAvailabilityGrid — split-shift delete ambiguity', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 2, 2, 12, 0, 0));
+    availability = SPLIT_MONDAY_AVAILABILITY;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    availability = SINGLE_MONDAY_AVAILABILITY;
+  });
+
+  it('hides the Monday delete button when two availability rows exist for the same employee+day, instead of targeting an arbitrary one', () => {
+    render(
+      <TeamAvailabilityGrid
+        restaurantId="r1"
+        onOpenAvailabilityDialog={vi.fn()}
+        onOpenExceptionDialog={vi.fn()}
+        onRequestDelete={vi.fn()}
+      />,
+    );
+    const table = screen.getByRole('table');
+    expect(
+      within(table).queryByRole('button', { name: "Delete Ann Employee's Monday availability" }),
+    ).not.toBeInTheDocument();
+    // The exception-day (Tuesday) delete button is unaffected — only the
+    // ambiguous Monday recurring cell is suppressed.
+    expect(
+      within(table).getByRole('button', { name: "Delete Ann Employee's Mar 3 availability" }),
+    ).toBeInTheDocument();
   });
 });

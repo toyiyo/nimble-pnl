@@ -11,9 +11,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AvailabilityExceptionDialog } from '../../src/components/AvailabilityExceptionDialog';
 import type { AvailabilityException } from '../../src/types/scheduling';
 
+const mockPending = vi.hoisted(() => ({ create: false, update: false }));
+
 vi.mock('@/hooks/useAvailability', () => ({
-  useCreateAvailabilityException: () => ({ mutate: vi.fn(), isPending: false }),
-  useUpdateAvailabilityException: () => ({ mutate: vi.fn(), isPending: false }),
+  useCreateAvailabilityException: () => ({ mutate: vi.fn(), isPending: mockPending.create }),
+  useUpdateAvailabilityException: () => ({ mutate: vi.fn(), isPending: mockPending.update }),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
@@ -65,6 +67,8 @@ function renderWithClient(ui: React.ReactElement) {
 describe('AvailabilityExceptionDialog — Remove button (T7)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockPending.create = false;
+    mockPending.update = false;
   });
 
   it('does not render Remove when creating a new exception (no existing row)', () => {
@@ -122,5 +126,19 @@ describe('AvailabilityExceptionDialog — Remove button (T7)', () => {
 
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(onRemove).toHaveBeenCalledWith(existingException);
+  });
+
+  it('disables Remove while a create/update mutation is in-flight, to avoid racing a save against a delete', () => {
+    mockPending.update = true;
+    renderWithClient(
+      <AvailabilityExceptionDialog
+        open
+        onOpenChange={vi.fn()}
+        restaurantId="r1"
+        exception={existingException}
+        onRemove={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('button', { name: /remove/i })).toBeDisabled();
   });
 });

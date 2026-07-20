@@ -30,6 +30,12 @@ export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boole
   return 'border-l-primary/50';
 };
 
+const statusToBadgeVariant = (status: Shift['status']): 'default' | 'destructive' | 'outline' => {
+  if (status === 'confirmed') return 'default';
+  if (status === 'cancelled') return 'destructive';
+  return 'outline';
+};
+
 export type ShiftCardProps = {
   shift: Shift;
   onEdit: (shift: Shift) => void;
@@ -146,13 +152,7 @@ export const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: 
                 {shift.position}
               </div>
               <Badge
-                variant={
-                  shift.status === 'confirmed'
-                    ? 'default'
-                    : shift.status === 'cancelled'
-                    ? 'destructive'
-                    : 'outline'
-                }
+                variant={statusToBadgeVariant(shift.status)}
                 className={cn(
                   "text-[10px] h-5 font-medium",
                   shift.status === 'confirmed' && "bg-success/15 text-success border-success/30 hover:bg-success/20"

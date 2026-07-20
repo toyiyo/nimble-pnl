@@ -5,10 +5,11 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { isMinor } from '@/lib/employeeUtils';
 import { pickDefaultMobileDay } from '@/lib/scheduleMobile';
-import { weekAvailabilityChipClasses, type WeekAvailabilitySummary } from '@/lib/effectiveAvailability';
+import { type WeekAvailabilitySummary } from '@/lib/effectiveAvailability';
 import type { EmployeeWeekTimeOff } from '@/lib/scheduleTimeOff';
 import { SchedulingTimeOffCellContent } from '@/pages/SchedulingTimeOffCellContent';
 import { ShiftCard } from '@/pages/SchedulingShiftCard';
+import { WeeklyAvailabilityChip } from '@/pages/SchedulingWeeklyAvailabilityChip';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
 import type { Employee, Shift } from '@/types/scheduling';
 
@@ -88,9 +89,6 @@ function EmployeeCardHeader({
   onEditEmployee,
 }: Readonly<EmployeeCardHeaderProps>) {
   const isMinorEmployee = isMinor(employee.date_of_birth);
-  const availabilityChipClasses = weekAvailability
-    ? weekAvailabilityChipClasses(weekAvailability.status)
-    : null;
 
   return (
     <div className="flex items-center justify-between gap-3">
@@ -118,17 +116,7 @@ function EmployeeCardHeader({
                 Minor
               </span>
             )}
-            {weekAvailability && availabilityChipClasses && (
-              <span
-                className={cn(
-                  'inline-flex items-center text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0',
-                  availabilityChipClasses.bg,
-                  availabilityChipClasses.text,
-                )}
-              >
-                {weekAvailability.label}
-              </span>
-            )}
+            <WeeklyAvailabilityChip availability={weekAvailability} />
           </div>
           <div className="text-xs text-muted-foreground flex items-center gap-1.5">
             {employee.position}

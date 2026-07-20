@@ -16,6 +16,7 @@ import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
 import { TimeOffTabBadge } from './SchedulingTimeOffTabBadge';
 import { ScheduleDayHeaderContent, TODAY_HEADER_CAP_RULE_CLASS } from './SchedulingDayHeaderContent';
 import { SchedulingTimeOffCellContent } from './SchedulingTimeOffCellContent';
+import { WeeklyAvailabilityChip } from './SchedulingWeeklyAvailabilityChip';
 import { ShiftCard } from './SchedulingShiftCard';
 import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
@@ -77,7 +78,6 @@ import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import {
   computeEffectiveAvailability,
   summarizeWeekAvailability,
-  weekAvailabilityChipClasses,
   TIME_OFF_CHIP_CLASSES,
   type WeekAvailabilitySummary,
 } from '@/lib/effectiveAvailability';
@@ -1437,9 +1437,6 @@ const Scheduling = () => {
                           const off = empOff ? summarizeOff(empOff) : null;
                           const isMinorEmployee = isMinor(employee.date_of_birth);
                           const weekAvailability = weekAvailabilityByEmployee.get(employee.id);
-                          const availabilityChipClasses = weekAvailability
-                            ? weekAvailabilityChipClasses(weekAvailability.status)
-                            : null;
                           return (
                           <tr
                             key={employee.id}
@@ -1507,17 +1504,9 @@ const Scheduling = () => {
                                             </TooltipContent>
                                           </Tooltip>
                                         </TooltipProvider>
-                                      ) : weekAvailability && availabilityChipClasses ? (
-                                        <span
-                                          className={cn(
-                                            "inline-flex items-center text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0",
-                                            availabilityChipClasses.bg,
-                                            availabilityChipClasses.text,
-                                          )}
-                                        >
-                                          {weekAvailability.label}
-                                        </span>
-                                      ) : null}
+                                      ) : (
+                                        <WeeklyAvailabilityChip availability={weekAvailability} />
+                                      )}
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                                       {employee.position}

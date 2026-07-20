@@ -3,6 +3,10 @@ import { resolve } from 'node:path';
 import { describe, it, expect } from 'vitest';
 
 const SRC = readFileSync(resolve(__dirname, '../../src/pages/Scheduling.tsx'), 'utf8');
+const CHIP_SRC = readFileSync(
+  resolve(__dirname, '../../src/pages/SchedulingWeeklyAvailabilityChip.tsx'),
+  'utf8',
+);
 
 describe('Scheduling availability chip — data wiring', () => {
   it('imports the availability hooks', () => {
@@ -15,7 +19,6 @@ describe('Scheduling availability chip — data wiring', () => {
     expect(SRC).toMatch(/from '@\/lib\/effectiveAvailability'/);
     expect(SRC).toMatch(/\bcomputeEffectiveAvailability\b/);
     expect(SRC).toMatch(/\bsummarizeWeekAvailability\b/);
-    expect(SRC).toMatch(/\bweekAvailabilityChipClasses\b/);
     expect(SRC).toMatch(/\bTIME_OFF_CHIP_CLASSES\b/);
   });
 
@@ -45,18 +48,27 @@ describe('Scheduling availability chip — desktop name-cell render', () => {
     expect(SRC).toMatch(/TIME_OFF_CHIP_CLASSES\.text/);
   });
 
-  it('renders a chip for limited/available status using the summary map, distinct from the time-off pill', () => {
-    expect(SRC).toMatch(/weekAvailability\.label/);
+  it('renders the shared WeeklyAvailabilityChip for the limited/available branch, distinct from the time-off pill', () => {
+    // The compute-then-render chip pattern is shared with WeekScheduleMobile's
+    // EmployeeCardHeader via SchedulingWeeklyAvailabilityChip.tsx, not
+    // duplicated inline here.
+    expect(SRC).toMatch(/from '\.\/SchedulingWeeklyAvailabilityChip'/);
+    expect(SRC).toMatch(/<WeeklyAvailabilityChip availability={weekAvailability} \/>/);
   });
 
   it('keeps the off-pill reasons tooltip and sr-only text intact', () => {
     expect(SRC).toMatch(/off\.reasons\.length/);
     expect(SRC).toMatch(/sr-only/);
   });
+});
 
-  it('renders no chip for unset (weekAvailabilityChipClasses returns null)', () => {
-    // The render path must guard on a possibly-null classes object rather
-    // than assuming a chip is always shown.
-    expect(SRC).toMatch(/availabilityChipClasses/);
+describe('SchedulingWeeklyAvailabilityChip — shared chip render', () => {
+  it('guards on a possibly-null classes object rather than assuming a chip is always shown', () => {
+    // weekAvailabilityChipClasses('unset') returns null — the component must
+    // render nothing in that case (and when there's no availability data at
+    // all), instead of assuming a chip is always shown.
+    expect(CHIP_SRC).toMatch(/\bweekAvailabilityChipClasses\b/);
+    expect(CHIP_SRC).toMatch(/if \(!availability\) return null;/);
+    expect(CHIP_SRC).toMatch(/if \(!classes\) return null;/);
   });
 });

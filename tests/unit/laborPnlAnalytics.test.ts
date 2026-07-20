@@ -6,9 +6,11 @@ import {
   bucketKeyOf,
   buildFinancialSeries,
   buildSalesVolumeGrid,
+  summarizeLaborPnl,
 } from '@/lib/laborPnlAnalytics';
 import type { SplhPoint, SplhGridCell } from '@/lib/splhAnalytics';
 import type { LaborCostData } from '@/hooks/useLaborCostsFromTimeTracking';
+import type { FinancialPoint, BalanceState } from '@/lib/laborPnlAnalytics';
 
 function sale(bucketStart: string, totalSales: number): SplhPoint {
   return { bucketStart, label: bucketStart, totalSales, totalHours: 0, splh: null };
@@ -27,6 +29,17 @@ function labor(date: string, total_labor_cost: number, total_hours: number): Lab
     contractor_payments: 0,
     total_hours,
   };
+}
+
+function point(
+  bucketStart: string,
+  sales: number,
+  laborCost: number,
+  laborHours: number,
+  balanceState: BalanceState,
+): FinancialPoint {
+  const laborPct = sales > 0 ? Math.round((laborCost / sales) * 10000) / 100 : null;
+  return { bucketStart, label: bucketStart, sales, laborCost, laborHours, laborPct, balanceState };
 }
 
 describe('LABOR_BALANCE_BAND', () => {
@@ -256,5 +269,102 @@ describe('buildSalesVolumeGrid', () => {
 
   it('handles an empty cells array', () => {
     expect(buildSalesVolumeGrid([], false)).toEqual([]);
+  });
+});
+
+describe('summarizeLaborPnl', () => {
+  it('returns a none-tone, no-data verdict for an empty series', () => {
+    expect(summarizeLaborPnl([], 22)).toEqual({
+      sales: 0,
+      laborCost: 0,
+      laborPct: null,
+      revPerLaborHr: null,
+      verdict: 'Not enough data to assess labor yet.',
+      verdictTone: 'none',
+      overWindows: [],
+      underWindows: [],
+    });
+  });
+
+  it('returns a none-tone verdict when the series has no sales (laborPct null)', () => {
+    const points = [point('2026-07-20', 0, 300, 20, 'balanced')];
+    const summary = summarizeLaborPnl(points, 22);
+    expect(summary.laborPct).toBeNull();
+    expect(summary.verdictTone).toBe('none');
+    expect(summary.verdict).toBe('Not enough data to assess labor yet.');
+  });
+
+  it('sums totals and computes revPerLaborHr across buckets (balanced tone)', () => {
+    const points = [
+      point('2026-07-20', 1000, 220, 40, 'balanced'),
+      point('2026-07-21', 2000, 440, 80, 'balanced'),
+    ];
+    const summary = summarizeLaborPnl(points, 22);
+    expect(summary.sales).toBe(3000);
+    expect(summary.laborCost).toBe(660);
+    expect(summary.laborPct).toBe(22);
+    expect(summary.revPerLaborHr).toBe(25);
+    expect(summary.verdictTone).toBe('balanced');
+    expect(summary.verdict).toBe(
+      'Labor ran 22% of sales — right on your 22% target. Team earned $25/labor-hour.',
+    );
+  });
+
+  it('produces an over-tone verdict with the pt delta over target', () => {
+    const points = [point('2026-07-20', 1000, 300, 10, 'over')];
+    const summary = summarizeLaborPnl(points, 22);
+    expect(summary.verdictTone).toBe('over');
+    expect(summary.revPerLaborHr).toBe(100);
+    expect(summary.verdict).toBe(
+      'Labor ran 30% of sales — 8pt over target. Team earned $100/labor-hour.',
+    );
+  });
+
+  it('produces an under-tone verdict with the pt delta under target', () => {
+    const points = [point('2026-07-20', 1000, 100, 20, 'under')];
+    const summary = summarizeLaborPnl(points, 22);
+    expect(summary.verdictTone).toBe('under');
+    expect(summary.revPerLaborHr).toBe(50);
+    expect(summary.verdict).toBe(
+      'Labor ran 10% of sales — 12pt under target. Team earned $50/labor-hour.',
+    );
+  });
+
+  it('guards 0 labor hours: revPerLaborHr is null and the $/labor-hour clause is omitted', () => {
+    const points = [point('2026-07-20', 1000, 220, 0, 'balanced')];
+    const summary = summarizeLaborPnl(points, 22);
+    expect(summary.laborPct).toBe(22);
+    expect(summary.revPerLaborHr).toBeNull();
+    expect(summary.verdictTone).toBe('balanced');
+    expect(summary.verdict).toBe('Labor ran 22% of sales — right on your 22% target.');
+  });
+
+  it('extracts contiguous over/under windows in bucket order, skipping balanced runs', () => {
+    const points = [
+      point('2026-07-20', 1000, 100, 20, 'under'),
+      point('2026-07-21', 1000, 220, 20, 'balanced'),
+      point('2026-07-22', 1000, 300, 20, 'over'),
+      point('2026-07-23', 1000, 300, 20, 'over'),
+      point('2026-07-24', 1000, 100, 20, 'under'),
+    ];
+    const summary = summarizeLaborPnl(points, 22);
+    expect(summary.overWindows).toEqual([
+      { startLabel: '2026-07-22', endLabel: '2026-07-23', bucketCount: 2 },
+    ]);
+    expect(summary.underWindows).toEqual([
+      { startLabel: '2026-07-20', endLabel: '2026-07-20', bucketCount: 1 },
+      { startLabel: '2026-07-24', endLabel: '2026-07-24', bucketCount: 1 },
+    ]);
+  });
+
+  it('extracts a trailing run that runs to the end of the series', () => {
+    const points = [
+      point('2026-07-20', 1000, 220, 20, 'balanced'),
+      point('2026-07-21', 1000, 300, 20, 'over'),
+    ];
+    const summary = summarizeLaborPnl(points, 22);
+    expect(summary.overWindows).toEqual([
+      { startLabel: '2026-07-21', endLabel: '2026-07-21', bucketCount: 1 },
+    ]);
   });
 });

@@ -137,6 +137,11 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Rounds to 1 decimal place — used for the verdict's `%`/`pt` display only. */
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
 /**
  * Joins a real daily sales series (`buildSplhTimeseries(..., 'day')`) with a
  * real daily labor series (`useLaborCostsFromTimeTracking.dailyCosts`) on
@@ -215,4 +220,92 @@ export function buildSalesVolumeGrid(
       estimated,
     };
   });
+}
+
+/**
+ * Collapses `points` (already bucket-ordered by `buildFinancialSeries`) into
+ * contiguous runs sharing `state`, for `summarizeLaborPnl`'s
+ * `overWindows`/`underWindows` staffing callouts (design §5/§8). "Contiguous"
+ * means adjacent *array entries*, not necessarily adjacent calendar dates —
+ * `buildFinancialSeries` already drops no buckets (outer join), so for a
+ * caller-supplied window without gaps the two coincide.
+ */
+function extractBalanceWindows(
+  points: readonly FinancialPoint[],
+  state: BalanceState,
+): LaborBalanceWindow[] {
+  const windows: LaborBalanceWindow[] = [];
+  let runStart: number | null = null;
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].balanceState === state) {
+      if (runStart === null) runStart = i;
+    } else if (runStart !== null) {
+      windows.push({
+        startLabel: points[runStart].label,
+        endLabel: points[i - 1].label,
+        bucketCount: i - runStart,
+      });
+      runStart = null;
+    }
+  }
+  if (runStart !== null) {
+    windows.push({
+      startLabel: points[runStart].label,
+      endLabel: points[points.length - 1].label,
+      bucketCount: points.length - runStart,
+    });
+  }
+  return windows;
+}
+
+/**
+ * Rolls a `FinancialPoint[]` window up into the KPI-row / verdict-line
+ * summary (design §5, §2.1/§2.2). Totals are re-summed from `points` rather
+ * than trusting any single point's `laborPct`, so the summary always agrees
+ * with the series it was built from. `verdictTone` is `'none'` — distinct
+ * from `classifyBalance`'s per-bucket `'balanced'` guard — when there isn't
+ * enough data to say anything (empty series, or `laborPct` is `null` because
+ * the window has no sales), mirroring `SplhSummary.verdictTone`'s `'none'`.
+ */
+export function summarizeLaborPnl(
+  points: readonly FinancialPoint[],
+  targetPct: number,
+): LaborPnlSummary {
+  const sales = round2(points.reduce((sum, p) => sum + p.sales, 0));
+  const laborCost = round2(points.reduce((sum, p) => sum + p.laborCost, 0));
+  const laborHours = round2(points.reduce((sum, p) => sum + p.laborHours, 0));
+  const laborPct = sales > 0 ? round2((laborCost / sales) * 100) : null;
+  const revPerLaborHr = laborHours > 0 ? round2(sales / laborHours) : null;
+  const overWindows = extractBalanceWindows(points, 'over');
+  const underWindows = extractBalanceWindows(points, 'under');
+
+  if (laborPct === null) {
+    return {
+      sales,
+      laborCost,
+      laborPct,
+      revPerLaborHr,
+      verdict: 'Not enough data to assess labor yet.',
+      verdictTone: 'none',
+      overWindows,
+      underWindows,
+    };
+  }
+
+  const verdictTone = classifyBalance(laborPct, targetPct);
+  const pctLabel = round1(laborPct);
+  const deltaLabel = round1(Math.abs(laborPct - targetPct));
+  let verdict: string;
+  if (verdictTone === 'over') {
+    verdict = `Labor ran ${pctLabel}% of sales — ${deltaLabel}pt over target.`;
+  } else if (verdictTone === 'under') {
+    verdict = `Labor ran ${pctLabel}% of sales — ${deltaLabel}pt under target.`;
+  } else {
+    verdict = `Labor ran ${pctLabel}% of sales — right on your ${targetPct}% target.`;
+  }
+  if (revPerLaborHr !== null) {
+    verdict += ` Team earned $${Math.round(revPerLaborHr)}/labor-hour.`;
+  }
+
+  return { sales, laborCost, laborPct, revPerLaborHr, verdict, verdictTone, overWindows, underWindows };
 }

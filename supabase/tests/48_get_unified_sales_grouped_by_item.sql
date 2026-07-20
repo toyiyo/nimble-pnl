@@ -15,7 +15,7 @@ ALTER TABLE chart_of_accounts DISABLE ROW LEVEL SECURITY;
 INSERT INTO auth.users (id, email) VALUES
   ('00000000-0000-0000-0000-000000000001'::uuid, 'grp-member@example.com'),
   ('00000000-0000-0000-0000-000000000002'::uuid, 'grp-nonmember@example.com')
-ON CONFLICT DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
 INSERT INTO restaurants (id, name, address, phone) VALUES
   ('00000000-0000-0000-0000-000000000097'::uuid, 'Grouped Test Restaurant', '1 Group St', '555-0097')
@@ -23,7 +23,7 @@ ON CONFLICT (id) DO UPDATE SET name = 'Grouped Test Restaurant';
 
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('00000000-0000-0000-0000-000000000001'::uuid, '00000000-0000-0000-0000-000000000097'::uuid, 'owner')
-ON CONFLICT (user_id, restaurant_id) DO NOTHING;
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 -- Seed rows on 2024-08-01:
 --   Burger x2 @ 10 (two sales, qty 3 total, revenue 20)
@@ -50,7 +50,7 @@ VALUES (
   '00000000-0000-0000-0000-000000000097'::uuid,
   'Grp Test Food', 'expense', '5001-grp-test', 'debit'
 )
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name, account_type = EXCLUDED.account_type, account_code = EXCLUDED.account_code, normal_balance = EXCLUDED.normal_balance;
 
 -- Pizza on a separate date (2024-08-02): is_categorized=false, suggested_category_id
 -- SET → pending-review, not uncategorized. No recipe mapping (without-recipe).

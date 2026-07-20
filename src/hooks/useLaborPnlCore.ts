@@ -18,11 +18,25 @@ import { getTodayInTimezone } from '@/lib/timezone';
  * deliberately build the Date with the *local* constructor here (not
  * `Date.UTC`) so `format(windowEnd, 'yyyy-MM-dd')` reproduces the exact
  * restaurant-tz "today" string regardless of the host's own timezone.
+ *
+ * `windowEnd` is the **end** of today (23:59:59.999), not midnight at its
+ * start — `useLaborCostsFromTimeTracking` passes it straight into
+ * `lookaheadPunchFetchRange(dateFrom, dateTo)` (`src/utils/punchWindow.ts`),
+ * which widens only the *end* of the fetch by `OVERNIGHT_BUFFER_HOURS`.
+ * Anchoring `windowEnd` at today's midnight-start silently capped the
+ * `time_punches` fetch at ~6pm today (`OVERNIGHT_BUFFER_HOURS = 18` past
+ * midnight), dropping every clock-in/clock-out later than that from the
+ * query — not merely undercounting hours but excluding whole evening shifts
+ * (an open clock-in with a since-fetched-out-of-window clock-out reads as an
+ * incomplete shift and is entirely dropped). Anchoring at end-of-day makes
+ * today's fetch cover the full day (through "now" and beyond, matching
+ * design §3's clock-in-through-now requirement — future timestamps simply
+ * don't exist yet, so this never over-fetches).
  */
 function laborCostWindow(tz: string, weeks: number): { windowStart: Date; windowEnd: Date } {
   const todayStr = getTodayInTimezone(tz);
   const [y, m, d] = todayStr.split('-').map(Number);
-  const windowEnd = new Date(y, m - 1, d);
+  const windowEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
   const windowStart = new Date(y, m - 1, d - weeks * 7);
   return { windowStart, windowEnd };
 }

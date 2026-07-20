@@ -141,6 +141,30 @@ describe('useLaborPnlCore', () => {
     expect(format(dateFromArg as Date, 'yyyy-MM-dd')).toBe('2026-06-15');
   });
 
+  it('CRITICAL: windowEnd is end-of-day (not midnight-start), so today\'s evening punches are not silently excluded from the fetch', () => {
+    // useLaborCostsFromTimeTracking feeds windowEnd straight into
+    // lookaheadPunchFetchRange(dateFrom, dateTo), which widens only the END
+    // of the time_punches fetch by OVERNIGHT_BUFFER_HOURS (18h). If windowEnd
+    // were anchored at today's midnight-START, the fetch would cut off at
+    // 6pm today, dropping every clock-in/clock-out later than that (and any
+    // shift whose clock_out falls after 6pm would read as an incomplete
+    // shift and be dropped entirely) — undercounting "today" labor relative
+    // to sales, which have no such cutoff (see useLaborPnlCore.ts's
+    // laborCostWindow doc comment).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-14T05:00:00Z'));
+    setup({ timezone: 'UTC' });
+
+    renderHook(() => useLaborPnlCore('rest-1', 4), { wrapper: createWrapper() });
+
+    const [, , dateToArg] = mockUseLaborCostsFromTimeTracking.mock.calls[0];
+    const windowEnd = dateToArg as Date;
+    expect(format(windowEnd, 'yyyy-MM-dd')).toBe('2026-07-14');
+    expect(windowEnd.getHours()).toBe(23);
+    expect(windowEnd.getMinutes()).toBe(59);
+    expect(windowEnd.getSeconds()).toBe(59);
+  });
+
   it('returns empty dailySales, empty dailyLabor, and hasData:false when data is undefined (loading)', () => {
     setup({ noData: true, isLoading: true });
 

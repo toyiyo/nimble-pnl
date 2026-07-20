@@ -6,7 +6,15 @@ import type { TimePunch } from '@/types/timeTracking';
 const NOW = new Date('2026-07-20T16:20:00Z');
 
 function punch(employee_id: string, punch_type: TimePunch['punch_type'], punch_time: string): TimePunch {
-  return { id: `${employee_id}-${punch_type}-${punch_time}`, restaurant_id: 'r1', employee_id, punch_type, punch_time };
+  return {
+    id: `${employee_id}-${punch_type}-${punch_time}`,
+    restaurant_id: 'r1',
+    employee_id,
+    punch_type,
+    punch_time,
+    created_at: punch_time,
+    updated_at: punch_time,
+  };
 }
 
 describe('appendOpenShiftClockOuts', () => {

@@ -68,6 +68,8 @@ export function appendOpenShiftClockOuts(
       restaurant_id: last.restaurant_id,
       employee_id: employeeId,
       punch_time: nowIso,
+      created_at: nowIso,
+      updated_at: nowIso,
     };
     if (last.punch_type === 'break_start') {
       synthetic.push({ ...base, id: `synthetic-${employeeId}-break_end`, punch_type: 'break_end' });

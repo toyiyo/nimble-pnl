@@ -134,7 +134,7 @@ function EmployeeCardHeader({
           variant="ghost"
           size="icon"
           onClick={() => onEditEmployee(employee)}
-          className="h-8 w-8 shrink-0"
+          className="h-11 w-11 shrink-0"
           aria-label={`Edit ${employee.name}`}
         >
           <Edit className="h-3.5 w-3.5" />

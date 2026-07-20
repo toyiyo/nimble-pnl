@@ -14,7 +14,7 @@ import { DndContext } from '@dnd-kit/core';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 
 const renderCell = (isToday: boolean) => {
-  const { container } = render(
+  const { getByRole } = render(
     <DndContext>
       <table>
         <tbody>
@@ -27,31 +27,31 @@ const renderCell = (isToday: boolean) => {
       </table>
     </DndContext>
   );
-  return container.querySelector('td')!;
+  return getByRole('cell');
 };
 
 describe('DroppableDayCell today highlight', () => {
-  it('applies the raised bg-primary/[0.06] tint on the today column', () => {
+  it('should apply the raised tint when the cell is today', () => {
     const td = renderCell(true);
     expect(td).toHaveClass('bg-primary/[0.06]');
   });
 
-  it('brackets the today column with inset primary/.28 side hairlines', () => {
+  it('should bracket the column with inset primary hairlines when the cell is today', () => {
     const td = renderCell(true);
     expect(td).toHaveClass('shadow-[inset_1px_0_0_hsl(var(--primary)/0.28),inset_-1px_0_0_hsl(var(--primary)/0.28)]');
   });
 
-  it('does not apply the old flat bg-primary/5 tint for today (superseded by the raised tint)', () => {
+  it('should not apply the old flat tint when the cell is today (superseded by the raised tint)', () => {
     const td = renderCell(true);
     expect(td.className).not.toMatch(/(?:^|\s)bg-primary\/5(?:\s|$)/);
   });
 
-  it('stays position:relative so abspos/sr-only descendants remain clipped (PR #585 guard)', () => {
+  it('should stay position:relative so abspos/sr-only descendants remain clipped when the cell is today (PR #585 guard)', () => {
     const td = renderCell(true);
     expect(td).toHaveClass('relative');
   });
 
-  it('applies none of the today classes on non-today cells', () => {
+  it('should apply none of the today classes when the cell is not today', () => {
     const td = renderCell(false);
     expect(td).not.toHaveClass('bg-primary/[0.06]');
     expect(td.className).not.toMatch(/shadow-\[inset_1px_0_0_hsl\(var\(--primary\)/);

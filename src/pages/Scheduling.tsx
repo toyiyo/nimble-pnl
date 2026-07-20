@@ -1533,52 +1533,11 @@ const Scheduling = () => {
                                   </Button>
                                 )}
                               </div>
-                              {/* Mobile: compact avatar with tooltip */}
-                              <div className="flex md:hidden flex-col items-center py-1">
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="relative">
-                                        <button
-                                          onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
-                                          className={cn(
-                                            "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
-                                            employee.is_active
-                                              ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
-                                              : "bg-muted text-muted-foreground"
-                                          )}
-                                          aria-label={`${employee.name}, ${employee.position}${isMinorEmployee ? ', minor' : ''}${off ? `, ${off.label.toLowerCase()}` : ''}`}
-                                        >
-                                          {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                        </button>
-                                        {isMinorEmployee && (
-                                          <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-warning ring-1 ring-background" />
-                                        )}
-                                        {off && (
-                                          <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-info ring-1 ring-background" />
-                                        )}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right" className="text-xs">
-                                      <div className="font-medium">
-                                        {employee.name}
-                                        {!employee.is_active && (
-                                          <span className="text-muted-foreground ml-1">(Inactive)</span>
-                                        )}
-                                      </div>
-                                      <div className="text-muted-foreground">{employee.position}</div>
-                                      <div className="text-muted-foreground">
-                                        {isMinorEmployee ? 'Minor · ' : ''}{employee.employment_type === 'part_time' ? 'Part-time' : 'Full-time'}{off ? ` · ${off.label}` : ''}
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                                {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
-                                  <span className="text-[10px] text-muted-foreground mt-0.5">
-                                    {hoursPerEmployee.get(employee.id)}h
-                                  </span>
-                                )}
-                              </div>
+                              {/* Mobile employee presentation now lives entirely in
+                                  WeekScheduleMobile (Task 8) — this <td> only ever
+                                  renders on the desktop grid, which is wrapped in
+                                  `hidden md:block` above, so a `md:hidden` block here
+                                  could never actually render on any viewport width. */}
                             </td>
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);

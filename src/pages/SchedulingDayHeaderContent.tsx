@@ -47,14 +47,14 @@ export function ScheduleDayHeaderContent({ day, isToday: dayIsToday, emphasize =
         <span
           className={cn(
             'inline-flex items-center justify-center h-5 w-5 rounded-full',
-            dayIsToday && 'bg-primary text-primary-foreground'
+            dayIsToday && 'bg-primary text-primary-foreground dark:text-foreground'
           )}
         >
           {format(day, 'd')}
         </span>
       </div>
       {dayIsToday && (
-        <span className="inline-flex items-center justify-center mt-1.5 px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground text-[9px] font-semibold uppercase tracking-wide">
+        <span className="inline-flex items-center justify-center mt-1.5 px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground dark:text-foreground text-[12px] font-semibold uppercase tracking-wide">
           Today
         </span>
       )}

@@ -1,16 +1,17 @@
 /**
  * Regression test for a keyboard-accessibility bug found in code review
- * (sound-logic reviewer, Phase 7b fold): ShiftCard's outer card div has
+ * (sound-logic reviewer, Phase 7b fold): ShiftCard's clickable surface has
  * role="button"/tabIndex={0}/onKeyDown (Task 7, design doc "ShiftCard
- * keyboard access"). The nested Edit/Delete icon buttons only
+ * keyboard access"). The Edit/Delete icon buttons only
  * `e.stopPropagation()` on their `onClick`, not on keydown, so pressing
- * Enter/Space while the "Delete shift" button is focused let the keydown
+ * Enter/Space while the "Delete shift" button was focused let the keydown
  * bubble to the card's own onKeyDown, which unconditionally called
  * `onEdit(shift)` instead of the focused button's own `onDelete(shift)`.
  *
- * The fix guards the card's onKeyDown with `e.target !== e.currentTarget`
- * so it only reacts to keydowns on the card surface itself, not ones
- * bubbling up from a focused descendant control.
+ * The fix (CodeRabbit Phase 7c fold) moved the Edit/Delete buttons out from
+ * under the role="button" card surface entirely — real interactive elements
+ * must not be nested inside another ARIA button — so their keydowns no
+ * longer bubble into the card's own onKeyDown at all.
  */
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -32,6 +33,7 @@ vi.mock('@/hooks/useConflictDetection', () => ({
 }));
 
 beforeEach(() => {
+  mockUseCheckConflicts.mockReset();
   mockUseCheckConflicts.mockReturnValue({ conflicts: [], hasConflicts: false });
 });
 
@@ -87,7 +89,7 @@ describe('ShiftCard — keyboard activation of nested Edit/Delete buttons', () =
     expect(onEdit).not.toHaveBeenCalled();
   });
 
-  it('still activates onEdit via Enter/Space when the card surface itself is focused', () => {
+  it('should call onEdit for both Enter and Space when the card surface itself is focused', () => {
     const shift = makeShift();
     const onEdit = vi.fn();
     const onDelete = vi.fn();
@@ -97,8 +99,11 @@ describe('ShiftCard — keyboard activation of nested Edit/Delete buttons', () =
     const card = screen.getByTestId('shift-card');
     card.focus();
     fireEvent.keyDown(card, { key: 'Enter' });
+    fireEvent.keyDown(card, { key: ' ' });
 
-    expect(onEdit).toHaveBeenCalledWith(shift);
+    expect(onEdit).toHaveBeenCalledTimes(2);
+    expect(onEdit).toHaveBeenNthCalledWith(1, shift);
+    expect(onEdit).toHaveBeenNthCalledWith(2, shift);
     expect(onDelete).not.toHaveBeenCalled();
   });
 });

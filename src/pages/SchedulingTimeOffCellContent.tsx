@@ -36,7 +36,7 @@ export function SchedulingTimeOffCellContent({
         </span>
       )}
       {isConflict && (
-        <div className="flex items-center gap-1 text-[11px] text-destructive font-medium">
+        <div className="inline-flex items-center gap-1 rounded-full bg-destructive px-1.5 py-0.5 text-[11px] font-medium text-destructive-foreground dark:text-foreground">
           <Flag className="h-3 w-3" aria-hidden="true" />
           Conflict
         </div>

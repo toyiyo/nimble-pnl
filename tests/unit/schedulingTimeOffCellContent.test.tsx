@@ -13,34 +13,44 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { SchedulingTimeOffCellContent } from '@/pages/SchedulingTimeOffCellContent';
 
+/** Get the content wrapper (the component's sole root element), throwing with a clear
+ * message instead of silently dereferencing null if the markup ever changes shape. */
+function getWrapper(container: HTMLElement): HTMLElement {
+  const wrapper = container.firstElementChild;
+  if (!(wrapper instanceof HTMLElement)) {
+    throw new Error('Expected SchedulingTimeOffCellContent to render a single root element');
+  }
+  return wrapper;
+}
+
 describe('SchedulingTimeOffCellContent', () => {
-  it('renders children with no hatch/border classes when not off', () => {
+  it('should render no hatch/border classes when the day is not off', () => {
     const { container } = render(
       <SchedulingTimeOffCellContent isOff={false} hasShift={false}>
         <div>shift content</div>
       </SchedulingTimeOffCellContent>
     );
     expect(screen.getByText('shift content')).toBeInTheDocument();
-    const wrapper = container.firstElementChild!;
+    const wrapper = getWrapper(container);
     expect(wrapper.className).not.toMatch(/timeoff-hatch|conflict-hatch/);
     expect(screen.queryByText('Time off')).toBeNull();
     expect(screen.queryByText('Conflict')).toBeNull();
   });
 
-  it('applies .timeoff-hatch + dashed muted border and a "Time off" pill on an off day with no shift', () => {
+  it('should apply .timeoff-hatch + a dashed muted border and a "Time off" pill when the day is off with no shift', () => {
     const { container } = render(
       <SchedulingTimeOffCellContent isOff hasShift={false}>
         <div>add button</div>
       </SchedulingTimeOffCellContent>
     );
-    const wrapper = container.firstElementChild!;
+    const wrapper = getWrapper(container);
     expect(wrapper).toHaveClass('timeoff-hatch', 'border-dashed', 'border-muted-foreground/50');
     expect(wrapper.className).not.toMatch(/conflict-hatch/);
     expect(screen.getByText('Time off')).toBeInTheDocument();
     expect(screen.queryByText('Conflict')).toBeNull();
   });
 
-  it('renders the "Time off" pill on every off day, not only the run start (no isRunStart gate)', () => {
+  it('should render the "Time off" pill on every off day when there is no isRunStart gate', () => {
     // No isRunStart-style prop exists at all — every off day (isOff=true) gets the pill.
     render(
       <SchedulingTimeOffCellContent isOff hasShift={false}>
@@ -50,20 +60,20 @@ describe('SchedulingTimeOffCellContent', () => {
     expect(screen.getByText('Time off')).toBeInTheDocument();
   });
 
-  it('applies .conflict-hatch + destructive border and a "Conflict" tag when off and a shift exists', () => {
+  it('should apply .conflict-hatch + a destructive border and a "Conflict" tag when an off day has a shift', () => {
     const { container } = render(
       <SchedulingTimeOffCellContent isOff hasShift>
         <div>the shift card</div>
       </SchedulingTimeOffCellContent>
     );
-    const wrapper = container.firstElementChild!;
+    const wrapper = getWrapper(container);
     expect(wrapper).toHaveClass('conflict-hatch', 'border-destructive');
     expect(wrapper.className).not.toMatch(/timeoff-hatch/);
     expect(screen.getByText('Conflict')).toBeInTheDocument();
     expect(screen.queryByText('Time off')).toBeNull();
   });
 
-  it('preserves sr-only "Approved time off" text for a non-conflict off day', () => {
+  it('should preserve the sr-only "Approved time off" text when the day is off with no conflict', () => {
     render(
       <SchedulingTimeOffCellContent isOff hasShift={false}>
         <div />
@@ -72,7 +82,7 @@ describe('SchedulingTimeOffCellContent', () => {
     expect(screen.getByText('Approved time off')).toHaveClass('sr-only');
   });
 
-  it('preserves sr-only scheduling-conflict text for a conflict day', () => {
+  it('should preserve the sr-only scheduling-conflict text when the day is a conflict', () => {
     render(
       <SchedulingTimeOffCellContent isOff hasShift>
         <div />
@@ -83,7 +93,7 @@ describe('SchedulingTimeOffCellContent', () => {
     ).toHaveClass('sr-only');
   });
 
-  it('renders no sr-only status text when not off', () => {
+  it('should render no sr-only status text when the day is not off', () => {
     render(
       <SchedulingTimeOffCellContent isOff={false} hasShift={false}>
         <div />
@@ -95,7 +105,7 @@ describe('SchedulingTimeOffCellContent', () => {
     ).toBeNull();
   });
 
-  it('always renders children regardless of off/conflict state', () => {
+  it('should always render children when off/conflict state changes', () => {
     render(
       <SchedulingTimeOffCellContent isOff hasShift>
         <div>the shift card</div>

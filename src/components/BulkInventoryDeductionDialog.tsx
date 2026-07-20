@@ -5,7 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { DatePicker } from '@/components/ui/date-picker';
-import { useBulkInventoryDeduction } from '@/hooks/useBulkInventoryDeduction';
+import { useBulkInventoryDeduction, BulkProgress } from '@/hooks/useBulkInventoryDeduction';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -13,6 +13,7 @@ export const BulkInventoryDeductionDialog = () => {
   const [open, setOpen] = useState(false);
   const [startDate, setStartDate] = useState<Date>();
   const [endDate, setEndDate] = useState<Date>();
+  const [progress, setProgress] = useState<BulkProgress | null>(null);
   const { bulkProcessHistoricalSales, loading } = useBulkInventoryDeduction();
   const { selectedRestaurant } = useRestaurantContext();
 
@@ -22,7 +23,8 @@ export const BulkInventoryDeductionDialog = () => {
     const result = await bulkProcessHistoricalSales(
       selectedRestaurant.restaurant_id,
       format(startDate, 'yyyy-MM-dd'),
-      format(endDate, 'yyyy-MM-dd')
+      format(endDate, 'yyyy-MM-dd'),
+      setProgress
     );
 
     if (result) {
@@ -31,10 +33,19 @@ export const BulkInventoryDeductionDialog = () => {
     }
   };
 
+  // Gate closing mid-run so a background batch loop can't fire a toast onto
+  // a dialog the user thinks they cancelled; reset progress on every
+  // open/close transition so a stale run's totals never leak into the next.
+  const handleOpenChange = (next: boolean) => {
+    if (loading) return;
+    setOpen(next);
+    setProgress(null);
+  };
+
   const isValid = startDate && endDate && startDate <= endDate;
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" className="gap-2 w-full sm:w-auto">
           <RefreshCw className="h-4 w-4" />
@@ -53,6 +64,17 @@ export const BulkInventoryDeductionDialog = () => {
         <Alert>
           <AlertDescription>
             This will only process sales that haven't been processed yet. Already processed sales will be skipped automatically.
+            {progress && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mt-2 text-[13px] text-muted-foreground"
+              >
+                {loading
+                  ? `Processed ${progress.processed} sales so far (${progress.skipped} skipped, ${progress.errors} errors)…`
+                  : `Done: processed ${progress.processed} sales, skipped ${progress.skipped}, ${progress.errors} errors.`}
+              </div>
+            )}
           </AlertDescription>
         </Alert>
 
@@ -78,7 +100,7 @@ export const BulkInventoryDeductionDialog = () => {
         </div>
 
         <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={loading}>
             Cancel
           </Button>
           <Button 

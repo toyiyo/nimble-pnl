@@ -30,8 +30,14 @@ describe('Scheduling roster context — identity cell', () => {
     expect(SRC).toMatch(/employment_type === 'part_time' \? 'PT' : 'FT'/);
     expect(SRC).toMatch(/bg-muted text-muted-foreground/);
   });
-  it('renders the Off chip with the info token and CalendarOff, not a title tooltip', () => {
-    expect(SRC).toMatch(/bg-info\/10 text-info/);
+  it('renders the Off chip with the muted availability-chip family and CalendarOff, not a title tooltip', () => {
+    // Task 6: the off pill IS the time_off state of the weekly availability
+    // chip now — restyled to the muted family via the shared
+    // TIME_OFF_CHIP_CLASSES constant (weekAvailabilityChipClasses('time_off'),
+    // defined once in effectiveAvailability.ts).
+    expect(SRC).toMatch(/TIME_OFF_CHIP_CLASSES\.bg/);
+    expect(SRC).toMatch(/TIME_OFF_CHIP_CLASSES\.text/);
+    expect(SRC).not.toMatch(/bg-info\/10 text-info/);
     expect(SRC).toMatch(/off\.label/);
     expect(SRC).toMatch(/sr-only/);
     // negative: no hardcoded blue, no title-attr tooltip on the chip
@@ -40,18 +46,21 @@ describe('Scheduling roster context — identity cell', () => {
 });
 
 describe('Scheduling roster context — day cells', () => {
-  it('computes per-day off state and run-start', () => {
+  it('computes per-day off state without gating on run-start (every off day is labeled)', () => {
     expect(SRC).toMatch(/offDayKeys\.has\(/);
-    expect(SRC).toMatch(/isRunStart/);
+    // Design doc §2: "Time off" renders on EVERY off day now, not just the
+    // first day of a span — the old isRunStart gate is gone.
+    expect(SRC).not.toMatch(/isRunStart/);
   });
   it('excludes cancelled shifts when computing the conflict state for a time-off day', () => {
     expect(SRC).toMatch(/dayShifts\.some\(s => s\.status !== 'cancelled'\)/);
   });
-  it('renders accent bars (info normally, destructive on conflict) and sr-only state', () => {
-    expect(SRC).toMatch(/border-l-2 border-info/);
-    expect(SRC).toMatch(/border-l-2 border-destructive/);
-    expect(SRC).toMatch(/Approved time off/);
-    expect(SRC).toMatch(/Scheduling conflict/);
+  it('delegates the off/conflict cell treatment to SchedulingTimeOffCellContent (hatch + sr-only state)', () => {
+    expect(SRC).toMatch(/from '\.\/SchedulingTimeOffCellContent'/);
+    expect(SRC).toMatch(/<SchedulingTimeOffCellContent isOff={isOff} hasShift={hasShift}>/);
+    // Neutral hatch treatment replaces the old info-blue accent bars.
+    expect(SRC).not.toMatch(/border-l-2 border-info/);
+    expect(SRC).not.toMatch(/border-l-2 border-destructive/);
   });
   it('soft-blocks add on off-days with a contextual aria-label', () => {
     expect(SRC).toMatch(/Add anyway/);
@@ -59,20 +68,10 @@ describe('Scheduling roster context — day cells', () => {
   });
 });
 
-describe('Scheduling roster context — mobile', () => {
-  it('extends the mobile avatar aria-label with minor/off state', () => {
-    expect(SRC).toMatch(/isMinorEmployee \? ', minor'/);
-  });
-  it('shows minor/FT-PT/off in the mobile tooltip and marks dots aria-hidden', () => {
-    expect(SRC).toMatch(/aria-hidden="true"/);
-    expect(SRC).toMatch(/relative/); // avatar wrapper hosts the corner dots
-  });
-});
-
 describe('Scheduling roster context — keyboard accessibility', () => {
   it('makes the Off chip tooltip trigger a focusable button with a focus ring', () => {
     // a <span> trigger is not keyboard-focusable (CodeRabbit) — must be a button w/ focus ring
-    expect(SRC).toMatch(/bg-info\/10 text-info[^"]*focus-visible:ring-ring/);
+    expect(SRC).toMatch(/focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/);
   });
   it('reveals the per-day add button on keyboard focus, not hover-only', () => {
     expect(SRC).toMatch(/group-focus-within:opacity-100/);

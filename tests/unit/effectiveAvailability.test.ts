@@ -4,6 +4,8 @@ import {
   availabilityColorClasses,
   availabilityLabel,
   shiftOutsideAvailability,
+  summarizeWeekAvailability,
+  weekAvailabilityChipClasses,
   EffectiveSlot,
   EffectiveAvailability,
 } from '@/lib/effectiveAvailability';
@@ -332,5 +334,117 @@ describe('shiftOutsideAvailability (TZ-portable)', () => {
         ),
       ).toBe(false);
     });
+  });
+});
+
+describe('summarizeWeekAvailability', () => {
+  const weekOf = (
+    entries: Array<[number, boolean, EffectiveAvailability['type']?]>,
+  ): Map<number, EffectiveAvailability> => {
+    const map = new Map<number, EffectiveAvailability>();
+    for (const [dow, isAvailable, type = 'recurring'] of entries) {
+      map.set(dow, avail(isAvailable, '09:00:00', '17:00:00', type));
+    }
+    return map;
+  };
+
+  it('time off takes priority over everything else', () => {
+    const week = weekOf([
+      [1, true],
+      [2, false],
+    ]);
+    expect(summarizeWeekAvailability(week, true)).toEqual({
+      status: 'time_off',
+      label: 'Time off',
+    });
+  });
+
+  it('uses a custom off label when provided', () => {
+    const week = weekOf([[1, true]]);
+    expect(summarizeWeekAvailability(week, true, 'Vacation')).toEqual({
+      status: 'time_off',
+      label: 'Vacation',
+    });
+  });
+
+  it('flags limited when any day is recurring-unavailable, even with other available days', () => {
+    const week = weekOf([
+      [1, true],
+      [2, false, 'recurring'],
+    ]);
+    expect(summarizeWeekAvailability(week, false)).toEqual({
+      status: 'limited',
+      label: 'Limited availability',
+    });
+  });
+
+  it('flags limited when any day is an unavailable exception', () => {
+    const week = weekOf([
+      [1, true],
+      [3, false, 'exception'],
+    ]);
+    expect(summarizeWeekAvailability(week, false)).toEqual({
+      status: 'limited',
+      label: 'Limited availability',
+    });
+  });
+
+  it('flags available when no unavailable day exists but at least one available day does', () => {
+    const week = weekOf([
+      [0, true],
+      [4, true],
+    ]);
+    expect(summarizeWeekAvailability(week, false)).toEqual({
+      status: 'available',
+      label: 'Available',
+    });
+  });
+
+  it('is unset when every day is not-set', () => {
+    const week = new Map<number, EffectiveAvailability>();
+    week.set(1, { type: 'not-set', slots: [] });
+    week.set(2, { type: 'not-set', slots: [] });
+    expect(summarizeWeekAvailability(week, false)).toEqual({
+      status: 'unset',
+      label: 'Availability not set',
+    });
+  });
+
+  it('is unset for an empty map', () => {
+    expect(summarizeWeekAvailability(new Map(), false)).toEqual({
+      status: 'unset',
+      label: 'Availability not set',
+    });
+  });
+
+  it('is unset when the week is undefined (loading/error state)', () => {
+    expect(summarizeWeekAvailability(undefined, false)).toEqual({
+      status: 'unset',
+      label: 'Availability not set',
+    });
+  });
+});
+
+describe('weekAvailabilityChipClasses', () => {
+  it('returns the muted family for time_off', () => {
+    const classes = weekAvailabilityChipClasses('time_off');
+    expect(classes?.bg).toContain('muted');
+    expect(classes?.text).toContain('muted-foreground');
+  });
+
+  it('returns amber for limited', () => {
+    const classes = weekAvailabilityChipClasses('limited');
+    expect(classes?.bg).toContain('amber');
+    expect(classes?.text).toContain('amber');
+  });
+
+  it('returns a quiet success treatment for available', () => {
+    const classes = weekAvailabilityChipClasses('available');
+    expect(classes?.bg).toContain('success');
+    expect(classes?.text).toContain('success');
+  });
+
+  it('returns null for unset (no chip rendered)', () => {
+    expect(weekAvailabilityChipClasses('unset')).toBeNull();
   });
 });

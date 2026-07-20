@@ -1,6 +1,6 @@
 -- Admin per-type x per-channel notification matrix: notification_channel_settings table.
 --
--- Single source of truth for the 16 notification types lives in TWO hand-maintained
+-- Single source of truth for the 15 notification types lives in TWO hand-maintained
 -- lists that a vitest test (tests/unit/notificationTypes.test.ts) keeps in sync:
 --   - src/lib/notificationTypes.ts (NOTIFICATION_TYPES / NotificationType union)
 --   - supabase/functions/_shared/resolveChannels.ts (NotificationType union)
@@ -95,7 +95,7 @@ COMMENT ON COLUMN notification_channel_settings.push_enabled IS 'Whether this no
 
 -- Data migration: preserve existing choices from the legacy notification_settings
 -- single-boolean-per-type columns for the 6 types that were already gated
--- (3 shift + 3 time-off). Types that were never gated (11 others) are left absent,
+-- (3 shift + 3 time-off). Types that were never gated (9 others) are left absent,
 -- which resolves to "both channels on" via resolveChannels() — unchanged behavior.
 -- COALESCE(<legacy>, true): the legacy columns are nullable; NULL must map to
 -- true (fail-open), not violate the NOT NULL channel columns.

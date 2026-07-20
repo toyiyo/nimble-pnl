@@ -5,12 +5,17 @@ import {
   monthKeyOf,
   bucketKeyOf,
   buildFinancialSeries,
+  buildSalesVolumeGrid,
 } from '@/lib/laborPnlAnalytics';
-import type { SplhPoint } from '@/lib/splhAnalytics';
+import type { SplhPoint, SplhGridCell } from '@/lib/splhAnalytics';
 import type { LaborCostData } from '@/hooks/useLaborCostsFromTimeTracking';
 
 function sale(bucketStart: string, totalSales: number): SplhPoint {
   return { bucketStart, label: bucketStart, totalSales, totalHours: 0, splh: null };
+}
+
+function gridCell(dow: number, hour: number, totalSales: number): SplhGridCell {
+  return { dow, hour, totalSales, totalHours: 0, splh: null, state: 'no-labor' };
 }
 
 function labor(date: string, total_labor_cost: number, total_hours: number): LaborCostData {
@@ -208,5 +213,48 @@ describe('buildFinancialSeries', () => {
       22,
     );
     expect(points.map((p) => p.bucketStart)).toEqual(['2026-07-19', '2026-07-22']);
+  });
+});
+
+describe('buildSalesVolumeGrid', () => {
+  it('normalizes intensity 0..1 against the window max cell', () => {
+    const cells = buildSalesVolumeGrid(
+      [gridCell(1, 12, 100), gridCell(1, 13, 50), gridCell(1, 14, 25)],
+      false,
+    );
+    expect(cells.map((c) => c.intensity)).toEqual([1, 0.5, 0.25]);
+    expect(cells.map((c) => c.totalSales)).toEqual([100, 50, 25]);
+    expect(cells.map((c) => ({ dow: c.dow, hour: c.hour }))).toEqual([
+      { dow: 1, hour: 12 },
+      { dow: 1, hour: 13 },
+      { dow: 1, hour: 14 },
+    ]);
+  });
+
+  it('flags peak at/above 72% of the window max, and not below it', () => {
+    const cells = buildSalesVolumeGrid(
+      [gridCell(1, 12, 100), gridCell(1, 13, 72), gridCell(1, 14, 71.99), gridCell(1, 15, 0)],
+      false,
+    );
+    expect(cells.map((c) => c.peak)).toEqual([true, true, false, false]);
+  });
+
+  it('passes the estimated flag through to every cell', () => {
+    const withEstimate = buildSalesVolumeGrid([gridCell(0, 9, 10), gridCell(0, 10, 20)], true);
+    expect(withEstimate.every((c) => c.estimated === true)).toBe(true);
+
+    const withoutEstimate = buildSalesVolumeGrid([gridCell(0, 9, 10)], false);
+    expect(withoutEstimate[0].estimated).toBe(false);
+  });
+
+  it('handles an all-zero window without producing NaN intensities or peaks', () => {
+    const cells = buildSalesVolumeGrid([gridCell(0, 0, 0), gridCell(0, 1, 0)], false);
+    expect(cells.every((c) => c.intensity === 0)).toBe(true);
+    expect(cells.every((c) => c.peak === false)).toBe(true);
+    expect(cells.every((c) => Number.isNaN(c.intensity) === false)).toBe(true);
+  });
+
+  it('handles an empty cells array', () => {
+    expect(buildSalesVolumeGrid([], false)).toEqual([]);
   });
 });

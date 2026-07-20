@@ -10,7 +10,7 @@
  */
 
 import { mondayOf } from './splhAnalytics';
-import type { SplhPoint } from './splhAnalytics';
+import type { SplhPoint, SplhGridCell } from './splhAnalytics';
 import type { LaborCostData } from '@/hooks/useLaborCostsFromTimeTracking';
 
 /** Per-bucket balance vs. the labor-% target (design §3). */
@@ -26,6 +26,13 @@ export type LaborGranularity = 'day' | 'week' | 'month';
  * `band` param — this is only the default.
  */
 export const LABOR_BALANCE_BAND = 6;
+
+/**
+ * Fraction of a busy-hours window's max cell (0..1) at/above which a
+ * `SalesVolumeCell` is flagged `peak` (design §5: "≥72% of max, matching
+ * prototype").
+ */
+export const SALES_VOLUME_PEAK_THRESHOLD = 0.72;
 
 /**
  * One bucket (day/week/month) of the demand-vs-staffing series
@@ -176,6 +183,36 @@ export function buildFinancialSeries(
       laborHours,
       laborPct,
       balanceState: classifyBalance(laborPct, targetPct),
+    };
+  });
+}
+
+/**
+ * Builds the busy-hours sales-volume grid (design §5) from the SPLH
+ * feature's existing per-(dow,hour) `SplhGridCell[]` (`buildSplhGrid`,
+ * reused without modification). `intensity` normalizes each cell's
+ * `totalSales` against the window's max cell (0 when the window is entirely
+ * zero — never `NaN`); `peak` flags cells at/above
+ * `SALES_VOLUME_PEAK_THRESHOLD`. `estimated` is **not** per-cell on
+ * `SplhGridCell` — `buildSplhGrid` either derives every cell from real
+ * per-sale hours or spreads every cell from the daily-total fallback (never
+ * a mix, design §6) — so callers pass the single window-level flag through,
+ * mirroring `SplhHeatmap`'s `estimated` prop (`!hasHourlyBreakdown`).
+ */
+export function buildSalesVolumeGrid(
+  cells: SplhGridCell[],
+  estimated: boolean,
+): SalesVolumeCell[] {
+  const maxSales = cells.reduce((max, cell) => Math.max(max, cell.totalSales), 0);
+  return cells.map((cell) => {
+    const intensity = maxSales > 0 ? cell.totalSales / maxSales : 0;
+    return {
+      dow: cell.dow,
+      hour: cell.hour,
+      totalSales: cell.totalSales,
+      intensity,
+      peak: intensity >= SALES_VOLUME_PEAK_THRESHOLD,
+      estimated,
     };
   });
 }

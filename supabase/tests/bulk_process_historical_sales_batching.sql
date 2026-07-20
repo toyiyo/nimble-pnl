@@ -1,11 +1,11 @@
 -- pgTAP tests for the keyset-batched public.bulk_process_historical_sales RPC
 -- (see docs/superpowers/specs/2026-07-20-bulk-deduction-timeout-design.md)
 --
--- RED: written against the pre-batching 3-arg signature
--- (supabase/migrations/20251023164509_a85d8666-30e6-44bd-87f3-a5a816fc341f.sql),
--- which has no p_batch_size/cursor params and no tenant-authz guard. Every
--- assertion below is expected to FAIL until the batched 7-arg function
--- (migration 20260720120000_bulk_deduction_keyset_batching.sql) lands.
+-- GREEN against the batched 7-arg function
+-- (migration 20260720120000_bulk_deduction_keyset_batching.sql), which adds
+-- p_batch_size/cursor params and a tenant-authz guard on top of the
+-- pre-batching 3-arg signature
+-- (supabase/migrations/20251023164509_a85d8666-30e6-44bd-87f3-a5a816fc341f.sql).
 
 BEGIN;
 SELECT plan(17);
@@ -204,7 +204,12 @@ SELECT is((current_setting('test.rerun')::jsonb->>'processed')::int, 0, 'idempot
 SELECT is(
   (SELECT count(*)::int FROM inventory_transactions
    WHERE restaurant_id = 'b0000000-0000-0000-0000-000000000001'
-     AND reference_id LIKE 'order-%'),
+     -- reference_id is built as `<external_order_id>_<pos_item_name>_<sale_date>`
+     -- (process_unified_inventory_deduction). Scoped to just the original 7
+     -- (order-1.._.. .. order-7.._..); section 3 above (exact-multiple test)
+     -- legitimately wrote 2 more (order-8, order-9) in a different date
+     -- range, so an unscoped 'order-%' count would be 9 here, not 7.
+     AND reference_id ~ '^order-[1-7]_'),
   7,
   'idempotent re-run: inventory_transactions count for the first range unchanged (still 7)'
 );

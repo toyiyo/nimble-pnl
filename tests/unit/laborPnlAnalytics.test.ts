@@ -1,5 +1,28 @@
 import { describe, it, expect } from 'vitest';
-import { classifyBalance, LABOR_BALANCE_BAND, monthKeyOf, bucketKeyOf } from '@/lib/laborPnlAnalytics';
+import {
+  classifyBalance,
+  LABOR_BALANCE_BAND,
+  monthKeyOf,
+  bucketKeyOf,
+  buildFinancialSeries,
+} from '@/lib/laborPnlAnalytics';
+import type { SplhPoint } from '@/lib/splhAnalytics';
+import type { LaborCostData } from '@/hooks/useLaborCostsFromTimeTracking';
+
+function sale(bucketStart: string, totalSales: number): SplhPoint {
+  return { bucketStart, label: bucketStart, totalSales, totalHours: 0, splh: null };
+}
+
+function labor(date: string, total_labor_cost: number, total_hours: number): LaborCostData {
+  return {
+    date,
+    total_labor_cost,
+    hourly_wages: total_labor_cost,
+    salary_wages: 0,
+    contractor_payments: 0,
+    total_hours,
+  };
+}
 
 describe('LABOR_BALANCE_BAND', () => {
   it('defaults to 6 percentage points', () => {
@@ -79,5 +102,111 @@ describe('bucketKeyOf', () => {
     expect(bucketKeyOf('2025-12-31', 'month')).toBe('2025-12');
     // 2025-12-31 is a Wednesday; its Monday is 2025-12-29.
     expect(bucketKeyOf('2025-12-31', 'week')).toBe('2025-12-29');
+  });
+});
+
+describe('buildFinancialSeries', () => {
+  it('day granularity: passes each day through as its own bucket', () => {
+    const points = buildFinancialSeries(
+      [sale('2026-07-20', 1000), sale('2026-07-21', 2000)],
+      [labor('2026-07-20', 220, 40), labor('2026-07-21', 440, 80)],
+      'day',
+      22,
+    );
+    expect(points).toEqual([
+      {
+        bucketStart: '2026-07-20',
+        label: '2026-07-20',
+        sales: 1000,
+        laborCost: 220,
+        laborHours: 40,
+        laborPct: 22,
+        balanceState: 'balanced',
+      },
+      {
+        bucketStart: '2026-07-21',
+        label: '2026-07-21',
+        sales: 2000,
+        laborCost: 440,
+        laborHours: 80,
+        laborPct: 22,
+        balanceState: 'balanced',
+      },
+    ]);
+  });
+
+  it('week granularity: aggregates days in the same week into the Monday bucket', () => {
+    // 2026-07-20 (Mon) .. 2026-07-24 (Fri) are the same week.
+    const points = buildFinancialSeries(
+      [sale('2026-07-20', 1000), sale('2026-07-24', 3000)],
+      [labor('2026-07-20', 220, 40), labor('2026-07-24', 660, 120)],
+      'week',
+      22,
+    );
+    expect(points).toHaveLength(1);
+    expect(points[0]).toMatchObject({
+      bucketStart: '2026-07-20',
+      sales: 4000,
+      laborCost: 880,
+      laborHours: 160,
+      laborPct: 22,
+    });
+  });
+
+  it('month granularity: aggregates all days in the same calendar month', () => {
+    const points = buildFinancialSeries(
+      [sale('2026-07-01', 1000), sale('2026-07-31', 1000)],
+      [labor('2026-07-01', 200, 30), labor('2026-07-31', 200, 30)],
+      'month',
+      22,
+    );
+    expect(points).toHaveLength(1);
+    expect(points[0]).toMatchObject({
+      bucketStart: '2026-07',
+      sales: 2000,
+      laborCost: 400,
+      laborHours: 60,
+      laborPct: 20,
+    });
+  });
+
+  it('a 0-sales bucket yields null laborPct, never Infinity', () => {
+    const points = buildFinancialSeries([], [labor('2026-07-20', 300, 20)], 'day', 22);
+    expect(points).toEqual([
+      {
+        bucketStart: '2026-07-20',
+        label: '2026-07-20',
+        sales: 0,
+        laborCost: 300,
+        laborHours: 20,
+        laborPct: null,
+        balanceState: 'balanced',
+      },
+    ]);
+  });
+
+  it('outer join: a day with sales but no labor row still appears, with laborCost/Hours 0', () => {
+    const points = buildFinancialSeries([sale('2026-07-20', 500)], [], 'day', 22);
+    expect(points).toEqual([
+      {
+        bucketStart: '2026-07-20',
+        label: '2026-07-20',
+        sales: 500,
+        laborCost: 0,
+        laborHours: 0,
+        laborPct: 0,
+        balanceState: 'under',
+      },
+    ]);
+  });
+
+  it('outer join: buckets are sorted ascending across mixed sales-only and labor-only days', () => {
+    const points = buildFinancialSeries(
+      [sale('2026-07-22', 500)],
+      [labor('2026-07-19', 100, 10)],
+      'day',
+      22,
+    );
+    expect(points.map((p) => p.bucketStart)).toEqual(['2026-07-19', '2026-07-22']);
   });
 });

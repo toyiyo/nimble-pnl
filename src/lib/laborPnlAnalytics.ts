@@ -10,6 +10,8 @@
  */
 
 import { mondayOf } from './splhAnalytics';
+import type { SplhPoint } from './splhAnalytics';
+import type { LaborCostData } from '@/hooks/useLaborCostsFromTimeTracking';
 
 /** Per-bucket balance vs. the labor-% target (design §3). */
 export type BalanceState = 'over' | 'balanced' | 'under';
@@ -121,4 +123,59 @@ export function bucketKeyOf(dateStr: string, granularity: LaborGranularity): str
     default:
       return dateStr;
   }
+}
+
+/** Rounds to 2 decimal places, matching `buildSplhTimeseries`'s $ rounding. */
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Joins a real daily sales series (`buildSplhTimeseries(..., 'day')`) with a
+ * real daily labor series (`useLaborCostsFromTimeTracking.dailyCosts`) on
+ * restaurant-local date, then rolls both up to the requested granularity
+ * (design §5). This is an **outer join**: a bucket appears if it has sales,
+ * labor, or both — a labor-only or sales-only day is never dropped (design
+ * §4/§6). `laborPct` is `null` — never `Infinity` — when the bucket's `sales`
+ * is `<= 0` (design §6), matching `FinancialPoint.laborPct` / `classifyBalance`.
+ */
+export function buildFinancialSeries(
+  dailySales: SplhPoint[],
+  dailyLabor: LaborCostData[],
+  granularity: LaborGranularity,
+  targetPct: number,
+): FinancialPoint[] {
+  const salesByBucket = new Map<string, number>();
+  const laborCostByBucket = new Map<string, number>();
+  const laborHoursByBucket = new Map<string, number>();
+
+  for (const point of dailySales) {
+    const bucket = bucketKeyOf(point.bucketStart, granularity);
+    salesByBucket.set(bucket, (salesByBucket.get(bucket) ?? 0) + point.totalSales);
+  }
+  for (const day of dailyLabor) {
+    const bucket = bucketKeyOf(day.date, granularity);
+    laborCostByBucket.set(bucket, (laborCostByBucket.get(bucket) ?? 0) + day.total_labor_cost);
+    laborHoursByBucket.set(bucket, (laborHoursByBucket.get(bucket) ?? 0) + day.total_hours);
+  }
+
+  const buckets = Array.from(
+    new Set([...salesByBucket.keys(), ...laborCostByBucket.keys()]),
+  ).sort((a, b) => a.localeCompare(b));
+
+  return buckets.map((bucketStart) => {
+    const sales = round2(salesByBucket.get(bucketStart) ?? 0);
+    const laborCost = round2(laborCostByBucket.get(bucketStart) ?? 0);
+    const laborHours = round2(laborHoursByBucket.get(bucketStart) ?? 0);
+    const laborPct = sales > 0 ? round2((laborCost / sales) * 100) : null;
+    return {
+      bucketStart,
+      label: bucketStart,
+      sales,
+      laborCost,
+      laborHours,
+      laborPct,
+      balanceState: classifyBalance(laborPct, targetPct),
+    };
+  });
 }

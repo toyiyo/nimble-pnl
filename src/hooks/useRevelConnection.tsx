@@ -74,6 +74,18 @@ export function useRevelConnection(restaurantId?: string | null) {
     return data;
   }
 
+  // Full 90-day initial backfill: the server loops date batches within a time budget,
+  // so this may take a couple of minutes and can return before it's fully done.
+  async function triggerBackfill(id: string): Promise<Record<string, unknown> | null> {
+    const { data, error } = await supabase.functions.invoke('revel-bulk-sync', {
+      body: { restaurantId: id },
+    });
+    if (error) throw error;
+    if (data?.error) throw new Error(data.error);
+    queryClient.invalidateQueries({ queryKey: ['revel-connection', id] });
+    return data;
+  }
+
   async function triggerManualSync(id: string, options?: { startDate?: string; endDate?: string }): Promise<Record<string, unknown> | null> {
     const { data, error } = await supabase.functions.invoke('revel-sync-data', {
       body: { restaurantId: id, ...(options?.startDate && { startDate: options.startDate }), ...(options?.endDate && { endDate: options.endDate }) },
@@ -105,5 +117,5 @@ export function useRevelConnection(restaurantId?: string | null) {
     return disconnectMutation.mutateAsync(id);
   }
 
-  return { isConnected, connection, loading, connect, testConnection, triggerManualSync, disconnectRevel, checkConnectionStatus };
+  return { isConnected, connection, loading, connect, testConnection, triggerManualSync, triggerBackfill, disconnectRevel, checkConnectionStatus };
 }

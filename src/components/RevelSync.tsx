@@ -27,7 +27,7 @@ export function RevelSync({ restaurantId }: RevelSyncProps): JSX.Element {
   const [syncMode, setSyncMode] = useState<SyncMode>('recent');
   const [dateRange, setDateRange] = useState<{ from: Date; to: Date } | undefined>();
   const { toast } = useToast();
-  const { connection, triggerManualSync, checkConnectionStatus } = useRevelConnection(restaurantId);
+  const { connection, triggerManualSync, triggerBackfill, checkConnectionStatus } = useRevelConnection(restaurantId);
 
   async function handleSync(): Promise<void> {
     if (!connection?.is_active) {
@@ -42,6 +42,23 @@ export function RevelSync({ restaurantId }: RevelSyncProps): JSX.Element {
     setIsLoading(true);
     setSyncResult(null);
     try {
+      // Initial (not-yet-backfilled) + "recent" mode = run the real 90-day backfill,
+      // not a 7-day pull. Report honestly whether it actually finished.
+      if (!connection.initial_sync_done && syncMode === 'recent') {
+        const data = await triggerBackfill(restaurantId);
+        const processed = Number(data?.ordersProcessed ?? 0);
+        const done = Boolean(data?.initialSyncDone);
+        setSyncResult({ ordersSynced: processed, errors: [] });
+        await checkConnectionStatus(restaurantId);
+        toast({
+          title: done ? 'Initial import complete' : 'Initial import in progress',
+          description: done
+            ? `Imported ${processed} orders (last 90 days).`
+            : `Imported ${processed} orders so far — the rest continues in the background. Click again to keep going.`,
+        });
+        return;
+      }
+
       // Revel's Classic order filter expects YYYY-MM-DD (the edge fn appends the time).
       const options = syncMode === 'custom' && dateRange
         ? { startDate: format(dateRange.from, 'yyyy-MM-dd'), endDate: format(dateRange.to, 'yyyy-MM-dd') }

@@ -6,7 +6,7 @@ import { useSplhData } from '@/hooks/useSplhData';
 import { useLaborCostsFromTimeTracking } from '@/hooks/useLaborCostsFromTimeTracking';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
 import { validateTimeZone, buildSplhTimeseries } from '@/lib/splhAnalytics';
-import { getTodayInTimezone } from '@/lib/timezone';
+import { useTodayInTimezone } from '@/hooks/useTodayInTimezone';
 
 /**
  * Restaurant-tz window for the labor-cost fetch, expressed as `Date` objects
@@ -32,9 +32,14 @@ import { getTodayInTimezone } from '@/lib/timezone';
  * today's fetch cover the full day (through "now" and beyond, matching
  * design §3's clock-in-through-now requirement — future timestamps simply
  * don't exist yet, so this never over-fetches).
+ *
+ * `todayStr` is passed in (from `useTodayInTimezone`) rather than read here via
+ * `getTodayInTimezone` so the window recomputes as the date rolls over: a
+ * midnight-frozen `windowEnd` would keep the labor-cost fetch anchored to
+ * yesterday and silently drop today's punches for both the page and the
+ * Dashboard card (`useLaborPnlSummary`) until remount.
  */
-function laborCostWindow(tz: string, weeks: number): { windowStart: Date; windowEnd: Date } {
-  const todayStr = getTodayInTimezone(tz);
+function laborCostWindow(tz: string, weeks: number, todayStr: string): { windowStart: Date; windowEnd: Date } {
   const [y, m, d] = todayStr.split('-').map(Number);
   const windowEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
   const windowStart = new Date(y, m - 1, d - weeks * 7);
@@ -58,7 +63,13 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
   const { effectiveSettings, updateSettings, isSaving: isSavingTarget } = useStaffingSettings(restaurantId);
   const targetPct = effectiveSettings.target_labor_pct;
 
-  const { windowStart, windowEnd } = useMemo(() => laborCostWindow(tz, weeks), [tz, weeks]);
+  // Restaurant-tz "today", refreshed across midnight (see useTodayInTimezone) so
+  // the labor-cost fetch window below never freezes on the mount day.
+  const todayStr = useTodayInTimezone(tz);
+  const { windowStart, windowEnd } = useMemo(
+    () => laborCostWindow(tz, weeks, todayStr),
+    [tz, weeks, todayStr],
+  );
 
   const {
     data,
@@ -88,6 +99,7 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
   return {
     tz,
     targetPct,
+    todayStr,
     windowStart,
     windowEnd,
     dailySales,

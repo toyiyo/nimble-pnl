@@ -37,6 +37,35 @@ describe('EditableLaborTarget', () => {
     expect(onCommit).toHaveBeenCalledWith(28);
   });
 
+  it('clamps an out-of-range value to [1, 100] before committing', async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<EditableLaborTarget targetPct={22} onCommit={onCommit} />);
+
+    const input = screen.getByRole('spinbutton', { name: /target labor cost percentage/i });
+    await user.clear(input);
+    await user.type(input, '500'); // above max
+    await user.tab();
+
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
+    expect(onCommit).toHaveBeenCalledWith(100);
+    expect(input).toHaveValue(100);
+  });
+
+  it('clamps a zero/negative value up to 1 instead of committing garbage', async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<EditableLaborTarget targetPct={22} onCommit={onCommit} />);
+
+    const input = screen.getByRole('spinbutton', { name: /target labor cost percentage/i });
+    await user.clear(input);
+    await user.type(input, '0');
+    await user.tab();
+
+    await waitFor(() => expect(onCommit).toHaveBeenCalledTimes(1));
+    expect(onCommit).toHaveBeenCalledWith(1);
+  });
+
   it('does not commit on blur when the value is unchanged (dirty check)', async () => {
     const onCommit = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();

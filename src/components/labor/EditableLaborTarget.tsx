@@ -47,13 +47,18 @@ export function EditableLaborTarget({
       setValue(String(committedRef.current));
       return;
     }
-    if (parsed === committedRef.current) return; // dirty check: no-op when unchanged
+    // Clamp to a sane [1, 100] labor-% range before committing: the input's
+    // min/max are only advisory (they don't stop a typed -5 / 0 / 500), and a
+    // garbage target would corrupt every balance-state threshold and the
+    // chart's target ReferenceLine downstream.
+    const clamped = Math.min(100, Math.max(1, parsed));
+    if (clamped === committedRef.current) return; // dirty check: no-op when unchanged
 
     const previous = committedRef.current;
-    committedRef.current = parsed; // optimistic
-    setValue(String(parsed));
+    committedRef.current = clamped; // optimistic
+    setValue(String(clamped));
     try {
-      await onCommit(parsed);
+      await onCommit(clamped);
     } catch {
       committedRef.current = previous;
       setValue(String(previous));

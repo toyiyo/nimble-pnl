@@ -16,8 +16,9 @@ Reminder (lesson): after any migration add/edit, `npm run db:reset` before `npm 
 | time_off_requested | Time off | ✅ | — |
 | time_off_approved / time_off_rejected | Time off | ✅ | ✅ |
 | pin_reset | Access | ✅ | ✅ |
-| team_invite | Access | ✅ | — |
 | availability_reminder | Scheduling | ✅ | — |
+(15 rows. `team_invite` is **excluded** — a transactional invite email carries the only copy of the
+accept link, so it always sends and is not admin-toggleable. `send-team-invitation` is NOT retrofitted.)
 (weekly_brief stays on per-user `notification_preferences` — NOT a matrix row.)
 
 ---
@@ -61,8 +62,9 @@ Each: `const ch = await resolveChannels(<service client>, restaurantId, <type>)`
   `resolveChannels` for `time_off_<action>`; keep the `time_off_notify_managers/employee` **recipient**
   flags (those are recipient-routing, not channel gates — leave in `notification_settings` for now).
 - **3e `broadcast-open-shifts`**: `open_shifts_broadcast`.
-- **3f `notify-pin-changed`**: `pin_reset` (gate email + FCM). **3g `send-team-invitation`**: `team_invite`
-  (email only). **3h `notify-availability-reminder`**: `availability_reminder` (email only).
+- **3f `notify-pin-changed`**: `pin_reset` (gate email + FCM). **3g `send-team-invitation`**: NOT
+  retrofitted — invite email is transactional, always sends (excluded from the catalog). **3h
+  `notify-availability-reminder`**: `availability_reminder` (email only).
 - Use each function's existing service-role/admin client for the resolver read. `deno check` each.
 - Dep: 1, 2.
 

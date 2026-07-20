@@ -162,14 +162,14 @@ SELECT is(
 -- Test 14: Owner CAN INSERT for their restaurant
 SELECT lives_ok(
   $$INSERT INTO notification_channel_settings (restaurant_id, notification_type, email_enabled)
-    VALUES ('c9000000-0000-0000-0000-000000000001', 'team_invite', false)$$,
+    VALUES ('c9000000-0000-0000-0000-000000000001', 'schedule_published', false)$$,
   'Owner should be able to INSERT notification channel settings for their restaurant'
 );
 
 -- Test 15: Owner CAN UPDATE for their restaurant
 SELECT lives_ok(
   $$UPDATE notification_channel_settings SET email_enabled = true
-    WHERE restaurant_id = 'c9000000-0000-0000-0000-000000000001' AND notification_type = 'team_invite'$$,
+    WHERE restaurant_id = 'c9000000-0000-0000-0000-000000000001' AND notification_type = 'schedule_published'$$,
   'Owner should be able to UPDATE notification channel settings for their restaurant'
 );
 

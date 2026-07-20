@@ -25,7 +25,6 @@ export type NotificationType =
   | 'time_off_approved'
   | 'time_off_rejected'
   | 'pin_reset'
-  | 'team_invite'
   | 'availability_reminder';
 
 export type NotificationChannel = 'email' | 'push';
@@ -58,5 +57,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { key: 'time_off_approved', label: 'Time off approved', group: 'Time off', channels: ['email', 'push'] },
   { key: 'time_off_rejected', label: 'Time off rejected', group: 'Time off', channels: ['email', 'push'] },
   { key: 'pin_reset', label: 'PIN reset', group: 'Access', channels: ['email', 'push'] },
-  { key: 'team_invite', label: 'Team invitation', group: 'Access', channels: ['email'] },
+  // NOTE: `team_invite` is intentionally NOT a matrix row. A team-invitation email is
+  // transactional — it carries the only copy of the accept link (token is hashed and
+  // unrecoverable), so it must always send and is not admin-toggleable.
 ];

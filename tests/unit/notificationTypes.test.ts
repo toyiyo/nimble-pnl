@@ -22,7 +22,6 @@ const RESOLVER_TYPES: ResolverNotificationType[] = [
   'time_off_approved',
   'time_off_rejected',
   'pin_reset',
-  'team_invite',
   'availability_reminder',
 ];
 
@@ -35,8 +34,8 @@ function assertNotificationTypeAssignable(_key: NotificationType): ResolverNotif
 void assertNotificationTypeAssignable;
 
 describe('NOTIFICATION_TYPES catalog', () => {
-  it('has exactly 16 rows', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(16);
+  it('has exactly 15 rows', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(15);
   });
 
   it('has no duplicate keys', () => {
@@ -69,9 +68,9 @@ describe('NOTIFICATION_TYPES catalog', () => {
     }
   });
 
-  it('email-only types (no push) are exactly time_off_requested, team_invite, availability_reminder', () => {
+  it('email-only types (no push) are exactly time_off_requested, availability_reminder', () => {
     const emailOnly = NOTIFICATION_TYPES.filter((t) => !t.channels.includes('push')).map((t) => t.key).sort();
-    expect(emailOnly).toEqual(['availability_reminder', 'team_invite', 'time_off_requested'].sort());
+    expect(emailOnly).toEqual(['availability_reminder', 'time_off_requested'].sort());
   });
 
   it('every type supports email (no push-only types exist yet)', () => {

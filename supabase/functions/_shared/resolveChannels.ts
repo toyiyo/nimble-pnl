@@ -23,7 +23,6 @@ export type NotificationType =
   | 'time_off_approved'
   | 'time_off_rejected'
   | 'pin_reset'
-  | 'team_invite'
   | 'availability_reminder';
 
 export interface ChannelDecision {

@@ -33,7 +33,7 @@ vi.mock('@/hooks/useNotificationPreferences', () => ({
 // matrix shows the right restaurant's data after a restaurantId change.
 const channelSettingsByRestaurant = vi.hoisted(() => ({
   'rest-1': {
-    settings: new Map([['team_invite', { email: true, push: false }]]),
+    settings: new Map([['schedule_published', { email: true, push: false }]]),
     isLoading: false,
     isError: false,
     error: null,
@@ -42,7 +42,7 @@ const channelSettingsByRestaurant = vi.hoisted(() => ({
     isSaving: false,
   },
   'rest-2': {
-    settings: new Map([['team_invite', { email: false, push: false }]]),
+    settings: new Map([['schedule_published', { email: false, push: false }]]),
     isLoading: false,
     isError: false,
     error: null,
@@ -165,8 +165,8 @@ describe('NotificationSettings channel matrix restaurant switching', () => {
       </QueryClientProvider>
     );
 
-    // rest-1's team_invite email switch is ON.
-    expect(screen.getByRole('switch', { name: /team invitation — email/i })).toBeChecked();
+    // rest-1's schedule-published email switch is ON.
+    expect(screen.getByRole('switch', { name: /schedule published — email/i })).toBeChecked();
 
     rerender(
       <QueryClientProvider client={client}>
@@ -174,10 +174,10 @@ describe('NotificationSettings channel matrix restaurant switching', () => {
       </QueryClientProvider>
     );
 
-    // rest-2's team_invite email switch is OFF — must reflect immediately,
+    // rest-2's schedule-published email switch is OFF — must reflect immediately,
     // never rest-1's stale ON value (which the missing sync on restaurantId
     // change previously allowed, risking a Save that overwrites rest-2's
     // real settings with rest-1's).
-    expect(screen.getByRole('switch', { name: /team invitation — email/i })).not.toBeChecked();
+    expect(screen.getByRole('switch', { name: /schedule published — email/i })).not.toBeChecked();
   });
 });

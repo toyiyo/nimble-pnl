@@ -37,7 +37,6 @@ CREATE TABLE IF NOT EXISTS notification_channel_settings (
       'time_off_approved',
       'time_off_rejected',
       'pin_reset',
-      'team_invite',
       'availability_reminder'
     ))
 );
@@ -90,7 +89,7 @@ GRANT SELECT ON public.notification_channel_settings TO anon;
 GRANT ALL ON public.notification_channel_settings TO service_role;
 
 COMMENT ON TABLE notification_channel_settings IS 'Per-restaurant, per-notification-type email/push channel toggles (admin matrix). Absent row = both channels on (fail-open, see resolveChannels()).';
-COMMENT ON COLUMN notification_channel_settings.notification_type IS 'One of the 16 catalog keys in src/lib/notificationTypes.ts — kept in sync with the CHECK constraint above.';
+COMMENT ON COLUMN notification_channel_settings.notification_type IS 'One of the 15 catalog keys in src/lib/notificationTypes.ts — kept in sync with the CHECK constraint above. (team_invite is excluded: a transactional invite email is always sent, not admin-toggleable.)';
 COMMENT ON COLUMN notification_channel_settings.email_enabled IS 'Whether this notification type sends over email for this restaurant.';
 COMMENT ON COLUMN notification_channel_settings.push_enabled IS 'Whether this notification type sends over push (web push and/or legacy FCM) for this restaurant.';
 

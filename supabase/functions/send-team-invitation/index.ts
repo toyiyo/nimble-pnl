@@ -2,7 +2,6 @@ import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
-import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -195,16 +194,11 @@ const handler = async (req: Request): Promise<Response> => {
     const friendlyRole = roleLabels[role] || role;
     const isCollaborator = role.startsWith('collaborator_');
 
-    // `team_invite` is email-only in the catalog (see src/lib/notificationTypes.ts)
-    // — there is no push variant to gate here. The invitation row above is
-    // always created regardless of the channel setting; only the notification
-    // email is gated.
-    const ch = await resolveChannels(supabase as unknown as SupabaseLike, restaurantId, 'team_invite');
-
-    // Send invitation email
-    if (!ch.email) {
-      console.log('Invitation email disabled by settings; invitation row still created');
-    } else {
+    // Send invitation email. A team invite is TRANSACTIONAL — the email carries the
+    // only copy of the accept link (the token is hashed/unrecoverable server-side),
+    // so it is NOT gated by the notification channel matrix (team_invite is
+    // deliberately excluded from the catalog) and always sends.
+    {
       try {
         const emailResponse = await resend.emails.send({
           from: "EasyShiftHQ <notifications@easyshifthq.com>",

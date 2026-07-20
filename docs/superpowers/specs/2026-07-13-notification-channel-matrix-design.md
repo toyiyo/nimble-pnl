@@ -121,6 +121,15 @@ no dead toggles. Retire the old time-off event switches (replaced by matrix rows
 - New `NotificationChannelMatrix.tsx` component (don't bloat `NotificationSettings.tsx`); `staleTime:
   60000`; `hasChanges` by value-comparison; explicit `select` fields.
 
+## Amendment (review): `team_invite` excluded — transactional, not a notification
+
+The multi-model review flagged that a team-invitation email is **transactional**: it carries the only
+copy of the accept link (the token is hashed/unrecoverable server-side). Making it a matrix toggle
+would let an admin turn it off and silently break every invite (reported "sent", but no link ever
+delivered, unrecoverable). Decision (user-confirmed): **exclude `team_invite` from the catalog**
+(now **15** types). `send-team-invitation` is **not** retrofitted and always sends. An "invite by
+link / copy link" affordance (so email could be optional) is a possible future feature, out of scope.
+
 ## Out of scope / follow-ups
 
 - Per-**employee** channel overrides (a `notification_user_channel_overrides` table layered on top) —

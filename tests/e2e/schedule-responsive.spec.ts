@@ -95,13 +95,15 @@ test.describe('Schedule responsive layout', () => {
       page.getByRole('button', { name: DAY_PICKER_BUTTON }).first(),
     ).toBeVisible({ timeout: 10000 });
 
-    // Full employee names are visible on mobile (the core of the redesign —
-    // previously only initials showed), one card per employee. The name text
-    // also exists in the display:none desktop table, so filter to the visible
-    // (mobile) instance.
-    await expect(page.getByText(/Maria Rodriguez/i).filter({ visible: true })).toBeVisible();
-    await expect(page.getByText(/James Thompson/i).filter({ visible: true })).toBeVisible();
-    await expect(page.getByText(/Sarah Chen/i).filter({ visible: true })).toBeVisible();
+    // One full-name card per employee is rendered on mobile (the core of the
+    // redesign — previously only initials showed). Anchor on each card's
+    // "Edit <name>" button: it carries the full name as its accessible name and,
+    // being a role query, excludes the display:none desktop tree (whose rows
+    // carry the same label) — avoiding the ancestor/hidden matches that a fuzzy
+    // getByText would hit.
+    await expect(page.getByRole('button', { name: 'Edit Maria Rodriguez' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit James Thompson' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit Sarah Chen' })).toBeVisible();
 
     // The desktop table (hidden md:block) is not shown on mobile.
     await expect(page.getByRole('table')).toBeHidden();
@@ -113,9 +115,11 @@ test.describe('Schedule responsive layout', () => {
     await gotoSchedule(page);
 
     // The wide table is visible on desktop and shows full employee names.
+    // Exact text targets the name cell only (a substring match would also hit
+    // the enclosing <td>/<tr>, whose text includes the position and hours).
     const table = page.getByRole('table');
     await expect(table).toBeVisible({ timeout: 10000 });
-    await expect(table.getByText(/Maria Rodriguez/i)).toBeVisible();
+    await expect(table.getByText('Maria Rodriguez', { exact: true })).toBeVisible();
 
     // The mobile day-picker (md:hidden) is not present on desktop.
     await expect(

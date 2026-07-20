@@ -20,6 +20,11 @@ interface AvailabilityExceptionDialogProps {
   exception?: AvailabilityException;
   defaultEmployeeId?: string; // For employee self-service
   defaultDate?: Date; // Pre-fill when creating from grid cell
+  // Only rendered when editing an existing row AND the caller supplies this
+  // (Scheduling.tsx is the only caller that does). Closes the editor and
+  // hands the row up so the caller can open the shared
+  // DeleteAvailabilityDialog.
+  onRemove?: (exception: AvailabilityException) => void;
 }
 
 export const AvailabilityExceptionDialog = ({
@@ -29,6 +34,7 @@ export const AvailabilityExceptionDialog = ({
   exception,
   defaultEmployeeId,
   defaultDate,
+  onRemove,
 }: AvailabilityExceptionDialogProps) => {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [date, setDate] = useState<Date | undefined>();
@@ -173,20 +179,35 @@ export const AvailabilityExceptionDialog = ({
             />
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!isValid || createException.isPending || updateException.isPending}
-            >
-              {exception ? 'Update' : 'Save'}
-            </Button>
+          <div className="flex items-center justify-between gap-2">
+            {exception && onRemove && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive hover:text-destructive/80"
+                onClick={() => {
+                  onOpenChange(false);
+                  onRemove(exception);
+                }}
+              >
+                Remove
+              </Button>
+            )}
+            <div className="flex justify-end gap-2 ml-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!isValid || createException.isPending || updateException.isPending}
+              >
+                {exception ? 'Update' : 'Save'}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

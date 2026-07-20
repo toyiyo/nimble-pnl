@@ -19,6 +19,11 @@ interface AvailabilityDialogProps {
   availability?: EmployeeAvailability;
   defaultEmployeeId?: string; // For employee self-service
   defaultDayOfWeek?: number; // 0-6, pre-fill when creating from grid cell
+  // Only rendered when editing an existing row AND the caller supplies this
+  // (Scheduling.tsx is the only caller that does — self-service flows don't
+  // offer hard delete). Closes the editor and hands the row up so the caller
+  // can open the shared DeleteAvailabilityDialog.
+  onRemove?: (availability: EmployeeAvailability) => void;
 }
 
 const daysOfWeek = [
@@ -38,6 +43,7 @@ export const AvailabilityDialog = ({
   availability,
   defaultEmployeeId,
   defaultDayOfWeek,
+  onRemove,
 }: AvailabilityDialogProps) => {
   const [employeeId, setEmployeeId] = useState<string>('');
   const [dayOfWeek, setDayOfWeek] = useState<number>(1);
@@ -182,20 +188,35 @@ export const AvailabilityDialog = ({
             />
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={!isValid || createAvailability.isPending || updateAvailability.isPending}
-            >
-              {availability ? 'Update' : 'Save'}
-            </Button>
+          <div className="flex items-center justify-between gap-2">
+            {availability && onRemove && (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive hover:text-destructive/80"
+                onClick={() => {
+                  onOpenChange(false);
+                  onRemove(availability);
+                }}
+              >
+                Remove
+              </Button>
+            )}
+            <div className="flex justify-end gap-2 ml-auto">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!isValid || createAvailability.isPending || updateAvailability.isPending}
+              >
+                {availability ? 'Update' : 'Save'}
+              </Button>
+            </div>
           </div>
         </form>
       </DialogContent>

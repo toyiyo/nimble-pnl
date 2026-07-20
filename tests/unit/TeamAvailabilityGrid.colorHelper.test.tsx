@@ -75,6 +75,7 @@ describe('TeamAvailabilityGrid — shared color helper', () => {
         restaurantId="r1"
         onOpenAvailabilityDialog={vi.fn()}
         onOpenExceptionDialog={vi.fn()}
+        onRequestDelete={vi.fn()}
       />,
     );
 

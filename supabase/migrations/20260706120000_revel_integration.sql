@@ -390,6 +390,63 @@ BEGIN
     WHERE parent_sale_id IS NULL DO NOTHING;
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
+  -- 6/7/8) Informational adjustment lines (Voided / Returned / Refunds). These mirror Revel's
+  -- Sales Summary "Adjustments" section. They use item_type 'other'/'refund' (NOT 'sale'), so
+  -- they never enter Net Sales — which stays exact — but are available for the audit/report.
+  -- Split rule: a voided item whose order was refunded (has a negative payment) = "Returned";
+  -- otherwise = "Voided". Refunds = payments with a negative amount.
+
+  -- 6) Voided items (voided, order NOT refunded)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, pos_category, item_type, raw_data, synced_at)
+  SELECT oi.restaurant_id, 'revel', oi.revel_order_id, oi.revel_item_id || ':void', 'Voided item - ' || oi.item_name,
+         oi.quantity, -oi.unit_price, -oi.total_price, o.order_date, o.order_time, o.sold_at, oi.menu_category, 'other', oi.raw_json, now()
+  FROM public.revel_order_items oi
+  JOIN public.revel_orders o ON oi.revel_order_id_fk = o.id
+  WHERE oi.restaurant_id = p_restaurant_id AND oi.is_voided = true
+    AND NOT EXISTS (SELECT 1 FROM public.revel_payments p
+                    WHERE p.restaurant_id = oi.restaurant_id AND p.revel_order_id = oi.revel_order_id
+                      AND (p.raw_json->>'amount')::numeric < 0)
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 7) Returned items (voided, order WAS refunded)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, pos_category, item_type, raw_data, synced_at)
+  SELECT oi.restaurant_id, 'revel', oi.revel_order_id, oi.revel_item_id || ':return', 'Returned item - ' || oi.item_name,
+         oi.quantity, -oi.unit_price, -oi.total_price, o.order_date, o.order_time, o.sold_at, oi.menu_category, 'other', oi.raw_json, now()
+  FROM public.revel_order_items oi
+  JOIN public.revel_orders o ON oi.revel_order_id_fk = o.id
+  WHERE oi.restaurant_id = p_restaurant_id AND oi.is_voided = true
+    AND EXISTS (SELECT 1 FROM public.revel_payments p
+                WHERE p.restaurant_id = oi.restaurant_id AND p.revel_order_id = oi.revel_order_id
+                  AND (p.raw_json->>'amount')::numeric < 0)
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 8) Refunds (payments with a negative amount)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, raw_data, synced_at)
+  SELECT p.restaurant_id, 'revel', p.revel_order_id, p.revel_payment_id || ':refund', 'Refund',
+         1, (p.raw_json->>'amount')::numeric, (p.raw_json->>'amount')::numeric, o.order_date, o.order_time, o.sold_at, 'refund', p.raw_json, now()
+  FROM public.revel_payments p
+  JOIN public.revel_orders o ON p.revel_order_id = o.revel_order_id AND p.restaurant_id = o.restaurant_id
+  WHERE p.restaurant_id = p_restaurant_id AND (p.raw_json->>'amount')::numeric < 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL DO NOTHING;
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
   RETURN v_synced_count;
 END;
 $$;

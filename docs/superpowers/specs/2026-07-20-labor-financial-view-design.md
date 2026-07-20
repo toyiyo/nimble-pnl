@@ -87,23 +87,41 @@ The prototype the user approved, financially grounded:
   current instant) — inherited from `calculateActualLaborCost`'s open-session
   handling; documented, not re-implemented.
 
-## 4. Data sources (reconciled — the crux)
+## 4. Data sources (the crux — revised after Phase 2.5)
+
+> **Phase 2.5 correction (critical):** `usePnLAnalyticsFromSource` and
+> `usePeriodMetrics` do **not** expose a real per-day revenue series —
+> `usePnLAnalyticsFromSource` takes the period-total revenue and spreads it
+> **evenly across days** (every day gets the same revenue) and drops days that
+> have sales but no cost row. Building the daily/weekly chart on it would show a
+> flat revenue line — the opposite of "how did my day happen." They are also
+> gated behind `useRevenueBreakdown`'s 5-minute `staleTime`. **We therefore do
+> not use them for the series or the KPIs.** The only genuinely per-day AND
+> per-hour revenue in the codebase is the raw `unified_sales` rows that
+> `useSplhData` already fetches (split-sale-guarded) and that
+> `buildSplhTimeseries` / `buildSplhGrid` already bucket for real.
 
 | Concern | Source | Why |
 |---|---|---|
-| **Period KPI totals** (net sales, labor $, labor %, rev/labor-hr) | `usePeriodMetrics(restaurantId, from, to)` | The *correct* combined hook: revenue from `unified_sales`, costs from source tables. Explicitly supersedes `useDailyPnL`/`usePnLAnalytics`. |
-| **Daily/weekly/monthly financial series** (timeline + verdict + deltas) | `usePnLAnalyticsFromSource` → `DailyPnLData[]` (`date`, `net_revenue`, `labor_cost`, `labor_cost_percentage`) | Already reconciled daily series from source; weekly/monthly by aggregating days (mirrors `useDailyPnL.getWeekly/MonthlyData` ISO-week / calendar-month grouping, but over the *source-based* series). |
-| **Labor hours** (for rev/labor-hr, and open-day "through now") | `useLaborCostsFromTimeTracking` → `LaborCostData.total_hours` / `total_labor_cost` (payroll-grade `calculateActualLaborCost`) | Same engine as Payroll → dollars/hours reconcile with what the owner already trusts. |
-| **Hourly busy-hours heatmap** (sales volume by dow×hour) + **intraday (Day-view) demand shape** | `useSplhData` + `buildSplhGrid` (existing) → per-cell `totalSales`, `totalHours` | The only surface needing hour-of-day granularity. Reuses the #611 fetch/aggregation layer. This is **pattern/shape**, explicitly separate from the authoritative period $. |
-| **Target** | `useStaffingSettings` → `effectiveSettings.target_labor_pct`; write via `updateSettings({ target_labor_pct })` | Same setting scheduling already edits (`StaffingConfigPanel`) → the two surfaces stay consistent. Default 30 (existing default). |
-| **Timezone** | `selectedRestaurant?.restaurant?.timezone` via `validateTimeZone` | Reused; all day/hour/week bucketing in restaurant tz, never host tz. |
+| **Revenue — every altitude & the hourly heatmap** (real per-day + per-hour) | `useSplhData` (existing 60s fetch) → `buildSplhTimeseries` (day/week) + new **month** bucket + `buildSplhGrid` (dow×hour) | Genuinely per-day/per-hour, split-sale-guarded, restaurant-tz. This is **gross sales** (`unified_sales.total_price`, top-line). |
+| **Labor $ + hours — every altitude** (real per-day, payroll-grade) | `useLaborCostsFromTimeTracking` → daily `total_labor_cost` / `total_hours` (via `calculateActualLaborCost`, the Payroll engine). Aggregate to week/month. | Same engine as the Payroll page → labor dollars are the ones the owner already trusts. Handles OT / salary / contractor / open-shift "through now". |
+| **KPI period totals** (labor %, rev/labor-hr, net sales, labor $) | Summed from the two **real series above**, not a separate hook | Guarantees the KPI headline equals the chart totals (internal consistency); no flat-average or 5-min-stale dependency. |
+| **Target** | `useStaffingSettings` → `effectiveSettings.target_labor_pct`; write via `updateSettings({ target_labor_pct })` | Same setting scheduling already edits (`StaffingConfigPanel`) → the two surfaces stay consistent. **Default 22** (migration default `22.0`). |
+| **Timezone / window** | Window boundaries from restaurant tz via `getTodayInTimezone` (`src/lib/timezone.ts`) — NOT `new Date()`; bucketing via `validateTimeZone` + `Intl` (existing) | Prevents the host-vs-restaurant-tz day-boundary bugs recorded in `memory/lessons.md` (PR #562/#587, the $2,246 ISO-week swing). |
 
-**Reconciliation guarantee:** the KPI headline and timeline use the same
-source-based revenue + payroll-grade labor as the P&L page, so the labor % shown
-here equals the labor % on P&L for the same window. The hourly heatmap/intraday
-labor-% line is a **shape overlay** (worked-hours × avg-rate for per-hour coloring
-only) and is visually distinguished + labeled so it is never read as the
-authoritative dollar figure.
+**Honest framing (no false reconciliation claim):**
+- **Labor $** here == Payroll's labor $ (same engine). We *do* claim that.
+- **Revenue** here is **gross sales** from `unified_sales` (what "% of sales my
+  team costs me" intuitively means), which is the same figure the scheduling SPLH
+  card uses. It is **top-line and may differ from the P&L page's *net* revenue**
+  (which nets discounts/comps and drops delivery pass-through). The card/page label
+  the metric **"Labor % of sales"** (not "of net revenue") and a tooltip states the
+  denominator, so it is never mistaken for the P&L's net-revenue labor %.
+- **Day-boundary join:** the daily sales bucket (`unified_sales.sale_date`,
+  restaurant-local DATE) and the daily labor bucket (`calculateActualLaborCost`
+  day attribution) must use the same restaurant-tz day; §5 + tests pin this.
+- **`capped`:** `useSplhData` caps at 20k rows/table and exposes `capped`. Propagate
+  it to the heatmap + Month view as a "partial window" note (§6).
 
 ## 5. Architecture
 
@@ -113,24 +131,35 @@ mounts.
 
 ```
 src/lib/laborPnlAnalytics.ts
-  aggregateFinancialSeries(daily: DailyPnLData[], granularity: 'day'|'week'|'month', tz)
-     → FinancialPoint[]  { bucketStart, label, netRevenue, laborCost, laborPct, balanceState }
-  buildSalesVolumeGrid(gridCells: SplhGridCell[]) → reuses buildSplhGrid output; exposes totalSales per (dow,hour) + intensity scaling
-  classifyBalance(laborPct, target, band) → 'over'|'balanced'|'under'
-  summarizeLaborPnl(totals, target) → { laborPct, revPerLaborHr, verdict, verdictTone, overWindows, underWindows }
+  // Joins a real daily sales series (from buildSplhTimeseries 'day') with a real
+  // daily labor series (from useLaborCostsFromTimeTracking) on restaurant-tz date,
+  // then rolls up to the requested granularity.
+  buildFinancialSeries(dailySales: SplhPoint[], dailyLabor: LaborCostData[],
+                       granularity: 'day'|'week'|'month', tz, target)
+     → FinancialPoint[] { bucketStart, label, sales, laborCost, laborHours, laborPct, balanceState }
+  buildSalesVolumeGrid(gridCells: SplhGridCell[]) → per-(dow,hour) totalSales + intensity + peak flag + estimated passthrough
+  classifyBalance(laborPct, targetPct, band) → 'over'|'balanced'|'under'
+  summarizeLaborPnl(points | totals, targetPct) → { sales, laborCost, laborPct, revPerLaborHr, verdict, verdictTone, overWindows, underWindows }
 
-src/hooks/useLaborPnlSummary.ts   → dashboard card (period totals + sparkline)
-src/hooks/useLaborPnlAnalytics.ts → /labor page (series for day/week/month + hourly grid + summary)
+src/hooks/useLaborPnlSummary.ts   → dashboard card (period totals + daily sparkline)
+src/hooks/useLaborPnlAnalytics.ts → /labor page (day/week/month series + hourly grid + summary)
 ```
 
 Reuses without modification: `useSplhData`, `buildSplhGrid`,
-`distributeWorkedHours`, `validateTimeZone`, `useStaffingSettings`,
-`useLaborCostsFromTimeTracking`, `usePeriodMetrics`, `usePnLAnalyticsFromSource`.
+`buildSplhTimeseries`, `distributeWorkedHours`, `validateTimeZone`,
+`getTodayInTimezone`, `useStaffingSettings`, `useLaborCostsFromTimeTracking`.
+(Deliberately **not** `usePeriodMetrics` / `usePnLAnalyticsFromSource` — see §4.)
+Month bucketing (calendar month) is added to the lib; week bucketing reuses the
+Monday-start rule already in `splhAnalytics.mondayOf`.
 
 ### 5.1 Routing & nav
 - `Labor.tsx` page (eager import, matching App.tsx convention):
   `<Route path="/labor" element={<ProtectedRoute><Labor /></ProtectedRoute>} />`.
-  Owner/manager only (financial). Not `allowStaff`.
+  **Reachability:** `ProtectedRoute` only gates staff-vs-non-staff (`allowStaff`);
+  plain `<ProtectedRoute>` (as here) is reachable by owner/manager/chef/
+  collaborator — identical to `/payroll` and `/reports`, which also surface
+  payroll-grade figures. This matches existing convention for sensitive financial
+  pages; no finer role gate is added (documented, not a silent assumption).
 - Dashboard card's "Open labor detail →" `navigate('/labor')`.
 
 ## 6. Edge cases & three states
@@ -141,6 +170,14 @@ Reuses without modification: `useSplhData`, `buildSplhGrid`,
   existing daily-spread fallback + an **"Estimated"** badge (inherited from
   `buildSplhGrid`); the day/week/month **financial timeline is unaffected**
   (date-level).
+- **Capped fetch** (`useSplhData.capped` — >20k rows in either table, most likely
+  in Month view): show a "partial window — narrow your range" note on the heatmap
+  and Month timeline (mirrors `LaborEfficiencyPanel`'s existing `capped` treatment),
+  so a truncated busy-hours read is never presented as complete.
+- **Day-boundary mismatch:** sales are bucketed by `sale_date` (restaurant-local
+  DATE); labor daily costs come from `calculateActualLaborCost`'s day attribution.
+  Both windows are derived from the restaurant-tz "today" (§4); a unit test pins
+  that a punch and a sale on the same restaurant-local day land in the same bucket.
 - **Loading** → layout-shaped `<Skeleton>` (KPI row + chart + heatmap); **error**
   → inline retry; **empty** (no sales, or no punches anywhere in window) →
   `EmptyState` inviting POS connect / time-tracking enable.
@@ -152,21 +189,34 @@ Reuses without modification: `useSplhData`, `buildSplhGrid`,
 
 ## 7. UI / styling
 
-Apple/Notion tokens per CLAUDE.md. Reuse the existing theme-aware SPLH tokens
-where semantics match; **add financial balance tokens** only if the existing
-`--splh-lean/slack/balanced` don't map cleanly (over = warm/red, under = amber,
-balanced = neutral/green — contrast-checked ≥4.5:1, color never the only signal:
-value text + legend + tooltip always present).
+Apple/Notion tokens per CLAUDE.md. **Add new, dedicated financial-balance CSS
+tokens** — `--labor-over` (warm/red), `--labor-under` (amber), `--labor-balanced`
+(neutral/green) — in `src/index.css` (light + dark, contrast ≥4.5:1). We do **not**
+reuse `--splh-lean/slack`: those are semantically **inverted** here (`--splh-lean`
+= red = *understaffed*, `--splh-slack` = blue = *overstaffed*), and both cards can
+be on-screen together, so sharing tokens would make red mean opposite things on
+adjacent cards. Color is never the only signal: value text + legend + tooltip
+always present.
 
-- **Charts:** Recharts, single y per axis (no dual-axis — lesson §7.3 #611):
-  net-sales area on the value axis, labor-% line on a secondary %-axis is
-  acceptable *only* because they are different units and both are labeled; if the
-  design reviewer objects, fall back to two stacked mini-charts sharing an x-axis.
+- **Charts:** Recharts. **Two stacked charts sharing one x-axis** (net-sales area
+  on top, labor-% line + target `ReferenceLine` below) — **not** a dual-axis
+  single chart. Rationale: the codebase's own target-vs-actual precedent
+  (`SplhTimelineChart`) uses single-axis + `ReferenceLine`, and a dual axis whose
+  scales can be tuned to imply correlation is exactly the #611 lesson's failure
+  mode — highest-risk here because the whole point is to correlate sales and
+  labor. The staffing-balance ribbon sits between/under the stacked pair on the
+  shared x-axis.
 - **Heatmap:** CSS grid, `role="grid"`, focusable cells with per-cell
   `aria-label` (day, hour, sales), sticky day-label column, min cell size for WCAG
   2.5.8 — mirroring `SplhHeatmap`.
 - **Segmented Day/Week/Month + editable target input:** keyboard-accessible
-  (`aria-pressed`, labeled number input, Enter/blur commits).
+  (`aria-pressed`, labeled number input). Commit on blur **or** Enter, guarded by a
+  **dirty check** (only write when the value actually changed) so Enter-then-blur
+  can't fire `updateSettings` twice.
+- **Card heading copy (two-card disambiguation):** the existing scheduling card's
+  section is titled **"Labor efficiency"**; this financial card's section is titled
+  **"Labor cost"** with subtitle "What your team costs against sales." Distinct
+  heading + different dashboard cluster keep the two mental models separate.
 
 ## 8. Testing plan
 
@@ -206,10 +256,25 @@ target-edit write calls `updateSettings` with `{ target_labor_pct }`.
 - Server-side aggregation RPC (documented follow-up if payloads grow).
 - Forecasting (usePnLAnalyticsFromSource has it; not surfaced here yet).
 
-## 11. Open questions for user
+## 11. Phase 2.5 design-review resolutions
 
-1. **Target semantics:** edit `target_labor_pct` (labor % target — recommended,
-   matches this view's hero metric) — confirmed as the financial target, shared
-   with scheduling's existing labor-% target. (SPLH target stays separate.)
-2. **Dashboard placement:** new card in the financial cluster (recommended) vs.
-   replacing / next to the existing scheduling card.
+- **[critical] Fake per-day revenue in `usePnLAnalyticsFromSource`** → dropped that
+  source entirely; series revenue now from real `unified_sales` rows via
+  `useSplhData`/`buildSplhTimeseries` (§4). Also removes the 5-min-staleTime
+  `useRevenueBreakdown` dependency (a separate major).
+- **[major] Timezone window boundaries** → restaurant-tz via `getTodayInTimezone`,
+  not `new Date()` (§4/§6).
+- **[major] Inverted `--splh-*` tokens** → new dedicated `--labor-over/under/balanced`
+  tokens (§7).
+- **[major] Dual-axis chart** → two stacked charts sharing an x-axis (§7).
+- **[major] `capped` not propagated** → shown on heatmap + Month view (§6).
+- **[minor] default target** 22, not 30 (§4). **[minor] route reachability** worded
+  accurately (§5.1). **[minor] card heading** "Labor cost" pinned (§7). **[minor]
+  Enter+blur double-commit** guarded by dirty check (§7).
+
+## 12. Remaining user decision
+
+- **Dashboard placement:** new "Labor cost" card in the financial cluster
+  (near Performance Overview / Sales-vs-Break-even) — **recommended**, keeps it
+  away from the scheduling "Labor efficiency" card. Alternative: adjacent to the
+  existing card. Defaulting to the financial cluster unless told otherwise.

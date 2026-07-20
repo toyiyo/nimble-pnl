@@ -236,6 +236,15 @@ describe('processDayTransactions', () => {
     expect(row.tax_amount).toBe(1.13);
   });
 
+  it('clears void state (is_voided:false, voided_at:null) on active-check upsert', async () => {
+    const { deps, mocks } = makeDeps({});
+    await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
+    const row = mocks.ordersUpsert.mock.calls[0][0];
+    // A check in <Checks> is active — un-void a previously-voided reappearance.
+    expect(row.is_voided).toBe(false);
+    expect(row.voided_at).toBeNull();
+  });
+
   it('uses ON CONFLICT on the correct columns for focus_orders', async () => {
     const { deps, mocks } = makeDeps({});
     await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);

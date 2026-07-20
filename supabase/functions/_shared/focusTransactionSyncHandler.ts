@@ -184,6 +184,12 @@ async function upsertOrder(
         discount_total: check.discountTotal,
         taxable_sales: check.taxableSales,
         tax_amount: check.taxAmount,
+        // A check present in the <Checks> section is active. Clear any prior
+        // void state so a previously-voided check that reappears (un-void) is
+        // treated as active again — the sync RPC then drops its stale _void
+        // offset. Voided checks arrive via <DeleteRecord>, not here.
+        is_voided: false,
+        voided_at: null,
       },
       { onConflict: 'restaurant_id,business_date,focus_check_id' },
     )

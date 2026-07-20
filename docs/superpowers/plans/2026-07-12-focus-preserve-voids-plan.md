@@ -25,7 +25,8 @@ Branch: `fix/focus-preserve-voids`
   - C's `sale`/`tip`/`discount`/`tax` rows (parent_sale_id IS NULL) are **gone**;
   - exactly **one** `adjustment_type='void'` row for C with `total_price =
     -SUM(priced items)`;
-  - the **split row survives**; a **sibling order untouched**;
+  - the **split child is also removed** (whole check gone); a **sibling order
+    untouched**;
   - `revenue` (`item_type='sale' AND adjustment_type IS NULL`) dropped by C's
     amount; `SUM(total_price) WHERE adjustment_type='void'` = negated revenue.
   Run against pre-migration state → confirm FAIL.

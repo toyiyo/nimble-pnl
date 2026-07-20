@@ -68,7 +68,7 @@ loop:
   - UPSERT **one** negative void offset row:
     `external_item_id = v_order_id || '_void'`, `item_name = 'Void'`,
     `total_price = -(SELECT COALESCE(SUM(price),0) FROM focus_order_items WHERE …
-    AND price != 0)` (the voided net revenue), `item_type='discount'`,
+    AND price != 0)` (the voided net revenue), `item_type='other'`,
     `adjustment_type='void'`, `sale_time = v_sale_time`. `ON CONFLICT … WHERE
     parent_sale_id IS NULL DO UPDATE`.
   - Because the order row now still exists, the loop visits it — **this replaces

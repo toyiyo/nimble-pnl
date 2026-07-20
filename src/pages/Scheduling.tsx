@@ -16,6 +16,7 @@ import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { TimeOffTabBadge } from './SchedulingTimeOffTabBadge';
 import { ScheduleDayHeaderContent, TODAY_HEADER_CAP_RULE_CLASS } from './SchedulingDayHeaderContent';
+import { SchedulingTimeOffCellContent } from './SchedulingTimeOffCellContent';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
@@ -1706,7 +1707,6 @@ const Scheduling = () => {
                               const dayKey = format(day, 'yyyy-MM-dd');
                               const isOff = !!empOff?.offDayKeys.has(dayKey);
                               const hasShift = dayShifts.some(s => s.status !== 'cancelled');
-                              const isRunStart = !!empOff?.spans.some((s) => s.startKey === dayKey);
                               return (
                                 <DroppableDayCell
                                   key={day.toISOString()}
@@ -1715,22 +1715,7 @@ const Scheduling = () => {
                                   isToday={dayIsToday}
                                   isHighlighted={highlightedCellId === `${employee.id}:${dayKey}`}
                                 >
-                                  <div className={cn(
-                                    "space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]",
-                                    isOff && hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-destructive",
-                                    isOff && !hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-info",
-                                  )}>
-                                    {isOff && (
-                                      <span className="sr-only">
-                                        {hasShift ? 'Scheduling conflict: shift scheduled during approved time off' : 'Approved time off'}
-                                      </span>
-                                    )}
-                                    {isOff && isRunStart && (
-                                      <div className="flex items-center gap-1 text-[11px] text-info font-medium">
-                                        <CalendarOff className="h-3 w-3" aria-hidden="true" />
-                                        Time off
-                                      </div>
-                                    )}
+                                  <SchedulingTimeOffCellContent isOff={isOff} hasShift={hasShift}>
                                     {dayShifts.map((shift) => (
                                       selectionMode ? (
                                         <ShiftCard
@@ -1775,7 +1760,7 @@ const Scheduling = () => {
                                         {isOff ? 'Add anyway' : 'Add'}
                                       </Button>
                                     )}
-                                  </div>
+                                  </SchedulingTimeOffCellContent>
                                 </DroppableDayCell>
                               );
                             })}

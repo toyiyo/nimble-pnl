@@ -40,18 +40,21 @@ describe('Scheduling roster context — identity cell', () => {
 });
 
 describe('Scheduling roster context — day cells', () => {
-  it('computes per-day off state and run-start', () => {
+  it('computes per-day off state without gating on run-start (every off day is labeled)', () => {
     expect(SRC).toMatch(/offDayKeys\.has\(/);
-    expect(SRC).toMatch(/isRunStart/);
+    // Design doc §2: "Time off" renders on EVERY off day now, not just the
+    // first day of a span — the old isRunStart gate is gone.
+    expect(SRC).not.toMatch(/isRunStart/);
   });
   it('excludes cancelled shifts when computing the conflict state for a time-off day', () => {
     expect(SRC).toMatch(/dayShifts\.some\(s => s\.status !== 'cancelled'\)/);
   });
-  it('renders accent bars (info normally, destructive on conflict) and sr-only state', () => {
-    expect(SRC).toMatch(/border-l-2 border-info/);
-    expect(SRC).toMatch(/border-l-2 border-destructive/);
-    expect(SRC).toMatch(/Approved time off/);
-    expect(SRC).toMatch(/Scheduling conflict/);
+  it('delegates the off/conflict cell treatment to SchedulingTimeOffCellContent (hatch + sr-only state)', () => {
+    expect(SRC).toMatch(/from '\.\/SchedulingTimeOffCellContent'/);
+    expect(SRC).toMatch(/<SchedulingTimeOffCellContent isOff={isOff} hasShift={hasShift}>/);
+    // Neutral hatch treatment replaces the old info-blue accent bars.
+    expect(SRC).not.toMatch(/border-l-2 border-info/);
+    expect(SRC).not.toMatch(/border-l-2 border-destructive/);
   });
   it('soft-blocks add on off-days with a contextual aria-label', () => {
     expect(SRC).toMatch(/Add anyway/);

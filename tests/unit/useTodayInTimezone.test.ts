@@ -11,6 +11,7 @@ import { useTodayInTimezone } from '@/hooks/useTodayInTimezone';
 
 describe('useTodayInTimezone', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     mockGetToday.mockReturnValue('2026-07-07');
   });
   afterEach(() => {

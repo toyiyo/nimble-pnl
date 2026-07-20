@@ -9,13 +9,20 @@ import {
   useNotificationChannelSettings,
   type ChannelSettingsMap,
 } from '@/hooks/useNotificationChannelSettings';
-import { NOTIFICATION_TYPES, type NotificationGroup, type NotificationType } from '@/lib/notificationTypes';
+import {
+  NOTIFICATION_TYPES,
+  type NotificationChannel,
+  type NotificationGroup,
+  type NotificationType,
+  type NotificationTypeDef,
+} from '@/lib/notificationTypes';
 
 interface NotificationChannelMatrixProps {
   restaurantId: string;
 }
 
 const GROUP_ORDER: NotificationGroup[] = ['Scheduling', 'Trades', 'Time off', 'Access'];
+const CHANNEL_LABEL: Record<NotificationChannel, string> = { email: 'Email', push: 'Push' };
 
 function mapsEqual(a: ChannelSettingsMap, b: ChannelSettingsMap): boolean {
   for (const type of NOTIFICATION_TYPES) {
@@ -24,6 +31,43 @@ function mapsEqual(a: ChannelSettingsMap, b: ChannelSettingsMap): boolean {
     if (av?.email !== bv?.email || av?.push !== bv?.push) return false;
   }
   return true;
+}
+
+/** One matrix cell: a live `Switch` if `type` supports `channel`, otherwise a
+ *  disabled "—" with screen-reader-only context. Shared by the email and push
+ *  columns so the toggle-or-dash logic isn't duplicated per channel. */
+function ChannelCell({
+  type,
+  channel,
+  checked,
+  onCheckedChange,
+}: {
+  type: NotificationTypeDef;
+  channel: NotificationChannel;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  if (!type.channels.includes(channel)) {
+    return (
+      <>
+        <span aria-hidden="true" className="text-muted-foreground">
+          —
+        </span>
+        <span className="sr-only">
+          {CHANNEL_LABEL[channel]} not available for {type.label}
+        </span>
+      </>
+    );
+  }
+
+  return (
+    <Switch
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      aria-label={`${type.label} — ${CHANNEL_LABEL[channel]}`}
+      className="data-[state=checked]:bg-foreground"
+    />
+  );
 }
 
 /**
@@ -165,38 +209,20 @@ export function NotificationChannelMatrix({ restaurantId }: NotificationChannelM
                         {type.label}
                       </th>
                       <td className="py-3 pr-3 text-center align-middle">
-                        {type.channels.includes('email') ? (
-                          <Switch
-                            checked={value.email}
-                            onCheckedChange={(checked) => updateChannel(type.key, 'email', checked)}
-                            aria-label={`${type.label} — Email`}
-                            className="data-[state=checked]:bg-foreground"
-                          />
-                        ) : (
-                          <>
-                            <span aria-hidden="true" className="text-muted-foreground">
-                              —
-                            </span>
-                            <span className="sr-only">Email not available for {type.label}</span>
-                          </>
-                        )}
+                        <ChannelCell
+                          type={type}
+                          channel="email"
+                          checked={value.email}
+                          onCheckedChange={(checked) => updateChannel(type.key, 'email', checked)}
+                        />
                       </td>
                       <td className="py-3 text-center align-middle">
-                        {type.channels.includes('push') ? (
-                          <Switch
-                            checked={value.push}
-                            onCheckedChange={(checked) => updateChannel(type.key, 'push', checked)}
-                            aria-label={`${type.label} — Push`}
-                            className="data-[state=checked]:bg-foreground"
-                          />
-                        ) : (
-                          <>
-                            <span aria-hidden="true" className="text-muted-foreground">
-                              —
-                            </span>
-                            <span className="sr-only">Push not available for {type.label}</span>
-                          </>
-                        )}
+                        <ChannelCell
+                          type={type}
+                          channel="push"
+                          checked={value.push}
+                          onCheckedChange={(checked) => updateChannel(type.key, 'push', checked)}
+                        />
                       </td>
                     </tr>
                   );

@@ -73,13 +73,17 @@ function parseDateTime(order: any): { orderDate: string; orderTime: string | nul
     const today = new Date().toISOString();
     return { orderDate: today.split('T')[0], orderTime: null, soldAt: null };
   }
-  // Revel timestamps look like '2026-07-01T12:30:00+0000'; Date parses ISO-with-offset.
+  // Revel timestamps look like '2026-07-01T12:30:00' (establishment-local, no offset).
   const d = new Date(rawDate);
   if (Number.isNaN(d.getTime())) {
     return { orderDate: String(rawDate).split('T')[0], orderTime: null, soldAt: null };
   }
   const iso = d.toISOString();
-  return { orderDate: iso.split('T')[0], orderTime: iso.split('T')[1].split('.')[0], soldAt: iso };
+  // Revel reports on a 2 AM business-day boundary (same idea as Toast's `businessDate`):
+  // an order before 2 AM counts toward the previous day. Shift back 2h for sale_date only;
+  // keep the real time in sale_time / sold_at.
+  const biz = new Date(d.getTime() - 2 * 60 * 60 * 1000);
+  return { orderDate: biz.toISOString().split('T')[0], orderTime: iso.split('T')[1].split('.')[0], soldAt: iso };
 }
 
 export function normalizeOrder(payload: any): NormalizedOrder {

@@ -97,6 +97,19 @@ serve(async (req) => {
 
     if (upsertError) return json({ error: upsertError.message }, 500);
 
+    // Kick off the initial 90-day backfill immediately (server-side). EdgeRuntime.waitUntil
+    // lets it run after this response returns, so data starts flowing the moment they connect
+    // — no waiting on the 6-hour cron, and it survives the page closing.
+    try {
+      const trigger = fetch(`${supabaseUrl}/functions/v1/revel-bulk-sync`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${serviceKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ restaurantId }),
+      }).catch(() => {});
+      const er = (globalThis as any).EdgeRuntime;
+      if (er && typeof er.waitUntil === 'function') er.waitUntil(trigger);
+    } catch (_e) { /* non-fatal: the cron still backfills */ }
+
     await logSecurityEvent(service, 'REVEL_CONNECTED', user.id, restaurantId, { instance });
     return json({ success: true, instance });
   } catch (error: any) {

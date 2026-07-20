@@ -89,6 +89,11 @@ export function RevelSync({ restaurantId }: RevelSyncProps): JSX.Element {
 
   const lastSyncTime = connection.last_sync_time ? new Date(connection.last_sync_time) : null;
 
+  // Real backfill progress: how far the 90-day cursor has advanced from (now - 90d).
+  const daysCompleted = connection.sync_cursor
+    ? Math.max(0, Math.min(90, Math.round(90 - (Date.now() - new Date(connection.sync_cursor).getTime()) / 86400000)))
+    : 0;
+
   return (
     <Card>
       <CardHeader>
@@ -101,7 +106,7 @@ export function RevelSync({ restaurantId }: RevelSyncProps): JSX.Element {
       <CardContent className="space-y-6">
         <ConnectionStatus lastSyncTime={lastSyncTime} config={REVEL_CONFIG} />
 
-        {!connection.initial_sync_done && <InitialSyncPendingAlert config={REVEL_CONFIG} />}
+        {!connection.initial_sync_done && <InitialSyncPendingAlert syncCursor={daysCompleted} config={REVEL_CONFIG} />}
 
         {connection.last_error && (
           <LastErrorAlert error={connection.last_error} errorAt={connection.last_error_at} />

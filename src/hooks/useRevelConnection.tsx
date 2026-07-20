@@ -10,6 +10,7 @@ export type RevelConnection = {
   is_active: boolean;
   connection_status: string;
   initial_sync_done: boolean;
+  sync_cursor: string | null;
   last_sync_time: string | null;
   webhook_active: boolean;
   last_error: string | null;

@@ -30,8 +30,11 @@ describe('Scheduling roster context — identity cell', () => {
     expect(SRC).toMatch(/employment_type === 'part_time' \? 'PT' : 'FT'/);
     expect(SRC).toMatch(/bg-muted text-muted-foreground/);
   });
-  it('renders the Off chip with the info token and CalendarOff, not a title tooltip', () => {
-    expect(SRC).toMatch(/bg-info\/10 text-info/);
+  it('renders the Off chip with the muted availability-chip family and CalendarOff, not a title tooltip', () => {
+    // Task 6: the off pill IS the time_off state of the weekly availability
+    // chip now — restyled to the muted family via weekAvailabilityChipClasses.
+    expect(SRC).toMatch(/weekAvailabilityChipClasses\('time_off'\)/);
+    expect(SRC).not.toMatch(/bg-info\/10 text-info/);
     expect(SRC).toMatch(/off\.label/);
     expect(SRC).toMatch(/sr-only/);
     // negative: no hardcoded blue, no title-attr tooltip on the chip
@@ -75,7 +78,7 @@ describe('Scheduling roster context — mobile', () => {
 describe('Scheduling roster context — keyboard accessibility', () => {
   it('makes the Off chip tooltip trigger a focusable button with a focus ring', () => {
     // a <span> trigger is not keyboard-focusable (CodeRabbit) — must be a button w/ focus ring
-    expect(SRC).toMatch(/bg-info\/10 text-info[^"]*focus-visible:ring-ring/);
+    expect(SRC).toMatch(/focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/);
   });
   it('reveals the per-day add button on keyboard focus, not hover-only', () => {
     expect(SRC).toMatch(/group-focus-within:opacity-100/);

@@ -25,6 +25,7 @@ import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
+import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
 import {
@@ -73,6 +74,12 @@ import { cn } from '@/lib/utils';
 import { isMinor } from '@/lib/employeeUtils';
 import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import {
+  computeEffectiveAvailability,
+  summarizeWeekAvailability,
+  weekAvailabilityChipClasses,
+  type WeekAvailabilitySummary,
+} from '@/lib/effectiveAvailability';
+import {
   Calendar,
   Plus,
   Users,
@@ -120,6 +127,11 @@ import {
 
 export const SKELETON_ROWS = [...new Array(4)].map((_, rowIndex) => `row-${rowIndex}`);
 export const SKELETON_DAYS = [...new Array(7)].map((_, dayIndex) => `day-${dayIndex}`);
+
+// The time_off state of the weekly availability chip is always the muted
+// family — precomputed once since weekAvailabilityChipClasses('time_off')
+// never returns null.
+const TIME_OFF_CHIP_CLASSES = weekAvailabilityChipClasses('time_off')!;
 
 // Re-exported from scheduleVisibility for backward compatibility (tests and
 // other consumers import these from '@/pages/Scheduling').
@@ -426,6 +438,12 @@ const Scheduling = () => {
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const { timeOffRequests } = useTimeOffRequests(restaurantId);
   const pendingTimeOffCount = timeOffRequests.filter((r) => r.status === 'pending').length;
+  // Both hooks use staleTime: 30000 (per-hook default). While loading/erroring,
+  // these default to [] — computeEffectiveAvailability then yields 'not-set'
+  // days for every employee, summarizeWeekAvailability rolls that up to
+  // 'unset', and the chip renders nothing (no page skeleton needed).
+  const { availability: employeeAvailability } = useEmployeeAvailability(restaurantId);
+  const { exceptions: availabilityExceptions } = useAvailabilityExceptions(restaurantId);
 
   // stable 'yyyy-MM-dd' keys for the 7 visualized days
   const weekDayKeys = useMemo(
@@ -549,6 +567,34 @@ const Scheduling = () => {
     const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
     return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter, areaFilter);
   }, [allEmployees, shifts, positionFilter, areaFilter]);
+
+  // Stable string key (not a fresh array literal) so the effective-availability
+  // memo below isn't defeated on every render by a new .map(...) reference.
+  const visibleEmployeeIdsKey = useMemo(
+    () => filteredEmployeesWithShifts.map((e) => e.id).join(','),
+    [filteredEmployeesWithShifts],
+  );
+  const weekStartKey = useMemo(() => format(currentWeekStart, 'yyyy-MM-dd'), [currentWeekStart]);
+
+  const effectiveAvailabilityByEmployee = useMemo(() => {
+    const employeeIds = visibleEmployeeIdsKey ? visibleEmployeeIdsKey.split(',') : [];
+    return computeEffectiveAvailability(employeeAvailability, availabilityExceptions, currentWeekStart, employeeIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleEmployeeIdsKey/weekStartKey are the stable proxies for employeeIds/currentWeekStart
+  }, [employeeAvailability, availabilityExceptions, visibleEmployeeIdsKey, weekStartKey]);
+
+  // Per-employee weekly availability status (time_off > limited > available >
+  // unset), combining the already-loaded time-off context with the
+  // availability query result.
+  const weekAvailabilityByEmployee = useMemo(() => {
+    const map = new Map<string, WeekAvailabilitySummary>();
+    for (const employee of filteredEmployeesWithShifts) {
+      const empOff = weekTimeOff.get(employee.id);
+      const off = empOff ? summarizeOff(empOff) : null;
+      const week = effectiveAvailabilityByEmployee.get(employee.id);
+      map.set(employee.id, summarizeWeekAvailability(week, !!off, off?.label));
+    }
+    return map;
+  }, [filteredEmployeesWithShifts, effectiveAvailabilityByEmployee, weekTimeOff]);
 
   // Calculate hours for all shifts (including inactive employees)
   const totalScheduledHours = shifts
@@ -1564,6 +1610,10 @@ const Scheduling = () => {
                           const empOff = weekTimeOff.get(employee.id);
                           const off = empOff ? summarizeOff(empOff) : null;
                           const isMinorEmployee = isMinor(employee.date_of_birth);
+                          const weekAvailability = weekAvailabilityByEmployee.get(employee.id);
+                          const availabilityChipClasses = weekAvailability
+                            ? weekAvailabilityChipClasses(weekAvailability.status)
+                            : null;
                           return (
                           <tr
                             key={employee.id}
@@ -1607,13 +1657,17 @@ const Scheduling = () => {
                                           Minor
                                         </span>
                                       )}
-                                      {off && (
+                                      {off ? (
                                         <TooltipProvider>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <button
                                                 type="button"
-                                                className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                className={cn(
+                                                  "inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                                  TIME_OFF_CHIP_CLASSES.bg,
+                                                  TIME_OFF_CHIP_CLASSES.text,
+                                                )}
                                               >
                                                 <CalendarOff className="h-3 w-3" aria-hidden="true" />
                                                 {off.label}
@@ -1627,7 +1681,17 @@ const Scheduling = () => {
                                             </TooltipContent>
                                           </Tooltip>
                                         </TooltipProvider>
-                                      )}
+                                      ) : weekAvailability && availabilityChipClasses ? (
+                                        <span
+                                          className={cn(
+                                            "inline-flex items-center text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0",
+                                            availabilityChipClasses.bg,
+                                            availabilityChipClasses.text,
+                                          )}
+                                        >
+                                          {weekAvailability.label}
+                                        </span>
+                                      ) : null}
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
                                       {employee.position}

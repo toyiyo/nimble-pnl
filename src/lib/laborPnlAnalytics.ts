@@ -132,6 +132,18 @@ export function bucketKeyOf(dateStr: string, granularity: LaborGranularity): str
   }
 }
 
+/**
+ * Locale-aware comparator for bucket keys (`bucketKeyOf`'s output: ISO
+ * `YYYY-MM-DD` day/week-Monday keys, or `YYYY-MM` month keys). SonarCloud
+ * rule S2871 flags any `.sort()` on a Sonar-scoped array without an explicit
+ * comparator, even when the default lexicographic sort happens to already be
+ * correct for ISO strings (memory/lessons.md) — pass this to `Array.sort`
+ * directly wherever bucket keys are ordered.
+ */
+export function bucketKeyComparator(a: string, b: string): number {
+  return a.localeCompare(b);
+}
+
 /** Rounds to 2 decimal places, matching `buildSplhTimeseries`'s $ rounding. */
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -173,7 +185,7 @@ export function buildFinancialSeries(
 
   const buckets = Array.from(
     new Set([...salesByBucket.keys(), ...laborCostByBucket.keys()]),
-  ).sort((a, b) => a.localeCompare(b));
+  ).sort(bucketKeyComparator);
 
   return buckets.map((bucketStart) => {
     const sales = round2(salesByBucket.get(bucketStart) ?? 0);
@@ -308,4 +320,22 @@ export function summarizeLaborPnl(
   }
 
   return { sales, laborCost, laborPct, revPerLaborHr, verdict, verdictTone, overWindows, underWindows };
+}
+
+/**
+ * Pure: balance tone -> inline text color, using the dedicated
+ * `--labor-over` / `--labor-under` / `--labor-balanced` tokens (design §7,
+ * added in `src/index.css` by Phase B). Deliberately **not** reusing
+ * `splhAnalytics.verdictToneClassName`'s `--splh-lean/slack` tokens: those
+ * are semantically inverted here (`--splh-lean` = red = *understaffed*)
+ * and both cards can be on-screen together, so sharing tokens would make
+ * red mean opposite things on adjacent cards. Returns `''` for `'none'` so
+ * callers' default `text-muted-foreground` className applies instead of
+ * forcing a color, mirroring `verdictToneClassName`'s no-data case.
+ */
+export function balanceStateClassName(tone: BalanceState | 'none'): string {
+  if (tone === 'over') return 'text-[hsl(var(--labor-over))]';
+  if (tone === 'under') return 'text-[hsl(var(--labor-under))]';
+  if (tone === 'balanced') return 'text-[hsl(var(--labor-balanced))]';
+  return '';
 }

@@ -4,6 +4,8 @@ import {
   LABOR_BALANCE_BAND,
   monthKeyOf,
   bucketKeyOf,
+  bucketKeyComparator,
+  balanceStateClassName,
   buildFinancialSeries,
   buildSalesVolumeGrid,
   summarizeLaborPnl,
@@ -366,5 +368,51 @@ describe('summarizeLaborPnl', () => {
     expect(summary.overWindows).toEqual([
       { startLabel: '2026-07-21', endLabel: '2026-07-21', bucketCount: 1 },
     ]);
+  });
+});
+
+describe('bucketKeyComparator', () => {
+  it('sorts ISO day bucket keys chronologically', () => {
+    const keys = ['2026-07-21', '2026-01-05', '2026-07-20', '2025-12-31'];
+    expect([...keys].sort(bucketKeyComparator)).toEqual([
+      '2025-12-31',
+      '2026-01-05',
+      '2026-07-20',
+      '2026-07-21',
+    ]);
+  });
+
+  it('sorts YYYY-MM month bucket keys across a year boundary', () => {
+    const keys = ['2026-02', '2025-11', '2026-01', '2025-12'];
+    expect([...keys].sort(bucketKeyComparator)).toEqual([
+      '2025-11',
+      '2025-12',
+      '2026-01',
+      '2026-02',
+    ]);
+  });
+
+  it('is a plain (a, b) => number comparator usable directly as Array.sort\'s argument', () => {
+    expect(bucketKeyComparator('2026-07-20', '2026-07-20')).toBe(0);
+    expect(bucketKeyComparator('2026-07-19', '2026-07-20')).toBeLessThan(0);
+    expect(bucketKeyComparator('2026-07-21', '2026-07-20')).toBeGreaterThan(0);
+  });
+});
+
+describe('balanceStateClassName', () => {
+  it('maps over to the --labor-over token', () => {
+    expect(balanceStateClassName('over')).toBe('text-[hsl(var(--labor-over))]');
+  });
+
+  it('maps under to the --labor-under token', () => {
+    expect(balanceStateClassName('under')).toBe('text-[hsl(var(--labor-under))]');
+  });
+
+  it('maps balanced to the --labor-balanced token', () => {
+    expect(balanceStateClassName('balanced')).toBe('text-[hsl(var(--labor-balanced))]');
+  });
+
+  it('maps none to an empty string so callers fall back to their default className', () => {
+    expect(balanceStateClassName('none')).toBe('');
   });
 });

@@ -41,7 +41,7 @@ function laborCostWindow(tz: string, weeks: number): { windowStart: Date; window
 export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
   const { selectedRestaurant } = useRestaurantContext();
   const tz = validateTimeZone(selectedRestaurant?.restaurant?.timezone);
-  const { effectiveSettings } = useStaffingSettings(restaurantId);
+  const { effectiveSettings, updateSettings, isSaving: isSavingTarget } = useStaffingSettings(restaurantId);
   const targetPct = effectiveSettings.target_labor_pct;
 
   const { windowStart, windowEnd } = useMemo(() => laborCostWindow(tz, weeks), [tz, weeks]);
@@ -78,6 +78,13 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
     windowEnd,
     dailySales,
     dailyLabor: dailyCosts,
+    // Raw per-sale/per-punch inputs, exposed (not just the derived daily
+    // series) so `useLaborPnlAnalytics` (`/labor` page, C3) can build the
+    // hourly sales-volume grid via `buildSplhGrid` without a second
+    // `useSplhData` fetch — mirrors `useSplhCore` exposing both `data` and
+    // `sessions` alongside its own derived `grid`/`summary`.
+    sales: data?.sales ?? [],
+    sessions,
     capped: data?.capped ?? false,
     // Per design §6 (mirroring `useSplhCore`): a restaurant with sales but
     // zero punches anywhere in the window hasn't enabled time tracking yet —
@@ -90,5 +97,9 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
       refetchSales();
       refetchLabor();
     },
+    // Target-% write path (design §2.2 "Editable target"), shared here so
+    // `useLaborPnlAnalytics` doesn't need its own `useStaffingSettings` call.
+    updateSettings,
+    isSavingTarget,
   };
 }

@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useLaborPnlAnalytics } from '@/hooks/useLaborPnlAnalytics';
 import {
+  addDaysStr,
   balanceStateClassName,
   balanceStateBgClassName,
   type BalanceState,
@@ -171,13 +172,6 @@ function formatRangeCaption(startStr: string, endStr: string): string {
   return startStr === endStr ? fmt(startStr) : `${fmt(startStr)} – ${fmt(endStr)}`;
 }
 
-/** Today / today − N days as `YYYY-MM-DD` for the custom-range picker bounds. */
-function isoDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
 /**
  * `/labor` page: the financial counterpart to the scheduling "Labor efficiency"
  * panel (PR #611) — a date-range selector (Today / This week / Last week / This
@@ -213,10 +207,14 @@ export default function Labor() {
     refetch,
     updateTarget,
     isSavingTarget,
+    todayStr,
   } = useLaborPnlAnalytics(restaurantId, selection);
 
-  const today = isoDaysAgo(0);
-  const minCustom = isoDaysAgo(120); // fetch window covers ~18 weeks back
+  // Custom-range picker bounds from the restaurant-tz "today" (not host-local),
+  // so an evening user west of UTC can't pick "tomorrow". Floor at the ~18-week
+  // fetch window (126 days).
+  const today = todayStr;
+  const minCustom = addDaysStr(todayStr, -126);
 
   if (!restaurantId) {
     return (
@@ -411,7 +409,7 @@ export default function Labor() {
           accentClass="bg-[hsl(var(--labor-balanced))]"
           sparkClass="text-[hsl(var(--labor-balanced))]"
           sub="per hour worked"
-          spark={series.map((p) => p.sales)}
+          spark={series.map((p) => (p.laborHours > 0 ? p.sales / p.laborHours : null))}
         />
         <KpiTile
           label="Net sales"

@@ -172,8 +172,10 @@ export function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
     return localParts(ms, tz).hour;
   }
   if (sale.sale_time) {
-    const h = parseInt(sale.sale_time.split(':')[0], 10);
-    return Number.isNaN(h) ? null : h;
+    // Reject malformed/out-of-range hours (e.g. "99:00", "-1:00") — the intraday
+    // series uses this as an axis bound, so only accept a real 0–23 hour.
+    const h = Number(sale.sale_time.split(':')[0]);
+    return Number.isInteger(h) && h >= 0 && h < 24 ? h : null;
   }
   return null;
 }

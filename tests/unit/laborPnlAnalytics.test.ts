@@ -608,3 +608,27 @@ describe('buildIntradayFinancialSeries capHour', () => {
     expect(series.find((p) => p.label === '9 PM')).toBeUndefined();
   });
 });
+
+describe('buildSalesVolumeGrid negative-cell clamp', () => {
+  it('clamps a negative (refund) cell to intensity 0, never below the 0..1 range', () => {
+    const cells = [gridCell(1, 12, 1000), gridCell(1, 13, -200)];
+    const out = buildSalesVolumeGrid(cells, false);
+    expect(out[0].intensity).toBe(1);
+    expect(out[1].intensity).toBe(0);
+    expect(out.every((c) => c.intensity >= 0 && c.intensity <= 1)).toBe(true);
+  });
+});
+
+describe('buildIntradayFinancialSeries rejects malformed sale_time hours', () => {
+  it('skips a sale whose sale_time hour is out of 0..23', () => {
+    const day = '2026-07-22';
+    const sales = [
+      saleRow(day, null, 100), // no hour at all
+      { sale_date: day, sale_time: '99:00', sold_at: null, total_price: 500 }, // invalid hour
+      { sale_date: day, sale_time: '13:00', sold_at: null, total_price: 250 }, // valid → hour 13
+    ];
+    const series = buildIntradayFinancialSeries(sales, [], 'UTC', day, 2000, 22);
+    expect(series.map((p) => p.label)).toEqual(['1 PM']);
+    expect(series[0].sales).toBe(250);
+  });
+});

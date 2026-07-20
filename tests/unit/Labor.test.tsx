@@ -106,6 +106,7 @@ function mockHookReturn(overrides: Record<string, unknown> = {}) {
     series: POINTS,
     granularity: 'day',
     range: { startStr: '2026-07-01', endStr: '2026-07-07' },
+    todayStr: '2026-07-20',
     seriesIsShapeEstimate: false,
     grid: GRID,
     summary: baseSummary(),

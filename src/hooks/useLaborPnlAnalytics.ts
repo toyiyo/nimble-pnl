@@ -125,6 +125,8 @@ export function useLaborPnlAnalytics(restaurantId: string | null, selection: Lab
     seriesIsShapeEstimate: granularity === 'intraday',
     /** Resolved inclusive range bounds (for a range label). */
     range,
+    /** Restaurant-tz "today" (for custom date-picker bounds). */
+    todayStr,
     grid,
     summary,
     overWindows,

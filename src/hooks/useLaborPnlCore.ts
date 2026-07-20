@@ -8,6 +8,7 @@ import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcess
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { validateTimeZone, buildSplhTimeseries } from '@/lib/splhAnalytics';
 import { useTodayInTimezone } from '@/hooks/useTodayInTimezone';
+import { useNowTick } from '@/hooks/useNowTick';
 
 /**
  * Restaurant-tz window for the labor-cost fetch, expressed as `Date` objects
@@ -89,15 +90,18 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
 
   // Close still-open shifts at "now" before deriving sessions, so the intraday
   // (Day-view) labor shape counts in-progress hours — matching the payroll-grade
-  // daily cost above (which uses the same `throughNow`). "now" is captured when
-  // the punch data changes; the ~60s `useSplhData` refetch (+ refetchOnWindowFocus)
-  // keeps it fresh. The KPI labor $ tracks "now" independently via its own hook.
+  // daily cost above (which uses the same `throughNow`). `nowMs` (a minute
+  // ticker) is a real dependency here: React Query's structural sharing keeps
+  // `data.punches` reference-stable across content-identical refetches, so a memo
+  // keyed only on the punches would freeze the synthetic clock-out at first
+  // compute and the chart's labor line would collapse mid-shift.
+  const nowMs = useNowTick();
   const sessions = useMemo(
     () =>
       data?.punches?.length
-        ? identifyWorkSessions(normalizePunches(appendOpenShiftClockOuts(data.punches, new Date())))
+        ? identifyWorkSessions(normalizePunches(appendOpenShiftClockOuts(data.punches, new Date(nowMs))))
         : [],
-    [data?.punches],
+    [data?.punches, nowMs],
   );
 
   const dailySales = useMemo(

@@ -232,7 +232,9 @@ export function buildSalesVolumeGrid(
 ): SalesVolumeCell[] {
   const maxSales = cells.reduce((max, cell) => Math.max(max, cell.totalSales), 0);
   return cells.map((cell) => {
-    const intensity = maxSales > 0 ? cell.totalSales / maxSales : 0;
+    // Clamp to the documented 0..1 range: a negative cell (e.g. a net refund
+    // hour) would otherwise produce a negative intensity and break styling.
+    const intensity = maxSales > 0 ? Math.max(0, cell.totalSales / maxSales) : 0;
     return {
       dow: cell.dow,
       hour: cell.hour,
@@ -366,7 +368,8 @@ export interface LaborRangeSelection {
   customEnd?: string;
 }
 
-function addDaysStr(dateStr: string, days: number): string {
+/** Adds `days` (may be negative) to an ISO `YYYY-MM-DD` via UTC math (TZ-safe). */
+export function addDaysStr(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   dt.setUTCDate(dt.getUTCDate() + days);

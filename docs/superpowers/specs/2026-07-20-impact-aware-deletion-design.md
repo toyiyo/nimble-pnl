@@ -73,11 +73,12 @@ Header: calendar / calendar-x icon box, severity pill.
 
 ### Modified
 - `src/hooks/useShiftTemplates.tsx` — add `deleteMutation` (`deleteTemplate`), hard delete `.delete().eq('id', id).eq('restaurant_id', restaurantId)`; `onSuccess` invalidates + destructive-tone toast (**no undo** — cascade is irreversible; the Hide affordance is the reversible path). Follows existing mutation shape.
-- `src/components/scheduling/ShiftPlanner/TemplateRowHeader.tsx` — add a `Delete template…` destructive `DropdownMenuItem` beneath Hide (with `onDelete` prop). Only for non-hidden rows (or both — TBD in build, default both).
+- `src/components/scheduling/ShiftPlanner/TemplateRowHeader.tsx` — add a `Delete template…` destructive `DropdownMenuItem` (with `onDelete` prop) in **both** the active and hidden dropdown branches (a mistakenly-hidden template must still be hard-deletable). Item uses `text-destructive` per CLAUDE.md. **Mobile note:** this dropdown is `hidden md:inline-flex` today; template delete inherits that desktop-only gap (same as existing Edit/Hide) — see non-goals.
 - `src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx` — own the single `DeleteTemplateDialog` instance (single-dialog pattern), wire `onDelete` → open dialog; `onConfirmDelete` → `deleteTemplate`; `onHide` inside dialog → existing hide flow.
 - `src/components/AvailabilityDialog.tsx` — add a `Remove` (destructive, `variant` per CLAUDE.md) button in the footer, shown only when editing an existing `availability`; opens `DeleteAvailabilityDialog`.
 - `src/components/AvailabilityExceptionDialog.tsx` — same `Remove` affordance for editing an existing exception.
-- `src/components/scheduling/TeamAvailabilityGrid.tsx` — hover-reveal trash icon on filled cells (`opacity-0 group-hover:opacity-100`, `aria-label`), opens `DeleteAvailabilityDialog` for that entry. Single dialog owned at grid level.
+- `src/pages/Scheduling.tsx` — **owns the single `DeleteAvailabilityDialog` instance** (the common ancestor of the grid AND the two editor dialogs; it already owns `availabilityDialogOpen`/`exceptionDialogOpen`). All three triggers set a shared `deletionTarget` state here. (Correction from Phase 2.5: the grid cannot own this dialog because the editor Remove buttons — rendered as siblings in `Scheduling.tsx` — must reach it too.)
+- `src/components/scheduling/TeamAvailabilityGrid.tsx` — desktop-only hover/focus-reveal trash **sibling** `<button>` on filled cells. The cell today is `role="button" tabIndex={0}` (opens edit); to avoid a nested interactive control, the trash button (a) is a real sibling `<button>` with `aria-label`, (b) calls `e.stopPropagation()` so it does not also open the edit dialog, and (c) is `opacity-0 group-hover:opacity-100 focus-visible:opacity-100` (keyboard-reachable, not hover-only). **Omitted on the compact/mobile cell** — mobile deletes via the editor Remove button (tap cell → editor → Remove). Grid raises `onRequestDelete(entry)` up to `Scheduling.tsx`.
 
 ### Reused as-is
 - `useDeleteAvailability`, `useDeleteAvailabilityException` (wire the dead hooks). Call shape: `mutate({ id, restaurantId })`.
@@ -110,3 +111,37 @@ Header: calendar / calendar-x icon box, severity pill.
 - **Impact counts are client-side queries,** not a new RPC — keeps the change migration-free and within existing RLS. Forward window for open spots is bounded (e.g. 4 weeks) to keep the query cheap; the ledger says "upcoming" not "all future."
 - **Bulk delete** (multiple templates at once) is out of scope for this PR.
 - **Employee self-service availability delete** is out of scope; this targets the manager surfaces (Scheduling planner + availability grid/editor).
+- **Mobile template delete is out of scope** (pre-existing gap): the template row `⋯` dropdown is `hidden md:inline-flex`, so Edit/Hide/Delete are all desktop-only. Availability delete IS reachable on mobile (tap cell → editor → Remove button). Adding a mobile template-action surface is a separate follow-up.
+
+## Phase 2.5 — Design Review Resolutions
+
+Both reviewers ran (Supabase + Frontend). Dispositions below; the doc above already reflects the inline fixes.
+
+### Frontend — critical (both fixed in design)
+1. **Nested interactive control on grid cells** → trash is a sibling `<button>` with `stopPropagation`, keyboard-focusable (`focus-visible:opacity-100`), omitted on compact/mobile. (See TeamAvailabilityGrid bullet.)
+2. **`DeleteAvailabilityDialog` ownership contradiction** → owned at `Scheduling.tsx` page level (common ancestor of grid + both editors), not the grid. (See Scheduling.tsx bullet.)
+
+### Frontend — major (all fixed in design)
+3. **Impact-query error state** → on `useTemplateDeletionImpact` error, Delete stays **disabled** with an inline error row + Retry in the ledger (never silently enable — deleting with unknown blast radius is the worst failure). Loading → Delete disabled + "Checking impact…". Only the fully-resolved zero-impact path enables Delete without a checkbox. Impact-hook error branch added to the test plan.
+4. **Mobile template delete** → explicit non-goal (above).
+5. **Dense dialog CTA reachability at 375px** → the template Impact-Ledger dialog uses a **sticky footer** (`sticky bottom-0 bg-background border-t border-border/40`) so Cancel/Hide/Delete stay reachable without scrolling the full ledger. Mobile-viewport check is an acceptance criterion.
+6. **Control-group gating** → extended to the availability dialog: its Delete button gates on `useDeleteAvailability.isPending || useDeleteAvailabilityException.isPending`; Cancel is disabled while a delete is in-flight. Template dialog gates Delete+Hide on the union `deleteTemplate.isPending || hideTemplate.isPending`.
+
+### Frontend — minor (fixed)
+7. **Pin token classes** (no literal `red-*`): Removed panel/pending-claims → `bg-destructive/10 border-destructive/20 text-destructive`; Kept panel → `bg-emerald-500/10 border-emerald-500/20` (mirrors the existing amber AI-panel convention); guardrail hero/checkbox → `bg-amber-500/10 border-amber-500/20`. Verify text contrast ≥4.5:1 in light AND dark during Phase 5.
+8. **Success toast is a normal toast with strong copy**, NOT `variant="destructive"` (which signals error). e.g. `"Closing Server" deleted · 2 pending claims withdrawn`. No Undo action (unlike Hide).
+9. **Dropdown placement TBD resolved**: Delete shown in both active and hidden branches.
+10. **Severity pill + summary chips** use the CLAUDE.md custom badge span convention (`text-[11px] px-1.5 py-0.5 rounded-md`), not shadcn `Badge`, for consistency.
+
+### Supabase — critical (deferred with rationale + tracked)
+11. **`get_open_shifts` lacks a tenant-authorization check** (any authenticated user can call it with an arbitrary `restaurant_id`). This is **pre-existing** and **not introduced or worsened by this feature's code path** — `useTemplateDeletionImpact` always passes the caller's *own* selected `restaurant_id`, so no new cross-tenant leak. Bundling a `SECURITY DEFINER` auth-guard migration into a UI feature is risky: a naive `user_has_restaurant_access(p_restaurant_id)` guard would break the **service-role** caller `broadcast-open-shifts` (where `auth.uid()` is NULL). Correct fix (guard only when `auth.uid() IS NOT NULL`, allow any restaurant *member* since employees legitimately call it) belongs in a focused security PR with its own pgTAP. **Tracked as a separate task; documented here so the future fix preserves the service-role path.**
+
+### Supabase — major (both fixed in design)
+12. **Timezone display in availability copy** → the dialog MUST format `start_time`/`end_time` via `utcTimeToLocalTime(value, restaurant.timezone, referenceDate)` with the anchor matching the entry point: grid cell → that column's `date`; exception → the exception's `date`; recurring editor → "today". Never render raw `TIME` values (UTC contract; wrong-DST-anchor is a documented recurring bug class).
+13. **TOCTOU between ledger snapshot and delete** → the impact query is forced fresh on each dialog open (`refetchOnMount` + invalidate on open). The residual small window (a claim approved between open and confirm) is an **accepted limitation**: the cascade stays consistent (no corruption); worst case the ledger over-states withdrawals. Documented rather than solved with a heavier pre-delete re-verify.
+
+### Supabase — minor (fixed)
+14. **Zero-row delete lies** → `deleteTemplate` chains `.select('id')` and treats a 0-row result as "already removed" (info toast), not a false success. Safe to add `.select()` here because `deleteTemplate` is a NEW hook with no sibling mocks (contrast lessons line 413, which was about the *shared* delete chain — left unchanged).
+15. **Impact hook sums whole-restaurant `open_spots`** from `get_open_shifts` then filters to this `template_id` client-side (RPC takes no template filter). Bounded/cheap at current scale (4-week window); noted, not optimized.
+
+**Re-approval:** design doc now reflects all critical + major concerns. Proceeding to Phase 3.

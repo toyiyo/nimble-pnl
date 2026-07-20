@@ -63,7 +63,7 @@
 -- 41  After voiding C: SUM(total_price) WHERE adjustment_type='void' equals negated revenue lost
 
 BEGIN;
-SELECT plan(41);
+SELECT plan(44);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup: disable RLS so we can insert test rows freely
@@ -847,6 +847,47 @@ SELECT is(
      AND adjustment_type = 'void'),
   (-6.00)::numeric,
   'After voiding C: SUM(total_price) WHERE adjustment_type=''void'' equals negated revenue lost'
+);
+
+-- ── get_unified_sales_totals: void marker must NOT understate collected_at_pos ──
+-- Regression for the Codex finding on PR #618: collected_at_pos was a bare
+-- SUM(total_price) that swept in the negative adjustment_type='void' marker,
+-- dragging POS-collected/deposit totals down by the voided amount. The fix
+-- filters adjustment_type='void' out of collected_at_pos only. Needs the owner
+-- JWT (the function gates on user_restaurants membership).
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-f0c100000001"}';
+
+-- Test 42: collected_at_pos equals the void-EXCLUDED SUM for the day (the void
+-- marker contributes 0, not its negative amount).
+SELECT is(
+  (SELECT collected_at_pos FROM public.get_unified_sales_totals(
+     '00000000-0000-0000-0000-f0c100000011'::uuid, '2026-06-15'::date, '2026-06-15'::date)),
+  (SELECT COALESCE(SUM(total_price), 0)::numeric FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND parent_sale_id IS NULL
+     AND sale_date = '2026-06-15'
+     AND adjustment_type IS DISTINCT FROM 'void'),
+  'collected_at_pos excludes the negative void marker (matches void-filtered SUM)'
+);
+
+-- Test 43: collected_at_pos is exactly 6.00 higher than the naive all-inclusive
+-- SUM — proving the -6.00 void marker was omitted, not netted in.
+SELECT ok(
+  (SELECT collected_at_pos FROM public.get_unified_sales_totals(
+     '00000000-0000-0000-0000-f0c100000011'::uuid, '2026-06-15'::date, '2026-06-15'::date))
+  = (SELECT COALESCE(SUM(total_price), 0)::numeric FROM public.unified_sales
+     WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+       AND parent_sale_id IS NULL
+       AND sale_date = '2026-06-15') + 6.00,
+  'collected_at_pos is 6.00 above the naive all-in SUM (void marker excluded, not netted)'
+);
+
+-- Test 44: the void still shows up in the voids column (auditable, countable).
+SELECT is(
+  (SELECT voids FROM public.get_unified_sales_totals(
+     '00000000-0000-0000-0000-f0c100000011'::uuid, '2026-06-15'::date, '2026-06-15'::date)),
+  6.00::numeric,
+  'voids column reports the voided check amount (6.00)'
 );
 
 SELECT * FROM finish();

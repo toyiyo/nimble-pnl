@@ -74,50 +74,52 @@ async function setupWithEmployees(page: any) {
 async function gotoSchedule(page: any) {
   await page.goto('/scheduling');
   await page.waitForURL(/\/scheduling/, { timeout: 8000 });
-  const table = page.locator('table').first();
-  await expect(table).toBeVisible({ timeout: 15000 });
-  return table;
 }
 
 test.describe('Schedule responsive layout', () => {
-  test('shows compact avatars at mobile viewport width', async ({ page }) => {
+  test('shows the day-focused mobile view with full names at mobile viewport width', async ({ page }) => {
     // Setup at desktop size (signup flow needs wider viewport)
     await setupWithEmployees(page);
     // Resize to mobile before navigating to schedule
     await page.setViewportSize({ width: 375, height: 812 });
     await gotoSchedule(page);
 
-    // The compact avatar container (flex md:hidden) should be visible on mobile
-    // The full name container (hidden md:flex) should be hidden
-    // We check by looking for the employee name text — on mobile it should NOT
-    // be visible as text (it's inside a hidden div), but the initials should be
-    const compactAvatars = page.locator('td .flex.md\\:hidden');
-    await expect(compactAvatars.first()).toBeVisible({ timeout: 5000 });
+    // The day-focused mobile view (md:hidden) replaces the wide table on phones.
+    const mobileView = page.getByTestId('week-schedule-mobile');
+    await expect(mobileView).toBeVisible({ timeout: 15000 });
 
-    // Full name div should be hidden
-    const fullNames = page.locator('td .hidden.md\\:flex');
-    await expect(fullNames.first()).toBeHidden();
+    // Full employee names are visible on mobile (the core of the redesign —
+    // previously only initials showed).
+    await expect(mobileView.getByText('Maria Rodriguez')).toBeVisible();
 
-    // All 7 day column headers should be present
-    const headerCells = page.locator('thead th');
-    await expect(headerCells).toHaveCount(8); // 1 name + 7 days
+    // One card per employee is rendered for the selected day.
+    await expect(
+      page.getByTestId('week-schedule-mobile-employee-card'),
+    ).toHaveCount(3);
+
+    // The day-picker marks today with aria-current="date".
+    await expect(
+      mobileView.locator('button[aria-current="date"]'),
+    ).toHaveCount(1);
+
+    // The desktop table (hidden md:block) is not shown on mobile.
+    await expect(page.locator('table').first()).toBeHidden();
   });
 
-  test('shows full names at desktop viewport width', async ({ page }) => {
+  test('shows the wide table with full names at desktop viewport width', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await setupWithEmployees(page);
     await gotoSchedule(page);
 
-    // Full name should be visible on desktop
-    const fullNames = page.locator('td .hidden.md\\:flex');
-    await expect(fullNames.first()).toBeVisible({ timeout: 5000 });
-
-    // Compact avatar should be hidden
-    const compactAvatars = page.locator('td .flex.md\\:hidden');
-    await expect(compactAvatars.first()).toBeHidden();
-
-    // Employee name text should be visible in the schedule table
+    // The wide table is visible on desktop and shows full employee names.
     const table = page.locator('table').first();
+    await expect(table).toBeVisible({ timeout: 15000 });
     await expect(table.getByText('Maria Rodriguez')).toBeVisible();
+
+    // All 7 day column headers (+ the team-member column) are present.
+    await expect(page.locator('thead th')).toHaveCount(8);
+
+    // The mobile day-focused view (md:hidden) is not shown on desktop.
+    await expect(page.getByTestId('week-schedule-mobile')).toBeHidden();
   });
 });

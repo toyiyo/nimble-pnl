@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { EnhancedCategoryRulesDialog } from "@/components/banking/EnhancedCategoryRulesDialog";
-import { useUnifiedSales } from "@/hooks/useUnifiedSales";
+import { useUnifiedSales, MAX_AUTO_ROWS } from "@/hooks/useUnifiedSales";
 import { useUnifiedSalesGrouped } from "@/hooks/useUnifiedSalesGrouped";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
 import { useInventoryDeduction } from "@/hooks/useInventoryDeduction";
@@ -1252,7 +1252,7 @@ export default function POSSales() {
                   )}
                   {reachedCap && (
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px] text-muted-foreground">Showing the first 20,000 rows in this range</span>
+                      <span className="text-[13px] text-muted-foreground">Showing the first {MAX_AUTO_ROWS.toLocaleString()} rows in this range</span>
                       <Button
                         variant="ghost"
                         size="sm"

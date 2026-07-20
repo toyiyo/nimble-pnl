@@ -9,7 +9,7 @@ import { createMappedItemNamesSet, hasRecipeMappingFromSet } from '@/utils/recip
 // Increased from 200 to 500 - virtualization makes larger pages safe
 // and reduces pagination API calls
 const PAGE_SIZE = 500;
-const MAX_AUTO_ROWS = 20000;   // safety valve for the auto-loaded raw list
+export const MAX_AUTO_ROWS = 20000;   // safety valve for the auto-loaded raw list
 const MAX_AUTO_RETRIES = 3;    // stop auto-loading after N consecutive page failures
 
 type UseUnifiedSalesOptions = {
@@ -371,11 +371,8 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     }
   }, [fetchNextPage, canLoadMore]);
 
-  // Same stale-placeholder guard as canLoadMore, plus the cap check.
-  const reachedCap =
-    !!hasNextPage &&
-    flatSales.length >= effectiveCap &&
-    !(isFetching && !loadingMore);
+  // Reuses canLoadMore's stale-placeholder guard, plus the cap check.
+  const reachedCap = canLoadMore && flatSales.length >= effectiveCap;
 
   // Track consecutive auto-load failures so a transient error halts the walk.
   useEffect(() => {

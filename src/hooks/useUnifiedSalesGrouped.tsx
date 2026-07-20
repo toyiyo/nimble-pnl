@@ -10,6 +10,15 @@ export interface GroupedSaleItem {
 
 export type GroupedSortBy = 'revenue' | 'quantity' | 'sales' | 'name';
 
+// RPC numerics can arrive as strings over the wire (see useRevenueBreakdown's
+// UnifiedSalesTotalsRow for the same pattern) — coerced to numbers below.
+type GroupedSaleItemRow = {
+  item_name: string;
+  total_quantity: number | string;
+  total_revenue: number | string;
+  sale_count: number | string;
+};
+
 interface UseUnifiedSalesGroupedOptions {
   startDate?: string;
   endDate?: string;
@@ -56,12 +65,7 @@ export const useUnifiedSalesGrouped = (
         throw error;
       }
 
-      return (data ?? []).map((row: {
-        item_name: string;
-        total_quantity: number | string;
-        total_revenue: number | string;
-        sale_count: number | string;
-      }) => ({
+      return (data ?? []).map((row: GroupedSaleItemRow) => ({
         item_name: row.item_name,
         total_quantity: Number(row.total_quantity ?? 0),
         total_revenue: Number(row.total_revenue ?? 0),

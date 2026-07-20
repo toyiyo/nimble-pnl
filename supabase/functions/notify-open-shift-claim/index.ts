@@ -95,18 +95,20 @@ serve(async (req) => {
 
     const ch = await resolveChannels(admin as unknown as SupabaseLike, claim.restaurant_id, "open_shift_claim_reviewed");
 
-    let emailSent = false;
-    let pushSent = 0;
-
-    if (ch.email && RESEND_API_KEY && emp?.email) {
+    // Email and push are independent I/O — send them concurrently rather than
+    // back-to-back, and let each channel fail on its own without blocking the other.
+    const sendEmailChannel = async (): Promise<boolean> => {
+      if (!(ch.email && RESEND_API_KEY && emp?.email)) return false;
       try {
-        emailSent = await sendEmail(RESEND_API_KEY, NOTIFICATION_FROM, emp.email, content.subject, content.emailHtml);
+        return await sendEmail(RESEND_API_KEY, NOTIFICATION_FROM, emp.email, content.subject, content.emailHtml);
       } catch (e) {
         console.error("Claim notify email failed:", e);
+        return false;
       }
-    }
+    };
 
-    if (ch.push && emp?.user_id) {
+    const sendPushChannel = async (): Promise<number> => {
+      if (!(ch.push && emp?.user_id)) return 0;
       try {
         const r = await sendWebPushToUser(admin, emp.user_id, claim.restaurant_id, {
           title: content.heading,
@@ -114,11 +116,14 @@ serve(async (req) => {
           url: EMPLOYEE_SHIFTS_ROUTE,
           tag: `claim-${action}-${claimId}`,
         });
-        pushSent = r.sent;
+        return r.sent;
       } catch (e) {
         console.error("Claim notify push failed:", e);
+        return 0;
       }
-    }
+    };
+
+    const [emailSent, pushSent] = await Promise.all([sendEmailChannel(), sendPushChannel()]);
 
     return new Response(JSON.stringify({ success: true, emailSent, pushSent }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });

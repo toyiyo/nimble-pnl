@@ -5,6 +5,8 @@
 // already restaurant-local wall-clock; do not round-trip them through
 // ::timestamptz + formatDateTime (that reintroduces the documented off-by-one).
 
+import { escapeHtml } from './emailTemplates.ts';
+
 export type ClaimAction = 'approved' | 'rejected';
 
 export interface ClaimNotifyInput {
@@ -25,14 +27,6 @@ export interface ClaimNotificationContent {
   pushBody: string;
   emailHtml: string;
 }
-
-const escapeHtml = (str: string): string =>
-  str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 
 export function buildClaimNotificationContent(
   input: ClaimNotifyInput,

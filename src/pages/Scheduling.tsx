@@ -13,8 +13,12 @@ import { FeatureGate } from '@/components/subscription';
 import { useShifts, useDeleteShift, useDeleteShiftSeries, useUpdateShiftSeries, useSeriesInfo } from '@/hooks/useShifts';
 import { useShiftTrades } from '@/hooks/useShiftTrades';
 import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
-import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { TimeOffTabBadge } from './SchedulingTimeOffTabBadge';
+import { ScheduleDayHeaderContent, TODAY_HEADER_CAP_RULE_CLASS } from './SchedulingDayHeaderContent';
+import { SchedulingTimeOffCellContent } from './SchedulingTimeOffCellContent';
+import { WeeklyAvailabilityChip } from './SchedulingWeeklyAvailabilityChip';
+import { ShiftCard } from './SchedulingShiftCard';
+import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
@@ -23,6 +27,7 @@ import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
+import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
 import {
@@ -71,6 +76,12 @@ import { cn } from '@/lib/utils';
 import { isMinor } from '@/lib/employeeUtils';
 import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import {
+  computeEffectiveAvailability,
+  summarizeWeekAvailability,
+  TIME_OFF_CHIP_CLASSES,
+  type WeekAvailabilitySummary,
+} from '@/lib/effectiveAvailability';
+import {
   Calendar,
   Plus,
   Users,
@@ -104,7 +115,7 @@ import {
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
 import * as dateFnsTz from 'date-fns-tz';
-import { Employee, Shift, ConflictCheck, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
+import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -123,187 +134,11 @@ export const SKELETON_DAYS = [...new Array(7)].map((_, dayIndex) => `day-${dayIn
 // other consumers import these from '@/pages/Scheduling').
 export { buildActiveShiftEmployeeIds, filterEmployeesForScheduleView };
 
-export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boolean) => {
-  if (hasConflicts) {
-    return 'border-l-warning bg-warning/5 hover:bg-warning/10';
-  }
-  if (status === 'confirmed') {
-    return 'border-l-success';
-  }
-  if (status === 'cancelled') {
-    return 'border-l-destructive opacity-60';
-  }
-  return 'border-l-primary/50';
-};
-
-type ShiftCardProps = {
-  shift: Shift;
-  onEdit: (shift: Shift) => void;
-  onDelete: (shift: Shift) => void;
-  isSelected?: boolean;
-  selectionMode?: boolean;
-  onToggleSelect?: (shiftId: string) => void;
-};
-
-const buildConflictKey = (conflict: ConflictCheck) =>
-  conflict.time_off_id ? `timeoff-${conflict.time_off_id}` : `${conflict.conflict_type}-${conflict.message}`;
-
-const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSelectionMode, onToggleSelect }: ShiftCardProps) => {
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { fromZonedTime } = dateFnsTz;
-
-  const formatToUTC = useCallback((isoString: string) => {
-    const date = new Date(isoString);
-    const converter = fromZonedTime ?? ((value: Date) => value);
-    const utcDate = converter(date, restaurantTimezone);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
-  }, [fromZonedTime, restaurantTimezone]);
-
-  const conflictParams = useMemo(() => ({
-    employeeId: shift.employee_id,
-    restaurantId: shift.restaurant_id,
-    startTime: formatToUTC(shift.start_time),
-    endTime: formatToUTC(shift.end_time),
-  }), [shift, restaurantTimezone, formatToUTC]);
-
-  const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
-
-  // Calculate shift duration for visual indicator
-  const shiftStart = parseISO(shift.start_time);
-  const shiftEnd = parseISO(shift.end_time);
-  const durationHours = (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60);
-  const shiftStatusClass = getShiftStatusClass(shift.status, hasConflicts);
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            data-testid="shift-card"
-            className={cn(
-              "group relative rounded-lg border-l-4 transition-all duration-200 cursor-pointer",
-              "hover:shadow-md hover:scale-[1.02] hover:-translate-y-0.5",
-              "bg-gradient-to-r from-card to-card/80",
-              shiftStatusClass,
-              isSelected && "ring-2 ring-primary bg-primary/10"
-            )}
-            onClick={() => {
-              if (cardSelectionMode && onToggleSelect) {
-                onToggleSelect(shift.id);
-              } else {
-                onEdit(shift);
-              }
-            }}
-          >
-            {/* Selection checkbox indicator */}
-            {cardSelectionMode && (
-              <div className={cn(
-                "absolute top-1 right-1 z-10 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                isSelected
-                  ? "bg-primary border-primary"
-                  : "bg-background/80 border-muted-foreground/40"
-              )}>
-                {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-              </div>
-            )}
-
-            {/* Time block header */}
-            <div className={cn(
-              "px-2.5 py-1.5 border-b border-border/50",
-              hasConflicts && "bg-warning/10"
-            )}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold tracking-tight text-foreground">
-                  {format(shiftStart, 'h:mm')}
-                  <span className="text-muted-foreground font-normal">
-                    {format(shiftStart, 'a').toLowerCase()}
-                  </span>
-                </span>
-                {hasConflicts && (
-                  <AlertTriangle className="h-3 w-3 text-warning animate-pulse" />
-                )}
-              </div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock className="h-2.5 w-2.5" />
-                <span>{durationHours.toFixed(1)}h</span>
-                <span className="mx-0.5">·</span>
-                <span>until {format(shiftEnd, 'h:mma').toLowerCase()}</span>
-              </div>
-            </div>
-
-            {/* Position & Status */}
-            <div className="px-2.5 py-2 space-y-1.5">
-              <div className="text-xs font-medium text-foreground/90 truncate">
-                {shift.position}
-              </div>
-              <Badge
-                variant={
-                  shift.status === 'confirmed'
-                    ? 'default'
-                    : shift.status === 'cancelled'
-                    ? 'destructive'
-                    : 'outline'
-                }
-                className={cn(
-                  "text-[10px] h-5 font-medium",
-                  shift.status === 'confirmed' && "bg-success/15 text-success border-success/30 hover:bg-success/20"
-                )}
-              >
-                {shift.status}
-              </Badge>
-            </div>
-
-            {/* Hover actions (hidden in selection mode) */}
-            <div className={cn(
-              "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5",
-              cardSelectionMode && "hidden"
-            )}>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background shadow-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(shift);
-                }}
-                aria-label="Edit shift"
-              >
-                <Edit className="h-3 w-3" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-destructive/10 hover:text-destructive shadow-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(shift);
-                }}
-                aria-label="Delete shift"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-        </TooltipTrigger>
-        {hasConflicts && (
-          <TooltipContent side="top" className="max-w-xs bg-warning/95 text-warning-foreground border-warning">
-            <div className="space-y-1">
-              <p className="font-semibold text-xs flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                Scheduling Conflicts
-              </p>
-              {conflicts.map((conflict) => (
-                <p key={buildConflictKey(conflict)} className="text-xs opacity-90">• {conflict.message}</p>
-              ))}
-            </div>
-          </TooltipContent>
-        )}
-      </Tooltip>
-    </TooltipProvider>
-  );
-};
+// ShiftCard (and getShiftStatusClass) live in SchedulingShiftCard.tsx so that
+// WeekScheduleMobile.tsx (Task 8) can import ShiftCard without creating a
+// circular dependency with this file (Scheduling.tsx imports
+// WeekScheduleMobile.tsx to render it).
+export { getShiftStatusClass } from './SchedulingShiftCard';
 
 /**
  * Pure function extracted from the openShiftCount useMemo so it can be
@@ -424,6 +259,12 @@ const Scheduling = () => {
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const { timeOffRequests } = useTimeOffRequests(restaurantId);
   const pendingTimeOffCount = timeOffRequests.filter((r) => r.status === 'pending').length;
+  // Both hooks use staleTime: 30000 (per-hook default). While loading/erroring,
+  // these default to [] — computeEffectiveAvailability then yields 'not-set'
+  // days for every employee, summarizeWeekAvailability rolls that up to
+  // 'unset', and the chip renders nothing (no page skeleton needed).
+  const { availability: employeeAvailability } = useEmployeeAvailability(restaurantId);
+  const { exceptions: availabilityExceptions } = useAvailabilityExceptions(restaurantId);
 
   // stable 'yyyy-MM-dd' keys for the 7 visualized days
   const weekDayKeys = useMemo(
@@ -547,6 +388,34 @@ const Scheduling = () => {
     const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
     return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter, areaFilter);
   }, [allEmployees, shifts, positionFilter, areaFilter]);
+
+  // Stable string key (not a fresh array literal) so the effective-availability
+  // memo below isn't defeated on every render by a new .map(...) reference.
+  const visibleEmployeeIdsKey = useMemo(
+    () => filteredEmployeesWithShifts.map((e) => e.id).join(','),
+    [filteredEmployeesWithShifts],
+  );
+  const weekStartKey = useMemo(() => format(currentWeekStart, 'yyyy-MM-dd'), [currentWeekStart]);
+
+  const effectiveAvailabilityByEmployee = useMemo(() => {
+    const employeeIds = visibleEmployeeIdsKey ? visibleEmployeeIdsKey.split(',') : [];
+    return computeEffectiveAvailability(employeeAvailability, availabilityExceptions, currentWeekStart, employeeIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleEmployeeIdsKey/weekStartKey are the stable proxies for employeeIds/currentWeekStart
+  }, [employeeAvailability, availabilityExceptions, visibleEmployeeIdsKey, weekStartKey]);
+
+  // Per-employee weekly availability status (time_off > limited > available >
+  // unset), combining the already-loaded time-off context with the
+  // availability query result.
+  const weekAvailabilityByEmployee = useMemo(() => {
+    const map = new Map<string, WeekAvailabilitySummary>();
+    for (const employee of filteredEmployeesWithShifts) {
+      const empOff = weekTimeOff.get(employee.id);
+      const off = empOff ? summarizeOff(empOff) : null;
+      const week = effectiveAvailabilityByEmployee.get(employee.id);
+      map.set(employee.id, summarizeWeekAvailability(week, !!off, off?.label));
+    }
+    return map;
+  }, [filteredEmployeesWithShifts, effectiveAvailabilityByEmployee, weekTimeOff]);
 
   // Calculate hours for all shifts (including inactive employees)
   const totalScheduledHours = shifts
@@ -1469,6 +1338,11 @@ const Scheduling = () => {
               </Button>
             </div>
           ) : (
+            <>
+            {/* Desktop: 7-column grid with drag-and-drop. Hidden on mobile in favor
+                of WeekScheduleMobile's day-focused layout (design doc §4) — mobile
+                drops DnD in favor of tap-to-edit. */}
+            <div className="hidden md:block">
             <DndContext
               sensors={sensors}
               onDragStart={handleDragStart}
@@ -1493,7 +1367,7 @@ const Scheduling = () => {
                           key={day.toISOString()}
                           className={cn(
                             "text-center p-2 md:p-3 font-medium min-w-[70px] md:min-w-[130px] transition-colors",
-                            dayIsToday && "bg-primary/5"
+                            dayIsToday && cn("bg-primary/5", TODAY_HEADER_CAP_RULE_CLASS)
                           )}
                         >
                           {selectionMode ? (
@@ -1503,31 +1377,10 @@ const Scheduling = () => {
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
                               aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
                             >
-                              <div className="text-xs uppercase tracking-wider font-semibold">
-                                {format(day, 'EEE')}
-                              </div>
-                              <div className="text-sm mt-0.5 font-semibold">
-                                {format(day, 'MMM d')}
-                              </div>
+                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize />
                             </button>
                           ) : (
-                            <>
-                              <div className={cn(
-                                "text-xs uppercase tracking-wider",
-                                dayIsToday ? "text-primary font-semibold" : "text-muted-foreground"
-                              )}>
-                                {format(day, 'EEE')}
-                              </div>
-                              <div className={cn(
-                                "text-sm mt-0.5",
-                                dayIsToday ? "text-primary font-semibold" : "text-foreground"
-                              )}>
-                                {format(day, 'MMM d')}
-                              </div>
-                              {dayIsToday && (
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-1.5 animate-pulse" />
-                              )}
-                            </>
+                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} />
                           )}
                         </th>
                       );
@@ -1583,6 +1436,7 @@ const Scheduling = () => {
                           const empOff = weekTimeOff.get(employee.id);
                           const off = empOff ? summarizeOff(empOff) : null;
                           const isMinorEmployee = isMinor(employee.date_of_birth);
+                          const weekAvailability = weekAvailabilityByEmployee.get(employee.id);
                           return (
                           <tr
                             key={employee.id}
@@ -1626,13 +1480,17 @@ const Scheduling = () => {
                                           Minor
                                         </span>
                                       )}
-                                      {off && (
+                                      {off ? (
                                         <TooltipProvider>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <button
                                                 type="button"
-                                                className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                className={cn(
+                                                  "inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                                  TIME_OFF_CHIP_CLASSES.bg,
+                                                  TIME_OFF_CHIP_CLASSES.text,
+                                                )}
                                               >
                                                 <CalendarOff className="h-3 w-3" aria-hidden="true" />
                                                 {off.label}
@@ -1646,6 +1504,8 @@ const Scheduling = () => {
                                             </TooltipContent>
                                           </Tooltip>
                                         </TooltipProvider>
+                                      ) : (
+                                        <WeeklyAvailabilityChip availability={weekAvailability} />
                                       )}
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -1673,52 +1533,11 @@ const Scheduling = () => {
                                   </Button>
                                 )}
                               </div>
-                              {/* Mobile: compact avatar with tooltip */}
-                              <div className="flex md:hidden flex-col items-center py-1">
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="relative">
-                                        <button
-                                          onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
-                                          className={cn(
-                                            "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
-                                            employee.is_active
-                                              ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
-                                              : "bg-muted text-muted-foreground"
-                                          )}
-                                          aria-label={`${employee.name}, ${employee.position}${isMinorEmployee ? ', minor' : ''}${off ? `, ${off.label.toLowerCase()}` : ''}`}
-                                        >
-                                          {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                        </button>
-                                        {isMinorEmployee && (
-                                          <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-warning ring-1 ring-background" />
-                                        )}
-                                        {off && (
-                                          <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-info ring-1 ring-background" />
-                                        )}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right" className="text-xs">
-                                      <div className="font-medium">
-                                        {employee.name}
-                                        {!employee.is_active && (
-                                          <span className="text-muted-foreground ml-1">(Inactive)</span>
-                                        )}
-                                      </div>
-                                      <div className="text-muted-foreground">{employee.position}</div>
-                                      <div className="text-muted-foreground">
-                                        {isMinorEmployee ? 'Minor · ' : ''}{employee.employment_type === 'part_time' ? 'Part-time' : 'Full-time'}{off ? ` · ${off.label}` : ''}
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                                {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
-                                  <span className="text-[10px] text-muted-foreground mt-0.5">
-                                    {hoursPerEmployee.get(employee.id)}h
-                                  </span>
-                                )}
-                              </div>
+                              {/* Mobile employee presentation now lives entirely in
+                                  WeekScheduleMobile (Task 8) — this <td> only ever
+                                  renders on the desktop grid, which is wrapped in
+                                  `hidden md:block` above, so a `md:hidden` block here
+                                  could never actually render on any viewport width. */}
                             </td>
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
@@ -1726,7 +1545,6 @@ const Scheduling = () => {
                               const dayKey = format(day, 'yyyy-MM-dd');
                               const isOff = !!empOff?.offDayKeys.has(dayKey);
                               const hasShift = dayShifts.some(s => s.status !== 'cancelled');
-                              const isRunStart = !!empOff?.spans.some((s) => s.startKey === dayKey);
                               return (
                                 <DroppableDayCell
                                   key={day.toISOString()}
@@ -1735,22 +1553,7 @@ const Scheduling = () => {
                                   isToday={dayIsToday}
                                   isHighlighted={highlightedCellId === `${employee.id}:${dayKey}`}
                                 >
-                                  <div className={cn(
-                                    "space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]",
-                                    isOff && hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-destructive",
-                                    isOff && !hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-info",
-                                  )}>
-                                    {isOff && (
-                                      <span className="sr-only">
-                                        {hasShift ? 'Scheduling conflict: shift scheduled during approved time off' : 'Approved time off'}
-                                      </span>
-                                    )}
-                                    {isOff && isRunStart && (
-                                      <div className="flex items-center gap-1 text-[11px] text-info font-medium">
-                                        <CalendarOff className="h-3 w-3" aria-hidden="true" />
-                                        Time off
-                                      </div>
-                                    )}
+                                  <SchedulingTimeOffCellContent isOff={isOff} hasShift={hasShift}>
                                     {dayShifts.map((shift) => (
                                       selectionMode ? (
                                         <ShiftCard
@@ -1795,7 +1598,7 @@ const Scheduling = () => {
                                         {isOff ? 'Add anyway' : 'Add'}
                                       </Button>
                                     )}
-                                  </div>
+                                  </SchedulingTimeOffCellContent>
                                 </DroppableDayCell>
                               );
                             })}
@@ -1812,6 +1615,23 @@ const Scheduling = () => {
               {activeDragShift && <ShiftDragOverlay shift={activeDragShift} />}
             </DragOverlay>
             </DndContext>
+            </div>
+            <WeekScheduleMobile
+              weekDays={weekDays}
+              employees={filteredEmployeesWithShifts}
+              getShiftsForEmployee={getShiftsForEmployee}
+              weekTimeOff={weekTimeOff}
+              weekAvailabilityByEmployee={weekAvailabilityByEmployee}
+              hoursPerEmployee={hoursPerEmployee}
+              selectionMode={selectionMode}
+              selectedShiftIds={selectedShiftIds}
+              onEditEmployee={handleEditEmployee}
+              onAddShift={handleAddShift}
+              onEditShift={handleEditShift}
+              onDeleteShift={handleDeleteShift}
+              onToggleSelectShift={toggleShiftSelection}
+            />
+            </>
           )}
           <AvailabilityConflictDialog
             open={conflictDialog.open}

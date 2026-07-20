@@ -29,7 +29,10 @@ export function DroppableDayCell({
       ref={setNodeRef}
       className={cn(
         'relative p-2 align-top transition-colors',
-        dayIsToday && 'bg-primary/5',
+        // Raised tint + inset side hairlines bracket the today column into one
+        // continuous vertical band from header to last row (paired with the
+        // header cap rule in Scheduling.tsx).
+        dayIsToday && 'bg-primary/[0.06] shadow-[inset_1px_0_0_hsl(var(--primary)/0.28),inset_-1px_0_0_hsl(var(--primary)/0.28)]',
         isOver && 'bg-primary/5 ring-1 ring-inset ring-primary/30 rounded-lg',
         isHighlighted && 'bg-success/10 transition-colors duration-500',
       )}

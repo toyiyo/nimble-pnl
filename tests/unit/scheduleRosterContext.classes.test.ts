@@ -32,8 +32,11 @@ describe('Scheduling roster context — identity cell', () => {
   });
   it('renders the Off chip with the muted availability-chip family and CalendarOff, not a title tooltip', () => {
     // Task 6: the off pill IS the time_off state of the weekly availability
-    // chip now — restyled to the muted family via weekAvailabilityChipClasses.
-    expect(SRC).toMatch(/weekAvailabilityChipClasses\('time_off'\)/);
+    // chip now — restyled to the muted family via the shared
+    // TIME_OFF_CHIP_CLASSES constant (weekAvailabilityChipClasses('time_off'),
+    // defined once in effectiveAvailability.ts).
+    expect(SRC).toMatch(/TIME_OFF_CHIP_CLASSES\.bg/);
+    expect(SRC).toMatch(/TIME_OFF_CHIP_CLASSES\.text/);
     expect(SRC).not.toMatch(/bg-info\/10 text-info/);
     expect(SRC).toMatch(/off\.label/);
     expect(SRC).toMatch(/sr-only/);

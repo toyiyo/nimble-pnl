@@ -12,10 +12,6 @@ import { ShiftCard } from '@/pages/SchedulingShiftCard';
 import type { DefaultEmployee } from '@/components/ShiftDialog';
 import type { Employee, Shift } from '@/types/scheduling';
 
-// The time_off state of the weekly availability chip is always the muted
-// family (mirrors the module-level const in Scheduling.tsx).
-const TIME_OFF_CHIP_CLASSES = weekAvailabilityChipClasses('time_off')!;
-
 export interface WeekScheduleMobileProps {
   weekDays: Date[];
   employees: Employee[];
@@ -92,7 +88,6 @@ function EmployeeCardHeader({
   onEditEmployee,
 }: Readonly<EmployeeCardHeaderProps>) {
   const isMinorEmployee = isMinor(employee.date_of_birth);
-  const isWeekOff = weekAvailability?.status === 'time_off';
   const availabilityChipClasses = weekAvailability
     ? weekAvailabilityChipClasses(weekAvailability.status)
     : null;
@@ -127,8 +122,8 @@ function EmployeeCardHeader({
               <span
                 className={cn(
                   'inline-flex items-center text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0',
-                  isWeekOff ? TIME_OFF_CHIP_CLASSES.bg : availabilityChipClasses.bg,
-                  isWeekOff ? TIME_OFF_CHIP_CLASSES.text : availabilityChipClasses.text,
+                  availabilityChipClasses.bg,
+                  availabilityChipClasses.text,
                 )}
               >
                 {weekAvailability.label}

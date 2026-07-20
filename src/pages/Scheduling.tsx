@@ -78,6 +78,7 @@ import {
   computeEffectiveAvailability,
   summarizeWeekAvailability,
   weekAvailabilityChipClasses,
+  TIME_OFF_CHIP_CLASSES,
   type WeekAvailabilitySummary,
 } from '@/lib/effectiveAvailability';
 import {
@@ -128,11 +129,6 @@ import {
 
 export const SKELETON_ROWS = [...new Array(4)].map((_, rowIndex) => `row-${rowIndex}`);
 export const SKELETON_DAYS = [...new Array(7)].map((_, dayIndex) => `day-${dayIndex}`);
-
-// The time_off state of the weekly availability chip is always the muted
-// family — precomputed once since weekAvailabilityChipClasses('time_off')
-// never returns null.
-const TIME_OFF_CHIP_CLASSES = weekAvailabilityChipClasses('time_off')!;
 
 // Re-exported from scheduleVisibility for backward compatibility (tests and
 // other consumers import these from '@/pages/Scheduling').

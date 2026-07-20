@@ -182,6 +182,14 @@ export function weekAvailabilityChipClasses(status: WeekAvailabilityStatus): Ava
 }
 
 /**
+ * The `time_off` chip tint, precomputed once — `weekAvailabilityChipClasses`
+ * never returns null for this status. Both the desktop grid and the mobile
+ * day-focused view use this exact tint for the "off" pill, so it's shared
+ * here instead of each caller re-deriving its own copy.
+ */
+export const TIME_OFF_CHIP_CLASSES: AvailabilityClasses = weekAvailabilityChipClasses('time_off')!;
+
+/**
  * Semantic tint for an EffectiveAvailability — the exact treatment used by
  * TeamAvailabilityGrid.AvailabilityCell, extracted here so the grid, the
  * planner sidebar strip, and the timeline bar marker can't drift apart.

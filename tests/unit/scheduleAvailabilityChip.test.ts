@@ -16,6 +16,7 @@ describe('Scheduling availability chip — data wiring', () => {
     expect(SRC).toMatch(/\bcomputeEffectiveAvailability\b/);
     expect(SRC).toMatch(/\bsummarizeWeekAvailability\b/);
     expect(SRC).toMatch(/\bweekAvailabilityChipClasses\b/);
+    expect(SRC).toMatch(/\bTIME_OFF_CHIP_CLASSES\b/);
   });
 
   it('calls both hooks with the restaurant id', () => {
@@ -38,7 +39,10 @@ describe('Scheduling availability chip — data wiring', () => {
 describe('Scheduling availability chip — desktop name-cell render', () => {
   it('restyles the time-off pill to the muted chip family (no more info-blue)', () => {
     expect(SRC).not.toMatch(/bg-info\/10 text-info/);
-    expect(SRC).toMatch(/weekAvailabilityChipClasses\('time_off'\)/);
+    // TIME_OFF_CHIP_CLASSES is the shared `weekAvailabilityChipClasses('time_off')`
+    // constant (defined once in effectiveAvailability.ts) applied to the off pill.
+    expect(SRC).toMatch(/TIME_OFF_CHIP_CLASSES\.bg/);
+    expect(SRC).toMatch(/TIME_OFF_CHIP_CLASSES\.text/);
   });
 
   it('renders a chip for limited/available status using the summary map, distinct from the time-off pill', () => {

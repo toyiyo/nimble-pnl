@@ -19,6 +19,7 @@ export interface ClaimNotifyInput {
   endTime: string;        // "17:00"
   restaurantName: string;
   reviewerNote: string | null;
+  appUrl: string; // caller-supplied (env-backed) link to the employee shifts view — no hardcoded domain here
 }
 
 export interface ClaimNotificationContent {
@@ -57,7 +58,7 @@ export function buildClaimNotificationContent(
     ? `Your claim for ${input.templateName} was approved. Check your schedule.`
     : `Your claim for ${input.templateName} was rejected.`;
 
-  const appUrl = 'https://app.easyshifthq.com/employee/shifts';
+  const appUrl = escapeHtml(input.appUrl);
 
   const emailHtml = `
 <!DOCTYPE html>

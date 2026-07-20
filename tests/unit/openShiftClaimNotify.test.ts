@@ -14,6 +14,7 @@ const base: ClaimNotifyInput = {
   endTime: '17:00',
   restaurantName: 'Taco Town',
   reviewerNote: null,
+  appUrl: 'https://app.easyshifthq.com/employee/shifts',
 };
 
 describe('buildClaimNotificationContent', () => {
@@ -38,6 +39,11 @@ describe('buildClaimNotificationContent', () => {
   it('omits the note block when note is null', () => {
     const c = buildClaimNotificationContent({ ...base, reviewerNote: null });
     expect(c.emailHtml).not.toMatch(/Manager Note/i);
+  });
+
+  it('links the CTA to the caller-supplied appUrl (no hardcoded domain)', () => {
+    const c = buildClaimNotificationContent({ ...base, appUrl: 'https://example.test/employee/shifts' });
+    expect(c.emailHtml).toContain('href="https://example.test/employee/shifts"');
   });
 
   it('escapes HTML in interpolated values', () => {

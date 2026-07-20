@@ -1,13 +1,19 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { sendEmail, NOTIFICATION_FROM } from "../_shared/notificationHelpers.ts";
+import { sendEmail, NOTIFICATION_FROM, APP_URL } from "../_shared/notificationHelpers.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 import { buildClaimNotificationContent, type ClaimAction } from "../_shared/openShiftClaimNotify.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
-const EMPLOYEE_SHIFTS_ROUTE = "/employee/shifts";
+// Single source of truth for the employee-facing shifts link — used for both
+// the email CTA and the push deep link so they can never drift apart.
+const EMPLOYEE_SHIFTS_URL = `${APP_URL}/employee/shifts`;
+// RLS ("managers_review_claims") allows owner/manager/operations_manager to
+// review claims — mirror that set here so the notify call doesn't 403 for a
+// decision the RPC already accepted.
+const CLAIM_REVIEWER_ROLES = ["owner", "manager", "operations_manager"];
 
 interface RequestBody {
   claimId: string;
@@ -72,7 +78,7 @@ serve(async (req) => {
       .eq("user_id", user.id)
       .eq("restaurant_id", claim.restaurant_id)
       .maybeSingle();
-    if (!membership || !["owner", "manager"].includes(membership.role)) {
+    if (!membership || !CLAIM_REVIEWER_ROLES.includes(membership.role)) {
       return new Response(JSON.stringify({ error: "Forbidden" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 });
     }
@@ -91,6 +97,7 @@ serve(async (req) => {
       endTime: tmpl?.end_time ?? "",
       restaurantName: rest?.name ?? "Your Restaurant",
       reviewerNote: claim.reviewer_note ?? null,
+      appUrl: EMPLOYEE_SHIFTS_URL,
     });
 
     const ch = await resolveChannels(admin as unknown as SupabaseLike, claim.restaurant_id, "open_shift_claim_reviewed");
@@ -113,7 +120,7 @@ serve(async (req) => {
         const r = await sendWebPushToUser(admin, emp.user_id, claim.restaurant_id, {
           title: content.heading,
           body: content.pushBody,
-          url: EMPLOYEE_SHIFTS_ROUTE,
+          url: EMPLOYEE_SHIFTS_URL,
           tag: `claim-${action}-${claimId}`,
         });
         return r.sent;

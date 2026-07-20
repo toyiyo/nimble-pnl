@@ -1,7 +1,7 @@
 -- Tests for get_unified_sales_grouped_by_item.
 -- Restaurant UUID …0097 to avoid colliding with 35_/37_ fixtures.
 BEGIN;
-SELECT plan(11);
+SELECT plan(18);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000001"}';
@@ -10,6 +10,7 @@ ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
 ALTER TABLE unified_sales DISABLE ROW LEVEL SECURITY;
 ALTER TABLE user_restaurants DISABLE ROW LEVEL SECURITY;
 ALTER TABLE recipes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE chart_of_accounts DISABLE ROW LEVEL SECURITY;
 
 INSERT INTO auth.users (id, email) VALUES
   ('00000000-0000-0000-0000-000000000001'::uuid, 'grp-member@example.com'),
@@ -41,6 +42,22 @@ ON CONFLICT (id) DO UPDATE SET item_name = EXCLUDED.item_name, quantity = EXCLUD
 INSERT INTO recipes (id, restaurant_id, name, pos_item_name) VALUES
   ('00000000-0000-0000-0000-0000000000e1'::uuid,'00000000-0000-0000-0000-000000000097'::uuid,'Burger Recipe','burger')
 ON CONFLICT (id) DO UPDATE SET pos_item_name = 'burger';
+
+-- A chart_of_accounts row to satisfy the FK on suggested_category_id
+INSERT INTO chart_of_accounts (id, restaurant_id, account_name, account_type, account_code, normal_balance)
+VALUES (
+  '00000000-0000-0000-0000-0000000000c0'::uuid,
+  '00000000-0000-0000-0000-000000000097'::uuid,
+  'Grp Test Food', 'expense', '5001-grp-test', 'debit'
+)
+ON CONFLICT (id) DO NOTHING;
+
+-- Pizza on a separate date (2024-08-02): is_categorized=false, suggested_category_id
+-- SET → pending-review, not uncategorized. No recipe mapping (without-recipe).
+-- Kept off 2024-08-01 so it doesn't shift the Tests 1/6-8 fixtures above.
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, sale_date, is_categorized, suggested_category_id, parent_sale_id) VALUES
+  ('00000000-0000-0000-0000-0000000000b6'::uuid,'00000000-0000-0000-0000-000000000097'::uuid,'manual','g-6','Pizza',5,8.00,'2024-08-02',false,'00000000-0000-0000-0000-0000000000c0'::uuid,NULL)
+ON CONFLICT (id) DO UPDATE SET item_name = EXCLUDED.item_name, quantity = EXCLUDED.quantity, total_price = EXCLUDED.total_price, is_categorized = EXCLUDED.is_categorized, suggested_category_id = EXCLUDED.suggested_category_id, parent_sale_id = EXCLUDED.parent_sale_id;
 
 -- Test 1: three distinct groups (child split excluded)
 SELECT is(
@@ -112,7 +129,60 @@ SELECT is(
   'categorized filter keeps only is_categorized IS TRUE rows'
 );
 
--- Test 11: non-member call raises Access denied
+-- Test 11: sort by quantity desc → Burger(3), then Fries/Soda tied at 1
+-- (deterministic tie-break: the RPC's unconditional trailing `item_name ASC`
+-- orders the tied pair alphabetically regardless of p_sort_direction).
+SELECT is(
+  (SELECT array_agg(item_name) FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-01',NULL,'all','all','quantity','desc')),
+  ARRAY['Burger','Fries','Soda'],
+  'sort by quantity desc orders by aggregate, ties broken by name asc'
+);
+
+-- Test 12: sort by quantity asc → Fries/Soda tied at 1 (name asc), then Burger(3)
+SELECT is(
+  (SELECT array_agg(item_name) FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-01',NULL,'all','all','quantity','asc')),
+  ARRAY['Fries','Soda','Burger'],
+  'sort by quantity asc reverses aggregate order, ties still broken by name asc'
+);
+
+-- Test 13: sort by sales (count) desc → Burger(2), then Fries/Soda tied at 1
+SELECT is(
+  (SELECT array_agg(item_name) FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-01',NULL,'all','all','sales','desc')),
+  ARRAY['Burger','Fries','Soda'],
+  'sort by sales desc orders by sale_count, ties broken by name asc'
+);
+
+-- Test 14: sort by name desc → Soda, Fries, Burger
+SELECT is(
+  (SELECT array_agg(item_name) FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-01',NULL,'all','all','name','desc')),
+  ARRAY['Soda','Fries','Burger'],
+  'sort by name desc orders reverse-alphabetically'
+);
+
+-- Test 15: without-recipe filter (range covers both dates) → Fries, Pizza, Soda
+-- (Burger excluded — it has a recipe mapping)
+SELECT is(
+  (SELECT array_agg(item_name) FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-02',NULL,'all','without-recipe','name','asc')),
+  ARRAY['Fries','Pizza','Soda'],
+  'without-recipe filter excludes items with a recipes.pos_item_name match'
+);
+
+-- Test 16: uncategorized filter (range covers both dates) → Burger, Fries, Soda
+-- (Pizza excluded — it has suggested_category_id set, so it's pending-review)
+SELECT is(
+  (SELECT array_agg(item_name) FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-02',NULL,'uncategorized','all','name','asc')),
+  ARRAY['Burger','Fries','Soda'],
+  'uncategorized filter excludes rows with suggested_category_id set'
+);
+
+-- Test 17: pending-review filter (range covers both dates) → only Pizza
+SELECT is(
+  (SELECT array_agg(item_name) FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-02',NULL,'pending-review','all','name','asc')),
+  ARRAY['Pizza'],
+  'pending-review filter keeps only is_categorized IS NOT TRUE AND suggested_category_id IS NOT NULL rows'
+);
+
+-- Test 18: non-member call raises Access denied
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000002"}';
 SELECT throws_ok(
   $$ SELECT * FROM get_unified_sales_grouped_by_item('00000000-0000-0000-0000-000000000097'::uuid,'2024-08-01','2024-08-01') $$,

@@ -56,6 +56,28 @@ function setup(nFullPages: number) {
   });
 }
 
+// Like setup(), but the page at failPageIndex errors on its first
+// `failCount` attempts before succeeding (simulates a transient failure
+// during the auto-load walk).
+function setupWithTransientFailure(nFullPages: number, failPageIndex: number, failCount: number) {
+  unifiedFetchCount = 0;
+  const attemptsByPage: Record<number, number> = {};
+  mockSupabase.from.mockImplementation((table: string) => {
+    if (table === 'recipes') return makeBuilder(() => ({ data: [], error: null }));
+    return makeBuilder((b) => {
+      const [from] = b.__range as [number, number];
+      unifiedFetchCount += 1;
+      const pageIndex = from / PAGE_SIZE;
+      attemptsByPage[pageIndex] = (attemptsByPage[pageIndex] || 0) + 1;
+      if (pageIndex === failPageIndex && attemptsByPage[pageIndex] <= failCount) {
+        return { data: null, error: { message: 'transient network failure' } };
+      }
+      const size = pageIndex < nFullPages ? PAGE_SIZE : 3;
+      return { data: pageForOffset(from, size), error: null };
+    });
+  });
+}
+
 const createWrapper = () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } } });
   return ({ children }: { children: ReactNode }) =>
@@ -81,5 +103,33 @@ describe('useUnifiedSales autoLoadAll', () => {
     // Only the first page fetched; no auto-advance.
     expect(result.current.sales.length).toBe(PAGE_SIZE);
     expect(unifiedFetchCount).toBe(1);
+  });
+
+  // Regression: the auto-load effect is gated on !error, so nothing but a
+  // dedicated retry path can ever call fetchNextPage again once a page
+  // fails — MAX_AUTO_RETRIES existing without one means a single transient
+  // failure halts the walk forever instead of retrying.
+  it('recovers from a transient page failure and finishes the walk', async () => {
+    setupWithTransientFailure(3, /* failPageIndex */ 1, /* failCount */ 1);
+    const { result } = renderHook(() => useUnifiedSales('rest-1', { autoLoadAll: true }), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.sales.length).toBe(PAGE_SIZE * 3 + 3), { timeout: 3000 });
+    expect(result.current.reachedCap).toBe(false);
+  });
+
+  it('halts permanently after MAX_AUTO_RETRIES consecutive failures on the same page', async () => {
+    // failCount larger than MAX_AUTO_RETRIES (3) so every retry attempt fails.
+    setupWithTransientFailure(3, /* failPageIndex */ 1, /* failCount */ 10);
+    const { result } = renderHook(() => useUnifiedSales('rest-1', { autoLoadAll: true }), {
+      wrapper: createWrapper(),
+    });
+    // page 0 (1 call) + page 1 retried MAX_AUTO_RETRIES (3) times, all failing,
+    // then the retry effect stops calling fetchNextPage.
+    await waitFor(() => expect(unifiedFetchCount).toBe(4), { timeout: 3000 });
+    // Give any (bugged) further retries a chance to fire before asserting the walk stayed halted.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(unifiedFetchCount).toBe(4);
+    expect(result.current.sales.length).toBe(PAGE_SIZE);
   });
 });

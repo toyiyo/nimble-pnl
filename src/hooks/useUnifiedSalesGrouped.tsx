@@ -61,7 +61,6 @@ export const useUnifiedSalesGrouped = (
       });
 
       if (error) {
-        console.error('Error fetching grouped sales:', error);
         throw error;
       }
 

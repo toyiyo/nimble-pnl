@@ -387,15 +387,32 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
   // Reuses canLoadMore's stale-placeholder guard, plus the cap check.
   const reachedCap = canLoadMore && flatSales.length >= effectiveCap;
 
-  // Track consecutive auto-load failures so a transient error halts the walk.
+  // Track consecutive auto-load failures so a transient error halts the walk
+  // once MAX_AUTO_RETRIES is exhausted (see the retry effect below).
   useEffect(() => {
     if (error) failuresRef.current += 1;
   }, [error]);
 
+  // Retry a failed auto-load page. React Query leaves `error` truthy (and
+  // hasNextPage unchanged) after a failed fetchNextPage — nothing else calls
+  // fetchNextPage again on its own, so without this effect MAX_AUTO_RETRIES
+  // is dead: the walk would halt permanently after the very first transient
+  // failure instead of getting the retries its name promises. Each retry
+  // attempt gets a fresh error reference from React Query (success clears it,
+  // failure replaces it), so this effect naturally stops re-firing once
+  // failuresRef.current reaches MAX_AUTO_RETRIES.
+  useEffect(() => {
+    if (!autoLoadAll) return;
+    if (error && !isFetching && failuresRef.current < MAX_AUTO_RETRIES) {
+      fetchNextPage();
+    }
+  }, [autoLoadAll, error, isFetching, fetchNextPage]);
+
   // Auto-load: advance pages until the window is drained or the cap is hit.
   // Gated on !error to prevent a retry storm — on a failed fetchNextPage,
   // hasNextPage stays true, so without the error gate this effect would re-fire
-  // in a tight loop.
+  // in a tight loop. Retries after an error are handled by the dedicated
+  // retry effect above, not here.
   useEffect(() => {
     if (!autoLoadAll) return;
     if (

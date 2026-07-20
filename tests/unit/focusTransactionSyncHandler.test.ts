@@ -102,24 +102,27 @@ function makeRpcMock() {
   return vi.fn().mockResolvedValue({ data: null, error: null });
 }
 
-function makeDeleteMock() {
-  // Three-level eq chain: .delete().eq(restaurant_id).eq(business_date).eq(focus_check_id)
+function makeUpdateMock() {
+  // Three-level eq chain: .update({...}).eq(restaurant_id).eq(business_date).eq(focus_check_id)
   const eqInnermost = vi.fn().mockResolvedValue({ error: null });
   const eqInner = vi.fn().mockReturnValue({ eq: eqInnermost });
   const eqOuter = vi.fn().mockReturnValue({ eq: eqInner });
-  const deleteFn = vi.fn().mockReturnValue({ eq: eqOuter });
-  return { deleteFn, eqOuter, eqInner, eqInnermost };
+  const updateFn = vi.fn().mockReturnValue({ eq: eqOuter });
+  return { updateFn, eqOuter, eqInner, eqInnermost };
 }
 
 function makeSupabaseMock() {
   const { upsertFn: ordersUpsert, selectFn: ordersSelect } = makeUpsertMock();
   const { upsertFn: itemsUpsert, selectFn: itemsSelect } = makeUpsertMock();
   const { upsertFn: paymentsUpsert, selectFn: paymentsSelect } = makeUpsertMock();
-  const { deleteFn: ordersDelete, eqOuter: deleteEqOuter, eqInner: deleteEqInner, eqInnermost: deleteEqInnermost } = makeDeleteMock();
+  const { updateFn: ordersUpdate, eqOuter: updateEqOuter, eqInner: updateEqInner, eqInnermost: updateEqInnermost } = makeUpdateMock();
+  // Voided checks are now soft-deleted via .update() — .delete() on focus_orders
+  // must never be called. Kept as a bare spy so tests can assert that.
+  const ordersDelete = vi.fn();
   const rpcFn = makeRpcMock();
 
   const fromFn = vi.fn().mockImplementation((table: string) => {
-    if (table === 'focus_orders') return { upsert: ordersUpsert, delete: ordersDelete };
+    if (table === 'focus_orders') return { upsert: ordersUpsert, update: ordersUpdate, delete: ordersDelete };
     if (table === 'focus_order_items') return { upsert: itemsUpsert };
     if (table === 'focus_payments') return { upsert: paymentsUpsert };
     return { upsert: vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [], error: null }) }) };
@@ -127,7 +130,7 @@ function makeSupabaseMock() {
 
   return {
     client: { from: fromFn, rpc: rpcFn },
-    mocks: { fromFn, ordersUpsert, ordersSelect, itemsUpsert, itemsSelect, paymentsUpsert, paymentsSelect, ordersDelete, deleteEqOuter, deleteEqInner, deleteEqInnermost, rpcFn },
+    mocks: { fromFn, ordersUpsert, ordersSelect, itemsUpsert, itemsSelect, paymentsUpsert, paymentsSelect, ordersUpdate, updateEqOuter, updateEqInner, updateEqInnermost, ordersDelete, rpcFn },
   };
 }
 
@@ -444,7 +447,7 @@ describe('processDayTransactions', () => {
 
   // ── Voided checks (DeleteRecord) ─────────────────────────────────────────────
 
-  it('deletes voided checks from focus_orders when DeleteRecord entries are present', async () => {
+  it('soft-deletes voided checks via focus_orders.update({is_voided,voided_at}), not .delete()', async () => {
     const XML_WITH_DELETE = `<DailyData><Checks>
 <Check><CheckRecord><ID>10</ID><Total>12.50</Total></CheckRecord>
 <Seats><Seat><SeatRecord><Key>1</Key></SeatRecord>
@@ -464,11 +467,21 @@ describe('processDayTransactions', () => {
     // Should succeed — the live check is processed normally
     expect(result).toMatchObject({ status: 'ok', checksWritten: 1 });
 
-    // focus_orders.delete() scoped to restaurant_id + business_date + focus_check_id
-    expect(mocks.ordersDelete).toHaveBeenCalledOnce();
-    expect(mocks.deleteEqOuter).toHaveBeenCalledWith('restaurant_id', RESTAURANT_ID);
-    expect(mocks.deleteEqInner).toHaveBeenCalledWith('business_date', BUSINESS_DATE);
-    expect(mocks.deleteEqInnermost).toHaveBeenCalledWith('focus_check_id', '99');
+    // focus_orders.update({is_voided:true, voided_at}) scoped to
+    // restaurant_id + business_date + focus_check_id (soft-delete: preserves
+    // the check + its items/payments so the void amount stays knowable).
+    expect(mocks.ordersUpdate).toHaveBeenCalledOnce();
+    const updatePayload = mocks.ordersUpdate.mock.calls[0][0] as { is_voided: boolean; voided_at: string };
+    expect(updatePayload.is_voided).toBe(true);
+    expect(typeof updatePayload.voided_at).toBe('string');
+    expect(Number.isNaN(new Date(updatePayload.voided_at).getTime())).toBe(false);
+    expect(mocks.updateEqOuter).toHaveBeenCalledWith('restaurant_id', RESTAURANT_ID);
+    expect(mocks.updateEqInner).toHaveBeenCalledWith('business_date', BUSINESS_DATE);
+    expect(mocks.updateEqInnermost).toHaveBeenCalledWith('focus_check_id', '99');
+
+    // Hard-delete must NOT be used for voids anymore (spec: preserve voids as
+    // auditable rows instead of CASCADE-removing items/payments).
+    expect(mocks.ordersDelete).not.toHaveBeenCalled();
   });
 
   it('returns ok when only voided checks are present (no active checks)', async () => {
@@ -480,9 +493,10 @@ describe('processDayTransactions', () => {
     const { deps, mocks } = makeDeps({ xml: XML_ONLY_DELETE });
     const result = await processDayTransactions(deps, MOCK_CONFIG, BUSINESS_DATE);
 
-    // Not 'empty' — there is work to do (delete the voided check)
+    // Not 'empty' — there is work to do (soft-delete/void the check)
     expect(result).toMatchObject({ status: 'ok', checksWritten: 0 });
-    expect(mocks.ordersDelete).toHaveBeenCalledOnce();
+    expect(mocks.ordersUpdate).toHaveBeenCalledOnce();
+    expect(mocks.ordersDelete).not.toHaveBeenCalled();
     expect(mocks.ordersUpsert).not.toHaveBeenCalled();
   });
 
@@ -675,11 +689,12 @@ describe('processDayTransactions', () => {
       expect(stateStore.record).toHaveBeenCalledOnce();
     });
 
-    // ── voidDeleteFailed gate (codex review) ──────────────────────────────────
-    // A feed containing a DeleteRecord (voided check) whose focus_orders delete
-    // fails must NOT record the fingerprint — otherwise the next tick sees a
-    // matching fingerprint and delta-skips, leaving the voided check stranded
-    // in focus_orders / unified_sales indefinitely.
+    // ── voidMarkFailed gate (codex review) ────────────────────────────────────
+    // A feed containing a DeleteRecord (voided check) whose focus_orders
+    // is_voided update fails must NOT record the fingerprint — otherwise the
+    // next tick sees a matching fingerprint and delta-skips, leaving the
+    // voided check stranded un-voided in focus_orders / unified_sales
+    // indefinitely.
 
     const XML_WITH_DELETE = `<DailyData><Checks>
 <Check><CheckRecord><ID>10</ID><Total>12.50</Total></CheckRecord>
@@ -694,12 +709,12 @@ describe('processDayTransactions', () => {
 <DeleteRecord><ID>99</ID></DeleteRecord>
 </Checks></DailyData>`;
 
-    it('does NOT record the fingerprint when a voided-check delete fails, so the next tick retries the void', async () => {
+    it('does NOT record the fingerprint when a voided-check update fails, so the next tick retries the void', async () => {
       const stateStore = makeStateStore(null);
       const { client, mocks } = makeSupabaseMock();
-      // Make the focus_orders delete chain resolve with an error (the check
+      // Make the focus_orders update chain resolve with an error (the check
       // "may not exist locally yet" case the handler tolerates non-fatally).
-      mocks.deleteEqInnermost.mockResolvedValue({ error: { message: 'boom' } });
+      mocks.updateEqInnermost.mockResolvedValue({ error: { message: 'boom' } });
       const fetchDatafeedMock = makeFetchDatafeedMock(XML_WITH_DELETE);
       const deps: TransactionSyncDeps = {
         supabase: client as unknown as TransactionSupabaseDeps,
@@ -712,20 +727,20 @@ describe('processDayTransactions', () => {
       // Non-fatal for this run: the live check is still processed and the
       // overall result is still 'ok', not 'error'.
       expect(result).toEqual({ status: 'ok', checksWritten: 1 });
-      expect(mocks.ordersDelete).toHaveBeenCalledOnce();
+      expect(mocks.ordersUpdate).toHaveBeenCalledOnce();
       // But the fingerprint must NOT be recorded — the next tick must re-fetch
       // and retry the void instead of delta-skipping this identical feed.
       expect(stateStore.record).not.toHaveBeenCalled();
     });
 
-    it('records the fingerprint when the voided-check delete succeeds', async () => {
+    it('records the fingerprint when the voided-check update succeeds', async () => {
       const stateStore = makeStateStore(null);
       const { deps, mocks } = makeDeps({ xml: XML_WITH_DELETE });
 
       const result = await processDayTransactions({ ...deps, stateStore }, MOCK_CONFIG, BUSINESS_DATE);
 
       expect(result).toEqual({ status: 'ok', checksWritten: 1 });
-      expect(mocks.ordersDelete).toHaveBeenCalledOnce();
+      expect(mocks.ordersUpdate).toHaveBeenCalledOnce();
       expect(stateStore.record).toHaveBeenCalledOnce();
     });
   });

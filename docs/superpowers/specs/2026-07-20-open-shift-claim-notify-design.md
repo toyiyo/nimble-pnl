@@ -50,19 +50,33 @@ recipient (the claimant), no marketplace broadcast.
 1. `ALTER TABLE public.open_shift_claims ADD COLUMN IF NOT EXISTS reviewer_note TEXT;`
    (nullable; no default).
 2. `CREATE OR REPLACE FUNCTION public.approve_open_shift_claim(p_claim_id UUID, p_reviewer_note TEXT DEFAULT NULL)`
-   — identical body to the existing function **plus** `reviewer_note = p_reviewer_note`
-   in the `UPDATE public.open_shift_claims SET ...` clause. Signature unchanged,
-   so no `GRANT` churn and no client-signature break.
+   — copy the **entire** existing function text (header through `$$`) verbatim
+   from `20260412145842_open_shift_claims.sql` and add only
+   `reviewer_note = p_reviewer_note` inside the `UPDATE public.open_shift_claims SET ...`
+   clause. Signature unchanged, so no `GRANT` churn and no client-signature break.
+   **Critical:** `CREATE OR REPLACE FUNCTION` does NOT carry `SECURITY DEFINER`
+   forward — it must be re-declared in the new statement or the function silently
+   reverts to `SECURITY INVOKER`, breaking the definer-rights `INSERT INTO
+   public.shifts` / `UPDATE public.open_shift_claims` under RLS. Keep the
+   `LANGUAGE plpgsql SECURITY DEFINER` header intact and add a migration comment
+   flagging this so review/CodeRabbit catches an accidental omission.
 3. `CREATE OR REPLACE FUNCTION public.reject_open_shift_claim(...)` — same
-   `reviewer_note = p_reviewer_note` addition to its `UPDATE`.
-4. Extend the notification-type catalog: drop and re-add
-   `notification_channel_settings_type_check` with the new value
-   `open_shift_claim_reviewed` appended to the existing 15. (A CHECK
-   constraint can't be `ALTER`-ed in place; drop + re-add is the standard
-   pattern.)
+   verbatim-copy + `reviewer_note = p_reviewer_note` addition, same
+   `SECURITY DEFINER` caveat.
+4. Extend the notification-type catalog: `DROP CONSTRAINT IF EXISTS
+   notification_channel_settings_type_check` then re-`ADD` it with the new value
+   `open_shift_claim_reviewed` appended to the existing 15. (A CHECK constraint
+   can't be `ALTER`-ed in place; drop + re-add is the standard pattern.) Also
+   update the stale `COMMENT ON COLUMN
+   notification_channel_settings.notification_type` text ("15 catalog keys" → 16)
+   in the same migration so it doesn't drift.
 
 Idempotency: `CREATE OR REPLACE` and `ADD COLUMN IF NOT EXISTS` are re-run
-safe. The constraint drop uses `DROP CONSTRAINT IF EXISTS` before re-add.
+safe. The constraint drop uses `DROP CONSTRAINT IF EXISTS` before re-add. The
+`ADD CONSTRAINT ... CHECK` takes a brief `ACCESS EXCLUSIVE` lock + full-table
+revalidation; the table is tiny (restaurants × ~16 types), so a plain (validated)
+add is fine — noted here rather than using `NOT VALID`/`VALIDATE`, with a
+one-line migration comment for future readers.
 
 ### Component 2 — Notification-type registry (3 hand-synced lists + test)
 
@@ -118,6 +132,18 @@ pure function extracted to `supabase/functions/_shared/openShiftClaimNotify.ts`
 so it is unit-testable without a Deno runtime (mirrors
 `tradeEmailAudience.ts`).
 
+**Timezone (critical):** the claim stores `shift_date DATE` and the template
+stores `start_time`/`end_time` as `TIME` (no zone) — these are already
+restaurant-local wall-clock values. Format them **directly as local strings**
+for the email/push body (e.g. the date via `parseDateLocal`-style local parse,
+the times as-is). Do **NOT** combine them into a `::timestamptz` and route
+through `formatDateTime(..., restaurantTimezone)` the way
+`send-shift-trade-notification` does — that function's source is
+`shifts.start_time` (already `timestamptz`); a naive `(date || ' ' || time)::timestamptz`
+cast is interpreted in the server/session zone and reintroduces the documented
+off-by-one bug. `openShiftClaimNotify.ts` therefore takes pre-split
+date/time/position strings, never a timestamp.
+
 ### Component 4 — Client wiring `src/hooks/useOpenShiftClaims.ts`
 
 Add a module-level fire-and-forget helper mirroring
@@ -148,12 +174,35 @@ best-effort: a failed notification must not fail the approve/reject action
 ### Component 5 — UI copy `src/components/schedule/TradeApprovalQueue.tsx`
 
 The claim dialog's "The employee will be notified of your decision." banner
-currently renders only when `claimActionType === 'approve'`. It is now
-truthful; extend it to render on **reject** too (reject is where the note is
-"Recommended"), so both paths honor the promise. Keep the existing
-green-info styling for approve; use a neutral/muted style for reject so it
-doesn't read as a success. Copy stays "The employee will be notified of your
+currently renders only when `claimActionType === 'approve'`, as a hand-rolled
+`<div>` with raw Tailwind color utilities. It is now truthful; extend it to
+render on **reject** too (reject is where the note is "Recommended"), so both
+paths honor the promise. Copy stays "The employee will be notified of your
 decision."
+
+Per the frontend design review, correct the two pre-existing convention gaps
+while touching this code rather than duplicating them:
+
+- **Use the shadcn `Alert` component**, not a hand-rolled styled `<div>`
+  (`src/components/ui/alert.tsx` is installed). Wrap both the approve and the
+  new reject banner in `<Alert><AlertDescription>…</AlertDescription></Alert>`.
+  `Alert` renders `role="alert"`, giving the banner a screen-reader
+  announcement the current plain `<div>` lacks.
+- **Semantic tokens, not raw colors.** Approve variant: keep a success feel via
+  token-based classes (`border-green-600/20 bg-green-500/10` is still raw —
+  prefer the existing success affordance but at minimum stop adding new raw
+  utilities). Reject variant: the documented subtle-surface pattern
+  `border-border/40 bg-muted/30 text-muted-foreground` so it reads as neutral
+  info, not success. (Approve may keep its current green treatment to avoid
+  scope creep on an untouched success style, but the **new** reject code must
+  be token-compliant.)
+- **Icon a11y:** add `aria-hidden="true"` to the decorative icon in both
+  variants. Use an informational `Info` icon for the neutral reject variant
+  (not `AlertCircle`, which reads as a warning); approve keeps its check/alert
+  affordance.
+
+Channel-specificity copy parity with the sibling Trade dialog ("…via email…")
+is intentionally left out of scope — the Trade dialog isn't touched here.
 
 ## Data flow
 
@@ -210,6 +259,12 @@ Manager clicks Approve/Reject in dialog
   failing a committed decision on a transient Resend/push outage.
 - **No manager back-channel on notification failure:** logged server-side
   only. Acceptable for v1; a delivery-status surface is out of scope.
+- **No idempotency/dedupe key on the notify endpoint:** a retried or
+  double-submitted `invoke('notify-open-shift-claim')` could resend the
+  email/push. Accepted as consistent with the `send-shift-trade-notification`
+  precedent, and mitigated in practice by the RPC's "claim is not pending
+  approval" guard (a second approve/reject returns an error, so the client's
+  post-success notify call doesn't re-fire) plus the dialog closing on success.
 
 ## Files touched
 

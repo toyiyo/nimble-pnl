@@ -3,17 +3,17 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
-export interface BulkProcessResult {
+interface BulkCounts {
   processed: number;
   skipped: number;
   errors: number;
+}
+
+export interface BulkProcessResult extends BulkCounts {
   total: number;
 }
 
-export interface BulkProgress {
-  processed: number;
-  skipped: number;
-  errors: number;
+export interface BulkProgress extends BulkCounts {
   batches: number;
 }
 
@@ -23,10 +23,7 @@ interface BulkBatchCursor {
   id: string;
 }
 
-interface BulkBatchResponse {
-  processed: number;
-  skipped: number;
-  errors: number;
+interface BulkBatchResponse extends BulkCounts {
   batch_count: number;
   done: boolean;
   next_cursor: BulkBatchCursor | null;

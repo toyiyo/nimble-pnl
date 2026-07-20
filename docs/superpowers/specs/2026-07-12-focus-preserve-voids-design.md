@@ -87,10 +87,13 @@ Final aggregate: unchanged two-source UNION already re-aggregates every
 processed date (voided orders still appear in the `focus_orders` date-range
 branch), so daily totals reflect the removed revenue.
 
-### 4. Void representation (Toast-consistent, verified safe)
-`item_type='discount'`, `adjustment_type='void'`, `total_price` negative. Safe
-because revenue keys on `item_type='sale'`, discounts/pass-through on
-`adjustment_type` — none of which match `void`. Counting voids:
+### 4. Void representation (verified safe)
+`item_type='other'`, `adjustment_type='void'`, `total_price` negative. The
+meaningful, Toast-consistent identifier is `adjustment_type='void'`; `item_type`
+is `'other'` (not Toast's `'discount'`) because a void is not a discount and
+`'discount'` collides with `item_type='discount'` consumers. Safe because
+revenue keys on `item_type='sale'`, discounts/pass-through on `adjustment_type`
+— none of which match `void`/`other`. Counting voids:
 `SELECT count(*), SUM(-total_price) FROM unified_sales WHERE adjustment_type='void'`
 or `SELECT count(*), SUM(total) FROM focus_orders WHERE is_voided`.
 
@@ -100,8 +103,11 @@ or `SELECT count(*), SUM(total) FROM focus_orders WHERE is_voided`.
   countable void marker).
 - Re-sync of a voided order → idempotent (revenue rows already gone, void row
   UPSERTed).
-- User split rows (`parent_sale_id NOT NULL`) preserved by the `parent_sale_id
-  IS NULL` guard on every delete, as elsewhere.
+- **User split rows are removed** when their order is voided — a void removes
+  the whole check. The `parent_sale_id IS NULL` guard still protects splits in
+  the **non-void** Steps 2/4/5/6 (routine re-sync must not clobber user splits),
+  but the void branch deliberately omits it (whole-check removal, FK-safe single
+  delete). The routine-sync split-preservation guard is covered by its own test.
 
 ## Migration & safety
 - New `supabase/migrations/20260713020000_focus_preserve_voids.sql` — timestamp
@@ -116,12 +122,13 @@ or `SELECT count(*), SUM(total) FROM focus_orders WHERE is_voided`.
 
 ## Testing
 - **pgTAP** (`supabase/tests/47_focus_transactions_unified_sales.sql`): seed
-  order C (sale+tip+discount+tax) + a user split row; sync → rows exist. Set
-  `focus_orders.is_voided=true`; re-sync → C's sale/tip/discount/tax rows gone,
-  **one `adjustment_type='void'` row present with negative `total_price`**, the
-  **split row survives**, a **sibling order untouched**; assert
-  `SUM(total_price) WHERE adjustment_type='void'` equals the negated revenue and
-  revenue (`item_type='sale' AND adjustment_type IS NULL`) drops accordingly.
+  order C (sale+tip+discount+tax) + a user split row under it; sync → rows
+  exist. Set `focus_orders.is_voided=true`; re-sync → C's sale/tip/discount/tax
+  rows gone, **its split child also gone** (whole check removed), **one
+  `adjustment_type='void'` row present with negative `total_price`**, a **sibling
+  order untouched**; assert `SUM(total_price) WHERE adjustment_type='void'`
+  equals the negated revenue and revenue (`item_type='sale' AND adjustment_type
+  IS NULL`) drops accordingly.
 - **Unit** (`tests/unit/focusTransactionSyncHandler.test.ts`): a `<DeleteRecord>`
   drives an `update({is_voided:true})` on focus_orders, **not** a `.delete()`.
 

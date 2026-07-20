@@ -56,7 +56,7 @@
 -- 34  After voiding C: sale/tip/discount/tax rows (parent_sale_id IS NULL) are gone
 -- 35  After voiding C: exactly one adjustment_type='void' row exists for order C
 -- 36  After voiding C: void row total_price = -SUM(priced items) = -6.00
--- 37  After voiding C: the split row (child) survives
+-- 37  After voiding C: the split row (child) is removed too (whole check gone)
 -- 38  After voiding C: sibling order 42's sale-row count is untouched (still 3)
 -- 39  After voiding C: sibling order 42's IK-A sale row identity/amount is untouched
 -- 40  After voiding C: revenue (item_type='sale' AND adjustment_type IS NULL) dropped by exactly C's amount (6.00)
@@ -793,14 +793,15 @@ SELECT is(
   'After voiding C: void row total_price = -SUM(priced items) = -6.00'
 );
 
--- Test 37: the split row (child) survives voiding
+-- Test 37: the split row (child) is removed too — a void removes the WHOLE
+-- check, including user splits (they share the order's external_order_id, so
+-- the single void DELETE removes parent + child together, FK-safe).
 SELECT ok(
-  EXISTS(
+  NOT EXISTS(
     SELECT 1 FROM public.unified_sales
     WHERE id = '00000000-0000-0000-0000-f0c100000054'
-      AND parent_sale_id IS NOT NULL
   ),
-  'After voiding C: the split row (child) survives'
+  'After voiding C: the split row (child) is removed with the rest of the check'
 );
 
 -- Test 38: sibling order 42's sale-row count is untouched (still 3)
@@ -825,19 +826,17 @@ SELECT is(
   'After voiding C: sibling order 42''s IK-A sale row is untouched'
 );
 
--- Test 40: revenue (item_type='sale' AND adjustment_type IS NULL) dropped
--- by exactly C's amount (6.00). Only C's own sale row is removed between
--- the snapshot and this comparison -- the split row (item_type='sale' too)
--- is untouched by the void and so contributes equally to both sides,
--- cancelling out of the delta.
+-- Test 40: revenue (item_type='sale' AND adjustment_type IS NULL) dropped by
+-- exactly 9.00 = C's base sale row (6.00, IK-E) + its user split child (3.00,
+-- also item_type='sale'), BOTH removed by the void (the whole check is gone).
 SELECT is(
   (SELECT revenue FROM pre_void_revenue) -
   (SELECT COALESCE(SUM(total_price), 0)::numeric FROM public.unified_sales
    WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
      AND item_type = 'sale'
      AND adjustment_type IS NULL),
-  6.00::numeric,
-  'After voiding C: revenue dropped by exactly 6.00'
+  9.00::numeric,
+  'After voiding C: revenue dropped by 9.00 (C''s 6.00 sale + 3.00 split, both removed)'
 );
 
 -- Test 41: SUM(total_price) WHERE adjustment_type='void' equals the negated

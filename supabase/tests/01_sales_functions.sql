@@ -58,21 +58,32 @@ SELECT function_lang_is(
     'aggregate_unified_sales_to_daily should be plpgsql'
 );
 
--- Test bulk_process_historical_sales function exists. Signature is now the
--- 7-arg keyset-batched form (migration 20260720120000): the original 3-arg
--- (uuid, date, date) was dropped and replaced with defaulted cursor/batch
--- params, so has_function must assert the full declared arg list.
-SELECT has_function(
-    'public',
-    'bulk_process_historical_sales',
-    ARRAY['uuid', 'date', 'date', 'integer', 'date', 'timestamptz', 'uuid'],
-    'bulk_process_historical_sales function should exist'
+-- bulk_process_historical_sales is now the 7-arg keyset-batched form (migration
+-- 20260720120000): the original 3-arg (uuid, date, date) signature was dropped
+-- and replaced with defaulted cursor/batch params. Assert existence + return
+-- type via pg_catalog directly rather than pgTAP's has_function/function_returns
+-- type-array matching — those canonicalize type aliases inconsistently across
+-- pgTAP/Postgres versions (local resolves 'timestamptz', CI's function_returns
+-- only resolves 'timestamp with time zone'), which made the arg-array form
+-- environment-dependent. pg_get_function_result is version-stable.
+SELECT ok(
+    EXISTS (
+        SELECT 1 FROM pg_proc p
+        JOIN pg_namespace n ON n.oid = p.pronamespace
+        WHERE n.nspname = 'public'
+          AND p.proname = 'bulk_process_historical_sales'
+          AND p.pronargs = 7
+    ),
+    'bulk_process_historical_sales (7-arg keyset-batched signature) should exist'
 );
 
-SELECT function_returns(
-    'public',
-    'bulk_process_historical_sales',
-    ARRAY['uuid', 'date', 'date', 'integer', 'date', 'timestamptz', 'uuid'],
+SELECT is(
+    (SELECT pg_catalog.pg_get_function_result(p.oid)
+       FROM pg_proc p
+       JOIN pg_namespace n ON n.oid = p.pronamespace
+      WHERE n.nspname = 'public'
+        AND p.proname = 'bulk_process_historical_sales'
+      LIMIT 1),
     'jsonb',
     'bulk_process_historical_sales should return jsonb'
 );

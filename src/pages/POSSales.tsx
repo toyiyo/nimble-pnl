@@ -67,6 +67,26 @@ const CATEGORIZATION_EMPTY_SUBCOPY: Record<'uncategorized' | 'pending-review' | 
   categorized: 'Nothing has been categorized in this date range yet.',
 };
 
+// Sizes the virtual grid's column count to the scroll container's width so the
+// grouped grid's row-based virtualizer (row = one lane of cards) matches the
+// CSS grid breakpoints below (1 col / 2 cols sm+ / 3 cols lg+).
+function useResponsiveColumns(ref: React.RefObject<HTMLElement>) {
+  const [cols, setCols] = useState(1);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      const w = el.clientWidth;
+      setCols(w >= 1024 ? 3 : w >= 640 ? 2 : 1);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return cols;
+}
+
 export default function POSSales() {
   const {
     selectedRestaurant,
@@ -403,6 +423,25 @@ export default function POSSales() {
     estimateSize: () => 100, // Approximate height, virtualizer handles variable heights
     overscan: 5, // Render 5 extra items above/below viewport for smooth scrolling
   });
+
+  // Grouped view: row-based virtualization, one row = one lane of responsive
+  // grid cards (1/2/3 columns matching the sm:/lg: breakpoints below).
+  const groupedScrollRef = useRef<HTMLDivElement>(null);
+  const groupedColumns = useResponsiveColumns(groupedScrollRef);
+  const groupedRowCount = Math.ceil(groupedSales.length / groupedColumns);
+  const groupedVirtualizer = useVirtualizer({
+    count: groupedRowCount,
+    getScrollElement: () => groupedScrollRef.current,
+    estimateSize: () => 140, // card height incl. gap
+    overscan: 4,
+  });
+
+  // Computed once (reduce, not per-card Math.max(...spread)) so the revenue
+  // progress bar's percentage denominator isn't recomputed for every card.
+  const groupedMaxRevenue = useMemo(
+    () => groupedSales.reduce((m, g) => (g.total_revenue > m ? g.total_revenue : m), 0),
+    [groupedSales]
+  );
 
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
@@ -1185,7 +1224,7 @@ export default function POSSales() {
             </div>
           </div>
 
-          {loading ? (
+          {selectedView === 'sales' && loading ? (
             /* Apple-style loading state */
             <div className="flex flex-col items-center justify-center py-20">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
@@ -1358,7 +1397,7 @@ export default function POSSales() {
               )}
             </div>
           ) : (
-            /* Grouped view - Apple-style cards */
+            /* Grouped view - own three-state (loading/error/empty) + virtualized grid */
             <div className="space-y-4">
               {/* Results header */}
               <div className="flex items-center justify-between">
@@ -1367,7 +1406,17 @@ export default function POSSales() {
                 </p>
               </div>
 
-              {groupedSales.length === 0 ? (
+              {groupedLoading ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
+                  <p className="mt-4 text-[13px] text-muted-foreground">Loading grouped items…</p>
+                </div>
+              ) : groupedError ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="text-[15px] font-medium text-foreground mb-1">Couldn't load grouped items</p>
+                  <p className="text-[13px] text-muted-foreground">Please try again.</p>
+                </div>
+              ) : groupedSales.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
                     <Search className="w-6 h-6 text-muted-foreground/50" />
@@ -1376,91 +1425,104 @@ export default function POSSales() {
                   <p className="text-[13px] text-muted-foreground">Try adjusting your filters.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {groupedSales.map(
-                    (item: {
-                      item_name: string;
-                      total_quantity: number;
-                      sale_count: number;
-                      total_revenue: number;
-                    }) => {
-                      const maxRevenue = Math.max(...groupedSales.map((g: { total_revenue: number }) => g.total_revenue));
-                      const revenuePercentage = maxRevenue > 0 ? (item.total_revenue / maxRevenue) * 100 : 0;
-
+                <div ref={groupedScrollRef} className="max-h-[70vh] overflow-y-auto">
+                  <div style={{ height: `${groupedVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+                    {groupedVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const start = virtualRow.index * groupedColumns;
+                      const rowItems = groupedSales.slice(start, start + groupedColumns);
                       return (
                         <div
-                          key={item.item_name}
-                          className="group p-4 rounded-xl border border-border/40 bg-background hover:border-border hover:shadow-sm transition-all"
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={groupedVirtualizer.measureElement}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${virtualRow.start}px)`,
+                          }}
+                          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4"
                         >
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="text-[14px] font-medium text-foreground truncate">{item.item_name}</h3>
-                              {(() => {
-                                const recipe = getRecipeForItem(item.item_name, recipeByItemName);
-                                if (recipe) {
-                                  return (
-                                    <button
-                                      onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
-                                      className="inline-flex items-center gap-1 mt-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
-                                    >
-                                      {!recipe.hasIngredients && (
-                                        <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                      )}
-                                      <ExternalLink className="h-3 w-3" />
-                                      {recipe.name}
-                                      {recipe.profitMargin != null && (
-                                        <span className="font-medium">({recipe.profitMargin.toFixed(0)}%)</span>
-                                      )}
-                                    </button>
-                                  );
-                                }
-                                return (
-                                  <button
-                                    onClick={() => handleMapPOSItem(item.item_name)}
-                                    className="inline-flex items-center gap-1 mt-1 text-[12px] text-destructive hover:text-destructive/80 transition-colors"
-                                  >
-                                    No Recipe
-                                  </button>
-                                );
-                              })()}
-                            </div>
-                            <span className="text-[18px] font-semibold text-foreground tabular-nums">
-                              ${item.total_revenue.toFixed(2)}
-                            </span>
-                          </div>
-
-                          {/* Revenue progress bar - subtle */}
-                          <div className="mb-3">
-                            <div className="h-1 bg-muted rounded-full overflow-hidden">
+                          {rowItems.map((item) => {
+                            const revenuePercentage = groupedMaxRevenue > 0 ? (item.total_revenue / groupedMaxRevenue) * 100 : 0;
+                            return (
                               <div
-                                className="h-full bg-foreground/20 rounded-full transition-all duration-500"
-                                style={{ width: `${revenuePercentage}%` }}
-                              />
-                            </div>
-                          </div>
+                                key={item.item_name}
+                                className="group p-4 rounded-xl border border-border/40 bg-background hover:border-border hover:shadow-sm transition-all"
+                              >
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className="text-[14px] font-medium text-foreground truncate">{item.item_name}</h3>
+                                    {(() => {
+                                      const recipe = getRecipeForItem(item.item_name, recipeByItemName);
+                                      if (recipe) {
+                                        return (
+                                          <button
+                                            onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
+                                            className="inline-flex items-center gap-1 mt-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                                          >
+                                            {!recipe.hasIngredients && (
+                                              <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                            )}
+                                            <ExternalLink className="h-3 w-3" />
+                                            {recipe.name}
+                                            {recipe.profitMargin != null && (
+                                              <span className="font-medium">({recipe.profitMargin.toFixed(0)}%)</span>
+                                            )}
+                                          </button>
+                                        );
+                                      }
+                                      return (
+                                        <button
+                                          onClick={() => handleMapPOSItem(item.item_name)}
+                                          className="inline-flex items-center gap-1 mt-1 text-[12px] text-destructive hover:text-destructive/80 transition-colors"
+                                        >
+                                          No Recipe
+                                        </button>
+                                      );
+                                    })()}
+                                  </div>
+                                  <span className="text-[18px] font-semibold text-foreground tabular-nums">
+                                    ${item.total_revenue.toFixed(2)}
+                                  </span>
+                                </div>
 
-                          {/* Stats row */}
-                          <div className="flex items-center gap-4 text-[13px]">
-                            <div>
-                              <span className="font-medium text-foreground">{item.total_quantity}</span>
-                              <span className="text-muted-foreground ml-1">qty</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-foreground">{item.sale_count}</span>
-                              <span className="text-muted-foreground ml-1">sales</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
-                              className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                            >
-                              Check impact
-                            </button>
-                          </div>
+                                {/* Revenue progress bar - subtle */}
+                                <div className="mb-3">
+                                  <div className="h-1 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-foreground/20 rounded-full transition-all duration-500"
+                                      style={{ width: `${revenuePercentage}%` }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Stats row */}
+                                <div className="flex items-center gap-4 text-[13px]">
+                                  <div>
+                                    <span className="font-medium text-foreground">{item.total_quantity}</span>
+                                    <span className="text-muted-foreground ml-1">qty</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-foreground">{item.sale_count}</span>
+                                    <span className="text-muted-foreground ml-1">sales</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
+                                    className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                  >
+                                    Check impact
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       );
-                    },
-                  )}
+                    })}
+                  </div>
                 </div>
               )}
             </div>

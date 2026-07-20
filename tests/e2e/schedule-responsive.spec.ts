@@ -101,9 +101,13 @@ test.describe('Schedule responsive layout', () => {
     // being a role query, excludes the display:none desktop tree (whose rows
     // carry the same label) — avoiding the ancestor/hidden matches that a fuzzy
     // getByText would hit.
-    await expect(page.getByRole('button', { name: 'Edit Maria Rodriguez' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Edit James Thompson' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Edit Sarah Chen' })).toBeVisible();
+    // exact:true so "Edit <name>" doesn't also match the LaborCostBreakdown
+    // panel's "Edit <name>'s rate" buttons (getByRole name is substring by
+    // default). The display:none desktop table's identical labels are already
+    // excluded from the accessibility tree at this viewport.
+    await expect(page.getByRole('button', { name: 'Edit Maria Rodriguez', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit James Thompson', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Edit Sarah Chen', exact: true })).toBeVisible();
 
     // The desktop table (hidden md:block) is not shown on mobile.
     await expect(page.getByRole('table')).toBeHidden();

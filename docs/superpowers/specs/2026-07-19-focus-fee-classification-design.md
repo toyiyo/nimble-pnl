@@ -88,12 +88,53 @@ is index/planner-friendly and callable from the SET-returning inserts.
 
 1. **Step 1** (`v_current_ids`, the set of sale external_item_ids): add
    `AND NOT public._focus_is_fee_item(foi.name)`. Fee items are no longer
-   "current sale rows", so **Step 2's orphan-delete removes any pre-migration
-   sale row that was actually a fee** — automatic backfill cleanup on first
-   re-sync.
-2. **Step 3** (sale insert): add the same `AND NOT public._focus_is_fee_item(foi.name)`
+   "current sale rows".
+2. **Step 2** (orphan sale delete): **unchanged, and deliberately NOT relied on
+   for fee backfill cleanup** — see the dedicated cleanup below.
+3. **New Step 2b — fee-reclassification cleanup (drift/backfill-safe; addresses
+   design-review MAJOR).** A pre-migration fee item currently has an
+   `item_type='sale'` base row under the un-suffixed id
+   `v_order_id || '__' || item_key`. Its new fee row uses a distinct `..._fee`
+   id, so the old sale row must be removed. **A user may have split-categorized
+   that legacy fee-as-sale row** (`split_pos_sale` → child rows with
+   `parent_sale_id` set), and `unified_sales` carries a redundant NO-ACTION
+   `parent_sale_id` FK (`unified_sales_parent_sale_id_fkey`, `20251031000146`)
+   alongside the `ON DELETE CASCADE` `fk_parent_sale` (`20251031003130`) — the
+   NO-ACTION FK blocks deleting a parent that still has a child, which would
+   abort the entire restaurant's sync. So this cleanup deletes the stale fee-as-
+   sale **base row AND any split children in ONE statement** (exactly the void
+   branch's technique, `20260713020000:118-125`):
+
+   ```sql
+   WITH fee_ids AS (
+     SELECT v_order_id || '__' || foi.item_key AS ext_id
+     FROM public.focus_order_items foi
+     WHERE foi.restaurant_id  = p_restaurant_id
+       AND foi.business_date  = v_order.business_date
+       AND foi.focus_check_id = v_order.focus_check_id
+       AND foi.price IS NOT NULL AND foi.price != 0
+       AND public._focus_is_fee_item(foi.name)
+   )
+   DELETE FROM public.unified_sales us
+   WHERE us.restaurant_id    = p_restaurant_id
+     AND us.pos_system       = 'focus'
+     AND us.external_order_id = v_order_id
+     AND ( us.external_item_id IN (SELECT ext_id FROM fee_ids)
+        OR us.parent_sale_id IN (
+             SELECT p.id FROM public.unified_sales p
+             WHERE p.restaurant_id = p_restaurant_id
+               AND p.pos_system = 'focus'
+               AND p.external_order_id = v_order_id
+               AND p.external_item_id IN (SELECT ext_id FROM fee_ids)) );
+   ```
+
+   Because fee item_keys are excluded from `v_current_ids` (Step 1) *and* already
+   removed here, Step 2 is a no-op for them (no double-delete, no FK abort). This
+   is idempotent — after the first re-sync there is no stale sale row and the
+   statement deletes nothing.
+4. **Step 3** (sale insert): add `AND NOT public._focus_is_fee_item(foi.name)`
    so fees are never inserted as `'sale'`.
-3. **New Step 3b — fee offset rows** (mirrors the discount step):
+5. **Step 3b — fee offset rows** (mirrors the discount step):
    - INSERT from `focus_order_items` where `price != 0 AND _focus_is_fee_item(name)`,
      `external_item_id = v_order_id || '__' || item_key || '_fee'`,
      `item_name = name`, `unit_price = total_price = price`,
@@ -102,6 +143,12 @@ is index/planner-friendly and callable from the SET-returning inserts.
    - DELETE stale fee rows for this order whose `external_item_id` is no longer in
      the current fee set (item un-priced or renamed), guarded by
      `parent_sale_id IS NULL` (matches every other delete in the function).
+6. **Step 4 (discount offsets): exclude fee items** — add
+   `AND NOT public._focus_is_fee_item(foi.name)` to both the discount INSERT and
+   its stale-delete subquery. A discounted fee is pass-through, not a revenue
+   discount; without this a discounted fee item would emit BOTH a `'fee'` row and
+   a spurious `adjustment_type='discount'` row for the same item_key
+   (design-review MINOR).
 
 The **voided branch is unchanged**: a void already deletes the check's entire
 footprint (sale + fee + tip + discount + tax) and writes one `adjustment_type='void'`
@@ -112,16 +159,22 @@ voided check are removed with everything else (audit-preserved via the marker).
 
 Full `CREATE OR REPLACE` of the impl with the new body (matches how
 `20260713020000_focus_preserve_voids.sql` was authored), plus a **pre-flight DO
-guard** that `RAISE EXCEPTION`s if the current live body does not contain the
-Step-3 sale-insert anchor (`item_name, 1, foi.price, foi.price`) — so if prod has
-drifted from the repo copy we fail loudly instead of clobbering (the #579/#581
-"diff, don't believe" lesson). Re-apply grants after (`CREATE OR REPLACE` resets
-ACLs): `service_role` only.
+guard** that `RAISE EXCEPTION`s if the current live body (via
+`pg_get_functiondef`) does not contain the Step-3 sale-insert anchor —
+the ACTUAL text is **`foi.name, 1, foi.price, foi.price`**
+(`20260713020000:213`), not `item_name, ...` — so if prod has drifted from the
+repo copy we fail loudly instead of clobbering (the #579/#581 "diff, don't
+believe" lesson). Author the guard against the real `pg_get_functiondef` output.
+Re-apply grants after (`CREATE OR REPLACE` resets ACLs): `service_role` only.
 
-Migration filename: pick a `20260719HHMMSS_*` prefix verified collision-free
-against every worktree's `supabase/migrations/` (the #571 14-digit-prefix lesson).
+Migration filename: **`20260719154500_focus_fee_classification.sql`** — verified
+collision-free across every worktree's `supabase/migrations/` (avoids the taken
+`20260719120000_notification_channel_settings.sql`; the #571 14-digit-prefix
+lesson).
 
-## Testing (pgTAP — `supabase/tests/53_focus_fee_classification.sql`)
+## Testing (pgTAP — `supabase/tests/55_focus_fee_classification.sql`)
+
+*(53 and 54 are taken — `53_directed_shift_trade_rls.sql`, `54_accept_shift_trade_authz.sql`.)*
 
 Setup: one active `focus_connections`, then focus_orders/items covering:
 - **Mixed check**: 1 real dessert (sale) + 1 Dispatch Fee (1.99).
@@ -140,10 +193,16 @@ Assertions:
 5. **Phantom $0**: fee-only check → its order's revenue contribution is 0, fee in
    pass-through. (No suppression; row exists.)
 6. **Backfill cleanup**: pre-seed a stale `item_type='sale'` row for the fee's
-   item_key, run RPC, assert it is deleted (Step 2) and replaced by the `_fee` row.
+   item_key, run RPC, assert it is deleted (Step 2b) and replaced by the `_fee` row.
+6b. **Split-child backfill (design-review MAJOR)**: pre-seed a legacy fee-as-sale
+   base row PLUS a `parent_sale_id` split child on it, run RPC, assert BOTH are
+   deleted in one shot (no FK-violation abort) and the `_fee` row exists; revenue
+   excludes it.
 7. **Idempotency**: run RPC twice → identical row counts, no duplicates.
 8. Voided fee check → single `adjustment_type='void'` marker, no leftover `_fee`
    row.
+9. **Discounted fee (design-review MINOR)**: a fee item with `discount_amount != 0`
+   → emits the `'fee'` row only, NOT a spurious `adjustment_type='discount'` row.
 
 ## Files
 

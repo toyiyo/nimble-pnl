@@ -57,6 +57,7 @@ export async function fetchOrderItemsByDate(
       (byOrder[oid] ??= []).push(it);
     }
     if (items.length < pageLimit) break;
+    await new Promise((r) => setTimeout(r, 250)); // be gentle on the API between pages
   }
   return byOrder;
 }
@@ -94,6 +95,7 @@ export async function fetchPaymentsByDate(
       (byOrder[oid] ??= []).push(p);
     }
     if (rows.length < pageLimit) break;
+    await new Promise((r) => setTimeout(r, 250)); // be gentle on the API between pages
   }
   return byOrder;
 }
@@ -110,7 +112,8 @@ export async function revelFetch(
   const url = path.startsWith('http') ? path : `${base}${path.startsWith('/') ? '' : '/'}${path}`;
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15000);
+  // Busy days return large item/payment pages; give Revel room to respond.
+  const timeout = setTimeout(() => controller.abort(), 30000);
   try {
     return await fetch(url, {
       ...init,

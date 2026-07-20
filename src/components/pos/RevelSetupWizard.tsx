@@ -23,7 +23,7 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
   const [establishmentId, setEstablishmentId] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
-  const { connect, testConnection } = useRevelConnection();
+  const { connect, testConnection, disconnectRevel } = useRevelConnection();
 
   const handleConnect = async () => {
     if (!instance.trim() || !apiKey.trim() || !apiSecret.trim()) {
@@ -31,15 +31,23 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
       return;
     }
     setLoading(true);
+    // connect() marks the connection active before we verify it. Track that so any
+    // verification failure (testConnection throws, or returns success:false) rolls the
+    // connection back instead of leaving a live-but-unusable one behind.
+    let connected = false;
     try {
       await connect(restaurantId, instance.trim(), apiKey.trim(), apiSecret.trim(), establishmentId.trim() || undefined);
+      connected = true;
       const result = await testConnection(restaurantId);
-      if (result.success) {
-        setCurrentStep('complete');
-      } else {
-        throw new Error(String(result.error) || 'Connection test failed');
+      if (!result.success) {
+        const message = typeof result.error === 'string' && result.error.trim() ? result.error : 'Connection test failed';
+        throw new Error(message);
       }
+      setCurrentStep('complete');
     } catch (err) {
+      if (connected) {
+        try { await disconnectRevel(restaurantId); } catch { /* best-effort rollback */ }
+      }
       toast({
         title: 'Error',
         description: err instanceof Error ? err.message : 'Failed to connect to Revel',
@@ -134,15 +142,15 @@ export const RevelSetupWizard = ({ restaurantId, onComplete }: RevelSetupWizardP
             </div>
             <div>
               <h3 className="text-2xl font-semibold mb-2">Setup Complete!</h3>
-              <p className="text-muted-foreground">Revel is connected. Sales will sync in real time via webhooks.</p>
+              <p className="text-muted-foreground">Revel is connected. Your sales history is importing now.</p>
             </div>
             <Alert>
               <AlertDescription>
                 <p className="font-semibold mb-2">How syncing works:</p>
                 <ul className="list-disc list-inside space-y-1 text-sm text-left">
-                  <li>New orders arrive in real time as Revel finalizes them</li>
-                  <li>Historical data (last 90 days) imports on the first background sync</li>
-                  <li>A scheduled job reconciles any missed events every 6 hours</li>
+                  <li>Your last 90 days of sales start importing right away in the background</li>
+                  <li>After that, new sales are pulled automatically about every 30 minutes</li>
+                  <li>You can also run a sync for any date range yourself from the integration page</li>
                 </ul>
               </AlertDescription>
             </Alert>

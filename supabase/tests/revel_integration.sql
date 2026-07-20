@@ -3,7 +3,7 @@
 -- Covers: revel_sync_financial_breakdown RPC, sync_revel_to_unified_sales RPC, RLS isolation
 
 BEGIN;
-SELECT plan(6);
+SELECT plan(8);
 
 -- Setup: Disable RLS for test data creation (mirrors supabase/tests/17_toast_sync_authorization.sql)
 SET LOCAL role TO postgres;
@@ -34,10 +34,12 @@ ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'owner';
 INSERT INTO public.revel_connections (restaurant_id, revel_instance, establishment_id, webhook_active)
 VALUES ('11111111-1111-1111-1111-111111111111', 'reveltesta', 'est-1', true);
 
+-- subtotal_amount = sum of non-voided items (20.00) so the bulk-sync reconciliation
+-- line nets to zero; service_charge exercises the auto-gratuity path.
 INSERT INTO public.revel_orders (id, restaurant_id, revel_order_id, order_date, order_time, sold_at,
-  total_amount, tax_amount, tip_amount, discount_amount)
+  subtotal_amount, total_amount, tax_amount, tip_amount, discount_amount, service_charge_amount)
 VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111',
-  'order-1', '2026-07-01', '12:30:00', '2026-07-01T12:30:00Z', 25.00, 2.00, 3.00, 1.00);
+  'order-1', '2026-07-01', '12:30:00', '2026-07-01T12:30:00Z', 20.00, 25.00, 2.00, 3.00, 1.00, 1.50);
 
 INSERT INTO public.revel_order_items (restaurant_id, revel_order_id_fk, revel_order_id, revel_item_id,
   item_name, quantity, unit_price, total_price, is_voided)
@@ -49,9 +51,9 @@ VALUES
 -- Financial breakdown RPC
 -- ============================================================
 
--- Test 1: breakdown inserts sale + tax + tip + discount, excludes voided item
-SELECT is(public.revel_sync_financial_breakdown('order-1', '11111111-1111-1111-1111-111111111111'), 4,
-  'breakdown inserts sale + tax + tip + discount, excludes voided item');
+-- Test 1: breakdown inserts sale + tax + tip + discount + service_charge, excludes voided item
+SELECT is(public.revel_sync_financial_breakdown('order-1', '11111111-1111-1111-1111-111111111111'), 5,
+  'breakdown inserts sale + tax + tip + discount + service_charge, excludes voided item');
 
 -- Test 2: exactly one non-voided sale row
 SELECT is((SELECT count(*)::int FROM public.unified_sales
@@ -62,17 +64,32 @@ SELECT is((SELECT count(*)::int FROM public.unified_sales
 SELECT ok((SELECT total_price FROM public.unified_sales WHERE external_item_id = 'order-1:discount') < 0,
   'discount row stored as negative amount');
 
--- Test 4: second breakdown call is idempotent
+-- Test 4: service charge row emitted with item_type = 'service_charge'
+SELECT is((SELECT count(*)::int FROM public.unified_sales
+   WHERE external_item_id = 'order-1:service_charge' AND item_type = 'service_charge'), 1,
+  'breakdown emits a service_charge adjustment row');
+
+-- Test 5: second breakdown call is idempotent
 SELECT is(public.revel_sync_financial_breakdown('order-1', '11111111-1111-1111-1111-111111111111'), 0,
   'second breakdown call is idempotent');
 
 -- ============================================================
 -- Bulk sync RPC
 -- ============================================================
+-- Prime: bulk sync settles the rows breakdown does not emit (per-order reconciliation
+-- + voided/returned/refund informational lines). subtotal=20 nets the reconcile line to
+-- zero, so the only new row here is the voided-item informational line.
+SELECT public.sync_revel_to_unified_sales('11111111-1111-1111-1111-111111111111', NULL, NULL);
 
--- Test 5: bulk sync is idempotent against already-synced sale rows
+-- Test 6: bulk sync emits a voided informational row (item_type 'other', excluded from Net Sales)
+SELECT is((SELECT count(*)::int FROM public.unified_sales
+   WHERE restaurant_id = '11111111-1111-1111-1111-111111111111'
+     AND external_item_id = 'item-2:void' AND item_type = 'other'), 1,
+  'bulk sync emits a voided informational row excluded from net sales');
+
+-- Test 7: repeat bulk sync is idempotent (ON CONFLICT DO NOTHING across every block)
 SELECT is(public.sync_revel_to_unified_sales('11111111-1111-1111-1111-111111111111', NULL, NULL), 0,
-  'bulk sync is idempotent against already-synced sale rows');
+  'bulk sync is idempotent on repeat');
 
 -- ============================================================
 -- RLS isolation
@@ -83,7 +100,7 @@ ALTER TABLE revel_connections ENABLE ROW LEVEL SECURITY;
 SET LOCAL role = authenticated;
 SET LOCAL "request.jwt.claims" = '{"sub":"00000000-0000-0000-0000-300000000002"}';
 
--- Test 6: RLS hides connections from non-members
+-- Test 8: RLS hides connections from non-members
 SELECT is((SELECT count(*)::int FROM public.revel_connections
    WHERE restaurant_id = '11111111-1111-1111-1111-111111111111'), 0,
   'RLS hides connections from non-members');

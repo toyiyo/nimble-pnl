@@ -60,9 +60,13 @@ export const useRevelSalesAdapter = (restaurantId: string | null): POSAdapter =>
         toast({ title: 'Sales synced', description: `${syncedCount} new sales records synced from Revel.` });
       }
       return syncedCount;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error syncing Revel sales:', error);
-      toast({ title: 'Error syncing sales', description: error.message, variant: 'destructive' });
+      toast({
+        title: 'Error syncing sales',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
       return 0;
     }
   }, [isConnected, toast]);

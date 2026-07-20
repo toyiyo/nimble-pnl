@@ -259,6 +259,26 @@ BEGIN
     GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
   END IF;
 
+  -- 5) Service charge / auto-gratuity row (item_type = 'service_charge').
+  -- Mirrors block 5 of sync_revel_to_unified_sales so webhook orders carry the same
+  -- component as backfilled ones — otherwise auto-grat/fee orders diverge by channel.
+  IF COALESCE(v_order.service_charge_amount, 0) <> 0 THEN
+    INSERT INTO public.unified_sales (
+      restaurant_id, pos_system, external_order_id, external_item_id,
+      item_name, quantity, unit_price, total_price,
+      sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at
+    )
+    VALUES (
+      p_restaurant_id, 'revel', p_order_id, p_order_id || ':service_charge',
+      'Service Charge', 1, v_order.service_charge_amount, v_order.service_charge_amount,
+      v_order.order_date, v_order.order_time, v_order.sold_at, 'service_charge', 'service_charge', now()
+    )
+    ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+      WHERE parent_sale_id IS NULL
+    DO NOTHING;
+    GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+  END IF;
+
   RETURN v_synced_count;
 END;
 $$;

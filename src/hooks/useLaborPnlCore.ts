@@ -5,6 +5,7 @@ import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useSplhData } from '@/hooks/useSplhData';
 import { useLaborCostsFromTimeTracking } from '@/hooks/useLaborCostsFromTimeTracking';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
+import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { validateTimeZone, buildSplhTimeseries } from '@/lib/splhAnalytics';
 import { useTodayInTimezone } from '@/hooks/useTodayInTimezone';
 
@@ -84,10 +85,18 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
     isLoading: laborLoading,
     error: laborError,
     refetch: refetchLabor,
-  } = useLaborCostsFromTimeTracking(restaurantId, windowStart, windowEnd);
+  } = useLaborCostsFromTimeTracking(restaurantId, windowStart, windowEnd, { throughNow: true });
 
+  // Close still-open shifts at "now" before deriving sessions, so the intraday
+  // (Day-view) labor shape counts in-progress hours — matching the payroll-grade
+  // daily cost above (which uses the same `throughNow`). "now" is captured when
+  // the punch data changes; the ~60s `useSplhData` refetch (+ refetchOnWindowFocus)
+  // keeps it fresh. The KPI labor $ tracks "now" independently via its own hook.
   const sessions = useMemo(
-    () => (data?.punches?.length ? identifyWorkSessions(normalizePunches(data.punches)) : []),
+    () =>
+      data?.punches?.length
+        ? identifyWorkSessions(normalizePunches(appendOpenShiftClockOuts(data.punches, new Date())))
+        : [],
     [data?.punches],
   );
 

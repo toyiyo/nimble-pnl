@@ -10,14 +10,17 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts';
-import type { FinancialPoint, LaborGranularity } from '@/lib/laborPnlAnalytics';
+import type { FinancialPoint } from '@/lib/laborPnlAnalytics';
 import { LaborBalanceRibbon } from './LaborBalanceRibbon';
+
+/** Chart x-axis bucket unit (from `useLaborPnlAnalytics.granularity`). */
+export type ChartGranularity = 'intraday' | 'day' | 'week';
 
 interface DemandVsStaffingChartProps {
   readonly points: readonly FinancialPoint[];
   /** `staffing_settings.target_labor_pct` — the `ReferenceLine` on the bottom chart. */
   readonly targetPct: number;
-  readonly granularity: LaborGranularity;
+  readonly granularity: ChartGranularity;
 }
 
 export interface DemandVsStaffingChartDatum {
@@ -32,10 +35,10 @@ export interface DemandVsStaffingChartDatum {
  * page's Day/Week/Month toggle — design §5: "hour-of-day (Day), day (Week),
  * week (Month)". Used only for the chart's accessible name.
  */
-const GRANULARITY_VIEW_LABEL: Record<LaborGranularity, string> = {
-  day: 'hourly',
-  week: 'daily',
-  month: 'weekly',
+const GRANULARITY_VIEW_LABEL: Record<ChartGranularity, string> = {
+  intraday: 'hourly',
+  day: 'daily',
+  week: 'weekly',
 };
 
 /** Pure transform: FinancialPoint[] -> Recharts-ready data shared by both
@@ -98,7 +101,12 @@ export function DemandVsStaffingChart({ points, targetPct, granularity }: Demand
       <div className="h-40">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData} margin={{ top: 12, right: 12, left: 12, bottom: 0 }}>
-            <XAxis dataKey="label" hide />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+              tickLine={false}
+              axisLine={false}
+            />
             <YAxis
               tickFormatter={(v: number) => `$${v}`}
               tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}

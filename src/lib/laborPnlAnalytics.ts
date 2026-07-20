@@ -355,6 +355,90 @@ export function dateInWindow(dateStr: string, startStr: string, endStr: string):
   return dateStr >= startStr && dateStr <= endStr;
 }
 
+/** Date-range presets for the `/labor` page selector. `custom` uses explicit
+ * `start`/`end` from the date pickers. */
+export type LaborRangePreset = 'today' | 'this_week' | 'last_week' | 'this_month' | 'last_month' | 'custom';
+
+export interface LaborRangeSelection {
+  preset: LaborRangePreset;
+  /** `custom` only — inclusive ISO `YYYY-MM-DD` bounds. */
+  customStart?: string;
+  customEnd?: string;
+}
+
+function addDaysStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function firstOfMonthStr(dateStr: string): string {
+  return `${monthKeyOf(dateStr)}-01`;
+}
+
+/** First day of the calendar month before `dateStr`'s month. */
+function firstOfPrevMonthStr(dateStr: string): string {
+  const [y, m] = dateStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 2, 1)).toISOString().slice(0, 10); // m is 1-based
+}
+
+/** Last day of `firstOfMonthStr`'s month (pass a first-of-month date). */
+function lastOfMonthStr(firstOfMonth: string): string {
+  const [y, m] = firstOfMonth.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10); // day 0 = last day of prev index → this month's last
+}
+
+/** Whole days between two ISO dates (end − start). */
+export function daysBetween(startStr: string, endStr: string): number {
+  const [ys, ms, ds] = startStr.split('-').map(Number);
+  const [ye, me, de] = endStr.split('-').map(Number);
+  return Math.round((Date.UTC(ye, me - 1, de) - Date.UTC(ys, ms - 1, ds)) / 86_400_000);
+}
+
+/**
+ * Resolves a range selection to inclusive `{ startStr, endStr }` given the
+ * restaurant-tz `todayStr` (design: Day/Week/Month → preset dropdown). `custom`
+ * falls back to today when a bound is missing and normalizes a reversed range.
+ */
+export function resolveDateRange(
+  selection: LaborRangeSelection,
+  todayStr: string,
+): { startStr: string; endStr: string } {
+  switch (selection.preset) {
+    case 'this_week':
+      return { startStr: mondayOf(todayStr), endStr: todayStr };
+    case 'last_week': {
+      const thisMonday = mondayOf(todayStr);
+      return { startStr: addDaysStr(thisMonday, -7), endStr: addDaysStr(thisMonday, -1) };
+    }
+    case 'this_month':
+      return { startStr: firstOfMonthStr(todayStr), endStr: todayStr };
+    case 'last_month': {
+      const start = firstOfPrevMonthStr(todayStr);
+      return { startStr: start, endStr: lastOfMonthStr(start) };
+    }
+    case 'custom': {
+      const a = selection.customStart || todayStr;
+      const b = selection.customEnd || todayStr;
+      return a <= b ? { startStr: a, endStr: b } : { startStr: b, endStr: a };
+    }
+    case 'today':
+    default:
+      return { startStr: todayStr, endStr: todayStr };
+  }
+}
+
+/**
+ * Chart bucketing for a resolved range: a single day → `intraday` (hour-of-day);
+ * up to ~2 weeks → `day`; longer → `week`. The KPI summary always uses the daily
+ * series regardless (design §4) — this only picks the chart's x-axis unit.
+ */
+export function seriesGranularityForRange(startStr: string, endStr: string): 'intraday' | 'day' | 'week' {
+  if (startStr === endStr) return 'intraday';
+  return daysBetween(startStr, endStr) <= 16 ? 'day' : 'week';
+}
+
 /**
  * Intraday (hour-of-day) financial series for the Day view's chart (design
  * §2.2 "hour-of-day (Day)", §4/§9). Buckets a single restaurant-local
@@ -379,27 +463,30 @@ export function buildIntradayFinancialSeries(
   dateStr: string,
   avgHourlyRateCents: number,
   targetPct: number,
+  capHour?: number,
 ): FinancialPoint[] {
   const salesByHour = new Map<number, number>();
   for (const s of sales) {
     if (s.sale_date !== dateStr) continue;
     const hour = hourOfSale(s, tz);
-    if (hour === null) continue;
+    if (hour === null || (capHour !== undefined && hour > capHour)) continue;
     salesByHour.set(hour, (salesByHour.get(hour) ?? 0) + Number(s.total_price));
   }
 
   const hoursByHour = new Map<number, number>();
   for (const session of sessions) {
     for (const c of distributeWorkedHours(session, tz)) {
-      if (c.localDate !== dateStr) continue;
+      if (c.localDate !== dateStr || (capHour !== undefined && c.hour > capHour)) continue;
       hoursByHour.set(c.hour, (hoursByHour.get(c.hour) ?? 0) + c.hours);
     }
   }
 
   const activeHours = [...salesByHour.keys(), ...hoursByHour.keys()];
   if (activeHours.length === 0) return [];
+  // Extend the axis through `capHour` ("now" for today) even if the last hour
+  // had no activity, so the chart reads "so far today" up to the current hour.
   const minHour = Math.min(...activeHours);
-  const maxHour = Math.max(...activeHours);
+  const maxHour = capHour !== undefined ? Math.max(...activeHours, capHour) : Math.max(...activeHours);
   const rate = avgHourlyRateCents / 100;
 
   const points: FinancialPoint[] = [];

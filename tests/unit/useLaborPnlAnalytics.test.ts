@@ -107,26 +107,35 @@ const createWrapper = () => {
     React.createElement(QueryClientProvider, { client: queryClient }, children);
 };
 
+// Fixtures are Mon 2026-07-06 / Tue 2026-07-07; "today" defaults to 2026-07-10
+// so those days are in the PAST — a single-day custom range then hits the
+// intraday path without the "cap at now" clamp (deterministic regardless of the
+// real wall clock).
+const CUSTOM = (start: string, end: string) => ({ preset: 'custom' as const, customStart: start, customEnd: end });
+
 describe('useLaborPnlAnalytics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetToday.mockReturnValue('2026-07-07');
+    mockGetToday.mockReturnValue('2026-07-10');
   });
 
-  it('Day view: intraday (hour-of-day) chart series + a full 7x24 sales-volume grid', async () => {
+  it('single-day range → intraday (hour-of-day) chart series + a full 7x24 grid', async () => {
     setup();
 
-    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', CUSTOM('2026-07-07', '2026-07-07')), {
+      wrapper: createWrapper(),
+    });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    // "today" = 07-07, whose only sale is at 12:00Z → one intraday bucket (hour labels, not dates).
+    // 07-07's only sale is at 12:00Z → one intraday bucket (hour label, not a date).
+    expect(result.current.granularity).toBe('intraday');
     expect(result.current.series).toHaveLength(1);
     expect(result.current.series[0].label).toBe('12 PM');
     expect(result.current.series[0].sales).toBe(200);
     expect(result.current.seriesIsShapeEstimate).toBe(true);
 
-    // Grid spans the FULL window (a pattern read), independent of the toggle.
+    // Grid spans the FULL window (a pattern read), independent of the range.
     expect(result.current.grid).toHaveLength(7 * 24);
     const hour17 = result.current.grid.find((c) => c.dow === 1 && c.hour === 17);
     expect(hour17?.totalSales).toBe(400);
@@ -134,47 +143,63 @@ describe('useLaborPnlAnalytics', () => {
     expect(result.current.targetPct).toBe(22);
   });
 
-  it('CRITICAL: the toggle selects the PERIOD — KPI summary differs by granularity (finding #2)', async () => {
+  it('CRITICAL: the range selects the PERIOD — KPI summary differs by range (finding #2)', async () => {
     setup();
 
-    // Day = today (07-07) only → sales 200, labor 30.
-    const { result: day } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    // One day (07-07) → sales 200, labor 30.
+    const { result: day } = renderHook(() => useLaborPnlAnalytics('rest-1', CUSTOM('2026-07-07', '2026-07-07')), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(day.current.isLoading).toBe(false));
     expect(day.current.summary.sales).toBe(200);
     expect(day.current.summary.laborCost).toBe(30);
 
-    // Month = 07-01..07-07 → both fixture days → sales 600, labor 80.
-    const { result: month } = renderHook(() => useLaborPnlAnalytics('rest-1', 'month'), { wrapper: createWrapper() });
+    // This month (07-01..07-10) → both fixture days → sales 600, labor 80.
+    const { result: month } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'this_month' }), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(month.current.isLoading).toBe(false));
     expect(month.current.summary.sales).toBe(600);
     expect(month.current.summary.laborCost).toBe(80);
   });
 
-  it('CRITICAL: granularity switch rebuilds the chart series (day intraday / week daily / month weekly)', async () => {
+  it('CRITICAL: range span picks the chart granularity (intraday / day / week)', async () => {
     setup();
 
-    const { result: dayResult } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    const { result: dayResult } = renderHook(() => useLaborPnlAnalytics('rest-1', CUSTOM('2026-07-07', '2026-07-07')), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(dayResult.current.isLoading).toBe(false));
-    expect(dayResult.current.series).toHaveLength(1); // intraday: today's single active hour
+    expect(dayResult.current.granularity).toBe('intraday');
+    expect(dayResult.current.series).toHaveLength(1);
 
-    const { result: weekResult } = renderHook(() => useLaborPnlAnalytics('rest-1', 'week'), { wrapper: createWrapper() });
+    const { result: weekResult } = renderHook(() => useLaborPnlAnalytics('rest-1', CUSTOM('2026-07-06', '2026-07-07')), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(weekResult.current.isLoading).toBe(false));
-    // Week 07-06..07-07: by-day → 2 date buckets (payroll-grade).
+    // ≤16-day range → by-day (2 date buckets, payroll-grade).
+    expect(weekResult.current.granularity).toBe('day');
     expect(weekResult.current.series.map((p) => p.bucketStart)).toEqual(['2026-07-06', '2026-07-07']);
     expect(weekResult.current.seriesIsShapeEstimate).toBe(false);
 
-    const { result: monthResult } = renderHook(() => useLaborPnlAnalytics('rest-1', 'month'), { wrapper: createWrapper() });
+    const { result: monthResult } = renderHook(() => useLaborPnlAnalytics('rest-1', CUSTOM('2026-07-06', '2026-07-25')), {
+      wrapper: createWrapper(),
+    });
     await waitFor(() => expect(monthResult.current.isLoading).toBe(false));
-    // Month by-week → both days collapse into the one Monday-start bucket.
+    // >16-day range → by-week; both fixture days collapse into the one Mon-start bucket.
+    expect(monthResult.current.granularity).toBe('week');
     expect(monthResult.current.series).toHaveLength(1);
     expect(monthResult.current.series[0].bucketStart).toBe('2026-07-06');
   });
 
-  it('MIDNIGHT ROLLOVER: refreshes the period when the restaurant-tz date advances', async () => {
+  it('MIDNIGHT ROLLOVER: refreshes "Today" when the restaurant-tz date advances', async () => {
     vi.useFakeTimers();
     try {
-      setup(); // "today" = 07-07 → Day period has the 200 sale
-      const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+      mockGetToday.mockReturnValue('2026-07-07'); // "today" starts on the fixture day
+      setup();
+      const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), {
+        wrapper: createWrapper(),
+      });
       expect(result.current.summary.sales).toBe(200);
 
       // Clock rolls over to 07-08 (no fixture data that day).
@@ -184,7 +209,6 @@ describe('useLaborPnlAnalytics', () => {
       });
 
       expect(result.current.summary.sales).toBe(0);
-      expect(result.current.series).toEqual([]);
     } finally {
       vi.useRealTimers();
     }
@@ -199,7 +223,7 @@ describe('useLaborPnlAnalytics', () => {
       },
     });
 
-    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     // hourOfSale derives noon from sale_time → buildSplhGrid buckets by real hour,
@@ -216,7 +240,7 @@ describe('useLaborPnlAnalytics', () => {
       },
     });
 
-    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
     expect(result.current.grid.every((c) => c.estimated === true)).toBe(true);
@@ -226,7 +250,7 @@ describe('useLaborPnlAnalytics', () => {
     const updateSettings = vi.fn().mockResolvedValue(undefined);
     setup({ target_labor_pct: 22, updateSettings });
 
-    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
 
     await act(async () => {
       await result.current.updateTarget(22); // unchanged — no-op
@@ -243,7 +267,7 @@ describe('useLaborPnlAnalytics', () => {
   it('propagates capped, hasData, isLoading/isError/error, and refetch from the core hook', () => {
     setup({ data: { sales: SALES, punches: PUNCHES, capped: true }, isError: true });
 
-    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
 
     expect(result.current.capped).toBe(true);
     expect(result.current.hasData).toBe(true);
@@ -254,7 +278,7 @@ describe('useLaborPnlAnalytics', () => {
   it('returns an empty series and an all-zero grid when there is no sales/labor data (loading)', () => {
     setup({ data: { sales: [], punches: [], capped: false }, dailyLabor: [], isLoading: true });
 
-    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+    const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', { preset: 'today' }), { wrapper: createWrapper() });
 
     expect(result.current.series).toEqual([]);
     // `buildSplhGrid` always shapes the full 7x24 grid (every cell "closed"

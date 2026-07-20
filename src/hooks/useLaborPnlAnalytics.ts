@@ -5,40 +5,46 @@ import {
   buildFinancialSeries,
   buildIntradayFinancialSeries,
   buildSalesVolumeGrid,
-  currentPeriodWindow,
-  dateInWindow,
   extractBalanceWindows,
+  resolveDateRange,
+  seriesGranularityForRange,
   summarizeLaborPnl,
 } from '@/lib/laborPnlAnalytics';
-import type { LaborGranularity } from '@/lib/laborPnlAnalytics';
+import type { LaborRangeSelection } from '@/lib/laborPnlAnalytics';
 import { computeAvgHourlyRateCents } from '@/lib/staffingCalculator';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useLaborPnlCore } from '@/hooks/useLaborPnlCore';
 
-const WEEKS = 12; // covers month-granularity series + the hourly grid, mirroring useSplhAnalytics's WEEKS
+// Fetch window: wide enough for every preset (through "last month") plus a
+// custom range up to ~4 months back. The selected range only *filters* this
+// window, so the fetch size is fixed (no refetch when the range changes).
+const WEEKS = 18;
+
+/** Current hour (0–23) in the restaurant tz — used to cap "today" at "now". */
+function currentHourInTz(tz: string): number {
+  const value = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', hour12: false })
+    .formatToParts(new Date())
+    .find((p) => p.type === 'hour')?.value;
+  return value ? Number(value) % 24 : 23;
+}
 
 /**
  * Full labor-P&L dataset for the `/labor` page (design §2.2, §5).
  *
- * The Day/Week/Month toggle is a **period selector**, not just a re-bucketing
- * of one fixed window (Phase-7 review fix): the KPI row, verdict, chart, and
- * staffing callouts all describe **today / this week / this month**. The
- * `summary` (KPI row + verdict) is always summed from the period's
- * **payroll-grade daily** series (design §4), so its labor $ / labor % stay
- * authoritative regardless of granularity. The chart `series` shows the
- * period's natural sub-buckets:
- *   - **Day** → hour-of-day (`buildIntradayFinancialSeries`; sub-day labor is an
- *     avg-rate *shape* estimate, design §9 — the KPI totals above stay payroll-grade).
- *   - **Week** → by day.
- *   - **Month** → by week.
+ * `selection` is a **date-range preset** (Today / This week / Last week / This
+ * month / Last month / Custom). The KPI row + verdict always summarize the
+ * range's **payroll-grade daily** series (design §4). The chart `series` shows
+ * the range's natural sub-buckets (`seriesGranularityForRange`):
+ *   - single day → hour-of-day (`buildIntradayFinancialSeries`; sub-day labor is
+ *     an avg-rate *shape* estimate, design §9). When the day is **today**, the
+ *     chart is capped at the current hour ("so far today").
+ *   - ≤ ~2 weeks → by day.  •  longer → by week.
  *
- * The busy-hours `grid` intentionally spans the **full** fetch window (not the
- * selected period): "when are we busy" is a pattern that reads more clearly over
- * more history, and it's a distinct question from the period's P&L.
- * `updateTarget` writes the editable target-%. See `useLaborPnlSummary` for the
- * lighter Dashboard-card variant.
+ * Labor counts still-open shifts through "now" (see `useLaborPnlCore` /
+ * `appendOpenShiftClockOuts`). The busy-hours `grid` intentionally spans the
+ * full fetch window (a pattern, not the range's P&L).
  */
-export function useLaborPnlAnalytics(restaurantId: string | null, granularity: LaborGranularity) {
+export function useLaborPnlAnalytics(restaurantId: string | null, selection: LaborRangeSelection) {
   const {
     tz,
     targetPct,
@@ -60,76 +66,49 @@ export function useLaborPnlAnalytics(restaurantId: string | null, granularity: L
   const { employees } = useEmployees(restaurantId);
   const avgHourlyRateCents = useMemo(() => computeAvgHourlyRateCents(employees), [employees]);
 
-  // The current period's restaurant-tz date window (design §2.2). `endStr` is
-  // today for every granularity; `startStr` widens for week/month. `todayStr`
-  // comes from the shared `useTodayInTimezone` poller in `useLaborPnlCore`, so
-  // it stays fresh across midnight (see that hook) without a second interval here.
-  const periodWindow = useMemo(
-    () => currentPeriodWindow(granularity, todayStr),
-    [granularity, todayStr],
+  const range = useMemo(() => resolveDateRange(selection, todayStr), [selection, todayStr]);
+  const granularity = useMemo(
+    () => seriesGranularityForRange(range.startStr, range.endStr),
+    [range],
   );
 
   const periodSales = useMemo(
-    () => dailySales.filter((p) => dateInWindow(p.bucketStart, periodWindow.startStr, periodWindow.endStr)),
-    [dailySales, periodWindow],
+    () => dailySales.filter((p) => p.bucketStart >= range.startStr && p.bucketStart <= range.endStr),
+    [dailySales, range],
   );
   const periodLabor = useMemo(
-    () => dailyLabor.filter((d) => dateInWindow(d.date, periodWindow.startStr, periodWindow.endStr)),
-    [dailyLabor, periodWindow],
+    () => dailyLabor.filter((d) => d.date >= range.startStr && d.date <= range.endStr),
+    [dailyLabor, range],
   );
 
-  // Authoritative (payroll-grade) daily series for the selected period — drives
-  // the KPI row + verdict for every granularity.
+  // Authoritative (payroll-grade) daily series → drives the KPI row + verdict.
   const periodDaily = useMemo(
     () => buildFinancialSeries(periodSales, periodLabor, 'day', targetPct),
     [periodSales, periodLabor, targetPct],
   );
   const summary = useMemo(() => summarizeLaborPnl(periodDaily, targetPct), [periodDaily, targetPct]);
 
-  // Chart series: intraday for Day, by-day for Week, by-week for Month.
+  // Chart series: intraday for a single day, by-day for a short range, by-week
+  // for a long one. Cap "today" at the current hour so it reads "so far today".
   const series = useMemo(() => {
-    if (granularity === 'day') {
-      return buildIntradayFinancialSeries(
-        sales,
-        sessions,
-        tz,
-        periodWindow.endStr,
-        avgHourlyRateCents,
-        targetPct,
-      );
+    if (granularity === 'intraday') {
+      const capHour = range.endStr === todayStr ? currentHourInTz(tz) : undefined;
+      return buildIntradayFinancialSeries(sales, sessions, tz, range.endStr, avgHourlyRateCents, targetPct, capHour);
     }
-    if (granularity === 'week') return periodDaily;
+    if (granularity === 'day') return periodDaily;
     return buildFinancialSeries(periodSales, periodLabor, 'week', targetPct);
-  }, [granularity, sales, sessions, tz, periodWindow, avgHourlyRateCents, targetPct, periodDaily, periodSales, periodLabor]);
+  }, [granularity, range, todayStr, sales, sessions, tz, avgHourlyRateCents, targetPct, periodDaily, periodSales, periodLabor]);
 
-  // Staffing callouts track the chart series (so Day callouts are hour ranges,
-  // Week days, Month weeks) — labels then match `estimateWindowDollars(series, …)`.
   const overWindows = useMemo(() => extractBalanceWindows(series, 'over'), [series]);
   const underWindows = useMemo(() => extractBalanceWindows(series, 'under'), [series]);
 
-  // A sale contributes a real hour bucket if `hourOfSale` can derive one — from
-  // `sold_at` OR the legacy `sale_time` (buildSplhGrid uses the same derivation).
-  // Checking only `sold_at` would falsely mark a `sale_time`-only POS's heatmap
-  // as "Estimated" even though buildSplhGrid bucketed it by real hour.
-  const hasHourlyBreakdown = useMemo(
-    () => sales.some((s) => hourOfSale(s, tz) !== null),
-    [sales, tz],
-  );
+  const hasHourlyBreakdown = useMemo(() => sales.some((s) => hourOfSale(s, tz) !== null), [sales, tz]);
 
   const grid = useMemo(() => {
-    // `buildSplhGrid`'s `target` param only feeds `SplhGridCell.state`
-    // (an SPLH lean/balanced/slack read), which `buildSalesVolumeGrid`
-    // deliberately discards (design §5: this grid colors by *sales volume*,
-    // not staffing efficiency) — 0 keeps that unused classification inert
-    // rather than feeding it a `%` target that isn't a $/labor-hour figure.
     const cells = buildSplhGrid(sales, sessions, tz, 0);
     return buildSalesVolumeGrid(cells, !hasHourlyBreakdown);
   }, [sales, sessions, tz, hasHourlyBreakdown]);
 
-  // Dirty-checked write (design §7: "Enter+blur double-commit guarded by
-  // dirty check") — only calls `updateSettings` when the value actually
-  // changed, so a blur immediately after an Enter-triggered commit is a
-  // no-op instead of firing the mutation twice.
   const updateTarget = useCallback(
     async (newTargetPct: number) => {
       if (newTargetPct === targetPct) return;
@@ -140,9 +119,12 @@ export function useLaborPnlAnalytics(restaurantId: string | null, granularity: L
 
   return {
     series,
-    /** Estimated (avg-rate) sub-day labor in the Day chart — see design §9.
-     * Week/Month series are payroll-grade. Lets the page label the Day chart. */
-    seriesIsShapeEstimate: granularity === 'day',
+    /** Chart x-axis unit: 'intraday' | 'day' | 'week'. */
+    granularity,
+    /** True when the chart series is the avg-rate intraday shape (design §9). */
+    seriesIsShapeEstimate: granularity === 'intraday',
+    /** Resolved inclusive range bounds (for a range label). */
+    range,
     grid,
     summary,
     overWindows,

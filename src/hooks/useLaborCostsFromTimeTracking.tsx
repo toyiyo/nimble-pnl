@@ -5,6 +5,7 @@ import { TimePunch } from '@/types/timeTracking';
 import { format } from 'date-fns';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 
 export interface LaborCostData {
   date: string;
@@ -69,13 +70,21 @@ interface ManualPaymentDB {
 export function useLaborCostsFromTimeTracking(
   restaurantId: string | null,
   dateFrom: Date,
-  dateTo: Date
+  dateTo: Date,
+  options?: { throughNow?: boolean }
 ): LaborCostsFromTimeTrackingResult {
   // Fetch ALL employees (including inactive) for historical labor cost accuracy
   const { employees } = useEmployees(restaurantId, { status: 'all' });
 
+  // Opt-in: count still-open shifts (currently clocked in) as worked through
+  // "now". Off by default so Payroll and other callers keep matched-pair
+  // semantics; a *live* labor-cost view (the /labor page, dashboard card) turns
+  // it on so today's in-progress hours aren't under-counted while staff are on
+  // the clock. `throughNow` is in the query key so the two variants don't collide.
+  const throughNow = options?.throughNow ?? false;
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['labor-costs-from-time-tracking', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd')],
+    queryKey: ['labor-costs-from-time-tracking', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), throughNow],
     queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number }> => {
       if (!restaurantId) {
         return { dailyCosts: [], totalCost: 0 };
@@ -118,11 +127,17 @@ export function useLaborCostsFromTimeTracking(
           : undefined,
       }));
 
+      // 3b. For a live view, close still-open shifts at "now" so in-progress
+      // hours count (parseWorkPeriods otherwise drops an un-clocked-out shift).
+      const punchesForCost = throughNow
+        ? appendOpenShiftClockOuts(typedPunches, new Date())
+        : typedPunches;
+
       // 4. Use calculateActualLaborCost from laborCalculations.ts (same as payroll)
       // This ensures Dashboard and Payroll use identical calculation logic
       const { dailyCosts: laborDailyCosts } = calculateActualLaborCost(
         employees,
-        typedPunches,
+        punchesForCost,
         dateFrom,
         dateTo
       );

@@ -109,7 +109,7 @@ describe('DemandVsStaffingChart — render', () => {
 
   it('exposes an accessible name naming the target and granularity view', () => {
     const { getByRole } = render(
-      <DemandVsStaffingChart points={points} targetPct={24} granularity="week" />,
+      <DemandVsStaffingChart points={points} targetPct={24} granularity="day" />,
     );
     expect(
       getByRole('img', { name: /net sales versus labor percent against a 24% target, daily view/i }),

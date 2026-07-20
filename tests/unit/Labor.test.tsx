@@ -1,6 +1,7 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 
 import type { FinancialPoint, LaborPnlSummary, SalesVolumeCell } from '@/lib/laborPnlAnalytics';
@@ -103,6 +104,8 @@ const GRID: SalesVolumeCell[] = [
 function mockHookReturn(overrides: Record<string, unknown> = {}) {
   return {
     series: POINTS,
+    granularity: 'day',
+    range: { startStr: '2026-07-01', endStr: '2026-07-07' },
     seriesIsShapeEstimate: false,
     grid: GRID,
     summary: baseSummary(),
@@ -205,7 +208,7 @@ describe('Labor page', () => {
     mockUseLaborPnlAnalytics.mockReturnValue(mockHookReturn());
     renderPage();
     expect(screen.getByText(/select a restaurant/i)).toBeInTheDocument();
-    expect(mockUseLaborPnlAnalytics).toHaveBeenCalledWith(null, 'day');
+    expect(mockUseLaborPnlAnalytics).toHaveBeenCalledWith(null, { preset: 'today' });
   });
 
   it('renders the KPI row, verdict, chart, and heatmap with real data', () => {
@@ -229,19 +232,34 @@ describe('Labor page', () => {
     expect(screen.getByTestId('heatmap')).toHaveAttribute('data-estimated', 'true');
   });
 
-  it('switches granularity via the Day/Week/Month toggle, re-invoking the hook', () => {
+  it('switches the range via the preset dropdown, re-invoking the hook', async () => {
+    const user = userEvent.setup();
     mockUseLaborPnlAnalytics.mockReturnValue(mockHookReturn());
     renderPage();
-    expect(mockUseLaborPnlAnalytics).toHaveBeenLastCalledWith('rest-1', 'day');
+    expect(mockUseLaborPnlAnalytics).toHaveBeenLastCalledWith('rest-1', { preset: 'today' });
 
-    fireEvent.click(screen.getByRole('radio', { name: 'Week' }));
-    expect(mockUseLaborPnlAnalytics).toHaveBeenLastCalledWith('rest-1', 'week');
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Month' }));
-    expect(mockUseLaborPnlAnalytics).toHaveBeenLastCalledWith('rest-1', 'month');
+    await user.click(screen.getByRole('combobox', { name: /date range/i }));
+    await user.click(screen.getByRole('option', { name: 'Last week' }));
+    expect(mockUseLaborPnlAnalytics).toHaveBeenLastCalledWith('rest-1', { preset: 'last_week' });
   });
 
-  it('renders staffing callouts with a $ estimate for over/under windows', () => {
+  it('reveals custom date pickers and drives the hook when Custom is selected', async () => {
+    const user = userEvent.setup();
+    mockUseLaborPnlAnalytics.mockReturnValue(mockHookReturn());
+    renderPage();
+
+    await user.click(screen.getByRole('combobox', { name: /date range/i }));
+    await user.click(screen.getByRole('option', { name: 'Custom…' }));
+
+    const start = screen.getByLabelText(/custom range start date/i);
+    fireEvent.change(start, { target: { value: '2026-06-01' } });
+    expect(mockUseLaborPnlAnalytics).toHaveBeenLastCalledWith('rest-1', {
+      preset: 'custom',
+      customStart: '2026-06-01',
+    });
+  });
+
+  it('renders "what to do about it" recommendation cards with a $ estimate', () => {
     mockUseLaborPnlAnalytics.mockReturnValue(
       mockHookReturn({
         overWindows: [{ startLabel: '2026-07-06', endLabel: '2026-07-07', bucketCount: 2 }],
@@ -249,8 +267,11 @@ describe('Labor page', () => {
       }),
     );
     renderPage();
-    expect(screen.getByText(/\$304 over target labor spend/i)).toBeInTheDocument();
-    expect(screen.getByText(/\$98 under target labor spend/i)).toBeInTheDocument();
+    expect(screen.getByText(/what to do about it/i)).toBeInTheDocument();
+    expect(screen.getByText(/Overstaffed/)).toBeInTheDocument();
+    expect(screen.getByText(/save ~\$304/)).toBeInTheDocument();
+    expect(screen.getByText(/Stretched thin/)).toBeInTheDocument();
+    expect(screen.getByText(/\$98 of headroom/)).toBeInTheDocument();
   });
 
   it('shows a partial-window note when capped', () => {

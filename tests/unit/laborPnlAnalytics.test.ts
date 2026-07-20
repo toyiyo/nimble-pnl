@@ -535,3 +535,76 @@ describe('extractBalanceWindows (exported for hook-level series windows)', () =>
     expect(under).toEqual([{ startLabel: 'd', endLabel: 'd', bucketCount: 1 }]);
   });
 });
+
+// --- Date-range presets + granularity + intraday cap ----------------------
+
+import {
+  resolveDateRange,
+  seriesGranularityForRange,
+  daysBetween,
+} from '@/lib/laborPnlAnalytics';
+
+describe('resolveDateRange', () => {
+  // 2026-07-22 is a Wednesday; Monday of that week is 2026-07-20.
+  const today = '2026-07-22';
+
+  it('today → today..today', () => {
+    expect(resolveDateRange({ preset: 'today' }, today)).toEqual({ startStr: today, endStr: today });
+  });
+  it('this_week → Monday..today', () => {
+    expect(resolveDateRange({ preset: 'this_week' }, today)).toEqual({ startStr: '2026-07-20', endStr: today });
+  });
+  it('last_week → previous Mon..Sun', () => {
+    expect(resolveDateRange({ preset: 'last_week' }, today)).toEqual({ startStr: '2026-07-13', endStr: '2026-07-19' });
+  });
+  it('this_month → 1st..today', () => {
+    expect(resolveDateRange({ preset: 'this_month' }, today)).toEqual({ startStr: '2026-07-01', endStr: today });
+  });
+  it('last_month → full previous calendar month', () => {
+    expect(resolveDateRange({ preset: 'last_month' }, today)).toEqual({ startStr: '2026-06-01', endStr: '2026-06-30' });
+  });
+  it('last_month across a year boundary', () => {
+    expect(resolveDateRange({ preset: 'last_month' }, '2026-01-15')).toEqual({ startStr: '2025-12-01', endStr: '2025-12-31' });
+  });
+  it('custom passes through and normalizes a reversed range', () => {
+    expect(resolveDateRange({ preset: 'custom', customStart: '2026-05-01', customEnd: '2026-05-31' }, today))
+      .toEqual({ startStr: '2026-05-01', endStr: '2026-05-31' });
+    expect(resolveDateRange({ preset: 'custom', customStart: '2026-05-31', customEnd: '2026-05-01' }, today))
+      .toEqual({ startStr: '2026-05-01', endStr: '2026-05-31' });
+  });
+});
+
+describe('seriesGranularityForRange', () => {
+  it('single day → intraday', () => {
+    expect(seriesGranularityForRange('2026-07-22', '2026-07-22')).toBe('intraday');
+  });
+  it('≤16 days → day', () => {
+    expect(seriesGranularityForRange('2026-07-01', '2026-07-14')).toBe('day');
+  });
+  it('>16 days → week', () => {
+    expect(seriesGranularityForRange('2026-06-01', '2026-06-30')).toBe('week');
+  });
+});
+
+describe('daysBetween', () => {
+  it('counts whole days inclusive of neither/both correctly', () => {
+    expect(daysBetween('2026-07-01', '2026-07-01')).toBe(0);
+    expect(daysBetween('2026-07-01', '2026-07-31')).toBe(30);
+  });
+});
+
+describe('buildIntradayFinancialSeries capHour', () => {
+  const tz = 'UTC';
+  const day = '2026-07-22';
+  it('drops hours after capHour and extends the axis through capHour', () => {
+    const sales = [
+      saleRow(day, `${day}T10:00:00Z`, 100),
+      saleRow(day, `${day}T21:00:00Z`, 999), // 9 PM, after the cap → excluded
+    ];
+    const series = buildIntradayFinancialSeries(sales, [], tz, day, 2000, 22, 14); // cap at 2 PM
+    const labels = series.map((p) => p.label);
+    expect(labels[0]).toBe('10 AM');
+    expect(labels[labels.length - 1]).toBe('2 PM'); // axis extends to cap, 9 PM excluded
+    expect(series.find((p) => p.label === '9 PM')).toBeUndefined();
+  });
+});

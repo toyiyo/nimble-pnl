@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Collapsible,
   CollapsibleContent,
@@ -46,6 +47,7 @@ import {
   ChevronDown,
   ShoppingBag,
   Trash2,
+  Info,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 

@@ -100,6 +100,11 @@ export const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: 
               }
             }}
             onKeyDown={(e) => {
+              // Ignore keydowns that bubbled up from a focused descendant
+              // (e.g. the Edit/Delete icon buttons) so activating those
+              // controls via keyboard doesn't also trigger the card's own
+              // edit/select behavior instead of the button's own handler.
+              if (e.target !== e.currentTarget) return;
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 if (cardSelectionMode && onToggleSelect) {

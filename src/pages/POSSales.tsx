@@ -13,6 +13,7 @@ import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { EnhancedCategoryRulesDialog } from "@/components/banking/EnhancedCategoryRulesDialog";
 import { useUnifiedSales } from "@/hooks/useUnifiedSales";
+import { useUnifiedSalesGrouped } from "@/hooks/useUnifiedSalesGrouped";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
 import { useInventoryDeduction } from "@/hooks/useInventoryDeduction";
 import { RestaurantSelector } from "@/components/RestaurantSelector";
@@ -87,6 +88,7 @@ export default function POSSales() {
   const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
+  const [groupedSortBy, setGroupedSortBy] = useState<'revenue' | 'quantity' | 'sales' | 'name'>('revenue');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'without-recipe'>('all');
   const [categorizationFilter, setCategorizationFilter] = useState<'all' | 'uncategorized' | 'pending-review' | 'categorized'>('all');
@@ -142,16 +144,32 @@ export default function POSSales() {
     sales,
     loading,
     loadingMore,
-    hasMore,
-    loadMoreSales,
-    getSalesByDateRange,
-    getSalesGroupedByItem,
+    reachedCap,
+    loadAllRemaining,
     deleteManualSale,
   } = useUnifiedSales(selectedRestaurant?.restaurant_id || null, {
     searchTerm,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
     categorizationFilter,
+    autoLoadAll: true,
+  });
+
+  // Server-side grouped-by-item aggregation for the Grouped view — sorted in
+  // SQL over the full date range (fixes the old client-side Map-insertion-order
+  // sort bug where "sort by amount" in Grouped view did nothing).
+  const {
+    groups: groupedSales,
+    isLoading: groupedLoading,
+    error: groupedError,
+  } = useUnifiedSalesGrouped(selectedRestaurant?.restaurant_id || null, {
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    searchTerm,
+    categorizationFilter,
+    recipeFilter,
+    sortBy: groupedSortBy,
+    sortDirection,
   });
 
   // Server-side aggregated totals for dashboard metrics (independent of pagination).
@@ -391,25 +409,6 @@ export default function POSSales() {
       await syncAllSystems(startDate, endDate);
     }
   };
-
-  const groupedSales = useMemo(() => {
-    // Group filtered sales by item name
-    const byItem = new Map<string, { total_quantity: number; total_revenue: number; sale_count: number }>();
-    for (const sale of filteredSales) {
-      const existing = byItem.get(sale.itemName) ?? { total_quantity: 0, total_revenue: 0, sale_count: 0 };
-      existing.total_quantity += sale.quantity;
-      existing.total_revenue += sale.totalPrice ?? 0;
-      existing.sale_count += 1;
-      byItem.set(sale.itemName, existing);
-    }
-    
-    return Array.from(byItem.entries()).map(([itemName, data]) => ({
-      item_name: itemName,
-      total_quantity: data.total_quantity,
-      total_revenue: data.total_revenue,
-      sale_count: data.sale_count,
-    }));
-  }, [filteredSales]);
 
   const handleSimulateDeduction = useCallback(async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;
@@ -1147,18 +1146,33 @@ export default function POSSales() {
 
               {/* Sort controls */}
               <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
-                <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
-                  <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
-                    <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="z-50 bg-background">
-                    <SelectItem value="date">Date</SelectItem>
-                    <SelectItem value="name">Item Name</SelectItem>
-                    <SelectItem value="quantity">Quantity</SelectItem>
-                    <SelectItem value="amount">Amount</SelectItem>
-                  </SelectContent>
-                </Select>
+                {selectedView === 'grouped' ? (
+                  <Select value={groupedSortBy} onValueChange={(value: 'revenue' | 'quantity' | 'sales' | 'name') => setGroupedSortBy(value)}>
+                    <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
+                      <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="z-50 bg-background">
+                      <SelectItem value="revenue">Revenue</SelectItem>
+                      <SelectItem value="quantity">Quantity</SelectItem>
+                      <SelectItem value="sales">Sales</SelectItem>
+                      <SelectItem value="name">Item Name</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
+                    <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
+                      <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="z-50 bg-background">
+                      <SelectItem value="date">Date</SelectItem>
+                      <SelectItem value="name">Item Name</SelectItem>
+                      <SelectItem value="quantity">Quantity</SelectItem>
+                      <SelectItem value="amount">Amount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <button
                   onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
                   className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/50 transition-colors"
@@ -1180,31 +1194,38 @@ export default function POSSales() {
           ) : selectedView === "sales" ? (
             <div className="space-y-4">
               {/* Results header bar */}
-              <div className="flex items-center justify-between">
-                <p className="text-[13px] text-muted-foreground">
-                  {(() => {
-                    const statusLabel = categorizationFilter !== 'all'
-                      ? `${CATEGORIZATION_FILTER_LABELS[categorizationFilter]} `
-                      : '';
-                    return filteredSales.length === sales.length ? (
-                      <>{sales.length.toLocaleString()} {statusLabel}sales</>
-                    ) : (
-                      <>{filteredSales.length.toLocaleString()} of {sales.length.toLocaleString()} {statusLabel}sales</>
-                    );
-                  })()}
-                </p>
-                <div className="flex items-center gap-2">
-                  {hasMore && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={loadMoreSales}
-                      disabled={loadingMore}
-                      className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      {loadingMore ? "Loading..." : "Load more"}
-                    </Button>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3 flex-wrap" aria-live="polite">
+                  <p className="text-[13px] text-muted-foreground">
+                    {(() => {
+                      const statusLabel = categorizationFilter !== 'all'
+                        ? `${CATEGORIZATION_FILTER_LABELS[categorizationFilter]} `
+                        : '';
+                      return filteredSales.length === sales.length ? (
+                        <>{sales.length.toLocaleString()} {statusLabel}sales</>
+                      ) : (
+                        <>{filteredSales.length.toLocaleString()} of {sales.length.toLocaleString()} {statusLabel}sales</>
+                      );
+                    })()}
+                  </p>
+                  {loadingMore && !reachedCap && (
+                    <span className="text-[13px] text-muted-foreground">Loading more…</span>
                   )}
+                  {reachedCap && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] text-muted-foreground">Showing the first 20,000 rows in this range</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={loadAllRemaining}
+                        className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        Load all rows
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
                   {dateFilteredSales.length > 0 && (
                     <Button
                       variant={bulkSelection.isSelectionMode ? "default" : "ghost"}
@@ -1333,19 +1354,6 @@ export default function POSSales() {
                       })}
                     </div>
                   </div>
-                  {hasMore && (
-                    <div className="flex justify-center py-4 border-t border-border/40">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={loadMoreSales}
-                        disabled={loadingMore}
-                        className="h-8 px-4 text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                      >
-                        {loadingMore ? "Loading..." : "Load more sales"}
-                      </Button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1357,17 +1365,6 @@ export default function POSSales() {
                 <p className="text-[13px] text-muted-foreground">
                   {groupedSales.length.toLocaleString()} items
                 </p>
-                {hasMore && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={loadMoreSales}
-                    disabled={loadingMore}
-                    className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    {loadingMore ? "Loading..." : "Load more"}
-                  </Button>
-                )}
               </div>
 
               {groupedSales.length === 0 ? (

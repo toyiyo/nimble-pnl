@@ -58,18 +58,21 @@ SELECT function_lang_is(
     'aggregate_unified_sales_to_daily should be plpgsql'
 );
 
--- Test bulk_process_historical_sales function exists (FIXED: returns jsonb not integer)
+-- Test bulk_process_historical_sales function exists. Signature is now the
+-- 7-arg keyset-batched form (migration 20260720120000): the original 3-arg
+-- (uuid, date, date) was dropped and replaced with defaulted cursor/batch
+-- params, so has_function must assert the full declared arg list.
 SELECT has_function(
     'public',
     'bulk_process_historical_sales',
-    ARRAY['uuid', 'date', 'date'],
+    ARRAY['uuid', 'date', 'date', 'integer', 'date', 'timestamptz', 'uuid'],
     'bulk_process_historical_sales function should exist'
 );
 
 SELECT function_returns(
     'public',
     'bulk_process_historical_sales',
-    ARRAY['uuid', 'date', 'date'],
+    ARRAY['uuid', 'date', 'date', 'integer', 'date', 'timestamptz', 'uuid'],
     'jsonb',
     'bulk_process_historical_sales should return jsonb'
 );

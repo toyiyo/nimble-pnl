@@ -51,6 +51,13 @@ BEGIN
         RAISE EXCEPTION 'Not authorized for this restaurant';
     END IF;
 
+    -- Clamp the client-supplied batch size to the intended safe range. The
+    -- function is directly RPC-callable, so without this a caller could pass a
+    -- huge p_batch_size and, combined with the 120s statement_timeout above,
+    -- drive a single heavy per-row loop for the full budget (noisy-neighbor
+    -- DoS on the shared instance). The hook only ever sends 500.
+    p_batch_size := LEAST(GREATEST(COALESCE(p_batch_size, 500), 1), 500);
+
     -- Get restaurant timezone
     SELECT timezone INTO v_restaurant_timezone
     FROM restaurants

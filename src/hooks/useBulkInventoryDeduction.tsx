@@ -49,11 +49,17 @@ export const useBulkInventoryDeduction = () => {
     let cursor: BulkBatchCursor | null = null;
     let done = false;
     let batches = 0;
+    // Blanket invalidation is acceptable for a rare, user-initiated bulk op:
+    // refreshes derived React-Query views (food cost, COGS, consumption, P&L,
+    // unified-sales). The products list uses an imperative useState hook
+    // (useProducts), not React Query, so it is out of scope here. Called on both
+    // the success and partial-failure paths — completed batches wrote real data.
+    const refreshDerivedQueries = () => queryClient.invalidateQueries();
     try {
       while (!done) {
         if (++batches > MAX_BATCHES) {
           throw new Error(
-            `Reached the ${MAX_BATCHES}-batch safety cap. Progress was saved — re-run to resume from where it stopped.`
+            `Reached the ${MAX_BATCHES}-batch safety cap. Progress was saved — re-run to continue (already-processed sales are skipped).`
           );
         }
 
@@ -68,6 +74,7 @@ export const useBulkInventoryDeduction = () => {
         });
 
         if (error) throw error;
+        if (!data) throw new Error('Empty response from bulk_process_historical_sales');
 
         const batch = data as unknown as BulkBatchResponse;
         totals.processed += batch.processed;
@@ -79,11 +86,7 @@ export const useBulkInventoryDeduction = () => {
         onProgress?.({ ...totals, batches });
       }
 
-      // Blanket invalidation is acceptable for a rare, user-initiated bulk op:
-      // refreshes derived React-Query views (food cost, COGS, consumption, P&L,
-      // unified-sales). The products list uses an imperative useState hook
-      // (useProducts), not React Query, so it is out of scope here.
-      queryClient.invalidateQueries();
+      refreshDerivedQueries();
 
       toast({
         title: "Bulk Processing Complete",
@@ -91,14 +94,13 @@ export const useBulkInventoryDeduction = () => {
       });
 
       return { ...totals, total: totals.processed + totals.skipped + totals.errors };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       console.error('Error bulk processing sales:', error);
-      // Partial totals were still written by completed batches — refresh so
-      // the UI reflects them even though the run didn't finish.
-      queryClient.invalidateQueries();
+      refreshDerivedQueries();
       toast({
         title: "Bulk processing interrupted",
-        description: `Processed ${totals.processed} sales (${totals.errors} errors) before: ${error.message}. Safe to re-run — it resumes where it left off.`,
+        description: `Processed ${totals.processed} sales (${totals.errors} errors) before: ${message}. Safe to re-run — already-processed sales are skipped.`,
         variant: "destructive",
       });
       return null;

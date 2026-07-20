@@ -136,6 +136,9 @@ describe('BulkInventoryDeductionDialog — live progress / gated close / termina
     // auto-closed yet (real 2s timer, not advanced in this test).
     const status = screen.getByRole('status');
     expect(status).toHaveTextContent(/260/);
+    // Success reads as "Done", not the error/interrupted wording.
+    expect(status).toHaveTextContent(/done/i);
+    expect(status).not.toHaveTextContent(/interrupted/i);
     expect(screen.getByText('Bulk Process Historical Sales')).toBeInTheDocument();
 
     // Loading finished — Cancel usable again.
@@ -158,6 +161,11 @@ describe('BulkInventoryDeductionDialog — live progress / gated close / termina
 
     const status = screen.getByRole('status');
     expect(status).toHaveTextContent(/120/);
+    // Errored run is labelled distinctly from a clean finish (three-state), and
+    // tells the user it's safe to re-run.
+    expect(status).toHaveTextContent(/interrupted/i);
+    expect(status).toHaveTextContent(/re-run/i);
+    expect(status).not.toHaveTextContent(/^Done/);
     expect(screen.getByRole('button', { name: /cancel/i })).not.toBeDisabled();
   });
 });

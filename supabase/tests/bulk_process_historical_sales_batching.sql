@@ -8,7 +8,7 @@
 -- (supabase/migrations/20251023164509_a85d8666-30e6-44bd-87f3-a5a816fc341f.sql).
 
 BEGIN;
-SELECT plan(17);
+SELECT plan(19);
 
 -- ---------- Fixture setup ----------
 -- One restaurant, one owner (has access), one outsider (no user_restaurants
@@ -213,6 +213,35 @@ SELECT is(
   7,
   'idempotent re-run: inventory_transactions count for the first range unchanged (still 7)'
 );
+
+-- ============================================================
+-- 5. Server-side batch-size clamp: the function is directly RPC-callable, so a
+--    caller-supplied p_batch_size larger than the safe max (500) must be
+--    clamped (else, combined with statement_timeout=120s, it enables a heavy
+--    single-statement DoS). Seed 501 sales so a genuine 500 clamp is
+--    observable as batch_count=500 / done=false rather than "all in one batch".
+-- ============================================================
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, sale_date, created_at)
+SELECT
+  ('b0000000-0000-0000-0000-' || lpad((300000 + g)::text, 12, '0'))::uuid,
+  'b0000000-0000-0000-0000-000000000001', 'test', 'clamp-' || g, 'Test Burger', 1,
+  '2026-03-01'::date, '2026-03-01 10:00:00+00'::timestamptz + (g || ' seconds')::interval
+FROM generate_series(1, 501) g
+ON CONFLICT (id) DO NOTHING;
+
+DO $$
+DECLARE v_clamp jsonb;
+BEGIN
+  v_clamp := public.bulk_process_historical_sales(
+    'b0000000-0000-0000-0000-000000000001'::uuid, '2026-03-01'::date, '2026-03-31'::date,
+    100000, NULL, NULL, NULL);
+  PERFORM set_config('test.clamp', v_clamp::text, false);
+END $$;
+
+SELECT is((current_setting('test.clamp')::jsonb->>'batch_count')::int, 500,
+  'p_batch_size is clamped to 500 even when the caller requests 100000');
+SELECT is((current_setting('test.clamp')::jsonb->>'done')::boolean, false,
+  'clamped 500-row batch over 501 rows reports done=false (more remain)');
 
 SELECT * FROM finish();
 ROLLBACK;

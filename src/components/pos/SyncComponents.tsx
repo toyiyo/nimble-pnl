@@ -353,6 +353,13 @@ export const TOAST_CONFIG: POSConfig = {
   syncInterval: '6 hours',
 };
 
+export const REVEL_CONFIG: POSConfig = {
+  name: 'Revel',
+  dataLabel: 'orders',
+  dataLabelSingular: 'order',
+  syncInterval: '6 hours',
+};
+
 export const SLING_CONFIG: POSConfig = {
   name: 'Sling',
   dataLabel: 'shifts',

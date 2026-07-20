@@ -23,24 +23,39 @@ vi.mock('@/hooks/useNotificationPreferences', () => ({
   }),
 }));
 
-// Returns a referentially-STABLE object (computed once, not re-created per
-// call). NotificationChannelMatrix's sync-guard effect depends on `[settings]`
-// by reference — a mock that returns a fresh `{ settings: new Map(), ... }`
-// literal on every render would make that dependency "change" every render,
-// spinning the component into an infinite render loop (setLocal -> re-render
-// -> new settings reference -> effect fires -> setLocal -> ...).
-const channelSettingsMock = vi.hoisted(() => ({
-  settings: new Map(),
-  isLoading: false,
-  isError: false,
-  error: null,
-  refetch: vi.fn(),
-  saveChanges: vi.fn(),
-  isSaving: false,
+// Returns a referentially-STABLE object per restaurantId (each computed once,
+// not re-created per call). NotificationChannelMatrix's sync-guard effect
+// depends on `[settings]` by reference — a mock that returns a fresh
+// `{ settings: new Map(), ... }` literal on every render would make that
+// dependency "change" every render, spinning the component into an infinite
+// render loop (setLocal -> re-render -> new settings reference -> effect
+// fires -> setLocal -> ...). Keyed by restaurantId so tests can assert the
+// matrix shows the right restaurant's data after a restaurantId change.
+const channelSettingsByRestaurant = vi.hoisted(() => ({
+  'rest-1': {
+    settings: new Map([['team_invite', { email: true, push: false }]]),
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    saveChanges: vi.fn(),
+    isSaving: false,
+  },
+  'rest-2': {
+    settings: new Map([['team_invite', { email: false, push: false }]]),
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    saveChanges: vi.fn(),
+    isSaving: false,
+  },
 }));
 
 vi.mock('@/hooks/useNotificationChannelSettings', () => ({
-  useNotificationChannelSettings: () => channelSettingsMock,
+  useNotificationChannelSettings: (restaurantId: string) =>
+    channelSettingsByRestaurant[restaurantId as keyof typeof channelSettingsByRestaurant] ??
+    channelSettingsByRestaurant['rest-1'],
 }));
 
 import { NotificationSettings } from '@/components/NotificationSettings';
@@ -131,5 +146,38 @@ describe('NotificationSettings approver warning', () => {
     renderWithClient(<NotificationSettings restaurantId="rest-1" />);
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('NotificationSettings channel matrix restaurant switching', () => {
+  beforeEach(() => {
+    approverCountMock.mockReset();
+    notificationSettingsMock.mockReset();
+    notificationSettingsMock.mockReturnValue({ settings: baseSettings, loading: false });
+    approverCountMock.mockReturnValue({ data: 2, isLoading: false });
+  });
+
+  it('shows the new restaurant\'s channel settings (not the previous restaurant\'s stale values) when restaurantId changes', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <NotificationSettings restaurantId="rest-1" />
+      </QueryClientProvider>
+    );
+
+    // rest-1's team_invite email switch is ON.
+    expect(screen.getByRole('switch', { name: /team invitation — email/i })).toBeChecked();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <NotificationSettings restaurantId="rest-2" />
+      </QueryClientProvider>
+    );
+
+    // rest-2's team_invite email switch is OFF — must reflect immediately,
+    // never rest-1's stale ON value (which the missing sync on restaurantId
+    // change previously allowed, risking a Save that overwrites rest-2's
+    // real settings with rest-1's).
+    expect(screen.getByRole('switch', { name: /team invitation — email/i })).not.toBeChecked();
   });
 });

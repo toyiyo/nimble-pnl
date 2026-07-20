@@ -89,7 +89,13 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
         </CardHeader>
       </Card>
 
-      <NotificationChannelMatrix restaurantId={restaurantId} />
+      {/* key=restaurantId forces a full remount (fresh local state) when the
+          active restaurant changes, since the sync-guard effect inside only
+          re-syncs `local` from `settings` while hasChanges is false — without
+          this key, switching restaurants while mid-edit (or right after) can
+          leave stale channel values on screen and, on Save, upsert the
+          previous restaurant's settings onto the new one's restaurant_id. */}
+      <NotificationChannelMatrix key={restaurantId} restaurantId={restaurantId} />
 
       <Card>
         <CardHeader>

@@ -40,9 +40,30 @@
 -- 26  Check 10's persisted focus_orders.tax_amount is 0 (default, guards test 25)
 -- 27  Re-sync after tax_amount is zeroed out deletes the previously-created tax row (check 42)
 -- 28  Zeroed-tax re-sync leaves the order's 5 non-tax rows intact by identity
+--
+-- Void tests (check 43, "order C"): a priced item -> sale + payment tip +
+-- item discount + tax_amount, plus a user-managed split row under its sale
+-- row. focus_orders.is_voided/voided_at are added by
+-- 20260713020000_focus_preserve_voids.sql; until that migration lands these
+-- tests fail (undefined column / no void branch) -- this is the RED half of
+-- the TDD cycle for that migration.
+--
+-- 29  Order C: sale row created for item IK-E (6.00)
+-- 30  Order C: tip offset row created (1.25) from payment PK-2
+-- 31  Order C: discount offset row created (-0.60) for item IK-E
+-- 32  Order C: tax offset row created (0.42)
+-- 33  Order C: split row (parent_sale_id = C's sale row id) exists before voiding
+-- 34  After voiding C: sale/tip/discount/tax rows (parent_sale_id IS NULL) are gone
+-- 35  After voiding C: exactly one adjustment_type='void' row exists for order C
+-- 36  After voiding C: void row total_price = -SUM(priced items) = -6.00
+-- 37  After voiding C: the split row (child) survives
+-- 38  After voiding C: sibling order 42's sale-row count is untouched (still 3)
+-- 39  After voiding C: sibling order 42's IK-A sale row identity/amount is untouched
+-- 40  After voiding C: revenue (item_type='sale' AND adjustment_type IS NULL) dropped by exactly C's amount (6.00)
+-- 41  After voiding C: SUM(total_price) WHERE adjustment_type='void' equals negated revenue lost
 
 BEGIN;
-SELECT plan(28);
+SELECT plan(41);
 
 -- ─────────────────────────────────────────────────────────────────────
 -- Setup: disable RLS so we can insert test rows freely
@@ -574,6 +595,259 @@ SELECT bag_eq(
      ('focus-GUID-TEST-STORE-20260615-42__IK-D_discount', 'discount'),
      ('focus-GUID-TEST-STORE-20260615-42_PK-1_tip',       'tip')$$,
   'Zeroed-tax re-sync leaves the order''s 5 non-tax rows intact by identity (3 sale + 1 tip + 1 discount)'
+);
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Void tests: order C (check 43) — a priced item that produces all 4
+-- offset row kinds (sale/tip/discount/tax), plus a user-managed split row
+-- under its sale row. focus_orders.is_voided/voided_at and the RPC's void
+-- branch are added by 20260713020000_focus_preserve_voids.sql — until that
+-- migration lands, this block fails (undefined column, or no void row
+-- created). That's the RED half of this TDD cycle.
+-- ─────────────────────────────────────────────────────────────────────
+INSERT INTO public.focus_orders (
+  id, restaurant_id, business_date, focus_check_id,
+  opened_at_local, closed_at_local,
+  order_type_id, revenue_center_id, guests,
+  total, discount_total, taxable_sales, tax_amount
+) VALUES (
+  '00000000-0000-0000-0000-f0c100000033',
+  '00000000-0000-0000-0000-f0c100000011',
+  '2026-06-15', '43',
+  '2026-06-15T12:00:00', '2026-06-15T12:10:00',
+  '1', 'RC1', 1,
+  6.22, 0.60, 5.40, 0.42
+)
+ON CONFLICT ON CONSTRAINT focus_orders_unique DO UPDATE SET total = 6.22, tax_amount = 0.42;
+
+-- One priced item -> sale row + discount row
+INSERT INTO public.focus_order_items (
+  id, restaurant_id, business_date, focus_check_id, item_key,
+  record_number, item_code, name, report_group_id,
+  price, parent_key, is_modifier, discount_amount
+) VALUES (
+  '00000000-0000-0000-0000-f0c100000046',
+  '00000000-0000-0000-0000-f0c100000011',
+  '2026-06-15', '43', 'IK-E',
+  'RN-005', 'IC-005', 'Order C Entree', 'Entrees',
+  6.00, NULL, false, 0.60
+)
+ON CONFLICT ON CONSTRAINT focus_order_items_unique DO NOTHING;
+
+-- One payment with a tip -> tip row
+INSERT INTO public.focus_payments (
+  id, restaurant_id, business_date, focus_check_id, payment_key,
+  payment_id, name, amount, tip, card_last4
+) VALUES (
+  '00000000-0000-0000-0000-f0c100000053',
+  '00000000-0000-0000-0000-f0c100000011',
+  '2026-06-15', '43', 'PK-2',
+  'PAY-002', 'MASTERCARD', 6.22, 1.25, '5678'
+)
+ON CONFLICT ON CONSTRAINT focus_payments_unique DO NOTHING;
+
+-- Sync so order C's 4 offset row kinds are created
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-f0c100000001"}';
+SELECT sync_focus_transactions_to_unified_sales(
+  '00000000-0000-0000-0000-f0c100000011'::uuid,
+  '2026-06-15'::date,
+  '2026-06-15'::date
+);
+
+-- Test 29: sale row for item IK-E (order C)
+SELECT is(
+  (SELECT total_price FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND external_item_id = 'focus-GUID-TEST-STORE-20260615-43__IK-E'
+     AND item_type = 'sale'),
+  6.00::numeric,
+  'Order C: sale row created for item IK-E (6.00)'
+);
+
+-- Test 30: tip offset row (payment PK-2, tip=1.25)
+SELECT is(
+  (SELECT total_price FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'tip'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-43'),
+  1.25::numeric,
+  'Order C: tip offset row created (1.25) from payment PK-2'
+);
+
+-- Test 31: discount offset row (-0.60) for item IK-E
+SELECT is(
+  (SELECT total_price FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'discount'
+     AND external_item_id = 'focus-GUID-TEST-STORE-20260615-43__IK-E_discount'),
+  (-0.60)::numeric,
+  'Order C: discount offset row created (-0.60) for item IK-E'
+);
+
+-- Test 32: tax offset row (0.42)
+SELECT is(
+  (SELECT total_price FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND item_type = 'tax'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-43'),
+  0.42::numeric,
+  'Order C: tax offset row created (0.42)'
+);
+
+-- User-managed split row under C's sale row (parent_sale_id = that row's id).
+-- Mirrors the manual-split pattern used elsewhere (e.g.
+-- 27_get_daily_sales_totals.sql) -- a real unified_sales child row, not
+-- something the sync RPC itself creates.
+INSERT INTO public.unified_sales (
+  id, restaurant_id, pos_system,
+  external_order_id, external_item_id,
+  item_name, quantity, unit_price, total_price,
+  sale_date, item_type, parent_sale_id, synced_at
+)
+SELECT
+  '00000000-0000-0000-0000-f0c100000054'::uuid,
+  '00000000-0000-0000-0000-f0c100000011', 'focus',
+  'focus-GUID-TEST-STORE-20260615-43', 'focus-GUID-TEST-STORE-20260615-43__IK-E-split',
+  'Order C Entree (split)', 1, 3.00, 3.00,
+  '2026-06-15', 'sale', us.id, now() - interval '5 minutes'
+FROM public.unified_sales us
+WHERE us.restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+  AND us.pos_system = 'focus'
+  AND us.external_item_id = 'focus-GUID-TEST-STORE-20260615-43__IK-E'
+  AND us.item_type = 'sale'
+ON CONFLICT (id) DO NOTHING;
+
+-- Test 33: split row exists before voiding
+SELECT ok(
+  EXISTS(
+    SELECT 1 FROM public.unified_sales
+    WHERE id = '00000000-0000-0000-0000-f0c100000054'
+      AND parent_sale_id IS NOT NULL
+  ),
+  'Order C: split row (parent_sale_id set) exists before voiding'
+);
+
+-- Snapshot restaurant-wide revenue before voiding, for the delta assertion
+-- in test 40 below.
+CREATE TEMP TABLE pre_void_revenue AS
+SELECT COALESCE(SUM(total_price), 0)::numeric AS revenue
+FROM public.unified_sales
+WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+  AND item_type = 'sale'
+  AND adjustment_type IS NULL;
+
+-- ─────────────────────────────────────────────────────────────────────
+-- Void order C and re-sync.
+-- ─────────────────────────────────────────────────────────────────────
+SET LOCAL role TO postgres;
+UPDATE public.focus_orders
+SET is_voided = true, voided_at = now()
+WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+  AND business_date = '2026-06-15'
+  AND focus_check_id = '43';
+
+SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-f0c100000001"}';
+SELECT sync_focus_transactions_to_unified_sales(
+  '00000000-0000-0000-0000-f0c100000011'::uuid,
+  '2026-06-15'::date,
+  '2026-06-15'::date
+);
+
+-- Test 34: C's sale/tip/discount/tax rows (parent_sale_id IS NULL) are gone
+SELECT is(
+  (SELECT COUNT(*)::integer FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-43'
+     AND parent_sale_id IS NULL
+     AND item_type IN ('sale', 'tip', 'discount', 'tax')),
+  0,
+  'After voiding C: sale/tip/discount/tax rows (parent_sale_id IS NULL) are gone'
+);
+
+-- Test 35: exactly one adjustment_type='void' row for order C
+SELECT is(
+  (SELECT COUNT(*)::integer FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-43'
+     AND adjustment_type = 'void'),
+  1,
+  'After voiding C: exactly one adjustment_type=''void'' row exists'
+);
+
+-- Test 36: void row total_price = -SUM(priced items) = -6.00
+-- (IK-E's raw price only -- the discount is not netted into this figure,
+-- per the design's "voided net revenue" = -SUM(focus_order_items.price)).
+SELECT is(
+  (SELECT total_price FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-43'
+     AND adjustment_type = 'void'),
+  (-6.00)::numeric,
+  'After voiding C: void row total_price = -SUM(priced items) = -6.00'
+);
+
+-- Test 37: the split row (child) survives voiding
+SELECT ok(
+  EXISTS(
+    SELECT 1 FROM public.unified_sales
+    WHERE id = '00000000-0000-0000-0000-f0c100000054'
+      AND parent_sale_id IS NOT NULL
+  ),
+  'After voiding C: the split row (child) survives'
+);
+
+-- Test 38: sibling order 42's sale-row count is untouched (still 3)
+SELECT is(
+  (SELECT COUNT(*)::integer FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND external_order_id = 'focus-GUID-TEST-STORE-20260615-42'
+     AND item_type = 'sale'),
+  3,
+  'After voiding C: sibling order 42''s sale-row count is untouched (still 3)'
+);
+
+-- Test 39: sibling order 42's item A sale row amount is untouched
+SELECT is(
+  (SELECT total_price FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND pos_system = 'focus'
+     AND external_item_id = 'focus-GUID-TEST-STORE-20260615-42__IK-A'
+     AND item_type = 'sale'),
+  5.84::numeric,
+  'After voiding C: sibling order 42''s IK-A sale row is untouched'
+);
+
+-- Test 40: revenue (item_type='sale' AND adjustment_type IS NULL) dropped
+-- by exactly C's amount (6.00). Only C's own sale row is removed between
+-- the snapshot and this comparison -- the split row (item_type='sale' too)
+-- is untouched by the void and so contributes equally to both sides,
+-- cancelling out of the delta.
+SELECT is(
+  (SELECT revenue FROM pre_void_revenue) -
+  (SELECT COALESCE(SUM(total_price), 0)::numeric FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND item_type = 'sale'
+     AND adjustment_type IS NULL),
+  6.00::numeric,
+  'After voiding C: revenue dropped by exactly 6.00'
+);
+
+-- Test 41: SUM(total_price) WHERE adjustment_type='void' equals the negated
+-- revenue lost (only order C has ever been voided in this test).
+SELECT is(
+  (SELECT SUM(total_price) FROM public.unified_sales
+   WHERE restaurant_id = '00000000-0000-0000-0000-f0c100000011'
+     AND adjustment_type = 'void'),
+  (-6.00)::numeric,
+  'After voiding C: SUM(total_price) WHERE adjustment_type=''void'' equals negated revenue lost'
 );
 
 SELECT * FROM finish();

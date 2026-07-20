@@ -61,6 +61,43 @@ export async function fetchOrderItemsByDate(
   return byOrder;
 }
 
+/**
+ * Fetch all Payments in a date range, grouped by parent order id.
+ * Payments carry tips (mostly credit-card tips), tenders, and refunds — none of which
+ * live on the Order/OrderAllInOne resource — so we pull /resources/Payment/ separately.
+ */
+export async function fetchPaymentsByDate(
+  instance: string,
+  apiKey: string,
+  apiSecret: string,
+  start: string,
+  end: string,
+  pageLimit = 500,
+  maxPages = 60,
+): Promise<Record<string, any[]>> {
+  const byOrder: Record<string, any[]> = {};
+  for (let page = 0; page < maxPages; page++) {
+    const params = new URLSearchParams({
+      created_date__gte: `${start}T00:00:00`,
+      created_date__lte: `${end}T23:59:59`,
+      limit: String(pageLimit),
+      offset: String(page * pageLimit),
+      order_by: 'created_date',
+    });
+    const res = await revelFetch(instance, apiKey, apiSecret, `/resources/Payment/?${params.toString()}`);
+    if (!res.ok) break;
+    const body = await res.json();
+    const rows: any[] = body.objects ?? body.results ?? (Array.isArray(body) ? body : []);
+    for (const p of rows) {
+      const oid = extractOrderId(p.order);
+      if (!oid) continue;
+      (byOrder[oid] ??= []).push(p);
+    }
+    if (rows.length < pageLimit) break;
+  }
+  return byOrder;
+}
+
 /** Authed fetch against a merchant's Classic Revel API. */
 export async function revelFetch(
   instance: string,

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { revelFetch, fetchOrderItemsByDate } from "../_shared/revelClient.ts";
+import { revelFetch, fetchOrderItemsByDate, fetchPaymentsByDate } from "../_shared/revelClient.ts";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
 
@@ -79,6 +79,7 @@ serve(async (req) => {
     // Classic Revel keeps line items in a separate resource — fetch them for the range
     // once and join by order id (Order/OrderAllInOne carry only headers).
     const itemsByOrder = await fetchOrderItemsByDate(conn.revel_instance, apiKey, apiSecret, start, end);
+    const paymentsByOrder = await fetchPaymentsByDate(conn.revel_instance, apiKey, apiSecret, start, end);
 
     let processed = 0;
     let loggedSample = false;
@@ -99,7 +100,9 @@ serve(async (req) => {
       }
       for (const order of orders) {
         try {
-          (order as any).OrderItems = itemsByOrder[String(order.id ?? order.uuid)] || [];
+          const oid = String(order.id ?? order.uuid);
+          (order as any).OrderItems = itemsByOrder[oid] || [];
+          (order as any).Payments = paymentsByOrder[oid] || [];
           await processOrder(service, order, restaurantId, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
           processed++;
         } catch (e) {

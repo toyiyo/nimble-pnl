@@ -120,12 +120,19 @@ export function normalizeOrder(payload: any): NormalizedOrder {
 
   const payments: NormalizedPayment[] = (paymentsRaw as any[]).map((p) => ({
     paymentId: String(p.id ?? p.uuid ?? p.payment_id ?? ''),
-    type: p.type ?? p.payment_type ?? p.tender_type ?? null,
+    type: p.card_type ?? p.payment_type ?? p.other_payment_type ?? p.type ?? p.tender_type ?? null,
     amount: toAmount(p.amount ?? p.total),
-    tipAmount: toAmount(p.tip ?? p.tip_amount),
-    status: p.status ?? p.payment_status ?? null,
+    tipAmount: toAmount(p.tip ?? p.tip_amount ?? p.gratuity),
+    status: p.transaction_status ?? p.status ?? p.payment_status ?? null,
     raw: p,
   }));
+
+  // Tips live on the Payment records (mostly credit-card tips), NOT the order header.
+  // Sum tips across non-declined payments; fall back to header gratuity only if no
+  // payments were fetched for this order.
+  const paymentTips = payments
+    .filter((p) => String(p.status ?? '').toLowerCase() !== 'declined')
+    .reduce((s, p) => s + (p.tipAmount ?? 0), 0);
 
   return {
     orderId: String(order.id ?? order.uuid ?? order.order_id ?? ''),
@@ -140,7 +147,9 @@ export function normalizeOrder(payload: any): NormalizedOrder {
       totalAmount: toAmount(order.total ?? order.total_amount ?? order.final_total),
       subtotalAmount: toAmount(order.subtotal ?? order.subtotal_amount),
       taxAmount: toAmount(order.tax ?? order.tax_amount),
-      tipAmount: toAmount(order.tip ?? order.tip_amount ?? order.gratuity ?? order.smartpay_tip),
+      tipAmount: payments.length
+        ? paymentTips
+        : toAmount(order.tip ?? order.tip_amount ?? order.gratuity ?? order.smartpay_tip),
       discountAmount: toAmount(order.discount_amount ?? order.discount),
       serviceChargeAmount: toAmount(order.service_charge ?? order.service_charge_amount),
     },

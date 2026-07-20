@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { revelFetch, fetchOrderItemsByDate } from "../_shared/revelClient.ts";
+import { revelFetch, fetchOrderItemsByDate, fetchPaymentsByDate } from "../_shared/revelClient.ts";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
 
@@ -60,6 +60,7 @@ async function processConnectionBatch(service: any, encryption: any, conn: any):
     const apiSecret = await encryption.decrypt(conn.api_secret_encrypted);
 
     const itemsByOrder = await fetchOrderItemsByDate(conn.revel_instance, apiKey, apiSecret, start, end);
+    const paymentsByOrder = await fetchPaymentsByDate(conn.revel_instance, apiKey, apiSecret, start, end);
 
     let fetchFailedStatus: number | null = null;
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -69,7 +70,9 @@ async function processConnectionBatch(service: any, encryption: any, conn: any):
       const orders: any[] = body.objects ?? body.results ?? (Array.isArray(body) ? body : []);
       for (const order of orders) {
         try {
-          (order as any).OrderItems = itemsByOrder[String(order.id ?? order.uuid)] || [];
+          const oid = String(order.id ?? order.uuid);
+          (order as any).OrderItems = itemsByOrder[oid] || [];
+          (order as any).Payments = paymentsByOrder[oid] || [];
           await processOrder(service, order, conn.restaurant_id, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
           processed++;
         } catch (e) {

@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Bell, Mail, Users, CheckCircle, Newspaper, AlertTriangle } from 'lucide-react';
+import { Bell, Users, CheckCircle, Newspaper, AlertTriangle } from 'lucide-react';
 import { useNotificationSettings, useUpdateNotificationSettings } from '@/hooks/useNotificationSettings';
 import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { useApproverCount } from '@/hooks/useApproverCount';
+import { NotificationChannelMatrix } from '@/components/NotificationChannelMatrix';
 
 interface NotificationSettingsProps {
   restaurantId: string;
@@ -23,10 +24,13 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
     isError: approverCountError,
   } = useApproverCount(restaurantId);
 
+  // notify_time_off_request/approved/rejected are retired here — those event
+  // toggles are now governed by the NotificationChannelMatrix (per-type ×
+  // per-channel). time_off_notify_managers/employee remain: they're recipient
+  // routing (WHO gets notified), orthogonal to the channel matrix (WHETHER a
+  // channel fires) — see docs/superpowers/specs/2026-07-13-notification-
+  // channel-matrix-design.md.
   const [localSettings, setLocalSettings] = useState({
-    notify_time_off_request: true,
-    notify_time_off_approved: true,
-    notify_time_off_rejected: true,
     time_off_notify_managers: true,
     time_off_notify_employee: true,
   });
@@ -34,9 +38,6 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
   useEffect(() => {
     if (settings) {
       setLocalSettings({
-        notify_time_off_request: settings.notify_time_off_request ?? true,
-        notify_time_off_approved: settings.notify_time_off_approved ?? true,
-        notify_time_off_rejected: settings.notify_time_off_rejected ?? true,
         time_off_notify_managers: settings.time_off_notify_managers ?? true,
         time_off_notify_employee: settings.time_off_notify_employee ?? true,
       });
@@ -51,9 +52,6 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
   };
 
   const hasChanges = settings && (
-    localSettings.notify_time_off_request !== settings.notify_time_off_request ||
-    localSettings.notify_time_off_approved !== settings.notify_time_off_approved ||
-    localSettings.notify_time_off_rejected !== settings.notify_time_off_rejected ||
     localSettings.time_off_notify_managers !== settings.time_off_notify_managers ||
     localSettings.time_off_notify_employee !== settings.time_off_notify_employee
   );
@@ -85,81 +83,13 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
             <CardTitle>Notification Settings</CardTitle>
           </div>
           <CardDescription>
-            Configure email notifications for time-off requests and other events
+            Choose which channels each notification type sends over, who receives time-off
+            emails, and your weekly performance digest
           </CardDescription>
         </CardHeader>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            Time-Off Request Notifications
-          </CardTitle>
-          <CardDescription>
-            Choose which time-off events trigger email notifications
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="notify-request" className="text-base">
-                New Request Submitted
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Send notification when a time-off request is created
-              </p>
-            </div>
-            <Switch
-              id="notify-request"
-              checked={localSettings.notify_time_off_request}
-              onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, notify_time_off_request: checked })
-              }
-            />
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="notify-approved" className="text-base">
-                Request Approved
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Send notification when a time-off request is approved
-              </p>
-            </div>
-            <Switch
-              id="notify-approved"
-              checked={localSettings.notify_time_off_approved}
-              onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, notify_time_off_approved: checked })
-              }
-            />
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="notify-rejected" className="text-base">
-                Request Rejected
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Send notification when a time-off request is rejected
-              </p>
-            </div>
-            <Switch
-              id="notify-rejected"
-              checked={localSettings.notify_time_off_rejected}
-              onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, notify_time_off_rejected: checked })
-              }
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <NotificationChannelMatrix restaurantId={restaurantId} />
 
       <Card>
         <CardHeader>
@@ -271,9 +201,6 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
             onClick={() => {
               if (settings) {
                 setLocalSettings({
-                  notify_time_off_request: settings.notify_time_off_request,
-                  notify_time_off_approved: settings.notify_time_off_approved,
-                  notify_time_off_rejected: settings.notify_time_off_rejected,
                   time_off_notify_managers: settings.time_off_notify_managers,
                   time_off_notify_employee: settings.time_off_notify_employee,
                 });

@@ -23,6 +23,26 @@ vi.mock('@/hooks/useNotificationPreferences', () => ({
   }),
 }));
 
+// Returns a referentially-STABLE object (computed once, not re-created per
+// call). NotificationChannelMatrix's sync-guard effect depends on `[settings]`
+// by reference — a mock that returns a fresh `{ settings: new Map(), ... }`
+// literal on every render would make that dependency "change" every render,
+// spinning the component into an infinite render loop (setLocal -> re-render
+// -> new settings reference -> effect fires -> setLocal -> ...).
+const channelSettingsMock = vi.hoisted(() => ({
+  settings: new Map(),
+  isLoading: false,
+  isError: false,
+  error: null,
+  refetch: vi.fn(),
+  saveChanges: vi.fn(),
+  isSaving: false,
+}));
+
+vi.mock('@/hooks/useNotificationChannelSettings', () => ({
+  useNotificationChannelSettings: () => channelSettingsMock,
+}));
+
 import { NotificationSettings } from '@/components/NotificationSettings';
 
 function renderWithClient(ui: React.ReactElement) {

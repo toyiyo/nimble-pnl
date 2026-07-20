@@ -5472,6 +5472,311 @@ export type Database = {
         }
         Relationships: []
       }
+      revel_connections: {
+        Row: {
+          api_key_encrypted: string | null
+          api_secret_encrypted: string | null
+          connection_status: string
+          created_at: string
+          establishment_id: string | null
+          id: string
+          initial_sync_done: boolean
+          is_active: boolean
+          last_error: string | null
+          last_error_at: string | null
+          last_sync_time: string | null
+          restaurant_id: string
+          revel_instance: string
+          sync_cursor: string | null
+          sync_page: number | null
+          updated_at: string
+          webhook_active: boolean
+        }
+        Insert: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          connection_status?: string
+          created_at?: string
+          establishment_id?: string | null
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          restaurant_id: string
+          revel_instance: string
+          sync_cursor?: string | null
+          sync_page?: number | null
+          updated_at?: string
+          webhook_active?: boolean
+        }
+        Update: {
+          api_key_encrypted?: string | null
+          api_secret_encrypted?: string | null
+          connection_status?: string
+          created_at?: string
+          establishment_id?: string | null
+          id?: string
+          initial_sync_done?: boolean
+          is_active?: boolean
+          last_error?: string | null
+          last_error_at?: string | null
+          last_sync_time?: string | null
+          restaurant_id?: string
+          revel_instance?: string
+          sync_cursor?: string | null
+          sync_page?: number | null
+          updated_at?: string
+          webhook_active?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_connections_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_order_items: {
+        Row: {
+          created_at: string
+          discount_amount: number | null
+          id: string
+          is_voided: boolean
+          item_name: string
+          menu_category: string | null
+          modifiers: Json | null
+          quantity: number
+          raw_json: Json | null
+          restaurant_id: string
+          revel_item_id: string
+          revel_order_id: string
+          revel_order_id_fk: string
+          synced_at: string
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string
+          discount_amount?: number | null
+          id?: string
+          is_voided?: boolean
+          item_name: string
+          menu_category?: string | null
+          modifiers?: Json | null
+          quantity?: number
+          raw_json?: Json | null
+          restaurant_id: string
+          revel_item_id: string
+          revel_order_id: string
+          revel_order_id_fk: string
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string
+          discount_amount?: number | null
+          id?: string
+          is_voided?: boolean
+          item_name?: string
+          menu_category?: string | null
+          modifiers?: Json | null
+          quantity?: number
+          raw_json?: Json | null
+          restaurant_id?: string
+          revel_item_id?: string
+          revel_order_id?: string
+          revel_order_id_fk?: string
+          synced_at?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_order_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revel_order_items_revel_order_id_fk_fkey"
+            columns: ["revel_order_id_fk"]
+            isOneToOne: false
+            referencedRelation: "revel_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_orders: {
+        Row: {
+          created_at: string
+          dining_option: string | null
+          discount_amount: number | null
+          establishment_id: string | null
+          id: string
+          order_date: string
+          order_number: string | null
+          order_time: string | null
+          payment_status: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          service_charge_amount: number | null
+          sold_at: string | null
+          subtotal_amount: number | null
+          synced_at: string
+          tax_amount: number | null
+          tip_amount: number | null
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          dining_option?: string | null
+          discount_amount?: number | null
+          establishment_id?: string | null
+          id?: string
+          order_date: string
+          order_number?: string | null
+          order_time?: string | null
+          payment_status?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          service_charge_amount?: number | null
+          sold_at?: string | null
+          subtotal_amount?: number | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          dining_option?: string | null
+          discount_amount?: number | null
+          establishment_id?: string | null
+          id?: string
+          order_date?: string
+          order_number?: string | null
+          order_time?: string | null
+          payment_status?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          revel_order_id?: string
+          service_charge_amount?: number | null
+          sold_at?: string | null
+          subtotal_amount?: number | null
+          synced_at?: string
+          tax_amount?: number | null
+          tip_amount?: number | null
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_orders_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_payments: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          payment_date: string | null
+          payment_status: string | null
+          payment_type: string | null
+          raw_json: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          revel_payment_id: string
+          synced_at: string
+          tip_amount: number | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          payment_date?: string | null
+          payment_status?: string | null
+          payment_type?: string | null
+          raw_json?: Json | null
+          restaurant_id: string
+          revel_order_id: string
+          revel_payment_id: string
+          synced_at?: string
+          tip_amount?: number | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          payment_date?: string | null
+          payment_status?: string | null
+          payment_type?: string | null
+          raw_json?: Json | null
+          restaurant_id?: string
+          revel_order_id?: string
+          revel_payment_id?: string
+          synced_at?: string
+          tip_amount?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_payments_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revel_webhook_events: {
+        Row: {
+          event_id: string
+          event_type: string
+          id: string
+          processed_at: string
+          raw_json: Json | null
+          restaurant_id: string
+        }
+        Insert: {
+          event_id: string
+          event_type: string
+          id?: string
+          processed_at?: string
+          raw_json?: Json | null
+          restaurant_id: string
+        }
+        Update: {
+          event_id?: string
+          event_type?: string
+          id?: string
+          processed_at?: string
+          raw_json?: Json | null
+          restaurant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revel_webhook_events_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rule_application_log: {
         Row: {
           applied_at: string
@@ -10070,6 +10375,10 @@ export type Database = {
         Args: { p_restaurant_id: string; p_tombstone_id: string }
         Returns: Json
       }
+      revel_sync_financial_breakdown: {
+        Args: { p_order_id: string; p_restaurant_id: string }
+        Returns: number
+      }
       safe_cast_timestamptz: { Args: { p_text: string }; Returns: string }
       save_schedule_plan_template: {
         Args: { p_name: string; p_restaurant_id: string; p_shifts: Json }
@@ -10156,6 +10465,14 @@ export type Database = {
       }
       sync_clover_to_unified_sales: {
         Args: { p_restaurant_id: string }
+        Returns: number
+      }
+      sync_revel_to_unified_sales: {
+        Args: {
+          p_end_date?: string
+          p_restaurant_id: string
+          p_start_date?: string
+        }
         Returns: number
       }
       sync_shift4_to_unified_sales: {

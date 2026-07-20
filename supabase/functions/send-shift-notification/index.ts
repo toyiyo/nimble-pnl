@@ -10,13 +10,14 @@ import {
   handleCorsPreflightRequest,
   errorResponse,
   successResponse,
-  shouldSendNotification,
   NOTIFICATION_FROM,
   APP_URL
 } from "../_shared/notificationHelpers.ts";
 import { getRestaurantInfo } from "../_shared/restaurantInfo.ts";
 import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
 import { buildDeletedShiftNotification } from '../_shared/shiftDeletedNotification.ts';
+import { resolveChannels, type SupabaseLike } from '../_shared/resolveChannels.ts';
+import { SHIFT_ACTION_TYPE } from '../_shared/notificationActionTypes.ts';
 
 interface RequestBody {
   shiftId: string;
@@ -44,7 +45,6 @@ const ACTION_CONFIG: Record<RequestBody['action'], {
   heading: string;
   statusColor: string;
   statusText: string;
-  settingKey: string;
   message: (hasChanges: boolean) => string;
 }> = {
   created: {
@@ -52,7 +52,6 @@ const ACTION_CONFIG: Record<RequestBody['action'], {
     heading: 'You Have a New Shift',
     statusColor: '#3b82f6',
     statusText: 'New',
-    settingKey: 'notify_shift_created',
     message: () => 'A new shift has been added to your schedule.',
   },
   modified: {
@@ -60,8 +59,7 @@ const ACTION_CONFIG: Record<RequestBody['action'], {
     heading: 'Your Shift Has Been Updated',
     statusColor: '#f59e0b',
     statusText: 'Modified',
-    settingKey: 'notify_shift_modified',
-    message: (hasChanges: boolean) => hasChanges 
+    message: (hasChanges: boolean) => hasChanges
       ? 'Your shift details have been changed. Please review the updated information below.'
       : 'Your shift has been updated.',
   },
@@ -70,7 +68,6 @@ const ACTION_CONFIG: Record<RequestBody['action'], {
     heading: 'A Shift Has Been Removed',
     statusColor: '#ef4444',
     statusText: 'Removed',
-    settingKey: 'notify_shift_deleted',
     message: () => 'One of your scheduled shifts has been removed from the schedule.',
   },
 };
@@ -151,13 +148,9 @@ const handler = async (req: Request): Promise<Response> => {
         return errorResponse('Access denied', 403);
       }
 
-      const shouldNotifyDeleted = await shouldSendNotification(
-        supabase,
-        deletedShift.restaurant_id,
-        'notify_shift_deleted'
-      );
-      if (!shouldNotifyDeleted) {
-        console.log('Notification disabled for deleted');
+      const deletedCh = await resolveChannels(supabase as unknown as SupabaseLike, deletedShift.restaurant_id, 'shift_deleted');
+      if (!deletedCh.email && !deletedCh.push) {
+        console.log('Notification disabled for deleted (both channels off)');
         return successResponse({ message: 'Notification disabled by settings' });
       }
 
@@ -202,7 +195,7 @@ const handler = async (req: Request): Promise<Response> => {
       }
 
       let deletedShiftEmailId: string | undefined;
-      if (plan.email) {
+      if (plan.email && deletedCh.email) {
         const { data: emailResult, error: emailError } = await resend.emails.send({
           from: NOTIFICATION_FROM,
           to: [plan.email.to],
@@ -217,7 +210,7 @@ const handler = async (req: Request): Promise<Response> => {
         }
       }
 
-      if (plan.push) {
+      if (plan.push && deletedCh.push) {
         try {
           await sendWebPushToUser(supabase, plan.push.userId, deletedShift.restaurant_id, plan.push.payload);
         } catch (e) {
@@ -256,89 +249,88 @@ const handler = async (req: Request): Promise<Response> => {
       return errorResponse('Shift not found', 404);
     }
 
-    // Check notification settings
+    // Independent per-channel gating (email/push may be toggled separately).
     const config = ACTION_CONFIG[action];
-    const shouldNotify = await shouldSendNotification(
-      supabase, 
-      shift.restaurant_id, 
-      config.settingKey
-    );
+    const ch = await resolveChannels(supabase as unknown as SupabaseLike, shift.restaurant_id, SHIFT_ACTION_TYPE[action]);
 
-    if (!shouldNotify) {
-      console.log(`Notification disabled for ${action}`);
+    if (!ch.email && !ch.push) {
+      console.log(`Notification disabled for ${action} (both channels off)`);
       return successResponse({ message: 'Notification disabled by settings' });
     }
 
-    // Get employee email
-    const employeeEmail = shift.employee?.email;
-    if (!employeeEmail) {
-      console.log('Employee has no email address');
-      return successResponse({ message: 'No employee email found' });
-    }
-
-    // Get restaurant name + timezone so shift times render in the
-    // restaurant's local time, not the edge runtime's UTC.
-    const { name: restaurantName, timezone: restaurantTimezone } =
-      await getRestaurantInfo(supabase, shift.restaurant_id);
-
-    // Build details card
-    const detailsItems = [
-      { label: 'Restaurant', value: restaurantName },
-      { label: 'Position', value: shift.position },
-      { label: 'Start', value: formatDateTime(shift.start_time, restaurantTimezone) },
-      { label: 'End', value: formatDateTime(shift.end_time, restaurantTimezone) },
-    ];
-
-    // Add previous details if modified
     const hasChanges = action === 'modified' && previousShift;
-    if (hasChanges) {
-      detailsItems.push(
-        { label: '', value: '--- Previous ---' },
-        { label: 'Previous Position', value: previousShift!.position },
-        { label: 'Previous Start', value: formatDateTime(previousShift!.start_time, restaurantTimezone) },
-        { label: 'Previous End', value: formatDateTime(previousShift!.end_time, restaurantTimezone) },
-      );
+    let emailResult: { id?: string } | null | undefined;
+
+    if (ch.email) {
+      const employeeEmail = shift.employee?.email;
+      if (!employeeEmail) {
+        console.log('Employee has no email address');
+      } else {
+        // Get restaurant name + timezone so shift times render in the
+        // restaurant's local time, not the edge runtime's UTC.
+        const { name: restaurantName, timezone: restaurantTimezone } =
+          await getRestaurantInfo(supabase, shift.restaurant_id);
+
+        // Build details card
+        const detailsItems = [
+          { label: 'Restaurant', value: restaurantName },
+          { label: 'Position', value: shift.position },
+          { label: 'Start', value: formatDateTime(shift.start_time, restaurantTimezone) },
+          { label: 'End', value: formatDateTime(shift.end_time, restaurantTimezone) },
+        ];
+
+        // Add previous details if modified
+        if (hasChanges) {
+          detailsItems.push(
+            { label: '', value: '--- Previous ---' },
+            { label: 'Previous Position', value: previousShift!.position },
+            { label: 'Previous Start', value: formatDateTime(previousShift!.start_time, restaurantTimezone) },
+            { label: 'Previous End', value: formatDateTime(previousShift!.end_time, restaurantTimezone) },
+          );
+        }
+
+        // Generate email template
+        const emailData: EmailTemplateData = {
+          heading: config.heading,
+          statusBadge: {
+            text: config.statusText,
+            color: config.statusColor,
+          },
+          greeting: `Hi ${shift.employee?.name || 'there'},`,
+          message: config.message(!!hasChanges),
+          detailsCard: {
+            items: detailsItems,
+          },
+          ctaButton: {
+            text: 'View My Schedule',
+            url: `${APP_URL}/employee/schedule`,
+          },
+          footerNote: 'If you have any questions about your schedule, please contact your manager.',
+        };
+
+        const html = generateEmailTemplate(emailData);
+        const subject = config.subject(restaurantName);
+
+        // Send email
+        const { data: sentEmail, error: emailError } = await resend.emails.send({
+          from: NOTIFICATION_FROM,
+          to: [employeeEmail],
+          subject,
+          html,
+        });
+
+        if (emailError) {
+          console.error('Error sending email:', emailError);
+          return errorResponse('Failed to send email', 500);
+        }
+
+        emailResult = sentEmail;
+        console.log(`Successfully sent shift notification: emailId=${emailResult?.id}`);
+      }
     }
-
-    // Generate email template
-    const emailData: EmailTemplateData = {
-      heading: config.heading,
-      statusBadge: {
-        text: config.statusText,
-        color: config.statusColor,
-      },
-      greeting: `Hi ${shift.employee?.name || 'there'},`,
-      message: config.message(!!hasChanges),
-      detailsCard: {
-        items: detailsItems,
-      },
-      ctaButton: {
-        text: 'View My Schedule',
-        url: `${APP_URL}/employee/schedule`,
-      },
-      footerNote: 'If you have any questions about your schedule, please contact your manager.',
-    };
-
-    const html = generateEmailTemplate(emailData);
-    const subject = config.subject(restaurantName);
-
-    // Send email
-    const { data: emailResult, error: emailError } = await resend.emails.send({
-      from: NOTIFICATION_FROM,
-      to: [employeeEmail],
-      subject,
-      html,
-    });
-
-    if (emailError) {
-      console.error('Error sending email:', emailError);
-      return errorResponse('Failed to send email', 500);
-    }
-
-    console.log(`Successfully sent shift notification: emailId=${emailResult?.id}`);
 
     // Send web push notification to the employee
-    if (shift.employee?.user_id) {
+    if (ch.push && shift.employee?.user_id) {
       try {
         await sendWebPushToUser(supabase, shift.employee.user_id, shift.restaurant_id, {
           title: config.heading,

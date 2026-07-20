@@ -1,0 +1,157 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import {
+  NOTIFICATION_TYPES,
+  type NotificationChannel,
+  type NotificationType,
+} from '@/lib/notificationTypes';
+
+// Per-restaurant admin control for the notification channel matrix (Settings →
+// Notifications). See docs/superpowers/specs/2026-07-13-notification-channel-
+// matrix-design.md. `notification_channel_settings` isn't in the generated
+// Supabase types yet (new table, types not regenerated) — cast through `any`
+// at the call site, matching the existing repo convention (see
+// `useStaffingSettings.ts`).
+
+export interface ChannelDecision {
+  email: boolean;
+  push: boolean;
+}
+
+/** Map of every catalog notification type to its current channel decision.
+ *  Always fully populated (every key in NOTIFICATION_TYPES) — absent server
+ *  rows resolve to the default-ON baseline, mirroring `resolveChannels()`'s
+ *  fail-open semantics on the read side. */
+export type ChannelSettingsMap = Map<NotificationType, ChannelDecision>;
+
+interface ChannelSettingsRow {
+  id: string;
+  notification_type: string;
+  email_enabled: boolean;
+  push_enabled: boolean;
+}
+
+/** Fresh, independently-mutable default-ON map. Used as the merge base inside
+ *  `queryFn`/the mutation's snapshot fallback, where the caller mutates the
+ *  result — never share one instance across those call sites. */
+function createDefaultChannelSettingsMap(): ChannelSettingsMap {
+  const map: ChannelSettingsMap = new Map();
+  for (const type of NOTIFICATION_TYPES) {
+    map.set(type.key, { email: true, push: true });
+  }
+  return map;
+}
+
+/** Referentially-stable default-ON map, computed once at module load. This is
+ *  what the hook returns as `settings` whenever `query.data` is undefined
+ *  (disabled query, or still loading). Kept as a single shared instance so
+ *  `settings` has a stable identity across renders while loading — cheap
+ *  insurance against reference-identity churn in any consumer that memoizes on
+ *  it. Callers must treat this as read-only (clone before mutating). */
+const STABLE_DEFAULT_CHANNEL_SETTINGS: ChannelSettingsMap = createDefaultChannelSettingsMap();
+
+export function useNotificationChannelSettings(restaurantId: string | null) {
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const queryKey = ['notification-channel-settings', restaurantId];
+
+  const query = useQuery({
+    queryKey,
+    queryFn: async (): Promise<ChannelSettingsMap> => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+      const { data, error } = await (supabase.from as any)('notification_channel_settings')
+        .select('id, notification_type, email_enabled, push_enabled')
+        .eq('restaurant_id', restaurantId);
+
+      if (error) throw error;
+
+      const merged = createDefaultChannelSettingsMap();
+      for (const row of (data ?? []) as ChannelSettingsRow[]) {
+        if (merged.has(row.notification_type as NotificationType)) {
+          merged.set(row.notification_type as NotificationType, {
+            email: row.email_enabled,
+            push: row.push_enabled,
+          });
+        }
+      }
+      return merged;
+    },
+    enabled: !!restaurantId,
+    staleTime: 60000,
+  });
+
+  // Immediate, optimistic per-toggle save. Each flip of an Email/Push switch
+  // persists on its own — no Save button, no local form state to drift or
+  // clobber. The cache is updated optimistically so the switch reflects the new
+  // value instantly, and rolled back with a toast if the write fails. This also
+  // makes concurrent admins safe: each toggle is an independent upsert of one
+  // (restaurant, type) row, so there is no full-grid batch to overwrite.
+  const setChannelMutation = useMutation({
+    mutationFn: async ({
+      type,
+      channel,
+      value,
+    }: {
+      type: NotificationType;
+      channel: NotificationChannel;
+      value: boolean;
+    }) => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      // Build the full row from the (optimistically-updated) cache so the
+      // untouched channel keeps its current value in the upsert.
+      const current =
+        (queryClient.getQueryData<ChannelSettingsMap>(queryKey) ??
+          STABLE_DEFAULT_CHANNEL_SETTINGS).get(type) ?? { email: true, push: true };
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- table not in generated types yet
+      const { error } = await (supabase.from as any)('notification_channel_settings').upsert(
+        {
+          restaurant_id: restaurantId,
+          notification_type: type,
+          email_enabled: channel === 'email' ? value : current.email,
+          push_enabled: channel === 'push' ? value : current.push,
+        },
+        { onConflict: 'restaurant_id,notification_type' },
+      );
+
+      if (error) throw error;
+    },
+    onMutate: async ({ type, channel, value }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous = queryClient.getQueryData<ChannelSettingsMap>(queryKey);
+      queryClient.setQueryData<ChannelSettingsMap>(queryKey, (old) => {
+        const next = new Map(old ?? STABLE_DEFAULT_CHANNEL_SETTINGS);
+        const cur = next.get(type) ?? { email: true, push: true };
+        next.set(type, { ...cur, [channel]: value });
+        return next;
+      });
+      return { previous };
+    },
+    onError: (error: Error, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(queryKey, context.previous);
+      toast({
+        title: "Couldn't update notification setting",
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  return {
+    settings: query.data ?? STABLE_DEFAULT_CHANNEL_SETTINGS,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    refetch: query.refetch,
+    /** Persist a single channel toggle immediately (optimistic). */
+    setChannel: (type: NotificationType, channel: NotificationChannel, value: boolean) =>
+      setChannelMutation.mutate({ type, channel, value }),
+    isSaving: setChannelMutation.isPending,
+  };
+}

@@ -23,6 +23,39 @@ vi.mock('@/hooks/useNotificationPreferences', () => ({
   }),
 }));
 
+// Channel-matrix hook stub, keyed by restaurantId so tests can assert the
+// matrix shows the right restaurant's data after a restaurantId change. The
+// matrix now renders directly from `settings` (immediate optimistic save, no
+// local edit state), so there is no sync effect to loop — a fresh object per
+// call would be harmless, but keying it lets the restaurant-switch test below
+// return distinct values per id.
+const channelSettingsByRestaurant = vi.hoisted(() => ({
+  'rest-1': {
+    settings: new Map([['schedule_published', { email: true, push: false }]]),
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    setChannel: vi.fn(),
+    isSaving: false,
+  },
+  'rest-2': {
+    settings: new Map([['schedule_published', { email: false, push: false }]]),
+    isLoading: false,
+    isError: false,
+    error: null,
+    refetch: vi.fn(),
+    setChannel: vi.fn(),
+    isSaving: false,
+  },
+}));
+
+vi.mock('@/hooks/useNotificationChannelSettings', () => ({
+  useNotificationChannelSettings: (restaurantId: string) =>
+    channelSettingsByRestaurant[restaurantId as keyof typeof channelSettingsByRestaurant] ??
+    channelSettingsByRestaurant['rest-1'],
+}));
+
 import { NotificationSettings } from '@/components/NotificationSettings';
 
 function renderWithClient(ui: React.ReactElement) {
@@ -111,5 +144,37 @@ describe('NotificationSettings approver warning', () => {
     renderWithClient(<NotificationSettings restaurantId="rest-1" />);
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+});
+
+describe('NotificationSettings channel matrix restaurant switching', () => {
+  beforeEach(() => {
+    approverCountMock.mockReset();
+    notificationSettingsMock.mockReset();
+    notificationSettingsMock.mockReturnValue({ settings: baseSettings, loading: false });
+    approverCountMock.mockReturnValue({ data: 2, isLoading: false });
+  });
+
+  it('shows the new restaurant\'s channel settings (not the previous restaurant\'s stale values) when restaurantId changes', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(
+      <QueryClientProvider client={client}>
+        <NotificationSettings restaurantId="rest-1" />
+      </QueryClientProvider>
+    );
+
+    // rest-1's schedule-published email switch is ON.
+    expect(screen.getByRole('switch', { name: /schedule published — email/i })).toBeChecked();
+
+    rerender(
+      <QueryClientProvider client={client}>
+        <NotificationSettings restaurantId="rest-2" />
+      </QueryClientProvider>
+    );
+
+    // rest-2's schedule-published email switch is OFF — the matrix reads the
+    // value straight from the hook, so a restaurantId change reflects the new
+    // restaurant's settings immediately (never rest-1's stale ON value).
+    expect(screen.getByRole('switch', { name: /schedule published — email/i })).not.toBeChecked();
   });
 });

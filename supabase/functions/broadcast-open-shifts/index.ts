@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendEmail, NOTIFICATION_FROM, APP_URL } from "../_shared/notificationHelpers.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
+import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -157,24 +158,33 @@ serve(async (req) => {
     let emailSentCount = 0;
     let emailFailCount = 0;
 
+    // Independent per-channel gating (email/push may be toggled separately).
+    const ch = await resolveChannels(
+      serviceClient as unknown as SupabaseLike,
+      restaurant_id,
+      "open_shifts_broadcast"
+    );
+
     // Send web push notifications to employees with user_id
-    const pushEmployees = allEmployees.filter((emp) => emp.user_id);
-    for (const employee of pushEmployees) {
-      try {
-        const result = await sendWebPushToUser(serviceClient, employee.user_id!, restaurant_id, {
-          title: "Shifts Available",
-          body: notificationBody,
-          url: "/employee/shifts",
-        });
-        pushSentCount += result.sent;
-      } catch (err) {
-        pushFailCount++;
-        console.error(`Push notification failed for employee ${employee.id}:`, err);
+    if (ch.push) {
+      const pushEmployees = allEmployees.filter((emp) => emp.user_id);
+      for (const employee of pushEmployees) {
+        try {
+          const result = await sendWebPushToUser(serviceClient, employee.user_id!, restaurant_id, {
+            title: "Shifts Available",
+            body: notificationBody,
+            url: "/employee/shifts",
+          });
+          pushSentCount += result.sent;
+        } catch (err) {
+          pushFailCount++;
+          console.error(`Push notification failed for employee ${employee.id}:`, err);
+        }
       }
     }
 
     // Send email notifications to employees with email
-    if (RESEND_API_KEY) {
+    if (ch.email && RESEND_API_KEY) {
       const emailEmployees = allEmployees.filter((emp) => emp.email);
       const appUrl = `${APP_URL}/employee/shifts`;
 

@@ -1,6 +1,6 @@
 // Common POS system types for unified integration
 
-export type POSSystemType = 'square' | 'toast' | 'clover' | 'resy' | 'shift4' | 'manual' | 'manual_upload';
+export type POSSystemType = 'square' | 'toast' | 'clover' | 'resy' | 'shift4' | 'revel' | 'manual' | 'manual_upload';
 
 export interface UnifiedSaleItem {
   id: string;
@@ -27,7 +27,7 @@ export interface UnifiedSaleItem {
   is_split?: boolean;
   parent_sale_id?: string | null;
   child_splits?: UnifiedSaleItem[];
-  item_type?: 'sale' | 'tip' | 'tax' | 'discount' | 'comp' | 'service_charge' | 'other';
+  item_type?: 'sale' | 'tip' | 'tax' | 'discount' | 'comp' | 'service_charge' | 'refund' | 'other';
   adjustment_type?: 'tax' | 'tip' | 'service_charge' | 'discount' | 'fee' | null;
   chart_account?: {
     id: string;

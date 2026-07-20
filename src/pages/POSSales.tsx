@@ -70,21 +70,34 @@ const CATEGORIZATION_EMPTY_SUBCOPY: Record<'uncategorized' | 'pending-review' | 
 // Sizes the virtual grid's column count to the scroll container's width so the
 // grouped grid's row-based virtualizer (row = one lane of cards) matches the
 // CSS grid breakpoints below (1 col / 2 cols sm+ / 3 cols lg+).
-function useResponsiveColumns(ref: React.RefObject<HTMLElement>) {
+//
+// Uses a callback ref (state), not a passed-in RefObject: the grouped
+// container only mounts once the user switches to Grouped view, and an
+// effect keyed on a stable useRef object's identity never re-runs once that
+// DOM node attaches later, leaving `cols` stuck at its initial value.
+// Keying the effect on the node itself (state) re-runs it exactly when the
+// node actually mounts.
+function useResponsiveColumns() {
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [cols, setCols] = useState(1);
   useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
+    if (!node) return;
     const update = () => {
-      const w = el.clientWidth;
-      setCols(w >= 1024 ? 3 : w >= 640 ? 2 : 1);
+      const w = node.clientWidth;
+      if (w >= 1024) {
+        setCols(3);
+      } else if (w >= 640) {
+        setCols(2);
+      } else {
+        setCols(1);
+      }
     };
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(el);
+    ro.observe(node);
     return () => ro.disconnect();
-  }, [ref]);
-  return cols;
+  }, [node]);
+  return { setRef: setNode, node, cols };
 }
 
 export default function POSSales() {
@@ -104,6 +117,17 @@ export default function POSSales() {
   const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState("");
+  // Debounced search term: the input stays instant (bound to searchTerm), but
+  // data-fetching hooks (useUnifiedSales/useUnifiedSalesGrouped/useUnifiedSalesTotals)
+  // key off this instead — undebounced, every keystroke changed the query key and
+  // re-triggered useUnifiedSales's auto-load walk (up to ~40 sequential 500-row
+  // pages to the 20k cap), firing dozens of discarded Supabase round trips per
+  // keystroke on busy restaurants.
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSearchTerm(searchTerm), 350);
+    return () => clearTimeout(timeout);
+  }, [searchTerm]);
   // Default to last 30 days for better UX and performance
   const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
@@ -168,7 +192,7 @@ export default function POSSales() {
     loadAllRemaining,
     deleteManualSale,
   } = useUnifiedSales(selectedRestaurant?.restaurant_id || null, {
-    searchTerm,
+    searchTerm: debouncedSearchTerm,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
     categorizationFilter,
@@ -185,7 +209,7 @@ export default function POSSales() {
   } = useUnifiedSalesGrouped(selectedRestaurant?.restaurant_id || null, {
     startDate: startDate || undefined,
     endDate: endDate || undefined,
-    searchTerm,
+    searchTerm: debouncedSearchTerm,
     categorizationFilter,
     recipeFilter,
     sortBy: groupedSortBy,
@@ -200,7 +224,7 @@ export default function POSSales() {
     {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      searchTerm: searchTerm || undefined,
+      searchTerm: debouncedSearchTerm || undefined,
     }
   );
 
@@ -426,12 +450,11 @@ export default function POSSales() {
 
   // Grouped view: row-based virtualization, one row = one lane of responsive
   // grid cards (1/2/3 columns matching the sm:/lg: breakpoints below).
-  const groupedScrollRef = useRef<HTMLDivElement>(null);
-  const groupedColumns = useResponsiveColumns(groupedScrollRef);
+  const { setRef: setGroupedScrollRef, node: groupedScrollNode, cols: groupedColumns } = useResponsiveColumns();
   const groupedRowCount = Math.ceil(groupedSales.length / groupedColumns);
   const groupedVirtualizer = useVirtualizer({
     count: groupedRowCount,
-    getScrollElement: () => groupedScrollRef.current,
+    getScrollElement: () => groupedScrollNode,
     estimateSize: () => 140, // card height incl. gap
     overscan: 4,
   });
@@ -1425,7 +1448,7 @@ export default function POSSales() {
                   <p className="text-[13px] text-muted-foreground">Try adjusting your filters.</p>
                 </div>
               ) : (
-                <div ref={groupedScrollRef} className="max-h-[70vh] overflow-y-auto">
+                <div ref={setGroupedScrollRef} className="max-h-[70vh] overflow-y-auto">
                   <div style={{ height: `${groupedVirtualizer.getTotalSize()}px`, position: 'relative' }}>
                     {groupedVirtualizer.getVirtualItems().map((virtualRow) => {
                       const start = virtualRow.index * groupedColumns;

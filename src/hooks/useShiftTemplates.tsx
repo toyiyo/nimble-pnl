@@ -34,6 +34,16 @@ function keptShiftDescription(keptShiftCount: number): string {
   return `${keptShiftCount} assigned shifts kept`;
 }
 
+/**
+ * Builds the "N pending claim(s) withdrawn" description for the delete toast.
+ * Returns `undefined` when there's nothing to report (no pending claims affected).
+ */
+function pendingClaimsWithdrawnDescription(pendingClaimsCount: number): string | undefined {
+  if (pendingClaimsCount === 0) return undefined;
+  if (pendingClaimsCount === 1) return '1 pending claim withdrawn';
+  return `${pendingClaimsCount} pending claims withdrawn`;
+}
+
 // ---------------------------------------------------------------------------
 // The hook
 // ---------------------------------------------------------------------------
@@ -50,6 +60,13 @@ interface HideTemplateInput {
   id: string;
   name: string;
   keptShiftCount: number;
+}
+
+interface DeleteTemplateInput {
+  id: string;
+  name: string;
+  /** Pending claims withdrawn by the cascade, surfaced in the confirmation toast. */
+  pendingClaimsCount: number;
 }
 
 export function useShiftTemplates(
@@ -187,6 +204,44 @@ export function useShiftTemplates(
     },
   });
 
+  // Hard delete — irreversible cascade (open_shift_claims). No Undo action;
+  // Hide (above) is the reversible alternative. `.select('id')` confirms the
+  // row actually existed so a 0-row result reports "already removed" instead
+  // of lying about success (this is a NEW hook with no sibling mocks, so it's
+  // safe to add `.select()` here — contrast the shared delete-chain lesson).
+  const deleteMutation = useMutation({
+    mutationFn: async ({ id }: DeleteTemplateInput) => {
+      let query = (supabase
+        .from('shift_templates') as any)
+        .delete()
+        .eq('id', id);
+      if (restaurantId) {
+        query = query.eq('restaurant_id', restaurantId);
+      }
+      const { data, error } = await query.select('id');
+      if (error) throw error;
+      return { deletedCount: data?.length ?? 0 };
+    },
+    onSuccess: ({ deletedCount }, variables) => {
+      const { name, pendingClaimsCount } = variables;
+      if (deletedCount === 0) {
+        toast({
+          title: 'Template already removed',
+          description: 'It looks like this template was already deleted.',
+        });
+        return;
+      }
+      invalidateAllStatuses();
+      toast({
+        title: `"${name}" deleted`,
+        description: pendingClaimsWithdrawnDescription(pendingClaimsCount),
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
   return {
     templates: data || [],
     loading: isLoading,
@@ -195,5 +250,6 @@ export function useShiftTemplates(
     updateTemplate: updateMutation.mutateAsync,
     hideTemplate: hideMutation.mutateAsync,
     restoreTemplate: restoreMutation.mutateAsync,
+    deleteTemplate: deleteMutation.mutateAsync,
   };
 }

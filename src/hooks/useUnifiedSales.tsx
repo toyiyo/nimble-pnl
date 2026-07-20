@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
@@ -9,12 +9,15 @@ import { createMappedItemNamesSet, hasRecipeMappingFromSet } from '@/utils/recip
 // Increased from 200 to 500 - virtualization makes larger pages safe
 // and reduces pagination API calls
 const PAGE_SIZE = 500;
+const MAX_AUTO_ROWS = 20000;   // safety valve for the auto-loaded raw list
+const MAX_AUTO_RETRIES = 3;    // stop auto-loading after N consecutive page failures
 
 type UseUnifiedSalesOptions = {
   searchTerm?: string;
   startDate?: string;
   endDate?: string;
   categorizationFilter?: 'all' | 'uncategorized' | 'pending-review' | 'categorized';
+  autoLoadAll?: boolean;
 };
 
 type UnifiedSalesPage = {
@@ -211,6 +214,21 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
         : previousData,
   });
 
+  const { autoLoadAll = false } = options;
+
+  // Escape hatch: start capped at MAX_AUTO_ROWS; loadAllRemaining() lifts it.
+  const [uncapped, setUncapped] = useState(false);
+  const failuresRef = useRef(0);
+
+  // Reset the escape-hatch + failure counter whenever the query key changes
+  // (new restaurant/date/filter) so an expensive uncapped load never persists.
+  useEffect(() => {
+    setUncapped(false);
+    failuresRef.current = 0;
+  }, [restaurantId, normalizedSearchTerm, normalizedStartDate, normalizedEndDate, normalizedCategorizationFilter]);
+
+  const effectiveCap = uncapped ? Infinity : MAX_AUTO_ROWS;
+
   const flatSales = useMemo(() => {
     const salesList = data?.pages.flatMap((page: UnifiedSalesPage) => page?.sales || []) ?? [];
     if (!salesList.length) return [];
@@ -352,6 +370,44 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
       fetchNextPage();
     }
   }, [fetchNextPage, canLoadMore]);
+
+  // Same stale-placeholder guard as canLoadMore, plus the cap check.
+  const reachedCap =
+    !!hasNextPage &&
+    flatSales.length >= effectiveCap &&
+    !(isFetching && !loadingMore);
+
+  // Track consecutive auto-load failures so a transient error halts the walk.
+  useEffect(() => {
+    if (error) failuresRef.current += 1;
+  }, [error]);
+
+  // Auto-load: advance pages until the window is drained or the cap is hit.
+  // Gated on !error to prevent a retry storm — on a failed fetchNextPage,
+  // hasNextPage stays true, so without the error gate this effect would re-fire
+  // in a tight loop.
+  useEffect(() => {
+    if (!autoLoadAll) return;
+    if (
+      hasNextPage &&
+      !isFetching &&
+      !error &&
+      !reachedCap &&
+      failuresRef.current < MAX_AUTO_RETRIES
+    ) {
+      fetchNextPage();
+    }
+    // flatSales.length is included so this effect re-evaluates whenever a new
+    // page lands — hasNextPage/isFetching/reachedCap can be primitively
+    // identical before and after a page fetch (e.g. true/false/false both
+    // times), which would otherwise leave React with nothing to diff and the
+    // auto-load walk would stall after a single page.
+  }, [autoLoadAll, hasNextPage, isFetching, error, reachedCap, fetchNextPage, flatSales.length]);
+
+  const loadAllRemaining = useCallback(() => {
+    failuresRef.current = 0;
+    setUncapped(true);
+  }, []);
 
   const createManualSale = async (saleData: {
     itemName: string;
@@ -632,6 +688,9 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
     // (see canLoadMore above).
     hasMore: canLoadMore,
     loadMoreSales,
+    reachedCap,
+    loadAllRemaining,
+    autoLoading: autoLoadAll && loadingMore,
     unmappedItems,
     fetchUnifiedSales: refetchSales,
     getSalesByDateRange,

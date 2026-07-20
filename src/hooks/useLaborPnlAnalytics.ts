@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { buildSplhGrid } from '@/lib/splhAnalytics';
 import {
@@ -60,11 +60,38 @@ export function useLaborPnlAnalytics(restaurantId: string | null, granularity: L
   const { employees } = useEmployees(restaurantId);
   const avgHourlyRateCents = useMemo(() => computeAvgHourlyRateCents(employees), [employees]);
 
+  // Restaurant-tz "today", kept fresh so a long-lived page (e.g. a back-office
+  // TV dashboard left open across midnight) doesn't keep labelling yesterday as
+  // "today". `getTodayInTimezone` reads `new Date()`, which a `useMemo` can't
+  // re-run on its own as the wall clock rolls over — so we poll once a minute
+  // and on tab focus/visibility, updating state only when the date string
+  // actually changes (the functional updater returns `prev` otherwise, so React
+  // bails out of the re-render on every no-op tick).
+  const [todayStr, setTodayStr] = useState(() => getTodayInTimezone(tz));
+  useEffect(() => {
+    const refresh = () => setTodayStr((prev) => {
+      const next = getTodayInTimezone(tz);
+      return next === prev ? prev : next;
+    });
+    refresh(); // resync immediately when tz changes
+    const intervalId = window.setInterval(refresh, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('focus', onVisible);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('focus', onVisible);
+    };
+  }, [tz]);
+
   // The current period's restaurant-tz date window (design §2.2). `endStr` is
   // today for every granularity; `startStr` widens for week/month.
   const periodWindow = useMemo(
-    () => currentPeriodWindow(granularity, getTodayInTimezone(tz)),
-    [granularity, tz],
+    () => currentPeriodWindow(granularity, todayStr),
+    [granularity, todayStr],
   );
 
   const periodSales = useMemo(

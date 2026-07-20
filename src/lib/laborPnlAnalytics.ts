@@ -405,8 +405,9 @@ export function buildIntradayFinancialSeries(
   const points: FinancialPoint[] = [];
   for (let hour = minHour; hour <= maxHour; hour++) {
     const sales_ = round2(salesByHour.get(hour) ?? 0);
-    const laborHours = round2(hoursByHour.get(hour) ?? 0);
-    const laborCost = round2(laborHours * rate);
+    const laborHoursRaw = hoursByHour.get(hour) ?? 0;
+    const laborHours = round2(laborHoursRaw);
+    const laborCost = round2(laborHoursRaw * rate); // price off raw hours (single rounding)
     const laborPct = sales_ > 0 ? round2((laborCost / sales_) * 100) : null;
     points.push({
       bucketStart: `${dateStr}T${String(hour).padStart(2, '0')}`,

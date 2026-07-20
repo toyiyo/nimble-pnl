@@ -15,12 +15,14 @@ const {
   mockUseSplhData,
   mockUseLaborCostsFromTimeTracking,
   mockUseEmployees,
+  mockGetToday,
 } = vi.hoisted(() => ({
   mockUseRestaurantContext: vi.fn(),
   mockUseStaffingSettings: vi.fn(),
   mockUseSplhData: vi.fn(),
   mockUseLaborCostsFromTimeTracking: vi.fn(),
   mockUseEmployees: vi.fn(),
+  mockGetToday: vi.fn(() => '2026-07-07'),
 }));
 
 vi.mock('@/contexts/RestaurantContext', () => ({
@@ -43,7 +45,7 @@ vi.mock('@/hooks/useEmployees', () => ({
 // "today" = Tue 2026-07-07: Day → 07-07 only; Week → 07-06..07-07; Month → 07-01..07-07.
 vi.mock('@/lib/timezone', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/timezone')>()),
-  getTodayInTimezone: () => '2026-07-07',
+  getTodayInTimezone: mockGetToday,
 }));
 
 import { useLaborPnlAnalytics } from '@/hooks/useLaborPnlAnalytics';
@@ -108,6 +110,7 @@ const createWrapper = () => {
 describe('useLaborPnlAnalytics', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetToday.mockReturnValue('2026-07-07');
   });
 
   it('Day view: intraday (hour-of-day) chart series + a full 7x24 sales-volume grid', async () => {
@@ -165,6 +168,26 @@ describe('useLaborPnlAnalytics', () => {
     // Month by-week → both days collapse into the one Monday-start bucket.
     expect(monthResult.current.series).toHaveLength(1);
     expect(monthResult.current.series[0].bucketStart).toBe('2026-07-06');
+  });
+
+  it('MIDNIGHT ROLLOVER: refreshes the period when the restaurant-tz date advances', async () => {
+    vi.useFakeTimers();
+    try {
+      setup(); // "today" = 07-07 → Day period has the 200 sale
+      const { result } = renderHook(() => useLaborPnlAnalytics('rest-1', 'day'), { wrapper: createWrapper() });
+      expect(result.current.summary.sales).toBe(200);
+
+      // Clock rolls over to 07-08 (no fixture data that day).
+      mockGetToday.mockReturnValue('2026-07-08');
+      act(() => {
+        vi.advanceTimersByTime(60_000); // the 1-min poll fires → period recomputes
+      });
+
+      expect(result.current.summary.sales).toBe(0);
+      expect(result.current.series).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('flags grid cells estimated:true when no sale row carries a derivable hour (daily-spread fallback)', async () => {

@@ -5,6 +5,8 @@ import { Resend } from "https://esm.sh/resend@4.0.0";
 import { sendWebPushToUser, sendWebPushToUsers } from '../_shared/webPushHelper.ts';
 import { selectBroadcastPushUserIds } from '../_shared/webPushFanout.ts';
 import { resolveCreatedTradeEmailRecipients, type DirectedTarget } from '../_shared/tradeEmailAudience.ts';
+import { resolveChannels, type SupabaseLike } from '../_shared/resolveChannels.ts';
+import { TRADE_ACTION_TYPE } from '../_shared/notificationActionTypes.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -369,6 +371,13 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Independent per-channel gating (email/push may be toggled separately).
+    const ch = await resolveChannels(
+      admin as unknown as SupabaseLike,
+      trade.restaurant_id,
+      TRADE_ACTION_TYPE[action]
+    );
+
     // Build shift details object
     const shift = trade.offered_shift;
     // Matches the `restaurants.timezone` column default and Clover/Shift4 fallback.
@@ -427,7 +436,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     let emailData: { id?: string } | undefined;
 
-    if (recipients.length > 0) {
+    if (ch.email && recipients.length > 0) {
       console.log(`Sending shift trade notification to ${recipients.length} recipients`);
 
       // Generate email HTML
@@ -467,87 +476,89 @@ const handler = async (req: Request): Promise<Response> => {
     // Send push notifications to the relevant employees based on action
     const pushUserIds: string[] = [];
 
-    if (action === 'created') {
-      // Push on a newly-offered trade. A DIRECTED trade ("Specific Coworker",
-      // target_employee_id set) is hidden from non-targets by the marketplace filter
-      // (client-side; not RLS-enforced — see task_35a15d77) — so it must push ONLY
-      // that employee, never the whole team, or we'd leak/noise a private offer. An
-      // OPEN marketplace trade (target_employee_id null) broadcasts to active
-      // employees, minus the poster.
-      // Bulk fan-out (single subscription lookup + bounded concurrency). Email
-      // recipients above are unaffected; this only adds the push channel. The
-      // whole block is wrapped so a failure at any step degrades to a logged,
-      // skipped push instead of turning the already-sent email into a false 500.
-      try {
-        let broadcastTargets: string[];
-        if (trade.target_employee_id) {
-          // Reuses the directed-target row resolved above (email lookup) instead of a
-          // second query for the same employee.
-          broadcastTargets = selectBroadcastPushUserIds(
-            directedTargetEmployee ? [directedTargetEmployee] : [],
-            trade.offered_by?.user_id,
-          );
-        } else {
-          const { data: activeEmployees, error: employeesError } = await admin
-            .from('employees')
-            .select('user_id')
-            .eq('restaurant_id', trade.restaurant_id)
-            .eq('is_active', true)
-            .not('user_id', 'is', null);
-          if (employeesError) {
-            console.error('Error fetching active employees for broadcast push:', employeesError);
+    if (ch.push) {
+      if (action === 'created') {
+        // Push on a newly-offered trade. A DIRECTED trade ("Specific Coworker",
+        // target_employee_id set) is hidden from non-targets by the marketplace filter
+        // (client-side; not RLS-enforced — see task_35a15d77) — so it must push ONLY
+        // that employee, never the whole team, or we'd leak/noise a private offer. An
+        // OPEN marketplace trade (target_employee_id null) broadcasts to active
+        // employees, minus the poster.
+        // Bulk fan-out (single subscription lookup + bounded concurrency). Email
+        // recipients above are unaffected; this only adds the push channel. The
+        // whole block is wrapped so a failure at any step degrades to a logged,
+        // skipped push instead of turning the already-sent email into a false 500.
+        try {
+          let broadcastTargets: string[];
+          if (trade.target_employee_id) {
+            // Reuses the directed-target row resolved above (email lookup) instead of a
+            // second query for the same employee.
+            broadcastTargets = selectBroadcastPushUserIds(
+              directedTargetEmployee ? [directedTargetEmployee] : [],
+              trade.offered_by?.user_id,
+            );
+          } else {
+            const { data: activeEmployees, error: employeesError } = await admin
+              .from('employees')
+              .select('user_id')
+              .eq('restaurant_id', trade.restaurant_id)
+              .eq('is_active', true)
+              .not('user_id', 'is', null);
+            if (employeesError) {
+              console.error('Error fetching active employees for broadcast push:', employeesError);
+            }
+            broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
           }
-          broadcastTargets = selectBroadcastPushUserIds(activeEmployees ?? [], trade.offered_by?.user_id);
+          await sendWebPushToUsers(admin, broadcastTargets, trade.restaurant_id, {
+            title: content.heading,
+            body: 'A teammate offered a shift for trade. Tap to view.',
+            url: EMPLOYEE_SHIFTS_ROUTE,
+            tag: `trade-created-${tradeId}`,
+          });
+        } catch (e) {
+          console.error('Broadcast web push failed:', e);
         }
-        await sendWebPushToUsers(admin, broadcastTargets, trade.restaurant_id, {
-          title: content.heading,
-          body: 'A teammate offered a shift for trade. Tap to view.',
-          url: EMPLOYEE_SHIFTS_ROUTE,
-          tag: `trade-created-${tradeId}`,
-        });
-      } catch (e) {
-        console.error('Broadcast web push failed:', e);
-      }
-    } else if (action === 'accepted') {
-      // Notify the employee who offered the shift
-      if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
-    } else if (action === 'approved' || action === 'rejected') {
-      // Notify both involved employees
-      if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
-      if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
-    } else if (action === 'cancelled') {
-      // Notify the employee who had accepted
-      if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
-    }
-
-    for (const userId of [...new Set(pushUserIds)]) {
-      try {
-        await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({
-            user_id: userId,
-            title: 'Shift Trade Request',
-            body: 'Someone wants to trade a shift with you',
-            data: { route: EMPLOYEE_SHIFTS_ROUTE },
-          }),
-        });
-      } catch (e) {
-        console.error('Push notification failed:', e);
+      } else if (action === 'accepted') {
+        // Notify the employee who offered the shift
+        if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
+      } else if (action === 'approved' || action === 'rejected') {
+        // Notify both involved employees
+        if (trade.offered_by?.user_id) pushUserIds.push(trade.offered_by.user_id);
+        if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
+      } else if (action === 'cancelled') {
+        // Notify the employee who had accepted
+        if (trade.accepted_by?.user_id) pushUserIds.push(trade.accepted_by.user_id);
       }
 
-      try {
-        await sendWebPushToUser(admin, userId, trade.restaurant_id, {
-          title: 'Shift Trade Update',
-          body: content.subject(employeeName),
-          url: EMPLOYEE_SHIFTS_ROUTE,
-          tag: `trade-${action}-${tradeId}`,
-        });
-      } catch (e) {
-        console.error('Web push failed:', e);
+      for (const userId of [...new Set(pushUserIds)]) {
+        try {
+          await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+            },
+            body: JSON.stringify({
+              user_id: userId,
+              title: 'Shift Trade Request',
+              body: 'Someone wants to trade a shift with you',
+              data: { route: EMPLOYEE_SHIFTS_ROUTE },
+            }),
+          });
+        } catch (e) {
+          console.error('Push notification failed:', e);
+        }
+
+        try {
+          await sendWebPushToUser(admin, userId, trade.restaurant_id, {
+            title: 'Shift Trade Update',
+            body: content.subject(employeeName),
+            url: EMPLOYEE_SHIFTS_ROUTE,
+            tag: `trade-${action}-${tradeId}`,
+          });
+        } catch (e) {
+          console.error('Web push failed:', e);
+        }
       }
     }
 

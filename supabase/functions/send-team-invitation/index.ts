@@ -194,73 +194,78 @@ const handler = async (req: Request): Promise<Response> => {
     const friendlyRole = roleLabels[role] || role;
     const isCollaborator = role.startsWith('collaborator_');
 
-    // Send invitation email
-    try {
-      const emailResponse = await resend.emails.send({
-        from: "EasyShiftHQ <notifications@easyshifthq.com>",
-        to: [email],
-        subject: isCollaborator
-          ? `You're invited to collaborate with ${restaurant.name}`
-          : `You're invited to join ${restaurant.name}`,
-        html: `
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
-            ${generateHeader()}
+    // Send invitation email. A team invite is TRANSACTIONAL — the email carries the
+    // only copy of the accept link (the token is hashed/unrecoverable server-side),
+    // so it is NOT gated by the notification channel matrix (team_invite is
+    // deliberately excluded from the catalog) and always sends.
+    {
+      try {
+        const emailResponse = await resend.emails.send({
+          from: "EasyShiftHQ <notifications@easyshifthq.com>",
+          to: [email],
+          subject: isCollaborator
+            ? `You're invited to collaborate with ${restaurant.name}`
+            : `You're invited to join ${restaurant.name}`,
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+              ${generateHeader()}
 
-            <!-- Content -->
-            <div style="padding: 40px 32px; background: #ffffff;">
-              <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">${isCollaborator ? `You're invited to collaborate with ${restaurant.name}` : `You're invited to join ${restaurant.name}`}</h1>
+              <!-- Content -->
+              <div style="padding: 40px 32px; background: #ffffff;">
+                <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">${isCollaborator ? `You're invited to collaborate with ${restaurant.name}` : `You're invited to join ${restaurant.name}`}</h1>
 
-              <p style="color: #6b7280; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
-                You've been invited to ${isCollaborator ? 'collaborate with' : 'join'} <strong style="color: #1f2937;">${restaurant.name}</strong> as ${isCollaborator ? 'an' : 'a'} <strong style="color: #1f2937;">${friendlyRole}</strong> on EasyShiftHQ.
-              </p>
-              
-              <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid #10b981;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Restaurant:</td>
-                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${restaurant.name}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Role:</td>
-                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${friendlyRole}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Expires:</td>
-                    <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${new Date(invitation.expires_at).toLocaleDateString()}</td>
-                  </tr>
-                </table>
+                <p style="color: #6b7280; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
+                  You've been invited to ${isCollaborator ? 'collaborate with' : 'join'} <strong style="color: #1f2937;">${restaurant.name}</strong> as ${isCollaborator ? 'an' : 'a'} <strong style="color: #1f2937;">${friendlyRole}</strong> on EasyShiftHQ.
+                </p>
+
+                <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid #10b981;">
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Restaurant:</td>
+                      <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${restaurant.name}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Role:</td>
+                      <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${friendlyRole}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 6px 0; color: #6b7280; font-size: 14px; font-weight: 600;">Expires:</td>
+                      <td style="padding: 6px 0; color: #1f2937; font-size: 14px; text-align: right;">${new Date(invitation.expires_at).toLocaleDateString()}</td>
+                    </tr>
+                  </table>
+                </div>
+
+                <div style="text-align: center; margin: 32px 0;">
+                  <a href="${invitationUrl}"
+                     style="background-color: #059669; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff !important; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); mso-padding-alt: 14px 32px; border: 2px solid #059669;">
+                    <span style="color: #ffffff !important;">Accept Invitation</span>
+                  </a>
+                </div>
+
+                <p style="color: #9ca3af; font-size: 14px; margin: 32px 0 0 0; line-height: 1.6;">
+                  This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
+                </p>
               </div>
-              
-              <div style="text-align: center; margin: 32px 0;">
-                <a href="${invitationUrl}" 
-                   style="background-color: #059669; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: #ffffff !important; padding: 14px 32px; text-decoration: none; border-radius: 8px; display: inline-block; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3); mso-padding-alt: 14px 32px; border: 2px solid #059669;">
-                  <span style="color: #ffffff !important;">Accept Invitation</span>
-                </a>
-              </div>
-              
-              <p style="color: #9ca3af; font-size: 14px; margin: 32px 0 0 0; line-height: 1.6;">
-                This invitation will expire in 7 days. If you didn't expect this invitation, you can safely ignore this email.
-              </p>
-            </div>
-            
-            <!-- Footer -->
-            <div style="background: #f9fafb; padding: 24px 32px; border-radius: 0 0 8px 8px; border-top: 1px solid #e5e7eb;">
-              <p style="color: #9ca3af; font-size: 13px; text-align: center; margin: 0; line-height: 1.5;">
-                <strong style="color: #6b7280;">EasyShiftHQ</strong><br>
-                Restaurant Operations Management System
-              </p>
-              <p style="color: #d1d5db; font-size: 12px; text-align: center; margin: 12px 0 0 0;">
-                © ${new Date().getFullYear()} EasyShiftHQ. All rights reserved.
-              </p>
-            </div>
-          </div>
-        `,
-      });
 
-      console.log("Invitation email sent successfully:", emailResponse);
-    } catch (emailError) {
-      console.error("Failed to send invitation email:", emailError);
-      // Don't fail the entire request if email fails - invitation is still created
+              <!-- Footer -->
+              <div style="background: #f9fafb; padding: 24px 32px; border-radius: 0 0 8px 8px; border-top: 1px solid #e5e7eb;">
+                <p style="color: #9ca3af; font-size: 13px; text-align: center; margin: 0; line-height: 1.5;">
+                  <strong style="color: #6b7280;">EasyShiftHQ</strong><br>
+                  Restaurant Operations Management System
+                </p>
+                <p style="color: #d1d5db; font-size: 12px; text-align: center; margin: 12px 0 0 0;">
+                  © ${new Date().getFullYear()} EasyShiftHQ. All rights reserved.
+                </p>
+              </div>
+            </div>
+          `,
+        });
+
+        console.log("Invitation email sent successfully:", emailResponse);
+      } catch (emailError) {
+        console.error("Failed to send invitation email:", emailError);
+        // Don't fail the entire request if email fails - invitation is still created
+      }
     }
     return new Response(
       JSON.stringify({ 

@@ -272,6 +272,17 @@ const bulkProcessHistoricalSales = useCallback(async (
 | pgTAP: tenant authz | same file | calling with a `p_restaurant_id` the current role can't access **raises** `Not authorized for this restaurant`; authorized path succeeds. |
 | unit: hook loop | `tests/unit/useBulkInventoryDeduction.test.ts` | mocked rpc returns 2 batches then done → loops, accumulates totals, threads cursor, stops on `done`, calls `onProgress` per batch; `MAX_BATCHES` guard throws; rpc error → partial-total toast + `invalidateQueries` called; success → `invalidateQueries` called. |
 
+## Post-review update (Codex P1)
+
+The hook's original `MAX_BATCHES = 1000` fixed cap was replaced with a
+**non-advancing-cursor guard + a very high absolute backstop** (`ITERATION_BACKSTOP`).
+Reason: already-processed rows still consume batch iterations (as `skipped`), so a
+low fixed cap would strand any range larger than `cap × BATCH_SIZE` — a re-run
+re-walks the processed prefix and re-hits the cap before reaching the remaining
+rows. Because the keyset cursor advances strictly every non-final batch, the loop
+provably terminates on its own; the only real infinite-loop risk is a backend
+cursor that stalls, which the non-advancement guard catches immediately.
+
 ## Decided trade-offs
 
 - **User stays on the page during backfill.** Accepted; batches are fast and

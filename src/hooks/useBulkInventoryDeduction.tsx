@@ -29,9 +29,16 @@ interface BulkBatchResponse extends BulkCounts {
   next_cursor: BulkBatchCursor | null;
 }
 
-// 500k-row safety cap ([2026-05-17] bound total, not per-call).
-const MAX_BATCHES = 1000;
 const BATCH_SIZE = 500;
+// The keyset cursor advances strictly on every non-final batch, so the loop
+// terminates on its own once the range is exhausted. Do NOT impose a low
+// fixed batch cap: it would strand any range larger than cap×BATCH_SIZE,
+// because a re-run re-walks the already-processed prefix (counted as skipped
+// batches) and would hit the same cap before reaching the remaining rows.
+// Instead, guard against a *non-advancing* cursor (a backend stall — the only
+// real infinite-loop risk), backed by a very high absolute backstop.
+// ([2026-05-17] bound total — but bound it above real workloads, not below.)
+const ITERATION_BACKSTOP = 1_000_000; // ~500M rows; anomaly guard only
 
 export const useBulkInventoryDeduction = () => {
   const [loading, setLoading] = useState(false);
@@ -57,12 +64,6 @@ export const useBulkInventoryDeduction = () => {
     const refreshDerivedQueries = () => queryClient.invalidateQueries();
     try {
       while (!done) {
-        if (++batches > MAX_BATCHES) {
-          throw new Error(
-            `Reached the ${MAX_BATCHES}-batch safety cap. Progress was saved — re-run to continue (already-processed sales are skipped).`
-          );
-        }
-
         const { data, error } = await supabase.rpc('bulk_process_historical_sales', {
           p_restaurant_id: restaurantId,
           p_start_date: startDate,
@@ -77,13 +78,25 @@ export const useBulkInventoryDeduction = () => {
         if (!data) throw new Error('Empty response from bulk_process_historical_sales');
 
         const batch = data as unknown as BulkBatchResponse;
+        batches += 1;
         totals.processed += batch.processed;
         totals.skipped += batch.skipped;
         totals.errors += batch.errors;
+
+        // Non-advancement guard: a non-final batch must return a cursor strictly
+        // past the previous one (id is a unique, monotonic PK). An identical id
+        // means the backend cursor stalled — abort instead of looping forever.
+        if (!batch.done && batch.next_cursor && cursor && batch.next_cursor.id === cursor.id) {
+          throw new Error('Backfill stalled: the cursor did not advance. Aborted to avoid an infinite loop.');
+        }
+
         cursor = batch.next_cursor;
         done = batch.done;
-
         onProgress?.({ ...totals, batches });
+
+        if (batches >= ITERATION_BACKSTOP) {
+          throw new Error('Backfill exceeded the safety iteration backstop; aborted.');
+        }
       }
 
       refreshDerivedQueries();

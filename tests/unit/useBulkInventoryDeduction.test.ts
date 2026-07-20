@@ -145,10 +145,12 @@ describe('useBulkInventoryDeduction batch loop', () => {
     expect(call![0].description).toMatch(/resum|re-run/i);
   });
 
-  it('stops with a destructive cap toast once MAX_BATCHES is exceeded, without ever finishing', async () => {
-    // Always reports done: false with a fresh cursor, so the loop would spin
-    // forever without a hard cap.
-    rpcMock.mockImplementation((_fn: string, args: Record<string, unknown>) =>
+  it('aborts (does not spin forever) when the backend cursor stops advancing', async () => {
+    // Backend bug: always reports done:false with the SAME cursor id. A fixed
+    // batch cap would let this run for thousands of iterations (and would strand
+    // legitimately huge ranges); instead the hook must detect the non-advancing
+    // cursor and abort after it repeats.
+    rpcMock.mockImplementation(() =>
       Promise.resolve({
         data: {
           processed: 1,
@@ -156,7 +158,7 @@ describe('useBulkInventoryDeduction batch loop', () => {
           errors: 0,
           batch_count: 500,
           done: false,
-          next_cursor: { sale_date: '2026-01-01', created_at: '2026-01-01T00:00:00Z', id: `sale-${args.p_batch_size}` },
+          next_cursor: { sale_date: '2026-01-01', created_at: '2026-01-01T00:00:00Z', id: 'stuck-cursor' },
         },
         error: null,
       }),
@@ -174,15 +176,13 @@ describe('useBulkInventoryDeduction batch loop', () => {
     });
 
     expect(summary).toBeNull();
-    // MAX_BATCHES = 1000 per design §3: the loop makes exactly 1000 RPC
-    // calls, then throws before issuing a 1001st.
-    expect(rpcMock).toHaveBeenCalledTimes(1000);
+    // Call 1 establishes the cursor; call 2 reveals it didn't advance -> abort.
+    expect(rpcMock).toHaveBeenCalledTimes(2);
 
     await waitFor(() => expect(invalidateQueriesSpy).toHaveBeenCalledTimes(1));
 
     const call = toastMock.mock.calls.find((c) => c[0].variant === 'destructive');
     expect(call).toBeTruthy();
-    expect(call![0].description).toMatch(/1000|1,000/);
-    expect(call![0].description).toMatch(/cap|re-run|resum/i);
-  }, 15000);
+    expect(call![0].description).toMatch(/advance|stall|infinite/i);
+  });
 });

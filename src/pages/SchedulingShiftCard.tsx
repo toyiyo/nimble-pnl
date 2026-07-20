@@ -61,12 +61,22 @@ export const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: 
     return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
   }, []);
 
-  const conflictParams = useMemo(() => ({
-    employeeId: shift.employee_id,
-    restaurantId: shift.restaurant_id,
-    startTime: formatToUTC(shift.start_time),
-    endTime: formatToUTC(shift.end_time),
-  }), [shift, formatToUTC]);
+  // Conflicts are irrelevant for cancelled/completed shifts, so skip the RPCs
+  // (passing null disables useCheckConflicts). ShiftCard is rendered once per
+  // shift across both the desktop grid and the mobile view, so avoiding the
+  // two conflict RPCs for inert shifts trims real round-trips on busy weeks.
+  const conflictParams = useMemo(
+    () =>
+      shift.status === 'cancelled' || shift.status === 'completed'
+        ? null
+        : {
+            employeeId: shift.employee_id,
+            restaurantId: shift.restaurant_id,
+            startTime: formatToUTC(shift.start_time),
+            endTime: formatToUTC(shift.end_time),
+          },
+    [shift, formatToUTC],
+  );
 
   const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
 

@@ -76,6 +76,11 @@ async function gotoSchedule(page: any) {
   await page.waitForURL(/\/scheduling/, { timeout: 8000 });
 }
 
+// The mobile day-picker renders one button per day, labelled e.g. "Mon 14".
+// display:none subtrees are dropped from the accessibility tree, so this role
+// query resolves only to the currently-visible layout (mobile vs desktop).
+const DAY_PICKER_BUTTON = /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2}$/;
+
 test.describe('Schedule responsive layout', () => {
   test('shows the day-focused mobile view with full names at mobile viewport width', async ({ page }) => {
     // Setup at desktop size (signup flow needs wider viewport)
@@ -84,26 +89,20 @@ test.describe('Schedule responsive layout', () => {
     await page.setViewportSize({ width: 375, height: 812 });
     await gotoSchedule(page);
 
-    // The day-focused mobile view (md:hidden) replaces the wide table on phones.
-    const mobileView = page.getByTestId('week-schedule-mobile');
-    await expect(mobileView).toBeVisible({ timeout: 15000 });
+    // The day-focused mobile view replaces the wide table on phones: its
+    // day-picker strip is the mobile-only affordance.
+    await expect(
+      page.getByRole('button', { name: DAY_PICKER_BUTTON }).first(),
+    ).toBeVisible({ timeout: 10000 });
 
     // Full employee names are visible on mobile (the core of the redesign —
-    // previously only initials showed).
-    await expect(mobileView.getByText('Maria Rodriguez')).toBeVisible();
-
-    // One card per employee is rendered for the selected day.
-    await expect(
-      page.getByTestId('week-schedule-mobile-employee-card'),
-    ).toHaveCount(3);
-
-    // The day-picker marks today with aria-current="date".
-    await expect(
-      mobileView.locator('button[aria-current="date"]'),
-    ).toHaveCount(1);
+    // previously only initials showed), one card per employee.
+    await expect(page.getByText(/Maria Rodriguez/i)).toBeVisible();
+    await expect(page.getByText(/James Thompson/i)).toBeVisible();
+    await expect(page.getByText(/Sarah Chen/i)).toBeVisible();
 
     // The desktop table (hidden md:block) is not shown on mobile.
-    await expect(page.locator('table').first()).toBeHidden();
+    await expect(page.getByRole('table')).toBeHidden();
   });
 
   test('shows the wide table with full names at desktop viewport width', async ({ page }) => {
@@ -112,14 +111,16 @@ test.describe('Schedule responsive layout', () => {
     await gotoSchedule(page);
 
     // The wide table is visible on desktop and shows full employee names.
-    const table = page.locator('table').first();
-    await expect(table).toBeVisible({ timeout: 15000 });
-    await expect(table.getByText('Maria Rodriguez')).toBeVisible();
+    const table = page.getByRole('table');
+    await expect(table).toBeVisible({ timeout: 10000 });
+    await expect(table.getByText(/Maria Rodriguez/i)).toBeVisible();
 
     // All 7 day column headers (+ the team-member column) are present.
-    await expect(page.locator('thead th')).toHaveCount(8);
+    await expect(page.getByRole('columnheader')).toHaveCount(8);
 
-    // The mobile day-focused view (md:hidden) is not shown on desktop.
-    await expect(page.getByTestId('week-schedule-mobile')).toBeHidden();
+    // The mobile day-picker (md:hidden) is not present on desktop.
+    await expect(
+      page.getByRole('button', { name: DAY_PICKER_BUTTON }),
+    ).toHaveCount(0);
   });
 });

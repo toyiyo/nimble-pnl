@@ -15,6 +15,7 @@ import { useShiftTrades } from '@/hooks/useShiftTrades';
 import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { TimeOffTabBadge } from './SchedulingTimeOffTabBadge';
+import { ScheduleDayHeaderContent, TODAY_HEADER_CAP_RULE_CLASS } from './SchedulingDayHeaderContent';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
@@ -1493,7 +1494,7 @@ const Scheduling = () => {
                           key={day.toISOString()}
                           className={cn(
                             "text-center p-2 md:p-3 font-medium min-w-[70px] md:min-w-[130px] transition-colors",
-                            dayIsToday && "bg-primary/5"
+                            dayIsToday && cn("bg-primary/5", TODAY_HEADER_CAP_RULE_CLASS)
                           )}
                         >
                           {selectionMode ? (
@@ -1503,31 +1504,10 @@ const Scheduling = () => {
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
                               aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
                             >
-                              <div className="text-xs uppercase tracking-wider font-semibold">
-                                {format(day, 'EEE')}
-                              </div>
-                              <div className="text-sm mt-0.5 font-semibold">
-                                {format(day, 'MMM d')}
-                              </div>
+                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize />
                             </button>
                           ) : (
-                            <>
-                              <div className={cn(
-                                "text-xs uppercase tracking-wider",
-                                dayIsToday ? "text-primary font-semibold" : "text-muted-foreground"
-                              )}>
-                                {format(day, 'EEE')}
-                              </div>
-                              <div className={cn(
-                                "text-sm mt-0.5",
-                                dayIsToday ? "text-primary font-semibold" : "text-foreground"
-                              )}>
-                                {format(day, 'MMM d')}
-                              </div>
-                              {dayIsToday && (
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-1.5 animate-pulse" />
-                              )}
-                            </>
+                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} />
                           )}
                         </th>
                       );

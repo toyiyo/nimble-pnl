@@ -4,10 +4,11 @@ import { describe, it, expect } from 'vitest';
 
 // Task 7 (design §"ShiftCard keyboard access"): ShiftCard's clickable surface
 // is a bare `<div onClick>` with no keyboard support. This is a source-text
-// pin test (mirrors tests/unit/scheduleRosterContext.classes.test.ts) since
-// ShiftCard is a module-private component inside Scheduling.tsx, not exported
-// for direct render-testing.
-const SRC = readFileSync(resolve(__dirname, '../../src/pages/Scheduling.tsx'), 'utf8');
+// pin test (mirrors tests/unit/scheduleRosterContext.classes.test.ts). ShiftCard
+// was extracted to SchedulingShiftCard.tsx in Task 8 (so WeekScheduleMobile can
+// import it without a circular dependency on Scheduling.tsx) — updated to read
+// from its new home.
+const SRC = readFileSync(resolve(__dirname, '../../src/pages/SchedulingShiftCard.tsx'), 'utf8');
 
 // Isolate the ShiftCard component body so assertions can't accidentally match
 // unrelated keyboard/focus code elsewhere in this large file.

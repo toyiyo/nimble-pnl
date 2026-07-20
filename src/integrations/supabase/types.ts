@@ -9842,6 +9842,10 @@ export type Database = {
       }
       bulk_process_historical_sales: {
         Args: {
+          p_after_created_at?: string
+          p_after_id?: string
+          p_after_sale_date?: string
+          p_batch_size?: number
           p_end_date: string
           p_restaurant_id: string
           p_start_date: string

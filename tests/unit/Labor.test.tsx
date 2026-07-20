@@ -103,8 +103,12 @@ const GRID: SalesVolumeCell[] = [
 function mockHookReturn(overrides: Record<string, unknown> = {}) {
   return {
     series: POINTS,
+    seriesIsShapeEstimate: false,
     grid: GRID,
     summary: baseSummary(),
+    // Staffing callouts now come from the hook (series-derived), not summary.
+    overWindows: [],
+    underWindows: [],
     targetPct: 22,
     capped: false,
     hasData: true,
@@ -240,10 +244,8 @@ describe('Labor page', () => {
   it('renders staffing callouts with a $ estimate for over/under windows', () => {
     mockUseLaborPnlAnalytics.mockReturnValue(
       mockHookReturn({
-        summary: baseSummary({
-          overWindows: [{ startLabel: '2026-07-06', endLabel: '2026-07-07', bucketCount: 2 }],
-          underWindows: [{ startLabel: '2026-07-08', endLabel: '2026-07-08', bucketCount: 1 }],
-        }),
+        overWindows: [{ startLabel: '2026-07-06', endLabel: '2026-07-07', bucketCount: 2 }],
+        underWindows: [{ startLabel: '2026-07-08', endLabel: '2026-07-08', bucketCount: 1 }],
       }),
     );
     renderPage();

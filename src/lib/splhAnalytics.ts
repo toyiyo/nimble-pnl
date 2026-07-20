@@ -160,7 +160,7 @@ export function classifySplh(splh: number, target: number): 'lean' | 'balanced' 
   return 'balanced';
 }
 
-function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
+export function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
   if (sale.sold_at) {
     // `Intl.DateTimeFormat.formatToParts` throws a RangeError on an Invalid
     // Date rather than returning parts, so the NaN-ms check must happen

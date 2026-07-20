@@ -9,9 +9,11 @@
  * what my team cost me" with payroll-grade labor $ (see design §1.1/§4).
  */
 
-import { mondayOf } from './splhAnalytics';
-import type { SplhPoint, SplhGridCell } from './splhAnalytics';
+import { mondayOf, hourOfSale, distributeWorkedHours } from './splhAnalytics';
+import type { SplhPoint, SplhGridCell, SplhSaleRow } from './splhAnalytics';
+import { formatCoverageHour } from './coverageSummary';
 import type { LaborCostData } from '@/hooks/useLaborCostsFromTimeTracking';
+import type { WorkSession } from '@/utils/timePunchProcessing';
 
 /** Per-bucket balance vs. the labor-% target (design §3). */
 export type BalanceState = 'over' | 'balanced' | 'under';
@@ -162,6 +164,14 @@ function round1(n: number): number {
  * labor, or both — a labor-only or sales-only day is never dropped (design
  * §4/§6). `laborPct` is `null` — never `Infinity` — when the bucket's `sales`
  * is `<= 0` (design §6), matching `FinancialPoint.laborPct` / `classifyBalance`.
+ *
+ * KNOWN LIMITATION (design §10.5, accepted): `dailySales` buckets by
+ * `unified_sales.sale_date` (restaurant-local) while `dailyLabor.date` comes
+ * from `calculateActualLaborCost`, which reads the JS runtime's *local*
+ * calendar day. When the viewer's device tz differs from the restaurant tz, a
+ * sale/punch near local midnight can land in adjacent day buckets. Left as-is
+ * so labor $ stays identical to the Payroll page (a tz-aware fix belongs in
+ * `calculateActualLaborCost`, app-wide, with its own review).
  */
 export function buildFinancialSeries(
   dailySales: SplhPoint[],
@@ -242,7 +252,7 @@ export function buildSalesVolumeGrid(
  * `buildFinancialSeries` already drops no buckets (outer join), so for a
  * caller-supplied window without gaps the two coincide.
  */
-function extractBalanceWindows(
+export function extractBalanceWindows(
   points: readonly FinancialPoint[],
   state: BalanceState,
 ): LaborBalanceWindow[] {
@@ -320,6 +330,95 @@ export function summarizeLaborPnl(
   }
 
   return { sales, laborCost, laborPct, revPerLaborHr, verdict, verdictTone, overWindows, underWindows };
+}
+
+/**
+ * The current period's restaurant-local date window for the `/labor` page's
+ * Day/Week/Month toggle (design §2.2). The toggle is a *period* selector, not
+ * just a re-bucketing of a fixed window: **Day** = today, **Week** = Monday of
+ * this week → today, **Month** = the 1st of this month → today. `todayStr` is
+ * the restaurant-tz "today" (`getTodayInTimezone`), passed in so this stays
+ * pure/TZ-portable. Both bounds are inclusive `YYYY-MM-DD` strings.
+ */
+export function currentPeriodWindow(
+  granularity: LaborGranularity,
+  todayStr: string,
+): { startStr: string; endStr: string } {
+  if (granularity === 'week') return { startStr: mondayOf(todayStr), endStr: todayStr };
+  if (granularity === 'month') return { startStr: `${monthKeyOf(todayStr)}-01`, endStr: todayStr };
+  return { startStr: todayStr, endStr: todayStr };
+}
+
+/** Inclusive `[startStr, endStr]` membership for ISO `YYYY-MM-DD` strings
+ * (lexicographic compare is correct for zero-padded ISO dates). */
+export function dateInWindow(dateStr: string, startStr: string, endStr: string): boolean {
+  return dateStr >= startStr && dateStr <= endStr;
+}
+
+/**
+ * Intraday (hour-of-day) financial series for the Day view's chart (design
+ * §2.2 "hour-of-day (Day)", §4/§9). Buckets a single restaurant-local
+ * `dateStr`'s real sales by hour (`hourOfSale`, reused from `splhAnalytics`)
+ * and its worked hours by hour (`distributeWorkedHours`), then prices labor as
+ * `laborHours × avgHourlyRateCents` — an **average-rate shape estimate**, NOT
+ * payroll-grade: the payroll engine (`calculateActualLaborCost`) attributes
+ * cost at the day level, so sub-day labor $ can only be approximated (design
+ * §9). The Day view's KPI row + verdict still come from the day's *payroll-grade*
+ * daily total (design §4) — this series only drives the chart's shape.
+ *
+ * Emits one point per hour across the **contiguous** span from the first to the
+ * last active hour (any hour with sales or labor), zero-filling gaps so the
+ * area/line/ribbon x-axes stay aligned (mirrors `buildFinancialSeries`'s dense
+ * output). `laborPct` is `null` — never `Infinity` — for an hour with no sales
+ * (design §6). Returns `[]` when the day has no sales and no labor.
+ */
+export function buildIntradayFinancialSeries(
+  sales: SplhSaleRow[],
+  sessions: WorkSession[],
+  tz: string,
+  dateStr: string,
+  avgHourlyRateCents: number,
+  targetPct: number,
+): FinancialPoint[] {
+  const salesByHour = new Map<number, number>();
+  for (const s of sales) {
+    if (s.sale_date !== dateStr) continue;
+    const hour = hourOfSale(s, tz);
+    if (hour === null) continue;
+    salesByHour.set(hour, (salesByHour.get(hour) ?? 0) + Number(s.total_price));
+  }
+
+  const hoursByHour = new Map<number, number>();
+  for (const session of sessions) {
+    for (const c of distributeWorkedHours(session, tz)) {
+      if (c.localDate !== dateStr) continue;
+      hoursByHour.set(c.hour, (hoursByHour.get(c.hour) ?? 0) + c.hours);
+    }
+  }
+
+  const activeHours = [...salesByHour.keys(), ...hoursByHour.keys()];
+  if (activeHours.length === 0) return [];
+  const minHour = Math.min(...activeHours);
+  const maxHour = Math.max(...activeHours);
+  const rate = avgHourlyRateCents / 100;
+
+  const points: FinancialPoint[] = [];
+  for (let hour = minHour; hour <= maxHour; hour++) {
+    const sales_ = round2(salesByHour.get(hour) ?? 0);
+    const laborHours = round2(hoursByHour.get(hour) ?? 0);
+    const laborCost = round2(laborHours * rate);
+    const laborPct = sales_ > 0 ? round2((laborCost / sales_) * 100) : null;
+    points.push({
+      bucketStart: `${dateStr}T${String(hour).padStart(2, '0')}`,
+      label: formatCoverageHour(hour),
+      sales: sales_,
+      laborCost,
+      laborHours,
+      laborPct,
+      balanceState: classifyBalance(laborPct, targetPct),
+    });
+  }
+  return points;
 }
 
 /**

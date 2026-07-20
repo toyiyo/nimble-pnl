@@ -103,13 +103,12 @@ const CALLOUT_LABEL: Record<'over' | 'under', string> = {
  * the three loading/error/empty states and layout, mirroring
  * `LaborEfficiencyPanel`'s structure for the scheduling surface.
  *
- * The design's Day/Week/Month toggle *is* this page's period control — there
- * is no separate prior-period navigator or KPI delta, consistent with how
- * `LaborPnlCard` (E1, dashboard card) already resolved the same "vs. prior
- * period" wording in design §2.1 as delta-vs-*target* (already shown via the
- * tone-colored KPIs + verdict), not delta-vs-a-previous-window — no hook in
- * Phase A/C computes or fetches a prior comparable period, and building that
- * is out of this page-composition task's scope.
+ * The Day/Week/Month toggle *is* this page's period control: it selects
+ * today / this week / this month, and the KPI row, verdict, chart, and callouts
+ * all reflect the chosen period (see `useLaborPnlAnalytics`). There is no
+ * separate prior-period navigator or delta-vs-previous-window — "vs. prior
+ * period" (design §2.1) is expressed as delta-vs-*target* via the tone-colored
+ * verdict, not a fetched comparison window.
  */
 export default function Labor() {
   const { selectedRestaurant } = useRestaurantContext();
@@ -118,8 +117,11 @@ export default function Labor() {
 
   const {
     series,
+    seriesIsShapeEstimate,
     grid,
     summary,
+    overWindows,
+    underWindows,
     targetPct,
     capped,
     hasData,
@@ -231,15 +233,20 @@ export default function Labor() {
       <div className="rounded-xl border border-border/40 bg-background p-4 space-y-3">
         <h2 className="text-[13px] font-semibold text-foreground">Sales vs. labor</h2>
         <DemandVsStaffingChart points={series} targetPct={targetPct} granularity={granularity} />
+        {seriesIsShapeEstimate && (
+          <p className="text-[12px] text-muted-foreground">
+            Hourly labor is estimated from an average wage; the totals above are payroll-grade.
+          </p>
+        )}
       </div>
 
-      {(summary.overWindows.length > 0 || summary.underWindows.length > 0) && (
+      {(overWindows.length > 0 || underWindows.length > 0) && (
         <div className="rounded-xl border border-border/40 bg-muted/30 p-4 space-y-1.5">
           <h2 className="text-[13px] font-semibold text-foreground">Staffing callouts</h2>
           {(
             [
-              ['over', summary.overWindows],
-              ['under', summary.underWindows],
+              ['over', overWindows],
+              ['under', underWindows],
             ] as const
           ).flatMap(([tone, windows]) =>
             windows.map((window) => (

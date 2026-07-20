@@ -256,6 +256,32 @@ target-edit write calls `updateSettings` with `{ target_labor_pct }`.
 - Server-side aggregation RPC (documented follow-up if payloads grow).
 - Forecasting (usePnLAnalyticsFromSource has it; not surfaced here yet).
 
+## 10.5 Phase 7 (code-review) resolutions
+
+- **[critical, fixed] Labor fetch window cut off at midday** (`useLaborPnlCore`):
+  `windowEnd` was midnight-*start* of today; `lookaheadPunchFetchRange` widens
+  only the fetch's end, so evening punches were dropped. Fixed to end-of-day
+  (23:59:59.999) + regression test.
+- **[major, fixed] Day/Week/Month toggle didn't change the period** — it only
+  re-bucketed a fixed 12-week window, so KPIs/verdict were identical across
+  toggles and "Day" plotted ~84 days. Fixed: the toggle now selects the period
+  (today / this week / this month); KPIs + verdict come from the period's
+  **payroll-grade daily** series; the chart shows the period's sub-buckets
+  (Day = hour-of-day intraday, Week = by day, Month = by week). New pure lib
+  (`currentPeriodWindow`, `dateInWindow`, `buildIntradayFinancialSeries`) + tests.
+- **[major, ACCEPTED as documented limitation] Labor/sales day-boundary tz
+  mismatch:** `buildFinancialSeries` joins sales (bucketed by
+  `unified_sales.sale_date`, restaurant-local) with labor (bucketed by
+  `calculateActualLaborCost`, which reads the JS runtime's local calendar day).
+  When the **viewer's device tz differs from the restaurant tz** (traveling /
+  multi-location owner), a punch or sale near local midnight can land in adjacent
+  day buckets. **Accepted, not fixed here:** this is a *pre-existing* behavior
+  shared with the Payroll page (same engine); making `calculateActualLaborCost`
+  tz-aware changes payroll numbers app-wide and needs its own design + review.
+  Fixing it here would break our own "labor $ == Payroll's labor $" guarantee
+  (§4/§9). Tracked as a follow-up. Owner viewing from in-region (the common case)
+  is unaffected.
+
 ## 11. Phase 2.5 design-review resolutions
 
 - **[critical] Fake per-day revenue in `usePnLAnalyticsFromSource`** → dropped that

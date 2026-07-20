@@ -416,3 +416,122 @@ describe('balanceStateClassName', () => {
     expect(balanceStateClassName('none')).toBe('');
   });
 });
+
+// --- Current-period window + intraday series (design §2.2 toggle) ----------
+
+import {
+  currentPeriodWindow,
+  dateInWindow,
+  buildIntradayFinancialSeries,
+  extractBalanceWindows,
+} from '@/lib/laborPnlAnalytics';
+import { mondayOf } from '@/lib/splhAnalytics';
+import type { SplhSaleRow } from '@/lib/splhAnalytics';
+import type { WorkSession } from '@/utils/timePunchProcessing';
+
+function saleRow(sale_date: string, sold_at: string | null, total_price: number): SplhSaleRow {
+  return { sale_date, sale_time: null, sold_at, total_price };
+}
+
+function workSession(clockIn: string, clockOut: string): WorkSession {
+  return {
+    sessionId: clockIn,
+    employee_id: 'e1',
+    employee_name: 'E',
+    clock_in: new Date(clockIn),
+    clock_out: new Date(clockOut),
+    breaks: [],
+    total_minutes: 0,
+    break_minutes: 0,
+    worked_minutes: 0,
+    is_complete: true,
+    has_anomalies: false,
+    anomalies: [],
+  };
+}
+
+describe('currentPeriodWindow', () => {
+  it('day → today..today', () => {
+    expect(currentPeriodWindow('day', '2026-07-22')).toEqual({ startStr: '2026-07-22', endStr: '2026-07-22' });
+  });
+
+  it('week → Monday-of-week..today (reuses splhAnalytics.mondayOf)', () => {
+    const today = '2026-07-22';
+    expect(currentPeriodWindow('week', today)).toEqual({ startStr: mondayOf(today), endStr: today });
+  });
+
+  it('month → first-of-month..today', () => {
+    expect(currentPeriodWindow('month', '2026-07-22')).toEqual({ startStr: '2026-07-01', endStr: '2026-07-22' });
+  });
+});
+
+describe('dateInWindow', () => {
+  it('is inclusive of both bounds', () => {
+    expect(dateInWindow('2026-07-01', '2026-07-01', '2026-07-31')).toBe(true);
+    expect(dateInWindow('2026-07-31', '2026-07-01', '2026-07-31')).toBe(true);
+  });
+  it('excludes dates outside the window', () => {
+    expect(dateInWindow('2026-06-30', '2026-07-01', '2026-07-31')).toBe(false);
+    expect(dateInWindow('2026-08-01', '2026-07-01', '2026-07-31')).toBe(false);
+  });
+});
+
+describe('buildIntradayFinancialSeries', () => {
+  const tz = 'UTC';
+  const day = '2026-07-22';
+
+  it('buckets a day’s sales + worked hours by hour, pricing labor at the avg rate (shape)', () => {
+    const sales = [saleRow(day, `${day}T18:30:00Z`, 200)];
+    const sessions = [workSession(`${day}T18:00:00Z`, `${day}T20:00:00Z`)];
+    // avg rate $20/hr; target 22%
+    const series = buildIntradayFinancialSeries(sales, sessions, tz, day, 2000, 22);
+
+    // contiguous 18..19 (sales at 18, labor at 18 and 19)
+    expect(series.map((p) => p.label)).toEqual(['6 PM', '7 PM']);
+
+    const h18 = series[0];
+    expect(h18.sales).toBe(200);
+    expect(h18.laborHours).toBe(1);
+    expect(h18.laborCost).toBe(20);
+    expect(h18.laborPct).toBe(10); // 20/200
+    expect(h18.balanceState).toBe('under'); // 10 < 22-6
+
+    const h19 = series[1];
+    expect(h19.sales).toBe(0);
+    expect(h19.laborHours).toBe(1);
+    expect(h19.laborPct).toBeNull(); // no sales → never Infinity
+    expect(h19.balanceState).toBe('balanced');
+  });
+
+  it('skips sales whose hour is not derivable and ignores other dates', () => {
+    const sales = [
+      saleRow(day, null, 500), // no sold_at/sale_time → no hour
+      saleRow('2026-07-21', `2026-07-21T12:00:00Z`, 999), // different date
+    ];
+    const sessions = [workSession(`${day}T12:00:00Z`, `${day}T13:00:00Z`)];
+    const series = buildIntradayFinancialSeries(sales, sessions, tz, day, 2000, 22);
+    // only the labor hour 12 is active; no sales bucketed
+    expect(series.map((p) => p.label)).toEqual(['12 PM']);
+    expect(series[0].sales).toBe(0);
+    expect(series[0].laborHours).toBe(1);
+  });
+
+  it('returns [] when the day has no sales and no labor', () => {
+    expect(buildIntradayFinancialSeries([], [], tz, day, 2000, 22)).toEqual([]);
+  });
+});
+
+describe('extractBalanceWindows (exported for hook-level series windows)', () => {
+  it('collapses contiguous same-state runs', () => {
+    const pts = [
+      point('a', 100, 40, 4, 'over'),
+      point('b', 100, 40, 4, 'over'),
+      point('c', 100, 20, 2, 'balanced'),
+      point('d', 100, 5, 1, 'under'),
+    ];
+    const over = extractBalanceWindows(pts, 'over');
+    expect(over).toEqual([{ startLabel: 'a', endLabel: 'b', bucketCount: 2 }]);
+    const under = extractBalanceWindows(pts, 'under');
+    expect(under).toEqual([{ startLabel: 'd', endLabel: 'd', bucketCount: 1 }]);
+  });
+});

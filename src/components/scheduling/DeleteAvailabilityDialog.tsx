@@ -19,10 +19,12 @@ import { describeAvailabilityDeletion } from '@/lib/scheduling/deletionCopy';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
 import { formatHourToTime } from '@/lib/timeUtils';
 import { parseDateOnly, formatDateOnly } from '@/lib/dateOnly';
+import { SeverityPill } from './SeverityPill';
 
 import type { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 
-const WEEKDAY_LABELS = [
+/** Full weekday names — shared with TeamAvailabilityGrid's trash-button aria-label. */
+export const WEEKDAY_LABELS = [
   'Sunday',
   'Monday',
   'Tuesday',
@@ -157,15 +159,7 @@ export function DeleteAvailabilityDialog({
                 <DialogTitle className="text-[17px] font-semibold text-foreground">
                   {title}
                 </DialogTitle>
-                <span
-                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0 ${
-                    copy.severity === 'high'
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {copy.severity === 'high' ? 'High impact' : 'Low impact'}
-                </span>
+                <SeverityPill severity={copy.severity} />
               </div>
               <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 {personName} · {whenLabel} {timeLabel}

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { OpenShift } from '@/types/scheduling';
+import type { TemplateDeletionImpact } from '@/lib/scheduling/deletionCopy';
 
 /**
  * Forward-looking window for "upcoming open spots". Bounded (not "all
@@ -9,12 +10,6 @@ import type { OpenShift } from '@/types/scheduling';
  * to this template client-side; bounded/cheap at current scale).
  */
 const OPEN_SPOTS_WINDOW_DAYS = 28;
-
-export interface TemplateDeletionImpact {
-  pendingClaims: { count: number; names: string[] };
-  scheduledShiftsKept: number;
-  upcomingOpenSpots: number;
-}
 
 export interface TemplateDeletionImpactResult extends TemplateDeletionImpact {
   isLoading: boolean;

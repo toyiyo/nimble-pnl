@@ -20,6 +20,8 @@ import {
   deriveTemplateSeverity,
   type LedgerTone,
 } from '@/lib/scheduling/deletionCopy';
+import { formatCompactTemplateTime } from './ShiftPlanner/TemplateRowHeader';
+import { SeverityPill } from './SeverityPill';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
@@ -37,14 +39,6 @@ export interface DeleteTemplateDialogProps {
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function formatTemplateTime(time: string): string {
-  const [h, m] = time.split(':').map(Number);
-  const suffix = h >= 12 ? 'p' : 'a';
-  const hour12 = h % 12 || 12;
-  if (m === 0) return `${hour12}${suffix}`;
-  return `${hour12}:${String(m).padStart(2, '0')}${suffix}`;
-}
-
 function formatTemplateDays(days: number[]): string {
   return [...days]
     .sort((a, b) => a - b)
@@ -53,7 +47,7 @@ function formatTemplateDays(days: number[]): string {
 }
 
 function templateSubtitle(template: ShiftTemplate): string {
-  const time = `${formatTemplateTime(template.start_time)}-${formatTemplateTime(template.end_time)}`;
+  const time = `${formatCompactTemplateTime(template.start_time)}-${formatCompactTemplateTime(template.end_time)}`;
   return `${template.position} · ${time} · ${formatTemplateDays(template.days)}`;
 }
 
@@ -129,15 +123,7 @@ export function DeleteTemplateDialog({
                 <DialogTitle className="text-[17px] font-semibold text-foreground">
                   Delete &quot;{template.name}&quot;?
                 </DialogTitle>
-                <span
-                  className={`text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0 ${
-                    severity === 'high'
-                      ? 'bg-destructive/10 text-destructive'
-                      : 'bg-muted text-muted-foreground'
-                  }`}
-                >
-                  {severity === 'high' ? 'High impact' : 'Low impact'}
-                </span>
+                <SeverityPill severity={severity} />
               </div>
               <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 {templateSubtitle(template)}

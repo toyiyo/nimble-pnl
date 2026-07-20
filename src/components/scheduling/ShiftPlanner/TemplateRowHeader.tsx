@@ -22,7 +22,8 @@ interface TemplateRowHeaderProps {
   onDelete: (template: ShiftTemplate) => void;
 }
 
-function formatCompactTemplateTime(time: string): string {
+/** Shared with DeleteTemplateDialog's subtitle — keep the one implementation. */
+export function formatCompactTemplateTime(time: string): string {
   const [h, m] = time.split(':').map(Number);
   const suffix = h >= 12 ? 'p' : 'a';
   const hour12 = h % 12 || 12;

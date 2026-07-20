@@ -8,7 +8,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeEffectiveAvailability, EffectiveAvailability, availabilityColorClasses } from '@/lib/effectiveAvailability';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
-import type { AvailabilityDeletionTarget } from './DeleteAvailabilityDialog';
+import { WEEKDAY_LABELS, type AvailabilityDeletionTarget } from './DeleteAvailabilityDialog';
 
 // ─── Day column definitions (Mon–Sun order) ───────────────────────────────────
 
@@ -21,16 +21,6 @@ const DAY_COLUMNS = [
   { dow: 6, label: 'Sat', short: 'S' },
   { dow: 0, label: 'Sun', short: 'S' },
 ] as const;
-
-const WEEKDAY_FULL = [
-  'Sunday',
-  'Monday',
-  'Tuesday',
-  'Wednesday',
-  'Thursday',
-  'Friday',
-  'Saturday',
-];
 
 // ─── Helper functions ─────────────────────────────────────────────────────────
 
@@ -184,7 +174,7 @@ const AvailabilityCell = memo(function AvailabilityCell({
     ? `Delete ${employeeName}'s ${
         effective.type === 'exception'
           ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-          : WEEKDAY_FULL[dow]
+          : WEEKDAY_LABELS[dow]
       } availability`
     : '';
 

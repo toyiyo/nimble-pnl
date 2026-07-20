@@ -93,22 +93,56 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public
 ```
 
 Bucketing detail:
-- `orders` = `COUNT(DISTINCT external_order_id)` within the group.
-- **Hour** = `EXTRACT(HOUR FROM (us.sold_at AT TIME ZONE p_time_zone))` when `sold_at`
-  is present; else `split_part(us.sale_time, ':', 1)::int` (already-local text). Rows
-  with neither are omitted from `by_hour` only (still counted in day/weekday/product).
+- **Date-range clamp (safety).** `get_sales_trends` runs four grouped scans + a
+  product sort, and is `GRANT`ed to all `authenticated` users, so an unbounded call is
+  costlier than `get_unified_sales_totals`. When **both** `p_start_date` and
+  `p_end_date` are `NULL`, default the window to the **last 90 days**
+  (`CURRENT_DATE - 90` … `CURRENT_DATE`, matching the Toast initial-sync convention)
+  rather than scanning all history. Explicit dates are honored as given. _(Supabase
+  review, major.)_
+- **Timezone hardening.** Use `COALESCE(p_time_zone, 'America/Chicago')` inside the
+  body, not just the arg default — an explicit `null` from the client would otherwise
+  make `AT TIME ZONE NULL` yield `NULL` and silently empty `by_hour`. _(review, minor.)_
+- `orders` = `COUNT(DISTINCT COALESCE(us.external_order_id, us.id::text))` — manual /
+  CSV rows often lack `external_order_id`; `COUNT(DISTINCT)` skips `NULL`s and would
+  read 0 otherwise. _(review, minor.)_
+- **Hour** = `EXTRACT(HOUR FROM (us.sold_at AT TIME ZONE <tz>))` when `sold_at` is
+  present; else a **guarded** parse of the free-text `sale_time`. `sale_time` has no
+  `CHECK` constraint and is populated from CSV imports + multiple adapters, so a bare
+  `split_part(...)::int` on `''`/`'N/A'`/garbage raises `invalid input syntax for
+  type integer` and **aborts the entire RPC** (all four charts). Guard it, mirroring
+  `_shared/sales-hour-utils.ts::hourFromSale`:
+  ```sql
+  CASE
+    WHEN us.sold_at IS NOT NULL
+      THEN EXTRACT(HOUR FROM (us.sold_at AT TIME ZONE COALESCE(p_time_zone,'America/Chicago')))::int
+    WHEN us.sale_time ~ '^\d{1,2}:'
+      THEN LEAST(split_part(us.sale_time, ':', 1)::int, 23)
+    ELSE NULL
+  END
+  ```
+  A `NULL` hour is treated as "no time data" → the row is omitted from `by_hour` only
+  (still counted in day/weekday/product). _(Supabase review, major — pinned by pgTAP.)_
   `day_count` = distinct `sale_date` in that hour bucket (enables avg-per-day if needed).
-- **Weekday** = `EXTRACT(DOW FROM us.sale_date)::int`.
+- **Weekday** = `EXTRACT(DOW FROM us.sale_date)::int` (0=Sun..6=Sat; DATE column, so
+  timezone-unambiguous).
+- **Day-of-truth note.** `by_day`/`by_weekday` bucket on `sale_date` (the POS business
+  date set at ingestion, e.g. Toast `businessDate`), while `by_hour` buckets on
+  `sold_at` converted to `p_time_zone`. At DST edges or if `restaurants.timezone`
+  changes after ingestion these two can disagree at day boundaries — same assumption as
+  the existing functions. Documented so it isn't rediscovered as a "Monday total ≠
+  hourly sum" bug; a pgTAP boundary case pins current behavior. _(review, minor.)_
 - `by_product` ordered by revenue desc and **capped at 300 (item_name, pos_system)
   rows** — a generous bound covering realistic menus; only top-7 is ever displayed, so
   the long tail never surfaces. Cap documented (no silent truncation of anything shown).
 - Each sub-array built with `COALESCE(jsonb_agg(...), '[]'::jsonb)` so empty ranges
   return empty arrays, never `null`.
-- `GRANT EXECUTE ... TO authenticated`.
+- `GRANT EXECUTE ... TO authenticated`. (Re-issued explicitly because `CREATE OR
+  REPLACE` resets ACLs — see the comment in `20260714000000_...`.)
 
 Indexing: reads are already filtered by `restaurant_id` + `sale_date`; existing
-indexes on `unified_sales(restaurant_id, sale_date)` cover the scan. No new index in
-this PR (note as a follow-up if `EXPLAIN` shows a seq scan at scale).
+`idx_unified_sales_restaurant_date (restaurant_id, sale_date)` covers the scan. No new
+index in this PR (note as a follow-up if `EXPLAIN` shows a seq scan at scale).
 
 ### 4.2 Frontend
 
@@ -124,14 +158,23 @@ this PR (note as a follow-up if `EXPLAIN` shows a seq scan at scale).
 here so tests never render `POSSales`, per lesson 2026-05-xx on that page's ~30 hooks):
 - `SalesTrendsData` types for the parsed RPC payload + a `parseSalesTrends(json)` guard.
 - `filterByPos(data, pos | 'all')` and per-chart builders:
-  - `buildDailySeries` → `[{ date, byPos: {toast, square,…}, total }]`
-  - `buildHourlySeries` → `[{ hour, total, cumulativePct }]` (cumulative over the day)
-  - `buildWeekdaySeries` → `[{ dow, label, total }]` (Mon-first display order)
+  - `buildDailySeries` → **flat, top-level POS keys** so Recharts `dataKey` + shadcn
+    `ChartConfig` resolve directly: `[{ date, toast: 120, square: 80, total: 200 }]`.
+    (NOT a nested `byPos` object — a nested `dataKey="byPos.toast"` breaks
+    `ChartTooltipContent`'s `getPayloadConfigFromPayload` config lookup.) _(FE review,
+    major.)_ Same flat shape for the hourly stacked bars.
+  - `buildHourlySeries` → `[{ hour, <pos>: n, …, total, cumulativePct }]` — cumulative %
+    of the day's revenue, for the right-axis line.
+  - `buildWeekdaySeries` → `[{ dow, label, total, isPeak }]` (Mon-first display order;
+    `isPeak` flags the top day for a non-color cue).
   - `buildTopProducts(data, pos, n=7)` → merges by `item_name` across POS for "all",
     ranks by revenue, returns share % + sparkline points (from that item's daily rev).
   - `computeKpis` → net sales, orders, avg order, busiest day, peak hour, per-POS split.
-  - `deriveInsights` → the plain-language callouts (peak day ×avg, "half the day's
-    revenue by X", strongest weekday ratio, top product).
+  - `deriveInsights` → plain-language callouts (peak day ×avg, "half the day's revenue
+    by X", strongest weekday ratio, top product). **Reused as chart `aria-label`s**
+    (see a11y below) so the same computation satisfies WCAG 1.1.1.
+  - `hourCoverage` → fraction of revenue that carried a usable hour, for the
+    "hour data partial" note (mirrors `useHourlySalesPattern`'s `hasHourlyBreakdown`).
 
 **`src/hooks/useSalesTrends.ts`** — React Query hook:
 - `useSalesTrends(restaurantId, { startDate, endDate, timeZone })`.
@@ -141,27 +184,57 @@ here so tests never render `POSSales`, per lesson 2026-05-xx on that page's ~30 
   `useHourlySalesPattern`).
 
 **`src/components/pos-sales/SalesTrendsPanel.tsx`** — the panel (memoized sub-charts):
-- Collapsible container (`rounded-xl border border-border/40`), header with title +
-  chevron toggle + `PosFilterControl`.
-- `PosFilterControl`: "All POS" + one pill per present `pos_system`, color dot each.
-  Rendered only when `pos_systems.length > 1` (single-POS shops see no redundant
-  control). Keyboard-accessible, `role="tablist"`, `aria-selected`.
+- Container `rounded-xl border border-border/40`; header with title + chevron toggle +
+  `PosFilterControl`.
+- **Collapse via conditional render, NOT Radix animated height.** `ResponsiveContainer`
+  measures its parent via `ResizeObserver` at mount; Radix `CollapsibleContent` animates
+  from `height:0`, so charts mounted inside it render 0×0 and never re-measure (blank
+  panel on the expanded-by-default first paint). Use plain `{expanded && <Charts/>}`
+  conditional rendering so charts mount into an already-sized parent, and give each
+  `ChartContainer` an explicit `min-h-[220px]` (+ `aspect-video`/fixed height) so it
+  never depends on auto-height. _(FE review, critical.)_
+- `PosFilterControl`: **plain-button segmented control** (matching the existing
+  `categorizationFilter`/`recipeFilter`/`View` pills in `POSSales.tsx`, not an
+  incomplete `role="tablist"`): "All POS" + one pill per present `pos_system`, each with
+  a color dot. `aria-pressed` on each, keyboard-focusable. Rendered only when
+  `pos_systems.length > 1` (single-POS shops see no redundant control). _(FE review,
+  minor — avoids a half-implemented tablist.)_
 - Three-state rendering per CLAUDE.md: `Skeleton` while loading, error message,
   `EmptyState` ("No sales in this range") — the whole panel and each chart.
-- Charts (all via `ChartContainer` + Recharts):
-  - **Sales by day** — stacked `BarChart`, one `<Bar>` per present POS, colored via
-    registry; `ChartTooltip`.
-  - **Time of day** — `ComposedChart`: stacked `Bar`s (revenue/hr) + `Line` (cumulative
-    %, right `YAxis` 0–100%).
-  - **Day of week** — horizontal `BarChart` (Mon-first), top day emphasized.
-  - **Top products** — list rows (item, POS badge, revenue, share bar, mini sparkline).
+- Charts (all via `ChartContainer` + Recharts; `ChartConfig` keyed by `pos_system`):
+  - **Sales by day** — stacked `BarChart`, one `<Bar dataKey="<pos>" stackId="day"
+    fill="var(--color-<pos>)">` per present POS. **Every bar shares `stackId` (else
+    Recharts groups instead of stacks)**; include `<ChartLegend content={<ChartLegendContent/>}/>`
+    so the POS→color mapping is always visible, not hover-only. _(FE review, major+minor.)_
+  - **Time of day** — `ComposedChart` with **two axes**: `<YAxis yAxisId="rev"/>`
+    (revenue) + `<YAxis yAxisId="pct" orientation="right" domain={[0,100]}/>`
+    (cumulative %). Bars carry `yAxisId="rev"`, the cumulative `<Line yAxisId="pct"/>`.
+    Omitting the split axes/`domain` collapses both series onto one scale. _(FE review, major.)_
+  - **Day of week** — horizontal `BarChart` (Mon-first); peak day carries a text
+    **"Peak" badge** (not color-only) via `isPeak`. _(FE review, minor.)_
+  - **Top products** — list rows (item, POS **text badge** + color dot, revenue, share
+    bar, memoized mini sparkline).
+- **Layout:** the four charts in `grid grid-cols-1 lg:grid-cols-2 gap-4`; single column
+  on mobile. POS pills + chevron stay reachable/unclipped at 375px. _(FE review, major.)_
+- **Accessibility:** each chart wrapped with `role="img" aria-label={<insight text>}`
+  (reusing `deriveInsights`); chevron button gets `aria-label` ("Collapse/Expand sales
+  trends") + `aria-expanded`/`aria-controls`. _(FE review, major+minor.)_
+- **Typography (CLAUDE.md scale):** panel title `text-[17px] font-semibold`; chart
+  captions/section labels `text-[12px] font-medium uppercase tracking-wider
+  text-muted-foreground`; KPI numbers `text-[22px]/[23px] font-semibold tabular-nums`;
+  secondary `text-[13px] text-muted-foreground`. _(FE review, minor.)_
 - All numbers formatted with `Intl.NumberFormat` currency; `tabular-nums`.
+- Sub-charts + product-row sparklines are `React.memo`'d; POS toggle only swaps the
+  selected series, not the whole tree.
 
 **Wire-in (`src/pages/POSSales.tsx`)** — render `<SalesTrendsPanel>` inside the
 `TabsContent value="manual"` (View Sales), above the existing filter bar/list, passing
 `restaurantId`, the page's `startDate`/`endDate`, and `selectedRestaurant.timezone`.
-Default collapsed state: **expanded** on first load. One import + ~5 lines of JSX; no
-change to the list/virtualization.
+**Default expanded on `lg`+ screens, collapsed on mobile** (initialize from a
+`matchMedia('(min-width: 1024px)')` check) — an expanded stack of charts above the
+list's `calc(100vh-180px)` mobile height would push the list far below the fold. _(FE
+review, major.)_ One import + ~6 lines of JSX; no change to the list/virtualization
+(the virtualizer scrolls its own `salesListRef` container, unaffected by content above).
 
 ### 4.3 Types
 
@@ -175,10 +248,10 @@ After the migration, regenerate the RPC signature into
 
 | Layer | File | Covers |
 |---|---|---|
-| pgTAP | `supabase/tests/get_sales_trends.sql` | access-denied throws; revenue excludes adjustment_type (tip/tax/void/discount) + child splits; groups by pos_system; hour bucketed by `p_time_zone`; weekday via DOW; product quantities; empty range → empty arrays |
-| Unit | `tests/unit/salesTrends.test.ts` | every pure selector: POS re-scope, cumulative %, weekday order, top-product merge/rank + sparkline, KPIs (busiest day, peak hour, split), insights, empty data, `parseSalesTrends` guard rejects malformed |
+| pgTAP | `supabase/tests/get_sales_trends.sql` | access-denied throws; revenue excludes adjustment_type (tip/tax/void/discount) + child splits; groups by pos_system; hour bucketed by `p_time_zone`; **garbage/blank `sale_time` with `sold_at IS NULL` does NOT crash the RPC** (returns other charts, row dropped from `by_hour`); **day-boundary tz case** (`sale_date` vs `sold_at`-hour); manual row with NULL `external_order_id` still counted in `orders`; weekday via DOW; product quantities; NULL-both-dates → 90-day clamp; empty range → empty arrays |
+| Unit | `tests/unit/salesTrends.test.ts` | every pure selector: POS re-scope, flat POS-keyed daily/hourly rows, cumulative %, weekday order + `isPeak`, top-product merge/rank + sparkline, KPIs (busiest day, peak hour, split), insights, `hourCoverage`, empty data, `parseSalesTrends` guard rejects malformed |
 | Unit | `tests/unit/posColors.test.ts` | every `POSSystemType` → color + label; unknown → fallback; stability |
-| Component | `tests/unit/SalesTrendsPanel.test.tsx` | mock `useSalesTrends`; assert three states, POS control appears only when >1 system, toggling filter changes rendered totals, single-POS hides control |
+| Component | `tests/unit/SalesTrendsPanel.test.tsx` | mock `useSalesTrends`; three states; POS control appears only when >1 system; toggling filter changes rendered totals; single-POS hides control; **charts are in the DOM when expanded and absent when collapsed** (conditional-render contract); chevron `aria-expanded` toggles |
 
 Coverage target: ≥80% new-code (SonarCloud gate). Pure libs + hook + component
 branches carry it; pgTAP covers the SQL.
@@ -199,4 +272,23 @@ branches carry it; pgTAP covers the SQL.
 
 ## 7. Decided trade-offs (folded from design review)
 
-_(to be completed after Phase 2.5)_
+Phase 2.5 ran the Supabase + Frontend reviewers. No `critical` Supabase concerns; one
+`critical` Frontend concern (chart sizing in a collapsible). All majors + actionable
+minors are folded into §4.1/§4.2/§5 above. Explicitly decided:
+
+- **Charts collapse via conditional render, not Radix animated height** (FE critical) —
+  adopted; guarantees non-zero measurement on the expanded-by-default first paint.
+- **Flat POS-keyed chart rows + explicit `stackId`/dual `yAxisId`** (FE major) — adopted
+  as the canonical Recharts/shadcn shape.
+- **Panel defaults collapsed on mobile, expanded on `lg`+** (FE major) — adopted, to
+  avoid burying the list below a tall chart stack on small screens.
+- **Plain-button segmented control, not `role="tablist"`** (FE minor) — adopted for
+  consistency with the sibling pills in `POSSales.tsx` and to avoid a half-APG tablist.
+- **Guarded `sale_time` parse + 90-day NULL-date clamp + `COALESCE(p_time_zone,…)` +
+  `orders` COALESCE** (Supabase majors/minors) — all adopted in the RPC contract.
+- **Accepted as-is (documented, not fixed):** `by_day`/`by_weekday` bucket on
+  `sale_date` while `by_hour` buckets on `sold_at` — a known day-boundary/DST edge shared
+  with existing functions; pinned by a pgTAP boundary test rather than reconciled, since
+  reconciling would diverge the panel from every other sales aggregation in the app.
+- **Product cap at 300 (item, pos) rows** — accepted; only the never-displayed long tail
+  is affected, top-7 is exact.

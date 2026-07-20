@@ -4,6 +4,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
 import { sendWebPushToUser } from '../_shared/webPushHelper.ts';
 import { buildEmails } from './buildEmails.ts';
+import { resolveChannels, type SupabaseLike } from '../_shared/resolveChannels.ts';
+import { TIME_OFF_ACTION_TYPE } from '../_shared/notificationActionTypes.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -112,21 +114,25 @@ const handler = async (req: Request): Promise<Response> => {
       .eq('restaurant_id', timeOffRequest.restaurant_id)
       .single();
 
+    // `time_off_notify_managers`/`time_off_notify_employee` are WHO gets notified
+    // (recipient routing) and stay sourced from legacy `notification_settings`
+    // below — unrelated to WHETHER a channel fires, which the matrix now governs.
     const settings = notificationSettings || {
-      notify_time_off_request: true,
-      notify_time_off_approved: true,
-      notify_time_off_rejected: true,
       time_off_notify_managers: true,
       time_off_notify_employee: true,
     };
 
-    const shouldNotify =
-      (action === 'created' && settings.notify_time_off_request) ||
-      (action === 'approved' && settings.notify_time_off_approved) ||
-      (action === 'rejected' && settings.notify_time_off_rejected);
+    // Independent per-channel gating (email/push may be toggled separately).
+    // Replaces the old combined `notify_time_off_request`/`_approved`/`_rejected`
+    // booleans, which forced email and push to share a single on/off switch.
+    const ch = await resolveChannels(
+      supabase as unknown as SupabaseLike,
+      timeOffRequest.restaurant_id,
+      TIME_OFF_ACTION_TYPE[action]
+    );
 
-    if (!shouldNotify) {
-      console.log('Notification disabled for action:', action);
+    if (!ch.email && !ch.push) {
+      console.log('Notification disabled for action (both channels off):', action);
       return new Response(
         JSON.stringify({
           success: true,
@@ -195,7 +201,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Send notification emails
     try {
-      const emailPromises = recipients.emails.map(email => 
+      const emailPromises = (ch.email ? recipients.emails : []).map(email =>
         resend.emails.send({
           from: "EasyShiftHQ <notifications@easyshifthq.com>",
           to: [email],
@@ -276,7 +282,7 @@ const handler = async (req: Request): Promise<Response> => {
       });
 
       // Send push notification to the employee for approved/rejected actions
-      if ((action === 'approved' || action === 'rejected') && timeOffRequest.employee?.user_id) {
+      if (ch.push && (action === 'approved' || action === 'rejected') && timeOffRequest.employee?.user_id) {
         try {
           await fetch(
             `${Deno.env.get('SUPABASE_URL')}/functions/v1/send-push-notification`,

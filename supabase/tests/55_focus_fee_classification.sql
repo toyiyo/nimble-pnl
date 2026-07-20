@@ -16,7 +16,7 @@
 --   idempotency, and the get_unified_sales_totals read-layer contract.
 
 BEGIN;
-SELECT plan(33);
+SELECT plan(35);
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Section 1: _focus_is_fee_item predicate
@@ -531,16 +531,27 @@ SELECT is(
 );
 
 -- ─────────────────────────────────────────────────────────────────────────
--- Case 9: discounted fee (check 103) — emits the 'fee' row only, NOT a
--- spurious 'discount' row for the same item_key.
+-- Case 9: discounted fee (check 103, price 3.50, discount -0.50) — emits ONE
+-- 'fee' row NET of the discount (total_price = 3.00), NOT a gross 3.50 row and
+-- NOT a spurious 'discount' row. Netting keeps pass_through_amount /
+-- collected_at_pos (bare SUMs of total_price) matching what the POS collected.
 -- ─────────────────────────────────────────────────────────────────────────
 SELECT is(
   (SELECT total_price FROM public.unified_sales
    WHERE external_order_id = 'focus-GUID-FEE-STORE-20260719-103'
      AND external_item_id = 'focus-GUID-FEE-STORE-20260719-103__IK-FEE6_fee'
      AND adjustment_type = 'fee'),
-  3.50::numeric,
-  'Discounted fee: ''fee'' row created with total_price=3.50 (undiscounted price)'
+  3.00::numeric,
+  'Discounted fee: ''fee'' row total_price is NET of discount (3.50 - 0.50 = 3.00)'
+);
+
+SELECT is(
+  (SELECT unit_price FROM public.unified_sales
+   WHERE external_order_id = 'focus-GUID-FEE-STORE-20260719-103'
+     AND external_item_id = 'focus-GUID-FEE-STORE-20260719-103__IK-FEE6_fee'
+     AND adjustment_type = 'fee'),
+  3.00::numeric,
+  'Discounted fee: ''fee'' row unit_price is NET of discount (quantity=1)'
 );
 
 SELECT is(
@@ -549,6 +560,17 @@ SELECT is(
      AND item_type = 'discount'),
   0,
   'Discounted fee: no spurious adjustment_type=''discount'' row for the fee item'
+);
+
+-- collected-side proof: the order's entire unified_sales footprint (all
+-- non-void rows) sums to the net 3.00 the POS actually collected — no
+-- overstatement from the discounted fee.
+SELECT is(
+  (SELECT COALESCE(SUM(total_price), 0) FROM public.unified_sales
+   WHERE external_order_id = 'focus-GUID-FEE-STORE-20260719-103'
+     AND adjustment_type IS DISTINCT FROM 'void'),
+  3.00::numeric,
+  'Discounted fee: collected-side SUM(total_price) = net 3.00 (no overstatement)'
 );
 
 -- ─────────────────────────────────────────────────────────────────────────

@@ -137,8 +137,18 @@ is index/planner-friendly and callable from the SET-returning inserts.
 5. **Step 3b — fee offset rows** (mirrors the discount step):
    - INSERT from `focus_order_items` where `price != 0 AND _focus_is_fee_item(name)`,
      `external_item_id = v_order_id || '__' || item_key || '_fee'`,
-     `item_name = name`, `unit_price = total_price = price`,
-     `item_type = 'other'`, `adjustment_type = 'fee'`.
+     `item_name = name`, **`unit_price = total_price = price - ABS(discount_amount)`
+     (NET of any discount on the fee line)**, `item_type = 'other'`,
+     `adjustment_type = 'fee'`.
+     - **Amendment (Phase 7b, Codex major, user-approved):** the fee row is NET,
+       not gross. A discounted fee means the POS collected less; since Step 4
+       deliberately does NOT emit a separate `adjustment_type='discount'` row for
+       fees (that would misfile a pass-through discount as a *sales* discount),
+       the discount is folded into this single `'fee'` row. Keeps
+       `pass_through_amount` / `collected_at_pos` (bare SUMs of `total_price`)
+       matching what was actually collected. (Earlier draft said
+       `unit_price = total_price = price`, which overstated collected for
+       discounted fees.)
      `ON CONFLICT (... ) WHERE parent_sale_id IS NULL DO UPDATE` the mutable cols.
    - DELETE stale fee rows for this order whose `external_item_id` is no longer in
      the current fee set (item un-priced or renamed), guarded by

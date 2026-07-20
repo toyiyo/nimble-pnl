@@ -334,10 +334,18 @@ BEGIN
         item_name, quantity, unit_price, total_price,
         sale_date, sale_time, item_type, adjustment_type, synced_at
       )
+      -- total_price / unit_price are NET of any discount on the fee line
+      -- (price - |discount_amount|): a discounted fee means the POS collected
+      -- less, so pass_through_amount / collected_at_pos (both bare SUMs of
+      -- total_price) must reflect the net. We do NOT emit a separate
+      -- adjustment_type='discount' row for fees (Step 4 excludes them) — that
+      -- would misfile a pass-through fee discount as a sales discount — so the
+      -- discount is folded into this single 'fee' row instead.
       SELECT
         foi.restaurant_id, 'focus',
         v_order_id, v_order_id || '__' || foi.item_key || '_fee',
-        foi.name, 1, foi.price, foi.price,
+        foi.name, 1,
+        foi.price - ABS(foi.discount_amount), foi.price - ABS(foi.discount_amount),
         foi.business_date, v_sale_time, 'other', 'fee', now()
       FROM public.focus_order_items foi
       WHERE foi.restaurant_id  = p_restaurant_id

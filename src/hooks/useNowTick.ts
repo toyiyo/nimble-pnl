@@ -13,13 +13,15 @@ import { useEffect, useState } from 'react';
  * value that actually advances. Only ticks while the tab is visible.
  */
 export function useNowTick(periodMs: number = 60_000): number {
+  // Guard against a busy interval from an invalid period (0, negative, NaN, ∞).
+  const intervalMs = Number.isFinite(periodMs) && periodMs > 0 ? periodMs : 60_000;
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     const update = () => {
       if (document.visibilityState === 'visible') setNowMs(Date.now());
     };
-    const intervalId = window.setInterval(update, periodMs);
+    const intervalId = window.setInterval(update, intervalMs);
     window.addEventListener('visibilitychange', update);
     window.addEventListener('focus', update);
     return () => {
@@ -27,7 +29,7 @@ export function useNowTick(periodMs: number = 60_000): number {
       window.removeEventListener('visibilitychange', update);
       window.removeEventListener('focus', update);
     };
-  }, [periodMs]);
+  }, [intervalMs]);
 
   return nowMs;
 }

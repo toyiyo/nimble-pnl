@@ -22,4 +22,24 @@ describe('useNowTick', () => {
     });
     expect(result.current).toBeGreaterThan(first);
   });
+
+  it('falls back to a 60s interval for an invalid period (no busy loop)', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-07-20T16:00:00Z'));
+
+    const { result } = renderHook(() => useNowTick(0)); // invalid → normalized to 60s
+    const first = result.current;
+
+    // A sub-60s advance must NOT tick (would fire immediately on a 0ms interval).
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(result.current).toBe(first);
+
+    vi.setSystemTime(new Date('2026-07-20T16:01:00Z'));
+    act(() => {
+      vi.advanceTimersByTime(60_000);
+    });
+    expect(result.current).toBeGreaterThan(first);
+  });
 });

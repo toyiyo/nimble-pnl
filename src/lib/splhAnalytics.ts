@@ -172,10 +172,12 @@ export function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
     return localParts(ms, tz).hour;
   }
   if (sale.sale_time) {
-    // Reject malformed/out-of-range hours (e.g. "99:00", "-1:00") — the intraday
-    // series uses this as an axis bound, so only accept a real 0–23 hour.
-    const h = Number(sale.sale_time.split(':')[0]);
-    return Number.isInteger(h) && h >= 0 && h < 24 ? h : null;
+    // Reject malformed/out-of-range hours (e.g. "99:00", "-1:00", ":30", " 12")
+    // — the intraday series uses this as an axis bound, so only accept a bare
+    // 1–2 digit 0–23 hour (Number('') would otherwise pass an empty prefix as 0).
+    const hourText = sale.sale_time.split(':', 1)[0];
+    const h = Number(hourText);
+    return /^\d{1,2}$/.test(hourText) && h >= 0 && h < 24 ? h : null;
   }
   return null;
 }

@@ -620,11 +620,12 @@ describe('buildSalesVolumeGrid negative-cell clamp', () => {
 });
 
 describe('buildIntradayFinancialSeries rejects malformed sale_time hours', () => {
-  it('skips a sale whose sale_time hour is out of 0..23', () => {
+  it('skips a sale whose sale_time hour is out of 0..23 or a malformed prefix', () => {
     const day = '2026-07-22';
     const sales = [
       saleRow(day, null, 100), // no hour at all
-      { sale_date: day, sale_time: '99:00', sold_at: null, total_price: 500 }, // invalid hour
+      { sale_date: day, sale_time: '99:00', sold_at: null, total_price: 500 }, // out of range
+      { sale_date: day, sale_time: ':30', sold_at: null, total_price: 400 }, // empty prefix → not hour 0
       { sale_date: day, sale_time: '13:00', sold_at: null, total_price: 250 }, // valid → hour 13
     ];
     const series = buildIntradayFinancialSeries(sales, [], 'UTC', day, 2000, 22);

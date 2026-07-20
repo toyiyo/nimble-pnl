@@ -31,10 +31,21 @@ of revenue *and* stay countable/reportable.
 ### 1. Schema (migration)
 - `ALTER TABLE public.focus_orders ADD COLUMN IF NOT EXISTS is_voided boolean
   NOT NULL DEFAULT false, ADD COLUMN IF NOT EXISTS voided_at timestamptz;`
-- Extend `unified_sales_adjustment_type_check` to add `'void'` (drop + re-add
-  with `('tax','tip','service_charge','discount','fee','void',NULL)`). This also
-  **un-breaks Toast's own void path** (`20260211300000` already writes
-  `adjustment_type='void'`, which the current constraint would reject).
+- **No `unified_sales` constraint change needed.** Verified in prod: 2,658
+  `adjustment_type='void'` rows already exist (all Toast). The constraint
+  `CHECK (adjustment_type IN ('tax','tip','service_charge','discount','fee',NULL))`
+  has `NULL` in the list, so for any unlisted value `x IN (…,NULL)` evaluates to
+  **NULL**, and a CHECK passes on NULL — i.e. the constraint already permits
+  `'void'` (and, as a side effect, any value). Focus `'void'` inserts pass
+  as-is; the earlier review's "un-breaks Toast / P&L backlog" concern is moot.
+  (That the constraint is a permissive no-op is a real but separate data-
+  integrity smell — filed as a follow-up, not fixed here.)
+- **No new index.** The void DELETE/UPSERT keys off `external_order_id`, already
+  covered by the existing partial unique index `unified_sales_unique_square
+  (restaurant_id, pos_system, external_order_id, external_item_id) WHERE
+  parent_sale_id IS NULL` (which also backs the void `ON CONFLICT`). Dropped the
+  previously-proposed `idx_unified_sales_focus_active` (unsafe non-CONCURRENTLY
+  build + wrong key for the query shape).
 
 ### 2. Handler — soft-delete instead of hard-delete
 `focusTransactionSyncHandler.ts` DeleteRecord loop: replace `.delete()` with
@@ -64,6 +75,13 @@ loop:
     the orphan-sweep** (no separate pre-loop sweep needed) and fixes the bug.
 - **`is_voided = false`:** existing Steps 1–6 (sale/discount/tip/tax), plus a
   cleanup DELETE of any stale `…_void` row for this order (idempotent un-void).
+  This cleanup DELETE **must** include `AND parent_sale_id IS NULL`, matching
+  every other delete in the function.
+
+**Voiding removes the whole check** — its tax/tip/discount rows are deleted, not
+netted to a line. This is intended: a void means the transaction didn't happen,
+so nothing from it survives except the single audit `void` offset (the negated
+net revenue). Confirmed as the desired reporting behaviour.
 
 Final aggregate: unchanged two-source UNION already re-aggregates every
 processed date (voided orders still appear in the `focus_orders` date-range
@@ -86,16 +104,15 @@ or `SELECT count(*), SUM(total) FROM focus_orders WHERE is_voided`.
   IS NULL` guard on every delete, as elsewhere.
 
 ## Migration & safety
-- New `supabase/migrations/20260713010000_focus_preserve_voids.sql` (timestamp
-  sorts after latest `20260713000000`; re-checked for collision before PR).
+- New `supabase/migrations/20260713020000_focus_preserve_voids.sql` — timestamp
+  sorts after the current latest `20260713010000_harden_accept_shift_trade.sql`;
+  re-check for collision immediately before PR (`git ls-tree origin/main`).
+- Two statements only: the `focus_orders` `ALTER` and the `CREATE OR REPLACE`
+  of the RPC. No constraint change, no index (see §1).
 - `CREATE OR REPLACE` from live def (pre-flight assert: contains
   `apply_rules_to_pos_sales_internal`, no `auth.uid()`); re-apply `REVOKE ALL …
   FROM PUBLIC; GRANT EXECUTE … TO service_role` (live ACL `{postgres,
   service_role}`).
-- Add partial index `idx_unified_sales_focus_active (restaurant_id, sale_date)
-  WHERE pos_system='focus' AND parent_sale_id IS NULL` (speeds the per-check
-  deletes; non-CONCURRENTLY — migrations are transactional — partial predicate
-  keeps the build small).
 
 ## Testing
 - **pgTAP** (`supabase/tests/47_focus_transactions_unified_sales.sql`): seed
@@ -110,6 +127,13 @@ or `SELECT count(*), SUM(total) FROM focus_orders WHERE is_voided`.
 
 ## Follow-ups (filed as chips)
 - One-time cleanup of **legacy hard-deleted orphans** (rows left by the old
-  hard-delete path before this change) — the new sweep-by-soft-delete only
-  covers checks voided going forward.
+  hard-delete path before this change) — the new soft-delete only covers checks
+  voided going forward.
+- **`unified_sales_adjustment_type_check` is a permissive no-op** (NULL-in-list
+  makes it accept any value) — tighten it separately (carefully: it currently
+  "allows" whatever historical rows exist).
+- **`focus_order_items`/`focus_payments` retention:** soft-delete now preserves
+  these for voided checks (previously CASCADE-removed). Only the sync RPC +
+  handler read them, so no correctness risk, but there's now no cleanup path —
+  revisit if Focus volume grows.
 - Optional **Voids report UI** (count/$ surface) — deferred.

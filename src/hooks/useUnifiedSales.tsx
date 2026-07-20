@@ -367,6 +367,9 @@ export const useUnifiedSales = (restaurantId: string | null, options: UseUnified
 
   const refetchSales = useCallback(() => {
     queryClient.invalidateQueries({ queryKey });
+    // Manual sale writes change the grouped aggregate too — keep the
+    // server-aggregated Grouped view (separate query key) in sync.
+    queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
   }, [queryClient, queryKey]);
 
   // Suppress "Load more" while a non-next-page fetch (e.g. the initial fetch for

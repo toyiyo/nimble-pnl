@@ -57,6 +57,7 @@ export function useBulkCategorizePosSales() {
     onSuccess: (data, variables) => {
       // Invalidate unified sales queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+      queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
       queryClient.invalidateQueries({ queryKey: ['unified-sales-totals', variables.restaurantId] });
 
       const actualCount = data?.length || 0;
@@ -122,6 +123,7 @@ export function useBulkMapRecipe() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+      queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
       queryClient.invalidateQueries({ queryKey: ['pos-item-mappings'] });
       
       toast.success('Recipe mapped successfully', {

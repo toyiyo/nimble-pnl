@@ -21,6 +21,7 @@ export interface SplitFormData {
  */
 export const invalidateSplitQueries = (queryClient: QueryClient) => {
   queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+  queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
   queryClient.invalidateQueries({ queryKey: ['pos-sales-splits'] });
   queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
   queryClient.invalidateQueries({ queryKey: ['bank-transactions-split'] });

@@ -93,7 +93,7 @@ function useResponsiveColumns() {
       }
     };
     update();
-    const ro = new ResizeObserver(update);
+    const ro = new ResizeObserver(() => update());
     ro.observe(node);
     return () => ro.disconnect();
   }, [node]);
@@ -1464,8 +1464,12 @@ export default function POSSales() {
                             left: 0,
                             width: '100%',
                             transform: `translateY(${virtualRow.start}px)`,
+                            // Derive columns from the same measured container width
+                            // as the virtual-row slicing (groupedColumns) so the grid
+                            // layout can't disagree with how many cards are in each row.
+                            gridTemplateColumns: `repeat(${groupedColumns}, minmax(0, 1fr))`,
                           }}
-                          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-4"
+                          className="grid gap-4 pb-4"
                         >
                           {rowItems.map((item) => {
                             const revenuePercentage = groupedMaxRevenue > 0 ? (item.total_revenue / groupedMaxRevenue) * 100 : 0;

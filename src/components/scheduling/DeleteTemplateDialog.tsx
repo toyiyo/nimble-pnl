@@ -90,6 +90,23 @@ export function DeleteTemplateDialog({
     setAckChecked(false);
   }, [template?.id, open]);
 
+  // Force the impact ledger fresh on every open, even for the same
+  // template within the query's staleTime — TOCTOU mitigation required by
+  // the design doc (Phase 2.5 resolution #13). Without this, reopening the
+  // dialog inside the 30s staleTime window can reuse a stale, understated
+  // snapshot (e.g. a pending claim submitted while the dialog was closed),
+  // letting Delete proceed without the ack it should require.
+  //
+  // Deliberately depends only on [open, template?.id] — impact.refetch is a
+  // react-query-provided function without a stable identity across renders,
+  // so including it (or the whole `impact` object) here would refetch on
+  // every render, not just on open/template transitions.
+  useEffect(() => {
+    if (open && template) {
+      impact.refetch();
+    }
+  }, [open, template?.id]);
+
   if (!template) {
     return null;
   }

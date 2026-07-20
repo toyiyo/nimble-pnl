@@ -96,9 +96,12 @@ describe('DeleteTemplateDialog', () => {
     renderDialog();
 
     expect(screen.getByRole('button', { name: /delete template/i })).toBeDisabled();
+    // The dialog's own open-mount effect already fired refetch() once
+    // (TOCTOU mitigation, see the describe block below) — Retry adds one more.
+    const callsBeforeRetry = refetch.mock.calls.length;
     const retryButton = screen.getByRole('button', { name: /retry/i });
     await userEvent.click(retryButton);
-    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(refetch).toHaveBeenCalledTimes(callsBeforeRetry + 1);
   });
 
   it('low impact: no ack checkbox, low pill, and Delete is enabled once loaded', () => {
@@ -199,5 +202,74 @@ describe('DeleteTemplateDialog', () => {
     renderDialog();
 
     expect(screen.getByText(/hide it instead/i)).toBeInTheDocument();
+  });
+
+  describe('TOCTOU mitigation: forces the impact ledger fresh on open', () => {
+    it('calls impact.refetch() on initial mount while open with a template', () => {
+      const refetch = vi.fn();
+      impactMock.mockReturnValue(baseImpact({ refetch }));
+      renderDialog();
+
+      expect(refetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call refetch on mount while closed', () => {
+      const refetch = vi.fn();
+      impactMock.mockReturnValue(baseImpact({ refetch }));
+      renderDialog({ open: false });
+
+      expect(refetch).not.toHaveBeenCalled();
+    });
+
+    it('refetches again when reopened for the same template — the actual TOCTOU scenario (a claim could have been submitted while the dialog was closed, within the query staleTime)', () => {
+      const refetch = vi.fn();
+      impactMock.mockReturnValue(baseImpact({ refetch }));
+      const { rerender } = renderDialog({ open: true });
+      expect(refetch).toHaveBeenCalledTimes(1);
+
+      rerender(
+        <DeleteTemplateDialog
+          open={false}
+          onOpenChange={onOpenChange}
+          template={template}
+          restaurantId="rest-1"
+          onHide={onHide}
+          onConfirmDelete={onConfirmDelete}
+        />,
+      );
+      expect(refetch).toHaveBeenCalledTimes(1);
+
+      rerender(
+        <DeleteTemplateDialog
+          open={true}
+          onOpenChange={onOpenChange}
+          template={template}
+          restaurantId="rest-1"
+          onHide={onHide}
+          onConfirmDelete={onConfirmDelete}
+        />,
+      );
+      expect(refetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('refetches when a different template is opened while already open', () => {
+      const refetch = vi.fn();
+      impactMock.mockReturnValue(baseImpact({ refetch }));
+      const { rerender } = renderDialog({ open: true });
+      expect(refetch).toHaveBeenCalledTimes(1);
+
+      const otherTemplate = { ...template, id: 'tmpl-2', name: 'Opener' };
+      rerender(
+        <DeleteTemplateDialog
+          open={true}
+          onOpenChange={onOpenChange}
+          template={otherTemplate}
+          restaurantId="rest-1"
+          onHide={onHide}
+          onConfirmDelete={onConfirmDelete}
+        />,
+      );
+      expect(refetch).toHaveBeenCalledTimes(2);
+    });
   });
 });

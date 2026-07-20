@@ -96,6 +96,12 @@ export function useTemplateDeletionImpact(
       fetchTemplateDeletionImpact(restaurantId as string, templateId as string),
     enabled: !!restaurantId && !!templateId,
     staleTime: 30000,
+    // Force a fresh read every time the dialog (re)opens for a template,
+    // even if the last read for this template is still within staleTime —
+    // TOCTOU mitigation required by the design doc (Phase 2.5 resolution
+    // #13): the ledger must never silently understate pending claims/kept
+    // shifts because of a cached snapshot from a prior open.
+    refetchOnMount: 'always',
   });
 
   return {

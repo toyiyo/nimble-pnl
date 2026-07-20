@@ -1,19 +1,24 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertCircle, Bell } from 'lucide-react';
-
 import {
-  useNotificationChannelSettings,
-  type ChannelSettingsMap,
-} from '@/hooks/useNotificationChannelSettings';
+  AlertCircle,
+  ArrowLeftRight,
+  CalendarClock,
+  CalendarDays,
+  KeyRound,
+  Mail,
+  Smartphone,
+  type LucideIcon,
+} from 'lucide-react';
+
+import { useNotificationChannelSettings } from '@/hooks/useNotificationChannelSettings';
 import {
   NOTIFICATION_TYPES,
   type NotificationChannel,
   type NotificationGroup,
-  type NotificationType,
   type NotificationTypeDef,
 } from '@/lib/notificationTypes';
 
@@ -22,39 +27,38 @@ interface NotificationChannelMatrixProps {
 }
 
 const GROUP_ORDER: NotificationGroup[] = ['Scheduling', 'Trades', 'Time off', 'Access'];
+const GROUP_ICON: Record<NotificationGroup, LucideIcon> = {
+  Scheduling: CalendarDays,
+  Trades: ArrowLeftRight,
+  'Time off': CalendarClock,
+  Access: KeyRound,
+};
 const CHANNEL_LABEL: Record<NotificationChannel, string> = { email: 'Email', push: 'Push' };
-
-function mapsEqual(a: ChannelSettingsMap, b: ChannelSettingsMap): boolean {
-  for (const type of NOTIFICATION_TYPES) {
-    const av = a.get(type.key);
-    const bv = b.get(type.key);
-    if (av?.email !== bv?.email || av?.push !== bv?.push) return false;
-  }
-  return true;
-}
+const CHANNEL_ICON: Record<NotificationChannel, LucideIcon> = { email: Mail, push: Smartphone };
 
 /** One matrix cell: a live `Switch` if `type` supports `channel`, otherwise a
- *  disabled "—" with screen-reader-only context. Shared by the email and push
- *  columns so the toggle-or-dash logic isn't duplicated per channel. */
+ *  muted "—" with screen-reader context. */
 function ChannelCell({
   type,
   channel,
   checked,
-  onCheckedChange,
+  disabled,
+  onChange,
 }: {
   type: NotificationTypeDef;
   channel: NotificationChannel;
   checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
+  disabled: boolean;
+  onChange: (checked: boolean) => void;
 }) {
   if (!type.channels.includes(channel)) {
     return (
       <>
-        <span aria-hidden="true" className="text-muted-foreground">
+        <span aria-hidden="true" className="text-muted-foreground/50">
           —
         </span>
         <span className="sr-only">
-          {CHANNEL_LABEL[channel]} not available for {type.label}
+          {CHANNEL_LABEL[channel]} is not available for {type.label}
         </span>
       </>
     );
@@ -63,7 +67,8 @@ function ChannelCell({
   return (
     <Switch
       checked={checked}
-      onCheckedChange={onCheckedChange}
+      disabled={disabled}
+      onCheckedChange={onChange}
       aria-label={`${type.label} — ${CHANNEL_LABEL[channel]}`}
       className="data-[state=checked]:bg-foreground"
     />
@@ -72,30 +77,14 @@ function ChannelCell({
 
 /**
  * Admin per-type × per-channel notification matrix (Settings → Notifications).
- * Grouped `<table>` per domain, mirroring `AvailabilityGrid.tsx`'s a11y
- * pattern. Local-state-then-Save with a sync-guard so a background refetch
- * never clobbers in-progress edits. See docs/superpowers/specs/2026-07-13-
- * notification-channel-matrix-design.md.
+ * A single `table-fixed` grid so the Email/Push columns line up across every
+ * group, with visible column headers and per-group section headers. Each toggle
+ * saves immediately (optimistic) — no Save button. See docs/superpowers/specs/
+ * 2026-07-13-notification-channel-matrix-design.md.
  */
 export function NotificationChannelMatrix({ restaurantId }: NotificationChannelMatrixProps) {
-  const { settings, isLoading, isError, refetch, saveChanges, isSaving } =
+  const { settings, isLoading, isError, refetch, setChannel, isSaving } =
     useNotificationChannelSettings(restaurantId);
-
-  const [local, setLocal] = useState<ChannelSettingsMap>(() => new Map(settings));
-
-  // hasChanges is derived by value-comparison (not a dirty flag) so it can
-  // never drift from what's actually on screen.
-  const hasChanges = useMemo(() => !mapsEqual(local, settings), [local, settings]);
-
-  // Sync-guard: only pull the server snapshot into local state while the form
-  // is clean. A background refetch (staleTime elapsing, window refocus, or a
-  // post-save invalidation) must never clobber edits the user hasn't saved.
-  useEffect(() => {
-    if (!hasChanges) {
-      setLocal(new Map(settings));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omits hasChanges: it must not retrigger this sync
-  }, [settings]);
 
   const groups = useMemo(
     () =>
@@ -106,38 +95,15 @@ export function NotificationChannelMatrix({ restaurantId }: NotificationChannelM
     [],
   );
 
-  function updateChannel(type: NotificationType, channel: 'email' | 'push', value: boolean) {
-    setLocal((prev) => {
-      const next = new Map(prev);
-      const current = next.get(type) ?? { email: true, push: true };
-      next.set(type, { ...current, [channel]: value });
-      return next;
-    });
-  }
-
-  async function handleSave() {
-    try {
-      await saveChanges(local);
-    } catch {
-      // Failure is already surfaced via toast inside the hook; keep the
-      // user's local edits in place (footer stays visible) so they can retry.
-    }
-  }
-
-  function handleReset() {
-    setLocal(new Map(settings));
-  }
-
   if (isLoading) {
     return (
-      <div className="space-y-3">
+      <div className="rounded-xl border border-border/40 bg-background p-4 space-y-3">
         <Skeleton
-          className="h-6 w-56"
+          className="h-5 w-48"
           role="status"
           aria-label="Loading notification channel settings"
         />
-        <Skeleton className="h-40 w-full rounded-xl" />
-        <Skeleton className="h-40 w-full rounded-xl" />
+        <Skeleton className="h-64 w-full rounded-lg" />
       </div>
     );
   }
@@ -165,93 +131,101 @@ export function NotificationChannelMatrix({ restaurantId }: NotificationChannelM
   }
 
   return (
-    <div className="space-y-6 pb-4">
-      <div className="flex items-center gap-2">
-        <Bell className="h-5 w-5 text-primary" aria-hidden="true" />
-        <div>
-          <h2 className="text-[17px] font-semibold text-foreground">Notification channels</h2>
-          <p className="text-[13px] text-muted-foreground">
-            Choose which channels each notification type sends over.
-          </p>
-        </div>
+    <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+      <div className="px-5 pt-5 pb-4">
+        <h3 className="text-[15px] font-semibold text-foreground">Notification channels</h3>
+        <p className="text-[13px] text-muted-foreground mt-0.5">
+          Turn a channel on to send that notification. Changes save automatically.
+        </p>
       </div>
 
-      {groups.map(({ group, types }) => (
-        <div key={group} className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
-          <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
-            <h3 className="text-[13px] font-semibold text-foreground">{group}</h3>
-          </div>
-          <div className="p-4 overflow-x-auto">
-            <table className="w-full border-collapse">
-              <caption className="sr-only">{group} notifications</caption>
-              <thead>
-                <tr>
-                  <th scope="col" className="sr-only">
-                    Notification type
+      <div className="overflow-x-auto">
+        <table className="w-full table-fixed border-collapse">
+          <caption className="sr-only">
+            Notification channel settings. For each notification type, toggle whether it sends over
+            email and push.
+          </caption>
+          <colgroup>
+            <col />
+            <col className="w-[104px]" />
+            <col className="w-[104px]" />
+          </colgroup>
+          <thead>
+            <tr className="border-y border-border/40 bg-muted/40">
+              <th
+                scope="col"
+                className="py-2.5 pl-5 pr-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+              >
+                Notification
+              </th>
+              {(['email', 'push'] as const).map((channel) => {
+                const Icon = CHANNEL_ICON[channel];
+                return (
+                  <th key={channel} scope="col" className="py-2.5 px-3">
+                    <span className="flex flex-col items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                      {CHANNEL_LABEL[channel]}
+                    </span>
                   </th>
-                  <th scope="col" className="sr-only">
-                    Email
-                  </th>
-                  <th scope="col" className="sr-only">
-                    Push
+                );
+              })}
+            </tr>
+          </thead>
+          {groups.map(({ group, types }) => {
+            const GroupIcon = GROUP_ICON[group];
+            return (
+              <tbody key={group}>
+                <tr className="bg-muted/20">
+                  <th
+                    scope="colgroup"
+                    colSpan={3}
+                    className="py-2 pl-5 pr-3 text-left text-[12px] font-semibold text-foreground/80 border-b border-border/40"
+                  >
+                    <span className="flex items-center gap-2">
+                      <GroupIcon className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                      {group}
+                    </span>
                   </th>
                 </tr>
-              </thead>
-              <tbody>
                 {types.map((type) => {
-                  const value = local.get(type.key) ?? { email: true, push: true };
+                  const value = settings.get(type.key) ?? { email: true, push: true };
                   return (
-                    <tr key={type.key} className="border-b border-border/40 last:border-0">
+                    <tr
+                      key={type.key}
+                      className="border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors"
+                    >
                       <th
                         scope="row"
-                        className="py-3 pr-3 text-left text-[14px] font-medium text-foreground"
+                        className="py-3 pl-5 pr-3 text-left text-[14px] font-normal text-foreground"
                       >
                         {type.label}
                       </th>
-                      <td className="py-3 pr-3 text-center align-middle">
+                      <td className="py-3 px-3 text-center align-middle">
                         <ChannelCell
                           type={type}
                           channel="email"
                           checked={value.email}
-                          onCheckedChange={(checked) => updateChannel(type.key, 'email', checked)}
+                          disabled={isSaving}
+                          onChange={(checked) => setChannel(type.key, 'email', checked)}
                         />
                       </td>
-                      <td className="py-3 text-center align-middle">
+                      <td className="py-3 px-3 text-center align-middle">
                         <ChannelCell
                           type={type}
                           channel="push"
                           checked={value.push}
-                          onCheckedChange={(checked) => updateChannel(type.key, 'push', checked)}
+                          disabled={isSaving}
+                          onChange={(checked) => setChannel(type.key, 'push', checked)}
                         />
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
-            </table>
-          </div>
-        </div>
-      ))}
-
-      {hasChanges && (
-        <div className="sticky bottom-0 left-0 right-0 z-10 flex items-center justify-end gap-2 px-4 py-3 border-t border-border/40 bg-background/95 backdrop-blur">
-          <Button
-            variant="outline"
-            className="h-9 px-4 rounded-lg text-[13px] font-medium"
-            onClick={handleReset}
-            disabled={isSaving}
-          >
-            Reset
-          </Button>
-          <Button
-            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-            onClick={handleSave}
-            disabled={isSaving}
-          >
-            {isSaving ? 'Saving…' : 'Save'}
-          </Button>
-        </div>
-      )}
+            );
+          })}
+        </table>
+      </div>
     </div>
   );
 }

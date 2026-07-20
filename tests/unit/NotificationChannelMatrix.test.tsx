@@ -19,7 +19,7 @@ function allOnMap() {
   return map;
 }
 
-const saveChangesMock = vi.fn().mockResolvedValue(undefined);
+const setChannelMock = vi.fn();
 const refetchMock = vi.fn();
 
 function mockHookReturn(overrides: Partial<ReturnType<typeof hookMock>> = {}) {
@@ -29,7 +29,7 @@ function mockHookReturn(overrides: Partial<ReturnType<typeof hookMock>> = {}) {
     isError: false,
     error: null,
     refetch: refetchMock,
-    saveChanges: saveChangesMock,
+    setChannel: setChannelMock,
     isSaving: false,
     ...overrides,
   });
@@ -38,7 +38,6 @@ function mockHookReturn(overrides: Partial<ReturnType<typeof hookMock>> = {}) {
 describe('NotificationChannelMatrix', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    saveChangesMock.mockResolvedValue(undefined);
   });
 
   it('shows a loading skeleton while the query is in flight (never a silent all-ON table)', () => {
@@ -60,16 +59,35 @@ describe('NotificationChannelMatrix', () => {
     expect(refetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('renders every catalog type grouped into its own table, one row per type', () => {
+  it('renders a single aligned table with visible Email and Push column headers', () => {
+    mockHookReturn();
+    render(<NotificationChannelMatrix restaurantId="rest-1" />);
+
+    // One table for all groups (so the toggle columns line up across sections),
+    // not one table per group.
+    expect(screen.getAllByRole('table')).toHaveLength(1);
+
+    // The channel columns are labelled visibly (not sr-only) so an admin knows
+    // which toggle turns on which delivery method.
+    expect(screen.getByRole('columnheader', { name: /notification/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /email/i })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /push/i })).toBeInTheDocument();
+  });
+
+  it('renders a labelled section header for every catalog group, and one row per type', () => {
     mockHookReturn();
     render(<NotificationChannelMatrix restaurantId="rest-1" />);
 
     const groups = new Set(NOTIFICATION_TYPES.map((t) => t.group));
-    const tables = screen.getAllByRole('table');
-    expect(tables).toHaveLength(groups.size);
+    for (const group of groups) {
+      // Group headers span the row as a colgroup <th>.
+      expect(
+        screen.getByRole('columnheader', { name: new RegExp(`^${group}$`, 'i') }),
+      ).toBeInTheDocument();
+    }
 
     for (const type of NOTIFICATION_TYPES) {
-      expect(screen.getByText(type.label)).toBeInTheDocument();
+      expect(screen.getByRole('rowheader', { name: type.label })).toBeInTheDocument();
     }
   });
 
@@ -79,61 +97,50 @@ describe('NotificationChannelMatrix', () => {
 
     // time_off_requested is email-only per the catalog — its Push cell must
     // not expose a live switch.
-    const timeOffRow = screen.getByText('Time off requested').closest('tr')!;
+    const timeOffRow = screen.getByRole('rowheader', { name: 'Time off requested' }).closest('tr')!;
     expect(within(timeOffRow).queryByRole('switch', { name: /push/i })).not.toBeInTheDocument();
     expect(within(timeOffRow).getByRole('switch', { name: /email/i })).toBeInTheDocument();
   });
 
-  it('toggling a switch and clicking Save calls saveChanges with only the changed row (diff-based)', async () => {
+  it('toggling a switch saves that one channel immediately — no Save button in the UI', () => {
     mockHookReturn();
     render(<NotificationChannelMatrix restaurantId="rest-1" />);
 
-    const shiftDeletedRow = screen.getByText('Shift deleted').closest('tr')!;
+    // Immediate-save: there is no Save/Reset footer to click.
+    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument();
+
+    const shiftDeletedRow = screen.getByRole('rowheader', { name: 'Shift deleted' }).closest('tr')!;
     const pushSwitch = within(shiftDeletedRow).getByRole('switch', { name: /push/i });
     fireEvent.click(pushSwitch);
 
-    const saveButton = await screen.findByRole('button', { name: /^save$/i });
-    fireEvent.click(saveButton);
-
-    expect(saveChangesMock).toHaveBeenCalledTimes(1);
-    const [passedMap] = saveChangesMock.mock.calls[0];
-    expect(passedMap.get('shift_deleted')).toEqual({ email: true, push: false });
-    // Everything else stays untouched in the payload the component builds.
-    expect(passedMap.get('pin_reset')).toEqual({ email: true, push: true });
+    // Currently ON → the flip persists just this (type, channel) as OFF.
+    expect(setChannelMock).toHaveBeenCalledTimes(1);
+    expect(setChannelMock).toHaveBeenCalledWith('shift_deleted', 'push', false);
   });
 
-  it('hasChanges (Save/Reset footer) is driven by value comparison, not toggle-count', () => {
-    mockHookReturn();
+  it('reflects the value straight from the hook (no local edit state to drift)', () => {
+    const map = allOnMap();
+    map.set('shift_deleted', { email: true, push: false });
+    mockHookReturn({ settings: map });
     render(<NotificationChannelMatrix restaurantId="rest-1" />);
 
-    // No footer until something actually differs from the server snapshot.
-    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
-
-    const shiftDeletedRow = screen.getByText('Shift deleted').closest('tr')!;
-    const pushSwitch = within(shiftDeletedRow).getByRole('switch', { name: /push/i });
-
-    fireEvent.click(pushSwitch);
-    expect(screen.getByRole('button', { name: /^save$/i })).toBeInTheDocument();
-
-    // Flip it back — value now matches the snapshot again, footer should hide.
-    fireEvent.click(pushSwitch);
-    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
-  });
-
-  it('Reset discards local edits back to the fetched snapshot', () => {
-    mockHookReturn();
-    render(<NotificationChannelMatrix restaurantId="rest-1" />);
-
-    const shiftDeletedRow = screen.getByText('Shift deleted').closest('tr')!;
-    const pushSwitch = within(shiftDeletedRow).getByRole('switch', { name: /push/i });
-    fireEvent.click(pushSwitch);
-
-    fireEvent.click(screen.getByRole('button', { name: /reset/i }));
-
-    expect(screen.queryByRole('button', { name: /^save$/i })).not.toBeInTheDocument();
+    const shiftDeletedRow = screen.getByRole('rowheader', { name: 'Shift deleted' }).closest('tr')!;
     expect(within(shiftDeletedRow).getByRole('switch', { name: /push/i })).toHaveAttribute(
+      'data-state',
+      'unchecked',
+    );
+    expect(within(shiftDeletedRow).getByRole('switch', { name: /email/i })).toHaveAttribute(
       'data-state',
       'checked',
     );
+  });
+
+  it('disables the toggles while a save is in flight', () => {
+    mockHookReturn({ isSaving: true });
+    render(<NotificationChannelMatrix restaurantId="rest-1" />);
+
+    const shiftDeletedRow = screen.getByRole('rowheader', { name: 'Shift deleted' }).closest('tr')!;
+    expect(within(shiftDeletedRow).getByRole('switch', { name: /push/i })).toBeDisabled();
   });
 });

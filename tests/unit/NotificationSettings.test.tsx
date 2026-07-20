@@ -23,14 +23,12 @@ vi.mock('@/hooks/useNotificationPreferences', () => ({
   }),
 }));
 
-// Returns a referentially-STABLE object per restaurantId (each computed once,
-// not re-created per call). NotificationChannelMatrix's sync-guard effect
-// depends on `[settings]` by reference — a mock that returns a fresh
-// `{ settings: new Map(), ... }` literal on every render would make that
-// dependency "change" every render, spinning the component into an infinite
-// render loop (setLocal -> re-render -> new settings reference -> effect
-// fires -> setLocal -> ...). Keyed by restaurantId so tests can assert the
-// matrix shows the right restaurant's data after a restaurantId change.
+// Channel-matrix hook stub, keyed by restaurantId so tests can assert the
+// matrix shows the right restaurant's data after a restaurantId change. The
+// matrix now renders directly from `settings` (immediate optimistic save, no
+// local edit state), so there is no sync effect to loop — a fresh object per
+// call would be harmless, but keying it lets the restaurant-switch test below
+// return distinct values per id.
 const channelSettingsByRestaurant = vi.hoisted(() => ({
   'rest-1': {
     settings: new Map([['schedule_published', { email: true, push: false }]]),
@@ -38,7 +36,7 @@ const channelSettingsByRestaurant = vi.hoisted(() => ({
     isError: false,
     error: null,
     refetch: vi.fn(),
-    saveChanges: vi.fn(),
+    setChannel: vi.fn(),
     isSaving: false,
   },
   'rest-2': {
@@ -47,7 +45,7 @@ const channelSettingsByRestaurant = vi.hoisted(() => ({
     isError: false,
     error: null,
     refetch: vi.fn(),
-    saveChanges: vi.fn(),
+    setChannel: vi.fn(),
     isSaving: false,
   },
 }));
@@ -174,10 +172,9 @@ describe('NotificationSettings channel matrix restaurant switching', () => {
       </QueryClientProvider>
     );
 
-    // rest-2's schedule-published email switch is OFF — must reflect immediately,
-    // never rest-1's stale ON value (which the missing sync on restaurantId
-    // change previously allowed, risking a Save that overwrites rest-2's
-    // real settings with rest-1's).
+    // rest-2's schedule-published email switch is OFF — the matrix reads the
+    // value straight from the hook, so a restaurantId change reflects the new
+    // restaurant's settings immediately (never rest-1's stale ON value).
     expect(screen.getByRole('switch', { name: /schedule published — email/i })).not.toBeChecked();
   });
 });

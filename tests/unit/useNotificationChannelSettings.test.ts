@@ -26,6 +26,16 @@ function buildSelectChain(resolvedValue: { data: unknown; error: unknown }) {
   return chain;
 }
 
+/** A `supabase.from()` return that answers both the initial `.select().eq()`
+ *  read and any `.upsert()` write, so a single `mockReturnValue` covers a
+ *  render that loads settings and then flips a toggle. */
+function buildReadWriteChain(
+  read: { data: unknown; error: unknown },
+  upsertMock: ReturnType<typeof vi.fn>,
+) {
+  return { ...buildSelectChain(read), upsert: upsertMock };
+}
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -40,7 +50,7 @@ describe('useNotificationChannelSettings', () => {
     vi.clearAllMocks();
   });
 
-  it('merges an empty row set into a default-ON map for all 16 catalog types', async () => {
+  it('merges an empty row set into a default-ON map for all catalog types', async () => {
     mockSupabase.from.mockReturnValue(buildSelectChain({ data: [], error: null }));
 
     const { result } = renderHook(() => useNotificationChannelSettings('rest-1'), {
@@ -92,10 +102,9 @@ describe('useNotificationChannelSettings', () => {
     expect(result.current.isError).toBe(true);
   });
 
-  it('saveChanges upserts only the rows that differ from the fetched snapshot (diff-based)', async () => {
-    const selectChain = buildSelectChain({ data: [], error: null });
+  it('setChannel upserts the full row for that one type, flipping only the touched channel', async () => {
     const upsertMock = vi.fn().mockResolvedValue({ error: null });
-    mockSupabase.from.mockReturnValue({ ...selectChain, upsert: upsertMock });
+    mockSupabase.from.mockReturnValue(buildReadWriteChain({ data: [], error: null }, upsertMock));
 
     const { result } = renderHook(() => useNotificationChannelSettings('rest-1'), {
       wrapper: createWrapper(),
@@ -103,51 +112,48 @@ describe('useNotificationChannelSettings', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const next = new Map(result.current.settings);
-    next.set('shift_deleted', { email: false, push: true });
-
     await act(async () => {
-      await result.current.saveChanges(next);
+      result.current.setChannel('shift_deleted', 'email', false);
     });
 
-    expect(upsertMock).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(upsertMock).toHaveBeenCalledTimes(1));
+    // The untouched `push` channel keeps its current (default-ON) value.
     expect(upsertMock).toHaveBeenCalledWith(
-      [
-        {
-          restaurant_id: 'rest-1',
-          notification_type: 'shift_deleted',
-          email_enabled: false,
-          push_enabled: true,
-        },
-      ],
+      {
+        restaurant_id: 'rest-1',
+        notification_type: 'shift_deleted',
+        email_enabled: false,
+        push_enabled: true,
+      },
       { onConflict: 'restaurant_id,notification_type' },
     );
   });
 
-  it('saveChanges is a no-op (no upsert call) when nothing actually changed', async () => {
-    const selectChain = buildSelectChain({ data: [], error: null });
-    const upsertMock = vi.fn().mockResolvedValue({ error: null });
-    mockSupabase.from.mockReturnValue({ ...selectChain, upsert: upsertMock });
+  it('setChannel updates the cache optimistically so the toggle reflects instantly (before the write resolves)', async () => {
+    // A never-resolving upsert: the optimistic cache update must be visible
+    // without waiting on the network round-trip.
+    const upsertMock = vi.fn().mockReturnValue(new Promise(() => {}));
+    mockSupabase.from.mockReturnValue(buildReadWriteChain({ data: [], error: null }, upsertMock));
 
     const { result } = renderHook(() => useNotificationChannelSettings('rest-1'), {
       wrapper: createWrapper(),
     });
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.settings.get('pin_reset')).toEqual({ email: true, push: true });
 
-    const unchanged = new Map(result.current.settings);
-
-    await act(async () => {
-      await result.current.saveChanges(unchanged);
+    act(() => {
+      result.current.setChannel('pin_reset', 'push', false);
     });
 
-    expect(upsertMock).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.settings.get('pin_reset')).toEqual({ email: true, push: false }),
+    );
   });
 
-  it('a failed save rejects (caller can catch/retry) and reports via toast rather than throwing uncaught', async () => {
-    const selectChain = buildSelectChain({ data: [], error: null });
+  it('a failed setChannel rolls the cache back to its prior value and reports via toast', async () => {
     const upsertMock = vi.fn().mockResolvedValue({ error: { message: 'write failed' } });
-    mockSupabase.from.mockReturnValue({ ...selectChain, upsert: upsertMock });
+    mockSupabase.from.mockReturnValue(buildReadWriteChain({ data: [], error: null }, upsertMock));
 
     const { result } = renderHook(() => useNotificationChannelSettings('rest-1'), {
       wrapper: createWrapper(),
@@ -155,22 +161,17 @@ describe('useNotificationChannelSettings', () => {
 
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    const next = new Map(result.current.settings);
-    next.set('pin_reset', { email: false, push: false });
-
-    let caught: unknown;
     await act(async () => {
-      try {
-        await result.current.saveChanges(next);
-      } catch (err) {
-        caught = err;
-      }
+      result.current.setChannel('pin_reset', 'email', false);
     });
 
-    expect(caught).toBeTruthy();
     await waitFor(() => expect(mockToast).toHaveBeenCalled());
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({ variant: 'destructive' }),
+    );
+    // Rolled back to the pre-toggle default-ON value (no silent phantom change).
+    await waitFor(() =>
+      expect(result.current.settings.get('pin_reset')).toEqual({ email: true, push: true }),
     );
   });
 });

@@ -244,7 +244,8 @@ export function buildSplhGrid(
   return cells;
 }
 
-function mondayOf(dateStr: string): string {
+/** Monday-start bucket key for a local YYYY-MM-DD date (UTC-safe, TZ-portable). */
+export function mondayOf(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   const dow = dt.getUTCDay(); // 0=Sun

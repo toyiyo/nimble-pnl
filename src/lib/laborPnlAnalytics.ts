@@ -9,8 +9,13 @@
  * what my team cost me" with payroll-grade labor $ (see design §1.1/§4).
  */
 
+import { mondayOf } from './splhAnalytics';
+
 /** Per-bucket balance vs. the labor-% target (design §3). */
 export type BalanceState = 'over' | 'balanced' | 'under';
+
+/** Timeline granularity for `buildFinancialSeries` / the `/labor` page toggle. */
+export type LaborGranularity = 'day' | 'week' | 'month';
 
 /**
  * Default balance band, in percentage points, around `target_labor_pct`.
@@ -92,4 +97,28 @@ export function classifyBalance(
   if (laborPct > targetPct + band) return 'over';
   if (laborPct < targetPct - band) return 'under';
   return 'balanced';
+}
+
+/**
+ * Calendar-month bucket key (`YYYY-MM`) for a local `YYYY-MM-DD` date. Pure
+ * string/UTC math — TZ-portable, no `Date`-local-offset surprises (design §5).
+ */
+export function monthKeyOf(dateStr: string): string {
+  return dateStr.slice(0, 7);
+}
+
+/**
+ * Bucket key for `buildFinancialSeries` (design §5): day passes the date
+ * through unchanged; week reuses `splhAnalytics.mondayOf` (the existing
+ * Monday-start rule, design §5); month uses `monthKeyOf`.
+ */
+export function bucketKeyOf(dateStr: string, granularity: LaborGranularity): string {
+  switch (granularity) {
+    case 'week':
+      return mondayOf(dateStr);
+    case 'month':
+      return monthKeyOf(dateStr);
+    default:
+      return dateStr;
+  }
 }

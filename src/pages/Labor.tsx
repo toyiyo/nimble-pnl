@@ -8,7 +8,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useLaborPnlAnalytics } from '@/hooks/useLaborPnlAnalytics';
-import type { FinancialPoint, LaborBalanceWindow, LaborGranularity } from '@/lib/laborPnlAnalytics';
+import { balanceStateClassName, type FinancialPoint, type LaborBalanceWindow, type LaborGranularity } from '@/lib/laborPnlAnalytics';
 import { cn } from '@/lib/utils';
 
 import { DemandVsStaffingChart } from '@/components/labor/DemandVsStaffingChart';
@@ -236,14 +236,14 @@ export default function Labor() {
           <h2 className="text-[13px] font-semibold text-foreground">Staffing callouts</h2>
           {summary.overWindows.map((window) => (
             <p key={`over-${window.startLabel}`} className="text-[13px] text-foreground">
-              <span className={cn('font-medium', 'text-[hsl(var(--labor-over))]')}>Over target:</span>{' '}
+              <span className={cn('font-medium', balanceStateClassName('over'))}>Over target:</span>{' '}
               {formatDollars(estimateWindowDollars(series, window, targetPct))} over target labor spend,{' '}
               {windowRangeLabel(window)}.
             </p>
           ))}
           {summary.underWindows.map((window) => (
             <p key={`under-${window.startLabel}`} className="text-[13px] text-foreground">
-              <span className={cn('font-medium', 'text-[hsl(var(--labor-under))]')}>Under target:</span>{' '}
+              <span className={cn('font-medium', balanceStateClassName('under'))}>Under target:</span>{' '}
               {formatDollars(estimateWindowDollars(series, window, targetPct))} under target labor spend,{' '}
               {windowRangeLabel(window)}.
             </p>

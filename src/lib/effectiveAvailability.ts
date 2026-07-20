@@ -117,6 +117,70 @@ export interface AvailabilityClasses {
   text: string;
 }
 
+export type WeekAvailabilityStatus = 'time_off' | 'limited' | 'available' | 'unset';
+
+export interface WeekAvailabilitySummary {
+  status: WeekAvailabilityStatus;
+  label: string;
+}
+
+/** True when a day's EffectiveAvailability is a hard "unavailable" (recurring off or unavailable exception). */
+function isDayUnavailable(day: EffectiveAvailability): boolean {
+  return day.type !== 'not-set' && day.slots[0]?.isAvailable === false;
+}
+
+/** True when a day's EffectiveAvailability has at least one available slot. */
+function isDayAvailable(day: EffectiveAvailability): boolean {
+  return day.slots.some((slot) => slot.isAvailable);
+}
+
+/**
+ * Rolls up one employee's per-day EffectiveAvailability for the displayed
+ * week (plus approved time off) into a single chip status. Priority order:
+ * approved time off > any unavailable/exception day ("limited") > any
+ * available day > unset (no data at all — renders no chip).
+ */
+export function summarizeWeekAvailability(
+  week: Map<number, EffectiveAvailability> | undefined,
+  hasTimeOff: boolean,
+  offLabel?: string,
+): WeekAvailabilitySummary {
+  if (hasTimeOff) {
+    return { status: 'time_off', label: offLabel ?? 'Time off' };
+  }
+
+  const days = week ? Array.from(week.values()) : [];
+
+  if (days.some(isDayUnavailable)) {
+    return { status: 'limited', label: 'Limited availability' };
+  }
+
+  if (days.some(isDayAvailable)) {
+    return { status: 'available', label: 'Available' };
+  }
+
+  return { status: 'unset', label: 'Availability not set' };
+}
+
+/**
+ * Tint for the weekly availability chip beside an employee's name. `unset`
+ * returns null so the caller renders no chip (avoids decorative noise for
+ * employees with no availability data at all).
+ */
+export function weekAvailabilityChipClasses(status: WeekAvailabilityStatus): AvailabilityClasses | null {
+  switch (status) {
+    case 'time_off':
+      return { bg: 'bg-muted/50', text: 'text-muted-foreground' };
+    case 'limited':
+      return { bg: 'bg-amber-500/10', text: 'text-amber-700 dark:text-amber-400' };
+    case 'available':
+      return { bg: 'bg-success/10', text: 'text-success' };
+    case 'unset':
+    default:
+      return null;
+  }
+}
+
 /**
  * Semantic tint for an EffectiveAvailability — the exact treatment used by
  * TeamAvailabilityGrid.AvailabilityCell, extracted here so the grid, the

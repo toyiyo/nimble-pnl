@@ -162,19 +162,28 @@ serve(async (req) => {
       return json({ success: true, mode: 'targeted', restaurantId, ordersProcessed: totalProcessed, initialSyncDone: !!conn.initial_sync_done });
     }
 
-    // Cron round-robin: one batch each for the least-recently-synced connections.
-    const { data: connections } = await service
-      .from('revel_connections')
-      .select('*')
-      .eq('is_active', true)
-      .order('last_sync_time', { ascending: true, nullsFirst: true })
-      .limit(MAX_RESTAURANTS_PER_RUN);
+    // Cron: atomically claim a batch of DUE connections (FOR UPDATE SKIP LOCKED via
+    // claim_revel_sync_batch) so parallel cron workers never touch the same restaurant.
+    const { data: connections } = await service.rpc('claim_revel_sync_batch', { p_limit: MAX_RESTAURANTS_PER_RUN });
 
     for (const conn of connections ?? []) {
       if (!conn.api_key_encrypted || !conn.api_secret_encrypted) continue;
       const r = await processConnectionBatch(service, encryption, conn);
       totalProcessed += r.processed;
-      await new Promise((res) => setTimeout(res, 2000));
+
+      if (r.failed) {
+        // Exponential backoff (5→60 min) so a persistently failing connection doesn't hog slots.
+        const failures = (conn.consecutive_failures ?? 0) + 1;
+        const backoffMin = Math.min(60, 5 * Math.pow(2, Math.min(failures, 4)));
+        await service.from('revel_connections')
+          .update({ consecutive_failures: failures, next_attempt_at: new Date(Date.now() + backoffMin * 60000).toISOString() })
+          .eq('id', conn.id);
+      } else if ((conn.consecutive_failures ?? 0) > 0) {
+        await service.from('revel_connections')
+          .update({ consecutive_failures: 0, next_attempt_at: null })
+          .eq('id', conn.id);
+      }
+      await new Promise((res) => setTimeout(res, 1000));
     }
 
     return json({ success: true, mode: 'cron', restaurants: connections?.length ?? 0, ordersProcessed: totalProcessed });

@@ -8,7 +8,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-import { Eye, EyeOff, MoreHorizontal, Pencil } from 'lucide-react';
+import { Eye, EyeOff, MoreHorizontal, Pencil, Trash2 } from 'lucide-react';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
@@ -17,6 +17,9 @@ interface TemplateRowHeaderProps {
   onEdit: (template: ShiftTemplate) => void;
   onHide: (template: ShiftTemplate) => void;
   onRestore: (templateId: string) => void;
+  /** Hard delete — a mistakenly-hidden template must still be reachable, so
+   * this item renders in BOTH the active and hidden dropdown branches. */
+  onDelete: (template: ShiftTemplate) => void;
 }
 
 function formatCompactTemplateTime(time: string): string {
@@ -32,6 +35,7 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
   onEdit,
   onHide,
   onRestore,
+  onDelete,
 }: TemplateRowHeaderProps) {
   const isHidden = !template.is_active;
 
@@ -107,6 +111,12 @@ export const TemplateRowHeader = memo(function TemplateRowHeader({
               </span>
             </DropdownMenuItem>
           )}
+          <DropdownMenuItem
+            onClick={() => onDelete(template)}
+            className="text-destructive focus:text-destructive"
+          >
+            <Trash2 className="h-4 w-4 mr-2" /> Delete template…
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </div>

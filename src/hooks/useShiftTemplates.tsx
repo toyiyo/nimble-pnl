@@ -249,7 +249,9 @@ export function useShiftTemplates(
     createTemplate: createMutation.mutateAsync,
     updateTemplate: updateMutation.mutateAsync,
     hideTemplate: hideMutation.mutateAsync,
+    isHiding: hideMutation.isPending,
     restoreTemplate: restoreMutation.mutateAsync,
     deleteTemplate: deleteMutation.mutateAsync,
+    isDeleting: deleteMutation.isPending,
   };
 }

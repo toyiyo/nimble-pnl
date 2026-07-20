@@ -495,6 +495,83 @@ describe('useShiftTemplates', () => {
     });
   });
 
+  // Control-group gating (design doc "Friction & gating rules"): the delete
+  // dialog disables Delete+Hide on `isDeleting || isHiding`, so the hook must
+  // expose the underlying mutation pending state, not just the callbacks.
+  describe('isDeleting / isHiding (control-group gating flags)', () => {
+    it('isDeleting is false at rest, true while the delete mutation is in flight, false after it settles', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      let resolveSelect!: (value: { data: unknown[]; error: null }) => void;
+      const pendingSelect = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+        resolveSelect = resolve;
+      });
+      const secondEq = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue(pendingSelect) });
+      const firstEq = vi.fn().mockReturnValue({ eq: secondEq });
+      const del = vi.fn().mockReturnValue({ eq: firstEq });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.isDeleting).toBe(false);
+
+      let deletePromise!: Promise<unknown>;
+      act(() => {
+        deletePromise = result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 });
+      });
+
+      await waitFor(() => expect(result.current.isDeleting).toBe(true));
+
+      await act(async () => {
+        resolveSelect({ data: [{ id: 't1' }], error: null });
+        await deletePromise;
+      });
+
+      await waitFor(() => expect(result.current.isDeleting).toBe(false));
+    });
+
+    it('isHiding is false at rest, true while the hide mutation is in flight, false after it settles', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      let resolveUpdate!: (value: { error: null }) => void;
+      const pendingUpdate = new Promise<{ error: null }>((resolve) => {
+        resolveUpdate = resolve;
+      });
+      // `.update(...).eq('id', id).eq('restaurant_id', id)` — the second `.eq()`
+      // call must itself return the deferred, awaitable promise.
+      const secondEq = vi.fn().mockReturnValue(pendingUpdate);
+      const firstEq = vi.fn().mockReturnValue({ eq: secondEq });
+      const update = vi.fn().mockReturnValue({ eq: firstEq });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        update,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.isHiding).toBe(false);
+
+      let hidePromise!: Promise<unknown>;
+      act(() => {
+        hidePromise = result.current.hideTemplate({ id: 't1', name: 'Morning', keptShiftCount: 0 });
+      });
+
+      await waitFor(() => expect(result.current.isHiding).toBe(true));
+
+      await act(async () => {
+        resolveUpdate({ error: null });
+        await hidePromise;
+      });
+
+      await waitFor(() => expect(result.current.isHiding).toBe(false));
+    });
+  });
+
   describe('restoreTemplate', () => {
     it('updates is_active: true for the given id', async () => {
       const selectBuilder = makeSelectBuilder([]);

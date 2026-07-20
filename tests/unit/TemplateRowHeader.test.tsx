@@ -35,7 +35,7 @@ async function openMenu(user: ReturnType<typeof userEvent.setup>) {
 
 describe('TemplateRowHeader', () => {
   describe('active template menu', () => {
-    it('renders "Hide template" (not Delete) with a "keeps shifts" hint', async () => {
+    it('renders "Hide template" with a "keeps shifts" hint', async () => {
       const user = userEvent.setup();
       render(
         <TemplateRowHeader
@@ -43,13 +43,13 @@ describe('TemplateRowHeader', () => {
           onEdit={vi.fn()}
           onHide={vi.fn()}
           onRestore={vi.fn()}
+          onDelete={vi.fn()}
         />
       );
       await openMenu(user);
 
       expect(screen.getByRole('menuitem', { name: /Hide template/i })).toBeInTheDocument();
       expect(screen.getByText('keeps shifts')).toBeInTheDocument();
-      expect(screen.queryByRole('menuitem', { name: /^Delete$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: /Restore template/i })).not.toBeInTheDocument();
     });
 
@@ -62,6 +62,7 @@ describe('TemplateRowHeader', () => {
           onEdit={vi.fn()}
           onHide={onHide}
           onRestore={vi.fn()}
+          onDelete={vi.fn()}
         />
       );
       await openMenu(user);
@@ -80,6 +81,7 @@ describe('TemplateRowHeader', () => {
           onEdit={onEdit}
           onHide={vi.fn()}
           onRestore={vi.fn()}
+          onDelete={vi.fn()}
         />
       );
       await openMenu(user);
@@ -96,6 +98,7 @@ describe('TemplateRowHeader', () => {
           onEdit={vi.fn()}
           onHide={vi.fn()}
           onRestore={vi.fn()}
+          onDelete={vi.fn()}
         />
       );
       expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
@@ -103,7 +106,7 @@ describe('TemplateRowHeader', () => {
   });
 
   describe('hidden (ghost) template menu', () => {
-    it('renders "Restore template" instead of "Hide template"/"Delete"', async () => {
+    it('renders "Restore template" instead of "Hide template"', async () => {
       const user = userEvent.setup();
       render(
         <TemplateRowHeader
@@ -111,13 +114,13 @@ describe('TemplateRowHeader', () => {
           onEdit={vi.fn()}
           onHide={vi.fn()}
           onRestore={vi.fn()}
+          onDelete={vi.fn()}
         />
       );
       await openMenu(user);
 
       expect(screen.getByRole('menuitem', { name: /Restore template/i })).toBeInTheDocument();
       expect(screen.queryByRole('menuitem', { name: /Hide template/i })).not.toBeInTheDocument();
-      expect(screen.queryByRole('menuitem', { name: /^Delete$/i })).not.toBeInTheDocument();
     });
 
     it('calls onRestore with the template id when "Restore template" is clicked', async () => {
@@ -129,6 +132,7 @@ describe('TemplateRowHeader', () => {
           onEdit={vi.fn()}
           onHide={vi.fn()}
           onRestore={onRestore}
+          onDelete={vi.fn()}
         />
       );
       await openMenu(user);
@@ -145,6 +149,7 @@ describe('TemplateRowHeader', () => {
           onEdit={vi.fn()}
           onHide={vi.fn()}
           onRestore={vi.fn()}
+          onDelete={vi.fn()}
         />
       );
       // Desktop and mobile badges both render in jsdom (Tailwind responsive
@@ -159,6 +164,85 @@ describe('TemplateRowHeader', () => {
     });
   });
 
+  // Design doc: "a mistakenly-hidden template must still be hard-deletable" —
+  // the destructive Delete item must render in BOTH the active and hidden
+  // dropdown branches, not just one.
+  describe('delete menu item (both branches)', () => {
+    it('renders a destructive "Delete template" item for an active template', async () => {
+      const user = userEvent.setup();
+      render(
+        <TemplateRowHeader
+          template={baseTemplate}
+          onEdit={vi.fn()}
+          onHide={vi.fn()}
+          onRestore={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      );
+      await openMenu(user);
+
+      const item = screen.getByRole('menuitem', { name: /Delete template/i });
+      expect(item).toBeInTheDocument();
+      expect(item).toHaveClass('text-destructive');
+    });
+
+    it('renders a destructive "Delete template" item for a hidden template too', async () => {
+      const user = userEvent.setup();
+      render(
+        <TemplateRowHeader
+          template={hiddenTemplate}
+          onEdit={vi.fn()}
+          onHide={vi.fn()}
+          onRestore={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      );
+      await openMenu(user);
+
+      const item = screen.getByRole('menuitem', { name: /Delete template/i });
+      expect(item).toBeInTheDocument();
+      expect(item).toHaveClass('text-destructive');
+    });
+
+    it('calls onDelete with the full template when "Delete template" is clicked (active template)', async () => {
+      const user = userEvent.setup();
+      const onDelete = vi.fn();
+      render(
+        <TemplateRowHeader
+          template={baseTemplate}
+          onEdit={vi.fn()}
+          onHide={vi.fn()}
+          onRestore={vi.fn()}
+          onDelete={onDelete}
+        />
+      );
+      await openMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: /Delete template/i }));
+
+      expect(onDelete).toHaveBeenCalledTimes(1);
+      expect(onDelete).toHaveBeenCalledWith(baseTemplate);
+    });
+
+    it('calls onDelete with the full template when "Delete template" is clicked (hidden template)', async () => {
+      const user = userEvent.setup();
+      const onDelete = vi.fn();
+      render(
+        <TemplateRowHeader
+          template={hiddenTemplate}
+          onEdit={vi.fn()}
+          onHide={vi.fn()}
+          onRestore={vi.fn()}
+          onDelete={onDelete}
+        />
+      );
+      await openMenu(user);
+      await user.click(screen.getByRole('menuitem', { name: /Delete template/i }));
+
+      expect(onDelete).toHaveBeenCalledTimes(1);
+      expect(onDelete).toHaveBeenCalledWith(hiddenTemplate);
+    });
+  });
+
   describe('memo comparator', () => {
     it('treats is_active flip as a required re-render even if updated_at is identical', () => {
       // Regression guard for the design-doc requirement: the memo comparator
@@ -169,12 +253,12 @@ describe('TemplateRowHeader', () => {
       const hidden = { ...baseTemplate, updated_at: sameTimestamp, is_active: false };
 
       const { rerender } = render(
-        <TemplateRowHeader template={active} onEdit={vi.fn()} onHide={vi.fn()} onRestore={vi.fn()} />
+        <TemplateRowHeader template={active} onEdit={vi.fn()} onHide={vi.fn()} onRestore={vi.fn()} onDelete={vi.fn()} />
       );
       expect(screen.queryByText('Hidden')).not.toBeInTheDocument();
 
       rerender(
-        <TemplateRowHeader template={hidden} onEdit={vi.fn()} onHide={vi.fn()} onRestore={vi.fn()} />
+        <TemplateRowHeader template={hidden} onEdit={vi.fn()} onHide={vi.fn()} onRestore={vi.fn()} onDelete={vi.fn()} />
       );
       expect(screen.getAllByText('Hidden').length).toBeGreaterThanOrEqual(1);
     });

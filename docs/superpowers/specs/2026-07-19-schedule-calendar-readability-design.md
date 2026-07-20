@@ -16,9 +16,10 @@ User feedback on the weekly Schedule grid:
    team column to a 56px **initials-only** avatar strip.
 3. **Names not visible on mobile** — only initials show.
 4. **Availability is unclear**, and **time-off reads as ambiguous blue.** The
-   off treatment uses `bg-info/10 text-info` — the same blue used for bartender
-   shifts and info states — and only the **first day** of a multi-day span is
-   labeled "Time off"; the remaining days are an unlabeled blue block.
+   off treatment uses `bg-info/10 text-info` — the same blue used for `server`
+   shifts (`src/lib/positionColors.ts`) and info states — and only the **first
+   day** of a multi-day span is labeled "Time off"; the remaining days are an
+   unlabeled blue block.
 
 ## Goals
 
@@ -85,8 +86,15 @@ info-blue** onto a neutral hatched treatment, labeled every day:
 
 - **Data:** add `useEmployeeAvailability(restaurantId)` +
   `useAvailabilityExceptions(restaurantId)`; memoize
-  `computeEffectiveAvailability(availability, exceptions, weekStart, employeeIds)`
-  keyed on `weekStart` + employee ids.
+  `computeEffectiveAvailability(availability, exceptions, weekStart, employeeIds)`.
+  Memo dep must be a **stable string key** (`employeeIds.join(',')` +
+  `weekStartKey`), not a fresh `employees.map(...)` array literal, or the memo
+  is defeated every render.
+- **Three-state:** both hooks already use `staleTime: 30000`. While either query
+  is loading or on error, the availability map is empty → `summarizeWeekAvailability`
+  yields `unset` → **no chip** (graceful, no page skeleton — shifts/grid render
+  independently). Time-off state still shows because it comes from the already-
+  loaded `weekTimeOff`.
 - **New pure helper** in `src/lib/effectiveAvailability.ts` (measured dir →
   coverage counts): `summarizeWeekAvailability(week, off)` →
   `{ status: 'time_off' | 'limited' | 'available' | 'unset', label }`.
@@ -104,23 +112,41 @@ info-blue** onto a neutral hatched treatment, labeled every day:
 
 ### 4. Mobile day-focused layout
 
-Follow the **proven pattern from `TeamAvailabilityGrid`**: separate render trees,
-`hidden md:block` for the desktop `<table>` and `md:hidden` for a mobile view.
+**Only the `hidden md:block` / `md:hidden` CSS-split *mechanism* is borrowed
+from `TeamAvailabilityGrid`** (whose mobile view is one card per employee across
+all 7 days). The day-picker + single-day-per-card interaction model here is new.
 
-- Wrap the existing `<table>` (+ its `DndContext`) in `hidden md:block`.
+- Wrap the existing `<table>` (+ its `DndContext`) in `hidden md:block`. Only the
+  desktop tree carries a `DndContext` — no duplicate DnD. Dialogs stay page-level
+  (Single Dialog Pattern), driven by shared handlers, so no duplication.
 - New component `src/components/scheduling/WeekScheduleMobile.tsx` (`md:hidden`):
-  - **Sticky day-picker strip:** 7 day chips (`Mon 14` … `Sun 20`), today
-    marked with a `primary` tick + label, selected chip filled `primary/10`.
-  - Default selected day = today if within the displayed week, else the first
-    day. (Pure `pickDefaultMobileDay(weekDays, today)` helper → unit-tested.)
+  - **Sticky day-picker strip:** 7 day chips (`Mon 14` … `Sun 20`), today marked
+    with a `primary` tick + `aria-current="date"`, selected chip filled
+    `primary/10`.
+    - **A11y:** chips are `<button>`s with `aria-pressed={isSelected}`, a visible
+      `focus-visible` ring, and a **≥44px** touch target (`min-h-11`); plain tab
+      order (no roving tabindex — 7 buttons is fine).
+  - Default selected day = today if within the displayed week, else the first day
+    (pure `pickDefaultMobileDay(weekDays, today)` → unit-tested). **Re-derived
+    when `weekStart` changes** (via `useEffect` on the week key), so prev/next
+    week navigation doesn't leave the picker on a stale date.
   - **Employee cards** for the selected day: avatar + **full name** + position ·
-    FT/PT + weekly-hours; availability chip; then body =
-    shift(s) via the shared `ShiftCard` **or** a "Time off" banner **or** a
-    conflict block (destructive header + shift) **or** empty + "Add shift".
+    FT/PT + weekly-hours; availability chip; then body = shift(s) via the shared
+    `ShiftCard` **or** a "Time off" banner **or** a conflict block (destructive
+    header + shift) **or** empty + "Add shift".
   - Respects `selectionMode` (reuses `ShiftCard`'s selection props) and the
     existing `handleAddShift` / `handleEditShift` / `handleEditEmployee`.
+- **`ShiftCard` keyboard access:** the mobile layout makes tap-to-edit the
+  *primary* edit path, but `ShiftCard`'s clickable surface is a bare `<div
+  onClick>` (no keyboard support). Add `role="button"`, `tabIndex={0}`, and an
+  `onKeyDown` (Enter/Space) to that surface as part of this work — fixes a
+  pre-existing gap that mobile would otherwise lean on. (Small, shared by desktop
+  too; behavior otherwise unchanged.)
 - Because the wide table is `display:none` on mobile, the PR #585 sr-only escape
-  vector is inert on phones; the desktop fix remains in place.
+  vector is inert on phones; the desktop fix remains in place. Note: both trees
+  stay **mounted** (hidden ≠ unmounted), matching `TeamAvailabilityGrid` — the
+  invisible desktop table still re-renders; acceptable at current roster sizes,
+  measured in Testing.
 
 ## Files touched
 
@@ -129,7 +155,7 @@ Follow the **proven pattern from `TeamAvailabilityGrid`**: separate render trees
 | `src/index.css` | `.timeoff-hatch`, `.conflict-hatch` utilities |
 | `src/lib/effectiveAvailability.ts` | `summarizeWeekAvailability` + status→classes helper |
 | `src/lib/scheduleMobile.ts` (new) | `pickDefaultMobileDay` pure helper |
-| `src/pages/Scheduling.tsx` | today header, availability data + chip, time-off cell, desktop/mobile split |
+| `src/pages/Scheduling.tsx` | today header, availability data + chip, time-off cell, desktop/mobile split, `ShiftCard` keyboard access |
 | `src/components/scheduling/DroppableDayCell.tsx` | today column bracketing |
 | `src/components/scheduling/WeekScheduleMobile.tsx` (new) | mobile day-focused view |
 | `tests/unit/effectiveAvailability.test.ts` | `summarizeWeekAvailability` cases |
@@ -141,12 +167,15 @@ Follow the **proven pattern from `TeamAvailabilityGrid`**: separate render trees
   priority; empty inputs) and `pickDefaultMobileDay` (today-in-week, today-out,
   week boundaries) — both in `src/lib` so SonarCloud counts the coverage.
 - Manual/preview: verify today band, hatched every-day time off, conflict flag,
-  availability chips, and the mobile day view at 375px in both themes.
+  availability chips, and the mobile day view at 375px in both themes; sanity-
+  check that the (mounted-but-hidden) desktop table doesn't cause jank on a
+  larger roster.
 
 ## Lessons applied (from `memory/lessons.md`)
 
-- **PR #585** — keep `DroppableDayCell` `relative`; don't add abspos/`sr-only`
-  content to unpositioned scroll ancestors.
+- **PR #585** (mobile sr-only escape → horizontal overflow) — keep
+  `DroppableDayCell` and the `overflow-x-auto` scroller `relative`; don't add
+  abspos/`sr-only` content to unpositioned scroll ancestors.
 - **No raw colors** — reuse the availability palette shared helper; time-off/
   conflict hatch use `muted-foreground` / `destructive` tokens via utilities.
 - **SonarCloud cognitive complexity ≤15** — keep new helpers flat, extract

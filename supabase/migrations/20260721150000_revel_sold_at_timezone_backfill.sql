@@ -56,7 +56,28 @@ COMMENT ON FUNCTION public.revel_raw_created_date(jsonb) IS
   'finalized_date/date). Used by the sold_at timezone backfill (2026-07-21).';
 
 -- ============================================================
--- 2) revel_backfill_pending_count(): pre/post-flight row-count report.
+-- 2) revel_valid_tz(text): validated restaurant timezone, with fallback.
+--    Single source of truth for the "is restaurants.timezone usable" check —
+--    mirrors the edge-side safeTz() guard. Used by every backfill helper
+--    below so the validation rule can't drift between them.
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION public.revel_valid_tz(p_tz text)
+RETURNS text
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE WHEN p_tz IN (SELECT name FROM pg_timezone_names)
+              THEN p_tz ELSE 'America/Chicago' END;
+$$;
+
+COMMENT ON FUNCTION public.revel_valid_tz(text) IS
+  'Validates an IANA timezone string against pg_timezone_names, falling back to '
+  'America/Chicago when null/invalid — mirrors the edge-side safeTz() guard. '
+  'Shared by the sold_at backfill helpers (migration 2026-07-21).';
+
+-- ============================================================
+-- 3) revel_backfill_pending_count(): pre/post-flight row-count report.
 --    Counts revel_orders rows whose stored sold_at still disagrees with the
 --    tz-corrected value computed from raw_json (validated tz, same fallback
 --    as the worker below). Callable before AND after the backfill runs —
@@ -74,8 +95,7 @@ AS $$
   WHERE public.revel_raw_created_date(o.raw_json) IS NOT NULL
     AND o.sold_at IS DISTINCT FROM
         (public.revel_raw_created_date(o.raw_json))::timestamp AT TIME ZONE
-        (CASE WHEN r.timezone IN (SELECT name FROM pg_timezone_names)
-              THEN r.timezone ELSE 'America/Chicago' END);
+        public.revel_valid_tz(r.timezone);
 $$;
 
 COMMENT ON FUNCTION public.revel_backfill_pending_count() IS
@@ -84,7 +104,7 @@ COMMENT ON FUNCTION public.revel_backfill_pending_count() IS
   '(migration 2026-07-21) — should be 0 after the backfill runs.';
 
 -- ============================================================
--- 3) revel_backfill_invalid_tz_restaurants(): pre-flight offender report.
+-- 4) revel_backfill_invalid_tz_restaurants(): pre-flight offender report.
 --    Restaurants that have Revel orders but a null/invalid stored timezone —
 --    these fall back to America/Chicago in the worker below; surfaced here so
 --    the fallback isn't a silent surprise.
@@ -98,7 +118,7 @@ AS $$
   SELECT r.id, r.name, r.timezone
   FROM public.restaurants r
   WHERE r.id IN (SELECT DISTINCT ro.restaurant_id FROM public.revel_orders ro)
-    AND (r.timezone IS NULL OR r.timezone NOT IN (SELECT name FROM pg_timezone_names));
+    AND (r.timezone IS NULL OR public.revel_valid_tz(r.timezone) <> r.timezone);
 $$;
 
 COMMENT ON FUNCTION public.revel_backfill_invalid_tz_restaurants() IS
@@ -107,8 +127,8 @@ COMMENT ON FUNCTION public.revel_backfill_invalid_tz_restaurants() IS
   'for these. Pre-flight offender report (migration 2026-07-21).';
 
 -- ============================================================
--- 4) revel_backfill_sold_at_for_restaurant(uuid): per-restaurant worker.
---    - Validates restaurants.timezone against pg_timezone_names (fallback
+-- 5) revel_backfill_sold_at_for_restaurant(uuid): per-restaurant worker.
+--    - Validates restaurants.timezone via revel_valid_tz() (fallback
 --      America/Chicago), exactly mirroring the edge-side safeTz() guard —
 --      a non-null-but-invalid tz string would otherwise make AT TIME ZONE
 --      raise and abort.
@@ -133,9 +153,9 @@ DECLARE
   v_orders_updated integer := 0;
   v_sales_updated integer := 0;
   v_dates integer := 0;
+  v_sale_date date;
 BEGIN
-  SELECT CASE WHEN r.timezone IN (SELECT name FROM pg_timezone_names)
-              THEN r.timezone ELSE 'America/Chicago' END
+  SELECT public.revel_valid_tz(r.timezone)
   INTO v_tz
   FROM public.restaurants r
   WHERE r.id = p_restaurant_id;
@@ -175,13 +195,15 @@ BEGIN
   -- Scoped to this restaurant's Revel rows regardless of whether they were
   -- just modified — cheap (upsert), and guarantees daily_sales reflects the
   -- current unified_sales state even if a prior partial run left it stale.
-  SELECT count(*) INTO v_dates
-  FROM (SELECT DISTINCT sale_date FROM public.unified_sales
-        WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel') d;
-
-  PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
-  FROM (SELECT DISTINCT sale_date FROM public.unified_sales
-        WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel') d;
+  -- Single pass over the distinct dates (not one query for the count and a
+  -- second, identical query to drive the loop).
+  FOR v_sale_date IN
+    SELECT DISTINCT sale_date FROM public.unified_sales
+    WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel'
+  LOOP
+    PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, v_sale_date);
+    v_dates := v_dates + 1;
+  END LOOP;
 
   RETURN QUERY SELECT v_orders_updated, v_sales_updated, v_dates;
 END;
@@ -194,7 +216,7 @@ COMMENT ON FUNCTION public.revel_backfill_sold_at_for_restaurant(uuid) IS
   'during the bulk UPDATE, and re-aggregates daily totals once per touched date.';
 
 -- ============================================================
--- 5) Driver: run the backfill for every restaurant with Revel orders now.
+-- 6) Driver: run the backfill for every restaurant with Revel orders now.
 --    Bounded per-restaurant DO loop (not one unbounded UPDATE), per design
 --    §5b risk mitigation. Emits a pre/post pending-row report plus an
 --    invalid/null-tz offender report via RAISE NOTICE/WARNING.

@@ -43,7 +43,11 @@ export function computeLoanedOut(shiftsForDay: CoverageShift[], options: Compute
   // Overnight window: if end ≤ start, treat end as next-day (+1440)
   const w1 = w1raw <= w0 ? w1raw + 1440 : w1raw;
 
-  const loanedOut: CoveringEmployee[] = [];
+  // De-dup by employee: one ghost chip per employee (ShiftCell keys ghosts by
+  // employeeId, so two entries for the same employee would collide and silently
+  // drop one). If an employee has multiple loaned-out shifts in the window, merge
+  // them into a single covering range [min start, max end].
+  const byEmployee = new Map<string, CoveringEmployee>();
   for (const s of shiftsForDay) {
     if (s.position !== position) continue;
     if (s.status === 'cancelled') continue;
@@ -52,15 +56,22 @@ export function computeLoanedOut(shiftsForDay: CoverageShift[], options: Compute
     const clip = clipShiftToWindow(s, dateStr, tz, w0, w1);
     if (!clip) continue;
 
-    loanedOut.push({
-      employeeId: s.employee_id,
-      employeeName: s.employee_name ?? null,
-      homeArea: s.homeArea ?? null,
-      workArea: s.area ?? null,
-      startMin: clip.cs,
-      endMin: clip.ce,
-    });
+    const existing = byEmployee.get(s.employee_id);
+    if (existing) {
+      existing.startMin = Math.min(existing.startMin, clip.cs);
+      existing.endMin = Math.max(existing.endMin, clip.ce);
+    } else {
+      byEmployee.set(s.employee_id, {
+        employeeId: s.employee_id,
+        employeeName: s.employee_name ?? null,
+        homeArea: s.homeArea ?? null,
+        workArea: s.area ?? null,
+        startMin: clip.cs,
+        endMin: clip.ce,
+      });
+    }
   }
+  const loanedOut = Array.from(byEmployee.values());
   loanedOut.sort((a, b) => a.startMin - b.startMin);
   return loanedOut;
 }

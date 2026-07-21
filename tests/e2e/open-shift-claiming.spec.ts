@@ -425,8 +425,11 @@ test.describe('Open Shift Claiming', () => {
       }).select().single();
       if (otherErr) throw new Error(`other employee insert failed: ${otherErr.message}`);
 
-      const startUtc = new Date(`${targetStr}T15:00:00`).toISOString();
-      const endUtc = new Date(`${targetStr}T23:00:00`).toISOString();
+      // Anchor to explicit UTC so the seed is independent of the CI runner's tz
+      // (the exact time only needs to overlap the template window and NOT exactly
+      // match it — this shift must never count toward the template).
+      const startUtc = `${targetStr}T15:00:00+00:00`;
+      const endUtc = `${targetStr}T23:00:00+00:00`;
       const { error: shiftErr } = await supabase.from('shifts').insert({
         restaurant_id: restId, employee_id: other.id, shift_template_id: null,
         start_time: startUtc, end_time: endUtc, position: 'Server',

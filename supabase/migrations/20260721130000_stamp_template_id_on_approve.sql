@@ -57,8 +57,12 @@ BEGIN
         RETURN json_build_object('success', false, 'error', 'Claim is not pending approval');
     END IF;
 
-    -- Look up the restaurant timezone (after fetching the claim to get restaurant_id)
-    SELECT COALESCE(r.timezone, 'America/Chicago') INTO v_tz
+    -- Look up the restaurant timezone (after fetching the claim to get restaurant_id).
+    -- Fallback is 'UTC' to match get_open_shifts / claim_open_shift (and the
+    -- TypeScript computeOpenShiftCount path) so the offer, the claim guard, and
+    -- the approved shift all agree on the wall-clock when timezone IS NULL.
+    -- (Reviewer: prior approve body fell back to 'America/Chicago', diverging.)
+    SELECT COALESCE(r.timezone, 'UTC') INTO v_tz
     FROM public.restaurants r WHERE r.id = v_claim.restaurant_id;
 
     -- Get the template

@@ -106,4 +106,17 @@ describe('computeLoanedOut', () => {
     const ghosts = computeLoanedOut([later, earlier], { ...opts, area: 'Cold Stone' });
     expect(ghosts.map((g) => g.employeeId)).toEqual(['e1', 'e2']);
   });
+
+  it('dedupes an employee with two loaned-out shifts into one merged range', () => {
+    // Same employee, two disjoint loaned-out shifts in the window. ShiftCell keys
+    // ghosts by employeeId, so this must collapse to ONE entry spanning both.
+    const early = shift({ employee_id: 'e1', start_time: '2026-07-04T21:00:00Z', end_time: '2026-07-04T23:00:00Z' }); // 16:00-18:00 CDT
+    const late = shift({ employee_id: 'e1', start_time: '2026-07-05T01:00:00Z', end_time: '2026-07-05T04:00:00Z' });  // 20:00-23:00 CDT
+    const ghosts = computeLoanedOut([early, late], { ...opts, area: 'Cold Stone' });
+    expect(ghosts).toHaveLength(1);
+    expect(ghosts[0].employeeId).toBe('e1');
+    // Merged range spans from the earliest start to the latest end.
+    expect(ghosts[0].startMin).toBe(16 * 60);
+    expect(ghosts[0].endMin).toBe(23 * 60);
+  });
 });

@@ -257,9 +257,43 @@ This makes `computeSlotCoverage` decompose into `computeCellFill` +
 - **Minor S4 — DROP `shift_slot_min_concurrent`** only after re-grepping the final
   tree for references; bare `DROP` (no `CASCADE`) fails safe on any dependency.
 
+## Phase 7 Review Decisions (post-build)
+
+Two Phase-7 findings needed a human call (the workflow correctly halted):
+
+1. **Codex CRITICAL — `approve_open_shift_claim` has no authorization check**
+   (any authenticated employee can self-approve their own pending claim,
+   bypassing the manager gate; cross-restaurant approval possible). This is
+   **pre-existing** (inherited from `20260707090000`), not introduced here — this
+   migration only added the FK stamp. **Decision: spin off** a dedicated security
+   PR (manager-role + restaurant-membership guard, with pgTAP), to keep this
+   correctness fix focused. Filed as a separate task. Documented here as a known,
+   out-of-scope pre-existing risk.
+
+2. **Sound-logic MAJOR — banner day-bucketing regressed to browser timezone.**
+   Design step 5 moved `computeOpenShiftCount` onto `buildTemplateGridData`,
+   which bucketed shifts to days in the **viewer's** timezone. **Decision
+   (user): everything schedule-related must render in the restaurant timezone**
+   (a manager was hit by this while travelling). **Fixed in this PR:**
+   `buildTemplateGridData` now takes the restaurant `tz` and resolves calendar
+   day, time-of-day, and day-of-week in it (new `formatLocalTimeInTz` helper);
+   both callers (`ShiftPlannerTab`, `computeOpenShiftCount`) pass it. Chips,
+   banner, and the SQL (`… AT TIME ZONE p_tz`) now agree for any viewer. A
+   broader schedule-tz audit (`buildGridData` employee view, `plannerExport`,
+   `usePlannerShiftsIndex`) is a **follow-up** — those are pre-existing
+   browser-local paths outside this fix's surface.
+
+**E2E coverage added:** `tests/e2e/open-shift-claiming.spec.ts` — an overlapping
+same-position regular-calendar shift (different employee) must not hide the open
+shift; asserts it stays offered (assigned 0 / open 1), is claimable through the
+UI, the claimed shift is FK-stamped, and the filled capacity-1 slot then drops
+out of the open list.
+
 ## Out of scope
 
 - Loaned-out ghost visual behaviour (preserved as-is).
 - The `coveragePct` progress-bar semantics (kept as secondary info).
 - Historical FK backfill.
 - Over-assignment badge display (Minor C7) — spawn-off.
+- `approve_open_shift_claim` authorization hardening — spun-off security PR.
+- Broader schedule-tz audit (`buildGridData`, `plannerExport`) — follow-up.

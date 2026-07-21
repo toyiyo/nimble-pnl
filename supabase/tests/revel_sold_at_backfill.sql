@@ -5,7 +5,7 @@
 -- invalid/null-tz fallback), and the pre/post pending-count report.
 
 BEGIN;
-SELECT plan(19);
+SELECT plan(23);
 
 -- Setup: Disable RLS for test data creation (mirrors supabase/tests/revel_integration.sql)
 SET LOCAL role TO postgres;
@@ -165,7 +165,57 @@ SELECT is(
   'second run against the same restaurant is a no-op (IS DISTINCT FROM guard)'
 );
 
--- Test 14: invalid tz ("Bogus/Zone") falls back to America/Chicago, no throw
+-- ============================================================
+-- Trigger-suppression + batched re-aggregation consistency: a second order
+-- lands on the SAME sale_date after the first backfill run already
+-- corrected order-tz-1. Re-running the worker must (a) touch only the new
+-- row (IS DISTINCT FROM guard — the already-corrected row is untouched),
+-- (b) suppress the per-row aggregation trigger during the unified_sales
+-- UPDATE, and (c) still leave daily_sales consistent with BOTH orders once
+-- the single batched re-aggregation runs — proving trigger suppression
+-- doesn't leave a stale/partial daily aggregate.
+-- ============================================================
+
+INSERT INTO public.revel_orders (
+  id, restaurant_id, revel_order_id, order_date, order_time, sold_at, raw_json,
+  subtotal_amount, total_amount
+) VALUES (
+  'aaaaaaaa-bbbb-cccc-dddd-000000000003', '22222222-2222-2222-2222-222222222221',
+  'order-tz-3', '2026-07-19', '18:00:00', '2026-07-19T18:00:00+00:00',
+  '{"Order": {"created_date": "2026-07-19T18:00:00"}}'::jsonb,
+  15.00, 15.00
+);
+
+INSERT INTO public.unified_sales (
+  restaurant_id, pos_system, external_order_id, external_item_id,
+  item_name, quantity, unit_price, total_price, sale_date, sale_time, sold_at
+) VALUES (
+  '22222222-2222-2222-2222-222222222221', 'revel', 'order-tz-3', 'order-tz-3:item-1',
+  'Fries', 1, 15.00, 15.00, '2026-07-19', '18:00:00', '2026-07-19T18:00:00+00:00'
+);
+
+-- Test 14: re-run touches only the newly-added row (already-corrected
+-- order-tz-1 stays excluded by the IS DISTINCT FROM guard)
+SELECT is(
+  (SELECT orders_updated FROM public.revel_backfill_sold_at_for_restaurant('22222222-2222-2222-2222-222222222221')),
+  1,
+  'second-order re-run updates only the newly-added row, not the already-corrected one'
+);
+
+SELECT is(
+  (SELECT sold_at FROM public.revel_orders WHERE id = 'aaaaaaaa-bbbb-cccc-dddd-000000000003'),
+  '2026-07-19T23:00:00+00:00'::timestamptz,
+  'second order sold_at corrected (18:00:00 local -> 23:00:00Z CDT)'
+);
+
+SELECT is(
+  (SELECT gross_revenue FROM public.daily_sales
+   WHERE restaurant_id = '22222222-2222-2222-2222-222222222221' AND date = '2026-07-19' AND source = 'unified_pos'),
+  35.00::numeric,
+  'daily_sales consistent for both orders sharing the sale_date after trigger-suppressed batched re-aggregation'
+);
+
+-- Test 15: invalid tz ("Bogus/Zone") falls back to America/Chicago, no throw
 SELECT lives_ok(
   $$ SELECT public.revel_backfill_sold_at_for_restaurant('22222222-2222-2222-2222-222222222222') $$,
   'invalid restaurants.timezone does not abort the backfill (falls back to America/Chicago)'
@@ -176,7 +226,7 @@ SELECT is(
   'invalid-tz restaurant computed as if America/Chicago (CDT -05:00)'
 );
 
--- Test 15: pending count is 0 once both restaurants have been processed
+-- Test 16: pending count is 0 once both restaurants have been processed
 SELECT is(public.revel_backfill_pending_count(), 0::bigint,
   'pending count converges to 0 after backfill (post-flight)');
 
@@ -184,7 +234,7 @@ SELECT is(public.revel_backfill_pending_count(), 0::bigint,
 -- revel_backfill_invalid_tz_restaurants(): pre-flight offender report
 -- ============================================================
 
--- Test 16: lists the Bogus/Zone restaurant (has revel_orders + invalid tz)
+-- Test 17: lists the Bogus/Zone restaurant (has revel_orders + invalid tz)
 SELECT is(
   (SELECT count(*)::int FROM public.revel_backfill_invalid_tz_restaurants()
    WHERE restaurant_id = '22222222-2222-2222-2222-222222222222'),
@@ -192,13 +242,46 @@ SELECT is(
   'invalid-tz restaurant with revel_orders is reported'
 );
 
--- Test 17: does NOT list the null-tz restaurant, which has no revel_orders rows
+-- Test 18: does NOT list the null-tz restaurant, which has no revel_orders rows
 -- (report is scoped to restaurants that actually have Revel data, per design §5b)
 SELECT is(
   (SELECT count(*)::int FROM public.revel_backfill_invalid_tz_restaurants()
    WHERE restaurant_id = '22222222-2222-2222-2222-222222222223'),
   0,
   'restaurant with no revel_orders is not reported even if timezone is null'
+);
+
+-- ============================================================
+-- Design §7 acceptance query, as a pgTAP assertion: for every Revel-sourced
+-- unified_sales row, the sold_at instant reprojected into the restaurant's
+-- local timezone must equal sale_time (± 1s rounding). This is an
+-- independent check (raw AT TIME ZONE query, not reuse of
+-- revel_backfill_pending_count()) so a bug shared between the worker and the
+-- pending-count helper wouldn't hide a mismatch. mismatches must be 0.
+-- ============================================================
+
+-- Test 19: reconciliation — (sold_at AT TIME ZONE r.timezone)::time equals
+-- sale_time (± 1s) for all Revel unified_sales rows created in this test;
+-- mismatches = 0.
+SELECT is(
+  (
+    SELECT count(*)::int
+    FROM public.unified_sales u
+    JOIN public.restaurants r ON r.id = u.restaurant_id
+    WHERE u.pos_system = 'revel'
+      AND u.restaurant_id IN (
+        '22222222-2222-2222-2222-222222222221',
+        '22222222-2222-2222-2222-222222222222'
+      )
+      AND abs(extract(epoch FROM (
+        (u.sold_at AT TIME ZONE
+          (CASE WHEN r.timezone IN (SELECT name FROM pg_timezone_names)
+                THEN r.timezone ELSE 'America/Chicago' END)
+        )::time - u.sale_time
+      ))) > 1
+  ),
+  0,
+  'sold_at reprojected to local tz matches sale_time (+/-1s) for all Revel rows — mismatches = 0'
 );
 
 SELECT * FROM finish();

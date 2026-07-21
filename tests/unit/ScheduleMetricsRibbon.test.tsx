@@ -105,10 +105,11 @@ describe('ScheduleMetricsRibbon', () => {
     expect(screen.getByText(/1 shift ·/)).toBeInTheDocument();
   });
 
-  it('renders skeletons while loading', () => {
-    const { container } = renderRibbon({ isLoading: true });
+  it('shows an accessible loading affordance instead of the metrics', () => {
+    renderRibbon({ isLoading: true });
     expect(screen.queryByText('$3,258')).not.toBeInTheDocument();
-    expect(container.querySelectorAll('[data-slot="skeleton"], .animate-pulse').length).toBeGreaterThan(0);
+    // Assert on the semantic loading affordance, not Skeleton's internal markup.
+    expect(screen.getByRole('status', { name: /loading metrics/i })).toBeInTheDocument();
   });
 
   it('renders an inline error affordance', () => {

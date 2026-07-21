@@ -26,6 +26,25 @@ describe('zonedNaiveToUtc', () => {
     expect(after.toISOString()).toBe('2026-03-08T15:00:00.000Z');
   });
 
+  it('handles the 3:00-7:59 AM local window on spring-forward day (single-pass offset probe bug)', () => {
+    // Regression for a single-pass offset-probe bug: the naive-as-UTC "guess"
+    // instant for 03:30 local (03:30Z) falls BEFORE the 08:00Z transition, so
+    // a single formatToParts probe at the guess reads the pre-transition CST
+    // offset (-6h) even though the intended wall-clock time is post-transition
+    // CDT (-5h) — corrupting the result by 1h (previously returned
+    // 2026-03-08T09:30:00.000Z, i.e. local 04:30, instead of 08:30:00.000Z).
+    const result = zonedNaiveToUtc('2026-03-08T03:30:00', 'America/Chicago');
+    expect(result.toISOString()).toBe('2026-03-08T08:30:00.000Z');
+
+    // A second point in the same previously-broken window, near the low end.
+    const result2 = zonedNaiveToUtc('2026-03-08T03:01:00', 'America/Chicago');
+    expect(result2.toISOString()).toBe('2026-03-08T08:01:00.000Z');
+
+    // Near the high end of the window (just before 8 AM local).
+    const result3 = zonedNaiveToUtc('2026-03-08T07:59:00', 'America/Chicago');
+    expect(result3.toISOString()).toBe('2026-03-08T12:59:00.000Z');
+  });
+
   it('falls back to America/Chicago for an empty timezone string, no throw', () => {
     expect(() => zonedNaiveToUtc('2026-07-19T07:32:16', '')).not.toThrow();
     const result = zonedNaiveToUtc('2026-07-19T07:32:16', '');

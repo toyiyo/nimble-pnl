@@ -87,10 +87,17 @@ export function zonedNaiveToUtc(naive: string, timeZone: string | null | undefin
   const [, y, mo, d, h, mi, s] = m;
   const guess = Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s ?? 0));
 
-  // Round-trip through formatToParts to get the zone's offset at (approximately)
-  // this instant, then subtract it from the naive-as-UTC guess to get the true instant.
-  const offset = tzOffsetMs(new Date(guess), tz);
-  return new Date(guess - offset);
+  // Two-pass offset probe (standard `fromZonedTime`-style fixup). A single
+  // pass reads the zone's offset AT the naive-as-UTC guess, which can land on
+  // the wrong side of a DST transition: e.g. "2026-03-08T03:30:00" in
+  // America/Chicago — the guess instant 03:30Z falls before the 08:00Z
+  // spring-forward, so a single-pass probe reads the pre-transition CST
+  // offset (-6h) even though the intended local time (03:30, post-transition)
+  // is CDT (-5h), corrupting the result by exactly 1h. Re-deriving the offset
+  // at the corrected instant (second pass) picks the correct side.
+  const offset1 = tzOffsetMs(new Date(guess), tz);
+  const offset2 = tzOffsetMs(new Date(guess - offset1), tz);
+  return new Date(guess - offset2);
 }
 
 /**

@@ -12,6 +12,18 @@
 -- updating ONLY sold_at, so user categorization (category_id, is_categorized,
 -- suggested_category_id, ...) is preserved on every other column.
 --
+-- DO UPDATE (unlike DO NOTHING) fires an UPDATE on every conflicting row, even
+-- when the new sold_at equals the old one — and trigger_unified_sales_to_daily
+-- (AFTER INSERT OR UPDATE OR DELETE ... FOR EACH ROW, no WHEN guard) runs a
+-- full aggregate_unified_sales_to_daily() on every such row. Both RPCs are
+-- invoked on every recurring sync (revel-bulk-sync, revel-sync-data) over a
+-- window that overlaps prior runs, so most rows in range are re-syncs that
+-- would now each trigger a full per-row re-aggregation — the exact trigger-
+-- storm risk this feature's own backfill migration (20260721150000) suppresses
+-- via app.skip_unified_sales_triggers. Apply the same suppression here, then
+-- batch-aggregate once per distinct touched sale_date afterward (mirrors
+-- sync_toast_to_unified_sales, 20260215200000_fix_toast_sync_timeout.sql).
+--
 -- Function bodies are otherwise byte-identical to 20260706120000_revel_integration.sql.
 -- =====================================================
 
@@ -43,6 +55,10 @@ BEGIN
   IF NOT FOUND THEN
     RETURN 0;
   END IF;
+
+  -- Suppress per-row aggregation trigger during this multi-row upsert;
+  -- batch-aggregate the single touched date once below instead.
+  PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
 
   -- 1) Sale line items (item_type = 'sale')
   INSERT INTO public.unified_sales (
@@ -138,6 +154,11 @@ BEGIN
     GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
   END IF;
 
+  -- Re-enable the trigger, then batch-aggregate the single date this order
+  -- belongs to once — not once per unified_sales row upserted above.
+  PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
+  PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, v_order.order_date);
+
   RETURN v_synced_count;
 END;
 $$;
@@ -162,6 +183,10 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
   END IF;
+
+  -- Suppress per-row aggregation trigger during this multi-row upsert;
+  -- batch-aggregate the touched dates once below instead.
+  PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
 
   -- 1) Sale rows: non-voided line items (total_price includes modifiers)
   INSERT INTO public.unified_sales (
@@ -327,6 +352,19 @@ BEGIN
     WHERE parent_sale_id IS NULL
   DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- Re-enable the trigger, then batch-aggregate only the dates touched by
+  -- this sync window (both callers — revel-sync-data, revel-bulk-sync —
+  -- always pass a bounded p_start_date/p_end_date) once each, instead of
+  -- once per unified_sales row upserted above.
+  PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
+  PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
+  FROM (
+    SELECT DISTINCT sale_date FROM public.unified_sales
+    WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel'
+      AND (p_start_date IS NULL OR sale_date >= p_start_date)
+      AND (p_end_date IS NULL OR sale_date <= p_end_date)
+  ) d;
 
   RETURN v_synced_count;
 END;

@@ -136,8 +136,10 @@ COMMENT ON FUNCTION public.revel_backfill_invalid_tz_restaurants() IS
 --      (idempotent, bounded to actually-changed rows).
 --    - Suppresses app.skip_unified_sales_triggers around the unified_sales
 --      UPDATE so trigger_unified_sales_aggregation doesn't fire per row.
---    - Re-aggregates once per distinct (restaurant_id, sale_date) touched,
---      via aggregate_unified_sales_to_daily — not per row.
+--    - Re-aggregates once per distinct (restaurant_id, sale_date) actually
+--      touched by this call (via UPDATE ... RETURNING), via
+--      aggregate_unified_sales_to_daily — not per row, and not a rescan of
+--      the restaurant's entire Revel sale_date history.
 --    Callable directly (idempotent — safe to re-run for a single restaurant
 --    at any time, e.g. after a misconfigured timezone is corrected).
 -- ============================================================
@@ -154,6 +156,7 @@ DECLARE
   v_sales_updated integer := 0;
   v_dates integer := 0;
   v_sale_date date;
+  v_touched_dates date[];
 BEGIN
   SELECT public.revel_valid_tz(r.timezone)
   INTO v_tz
@@ -179,31 +182,34 @@ BEGIN
   -- ── unified_sales: propagate the corrected instant, trigger suppressed ──
   PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
 
-  UPDATE public.unified_sales u
-  SET sold_at = o.sold_at
-  FROM public.revel_orders o
-  WHERE u.pos_system = 'revel'
-    AND u.restaurant_id = p_restaurant_id
-    AND o.restaurant_id = p_restaurant_id
-    AND u.external_order_id = o.revel_order_id
-    AND u.sold_at IS DISTINCT FROM o.sold_at;
-  GET DIAGNOSTICS v_sales_updated = ROW_COUNT;
+  WITH updated AS (
+    UPDATE public.unified_sales u
+    SET sold_at = o.sold_at
+    FROM public.revel_orders o
+    WHERE u.pos_system = 'revel'
+      AND u.restaurant_id = p_restaurant_id
+      AND o.restaurant_id = p_restaurant_id
+      AND u.external_order_id = o.revel_order_id
+      AND u.sold_at IS DISTINCT FROM o.sold_at
+    RETURNING u.sale_date
+  )
+  SELECT array_agg(DISTINCT sale_date), count(*)
+  INTO v_touched_dates, v_sales_updated
+  FROM updated;
 
   PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
 
-  -- ── Re-aggregate once per distinct (restaurant_id, sale_date) touched ──
-  -- Scoped to this restaurant's Revel rows regardless of whether they were
-  -- just modified — cheap (upsert), and guarantees daily_sales reflects the
-  -- current unified_sales state even if a prior partial run left it stale.
-  -- Single pass over the distinct dates (not one query for the count and a
-  -- second, identical query to drive the loop).
-  FOR v_sale_date IN
-    SELECT DISTINCT sale_date FROM public.unified_sales
-    WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel'
-  LOOP
-    PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, v_sale_date);
-    v_dates := v_dates + 1;
-  END LOOP;
+  -- ── Re-aggregate once per distinct (restaurant_id, sale_date) actually
+  -- touched by THIS call's unified_sales UPDATE above (via RETURNING), not
+  -- every historical Revel sale_date the restaurant has ever had — otherwise
+  -- an idempotent no-op re-run (0 rows changed) still pays the cost of
+  -- rescanning + re-aggregating the restaurant's entire Revel sales history.
+  IF v_touched_dates IS NOT NULL THEN
+    FOREACH v_sale_date IN ARRAY v_touched_dates LOOP
+      PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, v_sale_date);
+      v_dates := v_dates + 1;
+    END LOOP;
+  END IF;
 
   RETURN QUERY SELECT v_orders_updated, v_sales_updated, v_dates;
 END;
@@ -213,7 +219,34 @@ COMMENT ON FUNCTION public.revel_backfill_sold_at_for_restaurant(uuid) IS
   'Per-restaurant worker for the Revel sold_at timezone backfill (2026-07-21). '
   'Idempotent — safe to re-run. Validates timezone against pg_timezone_names '
   '(fallback America/Chicago), suppresses the unified_sales aggregation trigger '
-  'during the bulk UPDATE, and re-aggregates daily totals once per touched date.';
+  'during the bulk UPDATE, and re-aggregates daily totals once per date actually '
+  'touched by that UPDATE. Restricted to service_role — not an app-facing RPC '
+  '(no auth.uid() ownership check; intended for the migration driver / ops use only).';
+
+-- ============================================================
+-- 5b) Lock down RPC execution. These are one-time migration/ops helpers
+--    (invoked by the DO block below, or manually by an operator after
+--    correcting a restaurant's timezone) — not app-facing RPCs. Postgres
+--    grants EXECUTE to PUBLIC by default for new functions, and this project
+--    has not altered that default, so without this every authenticated (and
+--    possibly anon) client could call them directly via PostgREST:
+--      - revel_backfill_sold_at_for_restaurant is SECURITY DEFINER and would
+--        let any caller force an RLS-bypassing write against a restaurant_id
+--        they don't own.
+--      - revel_backfill_pending_count / revel_backfill_invalid_tz_restaurants
+--        are SECURITY INVOKER (bounded by RLS) but still shouldn't be part of
+--        the app-facing RPC surface; the latter also returns restaurant_name
+--        across all restaurants with Revel orders.
+--    Mirrors the REVOKE/GRANT pattern already used for the Revel sync RPCs
+--    (20260706120000_revel_integration.sql).
+-- ============================================================
+
+REVOKE ALL ON FUNCTION public.revel_backfill_sold_at_for_restaurant(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.revel_backfill_pending_count() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.revel_backfill_invalid_tz_restaurants() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.revel_backfill_sold_at_for_restaurant(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.revel_backfill_pending_count() TO service_role;
+GRANT EXECUTE ON FUNCTION public.revel_backfill_invalid_tz_restaurants() TO service_role;
 
 -- ============================================================
 -- 6) Driver: run the backfill for every restaurant with Revel orders now.

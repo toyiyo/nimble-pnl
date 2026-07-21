@@ -92,6 +92,14 @@ describe('ScheduleMetricsRibbon', () => {
     expect(screen.getByLabelText(/labor over budget warning/i)).toBeInTheDocument();
   });
 
+  it('surfaces both problems when the rate is high AND labor is over budget', () => {
+    renderRibbon({
+      laborCostSummary: { ...summary, isAverageHigh: true },
+      laborBudgetData: { ...budget, hasBudget: true, tier: 'danger' },
+    });
+    expect(screen.getByLabelText(/high average rate and over budget warning/i)).toBeInTheDocument();
+  });
+
   it('singularizes the shift count when there is exactly one shift', () => {
     renderRibbon({ shiftCount: 1 });
     expect(screen.getByText(/1 shift ·/)).toBeInTheDocument();

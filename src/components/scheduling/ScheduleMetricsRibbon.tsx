@@ -74,14 +74,19 @@ export function ScheduleMetricsRibbon({
     laborTone = 'text-warning';
   }
 
-  // Warning affordance copy — distinguishes a high hourly rate from an
-  // over-budget (danger) vs nearing-budget (warning) labor total.
+  // Warning affordance copy — covers the combined case, then a high hourly
+  // rate, then over-budget (danger) vs nearing-budget (warning). The combined
+  // case matters most: a high rate must not mask an over-budget total.
+  const overBudget = laborBudgetData.hasBudget && laborBudgetData.tier === 'danger';
   let warningLabel = 'Labor nearing budget warning';
   let warningMessage = 'Scheduled labor is nearing its budget. Open Details to review.';
-  if (laborCostSummary.isAverageHigh) {
+  if (laborCostSummary.isAverageHigh && overBudget) {
+    warningLabel = 'High average rate and over budget warning';
+    warningMessage = 'Average hourly rate is unusually high and scheduled labor is over budget. Check employee rates, then open Details to review.';
+  } else if (laborCostSummary.isAverageHigh) {
     warningLabel = 'High average rate warning';
     warningMessage = 'Average hourly rate is unusually high. Check for data-entry errors in employee rates.';
-  } else if (laborBudgetData.tier === 'danger') {
+  } else if (overBudget) {
     warningLabel = 'Labor over budget warning';
     warningMessage = 'Scheduled labor is over budget. Open Details to review.';
   }

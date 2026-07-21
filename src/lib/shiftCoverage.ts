@@ -78,6 +78,31 @@ export function isoToLocalMinutes(iso: string, dateStr: string, tz: string): num
   return wallMins + dayDelta * 1440;
 }
 
+/**
+ * Clip a shift's [start, end) interval (in local minutes, overnight-aware) to a
+ * window [w0, w1). Returns null when the shift doesn't overlap the window at all.
+ *
+ * Shared by `computeWindowSweep` (this file) and `computeLoanedOut`
+ * (loanedOut.ts) — both need the identical local-minutes clip, just with a
+ * different filter on which shifts to clip.
+ */
+export function clipShiftToWindow(
+  shift: Pick<CoverageShift, 'start_time' | 'end_time'>,
+  dateStr: string,
+  tz: string,
+  w0: number,
+  w1: number,
+): { cs: number; ce: number } | null {
+  const ds = isoToLocalMinutes(shift.start_time, dateStr, tz);
+  let de = isoToLocalMinutes(shift.end_time, dateStr, tz);
+  // Overnight shift: if end ≤ start in local minutes, add 1440
+  if (de <= ds) de += 1440;
+
+  const cs = Math.max(w0, ds);
+  const ce = Math.min(w1, de);
+  return cs < ce ? { cs, ce } : null;
+}
+
 interface Clip {
   employeeId: string;
   employeeName?: string | null;
@@ -149,22 +174,15 @@ export function computeWindowSweep(
     if (s.position !== position) continue;
     if (s.status === 'cancelled') continue;
 
-    const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
-    let de = isoToLocalMinutes(s.end_time, dateStr, tz);
-    // Overnight shift: if end ≤ start in local minutes, add 1440
-    if (de <= ds) de += 1440;
-
-    const cs = Math.max(w0, ds);
-    const ce = Math.min(w1, de);
-
-    if (cs < ce) {
+    const clip = clipShiftToWindow(s, dateStr, tz, w0, w1);
+    if (clip) {
       clips.push({
         employeeId: s.employee_id,
         employeeName: s.employee_name ?? null,
         homeArea: s.homeArea ?? null,
         workArea: s.area ?? null,
-        cs,
-        ce,
+        cs: clip.cs,
+        ce: clip.ce,
       });
     }
   }

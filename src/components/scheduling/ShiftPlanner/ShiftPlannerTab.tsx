@@ -251,11 +251,17 @@ export function ShiftPlannerTab({
     // Whole-floor shifts pre-grouped by local day, once — computeLoanedOut
     // needs the whole-floor set per day, but every template on that day can
     // reuse the same list instead of re-scanning the whole week each time.
+    // Cache each shift's CoverageShift by object identity alongside it (stable
+    // within this memo — templateGridData's buckets hold these same `shifts`
+    // object references) so a template's bucket below reuses the conversion
+    // instead of re-running toCoverageShift on the same shift a second time.
     const wholeFloorByDay = new Map<string, CoverageShift[]>();
+    const shiftToCoverage = new Map<Shift, CoverageShift>();
     for (const s of shifts) {
       const dayStr = formatLocalDate(new Date(s.start_time));
       const list = wholeFloorByDay.get(dayStr);
       const cs = toCoverageShift(s);
+      shiftToCoverage.set(s, cs);
       if (list) list.push(cs);
       else wholeFloorByDay.set(dayStr, [cs]);
     }
@@ -267,7 +273,9 @@ export function ShiftPlannerTab({
       for (const day of weekDays) {
         if (!templateAppliesToDay(t, day)) continue;
         try {
-          const bucketShifts = (bucketByDay?.get(day) ?? []).map(toCoverageShift);
+          const bucketShifts = (bucketByDay?.get(day) ?? []).map(
+            (s) => shiftToCoverage.get(s) ?? toCoverageShift(s),
+          );
           const fill = computeCellFill(bucketShifts, t.capacity ?? 1, {
             position: t.position,
             tz: restaurantTimezone,

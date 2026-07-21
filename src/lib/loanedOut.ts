@@ -1,9 +1,10 @@
-import { isoToLocalMinutes, parseTimeToMinutes } from '@/lib/shiftCoverage';
+import { clipShiftToWindow, parseTimeToMinutes } from '@/lib/shiftCoverage';
 import type { CoverageShift, SlotCoverage, CoveringEmployee } from '@/types/scheduling';
 
 /**
- * Options bag for computeLoanedOut. Mirrors `ComputeSlotCoverageOptions` from
- * shiftCoverage.ts, plus the window fields it no longer receives positionally.
+ * Options bag for computeLoanedOut. Mirrors the retired `ComputeSlotCoverageOptions`
+ * (position/tz/area, formerly in shiftCoverage.ts), plus the window fields it no
+ * longer receives positionally.
  */
 export interface ComputeLoanedOutOptions {
   /** The position the slot requires (e.g. "Server"). */
@@ -48,21 +49,16 @@ export function computeLoanedOut(shiftsForDay: CoverageShift[], options: Compute
     if (s.status === 'cancelled') continue;
     if ((s.homeArea ?? null) !== area || (s.area ?? null) === area) continue;
 
-    const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
-    let de = isoToLocalMinutes(s.end_time, dateStr, tz);
-    if (de <= ds) de += 1440;
-
-    const cs = Math.max(w0, ds);
-    const ce = Math.min(w1, de);
-    if (cs >= ce) continue;
+    const clip = clipShiftToWindow(s, dateStr, tz, w0, w1);
+    if (!clip) continue;
 
     loanedOut.push({
       employeeId: s.employee_id,
       employeeName: s.employee_name ?? null,
       homeArea: s.homeArea ?? null,
       workArea: s.area ?? null,
-      startMin: cs,
-      endMin: ce,
+      startMin: clip.cs,
+      endMin: clip.ce,
     });
   }
   loanedOut.sort((a, b) => a.startMin - b.startMin);

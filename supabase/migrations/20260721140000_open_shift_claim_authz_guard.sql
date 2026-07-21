@@ -1,42 +1,54 @@
 -- ============================================================================
 -- Authorization guards for the open-shift-claim RPC family.
 --
--- Bug: docs/superpowers/specs/2026-07-21-open-shift-claim-authz-design.md
+-- Design: docs/superpowers/specs/2026-07-21-open-shift-claim-authz-design.md
+--
 -- Four SECURITY DEFINER RPCs (get_open_shifts, claim_open_shift,
--- approve_open_shift_claim, reject_open_shift_claim) perform no
--- authorization check on the caller — SECURITY DEFINER bypasses RLS, so
--- auth.uid() was previously used only to *record* an actor, never to *gate*
--- the action. This migration re-creates each function from its current-main
--- body (verbatim) and adds the missing guard.
+-- approve_open_shift_claim, reject_open_shift_claim) performed NO authorization
+-- check on the caller. SECURITY DEFINER bypasses RLS, so auth.uid() was used
+-- only to *record* an actor, never to *gate* the action. This allowed:
+--   1. self-approval bypass (a claimer approving their own pending claim),
+--   2. cross-tenant approve/reject of another restaurant's claim by id,
+--   3. employee impersonation / cross-tenant claim via a client-supplied
+--      p_employee_id, and
+--   4. a cross-tenant read of another restaurant's open-shift availability.
 --
--- Built incrementally, one function per TDD task, to keep each RED->GREEN
--- step reviewable during development (see
--- docs/superpowers/plans/2026-07-21-open-shift-claim-authz-plan.md); this
--- file now carries all four guarded functions: get_open_shifts (design doc
--- section "3. get_open_shifts"), claim_open_shift (section "2.
--- claim_open_shift"), and approve/reject_open_shift_claim (section "1.
--- approve_open_shift_claim (and reject_open_shift_claim)"). EXECUTE is
--- granted once for all four at the end of the file (see the closing GRANT
--- block) so the file is self-contained regardless of prior grant history.
+-- This migration re-creates each function from its CURRENT-MAIN body and adds
+-- the missing guard. Provenance of each body re-created here (important —
+-- these functions were rewritten several times just before this landed, so
+-- the guard is layered on the latest body to avoid reverting that work):
+--   * get_open_shifts / claim_open_shift — 20260720120000_shift_fill_by_assignment.sql
+--       (per-template shift_template_assigned_count counting + shift_template_id
+--       FK stamp on the claimed shift).
+--   * reject_open_shift_claim — 20260721000000_open_shift_claim_notify.sql
+--       (reviewer_note persistence).
+--   * approve_open_shift_claim — 20260721130000_stamp_template_id_on_approve.sql
+--       (reviewer_note persistence + shift_template_id FK stamp).
+-- Each body is otherwise carried verbatim; only the authorization guard (and,
+-- for approve/reject, the folding of that guard into the locking SELECT) is
+-- added. Timestamp 20260721140000 sorts after all of the above so this file's
+-- definitions win on a clean reset.
 --
--- get_open_shifts guard: membership check — the caller must belong to the
--- restaurant as either an internal team member (owner/manager/
--- operations_manager/chef/staff, via public.user_is_internal_team) or a
--- linked employee (public.employees.user_id = auth.uid()). Employees
--- legitimately need to see open shifts in order to claim them, and they are
--- not guaranteed a user_restaurants row, so user_is_internal_team alone is
--- not sufficient. Silent empty return (RETURN with no rows) on failure —
--- the same shape as the existing open_shifts_enabled=false branch — so
--- there is no enumeration signal distinguishing "not authorized" from
--- "nothing open" or "unknown restaurant".
---
--- Body re-created verbatim from 20260626120000_open_shift_coverage.sql
--- (the current-main definition; 20260705130000_claim_open_shift_active_guard.sql
--- only touched claim_open_shift, not get_open_shifts). SET search_path=public
--- was already present on this function from that migration — kept as-is,
--- not newly added by this change.
+-- Role sets:
+--   * approve/reject — owner/manager/operations_manager, exact parity with the
+--     deployed managers_review_claims (UPDATE) / managers_view_restaurant_claims
+--     (SELECT) RLS policies, both widened to include operations_manager by
+--     20260702170000_add_operations_manager_role.sql. Narrowing to owner/manager
+--     would strip an existing privilege (a regression) and desync the read and
+--     write audiences.
+--   * get_open_shifts — internal team (user_is_internal_team: owner/manager/
+--     operations_manager/chef/staff) OR a linked employee (employees.user_id =
+--     auth.uid()); employees need to see open shifts to claim them and are not
+--     guaranteed a user_restaurants row.
+--   * claim_open_shift — the caller must own the employee row they claim for, in
+--     the target restaurant (mirrors the employees_insert_own_claims INSERT RLS).
 -- ============================================================================
 
+-- ============================================================================
+-- 1) get_open_shifts — membership guard (silent empty return; no enumeration
+--    signal — same shape as the existing open_shifts_enabled=false branch).
+--    Body: 20260720120000_shift_fill_by_assignment.sql, guard added at the top.
+-- ============================================================================
 CREATE OR REPLACE FUNCTION public.get_open_shifts(
     p_restaurant_id UUID,
     p_week_start DATE,
@@ -143,46 +155,31 @@ BEGIN
         td.tmpl_position,
         td.tmpl_area,
         td.tmpl_capacity,
-        mc.minc::bigint                                      AS assigned_count,
+        ac.assigned::bigint                                  AS assigned_count,
         COALESCE(p.cnt, 0)                                   AS pending_claims,
-        (GREATEST(1, td.tmpl_capacity) - mc.minc - COALESCE(p.cnt, 0))::bigint AS open_spots
+        (GREATEST(1, td.tmpl_capacity) - ac.assigned - COALESCE(p.cnt, 0))::bigint AS open_spots
     FROM template_days td
     CROSS JOIN LATERAL (
-        SELECT public.shift_slot_min_concurrent(
+        SELECT public.shift_template_assigned_count(
             p_restaurant_id,
-            td.tmpl_position,
+            td.tmpl_id,
             td.pub_date,
-            td.tmpl_start,
-            td.tmpl_end,
             v_tz
-        ) AS minc
-    ) mc
+        ) AS assigned
+    ) ac
     LEFT JOIN pending p ON p.shift_template_id = td.tmpl_id AND p.shift_date = td.pub_date
-    WHERE (GREATEST(1, td.tmpl_capacity) - mc.minc - COALESCE(p.cnt, 0)) > 0
+    WHERE (GREATEST(1, td.tmpl_capacity) - ac.assigned - COALESCE(p.cnt, 0)) > 0
     ORDER BY td.pub_date, td.tmpl_start;
 END;
 $$;
 
 -- ============================================================================
--- claim_open_shift guard: caller-owns-employee-row check (design doc
--- section "2. claim_open_shift"). The caller may only claim for an employee
--- row they own, in the target restaurant — mirrors the
--- employees_insert_own_claims INSERT RLS policy on open_shift_claims
--- (claimed_by_employee_id IN (SELECT id FROM employees WHERE user_id =
--- auth.uid())) and adds the restaurant scope the RPC signature separates
--- out. Constant 'Not authorized' message regardless of which half of the
--- check failed (unknown employee id vs. employee in a different
--- restaurant vs. employee owned by a different user) — no enumeration of
--- employees/restaurants.
---
--- Body re-created verbatim from 20260705130000_claim_open_shift_active_guard.sql
--- (the current-main definition, which already carries the is_active guard,
--- the coverage-based capacity check, and SET search_path=public). The new
--- authz guard is the first statement in the function body, before the
--- advisory lock is acquired, so an unauthorized caller never contends for
--- the per-slot lock.
+-- 2) claim_open_shift — caller-owns-employee-row guard (constant 'Not
+--    authorized' message; no enumeration of employees/restaurants). The guard
+--    is the first statement in the body, before the advisory lock, so an
+--    unauthorized caller never contends for the per-slot lock.
+--    Body: 20260720120000_shift_fill_by_assignment.sql, guard added at the top.
 -- ============================================================================
-
 CREATE OR REPLACE FUNCTION public.claim_open_shift(
     p_restaurant_id UUID,
     p_template_id   UUID,
@@ -207,7 +204,10 @@ DECLARE
 BEGIN
     -- Authorization guard: the caller must own the employee row they are
     -- claiming for, and that employee row must belong to the target
-    -- restaurant. Mirrors employees_insert_own_claims INSERT RLS.
+    -- restaurant. Mirrors the employees_insert_own_claims INSERT RLS policy on
+    -- open_shift_claims. Constant message regardless of which half failed
+    -- (unknown employee id vs. different restaurant vs. different owner) — no
+    -- enumeration of employees/restaurants.
     IF NOT EXISTS (
         SELECT 1 FROM public.employees e
         WHERE e.id = p_employee_id
@@ -255,15 +255,14 @@ BEGIN
         RETURN json_build_object('success', false, 'error', 'Template does not apply to this day');
     END IF;
 
-    -- Coverage-based assigned count (replaces exact time-window match).
-    -- Uses the same sweep-line function as get_open_shifts so the offer and
-    -- claim guard always agree — prevents double-claiming a covered slot.
-    v_assigned_count := public.shift_slot_min_concurrent(
+    -- Per-template distinct-employee count: replaces the whole-floor
+    -- position+time sweep so the guard agrees with get_open_shifts
+    -- on a per-template basis, not a per-position-window basis -- prevents
+    -- double-claiming a slot that's actually still open on this template.
+    v_assigned_count := public.shift_template_assigned_count(
         p_restaurant_id,
-        v_template.position,
+        p_template_id,
         p_shift_date,
-        v_template.start_time,
-        v_template.end_time,
         v_tz
     );
 
@@ -274,7 +273,7 @@ BEGIN
       AND shift_date = p_shift_date
       AND status = 'pending_approval';
 
-    -- Capacity guard: reject if coverage + pending already fills the slot.
+    -- Capacity guard: reject if assigned + pending already fills the slot.
     -- GREATEST(1, capacity) mirrors the capacityFloor used in get_open_shifts.
     IF (v_assigned_count + v_pending_count) >= GREATEST(1, v_template.capacity) THEN
         RETURN json_build_object('success', false, 'error', 'No open spots available');
@@ -311,12 +310,14 @@ BEGIN
     END IF;
 
     IF NOT v_requires_approval THEN
-        -- Instant approval: create the shift and the claim
+        -- Instant approval: create the shift (stamp shift_template_id
+        -- so the shift is FK-linked to the template it was claimed from) and
+        -- the claim.
         INSERT INTO public.shifts (
-            restaurant_id, employee_id, start_time, end_time,
+            restaurant_id, employee_id, shift_template_id, start_time, end_time,
             break_duration, position, status, source, is_published
         ) VALUES (
-            p_restaurant_id, p_employee_id, v_shift_start, v_shift_end,
+            p_restaurant_id, p_employee_id, p_template_id, v_shift_start, v_shift_end,
             v_template.break_duration, v_template.position, 'scheduled', 'template', true
         )
         RETURNING id INTO v_shift_id;
@@ -359,36 +360,13 @@ END;
 $$;
 
 -- ============================================================================
--- approve_open_shift_claim guard: manager-audience check (design doc section
--- "1. approve_open_shift_claim (and reject_open_shift_claim)"). Gate on the
--- manager audience for the claim's restaurant — owner/manager/
--- operations_manager, exact parity with the deployed managers_review_claims
--- UPDATE / managers_view_restaurant_claims SELECT RLS policies (both widened
--- to include operations_manager by 20260702170000_add_operations_manager_role.sql).
--- The not-found and not-authorized cases are collapsed into a single generic
--- message so a cross-tenant caller cannot use the error shape to probe
--- whether a claim id exists (no enumeration signal).
---
--- Phase 7 fold (Codex + security review, both independently confirmed): the
--- authorization predicate is folded directly into the WHERE clause of the
--- locking SELECT (rather than checked in a separate IF after a bare
--- `WHERE id = p_claim_id FOR UPDATE`) so an unauthorized/cross-tenant caller
--- never acquires the row lock in the first place — a row that fails the
--- role check simply never matches the WHERE clause, so FOR UPDATE has
--- nothing to lock. Previously the lock was acquired before the guard ran,
--- letting an unauthorized caller hold the lock (inside a held transaction)
--- long enough to block a legitimate manager's concurrent approve/reject of
--- the same claim (lock-contention/DoS-lite; not a data-exposure bug, since
--- the guard was never actually bypassed). Behavior for legitimate callers,
--- the error message, and the audience array are all unchanged — this is a
--- pure internal reordering, not a change to the authorization model.
---
--- Body re-created verbatim from
--- 20260707090000_approve_open_shift_claim_active_guard.sql (the current-main
--- definition, which already carries the is_active guard on the template and
--- the restaurant-timezone shift-timestamp handling).
+-- 3) approve_open_shift_claim — manager-audience guard, folded into the
+--    locking SELECT so an unauthorized/cross-tenant caller's row never matches
+--    and FOR UPDATE never acquires the lock (avoids a lock-contention window).
+--    not-found and not-authorized collapse into one generic message (no
+--    enumeration signal). Body: 20260721130000_stamp_template_id_on_approve.sql
+--    (reviewer_note persistence + shift_template_id FK stamp + UTC fallback).
 -- ============================================================================
-
 CREATE OR REPLACE FUNCTION public.approve_open_shift_claim(
     p_claim_id UUID,
     p_reviewer_note TEXT DEFAULT NULL
@@ -396,7 +374,10 @@ CREATE OR REPLACE FUNCTION public.approve_open_shift_claim(
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+-- Pin search_path so unqualified built-ins (now(), etc.) can't be resolved through a
+-- caller-controlled path — standard definer-rights hardening; also clears Supabase's
+-- mutable-search-path advisor lint. All table refs below are already public-qualified.
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_tz TEXT;
@@ -408,11 +389,12 @@ DECLARE
 BEGIN
     -- Lock the claim — the authorization predicate is folded into the WHERE
     -- clause so an unauthorized/cross-tenant caller's row never matches and
-    -- FOR UPDATE never acquires a lock on it (see file-header note above).
-    -- The claim must exist AND the caller must be a manager/owner/
-    -- operations_manager of the claim's restaurant. NOT FOUND collapses both
-    -- "no such claim" and "not your restaurant" into one generic message so
-    -- a cross-tenant caller can't distinguish the two (no enumeration signal).
+    -- FOR UPDATE never acquires a lock on it. The claim must exist AND the
+    -- caller must be an owner/manager/operations_manager of the claim's
+    -- restaurant (exact parity with the managers_review_claims RLS policy).
+    -- NOT FOUND collapses both "no such claim" and "not your restaurant" into
+    -- one generic message so a cross-tenant caller can't distinguish the two
+    -- (no enumeration signal).
     SELECT * INTO v_claim
     FROM public.open_shift_claims
     WHERE id = p_claim_id
@@ -427,8 +409,11 @@ BEGIN
         RETURN json_build_object('success', false, 'error', 'Claim is not pending approval');
     END IF;
 
-    -- Look up the restaurant timezone (after fetching the claim to get restaurant_id)
-    SELECT COALESCE(r.timezone, 'America/Chicago') INTO v_tz
+    -- Look up the restaurant timezone (after fetching the claim to get restaurant_id).
+    -- Fallback is 'UTC' to match get_open_shifts / claim_open_shift (and the
+    -- TypeScript computeOpenShiftCount path) so the offer, the claim guard, and
+    -- the approved shift all agree on the wall-clock when timezone IS NULL.
+    SELECT COALESCE(r.timezone, 'UTC') INTO v_tz
     FROM public.restaurants r WHERE r.id = v_claim.restaurant_id;
 
     -- Get the template
@@ -440,12 +425,7 @@ BEGIN
         RETURN json_build_object('success', false, 'error', 'Template not found');
     END IF;
 
-    -- Guard: a hidden (soft-archived) template must not be approvable into a
-    -- shift, even though the pending claim references it by id. Mirrors the
-    -- is_active guard claim_open_shift already applies to new claims, so a
-    -- template hidden after a claim was submitted can't still result in a
-    -- new assignment. The message is constant regardless of any other
-    -- state (no enumeration signal).
+    -- Guard: a hidden (soft-archived) template must not be approvable into a shift.
     IF NOT v_template.is_active THEN
         RETURN json_build_object('success', false, 'error', 'This shift is no longer available');
     END IF;
@@ -458,21 +438,23 @@ BEGIN
         v_shift_end := v_shift_end + interval '1 day';
     END IF;
 
-    -- Create the shift
+    -- Create the shift (stamp shift_template_id so the shift is FK-linked to the
+    -- template it was approved from — required by fill-by-assignment counting).
     INSERT INTO public.shifts (
-        restaurant_id, employee_id, start_time, end_time,
+        restaurant_id, employee_id, shift_template_id, start_time, end_time,
         break_duration, position, status, source, is_published
     ) VALUES (
-        v_claim.restaurant_id, v_claim.claimed_by_employee_id,
+        v_claim.restaurant_id, v_claim.claimed_by_employee_id, v_claim.shift_template_id,
         v_shift_start, v_shift_end,
         v_template.break_duration, v_template.position, 'scheduled', 'template', true
     )
     RETURNING id INTO v_shift_id;
 
-    -- Update the claim
+    -- Update the claim (persists reviewer_note)
     UPDATE public.open_shift_claims
     SET status = 'approved',
         resulting_shift_id = v_shift_id,
+        reviewer_note = p_reviewer_note,
         reviewed_by = auth.uid(),
         reviewed_at = now()
     WHERE id = p_claim_id;
@@ -486,32 +468,10 @@ END;
 $$;
 
 -- ============================================================================
--- reject_open_shift_claim guard: same not-found/not-authorized guard shape as
--- approve_open_shift_claim (design doc section "1. approve_open_shift_claim
--- (and reject_open_shift_claim)" — the design explicitly covers both RPCs
--- under one heading with one guard). Gate on the manager audience for the
--- claim's restaurant — owner/manager/operations_manager, exact parity with
--- the deployed managers_review_claims UPDATE / managers_view_restaurant_claims
--- SELECT RLS policies. The not-found and not-authorized cases are collapsed
--- into a single generic message so a cross-tenant caller cannot use the
--- error shape to probe whether a claim id exists (no enumeration signal).
---
--- Phase 7 fold (Codex + security review, both independently confirmed): same
--- lock-ordering fix as approve_open_shift_claim above — the authorization
--- predicate is folded into the WHERE clause of the locking SELECT so an
--- unauthorized caller's row never matches and FOR UPDATE never locks it,
--- instead of acquiring the lock first and checking authorization after (see
--- the approve_open_shift_claim header note above for the full rationale).
--- Behavior for legitimate callers and the error message are unchanged.
---
--- Body re-created verbatim from 20260412145842_open_shift_claims.sql (the
--- current-main definition — reject_open_shift_claim was never touched by any
--- later migration, unlike approve_open_shift_claim's active-guard follow-up).
--- SET search_path = public is newly added here (the original had none),
--- matching the same decided trade-off applied to the other three functions
--- in this migration.
+-- 4) reject_open_shift_claim — same folded manager-audience guard + generic
+--    message as approve. Body: 20260721000000_open_shift_claim_notify.sql
+--    (reviewer_note persistence).
 -- ============================================================================
-
 CREATE OR REPLACE FUNCTION public.reject_open_shift_claim(
     p_claim_id UUID,
     p_reviewer_note TEXT DEFAULT NULL
@@ -519,19 +479,16 @@ CREATE OR REPLACE FUNCTION public.reject_open_shift_claim(
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+-- Pin search_path (see approve_open_shift_claim above) — definer-rights hardening.
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_claim RECORD;
 BEGIN
-    -- Lock the claim — the authorization predicate is folded into the WHERE
-    -- clause so an unauthorized/cross-tenant caller's row never matches and
-    -- FOR UPDATE never acquires a lock on it (see approve_open_shift_claim's
-    -- header note above for the full rationale). The claim must exist AND
-    -- the caller must be a manager/owner/operations_manager of the claim's
-    -- restaurant. NOT FOUND collapses both "no such claim" and "not your
-    -- restaurant" into one generic message so a cross-tenant caller can't
-    -- distinguish the two (no enumeration signal).
+    -- Lock the claim — authorization predicate folded into the WHERE clause
+    -- (see approve_open_shift_claim above for the full rationale). Owner/
+    -- manager/operations_manager of the claim's restaurant only; not-found and
+    -- not-authorized collapse into one generic message (no enumeration signal).
     SELECT * INTO v_claim
     FROM public.open_shift_claims
     WHERE id = p_claim_id
@@ -548,6 +505,7 @@ BEGIN
 
     UPDATE public.open_shift_claims
     SET status = 'rejected',
+        reviewer_note = p_reviewer_note,
         reviewed_by = auth.uid(),
         reviewed_at = now()
     WHERE id = p_claim_id;
@@ -559,9 +517,8 @@ BEGIN
 END;
 $$;
 
--- Re-issue EXECUTE on all four functions in this family for idempotency —
--- so this migration file is self-contained regardless of which prior
--- migration(s) originally granted them.
+-- Re-issue EXECUTE on all four functions for idempotency — so this migration
+-- file is self-contained regardless of prior grant history.
 GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.claim_open_shift(UUID, UUID, DATE, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.approve_open_shift_claim(UUID, TEXT) TO authenticated;

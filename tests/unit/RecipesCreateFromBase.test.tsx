@@ -38,6 +38,11 @@ vi.mock("@/hooks/useRecipes", () => ({
 vi.mock("@/hooks/useProducts", () => ({ useProducts: () => ({ products: [] }) }));
 vi.mock("@/hooks/useUnifiedSales", () => ({ useUnifiedSales: () => ({ unmappedItems: [] }) }));
 vi.mock("@/hooks/useAutomaticInventoryDeduction", () => ({ useAutomaticInventoryDeduction: () => ({ setupAutoDeduction: vi.fn() }) }));
+// The Recipes header renders <BulkInventoryDeductionDialog />, whose hook now
+// calls useQueryClient(); this test renders the page without a
+// QueryClientProvider, so mock the peripheral hook (same pattern as the others
+// above) to keep the test isolated to the create-from-base menu behavior.
+vi.mock("@/hooks/useBulkInventoryDeduction", () => ({ useBulkInventoryDeduction: () => ({ loading: false, bulkProcessHistoricalSales: vi.fn() }) }));
 
 vi.mock("@/components/RecipeCreateFromExistingDialog", () => ({
   RecipeCreateFromExistingDialog: ({ isOpen }: { isOpen: boolean }) =>

@@ -1,33 +1,22 @@
--- pgTAP tests for shift_slot_min_concurrent coverage function.
+-- pgTAP test for claim_open_shift's non-exact-match fill-in behavior.
 --
--- Coverage model: a template slot is "staffed" only when, at every minute of
--- its window [W0, W1], at least `capacity` same-position distinct employees are
--- present. This replaces the old exact time-match approach where non-matching
--- fill-ins were invisible.
---
--- Non-tautological design: the fixture's shift does NOT exactly match the
--- template window (it's 15:00-23:00, template is 16:00-22:30) so the old
--- exact-match would count 0; we assert min_concurrent=1 instead.
+-- Originally this file unit-tested shift_slot_min_concurrent (the whole-floor
+-- position sweep), asserting that a fill-in shift overlapping but not exactly
+-- matching a template's window still counted toward it. Fill-by-assignment
+-- (docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md, Task
+-- 11) drops shift_slot_min_concurrent -- its per-template replacement,
+-- shift_template_assigned_count, requires an EXACT time+position match for
+-- its legacy null-FK fallback, so those direct sweep-semantics tests no
+-- longer apply and were removed. The one still-relevant assertion --
+-- claim_open_shift's behavior against this same fixture -- is retained below
+-- (now the fixture's only consumer) and already reflects fill-by-assignment.
 --
 -- Lesson 2026-04-21: always use CURRENT_DATE+N for fixture dates.
 -- Lesson 2026-04-22: use ON CONFLICT DO UPDATE for idempotent inserts.
---
--- Auth-context update (2026-07-21, alongside
--- supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql):
--- claim_open_shift is now guarded (caller must own the employee row they're
--- claiming as). Test 5 calls claim_open_shift as E2; left running as
--- `SET LOCAL role TO postgres` (auth.uid() NULL throughout) the new guard
--- would reject the call before ever reaching the coverage/capacity logic
--- this test is named for, making the assertion pass vacuously (lesson
--- 2026-07-13's vacuous-test trap). E2 gets a dedicated auth.users row +
--- employees.user_id, RLS is re-enabled on every table disabled below before
--- switching roles (54_accept_shift_trade_authz.sql / 62_open_shift_claim_authz
--- .test.sql precedent), and the claim_open_shift call runs impersonated as
--- E2's own auth user via `SET LOCAL role = 'authenticated'` + request.jwt.claims.
 
 BEGIN;
 
-SELECT plan(5);
+SELECT plan(1);
 
 -- Disable RLS so the function (SECURITY DEFINER) and inserts work in-transaction.
 SET LOCAL role TO postgres;
@@ -43,20 +32,8 @@ DECLARE
   v_tmpl  uuid := '00000000-0000-0000-0000-0000000000c1';
   v_d     date := CURRENT_DATE + 2;
   v_dow   int;
-  v_auth2 uuid := '00000000-0000-0000-0000-0000000000e3'; -- auth.users row owned by employee b2 (E2, test 5 caller)
 BEGIN
   v_dow := EXTRACT(DOW FROM v_d)::int;
-
-  -- Dedicated auth.users row for E2 (test 5's caller) so claim_open_shift's
-  -- caller-owns-employee-row guard can be exercised as a real `authenticated`
-  -- caller (not postgres, which would leave auth.uid() NULL and make the
-  -- guard check vacuous). Full column set matches the
-  -- 54_accept_shift_trade_authz.sql / 60_claim_open_shift_active_guard.test.sql
-  -- precedent for a row Supabase auth considers well-formed.
-  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
-    VALUES
-      (v_auth2, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'cov-test-e2@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
-    ON CONFLICT (id) DO NOTHING;
 
   -- Clean up in FK order before inserting
   DELETE FROM public.open_shift_claims  WHERE restaurant_id = v_rid;
@@ -70,10 +47,18 @@ BEGIN
     VALUES (v_rid, 'cov-test', 'America/Chicago')
     ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
 
+  -- E2 (the claimer) needs a real auth.users row + employees.user_id so the
+  -- new claim_open_shift caller-owns-employee-row guard (this PR) passes when
+  -- impersonated below; without it auth.uid() is NULL and the claim would be
+  -- rejected vacuously before reaching the fill-by-assignment logic under test.
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+    VALUES ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'cov-e2@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+    ON CONFLICT (id) DO NOTHING;
+
   INSERT INTO public.employees(id, restaurant_id, user_id, name, position, is_active, status)
     VALUES
       (v_emp1, v_rid, NULL, 'E1', 'Server', true, 'active'),
-      (v_emp2, v_rid, v_auth2, 'E2', 'Server', true, 'active')
+      (v_emp2, v_rid, '00000000-0000-0000-0000-0000000000f2', 'E2', 'Server', true, 'active')
     ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position, user_id = EXCLUDED.user_id;
 
   -- Mid-shift fill-in whose window does NOT exactly match 16:00-22:30
@@ -110,88 +95,34 @@ BEGIN
   -- would require a valid auth.users FK.
 END $$;
 
--- ── Test 1: fill-in covering the full 16:00-22:30 window ─────────────────────
--- The fill-in (15:00-23:00) overlaps the entire template window, so every
--- minute in [16:00, 22:30] has n=1. min_concurrent must be 1, not 0.
--- (Exact-match on time would return 0 — this proves the bug is fixed.)
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Server',
-    CURRENT_DATE + 2,
-    '16:00'::time,
-    '22:30'::time,
-    'America/Chicago'
-  ),
-  1,
-  'fill-in overlapping the full window yields min_concurrent 1 (exact-match would be 0)'
-);
-
--- ── Test 2: empty window (no shifts at all) ───────────────────────────────────
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Server',
-    CURRENT_DATE + 2,
-    '06:00'::time,
-    '09:00'::time,
-    'America/Chicago'
-  ),
-  0,
-  'empty window (no shifts) yields min_concurrent 0'
-);
-
--- ── Test 3: position mismatch ─────────────────────────────────────────────────
--- The fixture shift is position='Server'; querying 'Cook' must return 0.
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Cook',
-    CURRENT_DATE + 2,
-    '16:00'::time,
-    '22:30'::time,
-    'America/Chicago'
-  ),
-  0,
-  'position mismatch (Server shift vs Cook query) yields 0'
-);
-
--- ── Test 4: trailing gap — shift ends before window closes ───────────────────
--- The fixture shift ends 23:00; a 16:00-23:30 window has an uncovered
--- 23:00-23:30 stretch, so min_concurrent drops to 0.
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Server',
-    CURRENT_DATE + 2,
-    '16:00'::time,
-    '23:30'::time,
-    'America/Chicago'
-  ),
-  0,
-  'trailing gap (shift ends before window) yields min_concurrent 0'
-);
-
--- ── Test 5: claim_open_shift rejected when coverage already fills the slot ────
--- The fill-in (E1, 15:00-23:00) covers the cap-1 16:00-22:30 template window
--- with min_concurrent=1, so open_spots=0.  E2 tries to claim; the guard must
--- detect coverage (not exact-match) and return success=false.
--- Under old exact-match the guard would count assigned=0 (no 16:00-22:30 shift)
--- and allow the claim — proving the double-claim bug is fixed.
---
--- Re-enable RLS on every table disabled above before switching to the
--- authenticated role (54_accept_shift_trade_authz.sql /
--- 62_open_shift_claim_authz.test.sql precedent), then impersonate E2 (the
--- caller) so claim_open_shift's caller-owns-employee-row guard passes and
--- the call actually reaches the coverage/capacity logic under test, instead
--- of being rejected vacuously as an unauthenticated postgres caller.
+-- Re-enable RLS and impersonate E2 (the claimer) so claim_open_shift's
+-- caller-owns-employee-row guard (this PR) passes and the call reaches the
+-- fill-by-assignment coverage logic under test, instead of being rejected
+-- vacuously as an unauthenticated postgres caller.
 ALTER TABLE public.restaurants ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.employees   ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.shifts      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
 RESET ROLE;
 SET LOCAL role = 'authenticated';
-SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e3","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000f2","role":"authenticated"}', true);
 
+-- ── Test 1: claim_open_shift succeeds — fill-in with a non-exact-match ───────
+-- window (no FK) does not fill the slot under fill-by-assignment.
+--
+-- Superseded by docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-
+-- design.md (Task 9): claim_open_shift's guard now comes from
+-- shift_template_assigned_count, whose legacy (null-FK) fallback requires an
+-- EXACT start/end/position match to attribute a shift to a template —
+-- overlapping the window is no longer sufficient. The fill-in (E1,
+-- 15:00-23:00) overlaps but does not exactly match the cap-1 16:00-22:30
+-- template, has no shift_template_id, so it fails both belongs() branches and
+-- does not count toward this template. E2's claim must therefore succeed
+-- (assigned=0, capacity=1).
+--
+-- This intentionally reverts the previous coverage-sweep behavior pinned by
+-- this same test (see git history): under
+-- shift_slot_min_concurrent, ANY overlapping same-position shift restaurant-
+-- wide counted, which was the root bug the fill-by-assignment redesign fixes.
 SELECT is(
   (
     public.claim_open_shift(
@@ -201,8 +132,8 @@ SELECT is(
       '00000000-0000-0000-0000-0000000000b2'::uuid
     ) ->> 'success'
   ),
-  'false',
-  'claim rejected when coverage-based guard shows slot is already full'
+  'true',
+  'claim succeeds — a non-exact-match, non-FK fill-in does not fill the slot (fill-by-assignment)'
 );
 
 SELECT * FROM finish();

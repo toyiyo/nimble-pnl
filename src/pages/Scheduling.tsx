@@ -54,18 +54,21 @@ import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
 import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
+import { DeleteAvailabilityDialog } from '@/components/scheduling/DeleteAvailabilityDialog';
+import type { AvailabilityDeletionTarget } from '@/components/scheduling/DeleteAvailabilityDialog';
 import { useShiftCopyDnd } from '@/components/scheduling/useShiftCopyDnd';
 import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
-import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
+import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatLocalDate } from '@/lib/shiftInterval';
-import { computeSlotCoverage } from '@/lib/shiftCoverage';
-import type { CoverageShift, ShiftTemplate } from '@/types/scheduling';
+import { capacityFloor } from '@/lib/shiftCoverage';
+import { distinctAssignedCount } from '@/lib/shiftFill';
+import type { ShiftTemplate } from '@/types/scheduling';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
@@ -114,7 +117,6 @@ import {
   CalendarOff,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
-import * as dateFnsTz from 'date-fns-tz';
 import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -144,23 +146,25 @@ export { getShiftStatusClass } from './SchedulingShiftCard';
  * Pure function extracted from the openShiftCount useMemo so it can be
  * unit-tested independently of the Scheduling component.
  *
- * Uses the coverage engine (computeSlotCoverage) instead of the old
- * buildTemplateGridData + computeOpenSpots exact-match path, so fill-in
- * shifts that overlap a template window without exactly matching it are
- * counted correctly.
+ * Rebuilt on `buildTemplateGridData` + `distinctAssignedCount` — the SAME
+ * per-template bucketing that drives the grid's employee chips — instead of
+ * the old whole-floor `computeSlotCoverage` position sweep. That sweep only
+ * filtered by position (never `shift_template_id`), so one employee's shift
+ * could satisfy every other same-position template's slot on that day,
+ * producing a banner count that disagreed with what the grid showed (the bug
+ * this fixes; see docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md).
+ *
+ * A template slot is filled when >= capacity DISTINCT employees are bucketed
+ * under *that template* (FK match, or the legacy exact-time/position/day
+ * fallback `buildTemplateGridData` already uses for null-FK shifts) —
+ * regardless of whether their hours span the whole window.
+ *
+ * `restaurantTimezone` is passed through to `buildTemplateGridData` so day /
+ * time / day-of-week bucketing all resolve in restaurant-local time — the same
+ * tz the grid chips and the SQL (`… AT TIME ZONE p_tz`) use. This keeps the
+ * banner, the chips, and the server in agreement even for a viewer in a
+ * different timezone (a traveling manager near local midnight).
  */
-/**
- * Return the local calendar date (YYYY-MM-DD) for a UTC ISO timestamp in the
- * given IANA timezone.  This mirrors SQL: (start_time AT TIME ZONE tz)::date.
- */
-function localDateOf(isoUtc: string, tz: string): string {
-  const zoned = dateFnsTz.toZonedTime(new Date(isoUtc), tz);
-  const y = zoned.getFullYear();
-  const m = String(zoned.getMonth() + 1).padStart(2, '0');
-  const d = String(zoned.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function computeOpenShiftCount(
   templates: ShiftTemplate[],
   shifts: Shift[],
@@ -168,34 +172,50 @@ export function computeOpenShiftCount(
   restaurantTimezone: string,
 ): number {
   if (!templates.length || shifts === undefined) return 0;
-  const allCov: CoverageShift[] = shifts.map((s) => ({
-    employee_id: s.employee_id,
-    employee_name: s.employee?.name ?? null,
-    start_time: s.start_time,
-    end_time: s.end_time,
-    position: s.position,
-    status: s.status,
-  }));
+  const grid = buildTemplateGridData(shifts, templates, weekDayStrings, restaurantTimezone);
   let total = 0;
   for (const t of templates) {
+    const bucketByDay = grid.get(t.id);
     for (const dayStr of weekDayStrings) {
       if (!templateAppliesToDay(t, dayStr)) continue;
-      // Mirror SQL's filter: only include shifts whose local start date = dayStr.
-      // This keeps overnight carry-over shifts (local start = previous day) from
-      // reducing the banner count for the carry-over day, matching the behaviour of
-      // shift_slot_min_concurrent and preventing UI/SQL divergence.
-      const cov = allCov.filter((s) => localDateOf(s.start_time, restaurantTimezone) === dayStr);
-      total += computeSlotCoverage(
-        t.start_time,
-        t.end_time,
-        t.capacity ?? 1,
-        dayStr,
-        cov,
-        { position: t.position, tz: restaurantTimezone },
-      ).openSpots;
+      const bucketShifts = bucketByDay?.get(dayStr) ?? [];
+      const assignedCount = distinctAssignedCount(bucketShifts);
+      total += Math.max(0, capacityFloor(t.capacity) - assignedCount);
     }
   }
   return total;
+}
+
+/**
+ * Pure extraction of the "resolve the deletion target's personName" glue used
+ * when the Remove button inside AvailabilityDialog/AvailabilityExceptionDialog
+ * fires. Those editors only carry the row (no employee list of their own);
+ * Scheduling.tsx already holds `allEmployees` and fills in `personName` before
+ * opening the single shared DeleteAvailabilityDialog instance. Returns null if
+ * the row's employee_id doesn't match any known employee (e.g. the employee
+ * was removed mid-session) — callers should treat that as "nothing to delete".
+ */
+export function buildAvailabilityDeletionTarget(
+  kind: 'availability',
+  row: EmployeeAvailability,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null;
+export function buildAvailabilityDeletionTarget(
+  kind: 'exception',
+  row: AvailabilityException,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null;
+export function buildAvailabilityDeletionTarget(
+  kind: 'availability' | 'exception',
+  row: EmployeeAvailability | AvailabilityException,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null {
+  const employee = employees.find((e) => e.id === row.employee_id);
+  if (!employee) return null;
+  if (kind === 'availability') {
+    return { kind: 'availability', row: row as EmployeeAvailability, personName: employee.name };
+  }
+  return { kind: 'exception', row: row as AvailabilityException, personName: employee.name };
 }
 
 const Scheduling = () => {
@@ -216,6 +236,7 @@ const Scheduling = () => {
   const [gridDefaultDayOfWeek, setGridDefaultDayOfWeek] = useState<number | undefined>();
   const [gridException, setGridException] = useState<AvailabilityException | undefined>();
   const [gridDefaultDate, setGridDefaultDate] = useState<Date | undefined>();
+  const [deletionTarget, setDeletionTarget] = useState<AvailabilityDeletionTarget | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
@@ -553,6 +574,41 @@ const Scheduling = () => {
     setGridException(exception);
     setExceptionDialogOpen(true);
   }, []);
+
+  // Grid already resolves personName itself (it has the employee row in
+  // hand), so its trash button hands up a fully-formed target directly.
+  const handleRequestDeleteAvailability = useCallback((target: AvailabilityDeletionTarget) => {
+    setDeletionTarget(target);
+  }, []);
+
+  // The editors (AvailabilityDialog/AvailabilityExceptionDialog) only carry
+  // the row — resolve personName from allEmployees before opening the
+  // shared DeleteAvailabilityDialog.
+  const handleRemoveAvailability = useCallback((availability: EmployeeAvailability) => {
+    const target = buildAvailabilityDeletionTarget('availability', availability, allEmployees);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
+
+  const handleRemoveException = useCallback((exception: AvailabilityException) => {
+    const target = buildAvailabilityDeletionTarget('exception', exception, allEmployees);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -1716,6 +1772,7 @@ const Scheduling = () => {
                   restaurantId={restaurantId}
                   onOpenAvailabilityDialog={handleOpenAvailabilityFromGrid}
                   onOpenExceptionDialog={handleOpenExceptionFromGrid}
+                  onRequestDelete={handleRequestDeleteAvailability}
                 />
               )}
             </CardContent>
@@ -1799,6 +1856,7 @@ const Scheduling = () => {
             availability={gridAvailability}
             defaultEmployeeId={gridDefaultEmployeeId}
             defaultDayOfWeek={gridDefaultDayOfWeek}
+            onRemove={handleRemoveAvailability}
           />
           <AvailabilityExceptionDialog
             open={exceptionDialogOpen}
@@ -1814,6 +1872,16 @@ const Scheduling = () => {
             exception={gridException}
             defaultEmployeeId={gridDefaultEmployeeId}
             defaultDate={gridDefaultDate}
+            onRemove={handleRemoveException}
+          />
+          <DeleteAvailabilityDialog
+            open={deletionTarget !== null}
+            onOpenChange={(open) => {
+              if (!open) setDeletionTarget(null);
+            }}
+            target={deletionTarget}
+            restaurantId={restaurantId}
+            timezone={restaurantTimezone}
           />
         </>
       )}

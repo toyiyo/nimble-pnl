@@ -93,6 +93,7 @@ const baseGridProps = {
   onEditTemplate: vi.fn(),
   onHideTemplate: vi.fn(),
   onRestoreTemplate: vi.fn(),
+  onDeleteTemplate: vi.fn(),
   onAddTemplate: vi.fn(),
 };
 
@@ -121,8 +122,11 @@ describe('TemplateGrid source-text invariants — task 8', () => {
 });
 
 describe('TemplateGrid source-text invariants — task 7', () => {
-  it('no longer accepts an onDeleteTemplate prop', () => {
-    expect(SRC).not.toMatch(/onDeleteTemplate/);
+  // Impact-Aware Deletion (T5) reintroduces onDeleteTemplate as the wiring
+  // for the hard-delete flow (thread to TemplateRowHeader -> DeleteTemplateDialog),
+  // superseding the earlier "task 7" decision to drop it.
+  it('accepts an onDeleteTemplate prop', () => {
+    expect(SRC).toMatch(/onDeleteTemplate/);
   });
 
   it('accepts onHideTemplate and onRestoreTemplate props', () => {
@@ -173,7 +177,7 @@ describe('TemplateGrid ghost row rendering — task 7', () => {
     expect(header?.className).not.toMatch(/bg-muted\/20/);
   });
 
-  it('calls onHideTemplate (not onDeleteTemplate) when TemplateRowHeader fires onHide for an active template', async () => {
+  it('calls onHideTemplate when TemplateRowHeader fires onHide for an active template', async () => {
     const user = userEvent.setup();
     const onHideTemplate = vi.fn();
     render(
@@ -189,6 +193,22 @@ describe('TemplateGrid ghost row rendering — task 7', () => {
     await user.click(trigger);
     await user.click(await screen.findByRole('menuitem', { name: /Hide template/i }));
     expect(onHideTemplate).toHaveBeenCalledTimes(1);
+  });
+
+  it('CRITICAL: calls onDeleteTemplate when TemplateRowHeader fires onDelete', async () => {
+    const user = userEvent.setup();
+    const onDeleteTemplate = vi.fn();
+    render(
+      <TemplateGrid
+        {...baseGridProps}
+        onDeleteTemplate={onDeleteTemplate}
+        areaFilter={null}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: 'Actions for t1 shift' });
+    await user.click(trigger);
+    await user.click(await screen.findByRole('menuitem', { name: /Delete template/i }));
+    expect(onDeleteTemplate).toHaveBeenCalledTimes(1);
   });
 
   it('passes isHiddenTemplate=true to ShiftCell for a hidden template (ghost aria-label)', () => {

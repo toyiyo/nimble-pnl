@@ -228,17 +228,23 @@ SELECT is(
 RESET ROLE;
 
 -- ============================================
--- Test 4: a fill-in shift (non-exact-match window) DOES reduce open_spots
--- under coverage-based get_open_shifts.
+-- Test 4: a fill-in shift with a non-exact-match window does NOT reduce
+-- open_spots under fill-by-assignment get_open_shifts.
 --
--- Under the old exact-match approach, a shift with a different start/end time
--- than the template was invisible to get_open_shifts (assigned_count=0).
--- Under coverage, shift_slot_min_concurrent counts any overlapping shift, so
--- a fill-in that covers the entire template window yields 0 open_spots.
+-- Superseded by docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-
+-- design.md: get_open_shifts now calls shift_template_assigned_count, whose
+-- legacy (null-FK) fallback requires an EXACT start/end/position match to
+-- attribute a shift to a template -- merely overlapping the window is no
+-- longer sufficient. This intentionally reverts the coverage-sweep trade-off
+-- from 20260626120000_open_shift_coverage.sql (an unrelated same-position
+-- shift elsewhere used to "cover" this slot too, which was the root bug the
+-- fill-by-assignment redesign fixes). A fill-in shift not FK-assigned to the
+-- template and not an exact time match therefore does not count toward it.
 --
 -- Fixture: new restaurant + template (Tue 10:00-16:30 cap 1) + a fill-in
--- shift 09:00-17:00 (overlaps the entire window but does NOT exactly match).
--- Expected: get_open_shifts returns 0 rows (slot is fully covered).
+-- shift 09:00-17:00 (overlaps the window but does NOT exactly match it, and
+-- has no shift_template_id). Expected: get_open_shifts still returns the slot
+-- open (1 spot), since the fill-in doesn't satisfy either belongs() branch.
 -- ============================================
 
 SET LOCAL role TO postgres;
@@ -297,8 +303,9 @@ BEGIN
     VALUES (v_rid, v_d - EXTRACT(DOW FROM v_d)::int, v_d - EXTRACT(DOW FROM v_d)::int + 6, v_uid, 0)
     ON CONFLICT DO NOTHING;
 
-  -- Fill-in: 09:00-17:00 local — overlaps the FULL 10:00-16:30 window but
-  -- does NOT exactly match it. Old exact-match would miss this; coverage counts it.
+  -- Fill-in: 09:00-17:00 local, no shift_template_id — overlaps the FULL
+  -- 10:00-16:30 window but does NOT exactly match it (and isn't FK-assigned),
+  -- so it fails both belongs() branches and must not count toward the slot.
   INSERT INTO public.shifts(restaurant_id, employee_id, start_time, end_time, position, status)
     VALUES (
       v_rid, v_emp,
@@ -308,19 +315,26 @@ BEGIN
     );
 END $$;
 
+-- Impersonate the linked FillIn employee so get_open_shifts' membership
+-- guard (this PR's authz change) passes; the fill-by-assignment open_spots
+-- assertion (main) is what we actually verify.
 RESET ROLE;
 SET LOCAL role = 'authenticated';
 SELECT set_config('request.jwt.claims', '{"sub":"eeeeeeee-ca01-0000-0000-000000000010","role":"authenticated"}', true);
 
-SELECT ok(
-  NOT EXISTS (
-    SELECT 1 FROM get_open_shifts(
+SELECT is(
+  (
+    SELECT open_spots
+    FROM get_open_shifts(
       'aaaaaaaa-ca01-0000-0000-000000000002'::uuid,
       CURRENT_DATE,
       CURRENT_DATE + 14
     )
+    WHERE template_id = 'bbbbbbbb-ca01-0000-0000-000000000010'::uuid
+    LIMIT 1
   ),
-  'fill-in overlapping full template window reduces open_spots to 0 (coverage-based)'
+  1::bigint,
+  'fill-in with a non-exact-match window (no FK) does not reduce open_spots (fill-by-assignment)'
 );
 
 RESET ROLE;

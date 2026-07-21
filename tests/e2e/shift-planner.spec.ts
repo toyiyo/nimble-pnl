@@ -254,6 +254,19 @@ test.describe('Shift Planner v2 (Template-First)', () => {
 
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
 
+    // The planner grid buckets shifts by RESTAURANT timezone (default
+    // America/Chicago). This test seeds shift times using the browser tz
+    // offset, so align the restaurant tz to the browser tz — otherwise a
+    // UTC CI runner buckets the 06:00 shift under the wrong wall-clock and the
+    // legacy time-match fallback drops the chip.
+    await page.evaluate(async (restId) => {
+      const supabase = (window as any).__supabase;
+      await supabase
+        .from('restaurants')
+        .update({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+        .eq('id', restId);
+    }, restaurantId);
+
     // Seed employees
     const employees = await page.evaluate(
       ({ emps, restId }) => (window as any).__insertEmployees(emps, restId),

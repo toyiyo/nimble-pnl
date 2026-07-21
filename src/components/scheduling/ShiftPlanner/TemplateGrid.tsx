@@ -33,6 +33,7 @@ interface TemplateGridProps {
   onEditTemplate: (template: ShiftTemplate) => void;
   onHideTemplate: (template: ShiftTemplate) => void;
   onRestoreTemplate: (templateId: string) => void;
+  onDeleteTemplate: (template: ShiftTemplate) => void;
   onAddTemplate: () => void;
   highlightCellId?: string | null;
   /** Mobile tap-to-assign */
@@ -67,6 +68,7 @@ export function TemplateGrid({
   onEditTemplate,
   onHideTemplate,
   onRestoreTemplate,
+  onDeleteTemplate,
   onAddTemplate,
   highlightCellId,
   onMobileCellTap,
@@ -197,6 +199,7 @@ export function TemplateGrid({
                         onEdit={onEditTemplate}
                         onHide={onHideTemplate}
                         onRestore={onRestoreTemplate}
+                        onDelete={onDeleteTemplate}
                       />
                     </div>
                     {weekDays.map((day) => {

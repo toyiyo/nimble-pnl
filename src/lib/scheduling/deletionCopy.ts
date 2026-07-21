@@ -85,9 +85,13 @@ export function buildTemplateLedger(
       label: `${pendingClaims.count} ${pluralize(pendingClaims.count, 'pending claim', 'pending claims')}`,
       tone: 'destructive',
     });
+    const claimants = formatClaimantNames(pendingClaims.names);
     removed.push({
       key: 'pendingClaims',
-      text: `${pendingClaims.count} ${pluralize(pendingClaims.count, 'pending claim is', 'pending claims are')} withdrawn — ${formatClaimantNames(pendingClaims.names)}`,
+      // Only append the claimant list when names actually resolved — otherwise
+      // a claim with an unresolved employee join would render a dangling em
+      // dash ("… withdrawn — ").
+      text: `${pendingClaims.count} ${pluralize(pendingClaims.count, 'pending claim is', 'pending claims are')} withdrawn${claimants ? ` — ${claimants}` : ''}`,
     });
   }
 

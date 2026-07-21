@@ -102,6 +102,22 @@ describe('buildTemplateLedger', () => {
     );
   });
 
+  it('omits the em dash when the claim count is positive but no names resolved', () => {
+    // Employee join can come back empty (deleted/renamed employee) while the
+    // claim rows still count — the copy must not render a dangling "withdrawn — ".
+    const impact: TemplateDeletionImpact = {
+      pendingClaims: { count: 2, names: [] },
+      scheduledShiftsKept: 0,
+      upcomingOpenSpots: 0,
+    };
+
+    const ledger = buildTemplateLedger(impact, 'Closing Server');
+
+    const pendingLine = ledger.removed.find((l) => l.key === 'pendingClaims');
+    expect(pendingLine!.text).toBe('2 pending claims are withdrawn');
+    expect(pendingLine!.text).not.toContain('—');
+  });
+
   it('formats more than two pending-claim names as "+N more"', () => {
     const impact: TemplateDeletionImpact = {
       pendingClaims: {

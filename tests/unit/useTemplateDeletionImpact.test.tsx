@@ -262,7 +262,7 @@ describe('useTemplateDeletionImpact', () => {
     renderHook(() => useTemplateDeletionImpact('r1', 't1'), { wrapper });
 
     await waitFor(() => {
-      expect(client.getQueryState(['template-deletion-impact', 't1'])).toBeDefined();
+      expect(client.getQueryState(['template-deletion-impact', 'r1', 't1'])).toBeDefined();
     });
   });
 });

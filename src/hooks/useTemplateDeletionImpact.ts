@@ -91,7 +91,7 @@ export function useTemplateDeletionImpact(
   templateId: string | null,
 ): TemplateDeletionImpactResult {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['template-deletion-impact', templateId],
+    queryKey: ['template-deletion-impact', restaurantId, templateId],
     queryFn: () =>
       fetchTemplateDeletionImpact(restaurantId as string, templateId as string),
     enabled: !!restaurantId && !!templateId,

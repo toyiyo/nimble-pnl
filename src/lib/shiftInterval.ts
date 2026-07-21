@@ -157,3 +157,18 @@ export function formatLocalDate(date: Date): string {
 export function formatLocalDateInTz(date: Date, tz: string): string {
   return formatLocalDate(toZonedTime(date, tz));
 }
+
+/**
+ * Extract wall-clock HH:MM:SS from a UTC ISO string in an explicit IANA
+ * timezone (e.g. the restaurant's), not the browser's. Companion to
+ * `formatLocalDateInTz`: use this (instead of the browser-local
+ * `formatLocalTime`) when matching a shift's time-of-day against a template's
+ * `start_time`/`end_time`, which are stored in restaurant-local wall clock.
+ * A viewer in a different timezone would otherwise derive the wrong HH:MM:SS
+ * and mis-match (or fail to match) the legacy fallback.
+ */
+export function formatLocalTimeInTz(isoString: string, tz: string): string {
+  const d = toZonedTime(new Date(isoString), tz);
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}

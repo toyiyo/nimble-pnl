@@ -157,10 +157,11 @@ export { getShiftStatusClass } from './SchedulingShiftCard';
  * fallback `buildTemplateGridData` already uses for null-FK shifts) —
  * regardless of whether their hours span the whole window.
  *
- * `restaurantTimezone` is accepted for call-site/signature stability (all
- * existing callers pass it) but is not used for day-bucketing here:
- * `buildTemplateGridData` buckets by the shift's local calendar date the
- * same way the grid does, so the banner and the chips can never disagree.
+ * `restaurantTimezone` is passed through to `buildTemplateGridData` so day /
+ * time / day-of-week bucketing all resolve in restaurant-local time — the same
+ * tz the grid chips and the SQL (`… AT TIME ZONE p_tz`) use. This keeps the
+ * banner, the chips, and the server in agreement even for a viewer in a
+ * different timezone (a traveling manager near local midnight).
  */
 export function computeOpenShiftCount(
   templates: ShiftTemplate[],
@@ -169,8 +170,7 @@ export function computeOpenShiftCount(
   restaurantTimezone: string,
 ): number {
   if (!templates.length || shifts === undefined) return 0;
-  void restaurantTimezone;
-  const grid = buildTemplateGridData(shifts, templates, weekDayStrings);
+  const grid = buildTemplateGridData(shifts, templates, weekDayStrings, restaurantTimezone);
   let total = 0;
   for (const t of templates) {
     const bucketByDay = grid.get(t.id);

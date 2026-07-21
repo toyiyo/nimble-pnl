@@ -183,8 +183,8 @@ export function ShiftPlannerTab({
   // Compute template grid data — built with ALL templates (active + hidden) so a
   // hidden template's FK-linked shifts keep bucketing under it (not `__unmatched__`).
   const templateGridData = useMemo(
-    () => buildTemplateGridData(shifts, allTemplates, weekDays),
-    [shifts, allTemplates, weekDays],
+    () => buildTemplateGridData(shifts, allTemplates, weekDays, restaurantTimezone),
+    [shifts, allTemplates, weekDays, restaurantTimezone],
   );
 
   // Derive coverage index for CoverageStrip and overview panel

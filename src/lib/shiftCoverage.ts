@@ -3,9 +3,14 @@
  *
  * Computes time-based concurrent-minimum coverage for a template slot.
  * Algorithm: sweep-line over breakpoints derived from clipped shift intervals.
- * Identical logic is mirrored in SQL as shift_slot_min_concurrent().
+ * Used by computeCellFill (src/lib/shiftFill.ts) to derive segments/coveragePct
+ * for a template's own assigned-shift bucket. The server no longer mirrors this
+ * sweep: shift_slot_min_concurrent (the whole-floor, position-only sweep this
+ * once matched) was dropped in favor of shift_template_assigned_count, a
+ * per-template distinct-assignee count with no sweep-line component (see
+ * docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md).
  *
- * Key invariants (match the SQL exactly):
+ * Key invariants (historical — matched the SQL sweep before it was dropped):
  *  - "distinct employees" per sub-interval (one person with 2 overlapping shifts = 1)
  *  - capacityFloor: 0/NaN/<1 → 1
  *  - W0 and W1 are always seeded into breakpoints (empty shift set → minConcurrent=0)
@@ -14,7 +19,7 @@
  */
 
 import { toZonedTime } from 'date-fns-tz';
-import type { CoverageShift, CoverageSegment, CoveringEmployee, SlotCoverage } from '@/types/scheduling';
+import type { CoverageShift, CoverageSegment, CoveringEmployee } from '@/types/scheduling';
 import { formatCompactTime } from '@/lib/openShiftHelpers';
 
 /**
@@ -43,8 +48,11 @@ export function minutesToCompact(min: number): string {
 
 /**
  * Parse "HH:MM:SS" or "HH:MM" into minutes from midnight (integer).
+ *
+ * Exported so `computeLoanedOut` (loanedOut.ts) can reuse the same window
+ * clipping math instead of re-deriving it.
  */
-function parseTimeToMinutes(t: string): number {
+export function parseTimeToMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 }
@@ -70,6 +78,31 @@ export function isoToLocalMinutes(iso: string, dateStr: string, tz: string): num
   return wallMins + dayDelta * 1440;
 }
 
+/**
+ * Clip a shift's [start, end) interval (in local minutes, overnight-aware) to a
+ * window [w0, w1). Returns null when the shift doesn't overlap the window at all.
+ *
+ * Shared by `computeWindowSweep` (this file) and `computeLoanedOut`
+ * (loanedOut.ts) — both need the identical local-minutes clip, just with a
+ * different filter on which shifts to clip.
+ */
+export function clipShiftToWindow(
+  shift: Pick<CoverageShift, 'start_time' | 'end_time'>,
+  dateStr: string,
+  tz: string,
+  w0: number,
+  w1: number,
+): { cs: number; ce: number } | null {
+  const ds = isoToLocalMinutes(shift.start_time, dateStr, tz);
+  let de = isoToLocalMinutes(shift.end_time, dateStr, tz);
+  // Overnight shift: if end ≤ start in local minutes, add 1440
+  if (de <= ds) de += 1440;
+
+  const cs = Math.max(w0, ds);
+  const ce = Math.min(w1, de);
+  return cs < ce ? { cs, ce } : null;
+}
+
 interface Clip {
   employeeId: string;
   employeeName?: string | null;
@@ -79,44 +112,54 @@ interface Clip {
   ce: number; // clipped end
 }
 
-/**
- * Options bag for computeSlotCoverage.
- *
- * `position` and `tz` are required slot configuration.
- * `area` is opt-in: null / undefined → no area filter (whole-restaurant, back-compat).
- * Banner callers (Scheduling.tsx) omit `area` — they stay whole-floor intentionally.
- */
-export interface ComputeSlotCoverageOptions {
+/** Options bag for computeWindowSweep — a slot's required position + restaurant timezone. */
+export interface ComputeWindowSweepOptions {
   /** The position the slot requires (e.g. "Server"). */
   position: string;
   /** IANA timezone of the restaurant. */
   tz: string;
-  /**
-   * When non-null, only shifts whose `shift.area === area` are counted.
-   * Pass the template's own `area` field (from ShiftTemplate.area).
-   * null / undefined → no area filter (counts all same-position shifts).
-   */
-  area?: string | null;
 }
 
 /**
- * Compute coverage for a single template slot on a given date.
+ * Sweep-line result for one (window, shift set) pair. No `openSpots` / `loanedOut` — callers
+ * derive those themselves: `computeCellFill` (shiftFill.ts) from distinct-assignment count,
+ * `computeLoanedOut` (loanedOut.ts) from the home/work-area split.
+ */
+export interface WindowSweepResult {
+  minConcurrent: number;
+  coveragePct: number;
+  segments: CoverageSegment[];
+  coveringEmployees: CoveringEmployee[];
+}
+
+/**
+ * Shared sweep-line engine: time-based min-concurrent coverage over a window, given a
+ * pre-scoped shift set.
+ *
+ * This is the math previously embedded in the retired `computeSlotCoverage` (whole-floor
+ * position sweep + opt-in area filter + loaned-out branch). Those two responsibilities have
+ * moved out: `computeCellFill` (shiftFill.ts) drives `openSpots` from distinct-employee
+ * assignment count and calls this for the secondary sweep info (coveragePct/segments/
+ * coveringEmployees) over the template's own bucket; `computeLoanedOut` (loanedOut.ts)
+ * computes the whole-floor loaned-out ghosts independently. Callers scope `shifts` themselves
+ * before calling in — this function applies no area filter.
  *
  * @param windowStart  "HH:MM:SS" or "HH:MM" — local start of the slot
  * @param windowEnd    "HH:MM:SS" or "HH:MM" — local end of the slot (may be < start for overnight)
  * @param capacity     Template capacity (coerced via capacityFloor)
  * @param dateStr      "YYYY-MM-DD" — the local calendar date of the slot
- * @param shifts       Candidate shifts (all positions/statuses; engine filters internally)
- * @param options      Required bag — `{ position, tz }` always; `{ area }` for planner per-cell scoping.
+ * @param shifts       Candidate shifts, already scoped by the caller (this still filters by
+ *                     position + cancelled status)
+ * @param options      `{ position, tz }`.
  */
-export function computeSlotCoverage(
+export function computeWindowSweep(
   windowStart: string,
   windowEnd: string,
   capacity: number,
   dateStr: string,
   shifts: CoverageShift[],
-  options: ComputeSlotCoverageOptions,
-): SlotCoverage {
+  options: ComputeWindowSweepOptions,
+): WindowSweepResult {
   const { position, tz } = options;
   const cap = capacityFloor(capacity);
   const w0 = parseTimeToMinutes(windowStart);
@@ -124,54 +167,25 @@ export function computeSlotCoverage(
   // Overnight window: if end ≤ start, treat end as next-day (+1440)
   const w1 = w1raw <= w0 ? w1raw + 1440 : w1raw;
 
-  // --- Build clipped intervals (and loaned-out candidates in the same pass) ---
+  // --- Build clipped intervals ---
   const clips: Clip[] = [];
-  const loanedOut: CoveringEmployee[] = [];
   for (const s of shifts) {
     // Filter: position must match; cancelled shifts are skipped
     if (s.position !== position) continue;
     if (s.status === 'cancelled') continue;
 
-    const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
-    let de = isoToLocalMinutes(s.end_time, dateStr, tz);
-    // Overnight shift: if end ≤ start in local minutes, add 1440
-    if (de <= ds) de += 1440;
-
-    const cs = Math.max(w0, ds);
-    const ce = Math.min(w1, de);
-
-    if (options.area !== null && options.area !== undefined) {
-      // Collect loaned-out employees: home area = this slot's area, working elsewhere.
-      // They are surfaced in loanedOut[] but do NOT count toward coverage.
-      if ((s.homeArea ?? null) === options.area && (s.area ?? null) !== options.area) {
-        if (cs < ce) {
-          loanedOut.push({
-            employeeId: s.employee_id,
-            employeeName: s.employee_name ?? null,
-            homeArea: s.homeArea ?? null,
-            workArea: s.area ?? null,
-            startMin: cs,
-            endMin: ce,
-          });
-        }
-        continue; // loaned-out: not counted toward this slot's coverage
-      }
-      // Opt-in area filter: only count same-area shifts.
-      if (s.area !== options.area) continue;
-    }
-
-    if (cs < ce) {
+    const clip = clipShiftToWindow(s, dateStr, tz, w0, w1);
+    if (clip) {
       clips.push({
         employeeId: s.employee_id,
         employeeName: s.employee_name ?? null,
         homeArea: s.homeArea ?? null,
         workArea: s.area ?? null,
-        cs,
-        ce,
+        cs: clip.cs,
+        ce: clip.ce,
       });
     }
   }
-  loanedOut.sort((a, b) => a.startMin - b.startMin);
 
   // --- Sweep line over breakpoints ---
   // Always seed W0 and W1 so an empty shift set still produces a full-window n=0 interval.
@@ -232,11 +246,9 @@ export function computeSlotCoverage(
 
   return {
     minConcurrent,
-    openSpots: Math.max(0, cap - minConcurrent),
     coveragePct,
     segments,
     coveringEmployees,
-    loanedOut,
   };
 }
 

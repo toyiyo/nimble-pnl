@@ -58,13 +58,14 @@ import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
-import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
+import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatLocalDate } from '@/lib/shiftInterval';
-import { computeSlotCoverage } from '@/lib/shiftCoverage';
-import type { CoverageShift, ShiftTemplate } from '@/types/scheduling';
+import { capacityFloor } from '@/lib/shiftCoverage';
+import { distinctAssignedCount } from '@/lib/shiftFill';
+import type { ShiftTemplate } from '@/types/scheduling';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
@@ -110,7 +111,6 @@ import {
   CalendarOff,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
-import * as dateFnsTz from 'date-fns-tz';
 import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -140,23 +140,25 @@ export { getShiftStatusClass } from './SchedulingShiftCard';
  * Pure function extracted from the openShiftCount useMemo so it can be
  * unit-tested independently of the Scheduling component.
  *
- * Uses the coverage engine (computeSlotCoverage) instead of the old
- * buildTemplateGridData + computeOpenSpots exact-match path, so fill-in
- * shifts that overlap a template window without exactly matching it are
- * counted correctly.
+ * Rebuilt on `buildTemplateGridData` + `distinctAssignedCount` — the SAME
+ * per-template bucketing that drives the grid's employee chips — instead of
+ * the old whole-floor `computeSlotCoverage` position sweep. That sweep only
+ * filtered by position (never `shift_template_id`), so one employee's shift
+ * could satisfy every other same-position template's slot on that day,
+ * producing a banner count that disagreed with what the grid showed (the bug
+ * this fixes; see docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md).
+ *
+ * A template slot is filled when >= capacity DISTINCT employees are bucketed
+ * under *that template* (FK match, or the legacy exact-time/position/day
+ * fallback `buildTemplateGridData` already uses for null-FK shifts) —
+ * regardless of whether their hours span the whole window.
+ *
+ * `restaurantTimezone` is passed through to `buildTemplateGridData` so day /
+ * time / day-of-week bucketing all resolve in restaurant-local time — the same
+ * tz the grid chips and the SQL (`… AT TIME ZONE p_tz`) use. This keeps the
+ * banner, the chips, and the server in agreement even for a viewer in a
+ * different timezone (a traveling manager near local midnight).
  */
-/**
- * Return the local calendar date (YYYY-MM-DD) for a UTC ISO timestamp in the
- * given IANA timezone.  This mirrors SQL: (start_time AT TIME ZONE tz)::date.
- */
-function localDateOf(isoUtc: string, tz: string): string {
-  const zoned = dateFnsTz.toZonedTime(new Date(isoUtc), tz);
-  const y = zoned.getFullYear();
-  const m = String(zoned.getMonth() + 1).padStart(2, '0');
-  const d = String(zoned.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function computeOpenShiftCount(
   templates: ShiftTemplate[],
   shifts: Shift[],
@@ -164,31 +166,15 @@ export function computeOpenShiftCount(
   restaurantTimezone: string,
 ): number {
   if (!templates.length || shifts === undefined) return 0;
-  const allCov: CoverageShift[] = shifts.map((s) => ({
-    employee_id: s.employee_id,
-    employee_name: s.employee?.name ?? null,
-    start_time: s.start_time,
-    end_time: s.end_time,
-    position: s.position,
-    status: s.status,
-  }));
+  const grid = buildTemplateGridData(shifts, templates, weekDayStrings, restaurantTimezone);
   let total = 0;
   for (const t of templates) {
+    const bucketByDay = grid.get(t.id);
     for (const dayStr of weekDayStrings) {
       if (!templateAppliesToDay(t, dayStr)) continue;
-      // Mirror SQL's filter: only include shifts whose local start date = dayStr.
-      // This keeps overnight carry-over shifts (local start = previous day) from
-      // reducing the banner count for the carry-over day, matching the behaviour of
-      // shift_slot_min_concurrent and preventing UI/SQL divergence.
-      const cov = allCov.filter((s) => localDateOf(s.start_time, restaurantTimezone) === dayStr);
-      total += computeSlotCoverage(
-        t.start_time,
-        t.end_time,
-        t.capacity ?? 1,
-        dayStr,
-        cov,
-        { position: t.position, tz: restaurantTimezone },
-      ).openSpots;
+      const bucketShifts = bucketByDay?.get(dayStr) ?? [];
+      const assignedCount = distinctAssignedCount(bucketShifts);
+      total += Math.max(0, capacityFloor(t.capacity) - assignedCount);
     }
   }
   return total;

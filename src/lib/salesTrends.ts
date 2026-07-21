@@ -60,8 +60,10 @@ export interface SalesTrendsData {
   by_product: SalesTrendsProductRow[];
 }
 
-/** Selected POS scope for the panel's segmented control. */
-export type PosFilter = string | 'all';
+/** Selected POS scope for the panel's segmented control: the literal `'all'`
+ *  or any `pos_system` value. `string & {}` keeps `'all'` distinct in the union
+ *  (and preserves editor autocomplete) instead of being absorbed by `string`. */
+export type PosFilter = 'all' | (string & {});
 
 // ---------------------------------------------------------------------------
 // parseSalesTrends — runtime guard for the untyped RPC `Json` payload
@@ -507,9 +509,10 @@ export function deriveInsights(data: SalesTrendsData): SalesTrendsInsights {
         const numDays = new Set(data.by_day.map((r) => r.sale_date)).size;
         const avgDay = numDays > 0 ? kpis.netSales / numDays : 0;
         const multiple = avgDay > 0 ? kpis.busiestDay!.revenue / avgDay : 0;
+        const multipleSuffix = multiple > 0 ? ` (${multiple.toFixed(1)}x the daily average)` : '';
         return `${kpis.busiestDay!.date} was the busiest day with ${formatCurrency(
           kpis.busiestDay!.revenue,
-        )}${multiple > 0 ? ` (${multiple.toFixed(1)}x the daily average)` : ''}.`;
+        )}${multipleSuffix}.`;
       })()
     : 'No sales in this range yet.';
 

@@ -86,8 +86,11 @@ BEGIN
       AND us.parent_sale_id IS NULL
       AND us.adjustment_type IS NULL
       AND us.item_type = 'sale'
-      AND (v_start_date IS NULL OR us.sale_date >= v_start_date)
-      AND (v_end_date IS NULL OR us.sale_date <= v_end_date)
+      -- v_start_date / v_end_date are always non-NULL here (clamped above),
+      -- so a straight range predicate is exact and lets the planner use
+      -- idx_unified_sales_restaurant_date without an OR-branch (Copilot #629).
+      AND us.sale_date >= v_start_date
+      AND us.sale_date <= v_end_date
   )
   SELECT jsonb_build_object(
     'pos_systems', (

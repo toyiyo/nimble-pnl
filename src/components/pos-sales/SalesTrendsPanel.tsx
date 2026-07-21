@@ -54,7 +54,7 @@ export function SalesTrendsPanel({
   endDate,
   timeZone,
   defaultExpanded = true,
-}: SalesTrendsPanelProps) {
+}: Readonly<SalesTrendsPanelProps>) {
   const { data, isLoading, error } = useSalesTrends(restaurantId, { startDate, endDate, timeZone });
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [posFilter, setPosFilter] = useState<PosFilter>('all');
@@ -78,17 +78,11 @@ export function SalesTrendsPanel({
   );
   const kpis = useMemo(() => (filtered ? computeKpis(filtered) : null), [filtered]);
   const insights = useMemo(() => (filtered ? deriveInsights(filtered) : null), [filtered]);
-  const daily = useMemo(
-    () =>
-      filtered
-        ? buildDailySeries(
-            filtered.by_day,
-            filtered.pos_systems,
-            startDate && endDate ? { start: startDate, end: endDate } : undefined,
-          )
-        : [],
-    [filtered, startDate, endDate],
-  );
+  const daily = useMemo(() => {
+    if (!filtered) return [];
+    const range = startDate && endDate ? { start: startDate, end: endDate } : undefined;
+    return buildDailySeries(filtered.by_day, filtered.pos_systems, range);
+  }, [filtered, startDate, endDate]);
   const hourly = useMemo(
     () => (filtered ? buildHourlySeries(filtered.by_hour, filtered.pos_systems) : []),
     [filtered],
@@ -183,7 +177,7 @@ export function SalesTrendsPanel({
   );
 }
 
-function ChartSection({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartSection({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
     <div className="space-y-2">
       <h3 className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">{title}</h3>

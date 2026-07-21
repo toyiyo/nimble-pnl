@@ -23,7 +23,7 @@ export const PosFilterControl = memo(function PosFilterControl({
 
   return (
     <div
-      role="group"
+      role="toolbar"
       aria-label="Filter sales trends by POS system"
       className="inline-flex flex-wrap items-center gap-0.5 rounded-lg bg-muted/50 p-0.5"
     >
@@ -48,11 +48,11 @@ function PillButton({
   pressed,
   onClick,
   children,
-}: {
+}: Readonly<{
   pressed: boolean;
   onClick: () => void;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <button
       type="button"

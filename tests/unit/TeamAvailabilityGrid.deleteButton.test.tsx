@@ -198,4 +198,24 @@ describe('TeamAvailabilityGrid — split-shift delete ambiguity', () => {
       within(table).getByRole('button', { name: "Delete Ann Employee's Mar 3 availability" }),
     ).toBeInTheDocument();
   });
+
+  it('still opens the first existing row for edit when a split-shift cell is clicked (does not fall through to create-new)', () => {
+    const onOpenAvailabilityDialog = vi.fn();
+    render(
+      <TeamAvailabilityGrid
+        restaurantId="r1"
+        onOpenAvailabilityDialog={onOpenAvailabilityDialog}
+        onOpenExceptionDialog={vi.fn()}
+        onRequestDelete={vi.fn()}
+      />,
+    );
+    const table = screen.getByRole('table');
+    // Monday is the only recurring "Available …" cell (Tuesday is an exception).
+    const mondayCell = within(table).getByRole('button', { name: /^Available/ });
+    fireEvent.click(mondayCell);
+    // Regression guard: split-shift ambiguity suppresses the DELETE button but
+    // must NOT break edit — clicking opens the first matching row, not create-new.
+    expect(onOpenAvailabilityDialog).toHaveBeenCalledWith('emp-1', 1, SPLIT_MONDAY_AVAILABILITY[0]);
+    expect(onOpenAvailabilityDialog).not.toHaveBeenCalledWith('emp-1', 1, undefined);
+  });
 });

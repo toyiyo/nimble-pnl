@@ -141,14 +141,32 @@ const AvailabilityCell = memo(function AvailabilityCell({
   }, [effective.type, exceptions, availability, employeeId, dateStr, dow, employeeName]);
 
   const handleClick = useCallback(() => {
-    if (resolvedTarget?.kind === 'exception') {
-      onOpenExceptionDialog(employeeId, date, resolvedTarget.row);
-    } else if (resolvedTarget?.kind === 'availability') {
-      onOpenAvailabilityDialog(employeeId, dow, resolvedTarget.row);
+    // Click-to-edit opens the first matching existing row (create-new when none).
+    // This is intentionally independent of `resolvedTarget`: that value is null
+    // for split-shift ambiguity so only the DELETE affordance is suppressed —
+    // editing an existing split-shift row must still work from the grid.
+    if (effective.type === 'exception') {
+      const exc = exceptions.find((e) => e.employee_id === employeeId && e.date === dateStr);
+      onOpenExceptionDialog(employeeId, date, exc);
+    } else if (effective.type === 'recurring') {
+      const avail = availability.find(
+        (a) => a.employee_id === employeeId && a.day_of_week === dow,
+      );
+      onOpenAvailabilityDialog(employeeId, dow, avail);
     } else {
       onOpenAvailabilityDialog(employeeId, dow, undefined);
     }
-  }, [resolvedTarget, employeeId, dow, date, onOpenAvailabilityDialog, onOpenExceptionDialog]);
+  }, [
+    effective.type,
+    employeeId,
+    dow,
+    date,
+    dateStr,
+    availability,
+    exceptions,
+    onOpenAvailabilityDialog,
+    onOpenExceptionDialog,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {

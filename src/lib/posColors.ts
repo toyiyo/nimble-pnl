@@ -47,15 +47,22 @@ const FALLBACK_LABEL = 'Other';
 /**
  * Resolve the chart color for a POS system, with a stable fallback for
  * unknown/malformed values (e.g. bad data from an untyped RPC payload).
+ *
+ * Typed `sys: string` (not `POSSystemType`) — every real caller receives an
+ * RPC-derived `pos_system` (untyped `Json` at the boundary, same reasoning as
+ * `salesTrends.ts`'s file-header comment) or the `PosFilter` union, neither
+ * of which is narrowed to `POSSystemType`. Narrowing the parameter here just
+ * forced every consumer to `as POSSystemType`-cast around a fallback this
+ * function already handles safely.
  */
-export function posColor(sys: POSSystemType): string {
-  return (sys && POS_COLOR[sys]) || FALLBACK_COLOR;
+export function posColor(sys: string): string {
+  return (sys && (POS_COLOR as Record<string, string>)[sys]) || FALLBACK_COLOR;
 }
 
 /**
  * Resolve the display label for a POS system, with a stable fallback for
  * unknown/malformed values.
  */
-export function posLabel(sys: POSSystemType): string {
-  return (sys && POS_LABEL[sys]) || FALLBACK_LABEL;
+export function posLabel(sys: string): string {
+  return (sys && (POS_LABEL as Record<string, string>)[sys]) || FALLBACK_LABEL;
 }

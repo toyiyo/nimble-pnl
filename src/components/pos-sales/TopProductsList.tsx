@@ -3,7 +3,6 @@ import { Line, LineChart, ResponsiveContainer } from 'recharts';
 
 import { posColor, posLabel } from '@/lib/posColors';
 import type { PosFilter, TopProductRow } from '@/lib/salesTrends';
-import type { POSSystemType } from '@/types/pos';
 
 import { formatCurrency } from './salesTrendsFormat';
 
@@ -37,10 +36,10 @@ export const TopProductsList = memo(function TopProductsList({ products, activeP
               <span className="inline-flex items-center gap-1 shrink-0 text-[11px] px-1.5 py-0.5 rounded-md bg-muted">
                 <span
                   className="h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: posColor(activePos as POSSystemType) }}
+                  style={{ backgroundColor: posColor(activePos) }}
                   aria-hidden="true"
                 />
-                {posLabel(activePos as POSSystemType)}
+                {posLabel(activePos)}
               </span>
             )}
             <div className="flex-1 min-w-0">

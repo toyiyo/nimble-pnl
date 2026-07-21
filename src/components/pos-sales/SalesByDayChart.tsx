@@ -4,7 +4,6 @@ import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { posLabel } from '@/lib/posColors';
 import type { DailySeriesRow } from '@/lib/salesTrends';
-import type { POSSystemType } from '@/types/pos';
 
 import { formatShortDate } from './salesTrendsFormat';
 import { buildPosChartConfig } from './chartConfig';
@@ -39,7 +38,7 @@ export const SalesByDayChart = memo(function SalesByDayChart({ data, posSystems,
           <YAxis tickLine={false} axisLine={false} width={48} />
           <ChartTooltip content={<ChartTooltipContent labelFormatter={(v) => formatShortDate(String(v))} />} />
           {posSystems.map((pos) => (
-            <Bar key={pos} dataKey={pos} stackId="day" fill={`var(--color-${pos})`} name={posLabel(pos as POSSystemType) || pos} />
+            <Bar key={pos} dataKey={pos} stackId="day" fill={`var(--color-${pos})`} name={posLabel(pos)} />
           ))}
           <ChartLegend content={<ChartLegendContent />} />
         </BarChart>

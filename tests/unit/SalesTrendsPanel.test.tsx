@@ -139,6 +139,36 @@ describe('SalesTrendsPanel — POS filter control', () => {
   });
 });
 
+describe('SalesTrendsPanel — stale POS filter reset', () => {
+  it('falls back to All POS when the selected system is no longer present after a data refetch', () => {
+    mockUseSalesTrends.mockReturnValue(mockHookReturn());
+    const { rerender } = render(<SalesTrendsPanel restaurantId="rest-1" />);
+
+    fireEvent.click(screen.getByRole('button', { name: /^toast$/i }));
+    // Toast-only net sales: 300 + 200 = 500
+    expect(screen.getByText('$500.00')).toBeInTheDocument();
+
+    // Simulate a page date-range change whose new payload no longer
+    // contains 'toast' (only one system, 'square', remains) — the
+    // segmented control would also hide itself here since
+    // pos_systems.length <= 1.
+    const squareOnly: SalesTrendsData = {
+      pos_systems: ['square'],
+      by_day: [{ sale_date: '2026-08-01', pos_system: 'square', revenue: 90, orders: 3 }],
+      by_hour: [],
+      by_weekday: [],
+      by_product: [],
+    };
+    mockUseSalesTrends.mockReturnValue(mockHookReturn({ data: squareOnly }));
+    rerender(<SalesTrendsPanel restaurantId="rest-1" startDate="2026-08-01" endDate="2026-08-01" />);
+
+    // Must NOT render a bogus empty state or a stale-filtered zero total —
+    // falls back to showing the new payload's actual (unfiltered) revenue.
+    expect(screen.queryByText(/no sales in this range/i)).not.toBeInTheDocument();
+    expect(screen.getByText('$90.00')).toBeInTheDocument();
+  });
+});
+
 describe('SalesTrendsPanel — expand/collapse', () => {
   it('defaults to expanded with charts mounted and aria-expanded=true', () => {
     mockUseSalesTrends.mockReturnValue(mockHookReturn());

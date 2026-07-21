@@ -137,6 +137,27 @@ describe('buildDailySeries', () => {
   it('returns an empty array for empty input', () => {
     expect(buildDailySeries([], [])).toEqual([]);
   });
+
+  it('zero-fills a day with no sales when dateRange is supplied (no gap in the axis)', () => {
+    // 2024-08-02 has no rows for any POS in this fixture slice.
+    const rows = FIXTURE.by_day.filter((r) => r.sale_date !== '2024-08-02');
+    const series = buildDailySeries(rows, FIXTURE.pos_systems, {
+      start: '2024-08-01',
+      end: '2024-08-03',
+    });
+    expect(series.map((r) => r.date)).toEqual(['2024-08-01', '2024-08-02', '2024-08-03']);
+
+    const aug2 = series[1];
+    expect(aug2.toast).toBe(0);
+    expect(aug2.square).toBe(0);
+    expect(aug2.total).toBe(0);
+  });
+
+  it('without dateRange, still drops a day that has no rows (legacy/no-range behavior)', () => {
+    const rows = FIXTURE.by_day.filter((r) => r.sale_date !== '2024-08-02');
+    const series = buildDailySeries(rows, FIXTURE.pos_systems);
+    expect(series.map((r) => r.date)).toEqual(['2024-08-01', '2024-08-03']);
+  });
 });
 
 describe('buildHourlySeries', () => {

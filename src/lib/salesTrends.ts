@@ -17,6 +17,8 @@
  * union, so consumers of these selectors get a safe display regardless.
  */
 
+import { formatCurrency } from '@/lib/utils';
+
 // ---------------------------------------------------------------------------
 // Types (mirror the get_sales_trends RPC JSON contract, §4.1)
 // ---------------------------------------------------------------------------
@@ -185,6 +187,15 @@ export function filterByPos(data: SalesTrendsData, pos: PosFilter): SalesTrendsD
 // ---------------------------------------------------------------------------
 // buildDailySeries — flat, top-level POS keys so Recharts dataKey + shadcn
 // ChartConfig resolve directly (NOT a nested byPos object — see design §4.2).
+//
+// When `dateRange` is supplied, every calendar date in [start, end] is
+// zero-filled up front (mirroring buildHourlySeries' 0-23 hour scaffold),
+// so a day with zero net sales across every POS (closed day, pre-integration
+// day, etc.) still emits `{ date, total: 0, ... }` instead of being dropped.
+// `SalesByDayChart` renders this on a categorical `XAxis dataKey="date"`
+// (equal spacing per array entry, not per actual date) — a dropped date
+// silently compresses the gap and mis-represents adjacent bars as
+// consecutive days.
 // ---------------------------------------------------------------------------
 
 export interface DailySeriesRow {
@@ -193,15 +204,48 @@ export interface DailySeriesRow {
   [posSystem: string]: number | string;
 }
 
-export function buildDailySeries(rows: SalesTrendsDayRow[], posSystems: string[]): DailySeriesRow[] {
+/** Inclusive list of `YYYY-MM-DD` dates from `start` to `end`, UTC-safe (no local-timezone drift). */
+function eachDateInRange(start: string, end: string): string[] {
+  const [sy, sm, sd] = start.split('-').map(Number);
+  const [ey, em, ed] = end.split('-').map(Number);
+  const startMs = Date.UTC(sy, sm - 1, sd);
+  const endMs = Date.UTC(ey, em - 1, ed);
+  const dates: string[] = [];
+  for (let ms = startMs; ms <= endMs; ms += 24 * 60 * 60 * 1000) {
+    const d = new Date(ms);
+    const yyyy = d.getUTCFullYear();
+    const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(d.getUTCDate()).padStart(2, '0');
+    dates.push(`${yyyy}-${mm}-${dd}`);
+  }
+  return dates;
+}
+
+export function buildDailySeries(
+  rows: SalesTrendsDayRow[],
+  posSystems: string[],
+  dateRange?: { start: string; end: string },
+): DailySeriesRow[] {
   const byDate = new Map<string, DailySeriesRow>();
-  for (const row of rows) {
-    let entry = byDate.get(row.sale_date);
+
+  function getOrCreate(date: string): DailySeriesRow {
+    let entry = byDate.get(date);
     if (!entry) {
-      entry = { date: row.sale_date, total: 0 };
+      entry = { date, total: 0 };
       for (const pos of posSystems) entry[pos] = 0;
-      byDate.set(row.sale_date, entry);
+      byDate.set(date, entry);
     }
+    return entry;
+  }
+
+  if (dateRange) {
+    for (const date of eachDateInRange(dateRange.start, dateRange.end)) {
+      getOrCreate(date);
+    }
+  }
+
+  for (const row of rows) {
+    const entry = getOrCreate(row.sale_date);
     entry[row.pos_system] = ((entry[row.pos_system] as number) ?? 0) + row.revenue;
   }
   const result = Array.from(byDate.values());
@@ -436,14 +480,15 @@ export interface SalesTrendsInsights {
 }
 
 /**
- * Exported so `@/components/pos-sales/salesTrendsFormat.ts` can re-export the
- * same implementation instead of duplicating it — this is the single source
- * of truth for both `deriveInsights`' copy text and the charts' tick/tooltip
- * formatting.
+ * Re-exported (not redefined) so `@/components/pos-sales/salesTrendsFormat.ts`
+ * can re-export the same implementation instead of duplicating it — this is
+ * the single source of truth for both `deriveInsights`' copy text and the
+ * charts' tick/tooltip formatting. `@/lib/utils`'s `formatCurrency` already
+ * implements the identical `Intl.NumberFormat('en-US', { style: 'currency',
+ * currency: 'USD' })` formatting used project-wide, so it's reused here
+ * instead of being reimplemented.
  */
-export function formatCurrency(n: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
-}
+export { formatCurrency };
 
 export function formatHour(hour: number): string {
   const period = hour < 12 ? 'AM' : 'PM';

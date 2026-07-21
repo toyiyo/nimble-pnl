@@ -2,7 +2,6 @@ import { memo } from 'react';
 
 import { posColor, posLabel } from '@/lib/posColors';
 import type { PosFilter } from '@/lib/salesTrends';
-import type { POSSystemType } from '@/types/pos';
 
 interface PosFilterControlProps {
   posSystems: string[];
@@ -35,10 +34,10 @@ export const PosFilterControl = memo(function PosFilterControl({
         <PillButton key={pos} pressed={value === pos} onClick={() => onChange(pos)}>
           <span
             className="h-2 w-2 rounded-full shrink-0"
-            style={{ backgroundColor: posColor(pos as POSSystemType) }}
+            style={{ backgroundColor: posColor(pos) }}
             aria-hidden="true"
           />
-          {posLabel(pos as POSSystemType)}
+          {posLabel(pos)}
         </PillButton>
       ))}
     </div>

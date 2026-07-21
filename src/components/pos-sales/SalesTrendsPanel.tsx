@@ -60,12 +60,34 @@ export function SalesTrendsPanel({
   const [posFilter, setPosFilter] = useState<PosFilter>('all');
   const contentId = useId();
 
-  const filtered = useMemo(() => (data ? filterByPos(data, posFilter) : null), [data, posFilter]);
+  // Guard against a stale `posFilter`: if the page's date range (or
+  // restaurant) changes and the previously-selected POS system is no longer
+  // present in the new payload, `filterByPos` would otherwise silently
+  // return empty arrays for every chart while `isEmpty` (computed from the
+  // *unfiltered* `data.pos_systems`) stays false — a bogus all-zero
+  // dashboard with no UI path back to "All POS" if only one system remains
+  // (the segmented control hides itself below `pos_systems.length <= 1`).
+  // Derive the effective filter instead of resetting state outright, so a
+  // system that later reappears in range re-applies the user's selection.
+  const effectivePosFilter: PosFilter =
+    !data || posFilter === 'all' || data.pos_systems.includes(posFilter) ? posFilter : 'all';
+
+  const filtered = useMemo(
+    () => (data ? filterByPos(data, effectivePosFilter) : null),
+    [data, effectivePosFilter],
+  );
   const kpis = useMemo(() => (filtered ? computeKpis(filtered) : null), [filtered]);
   const insights = useMemo(() => (filtered ? deriveInsights(filtered) : null), [filtered]);
   const daily = useMemo(
-    () => (filtered ? buildDailySeries(filtered.by_day, filtered.pos_systems) : []),
-    [filtered],
+    () =>
+      filtered
+        ? buildDailySeries(
+            filtered.by_day,
+            filtered.pos_systems,
+            startDate && endDate ? { start: startDate, end: endDate } : undefined,
+          )
+        : [],
+    [filtered, startDate, endDate],
   );
   const hourly = useMemo(
     () => (filtered ? buildHourlySeries(filtered.by_hour, filtered.pos_systems) : []),
@@ -97,7 +119,7 @@ export function SalesTrendsPanel({
           <h2 className="text-[17px] font-semibold text-foreground truncate">Sales Trends</h2>
         </div>
         {data && data.pos_systems.length > 1 && (
-          <PosFilterControl posSystems={data.pos_systems} value={posFilter} onChange={setPosFilter} />
+          <PosFilterControl posSystems={data.pos_systems} value={effectivePosFilter} onChange={setPosFilter} />
         )}
       </div>
 
@@ -148,7 +170,7 @@ export function SalesTrendsPanel({
                   <WeekdayChart data={weekday} ariaLabel={insights.weekday} />
                 </ChartSection>
                 <ChartSection title="Top products">
-                  <TopProductsList products={products} activePos={posFilter} ariaLabel={insights.product} />
+                  <TopProductsList products={products} activePos={effectivePosFilter} ariaLabel={insights.product} />
                 </ChartSection>
               </div>
             </>

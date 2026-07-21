@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { revelFetch, fetchOrderItemsByDate, fetchPaymentsByDate } from "../_shared/revelClient.ts";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
+import { resolveRestaurantTimeZone } from "../_shared/timezone.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -40,7 +41,7 @@ function ordersPath(start: string, end: string, offset: number): string {
  * Mutates conn.sync_cursor / conn.initial_sync_done in memory so a caller can loop.
  * Returns how many orders were processed and whether the backfill is now complete.
  */
-async function processConnectionBatch(service: any, encryption: any, conn: any): Promise<{ processed: number; done: boolean; failed: boolean }> {
+async function processConnectionBatch(service: any, encryption: any, conn: any, timeZone: string): Promise<{ processed: number; done: boolean; failed: boolean }> {
   const today = new Date();
   let start: string;
   let end: string;
@@ -73,7 +74,7 @@ async function processConnectionBatch(service: any, encryption: any, conn: any):
           const oid = String(order.id ?? order.uuid);
           (order as any).OrderItems = itemsByOrder[oid] || [];
           (order as any).Payments = paymentsByOrder[oid] || [];
-          await processOrder(service, order, conn.restaurant_id, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
+          await processOrder(service, order, conn.restaurant_id, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true }, timeZone);
           processed++;
         } catch (e) {
           console.error(`revel-bulk-sync: failed to process order for restaurant ${conn.restaurant_id}:`, e);
@@ -146,6 +147,9 @@ serve(async (req) => {
         return json({ error: 'No Revel credentials for that restaurant' }, 400);
       }
 
+      // Resolved once for the whole targeted run (not once per batch iteration).
+      const timeZone = await resolveRestaurantTimeZone(service, conn.restaurant_id);
+
       // Loop batches until the 90-day backfill is done or we run out of time budget;
       // any remainder is picked up by the next cron run.
       const startedAt = Date.now();
@@ -153,7 +157,7 @@ serve(async (req) => {
       while (Date.now() - startedAt < TARGETED_BUDGET_MS && iterations < 40) {
         iterations++;
         const wasBackfilling = !conn.initial_sync_done;
-        const r = await processConnectionBatch(service, encryption, conn);
+        const r = await processConnectionBatch(service, encryption, conn, timeZone);
         totalProcessed += r.processed;
         if (r.failed) break;
         if (!wasBackfilling) break; // already caught up: one incremental batch is enough
@@ -168,7 +172,9 @@ serve(async (req) => {
 
     for (const conn of connections ?? []) {
       if (!conn.api_key_encrypted || !conn.api_secret_encrypted) continue;
-      const r = await processConnectionBatch(service, encryption, conn);
+      // Resolved once per restaurant per cron run.
+      const timeZone = await resolveRestaurantTimeZone(service, conn.restaurant_id);
+      const r = await processConnectionBatch(service, encryption, conn, timeZone);
       totalProcessed += r.processed;
 
       if (r.failed) {

@@ -142,3 +142,146 @@ $$;
 -- SECURITY DEFINER and carry their own privilege.
 REVOKE EXECUTE ON FUNCTION public.shift_template_assigned_count(uuid, uuid, date, text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.shift_template_assigned_count(uuid, uuid, date, text) FROM authenticated;
+
+-- ============================================================================
+-- Task 8: rewrite get_open_shifts to use shift_template_assigned_count.
+--
+-- Replaces the CROSS JOIN LATERAL call to shift_slot_min_concurrent (the
+-- whole-floor, position-only sweep) with shift_template_assigned_count (the
+-- per-template distinct-employee count). Fixes the exact regression pinned by
+-- shift_fill_by_assignment.test.sql Test 8: two active templates sharing the
+-- same position/time (e.g. an area-specific and an area-agnostic variant) no
+-- longer bleed into each other's open_spots -- an employee FK-assigned to
+-- template A no longer marks template B "filled" when zero employees are
+-- actually assigned to B.
+--
+-- Everything else is unchanged from 20260626120000_open_shift_coverage.sql:
+--   * STABLE SECURITY DEFINER SET search_path = public
+--   * open_shifts_enabled gate (early-return if disabled)
+--   * published_dates future filter (CURRENT_DATE and forward)
+--   * capacity > 0 template guard
+--   * per-(template, date) result rows with the same column names/order
+--   * pending_claims subtraction (conservative: safe direction)
+--   * ORDER BY pub_date, tmpl_start
+--   * GRANT EXECUTE
+--
+-- open_spots = GREATEST(1, capacity) - assigned_count - pending_claims
+-- shift_template_assigned_count returns INT; pending_claims is BIGINT from
+-- COUNT(); the result is cast to BIGINT to match the declared return type.
+--
+-- STABLE is correct: the function is read-only; CURRENT_DATE is stable per
+-- statement. Do not add NOW() calls.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.get_open_shifts(
+    p_restaurant_id UUID,
+    p_week_start DATE,
+    p_week_end DATE
+)
+RETURNS TABLE (
+    template_id UUID,
+    template_name TEXT,
+    shift_date DATE,
+    start_time TIME,
+    end_time TIME,
+    "position" TEXT,
+    area TEXT,
+    "capacity" INT,
+    assigned_count BIGINT,
+    pending_claims BIGINT,
+    open_spots BIGINT
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_tz TEXT;
+BEGIN
+    -- Look up the restaurant timezone.
+    -- Fallback is 'UTC' to match the TypeScript computeOpenShiftCount path.
+    SELECT COALESCE(r.timezone, 'UTC') INTO v_tz
+    FROM public.restaurants r WHERE r.id = p_restaurant_id;
+
+    -- Check if open shifts are enabled for this restaurant
+    IF NOT EXISTS (
+        SELECT 1 FROM public.staffing_settings
+        WHERE restaurant_id = p_restaurant_id
+          AND open_shifts_enabled = true
+    ) THEN
+        RETURN;
+    END IF;
+
+    RETURN QUERY
+    WITH published_dates AS (
+        -- All dates in published schedule weeks, today and forward only
+        SELECT DISTINCT d::date AS pub_date
+        FROM public.schedule_publications sp,
+             generate_series(
+                 GREATEST(sp.week_start_date, p_week_start),
+                 LEAST(sp.week_end_date, p_week_end),
+                 '1 day'::interval
+             ) AS d
+        WHERE sp.restaurant_id = p_restaurant_id
+          AND sp.week_start_date <= p_week_end
+          AND sp.week_end_date >= p_week_start
+          AND d::date >= CURRENT_DATE  -- Only today and future dates
+    ),
+    template_days AS (
+        SELECT
+            st.id          AS tmpl_id,
+            st.name        AS tmpl_name,
+            pd.pub_date,
+            st.start_time  AS tmpl_start,
+            st.end_time    AS tmpl_end,
+            st.position    AS tmpl_position,
+            st.area        AS tmpl_area,
+            st.capacity    AS tmpl_capacity
+        FROM public.shift_templates st
+        CROSS JOIN published_dates pd
+        WHERE st.restaurant_id = p_restaurant_id
+          AND st.is_active = true
+          AND st.capacity > 0          -- include single-person crews
+          AND EXTRACT(DOW FROM pd.pub_date)::int = ANY(st.days)
+    ),
+    -- pending_claims: open_shift_claims awaiting manager approval
+    pending AS (
+        SELECT
+            osc.shift_template_id,
+            osc.shift_date,
+            COUNT(osc.id) AS cnt
+        FROM public.open_shift_claims osc
+        WHERE osc.restaurant_id = p_restaurant_id
+          AND osc.status = 'pending_approval'
+        GROUP BY osc.shift_template_id, osc.shift_date
+    )
+    SELECT
+        td.tmpl_id,
+        td.tmpl_name,
+        td.pub_date,
+        td.tmpl_start,
+        td.tmpl_end,
+        td.tmpl_position,
+        td.tmpl_area,
+        td.tmpl_capacity,
+        ac.assigned::bigint                                  AS assigned_count,
+        COALESCE(p.cnt, 0)                                   AS pending_claims,
+        (GREATEST(1, td.tmpl_capacity) - ac.assigned - COALESCE(p.cnt, 0))::bigint AS open_spots
+    FROM template_days td
+    CROSS JOIN LATERAL (
+        SELECT public.shift_template_assigned_count(
+            p_restaurant_id,
+            td.tmpl_id,
+            td.pub_date,
+            v_tz
+        ) AS assigned
+    ) ac
+    LEFT JOIN pending p ON p.shift_template_id = td.tmpl_id AND p.shift_date = td.pub_date
+    WHERE (GREATEST(1, td.tmpl_capacity) - ac.assigned - COALESCE(p.cnt, 0)) > 0
+    ORDER BY td.pub_date, td.tmpl_start;
+END;
+$$;
+
+-- Re-issue EXECUTE so the privilege is self-contained in this migration file.
+GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authenticated;

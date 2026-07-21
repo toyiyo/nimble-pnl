@@ -13,15 +13,16 @@
 --           AND areaCompatible(template.area, employee.area) ) )
 --
 -- Task 7 covers `shift_template_assigned_count` in isolation (no
--- get_open_shifts/claim_open_shift dependency). Tasks 8-10 rewrite those RPCs
--- on top of this function; Task 12 extends this file with their scenarios.
+-- get_open_shifts/claim_open_shift dependency). Task 8 (test 8 below) pins
+-- get_open_shifts on top of it; Tasks 9-10 rewrite claim_open_shift /
+-- approve_open_shift_claim; Task 12 extends this file with their scenarios.
 --
 -- Lesson 2026-04-21: always use CURRENT_DATE+N for fixture dates.
 -- Lesson 2026-04-22: use ON CONFLICT DO UPDATE for idempotent inserts.
 
 BEGIN;
 
-SELECT plan(7);
+SELECT plan(8);
 
 -- Disable RLS so the function (SECURITY DEFINER) and inserts work in-transaction.
 SET LOCAL role TO postgres;
@@ -29,6 +30,8 @@ ALTER TABLE public.restaurants DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.employees DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shifts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shift_templates DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staffing_settings DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_publications DISABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
@@ -38,24 +41,39 @@ DECLARE
   v_emp2   uuid := '00000000-0000-0000-0000-0000000000d2';
   v_tmplA  uuid := '00000000-0000-0000-0000-0000000000d3'; -- Crew 08:00-16:00, capacity 1
   v_tmplB  uuid := '00000000-0000-0000-0000-0000000000d4'; -- same position/time as A, different id
+  v_uid    uuid := '00000000-0000-0000-0000-0000000000d5'; -- auth.users row for schedule_publications.published_by
   v_d      date := CURRENT_DATE + 3;
   v_dow    int;
 BEGIN
   v_dow := EXTRACT(DOW FROM v_d)::int;
 
   -- Clean up in FK order before inserting.
-  DELETE FROM public.open_shift_claims  WHERE restaurant_id IN (v_rid, v_rid2);
-  DELETE FROM public.shifts             WHERE restaurant_id IN (v_rid, v_rid2);
-  DELETE FROM public.shift_templates    WHERE restaurant_id IN (v_rid, v_rid2);
-  DELETE FROM public.staffing_settings  WHERE restaurant_id IN (v_rid, v_rid2);
-  DELETE FROM public.employees          WHERE restaurant_id IN (v_rid, v_rid2);
-  DELETE FROM public.restaurants        WHERE id IN (v_rid, v_rid2);
+  DELETE FROM public.open_shift_claims      WHERE restaurant_id IN (v_rid, v_rid2);
+  DELETE FROM public.shifts                 WHERE restaurant_id IN (v_rid, v_rid2);
+  DELETE FROM public.shift_templates        WHERE restaurant_id IN (v_rid, v_rid2);
+  DELETE FROM public.schedule_publications  WHERE restaurant_id IN (v_rid, v_rid2);
+  DELETE FROM public.staffing_settings      WHERE restaurant_id IN (v_rid, v_rid2);
+  DELETE FROM public.employees              WHERE restaurant_id IN (v_rid, v_rid2);
+  DELETE FROM public.restaurants            WHERE id IN (v_rid, v_rid2);
 
   INSERT INTO public.restaurants(id, name, timezone)
     VALUES
       (v_rid, 'fill-test', 'America/Chicago'),
       (v_rid2, 'fill-test-other', 'America/Chicago')
     ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
+
+  -- get_open_shifts needs open_shifts_enabled + a published week covering v_d.
+  INSERT INTO auth.users(id, email)
+    VALUES (v_uid, 'shift-fill-by-assignment-test@example.com')
+    ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.staffing_settings(restaurant_id, open_shifts_enabled, require_shift_claim_approval)
+    VALUES (v_rid, true, false)
+    ON CONFLICT (restaurant_id) DO UPDATE
+      SET open_shifts_enabled = true, require_shift_claim_approval = false;
+
+  INSERT INTO public.schedule_publications(restaurant_id, week_start_date, week_end_date, published_by, shift_count)
+    VALUES (v_rid, v_d - 6, v_d, v_uid, 0);
 
   INSERT INTO public.employees(id, restaurant_id, name, position, is_active, status)
     VALUES
@@ -112,6 +130,30 @@ SELECT is(
   ),
   0,
   'a same-position shift FK-assigned to a different template does not count here'
+);
+
+-- ── Test 8: get_open_shifts uses shift_template_assigned_count, not the ─────
+-- whole-floor shift_slot_min_concurrent sweep. At this point emp1 is
+-- FK-assigned to tmplA only (capacity 1) -- tmplB (same position/time,
+-- capacity 1) has zero assignments. Under the old position+time sweep,
+-- tmplB would incorrectly read assigned=1 (emp1's overlapping shift) and be
+-- filtered out of the results entirely; under shift_template_assigned_count,
+-- tmplA is filled (excluded) and tmplB is still open with 1 spot.
+SELECT results_eq(
+  $$
+    SELECT template_id, open_spots
+    FROM public.get_open_shifts(
+      '00000000-0000-0000-0000-0000000000d0'::uuid,
+      CURRENT_DATE,
+      CURRENT_DATE + 7
+    )
+    WHERE shift_date = CURRENT_DATE + 3
+    ORDER BY template_id
+  $$,
+  $$
+    VALUES ('00000000-0000-0000-0000-0000000000d4'::uuid, 1::bigint)
+  $$,
+  'get_open_shifts excludes the FK-filled template A and still offers template B open (per-template assignment, not whole-floor sweep)'
 );
 
 -- ── Test 3: distinct-employee dedupe -- a second shift for the SAME employee ──

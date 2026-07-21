@@ -106,24 +106,26 @@ Bucketing detail:
 - `orders` = `COUNT(DISTINCT COALESCE(us.external_order_id, us.id::text))` — manual /
   CSV rows often lack `external_order_id`; `COUNT(DISTINCT)` skips `NULL`s and would
   read 0 otherwise. _(review, minor.)_
-- **Hour** = `EXTRACT(HOUR FROM (us.sold_at AT TIME ZONE <tz>))` when `sold_at` is
-  present; else a **guarded** parse of the free-text `sale_time`. `sale_time` has no
-  `CHECK` constraint and is populated from CSV imports + multiple adapters, so a bare
-  `split_part(...)::int` on `''`/`'N/A'`/garbage raises `invalid input syntax for
-  type integer` and **aborts the entire RPC** (all four charts). Guard it, mirroring
-  `_shared/sales-hour-utils.ts::hourFromSale`:
+- **Hour.** `unified_sales.sale_time` is a **`TIME` column** (base migration
+  `20250925125415`, never altered — it only *looks* like text because PostgREST
+  serializes `time` to a JSON `"HH:MM:SS"` string, which is why `useHourlySalesPattern`
+  types it `string`). Postgres therefore guarantees every stored value is a valid
+  time-of-day or `NULL`; garbage strings (`''`/`'N/A'`) are rejected at INSERT and can
+  never reach the column, so **no regex/`split_part` guard is needed** — the earlier
+  "guarded free-text parse" premise (from the design-review pass) was wrong about the
+  schema. Bucket directly:
   ```sql
   CASE
     WHEN us.sold_at IS NOT NULL
       THEN EXTRACT(HOUR FROM (us.sold_at AT TIME ZONE COALESCE(p_time_zone,'America/Chicago')))::int
-    WHEN us.sale_time ~ '^\d{1,2}:'
-      THEN LEAST(split_part(us.sale_time, ':', 1)::int, 23)
+    WHEN us.sale_time IS NOT NULL
+      THEN EXTRACT(HOUR FROM us.sale_time)::int
     ELSE NULL
   END
   ```
-  A `NULL` hour is treated as "no time data" → the row is omitted from `by_hour` only
-  (still counted in day/weekday/product). _(Supabase review, major — pinned by pgTAP.)_
-  `day_count` = distinct `sale_date` in that hour bucket (enables avg-per-day if needed).
+  A `NULL` hour (neither `sold_at` nor `sale_time`) is treated as "no time data" → the
+  row is omitted from `by_hour` only (still counted in day/weekday/product). `day_count`
+  = distinct `sale_date` in that hour bucket (enables avg-per-day if needed).
 - **Weekday** = `EXTRACT(DOW FROM us.sale_date)::int` (0=Sun..6=Sat; DATE column, so
   timezone-unambiguous).
 - **Day-of-truth note.** `by_day`/`by_weekday` bucket on `sale_date` (the POS business
@@ -248,7 +250,7 @@ After the migration, regenerate the RPC signature into
 
 | Layer | File | Covers |
 |---|---|---|
-| pgTAP | `supabase/tests/get_sales_trends.sql` | access-denied throws; revenue excludes adjustment_type (tip/tax/void/discount) + child splits; groups by pos_system; hour bucketed by `p_time_zone`; **garbage/blank `sale_time` with `sold_at IS NULL` does NOT crash the RPC** (returns other charts, row dropped from `by_hour`); **day-boundary tz case** (`sale_date` vs `sold_at`-hour); manual row with NULL `external_order_id` still counted in `orders`; weekday via DOW; product quantities; NULL-both-dates → 90-day clamp; empty range → empty arrays |
+| pgTAP | `supabase/tests/get_sales_trends.sql` | access-denied throws; revenue excludes adjustment_type (tip/tax/void/discount) + child splits; groups by pos_system; hour from `sold_at` bucketed by `p_time_zone`; **`sale_time`-only row (`sold_at IS NULL`) buckets via `EXTRACT(HOUR FROM sale_time)`**; **both-NULL time row dropped from `by_hour` only** (other charts intact); **day-boundary tz case** (`sale_date` vs `sold_at`-hour); manual row with NULL `external_order_id` still counted in `orders`; weekday via DOW; product quantities; NULL-both-dates → 90-day clamp; empty range → empty arrays |
 | Unit | `tests/unit/salesTrends.test.ts` | every pure selector: POS re-scope, flat POS-keyed daily/hourly rows, cumulative %, weekday order + `isPeak`, top-product merge/rank + sparkline, KPIs (busiest day, peak hour, split), insights, `hourCoverage`, empty data, `parseSalesTrends` guard rejects malformed |
 | Unit | `tests/unit/posColors.test.ts` | every `POSSystemType` → color + label; unknown → fallback; stability |
 | Component | `tests/unit/SalesTrendsPanel.test.tsx` | mock `useSalesTrends`; three states; POS control appears only when >1 system; toggling filter changes rendered totals; single-POS hides control; **charts are in the DOM when expanded and absent when collapsed** (conditional-render contract); chevron `aria-expanded` toggles |
@@ -284,8 +286,13 @@ minors are folded into §4.1/§4.2/§5 above. Explicitly decided:
   avoid burying the list below a tall chart stack on small screens.
 - **Plain-button segmented control, not `role="tablist"`** (FE minor) — adopted for
   consistency with the sibling pills in `POSSales.tsx` and to avoid a half-APG tablist.
-- **Guarded `sale_time` parse + 90-day NULL-date clamp + `COALESCE(p_time_zone,…)` +
-  `orders` COALESCE** (Supabase majors/minors) — all adopted in the RPC contract.
+- **90-day NULL-date clamp + `COALESCE(p_time_zone,…)` + `orders` COALESCE** (Supabase
+  majors/minors) — all adopted in the RPC contract.
+- **`sale_time` is a `TIME` column, not free text** (discovered at Build) — the
+  design-review's "guard the free-text parse" concern rested on a wrong schema premise.
+  Corrected to a direct `EXTRACT(HOUR FROM sale_time)`; no garbage-string guard needed
+  (the column type rejects invalid values at INSERT), and the pgTAP "garbage sale_time"
+  case is replaced by a schema-realistic both-NULL-time case.
 - **Accepted as-is (documented, not fixed):** `by_day`/`by_weekday` bucket on
   `sale_date` while `by_hour` buckets on `sold_at` — a known day-boundary/DST edge shared
   with existing functions; pinned by a pgTAP boundary test rather than reconciled, since

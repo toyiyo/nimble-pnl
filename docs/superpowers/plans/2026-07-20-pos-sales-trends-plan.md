@@ -8,14 +8,18 @@ Each task is TDD (RED → GREEN → REFACTOR → COMMIT) and 2–5 min. Ordered 
 - **RED:** `supabase/tests/get_sales_trends.sql` (pgTAP). Cases: access-denied throws;
   revenue = `parent_sale_id IS NULL AND adjustment_type IS NULL AND item_type='sale'`
   (fixtures include tip/tax/void/discount/child-split rows that must be excluded);
-  groups by `pos_system`; hour bucketed by `p_time_zone`; **garbage/blank `sale_time`
-  with `sold_at IS NULL` does not error** (row dropped from `by_hour`, other charts
-  intact); manual row with NULL `external_order_id` still counted in `orders`; weekday
-  via DOW; NULL-both-dates → 90-day clamp; empty range → `[]` arrays.
+  groups by `pos_system`; hour from `sold_at` bucketed by `p_time_zone`; **`sale_time`-only
+  row (`sold_at IS NULL`) buckets via `EXTRACT(HOUR FROM sale_time)`**; **both-NULL-time
+  row dropped from `by_hour` only** (other charts intact); manual row with NULL
+  `external_order_id` still counted in `orders`; weekday via DOW; NULL-both-dates →
+  90-day clamp; empty range → `[]` arrays.
+  NOTE: `unified_sales.sale_time` is a **`TIME`** column (not text) — fixtures use real
+  `TIME`/`NULL` values; a "garbage string" case is impossible (rejected at INSERT).
 - **GREEN:** `supabase/migrations/<ts>_get_sales_trends.sql` — `CREATE OR REPLACE
-  FUNCTION` returning JSONB per §4.1, guarded `sale_time` parse, `COALESCE(p_time_zone,
-  'America/Chicago')`, `COUNT(DISTINCT COALESCE(external_order_id, id::text))`, 90-day
-  clamp, `GRANT EXECUTE ... TO authenticated`.
+  FUNCTION` returning JSONB per §4.1; hour via `EXTRACT(HOUR FROM sold_at AT TIME ZONE …)`
+  with `EXTRACT(HOUR FROM sale_time)` fallback (no string parse — column is `TIME`),
+  `COALESCE(p_time_zone, 'America/Chicago')`, `COUNT(DISTINCT COALESCE(external_order_id,
+  id::text))`, 90-day clamp, `GRANT EXECUTE ... TO authenticated`.
 - **COMMIT:** `feat(sql): get_sales_trends RPC — per-POS day/hour/weekday/product buckets`
 - Deps: none.
 

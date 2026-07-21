@@ -66,10 +66,11 @@ File: `supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql`
 Required (else the migration lands red): tests 60/61 call the guarded RPCs as
 `postgres` (auth.uid()=NULL) and would hit the new "not authorized" branch.
 - `60_claim_open_shift_active_guard.test.sql`: give employees d1/d2 an
-  `auth.users` row + `employees.user_id`; wrap each `claim_open_shift`/
-  `get_open_shifts` assertion in `SET LOCAL role='authenticated'` +
-  `request.jwt.claims` for the right employee. Re-enable RLS before switching
-  roles; read-backs stay `postgres`.
+  `auth.users` row + `employees.user_id`; wrap EVERY `claim_open_shift`/
+  `get_open_shifts` assertion (including test 2's `NOT EXISTS`, else it passes
+  vacuously) in `SET LOCAL role='authenticated'` + `request.jwt.claims` for
+  the right employee. Re-enable RLS before switching roles; read-backs stay
+  `postgres`.
 - `61_approve_open_shift_claim_active_guard.test.sql`: add a manager
   (`user_restaurants` role manager) + `auth.users` row; impersonate it for
   the `approve_open_shift_claim` assertions. Keep the is_active semantics the

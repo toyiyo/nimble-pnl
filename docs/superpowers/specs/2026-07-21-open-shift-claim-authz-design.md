@@ -234,6 +234,15 @@ authorized" branch fires **before** the `is_active` branch those files test,
 flipping their assertions red for an unrelated reason (60: tests 1,3,4,5,6,7;
 61: tests 1,2,4).
 
+**Convert EVERY guarded RPC call in both files, not only the enumerated
+red-flipping ones.** In particular `60`'s test 2
+(`get_open_shifts … NOT EXISTS`, "hidden template excludes its slot") still
+*passes* post-guard even left as `postgres` — but only vacuously (an
+unauthenticated caller gets an empty set regardless of `is_active`), so it
+would stop exercising the `is_active` filter it is named for (the same
+vacuous-test trap called out for scenario 9). Move test 2 to the same
+authenticated employee context as the other `get_open_shifts` calls.
+
 Both files must be updated so the RPC-calling statements run as
 `authenticated` with a real caller:
 - Give the fixture employees (60: `d1`/`d2`; 61: the claimers) an

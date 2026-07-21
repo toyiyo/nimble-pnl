@@ -17,6 +17,10 @@ CREATE OR REPLACE FUNCTION public.approve_open_shift_claim(
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
+-- Pin search_path so unqualified built-ins (now(), etc.) can't be resolved through a
+-- caller-controlled path — standard definer-rights hardening; also clears Supabase's
+-- mutable-search-path advisor lint. All table refs below are already public-qualified.
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_tz TEXT;
@@ -102,6 +106,8 @@ CREATE OR REPLACE FUNCTION public.reject_open_shift_claim(
 RETURNS json
 LANGUAGE plpgsql
 SECURITY DEFINER
+-- Pin search_path (see approve_open_shift_claim above) — definer-rights hardening.
+SET search_path = public, pg_temp
 AS $$
 DECLARE
     v_claim RECORD;

@@ -136,5 +136,9 @@ SELECT is(
   'claim succeeds — a non-exact-match, non-FK fill-in does not fill the slot (fill-by-assignment)'
 );
 
+-- Reset the impersonated role before teardown so finish()/ROLLBACK run as
+-- postgres (deterministic; not dependent on `authenticated` having execute on
+-- pgTAP helpers). Copilot review finding.
+RESET ROLE;
 SELECT * FROM finish();
 ROLLBACK;

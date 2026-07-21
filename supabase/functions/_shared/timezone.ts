@@ -81,11 +81,27 @@ export function tzOffsetMs(date: Date, timeZone: string): number {
 export function zonedNaiveToUtc(naive: string, timeZone: string | null | undefined): Date {
   const tz = safeTz(timeZone);
 
-  const m = naive.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/);
+  const m = naive.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return new Date(NaN);
 
   const [, y, mo, d, h, mi, s] = m;
   const guess = Date.UTC(+y, +mo - 1, +d, +h, +mi, +(s ?? 0));
+
+  // Reject calendar values `Date.UTC` silently normalizes (e.g. 2026-02-30 →
+  // 2026-03-02): re-read the UTC components back and require an exact match
+  // before trusting `guess`, so an out-of-range day/month never silently
+  // rolls into a different (wrong) date.
+  const parsedGuess = new Date(guess);
+  if (
+    parsedGuess.getUTCFullYear() !== +y ||
+    parsedGuess.getUTCMonth() !== +mo - 1 ||
+    parsedGuess.getUTCDate() !== +d ||
+    parsedGuess.getUTCHours() !== +h ||
+    parsedGuess.getUTCMinutes() !== +mi ||
+    parsedGuess.getUTCSeconds() !== +(s ?? 0)
+  ) {
+    return new Date(NaN);
+  }
 
   // Two-pass offset probe (standard `fromZonedTime`-style fixup). A single
   // pass reads the zone's offset AT the naive-as-UTC guess, which can land on

@@ -58,7 +58,8 @@ describe('zonedNaiveToUtc', () => {
   });
 
   it('falls back to America/Chicago for a null/undefined timezone, no throw', () => {
-    // @ts-expect-error - exercising runtime guard against non-string input
+    // zonedNaiveToUtc's timeZone param is typed `string | null | undefined`,
+    // so this is exercising a real (non-error) runtime branch, not a type error.
     const result = zonedNaiveToUtc('2026-01-15T07:32:16', null);
     expect(result.toISOString()).toBe('2026-01-15T13:32:16.000Z');
   });
@@ -119,7 +120,9 @@ describe('tzOffsetMs', () => {
 // Stub matching the `.from().select().eq().maybeSingle()` chain the Revel
 // callers use (revel-webhook / revel-sync-data / revel-bulk-sync), so this
 // is testable in Node without a Deno/supabase-js import.
-function makeSupabaseStub(result: { data: { timezone: string | null } | null; error: { message: string } | null }) {
+function makeSupabaseStub(
+  result: { data: { timezone: string | null } | null; error: { message: string } | null },
+): Parameters<typeof resolveRestaurantTimeZone>[0] {
   return {
     from: vi.fn(() => ({
       select: vi.fn(() => ({
@@ -144,14 +147,14 @@ describe('resolveRestaurantTimeZone', () => {
 
   it('returns the restaurant timezone when set and valid', async () => {
     const supabase = makeSupabaseStub({ data: { timezone: 'America/New_York' }, error: null });
-    const tz = await resolveRestaurantTimeZone(supabase as any, 'r1');
+    const tz = await resolveRestaurantTimeZone(supabase, 'r1');
     expect(tz).toBe('America/New_York');
     expect(warnSpy).not.toHaveBeenCalled();
   });
 
   it('falls back to America/Chicago and warns when timezone is null', async () => {
     const supabase = makeSupabaseStub({ data: { timezone: null }, error: null });
-    const tz = await resolveRestaurantTimeZone(supabase as any, 'r1');
+    const tz = await resolveRestaurantTimeZone(supabase, 'r1');
     expect(tz).toBe('America/Chicago');
     expect(warnSpy).toHaveBeenCalledTimes(1);
     expect(warnSpy.mock.calls[0][0]).toContain('r1');
@@ -159,21 +162,21 @@ describe('resolveRestaurantTimeZone', () => {
 
   it('falls back to America/Chicago and warns when the row is missing', async () => {
     const supabase = makeSupabaseStub({ data: null, error: null });
-    const tz = await resolveRestaurantTimeZone(supabase as any, 'r1');
+    const tz = await resolveRestaurantTimeZone(supabase, 'r1');
     expect(tz).toBe('America/Chicago');
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to America/Chicago and warns when the query errors', async () => {
     const supabase = makeSupabaseStub({ data: null, error: { message: 'boom' } });
-    const tz = await resolveRestaurantTimeZone(supabase as any, 'r1');
+    const tz = await resolveRestaurantTimeZone(supabase, 'r1');
     expect(tz).toBe('America/Chicago');
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   it('falls back to America/Chicago and warns when the stored timezone is invalid', async () => {
     const supabase = makeSupabaseStub({ data: { timezone: 'Bogus/Zone' }, error: null });
-    const tz = await resolveRestaurantTimeZone(supabase as any, 'r1');
+    const tz = await resolveRestaurantTimeZone(supabase, 'r1');
     expect(tz).toBe('America/Chicago');
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });

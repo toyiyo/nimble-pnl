@@ -123,7 +123,7 @@ describe('normalizeOrder', () => {
 describe('processOrder', () => {
   it('upserts order/items/payments (with a correct tz-aware sold_at) and calls the breakdown RPC', async () => {
     const fake = makeFakeSupabase();
-    await processOrder(fake as any, SAMPLE, 'rest-1', 'reveltesta', 'est-1', {}, 'America/Chicago');
+    await processOrder(fake, SAMPLE, 'rest-1', 'reveltesta', 'est-1', {}, 'America/Chicago');
     expect(fake._calls.orders).toHaveLength(1);
     expect(fake._calls.orders[0].sold_at).toBe('2026-07-19T12:32:16.000Z');
     expect(fake._calls.orders[0].order_time).toBe('07:32:16');
@@ -135,7 +135,7 @@ describe('processOrder', () => {
 
   it('skips the RPC when skipUnifiedSalesSync is set (bulk mode)', async () => {
     const fake = makeFakeSupabase();
-    await processOrder(fake as any, SAMPLE, 'rest-1', 'reveltesta', 'est-1', { skipUnifiedSalesSync: true });
+    await processOrder(fake, SAMPLE, 'rest-1', 'reveltesta', 'est-1', { skipUnifiedSalesSync: true });
     expect(fake._calls.rpc).toHaveLength(0);
   });
 });

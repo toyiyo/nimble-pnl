@@ -81,8 +81,15 @@ describe('ScheduleMetricsRibbon', () => {
     renderRibbon({
       laborBudgetData: { ...budget, hasBudget: true, tier: 'warning' },
     });
-    expect(screen.getByLabelText(/labor budget warning/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/labor nearing budget warning/i)).toBeInTheDocument();
     expect(screen.queryByLabelText(/high average rate warning/i)).not.toBeInTheDocument();
+  });
+
+  it('uses an over-budget label when the budget tier is danger', () => {
+    renderRibbon({
+      laborBudgetData: { ...budget, hasBudget: true, tier: 'danger' },
+    });
+    expect(screen.getByLabelText(/labor over budget warning/i)).toBeInTheDocument();
   });
 
   it('singularizes the shift count when there is exactly one shift', () => {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Calendar, Users, Clock, DollarSign, AlertTriangle, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react';
 
@@ -33,7 +33,7 @@ interface MetricPillProps {
   value: string;
   unit: string;
   tone?: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }
 
 function MetricPill({ icon: Icon, value, unit, tone = 'text-foreground', children }: MetricPillProps) {
@@ -74,6 +74,18 @@ export function ScheduleMetricsRibbon({
     laborTone = 'text-warning';
   }
 
+  // Warning affordance copy — distinguishes a high hourly rate from an
+  // over-budget (danger) vs nearing-budget (warning) labor total.
+  let warningLabel = 'Labor nearing budget warning';
+  let warningMessage = 'Scheduled labor is nearing its budget. Open Details to review.';
+  if (laborCostSummary.isAverageHigh) {
+    warningLabel = 'High average rate warning';
+    warningMessage = 'Average hourly rate is unusually high. Check for data-entry errors in employee rates.';
+  } else if (laborBudgetData.tier === 'danger') {
+    warningLabel = 'Labor over budget warning';
+    warningMessage = 'Scheduled labor is over budget. Open Details to review.';
+  }
+
   type BreakdownRow = { key: string; label: string; dot: string; value: string };
   const breakdownRows: BreakdownRow[] = [
     {
@@ -102,7 +114,7 @@ export function ScheduleMetricsRibbon({
     },
   ].filter((row): row is BreakdownRow => Boolean(row));
 
-  let metricsContent: React.ReactNode;
+  let metricsContent: ReactNode;
   if (error) {
     metricsContent = (
       <p role="alert" className="text-[13px] text-muted-foreground">
@@ -135,7 +147,7 @@ export function ScheduleMetricsRibbon({
                   <button
                     type="button"
                     className="inline-flex pointer-events-auto"
-                    aria-label={laborCostSummary.isAverageHigh ? 'High average rate warning' : 'Labor budget warning'}
+                    aria-label={warningLabel}
                   >
                     <AlertTriangle
                       className={cn('h-3.5 w-3.5', isDanger ? 'text-destructive' : 'text-warning')}
@@ -144,11 +156,7 @@ export function ScheduleMetricsRibbon({
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
-                  <p className="text-xs">
-                    {laborCostSummary.isAverageHigh
-                      ? 'Average hourly rate is unusually high. Check for data-entry errors in employee rates.'
-                      : 'Scheduled labor is trending against budget. Open Details to review.'}
-                  </p>
+                  <p className="text-xs">{warningMessage}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -186,8 +194,12 @@ export function ScheduleMetricsRibbon({
           </div>
         </div>
 
-        {/* Hero metric pills */}
-        {metricsContent}
+        {/* Hero metric pills — on mobile these drop to their own row (order-last
+            + w-full) so the title and Details toggle stay together on row 1;
+            inline with the title on sm+. */}
+        <div className="order-last w-full sm:order-none sm:w-auto">
+          {metricsContent}
+        </div>
 
         {/* Details disclosure */}
         <Button

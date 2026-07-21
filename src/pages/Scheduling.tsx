@@ -715,6 +715,14 @@ const Scheduling = () => {
     );
   }
 
+  // Only treat a query error as fatal when there is no usable cached data to
+  // show. React Query keeps the last-good data on a failed background refetch
+  // (both hooks use refetchOnWindowFocus), so keying purely off error truthiness
+  // would blank a valid, already-rendered schedule on a transient blip.
+  const hasScheduleError =
+    (Boolean(employeesError) && allEmployees.length === 0) ||
+    (Boolean(shiftsError) && shifts.length === 0);
+
   return (
     <FeatureGate featureKey="scheduling">
     <div className="space-y-6">
@@ -727,7 +735,7 @@ const Scheduling = () => {
         shiftCount={shifts.length}
         scheduledEmployeeCount={scheduledEmployeeCount}
         isLoading={employeesLoading || shiftsLoading}
-        error={Boolean(employeesError || shiftsError)}
+        error={hasScheduleError}
         onEditEmployee={handleEditEmployeeById}
       />
 
@@ -1037,7 +1045,7 @@ const Scheduling = () => {
         </div>
 
         <CardContent className="p-0">
-          {employeesError || shiftsError ? (
+          {hasScheduleError ? (
             <div className="text-center py-16 px-6" role="alert">
               <div className="relative inline-block">
                 <div className="absolute inset-0 bg-destructive/10 rounded-full blur-xl animate-pulse" />

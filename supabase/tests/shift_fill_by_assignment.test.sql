@@ -369,11 +369,34 @@ BEGIN
   );
 END $$;
 
+-- TEMP DIAGNOSTIC (remove after CI investigation): reveal whether the active
+-- approve_open_shift_claim in CI has the FK-stamp INSERT, and the claim's FK.
+SELECT diag('DIAG def_has_fk=' || COALESCE((
+  SELECT (pg_get_functiondef(p.oid) LIKE '%shift_template_id, start_time%')::text
+  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'approve_open_shift_claim'
+), 'NOFUNC')
+  || ' claim_fk=' || COALESCE(
+    (SELECT shift_template_id::text FROM public.open_shift_claims
+     WHERE id = '00000000-0000-0000-0000-0000000000c1'::uuid), 'NULL'));
+
 SELECT is(
   (public.approve_open_shift_claim('00000000-0000-0000-0000-0000000000c1'::uuid) ->> 'success'),
   'true',
   'approve_open_shift_claim succeeds on the manually-inserted pending claim'
 );
+
+SELECT diag('DIAG after_approve resulting_shift_id=' || COALESCE(
+    (SELECT resulting_shift_id::text FROM public.open_shift_claims
+     WHERE id = '00000000-0000-0000-0000-0000000000c1'::uuid), 'NULL')
+  || ' shift_fk=' || COALESCE(
+    (SELECT s.shift_template_id::text
+     FROM public.open_shift_claims c JOIN public.shifts s ON s.id = c.resulting_shift_id
+     WHERE c.id = '00000000-0000-0000-0000-0000000000c1'::uuid), 'NULL')
+  || ' shift_count=' || (
+    SELECT count(*)::text FROM public.open_shift_claims c
+    JOIN public.shifts s ON s.id = c.resulting_shift_id
+    WHERE c.id = '00000000-0000-0000-0000-0000000000c1'::uuid));
 
 SELECT is(
   (

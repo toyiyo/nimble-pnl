@@ -23,7 +23,8 @@ export type NotificationType =
   | 'time_off_approved'
   | 'time_off_rejected'
   | 'pin_reset'
-  | 'availability_reminder';
+  | 'availability_reminder'
+  | 'open_shift_claim_reviewed';
 
 export interface ChannelDecision {
   email: boolean;

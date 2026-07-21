@@ -33,10 +33,10 @@
 --   distinctAssignedCount(template, day) = COUNT(DISTINCT employee_id WHERE belongs)
 --
 -- This migration adds shift_template_assigned_count(p_restaurant_id,
--- p_template_id, p_date, p_tz) implementing that predicate. Tasks 8-10 (a
--- later commit in this same migration file) rewrite get_open_shifts and
--- claim_open_shift to call it instead of shift_slot_min_concurrent, and Task
--- 11 drops shift_slot_min_concurrent once its callers are gone.
+-- p_template_id, p_date, p_tz) implementing that predicate, then (further
+-- down in this same migration file) rewrites get_open_shifts and
+-- claim_open_shift to call it instead of shift_slot_min_concurrent, and
+-- drops shift_slot_min_concurrent once its callers are gone.
 --
 -- STABLE is correct: the function is read-only and CURRENT_DATE is stable
 -- per statement. Do not add NOW() calls.
@@ -54,7 +54,7 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
   WITH tmpl AS (
-    -- Defense in depth (design Minor S2): join on id AND restaurant_id so a
+    -- Defense in depth: join on id AND restaurant_id so a
     -- mismatched (restaurant_id, template_id) pair -- which should never
     -- happen from trusted callers, but could from a malformed/forged call --
     -- resolves to zero rows and the function returns 0 below, rather than
@@ -82,6 +82,16 @@ AS $$
   -- (src/lib/templateAreaMatch.ts) -- so a legacy shift attributes to exactly
   -- one template even when two active templates share the same time/position
   -- and differ only by area (one area-specific, one area-agnostic).
+  --
+  -- Filtered by tmpl.position (in addition to restaurant_id/null-FK/status/
+  -- date): a legacy shift can only ever resolve to p_template_id via the
+  -- LATERAL below if its position already matches p_template_id's own
+  -- position (the LATERAL itself requires st.position = lc.shift_position,
+  -- and legacy_branch keeps only rows where the winning st.id = p_template_id
+  -- -- so a mismatched position can never contribute to the final count).
+  -- Narrowing here is therefore a no-op on the result but lets this query use
+  -- idx_shifts_restaurant_position_status (restaurant_id, position, status)
+  -- instead of scanning every null-FK shift in the restaurant on every call.
   legacy_candidates AS (
     SELECT
       s.employee_id,
@@ -91,9 +101,11 @@ AS $$
       e.area                                  AS employee_area
     FROM public.shifts s
     JOIN public.employees e ON e.id = s.employee_id
+    CROSS JOIN tmpl
     WHERE s.restaurant_id = p_restaurant_id
       AND s.shift_template_id IS NULL
       AND s.status <> 'cancelled'
+      AND s.position = tmpl.position
       AND (s.start_time AT TIME ZONE p_tz)::date = p_date
   ),
   legacy_resolved AS (
@@ -144,7 +156,7 @@ REVOKE EXECUTE ON FUNCTION public.shift_template_assigned_count(uuid, uuid, date
 REVOKE EXECUTE ON FUNCTION public.shift_template_assigned_count(uuid, uuid, date, text) FROM authenticated;
 
 -- ============================================================================
--- Task 8: rewrite get_open_shifts to use shift_template_assigned_count.
+-- Rewrite get_open_shifts to use shift_template_assigned_count.
 --
 -- Replaces the CROSS JOIN LATERAL call to shift_slot_min_concurrent (the
 -- whole-floor, position-only sweep) with shift_template_assigned_count (the
@@ -287,7 +299,7 @@ $$;
 GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authenticated;
 
 -- ============================================================================
--- Task 9: rewrite claim_open_shift to use shift_template_assigned_count and
+-- Rewrite claim_open_shift to use shift_template_assigned_count and
 -- stamp shift_template_id on the resulting shift.
 --
 -- Recreated from 20260705130000_claim_open_shift_active_guard.sql (the latest
@@ -297,7 +309,7 @@ GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authentica
 --      p_restaurant_id, p_template_id, p_shift_date, v_tz) instead of
 --      shift_slot_min_concurrent(p_restaurant_id, v_template.position,
 --      p_shift_date, v_template.start_time, v_template.end_time, v_tz). Fixes
---      the same regression as get_open_shifts (Task 8): the old whole-floor
+--      the same regression as get_open_shifts above: the old whole-floor
 --      position+time sweep let an employee FK-assigned to template A block a
 --      claim on template B when A and B share the same position/time window,
 --      even though B has zero assignees of its own.
@@ -376,8 +388,8 @@ BEGIN
         RETURN json_build_object('success', false, 'error', 'Template does not apply to this day');
     END IF;
 
-    -- Per-template distinct-employee count (Task 9): replaces the whole-floor
-    -- position+time sweep so the guard agrees with get_open_shifts (Task 8)
+    -- Per-template distinct-employee count: replaces the whole-floor
+    -- position+time sweep so the guard agrees with get_open_shifts
     -- on a per-template basis, not a per-position-window basis -- prevents
     -- double-claiming a slot that's actually still open on this template.
     v_assigned_count := public.shift_template_assigned_count(
@@ -431,7 +443,7 @@ BEGIN
     END IF;
 
     IF NOT v_requires_approval THEN
-        -- Instant approval: create the shift (Task 9: stamp shift_template_id
+        -- Instant approval: create the shift (stamp shift_template_id
         -- so the shift is FK-linked to the template it was claimed from) and
         -- the claim.
         INSERT INTO public.shifts (
@@ -484,8 +496,8 @@ $$;
 GRANT EXECUTE ON FUNCTION public.claim_open_shift(UUID, UUID, DATE, UUID) TO authenticated;
 
 -- ============================================================================
--- Task 10: rewrite approve_open_shift_claim to stamp shift_template_id on the
--- shift it creates (design Critical S1).
+-- Rewrite approve_open_shift_claim to stamp shift_template_id on the
+-- shift it creates.
 --
 -- Recreated from 20260707090000_approve_open_shift_claim_active_guard.sql (the
 -- latest prior definition) with exactly one change: the INSERT INTO shifts on
@@ -493,7 +505,7 @@ GRANT EXECUTE ON FUNCTION public.claim_open_shift(UUID, UUID, DATE, UUID) TO aut
 -- v_claim.shift_template_id. Previously it was left NULL, so a shift created
 -- via the approval-required path always fell back to the legacy exact-match
 -- branch of shift_template_assigned_count instead of the direct FK branch --
--- the same bug Task 9 fixed for claim_open_shift's instant-approval path.
+-- the same bug fixed above for claim_open_shift's instant-approval path.
 --
 -- Everything else -- the claim lock/status checks, timezone lookup, template
 -- lookup + is_active guard, shift timestamp construction, and claim update --
@@ -563,7 +575,7 @@ BEGIN
         v_shift_end := v_shift_end + interval '1 day';
     END IF;
 
-    -- Create the shift (Task 10: stamp shift_template_id so the shift is
+    -- Create the shift (stamp shift_template_id so the shift is
     -- FK-linked to the template it was approved from).
     INSERT INTO public.shifts (
         restaurant_id, employee_id, shift_template_id, start_time, end_time,
@@ -592,10 +604,10 @@ END;
 $$;
 
 -- ============================================================================
--- Task 11: drop shift_slot_min_concurrent -- the whole-floor, position-only
+-- Drop shift_slot_min_concurrent -- the whole-floor, position-only
 -- sweep this migration replaces. Its only two callers (get_open_shifts,
--- claim_open_shift) were rewired to shift_template_assigned_count above
--- (Tasks 8-9); approve_open_shift_claim (Task 10) never called it.
+-- claim_open_shift) were rewired to shift_template_assigned_count above;
+-- approve_open_shift_claim never called it.
 --
 -- Re-grepped the tree before dropping: the only remaining references are (a)
 -- historical migration files that defined/called it at their point in time

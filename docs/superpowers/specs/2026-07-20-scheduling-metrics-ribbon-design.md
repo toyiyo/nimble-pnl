@@ -102,6 +102,7 @@ interface ScheduleMetricsRibbonProps {
   shiftCount: number;
   scheduledEmployeeCount: number;
   isLoading: boolean;                            // employeesLoading || shiftsLoading
+  error?: boolean;                               // shifts/employees load error (optional inline affordance)
   onEditEmployee: (employeeId: string) => void;
 }
 ```
@@ -109,32 +110,69 @@ interface ScheduleMetricsRibbonProps {
 Structure:
 
 ```
-<div className="sticky top-14 z-30 -mx-4 px-4 bg-background/95 backdrop-blur
+<div className="sticky top-14 z-30 -mx-4 px-4 bg-background
                 border-b border-border/40">
   <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
-    {/* Title group: icon + "Staff schedule" + "{n} shifts · {n} staff" */}
+    {/* Title group: icon + <h1> "Staff schedule" + "{n} shifts · {n} staff" */}
     {/* Pills group: staff · hours · labor · avg rate  (flex, wraps on mobile) */}
-    {/* Right: Details disclosure toggle button (chevron) */}
+    {/* Right: Details disclosure toggle button (chevron), ml-auto */}
   </div>
   {detailsOpen && (
-    <div className="pb-4 ...">  {/* cost breakdown grid + LaborCostBreakdown + LaborBudgetIndicator */}
+    <div id="ribbon-details" className="group pb-4 ...">
+      {/* cost breakdown grid + LaborCostBreakdown + LaborBudgetIndicator */}
   )}
 </div>
 ```
 
-- **Pills**: `h-7`, `rounded-full`, `bg-muted/40`, `text-[13px]`; number
+- **Opaque background (review — major):** use plain `bg-background`, NOT
+  `bg-background/95 backdrop-blur`. A translucent/blurred surface ghosts
+  the colored today/conflict grid rows scrolling underneath. Opaque is
+  the stated requirement.
+- **Preserve the `<h1>` (review — major, a11y):** the page's only `<h1>`
+  today is "Staff Schedule" (`Scheduling.tsx:749`). The ribbon title must
+  stay a real `<h1>`, just visually small
+  (`text-[14px] font-semibold text-foreground`) — dropping it to a
+  `<div>` regresses the document outline (WCAG 2.4.6 / 1.3.1).
+- **`group` ancestor for the Edit reveal (review — major):**
+  `LaborCostBreakdown` rows use `opacity-0 group-hover:opacity-100` on the
+  Edit icon, needing a Tailwind `group` ancestor. The old `<Card>`
+  provided it; the details-panel wrapper must add `group` (shown above)
+  or the hover-to-edit affordance silently vanishes.
+- **Pills**: `h-7`, `rounded-full`, `bg-muted/30` (codified subtle-surface
+  token, per CLAUDE.md Common Patterns), `text-[13px]`; number
   `font-medium text-foreground`, unit `text-muted-foreground`. A small
   Lucide icon (`Users`, `Clock`, `DollarSign`) leads each.
 - **Warning state** (`laborCostSummary.isAverageHigh` OR budget tier
   `danger`/`warning`): the labor pill switches to `text-destructive` /
   `text-warning` and shows the `AlertTriangle` tooltip currently on the
   card. Uses semantic tokens only (per L70-71) — no raw colors.
-- **Details toggle**: ghost button, `ChevronDown`/`ChevronUp`, label
-  "Details" ↔ "Hide", `aria-expanded`, `aria-controls` the panel id.
+- **Details toggle**: ghost button with `transition-colors`,
+  `ChevronDown`/`ChevronUp`, label "Details" ↔ "Hide", `aria-expanded`,
+  `aria-controls="ribbon-details"`.
 - **Three-state rendering**: `isLoading` → skeleton pills; loaded → pills;
   the labor detail already handles its own empty (`employeeCosts.length`).
+  An optional `error?: boolean` prop renders a minimal inline
+  "Couldn't load metrics" affordance in place of the pills (review —
+  minor; threads `useShifts`/`useEmployees` `error` which `Scheduling.tsx`
+  currently drops).
 - The details panel reuses **existing** `LaborCostBreakdown` and
-  `LaborBudgetIndicator` components unchanged.
+  `LaborBudgetIndicator` components unchanged. Note: `LaborBudgetIndicator`
+  has its own internal collapsed "Budget" toggle — a second click for
+  budget-vs-actual. Pre-existing; accepted as-is.
+
+### Mobile ribbon height (review — major)
+
+The pills row wraps on narrow viewports. To keep the redesign's own goal
+(grid visible on load) intact, the ribbon must stay compact at 375px:
+
+- Title group on line 1 (icon + small `<h1>` + `{n} shifts · {n} staff`
+  secondary text); Details toggle pinned right (`ml-auto`) on line 1.
+- Pills wrap onto at most a second line. Target: **ribbon ≤ ~96px** at
+  375×667 (vs. ~340px for the old header+cards).
+- **Phase 5 acceptance check:** at 375×667, measure the ribbon's rendered
+  height AND confirm `document.documentElement.scrollWidth ===
+  window.innerWidth` (no horizontal overflow, per L982-984), AND the
+  schedule grid's top edge sits at/near the fold.
 
 ### `Scheduling.tsx` change
 

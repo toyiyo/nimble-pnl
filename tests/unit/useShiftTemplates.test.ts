@@ -303,7 +303,7 @@ describe('useShiftTemplates', () => {
   });
 
   describe('deleteTemplate', () => {
-    it('deletes by id, scoped to restaurant_id, and confirms via .select("id")', async () => {
+    it('CRITICAL: deletes by id, scoped to restaurant_id, and confirms via .select("id")', async () => {
       const selectBuilder = makeSelectBuilder([]);
       const { delete: del, eq, select } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
 
@@ -494,7 +494,7 @@ describe('useShiftTemplates', () => {
       expect(invalidateSpy).not.toHaveBeenCalled();
     });
 
-    it('rejects without querying supabase when restaurantId is null (never deletes unscoped)', async () => {
+    it('CRITICAL: rejects without querying supabase when restaurantId is null (never deletes unscoped)', async () => {
       const selectBuilder = makeSelectBuilder([]);
       const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
 

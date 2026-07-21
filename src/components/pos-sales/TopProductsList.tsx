@@ -28,7 +28,8 @@ export const TopProductsList = memo(function TopProductsList({ products, activeP
   const maxRevenue = Math.max(...products.map((p) => p.revenue));
 
   return (
-    <div role="img" aria-label={ariaLabel}>
+    <div>
+      <p className="sr-only">{ariaLabel}</p>
       <ul className="space-y-2.5">
         {products.map((product) => (
           <li key={product.item_name} className="flex items-center gap-3">

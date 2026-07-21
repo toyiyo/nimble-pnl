@@ -123,7 +123,7 @@ export function SalesTrendsPanel({
         )}
       </div>
 
-      {expanded && (
+      {expanded ? (
         <div id={contentId} className="px-4 pb-4 space-y-4">
           {isLoading && (
             <div className="space-y-4">
@@ -176,6 +176,8 @@ export function SalesTrendsPanel({
             </>
           )}
         </div>
+      ) : (
+        <div id={contentId} hidden />
       )}
     </div>
   );

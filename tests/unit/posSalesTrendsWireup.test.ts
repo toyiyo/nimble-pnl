@@ -22,7 +22,9 @@ describe('POSSales — SalesTrendsPanel wired into the manual (View Sales) tab',
   });
 
   it('resolves an initial expanded state from matchMedia(min-width: 1024px)', () => {
-    expect(SOURCE).toMatch(/matchMedia\(['"]\(min-width:\s*1024px\)['"]\)/);
+    expect(SOURCE).toMatch(
+      /const \[trendsPanelDefaultExpanded\][\s\S]*?matchMedia\(['"]\(min-width:\s*1024px\)['"]\)/,
+    );
   });
 
   it('renders <SalesTrendsPanel> inside the manual TabsContent, above the filter bar', () => {
@@ -48,6 +50,6 @@ describe('POSSales — SalesTrendsPanel wired into the manual (View Sales) tab',
     expect(panelProps).toMatch(/startDate=\{startDate\}/);
     expect(panelProps).toMatch(/endDate=\{endDate\}/);
     expect(panelProps).toMatch(/timeZone=\{selectedRestaurant\?\.restaurant\?\.timezone\}/);
-    expect(panelProps).toMatch(/defaultExpanded=/);
+    expect(panelProps).toMatch(/defaultExpanded=\{trendsPanelDefaultExpanded\}/);
   });
 });

@@ -61,8 +61,8 @@ BEGIN
     v_start_date := CURRENT_DATE - 90;
     v_end_date := CURRENT_DATE;
   ELSE
-    v_start_date := p_start_date;
-    v_end_date := p_end_date;
+    v_start_date := COALESCE(p_start_date, CURRENT_DATE - 90);
+    v_end_date := COALESCE(p_end_date, CURRENT_DATE);
   END IF;
 
   WITH revenue_rows AS (

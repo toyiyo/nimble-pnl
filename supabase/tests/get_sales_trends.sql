@@ -17,7 +17,7 @@
 -- via the behavior it actually protects: COUNT(DISTINCT external_order_id) collapsing
 -- a multi-line-item order (R1+R2 share external_order_id 't-1') into a single order.
 BEGIN;
-SELECT plan(21);
+SELECT plan(23);
 
 SET LOCAL role TO postgres;
 SET LOCAL "request.jwt.claims" TO '{"sub": "00000000-0000-0000-0000-000000000001"}';
@@ -329,6 +329,38 @@ SELECT is(
    WHERE e->>'sale_date' = (CURRENT_DATE - 5)::text AND e->>'pos_system' = 'toast'),
   66.00::numeric,
   'the in-window (5-day-old) row is present with its full revenue'
+);
+
+-- ============================================================
+-- Tests 22-23: partial-NULL date pairs still clamp the open side
+-- (regression: previously only the both-NULL case was clamped, leaving
+-- a single NULL endpoint unbounded and able to scan full history)
+-- ============================================================
+
+-- Test 22: p_start_date NULL, p_end_date supplied -> start clamps to
+-- CURRENT_DATE-90, so the 200-day-old row is still excluded
+SELECT is(
+  (SELECT COUNT(*)::int
+   FROM jsonb_array_elements(
+     get_sales_trends('00000000-0000-0000-0000-000000000099'::uuid, NULL, CURRENT_DATE)->'by_day'
+   ) e
+   WHERE e->>'pos_system' = 'toast'
+     AND (e->>'sale_date')::date IN ((CURRENT_DATE - 200), (CURRENT_DATE - 5))),
+  1,
+  'NULL start_date with supplied end_date still clamps to a 90-day start'
+);
+
+-- Test 23: p_end_date NULL, p_start_date supplied before both fixtures ->
+-- end clamps to CURRENT_DATE, so both the 200-day-old and 5-day-old rows qualify
+SELECT is(
+  (SELECT COUNT(*)::int
+   FROM jsonb_array_elements(
+     get_sales_trends('00000000-0000-0000-0000-000000000099'::uuid, (CURRENT_DATE - 200), NULL)->'by_day'
+   ) e
+   WHERE e->>'pos_system' = 'toast'
+     AND (e->>'sale_date')::date IN ((CURRENT_DATE - 200), (CURRENT_DATE - 5))),
+  2,
+  'NULL end_date with supplied start_date still clamps to CURRENT_DATE, including both rows'
 );
 
 SELECT * FROM finish();

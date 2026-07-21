@@ -135,9 +135,12 @@ export default function POSSales() {
   // Sales trends panel: expanded by default on lg+ screens, collapsed on
   // mobile — an expanded stack of charts would push the sales list far
   // below the fold on small viewports (design doc §4.2).
-  const [trendsPanelDefaultExpanded] = useState(
-    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
-  );
+  const [trendsPanelDefaultExpanded] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia("(min-width: 1024px)").matches;
+  });
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
   const [groupedSortBy, setGroupedSortBy] = useState<'revenue' | 'quantity' | 'sales' | 'name'>('revenue');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');

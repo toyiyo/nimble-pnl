@@ -98,4 +98,17 @@ describe('ScheduleMetricsRibbon', () => {
     expect(screen.getByText(/couldn't load metrics/i)).toBeInTheDocument();
     expect(screen.queryByText('$3,258')).not.toBeInTheDocument();
   });
+
+  // Regression guard (CI E2E, PR #630): the sticky ribbon pins over the tabs
+  // that scroll beneath it. Without pointer-events-none on the wrapper, its
+  // opaque box intercepts clicks meant for those tabs (Playwright reported
+  // "subtree intercepts pointer events"). The interactive Details button must
+  // re-enable pointer events so it stays clickable.
+  it('keeps the sticky wrapper click-through while its controls stay interactive', () => {
+    renderRibbon();
+    const wrapper = screen.getByRole('heading', { level: 1, name: /staff schedule/i })
+      .closest('.sticky');
+    expect(wrapper).toHaveClass('pointer-events-none');
+    expect(screen.getByRole('button', { name: /details/i })).toHaveClass('pointer-events-auto');
+  });
 });

@@ -122,6 +122,32 @@ describe('ScheduleMetricsRibbon', () => {
   // opaque box intercepts clicks meant for those tabs (Playwright reported
   // "subtree intercepts pointer events"). The interactive Details button must
   // re-enable pointer events so it stays clickable.
+  // Regression (Copilot, PR #630): the toggle label/chevron, aria-expanded, and
+  // the panel must all agree. If loading/error begins while Details was open
+  // (e.g. a restaurant switch), the button must fall back to the collapsed look.
+  it('collapses the toggle look when loading begins while details were open', () => {
+    const props = {
+      activeEmployeeCount: 24,
+      totalScheduledHours: 325.8,
+      laborCostBreakdown: breakdown,
+      laborCostSummary: summary,
+      laborBudgetData: budget,
+      shiftCount: 57,
+      scheduledEmployeeCount: 17,
+      onEditEmployee: vi.fn(),
+    };
+    const { rerender } = render(
+      <MemoryRouter><ScheduleMetricsRibbon {...props} isLoading={false} /></MemoryRouter>
+    );
+    fireEvent.click(screen.getByRole('button', { name: /details/i }));
+    expect(screen.getByRole('button', { name: /hide/i })).toHaveAttribute('aria-expanded', 'true');
+
+    rerender(<MemoryRouter><ScheduleMetricsRibbon {...props} isLoading={true} /></MemoryRouter>);
+    const toggle = screen.getByRole('button', { name: /details/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('Top Earners')).not.toBeInTheDocument();
+  });
+
   it('keeps the sticky wrapper click-through while its controls stay interactive', () => {
     renderRibbon();
     const wrapper = screen.getByRole('heading', { level: 1, name: /staff schedule/i })

@@ -62,6 +62,10 @@ export function ScheduleMetricsRibbon({
   onEditEmployee,
 }: ScheduleMetricsRibbonProps) {
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // The panel is only actually shown when there's data to show. Derive one
+  // flag so the button label/chevron, aria-expanded, and the panel never
+  // disagree (e.g. if loading/error kicks in while the user had it open).
+  const detailsExpanded = detailsOpen && !isLoading && !error;
 
   const isDanger =
     laborCostSummary.isAverageHigh ||
@@ -212,17 +216,17 @@ export function ScheduleMetricsRibbon({
           size="sm"
           disabled={isLoading || error}
           onClick={() => setDetailsOpen((open) => !open)}
-          aria-expanded={detailsOpen && !isLoading && !error}
+          aria-expanded={detailsExpanded}
           aria-controls="ribbon-details"
           className="ml-auto h-8 px-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors pointer-events-auto"
         >
-          {detailsOpen ? 'Hide' : 'Details'}
-          {detailsOpen ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
+          {detailsExpanded ? 'Hide' : 'Details'}
+          {detailsExpanded ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
         </Button>
       </div>
 
       {/* Collapsible detail — `group` enables LaborCostBreakdown's hover-to-edit */}
-      {detailsOpen && !isLoading && !error && (
+      {detailsExpanded && (
         <div id="ribbon-details" className="group grid gap-3 pb-4 pt-1 sm:grid-cols-2 pointer-events-auto">
           <div className="rounded-xl border border-border/40 bg-muted/30 p-3 space-y-2">
             {breakdownRows.map((row) => (

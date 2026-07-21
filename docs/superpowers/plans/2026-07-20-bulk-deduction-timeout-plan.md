@@ -2,7 +2,7 @@
 
 **Design:** docs/superpowers/specs/2026-07-20-bulk-deduction-timeout-design.md
 **Branch:** `fix/bulk-deduction-timeout`
-**Migration file:** `supabase/migrations/20260720120000_bulk_deduction_keyset_batching.sql` (prefix verified unique vs `20260720000000`)
+**Migration file:** `supabase/migrations/20260720120001_bulk_deduction_keyset_batching.sql` (prefix verified unique vs `20260720000000`)
 
 ## Task breakdown (TDD, bite-sized)
 

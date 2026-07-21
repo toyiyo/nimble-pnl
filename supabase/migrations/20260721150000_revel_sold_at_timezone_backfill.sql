@@ -288,7 +288,18 @@ GRANT EXECUTE ON FUNCTION public.revel_backfill_invalid_tz_restaurants() TO serv
 --    Bounded per-restaurant DO loop (not one unbounded UPDATE), per design
 --    §5b risk mitigation. Emits a pre/post pending-row report plus an
 --    invalid/null-tz offender report via RAISE NOTICE/WARNING.
+--
+--    A DO block is a SINGLE statement, so the whole historical backfill runs
+--    under one statement_timeout. On the first prod deploy (1345+ orders across
+--    all restaurants + per-date re-aggregation) that exceeded the default
+--    timeout and the migration was cancelled (SQLSTATE 57014) and rolled back —
+--    halting the entire migration pipeline. Disable the per-statement timeout
+--    for this one-time data backfill (standard pattern for heavy data
+--    migrations), then restore it. sold_at is not an input to any daily
+--    aggregate, so this only affects intra-day hour attribution, not totals.
 -- ============================================================
+
+SET statement_timeout = 0;
 
 DO $$
 DECLARE
@@ -334,3 +345,6 @@ BEGIN
       v_offender.restaurant_id, v_offender.restaurant_name, v_offender.timezone;
   END LOOP;
 END $$;
+
+-- Restore the default per-statement timeout for any migrations that follow.
+RESET statement_timeout;

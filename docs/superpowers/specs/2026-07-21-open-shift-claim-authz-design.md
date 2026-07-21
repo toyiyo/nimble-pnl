@@ -69,12 +69,23 @@ bypasses RLS, `auth.uid()` is used only to *record* the actor, never to
 
 ## Fix
 
-New migration `20260721000000_open_shift_claim_authz_guard.sql`
+New migration `20260721140000_open_shift_claim_authz_guard.sql`
 `CREATE OR REPLACE`s all four functions from their **current main
 definitions verbatim**, adding an authorization guard at the top of each.
-The approve function is re-created from `20260707090000` (preserving its
-`is_active` guard and timezone handling); the other three from
-`20260412145842`.
+
+**Rebased onto the latest bodies (post-merge with `main`).** While this work
+was in flight, three PRs landed on `main` that rewrote these same functions —
+#628 shift-fill-by-assignment (`20260720120000`: per-template
+`shift_template_assigned_count` + `shift_template_id` FK stamp on the claimed
+shift), #627 open-shift-claim-notify (`20260721000000`: `reviewer_note`
+persistence), and the collision follow-up `20260721130000` (FK stamp on
+approve). The guard is therefore layered on the **newest** body of each
+function (get_open_shifts/claim_open_shift ← `20260720120000`; reject ←
+`20260721000000`; approve ← `20260721130000`), and this migration is stamped
+`20260721140000` so it sorts last and does not revert that work. (The original
+draft targeted `20260707090000`/`20260412145842` bodies and a `20260721000000`
+timestamp — the latter collided with #627's migration; both were corrected in
+the merge.)
 
 ### 1. `approve_open_shift_claim` (and `reject_open_shift_claim`)
 
@@ -264,7 +275,7 @@ This is required scope for the migration task, not optional.
 
 ## Files
 
-- `supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql` (new)
+- `supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql` (new)
 - `supabase/tests/62_open_shift_claim_authz.test.sql` (new)
 - `supabase/tests/60_claim_open_shift_active_guard.test.sql` (update: auth impersonation)
 - `supabase/tests/61_approve_open_shift_claim_active_guard.test.sql` (update: auth impersonation)

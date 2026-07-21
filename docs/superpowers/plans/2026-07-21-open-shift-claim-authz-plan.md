@@ -52,7 +52,7 @@ File: `supabase/tests/62_open_shift_claim_authz.test.sql`
 - Commit.
 
 ## Task 2 — Migration (GREEN)
-File: `supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql`
+File: `supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql`
 - `CREATE OR REPLACE` all four functions from their current-main bodies,
   each with `SET search_path = public` added and the authz guard:
   - `get_open_shifts`: guard = user_is_internal_team OR employee-linked →

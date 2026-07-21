@@ -48,6 +48,7 @@ import { LaborEfficiencyPanel } from './LaborEfficiencyPanel';
 import { TemplateGrid } from './TemplateGrid';
 import { EmployeeSidebar } from './EmployeeSidebar';
 import { TemplateFormDialog } from './TemplateFormDialog';
+import { DeleteTemplateDialog } from '../DeleteTemplateDialog';
 import { DragOverlayChip } from './DragOverlayChip';
 import { PlannerExportDialog } from './PlannerExportDialog';
 import { AvailabilityConflictDialog } from './AvailabilityConflictDialog';
@@ -144,7 +145,10 @@ export function ShiftPlannerTab({
     createTemplate,
     updateTemplate,
     hideTemplate,
+    isHiding,
     restoreTemplate,
+    deleteTemplate,
+    isDeleting,
   } = useShiftTemplates(restaurantId, { status: 'all' });
 
   // View filter — never persisted (CLAUDE.md: no manual caching). Determines whether
@@ -194,6 +198,9 @@ export function ShiftPlannerTab({
   // Dialog state
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<ShiftTemplate | undefined>();
+  // Impact-Aware Deletion (T5): single lifted DeleteTemplateDialog instance
+  // (CLAUDE.md Single Dialog Pattern) keyed on the template pending hard-delete.
+  const [templateToDelete, setTemplateToDelete] = useState<ShiftTemplate | null>(null);
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [generationResult, setGenerationResult] = useState<GenerateScheduleResponse | null>(null);
@@ -569,12 +576,47 @@ export function ShiftPlannerTab({
     const keptShiftCount = byDay
       ? Array.from(byDay.values()).reduce((sum, dayShifts) => sum + dayShifts.length, 0)
       : 0;
-    hideTemplate({ id: template.id, name: template.name, keptShiftCount });
+    return hideTemplate({ id: template.id, name: template.name, keptShiftCount });
   }, [templateGridData, hideTemplate]);
 
   const handleRestoreTemplate = useCallback((templateId: string) => {
     restoreTemplate(templateId);
   }, [restoreTemplate]);
+
+  // Delete wiring (T5) — a mistakenly-hidden template must still be reachable,
+  // so this opens from both the active and hidden dropdown branches.
+  const handleDeleteTemplate = useCallback((template: ShiftTemplate) => {
+    setTemplateToDelete(template);
+  }, []);
+
+  const handleDeleteDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) setTemplateToDelete(null);
+  }, []);
+
+  // Design doc "Friction & gating rules": dialog closes on success; the
+  // toast (rendered by the mutation's onSuccess/onError) carries confirmation.
+  // On error, leave the dialog open so the user can retry or Cancel/Hide instead.
+  const handleConfirmDeleteTemplate = useCallback((input: {
+    id: string;
+    name: string;
+    pendingClaimsCount: number;
+  }) => {
+    deleteTemplate(input)
+      .then(() => setTemplateToDelete(null))
+      .catch(() => {
+        // Error toast already shown by the mutation's onError.
+      });
+  }, [deleteTemplate]);
+
+  // The dialog's "Hide template" button is the reversible alternative — reuse
+  // the existing handleHideTemplate flow (real keptShiftCount) verbatim.
+  const handleHideFromDeleteDialog = useCallback((template: ShiftTemplate) => {
+    handleHideTemplate(template)
+      .then(() => setTemplateToDelete(null))
+      .catch(() => {
+        // Error toast already shown by the mutation's onError.
+      });
+  }, [handleHideTemplate]);
 
   const handleTemplateSubmit = useCallback(async (data: {
     name: string;
@@ -843,6 +885,7 @@ export function ShiftPlannerTab({
                   onEditTemplate={handleEditTemplate}
                   onHideTemplate={handleHideTemplate}
                   onRestoreTemplate={handleRestoreTemplate}
+                  onDeleteTemplate={handleDeleteTemplate}
                   onAddTemplate={handleAddTemplate}
                   highlightCellId={highlightCellId}
                   onMobileCellTap={isMobile ? handleMobileCellTap : undefined}
@@ -1034,6 +1077,20 @@ export function ShiftPlannerTab({
         slotArea={coverageDetailTemplate?.area ?? null}
         anchorRect={coverageDetail?.anchorRect}
         onClose={handleCoverageClose}
+      />
+
+      {/* Delete template — ONE lifted instance (Single Dialog Pattern). Owns its
+          own impact read keyed on templateToDelete; Hide inside the dialog reuses
+          the existing handleHideTemplate flow. */}
+      <DeleteTemplateDialog
+        open={templateToDelete !== null}
+        onOpenChange={handleDeleteDialogOpenChange}
+        template={templateToDelete}
+        restaurantId={restaurantId}
+        onHide={handleHideFromDeleteDialog}
+        onConfirmDelete={handleConfirmDeleteTemplate}
+        isHiding={isHiding}
+        isDeleting={isDeleting}
       />
 
     </div>

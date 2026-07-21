@@ -100,6 +100,19 @@ function makeUpdateBuilder() {
   return { update, eq };
 }
 
+/**
+ * Builds a chainable mock for
+ * `.delete().eq('id', id).eq('restaurant_id', restaurantId).select('id')`,
+ * resolving with the given `{ data, error }` result at the terminal `.select()`.
+ */
+function makeDeleteBuilder(result: { data: unknown[] | null; error: Error | null }) {
+  const select = vi.fn().mockResolvedValue(result);
+  const secondEq = vi.fn().mockReturnValue({ select });
+  const firstEq = vi.fn().mockReturnValue({ eq: secondEq });
+  const del = vi.fn().mockReturnValue({ eq: firstEq });
+  return { delete: del, eq: firstEq, select };
+}
+
 describe('useShiftTemplates', () => {
   let queryClient: QueryClient;
 
@@ -286,6 +299,296 @@ describe('useShiftTemplates', () => {
       expect(toastSpy).toHaveBeenCalledWith(
         expect.objectContaining({ description: 'Assigned shifts are kept' }),
       );
+    });
+  });
+
+  describe('deleteTemplate', () => {
+    it('CRITICAL: deletes by id, scoped to restaurant_id, and confirms via .select("id")', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del, eq, select } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 });
+      });
+
+      expect(del).toHaveBeenCalled();
+      expect(eq).toHaveBeenCalledWith('id', 't1');
+      const chain = eq.mock.results[0].value;
+      expect(chain.eq).toHaveBeenCalledWith('restaurant_id', 'r1');
+      const secondChain = chain.eq.mock.results[0].value;
+      expect(secondChain.select).toHaveBeenCalledWith('id');
+      expect(select).toHaveBeenCalledWith('id');
+    });
+
+    it('invalidates the restaurant-scoped prefix on a real (>=1 row) delete', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 });
+      });
+
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['shift_templates', 'r1'],
+      });
+    });
+
+    it('shows a normal (non-destructive) toast with the template name on success', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.deleteTemplate({ id: 't1', name: 'Closing Server', pendingClaimsCount: 0 });
+      });
+
+      expect(toastSpy).toHaveBeenCalledTimes(1);
+      const call = toastSpy.mock.calls[0][0];
+      expect(call.title).toBe('"Closing Server" deleted');
+      expect(call.variant).not.toBe('destructive');
+      expect(call.action).toBeUndefined();
+    });
+
+    it('describes 1 withdrawn pending claim in the singular', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 1 });
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '1 pending claim withdrawn' }),
+      );
+    });
+
+    it('describes 2+ withdrawn pending claims in the plural', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.deleteTemplate({ id: 't1', name: 'Closing Server', pendingClaimsCount: 2 });
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ description: '2 pending claims withdrawn' }),
+      );
+    });
+
+    it('omits the claims description when no pending claims were withdrawn', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 });
+      });
+
+      const call = toastSpy.mock.calls[0][0];
+      expect(call.description).toBeUndefined();
+    });
+
+    it('shows an info toast ("already removed") on a 0-row result and does NOT invalidate', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 3 });
+      });
+
+      expect(toastSpy).toHaveBeenCalledTimes(1);
+      const call = toastSpy.mock.calls[0][0];
+      expect(call.title).toBe('Template already removed');
+      expect(call.variant).not.toBe('destructive');
+      expect(invalidateSpy).not.toHaveBeenCalled();
+    });
+
+    it('shows a destructive error toast and does NOT invalidate on failure', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({
+        data: null,
+        error: new Error('network down'),
+      });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await expect(
+          result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 }),
+        ).rejects.toThrow('network down');
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'network down',
+          variant: 'destructive',
+        }),
+      );
+      expect(invalidateSpy).not.toHaveBeenCalled();
+    });
+
+    it('CRITICAL: rejects without querying supabase when restaurantId is null (never deletes unscoped)', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      const { delete: del } = makeDeleteBuilder({ data: [{ id: 't1' }], error: null });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates(null), { wrapper });
+
+      await act(async () => {
+        await expect(
+          result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 }),
+        ).rejects.toThrow('Restaurant context is required to delete a template');
+      });
+
+      expect(del).not.toHaveBeenCalled();
+    });
+  });
+
+  // Control-group gating (design doc "Friction & gating rules"): the delete
+  // dialog disables Delete+Hide on `isDeleting || isHiding`, so the hook must
+  // expose the underlying mutation pending state, not just the callbacks.
+  describe('isDeleting / isHiding (control-group gating flags)', () => {
+    it('isDeleting is false at rest, true while the delete mutation is in flight, false after it settles', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      let resolveSelect!: (value: { data: unknown[]; error: null }) => void;
+      const pendingSelect = new Promise<{ data: unknown[]; error: null }>((resolve) => {
+        resolveSelect = resolve;
+      });
+      const secondEq = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue(pendingSelect) });
+      const firstEq = vi.fn().mockReturnValue({ eq: secondEq });
+      const del = vi.fn().mockReturnValue({ eq: firstEq });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        delete: del,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.isDeleting).toBe(false);
+
+      let deletePromise!: Promise<unknown>;
+      act(() => {
+        deletePromise = result.current.deleteTemplate({ id: 't1', name: 'Morning', pendingClaimsCount: 0 });
+      });
+
+      await waitFor(() => expect(result.current.isDeleting).toBe(true));
+
+      await act(async () => {
+        resolveSelect({ data: [{ id: 't1' }], error: null });
+        await deletePromise;
+      });
+
+      await waitFor(() => expect(result.current.isDeleting).toBe(false));
+    });
+
+    it('isHiding is false at rest, true while the hide mutation is in flight, false after it settles', async () => {
+      const selectBuilder = makeSelectBuilder([]);
+      let resolveUpdate!: (value: { error: null }) => void;
+      const pendingUpdate = new Promise<{ error: null }>((resolve) => {
+        resolveUpdate = resolve;
+      });
+      // `.update(...).eq('id', id).eq('restaurant_id', id)` — the second `.eq()`
+      // call must itself return the deferred, awaitable promise.
+      const secondEq = vi.fn().mockReturnValue(pendingUpdate);
+      const firstEq = vi.fn().mockReturnValue({ eq: secondEq });
+      const update = vi.fn().mockReturnValue({ eq: firstEq });
+
+      vi.mocked(supabase.from).mockReturnValue({
+        ...selectBuilder,
+        update,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      expect(result.current.isHiding).toBe(false);
+
+      let hidePromise!: Promise<unknown>;
+      act(() => {
+        hidePromise = result.current.hideTemplate({ id: 't1', name: 'Morning', keptShiftCount: 0 });
+      });
+
+      await waitFor(() => expect(result.current.isHiding).toBe(true));
+
+      await act(async () => {
+        resolveUpdate({ error: null });
+        await hidePromise;
+      });
+
+      await waitFor(() => expect(result.current.isHiding).toBe(false));
     });
   });
 

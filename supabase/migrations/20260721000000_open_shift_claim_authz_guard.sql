@@ -360,23 +360,33 @@ $$;
 
 -- ============================================================================
 -- approve_open_shift_claim guard: manager-audience check (design doc section
--- "1. approve_open_shift_claim (and reject_open_shift_claim)"). After locking
--- the claim, gate on the manager audience for the claim's restaurant —
--- owner/manager/operations_manager, exact parity with the deployed
--- managers_review_claims UPDATE / managers_view_restaurant_claims SELECT RLS
--- policies (both widened to include operations_manager by
--- 20260702170000_add_operations_manager_role.sql). The not-found and
--- not-authorized cases are collapsed into a single generic message so a
--- cross-tenant caller cannot use the error shape to probe whether a claim id
--- exists (no enumeration signal). `IF a OR b` short-circuits in plpgsql, so
--- user_has_role is not evaluated when the claim is missing.
+-- "1. approve_open_shift_claim (and reject_open_shift_claim)"). Gate on the
+-- manager audience for the claim's restaurant — owner/manager/
+-- operations_manager, exact parity with the deployed managers_review_claims
+-- UPDATE / managers_view_restaurant_claims SELECT RLS policies (both widened
+-- to include operations_manager by 20260702170000_add_operations_manager_role.sql).
+-- The not-found and not-authorized cases are collapsed into a single generic
+-- message so a cross-tenant caller cannot use the error shape to probe
+-- whether a claim id exists (no enumeration signal).
+--
+-- Phase 7 fold (Codex + security review, both independently confirmed): the
+-- authorization predicate is folded directly into the WHERE clause of the
+-- locking SELECT (rather than checked in a separate IF after a bare
+-- `WHERE id = p_claim_id FOR UPDATE`) so an unauthorized/cross-tenant caller
+-- never acquires the row lock in the first place — a row that fails the
+-- role check simply never matches the WHERE clause, so FOR UPDATE has
+-- nothing to lock. Previously the lock was acquired before the guard ran,
+-- letting an unauthorized caller hold the lock (inside a held transaction)
+-- long enough to block a legitimate manager's concurrent approve/reject of
+-- the same claim (lock-contention/DoS-lite; not a data-exposure bug, since
+-- the guard was never actually bypassed). Behavior for legitimate callers,
+-- the error message, and the audience array are all unchanged — this is a
+-- pure internal reordering, not a change to the authorization model.
 --
 -- Body re-created verbatim from
 -- 20260707090000_approve_open_shift_claim_active_guard.sql (the current-main
 -- definition, which already carries the is_active guard on the template and
--- the restaurant-timezone shift-timestamp handling). The new authz guard
--- replaces the original bare "IF NOT FOUND" branch immediately after the
--- claim is locked, before any other state is read.
+-- the restaurant-timezone shift-timestamp handling).
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.approve_open_shift_claim(
@@ -396,19 +406,20 @@ DECLARE
     v_shift_start TIMESTAMPTZ;
     v_shift_end TIMESTAMPTZ;
 BEGIN
-    -- Lock the claim
+    -- Lock the claim — the authorization predicate is folded into the WHERE
+    -- clause so an unauthorized/cross-tenant caller's row never matches and
+    -- FOR UPDATE never acquires a lock on it (see file-header note above).
+    -- The claim must exist AND the caller must be a manager/owner/
+    -- operations_manager of the claim's restaurant. NOT FOUND collapses both
+    -- "no such claim" and "not your restaurant" into one generic message so
+    -- a cross-tenant caller can't distinguish the two (no enumeration signal).
     SELECT * INTO v_claim
     FROM public.open_shift_claims
     WHERE id = p_claim_id
+      AND public.user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager'])
     FOR UPDATE;
 
-    -- Authorization guard: the claim must exist AND the caller must be a
-    -- manager/owner/operations_manager of the claim's restaurant. Collapsed
-    -- into one generic message so a cross-tenant caller can't distinguish
-    -- "no such claim" from "not your restaurant" (no enumeration signal).
-    IF NOT FOUND
-       OR NOT public.user_has_role(v_claim.restaurant_id,
-                                    ARRAY['owner', 'manager', 'operations_manager']) THEN
+    IF NOT FOUND THEN
         RETURN json_build_object('success', false, 'error', 'Claim not found or not authorized');
     END IF;
 
@@ -478,24 +489,27 @@ $$;
 -- reject_open_shift_claim guard: same not-found/not-authorized guard shape as
 -- approve_open_shift_claim (design doc section "1. approve_open_shift_claim
 -- (and reject_open_shift_claim)" — the design explicitly covers both RPCs
--- under one heading with one guard). After locking the claim, gate on the
--- manager audience for the claim's restaurant — owner/manager/
--- operations_manager, exact parity with the deployed managers_review_claims
--- UPDATE / managers_view_restaurant_claims SELECT RLS policies. The
--- not-found and not-authorized cases are collapsed into a single generic
--- message so a cross-tenant caller cannot use the error shape to probe
--- whether a claim id exists (no enumeration signal). `IF a OR b`
--- short-circuits in plpgsql, so user_has_role is not evaluated when the
--- claim is missing.
+-- under one heading with one guard). Gate on the manager audience for the
+-- claim's restaurant — owner/manager/operations_manager, exact parity with
+-- the deployed managers_review_claims UPDATE / managers_view_restaurant_claims
+-- SELECT RLS policies. The not-found and not-authorized cases are collapsed
+-- into a single generic message so a cross-tenant caller cannot use the
+-- error shape to probe whether a claim id exists (no enumeration signal).
+--
+-- Phase 7 fold (Codex + security review, both independently confirmed): same
+-- lock-ordering fix as approve_open_shift_claim above — the authorization
+-- predicate is folded into the WHERE clause of the locking SELECT so an
+-- unauthorized caller's row never matches and FOR UPDATE never locks it,
+-- instead of acquiring the lock first and checking authorization after (see
+-- the approve_open_shift_claim header note above for the full rationale).
+-- Behavior for legitimate callers and the error message are unchanged.
 --
 -- Body re-created verbatim from 20260412145842_open_shift_claims.sql (the
 -- current-main definition — reject_open_shift_claim was never touched by any
 -- later migration, unlike approve_open_shift_claim's active-guard follow-up).
 -- SET search_path = public is newly added here (the original had none),
 -- matching the same decided trade-off applied to the other three functions
--- in this migration. The new authz guard replaces the original bare
--- "IF NOT FOUND" branch immediately after the claim is locked, before any
--- other state is read.
+-- in this migration.
 -- ============================================================================
 
 CREATE OR REPLACE FUNCTION public.reject_open_shift_claim(
@@ -510,19 +524,21 @@ AS $$
 DECLARE
     v_claim RECORD;
 BEGIN
-    -- Lock the claim
+    -- Lock the claim — the authorization predicate is folded into the WHERE
+    -- clause so an unauthorized/cross-tenant caller's row never matches and
+    -- FOR UPDATE never acquires a lock on it (see approve_open_shift_claim's
+    -- header note above for the full rationale). The claim must exist AND
+    -- the caller must be a manager/owner/operations_manager of the claim's
+    -- restaurant. NOT FOUND collapses both "no such claim" and "not your
+    -- restaurant" into one generic message so a cross-tenant caller can't
+    -- distinguish the two (no enumeration signal).
     SELECT * INTO v_claim
     FROM public.open_shift_claims
     WHERE id = p_claim_id
+      AND public.user_has_role(restaurant_id, ARRAY['owner', 'manager', 'operations_manager'])
     FOR UPDATE;
 
-    -- Authorization guard: the claim must exist AND the caller must be a
-    -- manager/owner/operations_manager of the claim's restaurant. Collapsed
-    -- into one generic message so a cross-tenant caller can't distinguish
-    -- "no such claim" from "not your restaurant" (no enumeration signal).
-    IF NOT FOUND
-       OR NOT public.user_has_role(v_claim.restaurant_id,
-                                    ARRAY['owner', 'manager', 'operations_manager']) THEN
+    IF NOT FOUND THEN
         RETURN json_build_object('success', false, 'error', 'Claim not found or not authorized');
     END IF;
 

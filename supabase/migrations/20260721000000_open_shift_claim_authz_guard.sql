@@ -361,3 +361,122 @@ $$;
 
 -- Re-issue EXECUTE so the privilege is self-contained in this migration file.
 GRANT EXECUTE ON FUNCTION public.claim_open_shift(UUID, UUID, DATE, UUID) TO authenticated;
+
+-- ============================================================================
+-- approve_open_shift_claim guard: manager-audience check (design doc section
+-- "1. approve_open_shift_claim (and reject_open_shift_claim)"). After locking
+-- the claim, gate on the manager audience for the claim's restaurant —
+-- owner/manager/operations_manager, exact parity with the deployed
+-- managers_review_claims UPDATE / managers_view_restaurant_claims SELECT RLS
+-- policies (both widened to include operations_manager by
+-- 20260702170000_add_operations_manager_role.sql). The not-found and
+-- not-authorized cases are collapsed into a single generic message so a
+-- cross-tenant caller cannot use the error shape to probe whether a claim id
+-- exists (no enumeration signal). `IF a OR b` short-circuits in plpgsql, so
+-- user_has_role is not evaluated when the claim is missing.
+--
+-- Body re-created verbatim from
+-- 20260707090000_approve_open_shift_claim_active_guard.sql (the current-main
+-- definition, which already carries the is_active guard on the template and
+-- the restaurant-timezone shift-timestamp handling). The new authz guard
+-- replaces the original bare "IF NOT FOUND" branch immediately after the
+-- claim is locked, before any other state is read.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.approve_open_shift_claim(
+    p_claim_id UUID,
+    p_reviewer_note TEXT DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_tz TEXT;
+    v_claim RECORD;
+    v_template RECORD;
+    v_shift_id UUID;
+    v_shift_start TIMESTAMPTZ;
+    v_shift_end TIMESTAMPTZ;
+BEGIN
+    -- Lock the claim
+    SELECT * INTO v_claim
+    FROM public.open_shift_claims
+    WHERE id = p_claim_id
+    FOR UPDATE;
+
+    -- Authorization guard: the claim must exist AND the caller must be a
+    -- manager/owner/operations_manager of the claim's restaurant. Collapsed
+    -- into one generic message so a cross-tenant caller can't distinguish
+    -- "no such claim" from "not your restaurant" (no enumeration signal).
+    IF NOT FOUND
+       OR NOT public.user_has_role(v_claim.restaurant_id,
+                                    ARRAY['owner', 'manager', 'operations_manager']) THEN
+        RETURN json_build_object('success', false, 'error', 'Claim not found or not authorized');
+    END IF;
+
+    IF v_claim.status != 'pending_approval' THEN
+        RETURN json_build_object('success', false, 'error', 'Claim is not pending approval');
+    END IF;
+
+    -- Look up the restaurant timezone (after fetching the claim to get restaurant_id)
+    SELECT COALESCE(r.timezone, 'America/Chicago') INTO v_tz
+    FROM public.restaurants r WHERE r.id = v_claim.restaurant_id;
+
+    -- Get the template
+    SELECT * INTO v_template
+    FROM public.shift_templates
+    WHERE id = v_claim.shift_template_id;
+
+    IF NOT FOUND THEN
+        RETURN json_build_object('success', false, 'error', 'Template not found');
+    END IF;
+
+    -- Guard: a hidden (soft-archived) template must not be approvable into a
+    -- shift, even though the pending claim references it by id. Mirrors the
+    -- is_active guard claim_open_shift already applies to new claims, so a
+    -- template hidden after a claim was submitted can't still result in a
+    -- new assignment. The message is constant regardless of any other
+    -- state (no enumeration signal).
+    IF NOT v_template.is_active THEN
+        RETURN json_build_object('success', false, 'error', 'This shift is no longer available');
+    END IF;
+
+    -- Build shift timestamps — cast to timestamp (no tz) first, then interpret in restaurant timezone
+    v_shift_start := (v_claim.shift_date || ' ' || v_template.start_time)::timestamp AT TIME ZONE v_tz;
+    v_shift_end := (v_claim.shift_date || ' ' || v_template.end_time)::timestamp AT TIME ZONE v_tz;
+
+    IF v_template.end_time <= v_template.start_time THEN
+        v_shift_end := v_shift_end + interval '1 day';
+    END IF;
+
+    -- Create the shift
+    INSERT INTO public.shifts (
+        restaurant_id, employee_id, start_time, end_time,
+        break_duration, position, status, source, is_published
+    ) VALUES (
+        v_claim.restaurant_id, v_claim.claimed_by_employee_id,
+        v_shift_start, v_shift_end,
+        v_template.break_duration, v_template.position, 'scheduled', 'template', true
+    )
+    RETURNING id INTO v_shift_id;
+
+    -- Update the claim
+    UPDATE public.open_shift_claims
+    SET status = 'approved',
+        resulting_shift_id = v_shift_id,
+        reviewed_by = auth.uid(),
+        reviewed_at = now()
+    WHERE id = p_claim_id;
+
+    RETURN json_build_object(
+        'success', true,
+        'shift_id', v_shift_id,
+        'message', 'Claim approved and shift created'
+    );
+END;
+$$;
+
+-- Re-issue EXECUTE so the privilege is self-contained in this migration file.
+GRANT EXECUTE ON FUNCTION public.approve_open_shift_claim(UUID, TEXT) TO authenticated;

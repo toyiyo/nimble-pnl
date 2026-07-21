@@ -57,6 +57,9 @@ describe('ScheduleMetricsRibbon', () => {
     expect(screen.getByText('325.8')).toBeInTheDocument();
     expect(screen.getByText('$3,258')).toBeInTheDocument();
     expect(screen.getByText(/57 shifts · 17 staff/)).toBeInTheDocument();
+    // "labor cost" text is relied on by employee-payroll.spec.ts (PR #630) to
+    // locate the labor figure on the scheduling page — keep it discoverable.
+    expect(screen.getByText(/labor cost/i)).toBeInTheDocument();
   });
 
   it('toggles the details panel and flips aria-expanded', () => {

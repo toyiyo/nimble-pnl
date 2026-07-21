@@ -125,7 +125,7 @@ export function ScheduleMetricsRibbon({
         <MetricPill
           icon={DollarSign}
           value={`$${laborCostBreakdown.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
-          unit="labor"
+          unit="labor cost"
           tone={laborTone}
         >
           {(isDanger || isWarning) && (

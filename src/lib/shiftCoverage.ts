@@ -3,9 +3,14 @@
  *
  * Computes time-based concurrent-minimum coverage for a template slot.
  * Algorithm: sweep-line over breakpoints derived from clipped shift intervals.
- * Identical logic is mirrored in SQL as shift_slot_min_concurrent().
+ * Used by computeCellFill (src/lib/shiftFill.ts) to derive segments/coveragePct
+ * for a template's own assigned-shift bucket. The server no longer mirrors this
+ * sweep: shift_slot_min_concurrent (the whole-floor, position-only sweep this
+ * once matched) was dropped in favor of shift_template_assigned_count, a
+ * per-template distinct-assignee count with no sweep-line component (see
+ * docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md).
  *
- * Key invariants (match the SQL exactly):
+ * Key invariants (historical — matched the SQL sweep before it was dropped):
  *  - "distinct employees" per sub-interval (one person with 2 overlapping shifts = 1)
  *  - capacityFloor: 0/NaN/<1 → 1
  *  - W0 and W1 are always seeded into breakpoints (empty shift set → minConcurrent=0)

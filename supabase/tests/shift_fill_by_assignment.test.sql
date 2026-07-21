@@ -22,7 +22,7 @@
 
 BEGIN;
 
-SELECT plan(12);
+SELECT plan(13);
 
 -- Disable RLS so the function (SECURITY DEFINER) and inserts work in-transaction.
 SET LOCAL role TO postgres;
@@ -364,6 +364,23 @@ SELECT is(
   ),
   '00000000-0000-0000-0000-0000000000d4'::uuid,
   'approve_open_shift_claim stamps shift_template_id on the newly created shift'
+);
+
+-- ── Test 12: shift_slot_min_concurrent is dropped (Task 11) ──────────────────
+-- Regression guard: once get_open_shifts (Task 8), claim_open_shift (Task 9),
+-- and approve_open_shift_claim (Task 10 -- never called it, unaffected) no
+-- longer reference the whole-floor position sweep, this migration drops it.
+-- If a future change re-adds a caller without noticing the drop, this test
+-- fails loudly instead of silently resurrecting the whole-floor bug.
+SELECT is(
+  (
+    SELECT COUNT(*)::int
+    FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'shift_slot_min_concurrent'
+  ),
+  0,
+  'shift_slot_min_concurrent no longer exists (superseded by shift_template_assigned_count)'
 );
 
 SELECT * FROM finish();

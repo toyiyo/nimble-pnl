@@ -1,20 +1,22 @@
--- pgTAP tests for shift_slot_min_concurrent coverage function.
+-- pgTAP test for claim_open_shift's non-exact-match fill-in behavior.
 --
--- Coverage model: a template slot is "staffed" only when, at every minute of
--- its window [W0, W1], at least `capacity` same-position distinct employees are
--- present. This replaces the old exact time-match approach where non-matching
--- fill-ins were invisible.
---
--- Non-tautological design: the fixture's shift does NOT exactly match the
--- template window (it's 15:00-23:00, template is 16:00-22:30) so the old
--- exact-match would count 0; we assert min_concurrent=1 instead.
+-- Originally this file unit-tested shift_slot_min_concurrent (the whole-floor
+-- position sweep), asserting that a fill-in shift overlapping but not exactly
+-- matching a template's window still counted toward it. Fill-by-assignment
+-- (docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md, Task
+-- 11) drops shift_slot_min_concurrent -- its per-template replacement,
+-- shift_template_assigned_count, requires an EXACT time+position match for
+-- its legacy null-FK fallback, so those direct sweep-semantics tests no
+-- longer apply and were removed. The one still-relevant assertion --
+-- claim_open_shift's behavior against this same fixture -- is retained below
+-- (now the fixture's only consumer) and already reflects fill-by-assignment.
 --
 -- Lesson 2026-04-21: always use CURRENT_DATE+N for fixture dates.
 -- Lesson 2026-04-22: use ON CONFLICT DO UPDATE for idempotent inserts.
 
 BEGIN;
 
-SELECT plan(5);
+SELECT plan(1);
 
 -- Disable RLS so the function (SECURITY DEFINER) and inserts work in-transaction.
 SET LOCAL role TO postgres;
@@ -85,69 +87,7 @@ BEGIN
   -- would require a valid auth.users FK.
 END $$;
 
--- ── Test 1: fill-in covering the full 16:00-22:30 window ─────────────────────
--- The fill-in (15:00-23:00) overlaps the entire template window, so every
--- minute in [16:00, 22:30] has n=1. min_concurrent must be 1, not 0.
--- (Exact-match on time would return 0 — this proves the bug is fixed.)
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Server',
-    CURRENT_DATE + 2,
-    '16:00'::time,
-    '22:30'::time,
-    'America/Chicago'
-  ),
-  1,
-  'fill-in overlapping the full window yields min_concurrent 1 (exact-match would be 0)'
-);
-
--- ── Test 2: empty window (no shifts at all) ───────────────────────────────────
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Server',
-    CURRENT_DATE + 2,
-    '06:00'::time,
-    '09:00'::time,
-    'America/Chicago'
-  ),
-  0,
-  'empty window (no shifts) yields min_concurrent 0'
-);
-
--- ── Test 3: position mismatch ─────────────────────────────────────────────────
--- The fixture shift is position='Server'; querying 'Cook' must return 0.
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Cook',
-    CURRENT_DATE + 2,
-    '16:00'::time,
-    '22:30'::time,
-    'America/Chicago'
-  ),
-  0,
-  'position mismatch (Server shift vs Cook query) yields 0'
-);
-
--- ── Test 4: trailing gap — shift ends before window closes ───────────────────
--- The fixture shift ends 23:00; a 16:00-23:30 window has an uncovered
--- 23:00-23:30 stretch, so min_concurrent drops to 0.
-SELECT is(
-  public.shift_slot_min_concurrent(
-    '00000000-0000-0000-0000-0000000000aa'::uuid,
-    'Server',
-    CURRENT_DATE + 2,
-    '16:00'::time,
-    '23:30'::time,
-    'America/Chicago'
-  ),
-  0,
-  'trailing gap (shift ends before window) yields min_concurrent 0'
-);
-
--- ── Test 5: claim_open_shift succeeds — fill-in with a non-exact-match ───────
+-- ── Test 1: claim_open_shift succeeds — fill-in with a non-exact-match ───────
 -- window (no FK) does not fill the slot under fill-by-assignment.
 --
 -- Superseded by docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-

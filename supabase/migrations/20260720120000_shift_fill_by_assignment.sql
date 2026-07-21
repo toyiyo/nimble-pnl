@@ -590,3 +590,24 @@ BEGIN
     );
 END;
 $$;
+
+-- ============================================================================
+-- Task 11: drop shift_slot_min_concurrent -- the whole-floor, position-only
+-- sweep this migration replaces. Its only two callers (get_open_shifts,
+-- claim_open_shift) were rewired to shift_template_assigned_count above
+-- (Tasks 8-9); approve_open_shift_claim (Task 10) never called it.
+--
+-- Re-grepped the tree before dropping: the only remaining references are (a)
+-- historical migration files that defined/called it at their point in time
+-- (immutable, not touched -- migrations are an append-only log, not live
+-- code), and (b) supabase/tests/open_shift_coverage.test.sql, which called it
+-- directly to unit-test its sweep semantics. That file's function-specific
+-- assertions are removed in this same commit (see that file) since they
+-- exercise a function that no longer exists; its remaining claim_open_shift
+-- assertion is retained and already reflects fill-by-assignment behavior.
+-- No other object (view, trigger, function) depends on it, so a bare DROP
+-- (no CASCADE) is safe -- it fails loudly instead of silently cascading if
+-- that ever stops being true.
+-- ============================================================================
+
+DROP FUNCTION IF EXISTS public.shift_slot_min_concurrent(uuid, text, date, time, time, text);

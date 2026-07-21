@@ -55,8 +55,15 @@ export function SalesTrendsPanel({
   timeZone,
   defaultExpanded = true,
 }: Readonly<SalesTrendsPanelProps>) {
-  const { data, isLoading, error } = useSalesTrends(restaurantId, { startDate, endDate, timeZone });
   const [expanded, setExpanded] = useState(defaultExpanded);
+  // Only fetch when the panel is open — the RPC is heavy and the panel defaults
+  // collapsed on mobile. React Query serves cached data instantly on re-expand.
+  const { data, isLoading, error } = useSalesTrends(restaurantId, {
+    startDate,
+    endDate,
+    timeZone,
+    enabled: expanded,
+  });
   const [posFilter, setPosFilter] = useState<PosFilter>('all');
   const contentId = useId();
 

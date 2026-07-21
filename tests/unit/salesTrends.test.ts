@@ -233,6 +233,30 @@ describe('buildTopProducts', () => {
     expect(top[0].sharePct).toBeCloseTo((200 / 380) * 100, 2);
   });
 
+  it('bases sharePct on true net sales (by_day), not the capped by_product sum', () => {
+    // Simulates the server-side 300-row by_product cap: day total (500) exceeds
+    // the truncated product sum (300). Share must be against 500, not 300.
+    const dayRows = [
+      { sale_date: '2024-08-01', pos_system: 'toast', revenue: 400, orders: 10 },
+      { sale_date: '2024-08-02', pos_system: 'toast', revenue: 100, orders: 5 },
+    ];
+    const products = [
+      { item_name: 'Burger', pos_system: 'toast', revenue: 200, quantity: 20 },
+      { item_name: 'Fries', pos_system: 'toast', revenue: 100, quantity: 40 },
+    ];
+    const top = buildTopProducts(products, dayRows, 7);
+    expect(top[0].sharePct).toBeCloseTo((200 / 500) * 100, 2); // 40%, not the inflated 66.7%
+  });
+
+  it('falls back to the product-sum total for sharePct when day rows are empty', () => {
+    const products = [
+      { item_name: 'Burger', pos_system: 'toast', revenue: 200, quantity: 20 },
+      { item_name: 'Fries', pos_system: 'toast', revenue: 100, quantity: 40 },
+    ];
+    const top = buildTopProducts(products, [], 7);
+    expect(top[0].sharePct).toBeCloseTo((200 / 300) * 100, 2); // 66.7% fallback
+  });
+
   it('returns a sparkline point per distinct day present in dayRows', () => {
     const top = buildTopProducts(FIXTURE.by_product, FIXTURE.by_day, 7);
     expect(top[0].sparkline).toHaveLength(3); // 08-01, 08-02, 08-03

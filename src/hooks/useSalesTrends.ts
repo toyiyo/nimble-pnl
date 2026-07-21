@@ -20,10 +20,16 @@ export interface UseSalesTrendsOptions {
   startDate?: string;
   endDate?: string;
   timeZone?: string;
+  /** Gate the RPC so it only runs when the panel is actually visible. The
+   *  `get_sales_trends` RPC does several grouped scans + a product sort, so
+   *  fetching while the panel is collapsed (e.g. the default-collapsed mobile
+   *  case) is wasted DB/network work. Defaults to true. React Query still
+   *  serves cached data instantly on re-expand. */
+  enabled?: boolean;
 }
 
 export function useSalesTrends(restaurantId: string | null, options: UseSalesTrendsOptions = {}) {
-  const { startDate, endDate, timeZone } = options;
+  const { startDate, endDate, timeZone, enabled = true } = options;
   const resolvedTimeZone = timeZone || DEFAULT_TIME_ZONE;
   // Blank strings (e.g. from a "Clear filters" control resetting date state
   // to "") must become undefined so PostgREST omits the RPC arg rather than
@@ -45,7 +51,7 @@ export function useSalesTrends(restaurantId: string | null, options: UseSalesTre
       if (error) throw error;
       return parseSalesTrends(data);
     },
-    enabled: !!restaurantId,
+    enabled: enabled && !!restaurantId,
     staleTime: 60_000,
     refetchOnWindowFocus: true,
   });

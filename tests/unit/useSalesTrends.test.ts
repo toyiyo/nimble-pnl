@@ -147,6 +147,29 @@ describe('useSalesTrends', () => {
     expect(result.current.data).toBeUndefined();
   });
 
+  it('does not call the RPC when enabled is false (panel collapsed)', () => {
+    const { result } = renderHook(
+      () => useSalesTrends('rest-1', { enabled: false }),
+      { wrapper: makeWrapper() },
+    );
+
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toBeUndefined();
+  });
+
+  it('calls the RPC when enabled is true and a restaurant is selected', async () => {
+    rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
+
+    const { result } = renderHook(
+      () => useSalesTrends('rest-1', { enabled: true }),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(rpcMock).toHaveBeenCalledWith('get_sales_trends', expect.objectContaining({ p_restaurant_id: 'rest-1' }));
+  });
+
   it('propagates a Supabase RPC error', async () => {
     rpcMock.mockResolvedValue({
       data: null,

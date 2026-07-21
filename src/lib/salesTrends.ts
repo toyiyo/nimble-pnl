@@ -401,8 +401,14 @@ export function buildTopProducts(
     .sort((a, b) => b.revenue - a.revenue)
     .slice(0, n);
 
+  // Share % is a product's cut of true net sales. `by_product` is capped at 300
+  // (item,pos) rows server-side, so its sum (grandTotal) undercounts a long-tail
+  // menu and would inflate shares. `dayGrandTotal` is the uncapped revenue curve —
+  // prefer it, falling back to grandTotal only if day totals are unavailable.
+  const shareBase = dayGrandTotal > 0 ? dayGrandTotal : grandTotal;
+
   return ranked.map(({ item_name, revenue, quantity }) => {
-    const sharePct = grandTotal > 0 ? (revenue / grandTotal) * 100 : 0;
+    const sharePct = shareBase > 0 ? (revenue / shareBase) * 100 : 0;
     const itemShare = dayGrandTotal > 0 ? revenue / dayGrandTotal : 0;
     const sparkline: TopProductSparklinePoint[] = sortedDates.map((date) => ({
       date,

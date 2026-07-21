@@ -99,6 +99,24 @@ describe('useSalesTrends', () => {
     );
   });
 
+  it('normalizes blank start/end date strings to undefined (Clear filters case)', async () => {
+    rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
+
+    const { result } = renderHook(
+      () => useSalesTrends('rest-1', { startDate: '', endDate: '' }),
+      { wrapper: makeWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    expect(rpcMock).toHaveBeenCalledWith('get_sales_trends', {
+      p_restaurant_id: 'rest-1',
+      p_start_date: undefined,
+      p_end_date: undefined,
+      p_time_zone: 'America/Chicago',
+    });
+  });
+
   it('returns parsed SalesTrendsData on success', async () => {
     rpcMock.mockResolvedValue({ data: RAW_PAYLOAD, error: null });
 

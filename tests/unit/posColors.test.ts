@@ -9,6 +9,7 @@ const ALL_POS_SYSTEMS: POSSystemType[] = [
   'resy',
   'shift4',
   'revel',
+  'focus',
   'manual',
   'manual_upload',
 ];
@@ -28,10 +29,11 @@ describe('POS_COLOR registry', () => {
     expect(POS_COLOR.shift4).toBe('hsl(var(--chart-5))');
   });
 
-  it('groups manual, manual_upload, and resy (no dedicated chart token) under the muted-foreground token', () => {
+  it('groups manual, manual_upload, resy, and focus (no dedicated chart token) under the muted-foreground token', () => {
     expect(POS_COLOR.manual).toBe('hsl(var(--muted-foreground))');
     expect(POS_COLOR.manual_upload).toBe('hsl(var(--muted-foreground))');
     expect(POS_COLOR.resy).toBe('hsl(var(--muted-foreground))');
+    expect(POS_COLOR.focus).toBe('hsl(var(--muted-foreground))');
   });
 });
 
@@ -61,6 +63,7 @@ describe('posLabel', () => {
     expect(posLabel('resy')).toBe('Resy');
     expect(posLabel('shift4')).toBe('Shift4');
     expect(posLabel('revel')).toBe('Revel');
+    expect(posLabel('focus')).toBe('Focus');
     expect(posLabel('manual')).toBe('Manual');
     expect(posLabel('manual_upload')).toBe('Manual');
   });

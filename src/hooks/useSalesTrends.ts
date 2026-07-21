@@ -25,14 +25,20 @@ export interface UseSalesTrendsOptions {
 export function useSalesTrends(restaurantId: string | null, options: UseSalesTrendsOptions = {}) {
   const { startDate, endDate, timeZone } = options;
   const resolvedTimeZone = timeZone || DEFAULT_TIME_ZONE;
+  // Blank strings (e.g. from a "Clear filters" control resetting date state
+  // to "") must become undefined so PostgREST omits the RPC arg rather than
+  // trying to coerce "" into a DATE, which fails instead of using the RPC's
+  // NULL/default 90-day window.
+  const resolvedStartDate = startDate || undefined;
+  const resolvedEndDate = endDate || undefined;
 
   return useQuery({
-    queryKey: ['sales-trends', restaurantId, startDate, endDate, resolvedTimeZone],
+    queryKey: ['sales-trends', restaurantId, resolvedStartDate, resolvedEndDate, resolvedTimeZone],
     queryFn: async (): Promise<SalesTrendsData> => {
       const { data, error } = await supabase.rpc('get_sales_trends', {
         p_restaurant_id: restaurantId as string,
-        p_start_date: startDate,
-        p_end_date: endDate,
+        p_start_date: resolvedStartDate,
+        p_end_date: resolvedEndDate,
         p_time_zone: resolvedTimeZone,
       });
 

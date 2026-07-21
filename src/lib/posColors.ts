@@ -14,6 +14,12 @@ import type { POSSystemType } from '@/types/pos';
  *   Grouping it with the muted bucket (rather than reusing e.g. `--chart-1`)
  *   avoids a legend collision with clover if both ever appear in the same
  *   restaurant's data.
+ * - `focus` (Focus POS) is a real, already-deployed integration (see the
+ *   `supabase/migrations/*_focus_*` sync/backfill migrations) that writes
+ *   `unified_sales.pos_system = 'focus'`, but — like `resy` — has no spare
+ *   `--chart-*` token and wasn't enumerated in the approved design doc. It
+ *   gets the muted bucket rather than "Other" so restaurants running Focus
+ *   see their POS's real name in this panel.
  */
 export const POS_COLOR: Record<POSSystemType, string> = {
   toast: 'hsl(var(--chart-4))',
@@ -22,6 +28,7 @@ export const POS_COLOR: Record<POSSystemType, string> = {
   revel: 'hsl(var(--chart-2))',
   shift4: 'hsl(var(--chart-5))',
   resy: 'hsl(var(--muted-foreground))',
+  focus: 'hsl(var(--muted-foreground))',
   manual: 'hsl(var(--muted-foreground))',
   manual_upload: 'hsl(var(--muted-foreground))',
 };
@@ -37,6 +44,7 @@ const POS_LABEL: Record<POSSystemType, string> = {
   revel: 'Revel',
   shift4: 'Shift4',
   resy: 'Resy',
+  focus: 'Focus',
   manual: 'Manual',
   manual_upload: 'Manual',
 };

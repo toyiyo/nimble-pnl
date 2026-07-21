@@ -22,7 +22,7 @@
 
 BEGIN;
 
-SELECT plan(13);
+SELECT plan(14);
 
 -- Disable RLS so the function (SECURITY DEFINER) and inserts work in-transaction.
 SET LOCAL role TO postgres;
@@ -39,6 +39,7 @@ DECLARE
   v_rid2   uuid := '00000000-0000-0000-0000-0000000000d9'; -- second tenant, for the mismatch guard
   v_emp1   uuid := '00000000-0000-0000-0000-0000000000d1';
   v_emp2   uuid := '00000000-0000-0000-0000-0000000000d2';
+  v_emp3   uuid := '00000000-0000-0000-0000-0000000000d6'; -- capacity-rejection claimant, no shifts of its own
   v_tmplA  uuid := '00000000-0000-0000-0000-0000000000d3'; -- Crew 08:00-16:00, capacity 1
   v_tmplB  uuid := '00000000-0000-0000-0000-0000000000d4'; -- same position/time as A, different id
   v_uid    uuid := '00000000-0000-0000-0000-0000000000d5'; -- auth.users row for schedule_publications.published_by
@@ -78,7 +79,8 @@ BEGIN
   INSERT INTO public.employees(id, restaurant_id, name, position, is_active, status)
     VALUES
       (v_emp1, v_rid, 'E1', 'Crew', true, 'active'),
-      (v_emp2, v_rid, 'E2', 'Crew', true, 'active')
+      (v_emp2, v_rid, 'E2', 'Crew', true, 'active'),
+      (v_emp3, v_rid, 'E3', 'Crew', true, 'active')
     ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position;
 
   -- Two active templates, same restaurant/position/time, different id -- the
@@ -130,6 +132,24 @@ SELECT is(
   ),
   0,
   'a same-position shift FK-assigned to a different template does not count here'
+);
+
+-- ── Test: claim_open_shift rejects a claim on template A, which is fully ─────
+-- FK-assigned (capacity 1, emp1 already assigned via e1) -- plan case (b)'s
+-- "claim rejected" half (the "excluded" half is Test 8 below, on template A
+-- via get_open_shifts). v_emp3 has no shifts of its own, so this exercises
+-- the capacity guard specifically, not the schedule-conflict check.
+SELECT is(
+  (
+    public.claim_open_shift(
+      '00000000-0000-0000-0000-0000000000d0'::uuid,
+      '00000000-0000-0000-0000-0000000000d3'::uuid, -- tmplA, capacity 1, already filled by emp1
+      CURRENT_DATE + 3,
+      '00000000-0000-0000-0000-0000000000d6'::uuid  -- emp3, no shifts of its own
+    ) ->> 'error'
+  ),
+  'No open spots available',
+  'claim_open_shift rejects a claim on a fully FK-assigned template'
 );
 
 -- ── Test 8: get_open_shifts uses shift_template_assigned_count, not the ─────

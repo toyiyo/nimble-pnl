@@ -1,4 +1,80 @@
-import type { SlotCoverage, CoveringEmployee } from '@/types/scheduling';
+import { clipShiftToWindow, parseTimeToMinutes } from '@/lib/shiftCoverage';
+import type { CoverageShift, SlotCoverage, CoveringEmployee } from '@/types/scheduling';
+
+/**
+ * Options bag for computeLoanedOut. Mirrors the retired `ComputeSlotCoverageOptions`
+ * (position/tz/area, formerly in shiftCoverage.ts), plus the window fields it no
+ * longer receives positionally.
+ */
+export interface ComputeLoanedOutOptions {
+  /** The position the slot requires (e.g. "Server"). */
+  position: string;
+  /** IANA timezone of the restaurant. */
+  tz: string;
+  /** "YYYY-MM-DD" — the local calendar date of the slot. */
+  dateStr: string;
+  /** "HH:MM:SS" or "HH:MM" — local start of the slot. */
+  windowStart: string;
+  /** "HH:MM:SS" or "HH:MM" — local end of the slot (may be < start for overnight). */
+  windowEnd: string;
+  /**
+   * The template's own area. null / undefined => no loaned-out detection
+   * (whole-restaurant, back-compat) — always returns [].
+   */
+  area?: string | null;
+}
+
+/**
+ * Ghosts: employees whose home area is this slot's area but who are working a
+ * *different* area during the window (loaned out elsewhere). Extracted
+ * verbatim from `computeSlotCoverage`'s loaned-out branch — unlike
+ * `computeCellFill`, this needs the **whole-floor** shift set for the day
+ * (not just the template's own bucket), since the loan is only visible by
+ * comparing home area against work area across all of that day's shifts.
+ *
+ * Never counted toward `openSpots` — purely informational.
+ */
+export function computeLoanedOut(shiftsForDay: CoverageShift[], options: ComputeLoanedOutOptions): CoveringEmployee[] {
+  const { position, tz, dateStr, windowStart, windowEnd, area } = options;
+  if (area === null || area === undefined) return [];
+
+  const w0 = parseTimeToMinutes(windowStart);
+  const w1raw = parseTimeToMinutes(windowEnd);
+  // Overnight window: if end ≤ start, treat end as next-day (+1440)
+  const w1 = w1raw <= w0 ? w1raw + 1440 : w1raw;
+
+  // De-dup by employee: one ghost chip per employee (ShiftCell keys ghosts by
+  // employeeId, so two entries for the same employee would collide and silently
+  // drop one). If an employee has multiple loaned-out shifts in the window, merge
+  // them into a single covering range [min start, max end].
+  const byEmployee = new Map<string, CoveringEmployee>();
+  for (const s of shiftsForDay) {
+    if (s.position !== position) continue;
+    if (s.status === 'cancelled') continue;
+    if ((s.homeArea ?? null) !== area || (s.area ?? null) === area) continue;
+
+    const clip = clipShiftToWindow(s, dateStr, tz, w0, w1);
+    if (!clip) continue;
+
+    const existing = byEmployee.get(s.employee_id);
+    if (existing) {
+      existing.startMin = Math.min(existing.startMin, clip.cs);
+      existing.endMin = Math.max(existing.endMin, clip.ce);
+    } else {
+      byEmployee.set(s.employee_id, {
+        employeeId: s.employee_id,
+        employeeName: s.employee_name ?? null,
+        homeArea: s.homeArea ?? null,
+        workArea: s.area ?? null,
+        startMin: clip.cs,
+        endMin: clip.ce,
+      });
+    }
+  }
+  const loanedOut = Array.from(byEmployee.values());
+  loanedOut.sort((a, b) => a.startMin - b.startMin);
+  return loanedOut;
+}
 
 /**
  * De-dup loaned-out ghosts to a single cell per (employee, day).

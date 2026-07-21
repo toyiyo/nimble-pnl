@@ -75,8 +75,11 @@ test.describe('Prep Production E2E Flow', () => {
     // Create the recipe
     await page.getByRole('button', { name: 'Create Recipe' }).click();
 
-    // Wait for dialog to close
-    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 10000 });
+    // Wait for dialog to close. Scoped to the "Create Prep Recipe" dialog by
+    // name: a generic getByRole('dialog') also matches the (closed but still
+    // mounted) SearchableProductSelector popover, which Radix renders with
+    // role="dialog" too, causing a strict-mode violation.
+    await expect(page.getByRole('dialog', { name: 'Create Prep Recipe' })).not.toBeVisible({ timeout: 10000 });
 
     // Validate Step 2: Recipe was created correctly
     await expect(page.getByRole('heading', { name: 'CHICKEN SOUP' })).toBeVisible();

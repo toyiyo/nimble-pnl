@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Collapsible,
   CollapsibleContent,
@@ -46,6 +47,7 @@ import {
   ChevronDown,
   ShoppingBag,
   Trash2,
+  Info,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -737,13 +739,20 @@ export const TradeApprovalQueue = ({ now: nowProp }: TradeApprovalQueueProps = {
                 />
               </div>
 
-              {claimActionType === 'approve' && (
-                <div className="flex items-start gap-2 rounded-lg bg-green-500/10 border border-green-500/20 p-3">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-green-600 dark:text-green-400 shrink-0" />
-                  <p className="text-[13px] text-green-700 dark:text-green-300">
+              {claimActionType === 'approve' ? (
+                <Alert className="bg-green-500/10 border-green-500/20">
+                  <CheckCircle aria-hidden="true" className="h-4 w-4 text-green-600 dark:text-green-400" />
+                  <AlertDescription className="text-[13px] text-green-700 dark:text-green-300">
                     The employee will be notified of your decision.
-                  </p>
-                </div>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Alert className="border-border/40 bg-muted/30">
+                  <Info aria-hidden="true" className="h-4 w-4 text-muted-foreground" />
+                  <AlertDescription className="text-[13px] text-muted-foreground">
+                    The employee will be notified of your decision.
+                  </AlertDescription>
+                </Alert>
               )}
 
               <DialogFooter>

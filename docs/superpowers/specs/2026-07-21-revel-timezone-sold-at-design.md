@@ -34,6 +34,7 @@ Defect site: [`parseDateTime`](../../../supabase/functions/_shared/revelOrderPro
 **Broken (reads `sold_at` as instant → tz):**
 - `src/lib/splhAnalytics.ts` `hourOfSale` (Labor heatmap, staffing suggestions)
 - `src/hooks/useHourlySalesPattern.ts`, `useSplhData.ts`, `useWeekStaffingSuggestions.ts`, `useSplhAnalytics.ts`
+- **`supabase/functions/generate-schedule/index.ts`** (AI schedule generation) via `hourFromSale` in `supabase/functions/_shared/sales-hour-utils.ts` — same bug class: AI staffing suggestions were built on the same corrupted overnight-shifted hourly distribution. No code change needed (it's tz-aware and heals with the data), but it's an unlisted consumer with real blast radius — must be re-verified post-backfill.
 
 **Already correct (must NOT regress):**
 - **Revenue/period totals** (`get_unified_sales_totals` / grouped RPC) filter by **`sale_date`**, not `sold_at`. The **dollar figures the auditor sees are keyed on the local business date and are already right.** The bug is intra-day *hour* attribution only. → Still must be **proven** by reconciliation (§7).
@@ -100,29 +101,88 @@ Thread the timezone in: `processOrder(...)` / `normalizeOrder(...)` gain a `time
 
 ### 5b. Backfill migration
 
-Postgres `AT TIME ZONE` does the DST-aware conversion natively. Idempotent; safe to re-run.
+Postgres `AT TIME ZONE` does the DST-aware conversion natively. The migration is a
+**per-restaurant `DO` loop** (bounded work, not one unbounded statement), suppresses
+the per-row `unified_sales` aggregation trigger, and re-aggregates once per touched
+`(restaurant_id, sale_date)`. Idempotent (`IS DISTINCT FROM` guards on both tables).
+
+Design decisions folded in from Phase 2.5 review:
+
+1. **Validate tz against `pg_timezone_names`** — `COALESCE(r.timezone,'…')` only guards
+   NULL; a *non-null but invalid/legacy* string makes `AT TIME ZONE` raise and aborts the
+   whole migration (mirrors the `safeTz()` guard on the edge side). Use a validated
+   expression + a pre-flight report of offenders.
+2. **Suppress the `unified_sales` → daily aggregation trigger** during the bulk UPDATE
+   (`set_config('app.skip_unified_sales_triggers','true',true)`), exactly as
+   `sync_toast_to_unified_sales` does — otherwise `trigger_unified_sales_to_daily` fires
+   `aggregate_unified_sales_to_daily` once **per row**, risking a migration timeout / lock
+   contention with live syncs. Re-aggregate once per distinct `(restaurant_id, sale_date)`
+   after.
+3. **Mirror `parseDateTime`'s full field/envelope precedence** in the raw-JSON extraction
+   (`getOrderNode`: `Order ?? order ?? payload`; field: `created_date ?? createdDate ??
+   closed_date ?? finalized_date ?? date`) so no historically-corrupted row is silently
+   skipped by a too-narrow COALESCE.
 
 ```sql
--- 1) revel_orders: recompute sold_at from the authoritative raw naive local time
-UPDATE public.revel_orders o
-SET sold_at = (COALESCE(o.raw_json->>'created_date',
-                        o.raw_json->'Order'->>'created_date'))::timestamp
-              AT TIME ZONE COALESCE(r.timezone, 'America/Chicago')
-FROM public.restaurants r
-WHERE r.id = o.restaurant_id
-  AND COALESCE(o.raw_json->>'created_date', o.raw_json->'Order'->>'created_date') IS NOT NULL;
+DO $$
+DECLARE
+  rec RECORD;
+  v_tz TEXT;
+BEGIN
+  FOR rec IN SELECT id, timezone FROM public.restaurants
+             WHERE id IN (SELECT DISTINCT restaurant_id FROM public.revel_orders)
+  LOOP
+    -- validated tz (falls back to the documented default; report offenders separately)
+    v_tz := CASE WHEN rec.timezone IN (SELECT name FROM pg_timezone_names)
+                 THEN rec.timezone ELSE 'America/Chicago' END;
 
--- 2) unified_sales: propagate corrected instant to every Revel row (sale + adjustments)
-UPDATE public.unified_sales u
-SET sold_at = o.sold_at
-FROM public.revel_orders o
-WHERE u.pos_system = 'revel'
-  AND u.restaurant_id = o.restaurant_id
-  AND u.external_order_id = o.revel_order_id
-  AND u.sold_at IS DISTINCT FROM o.sold_at;
+    -- extract naive local created_date mirroring parseDateTime's precedence
+    -- (helper expression reused below as raw_created(o))
+    UPDATE public.revel_orders o
+    SET sold_at = (public.revel_raw_created_date(o.raw_json))::timestamp AT TIME ZONE v_tz
+    WHERE o.restaurant_id = rec.id
+      AND public.revel_raw_created_date(o.raw_json) IS NOT NULL
+      AND o.sold_at IS DISTINCT FROM
+          (public.revel_raw_created_date(o.raw_json))::timestamp AT TIME ZONE v_tz;
+
+    -- propagate to unified_sales with the aggregation trigger suppressed
+    PERFORM set_config('app.skip_unified_sales_triggers','true', true);
+    UPDATE public.unified_sales u
+    SET sold_at = o.sold_at
+    FROM public.revel_orders o
+    WHERE u.pos_system = 'revel'
+      AND u.restaurant_id = rec.id
+      AND o.restaurant_id = rec.id
+      AND u.external_order_id = o.revel_order_id
+      AND u.sold_at IS DISTINCT FROM o.sold_at;
+    PERFORM set_config('app.skip_unified_sales_triggers','false', true);
+
+    -- re-aggregate once per touched (restaurant_id, sale_date)
+    PERFORM public.aggregate_unified_sales_to_daily(rec.id, d.sale_date)
+    FROM (SELECT DISTINCT sale_date FROM public.unified_sales
+          WHERE restaurant_id = rec.id AND pos_system = 'revel') d;
+  END LOOP;
+END $$;
 ```
 
-Notes: `::timestamp` strips any spurious label and treats digits as naive (correct for Revel's naive feed). Batch by `restaurant_id` if row counts are large. Emit a pre/post report of affected rows and any restaurant whose `timezone` is null.
+`revel_raw_created_date(jsonb)` is a small `IMMUTABLE` helper encapsulating the
+envelope+field precedence (created in the same migration, kept in lock-step with
+`getOrderNode`/`parseDateTime`). `::timestamp` strips any spurious label and treats the
+digits as naive (correct for Revel's naive feed; already-zoned strings are the defensive
+branch handled edge-side). Emit a pre/post report: affected-row counts + any restaurant
+whose stored `timezone` is null or not in `pg_timezone_names`.
+
+### 5d. Durability — Revel sync RPCs must self-heal `sold_at`
+
+Both `revel_sync_financial_breakdown` and `sync_revel_to_unified_sales` insert into
+`unified_sales` with `ON CONFLICT … DO NOTHING`, so a future re-sync of an existing order
+refreshes `revel_orders.sold_at` but never propagates the corrected instant into an
+already-present `unified_sales` row (Toast's RPC already does
+`DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)`). To stop the
+two tables drifting apart post-backfill, change the Revel insert blocks' conflict clauses
+to `DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)` — updating
+**only** `sold_at`, so user categorization (`category_id`, `is_categorized`, …) is
+preserved.
 
 ### 5c. Sequencing (stops the bleeding without re-corrupting)
 
@@ -145,6 +205,8 @@ Notes: `::timestamp` strips any spurious label and treats digits as naive (corre
 - [ ] **Labor view** (Rush Bowls Kallison Ranch): earliest sales hour = **7 AM**, peak midday; **no "staff 1–6 AM" / "Peak 3 AM"** callouts.
 - [ ] **Auditor reconciliation**: `sum(total_price) WHERE item_type='sale'` grouped by `sale_date` matches Revel **Sales Summary → Total Product Sales** per business day for a sampled range.
 - [ ] **Hourly reconciliation**: our sold_at→tz hourly distribution matches Revel **Hourly Sales** (0 before 7 AM; tail at 9 PM).
+- [ ] **AI schedule generation** (`generate-schedule`) for the audited restaurant no longer clusters demand overnight (hourly weighting follows the true 7 AM–9 PM curve).
+- [ ] **Backfill safety**: migration completes without firing per-row daily aggregation (trigger suppressed); pre-flight report lists any restaurant with an invalid/null `timezone`.
 - [ ] **Toast** restaurant hourly/labor unchanged (regression).
 
 ## 8. Risks & mitigations
@@ -152,8 +214,14 @@ Notes: `::timestamp` strips any spurious label and treats digits as naive (corre
 - **Other `sold_at` consumers** shift when it becomes a true instant → audited: all are SPLH/labor (tz-aware) or `sale_date`-keyed totals. Covered by §7 reconciliation + Toast regression.
 - **Misconfigured `restaurants.timezone`** → backfill fallback `America/Chicago` + report null/UTC tz stores before running.
 - **DST-transition ambiguity** (twice/year, 1h window) → negligible for open hours; standard `fromZonedTime` behavior; documented.
-- **Large-table backfill cost** → batch by restaurant; run off-peak; idempotent.
+- **Large-table backfill cost / migration timeout** → per-restaurant `DO` loop, trigger suppression + single batched re-aggregation per `(restaurant_id, sale_date)`, `IS DISTINCT FROM` guards (§5b). Not one unbounded UPDATE.
+- **Invalid stored tz aborting the migration** → validate against `pg_timezone_names` with fallback + pre-flight offender report (§5b).
+- **Post-backfill drift between `revel_orders` and `unified_sales`** on future re-syncs → Revel RPCs switched to `DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, …)` (§5d).
 - **Re-corruption window** → deploy source fix before backfill (§5c).
+
+### Phase 2.5 design-review resolutions
+
+All Supabase design-review findings folded in: tz validation + trigger suppression + batched re-aggregation (criticals, §5b); full `raw_json` field/envelope coverage (§5b); RPC self-heal (§5d); `generate-schedule` added to scope + acceptance (§3/§7); per-restaurant batching mechanism (§5b); `revel_orders` `IS DISTINCT FROM` guard (§5b). Reviewer confirmed: `AT TIME ZONE` technique sound; `get_unified_sales_totals`/`collected_at_pos` are `sale_date`-keyed (auditor path unaffected); all frontend `sold_at` consumers are tz-aware; deploy-then-backfill ordering correct; no RLS impact.
 
 ## 9. Rollback
 

@@ -69,8 +69,10 @@ test.describe('POS Sales Bulk Edit', () => {
     await page.reload();
     await expect(page.getByRole('heading', { name: 'Sales', exact: true })).toBeVisible();
 
-    // Wait for sales to load - look for the first sale item
-    await expect(page.getByText('Test Burger')).toBeVisible({ timeout: 10000 });
+    // Wait for sales to load - look for the first sale item's card heading.
+    // (Not a plain getByText: the sales-trends panel's top-seller summary can
+    // repeat the same item name elsewhere on the page.)
+    await expect(page.getByRole('heading', { name: 'Test Burger' })).toBeVisible({ timeout: 10000 });
 
     // Click "Select" button to enter selection mode
     const selectButton = page.getByRole('button', { name: /^select$/i });
@@ -182,8 +184,10 @@ test.describe('POS Sales Bulk Edit', () => {
 
     await page.reload();
     
-    // Wait for sales to load by checking for a sale item
-    await expect(page.getByText('Test Item 1')).toBeVisible({ timeout: 10000 });
+    // Wait for sales to load by checking for a sale item's card heading.
+    // (Not a plain getByText: the sales-trends panel's top-seller summary can
+    // repeat the same item name elsewhere on the page.)
+    await expect(page.getByRole('heading', { name: 'Test Item 1' })).toBeVisible({ timeout: 10000 });
 
     // Enter selection mode and select both sales
     await page.getByRole('button', { name: /^select$/i }).click();

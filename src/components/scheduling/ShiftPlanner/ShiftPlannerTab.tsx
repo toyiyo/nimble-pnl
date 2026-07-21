@@ -113,6 +113,7 @@ export function ShiftPlannerTab({
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
+  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
   const isMobile = useIsMobile();
 
   const {
@@ -215,7 +216,6 @@ export function ShiftPlannerTab({
 
   const [conflictDialogData, setConflictDialogData] = useState<ConflictDialogData | null>(null);
   const [conflictPendingInputs, setConflictPendingInputs] = useState<ShiftCreateInput[]>([]);
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   // Tab-level coverage Map: Map<templateId, Map<day, SlotCoverage>>
   // Per-slot try/catch so one bad row never blanks the whole grid.

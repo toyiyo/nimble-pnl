@@ -86,6 +86,33 @@ COMMENT ON FUNCTION public.revel_valid_tz(text) IS
   'Shared by the sold_at backfill helpers (migration 2026-07-21).';
 
 -- ============================================================
+-- 2b) revel_created_date_to_utc(text, text): naive-or-offset -> UTC instant.
+--     Mirrors parseDateTime()'s hasOffset branch exactly: a created_date that
+--     already carries a zone (Z / +-hh:mm / +-hhmm) is an absolute instant, so
+--     cast it directly to timestamptz; only a truly naive string is interpreted
+--     in the establishment tz via AT TIME ZONE. Without this branch an offset-
+--     carrying historical row would be falsely flagged pending and "corrected"
+--     incorrectly (re-interpreting its real instant as local).
+-- ============================================================
+CREATE OR REPLACE FUNCTION public.revel_created_date_to_utc(p_raw text, p_tz text)
+RETURNS timestamptz
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT CASE
+    WHEN p_raw IS NULL THEN NULL
+    WHEN p_raw ~* '(Z|[+-][0-9]{2}:?[0-9]{2})$' THEN p_raw::timestamptz
+    ELSE p_raw::timestamp AT TIME ZONE public.revel_valid_tz(p_tz)
+  END;
+$$;
+
+COMMENT ON FUNCTION public.revel_created_date_to_utc(text, text) IS
+  'Converts a Revel raw created_date to a UTC instant, mirroring '
+  'revelOrderProcessor.parseDateTime: offset-carrying strings (Z/+-hh:mm) cast '
+  'directly to timestamptz; naive strings are interpreted in the (validated) '
+  'establishment tz. Shared by the sold_at backfill helpers (migration 2026-07-21).';
+
+-- ============================================================
 -- 3) revel_backfill_pending_count(): pre/post-flight row-count report.
 --    Counts revel_orders rows whose stored sold_at still disagrees with the
 --    tz-corrected value computed from raw_json (validated tz, same fallback
@@ -103,8 +130,7 @@ AS $$
   JOIN public.restaurants r ON r.id = o.restaurant_id
   WHERE public.revel_raw_created_date(o.raw_json) IS NOT NULL
     AND o.sold_at IS DISTINCT FROM
-        (public.revel_raw_created_date(o.raw_json))::timestamp AT TIME ZONE
-        public.revel_valid_tz(r.timezone);
+        public.revel_created_date_to_utc(public.revel_raw_created_date(o.raw_json), r.timezone);
 $$;
 
 COMMENT ON FUNCTION public.revel_backfill_pending_count() IS
@@ -180,12 +206,12 @@ BEGIN
 
   -- ── revel_orders: recompute sold_at from raw_json in the validated tz ──
   UPDATE public.revel_orders o
-  SET sold_at = (public.revel_raw_created_date(o.raw_json))::timestamp AT TIME ZONE v_tz,
+  SET sold_at = public.revel_created_date_to_utc(public.revel_raw_created_date(o.raw_json), v_tz),
       updated_at = now()
   WHERE o.restaurant_id = p_restaurant_id
     AND public.revel_raw_created_date(o.raw_json) IS NOT NULL
     AND o.sold_at IS DISTINCT FROM
-        (public.revel_raw_created_date(o.raw_json))::timestamp AT TIME ZONE v_tz;
+        public.revel_created_date_to_utc(public.revel_raw_created_date(o.raw_json), v_tz);
   GET DIAGNOSTICS v_orders_updated = ROW_COUNT;
 
   -- ── unified_sales: propagate the corrected instant, trigger suppressed ──

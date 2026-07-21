@@ -28,7 +28,7 @@ describe('zonedNaiveToUtc', () => {
     expect(result.toISOString()).toBe('2026-07-19T12:32:00.000Z');
   });
 
-  it('handles the DST spring-forward transition day (2026-03-08) correctly on either side', () => {
+  it('CRITICAL: handles the DST spring-forward transition day (2026-03-08) correctly on either side', () => {
     // 2026-03-08 02:00 local -> 03:00 local in America/Chicago (spring forward).
     // Before the transition (still CST, UTC-6):
     const before = zonedNaiveToUtc('2026-03-08T01:30:00', 'America/Chicago');
@@ -39,7 +39,7 @@ describe('zonedNaiveToUtc', () => {
     expect(after.toISOString()).toBe('2026-03-08T15:00:00.000Z');
   });
 
-  it('handles the 3:00-7:59 AM local window on spring-forward day (single-pass offset probe bug)', () => {
+  it('CRITICAL: handles the 3:00-7:59 AM local window on spring-forward day (single-pass offset probe bug)', () => {
     // Regression for a single-pass offset-probe bug: the naive-as-UTC "guess"
     // instant for 03:30 local (03:30Z) falls BEFORE the 08:00Z transition, so
     // a single formatToParts probe at the guess reads the pre-transition CST

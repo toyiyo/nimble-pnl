@@ -5,7 +5,7 @@
 -- invalid/null-tz fallback), and the pre/post pending-count report.
 
 BEGIN;
-SELECT plan(24);
+SELECT plan(26);
 
 -- Setup: Disable RLS for test data creation (mirrors supabase/tests/revel_integration.sql)
 SET LOCAL role TO postgres;
@@ -295,6 +295,22 @@ SELECT is(
   ),
   0,
   'sold_at reprojected to local tz matches sale_time (+/-1s) for all Revel rows — mismatches = 0'
+);
+
+-- revel_created_date_to_utc: offset-branch mirrors parseDateTime's hasOffset path.
+-- An offset-carrying created_date is already an absolute instant and must be cast
+-- directly (NOT re-interpreted via AT TIME ZONE); a naive string is interpreted in
+-- the establishment tz. Both here denote the same instant, proving an offset row
+-- is not falsely "corrected".
+SELECT is(
+  public.revel_created_date_to_utc('2026-07-19T12:32:16Z', 'America/Chicago'),
+  '2026-07-19T12:32:16+00'::timestamptz,
+  'offset-carrying created_date is cast directly to the same UTC instant (no AT TIME ZONE)'
+);
+SELECT is(
+  public.revel_created_date_to_utc('2026-07-19T07:32:16', 'America/Chicago'),
+  '2026-07-19T12:32:16+00'::timestamptz,
+  'naive created_date (07:32 Central) is interpreted in tz -> 12:32Z'
 );
 
 SELECT * FROM finish();

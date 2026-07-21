@@ -69,23 +69,33 @@ export function ScheduleMetricsRibbon({
   const isWarning = laborBudgetData.hasBudget && laborBudgetData.tier === 'warning';
   const laborTone = isDanger ? 'text-destructive' : isWarning ? 'text-warning' : 'text-foreground';
 
-  const breakdownRows: Array<{ key: string; label: string; dot: string; value: string }> = [
+  type BreakdownRow = { key: string; label: string; dot: string; value: string };
+  const breakdownRows: BreakdownRow[] = [
     {
       key: 'hourly',
       label: 'Hourly',
       dot: 'bg-primary/60',
       value: `$${laborCostBreakdown.hourly.cost.toLocaleString()} (${laborCostBreakdown.hourly.hours.toFixed(0)}h)`,
     },
-    ...(laborCostBreakdown.salary.cost > 0
-      ? [{ key: 'salary', label: 'Salary', dot: 'bg-accent/60', value: `$${laborCostBreakdown.salary.cost.toLocaleString()}` }]
-      : []),
-    ...(laborCostBreakdown.contractor.cost > 0
-      ? [{ key: 'contractor', label: 'Contractors', dot: 'bg-warning/60', value: `$${laborCostBreakdown.contractor.cost.toLocaleString()}` }]
-      : []),
-    ...(laborCostBreakdown.daily_rate.cost > 0
-      ? [{ key: 'daily_rate', label: 'Daily Rate', dot: 'bg-info/60', value: `$${laborCostBreakdown.daily_rate.cost.toLocaleString()}` }]
-      : []),
-  ];
+    laborCostBreakdown.salary.cost > 0 && {
+      key: 'salary',
+      label: 'Salary',
+      dot: 'bg-accent/60',
+      value: `$${laborCostBreakdown.salary.cost.toLocaleString()}`,
+    },
+    laborCostBreakdown.contractor.cost > 0 && {
+      key: 'contractor',
+      label: 'Contractors',
+      dot: 'bg-warning/60',
+      value: `$${laborCostBreakdown.contractor.cost.toLocaleString()}`,
+    },
+    laborCostBreakdown.daily_rate.cost > 0 && {
+      key: 'daily_rate',
+      label: 'Daily Rate',
+      dot: 'bg-info/60',
+      value: `$${laborCostBreakdown.daily_rate.cost.toLocaleString()}`,
+    },
+  ].filter((row): row is BreakdownRow => Boolean(row));
 
   return (
     <div className="sticky top-14 z-30 -mx-4 px-4 bg-background border-b border-border/40">

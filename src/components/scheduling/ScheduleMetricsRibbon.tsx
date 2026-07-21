@@ -67,7 +67,12 @@ export function ScheduleMetricsRibbon({
     laborCostSummary.isAverageHigh ||
     (laborBudgetData.hasBudget && laborBudgetData.tier === 'danger');
   const isWarning = laborBudgetData.hasBudget && laborBudgetData.tier === 'warning';
-  const laborTone = isDanger ? 'text-destructive' : isWarning ? 'text-warning' : 'text-foreground';
+  let laborTone = 'text-foreground';
+  if (isDanger) {
+    laborTone = 'text-destructive';
+  } else if (isWarning) {
+    laborTone = 'text-warning';
+  }
 
   type BreakdownRow = { key: string; label: string; dot: string; value: string };
   const breakdownRows: BreakdownRow[] = [
@@ -97,6 +102,58 @@ export function ScheduleMetricsRibbon({
     },
   ].filter((row): row is BreakdownRow => Boolean(row));
 
+  let metricsContent: React.ReactNode;
+  if (error) {
+    metricsContent = <p className="text-[13px] text-muted-foreground">Couldn't load metrics</p>;
+  } else if (isLoading) {
+    metricsContent = (
+      <div className="flex items-center gap-2">
+        <Skeleton className="h-7 w-24 rounded-full" />
+        <Skeleton className="h-7 w-24 rounded-full" />
+        <Skeleton className="h-7 w-28 rounded-full" />
+      </div>
+    );
+  } else {
+    metricsContent = (
+      <div className="flex flex-wrap items-center gap-2">
+        <MetricPill icon={Users} value={String(activeEmployeeCount)} unit="staff" />
+        <MetricPill icon={Clock} value={totalScheduledHours.toFixed(1)} unit="hrs" />
+        <MetricPill
+          icon={DollarSign}
+          value={`$${laborCostBreakdown.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
+          unit="labor"
+          tone={laborTone}
+        >
+          {(isDanger || isWarning) && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AlertTriangle
+                    className={cn('h-3.5 w-3.5', isDanger ? 'text-destructive' : 'text-warning')}
+                    aria-label="High average rate warning"
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="bottom" className="max-w-xs">
+                  <p className="text-xs">
+                    {laborCostSummary.isAverageHigh
+                      ? 'Average hourly rate is unusually high. Check for data-entry errors in employee rates.'
+                      : 'Scheduled labor is trending against budget. Open Details to review.'}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </MetricPill>
+        {laborCostBreakdown.hourly.hours > 0 && (
+          <span className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
+            <TrendingUp className="h-3 w-3" />
+            ${laborCostSummary.averageHourlyRate.toFixed(2)}/hr avg
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="sticky top-14 z-30 -mx-4 px-4 bg-background border-b border-border/40">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
@@ -114,52 +171,7 @@ export function ScheduleMetricsRibbon({
         </div>
 
         {/* Hero metric pills */}
-        {error ? (
-          <p className="text-[13px] text-muted-foreground">Couldn't load metrics</p>
-        ) : isLoading ? (
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-7 w-24 rounded-full" />
-            <Skeleton className="h-7 w-24 rounded-full" />
-            <Skeleton className="h-7 w-28 rounded-full" />
-          </div>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <MetricPill icon={Users} value={String(activeEmployeeCount)} unit="staff" />
-            <MetricPill icon={Clock} value={totalScheduledHours.toFixed(1)} unit="hrs" />
-            <MetricPill
-              icon={DollarSign}
-              value={`$${laborCostBreakdown.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
-              unit="labor"
-              tone={laborTone}
-            >
-              {(isDanger || isWarning) && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertTriangle
-                        className={cn('h-3.5 w-3.5', isDanger ? 'text-destructive' : 'text-warning')}
-                        aria-label="High average rate warning"
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-xs">
-                      <p className="text-xs">
-                        {laborCostSummary.isAverageHigh
-                          ? 'Average hourly rate is unusually high. Check for data-entry errors in employee rates.'
-                          : 'Scheduled labor is trending against budget. Open Details to review.'}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </MetricPill>
-            {laborCostBreakdown.hourly.hours > 0 && (
-              <span className="inline-flex items-center gap-1 text-[12px] text-muted-foreground">
-                <TrendingUp className="h-3 w-3" />
-                ${laborCostSummary.averageHourlyRate.toFixed(2)}/hr avg
-              </span>
-            )}
-          </div>
-        )}
+        {metricsContent}
 
         {/* Details disclosure */}
         <Button

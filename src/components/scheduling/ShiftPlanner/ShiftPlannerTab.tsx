@@ -30,7 +30,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 
 import { computeCellFill } from '@/lib/shiftFill';
 import { computeLoanedOut, assignLoanedOutCell } from '@/lib/loanedOut';
-import { formatLocalDate } from '@/lib/shiftInterval';
+import { formatLocalDateInTz } from '@/lib/shiftInterval';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -248,9 +248,14 @@ export function ShiftPlannerTab({
       homeArea: s.employee?.area ?? null,
     });
 
-    // Whole-floor shifts pre-grouped by local day, once — computeLoanedOut
-    // needs the whole-floor set per day, but every template on that day can
-    // reuse the same list instead of re-scanning the whole week each time.
+    // Whole-floor shifts pre-grouped by restaurant-local day, once —
+    // computeLoanedOut needs the whole-floor set per day, but every template
+    // on that day can reuse the same list instead of re-scanning the whole
+    // week each time. Bucketed with formatLocalDateInTz (restaurant timezone),
+    // not formatLocalDate (browser timezone): `day` here must line up with
+    // `weekDays`/the belongs() predicate's restaurant-local calendar date, or
+    // a shift near local midnight can land in the wrong day's bucket when the
+    // viewer's browser timezone differs from the restaurant's.
     // Cache each shift's CoverageShift by object identity alongside it (stable
     // within this memo — templateGridData's buckets hold these same `shifts`
     // object references) so a template's bucket below reuses the conversion
@@ -258,7 +263,7 @@ export function ShiftPlannerTab({
     const wholeFloorByDay = new Map<string, CoverageShift[]>();
     const shiftToCoverage = new Map<Shift, CoverageShift>();
     for (const s of shifts) {
-      const dayStr = formatLocalDate(new Date(s.start_time));
+      const dayStr = formatLocalDateInTz(new Date(s.start_time), restaurantTimezone);
       const list = wholeFloorByDay.get(dayStr);
       const cs = toCoverageShift(s);
       shiftToCoverage.set(s, cs);

@@ -4,6 +4,8 @@
  * Handles standard and midnight-crossing shifts, validates duration
  * constraints, detects overlaps, and computes rest-hour gaps.
  */
+import { toZonedTime } from 'date-fns-tz';
+
 export interface DurationWarning {
   code: 'TOO_SHORT' | 'MAX_ENDURANCE';
   message: string;
@@ -140,4 +142,18 @@ export function formatLocalDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, '0');
   const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
+}
+
+/**
+ * Format a Date as YYYY-MM-DD using an explicit IANA timezone (e.g. the
+ * restaurant's), not the browser's local timezone. Use this (instead of
+ * `formatLocalDate`) whenever bucketing a UTC instant (shift.start_time) by
+ * calendar day needs to agree with restaurant-tz-aware server logic (e.g.
+ * `(start_time AT TIME ZONE p_tz)::date` in shift_template_assigned_count) —
+ * `formatLocalDate(new Date(iso))` uses the viewer's browser timezone and can
+ * bucket a shift under the wrong day when the two timezones differ near
+ * local midnight.
+ */
+export function formatLocalDateInTz(date: Date, tz: string): string {
+  return formatLocalDate(toZonedTime(date, tz));
 }

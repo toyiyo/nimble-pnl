@@ -25,7 +25,8 @@ export type NotificationType =
   | 'time_off_approved'
   | 'time_off_rejected'
   | 'pin_reset'
-  | 'availability_reminder';
+  | 'availability_reminder'
+  | 'open_shift_claim_reviewed';
 
 export type NotificationChannel = 'email' | 'push';
 
@@ -48,6 +49,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { key: 'shift_deleted', label: 'Shift deleted', group: 'Scheduling', channels: ['email', 'push'] },
   { key: 'open_shifts_broadcast', label: 'Open shift broadcast', group: 'Scheduling', channels: ['email', 'push'] },
   { key: 'availability_reminder', label: 'Availability reminder', group: 'Scheduling', channels: ['email'] },
+  { key: 'open_shift_claim_reviewed', label: 'Open shift claim reviewed', group: 'Scheduling', channels: ['email', 'push'] },
   { key: 'shift_trade_created', label: 'Shift trade requested', group: 'Trades', channels: ['email', 'push'] },
   { key: 'shift_trade_accepted', label: 'Shift trade accepted', group: 'Trades', channels: ['email', 'push'] },
   { key: 'shift_trade_approved', label: 'Shift trade approved', group: 'Trades', channels: ['email', 'push'] },

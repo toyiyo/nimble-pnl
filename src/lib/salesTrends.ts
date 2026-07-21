@@ -435,11 +435,17 @@ export interface SalesTrendsInsights {
   product: string;
 }
 
-function formatCurrency(n: number): string {
+/**
+ * Exported so `@/components/pos-sales/salesTrendsFormat.ts` can re-export the
+ * same implementation instead of duplicating it — this is the single source
+ * of truth for both `deriveInsights`' copy text and the charts' tick/tooltip
+ * formatting.
+ */
+export function formatCurrency(n: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
-function formatHour(hour: number): string {
+export function formatHour(hour: number): string {
   const period = hour < 12 ? 'AM' : 'PM';
   const display = hour % 12 === 0 ? 12 : hour % 12;
   return `${display}${period}`;

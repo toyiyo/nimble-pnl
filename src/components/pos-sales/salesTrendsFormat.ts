@@ -1,20 +1,13 @@
 /**
  * Small shared display formatters for the Sales Trends panel's sub-charts.
  *
- * Kept out of `@/lib/salesTrends.ts` (which is deliberately React-free and
- * unit-tested in isolation) — these are pure but presentation-only, so they
- * live next to the components that use them.
+ * `formatCurrency`/`formatHour` re-export the implementations in
+ * `@/lib/salesTrends.ts` (which already needs them for `deriveInsights`'
+ * copy text) rather than duplicating the logic here — this file only adds
+ * `formatShortDate`, which is presentation-only and has no lib-side caller.
  */
 
-export function formatCurrency(n: number): string {
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
-}
-
-export function formatHour(hour: number): string {
-  const period = hour < 12 ? 'AM' : 'PM';
-  const display = hour % 12 === 0 ? 12 : hour % 12;
-  return `${display}${period}`;
-}
+export { formatCurrency, formatHour } from '@/lib/salesTrends';
 
 /** `2026-07-01` -> `Jul 1` (local, no timezone conversion — sale_date is a DATE). */
 export function formatShortDate(isoDate: string): string {

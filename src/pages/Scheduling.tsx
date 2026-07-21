@@ -1037,7 +1037,20 @@ const Scheduling = () => {
         </div>
 
         <CardContent className="p-0">
-          {employeesLoading || shiftsLoading ? (
+          {employeesError || shiftsError ? (
+            <div className="text-center py-16 px-6" role="alert">
+              <div className="relative inline-block">
+                <div className="absolute inset-0 bg-destructive/10 rounded-full blur-xl animate-pulse" />
+                <div className="relative p-4 bg-muted rounded-2xl">
+                  <AlertTriangle className="h-10 w-10 text-destructive" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold mt-4 mb-2">Couldn't load schedule</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                Something went wrong loading employees or shifts. Please try again.
+              </p>
+            </div>
+          ) : employeesLoading || shiftsLoading ? (
             <div className="p-6 space-y-4">
               {SKELETON_ROWS.map((rowKey) => (
                 <div key={rowKey} className="flex gap-4">

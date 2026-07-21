@@ -80,34 +80,38 @@ export function ScheduleMetricsRibbon({
       key: 'hourly',
       label: 'Hourly',
       dot: 'bg-primary/60',
-      value: `$${laborCostBreakdown.hourly.cost.toLocaleString()} (${laborCostBreakdown.hourly.hours.toFixed(0)}h)`,
+      value: `$${laborCostBreakdown.hourly.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${laborCostBreakdown.hourly.hours.toFixed(0)}h)`,
     },
     laborCostBreakdown.salary.cost > 0 && {
       key: 'salary',
       label: 'Salary',
       dot: 'bg-accent/60',
-      value: `$${laborCostBreakdown.salary.cost.toLocaleString()}`,
+      value: `$${laborCostBreakdown.salary.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
     },
     laborCostBreakdown.contractor.cost > 0 && {
       key: 'contractor',
       label: 'Contractors',
       dot: 'bg-warning/60',
-      value: `$${laborCostBreakdown.contractor.cost.toLocaleString()}`,
+      value: `$${laborCostBreakdown.contractor.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
     },
     laborCostBreakdown.daily_rate.cost > 0 && {
       key: 'daily_rate',
       label: 'Daily Rate',
       dot: 'bg-info/60',
-      value: `$${laborCostBreakdown.daily_rate.cost.toLocaleString()}`,
+      value: `$${laborCostBreakdown.daily_rate.cost.toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
     },
   ].filter((row): row is BreakdownRow => Boolean(row));
 
   let metricsContent: React.ReactNode;
   if (error) {
-    metricsContent = <p className="text-[13px] text-muted-foreground">Couldn't load metrics</p>;
+    metricsContent = (
+      <p role="alert" className="text-[13px] text-muted-foreground">
+        Couldn't load metrics
+      </p>
+    );
   } else if (isLoading) {
     metricsContent = (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2" role="status" aria-live="polite" aria-label="Loading metrics">
         <Skeleton className="h-7 w-24 rounded-full" />
         <Skeleton className="h-7 w-24 rounded-full" />
         <Skeleton className="h-7 w-28 rounded-full" />
@@ -128,10 +132,16 @@ export function ScheduleMetricsRibbon({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <AlertTriangle
-                    className={cn('h-3.5 w-3.5', isDanger ? 'text-destructive' : 'text-warning')}
-                    aria-label="High average rate warning"
-                  />
+                  <button
+                    type="button"
+                    className="inline-flex"
+                    aria-label={laborCostSummary.isAverageHigh ? 'High average rate warning' : 'Labor budget warning'}
+                  >
+                    <AlertTriangle
+                      className={cn('h-3.5 w-3.5', isDanger ? 'text-destructive' : 'text-warning')}
+                      aria-hidden="true"
+                    />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
                   <p className="text-xs">
@@ -165,7 +175,7 @@ export function ScheduleMetricsRibbon({
           <div className="min-w-0">
             <h1 className="text-[14px] font-semibold text-foreground leading-tight truncate">Staff schedule</h1>
             <p className="text-[12px] text-muted-foreground leading-tight">
-              {shiftCount} shifts · {scheduledEmployeeCount} staff
+              {shiftCount} {shiftCount === 1 ? 'shift' : 'shifts'} · {scheduledEmployeeCount} staff
             </p>
           </div>
         </div>
@@ -177,8 +187,9 @@ export function ScheduleMetricsRibbon({
         <Button
           variant="ghost"
           size="sm"
+          disabled={isLoading || error}
           onClick={() => setDetailsOpen((open) => !open)}
-          aria-expanded={detailsOpen}
+          aria-expanded={detailsOpen && !isLoading && !error}
           aria-controls="ribbon-details"
           className="ml-auto h-8 px-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
         >

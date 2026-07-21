@@ -74,6 +74,19 @@ describe('ScheduleMetricsRibbon', () => {
     expect(screen.getByLabelText(/high average rate warning/i)).toBeInTheDocument();
   });
 
+  it('uses a budget-specific label when only the budget tier triggers the warning', () => {
+    renderRibbon({
+      laborBudgetData: { ...budget, hasBudget: true, tier: 'warning' },
+    });
+    expect(screen.getByLabelText(/labor budget warning/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/high average rate warning/i)).not.toBeInTheDocument();
+  });
+
+  it('singularizes the shift count when there is exactly one shift', () => {
+    renderRibbon({ shiftCount: 1 });
+    expect(screen.getByText(/1 shift ·/)).toBeInTheDocument();
+  });
+
   it('renders skeletons while loading', () => {
     const { container } = renderRibbon({ isLoading: true });
     expect(screen.queryByText('$3,258')).not.toBeInTheDocument();

@@ -107,21 +107,26 @@ Constant message → no enumeration of employees/restaurants.
 
 ### 3. `get_open_shifts`
 
-Gate at the top; a caller must belong to the restaurant as **either** a
-team member **or** a linked employee (employees legitimately view open
-shifts to claim them). Silent empty return — same shape as the existing
+Gate at the top; a caller must belong to the restaurant as **either** an
+internal team member **or** a linked employee (employees legitimately view
+open shifts to claim them). Silent empty return — same shape as the existing
 `open_shifts_enabled=false` branch — so there is no enumeration signal:
 
 ```sql
 IF NOT (
-    EXISTS (SELECT 1 FROM public.user_restaurants ur
-            WHERE ur.user_id = auth.uid() AND ur.restaurant_id = p_restaurant_id)
+    public.user_is_internal_team(p_restaurant_id)
     OR EXISTS (SELECT 1 FROM public.employees e
             WHERE e.user_id = auth.uid() AND e.restaurant_id = p_restaurant_id)
 ) THEN
     RETURN;
 END IF;
 ```
+
+`user_is_internal_team` (owner/manager/chef/staff, defined in
+`20260120100000_add_collaborator_roles.sql:49`) is used instead of blanket
+`user_restaurants` membership so `kiosk` and external `collaborator_*` roles
+— which have no operational reason to browse open-shift availability — are
+excluded. Linked employees are covered by the second branch.
 
 ## Decided trade-offs
 
@@ -130,14 +135,12 @@ END IF;
   audience. Per lesson [2026-07-13] "read grant must match write grant,"
   widening approval to `operations_manager` is a separate product decision,
   not smuggled in via a security fix.
-- **No `SET search_path` added.** The four functions in this family have
-  never set it (the `20260707090000` migration explicitly chose parity over
-  an unrelated behavior change). Every table reference in the new bodies is
-  schema-qualified (`public.…`) and the only helper called
-  (`user_has_role`) sets its own search_path, so the authz fix is safe
-  without it. Adding `search_path` hardening across the family is a
-  legitimate but separate change; keeping this diff focused on the flagged
-  CRITICAL avoids inconsistent posture. (Noted for a potential follow-up.)
+- **`SET search_path = public` added to all four functions.** (Revised after
+  Phase 2.5 review.) Every table reference in the new bodies is already
+  schema-qualified so this is a zero-behavior-change addition, and it matches
+  the helper (`user_has_role`/`user_is_internal_team`) which already set
+  `search_path`. Adding it while the file is open removes the SECURITY
+  DEFINER search-path-injection gap rather than deferring it.
 - **`claim_open_shift` stays employee-self-service-only.** On `main` there is
   no manager-assigns-employee caller; the fill-by-assignment PR introduces
   that flow and re-creates these functions, so it will define any
@@ -161,6 +164,20 @@ so they observe the RPC's real write, not the caller's RLS-scoped view.
 Fixtures: restaurant R1 + manager M1 + employee E1 (claimer); restaurant R2
 + manager M2 + employee E2. Distinct pending claims per scenario so one
 scenario's write can't change another's starting state.
+
+**Fixture rows that must be present so scenarios 7 & 9 exercise real logic
+(not short-circuit paths)** — call these out explicitly in the test header:
+- `staffing_settings` for R1: `open_shifts_enabled=true`; scenario 7's
+  restaurant needs `require_shift_claim_approval=false` (instant approval so
+  the legit self-claim returns `success=true`).
+- `shift_templates` for R1: `is_active=true`, `capacity>1`,
+  `days` containing the target date's DOW, matching times.
+- `schedule_publications` covering the target week for R1, else
+  `get_open_shifts` (scenario 9) returns zero rows for everyone and the
+  membership assertion passes vacuously.
+- The membership-allowed subject in scenario 9 must be denied-by-default
+  baseline first where practical, then shown to see the row — avoid the
+  vacuous-test trap (lesson [2026-07-13]).
 
 Scenarios:
 1. **approve** — E1 (claimer, non-manager) cannot approve their own claim →

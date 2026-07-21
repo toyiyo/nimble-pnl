@@ -45,8 +45,7 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { BroadcastOpenShiftsDialog } from '@/components/scheduling/BroadcastOpenShiftsDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
-import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
-import { LaborBudgetIndicator } from '@/components/scheduling/LaborBudgetIndicator';
+import { ScheduleMetricsRibbon } from '@/components/scheduling/ScheduleMetricsRibbon';
 import { useScheduleLaborBudget } from '@/hooks/useScheduleLaborBudget';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
@@ -88,8 +87,6 @@ import {
   Calendar,
   Plus,
   Users,
-  DollarSign,
-  Clock,
   Edit,
   Trash2,
   ChevronLeft,
@@ -103,7 +100,6 @@ import {
   History,
   Printer,
   ArrowLeftRight,
-  TrendingUp,
   Upload,
   LayoutGrid,
   Copy,
@@ -274,8 +270,8 @@ const Scheduling = () => {
   );
 
   // Fetch ALL employees (including inactive) to show historical shifts
-  const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
-  const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const { employees: allEmployees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId, { status: 'all' });
+  const { shifts, loading: shiftsLoading, error: shiftsError } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const { templates } = useShiftTemplates(restaurantId);
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const { timeOffRequests } = useTimeOffRequests(restaurantId);
@@ -775,272 +771,29 @@ const Scheduling = () => {
     );
   }
 
+  // Only treat a query error as fatal when there is no usable cached data to
+  // show. React Query keeps the last-good data on a failed background refetch
+  // (both hooks use refetchOnWindowFocus), so keying purely off error truthiness
+  // would blank a valid, already-rendered schedule on a transient blip.
+  const hasScheduleError =
+    (Boolean(employeesError) && allEmployees.length === 0) ||
+    (Boolean(shiftsError) && shifts.length === 0);
+
   return (
     <FeatureGate featureKey="scheduling">
     <div className="space-y-6">
-      {/* Header - Professional Kitchen Aesthetic */}
-      <div className="relative overflow-hidden rounded-xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/30">
-        {/* Subtle grid pattern overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px),
-                             linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
-            backgroundSize: '24px 24px'
-          }}
-        />
-
-        <div className="relative px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {/* Icon with animated ring */}
-              <div className="relative">
-                <div className="absolute inset-0 rounded-xl bg-primary/20 blur-lg animate-pulse" />
-                <div className="relative p-3 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
-                  <Calendar className="h-6 w-6 text-primary-foreground" />
-                </div>
-              </div>
-
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                  Staff Schedule
-                </h1>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Manage shifts, availability, and labor costs
-                </p>
-              </div>
-            </div>
-
-            {/* Quick stats in header */}
-            <div className="hidden lg:flex items-center gap-6">
-              <div className="text-right">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">This Week</p>
-                <p className="text-lg font-semibold text-foreground">{shifts.length} shifts</p>
-              </div>
-              <div className="h-8 w-px bg-border" />
-              <div className="text-right">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Coverage</p>
-                <p className="text-lg font-semibold text-foreground">{scheduledEmployeeCount} staff</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Metrics Row - Enhanced Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {/* Active Employees Card */}
-        <Card className="group relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors duration-300">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/5 to-transparent rounded-bl-full" />
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Employees</CardTitle>
-            <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
-              <Users className="h-4 w-4 text-primary" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {employeesLoading ? (
-              <Skeleton className="h-9 w-16" />
-            ) : (
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight">{filteredActiveEmployees.length}</span>
-                <span className="text-sm text-muted-foreground">staff</span>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-              <span>Ready to be scheduled</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Hours Card */}
-        <Card className="group relative overflow-hidden border-border/50 hover:border-accent/30 transition-colors duration-300">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-accent/5 to-transparent rounded-bl-full" />
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Hours</CardTitle>
-            <div className="p-2 rounded-lg bg-accent/10 group-hover:bg-accent/15 transition-colors">
-              <Clock className="h-4 w-4 text-accent" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {shiftsLoading ? (
-              <Skeleton className="h-9 w-20" />
-            ) : (
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight">{totalScheduledHours.toFixed(1)}</span>
-                <span className="text-sm text-muted-foreground">hours</span>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Scheduled this week
-            </p>
-            {/* Mini progress bar */}
-            {!shiftsLoading && totalScheduledHours > 0 && (
-              <div className="mt-3 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-accent to-accent/70 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((totalScheduledHours / 200) * 100, 100)}%` }}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Labor Cost Card */}
-        <Card className={cn(
-          "group relative overflow-hidden border-border/50 transition-colors duration-300",
-          laborCostSummary.isAverageHigh
-            ? "border-destructive/50 hover:border-destructive/70"
-            : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-              ? "border-destructive/50 hover:border-destructive/70"
-              : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                ? "border-warning/50 hover:border-warning/70"
-                : "hover:border-success/30"
-        )}>
-          <div className={cn(
-            "absolute top-0 right-0 w-24 h-24 rounded-bl-full",
-            laborCostSummary.isAverageHigh
-              ? "bg-gradient-to-bl from-destructive/10 to-transparent"
-              : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-                ? "bg-gradient-to-bl from-destructive/10 to-transparent"
-                : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                  ? "bg-gradient-to-bl from-warning/10 to-transparent"
-                  : "bg-gradient-to-bl from-success/5 to-transparent"
-          )} />
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              Labor Cost
-              {laborCostSummary.isAverageHigh && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" aria-label="High average rate warning" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      <p className="text-xs">Average hourly rate is unusually high. Check for data entry errors in employee rates.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </CardTitle>
-            <div className={cn(
-              "p-2 rounded-lg transition-colors",
-              laborCostSummary.isAverageHigh
-                ? "bg-destructive/10 group-hover:bg-destructive/15"
-                : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-                  ? "bg-destructive/10 group-hover:bg-destructive/15"
-                  : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                    ? "bg-warning/10 group-hover:bg-warning/15"
-                    : "bg-success/10 group-hover:bg-success/15"
-            )}>
-              <DollarSign className={cn(
-                "h-4 w-4",
-                laborCostSummary.isAverageHigh
-                  ? "text-destructive"
-                  : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-                    ? "text-destructive"
-                    : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                      ? "text-warning"
-                      : "text-success"
-              )} />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {shiftsLoading ? (
-              <Skeleton className="h-9 w-24" />
-            ) : (
-              <>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-sm text-muted-foreground">$</span>
-                  <span className="text-3xl font-bold tracking-tight">{laborCostBreakdown.total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                </div>
-
-                {/* Cost breakdown grid */}
-                <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-primary/60" />
-                      <span>Hourly</span>
-                    </span>
-                    <span className="font-medium tabular-nums">
-                      ${laborCostBreakdown.hourly.cost.toLocaleString()}
-                      <span className="text-muted-foreground ml-1">
-                        ({laborCostBreakdown.hourly.hours.toFixed(0)}h)
-                      </span>
-                    </span>
-                  </div>
-
-                  {laborCostBreakdown.hourly.hours > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <TrendingUp className="w-3 h-3" />
-                        Avg Rate
-                      </span>
-                      <span className={cn(
-                        "font-medium tabular-nums",
-                        laborCostSummary.isAverageHigh && 'text-destructive'
-                      )}>
-                        ${laborCostSummary.averageHourlyRate.toFixed(2)}/hr
-                      </span>
-                    </div>
-                  )}
-
-                  {laborCostBreakdown.salary.cost > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-accent/60" />
-                        <span>Salary</span>
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        ${laborCostBreakdown.salary.cost.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-
-                  {laborCostBreakdown.contractor.cost > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-warning/60" />
-                        <span>Contractors</span>
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        ${laborCostBreakdown.contractor.cost.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-
-                  {laborCostBreakdown.daily_rate.cost > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-info/60" />
-                        <span>Daily Rate</span>
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        ${laborCostBreakdown.daily_rate.cost.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Top Earners Breakdown */}
-                {laborCostSummary.employeeCosts.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-border/50">
-                    <LaborCostBreakdown
-                      employeeCosts={laborCostSummary.employeeCosts}
-                      onEditEmployee={handleEditEmployeeById}
-                      maxItems={3}
-                      showViewAll={false}
-                    />
-                  </div>
-                )}
-                {/* Labor Budget Comparison */}
-                <LaborBudgetIndicator budgetData={laborBudgetData} />
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <ScheduleMetricsRibbon
+        activeEmployeeCount={filteredActiveEmployees.length}
+        totalScheduledHours={totalScheduledHours}
+        laborCostBreakdown={laborCostBreakdown}
+        laborCostSummary={laborCostSummary}
+        laborBudgetData={laborBudgetData}
+        shiftCount={shifts.length}
+        scheduledEmployeeCount={scheduledEmployeeCount}
+        isLoading={employeesLoading || shiftsLoading}
+        error={hasScheduleError}
+        onEditEmployee={handleEditEmployeeById}
+      />
 
       {/* Tabs for Schedule, Time-Off, and Availability */}
       <Tabs defaultValue="schedule" className="space-y-4">
@@ -1348,7 +1101,20 @@ const Scheduling = () => {
         </div>
 
         <CardContent className="p-0">
-          {employeesLoading || shiftsLoading ? (
+          {hasScheduleError ? (
+            <div className="text-center py-16 px-6" role="alert">
+              <div className="relative inline-block">
+                <div className="absolute inset-0 bg-destructive/10 rounded-full blur-xl animate-pulse" />
+                <div className="relative p-4 bg-muted rounded-2xl">
+                  <AlertTriangle className="h-10 w-10 text-destructive" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold mt-4 mb-2">Couldn't load schedule</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                Something went wrong loading employees or shifts. Please try again.
+              </p>
+            </div>
+          ) : employeesLoading || shiftsLoading ? (
             <div className="p-6 space-y-4">
               {SKELETON_ROWS.map((rowKey) => (
                 <div key={rowKey} className="flex gap-4">

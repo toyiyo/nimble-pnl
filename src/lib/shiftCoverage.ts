@@ -43,8 +43,11 @@ export function minutesToCompact(min: number): string {
 
 /**
  * Parse "HH:MM:SS" or "HH:MM" into minutes from midnight (integer).
+ *
+ * Exported so `computeLoanedOut` (loanedOut.ts) can reuse the same window
+ * clipping math instead of re-deriving it.
  */
-function parseTimeToMinutes(t: string): number {
+export function parseTimeToMinutes(t: string): number {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
 }

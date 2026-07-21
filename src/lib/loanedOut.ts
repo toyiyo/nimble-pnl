@@ -1,4 +1,73 @@
-import type { SlotCoverage, CoveringEmployee } from '@/types/scheduling';
+import { isoToLocalMinutes, parseTimeToMinutes } from '@/lib/shiftCoverage';
+import type { CoverageShift, SlotCoverage, CoveringEmployee } from '@/types/scheduling';
+
+/**
+ * Options bag for computeLoanedOut. Mirrors `ComputeSlotCoverageOptions` from
+ * shiftCoverage.ts, plus the window fields it no longer receives positionally.
+ */
+export interface ComputeLoanedOutOptions {
+  /** The position the slot requires (e.g. "Server"). */
+  position: string;
+  /** IANA timezone of the restaurant. */
+  tz: string;
+  /** "YYYY-MM-DD" — the local calendar date of the slot. */
+  dateStr: string;
+  /** "HH:MM:SS" or "HH:MM" — local start of the slot. */
+  windowStart: string;
+  /** "HH:MM:SS" or "HH:MM" — local end of the slot (may be < start for overnight). */
+  windowEnd: string;
+  /**
+   * The template's own area. null / undefined => no loaned-out detection
+   * (whole-restaurant, back-compat) — always returns [].
+   */
+  area?: string | null;
+}
+
+/**
+ * Ghosts: employees whose home area is this slot's area but who are working a
+ * *different* area during the window (loaned out elsewhere). Extracted
+ * verbatim from `computeSlotCoverage`'s loaned-out branch — unlike
+ * `computeCellFill`, this needs the **whole-floor** shift set for the day
+ * (not just the template's own bucket), since the loan is only visible by
+ * comparing home area against work area across all of that day's shifts.
+ *
+ * Never counted toward `openSpots` — purely informational.
+ */
+export function computeLoanedOut(shiftsForDay: CoverageShift[], options: ComputeLoanedOutOptions): CoveringEmployee[] {
+  const { position, tz, dateStr, windowStart, windowEnd, area } = options;
+  if (area === null || area === undefined) return [];
+
+  const w0 = parseTimeToMinutes(windowStart);
+  const w1raw = parseTimeToMinutes(windowEnd);
+  // Overnight window: if end ≤ start, treat end as next-day (+1440)
+  const w1 = w1raw <= w0 ? w1raw + 1440 : w1raw;
+
+  const loanedOut: CoveringEmployee[] = [];
+  for (const s of shiftsForDay) {
+    if (s.position !== position) continue;
+    if (s.status === 'cancelled') continue;
+    if ((s.homeArea ?? null) !== area || (s.area ?? null) === area) continue;
+
+    const ds = isoToLocalMinutes(s.start_time, dateStr, tz);
+    let de = isoToLocalMinutes(s.end_time, dateStr, tz);
+    if (de <= ds) de += 1440;
+
+    const cs = Math.max(w0, ds);
+    const ce = Math.min(w1, de);
+    if (cs >= ce) continue;
+
+    loanedOut.push({
+      employeeId: s.employee_id,
+      employeeName: s.employee_name ?? null,
+      homeArea: s.homeArea ?? null,
+      workArea: s.area ?? null,
+      startMin: cs,
+      endMin: ce,
+    });
+  }
+  loanedOut.sort((a, b) => a.startMin - b.startMin);
+  return loanedOut;
+}
 
 /**
  * De-dup loaned-out ghosts to a single cell per (employee, day).

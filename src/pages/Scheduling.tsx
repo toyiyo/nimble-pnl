@@ -249,8 +249,8 @@ const Scheduling = () => {
   );
 
   // Fetch ALL employees (including inactive) to show historical shifts
-  const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
-  const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const { employees: allEmployees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId, { status: 'all' });
+  const { shifts, loading: shiftsLoading, error: shiftsError } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const { templates } = useShiftTemplates(restaurantId);
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const { timeOffRequests } = useTimeOffRequests(restaurantId);
@@ -727,6 +727,7 @@ const Scheduling = () => {
         shiftCount={shifts.length}
         scheduledEmployeeCount={scheduledEmployeeCount}
         isLoading={employeesLoading || shiftsLoading}
+        error={Boolean(employeesError || shiftsError)}
         onEditEmployee={handleEditEmployeeById}
       />
 

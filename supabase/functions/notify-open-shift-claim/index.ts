@@ -48,9 +48,11 @@ serve(async (req) => {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) throw new Error("Unauthorized");
 
-    const { claimId, action }: RequestBody = await req.json();
-    if (!claimId || (action !== "approved" && action !== "rejected")) {
-      return new Response(JSON.stringify({ error: "claimId and action ('approved'|'rejected') are required" }),
+    // `action` in the body is advisory only — the notification we actually send is
+    // derived from the persisted claim status below, never trusted from the caller.
+    const { claimId }: RequestBody = await req.json();
+    if (!claimId) {
+      return new Response(JSON.stringify({ error: "claimId is required" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 });
     }
 
@@ -58,7 +60,7 @@ serve(async (req) => {
     const { data: claim, error: claimError } = await admin
       .from("open_shift_claims")
       .select(`
-        id, restaurant_id, shift_date, reviewer_note,
+        id, restaurant_id, shift_date, reviewer_note, status,
         shift_template:shift_templates(name, start_time, end_time, position),
         employee:employees!claimed_by_employee_id(name, email, user_id),
         restaurant:restaurants(name)
@@ -83,12 +85,25 @@ serve(async (req) => {
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 403 });
     }
 
+    // Derive the notification from the PERSISTED claim status, never the request body.
+    // Otherwise a reviewer could POST for a claim whose real state differs — e.g. notify
+    // "rejected" for an already-approved claim, or notify a still-pending/cancelled claim —
+    // sending an email/push that contradicts the database. (Codex P2, PR #627.)
+    const effectiveAction: ClaimAction | null =
+      claim.status === "approved" ? "approved"
+      : claim.status === "rejected" ? "rejected"
+      : null;
+    if (!effectiveAction) {
+      return new Response(JSON.stringify({ error: `Claim is not in a reviewed state (status: ${claim.status})` }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 409 });
+    }
+
     const tmpl = claim.shift_template as unknown as { name: string; start_time: string; end_time: string; position: string } | null;
     const emp = claim.employee as unknown as { name: string; email: string | null; user_id: string | null } | null;
     const rest = claim.restaurant as unknown as { name: string } | null;
 
     const content = buildClaimNotificationContent({
-      action,
+      action: effectiveAction,
       employeeName: emp?.name ?? "there",
       templateName: tmpl?.name ?? "your shift",
       position: tmpl?.position ?? "—",
@@ -121,7 +136,7 @@ serve(async (req) => {
           title: content.heading,
           body: content.pushBody,
           url: EMPLOYEE_SHIFTS_URL,
-          tag: `claim-${action}-${claimId}`,
+          tag: `claim-${effectiveAction}-${claimId}`,
         });
         return r.sent;
       } catch (e) {

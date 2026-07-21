@@ -2,7 +2,7 @@
 -- (see docs/superpowers/specs/2026-07-20-bulk-deduction-timeout-design.md)
 --
 -- GREEN against the batched 7-arg function
--- (migration 20260720120000_bulk_deduction_keyset_batching.sql), which adds
+-- (migration 20260720120001_bulk_deduction_keyset_batching.sql), which adds
 -- p_batch_size/cursor params and a tenant-authz guard on top of the
 -- pre-batching 3-arg signature
 -- (supabase/migrations/20251023164509_a85d8666-30e6-44bd-87f3-a5a816fc341f.sql).

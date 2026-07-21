@@ -334,3 +334,32 @@ iframe[name^="__privateStripe"] {
     hsl(var(--border) / 0.3) 5px
   );
 }
+
+@layer utilities {
+  /* Neutral slate hatch for approved time-off cells in the schedule grid.
+     Deliberately distinct from the emerald/amber/red availability palette
+     AND from info-blue (which server shifts also use). */
+  .timeoff-hatch {
+    background-color: hsl(var(--muted-foreground) / 0.05);
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 4px,
+      hsl(var(--muted-foreground) / 0.14) 4px,
+      hsl(var(--muted-foreground) / 0.14) 5px
+    );
+  }
+
+  /* Same geometry as .timeoff-hatch, in destructive red — for a shift
+     scheduled during approved time off (isOff && hasShift). */
+  .conflict-hatch {
+    background-color: hsl(var(--destructive) / 0.05);
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 4px,
+      hsl(var(--destructive) / 0.14) 4px,
+      hsl(var(--destructive) / 0.14) 5px
+    );
+  }
+}

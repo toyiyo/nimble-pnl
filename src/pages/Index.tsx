@@ -632,6 +632,7 @@ const Index = () => {
                     queryClient.invalidateQueries({ queryKey: ['monthly-metrics'] });
                     queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
                     queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+                    queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
                   }}
                   className="w-full sm:w-auto"
                 />

@@ -92,3 +92,67 @@ export function zonedNaiveToUtc(naive: string, timeZone: string | null | undefin
   const offset = tzOffsetMs(new Date(guess), tz);
   return new Date(guess - offset);
 }
+
+/**
+ * Minimal shape of the `.from().select().eq().maybeSingle()` chain the Revel
+ * sync callers use. Type-agnostic (like `restaurantInfo.ts`) so both the real
+ * Deno supabase-js client and Vitest stubs satisfy it without a URL import.
+ */
+interface RestaurantTimeZoneQueryClient {
+  from(table: string): {
+    select(columns: string): {
+      eq(column: string, value: string): {
+        maybeSingle(): Promise<{
+          data: { timezone?: string | null } | null;
+          error: { message: string } | null;
+        }>;
+      };
+    };
+  };
+}
+
+/**
+ * Resolve a restaurant's IANA timezone once per sync run, for the Revel
+ * callers (`revel-webhook`, `revel-sync-data`, `revel-bulk-sync`) to pass
+ * into `processOrder`/`normalizeOrder`.
+ *
+ * Degrades to `DEFAULT_TIMEZONE` (never throws) on a missing row, a query
+ * error, a null/empty stored timezone, or an invalid IANA identifier —
+ * logging a warning in every fallback case so a misconfigured
+ * `restaurants.timezone` surfaces in function logs instead of silently
+ * mis-attributing sale hours.
+ */
+export async function resolveRestaurantTimeZone(
+  supabase: RestaurantTimeZoneQueryClient,
+  restaurantId: string,
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('restaurants')
+    .select('timezone')
+    .eq('id', restaurantId)
+    .maybeSingle();
+
+  if (error || !data) {
+    console.warn(
+      `resolveRestaurantTimeZone: failed to load restaurants.timezone for ${restaurantId}` +
+        (error ? ` (${error.message})` : ' (no row found)') +
+        `; falling back to ${DEFAULT_TIMEZONE}`,
+    );
+    return DEFAULT_TIMEZONE;
+  }
+
+  if (!data.timezone) {
+    console.warn(
+      `resolveRestaurantTimeZone: restaurants.timezone is null for ${restaurantId}; falling back to ${DEFAULT_TIMEZONE}`,
+    );
+    return DEFAULT_TIMEZONE;
+  }
+
+  const tz = safeTz(data.timezone);
+  if (tz !== data.timezone) {
+    console.warn(
+      `resolveRestaurantTimeZone: invalid restaurants.timezone "${data.timezone}" for ${restaurantId}; falling back to ${DEFAULT_TIMEZONE}`,
+    );
+  }
+  return tz;
+}

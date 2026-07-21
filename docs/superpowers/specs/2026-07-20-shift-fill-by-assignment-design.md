@@ -170,8 +170,96 @@ New migration `supabase/migrations/<ts>_shift_fill_by_assignment.sql`:
   (c) `claim_open_shift` stamps `shift_template_id`; (d) legacy null-FK exact
   match counts; (e) distinct-employee dedupe.
 
+## Design Review Resolutions (Phase 2.5)
+
+Both design reviewers (Supabase + Frontend) ran against this doc. Resolutions:
+
+### Client — keep `SlotCoverage`, don't introduce a field-dropping type
+
+The reviewers flagged (Critical C1 / Major C2) that dropping `loanedOut` from
+the cell type breaks `assignLoanedOutCell` ([loanedOut.ts:29](../../../src/lib/loanedOut.ts))
+and `CoverageDetail`'s "Covering elsewhere" section
+([CoverageDetail.tsx:76](../../../src/components/scheduling/ShiftPlanner/CoverageDetail.tsx),
+which reads `coveringEmployees`, `segments`, **and** `loanedOut` off `coverage`).
+
+**Resolution: keep the `SlotCoverage` type and all its fields.** Do not add a
+`SlotFill` type. Instead:
+
+- `computeCellFill(bucketShifts, capacity, { position, tz, dateStr, windowStart, windowEnd })`
+  returns the fill fields **only** — `{ minConcurrent, openSpots, coveragePct,
+  segments, coveringEmployees }` — computed over the template's own bucket, with
+  `openSpots = max(0, capacityFloor(capacity) − distinctAssignedCount)` and
+  `distinctAssignedCount = COUNT(DISTINCT employee_id)` among the bucket's
+  non-cancelled shifts.
+- `computeLoanedOut(shiftsForDay, { position, tz, dateStr, windowStart, windowEnd, area })`
+  returns `CoveringEmployee[]` — the loaned-out ghosts for one (template, day),
+  extracted verbatim from `computeSlotCoverage`'s current loaned-out branch. It
+  still needs the **whole-floor** shift set for that day.
+- **`ShiftPlannerTab` assembles** `SlotCoverage = { ...computeCellFill(bucket),
+  loanedOut: computeLoanedOut(wholeFloorForDay) }`. So the map stays
+  `Map<templateId, Map<day, SlotCoverage>>` with `loanedOut` populated —
+  `assignLoanedOutCell`, `CoverageDetail`, `ShiftCell`, and `TemplateGrid` keep
+  their exact signatures. **No type migration.**
+
+This makes `computeSlotCoverage` decompose into `computeCellFill` +
+`computeLoanedOut`; the whole-floor function is retired.
+
+- **Perf (Minor C5):** pre-group the week's shifts into `Map<day, CoverageShift[]>`
+  **once** before the template loop, so `computeLoanedOut` iterates only that
+  day's shifts, not the whole week per (template, day). `computeCellFill` already
+  gets an O(1)-sized bucket.
+- **`React.memo` (Major C3):** replace `ShiftCell`'s `prev.coverage ===
+  next.coverage` identity check with a primitive comparison
+  (`openSpots`, `coveragePct`, `coveringEmployees.length`, `loanedOut.length`)
+  since the coverage map is rebuilt wholesale on every edit and identity always
+  fails today. Keep the rest of the comparator as-is.
+- **coveragePct narrowing (Minor C8):** scoping the sweep to the bucket makes
+  `coveragePct`/`segments` legitimately narrow for slots that previously showed
+  phantom cross-template coverage — intended. Add a `CoverageDetail`/`computeCellFill`
+  unit assertion pinning it.
+- **Over-assignment badge (Minor C7):** 2 employees on a capacity-1 template
+  still renders "1/1" (`filledCount = capacity − openSpots` clamps). Pre-existing,
+  not a regression. **Spawn-off**, not this PR.
+
+### Server — preferred-pick UNION, and fix the second FK-omitting path
+
+- **Critical S1 — `approve_open_shift_claim` also omits the FK.** Migration
+  `20260707090000_approve_open_shift_claim_active_guard.sql` creates the shift on
+  the manager-approval path and omits `shift_template_id`. **Add task:**
+  `CREATE OR REPLACE approve_open_shift_claim` to stamp
+  `shift_template_id = v_claim.shift_template_id` on its `INSERT INTO shifts`.
+  Without this, approval-required restaurants keep minting null-FK shifts forever.
+- **Major S1 + S2 — preferred-pick, structured as UNION.**
+  `shift_template_assigned_count` returns `COUNT(*)` over a `UNION` (dedupes
+  employees across branches) of:
+  - **Branch A (FK):** `SELECT employee_id FROM shifts WHERE shift_template_id =
+    p_template_id AND …` — served by the partial index
+    `idx_shifts_shift_template_id`.
+  - **Branch B (null-FK preferred-pick):** null-FK shifts on the date whose
+    `LATERAL` best-match template resolves to `p_template_id`. The LATERAL mirrors
+    `findAreaAwareTemplate`: filter active templates by exact start/end time +
+    position + `EXTRACT(DOW …) = ANY(days)` + `isAreaCompatible(t.area, e.area)`
+    (join `employees e`), `ORDER BY (t.area IS NOT DISTINCT FROM e.area) DESC,
+    t.start_time, t.id LIMIT 1`. This attributes each legacy shift to exactly one
+    template — no double-count. Served by `idx_shifts_restaurant_position_status`.
+  - The deterministic tie-break when the employee has no area differs slightly
+    from the client's arbitrary input-order pick; both are single-attribution, so
+    chips/badge can't diverge. Documented minor divergence in a rare legacy case.
+  - Verify with `EXPLAIN ANALYZE` that both index paths are used (no seq scan).
+- **Minor S1 — spell out "active on day"** = `is_active = true` **AND**
+  `EXTRACT(DOW FROM p_date)::int = ANY(t.days)`, in the migration comments.
+- **Minor S2 — defense in depth:** `shift_template_assigned_count` joins
+  `shift_templates` on `id = p_template_id AND restaurant_id = p_restaurant_id`,
+  so a mismatched pair returns 0 rather than leaking another tenant's data.
+- **Minor S3 — per-(template,date) call:** `SECURITY DEFINER` prevents inlining,
+  so `get_open_shifts` makes one real function call per row (same shape as the old
+  `shift_slot_min_concurrent`). Acceptable at per-restaurant scale; documented.
+- **Minor S4 — DROP `shift_slot_min_concurrent`** only after re-grepping the final
+  tree for references; bare `DROP` (no `CASCADE`) fails safe on any dependency.
+
 ## Out of scope
 
 - Loaned-out ghost visual behaviour (preserved as-is).
 - The `coveragePct` progress-bar semantics (kept as secondary info).
 - Historical FK backfill.
+- Over-assignment badge display (Minor C7) — spawn-off.

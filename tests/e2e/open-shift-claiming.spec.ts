@@ -349,4 +349,155 @@ test.describe('Open Shift Claiming', () => {
     expect(spotsCheck.assignedCount).toBe(1);
     expect(spotsCheck.openSpots).toBe(2);
   });
+
+  // Regression for the Rush Bowls bug: a same-position shift that merely
+  // OVERLAPS the template window (a regular calendar entry for a *different*
+  // employee, not assigned to this template) must NOT make the template look
+  // filled. The old position-only coverage sweep counted it and hid the open
+  // shift from employees; fill-by-assignment counts only shifts assigned to the
+  // template by id, so the slot stays open and claimable.
+  test('overlapping regular-calendar shift does not hide the open shift; claim stamps template id', async ({ page }) => {
+    const testUser = generateTestUser('overlap-open');
+    await signUpAndCreateRestaurant(page, testUser);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+
+    const seed = await page.evaluate(async (restId: string) => {
+      const supabase = (window as any).__supabase;
+
+      await supabase.from('staffing_settings').upsert(
+        { restaurant_id: restId, open_shifts_enabled: true, require_shift_claim_approval: false },
+        { onConflict: 'restaurant_id' },
+      );
+
+      // Single-day template (Sunday only) so exactly ONE open card is offered
+      // and the UI claim lands on the date we seed and assert. capacity 1 so a
+      // single phantom fill would hide it.
+      const { data: template, error: templateError } = await supabase
+        .from('shift_templates')
+        .insert({
+          restaurant_id: restId,
+          name: 'Open Server Slot',
+          start_time: '16:00:00',
+          end_time: '22:00:00',
+          position: 'Server',
+          capacity: 1,
+          days: [0], // Sunday only
+          is_active: true,
+        })
+        .select()
+        .single();
+      if (templateError) throw new Error(`shift_templates insert failed: ${templateError.message}`);
+
+      // Next Sunday (DOW=0) that is strictly in the future.
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const toDateStr = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const daysUntilSunday = (7 - now.getDay()) % 7 || 7;
+      const target = new Date(now.getFullYear(), now.getMonth(), now.getDate() + daysUntilSunday);
+      const targetStr = toDateStr(target);
+      const monday = new Date(target); monday.setDate(target.getDate() - 6);
+      const sunday = target; // target IS the Sunday (week end)
+
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+      if (!userId) throw new Error('No authenticated user found');
+
+      await supabase.from('schedule_publications').insert([
+        { restaurant_id: restId, week_start_date: toDateStr(monday), week_end_date: toDateStr(sunday), published_by: userId, shift_count: 0 },
+      ]);
+
+      // The claimer (linked to the auth user, staff role below).
+      await supabase.from('employees').insert({
+        restaurant_id: restId, user_id: userId, name: 'Claimer', position: 'Server',
+        status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500,
+      });
+
+      // A DIFFERENT employee with a regular calendar shift that OVERLAPS the
+      // template window (15:00–23:00 vs 16:00–22:00), same position, NO
+      // shift_template_id and non-matching exact times → a genuine off-template
+      // overlapping entry, not an assignment to this template.
+      const { data: other, error: otherErr } = await supabase.from('employees').insert({
+        restaurant_id: restId, name: 'Other Server', position: 'Server',
+        status: 'active', is_active: true, compensation_type: 'hourly', hourly_rate: 1500,
+      }).select().single();
+      if (otherErr) throw new Error(`other employee insert failed: ${otherErr.message}`);
+
+      // Anchor to explicit UTC so the seed is independent of the CI runner's tz
+      // (the exact time only needs to overlap the template window and NOT exactly
+      // match it — this shift must never count toward the template).
+      const startUtc = `${targetStr}T15:00:00+00:00`;
+      const endUtc = `${targetStr}T23:00:00+00:00`;
+      const { error: shiftErr } = await supabase.from('shifts').insert({
+        restaurant_id: restId, employee_id: other.id, shift_template_id: null,
+        start_time: startUtc, end_time: endUtc, position: 'Server',
+        status: 'scheduled', source: 'manual', is_published: true, break_duration: 0,
+      });
+      if (shiftErr) throw new Error(`overlapping shift insert failed: ${shiftErr.message}`);
+
+      return { templateId: template.id, mondayStr: toDateStr(monday), sundayStr: toDateStr(sunday), targetStr };
+    }, restaurantId as string);
+
+    // The open shift must be offered despite the overlapping regular entry.
+    const before = await page.evaluate(async (args: { restId: string; mondayStr: string; sundayStr: string; targetStr: string; templateId: string }) => {
+      const supabase = (window as any).__supabase;
+      const { data } = await supabase.rpc('get_open_shifts', {
+        p_restaurant_id: args.restId, p_week_start: args.mondayStr, p_week_end: args.sundayStr,
+      });
+      const entry = data?.find((d: any) => d.shift_date === args.targetStr && d.template_id === args.templateId);
+      return { openSpots: entry?.open_spots ?? null, assignedCount: entry?.assigned_count ?? null };
+    }, { restId: restaurantId as string, ...seed });
+
+    // The overlapping regular shift does NOT count toward the template.
+    expect(before.assignedCount).toBe(0);
+    expect(before.openSpots).toBe(1);
+
+    // Switch to staff so the employee-facing claim flow is reachable.
+    await page.evaluate(async () => {
+      const supabase = (window as any).__supabase;
+      const { data: { user } } = await supabase.auth.getUser();
+      const restaurantId = await (window as any).__getRestaurantId(user?.id);
+      await supabase.from('user_restaurants').update({ role: 'staff' })
+        .eq('user_id', user?.id).eq('restaurant_id', restaurantId);
+    });
+
+    // The open shift is available to be claimed by the employee.
+    await page.goto('/employee/shifts');
+    await expect(page.getByText('Available Shifts')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('OPEN SHIFT').first()).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Open Server Slot').first()).toBeVisible({ timeout: 5000 });
+
+    const claimButton = page.getByRole('button', { name: /claim shift open server slot/i }).first();
+    await expect(claimButton).toBeVisible({ timeout: 10000 });
+    await claimButton.click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await dialog.getByRole('button', { name: /confirm/i }).click();
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    // After claiming: the resulting shift is stamped with the template id, and
+    // the (capacity-1) slot is now filled by assignment — so it drops out of the
+    // open-shift list. It shows as claimed, no longer available.
+    const after = await page.evaluate(async (args: { restId: string; mondayStr: string; sundayStr: string; targetStr: string; templateId: string }) => {
+      const supabase = (window as any).__supabase;
+      const { data: claimed } = await supabase
+        .from('shifts')
+        .select('shift_template_id, employee_id')
+        .eq('restaurant_id', args.restId)
+        .eq('shift_template_id', args.templateId);
+      const { data: openData } = await supabase.rpc('get_open_shifts', {
+        p_restaurant_id: args.restId, p_week_start: args.mondayStr, p_week_end: args.sundayStr,
+      });
+      const entry = openData?.find((d: any) => d.shift_date === args.targetStr && d.template_id === args.templateId);
+      return { stampedCount: claimed?.length ?? 0, stillOffered: !!entry };
+    }, { restId: restaurantId as string, ...seed });
+
+    // The claimed shift carries the template id (Task 9/10 FK stamp).
+    expect(after.stampedCount).toBe(1);
+    // The template is now filled by assignment and drops out of the open list.
+    expect(after.stillOffered).toBe(false);
+  });
 });

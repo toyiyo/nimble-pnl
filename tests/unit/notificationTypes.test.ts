@@ -23,6 +23,7 @@ const RESOLVER_TYPES: ResolverNotificationType[] = [
   'time_off_rejected',
   'pin_reset',
   'availability_reminder',
+  'open_shift_claim_reviewed',
 ];
 
 // Compile-time guard: every catalog key must be assignable to the resolver's
@@ -34,8 +35,8 @@ function assertNotificationTypeAssignable(_key: NotificationType): ResolverNotif
 void assertNotificationTypeAssignable;
 
 describe('NOTIFICATION_TYPES catalog', () => {
-  it('has exactly 15 rows', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(15);
+  it('has exactly 16 rows', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(16);
   });
 
   it('has no duplicate keys', () => {

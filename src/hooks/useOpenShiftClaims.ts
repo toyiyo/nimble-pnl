@@ -8,6 +8,25 @@ export type OpenShiftClaimWithJoins = OpenShiftClaim & {
   employee?: { name: string; position: string | null } | null;
 };
 
+/**
+ * Fire-and-forget claim-decision notification. Mirrors sendShiftTradeNotification.
+ * `supabase.functions.invoke` resolves `{data,error}` on HTTP failures and only
+ * rejects on transport failures — either way the caller must not fail the
+ * approve/reject action (DB state is already committed).
+ */
+const sendClaimReviewNotification = async (
+  claimId: string,
+  action: 'approved' | 'rejected',
+) => {
+  try {
+    await supabase.functions.invoke('notify-open-shift-claim', {
+      body: { claimId, action },
+    });
+  } catch (err) {
+    console.error('Failed to send claim review notification:', err);
+  }
+};
+
 export function useOpenShiftClaims(restaurantId: string | null, employeeId?: string | null) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['open_shift_claims', restaurantId, employeeId],
@@ -85,6 +104,7 @@ export function useApproveClaimMutation() {
       if (error) throw error;
       const result = data as { success: boolean; error?: string };
       if (!result.success) throw new Error(result.error ?? 'Failed to approve claim');
+      await sendClaimReviewNotification(params.claimId, 'approved');
       return result;
     },
     onSuccess: () => {
@@ -112,6 +132,7 @@ export function useRejectClaimMutation() {
       if (error) throw error;
       const result = data as { success: boolean; error?: string };
       if (!result.success) throw new Error(result.error ?? 'Failed to reject claim');
+      await sendClaimReviewNotification(params.claimId, 'rejected');
       return result;
     },
     onSuccess: () => {

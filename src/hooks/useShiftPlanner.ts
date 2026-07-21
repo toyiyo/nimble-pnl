@@ -11,7 +11,9 @@ import { useShifts } from '@/hooks/useShifts';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 
-import { ShiftInterval, formatLocalDate } from '@/lib/shiftInterval';
+import { toZonedTime } from 'date-fns-tz';
+
+import { ShiftInterval, formatLocalDate, formatLocalTimeInTz } from '@/lib/shiftInterval';
 import { ValidationResult } from '@/lib/shiftValidator';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
@@ -121,11 +123,19 @@ function findMatchingTemplate(
  * end_time (HH:MM:SS), position, active day, and area compatibility
  * (employee home area vs template area; null on either side is permissive).
  * Unmatched shifts go under '__unmatched__'. Cancelled shifts are excluded.
+ *
+ * `tz` (IANA, e.g. the restaurant's) makes calendar-day bucketing, time-of-day
+ * matching, and day-of-week all resolve in restaurant-local time so the grid
+ * agrees with the tz-aware server logic (`… AT TIME ZONE p_tz`) regardless of
+ * the viewer's browser timezone. Omit `tz` only in tz-agnostic unit tests —
+ * production callers must pass the restaurant timezone (a traveling manager in
+ * a different tz would otherwise see shifts bucketed under the wrong day).
  */
 export function buildTemplateGridData(
   shifts: Shift[],
   templates: ShiftTemplate[],
   weekDays: string[],
+  tz?: string,
 ): Map<string, Map<string, Shift[]>> {
   const weekDaySet = new Set(weekDays);
   const grid = new Map<string, Map<string, Shift[]>>();
@@ -148,7 +158,11 @@ export function buildTemplateGridData(
 
   for (const shift of shifts) {
     if (shift.status === 'cancelled') continue;
-    const shiftStartAt = new Date(shift.start_time);
+    // Resolve the shift's calendar day / day-of-week in the restaurant tz when
+    // provided; fall back to browser-local for tz-agnostic callers (tests).
+    const shiftStartAt = tz
+      ? toZonedTime(new Date(shift.start_time), tz)
+      : new Date(shift.start_time);
     const dayStr = formatLocalDate(shiftStartAt);
     if (!weekDaySet.has(dayStr)) continue;
 
@@ -167,8 +181,8 @@ export function buildTemplateGridData(
     // shift_template_id). Still needed for manually-created shifts and any
     // rows inserted by older bundles before AI generation persisted the FK.
     // Restricted to active templates only — see comment above.
-    const shiftStart = formatLocalTime(shift.start_time);
-    const shiftEnd = formatLocalTime(shift.end_time);
+    const shiftStart = tz ? formatLocalTimeInTz(shift.start_time, tz) : formatLocalTime(shift.start_time);
+    const shiftEnd = tz ? formatLocalTimeInTz(shift.end_time, tz) : formatLocalTime(shift.end_time);
     const dayOfWeek = shiftStartAt.getDay();
     const match = findMatchingTemplate(
       activeTemplatesForFallback,

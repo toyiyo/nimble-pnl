@@ -436,6 +436,42 @@ describe('useShiftPlanner utilities', () => {
         expect(grid.get('t-wtz-open')?.get('2026-03-07') ?? []).toHaveLength(0);
       });
     });
+
+    describe('restaurant-timezone bucketing', () => {
+      // 2026-03-03T02:00:00Z is still 2026-03-02 (20:00) in America/Chicago
+      // (UTC-6 in March). A viewer whose browser is UTC would bucket it under
+      // the 3rd; the restaurant's schedule must show it under the 2nd (Monday).
+      const tz = 'America/Chicago';
+      const serverMon: ShiftTemplate = {
+        id: 'tMon', start_time: '20:00:00', end_time: '22:00:00', position: 'Server',
+        days: [1], name: 'Mon Eve', restaurant_id: 'r1', break_duration: 0,
+        is_active: true, area: null, created_at: '', updated_at: '',
+      } as ShiftTemplate;
+      const tzWeekDays = ['2026-03-02', '2026-03-03', '2026-03-04', '2026-03-05', '2026-03-06', '2026-03-07', '2026-03-08'];
+
+      it('buckets an FK-linked shift by restaurant-tz calendar day, not browser day', () => {
+        const shift = mockShift({
+          id: 's1', employee_id: 'e1', shift_template_id: 'tMon',
+          start_time: '2026-03-03T02:00:00Z', end_time: '2026-03-03T04:00:00Z',
+          position: 'Server', status: 'scheduled',
+        });
+        const grid = buildTemplateGridData([shift], [serverMon], tzWeekDays, tz);
+        expect(grid.get('tMon')?.get('2026-03-02')).toHaveLength(1); // restaurant day
+        expect(grid.get('tMon')?.get('2026-03-03') ?? []).toHaveLength(0); // not browser/UTC day
+      });
+
+      it('matches a legacy null-FK shift via restaurant-tz time + day-of-week', () => {
+        const shift = mockShift({
+          id: 's2', employee_id: 'e1', shift_template_id: null,
+          start_time: '2026-03-03T02:00:00Z', end_time: '2026-03-03T04:00:00Z',
+          position: 'Server', status: 'scheduled',
+        });
+        const grid = buildTemplateGridData([shift], [serverMon], tzWeekDays, tz);
+        // In restaurant tz: 20:00–22:00 on Monday the 2nd → matches serverMon.
+        expect(grid.get('tMon')?.get('2026-03-02')).toHaveLength(1);
+        expect(grid.get('__unmatched__')?.get('2026-03-02') ?? []).toHaveLength(0);
+      });
+    });
   });
 
   describe('formatLocalTime', () => {

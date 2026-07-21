@@ -395,7 +395,7 @@ export interface CoverageShift {
   position: string;
   status?: string | null;
   /** Work area for the shift (template's area, or employee.area when no template). Distinct from
-   *  `homeArea`. Set by ShiftPlannerTab; used by the opt-in area filter in computeSlotCoverage. */
+   *  `homeArea`. Set by ShiftPlannerTab; used by the opt-in area filter in computeLoanedOut. */
   area?: string | null;
   /** Employee's home area (shift.employee.area). Distinct from `area` (work area).
    *  Set by ShiftPlannerTab; used to compute covering vs loaned-out. */
@@ -421,7 +421,8 @@ export interface CoveringEmployee {
   workArea?: string | null;
 }
 
-/** Full result of computeSlotCoverage for one (template slot, date) pair. */
+/** Full per-cell coverage: `computeCellFill`'s fill fields + `computeLoanedOut`'s ghosts,
+ *  assembled by `ShiftPlannerTab` for one (template slot, date) pair. */
 export interface SlotCoverage {
   minConcurrent: number;
   openSpots: number;

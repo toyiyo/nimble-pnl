@@ -12,7 +12,9 @@
  * 4. `try/catch` guard around per-slot coverage computation (one bad row never blanks the grid).
  * 5. (Task 2a) CoverageShift objects carry `area` derived from the joined shift.employee data,
  *    NOT from an active-only empArea map (fix: inactive-employee shifts must still count).
- * 6. (Task 2a) `computeSlotCoverage` is called with `{ area: ...}` options (threads t.area).
+ * 6. (Shift-fill-by-assignment Task 3) `computeLoanedOut` is called with `{ area: ...}` options
+ *    (threads t.area) — fill itself (`computeCellFill`) is scoped to the template's own bucket
+ *    and takes no area option.
  * 7. (Task 2f) TemplateGrid.tsx assembles slotName from template.area + template.position and passes it to ShiftCell.
  * 8. (Task 2f) ShiftCell.tsx includes slotName in the memo comparator.
  */
@@ -40,8 +42,9 @@ describe('ShiftPlannerTab — coverage wiring (source-text)', () => {
     expect(SRC).toMatch(/coverageByTemplateDay/);
   });
 
-  it('uses computeSlotCoverage import from shiftCoverage', () => {
-    expect(SRC).toMatch(/computeSlotCoverage/);
+  it('uses computeCellFill import from shiftFill and computeLoanedOut import from loanedOut', () => {
+    expect(SRC).toMatch(/import\s*\{\s*computeCellFill\s*\}\s*from\s*'@\/lib\/shiftFill'/);
+    expect(SRC).toMatch(/computeLoanedOut/);
   });
 
   it('has try/catch for per-slot coverage (resilience guard)', () => {
@@ -96,10 +99,11 @@ describe('ShiftPlannerTab — area-scope wiring (source-text, Task 2a)', () => {
     expect(SRC).toMatch(/templateAreaMap\.get\s*\(s\.shift_template_id\)/);
   });
 
-  it('passes { area: t.area } (or equivalent) as options to computeSlotCoverage', () => {
-    // computeSlotCoverage must receive an options object with the template area.
+  it('passes { area: t.area } (or equivalent) as options to computeLoanedOut', () => {
+    // computeLoanedOut must receive an options object with the template area — fill
+    // (computeCellFill) is scoped to the template's own bucket and never needs an area filter.
     // Accept any of: { area: t.area }, { area: t.area ?? null }, { area: t.area || null }
-    expect(SRC).toMatch(/computeSlotCoverage\s*\([\s\S]*?\{[\s\S]*?area\s*:\s*t\.area/);
+    expect(SRC).toMatch(/computeLoanedOut\s*\([\s\S]*?\{[\s\S]*?area\s*:\s*t\.area/);
   });
 
   it('uses || null (not ?? null) for t.area to guard against empty-string templates', () => {

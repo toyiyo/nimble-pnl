@@ -1,7 +1,7 @@
 /**
  * RED test (Phase 4 T6): assert the generated Supabase types reflect the
  * batched 7-arg `bulk_process_historical_sales` RPC signature added in
- * supabase/migrations/20260720120000_bulk_deduction_keyset_batching.sql.
+ * supabase/migrations/20260720120001_bulk_deduction_keyset_batching.sql.
  *
  * The migration drops the old 3-arg signature (p_restaurant_id, p_start_date,
  * p_end_date) and replaces it with a 7-arg signature that adds keyset-cursor

@@ -9,13 +9,15 @@
 -- the action. This migration re-creates each function from its current-main
 -- body (verbatim) and adds the missing guard.
 --
--- This file lands the guards incrementally, one function per TDD task, to
--- keep each RED->GREEN step reviewable. This slice covers get_open_shifts
--- (design doc section "3. get_open_shifts") and claim_open_shift (design doc
--- section "2. claim_open_shift"); the remaining two functions
--- (approve_open_shift_claim, reject_open_shift_claim) are added by subsequent
--- migrations/tasks in the same plan (see
--- docs/superpowers/plans/2026-07-21-open-shift-claim-authz-plan.md).
+-- Built incrementally, one function per TDD task, to keep each RED->GREEN
+-- step reviewable during development (see
+-- docs/superpowers/plans/2026-07-21-open-shift-claim-authz-plan.md); this
+-- file now carries all four guarded functions: get_open_shifts (design doc
+-- section "3. get_open_shifts"), claim_open_shift (section "2.
+-- claim_open_shift"), and approve/reject_open_shift_claim (section "1.
+-- approve_open_shift_claim (and reject_open_shift_claim)"). EXECUTE is
+-- granted once for all four at the end of the file (see the closing GRANT
+-- block) so the file is self-contained regardless of prior grant history.
 --
 -- get_open_shifts guard: membership check — the caller must belong to the
 -- restaurant as either an internal team member (owner/manager/
@@ -160,9 +162,6 @@ BEGIN
     ORDER BY td.pub_date, td.tmpl_start;
 END;
 $$;
-
--- Re-issue EXECUTE so the privilege is self-contained in this migration file.
-GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authenticated;
 
 -- ============================================================================
 -- claim_open_shift guard: caller-owns-employee-row check (design doc
@@ -359,9 +358,6 @@ BEGIN
 END;
 $$;
 
--- Re-issue EXECUTE so the privilege is self-contained in this migration file.
-GRANT EXECUTE ON FUNCTION public.claim_open_shift(UUID, UUID, DATE, UUID) TO authenticated;
-
 -- ============================================================================
 -- approve_open_shift_claim guard: manager-audience check (design doc section
 -- "1. approve_open_shift_claim (and reject_open_shift_claim)"). After locking
@@ -477,9 +473,6 @@ BEGIN
     );
 END;
 $$;
-
--- Re-issue EXECUTE so the privilege is self-contained in this migration file.
-GRANT EXECUTE ON FUNCTION public.approve_open_shift_claim(UUID, TEXT) TO authenticated;
 
 -- ============================================================================
 -- reject_open_shift_claim guard: same not-found/not-authorized guard shape as

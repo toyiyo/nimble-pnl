@@ -89,7 +89,7 @@ BEGIN
     VALUES
       (v_auth1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'active-guard-d1@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
       (v_auth2, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'active-guard-d2@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
-    ON CONFLICT (id) DO NOTHING;
+    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
   -- Clean up in FK order before inserting.
   DELETE FROM public.open_shift_claims     WHERE restaurant_id = v_rid;

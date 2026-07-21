@@ -23,7 +23,7 @@ bypasses RLS, `auth.uid()` is used only to *record* the actor, never to
 1. **Self-approval bypass.** `claim_open_shift` returns the new `claim_id`
    to the claimer. On an approval-required restaurant
    (`require_shift_claim_approval=true`), the claiming employee can call
-   `approve_open_shift_claim(claim_id)` on their own claim and mint a
+   `approve_open_shift_claim(claim_id, NULL)` on their own claim and mint a
    published shift, bypassing the manager gate entirely.
 2. **Cross-tenant approval / rejection.** A user in restaurant A who obtains
    or guesses a claim id in restaurant B can approve or reject it.
@@ -186,16 +186,21 @@ vacuous). Dates relative to `CURRENT_DATE`; delete-before-insert in FK order;
 so they observe the RPC's real write, not the caller's RLS-scoped view.
 
 Fixtures: restaurant R1 + manager M1 + **operations_manager OM1** + employee
-E1 (claimer); restaurant R2 + manager M2 + employee E2. Distinct pending
-claims per scenario so one scenario's write can't change another's starting
-state.
+E1 (claimer); restaurant R2 + manager M2 + employee E2; restaurant R3
+(instant-approval, `require_shift_claim_approval=false`) + a second employee
+row for E1 (same auth user, linked to R3) for the legitimate self-claim
+scenario. R1 must stay `require_shift_claim_approval=true` for scenarios 1-6,
+so R3 is a separate tenant rather than a second template/setting on R1.
+Distinct pending claims per scenario so one scenario's write can't change
+another's starting state.
 
 **Fixture rows that must be present so scenarios 7 & 9 exercise real logic
 (not short-circuit paths)** — call these out explicitly in the test header:
-- `staffing_settings` for R1: `open_shifts_enabled=true`; scenario 7's
-  restaurant needs `require_shift_claim_approval=false` (instant approval so
-  the legit self-claim returns `success=true`).
-- `shift_templates` for R1: `is_active=true`, `capacity>1`,
+- `staffing_settings` for R1: `open_shifts_enabled=true`,
+  `require_shift_claim_approval=true`; for R3:
+  `open_shifts_enabled=true`, `require_shift_claim_approval=false` (instant
+  approval so scenario 7's legit self-claim returns `success=true`).
+- `shift_templates` for R1 and R3: `is_active=true`, `capacity>1`,
   `days` containing the target date's DOW, matching times.
 - `schedule_publications` covering the target week for R1, else
   `get_open_shifts` (scenario 9) returns zero rows for everyone and the
@@ -217,8 +222,8 @@ Scenarios:
 4. **reject** — E1 cannot reject own claim → `success=false`, stays pending.
 5. **reject** — M2 cannot reject R1 claim → `success=false`, stays pending.
 6. **reject** — M1 can reject R1 claim → `success=true`, claim `rejected`.
-7. **claim** — E1 legitimately self-claims (instant-approval restaurant) →
-   `success=true`.
+7. **claim** — E1 legitimately self-claims on R3 (instant-approval
+   restaurant) → `success=true`.
 8. **claim** — E2 (R2) cannot claim as E1 / into R1 (impersonation +
    cross-tenant) → `success=false`, no claim row created.
 9. **get_open_shifts** — a linked R1 member/employee sees the open row;

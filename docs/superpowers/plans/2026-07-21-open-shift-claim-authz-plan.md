@@ -14,11 +14,13 @@ File: `supabase/tests/62_open_shift_claim_authz.test.sql`
   schedule_publications, auth.users. Delete-before-insert in FK order.
   Re-enable RLS before switching to `authenticated`.
 - Fixtures (UUID namespace `62000000-…`):
-  - R1 (approval-required) + R1b (instant-approval) OR one R1 with a second
-    template context — simplest: R1 approval-required for approve/reject
-    scenarios; a separate instant-approval restaurant R3 for the claim
-    success scenario. R2 for cross-tenant. Keep each scenario's claim row
-    independent.
+  - `require_shift_claim_approval` is restaurant-scoped, so R1 cannot be
+    both approval-required (scenarios 1-6) and instant-approval (scenario 7)
+    via a second template — use a separate restaurant instead: R1
+    (approval-required) for approve/reject scenarios; R3
+    (instant-approval), with its own linked employee/auth fixture and
+    staffing/template/publication rows, for the claim success scenario. R2
+    for cross-tenant. Keep each scenario's claim row independent.
   - auth.users + user_restaurants(role manager) for M1(R1), M2(R2).
   - auth.users + user_restaurants(role operations_manager) for OM1(R1).
   - auth.users + employees(user_id) for E1(R1 claimer), E2(R2).
@@ -41,8 +43,12 @@ File: `supabase/tests/62_open_shift_claim_authz.test.sql`
      no new claim row for that template/date/E1.
   9. get_open_shifts: E1 (linked employee of R1) sees ≥1 open row; E2
      (stranger to R1) sees 0 rows for R1.
-- Run: `npm run db:reset && npm run test:db` — confirm RED (approve/reject/
-  claim/get_open_shifts scenarios fail because guards don't exist yet).
+- Run: `npm run db:reset && npm run test:db` — confirm RED on exactly the
+  unauthorized-path assertions (scenarios 1, 2, 4, 5, 8, and 9's stranger
+  case) because no guard exists yet to reject them; the legitimate/
+  authorized-path assertions (scenarios 3, 3b, 6, 7, and 9's linked-employee
+  control) are expected to already pass — they are regression controls, not
+  part of the RED signal.
 - Commit.
 
 ## Task 2 — Migration (GREEN)

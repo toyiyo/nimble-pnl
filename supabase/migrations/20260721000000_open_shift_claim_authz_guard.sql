@@ -480,3 +480,80 @@ $$;
 
 -- Re-issue EXECUTE so the privilege is self-contained in this migration file.
 GRANT EXECUTE ON FUNCTION public.approve_open_shift_claim(UUID, TEXT) TO authenticated;
+
+-- ============================================================================
+-- reject_open_shift_claim guard: same not-found/not-authorized guard shape as
+-- approve_open_shift_claim (design doc section "1. approve_open_shift_claim
+-- (and reject_open_shift_claim)" — the design explicitly covers both RPCs
+-- under one heading with one guard). After locking the claim, gate on the
+-- manager audience for the claim's restaurant — owner/manager/
+-- operations_manager, exact parity with the deployed managers_review_claims
+-- UPDATE / managers_view_restaurant_claims SELECT RLS policies. The
+-- not-found and not-authorized cases are collapsed into a single generic
+-- message so a cross-tenant caller cannot use the error shape to probe
+-- whether a claim id exists (no enumeration signal). `IF a OR b`
+-- short-circuits in plpgsql, so user_has_role is not evaluated when the
+-- claim is missing.
+--
+-- Body re-created verbatim from 20260412145842_open_shift_claims.sql (the
+-- current-main definition — reject_open_shift_claim was never touched by any
+-- later migration, unlike approve_open_shift_claim's active-guard follow-up).
+-- SET search_path = public is newly added here (the original had none),
+-- matching the same decided trade-off applied to the other three functions
+-- in this migration. The new authz guard replaces the original bare
+-- "IF NOT FOUND" branch immediately after the claim is locked, before any
+-- other state is read.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.reject_open_shift_claim(
+    p_claim_id UUID,
+    p_reviewer_note TEXT DEFAULT NULL
+)
+RETURNS json
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_claim RECORD;
+BEGIN
+    -- Lock the claim
+    SELECT * INTO v_claim
+    FROM public.open_shift_claims
+    WHERE id = p_claim_id
+    FOR UPDATE;
+
+    -- Authorization guard: the claim must exist AND the caller must be a
+    -- manager/owner/operations_manager of the claim's restaurant. Collapsed
+    -- into one generic message so a cross-tenant caller can't distinguish
+    -- "no such claim" from "not your restaurant" (no enumeration signal).
+    IF NOT FOUND
+       OR NOT public.user_has_role(v_claim.restaurant_id,
+                                    ARRAY['owner', 'manager', 'operations_manager']) THEN
+        RETURN json_build_object('success', false, 'error', 'Claim not found or not authorized');
+    END IF;
+
+    IF v_claim.status != 'pending_approval' THEN
+        RETURN json_build_object('success', false, 'error', 'Claim is not pending approval');
+    END IF;
+
+    UPDATE public.open_shift_claims
+    SET status = 'rejected',
+        reviewed_by = auth.uid(),
+        reviewed_at = now()
+    WHERE id = p_claim_id;
+
+    RETURN json_build_object(
+        'success', true,
+        'message', 'Claim rejected'
+    );
+END;
+$$;
+
+-- Re-issue EXECUTE on all four functions in this family for idempotency —
+-- so this migration file is self-contained regardless of which prior
+-- migration(s) originally granted them.
+GRANT EXECUTE ON FUNCTION public.get_open_shifts(UUID, DATE, DATE) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.claim_open_shift(UUID, UUID, DATE, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.approve_open_shift_claim(UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.reject_open_shift_claim(UUID, TEXT) TO authenticated;

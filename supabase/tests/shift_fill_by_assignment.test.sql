@@ -22,7 +22,7 @@
 
 BEGIN;
 
-SELECT plan(10);
+SELECT plan(12);
 
 -- Disable RLS so the function (SECURITY DEFINER) and inserts work in-transaction.
 SET LOCAL role TO postgres;
@@ -322,6 +322,48 @@ SELECT is(
   ),
   '00000000-0000-0000-0000-0000000000d4'::uuid,
   'claim_open_shift stamps shift_template_id on the newly created shift'
+);
+
+-- ── Test 11: approve_open_shift_claim stamps shift_template_id on the ────────
+-- resulting shift (Task 10 — design Critical S1). The manager-approval path
+-- (require_shift_claim_approval = true, or a manually-inserted pending claim,
+-- as here) previously omitted shift_template_id on its INSERT INTO shifts,
+-- routing every future assigned-count query for that shift down the legacy
+-- exact-match fallback branch of shift_template_assigned_count instead of the
+-- direct FK branch — the same bug Task 9 fixed for claim_open_shift's
+-- instant-approval path.
+DO $$
+BEGIN
+  DELETE FROM public.open_shift_claims WHERE id = '00000000-0000-0000-0000-0000000000c1'::uuid;
+
+  INSERT INTO public.open_shift_claims(
+    id, restaurant_id, shift_template_id, shift_date,
+    claimed_by_employee_id, status
+  ) VALUES (
+    '00000000-0000-0000-0000-0000000000c1'::uuid,
+    '00000000-0000-0000-0000-0000000000d0'::uuid,
+    '00000000-0000-0000-0000-0000000000d4'::uuid, -- tmplB
+    CURRENT_DATE + 3,
+    '00000000-0000-0000-0000-0000000000d1'::uuid, -- emp1
+    'pending_approval'
+  );
+END $$;
+
+SELECT is(
+  (public.approve_open_shift_claim('00000000-0000-0000-0000-0000000000c1'::uuid) ->> 'success'),
+  'true',
+  'approve_open_shift_claim succeeds on the manually-inserted pending claim'
+);
+
+SELECT is(
+  (
+    SELECT s.shift_template_id
+    FROM public.open_shift_claims c
+    JOIN public.shifts s ON s.id = c.resulting_shift_id
+    WHERE c.id = '00000000-0000-0000-0000-0000000000c1'::uuid
+  ),
+  '00000000-0000-0000-0000-0000000000d4'::uuid,
+  'approve_open_shift_claim stamps shift_template_id on the newly created shift'
 );
 
 SELECT * FROM finish();

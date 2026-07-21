@@ -7,6 +7,8 @@
  * (spec risk 8.2: dollars vs cents). Flip REVEL_AMOUNTS_IN_CENTS if Revel returns cents.
  */
 
+import { zonedNaiveToUtc, DEFAULT_TIMEZONE } from './timezone.ts';
+
 export interface ProcessOrderOptions {
   skipUnifiedSalesSync?: boolean;
 }
@@ -66,29 +68,60 @@ function getOrderNode(payload: any): any {
   return payload.Order ?? payload.order ?? payload;
 }
 
-function parseDateTime(order: any): { orderDate: string; orderTime: string | null; soldAt: string | null } {
+/**
+ * Revel's real feed sends `created_date` as NAIVE establishment-local time, no
+ * offset (e.g. '2026-07-19T07:32:16') — interpret it in `timeZone` (DST-aware)
+ * to get a correct UTC instant for `sold_at`. Defensively handle an
+ * already-zoned string (`Z` / `±hh:mm` / `±hhmm`) via `new Date`, in case a
+ * caller ever passes one (real Revel data does not).
+ *
+ * `orderTime` is always the naive local wall-clock digits as printed in the
+ * raw string, regardless of which branch parsed `soldAt`.
+ *
+ * `orderDate` is the *business* date: Revel rolls over at a 2 AM local
+ * boundary (same convention as Toast's `businessDate`). This must be computed
+ * in local space — shifting the naive wall-clock digits back 2h — not by
+ * shifting the (now correctly tz-converted) `soldAt` UTC instant, which would
+ * reintroduce the same tz-anchoring bug this fix removes.
+ */
+function parseDateTime(
+  order: any,
+  timeZone: string = DEFAULT_TIMEZONE,
+): { orderDate: string; orderTime: string | null; soldAt: string | null } {
   const rawDate =
     order.created_date ?? order.createdDate ?? order.closed_date ?? order.finalized_date ?? order.date ?? null;
   if (!rawDate) {
     const today = new Date().toISOString();
     return { orderDate: today.split('T')[0], orderTime: null, soldAt: null };
   }
-  // Revel timestamps look like '2026-07-01T12:30:00' (establishment-local, no offset).
-  const d = new Date(rawDate);
-  if (Number.isNaN(d.getTime())) {
-    return { orderDate: String(rawDate).split('T')[0], orderTime: null, soldAt: null };
+
+  const raw = String(rawDate);
+  const hasOffset = /(Z|[+-]\d{2}:?\d{2})$/i.test(raw);
+  const naiveMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
+
+  const soldAtDate = hasOffset ? new Date(raw) : zonedNaiveToUtc(raw, timeZone);
+  if (Number.isNaN(soldAtDate.getTime())) {
+    return { orderDate: raw.split('T')[0], orderTime: null, soldAt: null };
   }
-  const iso = d.toISOString();
-  // Revel reports on a 2 AM business-day boundary (same idea as Toast's `businessDate`):
-  // an order before 2 AM counts toward the previous day. Shift back 2h for sale_date only;
-  // keep the real time in sale_time / sold_at.
-  const biz = new Date(d.getTime() - 2 * 60 * 60 * 1000);
-  return { orderDate: biz.toISOString().split('T')[0], orderTime: iso.split('T')[1].split('.')[0], soldAt: iso };
+
+  const orderTime = naiveMatch ? naiveMatch[2] : soldAtDate.toISOString().split('T')[1].split('.')[0];
+
+  let orderDate: string;
+  if (naiveMatch) {
+    // Treat the naive digits as if they were UTC purely for calendar arithmetic
+    // (no real tz conversion here — we're already in local space).
+    const naiveAsUtcMs = Date.parse(`${naiveMatch[1]}T${naiveMatch[2]}Z`);
+    orderDate = new Date(naiveAsUtcMs - 2 * 60 * 60 * 1000).toISOString().split('T')[0];
+  } else {
+    orderDate = soldAtDate.toISOString().split('T')[0];
+  }
+
+  return { orderDate, orderTime, soldAt: soldAtDate.toISOString() };
 }
 
-export function normalizeOrder(payload: any): NormalizedOrder {
+export function normalizeOrder(payload: any, timeZone: string = DEFAULT_TIMEZONE): NormalizedOrder {
   const order = getOrderNode(payload);
-  const { orderDate, orderTime, soldAt } = parseDateTime(order);
+  const { orderDate, orderTime, soldAt } = parseDateTime(order, timeZone);
 
   const itemsRaw = payload.OrderItems ?? payload.order_items ?? order.items ?? [];
   const paymentsRaw = payload.Payments ?? payload.payments ?? order.payments ?? [];
@@ -233,8 +266,9 @@ export async function processOrder(
   revelInstance: string,
   establishmentId: string | null,
   options: ProcessOrderOptions = {},
+  timeZone: string = DEFAULT_TIMEZONE,
 ): Promise<void> {
-  const n = normalizeOrder(payload);
+  const n = normalizeOrder(payload, timeZone);
   if (!n.orderId) throw new Error('Revel order payload missing order id');
 
   const orderRowId = await upsertOrder(supabase, n, restaurantId, establishmentId, payload);

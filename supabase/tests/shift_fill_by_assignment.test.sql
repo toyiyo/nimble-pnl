@@ -22,7 +22,7 @@
 
 BEGIN;
 
-SELECT plan(8);
+SELECT plan(10);
 
 -- Disable RLS so the function (SECURITY DEFINER) and inserts work in-transaction.
 SET LOCAL role TO postgres;
@@ -269,6 +269,59 @@ SELECT is(
   ),
   0,
   'mismatched (restaurant_id, template_id) pair returns 0 (cross-tenant guard)'
+);
+
+-- ── Test 9: claim_open_shift regression -- per-template capacity, not the ────
+-- whole-floor position/time sweep (Task 9). emp1 is FK-assigned to tmplA
+-- (capacity 1, filled). tmplB (same position/time, capacity 1) has zero
+-- assignees of its own. Under the old shift_slot_min_concurrent sweep,
+-- claim_open_shift computed v_assigned_count for tmplB from ANY overlapping
+-- same-position shift restaurant-wide -- including emp1's shift on tmplA --
+-- and would incorrectly reject emp2's claim on tmplB with "No open spots
+-- available" even though tmplB has no assignees of its own.
+DO $$
+BEGIN
+  DELETE FROM public.shifts WHERE restaurant_id = '00000000-0000-0000-0000-0000000000d0'::uuid;
+
+  INSERT INTO public.shifts(id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, status)
+    VALUES (
+      '00000000-0000-0000-0000-0000000000e4',
+      '00000000-0000-0000-0000-0000000000d0'::uuid,
+      '00000000-0000-0000-0000-0000000000d1'::uuid,
+      '00000000-0000-0000-0000-0000000000d3'::uuid,
+      ((CURRENT_DATE + 3)::text || ' 08:00')::timestamp AT TIME ZONE 'America/Chicago',
+      ((CURRENT_DATE + 3)::text || ' 16:00')::timestamp AT TIME ZONE 'America/Chicago',
+      'Crew', 'scheduled'
+    );
+END $$;
+
+SELECT is(
+  (
+    public.claim_open_shift(
+      '00000000-0000-0000-0000-0000000000d0'::uuid,
+      '00000000-0000-0000-0000-0000000000d4'::uuid, -- tmplB, zero assignees of its own
+      CURRENT_DATE + 3,
+      '00000000-0000-0000-0000-0000000000d2'::uuid  -- emp2, distinct from emp1 (no schedule conflict)
+    ) ->> 'success'
+  ),
+  'true',
+  'claim_open_shift succeeds on template B even though template A (same position/time) is fully FK-assigned'
+);
+
+-- ── Test 10: claim_open_shift stamps shift_template_id on the resulting ─────
+-- shift (Task 9), so future assigned-count queries for it hit the FK branch
+-- directly instead of falling back to the legacy exact-match branch.
+SELECT is(
+  (
+    SELECT shift_template_id FROM public.shifts
+    WHERE restaurant_id = '00000000-0000-0000-0000-0000000000d0'::uuid
+      AND employee_id   = '00000000-0000-0000-0000-0000000000d2'::uuid
+      AND status = 'scheduled'
+    ORDER BY created_at DESC
+    LIMIT 1
+  ),
+  '00000000-0000-0000-0000-0000000000d4'::uuid,
+  'claim_open_shift stamps shift_template_id on the newly created shift'
 );
 
 SELECT * FROM finish();

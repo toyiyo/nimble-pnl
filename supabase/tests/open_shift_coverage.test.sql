@@ -147,12 +147,23 @@ SELECT is(
   'trailing gap (shift ends before window) yields min_concurrent 0'
 );
 
--- ── Test 5: claim_open_shift rejected when coverage already fills the slot ────
--- The fill-in (E1, 15:00-23:00) covers the cap-1 16:00-22:30 template window
--- with min_concurrent=1, so open_spots=0.  E2 tries to claim; the guard must
--- detect coverage (not exact-match) and return success=false.
--- Under old exact-match the guard would count assigned=0 (no 16:00-22:30 shift)
--- and allow the claim — proving the double-claim bug is fixed.
+-- ── Test 5: claim_open_shift succeeds — fill-in with a non-exact-match ───────
+-- window (no FK) does not fill the slot under fill-by-assignment.
+--
+-- Superseded by docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-
+-- design.md (Task 9): claim_open_shift's guard now comes from
+-- shift_template_assigned_count, whose legacy (null-FK) fallback requires an
+-- EXACT start/end/position match to attribute a shift to a template —
+-- overlapping the window is no longer sufficient. The fill-in (E1,
+-- 15:00-23:00) overlaps but does not exactly match the cap-1 16:00-22:30
+-- template, has no shift_template_id, so it fails both belongs() branches and
+-- does not count toward this template. E2's claim must therefore succeed
+-- (assigned=0, capacity=1).
+--
+-- This intentionally reverts the previous coverage-sweep behavior pinned by
+-- this same test (see git history): under
+-- shift_slot_min_concurrent, ANY overlapping same-position shift restaurant-
+-- wide counted, which was the root bug the fill-by-assignment redesign fixes.
 SELECT is(
   (
     public.claim_open_shift(
@@ -162,8 +173,8 @@ SELECT is(
       '00000000-0000-0000-0000-0000000000b2'::uuid
     ) ->> 'success'
   ),
-  'false',
-  'claim rejected when coverage-based guard shows slot is already full'
+  'true',
+  'claim succeeds — a non-exact-match, non-FK fill-in does not fill the slot (fill-by-assignment)'
 );
 
 SELECT * FROM finish();

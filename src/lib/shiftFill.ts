@@ -17,7 +17,7 @@
  * See docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md.
  */
 
-import { capacityFloor, computeSlotCoverage } from '@/lib/shiftCoverage';
+import { capacityFloor, computeWindowSweep } from '@/lib/shiftCoverage';
 import type { CoverageShift, CoverageSegment, CoveringEmployee } from '@/types/scheduling';
 
 /**
@@ -64,7 +64,7 @@ export interface CellFill {
  *
  * `openSpots` is driven by distinct-employee assignment count (the fix).
  * `minConcurrent` / `coveragePct` / `segments` / `coveringEmployees` are the
- * existing sweep-line result (from `computeSlotCoverage`) scoped to the
+ * shared sweep-line result (from `computeWindowSweep`) scoped to the
  * bucket only — retained as secondary info for the progress bar + popover.
  */
 export function computeCellFill(
@@ -78,9 +78,9 @@ export function computeCellFill(
   const assignedCount = distinctAssignedCount(bucketShifts);
   const openSpots = Math.max(0, cap - assignedCount);
 
-  // Reuse the existing sweep-line math, scoped to this template's own bucket
-  // (no area filter — the bucket is already scoped to this template).
-  const swept = computeSlotCoverage(windowStart, windowEnd, capacity, dateStr, bucketShifts, { position, tz });
+  // Reuse the shared sweep-line math, scoped to this template's own bucket
+  // (no area filter needed — the bucket is already scoped to this template).
+  const swept = computeWindowSweep(windowStart, windowEnd, capacity, dateStr, bucketShifts, { position, tz });
 
   return {
     minConcurrent: swept.minConcurrent,

@@ -11,6 +11,19 @@
 --
 -- Lesson 2026-04-21: always use CURRENT_DATE+N for fixture dates.
 -- Lesson 2026-04-22: use ON CONFLICT DO UPDATE for idempotent inserts.
+--
+-- Auth-context update (2026-07-21, alongside
+-- supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql):
+-- claim_open_shift is now guarded (caller must own the employee row they're
+-- claiming as). Test 5 calls claim_open_shift as E2; left running as
+-- `SET LOCAL role TO postgres` (auth.uid() NULL throughout) the new guard
+-- would reject the call before ever reaching the coverage/capacity logic
+-- this test is named for, making the assertion pass vacuously (lesson
+-- 2026-07-13's vacuous-test trap). E2 gets a dedicated auth.users row +
+-- employees.user_id, RLS is re-enabled on every table disabled below before
+-- switching roles (54_accept_shift_trade_authz.sql / 62_open_shift_claim_authz
+-- .test.sql precedent), and the claim_open_shift call runs impersonated as
+-- E2's own auth user via `SET LOCAL role = 'authenticated'` + request.jwt.claims.
 
 BEGIN;
 
@@ -30,8 +43,20 @@ DECLARE
   v_tmpl  uuid := '00000000-0000-0000-0000-0000000000c1';
   v_d     date := CURRENT_DATE + 2;
   v_dow   int;
+  v_auth2 uuid := '00000000-0000-0000-0000-0000000000e3'; -- auth.users row owned by employee b2 (E2, test 5 caller)
 BEGIN
   v_dow := EXTRACT(DOW FROM v_d)::int;
+
+  -- Dedicated auth.users row for E2 (test 5's caller) so claim_open_shift's
+  -- caller-owns-employee-row guard can be exercised as a real `authenticated`
+  -- caller (not postgres, which would leave auth.uid() NULL and make the
+  -- guard check vacuous). Full column set matches the
+  -- 54_accept_shift_trade_authz.sql / 60_claim_open_shift_active_guard.test.sql
+  -- precedent for a row Supabase auth considers well-formed.
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+    VALUES
+      (v_auth2, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'cov-test-e2@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+    ON CONFLICT (id) DO NOTHING;
 
   -- Clean up in FK order before inserting
   DELETE FROM public.open_shift_claims  WHERE restaurant_id = v_rid;
@@ -45,11 +70,11 @@ BEGIN
     VALUES (v_rid, 'cov-test', 'America/Chicago')
     ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
 
-  INSERT INTO public.employees(id, restaurant_id, name, position, is_active, status)
+  INSERT INTO public.employees(id, restaurant_id, user_id, name, position, is_active, status)
     VALUES
-      (v_emp1, v_rid, 'E1', 'Server', true, 'active'),
-      (v_emp2, v_rid, 'E2', 'Server', true, 'active')
-    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position;
+      (v_emp1, v_rid, NULL, 'E1', 'Server', true, 'active'),
+      (v_emp2, v_rid, v_auth2, 'E2', 'Server', true, 'active')
+    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position, user_id = EXCLUDED.user_id;
 
   -- Mid-shift fill-in whose window does NOT exactly match 16:00-22:30
   -- (starts 15:00, ends 23:00 local = covers 16:00-22:30 fully).
@@ -153,6 +178,20 @@ SELECT is(
 -- detect coverage (not exact-match) and return success=false.
 -- Under old exact-match the guard would count assigned=0 (no 16:00-22:30 shift)
 -- and allow the claim — proving the double-claim bug is fixed.
+--
+-- Re-enable RLS on every table disabled above before switching to the
+-- authenticated role (54_accept_shift_trade_authz.sql /
+-- 62_open_shift_claim_authz.test.sql precedent), then impersonate E2 (the
+-- caller) so claim_open_shift's caller-owns-employee-row guard passes and
+-- the call actually reaches the coverage/capacity logic under test, instead
+-- of being rejected vacuously as an unauthenticated postgres caller.
+ALTER TABLE public.restaurants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employees   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shifts      ENABLE ROW LEVEL SECURITY;
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e3","role":"authenticated"}', true);
+
 SELECT is(
   (
     public.claim_open_shift(

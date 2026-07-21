@@ -162,9 +162,13 @@ BEGIN
   END IF;
 
   -- Re-enable the trigger, then batch-aggregate the single date this order
-  -- belongs to once — not once per unified_sales row upserted above.
+  -- belongs to once — not once per unified_sales row upserted above. Skip
+  -- entirely when nothing changed (the no-op guard above wrote 0 rows), since
+  -- the daily aggregate for that date is then already correct.
   PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
-  PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, v_order.order_date);
+  IF v_synced_count > 0 THEN
+    PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, v_order.order_date);
+  END IF;
 
   RETURN v_synced_count;
 END;
@@ -372,15 +376,19 @@ BEGIN
   -- Re-enable the trigger, then batch-aggregate only the dates touched by
   -- this sync window (both callers — revel-sync-data, revel-bulk-sync —
   -- always pass a bounded p_start_date/p_end_date) once each, instead of
-  -- once per unified_sales row upserted above.
+  -- once per unified_sales row upserted above. Skip entirely when nothing
+  -- changed (the no-op guards wrote 0 rows) so a recurring sync over an
+  -- overlapping window doesn't re-aggregate the whole window for no reason.
   PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
-  PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
-  FROM (
-    SELECT DISTINCT sale_date FROM public.unified_sales
-    WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel'
-      AND (p_start_date IS NULL OR sale_date >= p_start_date)
-      AND (p_end_date IS NULL OR sale_date <= p_end_date)
-  ) d;
+  IF v_synced_count > 0 THEN
+    PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
+    FROM (
+      SELECT DISTINCT sale_date FROM public.unified_sales
+      WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel'
+        AND (p_start_date IS NULL OR sale_date >= p_start_date)
+        AND (p_end_date IS NULL OR sale_date <= p_end_date)
+    ) d;
+  END IF;
 
   RETURN v_synced_count;
 END;

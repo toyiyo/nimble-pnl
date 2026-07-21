@@ -69,10 +69,11 @@ SELECT is((SELECT count(*)::int FROM public.unified_sales
    WHERE external_item_id = 'order-1:service_charge' AND item_type = 'service_charge'), 1,
   'breakdown emits a service_charge adjustment row');
 
--- Test 5: second breakdown call self-heals (ON CONFLICT DO UPDATE touches all 5
--- existing rows to refresh sold_at, so ROW_COUNT reflects rows-processed, not net-new)
-SELECT is(public.revel_sync_financial_breakdown('order-1', '11111111-1111-1111-1111-111111111111'), 5,
-  'second breakdown call re-processes all 5 rows via self-heal DO UPDATE (no net-new rows)');
+-- Test 5: second breakdown call is a true no-op — sold_at is unchanged, so the
+-- self-heal DO UPDATE's `IS DISTINCT FROM` guard skips every row (0 rows written,
+-- no dead tuples, no trigger churn). Real corrections still propagate (see test 8).
+SELECT is(public.revel_sync_financial_breakdown('order-1', '11111111-1111-1111-1111-111111111111'), 0,
+  'second breakdown call writes 0 rows when sold_at is unchanged (no-op guard)');
 
 -- ============================================================
 -- Bulk sync RPC
@@ -88,11 +89,11 @@ SELECT is((SELECT count(*)::int FROM public.unified_sales
      AND external_item_id = 'item-2:void' AND item_type = 'other'), 1,
   'bulk sync emits a voided informational row excluded from net sales');
 
--- Test 7: repeat bulk sync self-heals (ON CONFLICT DO UPDATE across every block that
--- had a conflicting row: sale, tax, tip, discount, service_charge, voided-item = 6;
--- the reconcile line stays at adj=0 so it never attempts a row)
-SELECT is(public.sync_revel_to_unified_sales('11111111-1111-1111-1111-111111111111', NULL, NULL), 6,
-  'bulk sync re-processes all conflicting rows via self-heal DO UPDATE on repeat');
+-- Test 7: repeat bulk sync is a true no-op — sold_at unchanged across every
+-- conflicting block (sale, tax, tip, discount, service_charge, voided-item), so
+-- the DO UPDATE `IS DISTINCT FROM` guard skips them all (0 rows written).
+SELECT is(public.sync_revel_to_unified_sales('11111111-1111-1111-1111-111111111111', NULL, NULL), 0,
+  'repeat bulk sync writes 0 rows when sold_at is unchanged (no-op guard)');
 
 -- ============================================================
 -- Self-heal: DO UPDATE propagates corrected sold_at without clobbering categorization

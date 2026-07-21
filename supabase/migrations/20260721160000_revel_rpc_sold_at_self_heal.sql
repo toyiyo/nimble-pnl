@@ -12,17 +12,19 @@
 -- updating ONLY sold_at, so user categorization (category_id, is_categorized,
 -- suggested_category_id, ...) is preserved on every other column.
 --
--- DO UPDATE (unlike DO NOTHING) fires an UPDATE on every conflicting row, even
--- when the new sold_at equals the old one — and trigger_unified_sales_to_daily
--- (AFTER INSERT OR UPDATE OR DELETE ... FOR EACH ROW, no WHEN guard) runs a
--- full aggregate_unified_sales_to_daily() on every such row. Both RPCs are
--- invoked on every recurring sync (revel-bulk-sync, revel-sync-data) over a
--- window that overlaps prior runs, so most rows in range are re-syncs that
--- would now each trigger a full per-row re-aggregation — the exact trigger-
--- storm risk this feature's own backfill migration (20260721150000) suppresses
--- via app.skip_unified_sales_triggers. Apply the same suppression here, then
--- batch-aggregate once per distinct touched sale_date afterward (mirrors
--- sync_toast_to_unified_sales, 20260215200000_fix_toast_sync_timeout.sql).
+-- Two defenses against DO UPDATE's write amplification (vs DO NOTHING):
+--   1. No-op guard: each DO UPDATE carries
+--      `WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at,
+--      unified_sales.sold_at)`, so a re-sync that doesn't actually change
+--      sold_at touches zero rows (no dead tuples, no trigger firing). Only a
+--      genuine correction (e.g. post-backfill) writes.
+--   2. Trigger suppression: for the rows that DO change, trigger_unified_sales_to_daily
+--      (AFTER INSERT OR UPDATE OR DELETE ... FOR EACH ROW, no WHEN guard) would
+--      run a full aggregate_unified_sales_to_daily() per row. Both RPCs run on
+--      every recurring sync (revel-bulk-sync, revel-sync-data) over windows that
+--      overlap prior runs, so we suppress via app.skip_unified_sales_triggers and
+--      batch-aggregate once per distinct touched sale_date afterward (mirrors
+--      sync_toast_to_unified_sales, 20260215200000_fix_toast_sync_timeout.sql).
 --
 -- Function bodies are otherwise byte-identical to 20260706120000_revel_integration.sql.
 -- =====================================================
@@ -77,7 +79,8 @@ BEGIN
     AND oi.is_voided = false
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 2) Tax adjustment row (item_type = 'tax')
@@ -94,7 +97,8 @@ BEGIN
     )
     ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
       WHERE parent_sale_id IS NULL
-    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
     GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
   END IF;
 
@@ -112,7 +116,8 @@ BEGIN
     )
     ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
       WHERE parent_sale_id IS NULL
-    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
     GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
   END IF;
 
@@ -130,7 +135,8 @@ BEGIN
     )
     ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
       WHERE parent_sale_id IS NULL
-    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
     GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
   END IF;
 
@@ -150,7 +156,8 @@ BEGIN
     )
     ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
       WHERE parent_sale_id IS NULL
-    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+    DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
     GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
   END IF;
 
@@ -206,7 +213,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 2) Per-order reconciliation to Revel's authoritative header subtotal.
@@ -230,7 +238,8 @@ BEGIN
   WHERE g.adj <> 0
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 3) Tax (header)
@@ -245,7 +254,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 3) Tip / gratuity (header; on top of final_total)
@@ -260,7 +270,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 4) Discount (header; stored negative)
@@ -275,7 +286,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 5) Service charge (header)
@@ -290,7 +302,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 6/7/8) Informational adjustment lines (Voided / Returned / Refunds). These mirror Revel's
@@ -315,7 +328,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 7) Returned items (voided, order WAS refunded)
@@ -334,7 +348,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- 8) Refunds (payments with a negative amount)
@@ -350,7 +365,8 @@ BEGIN
     AND (p_end_date IS NULL OR o.order_date <= p_end_date)
   ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
     WHERE parent_sale_id IS NULL
-  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
   -- Re-enable the trigger, then batch-aggregate only the dates touched by

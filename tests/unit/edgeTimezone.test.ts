@@ -15,6 +15,19 @@ describe('zonedNaiveToUtc', () => {
     expect(result.toISOString()).toBe('2026-01-15T13:32:16.000Z');
   });
 
+  it('tolerates naive timestamps with fractional seconds (truncates to whole seconds)', () => {
+    // A POS feed may include milliseconds (e.g. Toast-style ".071"). The helper
+    // must not return NaN here — a NaN would make the caller silently store a
+    // NULL sold_at / order_time, reintroducing the very data-loss this fixes.
+    const result = zonedNaiveToUtc('2026-07-19T07:32:16.071', 'America/Chicago');
+    expect(result.toISOString()).toBe('2026-07-19T12:32:16.000Z');
+  });
+
+  it('tolerates a naive timestamp with no seconds component', () => {
+    const result = zonedNaiveToUtc('2026-07-19T07:32', 'America/Chicago');
+    expect(result.toISOString()).toBe('2026-07-19T12:32:00.000Z');
+  });
+
   it('handles the DST spring-forward transition day (2026-03-08) correctly on either side', () => {
     // 2026-03-08 02:00 local -> 03:00 local in America/Chicago (spring forward).
     // Before the transition (still CST, UTC-6):

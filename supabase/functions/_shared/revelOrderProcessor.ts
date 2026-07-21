@@ -107,7 +107,12 @@ function parseDateTime(
 
   const soldAtDate = hasOffset ? new Date(raw) : zonedNaiveToUtc(raw, timeZone);
   if (Number.isNaN(soldAtDate.getTime())) {
-    return { orderDate: raw.split('T')[0], orderTime: null, soldAt: null };
+    // Unparseable timestamp: still salvage the date part for `order_date`.
+    // Use the naive-match capture (or a date-prefix regex) rather than
+    // `split('T')`, which returns the whole string for a space-separated
+    // timestamp (e.g. "2026-07-19 07:32:16") and yields a bogus date.
+    const fallbackDate = naiveMatch?.[1] ?? /^\d{4}-\d{2}-\d{2}/.exec(raw)?.[0] ?? raw.slice(0, 10);
+    return { orderDate: fallbackDate, orderTime: null, soldAt: null };
   }
 
   const naiveTime = naiveMatch ? `${naiveMatch[2]}:${naiveMatch[3] ?? '00'}` : null;

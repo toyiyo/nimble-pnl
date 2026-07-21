@@ -81,7 +81,11 @@ export function tzOffsetMs(date: Date, timeZone: string): number {
 export function zonedNaiveToUtc(naive: string, timeZone: string | null | undefined): Date {
   const tz = safeTz(timeZone);
 
-  const m = naive.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  // Fractional seconds (e.g. "...:16.071") are tolerated and truncated to
+  // whole-second precision — real POS feeds (Toast openedDate, and defensively
+  // Revel) can include milliseconds. Without this the `$`-anchored match would
+  // fail and the caller would silently store a NULL sold_at / order_time.
+  const m = naive.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
   if (!m) return new Date(NaN);
 
   const [, y, mo, d, h, mi, s] = m;

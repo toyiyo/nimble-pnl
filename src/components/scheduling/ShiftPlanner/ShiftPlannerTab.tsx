@@ -24,12 +24,13 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePlannerShiftsIndex } from '@/hooks/usePlannerShiftsIndex';
 
-import type { ShiftTemplate, ConflictCheck, SlotCoverage, CoverageShift } from '@/types/scheduling';
+import type { Shift, ShiftTemplate, ConflictCheck, SlotCoverage, CoverageShift } from '@/types/scheduling';
 import type { ShiftCreateInput } from '@/hooks/useShiftPlanner';
 import type { ValidationIssue } from '@/lib/shiftValidator';
 
-import { computeSlotCoverage } from '@/lib/shiftCoverage';
-import { assignLoanedOutCell } from '@/lib/loanedOut';
+import { computeCellFill } from '@/lib/shiftFill';
+import { computeLoanedOut, assignLoanedOutCell } from '@/lib/loanedOut';
+import { formatLocalDate } from '@/lib/shiftInterval';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -218,6 +219,14 @@ export function ShiftPlannerTab({
 
   // Tab-level coverage Map: Map<templateId, Map<day, SlotCoverage>>
   // Per-slot try/catch so one bad row never blanks the whole grid.
+  //
+  // Fill (openSpots/coveragePct/segments/coveringEmployees) is computed per
+  // template from its own templateGridData bucket via computeCellFill — a
+  // same-position shift belonging to a *different* template can never leak
+  // into this cell's count (the bug this fixes; see design doc). loanedOut
+  // is computed separately via computeLoanedOut, which genuinely needs the
+  // whole-floor shift set for the day (loans are only visible by comparing
+  // home area against work area across all of that day's shifts).
   const coverageByTemplateDay = useMemo(() => {
     // Area source: for template-bound shifts (shift_template_id set), the template's area
     // is authoritative — an employee assigned cross-area should count toward the template's
@@ -226,7 +235,7 @@ export function ShiftPlannerTab({
     const templateAreaMap = new Map<string, string | null>(
       templates.map((t) => [t.id, t.area || null]),
     );
-    const cov: CoverageShift[] = shifts.map((s) => ({
+    const toCoverageShift = (s: Shift): CoverageShift => ({
       employee_id: s.employee_id,
       employee_name: s.employee?.name ?? null,
       start_time: s.start_time,
@@ -237,17 +246,44 @@ export function ShiftPlannerTab({
         ? (templateAreaMap.get(s.shift_template_id) ?? s.employee?.area ?? null)
         : (s.employee?.area ?? null),
       homeArea: s.employee?.area ?? null,
-    }));
+    });
+
+    // Whole-floor shifts pre-grouped by local day, once — computeLoanedOut
+    // needs the whole-floor set per day, but every template on that day can
+    // reuse the same list instead of re-scanning the whole week each time.
+    const wholeFloorByDay = new Map<string, CoverageShift[]>();
+    for (const s of shifts) {
+      const dayStr = formatLocalDate(new Date(s.start_time));
+      const list = wholeFloorByDay.get(dayStr);
+      const cs = toCoverageShift(s);
+      if (list) list.push(cs);
+      else wholeFloorByDay.set(dayStr, [cs]);
+    }
+
     const map = new Map<string, Map<string, SlotCoverage>>();
     for (const t of templates) {
       const inner = new Map<string, SlotCoverage>();
+      const bucketByDay = templateGridData.get(t.id);
       for (const day of weekDays) {
         if (!templateAppliesToDay(t, day)) continue;
         try {
-          inner.set(
-            day,
-            computeSlotCoverage(t.start_time, t.end_time, t.capacity ?? 1, day, cov, { position: t.position, tz: restaurantTimezone, area: t.area || null }),
-          );
+          const bucketShifts = (bucketByDay?.get(day) ?? []).map(toCoverageShift);
+          const fill = computeCellFill(bucketShifts, t.capacity ?? 1, {
+            position: t.position,
+            tz: restaurantTimezone,
+            dateStr: day,
+            windowStart: t.start_time,
+            windowEnd: t.end_time,
+          });
+          const loanedOut = computeLoanedOut(wholeFloorByDay.get(day) ?? [], {
+            position: t.position,
+            tz: restaurantTimezone,
+            dateStr: day,
+            windowStart: t.start_time,
+            windowEnd: t.end_time,
+            area: t.area || null,
+          });
+          inner.set(day, { ...fill, loanedOut });
         } catch {
           // one bad row never blanks the grid
         }
@@ -255,7 +291,7 @@ export function ShiftPlannerTab({
       map.set(t.id, inner);
     }
     return map;
-  }, [shifts, templates, weekDays, restaurantTimezone]);
+  }, [shifts, templates, weekDays, restaurantTimezone, templateGridData]);
 
   // Ghost map: de-duped loaned-out employees keyed `${templateId}:${day}`
   const ghostByCell = useMemo(() => {

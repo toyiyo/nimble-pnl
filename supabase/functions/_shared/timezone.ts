@@ -43,20 +43,37 @@ export function safeTz(tz: string | null | undefined): string {
  * `timeZone` is assumed already-validated (see `safeTz`); an invalid zone
  * here will throw, matching `Intl`'s native behavior.
  */
-export function tzOffsetMs(date: Date, timeZone: string): number {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    hourCycle: 'h23',
-  });
+/**
+ * Module-level cache of `Intl.DateTimeFormat` instances keyed by IANA timezone.
+ * Constructing an ICU formatter is expensive; `zonedNaiveToUtc` calls
+ * `tzOffsetMs` twice per timestamp, so a bulk Revel sync/backfill would
+ * otherwise build thousands of identical formatters (avoidable CPU/GC in the
+ * CPU-limited edge runtime). Mirrors the `_fmtCache` pattern in
+ * `src/lib/splhAnalytics.ts` / `src/hooks/useHourlySalesPattern.ts`.
+ */
+const _offsetFmtCache = new Map<string, Intl.DateTimeFormat>();
 
-  const parts = formatter.formatToParts(date);
+function offsetFormatter(timeZone: string): Intl.DateTimeFormat {
+  let fmt = _offsetFmtCache.get(timeZone);
+  if (!fmt) {
+    fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      hourCycle: 'h23',
+    });
+    _offsetFmtCache.set(timeZone, fmt);
+  }
+  return fmt;
+}
+
+export function tzOffsetMs(date: Date, timeZone: string): number {
+  const parts = offsetFormatter(timeZone).formatToParts(date);
   const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
 
   // formatToParts can report hour "24" at local midnight under hourCycle h23

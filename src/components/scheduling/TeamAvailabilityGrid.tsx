@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Zap } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Zap, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useEmployees } from '@/hooks/useEmployees';
@@ -8,6 +8,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeEffectiveAvailability, EffectiveAvailability, availabilityColorClasses } from '@/lib/effectiveAvailability';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { WEEKDAY_LABELS, type AvailabilityDeletionTarget } from './DeleteAvailabilityDialog';
 
 // ─── Day column definitions (Mon–Sun order) ───────────────────────────────────
 
@@ -90,12 +91,14 @@ interface AvailabilityCellProps {
   effective: EffectiveAvailability;
   date: Date;
   employeeId: string;
+  employeeName: string;
   dow: number;
   timezone: string;
   availability: EmployeeAvailability[];
   exceptions: AvailabilityException[];
   onOpenAvailabilityDialog: (employeeId: string, dayOfWeek: number, availability?: EmployeeAvailability) => void;
   onOpenExceptionDialog: (employeeId: string, date: Date, exception?: AvailabilityException) => void;
+  onRequestDelete: (target: AvailabilityDeletionTarget) => void;
   compact?: boolean;
 }
 
@@ -103,17 +106,45 @@ const AvailabilityCell = memo(function AvailabilityCell({
   effective,
   date,
   employeeId,
+  employeeName,
   dow,
   timezone,
   availability,
   exceptions,
   onOpenAvailabilityDialog,
   onOpenExceptionDialog,
+  onRequestDelete,
   compact = false,
 }: AvailabilityCellProps) {
   const dateStr = toDateStr(date);
 
+  // The underlying row this cell represents (if any) — shared by the click
+  // handler (open editor pre-filled with it) and the delete button (hand it
+  // up as the deletion target). `null` for a "not-set" cell, which has
+  // nothing to remove.
+  const resolvedTarget = useMemo((): AvailabilityDeletionTarget | null => {
+    if (effective.type === 'exception') {
+      const exc = exceptions.find((e) => e.employee_id === employeeId && e.date === dateStr);
+      return exc ? { kind: 'exception', row: exc, personName: employeeName } : null;
+    }
+    if (effective.type === 'recurring') {
+      const matches = availability.filter(
+        (a) => a.employee_id === employeeId && a.day_of_week === dow,
+      );
+      // Ambiguous target when split shifts exist for this day — bail out so
+      // the delete button is hidden rather than deleting the wrong row.
+      return matches.length === 1
+        ? { kind: 'availability', row: matches[0], personName: employeeName }
+        : null;
+    }
+    return null;
+  }, [effective.type, exceptions, availability, employeeId, dateStr, dow, employeeName]);
+
   const handleClick = useCallback(() => {
+    // Click-to-edit opens the first matching existing row (create-new when none).
+    // This is intentionally independent of `resolvedTarget`: that value is null
+    // for split-shift ambiguity so only the DELETE affordance is suppressed —
+    // editing an existing split-shift row must still work from the grid.
     if (effective.type === 'exception') {
       const exc = exceptions.find((e) => e.employee_id === employeeId && e.date === dateStr);
       onOpenExceptionDialog(employeeId, date, exc);
@@ -125,7 +156,17 @@ const AvailabilityCell = memo(function AvailabilityCell({
     } else {
       onOpenAvailabilityDialog(employeeId, dow, undefined);
     }
-  }, [effective.type, employeeId, dow, date, dateStr, availability, exceptions, onOpenAvailabilityDialog, onOpenExceptionDialog]);
+  }, [
+    effective.type,
+    employeeId,
+    dow,
+    date,
+    dateStr,
+    availability,
+    exceptions,
+    onOpenAvailabilityDialog,
+    onOpenExceptionDialog,
+  ]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -136,6 +177,28 @@ const AvailabilityCell = memo(function AvailabilityCell({
     },
     [handleClick],
   );
+
+  const handleDeleteClick = useCallback(
+    (e: React.MouseEvent) => {
+      // Sibling of the role="button" cell (not nested inside it) — but the
+      // cell still visually sits underneath, so stop propagation to make
+      // sure a click on the trash icon never also triggers the cell's own
+      // click-to-edit handler.
+      e.stopPropagation();
+      if (resolvedTarget) {
+        onRequestDelete(resolvedTarget);
+      }
+    },
+    [resolvedTarget, onRequestDelete],
+  );
+
+  const deleteAriaLabel = resolvedTarget
+    ? `Delete ${employeeName}'s ${
+        effective.type === 'exception'
+          ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          : WEEKDAY_LABELS[dow]
+      } availability`
+    : '';
 
   // Determine display values
   const slot = effective.slots[0];
@@ -217,24 +280,40 @@ const AvailabilityCell = memo(function AvailabilityCell({
 
   return (
     <td className="px-2 py-2">
-      <div
-        role="button"
-        tabIndex={0}
-        aria-label={ariaLabel}
-        onClick={handleClick}
-        onKeyDown={handleKeyDown}
-        className={`flex flex-col items-center justify-center rounded-lg border border-border/40 cursor-pointer transition-colors ${bgClass} h-14 px-2 py-1 relative min-w-[72px]`}
-      >
-        {isExceptionAvailable && (
-          <Zap className="absolute top-1 right-1 h-3 w-3 text-amber-500" />
-        )}
-        {splitTime ? (
-          <>
-            <span className={`text-[11px] font-medium leading-tight ${textClass}`}>{splitTime[0]}</span>
-            <span className={`text-[10px] leading-tight ${textClass} opacity-80`}>{splitTime[1]}</span>
-          </>
-        ) : (
-          <span className={`text-[12px] font-medium ${textClass}`}>{timeDisplay}</span>
+      <div className="relative group">
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={ariaLabel}
+          onClick={handleClick}
+          onKeyDown={handleKeyDown}
+          className={`flex flex-col items-center justify-center rounded-lg border border-border/40 cursor-pointer transition-colors ${bgClass} h-14 px-2 py-1 relative min-w-[72px]`}
+        >
+          {isExceptionAvailable && (
+            <Zap className="absolute top-1 right-1 h-3 w-3 text-amber-500" />
+          )}
+          {splitTime ? (
+            <>
+              <span className={`text-[11px] font-medium leading-tight ${textClass}`}>{splitTime[0]}</span>
+              <span className={`text-[10px] leading-tight ${textClass} opacity-80`}>{splitTime[1]}</span>
+            </>
+          ) : (
+            <span className={`text-[12px] font-medium ${textClass}`}>{timeDisplay}</span>
+          )}
+        </div>
+        {resolvedTarget && (
+          // Sibling of the role="button" cell above (never nested inside
+          // it) so it's independently keyboard-reachable and doesn't create
+          // a button-in-a-button a11y violation. Hover-revealed on desktop,
+          // but focus-visible ensures keyboard users can always reach it.
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            aria-label={deleteAriaLabel}
+            className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-background border border-border/40 flex items-center justify-center text-muted-foreground hover:text-destructive hover:border-destructive/40 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
         )}
       </div>
     </td>
@@ -243,6 +322,7 @@ const AvailabilityCell = memo(function AvailabilityCell({
 (prev, next) =>
   prev.effective === next.effective &&
   prev.employeeId === next.employeeId &&
+  prev.employeeName === next.employeeName &&
   prev.dow === next.dow &&
   prev.date.getTime() === next.date.getTime() &&
   prev.compact === next.compact &&
@@ -277,6 +357,7 @@ interface TeamAvailabilityGridProps {
     date: Date,
     exception?: AvailabilityException,
   ) => void;
+  onRequestDelete: (target: AvailabilityDeletionTarget) => void;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -285,6 +366,7 @@ export function TeamAvailabilityGrid({
   restaurantId,
   onOpenAvailabilityDialog,
   onOpenExceptionDialog,
+  onRequestDelete,
 }: TeamAvailabilityGridProps) {
   const { selectedRestaurant } = useRestaurantContext();
   const timezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
@@ -499,12 +581,14 @@ export function TeamAvailabilityGrid({
                               effective={eff}
                               date={date}
                               employeeId={employee.id}
+                              employeeName={employee.name}
                               dow={col.dow}
                               timezone={timezone}
                               availability={availability}
                               exceptions={exceptions}
                               onOpenAvailabilityDialog={onOpenAvailabilityDialog}
                               onOpenExceptionDialog={onOpenExceptionDialog}
+                              onRequestDelete={onRequestDelete}
                             />
                           );
                         })
@@ -582,12 +666,14 @@ export function TeamAvailabilityGrid({
                               effective={eff}
                               date={date}
                               employeeId={employee.id}
+                              employeeName={employee.name}
                               dow={col.dow}
                               timezone={timezone}
                               availability={availability}
                               exceptions={exceptions}
                               onOpenAvailabilityDialog={onOpenAvailabilityDialog}
                               onOpenExceptionDialog={onOpenExceptionDialog}
+                              onRequestDelete={onRequestDelete}
                               compact
                             />
                           </div>

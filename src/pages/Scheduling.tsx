@@ -54,6 +54,8 @@ import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
 import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
+import { DeleteAvailabilityDialog } from '@/components/scheduling/DeleteAvailabilityDialog';
+import type { AvailabilityDeletionTarget } from '@/components/scheduling/DeleteAvailabilityDialog';
 import { useShiftCopyDnd } from '@/components/scheduling/useShiftCopyDnd';
 import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
@@ -184,6 +186,38 @@ export function computeOpenShiftCount(
   return total;
 }
 
+/**
+ * Pure extraction of the "resolve the deletion target's personName" glue used
+ * when the Remove button inside AvailabilityDialog/AvailabilityExceptionDialog
+ * fires. Those editors only carry the row (no employee list of their own);
+ * Scheduling.tsx already holds `allEmployees` and fills in `personName` before
+ * opening the single shared DeleteAvailabilityDialog instance. Returns null if
+ * the row's employee_id doesn't match any known employee (e.g. the employee
+ * was removed mid-session) — callers should treat that as "nothing to delete".
+ */
+export function buildAvailabilityDeletionTarget(
+  kind: 'availability',
+  row: EmployeeAvailability,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null;
+export function buildAvailabilityDeletionTarget(
+  kind: 'exception',
+  row: AvailabilityException,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null;
+export function buildAvailabilityDeletionTarget(
+  kind: 'availability' | 'exception',
+  row: EmployeeAvailability | AvailabilityException,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null {
+  const employee = employees.find((e) => e.id === row.employee_id);
+  if (!employee) return null;
+  if (kind === 'availability') {
+    return { kind: 'availability', row: row as EmployeeAvailability, personName: employee.name };
+  }
+  return { kind: 'exception', row: row as AvailabilityException, personName: employee.name };
+}
+
 const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
@@ -202,6 +236,7 @@ const Scheduling = () => {
   const [gridDefaultDayOfWeek, setGridDefaultDayOfWeek] = useState<number | undefined>();
   const [gridException, setGridException] = useState<AvailabilityException | undefined>();
   const [gridDefaultDate, setGridDefaultDate] = useState<Date | undefined>();
+  const [deletionTarget, setDeletionTarget] = useState<AvailabilityDeletionTarget | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
@@ -539,6 +574,41 @@ const Scheduling = () => {
     setGridException(exception);
     setExceptionDialogOpen(true);
   }, []);
+
+  // Grid already resolves personName itself (it has the employee row in
+  // hand), so its trash button hands up a fully-formed target directly.
+  const handleRequestDeleteAvailability = useCallback((target: AvailabilityDeletionTarget) => {
+    setDeletionTarget(target);
+  }, []);
+
+  // The editors (AvailabilityDialog/AvailabilityExceptionDialog) only carry
+  // the row — resolve personName from allEmployees before opening the
+  // shared DeleteAvailabilityDialog.
+  const handleRemoveAvailability = useCallback((availability: EmployeeAvailability) => {
+    const target = buildAvailabilityDeletionTarget('availability', availability, allEmployees);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
+
+  const handleRemoveException = useCallback((exception: AvailabilityException) => {
+    const target = buildAvailabilityDeletionTarget('exception', exception, allEmployees);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -1702,6 +1772,7 @@ const Scheduling = () => {
                   restaurantId={restaurantId}
                   onOpenAvailabilityDialog={handleOpenAvailabilityFromGrid}
                   onOpenExceptionDialog={handleOpenExceptionFromGrid}
+                  onRequestDelete={handleRequestDeleteAvailability}
                 />
               )}
             </CardContent>
@@ -1785,6 +1856,7 @@ const Scheduling = () => {
             availability={gridAvailability}
             defaultEmployeeId={gridDefaultEmployeeId}
             defaultDayOfWeek={gridDefaultDayOfWeek}
+            onRemove={handleRemoveAvailability}
           />
           <AvailabilityExceptionDialog
             open={exceptionDialogOpen}
@@ -1800,6 +1872,16 @@ const Scheduling = () => {
             exception={gridException}
             defaultEmployeeId={gridDefaultEmployeeId}
             defaultDate={gridDefaultDate}
+            onRemove={handleRemoveException}
+          />
+          <DeleteAvailabilityDialog
+            open={deletionTarget !== null}
+            onOpenChange={(open) => {
+              if (!open) setDeletionTarget(null);
+            }}
+            target={deletionTarget}
+            restaurantId={restaurantId}
+            timezone={restaurantTimezone}
           />
         </>
       )}

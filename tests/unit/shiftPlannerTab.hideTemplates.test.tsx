@@ -17,7 +17,7 @@
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -29,12 +29,24 @@ import type { ShiftTemplate, Shift } from '@/types/scheduling';
 // vi.mock factories are hoisted above regular top-level consts, so any shared
 // mock state referenced inside a factory must be declared via vi.hoisted to
 // avoid a TDZ/module-initialization failure.
-const { mockShifts, mockHideTemplate, mockRestoreTemplate, mockUseShiftTemplates, mockIsMobile } = vi.hoisted(() => ({
+const {
+  mockShifts,
+  mockHideTemplate,
+  mockRestoreTemplate,
+  mockDeleteTemplate,
+  mockUseShiftTemplates,
+  mockIsMobile,
+  mockImpact,
+} = vi.hoisted(() => ({
   mockShifts: [] as Shift[],
-  mockHideTemplate: vi.fn(),
+  // Both mutations are `mutateAsync` in the real hook, so the wiring code is
+  // free to chain `.then()`/`.catch()` off them; mock the same shape.
+  mockHideTemplate: vi.fn(() => Promise.resolve()),
   mockRestoreTemplate: vi.fn(),
+  mockDeleteTemplate: vi.fn(() => Promise.resolve()),
   mockUseShiftTemplates: vi.fn(),
   mockIsMobile: vi.fn(() => false),
+  mockImpact: vi.fn(),
 }));
 
 vi.mock('@/hooks/useShiftPlanner', async () => {
@@ -72,6 +84,12 @@ vi.mock('@/hooks/useShiftTemplates', async () => {
     useShiftTemplates: (...args: unknown[]) => mockUseShiftTemplates(...args),
   };
 });
+
+// DeleteTemplateDialog owns its own useTemplateDeletionImpact read; stub it so
+// the dialog renders fully (low-impact by default) without touching supabase.
+vi.mock('@/hooks/useTemplateDeletionImpact', () => ({
+  useTemplateDeletionImpact: (...args: unknown[]) => mockImpact(...args),
+}));
 
 vi.mock('@/hooks/useAvailability', () => ({
   useEmployeeAvailability: () => ({ availability: [], loading: false }),
@@ -196,6 +214,14 @@ describe('ShiftPlannerTab — hide/restore templates (task 8)', () => {
     vi.clearAllMocks();
     mockShifts.length = 0;
     mockIsMobile.mockReturnValue(false);
+    mockImpact.mockReturnValue({
+      pendingClaims: { count: 0, names: [] },
+      scheduledShiftsKept: 0,
+      upcomingOpenSpots: 0,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
     mockUseShiftTemplates.mockReturnValue({
       templates: [],
       loading: false,
@@ -203,6 +229,9 @@ describe('ShiftPlannerTab — hide/restore templates (task 8)', () => {
       updateTemplate: vi.fn(),
       hideTemplate: mockHideTemplate,
       restoreTemplate: mockRestoreTemplate,
+      deleteTemplate: mockDeleteTemplate,
+      isHiding: false,
+      isDeleting: false,
     });
   });
 
@@ -349,5 +378,136 @@ describe('ShiftPlannerTab — hide/restore templates (task 8)', () => {
     await user.click(await screen.findByRole('menuitem', { name: /restore template/i }));
 
     expect(mockRestoreTemplate).toHaveBeenCalledWith('t2');
+  });
+});
+
+// ─── Delete wiring (T5) ────────────────────────────────────────────────────────
+// ShiftPlannerTab owns a single DeleteTemplateDialog instance (Single Dialog
+// Pattern) keyed on `templateToDelete`. Opening it from either an active or a
+// hidden row must work; confirming calls deleteTemplate; the dialog's own
+// "Hide template" button must reuse the existing handleHideTemplate flow.
+describe('ShiftPlannerTab — delete template wiring (T5)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockShifts.length = 0;
+    mockIsMobile.mockReturnValue(false);
+    mockImpact.mockReturnValue({
+      pendingClaims: { count: 0, names: [] },
+      scheduledShiftsKept: 0,
+      upcomingOpenSpots: 0,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    mockUseShiftTemplates.mockReturnValue({
+      templates: [makeTemplate({ id: 't1', name: 'Morning Server', is_active: true })],
+      loading: false,
+      createTemplate: vi.fn(),
+      updateTemplate: vi.fn(),
+      hideTemplate: mockHideTemplate,
+      restoreTemplate: mockRestoreTemplate,
+      deleteTemplate: mockDeleteTemplate,
+      isHiding: false,
+      isDeleting: false,
+    });
+  });
+
+  it('opens the DeleteTemplateDialog for an active template when "Delete template…" is clicked', async () => {
+    const user = userEvent.setup();
+    renderTab();
+
+    await user.click(screen.getByRole('button', { name: /actions for morning server/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /delete template/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /delete "morning server"\?/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('opens the DeleteTemplateDialog for a hidden (ghost) template too', async () => {
+    const user = userEvent.setup();
+    mockUseShiftTemplates.mockReturnValue({
+      templates: [makeTemplate({ id: 't2', name: 'Ghost Slot', is_active: false })],
+      loading: false,
+      createTemplate: vi.fn(),
+      updateTemplate: vi.fn(),
+      hideTemplate: mockHideTemplate,
+      restoreTemplate: mockRestoreTemplate,
+      deleteTemplate: mockDeleteTemplate,
+      isHiding: false,
+      isDeleting: false,
+    });
+    renderTab();
+
+    fireEvent.click(screen.getByRole('button', { name: /hidden/i }));
+    await user.click(screen.getByRole('button', { name: /actions for ghost slot/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /delete template/i }));
+
+    expect(
+      screen.getByRole('heading', { name: /delete "ghost slot"\?/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('calls deleteTemplate with id/name/pendingClaimsCount when the dialog\'s Delete button is confirmed', async () => {
+    const user = userEvent.setup();
+    mockImpact.mockReturnValue({
+      pendingClaims: { count: 2, names: ['Alex Rivera', 'Jordan Lee'] },
+      scheduledShiftsKept: 0,
+      upcomingOpenSpots: 0,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+    renderTab();
+
+    await user.click(screen.getByRole('button', { name: /actions for morning server/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /delete template/i }));
+
+    const dialog = screen.getByRole('dialog');
+    // High impact — ack checkbox gates the Delete button.
+    await user.click(within(dialog).getByRole('checkbox'));
+    await user.click(within(dialog).getByRole('button', { name: /^delete template$/i }));
+
+    expect(mockDeleteTemplate).toHaveBeenCalledWith({
+      id: 't1',
+      name: 'Morning Server',
+      pendingClaimsCount: 2,
+    });
+  });
+
+  it('reuses handleHideTemplate (real keptShiftCount) when the dialog\'s "Hide template" button is clicked', async () => {
+    const user = userEvent.setup();
+    mockShifts.length = 0;
+    mockShifts.push(makeShift({ id: 's1', shift_template_id: 't1' }));
+    renderTab();
+
+    await user.click(screen.getByRole('button', { name: /actions for morning server/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /delete template/i }));
+
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /^hide template$/i }));
+
+    expect(mockHideTemplate).toHaveBeenCalledWith({
+      id: 't1',
+      name: 'Morning Server',
+      keptShiftCount: 1,
+    });
+
+    mockShifts.length = 0;
+  });
+
+  it('closes the dialog without calling delete or hide when Cancel is clicked', async () => {
+    const user = userEvent.setup();
+    renderTab();
+
+    await user.click(screen.getByRole('button', { name: /actions for morning server/i }));
+    await user.click(await screen.findByRole('menuitem', { name: /delete template/i }));
+
+    const dialog = screen.getByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockDeleteTemplate).not.toHaveBeenCalled();
+    expect(mockHideTemplate).not.toHaveBeenCalled();
   });
 });

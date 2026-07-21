@@ -38,11 +38,16 @@ function mkTemplate(overrides: Partial<ShiftTemplate> & { id: string }): ShiftTe
   } as ShiftTemplate;
 }
 
+// Shift instants are UTC (as they come from Postgres timestamptz) and are
+// anchored so they read as the template's wall-clock in `tz` (America/Chicago,
+// CDT = UTC-5 in June): 10:00 CDT = 15:00Z, 16:30 CDT = 21:30Z. Using naive
+// local strings here would make the legacy exact-time match tz-dependent and
+// fail under a UTC CI runner.
 function mkShift(overrides: Partial<Shift> & { id: string; employee_id: string }): Shift {
   return {
     restaurant_id: 'r1',
-    start_time: '2026-06-29T10:00:00',
-    end_time: '2026-06-29T16:30:00',
+    start_time: '2026-06-29T15:00:00Z',
+    end_time: '2026-06-29T21:30:00Z',
     position: 'Server',
     status: 'scheduled',
     break_duration: 0,
@@ -93,8 +98,8 @@ describe('computeOpenShiftCount — assignment-based banner count', () => {
         id: 's1',
         employee_id: 'e1',
         shift_template_id: null,
-        start_time: '2026-06-29T10:00:00',
-        end_time: '2026-06-29T16:30:00',
+        start_time: '2026-06-29T15:00:00Z', // 10:00 CDT
+        end_time: '2026-06-29T21:30:00Z',   // 16:30 CDT
         position: 'Server',
       }),
     ];
@@ -111,8 +116,8 @@ describe('computeOpenShiftCount — assignment-based banner count', () => {
         id: 's1',
         employee_id: 'e1',
         shift_template_id: null,
-        start_time: '2026-06-29T09:00:00',
-        end_time: '2026-06-29T17:00:00',
+        start_time: '2026-06-29T14:00:00Z', // 09:00 CDT — wider window, no exact match
+        end_time: '2026-06-29T22:00:00Z',   // 17:00 CDT
         position: 'Server',
       }),
     ];

@@ -45,7 +45,16 @@ AS $$
     node ->> 'date'
   )
   FROM (
-    SELECT COALESCE(p_raw_json -> 'Order', p_raw_json -> 'order', p_raw_json) AS node
+    -- NULLIF(..., 'null'::jsonb) converts a JSON-null envelope value (e.g.
+    -- {"Order": null, "created_date": "..."}) to a genuine SQL NULL before
+    -- COALESCE, matching getOrderNode()'s `??` fallthrough on JS null. Without
+    -- this, `p_raw_json -> 'Order'` being JSONB null (a non-NULL SQL value)
+    -- would short-circuit COALESCE and silently drop the row's created_date.
+    SELECT COALESCE(
+      NULLIF(p_raw_json -> 'Order', 'null'::jsonb),
+      NULLIF(p_raw_json -> 'order', 'null'::jsonb),
+      p_raw_json
+    ) AS node
   ) _envelope;
 $$;
 

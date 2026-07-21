@@ -118,6 +118,24 @@ describe('normalizeOrder', () => {
     const n = normalizeOrder(SAMPLE);
     expect(n.soldAt).toBe('2026-07-19T12:32:16.000Z');
   });
+
+  // Regression (Copilot review, PR #631): parseDateTime's naive-match regex
+  // used to require seconds; a seconds-less naive created_date fell through
+  // to deriving orderTime/orderDate from soldAt's UTC digits, contradicting
+  // this function's contract that orderTime is always local wall-clock digits.
+  it('treats a seconds-less naive created_date as local wall-clock time (orderTime/orderDate stay in local space, not UTC)', () => {
+    const noSecondsOrder = {
+      Order: { ...SAMPLE.Order, created_date: '2026-07-19T07:32' },
+      OrderItems: SAMPLE.OrderItems,
+      Payments: SAMPLE.Payments,
+    };
+    const n = normalizeOrder(noSecondsOrder, 'America/Chicago');
+    expect(n.soldAt).toBe('2026-07-19T12:32:00.000Z');
+    // Local wall-clock digits (07:32:00), not the UTC digits (12:32:00) that
+    // the pre-fix fallback path would have produced.
+    expect(n.orderTime).toBe('07:32:00');
+    expect(n.orderDate).toBe('2026-07-19');
+  });
 });
 
 describe('processOrder', () => {

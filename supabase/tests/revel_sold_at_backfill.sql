@@ -5,7 +5,7 @@
 -- invalid/null-tz fallback), and the pre/post pending-count report.
 
 BEGIN;
-SELECT plan(23);
+SELECT plan(24);
 
 -- Setup: Disable RLS for test data creation (mirrors supabase/tests/revel_integration.sql)
 SET LOCAL role TO postgres;
@@ -65,6 +65,19 @@ SELECT is(
 -- Test 7: NULL raw_json / no matching field returns NULL (no throw)
 SELECT is(public.revel_raw_created_date(NULL), NULL, 'NULL raw_json returns NULL');
 SELECT is(public.revel_raw_created_date('{"Order": {}}'::jsonb), NULL, 'no matching field returns NULL');
+
+-- Test 7b (Codex review, PR #631): a JSON-null "Order" envelope
+-- ({"Order": null, ...}) must fall through to "order"/flat payload, mirroring
+-- getOrderNode()'s `payload.Order ?? payload.order ?? payload` (JS `??`
+-- treats JS null as nullish and falls through). Without NULLIF-ing the JSONB
+-- null before COALESCE, `p_raw_json -> 'Order'` is a non-NULL SQL value
+-- (JSONB null), so COALESCE would short-circuit on it and the row's
+-- created_date would be silently dropped from the backfill.
+SELECT is(
+  public.revel_raw_created_date('{"Order": null, "created_date": "2026-07-19T07:32:16"}'::jsonb),
+  '2026-07-19T07:32:16',
+  'JSON-null Order envelope falls through to flat-payload created_date'
+);
 
 -- ============================================================
 -- Fixtures: restaurant + revel_orders (naive local created_date in raw_json,

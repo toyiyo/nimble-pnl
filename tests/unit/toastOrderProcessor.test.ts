@@ -119,8 +119,10 @@ describe('processOrder (Toast) — unaffected by the Revel tz fix', () => {
     const modulePath = resolve(__dirname, '../../supabase/functions/_shared/toastOrderProcessor.ts');
     const source = readFileSync(modulePath, 'utf8');
     // Matches both an absolute `_shared/timezone` import and a sibling-relative
-    // `./timezone` import (the form an actual same-directory import would take).
-    expect(source).not.toMatch(/from\s+['"](?:\.\/|.*\/_shared\/)timezone['"]/);
+    // `./timezone` import (the form an actual same-directory import would take),
+    // with or without the Deno-style explicit `.ts` extension (e.g.
+    // `from './timezone.ts'` / `from '../_shared/timezone.ts'`).
+    expect(source).not.toMatch(/from\s+['"](?:\.\/|.*\/_shared\/)timezone(?:\.ts)?['"]/);
     expect(source).not.toMatch(/zonedNaiveToUtc|resolveRestaurantTimeZone|safeTz|tzOffsetMs/);
   });
 });

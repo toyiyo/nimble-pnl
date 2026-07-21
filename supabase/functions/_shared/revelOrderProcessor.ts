@@ -97,20 +97,27 @@ function parseDateTime(
 
   const raw = String(rawDate);
   const hasOffset = /(Z|[+-]\d{2}:?\d{2})$/i.test(raw);
-  const naiveMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})/);
+  // Seconds are optional here (mirrors zonedNaiveToUtc's own regex in
+  // timezone.ts) so a seconds-less naive timestamp (e.g. Revel ever sending
+  // "2026-07-19T07:32") still takes the local-wall-clock path below instead
+  // of silently falling through to the UTC-digit branch, which would
+  // contradict this function's own "orderTime is always local wall-clock
+  // digits" contract.
+  const naiveMatch = raw.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::(\d{2}))?/);
 
   const soldAtDate = hasOffset ? new Date(raw) : zonedNaiveToUtc(raw, timeZone);
   if (Number.isNaN(soldAtDate.getTime())) {
     return { orderDate: raw.split('T')[0], orderTime: null, soldAt: null };
   }
 
-  const orderTime = naiveMatch ? naiveMatch[2] : soldAtDate.toISOString().split('T')[1].split('.')[0];
+  const naiveTime = naiveMatch ? `${naiveMatch[2]}:${naiveMatch[3] ?? '00'}` : null;
+  const orderTime = naiveTime ?? soldAtDate.toISOString().split('T')[1].split('.')[0];
 
   let orderDate: string;
   if (naiveMatch) {
     // Treat the naive digits as if they were UTC purely for calendar arithmetic
     // (no real tz conversion here — we're already in local space).
-    const naiveAsUtcMs = Date.parse(`${naiveMatch[1]}T${naiveMatch[2]}Z`);
+    const naiveAsUtcMs = Date.parse(`${naiveMatch[1]}T${naiveTime}Z`);
     orderDate = new Date(naiveAsUtcMs - 2 * 60 * 60 * 1000).toISOString().split('T')[0];
   } else {
     orderDate = soldAtDate.toISOString().split('T')[0];

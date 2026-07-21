@@ -48,11 +48,24 @@ bypasses RLS, `auth.uid()` is used only to *record* the actor, never to
   must authorize via the `employees` table, not `user_has_role`.
 - The existing `open_shift_claims` RLS already encodes the intended
   audiences:
-  - `managers_review_claims` (UPDATE): `user_restaurants … role IN ('owner','manager')`.
+  - `managers_review_claims` (UPDATE) and `managers_view_restaurant_claims`
+    (SELECT): `user_restaurants … role IN ('owner','manager','operations_manager')`.
+    **This is the current deployed shape**, set by
+    `20260702170000_add_operations_manager_role.sql:823-845` (the original
+    `20260412145842` migration created them as `('owner','manager')`; the
+    operations-manager migration widened both). Verified live:
+    `\d public.open_shift_claims` shows `operations_manager` in both policies.
+    The `edit:scheduling` capability likewise includes `operations_manager`
+    (`20260702170000:145`), and the `/scheduling` claim-approval UI is
+    reachable by that role — so `operations_manager` is a **legitimate
+    approver/rejecter of claims today**.
   - `employees_insert_own_claims` (INSERT): `claimed_by_employee_id IN (SELECT id FROM employees WHERE user_id = auth.uid())`.
 
   The SECURITY DEFINER RPCs must re-apply these same invariants because they
-  bypass RLS.
+  bypass RLS. Re-applying the **real** invariant means the approve/reject
+  gate must include `operations_manager`, or the "hardening" would silently
+  strip an existing privilege (a regression, and the read/write-audience
+  mismatch trap of lesson [2026-07-13]).
 
 ## Fix
 
@@ -65,7 +78,7 @@ The approve function is re-created from `20260707090000` (preserving its
 
 ### 1. `approve_open_shift_claim` (and `reject_open_shift_claim`)
 
-After locking the claim, gate on manager/owner role for the **claim's**
+After locking the claim, gate on the manager audience for the **claim's**
 restaurant. Collapse the not-found and not-authorized cases into a single
 generic message so a cross-tenant caller cannot use the error shape to
 probe whether a claim id exists (no enumeration signal):
@@ -74,13 +87,15 @@ probe whether a claim id exists (no enumeration signal):
 SELECT * INTO v_claim FROM public.open_shift_claims WHERE id = p_claim_id FOR UPDATE;
 
 IF NOT FOUND
-   OR NOT public.user_has_role(v_claim.restaurant_id, ARRAY['owner','manager']) THEN
+   OR NOT public.user_has_role(v_claim.restaurant_id,
+                               ARRAY['owner','manager','operations_manager']) THEN
     RETURN json_build_object('success', false, 'error', 'Claim not found or not authorized');
 END IF;
 ```
 
 (`IF a OR b` short-circuits in plpgsql, so `user_has_role` is not evaluated
-when the claim is missing.) Role set `['owner','manager']` matches the
+when the claim is missing.) Role set `['owner','manager','operations_manager']`
+matches the
 existing `managers_review_claims` RLS policy exactly. The subsequent
 `status != 'pending_approval'` branch keeps its specific message — it is
 only reachable by an already-authorized manager, so it leaks nothing
@@ -130,11 +145,20 @@ excluded. Linked employees are covered by the second branch.
 
 ## Decided trade-offs
 
-- **Role set is `owner/manager`, not `operations_manager`.** Matches the
-  existing `managers_review_claims` RLS policy and the approve/reject action
-  audience. Per lesson [2026-07-13] "read grant must match write grant,"
-  widening approval to `operations_manager` is a separate product decision,
-  not smuggled in via a security fix.
+- **Role set is `owner/manager/operations_manager`.** (Corrected after the
+  Phase 4 build agent caught a stale premise in the first draft.) This is
+  exact parity with the deployed `managers_review_claims` UPDATE policy and
+  `managers_view_restaurant_claims` SELECT policy (both widened to include
+  `operations_manager` on 2026-07-02), the `edit:scheduling` capability, and
+  the `/scheduling` approval UI. Lesson [2026-07-13] ("read grant must match
+  write grant") applies to the **directed-trade** feature (`shift_trades`),
+  where the approve/reject audience is *deliberately* `owner/manager`-only —
+  a **different table** with a different, intentionally narrower audience.
+  Importing that narrowing to `open_shift_claims` would strip an existing
+  `operations_manager` privilege and create exactly the read/write-audience
+  mismatch that lesson warns against (operations_manager sees pending claims
+  + approve buttons, RPC rejects them). So parity here *requires* including
+  `operations_manager`.
 - **`SET search_path = public` added to all four functions.** (Revised after
   Phase 2.5 review.) Every table reference in the new bodies is already
   schema-qualified so this is a zero-behavior-change addition, and it matches
@@ -161,9 +185,10 @@ vacuous). Dates relative to `CURRENT_DATE`; delete-before-insert in FK order;
 `ON CONFLICT DO UPDATE` fixtures. Read-backs run as `postgres` (RLS bypassed)
 so they observe the RPC's real write, not the caller's RLS-scoped view.
 
-Fixtures: restaurant R1 + manager M1 + employee E1 (claimer); restaurant R2
-+ manager M2 + employee E2. Distinct pending claims per scenario so one
-scenario's write can't change another's starting state.
+Fixtures: restaurant R1 + manager M1 + **operations_manager OM1** + employee
+E1 (claimer); restaurant R2 + manager M2 + employee E2. Distinct pending
+claims per scenario so one scenario's write can't change another's starting
+state.
 
 **Fixture rows that must be present so scenarios 7 & 9 exercise real logic
 (not short-circuit paths)** — call these out explicitly in the test header:
@@ -186,6 +211,9 @@ Scenarios:
    `success=false`, claim stays pending.
 3. **approve** — M1 (manager of R1) can approve an R1 claim →
    `success=true`, claim `approved`, shift row created.
+3b. **approve** — OM1 (operations_manager of R1) can approve an R1 claim →
+   `success=true`. Pins the operations_manager parity so a future narrowing
+   to `owner/manager` is caught (lesson [2026-07-13] non-vacuous clause test).
 4. **reject** — E1 cannot reject own claim → `success=false`, stays pending.
 5. **reject** — M2 cannot reject R1 claim → `success=false`, stays pending.
 6. **reject** — M1 can reject R1 claim → `success=true`, claim `rejected`.
@@ -196,9 +224,35 @@ Scenarios:
 9. **get_open_shifts** — a linked R1 member/employee sees the open row;
    a stranger (R2 employee) sees zero rows for R1.
 
+## Existing tests that MUST be updated (else the migration lands red)
+
+`supabase/tests/60_claim_open_shift_active_guard.test.sql` and
+`supabase/tests/61_approve_open_shift_claim_active_guard.test.sql` currently
+invoke the guarded RPCs **entirely as `SET LOCAL role TO postgres`**, so
+`auth.uid()` is NULL throughout. Once the new authz guards land, the "not
+authorized" branch fires **before** the `is_active` branch those files test,
+flipping their assertions red for an unrelated reason (60: tests 1,3,4,5,6,7;
+61: tests 1,2,4).
+
+Both files must be updated so the RPC-calling statements run as
+`authenticated` with a real caller:
+- Give the fixture employees (60: `d1`/`d2`; 61: the claimers) an
+  `auth.users` row and set `employees.user_id` to it; impersonate that user
+  (`SET LOCAL role='authenticated'` + `request.jwt.claims`) for
+  `claim_open_shift`/`get_open_shifts` calls.
+- For 61's `approve` calls, add a manager (`user_restaurants` role
+  `manager`/`owner`) + `auth.users` row and impersonate it.
+- Keep setup + read-backs as `postgres`; only the guarded RPC calls switch to
+  `authenticated`. Re-enable RLS before switching roles (per the
+  `54_accept_shift_trade_authz.sql` precedent).
+
+This is required scope for the migration task, not optional.
+
 ## Files
 
 - `supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql` (new)
 - `supabase/tests/62_open_shift_claim_authz.test.sql` (new)
+- `supabase/tests/60_claim_open_shift_active_guard.test.sql` (update: auth impersonation)
+- `supabase/tests/61_approve_open_shift_claim_active_guard.test.sql` (update: auth impersonation)
 
 No frontend changes — the hooks already surface `result.error` as a toast.

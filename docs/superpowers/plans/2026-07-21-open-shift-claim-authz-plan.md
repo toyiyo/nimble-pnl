@@ -20,6 +20,7 @@ File: `supabase/tests/62_open_shift_claim_authz.test.sql`
     success scenario. R2 for cross-tenant. Keep each scenario's claim row
     independent.
   - auth.users + user_restaurants(role manager) for M1(R1), M2(R2).
+  - auth.users + user_restaurants(role operations_manager) for OM1(R1).
   - auth.users + employees(user_id) for E1(R1 claimer), E2(R2).
   - shift_templates active/capacity>1/days=DOW; staffing_settings enabled;
     schedule_publications window covering target date (for get_open_shifts).
@@ -30,6 +31,8 @@ File: `supabase/tests/62_open_shift_claim_authz.test.sql`
      pending_approval; no shift row.
   2. approve: M2 approve R1 claim → success=false; claim still pending.
   3. approve: M1 approve R1 claim → success=true; claim approved; shift exists.
+  3b. approve: OM1 (operations_manager R1) approve R1 claim → success=true
+      (pins operations_manager parity — non-vacuous clause test).
   4. reject: E1 reject own claim → success=false; still pending.
   5. reject: M2 reject R1 claim → success=false; still pending.
   6. reject: M1 reject R1 claim → success=true; claim rejected.
@@ -52,13 +55,28 @@ File: `supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql`
     'Not authorized' at top.
   - `approve_open_shift_claim`: re-create from 20260707090000 (keep is_active
     guard + tz); after FOR UPDATE fetch, `IF NOT FOUND OR NOT
-    user_has_role(v_claim.restaurant_id, ARRAY['owner','manager'])` →
+    user_has_role(v_claim.restaurant_id,
+    ARRAY['owner','manager','operations_manager'])` →
     'Claim not found or not authorized'.
   - `reject_open_shift_claim`: same guard shape after fetch.
 - Re-GRANT EXECUTE to authenticated (signatures unchanged, but include for
   clarity/idempotency safety — harmless).
+
+### Task 2b — Update existing tests 60 & 61 for the new authz context
+Required (else the migration lands red): tests 60/61 call the guarded RPCs as
+`postgres` (auth.uid()=NULL) and would hit the new "not authorized" branch.
+- `60_claim_open_shift_active_guard.test.sql`: give employees d1/d2 an
+  `auth.users` row + `employees.user_id`; wrap each `claim_open_shift`/
+  `get_open_shifts` assertion in `SET LOCAL role='authenticated'` +
+  `request.jwt.claims` for the right employee. Re-enable RLS before switching
+  roles; read-backs stay `postgres`.
+- `61_approve_open_shift_claim_active_guard.test.sql`: add a manager
+  (`user_restaurants` role manager) + `auth.users` row; impersonate it for
+  the `approve_open_shift_claim` assertions. Keep the is_active semantics the
+  tests target intact (only the caller context changes).
 - Run: `npm run db:reset && npm run test:db` — confirm GREEN (all 62-test
-  assertions pass, no regressions in 60/61/other open_shift tests).
+  assertions pass; 60/61 pass under authenticated context; no other
+  open_shift regressions).
 - Commit.
 
 ## Task 3 — Verify (Phase 8)
@@ -72,7 +90,6 @@ File: `supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql`
 - Task 3 depends on Task 2.
 
 ## Out of scope (documented trade-offs)
-- operations_manager approval (separate product decision).
 - manager-assign claim path (fill-by-assignment PR owns it).
 - is_active check in claim guard.
 - No frontend changes (hooks already surface result.error).

@@ -2,8 +2,9 @@ import { useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
-import { format, parseISO } from 'date-fns';
+import { format } from 'date-fns';
 import { BreakEvenData } from '@/types/operatingCosts';
+import { parseLocalDate } from '@/lib/parseLocalDate';
 
 interface SalesVsBreakEvenChartProps {
   readonly data: BreakEvenData | null;
@@ -25,6 +26,40 @@ function formatSignedCurrency(amount: number): string {
   return amount > 0 ? `+${formatCurrency(amount)}` : formatCurrency(amount);
 }
 
+interface WeekdayAxisTickProps {
+  readonly x?: number;
+  readonly y?: number;
+  readonly payload?: { value: string };
+}
+
+// Recharts' `tickFormatter` returns a single string and can't render two
+// lines. The narrow `EEEEE` weekday token also collides Tue/Thu and Sat/Sun
+// (both render as a lone "T" / "S"), which defeats the point of labeling the
+// axis by weekday at all — so this uses the two-letter `EEEEEE` form and
+// renders it as its own line above "MMM d" via stacked <tspan>s.
+//
+// Parses via the shared `parseLocalDate` (not `parseISO`, which reads bare
+// date strings as UTC and can shift the weekday back a day in negative UTC
+// offsets) — the same fix applied to `deriveWeekdayPattern`.
+function WeekdayAxisTick({ x, y, payload }: WeekdayAxisTickProps) {
+  if (!payload?.value) return null;
+
+  const date = parseLocalDate(payload.value);
+  const weekday = format(date, 'EEEEEE');
+  const monthDay = format(date, 'MMM d');
+
+  return (
+    <text x={x} y={y} textAnchor="middle" fontSize={11} fill="hsl(var(--muted-foreground))">
+      <tspan x={x} dy="0.9em" fontWeight={600}>
+        {weekday}
+      </tspan>
+      <tspan x={x} dy="1.1em">
+        {monthDay}
+      </tspan>
+    </text>
+  );
+}
+
 export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
   const navigate = useNavigate();
   // Scopes the partial-bar hatch <pattern> id to this instance — the widget
@@ -37,7 +72,6 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
 
     return data.history.map((h) => ({
       date: h.date,
-      dateLabel: format(parseISO(h.date), 'MMM d'),
       sales: h.sales,
       breakEven: h.breakEven,
       delta: h.delta,
@@ -161,10 +195,12 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
                 </pattern>
               </defs>
               <XAxis
-                dataKey="dateLabel"
-                tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                dataKey="date"
+                tick={<WeekdayAxisTick />}
                 tickLine={false}
                 axisLine={false}
+                height={36}
+                interval={0}
               />
               <YAxis
                 tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
@@ -175,7 +211,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
               />
               <Tooltip
                 formatter={(value: number) => [formatCurrency(value), 'Sales']}
-                labelFormatter={(label) => label}
+                labelFormatter={(label: string) => format(parseLocalDate(label), 'MMM d')}
                 contentStyle={{
                   backgroundColor: 'hsl(var(--background))',
                   border: '1px solid hsl(var(--border))',

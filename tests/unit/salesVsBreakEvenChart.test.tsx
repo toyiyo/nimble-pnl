@@ -279,3 +279,45 @@ describe('SalesVsBreakEvenChart — partial bar fill + hatch', () => {
     expect(bar?.getAttribute('fill')).toMatch(/^url\(#.+\)$/);
   });
 });
+
+describe('SalesVsBreakEvenChart — two-letter weekday axis', () => {
+  // 2026-07-21 is a Tuesday, 2026-07-23 is a Thursday. The narrow `EEEEE`
+  // token renders both as the single letter "T" — indistinguishable. The
+  // two-letter `EEEEEE` token must render "Tu" vs "Th" so the axis actually
+  // tells them apart.
+  it('renders distinct two-letter weekday labels for Tue and Thu, not the same single letter', () => {
+    const { container } = renderChart(
+      makeData({
+        history: [
+          makeHistoryRow({ date: '2026-07-21', status: 'above' }),
+          makeHistoryRow({ date: '2026-07-23', status: 'above' }),
+        ],
+      }),
+    );
+
+    // The custom tick renders the weekday as its own <tspan>, separate from
+    // the "MMM d" line below it.
+    const tspans = Array.from(container.querySelectorAll('.recharts-xAxis tspan')).map(
+      (t) => t.textContent,
+    );
+
+    expect(tspans).toContain('Tu');
+    expect(tspans).toContain('Th');
+    expect(tspans).not.toContain('T');
+  });
+
+  it('renders the month/day as a second line under the weekday for each tick', () => {
+    const { container } = renderChart(
+      makeData({
+        history: [makeHistoryRow({ date: '2026-07-21', status: 'above' })],
+      }),
+    );
+
+    const tspans = Array.from(container.querySelectorAll('.recharts-xAxis tspan')).map(
+      (t) => t.textContent,
+    );
+
+    expect(tspans).toContain('Tu');
+    expect(tspans).toContain('Jul 21');
+  });
+});

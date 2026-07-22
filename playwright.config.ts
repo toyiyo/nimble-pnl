@@ -31,7 +31,10 @@ import { defineConfig, devices } from '@playwright/test';
 const configDir = dirname(fileURLToPath(import.meta.url));
 const derivedPort = 10000 + (Array.from(configDir).reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381) % 20000);
 const PORT = Number(process.env.E2E_PORT) || (process.env.CI ? 4173 : derivedPort);
-const BASE_URL = `http://localhost:${PORT}`;
+// Match the webServer's `--host 127.0.0.1` bind exactly. If this said `localhost`, a host that
+// resolves `localhost` to IPv6 `::1` first would have Playwright dial `::1` while Vite listens
+// only on IPv4 — intermittent connection failures that look like server-startup flake.
+const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
   testDir: './tests',

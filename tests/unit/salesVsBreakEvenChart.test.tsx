@@ -551,3 +551,67 @@ describe('SalesVsBreakEvenChart — COGS variance chip', () => {
     expect(screen.queryByText(/pts (over|under) target/)).not.toBeInTheDocument();
   });
 });
+
+// Two full weeks (2026-06-01 Mon .. 2026-06-14 Sun) that trip
+// `deriveWeekdayPattern`'s clean-split rule — mirrors the fixture in
+// `tests/unit/breakEvenInsights.test.ts` so this is a known non-null result,
+// not an incidental one.
+function makeCleanSplitHistory(): BreakEvenData['history'] {
+  const weekdayDeltas: Record<number, number> = {
+    1: -900, // Mon
+    2: -1000, // Tue
+    3: -1100, // Wed
+    4: -1200, // Thu
+    5: 800, // Fri
+    6: 700, // Sat
+    0: 600, // Sun
+  };
+  const dates = [
+    '2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04', '2026-06-05', '2026-06-06', '2026-06-07',
+    '2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12', '2026-06-13', '2026-06-14',
+  ];
+  return dates.map((date) => {
+    const weekday = new Date(
+      Number(date.slice(0, 4)),
+      Number(date.slice(5, 7)) - 1,
+      Number(date.slice(8, 10)),
+    ).getDay();
+    const delta = weekdayDeltas[weekday];
+    return makeHistoryRow({
+      date,
+      delta,
+      sales: 2500 + delta,
+      status: delta > 0 ? 'above' : 'below',
+      isPartial: false,
+    });
+  });
+}
+
+// Finding #3 / memory/lessons.md 2026-07-22: a derived sentence good enough
+// to be an aria-label is good enough to be on screen — this must render as
+// visible copy, never sr-only-only.
+describe('SalesVsBreakEvenChart — weekday insight line', () => {
+  it('renders the deriveWeekdayPattern sentence as a visible paragraph under the chart', () => {
+    renderChart(
+      makeData({ history: makeCleanSplitHistory(), completeDays: 14 }),
+    );
+
+    const insight = screen.getByText(/never break even/);
+    expect(insight).toBeInTheDocument();
+    expect(insight.tagName).toBe('P');
+    // Explicitly NOT sr-only — the whole point is sighted users read it too.
+    expect(insight.className).not.toMatch(/sr-only/);
+    // Not visually hidden by other common hide-from-sight mechanisms either.
+    expect(insight).not.toHaveAttribute('hidden');
+    expect(insight.className).not.toMatch(/\binvisible\b/);
+  });
+
+  it('does not render an insight paragraph when deriveWeekdayPattern returns null (insufficient data)', () => {
+    // makeData()'s default history is a single row — well under the 7
+    // complete-day minimum, so deriveWeekdayPattern returns null.
+    renderChart(makeData());
+
+    expect(screen.queryByText(/never break even/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/weakest day/)).not.toBeInTheDocument();
+  });
+});

@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLin
 import { format } from 'date-fns';
 import { BreakEvenData } from '@/types/operatingCosts';
 import { parseLocalDate } from '@/lib/parseLocalDate';
+import { deriveWeekdayPattern } from '@/lib/breakEvenInsights';
 
 interface SalesVsBreakEvenChartProps {
   readonly data: BreakEvenData | null;
@@ -220,6 +221,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
   const periodLabel = `${data.completeDays} complete day${data.completeDays === 1 ? '' : 's'}`;
   const cogsVariance = formatCOGSVariance(actualCOGSPercentage, targetCOGSPercentage);
   const cogsPeriodLabel = `over the last ${chartData.length} day${chartData.length === 1 ? '' : 's'}`;
+  const weekdayInsight = deriveWeekdayPattern(data.history);
 
   return (
     <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
@@ -347,6 +349,13 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
             </BarChart>
           </ResponsiveContainer>
         </div>
+        {/* Finding #3 / memory/lessons.md 2026-07-22: a derived sentence
+            good enough to be an aria-label is good enough to be on screen —
+            rendered as visible copy, never sr-only. Hidden entirely (not
+            just visually) when there isn't enough data to support a claim. */}
+        {weekdayInsight && (
+          <p className="text-[12.5px] leading-snug text-muted-foreground mt-3">{weekdayInsight}</p>
+        )}
       </div>
 
       {/* Summary stats */}

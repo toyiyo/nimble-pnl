@@ -9,6 +9,7 @@ import {
   computeKpis,
   deriveInsights,
   hourCoverage,
+  formatHour,
   type SalesTrendsData,
 } from '@/lib/salesTrends';
 
@@ -349,5 +350,20 @@ describe('hourCoverage', () => {
       by_hour: [{ hour: 10, pos_system: 'toast', revenue: 100, day_count: 1 }],
     };
     expect(hourCoverage(full)).toBe(1);
+  });
+});
+
+describe('formatHour', () => {
+  it('formats valid hours in 12h form', () => {
+    expect(formatHour(0)).toBe('12AM');
+    expect(formatHour(8)).toBe('8AM');
+    expect(formatHour(12)).toBe('12PM');
+    expect(formatHour(20)).toBe('8PM');
+    expect(formatHour(23)).toBe('11PM');
+  });
+
+  it('returns empty string for non-finite input (no "NaNPM")', () => {
+    expect(formatHour(Number.NaN)).toBe('');
+    expect(formatHour(Number.POSITIVE_INFINITY)).toBe('');
   });
 });

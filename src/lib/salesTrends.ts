@@ -499,6 +499,8 @@ export interface SalesTrendsInsights {
 export { formatCurrency };
 
 export function formatHour(hour: number): string {
+  // Guard non-finite input so a bad value never renders as "NaNPM".
+  if (!Number.isFinite(hour)) return '';
   const period = hour < 12 ? 'AM' : 'PM';
   const display = hour % 12 === 0 ? 12 : hour % 12;
   return `${display}${period}`;

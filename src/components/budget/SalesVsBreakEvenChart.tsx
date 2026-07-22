@@ -29,11 +29,29 @@ function formatSignedCurrency(amount: number): string {
   return amount > 0 ? `+${formatCurrency(amount)}` : formatCurrency(amount);
 }
 
+type SignedDeltaSign = 'positive' | 'negative' | 'zero';
+
+// Shared three-way classification for a signed dollar delta — every place in
+// this file that branches on above/below/at break-even (bar fill excluded;
+// that also branches on `isPartial`) reads off this single source instead of
+// repeating the sign comparison.
+function classifySign(value: number): SignedDeltaSign {
+  if (value > 0) return 'positive';
+  if (value < 0) return 'negative';
+  return 'zero';
+}
+
 // Shared by the verdict strip (net delta) and the tooltip (per-day delta) —
 // both color a signed dollar amount the same way: green above break-even,
 // red below, neutral at exactly zero.
+const SIGNED_DELTA_COLOR_CLASS: Record<SignedDeltaSign, string> = {
+  positive: 'text-success',
+  negative: 'text-destructive',
+  zero: 'text-foreground',
+};
+
 function signedDeltaColorClass(value: number): string {
-  return value > 0 ? 'text-success' : value < 0 ? 'text-destructive' : 'text-foreground';
+  return SIGNED_DELTA_COLOR_CLASS[classifySign(value)];
 }
 
 // Finding #5: rounding straight to whole thousands (`${(v/1000).toFixed(0)}k`)
@@ -75,6 +93,17 @@ interface BarChartEntry {
   readonly date: string;
   readonly sales: number;
   readonly delta: number;
+}
+
+// isPartial branches BEFORE status: today's row keeps whatever status
+// classifyDelta computed for it (other consumers read that field), but the
+// bar itself must never render the above/below fill for a day that hasn't
+// finished yet — regardless of how deep the running delta currently reads.
+function resolveBarFill(entry: { isPartial: boolean; status: 'above' | 'at' | 'below' }, hatchId: string): string {
+  if (entry.isPartial) return `url(#${hatchId})`;
+  if (entry.status === 'above') return 'hsl(var(--success))';
+  if (entry.status === 'below') return 'hsl(var(--destructive))';
+  return 'hsl(var(--warning))';
 }
 
 // Recharts' per-bar `onClick` hands back computed geometry (x/y/width/height)
@@ -141,6 +170,12 @@ interface BreakEvenTooltipContentProps {
   readonly label?: string;
 }
 
+const VERDICT_LABEL: Record<SignedDeltaSign, string> = {
+  positive: 'Surplus',
+  negative: 'Shortfall',
+  zero: 'Break-even',
+};
+
 // Recharts drops `contentStyle` the moment a custom `content` renderer is
 // set, so this hand-reproduces the bg-background / border-border/40 /
 // rounded-lg card styling used everywhere else in this widget — otherwise
@@ -150,7 +185,7 @@ export function BreakEvenTooltipContent({ active, payload }: BreakEvenTooltipCon
 
   const entry = payload[0].payload;
   const deltaColorClass = signedDeltaColorClass(entry.delta);
-  const verdictLabel = entry.delta > 0 ? 'Surplus' : entry.delta < 0 ? 'Shortfall' : 'Break-even';
+  const verdictLabel = VERDICT_LABEL[classifySign(entry.delta)];
 
   return (
     <div className="bg-background border border-border/40 rounded-lg px-3 py-2 shadow-sm">
@@ -180,6 +215,12 @@ export function BreakEvenTooltipContent({ active, payload }: BreakEvenTooltipCon
     </div>
   );
 }
+
+const VERDICT_CLAUSE: Record<SignedDeltaSign, string> = {
+  positive: "You're ahead of break-even",
+  negative: "You're behind break-even",
+  zero: "You're exactly at break-even",
+};
 
 export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
   const navigate = useNavigate();
@@ -253,12 +294,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
   const breakEvenValue = data.dailyBreakEven;
 
   const netColorClass = signedDeltaColorClass(data.netDelta);
-  const verdictClause =
-    data.netDelta > 0
-      ? "You're ahead of break-even"
-      : data.netDelta < 0
-      ? "You're behind break-even"
-      : "You're exactly at break-even";
+  const verdictClause = VERDICT_CLAUSE[classifySign(data.netDelta)];
   const periodLabel = `${data.completeDays} complete day${data.completeDays === 1 ? '' : 's'}`;
   const cogsVariance = formatCOGSVariance(actualCOGSPercentage, targetCOGSPercentage);
   const cogsPeriodLabel = `over the last ${chartData.length} day${chartData.length === 1 ? '' : 's'}`;
@@ -371,21 +407,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
                 {chartData.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
-                    fill={
-                      // isPartial branches BEFORE status: today's row keeps
-                      // whatever status classifyDelta computed for it (other
-                      // consumers read that field), but the bar itself must
-                      // never render the above/below fill for a day that
-                      // hasn't finished yet — regardless of how deep the
-                      // running delta currently reads.
-                      entry.isPartial
-                        ? `url(#${hatchId})`
-                        : entry.status === 'above'
-                        ? 'hsl(var(--success))'
-                        : entry.status === 'below'
-                        ? 'hsl(var(--destructive))'
-                        : 'hsl(var(--warning))'
-                    }
+                    fill={resolveBarFill(entry, hatchId)}
                     fillOpacity={0.85}
                     // `<Bar onClick>` alone is mouse/touch-only — Recharts
                     // emits plain SVG shapes with no tabIndex/role/key

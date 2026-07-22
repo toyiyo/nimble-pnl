@@ -152,6 +152,34 @@ describe('deriveWeekdayPattern', () => {
     expect(result).toBeNull();
   });
 
+  it('does not fold single-sample weekdays into a clean-split claim just because one other weekday has 2+ samples', () => {
+    // 8 complete days: Tue appears twice (consistently, materially below),
+    // every other weekday appears exactly once (all above). The busiest
+    // weekday alone clears MIN_SAMPLES_PER_WEEKDAY, but the six single-sample
+    // weekdays must not ride along into an "always do" claim — each of those
+    // would be asserted from exactly one observation.
+    const history: BreakEvenHistoryEntry[] = [
+      entry('2026-06-01', 100), // Mon — single sample, above
+      entry('2026-06-02', -900), // Tue #1 — below
+      entry('2026-06-09', -900), // Tue #2 — below
+      entry('2026-06-03', 100), // Wed — single sample, above
+      entry('2026-06-04', 100), // Thu — single sample, above
+      entry('2026-06-05', 100), // Fri — single sample, above
+      entry('2026-06-06', 100), // Sat — single sample, above
+      entry('2026-06-07', 100), // Sun — single sample, above
+    ];
+
+    const result = deriveWeekdayPattern(history);
+
+    expect(result).not.toBeNull();
+    // The only defensible claim here is Tuesday's, backed by its own 2
+    // samples — not a "Mon,Wed,Thu,Fri,Sat,Sun always do" range built out of
+    // six single-observation weekdays.
+    expect(result).toContain('Tue is your weakest day');
+    expect(result).not.toContain('never break even');
+    expect(result).not.toContain('always do');
+  });
+
   it('excludes the partial (today) row from the sample and its averages', () => {
     // 8 complete rows: Mon..Sun once each, Tue twice — Tue is materially
     // below break-even, every other weekday is comfortably above.

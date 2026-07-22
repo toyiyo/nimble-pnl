@@ -103,12 +103,18 @@ export function deriveWeekdayPattern(history: BreakEvenHistoryEntry[]): string |
     }),
   );
 
-  const maxSamples = Math.max(...weekdayStats.map((w) => w.entries.length));
-  if (maxSamples < MIN_SAMPLES_PER_WEEKDAY) return null;
+  // Only weekdays with enough samples of their own may back a claim — a
+  // weekday backed by a single observation is noise, even when some other
+  // weekday in the same window happens to have two or more (the default
+  // 14-day window's 13 complete days split as six weekdays x2 + one x1
+  // every time, so gating on the busiest weekday alone let that lone-sample
+  // weekday ride along into "always"/"never"/"weakest" claims).
+  const qualifyingStats = weekdayStats.filter((w) => w.entries.length >= MIN_SAMPLES_PER_WEEKDAY);
+  if (qualifyingStats.length === 0) return null;
 
-  const isCleanSplit = weekdayStats.every((w) => w.allAbove || w.allBelow);
-  const aboveWeekdays = weekdayStats.filter((w) => w.allAbove);
-  const belowWeekdays = weekdayStats.filter((w) => w.allBelow);
+  const isCleanSplit = qualifyingStats.every((w) => w.allAbove || w.allBelow);
+  const aboveWeekdays = qualifyingStats.filter((w) => w.allAbove);
+  const belowWeekdays = qualifyingStats.filter((w) => w.allBelow);
 
   if (isCleanSplit && aboveWeekdays.length > 0 && belowWeekdays.length > 0) {
     const aboveEntries = aboveWeekdays.flatMap((w) => w.entries);
@@ -120,7 +126,7 @@ export function deriveWeekdayPattern(history: BreakEvenHistoryEntry[]): string |
   }
 
   const meanDelta = average(completeDays);
-  const weakest = weekdayStats.reduce((worst, w) => (w.avgDelta < worst.avgDelta ? w : worst));
+  const weakest = qualifyingStats.reduce((worst, w) => (w.avgDelta < worst.avgDelta ? w : worst));
 
   // Only claim a weakest day when it is actually below break-even on average
   // (not merely the least-good of several profitable days) and materially

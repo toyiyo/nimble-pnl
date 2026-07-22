@@ -40,8 +40,9 @@ import { SaleCard, RecipeInfo } from "@/components/pos-sales/SaleCard";
 import { SalesTrendsPanel } from "@/components/pos-sales/SalesTrendsPanel";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRecipes } from "@/hooks/useRecipes";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createRecipeByItemNameMap, hasRecipeMapping, getRecipeForItem } from "@/utils/recipeMapping";
+import { parseLocalDate } from "@/lib/parseLocalDate";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
 import { BulkCategorizePosSalesPanel } from "@/components/pos-sales/BulkCategorizePosSalesPanel";
@@ -78,6 +79,33 @@ const CATEGORIZATION_EMPTY_SUBCOPY: Record<'uncategorized' | 'pending-review' | 
 // DOM node attaches later, leaving `cols` stuck at its initial value.
 // Keying the effect on the node itself (state) re-runs it exactly when the
 // node actually mounts.
+// Shape: yyyy-MM-dd. Anything else (missing, malformed, an impossible
+// calendar date, or an inverted range) means "leave the existing defaults" —
+// this never throws, it just returns null.
+const DATE_PARAM_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateParam(value: string | null): value is string {
+  if (!value || !DATE_PARAM_SHAPE.test(value)) return false;
+  // parseLocalDate silently rolls an impossible date like 2026-02-31 forward
+  // (to 2026-03-03) instead of throwing — round-tripping it back through the
+  // same yyyy-MM-dd format catches that case, since the two strings won't match.
+  const parsed = parseLocalDate(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return formatDateFn(parsed, "yyyy-MM-dd") === value;
+}
+
+// Pure so it's directly unit-testable without mounting the page — see
+// tests/unit/posSalesSearchParamDates.test.tsx.
+export function parseDateRangeFromSearchParams(
+  searchParams: URLSearchParams,
+): { startDate: string; endDate: string } | null {
+  const startParam = searchParams.get("startDate");
+  const endParam = searchParams.get("endDate");
+  if (!isValidDateParam(startParam) || !isValidDateParam(endParam)) return null;
+  if (startParam > endParam) return null;
+  return { startDate: startParam, endDate: endParam };
+}
+
 function useResponsiveColumns() {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [cols, setCols] = useState(1);
@@ -116,6 +144,7 @@ export default function POSSales() {
   const { simulateDeduction } = useInventoryDeduction();
   const { recipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState("");
   // Debounced search term: the input stays instant (bound to searchTerm), but
@@ -132,6 +161,20 @@ export default function POSSales() {
   // Default to last 30 days for better UX and performance
   const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
+  // Entry point from a shared/bookmarked link (e.g. a Sales vs Break-Even bar
+  // click → /pos-sales?startDate=<d>&endDate=<d>). Seeding-only, not
+  // bidirectional: editing the date inputs below does not write back to the
+  // URL. Keyed on [searchParams] — not a useState lazy initializer — so it
+  // re-applies if the params change on an already-mounted page, not just at
+  // first mount (matches Recipes.tsx/Inventory.tsx's existing convention for
+  // consuming incoming query params).
+  useEffect(() => {
+    const parsed = parseDateRangeFromSearchParams(searchParams);
+    if (parsed) {
+      setStartDate(parsed.startDate);
+      setEndDate(parsed.endDate);
+    }
+  }, [searchParams]);
   // Sales trends panel: expanded by default on lg+ screens, collapsed on
   // mobile — an expanded stack of charts would push the sales list far
   // below the fold on small viewports (design doc §4.2).

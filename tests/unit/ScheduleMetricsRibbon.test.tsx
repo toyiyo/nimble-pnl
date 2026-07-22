@@ -123,6 +123,14 @@ describe('ScheduleMetricsRibbon', () => {
   // opaque box intercepts clicks meant for those tabs (Playwright reported
   // "subtree intercepts pointer events"). The interactive Details button must
   // re-enable pointer events so it stays clickable.
+  // Regression guard (production hotfix): the ribbon must NOT be sticky. A sticky
+  // ribbon pins to the top and covers the tabs/toolbar that sit directly below it
+  // once the page scrolls, hiding the Planner/other-area nav links.
+  it('is not sticky, so it cannot cover the tabs below it', () => {
+    const { container } = renderRibbon();
+    expect(container.querySelector('.sticky')).toBeNull();
+  });
+
   // Regression (Copilot, PR #630): the toggle label/chevron, aria-expanded, and
   // the panel must all agree. If loading/error begins while Details was open
   // (e.g. a restaurant switch), the button must fall back to the collapsed look.
@@ -149,11 +157,4 @@ describe('ScheduleMetricsRibbon', () => {
     expect(screen.queryByText('Top Earners')).not.toBeInTheDocument();
   });
 
-  it('keeps the sticky wrapper click-through while its controls stay interactive', () => {
-    renderRibbon();
-    const wrapper = screen.getByRole('heading', { level: 1, name: /staff schedule/i })
-      .closest('.sticky');
-    expect(wrapper).toHaveClass('pointer-events-none');
-    expect(screen.getByRole('button', { name: /details/i })).toHaveClass('pointer-events-auto');
-  });
 });

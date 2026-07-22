@@ -47,8 +47,6 @@ function MetricPill({ icon: Icon, value, unit, tone = 'text-foreground', childre
   );
 }
 
-// Sticky offset couples to AppHeader (h-14 / 56px, sticky top-0 z-50 in
-// src/components/AppHeader.tsx). If the header height changes, update top-14.
 export function ScheduleMetricsRibbon({
   activeEmployeeCount,
   totalScheduledHours,
@@ -155,7 +153,7 @@ export function ScheduleMetricsRibbon({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="inline-flex pointer-events-auto"
+                    className="inline-flex"
                     aria-label={warningLabel}
                   >
                     <AlertTriangle
@@ -182,13 +180,11 @@ export function ScheduleMetricsRibbon({
   }
 
   return (
-    // `pointer-events-none` on the sticky wrapper is deliberate: because the
-    // ribbon pins over content that scrolls beneath it (the tabs/toolbar sit
-    // directly below), an opaque sticky box would otherwise intercept clicks
-    // meant for those elements once they scroll under it. We re-enable
-    // `pointer-events-auto` on the ribbon's own interactive controls only, so
-    // clicks pass through the ribbon's empty area to whatever is behind it.
-    <div className="sticky top-14 z-30 -mx-4 px-4 bg-background border-b border-border/40 pointer-events-none">
+    // Intentionally NOT sticky: the tabs/toolbar sit directly below this ribbon,
+    // so a sticky ribbon pinned to the top covered them (and their nav links)
+    // as soon as the page scrolled. Keeping the ribbon in normal flow means it
+    // scrolls away with the rest of the header and never hides the tabs.
+    <div className="-mx-4 px-4 bg-background border-b border-border/40">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
         {/* Title group — folds the old hero header in, keeps the page's <h1> */}
         <div className="flex items-center gap-2.5 min-w-0">
@@ -218,7 +214,7 @@ export function ScheduleMetricsRibbon({
           onClick={() => setDetailsOpen((open) => !open)}
           aria-expanded={detailsExpanded}
           aria-controls="ribbon-details"
-          className="ml-auto h-8 px-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors pointer-events-auto"
+          className="ml-auto h-8 px-2.5 text-[13px] font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           {detailsExpanded ? 'Hide' : 'Details'}
           {detailsExpanded ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
@@ -227,7 +223,7 @@ export function ScheduleMetricsRibbon({
 
       {/* Collapsible detail — `group` enables LaborCostBreakdown's hover-to-edit */}
       {detailsExpanded && (
-        <div id="ribbon-details" className="group grid gap-3 pb-4 pt-1 sm:grid-cols-2 pointer-events-auto">
+        <div id="ribbon-details" className="group grid gap-3 pb-4 pt-1 sm:grid-cols-2">
           <div className="rounded-xl border border-border/40 bg-muted/30 p-3 space-y-2">
             {breakdownRows.map((row) => (
               <div key={row.key} className="flex items-center justify-between text-xs">

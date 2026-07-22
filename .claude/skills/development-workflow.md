@@ -85,7 +85,32 @@ Do NOT skip phases. Do NOT start coding before phases 1-2 are complete. Do NOT c
 - Branch name convention: `feature/<short-kebab-topic>` (or `fix/...`, `chore/...`).
 - Worktree path convention: `.claude/worktrees/<short-kebab-topic>`.
 
-**Skip condition:** Already in a dedicated worktree for this task. If the current directory is on `main` or a reused branch, do NOT skip — create a fresh worktree.
+### Bootstrap the worktree (required — a fresh worktree is NOT ready to run)
+
+`git worktree add` copies only tracked files. It does **not** create `node_modules`, and it does **not**
+copy `.env.local` (gitignored). Both gaps fail *silently and misleadingly* because our worktrees live
+**inside** the parent repo:
+
+- **No `node_modules/.bin/vite`** → npm walks UP the tree and runs the *parent repo's* vite against this
+  worktree's source. Module resolution then straddles two `node_modules` trees, giving two copies of
+  React: "Invalid hook call", blank page, and every E2E test in the file failing at the login screen.
+- **No `.env.local`** → Vite falls back to `.env`, which points at **production Supabase**. E2E signups
+  are created against the real project, and every test fails waiting for a redirect that requires an
+  email confirmation that only production demands.
+
+Neither looks like a config bug; both look like flaky tests. Run this immediately after `worktree add`:
+
+```bash
+cd .claude/worktrees/<feature>
+npm install --no-audit --no-fund
+cp ../../../.env.local .env.local     # gitignored; never commit it
+test -x node_modules/.bin/vite && grep -q '127.0.0.1:54321' .env.local && echo "worktree ready"
+```
+
+Do not start Phase 2 until that prints `worktree ready`.
+
+**Skip condition:** Already in a dedicated worktree for this task **and** the readiness check above
+passes. If the current directory is on `main` or a reused branch, do NOT skip — create a fresh worktree.
 
 <HARD-GATE>
 Never commit design docs, plans, or code for a new task directly to `main`. If you catch yourself with uncommitted changes or fresh commits on `main`, stop and move them off `main` before resyncing — **never `git reset --hard` while the working tree is dirty**, it destroys uncommitted work.
@@ -412,7 +437,9 @@ workflow- or doc-only (no diff under `src/`, `supabase/`, or
 
 **Invoke:** `superpowers:verification-before-completion`
 
-- Set a symlink to .env.local so you can run tests in the worktree with access to env vars
+- Re-confirm the Phase 1 readiness check still holds (`node_modules/.bin/vite` present, `.env.local`
+  pointing at `127.0.0.1:54321`). A worktree missing either produces whole-file E2E failures that read
+  as flakiness — see Phase 1.
 - Run all relevant tests: `npm run test && npm run test:db && npm run test:e2e`, `npm run typecheck`, `npm run lint`, `npm run build`
 - Confirm ALL pass with actual output evidence
 - Never claim "tests pass" without running them

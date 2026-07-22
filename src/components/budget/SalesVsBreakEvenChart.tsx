@@ -21,6 +21,10 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+function formatSignedCurrency(amount: number): string {
+  return amount > 0 ? `+${formatCurrency(amount)}` : formatCurrency(amount);
+}
+
 export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
   const navigate = useNavigate();
 
@@ -74,6 +78,16 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
 
   const breakEvenValue = data.dailyBreakEven;
 
+  const netColorClass =
+    data.netDelta > 0 ? 'text-success' : data.netDelta < 0 ? 'text-destructive' : 'text-foreground';
+  const verdictClause =
+    data.netDelta > 0
+      ? "You're ahead of break-even"
+      : data.netDelta < 0
+      ? "You're behind break-even"
+      : "You're exactly at break-even";
+  const periodLabel = `${data.completeDays} complete day${data.completeDays === 1 ? '' : 's'}`;
+
   return (
     <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
       {/* Header */}
@@ -96,6 +110,16 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Verdict strip */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-5 py-4 border-b border-border/40">
+        <span className={`text-[17px] font-semibold ${netColorClass}`}>
+          {formatSignedCurrency(data.netDelta)}
+        </span>
+        <span className="text-[13px] text-muted-foreground">
+          {verdictClause} over the last {periodLabel}
+        </span>
       </div>
 
       {/* Chart */}

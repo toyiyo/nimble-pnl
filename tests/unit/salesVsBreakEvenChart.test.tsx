@@ -1,7 +1,17 @@
 import React from 'react';
-import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+
+// Matches the established mock-navigate convention (LaborPnlCard.test.tsx,
+// OnboardingDrawer.test.tsx): stub `useNavigate` while keeping every other
+// react-router-dom export (MemoryRouter, etc.) real.
+const mockNavigate = vi.fn();
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
+  return { ...actual, useNavigate: () => mockNavigate };
+});
+
 import {
   SalesVsBreakEvenChart,
   BreakEvenTooltipContent,
@@ -650,5 +660,104 @@ describe('SalesVsBreakEvenChart — error state', () => {
     renderChart(makeData());
 
     expect(screen.queryByText(/couldn.t load break-even data/i)).not.toBeInTheDocument();
+  });
+});
+
+// Finding #8: clicking a bar navigated to `/reports` with `location.state`,
+// which no longer matches what that page reads. Bars must navigate to
+// `/pos-sales` via search params instead, and — since Recharts emits plain
+// SVG shapes with no tabIndex/role/key handling of its own — must be
+// reachable and activatable from the keyboard, not just the mouse.
+describe('SalesVsBreakEvenChart — bar click / keyboard navigation', () => {
+  beforeEach(() => {
+    mockNavigate.mockClear();
+  });
+
+  function getBar() {
+    // The bar is the only role="button" element the chart itself renders;
+    // its accessible name is built from date/sales/delta (getBarAccessibleName).
+    return screen.getByRole('button', { name: /jul 15.*sales.*break-even/i });
+  }
+
+  it('clicking a bar navigates to /pos-sales with matching startDate and endDate for that day', () => {
+    renderChart(
+      makeData({
+        history: [makeHistoryRow({ date: '2026-07-15', sales: 3200, delta: 700, status: 'above' })],
+      }),
+    );
+
+    fireEvent.click(getBar());
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/pos-sales?startDate=2026-07-15&endDate=2026-07-15');
+  });
+
+  it('pressing Enter on a focused bar navigates identically to a click', () => {
+    renderChart(
+      makeData({
+        history: [makeHistoryRow({ date: '2026-07-15', sales: 3200, delta: 700, status: 'above' })],
+      }),
+    );
+
+    const bar = getBar();
+    bar.focus();
+    fireEvent.keyDown(bar, { key: 'Enter' });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/pos-sales?startDate=2026-07-15&endDate=2026-07-15');
+  });
+
+  it('pressing Space on a focused bar also navigates', () => {
+    renderChart(
+      makeData({
+        history: [makeHistoryRow({ date: '2026-07-15', sales: 3200, delta: 700, status: 'above' })],
+      }),
+    );
+
+    const bar = getBar();
+    bar.focus();
+    fireEvent.keyDown(bar, { key: ' ' });
+
+    expect(mockNavigate).toHaveBeenCalledTimes(1);
+    expect(mockNavigate).toHaveBeenCalledWith('/pos-sales?startDate=2026-07-15&endDate=2026-07-15');
+  });
+
+  it('never navigates to the old /reports target', () => {
+    renderChart(
+      makeData({
+        history: [makeHistoryRow({ date: '2026-07-15', sales: 3200, delta: 700, status: 'above' })],
+      }),
+    );
+
+    fireEvent.click(getBar());
+
+    expect(mockNavigate).not.toHaveBeenCalledWith(
+      '/reports',
+      expect.anything(),
+    );
+    expect(mockNavigate.mock.calls.every(([target]) => typeof target === 'string' && !target.startsWith('/reports'))).toBe(true);
+  });
+
+  it('exposes each bar as a keyboard-focusable button', () => {
+    renderChart(
+      makeData({
+        history: [makeHistoryRow({ date: '2026-07-15', sales: 3200, delta: 700, status: 'above' })],
+      }),
+    );
+
+    const bar = getBar();
+    expect(bar).toHaveAttribute('tabindex', '0');
+    expect(bar).toHaveAttribute('role', 'button');
+  });
+
+  it('updates the footer hint to reference POS sales, not P&L', () => {
+    renderChart(
+      makeData({
+        history: [makeHistoryRow({ date: '2026-07-15', sales: 3200, delta: 700, status: 'above' })],
+      }),
+    );
+
+    expect(screen.getByText(/pos sales/i)).toBeInTheDocument();
+    expect(screen.queryByText(/view p&l/i)).not.toBeInTheDocument();
   });
 });

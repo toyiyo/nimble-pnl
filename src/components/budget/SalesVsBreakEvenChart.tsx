@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react';
+import { useId, useMemo, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -62,6 +62,26 @@ export function formatCOGSVariance(actualPercentage?: number, targetPercentage?:
   return variance > 0
     ? { label: `+${magnitude} pts over target`, colorClass: 'text-destructive' }
     : { label: `${magnitude} pts under target`, colorClass: 'text-success' };
+}
+
+interface BarChartEntry {
+  readonly date: string;
+  readonly sales: number;
+  readonly delta: number;
+}
+
+// Recharts' per-bar `onClick` hands back computed geometry (x/y/width/height)
+// merged onto the original datum — `.payload` is the one guaranteed-untouched
+// copy of what this component actually rendered from.
+interface BarClickRect {
+  readonly payload?: BarChartEntry;
+}
+
+// Bar shapes carry no visible text of their own, so this is the only thing a
+// screen-reader / keyboard user has to decide whether to activate one.
+function getBarAccessibleName(entry: BarChartEntry): string {
+  const dateLabel = format(parseLocalDate(entry.date), 'MMM d');
+  return `View POS sales for ${dateLabel}: ${formatCurrency(entry.sales)} in sales, ${formatSignedCurrency(entry.delta)} vs break-even`;
 }
 
 interface WeekdayAxisTickProps {
@@ -175,14 +195,12 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
     }));
   }, [data]);
 
-  const handleBarClick = (entry: any) => {
+  // Drives both the click target and the per-bar accessible name — the bar
+  // shapes carry no visible text of their own, so this is the only thing a
+  // screen-reader user hears before deciding whether to activate one.
+  const handleBarClick = (entry: BarChartEntry | undefined) => {
     if (entry?.date) {
-      navigate('/reports', {
-        state: {
-          selectedDate: entry.date,
-          reportType: 'daily-pnl',
-        }
-      });
+      navigate(`/pos-sales?startDate=${entry.date}&endDate=${entry.date}`);
     }
   };
 
@@ -282,7 +300,6 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
             <BarChart
               data={chartData}
               margin={{ top: 12, right: 12, left: 12, bottom: 4 }}
-              onClick={(e) => e?.activePayload?.[0]?.payload && handleBarClick(e.activePayload[0].payload)}
             >
               <defs>
                 {/* Today's bar is a running partial total, not a graded
@@ -341,6 +358,10 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
                 radius={[4, 4, 0, 0]}
                 cursor="pointer"
                 isAnimationActive={false}
+                // `data` here is Recharts' computed rect (x/y/width/height
+                // merged onto the datum) — `.payload` is the untouched
+                // original row, same reasoning as the tooltip/Cell above.
+                onClick={(barEntry: BarClickRect) => handleBarClick(barEntry?.payload)}
               >
                 {chartData.map((entry, index) => (
                   <Cell
@@ -361,6 +382,22 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
                         : 'hsl(var(--warning))'
                     }
                     fillOpacity={0.85}
+                    // `<Bar onClick>` alone is mouse/touch-only — Recharts
+                    // emits plain SVG shapes with no tabIndex/role/key
+                    // handling. These props flow through Cell onto the same
+                    // <path> Recharts renders for the bar (Cell is a props
+                    // carrier, not a DOM node of its own), making each bar an
+                    // independently focusable, activatable control.
+                    tabIndex={0}
+                    role="button"
+                    aria-label={getBarAccessibleName(entry)}
+                    className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    onKeyDown={(event: KeyboardEvent<SVGElement>) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleBarClick(entry);
+                      }
+                    }}
                   />
                 ))}
               </Bar>
@@ -429,7 +466,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
 
       <div className="px-5 py-2 border-t border-border/40">
         <p className="text-[11px] text-muted-foreground text-center">
-          Click any bar to view P&L for that day
+          Click any bar (or focus it and press Enter) to view POS sales for that day
         </p>
       </div>
     </div>

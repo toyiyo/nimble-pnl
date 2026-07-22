@@ -2,7 +2,11 @@ import React from 'react';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { SalesVsBreakEvenChart, BreakEvenTooltipContent } from '@/components/budget/SalesVsBreakEvenChart';
+import {
+  SalesVsBreakEvenChart,
+  BreakEvenTooltipContent,
+  formatYAxisTick,
+} from '@/components/budget/SalesVsBreakEvenChart';
 import type { BreakEvenData } from '@/types/operatingCosts';
 import type { MonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
 
@@ -412,5 +416,35 @@ describe('SalesVsBreakEvenChart — custom tooltip content', () => {
     // the tooltip's version of the finding-#2 regression guard already
     // applied to the bar fill.
     expect(screen.queryByText('-$1,600')).not.toBeInTheDocument();
+  });
+});
+
+describe('formatYAxisTick', () => {
+  // Finding #5: the old formatter was `` `$${(v / 1000).toFixed(0)}k` `` —
+  // rounding straight to whole thousands meant two visually distinct bars
+  // (e.g. $2,512 and $3,350) could both land on a tick labeled "$3k". Below
+  // $10k the axis needs one decimal of resolution to actually distinguish
+  // them.
+  it('renders 2512 and 3350 as distinct one-decimal ticks, not both "$3k"', () => {
+    const low = formatYAxisTick(2512);
+    const high = formatYAxisTick(3350);
+
+    expect(low).toBe('$2.5k');
+    expect(high).toBe('$3.4k');
+    expect(low).not.toBe(high);
+  });
+
+  it('renders whole thousands (no decimal) at or above $10k', () => {
+    expect(formatYAxisTick(10000)).toBe('$10k');
+    expect(formatYAxisTick(15000)).toBe('$15k');
+    expect(formatYAxisTick(125000)).toBe('$125k');
+  });
+
+  it('renders $0 with one decimal below the $10k threshold', () => {
+    expect(formatYAxisTick(0)).toBe('$0.0k');
+  });
+
+  it('renders one decimal just under the $10k threshold', () => {
+    expect(formatYAxisTick(9999)).toBe('$10.0k');
   });
 });

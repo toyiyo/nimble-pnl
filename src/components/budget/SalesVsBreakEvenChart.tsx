@@ -26,6 +26,17 @@ function formatSignedCurrency(amount: number): string {
   return amount > 0 ? `+${formatCurrency(amount)}` : formatCurrency(amount);
 }
 
+// Finding #5: rounding straight to whole thousands (`${(v/1000).toFixed(0)}k`)
+// collapsed visually distinct bars — e.g. $2,512 and $3,350 both landed on a
+// tick labeled "$3k". Below $10k this keeps one decimal of resolution so
+// nearby ticks stay distinguishable; at/above $10k the extra decimal is noise
+// and whole thousands read cleaner.
+export function formatYAxisTick(value: number): string {
+  const thousands = value / 1000;
+  const decimals = Math.abs(value) < 10000 ? 1 : 0;
+  return `$${thousands.toFixed(decimals)}k`;
+}
+
 interface WeekdayAxisTickProps {
   readonly x?: number;
   readonly y?: number;
@@ -260,7 +271,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
                 interval={0}
               />
               <YAxis
-                tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`}
+                tickFormatter={formatYAxisTick}
                 tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
                 tickLine={false}
                 axisLine={false}

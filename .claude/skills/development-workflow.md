@@ -104,7 +104,13 @@ Neither looks like a config bug; both look like flaky tests. Run this immediatel
 cd .claude/worktrees/<feature>
 npm install --no-audit --no-fund
 cp ../../../.env.local .env.local     # gitignored; never commit it
-test -x node_modules/.bin/vite && grep -q '127.0.0.1:54321' .env.local && echo "worktree ready"
+# Anchor on the key the app actually reads. src/integrations/supabase/client.ts does
+# `import.meta.env.VITE_SUPABASE_URL || PRODUCTION_SUPABASE_URL`, so a missing or misspelled
+# key does not error — it silently points E2E sign-ups at PRODUCTION. A bare substring grep
+# would also be satisfied by that address sitting in a comment.
+test -x node_modules/.bin/vite &&
+  grep -Eq '^[[:space:]]*VITE_SUPABASE_URL[[:space:]]*=[[:space:]]*"?http://(127\.0\.0\.1|localhost):54321' .env.local &&
+  echo "worktree ready"
 ```
 
 Do not start Phase 2 until that prints `worktree ready`.

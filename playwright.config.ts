@@ -19,9 +19,17 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * Deriving the port from the checkout's own path means "reuse" can only ever reuse *our* server.
  * Set E2E_PORT to override. CI keeps the fixed port: one checkout, and it never reuses anyway.
+ *
+ * The range has to be wide, not merely "not 4173". A hash is a birthday problem: with ~20 active
+ * worktrees, a 400-port span collides ~38% of the time, which would quietly reinstate exactly the
+ * cross-branch contamination this is meant to remove. 20k ports drops that to ~1%. Bounds are
+ * chosen to dodge both the privileged range and the OS ephemeral range that bind() hands out on
+ * its own (macOS 49152+, Linux 32768+) — a derived port must never land on one of those.
+ * Collision is now rare rather than routine; it is not impossible, so E2E_PORT stays the escape
+ * hatch if two checkouts ever do land together.
  */
 const configDir = dirname(fileURLToPath(import.meta.url));
-const derivedPort = 4200 + (Array.from(configDir).reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381) % 400);
+const derivedPort = 10000 + (Array.from(configDir).reduce((h, c) => (h * 33 + c.charCodeAt(0)) >>> 0, 5381) % 20000);
 const PORT = Number(process.env.E2E_PORT) || (process.env.CI ? 4173 : derivedPort);
 const BASE_URL = `http://localhost:${PORT}`;
 

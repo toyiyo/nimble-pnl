@@ -146,11 +146,17 @@ export function calculateBreakEven(
       breakEven: dailyBreakEven,
       delta,
       status: classifyDelta(delta, dailyBreakEven),
+      isPartial: d.date === todayStr,
     };
   });
 
-  const aboveDays = history.filter((h) => h.status === 'above');
-  const belowDays = history.filter((h) => h.status === 'below');
+  // Aggregates (daysAbove/daysBelow/avgSurplus/avgShortfall/netDelta) are
+  // derived from complete days only — today's row is still in progress and
+  // would otherwise be graded against a full day's break-even target.
+  const completeHistory = history.filter((h) => !h.isPartial);
+
+  const aboveDays = completeHistory.filter((h) => h.status === 'above');
+  const belowDays = completeHistory.filter((h) => h.status === 'below');
 
   // Month-to-date sales: slice of the (wider) salesData where the date falls
   // within the current calendar month (relative to `todayStr`). We use a
@@ -199,6 +205,8 @@ export function calculateBreakEven(
       belowDays.length > 0
         ? belowDays.reduce((sum, h) => sum + h.delta, 0) / belowDays.length
         : 0,
+    netDelta: completeHistory.reduce((sum, h) => sum + h.delta, 0),
+    completeDays: completeHistory.length,
     monthlyProgress,
   };
 }

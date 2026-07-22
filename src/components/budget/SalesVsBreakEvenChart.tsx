@@ -37,6 +37,30 @@ export function formatYAxisTick(value: number): string {
   return `$${thousands.toFixed(decimals)}k`;
 }
 
+interface COGSVariance {
+  readonly label: string;
+  readonly colorClass: string;
+}
+
+// Finding #6: the COGS row printed target and actual side by side and left
+// the reader to do the subtraction. This turns that gap into an explicit
+// points-vs-target claim — the sign and "over"/"under" wording carry the
+// verdict, `text-destructive` only when actual runs over target, so hue
+// isn't the only signal (same reasoning as the bar-fill colors in C).
+export function formatCOGSVariance(actualPercentage?: number, targetPercentage?: number): COGSVariance | null {
+  if (actualPercentage === undefined || targetPercentage === undefined) return null;
+
+  const variance = actualPercentage - targetPercentage;
+  if (variance === 0) {
+    return { label: 'On target', colorClass: 'text-muted-foreground' };
+  }
+
+  const magnitude = Math.abs(variance).toFixed(1);
+  return variance > 0
+    ? { label: `+${magnitude} pts over target`, colorClass: 'text-destructive' }
+    : { label: `${magnitude} pts under target`, colorClass: 'text-success' };
+}
+
 interface WeekdayAxisTickProps {
   readonly x?: number;
   readonly y?: number;
@@ -194,6 +218,8 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
       ? "You're behind break-even"
       : "You're exactly at break-even";
   const periodLabel = `${data.completeDays} complete day${data.completeDays === 1 ? '' : 's'}`;
+  const cogsVariance = formatCOGSVariance(actualCOGSPercentage, targetCOGSPercentage);
+  const cogsPeriodLabel = `over the last ${chartData.length} day${chartData.length === 1 ? '' : 's'}`;
 
   return (
     <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
@@ -364,6 +390,12 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
               {actualCOGSPercentage === undefined ? '-' : `${actualCOGSPercentage.toFixed(1)}%`}
             </p>
             <p className="text-[11px] text-muted-foreground">Actual COGS %</p>
+          </div>
+          <div className="col-span-2 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-background px-3 py-2 border-t border-border/40">
+            {cogsVariance && (
+              <span className={`text-[12px] font-medium ${cogsVariance.colorClass}`}>{cogsVariance.label}</span>
+            )}
+            <span className="text-[11px] text-muted-foreground">{cogsPeriodLabel}</span>
           </div>
         </div>
       )}

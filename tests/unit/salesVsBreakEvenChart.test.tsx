@@ -6,6 +6,7 @@ import {
   SalesVsBreakEvenChart,
   BreakEvenTooltipContent,
   formatYAxisTick,
+  formatCOGSVariance,
 } from '@/components/budget/SalesVsBreakEvenChart';
 import type { BreakEvenData } from '@/types/operatingCosts';
 import type { MonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
@@ -92,6 +93,19 @@ function renderChart(data: BreakEvenData | null, isLoading = false) {
   return render(
     <MemoryRouter>
       <SalesVsBreakEvenChart data={data} isLoading={isLoading} />
+    </MemoryRouter>,
+  );
+}
+
+interface COGSProps {
+  readonly actualCOGSPercentage?: number;
+  readonly targetCOGSPercentage?: number;
+}
+
+function renderChartWithCOGS(data: BreakEvenData | null, cogsProps: COGSProps) {
+  return render(
+    <MemoryRouter>
+      <SalesVsBreakEvenChart data={data} isLoading={false} {...cogsProps} />
     </MemoryRouter>,
   );
 }
@@ -446,5 +460,94 @@ describe('formatYAxisTick', () => {
 
   it('renders one decimal just under the $10k threshold', () => {
     expect(formatYAxisTick(9999)).toBe('$10.0k');
+  });
+});
+
+// Finding #6: the COGS row printed two bare percentages side by side and
+// left the reader to do the subtraction themselves. `formatCOGSVariance`
+// turns that into an explicit points-vs-target claim.
+describe('formatCOGSVariance', () => {
+  it('returns a plus-signed points-over-target label, flagged destructive, when actual exceeds target', () => {
+    const result = formatCOGSVariance(46.9, 28.0);
+
+    expect(result).not.toBeNull();
+    expect(result?.label).toBe('+18.9 pts over target');
+    expect(result?.colorClass).toMatch(/text-destructive/);
+  });
+
+  it('returns an unsigned points-under-target label, not destructive, when actual is under target', () => {
+    const result = formatCOGSVariance(24.0, 28.0);
+
+    expect(result).not.toBeNull();
+    expect(result?.label).toBe('4.0 pts under target');
+    expect(result?.colorClass).not.toMatch(/text-destructive/);
+  });
+
+  it('returns an "on target" label when actual equals target exactly', () => {
+    const result = formatCOGSVariance(28.0, 28.0);
+
+    expect(result).not.toBeNull();
+    expect(result?.label).toBe('On target');
+    expect(result?.colorClass).not.toMatch(/text-destructive/);
+  });
+
+  it('returns null when actualCOGSPercentage is undefined', () => {
+    expect(formatCOGSVariance(undefined, 28.0)).toBeNull();
+  });
+
+  it('returns null when targetCOGSPercentage is undefined', () => {
+    expect(formatCOGSVariance(46.9, undefined)).toBeNull();
+  });
+
+  it('returns null when both percentages are undefined', () => {
+    expect(formatCOGSVariance(undefined, undefined)).toBeNull();
+  });
+});
+
+describe('SalesVsBreakEvenChart — COGS variance chip', () => {
+  it('renders the variance in points, plus-signed, in text-destructive when actual is over target', () => {
+    renderChartWithCOGS(makeData(), { actualCOGSPercentage: 46.9, targetCOGSPercentage: 28.0 });
+
+    const chip = screen.getByText('+18.9 pts over target');
+    expect(chip).toBeInTheDocument();
+    expect(chip.className).toMatch(/text-destructive/);
+  });
+
+  it('renders the variance in points, unsigned, not in text-destructive, when actual is under target', () => {
+    renderChartWithCOGS(makeData(), { actualCOGSPercentage: 24.0, targetCOGSPercentage: 28.0 });
+
+    const chip = screen.getByText('4.0 pts under target');
+    expect(chip).toBeInTheDocument();
+    expect(chip.className).not.toMatch(/text-destructive/);
+  });
+
+  it('renders an explicit period label alongside the COGS stats', () => {
+    renderChartWithCOGS(
+      makeData({ history: [makeHistoryRow({ date: '2026-07-01' }), makeHistoryRow({ date: '2026-07-02' })] }),
+      { actualCOGSPercentage: 46.9, targetCOGSPercentage: 28.0 },
+    );
+
+    expect(screen.getByText(/over the last 2 days/i)).toBeInTheDocument();
+  });
+
+  it('does not render a variance chip, and does not crash, when actualCOGSPercentage is undefined', () => {
+    renderChartWithCOGS(makeData(), { targetCOGSPercentage: 28.0 });
+
+    expect(screen.queryByText(/pts (over|under) target/)).not.toBeInTheDocument();
+    expect(screen.getByText('28.0%')).toBeInTheDocument();
+  });
+
+  it('does not render a variance chip, and does not crash, when targetCOGSPercentage is undefined', () => {
+    renderChartWithCOGS(makeData(), { actualCOGSPercentage: 46.9 });
+
+    expect(screen.queryByText(/pts (over|under) target/)).not.toBeInTheDocument();
+    expect(screen.getByText('46.9%')).toBeInTheDocument();
+  });
+
+  it('does not render the COGS block or a variance chip when both percentages are undefined', () => {
+    renderChartWithCOGS(makeData(), {});
+
+    expect(screen.queryByText(/Target COGS %/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pts (over|under) target/)).not.toBeInTheDocument();
   });
 });

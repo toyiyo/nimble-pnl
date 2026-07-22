@@ -506,6 +506,43 @@ export function formatHour(hour: number): string {
   return `${display}${period}`;
 }
 
+/** `2026-07-01` -> `Jul 1` (UTC, no timezone shift — sale_date is a DATE). */
+export function formatShortDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  if (!year || !month || !day) return isoDate;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(date);
+}
+
+/**
+ * Best contiguous `size`-hour window by revenue, and the % of the day's total
+ * it accounts for. `hourly` is the 24-row series from `buildHourlySeries`.
+ * Returns null when there isn't enough revenue/hours to be meaningful.
+ */
+export function peakHourWindow(
+  hourly: HourlySeriesRow[],
+  size: number,
+): { startHour: number; endHour: number; pct: number } | null {
+  const grand = hourly.reduce((sum, h) => sum + h.total, 0);
+  if (grand <= 0 || hourly.length < size) return null;
+
+  let bestSum = -1;
+  let bestStart = 0;
+  for (let i = 0; i + size <= hourly.length; i++) {
+    let windowSum = 0;
+    for (let j = i; j < i + size; j++) windowSum += hourly[j].total;
+    if (windowSum > bestSum) {
+      bestSum = windowSum;
+      bestStart = i;
+    }
+  }
+  return {
+    startHour: hourly[bestStart].hour,
+    endHour: hourly[bestStart + size - 1].hour,
+    pct: Math.round((bestSum / grand) * 100),
+  };
+}
+
 export function deriveInsights(data: SalesTrendsData): SalesTrendsInsights {
   const kpis = computeKpis(data);
   const weekday = buildWeekdaySeries(data.by_weekday);
@@ -517,8 +554,8 @@ export function deriveInsights(data: SalesTrendsData): SalesTrendsInsights {
         const numDays = new Set(data.by_day.map((r) => r.sale_date)).size;
         const avgDay = numDays > 0 ? kpis.netSales / numDays : 0;
         const multiple = avgDay > 0 ? kpis.busiestDay!.revenue / avgDay : 0;
-        const multipleSuffix = multiple > 0 ? ` (${multiple.toFixed(1)}x the daily average)` : '';
-        return `${kpis.busiestDay!.date} was the busiest day with ${formatCurrency(
+        const multipleSuffix = multiple > 0 ? `, ${multiple.toFixed(1)}× the daily average` : '';
+        return `${formatShortDate(kpis.busiestDay!.date)} was your busiest day — ${formatCurrency(
           kpis.busiestDay!.revenue,
         )}${multipleSuffix}.`;
       })()
@@ -526,20 +563,33 @@ export function deriveInsights(data: SalesTrendsData): SalesTrendsInsights {
 
   const halfwayHour = hourly.find((h) => h.cumulativePct >= 50);
   const hourlyInsight = halfwayHour
-    ? `Half the day's revenue comes in by ${formatHour(halfwayHour.hour)}.`
+    ? (() => {
+        const base = `Half the day's revenue is in by ${formatHour(halfwayHour.hour)}.`;
+        const window = peakHourWindow(hourly, 4);
+        if (!window) return base;
+        return `${base} The ${formatHour(window.startHour)}–${formatHour(window.endHour)} window alone drives ${window.pct}% of sales.`;
+      })()
     : 'No hourly sales data available for this range.';
 
   const peakWeekday = weekday.find((w) => w.isPeak);
-  const avgWeekdayTotal = weekday.reduce((sum, w) => sum + w.total, 0) / weekday.length;
+  // Compare against the slowest *open* day (total > 0) — a closed day would be
+  // $0 and make the ratio meaningless (÷0), so it's excluded.
+  const slowestWeekday = weekday
+    .filter((w) => w.total > 0)
+    .reduce<(typeof weekday)[number] | null>((min, w) => (min === null || w.total < min.total ? w : min), null);
   const weekdayInsight =
-    peakWeekday && avgWeekdayTotal > 0
-      ? `${peakWeekday.label}s bring in ${(peakWeekday.total / avgWeekdayTotal).toFixed(1)}x an average day.`
-      : 'No weekday pattern yet — not enough sales in this range.';
+    peakWeekday && slowestWeekday && slowestWeekday.total > 0 && peakWeekday.label !== slowestWeekday.label
+      ? `${peakWeekday.label} is your strongest day — ${(peakWeekday.total / slowestWeekday.total).toFixed(
+          1,
+        )}× a slow ${slowestWeekday.label}.`
+      : peakWeekday
+        ? `${peakWeekday.label} is your strongest day.`
+        : 'No weekday pattern yet — not enough sales in this range.';
 
   const productInsight = products[0]
-    ? `Top seller: ${products[0].item_name} (${formatCurrency(products[0].revenue)}, ${products[0].sharePct.toFixed(
+    ? `${products[0].item_name} leads with ${formatCurrency(products[0].revenue)} (${products[0].sharePct.toFixed(
         0,
-      )}% of revenue).`
+      )}% of sales).`
     : 'No product sales in this range.';
 
   return { daily, hourly: hourlyInsight, weekday: weekdayInsight, product: productInsight };

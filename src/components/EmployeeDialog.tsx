@@ -42,6 +42,8 @@ import { useBulkSetAvailability } from '@/hooks/useBulkSetAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
 import { isActiveForStatus } from '@/utils/employeeFilters';
+import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
+import { ROLE_METADATA } from '@/lib/permissions/definitions';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -57,6 +59,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // silently provision a staff login — that unlabelled side effect is the bug
   // this switch exists to remove.
   const [grantAppAccess, setGrantAppAccess] = useState(false);
+  // Offered instead of inviting when the typed email already belongs to a team
+  // member — linking avoids double-provisioning a second account for the same person.
+  const [linkToExisting, setLinkToExisting] = useState(false);
+  const { data: restaurantMembers } = useRestaurantMembers(restaurantId);
+  // null while loading, on error, and for non-members — all mean "behave normally".
+  const existingMember = findMemberByEmail(restaurantMembers, email);
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
   const [area, setArea] = useState('');
@@ -199,6 +207,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setName('');
     setEmail('');
     setGrantAppAccess(false);
+    setLinkToExisting(false);
     setPhone('');
     setPosition('Server');
     setArea('');
@@ -360,7 +369,33 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         }
       }
 
-      if (grantAppAccess && email?.trim()) {
+      if (existingMember) {
+        if (linkToExisting) {
+          const { data: linkRows, error: linkError } = await supabase.rpc('link_employee_to_user', {
+            p_employee_id: newEmployee.id,
+            p_user_id: existingMember.userId,
+          });
+          const result = Array.isArray(linkRows) ? linkRows[0] : linkRows;
+          // 'already linked' means a retry or double-submit landed the work
+          // already — reporting failure for it would be a lie.
+          const alreadyLinked = !result?.success && /already linked/i.test(result?.message ?? '');
+
+          if (linkError || (!result?.success && !alreadyLinked)) {
+            toast({
+              title: 'Employee created, but not linked',
+              description: result?.message ?? 'Could not link this employee to the existing account.',
+              variant: 'destructive',
+            });
+          } else {
+            toast({
+              title: 'Employee created and linked',
+              description: `${name} can now clock in with their existing account.`,
+            });
+          }
+        } else {
+          toast({ title: 'Employee created', description: `${name} was added.` });
+        }
+      } else if (grantAppAccess && email?.trim()) {
         supabase.functions.invoke('send-team-invitation', {
           body: {
             restaurantId: restaurantId,
@@ -1045,7 +1080,37 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 </div>
               </div>
 
-              {isCreateMode && (
+              {isCreateMode && (existingMember ? (
+                <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
+                  <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5">
+                    <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <p className="text-[13px] text-foreground">
+                      <strong>{existingMember.fullName ?? existingMember.email}</strong> already has an
+                      EasyShiftHQ account ({ROLE_METADATA[existingMember.role]?.label ?? existingMember.role}).
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="space-y-0.5 pr-4">
+                      <Label htmlFor="linkToExisting" className="text-[14px] font-medium text-foreground cursor-pointer">
+                        Link this employee record to their account
+                      </Label>
+                      <p id="linkToExistingHint" className="text-[13px] text-muted-foreground">
+                        They keep their current access and can also clock in. No second account is
+                        created. Not them? Leave this off — the employee record is still created,
+                        without linking or inviting.
+                      </p>
+                    </div>
+                    <Switch
+                      id="linkToExisting"
+                      checked={linkToExisting}
+                      onCheckedChange={setLinkToExisting}
+                      aria-describedby="linkToExistingHint"
+                      className="data-[state=checked]:bg-foreground"
+                      aria-label="Link this employee record to their existing account"
+                    />
+                  </div>
+                </div>
+              ) : (
                 <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/30 p-3">
                   <div className="space-y-0.5 pr-4">
                     <Label htmlFor="grantAppAccess" className="text-[14px] font-medium text-foreground cursor-pointer">
@@ -1072,7 +1137,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     aria-label="Invite to the employee app"
                   />
                 </div>
-              )}
+              ))}
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">

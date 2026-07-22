@@ -54,7 +54,23 @@ vi.mock('@/contexts/RestaurantContext', () => ({
   }),
 }));
 
+// Mock only the useRestaurantMembers hook (the React Query call); keep
+// findMemberByEmail real since it's a pure function used by the component
+// itself. Default: nobody on the roster matches — tests that need an
+// existing member override this per-test (mirrors TeamInvitations.test.tsx).
+const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isError: false }));
+vi.mock('@/hooks/useRestaurantMembers', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useRestaurantMembers')>(
+    '@/hooks/useRestaurantMembers'
+  );
+  return {
+    ...actual,
+    useRestaurantMembers: (...args: unknown[]) => mockUseRestaurantMembers(...args),
+  };
+});
+
 const invokeMock = vi.fn();
+const rpcMock = vi.fn();
 vi.mock('@/integrations/supabase/client', () => {
   // Build a chainable supabase query mock that resolves at any terminal call.
   function makeChain(): any {
@@ -77,10 +93,12 @@ vi.mock('@/integrations/supabase/client', () => {
   }
   return {
     supabase: {
-      // invokeMock lets each test assert on send-team-invitation calls (or their absence)
-      // without caring about the resolved payload.
+      // invokeMock/rpcMock let each test assert on send-team-invitation or
+      // link_employee_to_user calls (or their absence) without caring about
+      // the resolved payload by default.
       functions: { invoke: (...args: unknown[]) => invokeMock(...args) },
       from: () => makeChain(),
+      rpc: (...args: unknown[]) => rpcMock(...args),
     },
   };
 });
@@ -104,6 +122,8 @@ describe('EmployeeDialog — opt-in app access switch (create mode)', () => {
     bulkMutateMock.mockReset().mockResolvedValue({ employees_updated: 1, rows_inserted: 7 });
     toastMock.mockReset();
     invokeMock.mockReset().mockResolvedValue({ data: null, error: null });
+    rpcMock.mockReset().mockResolvedValue({ data: null, error: null });
+    mockUseRestaurantMembers.mockReset().mockReturnValue({ data: [], isError: false });
   });
 
   it('does not invite anyone when the access switch is off, even with an email', async () => {
@@ -152,5 +172,121 @@ describe('EmployeeDialog — opt-in app access switch (create mode)', () => {
 
     await userEvent.click(toggle);
     expect(toggle).toHaveAttribute('aria-checked', 'false'); // guard holds
+  });
+});
+
+describe('EmployeeDialog — link to an existing account instead of double-provisioning', () => {
+  const EXISTING_MEMBER = {
+    userId: 'u1',
+    email: 'alexis@rushbowls.com',
+    fullName: 'Alexis Sanchez',
+    role: 'manager',
+  };
+
+  beforeEach(() => {
+    createEmployeeMock.mockReset().mockResolvedValue({ id: 'new-emp-1' });
+    bulkMutateMock.mockReset().mockResolvedValue({ employees_updated: 1, rows_inserted: 7 });
+    toastMock.mockReset();
+    invokeMock.mockReset().mockResolvedValue({ data: null, error: null });
+    rpcMock.mockReset().mockResolvedValue({ data: null, error: null });
+    // Default: nobody on the roster matches — each test below opts in by
+    // returning EXISTING_MEMBER for the email it types.
+    mockUseRestaurantMembers.mockReset().mockReturnValue({ data: [], isError: false });
+  });
+
+  async function fillEmployeeBasics(email: string) {
+    await userEvent.type(screen.getByLabelText(/name/i), 'New Hire');
+    await userEvent.type(screen.getByLabelText(/hourly rate/i), '15');
+    await userEvent.type(screen.getByLabelText(/email/i), email);
+  }
+
+  it('offers linking instead of inviting when the email is already a member', async () => {
+    mockUseRestaurantMembers.mockReturnValue({ data: [EXISTING_MEMBER], isError: false });
+    renderDialog();
+    await fillEmployeeBasics('alexis@rushbowls.com');
+
+    expect(
+      await screen.findByRole('switch', { name: /link this employee record/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('switch', { name: /invite to the employee app/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('links rather than inviting when the link switch is on', async () => {
+    mockUseRestaurantMembers.mockReturnValue({ data: [EXISTING_MEMBER], isError: false });
+    rpcMock.mockResolvedValue({
+      data: [{ success: true, message: 'Linked', employee_name: 'New Hire', employee_email: 'alexis@rushbowls.com' }],
+      error: null,
+    });
+    renderDialog();
+    await fillEmployeeBasics('alexis@rushbowls.com');
+    await userEvent.click(
+      await screen.findByRole('switch', { name: /link this employee record/i }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+
+    await waitFor(() => expect(createEmployeeMock).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(rpcMock).toHaveBeenCalledWith('link_employee_to_user', {
+        p_employee_id: expect.any(String),
+        p_user_id: 'u1',
+      }),
+    );
+    expect(invokeMock).not.toHaveBeenCalledWith('send-team-invitation', expect.anything());
+  });
+
+  it('still creates the employee when the link switch is left off', async () => {
+    // Declining to link is a first-class outcome — no second account, no invite.
+    mockUseRestaurantMembers.mockReturnValue({ data: [EXISTING_MEMBER], isError: false });
+    renderDialog();
+    await fillEmployeeBasics('alexis@rushbowls.com');
+    // Link switch left off (default false) — do not click it.
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+
+    await waitFor(() => expect(createEmployeeMock).toHaveBeenCalled());
+    expect(rpcMock).not.toHaveBeenCalled();
+    expect(invokeMock).not.toHaveBeenCalledWith('send-team-invitation', expect.anything());
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: 'Employee created' })),
+    );
+  });
+
+  it('treats "already linked" as a success, not a failure toast', async () => {
+    // A double-click or retry must not report failure for work that already landed.
+    mockUseRestaurantMembers.mockReturnValue({ data: [EXISTING_MEMBER], isError: false });
+    rpcMock.mockResolvedValue({
+      data: [{ success: false, message: 'Employee already linked to user u1' }],
+      error: null,
+    });
+    renderDialog();
+    await fillEmployeeBasics('alexis@rushbowls.com');
+    await userEvent.click(
+      await screen.findByRole('switch', { name: /link this employee record/i }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+
+    await waitFor(() => expect(rpcMock).toHaveBeenCalled());
+    expect(toastMock).not.toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
+  });
+
+  it('surfaces a real link failure without losing the employee record', async () => {
+    mockUseRestaurantMembers.mockReturnValue({ data: [EXISTING_MEMBER], isError: false });
+    rpcMock.mockResolvedValue({
+      data: [{ success: false, message: 'Employee not found, or you are not authorized to manage it' }],
+      error: null,
+    });
+    renderDialog();
+    await fillEmployeeBasics('alexis@rushbowls.com');
+    await userEvent.click(
+      await screen.findByRole('switch', { name: /link this employee record/i }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+
+    await waitFor(() => expect(rpcMock).toHaveBeenCalled());
+    // The employee record itself must still have been created — a failed
+    // link must not roll back or block employee creation.
+    expect(createEmployeeMock).toHaveBeenCalled();
+    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
   });
 });

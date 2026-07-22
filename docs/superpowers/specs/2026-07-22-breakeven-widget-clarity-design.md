@@ -58,6 +58,15 @@ still be counted by the SonarCloud coverage gate (per `memory/lessons.md`
 - Add `netDelta` (sum of `delta` over complete days) and `completeDays`.
 - Leave `todaySales` / `todayStatus` / `todayDelta` untouched — the separate
   "Today" card legitimately reports progress-so-far and is out of scope.
+- `history[].status` also keeps its current value (other consumers read it);
+  **the chart must branch on `isPartial` before `status`** — see C.
+
+**The bar fill is part of this fix, not cosmetic.** Fixing only the aggregates
+would leave today's bar rendering solid red from the unchanged
+`classifyDelta` result — the widget would print "13 complete days, +$1,756"
+above a chart that still visually says today failed. The partial row therefore
+gets its **own render branch** in the chart: `--warning` fill, hatch overlay,
+never the `above`/`below` fill, regardless of what `status` says.
 
 **Timezone discipline:** "today" stays `startOfDay(new Date())` in browser-local
 time, exactly as `useBreakEvenAnalysis.tsx:103` already computes it. We compare
@@ -94,14 +103,22 @@ author wrote three days ago): a derived sentence good enough to be an
 
 ### C. `SalesVsBreakEvenChart.tsx` — the card
 
-- **Verdict strip** above the chart: net figure (large, `text-success` /
-  `text-destructive`), a plain-language clause, and the period it covers
-  ("13 complete days"). Answers finding 1.
-- **Weekday axis**: `format(date, 'EEEEE')` initial above the existing `MMM d`.
-  Answers finding 3.
+- **Verdict strip** above the chart: net figure at `text-[17px] font-semibold`
+  (`text-success` / `text-destructive`) — the top of the CLAUDE.md scale, and
+  what the sibling `BreakEvenHeroCard` uses for its largest number — plus a
+  plain-language clause and the period it covers ("13 complete days").
+  Answers finding 1.
+- **Weekday axis**: `format(date, 'EEEEEE')` — the **two-letter** form. The
+  narrow `EEEEE` form renders Tue and Thu both as `T`, Sat and Sun both as `S`,
+  which swaps "invisible" for "ambiguous" and defeats the point. Two lines
+  (weekday over `MMM d`) require a custom `tick` **render function** emitting
+  `<tspan>`s; Recharts' `tickFormatter` returns a single string and cannot do
+  this. Answers finding 3.
 - **Tooltip**: custom `content` renderer showing Sales, Break-even, and a signed
   Surplus/Shortfall; for the partial day, "In progress" instead of a verdict.
-  Answers finding 4.
+  Recharts ignores `contentStyle` once `content` is set, so the renderer must
+  reproduce the `bg-background` / `border-border/40` / `rounded-lg` styling
+  itself or the tooltip regresses to an unstyled default box. Answers finding 4.
 - **Y-axis**: `tickFormatter` gains one decimal below $10k (`$2.5k`), whole
   thousands above. Answers finding 5.
 - **COGS row**: gains a variance chip (`+18.9 pts over target`) in
@@ -110,11 +127,34 @@ author wrote three days ago): a derived sentence good enough to be an
 - **Colors**: `hsl(var(--success))` / `hsl(var(--destructive))` /
   `hsl(var(--warning))`. All three tokens already exist in `src/index.css` with
   dark-mode variants and Tailwind classes. Status additionally carries a signed
-  number, so hue is no longer the sole encoding. Answers finding 7.
-- **Partial bar**: rendered with an SVG `<pattern>` hatch + `--warning` stroke,
-  so "not yet judged" is visible without relying on color alone.
+  number, so hue is no longer the sole encoding. The three existing
+  `text-green-600` literals (`:172`, `:180`, `:206`) are folded into the same
+  swap — leaving them beside new `text-success` in one file is an inconsistency.
+  Answers finding 7.
+- **Partial bar**: `--warning` fill plus an SVG `<pattern>` hatch, so "not yet
+  judged" survives without relying on color alone. Pattern id via `useId()`
+  (the widget mounts on two pages; a fixed id risks `url(#id)` collisions) and
+  `patternUnits="userSpaceOnUse"` so hatch density doesn't stretch with bar
+  width. At `h-56` over 14 bars each bar is only ~10–14px wide, so the hatch
+  needs a **visual** spot-check in Phase 5, not just code review.
 - **Click**: moves from the chart-level `onClick` (which fires anywhere in the
-  active category, including empty space above a bar) to `<Bar onClick>`.
+  active category, including empty space above a bar) to `<Bar onClick>`,
+  reading `entry.payload.date` rather than `entry.date` — Recharts merges
+  computed geometry keys onto the handler argument, and `.payload` is the
+  guaranteed-untouched original datum.
+- **Keyboard access for the bars.** `<Bar onClick>` alone is mouse/touch-only:
+  Recharts emits plain SVG shapes with no `tabIndex`, `role`, or key handling.
+  Shipping a click target no keyboard user can reach is the same
+  visible-to-some-users-only failure as the aria-label-only bug, on the input
+  side. Each bar shape gets `tabIndex={0}`, `role="button"`, an `onKeyDown`
+  handling Enter and Space, a visible `:focus-visible` ring, and an accessible
+  name carrying date, sales, and signed delta.
+- **Error state.** `useBreakEvenAnalysis` already returns `error`
+  (`useBreakEvenAnalysis.tsx:97-100`) and **neither** call site captures it, so a
+  fetch/RLS failure currently falls through to the empty state and tells the
+  owner "Set up your budget" — wrong and alarming. Add an `error` prop, render a
+  distinct error branch, and wire it at both call sites. CLAUDE.md's "Always
+  Handle States" rule; this is the natural moment to close it.
 
 ### D. Routing — `/pos-sales?startDate=<d>&endDate=<d>`
 
@@ -126,13 +166,26 @@ the URL, so it needs an entry point. **Search params, not `location.state`**:
 
 - survives refresh and is shareable/bookmarkable (`location.state` is not);
 - `useSearchParams` is the established convention across the codebase;
-- keeps POS Sales' existing local-state editing intact — we seed the initial
-  value only, we do not make the URL the ongoing source of truth (that would be
-  a larger refactor and risks fighting the 8 other filters on that page).
+- keeps POS Sales' existing local-state editing intact — the URL is an entry
+  point, not the ongoing source of truth (full bidirectional sync would fight
+  the 8 other filters on that page).
+
+**Applied via `useEffect` keyed on `[searchParams]`, not a `useState` lazy
+initializer.** `Recipes.tsx:91-97` and `Inventory.tsx:94-101` already consume
+incoming params this way, and it is the more resilient shape: a lazy initializer
+runs once at mount and therefore depends on the invariant that arriving at
+`/pos-sales` always remounts the page. That invariant holds today only because
+`App.tsx` uses a flat `<Routes>` list with no layout routes or `<Outlet>` — a
+future nested-route refactor would silently break seeding with nothing to catch
+it. Matching the existing `useEffect` pattern removes the dependency on that
+invariant and avoids introducing a second convention for the same job.
 
 Invalid or absent params fall back to the current defaults (last 30 days).
-Validation: `/^\d{4}-\d{2}-\d{2}$/` and a real-date check, so
-`?startDate=potato` cannot poison the query.
+Validation: `/^\d{4}-\d{2}-\d{2}$/`, a real-date check (so `2026-02-31` is
+rejected, not just non-numeric junk), **and `startDate <= endDate`** — the widget
+always sends an equal pair, but the whole rationale for search params is that
+URLs get shared and hand-edited, and an inverted range would otherwise pass
+validation and silently return zero rows.
 
 ### E. Help doc
 
@@ -154,10 +207,10 @@ the old click target verbatim. Updated in the same PR.
 
 | Area | Tests |
 |---|---|
-| `breakEvenCalculator` | partial day excluded from counts + averages; `netDelta` over complete days only; no-partial-row case; all-partial edge case |
+| `breakEvenCalculator` | partial day excluded from counts + averages; `netDelta` over complete days only; no-partial-row case; all-partial edge case; `isPartial` set on exactly the `todayStr` row |
 | `breakEvenInsights` | clean weekday split; no-split → weakest day; insufficient data → `null`; weekday derivation correct in a negative UTC offset |
-| `SalesVsBreakEvenChart` | net rendered; weekday labels present; partial bar marked; tooltip shows delta; navigates to `/pos-sales?startDate=…&endDate=…` |
-| `POSSales` | seeds dates from search params; ignores malformed params; falls back to 30-day default |
+| `SalesVsBreakEvenChart` | net rendered; two-letter weekday labels present and distinguish Tue/Thu; partial bar renders the warning fill **even when its delta is deeply negative** (the finding-#2 regression guard); tooltip shows delta; bar reachable by keyboard and Enter activates it; error prop renders the error branch, not the empty state; navigates to `/pos-sales?startDate=…&endDate=…` |
+| `POSSales` | seeds dates from search params; **re-applies when already-mounted and params change** (not just a fresh mount); ignores malformed params; rejects inverted ranges; falls back to 30-day default |
 
 Full suite additionally run under `TZ=UTC` (per `lessons.md` 2026-07-21) since
 this PR touches date-derived rendering.

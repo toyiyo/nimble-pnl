@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyRevelSignature } from "../_shared/revelSignature.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
 import { logSecurityEvent } from "../_shared/securityEvents.ts";
+import { resolveRestaurantTimeZone } from "../_shared/timezone.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -79,12 +80,16 @@ serve(async (req) => {
 
     // Only order.finalized carries sales; ignore other event types for v1.
     if (eventType === 'order.finalized' || payload.Order || payload.order) {
+      // Resolved once per invocation (a webhook run processes a single order).
+      const timeZone = await resolveRestaurantTimeZone(supabase, connection.restaurant_id);
       await processOrder(
         supabase,
         payload,
         connection.restaurant_id,
         instance,
         establishmentId ?? connection.establishment_id ?? null,
+        {},
+        timeZone,
       );
     }
 

@@ -60,6 +60,63 @@ function WeekdayAxisTick({ x, y, payload }: WeekdayAxisTickProps) {
   );
 }
 
+interface BreakEvenTooltipPayloadEntry {
+  readonly payload: {
+    date: string;
+    sales: number;
+    breakEven: number;
+    delta: number;
+    isPartial: boolean;
+  };
+}
+
+interface BreakEvenTooltipContentProps {
+  readonly active?: boolean;
+  readonly payload?: ReadonlyArray<BreakEvenTooltipPayloadEntry>;
+  readonly label?: string;
+}
+
+// Recharts drops `contentStyle` the moment a custom `content` renderer is
+// set, so this hand-reproduces the bg-background / border-border/40 /
+// rounded-lg card styling used everywhere else in this widget — otherwise
+// the tooltip regresses to Recharts' unstyled default box.
+export function BreakEvenTooltipContent({ active, payload }: BreakEvenTooltipContentProps) {
+  if (!active || !payload?.length) return null;
+
+  const entry = payload[0].payload;
+  const deltaColorClass =
+    entry.delta > 0 ? 'text-success' : entry.delta < 0 ? 'text-destructive' : 'text-foreground';
+  const verdictLabel = entry.delta > 0 ? 'Surplus' : entry.delta < 0 ? 'Shortfall' : 'Break-even';
+
+  return (
+    <div className="bg-background border border-border/40 rounded-lg px-3 py-2 shadow-sm">
+      <p className="text-[12px] font-medium text-foreground mb-1.5">
+        {format(parseLocalDate(entry.date), 'MMM d')}
+      </p>
+      <div className="space-y-0.5">
+        <p className="text-[12px] text-muted-foreground">
+          Sales <span className="text-foreground font-medium">{formatCurrency(entry.sales)}</span>
+        </p>
+        <p className="text-[12px] text-muted-foreground">
+          Break-even <span className="text-foreground font-medium">{formatCurrency(entry.breakEven)}</span>
+        </p>
+        {entry.isPartial ? (
+          // Today's row is a running partial total, not a graded outcome —
+          // the same reasoning that keeps the bar itself off the
+          // above/below fill (finding #2). The tooltip must not surface a
+          // signed verdict for a day that hasn't finished yet.
+          <p className="text-[12px] font-medium text-warning">In progress</p>
+        ) : (
+          <p className="text-[12px] text-muted-foreground">
+            {verdictLabel}{' '}
+            <span className={`font-medium ${deltaColorClass}`}>{formatSignedCurrency(entry.delta)}</span>
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
   const navigate = useNavigate();
   // Scopes the partial-bar hatch <pattern> id to this instance — the widget
@@ -209,16 +266,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
                 axisLine={false}
                 width={48}
               />
-              <Tooltip
-                formatter={(value: number) => [formatCurrency(value), 'Sales']}
-                labelFormatter={(label: string) => format(parseLocalDate(label), 'MMM d')}
-                contentStyle={{
-                  backgroundColor: 'hsl(var(--background))',
-                  border: '1px solid hsl(var(--border))',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                }}
-              />
+              <Tooltip content={<BreakEvenTooltipContent />} />
               <ReferenceLine
                 y={breakEvenValue}
                 stroke="hsl(var(--muted-foreground))"

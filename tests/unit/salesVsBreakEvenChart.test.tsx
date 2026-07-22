@@ -2,7 +2,7 @@ import React from 'react';
 import { describe, it, expect, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { SalesVsBreakEvenChart } from '@/components/budget/SalesVsBreakEvenChart';
+import { SalesVsBreakEvenChart, BreakEvenTooltipContent } from '@/components/budget/SalesVsBreakEvenChart';
 import type { BreakEvenData } from '@/types/operatingCosts';
 import type { MonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
 
@@ -319,5 +319,98 @@ describe('SalesVsBreakEvenChart — two-letter weekday axis', () => {
 
     expect(tspans).toContain('Tu');
     expect(tspans).toContain('Jul 21');
+  });
+});
+
+describe('SalesVsBreakEvenChart — custom tooltip content', () => {
+  // Recharts drops `contentStyle` once a custom `content` renderer is set —
+  // the renderer has to reproduce bg-background / border-border/40 /
+  // rounded-lg by hand or the tooltip regresses to an unstyled default box.
+  // Recharts only mounts <Tooltip content> on hover, which is unreliable to
+  // simulate over jsdom-measured SVG coordinates, so this tests the exported
+  // renderer directly with the payload shape Recharts passes it — the same
+  // pattern this suite already uses for pure formatter helpers.
+  function makeTooltipPayload(overrides: Partial<BreakEvenData['history'][number]> = {}) {
+    return [
+      {
+        payload: makeHistoryRow(overrides),
+      },
+    ];
+  }
+
+  it('renders nothing when not active', () => {
+    const { container } = render(
+      <BreakEvenTooltipContent active={false} payload={makeTooltipPayload()} label="2026-07-01" />,
+    );
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('renders nothing when active but there is no payload', () => {
+    const { container } = render(<BreakEvenTooltipContent active payload={[]} label="2026-07-01" />);
+
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('reproduces bg-background / border-border/40 / rounded-lg by hand', () => {
+    const { container } = render(
+      <BreakEvenTooltipContent
+        active
+        payload={makeTooltipPayload({ date: '2026-07-01', sales: 3200, breakEven: 2500, delta: 700, isPartial: false })}
+        label="2026-07-01"
+      />,
+    );
+
+    const root = container.firstChild as HTMLElement;
+    expect(root.className).toMatch(/bg-background/);
+    expect(root.className).toMatch(/border-border\/40/);
+    expect(root.className).toMatch(/rounded-lg/);
+  });
+
+  it('shows Sales, Break-even, and a signed surplus for a complete day above break-even', () => {
+    render(
+      <BreakEvenTooltipContent
+        active
+        payload={makeTooltipPayload({ date: '2026-07-01', sales: 3200, breakEven: 2500, delta: 700, status: 'above', isPartial: false })}
+        label="2026-07-01"
+      />,
+    );
+
+    expect(screen.getByText('$3,200')).toBeInTheDocument();
+    expect(screen.getByText('$2,500')).toBeInTheDocument();
+    const surplus = screen.getByText('+$700');
+    expect(surplus).toBeInTheDocument();
+    expect(surplus.className).toMatch(/text-success/);
+  });
+
+  it('shows a signed shortfall in the destructive color for a complete day below break-even', () => {
+    render(
+      <BreakEvenTooltipContent
+        active
+        payload={makeTooltipPayload({ date: '2026-07-01', sales: 2200, breakEven: 2500, delta: -300, status: 'below', isPartial: false })}
+        label="2026-07-01"
+      />,
+    );
+
+    const shortfall = screen.getByText('-$300');
+    expect(shortfall).toBeInTheDocument();
+    expect(shortfall.className).toMatch(/text-destructive/);
+  });
+
+  it('shows "In progress" instead of a signed verdict for the partial day', () => {
+    render(
+      <BreakEvenTooltipContent
+        active
+        payload={makeTooltipPayload({ date: '2026-07-22', sales: 900, breakEven: 2500, delta: -1600, status: 'below', isPartial: true })}
+        label="2026-07-22"
+      />,
+    );
+
+    expect(screen.getByText('In progress')).toBeInTheDocument();
+    // The deeply negative running delta must not leak through as a
+    // "verdict" the way it would for a graded (non-partial) day — this is
+    // the tooltip's version of the finding-#2 regression guard already
+    // applied to the bar fill.
+    expect(screen.queryByText('-$1,600')).not.toBeInTheDocument();
   });
 });

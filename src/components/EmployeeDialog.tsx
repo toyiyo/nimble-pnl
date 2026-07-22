@@ -53,6 +53,10 @@ interface EmployeeDialogProps {
 export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: EmployeeDialogProps) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  // Access is opt-in and separate from the email field. Typing an email used to
+  // silently provision a staff login — that unlabelled side effect is the bug
+  // this switch exists to remove.
+  const [grantAppAccess, setGrantAppAccess] = useState(false);
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
   const [area, setArea] = useState('');
@@ -194,6 +198,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const resetForm = () => {
     setName('');
     setEmail('');
+    setGrantAppAccess(false);
     setPhone('');
     setPosition('Server');
     setArea('');
@@ -355,7 +360,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         }
       }
 
-      if (email?.trim()) {
+      if (grantAppAccess && email?.trim()) {
         supabase.functions.invoke('send-team-invitation', {
           body: {
             restaurantId: restaurantId,
@@ -1039,6 +1044,35 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   />
                 </div>
               </div>
+
+              {isCreateMode && (
+                <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/30 p-3">
+                  <div className="space-y-0.5 pr-4">
+                    <Label htmlFor="grantAppAccess" className="text-[14px] font-medium text-foreground cursor-pointer">
+                      Invite to the employee app
+                    </Label>
+                    <p id="grantAppAccessHint" className="text-[13px] text-muted-foreground">
+                      {email.trim()
+                        ? 'Lets them clock in, view their own schedule, and request time off from their phone. They will not see sales, costs, payroll, or other employees.'
+                        : 'Add an email address to enable.'}
+                    </p>
+                  </div>
+                  <Switch
+                    id="grantAppAccess"
+                    checked={grantAppAccess}
+                    // aria-disabled rather than disabled: a disabled Switch leaves
+                    // the tab order, so a keyboard user never hears why it is off.
+                    aria-disabled={!email.trim() ? true : undefined}
+                    aria-describedby="grantAppAccessHint"
+                    onCheckedChange={(checked) => {
+                      if (!email.trim()) return;
+                      setGrantAppAccess(checked);
+                    }}
+                    className="data-[state=checked]:bg-foreground aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                    aria-label="Invite to the employee app"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">

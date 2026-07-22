@@ -9,11 +9,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import { formatExpiresIn } from '@/lib/invitationUtils';
 import type { Role } from '@/lib/permissions/types';
 import { ROLE_METADATA, groupRolesForInvite } from '@/lib/permissions/definitions';
 import { getInvitableRoles } from '@/lib/permissions/invitations';
+import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
 
 interface Invitation {
   id: string;
@@ -123,6 +124,9 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   };
 
   const sendInvitation = async () => {
+    // aria-disabled keeps the button focusable, so the handler owns the block.
+    if (findMemberByEmail(members, inviteForm.email)) return;
+
     if (!inviteForm.email || !inviteForm.role) {
       toast({
         title: "Error",
@@ -223,6 +227,11 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   // A lone heading over a one-item list is noise — operations_manager can
   // invite only 'staff'.
   const showGroupLabels = roleGroups.length > 1;
+
+  const { data: members } = useRestaurantMembers(restaurantId);
+  // null while loading, on error, or for a non-member — all "proceed normally".
+  const existingMember = findMemberByEmail(members, inviteForm.email);
+  const blockedPanelId = 'invite-existing-member-warning';
 
   return (
     <Card>
@@ -328,13 +337,37 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       </p>
                     </div>
                   )}
+
+                  {existingMember && (
+                    <div
+                      id={blockedPanelId}
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]"
+                    >
+                      <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <p className="text-foreground">
+                        <strong>{existingMember.fullName ?? existingMember.email}</strong> is already
+                        on your team as {ROLE_METADATA[existingMember.role]?.label ?? existingMember.role}.
+                        Sending another invitation will not change their access — accepting it does
+                        nothing. To change what they can see, use the role dropdown in{' '}
+                        <strong>Team Members</strong>.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <DialogFooter className="px-6 py-4 border-t border-border/40">
                   <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' }); }}>
                     Cancel
                   </Button>
-                  <Button onClick={sendInvitation} disabled={sending} className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90">
+                  <Button
+                    onClick={sendInvitation}
+                    disabled={sending}
+                    aria-disabled={existingMember ? true : undefined}
+                    aria-describedby={existingMember ? blockedPanelId : undefined}
+                    className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                  >
                     {sending ? 'Sending...' : pendingConflict ? 'Yes, resend anyway' : 'Send Invitation'}
                   </Button>
                 </DialogFooter>

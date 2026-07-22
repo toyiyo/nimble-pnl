@@ -45,6 +45,21 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
 }));
 
+// Mock only the useRestaurantMembers hook (the React Query call); keep
+// findMemberByEmail real since it's a pure function and is exactly the
+// logic under test in the "blocking" describe block below.
+const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isError: false }));
+vi.mock('@/hooks/useRestaurantMembers', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useRestaurantMembers')>(
+    '@/hooks/useRestaurantMembers'
+  );
+  return {
+    ...actual,
+    useRestaurantMembers: (...args: unknown[]) => mockUseRestaurantMembers(...args),
+  };
+});
+
+import { supabase } from '@/integrations/supabase/client';
 import { TeamInvitations } from '@/components/TeamInvitations';
 
 const RESTAURANT_ID = 'rest-123';
@@ -196,5 +211,101 @@ describe('TeamInvitations – owner invite dropdown', () => {
 
     expect(trigger).toHaveTextContent('Employee (self-service)');
     expect(trigger).not.toHaveTextContent('Clock in/out');
+  });
+});
+
+describe('TeamInvitations – blocking invites to existing members', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockOrder.mockResolvedValue({ data: [], error: null });
+    mockSelect.mockReturnValue({
+      eq: mockEq.mockReturnValue({
+        order: mockOrder,
+      }),
+      in: mockIn.mockResolvedValue({ data: [], error: null }),
+    });
+    // Default: nobody on the roster matches — every test below overrides
+    // this when it needs an existing member (or a lookup error).
+    mockUseRestaurantMembers.mockReturnValue({ data: [], isError: false });
+  });
+
+  it('blocks and explains when the email already belongs to a team member', async () => {
+    mockUseRestaurantMembers.mockReturnValue({
+      data: [
+        { userId: 'u1', email: 'alexis@rushbowls.com', fullName: 'Alexis Sanchez', role: 'manager' },
+      ],
+      isError: false,
+    });
+
+    const user = userEvent.setup();
+    renderInvitations('owner');
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.type(screen.getByLabelText(/email address/i), 'alexis@rushbowls.com');
+
+    const panel = await screen.findByRole('status');
+    expect(panel).toHaveTextContent(/already on your team as Manager/i);
+
+    const send = screen.getByRole('button', { name: /send invitation/i });
+    expect(send).toHaveAttribute('aria-disabled', 'true');
+    // Must stay focusable — a natively disabled button leaves the tab order
+    // and announces nothing, stranding keyboard users.
+    expect(send).not.toHaveAttribute('disabled');
+
+    await user.click(send);
+    expect(supabase.functions.invoke).not.toHaveBeenCalled();
+  });
+
+  it('describes the blocked button with the explanation panel', async () => {
+    mockUseRestaurantMembers.mockReturnValue({
+      data: [
+        { userId: 'u1', email: 'alexis@rushbowls.com', fullName: 'Alexis Sanchez', role: 'manager' },
+      ],
+      isError: false,
+    });
+
+    const user = userEvent.setup();
+    renderInvitations('owner');
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.type(screen.getByLabelText(/email address/i), 'alexis@rushbowls.com');
+
+    const panel = await screen.findByRole('status');
+    const send = screen.getByRole('button', { name: /send invitation/i });
+    expect(send.getAttribute('aria-describedby')).toBe(panel.id);
+  });
+
+  it('sends normally for an email that is not already a member', async () => {
+    mockUseRestaurantMembers.mockReturnValue({
+      data: [
+        { userId: 'u1', email: 'someoneelse@rushbowls.com', fullName: 'Someone Else', role: 'manager' },
+      ],
+      isError: false,
+    });
+
+    const user = userEvent.setup();
+    renderInvitations('owner');
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.type(screen.getByLabelText(/email address/i), 'new@example.com');
+
+    const send = screen.getByRole('button', { name: /send invitation/i });
+    await user.click(send);
+
+    expect(supabase.functions.invoke).toHaveBeenCalledWith(
+      'send-team-invitation',
+      expect.objectContaining({ body: expect.objectContaining({ email: 'new@example.com' }) })
+    );
+  });
+
+  it('fails open when the roster lookup errors', async () => {
+    // undefined data (still-loading or failed) — findMemberByEmail treats
+    // this as "proceed normally" per its own contract.
+    mockUseRestaurantMembers.mockReturnValue({ data: undefined, isError: true });
+
+    const user = userEvent.setup();
+    renderInvitations('owner');
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.type(screen.getByLabelText(/email address/i), 'alexis@rushbowls.com');
+
+    const send = screen.getByRole('button', { name: /send invitation/i });
+    expect(send).not.toHaveAttribute('aria-disabled', 'true');
   });
 });

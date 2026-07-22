@@ -135,15 +135,20 @@ If there are more than three suggestions in a section, a "Show N more suggestion
 
 The **Sales vs Break-Even** chart at the bottom of the page shows the past 14 days of daily sales compared to your break-even threshold.
 
+- A **verdict strip** above the chart shows your net result for the period at a glance: a signed dollar figure (for example, +$1,756 or -$136) followed by a plain-language clause — "You're ahead of break-even," "You're behind break-even," or "You're exactly at break-even" — and the number of complete days it covers (for example, "13 complete days"). This total only counts **complete days**; today's still-in-progress sales are excluded so a few hours of a slow morning can't drag the whole period's verdict down.
 - Each bar represents one day's sales. Green bars are days you were **above** break-even; red bars are days you were **below**.
+- **Today's bar is shown in progress**, not graded. Because the day isn't finished yet, it would be misleading to score it as a win or a loss against a full day's target — so instead of the flat green or red fill, today's bar renders in amber with a diagonal hatch pattern. It is also excluded from the **Days above** / **Days below** / **Avg surplus** / **Avg shortfall** stats below the chart and from the verdict strip's total, though the separate **Today's sales** figure on the Break-Even Analysis hero card still tracks its progress.
+- Each bar's two-letter weekday (for example, "Tu" or "Th") is labeled above its date on the horizontal axis, so you can see at a glance which days of the week tend to be strong or weak.
+- Hovering a bar shows a tooltip with that day's Sales, Break-even target, and a signed Surplus or Shortfall. For today's in-progress bar, the tooltip shows "In progress" instead of a signed verdict.
 - A dashed horizontal reference line marks your **Break-even** threshold and shows the dollar amount.
+- **If your data shows a weekday pattern**, a sentence appears below the chart describing it — for example, "Mon–Thu never break even; Fri–Sun always do. The gap averages $1,043/day," or "Tue is your weakest day, averaging $612 below break-even." This insight only appears once there is at least 7 complete days of history and a weekday pattern is actually supported by the data; it does not appear for short date ranges or when no single weekday stands out.
 - Below the chart, four summary stats are displayed side by side:
-  - **Days above** — how many of the 14 days your sales exceeded break-even
+  - **Days above** — how many of the complete days your sales exceeded break-even
   - **Days below** — how many days they fell short
   - **Avg surplus** — average daily surplus on above-break-even days
   - **Avg shortfall** — average daily shortfall on below-break-even days
-- If you have a food cost item configured, two additional stats appear: **Target COGS %** (the percentage you entered) and **Actual COGS %** (calculated from real inventory and financial data over the same 14-day window).
-- A tip at the bottom of the chart reads: "Click any bar to view P&L for that day." Clicking a bar takes you to the daily P&L report for that date.
+- If you have a food cost item configured, two additional stats appear: **Target COGS %** (the percentage you entered) and **Actual COGS %** (calculated from real inventory and financial data over the same window), along with a variance chip (for example, "+2.4 pts over target" or "1.1 pts under target") and the number of days it covers.
+- A tip at the bottom of the chart reads: "Click any bar (or focus it and press Enter) to view POS sales for that day." Clicking a bar — or focusing it with the keyboard and pressing Enter or Space — takes you to the **POS Sales** page filtered to that specific date, so you can see the individual sales that made up the day.
 
 ## Tips
 

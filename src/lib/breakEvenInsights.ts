@@ -2,19 +2,7 @@
 // Sales vs Break-Even widget. Kept separate from `breakEvenCalculator.ts` so
 // each derivation has its own small surface and its own direct tests.
 
-// TODO(Task 4): extract to a shared `src/lib/parseLocalDate.ts` module and
-// import it here and in `breakEvenCalculator.ts`. Duplicated intentionally
-// for now — see docs/superpowers/plans/2026-07-22-breakeven-widget-clarity-plan.md
-// Task 3 (depends on Task 1) / Task 4 (the refactor, once both call sites'
-// tests exist).
-//
-// Parse a `yyyy-MM-dd` string as local-zone midnight. `parseISO` reads bare
-// date strings as UTC, which shifts `.getDay()` back a day for restaurants
-// in negative UTC offsets — we want the calendar weekday the date represents.
-function parseLocalDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
+import { parseLocalDate } from '@/lib/parseLocalDate';
 
 export interface BreakEvenHistoryEntry {
   date: string;

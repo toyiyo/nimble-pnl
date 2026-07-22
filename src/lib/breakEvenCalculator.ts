@@ -1,14 +1,7 @@
 import { startOfMonth, format } from 'date-fns';
 import type { OperatingCost, BreakEvenData, CostBreakdownItem } from '@/types/operatingCosts';
 import { calculateMonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
-
-// Parse a `yyyy-MM-dd` string as local-zone midnight. `parseISO` reads bare
-// date strings as UTC, which shifts `.getDate()` back a day for restaurants
-// in negative UTC offsets — we want the calendar day the user typed.
-function parseLocalDate(dateStr: string): Date {
-  const [year, month, day] = dateStr.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
+import { parseLocalDate } from '@/lib/parseLocalDate';
 
 type BreakEvenStatus = 'above' | 'at' | 'below';
 

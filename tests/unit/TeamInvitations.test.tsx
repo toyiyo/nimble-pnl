@@ -127,17 +127,18 @@ describe('TeamInvitations – owner invite dropdown', () => {
     expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
   });
 
-  it('opens invite dialog for operations_manager and shows only Staff option', async () => {
+  it('opens invite dialog for operations_manager and shows only the Employee (self-service) option', async () => {
     const user = userEvent.setup();
     renderInvitations('operations_manager');
 
     await user.click(screen.getByRole('button', { name: /send invitation/i }));
     await user.click(screen.getByRole('combobox'));
 
-    // Only "Staff" should appear (getInvitableRoles('operations_manager') = ['staff'])
+    // Only "Employee (self-service)" (the renamed 'staff' role) should appear
+    // (getInvitableRoles('operations_manager') = ['staff'])
     const options = screen.getAllByRole('option');
     expect(options).toHaveLength(1);
-    expect(options[0].textContent).toMatch(/staff/i);
+    expect(options[0].textContent).toMatch(/employee \(self-service\)/i);
 
     // Manager and Owner must NOT appear
     expect(screen.queryByRole('option', { name: /manager/i })).toBeNull();
@@ -155,5 +156,45 @@ describe('TeamInvitations – owner invite dropdown', () => {
     expect(screen.queryByRole('option', { name: /^owner$/i })).toBeNull();
     // but can invite operations_manager
     expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
+  });
+
+  it('groups roles by access type so platform access reads differently from self-service', async () => {
+    const user = userEvent.setup();
+    renderInvitations('owner');
+
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.click(screen.getByRole('combobox'));
+
+    expect(await screen.findByText('Platform access (EasyShiftHQ)')).toBeInTheDocument();
+    expect(screen.getByText('Employee self-service')).toBeInTheDocument();
+    expect(screen.getByText('External collaborators')).toBeInTheDocument();
+  });
+
+  it('shows what each role can actually do next to its name', async () => {
+    const user = userEvent.setup();
+    renderInvitations('owner');
+
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.click(screen.getByRole('combobox'));
+
+    expect(
+      await screen.findByText('Clock in/out, view their own schedule, request time off')
+    ).toBeInTheDocument();
+  });
+
+  it('shows only the role label in the closed trigger, not its description', async () => {
+    // Regression guard: ui/select.tsx wraps a SelectItem's whole children in
+    // ItemText, so a childless <SelectValue /> portals label AND description
+    // into the line-clamped trigger.
+    const user = userEvent.setup();
+    renderInvitations('owner');
+
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    const trigger = screen.getByRole('combobox', { name: /role/i });
+    await user.click(trigger);
+    await user.click(await screen.findByRole('option', { name: /employee \(self-service\)/i }));
+
+    expect(trigger).toHaveTextContent('Employee (self-service)');
+    expect(trigger).not.toHaveTextContent('Clock in/out');
   });
 });

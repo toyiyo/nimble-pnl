@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import { formatExpiresIn } from '@/lib/invitationUtils';
 import type { Role } from '@/lib/permissions/types';
-import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { ROLE_METADATA, groupRolesForInvite } from '@/lib/permissions/definitions';
 import { getInvitableRoles } from '@/lib/permissions/invitations';
 
 interface Invitation {
@@ -219,6 +219,11 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   );
   const visibleInvitations = showHistory ? invitations : activeInvitations;
 
+  const roleGroups = groupRolesForInvite(invitableRoles);
+  // A lone heading over a one-item list is noise — operations_manager can
+  // invite only 'staff'.
+  const showGroupLabels = roleGroups.length > 1;
+
   return (
     <Card>
       <CardHeader>
@@ -282,11 +287,34 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       onValueChange={(value) => setInviteForm({ ...inviteForm, role: value })}
                     >
                       <SelectTrigger id="role" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
-                        <SelectValue />
+                        {/*
+                          SelectValue MUST have children. ui/select.tsx wraps a
+                          SelectItem's entire children in ItemText, and a childless
+                          SelectValue makes Radix portal that whole subtree into the
+                          trigger — which would render the label and the description
+                          mashed into one line-clamped row.
+                        */}
+                        <SelectValue>
+                          {ROLE_METADATA[inviteForm.role as Role]?.label ?? 'Select a role'}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {invitableRoles.map((r) => (
-                          <SelectItem key={r} value={r}>{ROLE_METADATA[r].label}</SelectItem>
+                        {roleGroups.map(({ group, label, roles }) => (
+                          <SelectGroup key={group}>
+                            {showGroupLabels && (
+                              <SelectLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                {label}
+                              </SelectLabel>
+                            )}
+                            {roles.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                <span className="text-[14px] text-foreground">{ROLE_METADATA[r].label}</span>
+                                <span className="block text-[12px] text-muted-foreground">
+                                  {ROLE_METADATA[r].description}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         ))}
                       </SelectContent>
                     </Select>

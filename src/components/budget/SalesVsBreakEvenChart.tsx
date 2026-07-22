@@ -208,11 +208,11 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(142.1, 76.2%, 36.3%)' }} />
+              <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(var(--success))' }} />
               <span className="text-[11px] text-muted-foreground">Above</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(0, 84.2%, 60.2%)' }} />
+              <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(var(--destructive))' }} />
               <span className="text-[11px] text-muted-foreground">Below</span>
             </div>
           </div>
@@ -309,10 +309,10 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
                       entry.isPartial
                         ? `url(#${hatchId})`
                         : entry.status === 'above'
-                        ? 'hsl(142.1, 76.2%, 36.3%)'
+                        ? 'hsl(var(--success))'
                         : entry.status === 'below'
-                        ? 'hsl(0, 84.2%, 60.2%)'
-                        : 'hsl(45.4, 93.4%, 47.5%)'
+                        ? 'hsl(var(--destructive))'
+                        : 'hsl(var(--warning))'
                     }
                     fillOpacity={0.85}
                   />
@@ -326,7 +326,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
       {/* Summary stats */}
       <div className="grid grid-cols-4 gap-px bg-border/40 border-t border-border/40">
         <div className="bg-background p-3 text-center">
-          <p className="text-[16px] font-semibold text-green-600">{data.daysAbove}</p>
+          <p className="text-[16px] font-semibold text-success">{data.daysAbove}</p>
           <p className="text-[11px] text-muted-foreground">Days above</p>
         </div>
         <div className="bg-background p-3 text-center">
@@ -334,7 +334,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
           <p className="text-[11px] text-muted-foreground">Days below</p>
         </div>
         <div className="bg-background p-3 text-center">
-          <p className="text-[14px] font-semibold text-green-600">
+          <p className="text-[14px] font-semibold text-success">
             {data.avgSurplus > 0 ? `+${formatCurrency(data.avgSurplus)}` : '-'}
           </p>
           <p className="text-[11px] text-muted-foreground">Avg surplus</p>
@@ -359,7 +359,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
           <div className="bg-background p-3 text-center">
             <p className={`text-[14px] font-semibold ${
               actualCOGSPercentage !== undefined && targetCOGSPercentage !== undefined && actualCOGSPercentage > targetCOGSPercentage
-                ? 'text-destructive' : 'text-green-600'
+                ? 'text-destructive' : 'text-success'
             }`}>
               {actualCOGSPercentage === undefined ? '-' : `${actualCOGSPercentage.toFixed(1)}%`}
             </p>

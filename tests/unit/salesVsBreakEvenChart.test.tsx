@@ -219,7 +219,7 @@ describe('SalesVsBreakEvenChart — partial bar fill + hatch', () => {
 
     const bars = container.querySelectorAll('.recharts-bar-rectangle path');
     expect(bars).toHaveLength(1);
-    expect(bars[0].getAttribute('fill')).not.toBe('hsl(0, 84.2%, 60.2%)');
+    expect(bars[0].getAttribute('fill')).not.toBe('hsl(var(--destructive))');
   });
 
   it('fills the partial bar from a userSpaceOnUse SVG pattern, not a flat status color', () => {
@@ -258,7 +258,7 @@ describe('SalesVsBreakEvenChart — partial bar fill + hatch', () => {
     );
 
     const bar = container.querySelector('.recharts-bar-rectangle path');
-    expect(bar?.getAttribute('fill')).toBe('hsl(142.1, 76.2%, 36.3%)');
+    expect(bar?.getAttribute('fill')).toBe('hsl(var(--success))');
   });
 
   it('still applies the flat "below" status fill for a non-partial row', () => {
@@ -267,7 +267,7 @@ describe('SalesVsBreakEvenChart — partial bar fill + hatch', () => {
     );
 
     const bar = container.querySelector('.recharts-bar-rectangle path');
-    expect(bar?.getAttribute('fill')).toBe('hsl(0, 84.2%, 60.2%)');
+    expect(bar?.getAttribute('fill')).toBe('hsl(var(--destructive))');
   });
 
   it('branches on isPartial before status: an isPartial row with status "above" still renders the hatch, not the success fill', () => {
@@ -279,7 +279,7 @@ describe('SalesVsBreakEvenChart — partial bar fill + hatch', () => {
     );
 
     const bar = container.querySelector('.recharts-bar-rectangle path');
-    expect(bar?.getAttribute('fill')).not.toBe('hsl(142.1, 76.2%, 36.3%)');
+    expect(bar?.getAttribute('fill')).not.toBe('hsl(var(--success))');
     expect(bar?.getAttribute('fill')).toMatch(/^url\(#.+\)$/);
   });
 });

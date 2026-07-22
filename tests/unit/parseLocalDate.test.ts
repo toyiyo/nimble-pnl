@@ -13,8 +13,9 @@ describe('parseLocalDate', () => {
   });
 
   it('preserves the calendar weekday regardless of host TZ offset', () => {
-    // 2026-06-01 is a Monday. `parseISO` would read this as UTC midnight,
-    // which in a negative-UTC-offset host TZ formats back to Sunday.
+    // 2026-06-01 is a Monday. Native `new Date('2026-06-01')` would read
+    // this as UTC midnight, which in a negative-UTC-offset host TZ formats
+    // back to Sunday.
     const result = parseLocalDate('2026-06-01');
     expect(result.getDay()).toBe(1); // Monday
   });

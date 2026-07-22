@@ -1,8 +1,10 @@
 /**
  * Regression: `deriveWeekdayPattern` must derive each row's weekday via a
- * local-date parser, not `parseISO`. `parseISO('2026-06-01')` reads the bare
- * date as UTC midnight; formatted back in a negative-UTC-offset host TZ that
- * lands on 2026-05-31 (Sunday), one weekday earlier than intended (Monday).
+ * local-date parser, not native `new Date('2026-06-01')`. The native
+ * constructor reads the bare date as UTC midnight; formatted back in a
+ * negative-UTC-offset host TZ that lands on 2026-05-31 (Sunday), one weekday
+ * earlier than intended (Monday). (date-fns' `parseISO` doesn't have this
+ * problem — it already reads date-only strings at local midnight.)
  * Pin TZ=America/Chicago (UTC-5/-6) and assert the weekday grouping is
  * unaffected — matches the convention in tests/unit/cogsCalculations.tz.test.ts.
  */
@@ -29,12 +31,12 @@ describe('deriveWeekdayPattern — negative UTC offset', () => {
     // UTC, so `getTimezoneOffset()` is positive).
     expect(new Date().getTimezoneOffset()).toBeGreaterThan(0);
 
-    // Two full weeks starting Monday 2026-06-01. `parseISO('2026-06-01')`
-    // would read this as 2026-06-01T00:00:00Z, which in America/Chicago
-    // (UTC-5 in June) formats back to 2026-05-31 19:00 — Sunday, not
-    // Monday. A buggy implementation would therefore group this row (and
-    // every other row) under the wrong weekday, breaking the clean-split
-    // shape below.
+    // Two full weeks starting Monday 2026-06-01. Native `new
+    // Date('2026-06-01')` would read this as 2026-06-01T00:00:00Z, which in
+    // America/Chicago (UTC-5 in June) formats back to 2026-05-31 19:00 —
+    // Sunday, not Monday. A buggy implementation would therefore group this
+    // row (and every other row) under the wrong weekday, breaking the
+    // clean-split shape below.
     const dates = [
       '2026-06-01', '2026-06-02', '2026-06-03', '2026-06-04', '2026-06-05', '2026-06-06', '2026-06-07',
       '2026-06-08', '2026-06-09', '2026-06-10', '2026-06-11', '2026-06-12', '2026-06-13', '2026-06-14',

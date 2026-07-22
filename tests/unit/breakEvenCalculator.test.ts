@@ -193,18 +193,21 @@ describe('calculateBreakEven', () => {
     const costs = [
       makeCost({ entryType: 'value', monthlyValue: 300000, costType: 'fixed', name: 'Rent' }),
     ];
+    // todayStr deliberately isn't the last row here — an implementation
+    // that (incorrectly) marks "the last row" partial instead of matching
+    // on date would still pass a fixture where today happens to be last.
+    const todayStr = '2026-01-03';
     const salesData = [
+      { date: '2026-01-03', netRevenue: 200, transactionCount: 3 },
       { date: '2026-01-01', netRevenue: 500, transactionCount: 5 },
       { date: '2026-01-02', netRevenue: 400, transactionCount: 4 },
-      { date: '2026-01-03', netRevenue: 200, transactionCount: 3 },
     ];
 
-    const result = calculateBreakEven(costs, salesData, 0, '2026-01-03');
+    const result = calculateBreakEven(costs, salesData, 0, todayStr);
 
     expect(result.history).toHaveLength(3);
-    expect(result.history[0].isPartial).toBe(false);
-    expect(result.history[1].isPartial).toBe(false);
-    expect(result.history[2].isPartial).toBe(true);
+    expect(result.history.every((h) => h.isPartial === (h.date === todayStr))).toBe(true);
+    expect(result.history.some((h) => h.isPartial)).toBe(true);
   });
 
   it('excludes the partial (today) row from daysBelow/avgShortfall', () => {

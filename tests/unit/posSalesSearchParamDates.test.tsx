@@ -10,7 +10,7 @@
 // full-render precedent for this exact page in
 // tests/unit/Inventory.cameraRewire.test.tsx / tests/unit/RecipesCreateFromBase.test.tsx.
 import React from "react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { subDays, format as formatDateFn } from "date-fns";
 
@@ -196,7 +196,17 @@ function defaultDates() {
 
 describe("POSSales — seeds dates from URL search params", () => {
   beforeEach(() => {
+    // Freeze the clock: the page's default-range `useState` initializer and
+    // this file's `defaultDates()` helper each call `new Date()`
+    // independently. A local-midnight rollover between the two calls would
+    // make an otherwise-correct implementation fail intermittently.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 6, 22, 12));
     searchParamsRef.current = new URLSearchParams();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("defaults to the last 30 days when no params are present", () => {

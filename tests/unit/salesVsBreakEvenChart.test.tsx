@@ -554,6 +554,14 @@ describe('SalesVsBreakEvenChart — COGS variance chip', () => {
     expect(screen.getByText('46.9%')).toBeInTheDocument();
   });
 
+  it('renders the actual COGS % in a neutral color, not text-success, when there is no target to compare against', () => {
+    renderChartWithCOGS(makeData(), { actualCOGSPercentage: 46.9 });
+
+    const actual = screen.getByText('46.9%');
+    expect(actual.className).not.toMatch(/text-success/);
+    expect(actual.className).not.toMatch(/text-destructive/);
+  });
+
   it('does not render the COGS block or a variance chip when both percentages are undefined', () => {
     renderChartWithCOGS(makeData(), {});
 

@@ -132,9 +132,9 @@ interface WeekdayAxisTickProps {
 // axis by weekday at all — so this uses the two-letter `EEEEEE` form and
 // renders it as its own line above "MMM d" via stacked <tspan>s.
 //
-// Parses via the shared `parseLocalDate` (not `parseISO`, which reads bare
-// date strings as UTC and can shift the weekday back a day in negative UTC
-// offsets) — the same fix applied to `deriveWeekdayPattern`.
+// Parses via the shared `parseLocalDate` (not native `new Date(dateStr)`,
+// which reads bare date strings as UTC and can shift the weekday back a day
+// in negative UTC offsets) — the same fix applied to `deriveWeekdayPattern`.
 function WeekdayAxisTick({ x, y, payload }: WeekdayAxisTickProps) {
   if (!payload?.value) return null;
 
@@ -418,7 +418,12 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
                     tabIndex={0}
                     role="button"
                     aria-label={getBarAccessibleName(entry)}
-                    className="outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    // Tailwind's `ring-*` utilities are box-shadow based,
+                    // which browsers don't paint on SVG shape elements
+                    // (`<path>`) — the focus indicator would be invisible.
+                    // `outline` does render on SVG shapes, so use that
+                    // instead of the codebase's usual ring convention here.
+                    className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
                     onKeyDown={(event: KeyboardEvent<SVGElement>) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault();
@@ -475,8 +480,10 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
           </div>
           <div className="bg-background p-3 text-center">
             <p className={`text-[14px] font-semibold ${
-              actualCOGSPercentage !== undefined && targetCOGSPercentage !== undefined && actualCOGSPercentage > targetCOGSPercentage
-                ? 'text-destructive' : 'text-success'
+              actualCOGSPercentage === undefined || targetCOGSPercentage === undefined
+                ? 'text-foreground'
+                : actualCOGSPercentage > targetCOGSPercentage
+                  ? 'text-destructive' : 'text-success'
             }`}>
               {actualCOGSPercentage === undefined ? '-' : `${actualCOGSPercentage.toFixed(1)}%`}
             </p>

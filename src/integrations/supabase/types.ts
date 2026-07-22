@@ -3986,6 +3986,7 @@ export type Database = {
           resulting_shift_id: string | null
           reviewed_at: string | null
           reviewed_by: string | null
+          reviewer_note: string | null
           shift_date: string
           shift_template_id: string
           status: string
@@ -3999,6 +4000,7 @@ export type Database = {
           resulting_shift_id?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          reviewer_note?: string | null
           shift_date: string
           shift_template_id: string
           status?: string
@@ -4012,6 +4014,7 @@ export type Database = {
           resulting_shift_id?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
+          reviewer_note?: string | null
           shift_date?: string
           shift_template_id?: string
           status?: string
@@ -10497,6 +10500,15 @@ export type Database = {
           transaction_count: number
         }[]
       }
+      get_sales_trends: {
+        Args: {
+          p_end_date?: string
+          p_restaurant_id: string
+          p_start_date?: string
+          p_time_zone?: string
+        }
+        Returns: Json
+      }
       get_shift_series_info: {
         Args: { p_parent_id: string; p_restaurant_id: string }
         Returns: {
@@ -10551,7 +10563,6 @@ export type Database = {
       get_unified_sales_totals: {
         Args: {
           p_end_date?: string
-          p_pos_system?: string
           p_restaurant_id: string
           p_search_term?: string
           p_start_date?: string

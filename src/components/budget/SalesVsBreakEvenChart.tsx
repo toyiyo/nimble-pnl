@@ -29,6 +29,13 @@ function formatSignedCurrency(amount: number): string {
   return amount > 0 ? `+${formatCurrency(amount)}` : formatCurrency(amount);
 }
 
+// Shared by the verdict strip (net delta) and the tooltip (per-day delta) —
+// both color a signed dollar amount the same way: green above break-even,
+// red below, neutral at exactly zero.
+function signedDeltaColorClass(value: number): string {
+  return value > 0 ? 'text-success' : value < 0 ? 'text-destructive' : 'text-foreground';
+}
+
 // Finding #5: rounding straight to whole thousands (`${(v/1000).toFixed(0)}k`)
 // collapsed visually distinct bars — e.g. $2,512 and $3,350 both landed on a
 // tick labeled "$3k". Below $10k this keeps one decimal of resolution so
@@ -142,8 +149,7 @@ export function BreakEvenTooltipContent({ active, payload }: BreakEvenTooltipCon
   if (!active || !payload?.length) return null;
 
   const entry = payload[0].payload;
-  const deltaColorClass =
-    entry.delta > 0 ? 'text-success' : entry.delta < 0 ? 'text-destructive' : 'text-foreground';
+  const deltaColorClass = signedDeltaColorClass(entry.delta);
   const verdictLabel = entry.delta > 0 ? 'Surplus' : entry.delta < 0 ? 'Shortfall' : 'Break-even';
 
   return (
@@ -246,8 +252,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
 
   const breakEvenValue = data.dailyBreakEven;
 
-  const netColorClass =
-    data.netDelta > 0 ? 'text-success' : data.netDelta < 0 ? 'text-destructive' : 'text-foreground';
+  const netColorClass = signedDeltaColorClass(data.netDelta);
   const verdictClause =
     data.netDelta > 0
       ? "You're ahead of break-even"
@@ -272,11 +277,11 @@ export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercen
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(var(--success))' }} />
+              <div className="h-2.5 w-2.5 rounded-sm bg-success" />
               <span className="text-[11px] text-muted-foreground">Above</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: 'hsl(var(--destructive))' }} />
+              <div className="h-2.5 w-2.5 rounded-sm bg-destructive" />
               <span className="text-[11px] text-muted-foreground">Below</span>
             </div>
           </div>

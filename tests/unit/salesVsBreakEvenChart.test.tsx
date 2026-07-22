@@ -188,3 +188,94 @@ describe('SalesVsBreakEvenChart — verdict strip', () => {
     expect(screen.getByText(/exactly at break-even/i)).toBeInTheDocument();
   });
 });
+
+describe('SalesVsBreakEvenChart — partial bar fill + hatch', () => {
+  // Regression guard for finding #2: today's bar is a running partial
+  // total, not a graded outcome. Even when the partial delta reads deeply
+  // negative, the bar must never render the destructive ("below") fill —
+  // it must render the hatch pattern instead. isPartial is checked before
+  // status.
+  it('does not render the destructive fill for a partial row with a deeply negative delta', () => {
+    const { container } = renderChart(
+      makeData({
+        history: [
+          makeHistoryRow({
+            date: '2026-07-22',
+            status: 'below',
+            delta: -5000,
+            isPartial: true,
+          }),
+        ],
+        completeDays: 0,
+        daysAbove: 0,
+        daysBelow: 0,
+        netDelta: 0,
+      }),
+    );
+
+    const bars = container.querySelectorAll('.recharts-bar-rectangle path');
+    expect(bars).toHaveLength(1);
+    expect(bars[0].getAttribute('fill')).not.toBe('hsl(0, 84.2%, 60.2%)');
+  });
+
+  it('fills the partial bar from a userSpaceOnUse SVG pattern, not a flat status color', () => {
+    const { container } = renderChart(
+      makeData({
+        history: [makeHistoryRow({ status: 'below', delta: -5000, isPartial: true })],
+        completeDays: 0,
+      }),
+    );
+
+    const pattern = container.querySelector('pattern');
+    expect(pattern).toBeTruthy();
+    expect(pattern?.getAttribute('patternUnits')).toBe('userSpaceOnUse');
+    expect(pattern?.id).toBeTruthy();
+
+    const bar = container.querySelector('.recharts-bar-rectangle path');
+    expect(bar?.getAttribute('fill')).toBe(`url(#${pattern?.id})`);
+  });
+
+  it('colors the hatch pattern with the warning token', () => {
+    const { container } = renderChart(
+      makeData({
+        history: [makeHistoryRow({ status: 'below', delta: -5000, isPartial: true })],
+        completeDays: 0,
+      }),
+    );
+
+    const pattern = container.querySelector('pattern');
+    const patternMarkup = pattern?.innerHTML ?? '';
+    expect(patternMarkup).toMatch(/hsl\(var\(--warning\)\)/);
+  });
+
+  it('still applies the flat "above" status fill for a non-partial row', () => {
+    const { container } = renderChart(
+      makeData({ history: [makeHistoryRow({ status: 'above', isPartial: false })] }),
+    );
+
+    const bar = container.querySelector('.recharts-bar-rectangle path');
+    expect(bar?.getAttribute('fill')).toBe('hsl(142.1, 76.2%, 36.3%)');
+  });
+
+  it('still applies the flat "below" status fill for a non-partial row', () => {
+    const { container } = renderChart(
+      makeData({ history: [makeHistoryRow({ status: 'below', isPartial: false })] }),
+    );
+
+    const bar = container.querySelector('.recharts-bar-rectangle path');
+    expect(bar?.getAttribute('fill')).toBe('hsl(0, 84.2%, 60.2%)');
+  });
+
+  it('branches on isPartial before status: an isPartial row with status "above" still renders the hatch, not the success fill', () => {
+    const { container } = renderChart(
+      makeData({
+        history: [makeHistoryRow({ status: 'above', delta: 100, isPartial: true })],
+        completeDays: 0,
+      }),
+    );
+
+    const bar = container.querySelector('.recharts-bar-rectangle path');
+    expect(bar?.getAttribute('fill')).not.toBe('hsl(142.1, 76.2%, 36.3%)');
+    expect(bar?.getAttribute('fill')).toMatch(/^url\(#.+\)$/);
+  });
+});

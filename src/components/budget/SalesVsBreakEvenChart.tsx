@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
@@ -27,6 +27,10 @@ function formatSignedCurrency(amount: number): string {
 
 export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
   const navigate = useNavigate();
+  // Scopes the partial-bar hatch <pattern> id to this instance — the widget
+  // mounts on two pages, and a fixed id risks url(#id) collisions between
+  // instances.
+  const hatchId = useId();
 
   const chartData = useMemo(() => {
     if (!data?.history) return [];
@@ -38,6 +42,7 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
       breakEven: h.breakEven,
       delta: h.delta,
       status: h.status,
+      isPartial: h.isPartial,
     }));
   }, [data]);
 
@@ -131,6 +136,30 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
               margin={{ top: 12, right: 12, left: 12, bottom: 4 }}
               onClick={(e) => e?.activePayload?.[0]?.payload && handleBarClick(e.activePayload[0].payload)}
             >
+              <defs>
+                {/* Today's bar is a running partial total, not a graded
+                    outcome — it gets its own fill, never the above/below
+                    status color. `userSpaceOnUse` keeps the hatch density
+                    fixed instead of stretching with each bar's width. */}
+                <pattern
+                  id={hatchId}
+                  patternUnits="userSpaceOnUse"
+                  width={6}
+                  height={6}
+                  patternTransform="rotate(45)"
+                >
+                  <rect width={6} height={6} fill="hsl(var(--warning))" />
+                  <line
+                    x1={0}
+                    y1={0}
+                    x2={0}
+                    y2={6}
+                    stroke="hsl(var(--background))"
+                    strokeWidth={2}
+                    strokeOpacity={0.6}
+                  />
+                </pattern>
+              </defs>
               <XAxis
                 dataKey="dateLabel"
                 tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
@@ -170,12 +199,21 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
                 dataKey="sales"
                 radius={[4, 4, 0, 0]}
                 cursor="pointer"
+                isAnimationActive={false}
               >
                 {chartData.map((entry, index) => (
                   <Cell
                     key={`cell-${index}`}
                     fill={
-                      entry.status === 'above'
+                      // isPartial branches BEFORE status: today's row keeps
+                      // whatever status classifyDelta computed for it (other
+                      // consumers read that field), but the bar itself must
+                      // never render the above/below fill for a day that
+                      // hasn't finished yet — regardless of how deep the
+                      // running delta currently reads.
+                      entry.isPartial
+                        ? `url(#${hatchId})`
+                        : entry.status === 'above'
                         ? 'hsl(142.1, 76.2%, 36.3%)'
                         : entry.status === 'below'
                         ? 'hsl(0, 84.2%, 60.2%)'

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { revelFetch, fetchOrderItemsByDate, fetchPaymentsByDate } from "../_shared/revelClient.ts";
 import { getEncryptionService } from "../_shared/encryption.ts";
 import { processOrder } from "../_shared/revelOrderProcessor.ts";
+import { resolveRestaurantTimeZone } from "../_shared/timezone.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -76,6 +77,9 @@ serve(async (req) => {
     const end = endDate || new Date().toISOString().split('T')[0];
     const start = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+    // Resolved once per run, not once per order.
+    const timeZone = await resolveRestaurantTimeZone(service, restaurantId);
+
     // Classic Revel keeps line items in a separate resource — fetch them for the range
     // once and join by order id (Order/OrderAllInOne carry only headers).
     const itemsByOrder = await fetchOrderItemsByDate(conn.revel_instance, apiKey, apiSecret, start, end);
@@ -103,7 +107,7 @@ serve(async (req) => {
           const oid = String(order.id ?? order.uuid);
           (order as any).OrderItems = itemsByOrder[oid] || [];
           (order as any).Payments = paymentsByOrder[oid] || [];
-          await processOrder(service, order, restaurantId, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true });
+          await processOrder(service, order, restaurantId, conn.revel_instance, conn.establishment_id ?? null, { skipUnifiedSalesSync: true }, timeZone);
           processed++;
         } catch (e) {
           console.error(`revel-sync-data: failed to process order for restaurant ${restaurantId}:`, e);

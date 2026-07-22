@@ -37,6 +37,7 @@ import { useSplitPosSale } from "@/hooks/useSplitPosSale";
 import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
 import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
 import { SaleCard, RecipeInfo } from "@/components/pos-sales/SaleCard";
+import { SalesTrendsPanel } from "@/components/pos-sales/SalesTrendsPanel";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRecipes } from "@/hooks/useRecipes";
 import { useNavigate } from "react-router-dom";
@@ -131,6 +132,15 @@ export default function POSSales() {
   // Default to last 30 days for better UX and performance
   const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
+  // Sales trends panel: expanded by default on lg+ screens, collapsed on
+  // mobile — an expanded stack of charts would push the sales list far
+  // below the fold on small viewports (design doc §4.2).
+  const [trendsPanelDefaultExpanded] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia("(min-width: 1024px)").matches;
+  });
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
   const [groupedSortBy, setGroupedSortBy] = useState<'revenue' | 'quantity' | 'sales' | 'name'>('revenue');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -1050,6 +1060,14 @@ export default function POSSales() {
         </div>
 
         <TabsContent value="manual" className="space-y-6 mt-0">
+          <SalesTrendsPanel
+            restaurantId={selectedRestaurant?.restaurant_id || null}
+            startDate={startDate}
+            endDate={endDate}
+            timeZone={selectedRestaurant?.restaurant?.timezone}
+            defaultExpanded={trendsPanelDefaultExpanded}
+          />
+
           {/* Apple/Notion-style filter bar */}
           <div className="space-y-4">
             {/* Search and date row */}

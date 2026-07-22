@@ -42,7 +42,21 @@ export const TimeOfDayChart = memo(function TimeOfDayChart({ data, posSystems, a
             width={40}
             tickFormatter={(v: number) => `${v}%`}
           />
-          <ChartTooltip content={<ChartTooltipContent labelFormatter={(v) => formatHour(Number(v))} />} />
+          <ChartTooltip
+            content={
+              <ChartTooltipContent
+                // Read the hour off the data row, not the tooltip's resolved
+                // `label`: shadcn only passes the x value through when it is a
+                // string, and our `hour` axis is numeric, so `label` falls back
+                // to the first series' config label ("Focus") — `Number("Focus")`
+                // is NaN, which rendered as "NaNPM".
+                labelFormatter={(_label, payload) => {
+                  const hour = payload?.[0]?.payload?.hour;
+                  return typeof hour === 'number' ? formatHour(hour) : '';
+                }}
+              />
+            }
+          />
           {posSystems.map((pos) => (
             <Bar key={pos} yAxisId="rev" dataKey={pos} stackId="hour" fill={`var(--color-${pos})`} />
           ))}

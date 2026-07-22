@@ -161,16 +161,16 @@ export function SalesTrendsPanel({
                 </p>
               )}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <ChartSection title="Sales by day">
+                <ChartSection title="Sales by day" caption={insights.daily}>
                   <SalesByDayChart data={daily} posSystems={filtered.pos_systems} ariaLabel={insights.daily} />
                 </ChartSection>
-                <ChartSection title="Time of day">
+                <ChartSection title="Time of day" caption={insights.hourly}>
                   <TimeOfDayChart data={hourly} posSystems={filtered.pos_systems} ariaLabel={insights.hourly} />
                 </ChartSection>
-                <ChartSection title="Day of week">
+                <ChartSection title="Day of week" caption={insights.weekday}>
                   <WeekdayChart data={weekday} ariaLabel={insights.weekday} />
                 </ChartSection>
-                <ChartSection title="Top products">
+                <ChartSection title="Top products" caption={insights.product}>
                   <TopProductsList products={products} activePos={effectivePosFilter} ariaLabel={insights.product} />
                 </ChartSection>
               </div>
@@ -184,11 +184,22 @@ export function SalesTrendsPanel({
   );
 }
 
-function ChartSection({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
+function ChartSection({
+  title,
+  caption,
+  children,
+}: Readonly<{ title: string; caption?: string; children: React.ReactNode }>) {
   return (
     <div className="space-y-2">
       <h3 className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">{title}</h3>
       {children}
+      {caption && (
+        // aria-hidden: the identical text is already the chart's role="img"
+        // aria-label, so screen readers get it once — this is the visible copy.
+        <p className="text-[12.5px] leading-snug text-muted-foreground" aria-hidden="true">
+          {caption}
+        </p>
+      )}
     </div>
   );
 }

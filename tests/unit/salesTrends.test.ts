@@ -9,6 +9,9 @@ import {
   computeKpis,
   deriveInsights,
   hourCoverage,
+  formatHour,
+  formatShortDate,
+  peakHourWindow,
   type SalesTrendsData,
 } from '@/lib/salesTrends';
 
@@ -315,10 +318,24 @@ describe('deriveInsights', () => {
     expect(insights.product.length).toBeGreaterThan(0);
   });
 
-  it('mentions the busiest day and top product by name', () => {
+  it('mentions the busiest day (formatted) and top product by name', () => {
     const insights = deriveInsights(FIXTURE);
-    expect(insights.daily).toContain('2024-08-02');
+    expect(insights.daily).toContain('Aug 2'); // formatShortDate('2024-08-02')
+    expect(insights.daily).toContain('busiest day');
     expect(insights.product).toContain('Burger');
+    expect(insights.product).toContain('leads with');
+  });
+
+  it('narrates the hourly halfway point and the peak window share', () => {
+    const insights = deriveInsights(FIXTURE);
+    expect(insights.hourly).toMatch(/Half the day's revenue is in by \d+(AM|PM)\./);
+    expect(insights.hourly).toMatch(/window alone drives \d+% of sales/);
+  });
+
+  it('names the strongest weekday relative to the slowest', () => {
+    const insights = deriveInsights(FIXTURE);
+    expect(insights.weekday).toContain('strongest day');
+    expect(insights.weekday).toMatch(/[\d.]+× a slow /);
   });
 
   it('returns sensible fallback text for empty data instead of throwing', () => {
@@ -349,5 +366,48 @@ describe('hourCoverage', () => {
       by_hour: [{ hour: 10, pos_system: 'toast', revenue: 100, day_count: 1 }],
     };
     expect(hourCoverage(full)).toBe(1);
+  });
+});
+
+describe('formatHour', () => {
+  it('formats valid hours in 12h form', () => {
+    expect(formatHour(0)).toBe('12AM');
+    expect(formatHour(8)).toBe('8AM');
+    expect(formatHour(12)).toBe('12PM');
+    expect(formatHour(20)).toBe('8PM');
+    expect(formatHour(23)).toBe('11PM');
+  });
+
+  it('returns empty string for non-finite input (no "NaNPM")', () => {
+    expect(formatHour(Number.NaN)).toBe('');
+    expect(formatHour(Number.POSITIVE_INFINITY)).toBe('');
+  });
+});
+
+describe('formatShortDate', () => {
+  it('formats an ISO date as "Mon D" in UTC (no timezone shift)', () => {
+    expect(formatShortDate('2026-07-01')).toBe('Jul 1');
+    expect(formatShortDate('2024-08-02')).toBe('Aug 2');
+  });
+  it('returns the input unchanged when it is not a valid ISO date', () => {
+    expect(formatShortDate('not-a-date')).toBe('not-a-date');
+  });
+});
+
+describe('peakHourWindow', () => {
+  it('finds the best contiguous window and its share of the day', () => {
+    const hourly = buildHourlySeries(FIXTURE.by_hour, FIXTURE.pos_systems);
+    // Totals: 10->40, 14->260, 18->50; grand = 350. Best 4h window includes hour 14 => 260/350 = 74%.
+    const win = peakHourWindow(hourly, 4)!;
+    expect(win).not.toBeNull();
+    expect(win.startHour).toBeLessThanOrEqual(14);
+    expect(win.endHour).toBeGreaterThanOrEqual(14);
+    expect(win.endHour - win.startHour).toBe(3);
+    expect(win.pct).toBe(74);
+  });
+
+  it('returns null when there is no revenue', () => {
+    const hourly = buildHourlySeries([], []);
+    expect(peakHourWindow(hourly, 4)).toBeNull();
   });
 });

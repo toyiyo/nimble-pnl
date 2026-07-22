@@ -178,6 +178,15 @@ describe('SalesTrendsPanel — expand/collapse', () => {
     expect(screen.getAllByRole('img').length).toBeGreaterThan(0);
   });
 
+  it('renders a visible narrative caption under the charts', () => {
+    mockUseSalesTrends.mockReturnValue(mockHookReturn());
+    render(<SalesTrendsPanel restaurantId="rest-1" />);
+    // Visible deriveInsights captions (other charts carry the same text only as
+    // an aria-label attribute, so these getByText hits are the rendered <p>s).
+    expect(screen.getByText(/was your busiest day/i)).toBeInTheDocument();
+    expect(screen.getByText(/strongest day/i)).toBeInTheDocument();
+  });
+
   it('removes charts from the DOM and flips aria-expanded/aria-label when collapsed', () => {
     mockUseSalesTrends.mockReturnValue(mockHookReturn());
     render(<SalesTrendsPanel restaurantId="rest-1" />);

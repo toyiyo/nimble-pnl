@@ -1,5 +1,6 @@
 import { useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AlertCircle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 import { format } from 'date-fns';
@@ -10,6 +11,7 @@ import { deriveWeekdayPattern } from '@/lib/breakEvenInsights';
 interface SalesVsBreakEvenChartProps {
   readonly data: BreakEvenData | null;
   readonly isLoading: boolean;
+  readonly error?: Error | null;
   readonly actualCOGSPercentage?: number;
   readonly targetCOGSPercentage?: number;
 }
@@ -153,7 +155,7 @@ export function BreakEvenTooltipContent({ active, payload }: BreakEvenTooltipCon
   );
 }
 
-export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
+export function SalesVsBreakEvenChart({ data, isLoading, error, actualCOGSPercentage, targetCOGSPercentage }: SalesVsBreakEvenChartProps) {
   const navigate = useNavigate();
   // Scopes the partial-bar hatch <pattern> id to this instance — the widget
   // mounts on two pages, and a fixed id risks url(#id) collisions between
@@ -192,6 +194,22 @@ export function SalesVsBreakEvenChart({ data, isLoading, actualCOGSPercentage, t
         </div>
         <div className="p-5">
           <Skeleton className="h-56 w-full" />
+        </div>
+      </div>
+    );
+  }
+
+  // useBreakEvenAnalysis already surfaces `error`; before this branch a
+  // fetch/RLS failure fell through to the empty state below and told the
+  // owner "Set up your budget" — wrong and alarming. A stale query error can
+  // coexist with cached `data`, so this must be checked ahead of the empty
+  // and success branches, not only when `data` is missing.
+  if (error) {
+    return (
+      <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
+        <div className="flex items-center justify-center gap-2 px-5 py-12 text-center">
+          <AlertCircle className="h-4 w-4 text-destructive shrink-0" />
+          <p className="text-[13px] text-muted-foreground">Couldn't load break-even data. Try refreshing the page.</p>
         </div>
       </div>
     );

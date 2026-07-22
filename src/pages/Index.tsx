@@ -262,7 +262,7 @@ const Index = () => {
   );
 
   // Fetch break-even analysis data
-  const { data: breakEvenData, isLoading: breakEvenLoading } = useBreakEvenAnalysis(
+  const { data: breakEvenData, isLoading: breakEvenLoading, error: breakEvenError } = useBreakEvenAnalysis(
     selectedRestaurant?.restaurant_id || null,
     14 // 14 days of history
   );
@@ -701,6 +701,7 @@ const Index = () => {
               <SalesVsBreakEvenChart
                 data={breakEvenData ?? null}
                 isLoading={breakEvenLoading}
+                error={breakEvenError}
                 actualCOGSPercentage={actualCOGSPercentage}
                 targetCOGSPercentage={targetCOGSPercentage}
               />

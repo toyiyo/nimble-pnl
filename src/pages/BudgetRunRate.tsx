@@ -36,7 +36,7 @@ export default function BudgetRunRate() {
     isSeeding,
   } = useOperatingCosts(restaurantId);
   
-  const { data: breakEvenData, isLoading: analysisLoading } = useBreakEvenAnalysis(restaurantId);
+  const { data: breakEvenData, isLoading: analysisLoading, error: breakEvenError } = useBreakEvenAnalysis(restaurantId);
 
   // Unified COGS for actual vs target comparison — match break-even 14-day range
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -235,6 +235,7 @@ export default function BudgetRunRate() {
       <SalesVsBreakEvenChart
         data={breakEvenData}
         isLoading={isLoading}
+        error={breakEvenError}
         actualCOGSPercentage={actualCOGSPercentage}
         targetCOGSPercentage={targetCOGSPercentage}
       />

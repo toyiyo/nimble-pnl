@@ -615,3 +615,40 @@ describe('SalesVsBreakEvenChart — weekday insight line', () => {
     expect(screen.queryByText(/weakest day/)).not.toBeInTheDocument();
   });
 });
+
+// Finding: useBreakEvenAnalysis already returns `error`
+// (useBreakEvenAnalysis.tsx:97-100) but neither call site captured it, so a
+// fetch/RLS failure fell through to the empty state and told the owner "Set
+// up your budget" — wrong and alarming. `error` must render a distinct
+// branch instead.
+describe('SalesVsBreakEvenChart — error state', () => {
+  function renderChartWithError(error: Error | null, data: BreakEvenData | null = null) {
+    return render(
+      <MemoryRouter>
+        <SalesVsBreakEvenChart data={data} isLoading={false} error={error} />
+      </MemoryRouter>,
+    );
+  }
+
+  it('renders a distinct error message instead of the "Set up your budget" empty state when error is set', () => {
+    renderChartWithError(new Error('Failed to fetch'));
+
+    expect(screen.queryByText(/set up your budget/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/no break-even data yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/couldn.t load break-even data/i)).toBeInTheDocument();
+  });
+
+  it('renders the error branch even when data happens to be present', () => {
+    // A stale query error can coexist with cached data — the branch order
+    // must still surface the error, not silently render the stale chart.
+    renderChartWithError(new Error('Failed to fetch'), makeData());
+
+    expect(screen.getByText(/couldn.t load break-even data/i)).toBeInTheDocument();
+  });
+
+  it('does not render the error branch when error is null', () => {
+    renderChart(makeData());
+
+    expect(screen.queryByText(/couldn.t load break-even data/i)).not.toBeInTheDocument();
+  });
+});

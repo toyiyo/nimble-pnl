@@ -47,11 +47,19 @@ BEGIN
     VALUES (v_rid, 'cov-test', 'America/Chicago')
     ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
 
-  INSERT INTO public.employees(id, restaurant_id, name, position, is_active, status)
+  -- E2 (the claimer) needs a real auth.users row + employees.user_id so the
+  -- new claim_open_shift caller-owns-employee-row guard (this PR) passes when
+  -- impersonated below; without it auth.uid() is NULL and the claim would be
+  -- rejected vacuously before reaching the fill-by-assignment logic under test.
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+    VALUES ('00000000-0000-0000-0000-0000000000f2', '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'cov-e2@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+    ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.employees(id, restaurant_id, user_id, name, position, is_active, status)
     VALUES
-      (v_emp1, v_rid, 'E1', 'Server', true, 'active'),
-      (v_emp2, v_rid, 'E2', 'Server', true, 'active')
-    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position;
+      (v_emp1, v_rid, NULL, 'E1', 'Server', true, 'active'),
+      (v_emp2, v_rid, '00000000-0000-0000-0000-0000000000f2', 'E2', 'Server', true, 'active')
+    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position, user_id = EXCLUDED.user_id;
 
   -- Mid-shift fill-in whose window does NOT exactly match 16:00-22:30
   -- (starts 15:00, ends 23:00 local = covers 16:00-22:30 fully).
@@ -87,6 +95,17 @@ BEGIN
   -- would require a valid auth.users FK.
 END $$;
 
+-- Re-enable RLS and impersonate E2 (the claimer) so claim_open_shift's
+-- caller-owns-employee-row guard (this PR) passes and the call reaches the
+-- fill-by-assignment coverage logic under test, instead of being rejected
+-- vacuously as an unauthenticated postgres caller.
+ALTER TABLE public.restaurants ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shifts ENABLE ROW LEVEL SECURITY;
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000f2","role":"authenticated"}', true);
+
 -- ── Test 1: claim_open_shift succeeds — fill-in with a non-exact-match ───────
 -- window (no FK) does not fill the slot under fill-by-assignment.
 --
@@ -117,5 +136,9 @@ SELECT is(
   'claim succeeds — a non-exact-match, non-FK fill-in does not fill the slot (fill-by-assignment)'
 );
 
+-- Reset the impersonated role before teardown so finish()/ROLLBACK run as
+-- postgres (deterministic; not dependent on `authenticated` having execute on
+-- pgTAP helpers). Copilot review finding.
+RESET ROLE;
 SELECT * FROM finish();
 ROLLBACK;

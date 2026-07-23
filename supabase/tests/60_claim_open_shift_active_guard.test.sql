@@ -24,6 +24,24 @@
 -- which requires a published week. published_by FKs to auth.users, so the
 -- fixture inserts a dedicated auth.users row (ON CONFLICT DO NOTHING) rather
 -- than relying on some other row already existing in the test database.
+--
+-- Auth-context update (2026-07-21, alongside
+-- supabase/migrations/20260721000000_open_shift_claim_authz_guard.sql):
+-- get_open_shifts and claim_open_shift are now guarded (caller must belong
+-- to the restaurant / own the employee row they're claiming as). This file
+-- previously ran every RPC call as `SET LOCAL role TO postgres`
+-- (auth.uid() NULL throughout), which the new guards would reject outright
+-- for a reason unrelated to the is_active behavior under test. Employees d1
+-- and d2 each get a dedicated auth.users row + employees.user_id, and every
+-- claim_open_shift/get_open_shifts call (including test 2's NOT EXISTS
+-- check, which would otherwise pass vacuously against an unauthenticated
+-- caller regardless of is_active) is wrapped in
+-- `SET LOCAL role = 'authenticated'` + `request.jwt.claims` impersonating
+-- the right employee. RLS is re-enabled on every table before the first
+-- role switch (54_accept_shift_trade_authz.sql / 62_open_shift_claim_authz
+-- .test.sql precedent); admin-only steps (the is_active UPDATEs) run back
+-- under `postgres`, which bypasses RLS as a superuser without needing to
+-- re-disable it.
 
 BEGIN;
 
@@ -49,6 +67,8 @@ DECLARE
   v_d      date := CURRENT_DATE + 3;
   v_dow    int;
   v_user   uuid := '00000000-0000-0000-0000-0000000000d9';
+  v_auth1  uuid := '00000000-0000-0000-0000-0000000000e1'; -- auth.users row owned by employee d1
+  v_auth2  uuid := '00000000-0000-0000-0000-0000000000e2'; -- auth.users row owned by employee d2
 BEGIN
   v_dow := EXTRACT(DOW FROM v_d)::int;
 
@@ -58,6 +78,18 @@ BEGIN
   INSERT INTO auth.users (id, email)
     VALUES (v_user, 'active-guard-test-publisher@example.com')
     ON CONFLICT (id) DO NOTHING;
+
+  -- Dedicated auth.users rows for employees d1/d2 so the guarded RPCs below
+  -- can be exercised as real `authenticated` callers (not postgres, which
+  -- would leave auth.uid() NULL and make every guard check vacuous). Full
+  -- column set (instance_id/aud/role/encrypted_password/etc.) matches the
+  -- 54_accept_shift_trade_authz.sql / 62_open_shift_claim_authz.test.sql
+  -- precedent for a row Supabase auth considers well-formed.
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+    VALUES
+      (v_auth1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'active-guard-d1@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+      (v_auth2, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'active-guard-d2@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
 
   -- Clean up in FK order before inserting.
   DELETE FROM public.open_shift_claims     WHERE restaurant_id = v_rid;
@@ -72,11 +104,11 @@ BEGIN
     VALUES (v_rid, 'active-guard-test', 'America/Chicago')
     ON CONFLICT (id) DO UPDATE SET timezone = EXCLUDED.timezone;
 
-  INSERT INTO public.employees(id, restaurant_id, name, position, is_active, status)
+  INSERT INTO public.employees(id, restaurant_id, user_id, name, position, is_active, status)
     VALUES
-      (v_emp1, v_rid, 'E1', 'Server', true, 'active'),
-      (v_emp2, v_rid, 'E2', 'Server', true, 'active')
-    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position;
+      (v_emp1, v_rid, v_auth1, 'E1', 'Server', true, 'active'),
+      (v_emp2, v_rid, v_auth2, 'E2', 'Server', true, 'active')
+    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position, user_id = EXCLUDED.user_id;
 
   -- Cap-2 template, starts active. No existing shifts, so it always has
   -- open capacity while is_active = true (min_concurrent stays 0 < 2).
@@ -106,7 +138,28 @@ BEGIN
   );
 END $$;
 
+-- CRITICAL: re-enable RLS on every table disabled above before switching to
+-- the authenticated role (54_accept_shift_trade_authz.sql /
+-- 62_open_shift_claim_authz.test.sql precedent). `postgres` still bypasses
+-- RLS as a superuser, so the admin-only is_active UPDATEs later in this file
+-- don't need it disabled again.
+ALTER TABLE public.restaurants           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employees             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shifts                ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shift_templates       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.open_shift_claims     ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.schedule_publications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.staffing_settings     ENABLE ROW LEVEL SECURITY;
+
+RESET ROLE;
+
 -- ── Test 1: active template ⇒ get_open_shifts includes the slot ─────────────
+-- Impersonate d1 (employee linked to the restaurant) so this exercises the
+-- real `authenticated` GRANT + get_open_shifts membership guard rather than
+-- running as postgres (auth.uid() NULL).
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}', true);
+
 SELECT ok(
   EXISTS (
     SELECT 1 FROM public.get_open_shifts(
@@ -121,10 +174,20 @@ SELECT ok(
 );
 
 -- ── Test 2: hide the template (is_active = false) ────────────────────────────
+RESET ROLE;
+SET LOCAL role TO postgres;
 UPDATE public.shift_templates
   SET is_active = false
   WHERE id = '00000000-0000-0000-0000-0000000000d3'
     AND restaurant_id = '00000000-0000-0000-0000-0000000000da';
+
+-- Impersonate d1 again for the get_open_shifts read-back. Left as `postgres`
+-- this would pass vacuously post-guard (an unauthenticated caller always
+-- gets an empty set), no longer proving the is_active filter this test is
+-- named for — must run as a real linked employee.
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}', true);
 
 SELECT ok(
   NOT EXISTS (
@@ -140,6 +203,13 @@ SELECT ok(
 );
 
 -- ── Test 3: claim_open_shift on a hidden template ⇒ success:false ────────────
+-- Impersonate d1 — claim_open_shift's caller-owns-employee-row guard
+-- requires auth.uid() to match p_employee_id (d1 here), so the call must run
+-- as d1's auth user, not postgres.
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}', true);
+
 SELECT is(
   (
     public.claim_open_shift(
@@ -154,6 +224,10 @@ SELECT is(
 );
 
 -- ── Test 4: the hidden-template message text ─────────────────────────────────
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}', true);
+
 SELECT is(
   (
     public.claim_open_shift(
@@ -170,6 +244,13 @@ SELECT is(
 -- ── Test 5: nonexistent template id ⇒ distinct 'Template not found' branch ──
 -- Proves the inactive branch and the not-found branch stay separate (no
 -- cross-tenant enumeration through message shape collapsing the two cases).
+-- Still impersonating d1: the caller-owns-employee-row guard must pass
+-- (d1 legitimately owns the employee id it's claiming as) before the RPC
+-- ever reaches the template lookup this test targets.
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}', true);
+
 SELECT is(
   (
     public.claim_open_shift(
@@ -184,10 +265,16 @@ SELECT is(
 );
 
 -- ── Test 6: restore the template (is_active = true) ─────────────────────────
+RESET ROLE;
+SET LOCAL role TO postgres;
 UPDATE public.shift_templates
   SET is_active = true
   WHERE id = '00000000-0000-0000-0000-0000000000d3'
     AND restaurant_id = '00000000-0000-0000-0000-0000000000da';
+
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e1","role":"authenticated"}', true);
 
 SELECT ok(
   EXISTS (
@@ -205,7 +292,13 @@ SELECT ok(
 -- ── Test 7: restore-path claim succeeds, using a DIFFERENT employee ─────────
 -- Uses v_emp2 (never claimed anything in this test file) so a
 -- schedule-conflict rejection from v_emp1's earlier (rejected) claim attempt
--- cannot masquerade as this test passing for the wrong reason.
+-- cannot masquerade as this test passing for the wrong reason. Impersonated
+-- as d2's own auth user (v_auth2) so the caller-owns-employee-row guard
+-- passes for this employee, not d1's.
+RESET ROLE;
+SET LOCAL role = 'authenticated';
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000e2","role":"authenticated"}', true);
+
 SELECT is(
   (
     public.claim_open_shift(
@@ -219,5 +312,6 @@ SELECT is(
   'restored template: claim succeeds again for a fresh employee'
 );
 
+RESET ROLE;
 SELECT * FROM finish();
 ROLLBACK;

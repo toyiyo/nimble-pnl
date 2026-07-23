@@ -95,8 +95,17 @@ serve(async (req) => {
       );
     }
 
-    // Call get_open_shifts RPC to check for open shifts
-    const { data: openShifts, error: openShiftsError } = await serviceClient
+    // Call get_open_shifts RPC to check for open shifts.
+    //
+    // IMPORTANT: use `supabase` (the caller's authenticated client), not
+    // `serviceClient`. get_open_shifts now has an authorization guard
+    // (supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql)
+    // requiring auth.uid() to belong to the restaurant; serviceClient has no
+    // user JWT so auth.uid() would be NULL and the guard would silently
+    // return zero rows every time. The caller's owner/manager membership was
+    // already verified above (lines ~63-72), and that same caller is an
+    // "internal team" member for this restaurant, so the guard passes here.
+    const { data: openShifts, error: openShiftsError } = await supabase
       .rpc("get_open_shifts", {
         p_restaurant_id: restaurant_id,
         p_week_start: publication.week_start_date,

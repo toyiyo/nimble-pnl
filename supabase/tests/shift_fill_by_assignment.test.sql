@@ -32,6 +32,7 @@ ALTER TABLE public.shifts DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.shift_templates DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.staffing_settings DISABLE ROW LEVEL SECURITY;
 ALTER TABLE public.schedule_publications DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_restaurants DISABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE
@@ -43,6 +44,14 @@ DECLARE
   v_tmplA  uuid := '00000000-0000-0000-0000-0000000000d3'; -- Crew 08:00-16:00, capacity 1
   v_tmplB  uuid := '00000000-0000-0000-0000-0000000000d4'; -- same position/time as A, different id
   v_uid    uuid := '00000000-0000-0000-0000-0000000000d5'; -- auth.users row for schedule_publications.published_by
+  -- auth.users ids so the now-guarded RPCs can be called by real callers:
+  -- claim_open_shift needs the caller to own the employee row; approve needs a
+  -- manager. auth.uid() reads request.jwt.claims (role-independent), so these
+  -- are impersonated by setting that GUC before each guarded call below.
+  v_a1     uuid := '00000000-0000-0000-0000-0000000000a1'; -- emp1's auth user
+  v_a2     uuid := '00000000-0000-0000-0000-0000000000a2'; -- emp2's auth user
+  v_a6     uuid := '00000000-0000-0000-0000-0000000000a6'; -- emp3's auth user
+  v_mgr    uuid := '00000000-0000-0000-0000-0000000000ab'; -- manager auth user (approve caller)
   v_d      date := CURRENT_DATE + 3;
   v_dow    int;
 BEGIN
@@ -54,6 +63,7 @@ BEGIN
   DELETE FROM public.shift_templates        WHERE restaurant_id IN (v_rid, v_rid2);
   DELETE FROM public.schedule_publications  WHERE restaurant_id IN (v_rid, v_rid2);
   DELETE FROM public.staffing_settings      WHERE restaurant_id IN (v_rid, v_rid2);
+  DELETE FROM public.user_restaurants       WHERE restaurant_id IN (v_rid, v_rid2);
   DELETE FROM public.employees              WHERE restaurant_id IN (v_rid, v_rid2);
   DELETE FROM public.restaurants            WHERE id IN (v_rid, v_rid2);
 
@@ -68,6 +78,19 @@ BEGIN
     VALUES (v_uid, 'shift-fill-by-assignment-test@example.com')
     ON CONFLICT (id) DO NOTHING;
 
+  -- auth.users + membership for the guarded-RPC callers.
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+    VALUES
+      (v_a1,  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'fill-a1@example.com',  crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+      (v_a2,  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'fill-a2@example.com',  crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+      (v_a6,  '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'fill-a6@example.com',  crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+      (v_mgr, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', 'fill-mgr@example.com', crypt('password123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+    ON CONFLICT (id) DO NOTHING;
+
+  INSERT INTO public.user_restaurants(user_id, restaurant_id, role)
+    VALUES (v_mgr, v_rid, 'manager')
+    ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
+
   INSERT INTO public.staffing_settings(restaurant_id, open_shifts_enabled, require_shift_claim_approval)
     VALUES (v_rid, true, false)
     ON CONFLICT (restaurant_id) DO UPDATE
@@ -76,12 +99,12 @@ BEGIN
   INSERT INTO public.schedule_publications(restaurant_id, week_start_date, week_end_date, published_by, shift_count)
     VALUES (v_rid, v_d - 6, v_d, v_uid, 0);
 
-  INSERT INTO public.employees(id, restaurant_id, name, position, is_active, status)
+  INSERT INTO public.employees(id, restaurant_id, user_id, name, position, is_active, status)
     VALUES
-      (v_emp1, v_rid, 'E1', 'Crew', true, 'active'),
-      (v_emp2, v_rid, 'E2', 'Crew', true, 'active'),
-      (v_emp3, v_rid, 'E3', 'Crew', true, 'active')
-    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position;
+      (v_emp1, v_rid, v_a1, 'E1', 'Crew', true, 'active'),
+      (v_emp2, v_rid, v_a2, 'E2', 'Crew', true, 'active'),
+      (v_emp3, v_rid, v_a6, 'E3', 'Crew', true, 'active')
+    ON CONFLICT (id) DO UPDATE SET position = EXCLUDED.position, user_id = EXCLUDED.user_id;
 
   -- Two active templates, same restaurant/position/time, different id -- the
   -- exact scenario that broke the old whole-floor sweep. They differ by
@@ -139,6 +162,11 @@ SELECT is(
 -- "claim rejected" half (the "excluded" half is Test 8 below, on template A
 -- via get_open_shifts). v_emp3 has no shifts of its own, so this exercises
 -- the capacity guard specifically, not the schedule-conflict check.
+--
+-- Impersonate emp3 (auth.uid() reads request.jwt.claims, role-independent) so
+-- claim_open_shift's caller-owns-employee guard (this PR) passes and the call
+-- reaches the capacity logic under test.
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a6","role":"authenticated"}', true);
 SELECT is(
   (
     public.claim_open_shift(
@@ -159,6 +187,10 @@ SELECT is(
 -- tmplB would incorrectly read assigned=1 (emp1's overlapping shift) and be
 -- filtered out of the results entirely; under shift_template_assigned_count,
 -- tmplA is filled (excluded) and tmplB is still open with 1 spot.
+--
+-- Impersonate emp1 (a linked employee of this restaurant) so get_open_shifts'
+-- membership guard (this PR) passes; auth.uid() reads request.jwt.claims.
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a1","role":"authenticated"}', true);
 SELECT results_eq(
   $$
     SELECT template_id, open_spots
@@ -315,6 +347,8 @@ BEGIN
     );
 END $$;
 
+-- Impersonate emp2 (owns this employee row) so the caller-owns-employee guard passes.
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000a2","role":"authenticated"}', true);
 SELECT is(
   (
     public.claim_open_shift(
@@ -369,6 +403,8 @@ BEGIN
   );
 END $$;
 
+-- Impersonate the manager (approve now requires owner/manager/operations_manager).
+SELECT set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000000ab","role":"authenticated"}', true);
 SELECT is(
   (public.approve_open_shift_claim('00000000-0000-0000-0000-0000000000c1'::uuid) ->> 'success'),
   'true',

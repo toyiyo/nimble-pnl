@@ -147,6 +147,58 @@ async function goToPlanner(page: any) {
 }
 
 /**
+ * Find a point *on* the draggable `locator` that is actually the topmost hit-test
+ * target (not covered by a floating overlay), and return it as the drag press point.
+ *
+ * Two overlays sit over the bottom-right employee sidebar and would otherwise steal
+ * the `pointerdown` so dnd-kit's PointerSensor never activates and the drag silently
+ * never starts — the root cause of this file's flakiness:
+ *   1. Transient success toasts (e.g. "Template created") — a `z-[200]` viewport that
+ *      covers the whole card for ~5s, then auto-dismisses.
+ *   2. A *permanent* floating action button (`fixed z-[100] ... w-12 h-12 rounded-full`)
+ *      parked at the bottom-right, sitting directly over the card's geometric centre.
+ *
+ * Pressing at the card centre (as the original helper did) always lands on the FAB, so
+ * we instead probe several points biased toward the card's upper-left — away from the
+ * bottom-right FAB — and poll until one of them clears (the toast dismissing). Returns
+ * the first un-occluded point, which the caller uses as the mouse-down location.
+ */
+async function findDraggablePressPoint(page: any, locator: any) {
+  let point: { x: number; y: number } | null = null;
+  await expect
+    .poll(
+      async () => {
+        const box = await locator.boundingBox();
+        if (!box) return false;
+        // Candidate offsets (fraction of width/height), ordered upper-left first to
+        // dodge the bottom-right FAB; still all comfortably inside the card.
+        const candidates = [
+          [0.5, 0.18],
+          [0.3, 0.18],
+          [0.5, 0.35],
+          [0.2, 0.5],
+          [0.35, 0.5],
+        ].map(([fx, fy]) => ({ x: box.x + box.width * fx, y: box.y + box.height * fy }));
+        const found = await page.evaluate((pts: { x: number; y: number }[]) => {
+          for (const p of pts) {
+            const el = document.elementFromPoint(p.x, p.y);
+            if (el?.closest('[aria-roledescription="draggable"]')) return p;
+          }
+          return null;
+        }, candidates);
+        if (found) {
+          point = found;
+          return true;
+        }
+        return false;
+      },
+      { timeout: 12000, message: 'drag source stayed occluded (toast/FAB never cleared a hittable point)' },
+    )
+    .toBe(true);
+  return point!;
+}
+
+/**
  * Drag an employee to a shift cell using raw mouse events.
  * @dnd-kit's PointerSensor requires real pointer events with distance > 8px.
  * Playwright's dragTo doesn't produce the right events, so we use page.mouse.
@@ -164,12 +216,13 @@ async function dragAndAssign(page: any, employeeName: string, assignType: 'day' 
 
   // Retry the drag up to 3 times — dnd-kit PointerSensor can miss events under load
   for (let attempt = 0; attempt < 3; attempt++) {
-    const sourceBox = await employeeButton.boundingBox();
-    const targetBox = await targetCell.boundingBox();
-    if (!sourceBox || !targetBox) throw new Error('Could not get bounding boxes for drag');
+    // Root-cause guard: press on a part of the card that is actually the topmost
+    // hit-test target. Otherwise the pointerdown lands on the transient toast or the
+    // permanent bottom-right FAB and dnd-kit's PointerSensor never activates.
+    const { x: srcX, y: srcY } = await findDraggablePressPoint(page, employeeButton);
 
-    const srcX = sourceBox.x + sourceBox.width / 2;
-    const srcY = sourceBox.y + sourceBox.height / 2;
+    const targetBox = await targetCell.boundingBox();
+    if (!targetBox) throw new Error('Could not get bounding box for drop target');
     const tgtX = targetBox.x + targetBox.width / 2;
     const tgtY = targetBox.y + targetBox.height / 2;
 
@@ -178,6 +231,27 @@ async function dragAndAssign(page: any, employeeName: string, assignType: 'day' 
     await page.mouse.move(srcX + 5, srcY, { steps: 2 });
     await page.mouse.move(srcX + 10, srcY, { steps: 2 });
     await page.mouse.move(tgtX, tgtY, { steps: 10 });
+    // Settle nudge so dnd-kit recomputes collision with the pointer over the cell.
+    await page.mouse.move(tgtX + 1, tgtY, { steps: 2 });
+
+    // Defense-in-depth: gate the release on dnd-kit actually flagging this cell as the
+    // active drop target (the `isOver` ring styling). This guarantees `over` is set in
+    // handleDragEnd, so the assignment popover mounts. Best-effort — if it never lights
+    // up (e.g. a genuinely missed activation), fall through and let the retry handle it.
+    await targetCell
+      .evaluate(
+        (node: HTMLElement) =>
+          new Promise<void>((resolve) => {
+            const deadline = Date.now() + 1500;
+            const check = () => {
+              if (node.className.includes('ring-foreground/20') || Date.now() > deadline) resolve();
+              else requestAnimationFrame(check);
+            };
+            check();
+          }),
+      )
+      .catch(() => {});
+
     await page.mouse.up();
 
     const visible = await popoverButton.isVisible({ timeout: 5000 }).catch(() => false);
@@ -420,8 +494,11 @@ test.describe('Scheduling Conflict Enhancements', () => {
     await page.getByRole('button', { name: /assign anyway/i }).click();
     await shiftResponse;
 
-    // Success toast
-    await expect(page.getByText(/assigned despite warnings/i)).toBeVisible({ timeout: 10000 });
+    // Success toast. The confirmation text renders twice — once in the visible toast
+    // and once in the toast system's aria-live announcement region — so match the
+    // first (same disambiguation as the `outside availability` assertion above);
+    // without `.first()` the two matches trip Playwright strict mode intermittently.
+    await expect(page.getByText(/assigned despite warnings/i).first()).toBeVisible({ timeout: 10000 });
   });
 
   test('overnight UTC availability windows still work correctly', async ({ page }) => {

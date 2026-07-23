@@ -39,7 +39,7 @@ Unified role-first invite flow, consequence preview, Team-page access+payroll co
 
 ## Decisions
 
-- **Partial unique index `employees(user_id, restaurant_id) WHERE user_id IS NOT NULL`: DEFERRED** (consistent with #641). A `UNIQUE` index migration would fail at deploy if prod already holds duplicate rows. Instead the durable guard lives **in code**: the accept-time link runs through a service-role-only RPC that refuses to link a user who already owns an employee row in that restaurant, and guards the `user_id IS NULL` transition against races. This closes the actual hole this PR opens without touching prod data. *(User decision, 2026-07-23.)*
+- **Partial unique index `employees(user_id, restaurant_id) WHERE user_id IS NOT NULL`: DEFERRED** (consistent with #641). A `UNIQUE` index migration would fail at deploy if prod already holds duplicate rows. Instead the durable guard lives **in code**: the accept-time link runs through a service-role-only RPC that refuses to link a user who already owns an employee row in that restaurant, serializes concurrent links per `(user, restaurant)` with `pg_advisory_xact_lock`, and guards the `user_id IS NULL` transition against races. This closes the hole this PR opens without touching prod data. It does not retroactively fix any pre-existing duplicate rows — that remains the (deferred) unique index's job. *(User decision, 2026-07-23.)*
 - **Detection lives in a new dedicated hook**, not an extension of `useRestaurantMembers`. That hook's doc comment deliberately scopes it to `user_restaurants`; conflating employees into it would muddy a clean abstraction.
 - **`employee_id` is resolved server-side** in `send-team-invitation` (single source of truth, robust to resends and to callers that don't pass it). The client hook is still used to (a) show the informational UI message and (b) pass `employeeId` as explicit intent.
 
@@ -85,30 +85,50 @@ const accountlessEmployee = existingMember
   : findAccountlessEmployeeByEmail(accountlessEmployees, email);
 ```
 
-When `accountlessEmployee` is set, render a **non-blocking, informational** panel (neutral/blue, not the amber warning used for the member block):
+**Suppress the inform panel until the members query has settled** — otherwise the accountless query can resolve first and flash a green "will link" hint that the amber member-block then replaces once membership data lands (both hooks fail open to `null` while loading). Expose the members query's `isLoading`:
 
-> **{name}** already has a schedule-only record here. This invite will connect their new login to that record, so they stay one person — not a second profile.
+```ts
+const { data: members, isLoading: membersLoading } = useRestaurantMembers(restaurantId);
+const existingMember = findMemberByEmail(members, email);
+const { data: accountlessEmployees } = useAccountlessEmployees(restaurantId);
+// Member detection wins and MUST have settled first, so the hint never
+// flashes before a block. While members load, show nothing.
+const accountlessEmployee = existingMember || membersLoading
+  ? null
+  : findAccountlessEmployeeByEmail(accountlessEmployees, email);
+```
+
+When `accountlessEmployee` is set, render a **non-blocking, informational** panel — visually and semantically distinct from the amber member **block**:
+
+- **Semantic token, not a hardcoded color:** `bg-info/10 border-info/20` with `text-foreground` body (theme defines `--info` / `--info-foreground`; mapped to `info` in tailwind config). Do **not** copy the block's `bg-amber-500/*`.
+- **Distinct icon** (WCAG 1.4.1 — not color-alone): `Link2` for the inform panel vs. the block's `AlertTriangle`.
+- Panel id `invite-existing-employee-hint` (Team) / `collab-existing-employee-hint` (Collab) — distinct from the block's `*-existing-member-warning`.
+- `role="status" aria-live="polite"`; the email `Input`'s `aria-describedby` points at whichever panel (block **or** hint) is currently rendered, so a screen-reader user tabbing back into the field re-hears the context.
+
+Copy (names the granted role, avoids internal jargon):
+
+> **{name}** is already set up for scheduling here. Accepting this invite will link their new **{roleLabel}** login to that same record — no duplicate profile.
 
 The Send button stays enabled. The send body gains `employeeId: accountlessEmployee.id`.
 
-- TeamInvitations: add to the `send-team-invitation` body in `sendInvitation`.
+- TeamInvitations: add to the `send-team-invitation` body in `sendInvitation`. Also add `max-h-[80vh] overflow-y-auto` to the `DialogContent` (currently `max-w-md p-0 gap-0` with no scroll) — the hint can stack with the `pendingConflict` panel (they are not mutually exclusive) and must not push the footer's Send button off-screen on a 375-wide viewport.
 - CollaboratorInvitations: pass through `useSendCollaboratorInvitation`; extend `SendInvitationParams` with optional `employeeId` and forward it in the body. (Resend need not thread it — server derives.)
 
-Accessibility: panel `role="status" aria-live="polite"`, `id` referenced only when it's the active panel. Three-state rendering already handled by the query's undefined → "proceed normally".
+Three-state rendering is handled by the query's undefined → "proceed normally".
 
 ### 3. `send-team-invitation` edge function
 
 - **Drop the `role === 'staff'` gate** on `employee_id`.
 - **Resolve `employee_id` server-side**:
   - Fetch the restaurant's accountless active employees (`select id,name,email … .is('user_id', null).eq('status','active')`).
-  - If the client passed `employeeId`, accept it only if it's in that accountless set (guards against a stale/cross-tenant id).
+  - If the client passed `employeeId`, accept it only if it's in that accountless set; **if it fails that check, fall through to email-derivation** rather than dropping the link (a stale client id must not reopen the double-provisioning gap).
   - Else derive by matching `email` in JS (trim + lowercase — **not** `ILIKE`, whose `_`/`%` are wildcards and `_` is valid in email local-parts).
   - Attach the resolved id to `invitationData.employee_id` regardless of role.
 - `canInviteRole` still gates which roles may be invited — unchanged.
 
 ### 4. `link_invited_employee` RPC (new migration) + `accept-invitation`
 
-New `SECURITY DEFINER` function, **service-role-only** (`REVOKE EXECUTE FROM public, anon, authenticated; GRANT EXECUTE TO service_role`) — it performs no `auth.uid()` check because it is only reachable by the edge function after invitation-token validation, and the REVOKE keeps clients out.
+New `SECURITY DEFINER` function, **service-role-only** (`REVOKE EXECUTE FROM public, anon, authenticated; GRANT EXECUTE TO service_role`), pinned with `SET search_path = public, pg_temp`, and carrying a `COMMENT ON FUNCTION` documenting the access boundary (no `auth.uid()` check because it is only reachable by the edge function after invitation-token validation, and the REVOKE — verified against the migration history to have no blanket `GRANT EXECUTE ON ALL FUNCTIONS` re-opening it — keeps clients out). Mirrors the hardening style of `20260722120000_link_employee_to_user_hardening.sql`.
 
 ```
 link_invited_employee(p_user_id uuid, p_restaurant_id uuid,
@@ -117,18 +137,23 @@ link_invited_employee(p_user_id uuid, p_restaurant_id uuid,
 ```
 
 Logic:
-1. Resolve target: `p_employee_id` if it names an `employees` row in `p_restaurant_id` with `user_id IS NULL`; else match `p_email` (trim/lower) against active accountless employees in the restaurant.
-2. No match → `(false, 'no_match', NULL)`.
-3. **Guard:** another employee in the restaurant already has `p_user_id` → `(false, 'user_already_linked', NULL)`. (Prevents a 2nd row that breaks `useCurrentEmployee`'s `.single()`.)
-4. `UPDATE … SET user_id = p_user_id WHERE id = target AND user_id IS NULL`; on 0 rows (race) re-read and mirror idempotency (same user → `(true,'already_linked')`, different → `(false,'conflict')`).
-5. Success → `(true, 'linked', target)`.
+1. **Serialize per (user, restaurant):** `PERFORM pg_advisory_xact_lock(hashtext(p_user_id::text), hashtext(p_restaurant_id::text))` before resolution/guard, so two concurrent calls for the same user against different employee rows can't both pass the guard and create two rows sharing one `user_id`.
+2. Resolve target — match a row in `p_restaurant_id` that is **either** `user_id IS NULL` **or** already `user_id = p_user_id` (the latter keeps a sequential retry idempotent instead of falling to `no_match`): by `p_employee_id` if given, else by `p_email` (trim/lower, equality — **not** `ILIKE`) among active employees.
+3. No match → `(false, 'no_match', NULL)`.
+4. Already `user_id = p_user_id` → `(true, 'already_linked', id)` (idempotent).
+5. **Guard:** another employee (`id <> target`) in the restaurant already has `p_user_id` → `(false, 'user_already_linked', NULL)`. (Prevents a 2nd row that breaks `useCurrentEmployee`'s `.single()`.)
+6. `UPDATE … SET user_id = p_user_id WHERE id = target AND user_id IS NULL`; on 0 rows (lost race) re-read and mirror idempotency (same user → `(true,'already_linked')`, different → `(false,'conflict')`).
+7. Success → `(true, 'linked', target)`.
+
+Also in the same migration, a **non-unique** partial index for the now-hot predicate (safe/additive — unlike the deferred *unique* index): `CREATE INDEX IF NOT EXISTS idx_employees_accountless ON public.employees(restaurant_id) WHERE user_id IS NULL AND status = 'active'`. Hit by `useAccountlessEmployees`, the edge function's resolution, and the RPC.
 
 `accept-invitation` replaces both raw UPDATE blocks with a single `supabase.rpc('link_invited_employee', { p_user_id: user.id, p_restaurant_id: invitation.restaurant_id, p_employee_id: invitation.employee_id ?? null, p_email: invitation.email })`, for **all roles**. Failures are logged, never fatal (unchanged posture: the user still joins the team).
 
 ## Testing
 
 - **Unit** `tests/unit/useAccountlessEmployees.test.ts` — mirror `useRestaurantMembers.test.ts`: query filters (`is user_id null`, `status active`), disabled without restaurant id, error propagation; `findAccountlessEmployeeByEmail` case-insensitive / trimmed / fail-open on undefined / skips null emails / non-match.
-- **pgTAP** `supabase/tests/NN_link_invited_employee.sql` — resolve by id; resolve by email; `no_match`; `user_already_linked` guard; idempotent re-link (same user → linked true); conflict (different user); permission: `authenticated` cannot `EXECUTE` (service-role only).
+- **pgTAP** `supabase/tests/NN_link_invited_employee.sql` — resolve by id; resolve by email; `no_match`; `user_already_linked` guard (second employee, same user); **idempotent re-link** (same user, already linked → `linked=true, reason='already_linked'`); conflict for a target already linked to a *different* user; permission: `authenticated` cannot `EXECUTE` (service-role only).
+- **Component** `tests/unit/TeamInvitations.*.test.tsx` (lightweight render) — precedence: an email matching **both** an existing member and an accountless employee shows the **block**, not the hint; and the hint is suppressed while the members query is still loading (guards the flash-then-block race).
 - Existing invite tests remain green.
 
 ## Risk & rollback

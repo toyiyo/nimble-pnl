@@ -121,7 +121,7 @@ Three-state rendering is handled by the query's undefined → "proceed normally"
 - **Drop the `role === 'staff'` gate** on `employee_id`.
 - **Resolve `employee_id` server-side**:
   - Fetch the restaurant's accountless active employees (`select id,name,email … .is('user_id', null).eq('status','active')`).
-  - If the client passed `employeeId`, accept it only if it's in that accountless set; **if it fails that check, fall through to email-derivation** rather than dropping the link (a stale client id must not reopen the double-provisioning gap).
+  - If the client passed `employeeId`, accept it only if it's in that accountless set **AND** its email matches the invitation's normalized email (an id-only check would let an authorized inviter link an arbitrary accountless employee in the restaurant to an unrelated invitee); **if it fails that check, fall through to email-derivation** rather than dropping the link (a stale client id must not reopen the double-provisioning gap).
   - Else derive by matching `email` in JS (trim + lowercase — **not** `ILIKE`, whose `_`/`%` are wildcards and `_` is valid in email local-parts).
   - Attach the resolved id to `invitationData.employee_id` regardless of role.
 - `canInviteRole` still gates which roles may be invited — unchanged.
@@ -158,5 +158,5 @@ Also in the same migration, a **non-unique** partial index for the now-hot predi
 
 ## Risk & rollback
 
-- No schema change beyond a new function → migration is additive and reversible (`DROP FUNCTION`).
+- No schema change beyond a new function and a non-unique partial index → migration is additive. The function is reversible (`DROP FUNCTION`); the `idx_employees_accountless` index is safe to drop too if ever needed, but is intentionally left in place going forward since it backs a now-hot query path (`useAccountlessEmployees`, this RPC, and `send-team-invitation`'s server-side resolution) — not something rollback needs to undo.
 - Server-side `employee_id` derivation changes behavior: any invite whose email matches an accountless employee now links on accept. This is the feature's intent; member-detection still blocks re-inviting existing members. A genuinely-separate account would require a different email (accepted edge case).

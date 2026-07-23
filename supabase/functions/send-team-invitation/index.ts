@@ -174,11 +174,17 @@ const handler = async (req: Request): Promise<Response> => {
 
     const normalizedEmail = email.trim().toLowerCase();
     const accountlessMatch =
-      // Accept the client-supplied employeeId only if it is actually in this
-      // restaurant's accountless set; otherwise fall through to email
-      // derivation rather than silently dropping the link (a stale client id
-      // must not reopen the double-provisioning gap).
-      (employeeId && accountlessEmployees?.find((e) => e.id === employeeId)) ||
+      // Accept the client-supplied employeeId only if it is BOTH in this
+      // restaurant's accountless set AND its email matches the invitation's
+      // email — an id-only check would let an authorized inviter link an
+      // arbitrary accountless employee in the restaurant to an unrelated
+      // invitee's email. Otherwise fall through to email derivation rather
+      // than silently dropping the link (a stale client id must not reopen
+      // the double-provisioning gap).
+      (employeeId &&
+        accountlessEmployees?.find(
+          (e) => e.id === employeeId && e.email?.trim().toLowerCase() === normalizedEmail
+        )) ||
       accountlessEmployees?.find(
         (e) => e.email && e.email.trim().toLowerCase() === normalizedEmail
       ) ||

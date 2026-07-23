@@ -8,6 +8,7 @@ import {
   getInternalRoles,
   getLandingPath,
 } from '@/lib/permissions';
+import { ACCESS_GROUP_LABELS, groupRolesForInvite } from '@/lib/permissions/definitions';
 import type { Role, Capability } from '@/lib/permissions/types';
 
 // ============================================================
@@ -559,7 +560,7 @@ describe('ROLE_METADATA', () => {
     expect(ROLE_METADATA['owner'].label).toBe('Owner');
     expect(ROLE_METADATA['manager'].label).toBe('Manager');
     expect(ROLE_METADATA['chef'].label).toBe('Chef');
-    expect(ROLE_METADATA['staff'].label).toBe('Staff');
+    expect(ROLE_METADATA['staff'].label).toBe('Employee (self-service)');
     expect(ROLE_METADATA['kiosk'].label).toBe('Kiosk');
     expect(ROLE_METADATA['collaborator_accountant'].label).toBe('Accountant');
     expect(ROLE_METADATA['collaborator_inventory'].label).toBe('Inventory Helper');
@@ -668,5 +669,50 @@ describe('Permission Regression Snapshots', () => {
     expect(ROLE_CAPABILITIES['collaborator_accountant'].length).toBeLessThan(22);
     expect(ROLE_CAPABILITIES['collaborator_inventory'].length).toBeLessThan(14);
     expect(ROLE_CAPABILITIES['collaborator_chef'].length).toBeLessThan(12);
+  });
+});
+
+// ============================================================
+// ACCESS GROUPS
+// ============================================================
+
+describe('access groups', () => {
+  it('every role declares an accessGroup', () => {
+    for (const role of Object.keys(ROLE_METADATA) as Role[]) {
+      expect(ROLE_METADATA[role].accessGroup, `${role} is missing accessGroup`).toBeDefined();
+    }
+  });
+
+  it('chef is platform access, not employee self-service', () => {
+    // chef has view:dashboard/edit:recipes/edit:inventory — it is platform
+    // access without being management. Grouping it with staff (or labelling
+    // its group "Management") is the category error this feature exists to fix.
+    expect(ROLE_METADATA.chef.accessGroup).toBe('platform');
+    expect(ROLE_METADATA.staff.accessGroup).toBe('employee');
+    expect(ROLE_METADATA.kiosk.accessGroup).toBe('device');
+    expect(ROLE_METADATA.collaborator_accountant.accessGroup).toBe('collaborator');
+  });
+
+  it('staff is labelled by capability, not by a generic bucket name', () => {
+    expect(ROLE_METADATA.staff.label).toBe('Employee (self-service)');
+    expect(ROLE_METADATA.staff.description).toBe(
+      'Clock in/out, view their own schedule, request time off'
+    );
+  });
+
+  it('groupRolesForInvite orders platform, then employee, then collaborator', () => {
+    const groups = groupRolesForInvite([
+      'collaborator_accountant', 'staff', 'manager', 'chef',
+    ]);
+    expect(groups.map((g) => g.group)).toEqual(['platform', 'employee', 'collaborator']);
+    expect(groups[0].roles).toEqual(['manager', 'chef']);
+    expect(groups[0].label).toBe(ACCESS_GROUP_LABELS.platform);
+  });
+
+  it('groupRolesForInvite omits empty groups and never surfaces device roles', () => {
+    const groups = groupRolesForInvite(['staff', 'kiosk']);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].group).toBe('employee');
+    expect(groups[0].roles).toEqual(['staff']);
   });
 });

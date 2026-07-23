@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
-import { TimePunch } from '@/types/timeTracking';
+import { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import { format } from 'date-fns';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
@@ -26,23 +26,6 @@ export interface LaborCostsFromTimeTrackingResult {
   /** True when the time_punches fetch hit the pagination backstop
    * (`fetchAllRows`'s `maxPages`) — results may be truncated. */
   capped: boolean;
-}
-
-interface DBTimePunch {
-  id: string;
-  employee_id: string;
-  restaurant_id: string;
-  punch_time: string;
-  punch_type: string;
-  created_at: string;
-  updated_at: string;
-  shift_id: string | null;
-  notes: string | null;
-  photo_path: string | null;
-  device_info: string | null;
-  location: unknown;
-  created_by: string | null;
-  modified_by: string | null;
 }
 
 interface ManualPaymentDB {

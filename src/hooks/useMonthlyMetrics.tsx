@@ -10,29 +10,10 @@ import {
   type PendingOutflowRow,
   type SplitItemRow,
 } from '@/services/cogsCalculations';
-import type { TimePunch } from '@/types/timeTracking';
+import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
-
-// Type for the raw time_punches row returned by Supabase (before the
-// TimePunch cast/narrowing applied below).
-interface DBTimePunch {
-  id: string;
-  employee_id: string;
-  restaurant_id: string;
-  punch_time: string;
-  punch_type: string;
-  created_at: string;
-  updated_at: string;
-  shift_id: string | null;
-  notes: string | null;
-  photo_path: string | null;
-  device_info: string | null;
-  location: unknown;
-  created_by: string | null;
-  modified_by: string | null;
-}
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'

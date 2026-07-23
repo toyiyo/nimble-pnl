@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
-import { TimePunch } from '@/types/timeTracking';
+import { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import {
   calculatePayrollPeriod,
   PayrollPeriod,
@@ -99,24 +99,6 @@ interface DBOvertimeAdjustment {
   adjustment_type: string;
   hours: number;
   reason: string | null;
-}
-
-// Type for the time_punches data from Supabase
-interface DBTimePunch {
-  id: string;
-  employee_id: string;
-  restaurant_id: string;
-  punch_time: string;
-  punch_type: string;
-  created_at: string;
-  updated_at: string;
-  shift_id: string | null;
-  notes: string | null;
-  photo_path: string | null;
-  device_info: string | null;
-  location: unknown;
-  created_by: string | null;
-  modified_by: string | null;
 }
 
 /**

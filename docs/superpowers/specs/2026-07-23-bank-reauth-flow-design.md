@@ -91,7 +91,25 @@ ALTER TABLE public.connected_banks
 |--------|---------|------------|
 | `account_mask` | Stripe's `account.last4`. Already captured on the balances row; needed on the bank row to make reconnect matching identity-safe. | `account.created` branch; backfilled from `bank_account_balances` |
 | `deactivated_at` | When Stripe told us the authorization died. Drives the escalation ladder. | `deactivated` branch |
-| `data_current_through` | The newest `transacted_at` we actually hold for this bank. **This is what the UI prints** — never `last_sync_at`. | `stripe-sync-transactions` after a successful fetch |
+| `data_current_through` | The newest `transaction_date` we actually hold for this bank. **This is what the UI prints** — never `last_sync_at`. | `stripe-sync-transactions` after a successful fetch |
+
+> **`data_current_through` is `date`, not `timestamptz`.** `bank_transactions` stores
+> `transaction_date DATE` and `posted_date DATE` — there is no `transacted_at timestamptz`
+> column to take a `MAX()` over. (`stripe-sync-transactions` converts Stripe's Unix instant
+> to an ISO string which Postgres truncates to a UTC calendar date on insert.) Typing the new
+> column `timestamptz` would manufacture a precision we do not have — the same class of lie
+> §1 defect #3 is about. So: `data_current_through date`, computed as
+> `MAX(transaction_date)`, and `<FreshnessStamp>` (§5.2) does day-granularity math against
+> the UTC calendar day. Adding a real `transacted_at timestamptz` to `bank_transactions` is a
+> larger, separable change (§9).
+
+Supporting index for the recompute (§4.3), since `bank_transactions` only has
+`idx_bank_transactions_bank(connected_bank_id)` today:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_bank_date
+  ON public.bank_transactions (connected_bank_id, transaction_date DESC);
+```
 
 Backfill in the same migration (safe, idempotent, no-op on empty tables):
 
@@ -138,14 +156,27 @@ CREATE TABLE IF NOT EXISTS public.bank_reauth_notices (
 );
 
 ALTER TABLE public.bank_reauth_notices ENABLE ROW LEVEL SECURITY;
+
+GRANT SELECT ON public.bank_reauth_notices TO authenticated;
+GRANT ALL    ON public.bank_reauth_notices TO service_role;
 ```
 
 Including `deactivated_at` in the unique key is what makes a *second, later* outage re-notify
 rather than being suppressed by the first outage's rows.
 
-RLS: service-role writes only; a SELECT policy scoped to `restaurant_id` via the project's
-existing membership helper, so support tooling can read it. No INSERT/UPDATE/DELETE policy for
-authenticated users.
+**The GRANTs are not optional.** New tables do not inherit CRUD grants to `authenticated`;
+without them a query fails with `permission denied` *before* RLS is even evaluated, so the
+policy below would be silently dead. This repo has hit that exact footgun before —
+`20260628000000_grant_user_restaurants_select.sql` documents it, and both
+`20260706120000_revel_integration.sql` and `20260719120000_notification_channel_settings.sql`
+carry explicit GRANTs for this reason.
+
+RLS: service-role writes only; a single SELECT policy scoped through
+`public.user_has_restaurant_access(restaurant_id)`
+(`20260521222200_create_user_has_restaurant_access_helper.sql` — `STABLE SECURITY DEFINER
+SET search_path = public`), so support tooling can read it. No INSERT/UPDATE/DELETE policy for
+authenticated users. Do **not** hand-roll an inline `EXISTS (… user_restaurants …)` subquery;
+the helper exists precisely to avoid that.
 
 ### 3.3 Notification type
 
@@ -229,6 +260,33 @@ RETURNING id;
 row at the same institution. A brand-new account at a known bank is a new row; that is correct
 and cheap. The old behaviour's failure mode (silently merging two accounts) is not.
 
+The INSERT must be conflict-aware, because the new partial unique index creates a race the old
+code did not have: two concurrent `account.created` events for distinct `fca_` accounts that
+share a `(restaurant_id, institution_name, account_mask)` tuple (a double-submitted Link flow)
+both see 0 rows in step 1 and both reach step 2. The first wins; a bare INSERT makes the second
+throw `23505` and the webhook 500s.
+
+```sql
+INSERT INTO connected_banks (…)
+VALUES (…)
+ON CONFLICT (restaurant_id, institution_name, account_mask)
+  WHERE status <> 'disconnected' AND account_mask IS NOT NULL
+DO UPDATE SET
+  stripe_financial_account_id = EXCLUDED.stripe_financial_account_id,
+  status = 'connected',
+  connected_at = now(),
+  disconnected_at = NULL,
+  deactivated_at = NULL,
+  sync_error = NULL,
+  institution_logo_url = COALESCE(EXCLUDED.institution_logo_url, connected_banks.institution_logo_url)
+RETURNING id;
+```
+
+The `ON CONFLICT` inference clause must repeat the partial index's predicate verbatim, or
+Postgres cannot match it to the index. Rows with a NULL `account_mask` never conflict (NULLs
+are distinct in a unique index) and simply insert, which is the intended behaviour for the
+legacy/unknown-mask case described below.
+
 Rows with a NULL `account_mask` (pre-backfill legacy, or a Stripe payload without `last4`)
 match nothing in step 1 and therefore take the INSERT path. That is the safe direction: a
 duplicate row is visible and repairable; a merged ledger is neither.
@@ -250,8 +308,9 @@ Four changes:
    `last_sync_at = now()` with:
    - `last_sync_at = now()` **only** when the refresh succeeded (it means "we successfully
      talked to Stripe", which is now honest), and
-   - `data_current_through = max(transacted_at)` over the rows we actually hold for that bank,
-     recomputed after insert. This is the value the UI prints.
+   - `data_current_through = MAX(transaction_date)` over the rows we actually hold for that
+     bank, recomputed after insert (a backward index scan on the new
+     `idx_bank_transactions_bank_date`). This is the value the UI prints.
 
    On a failed refresh neither is touched, and `sync_error` is set.
 4. **Per-account subscription handling.** Delete the bank-wide `needsSubscriptionSetup` early
@@ -303,14 +362,46 @@ New edge function `supabase/functions/bank-reauth-notices/`, modelled on
 `20260723130200_schedule_bank_reauth_notices.sql`, using the same
 `cron.unschedule`-in-a-`DO`-block idempotency pattern).
 
-Each run:
+Each run processes **two** cohorts:
+
+**Cohort A — still down.**
 
 1. Select banks where `status = 'requires_reauth' AND deactivated_at IS NOT NULL`.
 2. Compute whole days elapsed (UTC-anchored, matching the trial-email convention).
 3. Map to a stage — `day_1` (≥1), `day_4` (≥4), `day_10` (≥10) — taking the **highest** stage
    not yet present in `bank_reauth_notices` for that `(bank, deactivated_at)`.
 4. Gate each channel through `resolveChannels(supabase, restaurantId, 'bank_reauth_required')`.
-5. Send, then INSERT the dedupe row. The unique constraint makes a concurrent double-run safe.
+5. Send, then `INSERT … ON CONFLICT DO NOTHING` on the dedupe row — the unique constraint
+   plus `DO NOTHING` is what makes a concurrent double-run a no-op rather than a `23505`.
+
+**Cohort B — recovered.**
+
+The `reactivated` / reconnect paths null out `connected_banks.deactivated_at`, so by the time
+this worker runs there is no outage timestamp left on the bank row to correlate against — and
+cohort A's query would never return a bank that is `connected` again anyway. The recovery
+notice therefore sources its correlation key from the notices table, not from `connected_banks`:
+
+```sql
+SELECT n.connected_bank_id, n.deactivated_at, cb.restaurant_id
+FROM (
+  SELECT DISTINCT ON (connected_bank_id) connected_bank_id, deactivated_at
+  FROM bank_reauth_notices
+  WHERE stage <> 'recovered'
+  ORDER BY connected_bank_id, deactivated_at DESC, sent_at DESC
+) n
+JOIN connected_banks cb ON cb.id = n.connected_bank_id
+WHERE cb.status = 'connected'
+  AND NOT EXISTS (
+    SELECT 1 FROM bank_reauth_notices r
+    WHERE r.connected_bank_id = n.connected_bank_id
+      AND r.stage = 'recovered'
+      AND r.deactivated_at = n.deactivated_at
+  );
+```
+
+That is: "the most recent outage we told someone about, for a bank that is healthy again and
+whose recovery we have not yet acknowledged." Because the dedupe key includes
+`deactivated_at`, a later, separate outage produces a fresh chain and a fresh recovery notice.
 
 Recipients by stage (the escalation ladder from the experience design):
 
@@ -321,9 +412,6 @@ Recipients by stage (the escalation ladder from the experience design):
 | Day 4 | owners + managers | email + push | Name the cost — days of transactions now missing |
 | Day 10 | owners only | email | Consequence tone; no push, this is not an interrupt |
 | Recovered | owners + managers | email | Receipt: what backfilled, through what date |
-
-The `recovered` stage is emitted by the same worker when it observes a bank that has a
-`day_1`+ notice for a `deactivated_at` and is now `connected` again.
 
 **SECURITY DEFINER note:** if any helper RPC is added for the day-window query, it must pin
 `SET search_path = public, pg_temp` (2026-07-20 lesson).
@@ -339,14 +427,78 @@ The `recovered` stage is emitted by the same worker when it observes a bank that
 Select the three new columns. `disconnected` stays excluded — a user-initiated disconnect
 should still remove the card.
 
-Knock-on effects to handle in the same change:
+#### 5.1.1 Status must become per-account, not per-institution
 
-- `totalBalance` / `bankCount` / `accountCount` now include quarantined banks. Balances from a
-  `requires_reauth` bank must be **excluded from the headline total** and shown separately, or
-  the top-line number silently changes meaning.
-- `groupBanks` in `src/utils/financialConnections.ts` already ranks
-  `error > requires_reauth > disconnected > connected` via `STATUS_PRIORITY`, so a grouped
-  institution card correctly surfaces the worst member status. No change needed there.
+This is the load-bearing structural change on the frontend, and the reason the rest of §5
+works at all.
+
+`groupBanks` (`src/utils/financialConnections.ts`) merges every `connected_banks` row sharing
+an `institution_name` into one `GroupedBank` with a single worst-of `status`, and `BankBalance`
+carries **no status field**. But §4.2 makes "N accounts at one institution, independently
+authorised" the central scenario. With today's shape, an institution where 1 of 3 accounts is
+quarantined would:
+
+- strip Sync/Refresh from all three (the card's top-level dropdown loops `bank.bankIds`),
+- give the UI no way to know *which* balance row to mark historical, and
+- force the headline total to drop all three balances or none.
+
+All three are wrong. So:
+
+```ts
+// src/utils/financialConnections.ts
+export interface BankBalance {
+  …
+  bankStatus: BankStatus;          // NEW — inherited from the owning connected_banks row
+  dataCurrentThrough: string | null; // NEW — the owning row's data_current_through
+}
+
+export interface GroupedBank {
+  …
+  reauthBankIds: string[];   // NEW — the subset of bankIds needing reauthorization
+  healthyBankIds: string[];  // NEW — the complement; drives which controls stay live
+}
+```
+
+`groupBanks` stamps `bankStatus` / `dataCurrentThrough` onto each balance as it merges (it
+already rewrites `connected_bank_id` in that same map, so this is the same pass), and
+partitions `bankIds`. `STATUS_PRIORITY`'s worst-of roll-up stays as-is and is still correct
+for the card's *headline badge* — it just stops being the only status the UI can see.
+
+#### 5.1.2 Totals
+
+`computeTotalBalance` / `computeAccountCount` in `src/utils/financialConnections.ts` gain a
+status filter so quarantined accounts are excluded from the headline number, and the hook
+exposes `quarantinedBalance` alongside `totalBalance` so the UI can show the held-back amount
+rather than silently shrinking the total.
+
+**`src/pages/Expenses.tsx` has a duplicate inline total that must be fixed in the same change:**
+
+```ts
+// Expenses.tsx:34-36 — no status filter, feeds bookBalance on line 42
+const totalBalance = connectedBanks
+  .flatMap((bank) => bank.balances || [])
+  .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
+```
+
+Once the read path widens, this pulls quarantined balances straight into `bookBalance`. Replace
+it with the shared helper — one exported function, one filter rule, no second copy to drift.
+
+#### 5.1.3 `useConnectedBanks` — explicitly out of scope
+
+`src/hooks/useConnectedBanks.tsx` is a **separate** hook (query key `['connected-banks', …]`,
+`select('*, bank_account_balances(*)')`) feeding the Dashboard balance widget
+(`src/pages/Index.tsx`), `FinancialIntelligence.tsx`, and `EnhancedReconciliationDialog.tsx`.
+It also hard-filters `.eq('status', 'connected')`.
+
+**Decision: leave it filtering `connected`.** Its consumers all treat the result as "money we
+can trust right now", and the filter already produces the correct behaviour for that reading —
+a quarantined account drops out of the Dashboard total, which is what §5.1.2 does deliberately
+on Banking. Widening it without also building per-surface quarantine treatment on three more
+pages would import the problem without the fix.
+
+The residual gap is real and is named here rather than left silent: the Dashboard total shrinks
+with no on-screen explanation. Closing it means surfacing `<BankReauthBanner>` on the Dashboard
+too — deferred to the follow-up in §9, not smuggled into this change.
 
 ### 5.2 New primitives
 
@@ -361,12 +513,21 @@ Prints `data_current_through`, never `last_sync_at`. Three states:
 | NULL | `Not yet verified` — muted, no date invented |
 
 Typography per CLAUDE.md: `text-[13px] text-muted-foreground`, `tabular-nums` on the date.
+Day math is whole UTC calendar days against `data_current_through` (a `date`, §3.1), so
+"11 days behind" is always an integer and never drifts with the viewer's clock time.
+
+The 3-day amber threshold is about **ordinary staleness** — a weekend, a slow Stripe refresh.
+It is deliberately *not* the day-0 quarantine signal: quarantine keys off `bankStatus ===
+'requires_reauth'`, fires the instant the webhook lands, and is carried by `<BankReauthBanner>`
+plus the card badge. A bank can be quarantined while its stamp still reads fresh, and that
+combination is correct: the data we hold *is* current as of yesterday; it just stopped there.
 
 **`<BankReauthBanner>`** — `src/components/banking/BankReauthBanner.tsx`
 
-Rendered at the top of `/banking` (and on Accounting/Expenses where `BankConnectionStatus`
-lives) when any bank is `requires_reauth`. Amber, not destructive — this is a "do a thing"
-state, not a failure. Names the institution and the masked account, states the date data
+Rendered at the top of `/banking`, and **added to** `src/pages/Accounting.tsx` and
+`src/pages/Expenses.tsx` (see §5.3 — it cannot ride in on `BankConnectionStatus`, which nothing
+renders). Fires when any bank is `requires_reauth`. Amber, not destructive — this is a "do a
+thing" state, not a failure. Names the institution and the masked account, states the date data
 stopped, single primary action: **Reconnect**.
 
 Uses `bg-amber-500/10 border border-amber-500/20 rounded-xl`, matching the AI-suggestion panel
@@ -374,29 +535,55 @@ convention already in CLAUDE.md, and the `text-amber-700 dark:text-amber-400` pa
 used by `BankConnectionCard`'s `requires_reauth` badge — so the banner and the badge read as
 the same state.
 
+Accessibility and responsive requirements:
+
+- `role="status"` on the container. The hook's realtime channel invalidates on any
+  `connected_banks` change, so the banner can appear mid-session while a screen-reader user is
+  already on the page; without a live region that quarantine is announced to nobody.
+- Status is never encoded by colour alone — the amber is accompanied by the `AlertCircle` icon
+  and the literal words "Needs reauthorization".
+- Layout is `flex-col sm:flex-row` with the institution name `truncate`, matching the
+  responsive pattern `Banking.tsx` already uses. Verified at 375px: institution + `••4402` +
+  date + CTA must wrap to a second row rather than overflow.
+
 ### 5.3 Reworked surfaces
 
 **`BankConnectionCard.tsx`** (the card actually used by `/banking`)
 
 - Replace `• Synced {formatDate(last_sync_at)}` with `<FreshnessStamp>`.
-- When `status === 'requires_reauth'`: **remove** "Refresh balance" and "Sync transactions"
-  from the dropdown — do not disable them. A control that cannot work should not be present.
-  Add a primary **Reconnect** action in their place.
-- Per-account balance rows for a quarantined bank render hatched/dimmed with the account's own
-  `as_of_date` stamp, so the number is visibly historical rather than current.
+- Gains an `onReconnect?: (connectedBankId: string) => Promise<void>` prop.
+- **Top-level dropdown**: "Refresh balance" and "Sync transactions" now loop
+  `bank.healthyBankIds` rather than `bank.bankIds`, so a healthy sibling keeps working while
+  another account is quarantined. When `healthyBankIds` is empty both entries are **removed**
+  — not disabled. A control that cannot work should not be present.
+- **Reconnect** appears as a primary dropdown entry whenever `reauthBankIds.length > 0`. For a
+  single quarantined account it targets that `connected_bank_id` directly; for several it opens
+  the accounts list so the user picks — never a silent "first of N".
+- **Per-account rows** now branch on `balance.bankStatus`, which is what §5.1.1 exists to
+  provide. A quarantined row renders historical; its siblings render normally. Its own
+  per-account dropdown swaps Refresh/Sync for Reconnect targeting
+  `balance.connected_bank_id`.
 
-**`BankConnectionStatus.tsx`** (used by Accounting and Expenses)
+*Historical-row treatment (contrast-safe):* do **not** reduce opacity on the balance figure —
+`opacity-50` on `text-foreground` over `bg-background` drops below the 4.5:1 WCAG 1.4.3 floor
+for normal-size text. Instead: the figure moves to `text-muted-foreground` at full opacity
+(a token pairing already contrast-checked across both themes), the row container takes a faint
+diagonal `repeating-linear-gradient` built from `hsl(var(--muted-foreground) / 0.06)` for the
+hatch, and the row carries a literal `Historical` chip plus the account's own `as_of_date`.
+Texture and text carry the meaning; nothing depends on the hatch being perceived.
 
-Currently renders the raw enum inside a `destructive` badge, always shows a Sync button, and
-violates the Apple/Notion spec (`text-lg font-semibold`, `p-3 border rounded-lg`,
-`text-green-600` hard-coded). Rework:
+**`BankConnectionStatus.tsx` — delete it**
 
-- Human status labels, not enum values.
-- Semantic tokens throughout; drop `text-green-600` for the emerald token pairing used by
-  `BankConnectionCard`.
-- Same rule: no Sync button on a bank that cannot sync; Reconnect instead.
-- `<FreshnessStamp>` replaces `Last synced: …`.
-- Keep `refetchInterval: 30000`.
+The design originally planned to rework this component "as used by Accounting and Expenses".
+It is not used by anything: `grep -rn "BankConnectionStatus" src/` returns only the file's own
+definition. Reworking it would produce a component nobody renders, and — worse — would have
+left `<BankReauthBanner>` absent from Accounting and Expenses while the design believed it was
+covered there.
+
+So: delete `src/components/banking/BankConnectionStatus.tsx`, and add `<BankReauthBanner>` to
+`src/pages/Accounting.tsx` and `src/pages/Expenses.tsx` as a real, explicit change. This is a
+net deletion plus two one-line insertions, and it is the only version of this that actually
+puts the signal in front of the user.
 
 **`useSyncBankTransactions.tsx`**
 
@@ -406,16 +593,37 @@ Stop claiming success for nothing. Branch on the new per-account response:
 - `synced === 0` and no error → neutral toast, "No new transactions"
 - `synced > 0` → success toast with the count
 
-Also fix the invalidation key: it currently invalidates `['connected-banks']` while the hook's
-query key is `['connectedBanks', restaurantId]`. The realtime channel papers over this today;
-the explicit key should still be correct.
+Invalidate **both** cache keys, rather than swapping one for the other:
+
+```ts
+queryClient.invalidateQueries({ queryKey: ['connectedBanks'] });   // useStripeFinancialConnections
+queryClient.invalidateQueries({ queryKey: ['connected-banks'] });  // useConnectedBanks (Dashboard, FI, reconciliation)
+```
+
+The hook currently invalidates only the kebab-case key, which never matches
+`['connectedBanks', restaurantId]`; the realtime channel papers over that on Banking today.
+Simply switching to the camelCase key would regress the Dashboard's post-sync refresh — the two
+keys belong to two genuinely different hooks (§5.1.3), and both need the invalidation.
 
 ### 5.4 Reconnect interaction
 
-`handleConnectBank` in `Banking.tsx` gains a `connectedBankId` argument. Same
-`collectFinancialConnectionsAccounts` flow; the difference is entirely server-side (§4.5). The
-dialog copy varies on the returned `mode`: relink says "Reconnect Northgate Savings & Trust
+`handleConnectBank` in `Banking.tsx` gains an optional `connectedBankId` argument and is passed
+down as `onReconnect` to `BankConnectionCard` and `BankReauthBanner`. Same
+`collectFinancialConnectionsAccounts` flow; the difference is entirely server-side (§4.5).
+
+The ID is always a single `connected_bank_id`, never a `GroupedBank.bankIds` array — §5.1.1's
+`reauthBankIds` / per-balance `connected_bank_id` are what make that unambiguous. A group with
+more than one quarantined account expands the accounts list instead of guessing.
+
+The dialog copy varies on the returned `mode`: relink says "Reconnect Northgate Savings & Trust
 ••4402"; link fallback says "Connect Northgate Savings & Trust".
+
+**States** (CLAUDE.md mandates all three on every new surface): `<FreshnessStamp>` renders its
+NULL case as `Not yet verified` and has no async state of its own. `<BankReauthBanner>` returns
+`null` while the hook is loading (never a skeleton for a banner that usually shouldn't exist),
+`null` when no bank is quarantined, and surfaces a destructive variant carrying `sync_error`
+when a bank is in `error` rather than `requires_reauth`. Reconnect has an in-flight spinner on
+its own button and a destructive toast on failure.
 
 **Note:** `Banking.tsx:200` hard-codes a live `pk_live_…` publishable key. Publishable keys are
 not secret, so this is not a leak — but it is a config smell and it blocks sandbox testing.
@@ -433,12 +641,18 @@ source-text assertions do not count toward SonarCloud's 80% new-code gate.
 | Stage math (days → `day_1`/`day_4`/`day_10`, UTC-anchored, boundary at exactly 1/4/10) | unit | `tests/unit/bankReauthStages.test.ts` |
 | Recipient + channel resolution per stage | unit | same |
 | `FreshnessStamp` three states incl. NULL | unit | `tests/unit/freshnessStamp.test.tsx` |
-| Sync toast branching (needsReauth / 0 / N) | unit | `tests/unit/useSyncBankTransactions.test.ts` |
+| `BankReauthBanner`: null when loading, null when none quarantined, destructive on `error`, `role="status"` present | unit | `tests/unit/bankReauthBanner.test.tsx` |
+| Sync toast branching (needsReauth / 0 / N) + both invalidation keys fire | unit | `tests/unit/useSyncBankTransactions.test.ts` |
+| `groupBanks` stamps per-balance `bankStatus`; partitions `reauthBankIds` / `healthyBankIds`; 1-of-3 quarantined leaves 2 healthy | unit | `tests/unit/financialConnections.groupBanks.test.ts` |
+| `computeTotalBalance` excludes quarantined accounts and reports them as `quarantinedBalance` | unit | same |
 | Notification matrix stays in sync (new key in all 3 copies) | unit | existing `tests/unit/notificationTypes.test.ts` — must stay green |
 | Identity-safe match: 3 accounts, 1 institution, concurrent reconnect ⇒ 3 distinct rows, no cross-graft | pgTAP | `supabase/tests/bank_reauth_identity.sql` |
-| Partial unique index rejects a duplicate live `(restaurant, institution, mask)` | pgTAP | same |
+| Partial unique index rejects a duplicate live `(restaurant, institution, mask)`; `ON CONFLICT … DO UPDATE` makes the concurrent-insert race a no-op rather than a `23505` | pgTAP | same |
+| NULL `account_mask` rows never conflict and always take the INSERT path | pgTAP | same |
 | `deactivated` twice ⇒ `deactivated_at` unchanged (COALESCE) | pgTAP | same |
 | `bank_reauth_notices` unique constraint blocks a double send; a *new* `deactivated_at` allows re-notify | pgTAP | `supabase/tests/bank_reauth_notices.sql` |
+| `bank_reauth_notices` is SELECT-able by a member and denied to a non-member (proves the GRANT *and* the RLS policy, not just one) | pgTAP | same |
+| Cohort-B recovery query finds a reconnected bank via the notices table after `connected_banks.deactivated_at` was nulled | pgTAP | same |
 
 The pure stage/matching logic is extracted into `_shared/` helpers specifically so it is
 unit-testable without a Deno HTTP harness — the pattern `_shared/availabilityReminderHandler.ts`
@@ -474,7 +688,7 @@ a tooltip, and a support ticket. Absence plus a working Reconnect is unambiguous
 
 | File | Purpose |
 |------|---------|
-| `20260723130000_connected_banks_reauth_columns.sql` | 3 columns + mask backfill + partial unique index |
+| `20260723130000_connected_banks_reauth_columns.sql` | 3 columns + mask backfill + partial unique index + `idx_bank_transactions_bank_date` |
 | `20260723130100_bank_reauth_notices.sql` | dedupe table + RLS + notification CHECK constraint update |
 | `20260723130200_schedule_bank_reauth_notices.sql` | daily pg_cron registration |
 
@@ -491,6 +705,20 @@ from the latest migration that sorts before the new one and write a provenance c
 ## 9. Out of scope / follow-ups
 
 - Manual Dashboard relink for any currently-affected tenant (user deferred).
+- **Quarantine treatment on the Dashboard / FinancialIntelligence / reconciliation surfaces**
+  fed by `useConnectedBanks` (§5.1.3). Those totals will silently shrink when an account is
+  quarantined; closing that means widening the hook *and* rendering `<BankReauthBanner>` on
+  three more pages. Named, scoped out, and worth doing next.
+- **A real `transacted_at timestamptz` on `bank_transactions`.** Today the column set is
+  `transaction_date DATE` / `posted_date DATE`, so freshness is UTC-day-granular and blind to
+  restaurant timezone (§3.1). That is honest but coarse; a true instant would let
+  `data_current_through` be a `timestamptz` and make the stamp exact. Separate change with its
+  own backfill.
+- Bringing `BankConnectionCard.tsx` fully onto the CLAUDE.md type scale. It currently uses
+  `text-base` / `text-lg` / `text-sm` / `text-xs` rather than the mandated
+  `text-[17px]` / `text-[14px]` / `text-[13px]` / `text-[12px]`. This change touches the file
+  but deliberately does not restyle lines it isn't otherwise editing — a whole-file typography
+  sweep would bury the behavioural diff that needs reviewing.
 - The three redundant unique indexes on `connected_banks.stripe_financial_account_id` —
   collapsing them is safe but unrelated; separate PR.
 - Moving the hard-coded `pk_live_…` publishable key in `Banking.tsx` to config.

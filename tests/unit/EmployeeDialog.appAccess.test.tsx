@@ -157,6 +157,27 @@ describe('EmployeeDialog — opt-in app access switch (create mode)', () => {
     );
   });
 
+  it('disarms the access switch when the email is edited afterward', async () => {
+    // The switch is a decision about a specific address. Editing the email
+    // after arming it must reset the switch so access is never granted to an
+    // address the user didn't deliberately opt in for.
+    renderDialog();
+    await userEvent.type(screen.getByLabelText(/name/i), 'New Hire');
+    await userEvent.type(screen.getByLabelText(/hourly rate/i), '15');
+    await userEvent.type(screen.getByLabelText(/email/i), 'newhire@example.com');
+    const toggle = screen.getByRole('switch', { name: /invite to the employee app/i });
+    await userEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    // Append a character to the email — the switch resets to off.
+    await userEvent.type(screen.getByLabelText(/email/i), 'x');
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+    await waitFor(() => expect(createEmployeeMock).toHaveBeenCalled());
+    expect(invokeMock).not.toHaveBeenCalledWith('send-team-invitation', expect.anything());
+  });
+
   it('defaults the access switch to off', async () => {
     renderDialog();
     const toggle = await screen.findByRole('switch', { name: /invite to the employee app/i });
@@ -253,10 +274,12 @@ describe('EmployeeDialog — link to an existing account instead of double-provi
   });
 
   it('treats "already linked" as a success, not a failure toast', async () => {
-    // A double-click or retry must not report failure for work that already landed.
+    // A double-click or retry must not report failure for work that already
+    // landed. The RPC returns success = TRUE for an idempotent re-link, so the
+    // client trusts `success` alone — no message string-matching.
     mockUseRestaurantMembers.mockReturnValue({ data: [EXISTING_MEMBER], isError: false });
     rpcMock.mockResolvedValue({
-      data: [{ success: false, message: 'Employee already linked to user u1' }],
+      data: [{ success: true, message: 'Employee is already linked to this account' }],
       error: null,
     });
     renderDialog();

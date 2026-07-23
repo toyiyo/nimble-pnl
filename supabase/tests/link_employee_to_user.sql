@@ -2,17 +2,22 @@
 -- Tests for migration 20260722120000_link_employee_to_user_hardening.sql
 --
 -- Verifies:
---   1. operations_manager can link (previously excluded from the allowlist)
+--   1. operations_manager can link an employee to an account that is already a
+--      member of the same restaurant (previously excluded from the allowlist)
 --   2. chef cannot link
 --   3. a caller from another restaurant cannot link
 --   4. an unauthorized caller gets one non-committal message whether the
 --      employee exists or not (no existence leak)
---   5. relinking an already-linked employee reports the already-linked
---      state rather than a generic failure
---   6. owner can still link (no regression)
+--   5. relinking to the SAME account is idempotent (success = TRUE) ...
+--   6. ... and reports the already-linked state rather than a generic failure
+--   7. owner can still link (no regression)
+--   8. linking to an account that is NOT a member of the restaurant is denied
+--      (the cross-tenant grant this hardening closes) ...
+--   9. ... with a message that names the reason
+--  10. relinking an already-linked employee to a DIFFERENT account is a conflict
 
 BEGIN;
-SELECT plan(6);
+SELECT plan(10);
 
 -- ---------- Fixture setup ----------
 -- One restaurant holding the unlinked employees under test, plus an
@@ -27,21 +32,27 @@ INSERT INTO auth.users (id, email, encrypted_password, aud, role) VALUES
   ('f1111111-1111-1111-1111-111111111102', 'chef-caller@test.com', '', 'authenticated', 'authenticated'),
   ('f1111111-1111-1111-1111-111111111103', 'outsider-caller@test.com', '', 'authenticated', 'authenticated'),
   ('f1111111-1111-1111-1111-111111111104', 'owner-caller@test.com', '', 'authenticated', 'authenticated'),
-  ('f1111111-1111-1111-1111-111111111105', 'target-user@test.com', '', 'authenticated', 'authenticated')
+  ('f1111111-1111-1111-1111-111111111105', 'target-user@test.com', '', 'authenticated', 'authenticated'),
+  ('f1111111-1111-1111-1111-111111111106', 'other-member@test.com', '', 'authenticated', 'authenticated'),
+  ('f1111111-1111-1111-1111-111111111107', 'nonmember@test.com', '', 'authenticated', 'authenticated')
 ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
   encrypted_password = EXCLUDED.encrypted_password,
   aud = EXCLUDED.aud,
   role = EXCLUDED.role;
 
--- Callers: operations_manager and chef and owner in the restaurant under
--- test; the outsider is a member of the OTHER restaurant only. The target
--- user being linked to is not a member of either restaurant.
+-- Callers: operations_manager, chef and owner in the restaurant under test;
+-- the outsider is a member of the OTHER restaurant only. The link *targets*
+-- (105, 106) are members of the restaurant under test — a precondition the
+-- hardened function now enforces. 107 is a real account that is a member of
+-- NO restaurant, used to prove the non-member link is denied.
 INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
   ('f1111111-1111-1111-1111-111111111101', 'f0000000-0000-0000-0000-000000000001', 'operations_manager'),
   ('f1111111-1111-1111-1111-111111111102', 'f0000000-0000-0000-0000-000000000001', 'chef'),
   ('f1111111-1111-1111-1111-111111111103', 'f0000000-0000-0000-0000-000000000002', 'owner'),
-  ('f1111111-1111-1111-1111-111111111104', 'f0000000-0000-0000-0000-000000000001', 'owner')
+  ('f1111111-1111-1111-1111-111111111104', 'f0000000-0000-0000-0000-000000000001', 'owner'),
+  ('f1111111-1111-1111-1111-111111111105', 'f0000000-0000-0000-0000-000000000001', 'staff'),
+  ('f1111111-1111-1111-1111-111111111106', 'f0000000-0000-0000-0000-000000000001', 'staff')
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
 
 -- Unlinked employees in the restaurant under test. Explicit user_id = NULL
@@ -67,7 +78,7 @@ LANGUAGE sql AS $$
   SELECT set_config('request.jwt.claim.sub', uid::text, true);
 $$;
 
--- ---------- 1. operations_manager may link — they hold manage:employees ----------
+-- ---------- 1. operations_manager may link a member account ----------
 SELECT test_set_caller('f1111111-1111-1111-1111-111111111101');
 
 SELECT ok(
@@ -75,7 +86,7 @@ SELECT ok(
     'f2222222-2222-2222-2222-222222222201',
     'f1111111-1111-1111-1111-111111111105'
   )),
-  'operations_manager can link an employee to an existing account'
+  'operations_manager can link an employee to a member account'
 );
 
 -- ---------- 2. chef may not ----------
@@ -116,9 +127,17 @@ SELECT is(
   'existence is not distinguishable from lack of authorization'
 );
 
--- ---------- 5. relinking an already-linked employee reports the
---    already-linked state ---------- (employee 201 was linked in test 1)
+-- ---------- 5 & 6. relinking to the SAME account is idempotent success and
+--    reports the already-linked state ---------- (employee 201 linked in test 1)
 SELECT test_set_caller('f1111111-1111-1111-1111-111111111101');
+
+SELECT ok(
+  (SELECT success FROM link_employee_to_user(
+    'f2222222-2222-2222-2222-222222222201',
+    'f1111111-1111-1111-1111-111111111105'
+  )),
+  'relinking to the same account is idempotent (success = TRUE)'
+);
 
 SELECT matches(
   (SELECT message FROM link_employee_to_user(
@@ -129,7 +148,7 @@ SELECT matches(
   'second call reports already-linked rather than a generic failure'
 );
 
--- ---------- 6. owner may still link (no regression) ----------
+-- ---------- 7. owner may still link (no regression) ----------
 SELECT test_set_caller('f1111111-1111-1111-1111-111111111104');
 
 SELECT ok(
@@ -138,6 +157,40 @@ SELECT ok(
     'f1111111-1111-1111-1111-111111111105'
   )),
   'owner can still link'
+);
+
+-- ---------- 8 & 9. linking to an account that is not a member of the
+--    restaurant is denied — the cross-tenant grant this hardening closes.
+--    Employee 202 is still unlinked; 107 is a real account belonging to no
+--    restaurant. ----------
+SELECT test_set_caller('f1111111-1111-1111-1111-111111111101');
+
+SELECT ok(
+  NOT (SELECT success FROM link_employee_to_user(
+    'f2222222-2222-2222-2222-222222222202',
+    'f1111111-1111-1111-1111-111111111107'
+  )),
+  'linking to a non-member account is denied'
+);
+
+SELECT matches(
+  (SELECT message FROM link_employee_to_user(
+    'f2222222-2222-2222-2222-222222222202',
+    'f1111111-1111-1111-1111-111111111107'
+  )),
+  'not a member',
+  'non-member denial names the reason'
+);
+
+-- ---------- 10. relinking an already-linked employee to a DIFFERENT account
+--    is a conflict ---------- (employee 201 is linked to 105; 106 is another
+--    member of the same restaurant)
+SELECT ok(
+  NOT (SELECT success FROM link_employee_to_user(
+    'f2222222-2222-2222-2222-222222222201',
+    'f1111111-1111-1111-1111-111111111106'
+  )),
+  'relinking to a different account is a conflict'
 );
 
 SELECT * FROM finish();

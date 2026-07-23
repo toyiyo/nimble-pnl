@@ -203,6 +203,16 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     }
   }, [employee, open]);
 
+  // Editing the email invalidates the access decision the user made against the
+  // previous address (grant a new login vs. link to whoever that email belongs
+  // to), so disarm both switches on every change. existingMember is recomputed
+  // from the new value, so the correct panel re-appears on the next keystroke.
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+    setGrantAppAccess(false);
+    setLinkToExisting(false);
+  };
+
   const resetForm = () => {
     setName('');
     setEmail('');
@@ -376,11 +386,10 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
             p_user_id: existingMember.userId,
           });
           const result = Array.isArray(linkRows) ? linkRows[0] : linkRows;
-          // 'already linked' means a retry or double-submit landed the work
-          // already — reporting failure for it would be a lie.
-          const alreadyLinked = !result?.success && /already linked/i.test(result?.message ?? '');
-
-          if (linkError || (!result?.success && !alreadyLinked)) {
+          // The RPC returns success = TRUE for an idempotent re-link (the
+          // employee is already tied to this account), so a plain success check
+          // covers retries and double-submits without string-matching messages.
+          if (linkError || !result?.success) {
             toast({
               title: 'Employee created, but not linked',
               description: result?.message ?? 'Could not link this employee to the existing account.',
@@ -1059,7 +1068,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     id="email"
                     type="email"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => handleEmailChange(e.target.value)}
                     placeholder="john@example.com"
                     aria-label="Employee email"
                     className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"

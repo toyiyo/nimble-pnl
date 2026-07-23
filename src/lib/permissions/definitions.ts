@@ -8,7 +8,7 @@
  * stay in sync with these definitions.
  */
 
-import { Role, Capability, RoleMetadata, CollaboratorPreset } from './types';
+import { Role, Capability, RoleMetadata, CollaboratorPreset, AccessGroup } from './types';
 
 /**
  * Role -> Capability mapping.
@@ -262,6 +262,7 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Owner',
     description: 'Full access to all features',
     category: 'internal',
+    accessGroup: 'platform',
     landingPath: '/',
     color: 'default',
   },
@@ -270,6 +271,7 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Manager',
     description: 'Manage operations and team',
     category: 'internal',
+    accessGroup: 'platform',
     landingPath: '/',
     color: 'secondary',
   },
@@ -278,6 +280,7 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Operations Manager',
     description: 'Run operations, scheduling, and staffing (no accounting or admin)',
     category: 'internal',
+    accessGroup: 'platform',
     landingPath: '/',
     color: 'secondary',
   },
@@ -286,14 +289,16 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Chef',
     description: 'Manage recipes and inventory',
     category: 'internal',
+    accessGroup: 'platform',
     landingPath: '/',
     color: 'outline',
   },
   staff: {
     role: 'staff',
-    label: 'Staff',
-    description: 'Employee self-service',
+    label: 'Employee (self-service)',
+    description: 'Clock in/out, view their own schedule, request time off',
     category: 'internal',
+    accessGroup: 'employee',
     landingPath: '/employee/clock',
     color: 'outline',
   },
@@ -302,6 +307,7 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Kiosk',
     description: 'Time clock only',
     category: 'internal',
+    accessGroup: 'device',
     landingPath: '/kiosk',
     color: 'outline',
   },
@@ -310,6 +316,7 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Accountant',
     description: 'Financial data access for bookkeeping',
     category: 'collaborator',
+    accessGroup: 'collaborator',
     landingPath: '/transactions',
     color: 'outline',
   },
@@ -318,6 +325,7 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Inventory Helper',
     description: 'Inventory and purchasing access',
     category: 'collaborator',
+    accessGroup: 'collaborator',
     landingPath: '/inventory',
     color: 'outline',
   },
@@ -326,6 +334,7 @@ export const ROLE_METADATA: Record<Role, RoleMetadata> = {
     label: 'Recipe Consultant',
     description: 'Recipe development access',
     category: 'collaborator',
+    accessGroup: 'collaborator',
     landingPath: '/recipes',
     color: 'outline',
   },
@@ -403,4 +412,34 @@ export function getInternalRoles(): Role[] {
  */
 export function getLandingPath(role: Role): string {
   return ROLE_METADATA[role]?.landingPath ?? '/';
+}
+
+/**
+ * Headings for the invite dropdown. 'device' has no heading because device
+ * roles are never offered by email invite (see INVITABLE_ROLES).
+ */
+export const ACCESS_GROUP_LABELS: Record<AccessGroup, string> = {
+  platform: 'Platform access (EasyShiftHQ)',
+  employee: 'Employee self-service',
+  collaborator: 'External collaborators',
+  device: 'Devices',
+};
+
+/** Display order for invite groups. 'device' is deliberately absent. */
+const INVITE_GROUP_ORDER: AccessGroup[] = ['platform', 'employee', 'collaborator'];
+
+/**
+ * Bucket invitable roles into ordered groups for the invite dropdown.
+ * Preserves the caller's role order within each group; omits empty groups.
+ */
+export function groupRolesForInvite(
+  roles: Role[]
+): Array<{ group: AccessGroup; label: string; roles: Role[] }> {
+  return INVITE_GROUP_ORDER
+    .map((group) => ({
+      group,
+      label: ACCESS_GROUP_LABELS[group],
+      roles: roles.filter((r) => ROLE_METADATA[r]?.accessGroup === group),
+    }))
+    .filter((g) => g.roles.length > 0);
 }

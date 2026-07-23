@@ -40,8 +40,9 @@ import { SaleCard, RecipeInfo } from "@/components/pos-sales/SaleCard";
 import { SalesTrendsPanel } from "@/components/pos-sales/SalesTrendsPanel";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRecipes } from "@/hooks/useRecipes";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createRecipeByItemNameMap, hasRecipeMapping, getRecipeForItem } from "@/utils/recipeMapping";
+import { parseLocalDate } from "@/lib/parseLocalDate";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
 import { BulkCategorizePosSalesPanel } from "@/components/pos-sales/BulkCategorizePosSalesPanel";
@@ -78,6 +79,33 @@ const CATEGORIZATION_EMPTY_SUBCOPY: Record<'uncategorized' | 'pending-review' | 
 // DOM node attaches later, leaving `cols` stuck at its initial value.
 // Keying the effect on the node itself (state) re-runs it exactly when the
 // node actually mounts.
+// Shape: yyyy-MM-dd. Anything else (missing, malformed, an impossible
+// calendar date, or an inverted range) means "leave the existing defaults" —
+// this never throws, it just returns null.
+const DATE_PARAM_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateParam(value: string | null): value is string {
+  if (!value || !DATE_PARAM_SHAPE.test(value)) return false;
+  // parseLocalDate silently rolls an impossible date like 2026-02-31 forward
+  // (to 2026-03-03) instead of throwing — round-tripping it back through the
+  // same yyyy-MM-dd format catches that case, since the two strings won't match.
+  const parsed = parseLocalDate(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return formatDateFn(parsed, "yyyy-MM-dd") === value;
+}
+
+// Pure so it's directly unit-testable without mounting the page — see
+// tests/unit/posSalesSearchParamDates.test.tsx.
+export function parseDateRangeFromSearchParams(
+  searchParams: URLSearchParams,
+): { startDate: string; endDate: string } | null {
+  const startParam = searchParams.get("startDate");
+  const endParam = searchParams.get("endDate");
+  if (!isValidDateParam(startParam) || !isValidDateParam(endParam)) return null;
+  if (startParam > endParam) return null;
+  return { startDate: startParam, endDate: endParam };
+}
+
 function useResponsiveColumns() {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const [cols, setCols] = useState(1);
@@ -116,6 +144,7 @@ export default function POSSales() {
   const { simulateDeduction } = useInventoryDeduction();
   const { recipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState("");
   // Debounced search term: the input stays instant (bound to searchTerm), but
@@ -129,9 +158,38 @@ export default function POSSales() {
     const timeout = setTimeout(() => setDebouncedSearchTerm(searchTerm), 350);
     return () => clearTimeout(timeout);
   }, [searchTerm]);
-  // Default to last 30 days for better UX and performance
-  const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
+  // Entry point from a shared/bookmarked link (e.g. a Sales vs Break-Even bar
+  // click → /pos-sales?startDate=<d>&endDate=<d>): seed the range from the URL
+  // at first render, falling back to the last 30 days when no valid params are
+  // present. Lazy-initializing here (rather than defaulting to 30 days and
+  // correcting in the effect below) means the very first render already queries
+  // the drilled-down day — no wasted default-range request and no flash of
+  // default-range data before the effect commits. Seeding-only, not
+  // bidirectional: editing the date inputs below does not write back to the URL.
+  const initialDateRange = useMemo(
+    () =>
+      parseDateRangeFromSearchParams(searchParams) ?? {
+        startDate: formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"),
+        endDate: formatDateFn(new Date(), "yyyy-MM-dd"),
+      },
+    // Intentionally first-render only: later param changes flow through the
+    // effect below, not a recomputed initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [startDate, setStartDate] = useState(initialDateRange.startDate);
+  const [endDate, setEndDate] = useState(initialDateRange.endDate);
+  // Re-apply when the params change on an already-mounted page (not just at
+  // first mount) — matches Recipes.tsx/Inventory.tsx's convention for consuming
+  // incoming query params. The lazy initializer above covers the fresh-mount
+  // case; this covers navigation into a new range while the page stays mounted.
+  useEffect(() => {
+    const parsed = parseDateRangeFromSearchParams(searchParams);
+    if (parsed) {
+      setStartDate(parsed.startDate);
+      setEndDate(parsed.endDate);
+    }
+  }, [searchParams]);
   // Sales trends panel: expanded by default on lg+ screens, collapsed on
   // mobile — an expanded stack of charts would push the sales list far
   // below the fold on small viewports (design doc §4.2).

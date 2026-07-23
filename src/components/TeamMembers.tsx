@@ -197,18 +197,18 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
             const isOwner = member.role === 'owner';
             
             return (
-              <div key={member.id} className="flex items-center justify-between p-4 border border-border/40 rounded-xl hover:border-border transition-colors">
-                <div className="flex items-center gap-3">
+              <div key={member.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border border-border/40 rounded-xl hover:border-border transition-colors">
+                <div className="flex items-center gap-3 min-w-0">
                   <Avatar>
                     <AvatarFallback>
-                      {member.profiles?.full_name 
+                      {member.profiles?.full_name
                         ? member.profiles.full_name.split(' ').map(n => n[0]).join('').toUpperCase()
                         : member.profiles?.email?.[0]?.toUpperCase() || 'U'
                       }
                     </AvatarFallback>
                   </Avatar>
-                  <div>
-                    <p className="text-[14px] font-medium text-foreground">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-medium text-foreground truncate">
                       {member.profiles?.full_name || 'Unknown User'}
                     </p>
                     <p className="text-[13px] text-muted-foreground">
@@ -216,8 +216,16 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                     </p>
                   </div>
                 </div>
-                
-                <div className="flex items-center gap-3">
+
+                {/*
+                  On mobile the row stacks: name/email on top, this badge+actions
+                  group on its own full-width line below. The role label
+                  "Employee (self-service)" plus the dropdown is wider than a
+                  375px row's content box, so keeping it on the name's line
+                  collapses the name column to zero. At sm+ the row is one line
+                  again and this side stays shrink-0.
+                */}
+                <div className="flex items-center gap-3 shrink-0 pl-[3.25rem] sm:pl-0">
                   <Badge variant={roleColors[member.role as keyof typeof roleColors] ?? 'outline'} className="flex items-center gap-1">
                     <RoleIcon className="h-3 w-3" />
                     {ROLE_METADATA[member.role as Role]?.label ?? member.role}

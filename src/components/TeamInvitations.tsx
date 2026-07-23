@@ -4,16 +4,17 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import { formatExpiresIn } from '@/lib/invitationUtils';
 import type { Role } from '@/lib/permissions/types';
-import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { ROLE_METADATA, groupRolesForInvite } from '@/lib/permissions/definitions';
 import { getInvitableRoles } from '@/lib/permissions/invitations';
+import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
 
 interface Invitation {
   id: string;
@@ -48,6 +49,11 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const [pendingConflict, setPendingConflict] = useState(false);
   const [resendConflictId, setResendConflictId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const { data: members } = useRestaurantMembers(restaurantId);
+  // null while loading, on error, or for a non-member — all "proceed normally".
+  const existingMember = findMemberByEmail(members, inviteForm.email);
+  const blockedPanelId = 'invite-existing-member-warning';
 
   useEffect(() => {
     setShowHistory(false);
@@ -123,7 +129,14 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   };
 
   const sendInvitation = async () => {
-    if (!inviteForm.email || !inviteForm.role) {
+    // aria-disabled keeps the button focusable, so the handler owns the block.
+    if (existingMember) return;
+
+    // Normalize once so whitespace-only input is rejected and the trimmed
+    // address is what we conflict-check against and actually send — matching
+    // findMemberByEmail, which also trims.
+    const normalizedEmail = inviteForm.email.trim();
+    if (!normalizedEmail || !inviteForm.role) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -133,7 +146,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
     }
 
     const hasConflict = invitations.some(
-      inv => inv.email.toLowerCase() === inviteForm.email.toLowerCase() && inv.status === 'pending'
+      inv => inv.email.toLowerCase() === normalizedEmail.toLowerCase() && inv.status === 'pending'
     );
     if (hasConflict && !pendingConflict) {
       setPendingConflict(true);
@@ -146,7 +159,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
       const { data, error } = await supabase.functions.invoke('send-team-invitation', {
         body: {
           restaurantId,
-          email: inviteForm.email,
+          email: normalizedEmail,
           role: inviteForm.role,
         },
       });
@@ -155,7 +168,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
 
       toast({
         title: "Success",
-        description: `Invitation sent to ${inviteForm.email}`,
+        description: `Invitation sent to ${normalizedEmail}`,
       });
 
       setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' });
@@ -218,6 +231,11 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
     inv => inv.status === 'accepted' || inv.status === 'cancelled'
   );
   const visibleInvitations = showHistory ? invitations : activeInvitations;
+
+  const roleGroups = groupRolesForInvite(invitableRoles);
+  // A lone heading over a one-item list is noise — operations_manager can
+  // invite only 'staff'.
+  const showGroupLabels = roleGroups.length > 1;
 
   return (
     <Card>
@@ -282,11 +300,34 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       onValueChange={(value) => setInviteForm({ ...inviteForm, role: value })}
                     >
                       <SelectTrigger id="role" className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg">
-                        <SelectValue />
+                        {/*
+                          SelectValue MUST have children. ui/select.tsx wraps a
+                          SelectItem's entire children in ItemText, and a childless
+                          SelectValue makes Radix portal that whole subtree into the
+                          trigger — which would render the label and the description
+                          mashed into one line-clamped row.
+                        */}
+                        <SelectValue>
+                          {ROLE_METADATA[inviteForm.role as Role]?.label ?? 'Select a role'}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {invitableRoles.map((r) => (
-                          <SelectItem key={r} value={r}>{ROLE_METADATA[r].label}</SelectItem>
+                        {roleGroups.map(({ group, label, roles }) => (
+                          <SelectGroup key={group}>
+                            {showGroupLabels && (
+                              <SelectLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                                {label}
+                              </SelectLabel>
+                            )}
+                            {roles.map((r) => (
+                              <SelectItem key={r} value={r}>
+                                <span className="text-[14px] text-foreground">{ROLE_METADATA[r].label}</span>
+                                <span className="block text-[12px] text-muted-foreground">
+                                  {ROLE_METADATA[r].description}
+                                </span>
+                              </SelectItem>
+                            ))}
+                          </SelectGroup>
                         ))}
                       </SelectContent>
                     </Select>
@@ -300,13 +341,37 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       </p>
                     </div>
                   )}
+
+                  {existingMember && (
+                    <div
+                      id={blockedPanelId}
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]"
+                    >
+                      <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
+                      <p className="text-foreground">
+                        <strong>{existingMember.fullName ?? existingMember.email}</strong> is already
+                        on your team as {ROLE_METADATA[existingMember.role]?.label ?? existingMember.role}.
+                        Sending another invitation will not change their access — accepting it does
+                        nothing. To change what they can see, use the role dropdown in{' '}
+                        <strong>Team Members</strong>.
+                      </p>
+                    </div>
+                  )}
                 </div>
 
                 <DialogFooter className="px-6 py-4 border-t border-border/40">
                   <Button variant="outline" className="h-9 px-4 rounded-lg text-[13px] font-medium" onClick={() => { setIsDialogOpen(false); setPendingConflict(false); setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' }); }}>
                     Cancel
                   </Button>
-                  <Button onClick={sendInvitation} disabled={sending} className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90">
+                  <Button
+                    onClick={sendInvitation}
+                    disabled={sending}
+                    aria-disabled={existingMember ? true : undefined}
+                    aria-describedby={existingMember ? blockedPanelId : undefined}
+                    className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+                  >
                     {sending ? 'Sending...' : pendingConflict ? 'Yes, resend anyway' : 'Send Invitation'}
                   </Button>
                 </DialogFooter>

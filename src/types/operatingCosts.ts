@@ -82,6 +82,10 @@ export interface BreakEvenData {
     breakEven: number;
     delta: number;
     status: 'above' | 'at' | 'below';
+    // True for today's row when today is still in progress — the day's
+    // sales are a running partial total, not a final figure. Consumers
+    // must branch on `isPartial` before `status` when rendering.
+    isPartial: boolean;
   }[];
 
   // Summary stats
@@ -89,6 +93,11 @@ export interface BreakEvenData {
   daysBelow: number;
   avgSurplus: number;
   avgShortfall: number;
+
+  // Sum of `delta` over complete (non-partial) days only.
+  netDelta: number;
+  // Count of complete (non-partial) days in `history`.
+  completeDays: number;
 
   // Month-to-date progress against the monthly break-even target. Always
   // present once `BreakEvenData` is materialised; `status === 'no_target'`

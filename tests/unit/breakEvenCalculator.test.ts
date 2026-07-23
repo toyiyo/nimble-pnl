@@ -188,4 +188,125 @@ describe('calculateBreakEven', () => {
     expect(result.history[1].breakEven).toBe(result.dailyBreakEven);
     expect(result.history[0].delta).toBeCloseTo(500 - result.dailyBreakEven, 0);
   });
+
+  it('tags isPartial true on exactly the todayStr row', () => {
+    const costs = [
+      makeCost({ entryType: 'value', monthlyValue: 300000, costType: 'fixed', name: 'Rent' }),
+    ];
+    // todayStr deliberately isn't the last row here — an implementation
+    // that (incorrectly) marks "the last row" partial instead of matching
+    // on date would still pass a fixture where today happens to be last.
+    const todayStr = '2026-01-03';
+    const salesData = [
+      { date: '2026-01-03', netRevenue: 200, transactionCount: 3 },
+      { date: '2026-01-01', netRevenue: 500, transactionCount: 5 },
+      { date: '2026-01-02', netRevenue: 400, transactionCount: 4 },
+    ];
+
+    const result = calculateBreakEven(costs, salesData, 0, todayStr);
+
+    expect(result.history).toHaveLength(3);
+    expect(result.history.every((h) => h.isPartial === (h.date === todayStr))).toBe(true);
+    expect(result.history.some((h) => h.isPartial)).toBe(true);
+  });
+
+  it('excludes the partial (today) row from daysBelow/avgShortfall', () => {
+    const costs = [
+      // Fixed $300k cents/month = $10,000/month => dailyBreakEven ≈ $333.33
+      makeCost({ entryType: 'value', monthlyValue: 1000000, costType: 'fixed', name: 'Rent' }),
+    ];
+    const salesData = [
+      // Complete day, below break-even
+      { date: '2026-01-01', netRevenue: 100, transactionCount: 5 },
+      // Today: partial, deeply below break-even (would drag avgShortfall if counted)
+      { date: '2026-01-02', netRevenue: 10, transactionCount: 1 },
+    ];
+
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-02');
+
+    // Only the complete day (01-01) counts toward daysBelow/avgShortfall.
+    expect(result.daysBelow).toBe(1);
+    expect(result.avgShortfall).toBeCloseTo(100 - result.dailyBreakEven, 0);
+    // The partial-day row must not be folded into the below-count or average.
+    expect(result.avgShortfall).not.toBeCloseTo(
+      ((100 - result.dailyBreakEven) + (10 - result.dailyBreakEven)) / 2,
+      0,
+    );
+  });
+
+  it('excludes the partial (today) row from daysAbove/avgSurplus', () => {
+    const costs = [
+      makeCost({ entryType: 'value', monthlyValue: 300000, costType: 'fixed', name: 'Rent' }),
+    ];
+    const salesData = [
+      // Complete day, above break-even
+      { date: '2026-01-01', netRevenue: 5000, transactionCount: 5 },
+      // Today: partial, still technically "above" but should not count
+      { date: '2026-01-02', netRevenue: 4000, transactionCount: 4 },
+    ];
+
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-02');
+
+    expect(result.daysAbove).toBe(1);
+    expect(result.avgSurplus).toBeCloseTo(5000 - result.dailyBreakEven, 0);
+  });
+
+  it('derives netDelta and completeDays from complete days only', () => {
+    const costs = [
+      makeCost({ entryType: 'value', monthlyValue: 300000, costType: 'fixed', name: 'Rent' }),
+    ];
+    const salesData = [
+      { date: '2026-01-01', netRevenue: 5000, transactionCount: 5 },
+      { date: '2026-01-02', netRevenue: 100, transactionCount: 2 },
+      // Today: partial — excluded from both netDelta and completeDays
+      { date: '2026-01-03', netRevenue: 1, transactionCount: 1 },
+    ];
+
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-03');
+
+    const expectedNetDelta =
+      (5000 - result.dailyBreakEven) + (100 - result.dailyBreakEven);
+    expect(result.completeDays).toBe(2);
+    expect(result.netDelta).toBeCloseTo(expectedNetDelta, 0);
+  });
+
+  it('handles the no-partial-row case (today absent from salesData)', () => {
+    const costs = [
+      makeCost({ entryType: 'value', monthlyValue: 300000, costType: 'fixed', name: 'Rent' }),
+    ];
+    const salesData = [
+      { date: '2026-01-01', netRevenue: 5000, transactionCount: 5 },
+      { date: '2026-01-02', netRevenue: 100, transactionCount: 2 },
+    ];
+
+    // todayStr has no matching sales row, so no history row should be partial.
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-03');
+
+    expect(result.history).toHaveLength(2);
+    expect(result.history.every((h) => h.isPartial === false)).toBe(true);
+    expect(result.completeDays).toBe(2);
+    const expectedNetDelta =
+      (5000 - result.dailyBreakEven) + (100 - result.dailyBreakEven);
+    expect(result.netDelta).toBeCloseTo(expectedNetDelta, 0);
+  });
+
+  it('handles the all-partial edge case (only today has data)', () => {
+    const costs = [
+      makeCost({ entryType: 'value', monthlyValue: 300000, costType: 'fixed', name: 'Rent' }),
+    ];
+    const salesData = [
+      { date: '2026-01-01', netRevenue: 500, transactionCount: 5 },
+    ];
+
+    const result = calculateBreakEven(costs, salesData, 0, '2026-01-01');
+
+    expect(result.history).toHaveLength(1);
+    expect(result.history[0].isPartial).toBe(true);
+    expect(result.completeDays).toBe(0);
+    expect(result.netDelta).toBe(0);
+    expect(result.daysAbove).toBe(0);
+    expect(result.daysBelow).toBe(0);
+    expect(result.avgSurplus).toBe(0);
+    expect(result.avgShortfall).toBe(0);
+  });
 });

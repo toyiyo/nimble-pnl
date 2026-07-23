@@ -42,7 +42,7 @@ in CI. If rows appear, widen the predicate and update the design before proceedi
 
 RED — pgTAP:
 1. `connected_banks` has `account_mask text`, `deactivated_at timestamptz`,
-   `data_current_through date`.
+   `data_current_through timestamptz`.
 2. `connected_banks_identity_uniq` exists and rejects a second live row with the
    same `(restaurant_id, institution_name, account_mask)`.
 3. The index permits any number of `disconnected` rows on that same tuple.
@@ -54,8 +54,11 @@ GREEN — the migration per design §3.1: three `ADD COLUMN IF NOT EXISTS`, the
 correlated `UPDATE … FROM bank_account_balances` mask backfill, the partial unique
 index, the `bank_transactions` composite index.
 
-`data_current_through` is `date`, not `timestamptz` — `bank_transactions` has no
-`transacted_at` to take a `MAX()` over (design §3.1). Do not "improve" this.
+`data_current_through` is `timestamptz`, computed as `MAX(transaction_date)`.
+`bank_transactions.transaction_date` is itself `timestamptz` — migration
+`20251021195308_…sql` converted it from `DATE` in Oct 2025, verified against
+production. An earlier draft of this plan said `date` on a misreading of the
+original `CREATE TABLE`; that is corrected (design §3.1).
 
 **Depends on:** Task 0.
 
@@ -224,7 +227,8 @@ shared helper.
 
 RED: fresh (<3 days) renders `Data through <date>` muted; stale (≥3) renders the
 `· N days behind` suffix in amber; `null` renders `Not yet verified` and no date;
-day math is whole UTC days and stable across clock times within a day.
+the input is a `timestamptz` but the gap is floored to whole UTC calendar days —
+two renders at different clock times on the same UTC day give the same N.
 
 GREEN — the component. `text-[13px] text-muted-foreground`, `tabular-nums`, no
 direct colors.

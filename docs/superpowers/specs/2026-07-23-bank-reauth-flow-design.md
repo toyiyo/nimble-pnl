@@ -87,21 +87,29 @@ ALTER TABLE public.connected_banks
   ADD COLUMN IF NOT EXISTS data_current_through timestamptz;
 ```
 
+(`data_current_through` is `timestamptz` — see the note below; an earlier draft of this
+document typed it `date` on a misreading of the schema.)
+
 | Column | Meaning | Written by |
 |--------|---------|------------|
 | `account_mask` | Stripe's `account.last4`. Already captured on the balances row; needed on the bank row to make reconnect matching identity-safe. | `account.created` branch; backfilled from `bank_account_balances` |
 | `deactivated_at` | When Stripe told us the authorization died. Drives the escalation ladder. | `deactivated` branch |
 | `data_current_through` | The newest `transaction_date` we actually hold for this bank. **This is what the UI prints** — never `last_sync_at`. | `stripe-sync-transactions` after a successful fetch |
 
-> **`data_current_through` is `date`, not `timestamptz`.** `bank_transactions` stores
-> `transaction_date DATE` and `posted_date DATE` — there is no `transacted_at timestamptz`
-> column to take a `MAX()` over. (`stripe-sync-transactions` converts Stripe's Unix instant
-> to an ISO string which Postgres truncates to a UTC calendar date on insert.) Typing the new
-> column `timestamptz` would manufacture a precision we do not have — the same class of lie
-> §1 defect #3 is about. So: `data_current_through date`, computed as
-> `MAX(transaction_date)`, and `<FreshnessStamp>` (§5.2) does day-granularity math against
-> the UTC calendar day. Adding a real `transacted_at timestamptz` to `bank_transactions` is a
-> larger, separable change (§9).
+> **`data_current_through` is `timestamptz`, computed as `MAX(transaction_date)`.**
+>
+> *Corrected after a first draft got this wrong.* Both this design and the Phase 2.5 review
+> asserted that `bank_transactions` stores `transaction_date DATE` with no full-precision
+> instant available, and on that basis typed the new column `date`. That reading came from the
+> original `CREATE TABLE` in `20251018183326_…sql` and missed the later
+> `20251021195308_…sql` ("Refactor: Store full UTC timestamps"), which did
+> `ALTER COLUMN transaction_date TYPE TIMESTAMPTZ` and the same for `posted_date`. Verified
+> against production: both columns are `timestamp with time zone` today.
+>
+> So the precision *is* there, and `stripe-sync-transactions` already writes Stripe's exact
+> instant into it (`new Date(txn.transacted_at * 1000).toISOString()`). Typing the new column
+> `date` would deliberately discard it — which is the same class of lie as §1 defect #3, just
+> pointed the other way. `data_current_through timestamptz` it is.
 
 Supporting index for the recompute (§4.3), since `bank_transactions` only has
 `idx_bank_transactions_bank(connected_bank_id)` today:
@@ -513,8 +521,12 @@ Prints `data_current_through`, never `last_sync_at`. Three states:
 | NULL | `Not yet verified` — muted, no date invented |
 
 Typography per CLAUDE.md: `text-[13px] text-muted-foreground`, `tabular-nums` on the date.
-Day math is whole UTC calendar days against `data_current_through` (a `date`, §3.1), so
-"11 days behind" is always an integer and never drifts with the viewer's clock time.
+
+`data_current_through` is a `timestamptz` (§3.1), but the stamp deliberately renders a **date**
+and floors the gap to whole days. A number that reads "11 days behind" must not tick to 12
+because the viewer reloaded after midnight UTC while nothing about the data changed — the gap
+is computed by flooring both endpoints to UTC calendar days and subtracting. The full instant
+stays available for the `title` attribute and for anything downstream that needs precision.
 
 The 3-day amber threshold is about **ordinary staleness** — a weekend, a slow Stripe refresh.
 It is deliberately *not* the day-0 quarantine signal: quarantine keys off `bankStatus ===
@@ -670,7 +682,7 @@ keep the existing behaviour rather than special-casing this type.
 row in the worst case. Accepted deliberately: a duplicate is diagnosable and repairable, a
 merged ledger is neither.
 
-**`data_current_through` as a separate column rather than a computed `MAX(transacted_at)`
+**`data_current_through` as a separate column rather than a computed `MAX(transaction_date)`
 subquery.** The subquery would be correct but puts an aggregate over `bank_transactions` on
 every `/banking` render. A denormalised column written at sync time is one lookup, and sync is
 the only thing that can change the answer.
@@ -709,11 +721,11 @@ from the latest migration that sorts before the new one and write a provenance c
   fed by `useConnectedBanks` (§5.1.3). Those totals will silently shrink when an account is
   quarantined; closing that means widening the hook *and* rendering `<BankReauthBanner>` on
   three more pages. Named, scoped out, and worth doing next.
-- **A real `transacted_at timestamptz` on `bank_transactions`.** Today the column set is
-  `transaction_date DATE` / `posted_date DATE`, so freshness is UTC-day-granular and blind to
-  restaurant timezone (§3.1). That is honest but coarse; a true instant would let
-  `data_current_through` be a `timestamptz` and make the stamp exact. Separate change with its
-  own backfill.
+- **Restaurant-timezone-aware freshness display.** `transaction_date` is a true UTC instant
+  (§3.1), and `<FreshnessStamp>` floors it to UTC calendar days. For a restaurant several hours
+  off UTC, a late-evening transaction can therefore stamp as the following day. Rendering the
+  stamp in the restaurant's own timezone is the right fix and is a separable change — the
+  precision needed for it is already in the column.
 - Bringing `BankConnectionCard.tsx` fully onto the CLAUDE.md type scale. It currently uses
   `text-base` / `text-lg` / `text-sm` / `text-xs` rather than the mandated
   `text-[17px]` / `text-[14px]` / `text-[13px]` / `text-[12px]`. This change touches the file

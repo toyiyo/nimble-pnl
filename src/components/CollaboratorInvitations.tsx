@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, AlertTriangle, Link2, RefreshCw } from 'lucide-react';
+import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
 import type { Role } from '@/lib/permissions';
 import { formatExpiresIn } from '@/lib/invitationUtils';
@@ -19,7 +19,8 @@ import {
   useResendCollaboratorInvitation,
 } from '@/hooks/useCollaborators';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
-import { useAccountlessEmployees, findAccountlessEmployeeByEmail } from '@/hooks/useAccountlessEmployees';
+import { useAccountlessEmployees, resolveAccountlessEmployeeHint } from '@/hooks/useAccountlessEmployees';
+import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 interface CollaboratorInvitationsProps {
   restaurantId: string;
@@ -55,11 +56,12 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
   const blockedPanelId = 'collab-existing-member-warning';
 
   const { data: accountlessEmployees } = useAccountlessEmployees(restaurantId);
-  // Member detection wins and MUST have settled first, so the hint never
-  // flashes before a block that lands once membership data arrives.
-  const accountlessEmployee = existingMember || membersLoading
-    ? null
-    : findAccountlessEmployeeByEmail(accountlessEmployees, email);
+  const accountlessEmployee = resolveAccountlessEmployeeHint(
+    existingMember,
+    membersLoading,
+    accountlessEmployees,
+    email
+  );
   const hintPanelId = 'collab-existing-employee-hint';
   const activeDescribedById = existingMember
     ? blockedPanelId
@@ -245,20 +247,11 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
           )}
 
           {accountlessEmployee && (
-            <div
+            <AccountlessEmployeeHint
               id={hintPanelId}
-              role="status"
-              aria-live="polite"
-              className="flex items-start gap-2 p-3 rounded-lg bg-info/10 border border-info/20 text-[13px]"
-            >
-              <Link2 className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-              <p className="text-foreground">
-                <strong>{accountlessEmployee.name}</strong> is already set up for scheduling
-                here. Accepting this invite will link their new{' '}
-                <strong>{ROLE_METADATA[preset.role]?.label ?? preset.title}</strong> login to that
-                same record — no duplicate profile.
-              </p>
-            </div>
+              employeeName={accountlessEmployee.name}
+              roleLabel={ROLE_METADATA[preset.role]?.label ?? preset.title}
+            />
           )}
 
           <div className="flex gap-2">

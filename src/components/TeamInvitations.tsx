@@ -9,13 +9,14 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { AlertTriangle, Link2, Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Mail, Plus, Clock, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import { formatExpiresIn } from '@/lib/invitationUtils';
 import type { Role } from '@/lib/permissions/types';
 import { ROLE_METADATA, groupRolesForInvite } from '@/lib/permissions/definitions';
 import { getInvitableRoles } from '@/lib/permissions/invitations';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
-import { useAccountlessEmployees, findAccountlessEmployeeByEmail } from '@/hooks/useAccountlessEmployees';
+import { useAccountlessEmployees, resolveAccountlessEmployeeHint } from '@/hooks/useAccountlessEmployees';
+import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 interface Invitation {
   id: string;
@@ -57,11 +58,12 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const blockedPanelId = 'invite-existing-member-warning';
 
   const { data: accountlessEmployees } = useAccountlessEmployees(restaurantId);
-  // Member detection wins and MUST have settled first, so the hint never
-  // flashes before a block that lands once membership data arrives.
-  const accountlessEmployee = existingMember || membersLoading
-    ? null
-    : findAccountlessEmployeeByEmail(accountlessEmployees, inviteForm.email);
+  const accountlessEmployee = resolveAccountlessEmployeeHint(
+    existingMember,
+    membersLoading,
+    accountlessEmployees,
+    inviteForm.email
+  );
   const hintPanelId = 'invite-existing-employee-hint';
   const activeDescribedById = existingMember
     ? blockedPanelId
@@ -378,20 +380,11 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                   )}
 
                   {accountlessEmployee && (
-                    <div
+                    <AccountlessEmployeeHint
                       id={hintPanelId}
-                      role="status"
-                      aria-live="polite"
-                      className="flex items-start gap-2 p-3 rounded-lg bg-info/10 border border-info/20 text-[13px]"
-                    >
-                      <Link2 className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
-                      <p className="text-foreground">
-                        <strong>{accountlessEmployee.name}</strong> is already set up for scheduling
-                        here. Accepting this invite will link their new{' '}
-                        <strong>{ROLE_METADATA[inviteForm.role as Role]?.label ?? inviteForm.role}</strong> login
-                        to that same record — no duplicate profile.
-                      </p>
-                    </div>
+                      employeeName={accountlessEmployee.name}
+                      roleLabel={ROLE_METADATA[inviteForm.role as Role]?.label ?? inviteForm.role}
+                    />
                   )}
                 </div>
 

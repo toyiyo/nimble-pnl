@@ -55,3 +55,17 @@ export function findAccountlessEmployeeByEmail(
   if (!normalized || !employees) return null;
   return employees.find((e) => e.email?.trim().toLowerCase() === normalized) ?? null;
 }
+
+/**
+ * Gates the accountless-employee match behind existing-member detection:
+ * member detection wins and MUST have settled first, so the inform hint
+ * never flashes before a block that lands once membership data arrives.
+ */
+export function resolveAccountlessEmployeeHint(
+  existingMember: unknown,
+  membersLoading: boolean,
+  employees: AccountlessEmployee[] | undefined,
+  email: string
+): AccountlessEmployee | null {
+  return existingMember || membersLoading ? null : findAccountlessEmployeeByEmail(employees, email);
+}

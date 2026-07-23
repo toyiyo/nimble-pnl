@@ -69,3 +69,22 @@ export function resolveAccountlessEmployeeHint(
 ): AccountlessEmployee | null {
   return existingMember || membersLoading ? null : findAccountlessEmployeeByEmail(employees, email);
 }
+
+/**
+ * The email field's `aria-describedby` target: whichever panel — the
+ * existing-member block or the accountless-employee hint — is currently
+ * rendered, or `undefined` when neither is. Same precedence as
+ * `resolveAccountlessEmployeeHint` (block wins). Written as an if/else
+ * chain rather than a nested ternary per the project's lint rule
+ * disallowing nested ternaries.
+ */
+export function resolveDescribedById(
+  existingMember: unknown,
+  accountlessEmployee: AccountlessEmployee | null,
+  blockedPanelId: string,
+  hintPanelId: string
+): string | undefined {
+  if (existingMember) return blockedPanelId;
+  if (accountlessEmployee) return hintPanelId;
+  return undefined;
+}

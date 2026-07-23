@@ -19,7 +19,7 @@ import {
   useResendCollaboratorInvitation,
 } from '@/hooks/useCollaborators';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
-import { useAccountlessEmployees, resolveAccountlessEmployeeHint } from '@/hooks/useAccountlessEmployees';
+import { useAccountlessEmployees, resolveAccountlessEmployeeHint, resolveDescribedById } from '@/hooks/useAccountlessEmployees';
 import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 interface CollaboratorInvitationsProps {
@@ -63,11 +63,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
     email
   );
   const hintPanelId = 'collab-existing-employee-hint';
-  const activeDescribedById = existingMember
-    ? blockedPanelId
-    : accountlessEmployee
-      ? hintPanelId
-      : undefined;
+  const activeDescribedById = resolveDescribedById(existingMember, accountlessEmployee, blockedPanelId, hintPanelId);
 
   const handleSendInvitation = () => {
     // aria-disabled keeps the button focusable, so the handler owns the block.
@@ -260,6 +256,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
               type="email"
               placeholder="collaborator@example.com"
               value={email}
+              aria-describedby={activeDescribedById}
               onChange={(e) => setEmail(e.target.value)}
               className="flex-1"
             />
@@ -267,7 +264,6 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
               onClick={handleSendInvitation}
               disabled={sendInvitationMutation.isPending || !email.trim()}
               aria-disabled={existingMember ? true : undefined}
-              aria-describedby={activeDescribedById}
               className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >
               {sendInvitationMutation.isPending ? 'Sending...' : 'Send Invite'}

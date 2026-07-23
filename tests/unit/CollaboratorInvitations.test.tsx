@@ -109,7 +109,7 @@ describe('CollaboratorInvitations – blocking invites to existing members', () 
     expect(mockSendMutate).not.toHaveBeenCalled();
   });
 
-  it('describes the blocked button with the explanation panel', async () => {
+  it('describes the email field with the explanation panel', async () => {
     mockUseRestaurantMembers.mockReturnValue({
       data: [{ userId: 'u1', email: 'book@cpa.example', fullName: 'Dana Books', role: 'staff' }],
       isError: false,
@@ -121,8 +121,8 @@ describe('CollaboratorInvitations – blocking invites to existing members', () 
     await user.type(screen.getByLabelText(/email address/i), 'book@cpa.example');
 
     const panel = await screen.findByRole('status');
-    const send = screen.getByRole('button', { name: /send invite/i });
-    expect(send.getAttribute('aria-describedby')).toBe(panel.id);
+    const emailInput = screen.getByLabelText(/email address/i);
+    expect(emailInput.getAttribute('aria-describedby')).toBe(panel.id);
   });
 
   it('sends normally for a non-member email', async () => {

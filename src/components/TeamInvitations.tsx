@@ -15,7 +15,7 @@ import type { Role } from '@/lib/permissions/types';
 import { ROLE_METADATA, groupRolesForInvite } from '@/lib/permissions/definitions';
 import { getInvitableRoles } from '@/lib/permissions/invitations';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
-import { useAccountlessEmployees, resolveAccountlessEmployeeHint } from '@/hooks/useAccountlessEmployees';
+import { useAccountlessEmployees, resolveAccountlessEmployeeHint, resolveDescribedById } from '@/hooks/useAccountlessEmployees';
 import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 interface Invitation {
@@ -65,11 +65,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
     inviteForm.email
   );
   const hintPanelId = 'invite-existing-employee-hint';
-  const activeDescribedById = existingMember
-    ? blockedPanelId
-    : accountlessEmployee
-      ? hintPanelId
-      : undefined;
+  const activeDescribedById = resolveDescribedById(existingMember, accountlessEmployee, blockedPanelId, hintPanelId);
 
   useEffect(() => {
     setShowHistory(false);
@@ -304,6 +300,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       type="email"
                       placeholder="Enter email address"
                       value={inviteForm.email}
+                      aria-describedby={activeDescribedById}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       onChange={(e) => {
                         setPendingConflict(false);
@@ -396,7 +393,6 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                     onClick={sendInvitation}
                     disabled={sending}
                     aria-disabled={existingMember ? true : undefined}
-                    aria-describedby={activeDescribedById}
                     className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                   >
                     {sending ? 'Sending...' : pendingConflict ? 'Yes, resend anyway' : 'Send Invitation'}

@@ -162,7 +162,8 @@ describe('TeamInvitations – accountless-employee inform hint', () => {
 
     const send = screen.getByRole('button', { name: /send invitation/i });
     expect(send).not.toHaveAttribute('aria-disabled', 'true');
-    expect(send.getAttribute('aria-describedby')).toBe(panel.id);
+    const emailInput = screen.getByLabelText(/email address/i);
+    expect(emailInput.getAttribute('aria-describedby')).toBe(panel.id);
 
     await user.click(send);
 

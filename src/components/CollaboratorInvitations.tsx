@@ -55,7 +55,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
 
   const handleSendInvitation = () => {
     // aria-disabled keeps the button focusable, so the handler owns the block.
-    if (findMemberByEmail(members, email)) return;
+    if (existingMember) return;
 
     if (!email || !selectedRole) {
       toast({

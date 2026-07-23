@@ -50,6 +50,11 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const [resendConflictId, setResendConflictId] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const { data: members } = useRestaurantMembers(restaurantId);
+  // null while loading, on error, or for a non-member — all "proceed normally".
+  const existingMember = findMemberByEmail(members, inviteForm.email);
+  const blockedPanelId = 'invite-existing-member-warning';
+
   useEffect(() => {
     setShowHistory(false);
     fetchInvitations();
@@ -125,7 +130,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
 
   const sendInvitation = async () => {
     // aria-disabled keeps the button focusable, so the handler owns the block.
-    if (findMemberByEmail(members, inviteForm.email)) return;
+    if (existingMember) return;
 
     if (!inviteForm.email || !inviteForm.role) {
       toast({
@@ -227,11 +232,6 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   // A lone heading over a one-item list is noise — operations_manager can
   // invite only 'staff'.
   const showGroupLabels = roleGroups.length > 1;
-
-  const { data: members } = useRestaurantMembers(restaurantId);
-  // null while loading, on error, or for a non-member — all "proceed normally".
-  const existingMember = findMemberByEmail(members, inviteForm.email);
-  const blockedPanelId = 'invite-existing-member-warning';
 
   return (
     <Card>

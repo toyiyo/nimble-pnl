@@ -33,7 +33,9 @@ describe('findMemberByEmail', () => {
   });
 
   it('ignores members with no email rather than matching them', () => {
-    expect(findMemberByEmail(members, '')).toBeNull();
+    // A member whose email is null must never match a real lookup, and must
+    // not throw while comparing — the roster includes exactly such a member.
     expect(members.some((m) => m.email === null)).toBe(true);
+    expect(findMemberByEmail(members, 'no-email@example.com')).toBeNull();
   });
 });

@@ -30,7 +30,9 @@ function parseMatrix(source: string, file: string): Record<string, string[]> {
   const entry = /(\w+)\s*:\s*\[([^\]]*)\]/g;
   let m: RegExpExecArray | null;
   while ((m = entry.exec(body)) !== null) {
-    matrix[m[1]] = [...m[2].matchAll(/'([^']+)'/g)].map((r) => r[1]);
+    // Accept either quote style so a double-quoted role in the Deno mirror
+    // (e.g. "kiosk") is still parsed — missing it would silently defeat the guard.
+    matrix[m[1]] = [...m[2].matchAll(/(['"])([^'"]+)\1/g)].map((r) => r[2]);
   }
   return matrix;
 }

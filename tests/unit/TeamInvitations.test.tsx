@@ -48,7 +48,7 @@ vi.mock('@/hooks/use-toast', () => ({
 // Mock only the useRestaurantMembers hook (the React Query call); keep
 // findMemberByEmail real since it's a pure function and is exactly the
 // logic under test in the "blocking" describe block below.
-const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isError: false }));
+const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
 vi.mock('@/hooks/useRestaurantMembers', async () => {
   const actual = await vi.importActual<typeof import('@/hooks/useRestaurantMembers')>(
     '@/hooks/useRestaurantMembers'
@@ -56,6 +56,19 @@ vi.mock('@/hooks/useRestaurantMembers', async () => {
   return {
     ...actual,
     useRestaurantMembers: (...args: unknown[]) => mockUseRestaurantMembers(...args),
+  };
+});
+
+// Also mock useAccountlessEmployees (React Query call) — not the focus of
+// this test file, so default to an empty roster throughout.
+const mockUseAccountlessEmployees = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
+vi.mock('@/hooks/useAccountlessEmployees', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useAccountlessEmployees')>(
+    '@/hooks/useAccountlessEmployees'
+  );
+  return {
+    ...actual,
+    useAccountlessEmployees: (...args: unknown[]) => mockUseAccountlessEmployees(...args),
   };
 });
 

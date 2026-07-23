@@ -2,7 +2,9 @@
 
 **Date:** 2026-07-23
 **Author:** Claude (systematic-debugging → development-workflow)
-**Status:** Approved (scope confirmed by user: fix all 3 hooks + PR)
+**Status:** Approved (scope confirmed by user: fix all 3 hooks + PR). A 4th
+call site (`useTimePunches.tsx`) surfaced in Phase 7a review is **deferred to a
+follow-up** to keep this PR at the approved scope — see "Out of scope" below.
 
 ## Problem
 
@@ -184,6 +186,17 @@ const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
   logic that builds `fetchStart`/`fetchEnd` (`lookaheadPunchFetchRange` /
   `bufferPunchFetchRange`) is unchanged and **not** audited here — its
   timezone-boundary correctness is a separate concern.
+- **`src/hooks/useTimePunches.tsx:46` — 4th call site, deferred to a follow-up.**
+  Phase 7a's Codex adversarial reviewer found this hook (feeds
+  `TimePunchesManager` and `Tips.tsx`) runs the same unpaginated `time_punches`
+  `.select()` with no `.range()`, ordered `punch_time desc` — the identical
+  1,000-row-truncation bug class. It was **not** in this PR's approved scope
+  ("fix all 3 hooks"): `useLaborCostsFromTimeTracking`, `usePayroll`,
+  `useMonthlyMetrics`. Folding a 4th hook in would improvise past the approved
+  design, so it is **explicitly deferred to a separate follow-up PR** rather
+  than expanded into this one. The fix is mechanical (same `fetchAllRows`
+  swap), so the follow-up is small. Tracked for the user to approve when they
+  return.
 
 ## Design-review outcome (Phase 2.5)
 

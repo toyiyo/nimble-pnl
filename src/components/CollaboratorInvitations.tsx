@@ -57,7 +57,10 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
     // aria-disabled keeps the button focusable, so the handler owns the block.
     if (existingMember) return;
 
-    if (!email || !selectedRole) {
+    // Normalize once so whitespace-only input is rejected and the trimmed
+    // address is what we send — matching findMemberByEmail, which also trims.
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !selectedRole) {
       toast({
         title: "Error",
         description: "Please select a role and enter an email",
@@ -67,7 +70,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
     }
 
     sendInvitationMutation.mutate(
-      { restaurantId, email, role: selectedRole },
+      { restaurantId, email: normalizedEmail, role: selectedRole },
       {
         onSuccess: () => {
           setEmail('');
@@ -233,7 +236,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             />
             <Button
               onClick={handleSendInvitation}
-              disabled={sendInvitationMutation.isPending || !email}
+              disabled={sendInvitationMutation.isPending || !email.trim()}
               aria-disabled={existingMember ? true : undefined}
               aria-describedby={existingMember ? blockedPanelId : undefined}
               className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"

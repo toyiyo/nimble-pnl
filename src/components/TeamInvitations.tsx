@@ -132,7 +132,11 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
     // aria-disabled keeps the button focusable, so the handler owns the block.
     if (existingMember) return;
 
-    if (!inviteForm.email || !inviteForm.role) {
+    // Normalize once so whitespace-only input is rejected and the trimmed
+    // address is what we conflict-check against and actually send — matching
+    // findMemberByEmail, which also trims.
+    const normalizedEmail = inviteForm.email.trim();
+    if (!normalizedEmail || !inviteForm.role) {
       toast({
         title: "Error",
         description: "Please fill in all fields",
@@ -142,7 +146,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
     }
 
     const hasConflict = invitations.some(
-      inv => inv.email.toLowerCase() === inviteForm.email.toLowerCase() && inv.status === 'pending'
+      inv => inv.email.toLowerCase() === normalizedEmail.toLowerCase() && inv.status === 'pending'
     );
     if (hasConflict && !pendingConflict) {
       setPendingConflict(true);
@@ -155,7 +159,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
       const { data, error } = await supabase.functions.invoke('send-team-invitation', {
         body: {
           restaurantId,
-          email: inviteForm.email,
+          email: normalizedEmail,
           role: inviteForm.role,
         },
       });
@@ -164,7 +168,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
 
       toast({
         title: "Success",
-        description: `Invitation sent to ${inviteForm.email}`,
+        description: `Invitation sent to ${normalizedEmail}`,
       });
 
       setInviteForm({ email: '', role: invitableRoles[0] ?? 'staff' });

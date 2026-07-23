@@ -24,7 +24,7 @@
 | `src/components/CollaboratorInvitations.tsx` | preset icon, grid, aria-pressed | Modify |
 | `src/App.tsx` | `COLLABORATOR_ROUTES` route allow-list (fail-open guard) | Modify |
 | `src/components/AppSidebar.nav.ts` | bespoke nav array + `getNavigationForRole` case | Modify |
-| `supabase/migrations/20260709120000_add_collaborator_operations_manager_role.sql` | constraint + capability fn + RLS | Create |
+| `supabase/migrations/20260723120000_add_collaborator_operations_manager_role.sql` | constraint + capability fn + RLS | Create |
 | `tests/unit/collaboratorOperationsManagerRole.test.ts` | TS capability/metadata/preset drift guard | Create |
 | `tests/unit/invitationMatrix.test.ts` | invite-matrix assertions for new role | Modify |
 | `tests/unit/collaboratorOperationsManagerRouting.test.ts` | route + nav fail-open regression guard | Create |
@@ -609,7 +609,7 @@ git commit -m "fix(nav): scoped sidebar for collaborator_operations_manager (clo
 ## Task 8: SQL migration — constraint + capability fn + RLS
 
 **Files:**
-- Create: `supabase/migrations/20260709120000_add_collaborator_operations_manager_role.sql`
+- Create: `supabase/migrations/20260723120000_add_collaborator_operations_manager_role.sql`
 
 > Template: `supabase/migrations/20260702170000_add_operations_manager_role.sql`. Copy its `user_has_capability` body verbatim, then add `collaborator_operations_manager` to the SAME role lists `operations_manager` appears in, EXCEPT: `view:team`, `manage:team`, `manage:employees`, `edit:payroll` (do NOT add there). DO add it to `view:payroll`, `view:employees`, `view:ai_assistant`, and every inventory/recipe/scheduling/tips/time_punches/pos/reports/dashboard branch that lists `operations_manager`.
 
@@ -739,7 +739,7 @@ Expected: all migrations apply with no error; the new constraint and policies ar
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260709120000_add_collaborator_operations_manager_role.sql
+git add supabase/migrations/20260723120000_add_collaborator_operations_manager_role.sql
 git commit -m "feat(db): collaborator_operations_manager role — capabilities + RLS parity + scheduling-write fix"
 ```
 

@@ -36,7 +36,7 @@ vi.mock('@/hooks/use-toast', () => ({
 // Mock only the useRestaurantMembers hook (the React Query call); keep
 // findMemberByEmail real since it's a pure function and is exactly the
 // logic under test in the "blocking" tests below.
-const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isError: false }));
+const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
 vi.mock('@/hooks/useRestaurantMembers', async () => {
   const actual = await vi.importActual<typeof import('@/hooks/useRestaurantMembers')>(
     '@/hooks/useRestaurantMembers'
@@ -44,6 +44,21 @@ vi.mock('@/hooks/useRestaurantMembers', async () => {
   return {
     ...actual,
     useRestaurantMembers: (...args: unknown[]) => mockUseRestaurantMembers(...args),
+  };
+});
+
+// Also mock useAccountlessEmployees (the React Query call) so this file's
+// tests — which render the component without a QueryClientProvider — don't
+// hit the real hook. Keep findAccountlessEmployeeByEmail real; it's exercised
+// separately in CollaboratorInvitations.hint.test.tsx.
+const mockUseAccountlessEmployees = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
+vi.mock('@/hooks/useAccountlessEmployees', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useAccountlessEmployees')>(
+    '@/hooks/useAccountlessEmployees'
+  );
+  return {
+    ...actual,
+    useAccountlessEmployees: (...args: unknown[]) => mockUseAccountlessEmployees(...args),
   };
 });
 
@@ -66,7 +81,8 @@ describe('CollaboratorInvitations – blocking invites to existing members', () 
     vi.clearAllMocks();
     // Default: nobody on the roster matches — every test below overrides
     // this when it needs an existing member (or a lookup error).
-    mockUseRestaurantMembers.mockReturnValue({ data: [], isError: false });
+    mockUseRestaurantMembers.mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockUseAccountlessEmployees.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
   it('blocks a collaborator invite for an email that is already a member', async () => {

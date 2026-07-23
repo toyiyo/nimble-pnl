@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 
@@ -94,15 +94,32 @@ function buildBacklog(count: number): TimePunch[] {
   return rows;
 }
 
-const windowStart = new Date(2026, 2, 19); // host-local, matches laborCostWindow
-const windowEnd = new Date(2026, 6, 23, 23, 59, 59, 999);
-
 function jul22Labor(punches: TimePunch[]): number {
+  // Constructed at call time (inside the pinned-TZ tests) so the local
+  // window bounds resolve under America/Chicago, matching laborCostWindow.
+  const windowStart = new Date(2026, 2, 19); // host-local, matches laborCostWindow
+  const windowEnd = new Date(2026, 6, 23, 23, 59, 59, 999);
   const { dailyCosts } = calculateActualLaborCost(employees, punches, windowStart, windowEnd);
   return dailyCosts.find((d) => d.date === '2026-07-22')?.total_cost ?? 0;
 }
 
 describe('time_punches 1000-row truncation zeroes recent-day labor (/labor bug)', () => {
+  // Pin to the restaurant's real timezone (America/Chicago). Day-bucketing in
+  // calculateActualLaborCost uses the HOST-local day (formatDateUTC reads
+  // getFullYear/Month/Date), and $586.72 is the Jul 22 total as seen in
+  // Chicago. Without pinning, CI's UTC host buckets employee 0f5da8cc's second
+  // split shift (clock-in 2026-07-23T01:56Z = Jul 22 20:56 Chicago) onto Jul 23
+  // instead of Jul 22, dropping $26.44 and yielding $560.28.
+  let originalTZ: string | undefined;
+  beforeAll(() => {
+    originalTZ = process.env.TZ;
+    process.env.TZ = 'America/Chicago';
+  });
+  afterAll(() => {
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  });
+
   // Backlog large enough that total > 1000 and all Jul 22 rows sort past row 1000.
   const backlog = buildBacklog(1020);
   const jul22Punches = jul22.map(toPunch);

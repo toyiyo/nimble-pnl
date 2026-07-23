@@ -18,7 +18,7 @@
  */
 import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 const RESTAURANT = '7c0c76e3-e770-401b-a2a9-c1edd407efed';
@@ -165,6 +165,21 @@ const createWrapper = () => {
 };
 
 describe('useLaborCostsFromTimeTracking pagination (1000-row cap fix)', () => {
+  // Pin to the restaurant's real timezone (America/Chicago). Day-bucketing in
+  // calculateActualLaborCost uses the HOST-local day, and $586.72 is the Jul 22
+  // total as seen in Chicago. Without pinning, CI's UTC host buckets employee
+  // 0f5da8cc's second split shift (clock-in 2026-07-23T01:56Z = Jul 22 20:56
+  // Chicago) onto Jul 23, dropping $26.44 and yielding $560.28.
+  let originalTZ: string | undefined;
+  beforeAll(() => {
+    originalTZ = process.env.TZ;
+    process.env.TZ = 'America/Chicago';
+  });
+  afterAll(() => {
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  });
+
   beforeEach(() => {
     rangeCalls.length = 0;
     fromMock.mockClear();

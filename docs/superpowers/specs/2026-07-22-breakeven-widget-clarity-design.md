@@ -93,8 +93,9 @@ Returns `null` when fewer than 7 complete days exist, or when no weekday has ≥
 samples — an insight asserted from one Tuesday is noise.
 
 Weekday derived with `parseLocalDate` (already in `breakEvenCalculator.ts`,
-extracted to a shared spot) — **not** `parseISO`, which reads bare date strings
-as UTC and shifts the weekday back a day in negative UTC offsets.
+extracted to a shared spot) — **not** native `new Date('yyyy-MM-dd')`, which
+reads a bare date string as UTC midnight and shifts the weekday back a day in
+negative UTC offsets.
 
 **Rendered as visible copy.** Per `memory/lessons.md` 2026-07-22 (the lesson this
 author wrote three days ago): a derived sentence good enough to be an

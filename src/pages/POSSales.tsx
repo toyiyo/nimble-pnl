@@ -158,16 +158,31 @@ export default function POSSales() {
     const timeout = setTimeout(() => setDebouncedSearchTerm(searchTerm), 350);
     return () => clearTimeout(timeout);
   }, [searchTerm]);
-  // Default to last 30 days for better UX and performance
-  const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
   // Entry point from a shared/bookmarked link (e.g. a Sales vs Break-Even bar
-  // click → /pos-sales?startDate=<d>&endDate=<d>). Seeding-only, not
-  // bidirectional: editing the date inputs below does not write back to the
-  // URL. Keyed on [searchParams] — not a useState lazy initializer — so it
-  // re-applies if the params change on an already-mounted page, not just at
-  // first mount (matches Recipes.tsx/Inventory.tsx's existing convention for
-  // consuming incoming query params).
+  // click → /pos-sales?startDate=<d>&endDate=<d>): seed the range from the URL
+  // at first render, falling back to the last 30 days when no valid params are
+  // present. Lazy-initializing here (rather than defaulting to 30 days and
+  // correcting in the effect below) means the very first render already queries
+  // the drilled-down day — no wasted default-range request and no flash of
+  // default-range data before the effect commits. Seeding-only, not
+  // bidirectional: editing the date inputs below does not write back to the URL.
+  const initialDateRange = useMemo(
+    () =>
+      parseDateRangeFromSearchParams(searchParams) ?? {
+        startDate: formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"),
+        endDate: formatDateFn(new Date(), "yyyy-MM-dd"),
+      },
+    // Intentionally first-render only: later param changes flow through the
+    // effect below, not a recomputed initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [startDate, setStartDate] = useState(initialDateRange.startDate);
+  const [endDate, setEndDate] = useState(initialDateRange.endDate);
+  // Re-apply when the params change on an already-mounted page (not just at
+  // first mount) — matches Recipes.tsx/Inventory.tsx's convention for consuming
+  // incoming query params. The lazy initializer above covers the fresh-mount
+  // case; this covers navigation into a new range while the page stays mounted.
   useEffect(() => {
     const parsed = parseDateRangeFromSearchParams(searchParams);
     if (parsed) {

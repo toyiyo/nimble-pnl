@@ -51,6 +51,7 @@ import AvailableShiftsPage from "./pages/AvailableShiftsPage";
 import PrepRecipesEnhanced from "./pages/PrepRecipesEnhanced";
 import TimePunchesManager from "./pages/TimePunchesManager";
 import Payroll from "./pages/Payroll";
+import Labor from "./pages/Labor";
 import Expenses from "./pages/Expenses";
 import PrintChecks from "./pages/PrintChecks";
 import PurchaseOrders from "./pages/PurchaseOrders";
@@ -296,6 +297,7 @@ const App = () => (
           <Route path="/kiosk" element={<ProtectedRoute allowStaff={true} noChrome={true}><KioskMode /></ProtectedRoute>} />
           <Route path="/time-punches" element={<ProtectedRoute><TimePunchesManager /></ProtectedRoute>} />
           <Route path="/payroll" element={<ProtectedRoute><Payroll /></ProtectedRoute>} />
+          <Route path="/labor" element={<ProtectedRoute><Labor /></ProtectedRoute>} />
           <Route path="/tips" element={<ProtectedRoute><Tips /></ProtectedRoute>} />
           <Route path="/employee/tips" element={<ProtectedRoute allowStaff={true}><EmployeeTips /></ProtectedRoute>} />
           <Route path="/employee/more" element={<ProtectedRoute allowStaff={true}><EmployeeMore /></ProtectedRoute>} />

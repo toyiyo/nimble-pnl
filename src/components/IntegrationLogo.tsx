@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import * as SimpleIcons from 'simple-icons';
 
 interface IntegrationLogoProps {
@@ -12,6 +13,7 @@ const imageLogoMap: Record<string, string> = {
   'focus-pos': '/logos/focus.svg',
   'toast-pos': '/logos/toast.png',
   'shift4-pos': '/logos/shift4.png',
+  'revel-pos': '/logos/revel-icon.png',
   'sling-scheduling': '/logos/sling.svg',
   '7shifts': '/logos/7shifts.png',
   'when-i-work': '/logos/when-i-work.png',
@@ -27,6 +29,7 @@ const logoMap: Record<string, { icon: any; color: string }> = {
 // Emoji fallbacks for logos not available as images or SVG icons
 const emojiMap: Record<string, string> = {
   'toast-pos': '🍞',
+  'revel-pos': '🔔',
   'square-pos': '⬜',
   'clover-pos': '🍀',
   'sling-scheduling': '📋',
@@ -37,26 +40,29 @@ const emojiMap: Record<string, string> = {
 };
 
 export const IntegrationLogo = ({ integrationId, size = 24, className = '' }: IntegrationLogoProps) => {
-  // Check for image logo first
+  const [imgFailed, setImgFailed] = useState(false);
+
+  // Check for image logo first (fall through to icon/emoji if the file is missing)
   const imagePath = imageLogoMap[integrationId];
-  if (imagePath) {
+  if (imagePath && !imgFailed) {
     return (
-      <img 
-        src={imagePath} 
+      <img
+        src={imagePath}
         alt={`${integrationId} logo`}
         width={size}
         height={size}
         className={className}
+        onError={() => setImgFailed(true)}
       />
     );
   }
-  
+
   // Then check for SVG icon
   const logo = logoMap[integrationId];
   if (logo?.icon) {
     const iconPath = logo.icon.path;
     const iconColor = logo.color;
-    
+
     return (
       <div className={`flex items-center justify-center ${className}`}>
         <svg
@@ -72,7 +78,7 @@ export const IntegrationLogo = ({ integrationId, size = 24, className = '' }: In
       </div>
     );
   }
-  
+
   // Fallback to emoji
   return (
     <div className={`flex items-center justify-center text-2xl ${className}`}>

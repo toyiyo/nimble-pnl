@@ -221,7 +221,15 @@ export const ShiftCell = memo(
     );
   },
   (prev, next) =>
-    prev.coverage === next.coverage &&
+    // Value-based comparison (not identity): coverageByTemplateDay is rebuilt
+    // wholesale on every planner edit, so `prev.coverage === next.coverage`
+    // would always fail and re-render every cell regardless of whether this
+    // slot's own coverage actually changed. Compare the primitive fields that
+    // actually drive this cell's render instead.
+    prev.coverage?.openSpots === next.coverage?.openSpots &&
+    prev.coverage?.coveragePct === next.coverage?.coveragePct &&
+    prev.coverage?.coveringEmployees.length === next.coverage?.coveringEmployees.length &&
+    prev.coverage?.loanedOut.length === next.coverage?.loanedOut.length &&
     prev.templateId === next.templateId &&
     prev.day === next.day &&
     prev.isActiveDay === next.isActiveDay &&

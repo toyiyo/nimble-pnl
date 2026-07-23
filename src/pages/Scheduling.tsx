@@ -13,8 +13,12 @@ import { FeatureGate } from '@/components/subscription';
 import { useShifts, useDeleteShift, useDeleteShiftSeries, useUpdateShiftSeries, useSeriesInfo } from '@/hooks/useShifts';
 import { useShiftTrades } from '@/hooks/useShiftTrades';
 import { useTimeOffRequests } from '@/hooks/useTimeOffRequests';
-import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { TimeOffTabBadge } from './SchedulingTimeOffTabBadge';
+import { ScheduleDayHeaderContent, TODAY_HEADER_CAP_RULE_CLASS } from './SchedulingDayHeaderContent';
+import { SchedulingTimeOffCellContent } from './SchedulingTimeOffCellContent';
+import { WeeklyAvailabilityChip } from './SchedulingWeeklyAvailabilityChip';
+import { ShiftCard } from './SchedulingShiftCard';
+import { WeekScheduleMobile } from '@/components/scheduling/WeekScheduleMobile';
 import { usePublishSchedule, useUnpublishSchedule, useWeekPublicationStatus } from '@/hooks/useSchedulePublish';
 import { useScheduleChangeLogs } from '@/hooks/useScheduleChangeLogs';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
@@ -23,6 +27,7 @@ import { EmployeeDialog } from '@/components/EmployeeDialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useEmployeePositions } from '@/hooks/useEmployeePositions';
 import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
+import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
 import {
@@ -40,8 +45,7 @@ import { PublishScheduleDialog } from '@/components/PublishScheduleDialog';
 import { BroadcastOpenShiftsDialog } from '@/components/scheduling/BroadcastOpenShiftsDialog';
 import { ChangeLogDialog } from '@/components/ChangeLogDialog';
 import { TradeApprovalQueue } from '@/components/schedule/TradeApprovalQueue';
-import { LaborCostBreakdown } from '@/components/scheduling/LaborCostBreakdown';
-import { LaborBudgetIndicator } from '@/components/scheduling/LaborBudgetIndicator';
+import { ScheduleMetricsRibbon } from '@/components/scheduling/ScheduleMetricsRibbon';
 import { useScheduleLaborBudget } from '@/hooks/useScheduleLaborBudget';
 import { ScheduleExportDialog } from '@/components/scheduling/ScheduleExportDialog';
 import { ShiftPlannerTab } from '@/components/scheduling/ShiftPlanner';
@@ -49,18 +53,21 @@ import { ShiftImportSheet } from '@/components/scheduling/ShiftImportSheet';
 import { CopyWeekDialog } from '@/components/scheduling/ShiftPlanner/CopyWeekDialog';
 import { AvailabilityConflictDialog } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 import { TeamAvailabilityGrid } from '@/components/scheduling/TeamAvailabilityGrid';
+import { DeleteAvailabilityDialog } from '@/components/scheduling/DeleteAvailabilityDialog';
+import type { AvailabilityDeletionTarget } from '@/components/scheduling/DeleteAvailabilityDialog';
 import { useShiftCopyDnd } from '@/components/scheduling/useShiftCopyDnd';
 import { DraggableShiftCard } from '@/components/scheduling/DraggableShiftCard';
 import { DroppableDayCell } from '@/components/scheduling/DroppableDayCell';
 import { ShiftDragOverlay } from '@/components/scheduling/ShiftDragOverlay';
 import { useCopyWeekShifts } from '@/hooks/useCopyWeekShifts';
-import { getMondayOfWeek, computeHoursPerEmployee } from '@/hooks/useShiftPlanner';
+import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from '@/hooks/useShiftPlanner';
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatLocalDate } from '@/lib/shiftInterval';
-import { computeSlotCoverage } from '@/lib/shiftCoverage';
-import type { CoverageShift, ShiftTemplate } from '@/types/scheduling';
+import { capacityFloor } from '@/lib/shiftCoverage';
+import { distinctAssignedCount } from '@/lib/shiftFill';
+import type { ShiftTemplate } from '@/types/scheduling';
 import { RecurringShiftActionDialog, RecurringActionType } from '@/components/scheduling/RecurringShiftActionDialog';
 import { isRecurringShift, RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { BulkActionBar } from '@/components/bulk-edit/BulkActionBar';
@@ -71,11 +78,15 @@ import { cn } from '@/lib/utils';
 import { isMinor } from '@/lib/employeeUtils';
 import { buildWeekTimeOff, summarizeOff } from '@/lib/scheduleTimeOff';
 import {
+  computeEffectiveAvailability,
+  summarizeWeekAvailability,
+  TIME_OFF_CHIP_CLASSES,
+  type WeekAvailabilitySummary,
+} from '@/lib/effectiveAvailability';
+import {
   Calendar,
   Plus,
   Users,
-  DollarSign,
-  Clock,
   Edit,
   Trash2,
   ChevronLeft,
@@ -89,7 +100,6 @@ import {
   History,
   Printer,
   ArrowLeftRight,
-  TrendingUp,
   Upload,
   LayoutGrid,
   Copy,
@@ -103,8 +113,7 @@ import {
   CalendarOff,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
-import * as dateFnsTz from 'date-fns-tz';
-import { Employee, Shift, ConflictCheck, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
+import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -123,209 +132,35 @@ export const SKELETON_DAYS = [...new Array(7)].map((_, dayIndex) => `day-${dayIn
 // other consumers import these from '@/pages/Scheduling').
 export { buildActiveShiftEmployeeIds, filterEmployeesForScheduleView };
 
-export const getShiftStatusClass = (status: Shift['status'], hasConflicts: boolean) => {
-  if (hasConflicts) {
-    return 'border-l-warning bg-warning/5 hover:bg-warning/10';
-  }
-  if (status === 'confirmed') {
-    return 'border-l-success';
-  }
-  if (status === 'cancelled') {
-    return 'border-l-destructive opacity-60';
-  }
-  return 'border-l-primary/50';
-};
-
-type ShiftCardProps = {
-  shift: Shift;
-  onEdit: (shift: Shift) => void;
-  onDelete: (shift: Shift) => void;
-  isSelected?: boolean;
-  selectionMode?: boolean;
-  onToggleSelect?: (shiftId: string) => void;
-};
-
-const buildConflictKey = (conflict: ConflictCheck) =>
-  conflict.time_off_id ? `timeoff-${conflict.time_off_id}` : `${conflict.conflict_type}-${conflict.message}`;
-
-const ShiftCard = ({ shift, onEdit, onDelete, isSelected, selectionMode: cardSelectionMode, onToggleSelect }: ShiftCardProps) => {
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
-  const { fromZonedTime } = dateFnsTz;
-
-  const formatToUTC = useCallback((isoString: string) => {
-    const date = new Date(isoString);
-    const converter = fromZonedTime ?? ((value: Date) => value);
-    const utcDate = converter(date, restaurantTimezone);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())} ${pad(utcDate.getUTCHours())}:${pad(utcDate.getUTCMinutes())}:${pad(utcDate.getUTCSeconds())}`;
-  }, [fromZonedTime, restaurantTimezone]);
-
-  const conflictParams = useMemo(() => ({
-    employeeId: shift.employee_id,
-    restaurantId: shift.restaurant_id,
-    startTime: formatToUTC(shift.start_time),
-    endTime: formatToUTC(shift.end_time),
-  }), [shift, restaurantTimezone, formatToUTC]);
-
-  const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
-
-  // Calculate shift duration for visual indicator
-  const shiftStart = parseISO(shift.start_time);
-  const shiftEnd = parseISO(shift.end_time);
-  const durationHours = (shiftEnd.getTime() - shiftStart.getTime()) / (1000 * 60 * 60);
-  const shiftStatusClass = getShiftStatusClass(shift.status, hasConflicts);
-
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div
-            data-testid="shift-card"
-            className={cn(
-              "group relative rounded-lg border-l-4 transition-all duration-200 cursor-pointer",
-              "hover:shadow-md hover:scale-[1.02] hover:-translate-y-0.5",
-              "bg-gradient-to-r from-card to-card/80",
-              shiftStatusClass,
-              isSelected && "ring-2 ring-primary bg-primary/10"
-            )}
-            onClick={() => {
-              if (cardSelectionMode && onToggleSelect) {
-                onToggleSelect(shift.id);
-              } else {
-                onEdit(shift);
-              }
-            }}
-          >
-            {/* Selection checkbox indicator */}
-            {cardSelectionMode && (
-              <div className={cn(
-                "absolute top-1 right-1 z-10 h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                isSelected
-                  ? "bg-primary border-primary"
-                  : "bg-background/80 border-muted-foreground/40"
-              )}>
-                {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-              </div>
-            )}
-
-            {/* Time block header */}
-            <div className={cn(
-              "px-2.5 py-1.5 border-b border-border/50",
-              hasConflicts && "bg-warning/10"
-            )}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold tracking-tight text-foreground">
-                  {format(shiftStart, 'h:mm')}
-                  <span className="text-muted-foreground font-normal">
-                    {format(shiftStart, 'a').toLowerCase()}
-                  </span>
-                </span>
-                {hasConflicts && (
-                  <AlertTriangle className="h-3 w-3 text-warning animate-pulse" />
-                )}
-              </div>
-              <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <Clock className="h-2.5 w-2.5" />
-                <span>{durationHours.toFixed(1)}h</span>
-                <span className="mx-0.5">·</span>
-                <span>until {format(shiftEnd, 'h:mma').toLowerCase()}</span>
-              </div>
-            </div>
-
-            {/* Position & Status */}
-            <div className="px-2.5 py-2 space-y-1.5">
-              <div className="text-xs font-medium text-foreground/90 truncate">
-                {shift.position}
-              </div>
-              <Badge
-                variant={
-                  shift.status === 'confirmed'
-                    ? 'default'
-                    : shift.status === 'cancelled'
-                    ? 'destructive'
-                    : 'outline'
-                }
-                className={cn(
-                  "text-[10px] h-5 font-medium",
-                  shift.status === 'confirmed' && "bg-success/15 text-success border-success/30 hover:bg-success/20"
-                )}
-              >
-                {shift.status}
-              </Badge>
-            </div>
-
-            {/* Hover actions (hidden in selection mode) */}
-            <div className={cn(
-              "absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-all duration-200 flex gap-0.5",
-              cardSelectionMode && "hidden"
-            )}>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-background shadow-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(shift);
-                }}
-                aria-label="Edit shift"
-              >
-                <Edit className="h-3 w-3" />
-              </Button>
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-6 w-6 bg-background/80 backdrop-blur-sm hover:bg-destructive/10 hover:text-destructive shadow-sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(shift);
-                }}
-                aria-label="Delete shift"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            </div>
-          </div>
-        </TooltipTrigger>
-        {hasConflicts && (
-          <TooltipContent side="top" className="max-w-xs bg-warning/95 text-warning-foreground border-warning">
-            <div className="space-y-1">
-              <p className="font-semibold text-xs flex items-center gap-1">
-                <AlertTriangle className="h-3 w-3" />
-                Scheduling Conflicts
-              </p>
-              {conflicts.map((conflict) => (
-                <p key={buildConflictKey(conflict)} className="text-xs opacity-90">• {conflict.message}</p>
-              ))}
-            </div>
-          </TooltipContent>
-        )}
-      </Tooltip>
-    </TooltipProvider>
-  );
-};
+// ShiftCard (and getShiftStatusClass) live in SchedulingShiftCard.tsx so that
+// WeekScheduleMobile.tsx (Task 8) can import ShiftCard without creating a
+// circular dependency with this file (Scheduling.tsx imports
+// WeekScheduleMobile.tsx to render it).
+export { getShiftStatusClass } from './SchedulingShiftCard';
 
 /**
  * Pure function extracted from the openShiftCount useMemo so it can be
  * unit-tested independently of the Scheduling component.
  *
- * Uses the coverage engine (computeSlotCoverage) instead of the old
- * buildTemplateGridData + computeOpenSpots exact-match path, so fill-in
- * shifts that overlap a template window without exactly matching it are
- * counted correctly.
+ * Rebuilt on `buildTemplateGridData` + `distinctAssignedCount` — the SAME
+ * per-template bucketing that drives the grid's employee chips — instead of
+ * the old whole-floor `computeSlotCoverage` position sweep. That sweep only
+ * filtered by position (never `shift_template_id`), so one employee's shift
+ * could satisfy every other same-position template's slot on that day,
+ * producing a banner count that disagreed with what the grid showed (the bug
+ * this fixes; see docs/superpowers/specs/2026-07-20-shift-fill-by-assignment-design.md).
+ *
+ * A template slot is filled when >= capacity DISTINCT employees are bucketed
+ * under *that template* (FK match, or the legacy exact-time/position/day
+ * fallback `buildTemplateGridData` already uses for null-FK shifts) —
+ * regardless of whether their hours span the whole window.
+ *
+ * `restaurantTimezone` is passed through to `buildTemplateGridData` so day /
+ * time / day-of-week bucketing all resolve in restaurant-local time — the same
+ * tz the grid chips and the SQL (`… AT TIME ZONE p_tz`) use. This keeps the
+ * banner, the chips, and the server in agreement even for a viewer in a
+ * different timezone (a traveling manager near local midnight).
  */
-/**
- * Return the local calendar date (YYYY-MM-DD) for a UTC ISO timestamp in the
- * given IANA timezone.  This mirrors SQL: (start_time AT TIME ZONE tz)::date.
- */
-function localDateOf(isoUtc: string, tz: string): string {
-  const zoned = dateFnsTz.toZonedTime(new Date(isoUtc), tz);
-  const y = zoned.getFullYear();
-  const m = String(zoned.getMonth() + 1).padStart(2, '0');
-  const d = String(zoned.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
-}
-
 export function computeOpenShiftCount(
   templates: ShiftTemplate[],
   shifts: Shift[],
@@ -333,34 +168,50 @@ export function computeOpenShiftCount(
   restaurantTimezone: string,
 ): number {
   if (!templates.length || shifts === undefined) return 0;
-  const allCov: CoverageShift[] = shifts.map((s) => ({
-    employee_id: s.employee_id,
-    employee_name: s.employee?.name ?? null,
-    start_time: s.start_time,
-    end_time: s.end_time,
-    position: s.position,
-    status: s.status,
-  }));
+  const grid = buildTemplateGridData(shifts, templates, weekDayStrings, restaurantTimezone);
   let total = 0;
   for (const t of templates) {
+    const bucketByDay = grid.get(t.id);
     for (const dayStr of weekDayStrings) {
       if (!templateAppliesToDay(t, dayStr)) continue;
-      // Mirror SQL's filter: only include shifts whose local start date = dayStr.
-      // This keeps overnight carry-over shifts (local start = previous day) from
-      // reducing the banner count for the carry-over day, matching the behaviour of
-      // shift_slot_min_concurrent and preventing UI/SQL divergence.
-      const cov = allCov.filter((s) => localDateOf(s.start_time, restaurantTimezone) === dayStr);
-      total += computeSlotCoverage(
-        t.start_time,
-        t.end_time,
-        t.capacity ?? 1,
-        dayStr,
-        cov,
-        { position: t.position, tz: restaurantTimezone },
-      ).openSpots;
+      const bucketShifts = bucketByDay?.get(dayStr) ?? [];
+      const assignedCount = distinctAssignedCount(bucketShifts);
+      total += Math.max(0, capacityFloor(t.capacity) - assignedCount);
     }
   }
   return total;
+}
+
+/**
+ * Pure extraction of the "resolve the deletion target's personName" glue used
+ * when the Remove button inside AvailabilityDialog/AvailabilityExceptionDialog
+ * fires. Those editors only carry the row (no employee list of their own);
+ * Scheduling.tsx already holds `allEmployees` and fills in `personName` before
+ * opening the single shared DeleteAvailabilityDialog instance. Returns null if
+ * the row's employee_id doesn't match any known employee (e.g. the employee
+ * was removed mid-session) — callers should treat that as "nothing to delete".
+ */
+export function buildAvailabilityDeletionTarget(
+  kind: 'availability',
+  row: EmployeeAvailability,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null;
+export function buildAvailabilityDeletionTarget(
+  kind: 'exception',
+  row: AvailabilityException,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null;
+export function buildAvailabilityDeletionTarget(
+  kind: 'availability' | 'exception',
+  row: EmployeeAvailability | AvailabilityException,
+  employees: Employee[],
+): AvailabilityDeletionTarget | null {
+  const employee = employees.find((e) => e.id === row.employee_id);
+  if (!employee) return null;
+  if (kind === 'availability') {
+    return { kind: 'availability', row: row as EmployeeAvailability, personName: employee.name };
+  }
+  return { kind: 'exception', row: row as AvailabilityException, personName: employee.name };
 }
 
 const Scheduling = () => {
@@ -381,6 +232,7 @@ const Scheduling = () => {
   const [gridDefaultDayOfWeek, setGridDefaultDayOfWeek] = useState<number | undefined>();
   const [gridException, setGridException] = useState<AvailabilityException | undefined>();
   const [gridDefaultDate, setGridDefaultDate] = useState<Date | undefined>();
+  const [deletionTarget, setDeletionTarget] = useState<AvailabilityDeletionTarget | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | undefined>();
   const [selectedShift, setSelectedShift] = useState<Shift | undefined>();
   const [shiftToDelete, setShiftToDelete] = useState<Shift | null>(null);
@@ -418,12 +270,18 @@ const Scheduling = () => {
   );
 
   // Fetch ALL employees (including inactive) to show historical shifts
-  const { employees: allEmployees, loading: employeesLoading } = useEmployees(restaurantId, { status: 'all' });
-  const { shifts, loading: shiftsLoading } = useShifts(restaurantId, currentWeekStart, weekEnd);
+  const { employees: allEmployees, loading: employeesLoading, error: employeesError } = useEmployees(restaurantId, { status: 'all' });
+  const { shifts, loading: shiftsLoading, error: shiftsError } = useShifts(restaurantId, currentWeekStart, weekEnd);
   const { templates } = useShiftTemplates(restaurantId);
   const { trades: pendingTrades } = useShiftTrades(restaurantId, 'pending_approval', null);
   const { timeOffRequests } = useTimeOffRequests(restaurantId);
   const pendingTimeOffCount = timeOffRequests.filter((r) => r.status === 'pending').length;
+  // Both hooks use staleTime: 30000 (per-hook default). While loading/erroring,
+  // these default to [] — computeEffectiveAvailability then yields 'not-set'
+  // days for every employee, summarizeWeekAvailability rolls that up to
+  // 'unset', and the chip renders nothing (no page skeleton needed).
+  const { availability: employeeAvailability } = useEmployeeAvailability(restaurantId);
+  const { exceptions: availabilityExceptions } = useAvailabilityExceptions(restaurantId);
 
   // stable 'yyyy-MM-dd' keys for the 7 visualized days
   const weekDayKeys = useMemo(
@@ -547,6 +405,34 @@ const Scheduling = () => {
     const shiftEmployeeIds = buildActiveShiftEmployeeIds(shifts);
     return filterEmployeesForScheduleView(allEmployees, shiftEmployeeIds, positionFilter, areaFilter);
   }, [allEmployees, shifts, positionFilter, areaFilter]);
+
+  // Stable string key (not a fresh array literal) so the effective-availability
+  // memo below isn't defeated on every render by a new .map(...) reference.
+  const visibleEmployeeIdsKey = useMemo(
+    () => filteredEmployeesWithShifts.map((e) => e.id).join(','),
+    [filteredEmployeesWithShifts],
+  );
+  const weekStartKey = useMemo(() => format(currentWeekStart, 'yyyy-MM-dd'), [currentWeekStart]);
+
+  const effectiveAvailabilityByEmployee = useMemo(() => {
+    const employeeIds = visibleEmployeeIdsKey ? visibleEmployeeIdsKey.split(',') : [];
+    return computeEffectiveAvailability(employeeAvailability, availabilityExceptions, currentWeekStart, employeeIds);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- visibleEmployeeIdsKey/weekStartKey are the stable proxies for employeeIds/currentWeekStart
+  }, [employeeAvailability, availabilityExceptions, visibleEmployeeIdsKey, weekStartKey]);
+
+  // Per-employee weekly availability status (time_off > limited > available >
+  // unset), combining the already-loaded time-off context with the
+  // availability query result.
+  const weekAvailabilityByEmployee = useMemo(() => {
+    const map = new Map<string, WeekAvailabilitySummary>();
+    for (const employee of filteredEmployeesWithShifts) {
+      const empOff = weekTimeOff.get(employee.id);
+      const off = empOff ? summarizeOff(empOff) : null;
+      const week = effectiveAvailabilityByEmployee.get(employee.id);
+      map.set(employee.id, summarizeWeekAvailability(week, !!off, off?.label));
+    }
+    return map;
+  }, [filteredEmployeesWithShifts, effectiveAvailabilityByEmployee, weekTimeOff]);
 
   // Calculate hours for all shifts (including inactive employees)
   const totalScheduledHours = shifts
@@ -684,6 +570,41 @@ const Scheduling = () => {
     setGridException(exception);
     setExceptionDialogOpen(true);
   }, []);
+
+  // Grid already resolves personName itself (it has the employee row in
+  // hand), so its trash button hands up a fully-formed target directly.
+  const handleRequestDeleteAvailability = useCallback((target: AvailabilityDeletionTarget) => {
+    setDeletionTarget(target);
+  }, []);
+
+  // The editors (AvailabilityDialog/AvailabilityExceptionDialog) only carry
+  // the row — resolve personName from allEmployees before opening the
+  // shared DeleteAvailabilityDialog.
+  const handleRemoveAvailability = useCallback((availability: EmployeeAvailability) => {
+    const target = buildAvailabilityDeletionTarget('availability', availability, allEmployees);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
+
+  const handleRemoveException = useCallback((exception: AvailabilityException) => {
+    const target = buildAvailabilityDeletionTarget('exception', exception, allEmployees);
+    if (target) {
+      setDeletionTarget(target);
+    } else {
+      toast({
+        title: 'Unable to remove',
+        description: 'This employee is no longer available.',
+        variant: 'destructive',
+      });
+    }
+  }, [allEmployees, toast]);
 
   const handlePreviousWeek = () => {
     setCurrentWeekStart(subWeeks(currentWeekStart, 1));
@@ -850,272 +771,29 @@ const Scheduling = () => {
     );
   }
 
+  // Only treat a query error as fatal when there is no usable cached data to
+  // show. React Query keeps the last-good data on a failed background refetch
+  // (both hooks use refetchOnWindowFocus), so keying purely off error truthiness
+  // would blank a valid, already-rendered schedule on a transient blip.
+  const hasScheduleError =
+    (Boolean(employeesError) && allEmployees.length === 0) ||
+    (Boolean(shiftsError) && shifts.length === 0);
+
   return (
     <FeatureGate featureKey="scheduling">
     <div className="space-y-6">
-      {/* Header - Professional Kitchen Aesthetic */}
-      <div className="relative overflow-hidden rounded-xl border border-border/50 bg-gradient-to-br from-card via-card to-muted/30">
-        {/* Subtle grid pattern overlay */}
-        <div
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `linear-gradient(to right, currentColor 1px, transparent 1px),
-                             linear-gradient(to bottom, currentColor 1px, transparent 1px)`,
-            backgroundSize: '24px 24px'
-          }}
-        />
-
-        <div className="relative px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              {/* Icon with animated ring */}
-              <div className="relative">
-                <div className="absolute inset-0 rounded-xl bg-primary/20 blur-lg animate-pulse" />
-                <div className="relative p-3 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-lg shadow-primary/25">
-                  <Calendar className="h-6 w-6 text-primary-foreground" />
-                </div>
-              </div>
-
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight text-foreground">
-                  Staff Schedule
-                </h1>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  Manage shifts, availability, and labor costs
-                </p>
-              </div>
-            </div>
-
-            {/* Quick stats in header */}
-            <div className="hidden lg:flex items-center gap-6">
-              <div className="text-right">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">This Week</p>
-                <p className="text-lg font-semibold text-foreground">{shifts.length} shifts</p>
-              </div>
-              <div className="h-8 w-px bg-border" />
-              <div className="text-right">
-                <p className="text-xs uppercase tracking-wider text-muted-foreground font-medium">Coverage</p>
-                <p className="text-lg font-semibold text-foreground">{scheduledEmployeeCount} staff</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Metrics Row - Enhanced Cards */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {/* Active Employees Card */}
-        <Card className="group relative overflow-hidden border-border/50 hover:border-primary/30 transition-colors duration-300">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/5 to-transparent rounded-bl-full" />
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Active Employees</CardTitle>
-            <div className="p-2 rounded-lg bg-primary/10 group-hover:bg-primary/15 transition-colors">
-              <Users className="h-4 w-4 text-primary" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {employeesLoading ? (
-              <Skeleton className="h-9 w-16" />
-            ) : (
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight">{filteredActiveEmployees.length}</span>
-                <span className="text-sm text-muted-foreground">staff</span>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1.5 flex items-center gap-1">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
-              <span>Ready to be scheduled</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Hours Card */}
-        <Card className="group relative overflow-hidden border-border/50 hover:border-accent/30 transition-colors duration-300">
-          <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-accent/5 to-transparent rounded-bl-full" />
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Hours</CardTitle>
-            <div className="p-2 rounded-lg bg-accent/10 group-hover:bg-accent/15 transition-colors">
-              <Clock className="h-4 w-4 text-accent" />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {shiftsLoading ? (
-              <Skeleton className="h-9 w-20" />
-            ) : (
-              <div className="flex items-baseline gap-2">
-                <span className="text-3xl font-bold tracking-tight">{totalScheduledHours.toFixed(1)}</span>
-                <span className="text-sm text-muted-foreground">hours</span>
-              </div>
-            )}
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Scheduled this week
-            </p>
-            {/* Mini progress bar */}
-            {!shiftsLoading && totalScheduledHours > 0 && (
-              <div className="mt-3 h-1.5 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-accent to-accent/70 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min((totalScheduledHours / 200) * 100, 100)}%` }}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Labor Cost Card */}
-        <Card className={cn(
-          "group relative overflow-hidden border-border/50 transition-colors duration-300",
-          laborCostSummary.isAverageHigh
-            ? "border-destructive/50 hover:border-destructive/70"
-            : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-              ? "border-destructive/50 hover:border-destructive/70"
-              : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                ? "border-warning/50 hover:border-warning/70"
-                : "hover:border-success/30"
-        )}>
-          <div className={cn(
-            "absolute top-0 right-0 w-24 h-24 rounded-bl-full",
-            laborCostSummary.isAverageHigh
-              ? "bg-gradient-to-bl from-destructive/10 to-transparent"
-              : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-                ? "bg-gradient-to-bl from-destructive/10 to-transparent"
-                : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                  ? "bg-gradient-to-bl from-warning/10 to-transparent"
-                  : "bg-gradient-to-bl from-success/5 to-transparent"
-          )} />
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-              Labor Cost
-              {laborCostSummary.isAverageHigh && (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" aria-label="High average rate warning" />
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-xs">
-                      <p className="text-xs">Average hourly rate is unusually high. Check for data entry errors in employee rates.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              )}
-            </CardTitle>
-            <div className={cn(
-              "p-2 rounded-lg transition-colors",
-              laborCostSummary.isAverageHigh
-                ? "bg-destructive/10 group-hover:bg-destructive/15"
-                : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-                  ? "bg-destructive/10 group-hover:bg-destructive/15"
-                  : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                    ? "bg-warning/10 group-hover:bg-warning/15"
-                    : "bg-success/10 group-hover:bg-success/15"
-            )}>
-              <DollarSign className={cn(
-                "h-4 w-4",
-                laborCostSummary.isAverageHigh
-                  ? "text-destructive"
-                  : laborBudgetData.hasBudget && laborBudgetData.tier === 'danger'
-                    ? "text-destructive"
-                    : laborBudgetData.hasBudget && laborBudgetData.tier === 'warning'
-                      ? "text-warning"
-                      : "text-success"
-              )} />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {shiftsLoading ? (
-              <Skeleton className="h-9 w-24" />
-            ) : (
-              <>
-                <div className="flex items-baseline gap-1">
-                  <span className="text-sm text-muted-foreground">$</span>
-                  <span className="text-3xl font-bold tracking-tight">{laborCostBreakdown.total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span>
-                </div>
-
-                {/* Cost breakdown grid */}
-                <div className="mt-3 pt-3 border-t border-border/50 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full bg-primary/60" />
-                      <span>Hourly</span>
-                    </span>
-                    <span className="font-medium tabular-nums">
-                      ${laborCostBreakdown.hourly.cost.toLocaleString()}
-                      <span className="text-muted-foreground ml-1">
-                        ({laborCostBreakdown.hourly.hours.toFixed(0)}h)
-                      </span>
-                    </span>
-                  </div>
-
-                  {laborCostBreakdown.hourly.hours > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <TrendingUp className="w-3 h-3" />
-                        Avg Rate
-                      </span>
-                      <span className={cn(
-                        "font-medium tabular-nums",
-                        laborCostSummary.isAverageHigh && 'text-destructive'
-                      )}>
-                        ${laborCostSummary.averageHourlyRate.toFixed(2)}/hr
-                      </span>
-                    </div>
-                  )}
-
-                  {laborCostBreakdown.salary.cost > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-accent/60" />
-                        <span>Salary</span>
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        ${laborCostBreakdown.salary.cost.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-
-                  {laborCostBreakdown.contractor.cost > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-warning/60" />
-                        <span>Contractors</span>
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        ${laborCostBreakdown.contractor.cost.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-
-                  {laborCostBreakdown.daily_rate.cost > 0 && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground flex items-center gap-1.5">
-                        <span className="w-2 h-2 rounded-full bg-info/60" />
-                        <span>Daily Rate</span>
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        ${laborCostBreakdown.daily_rate.cost.toLocaleString()}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Top Earners Breakdown */}
-                {laborCostSummary.employeeCosts.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-border/50">
-                    <LaborCostBreakdown
-                      employeeCosts={laborCostSummary.employeeCosts}
-                      onEditEmployee={handleEditEmployeeById}
-                      maxItems={3}
-                      showViewAll={false}
-                    />
-                  </div>
-                )}
-                {/* Labor Budget Comparison */}
-                <LaborBudgetIndicator budgetData={laborBudgetData} />
-              </>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <ScheduleMetricsRibbon
+        activeEmployeeCount={filteredActiveEmployees.length}
+        totalScheduledHours={totalScheduledHours}
+        laborCostBreakdown={laborCostBreakdown}
+        laborCostSummary={laborCostSummary}
+        laborBudgetData={laborBudgetData}
+        shiftCount={shifts.length}
+        scheduledEmployeeCount={scheduledEmployeeCount}
+        isLoading={employeesLoading || shiftsLoading}
+        error={hasScheduleError}
+        onEditEmployee={handleEditEmployeeById}
+      />
 
       {/* Tabs for Schedule, Time-Off, and Availability */}
       <Tabs defaultValue="schedule" className="space-y-4">
@@ -1423,7 +1101,20 @@ const Scheduling = () => {
         </div>
 
         <CardContent className="p-0">
-          {employeesLoading || shiftsLoading ? (
+          {hasScheduleError ? (
+            <div className="text-center py-16 px-6" role="alert">
+              <div className="relative inline-block">
+                <div className="absolute inset-0 bg-destructive/10 rounded-full blur-xl animate-pulse" />
+                <div className="relative p-4 bg-muted rounded-2xl">
+                  <AlertTriangle className="h-10 w-10 text-destructive" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold mt-4 mb-2">Couldn't load schedule</h3>
+              <p className="text-muted-foreground mb-6 max-w-sm mx-auto">
+                Something went wrong loading employees or shifts. Please try again.
+              </p>
+            </div>
+          ) : employeesLoading || shiftsLoading ? (
             <div className="p-6 space-y-4">
               {SKELETON_ROWS.map((rowKey) => (
                 <div key={rowKey} className="flex gap-4">
@@ -1469,6 +1160,11 @@ const Scheduling = () => {
               </Button>
             </div>
           ) : (
+            <>
+            {/* Desktop: 7-column grid with drag-and-drop. Hidden on mobile in favor
+                of WeekScheduleMobile's day-focused layout (design doc §4) — mobile
+                drops DnD in favor of tap-to-edit. */}
+            <div className="hidden md:block">
             <DndContext
               sensors={sensors}
               onDragStart={handleDragStart}
@@ -1493,7 +1189,7 @@ const Scheduling = () => {
                           key={day.toISOString()}
                           className={cn(
                             "text-center p-2 md:p-3 font-medium min-w-[70px] md:min-w-[130px] transition-colors",
-                            dayIsToday && "bg-primary/5"
+                            dayIsToday && cn("bg-primary/5", TODAY_HEADER_CAP_RULE_CLASS)
                           )}
                         >
                           {selectionMode ? (
@@ -1503,31 +1199,10 @@ const Scheduling = () => {
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
                               aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
                             >
-                              <div className="text-xs uppercase tracking-wider font-semibold">
-                                {format(day, 'EEE')}
-                              </div>
-                              <div className="text-sm mt-0.5 font-semibold">
-                                {format(day, 'MMM d')}
-                              </div>
+                              <ScheduleDayHeaderContent day={day} isToday={dayIsToday} emphasize />
                             </button>
                           ) : (
-                            <>
-                              <div className={cn(
-                                "text-xs uppercase tracking-wider",
-                                dayIsToday ? "text-primary font-semibold" : "text-muted-foreground"
-                              )}>
-                                {format(day, 'EEE')}
-                              </div>
-                              <div className={cn(
-                                "text-sm mt-0.5",
-                                dayIsToday ? "text-primary font-semibold" : "text-foreground"
-                              )}>
-                                {format(day, 'MMM d')}
-                              </div>
-                              {dayIsToday && (
-                                <div className="w-1.5 h-1.5 rounded-full bg-primary mx-auto mt-1.5 animate-pulse" />
-                              )}
-                            </>
+                            <ScheduleDayHeaderContent day={day} isToday={dayIsToday} />
                           )}
                         </th>
                       );
@@ -1583,6 +1258,7 @@ const Scheduling = () => {
                           const empOff = weekTimeOff.get(employee.id);
                           const off = empOff ? summarizeOff(empOff) : null;
                           const isMinorEmployee = isMinor(employee.date_of_birth);
+                          const weekAvailability = weekAvailabilityByEmployee.get(employee.id);
                           return (
                           <tr
                             key={employee.id}
@@ -1626,13 +1302,17 @@ const Scheduling = () => {
                                           Minor
                                         </span>
                                       )}
-                                      {off && (
+                                      {off ? (
                                         <TooltipProvider>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
                                               <button
                                                 type="button"
-                                                className="inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md bg-info/10 text-info font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                className={cn(
+                                                  "inline-flex items-center gap-1 text-[11px] px-1.5 py-0.5 rounded-md font-medium shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                                                  TIME_OFF_CHIP_CLASSES.bg,
+                                                  TIME_OFF_CHIP_CLASSES.text,
+                                                )}
                                               >
                                                 <CalendarOff className="h-3 w-3" aria-hidden="true" />
                                                 {off.label}
@@ -1646,6 +1326,8 @@ const Scheduling = () => {
                                             </TooltipContent>
                                           </Tooltip>
                                         </TooltipProvider>
+                                      ) : (
+                                        <WeeklyAvailabilityChip availability={weekAvailability} />
                                       )}
                                     </div>
                                     <div className="text-xs text-muted-foreground flex items-center gap-1.5">
@@ -1673,52 +1355,11 @@ const Scheduling = () => {
                                   </Button>
                                 )}
                               </div>
-                              {/* Mobile: compact avatar with tooltip */}
-                              <div className="flex md:hidden flex-col items-center py-1">
-                                <TooltipProvider>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <span className="relative">
-                                        <button
-                                          onClick={() => selectionMode ? selectShiftsForEmployee(employee.id) : handleEditEmployee(employee)}
-                                          className={cn(
-                                            "w-9 h-9 rounded-lg flex items-center justify-center text-xs font-semibold shadow-sm cursor-pointer",
-                                            employee.is_active
-                                              ? "bg-gradient-to-br from-primary/20 to-primary/10 text-primary"
-                                              : "bg-muted text-muted-foreground"
-                                          )}
-                                          aria-label={`${employee.name}, ${employee.position}${isMinorEmployee ? ', minor' : ''}${off ? `, ${off.label.toLowerCase()}` : ''}`}
-                                        >
-                                          {employee.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                                        </button>
-                                        {isMinorEmployee && (
-                                          <span aria-hidden="true" className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-warning ring-1 ring-background" />
-                                        )}
-                                        {off && (
-                                          <span aria-hidden="true" className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-info ring-1 ring-background" />
-                                        )}
-                                      </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="right" className="text-xs">
-                                      <div className="font-medium">
-                                        {employee.name}
-                                        {!employee.is_active && (
-                                          <span className="text-muted-foreground ml-1">(Inactive)</span>
-                                        )}
-                                      </div>
-                                      <div className="text-muted-foreground">{employee.position}</div>
-                                      <div className="text-muted-foreground">
-                                        {isMinorEmployee ? 'Minor · ' : ''}{employee.employment_type === 'part_time' ? 'Part-time' : 'Full-time'}{off ? ` · ${off.label}` : ''}
-                                      </div>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                                {(hoursPerEmployee.get(employee.id) ?? 0) > 0 && (
-                                  <span className="text-[10px] text-muted-foreground mt-0.5">
-                                    {hoursPerEmployee.get(employee.id)}h
-                                  </span>
-                                )}
-                              </div>
+                              {/* Mobile employee presentation now lives entirely in
+                                  WeekScheduleMobile (Task 8) — this <td> only ever
+                                  renders on the desktop grid, which is wrapped in
+                                  `hidden md:block` above, so a `md:hidden` block here
+                                  could never actually render on any viewport width. */}
                             </td>
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
@@ -1726,7 +1367,6 @@ const Scheduling = () => {
                               const dayKey = format(day, 'yyyy-MM-dd');
                               const isOff = !!empOff?.offDayKeys.has(dayKey);
                               const hasShift = dayShifts.some(s => s.status !== 'cancelled');
-                              const isRunStart = !!empOff?.spans.some((s) => s.startKey === dayKey);
                               return (
                                 <DroppableDayCell
                                   key={day.toISOString()}
@@ -1735,22 +1375,7 @@ const Scheduling = () => {
                                   isToday={dayIsToday}
                                   isHighlighted={highlightedCellId === `${employee.id}:${dayKey}`}
                                 >
-                                  <div className={cn(
-                                    "space-y-1 md:space-y-1.5 min-h-[48px] md:min-h-[60px]",
-                                    isOff && hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-destructive",
-                                    isOff && !hasShift && "bg-info/10 -m-1 md:-m-1.5 p-1 md:p-1.5 rounded-md border-l-2 border-info",
-                                  )}>
-                                    {isOff && (
-                                      <span className="sr-only">
-                                        {hasShift ? 'Scheduling conflict: shift scheduled during approved time off' : 'Approved time off'}
-                                      </span>
-                                    )}
-                                    {isOff && isRunStart && (
-                                      <div className="flex items-center gap-1 text-[11px] text-info font-medium">
-                                        <CalendarOff className="h-3 w-3" aria-hidden="true" />
-                                        Time off
-                                      </div>
-                                    )}
+                                  <SchedulingTimeOffCellContent isOff={isOff} hasShift={hasShift}>
                                     {dayShifts.map((shift) => (
                                       selectionMode ? (
                                         <ShiftCard
@@ -1795,7 +1420,7 @@ const Scheduling = () => {
                                         {isOff ? 'Add anyway' : 'Add'}
                                       </Button>
                                     )}
-                                  </div>
+                                  </SchedulingTimeOffCellContent>
                                 </DroppableDayCell>
                               );
                             })}
@@ -1812,6 +1437,23 @@ const Scheduling = () => {
               {activeDragShift && <ShiftDragOverlay shift={activeDragShift} />}
             </DragOverlay>
             </DndContext>
+            </div>
+            <WeekScheduleMobile
+              weekDays={weekDays}
+              employees={filteredEmployeesWithShifts}
+              getShiftsForEmployee={getShiftsForEmployee}
+              weekTimeOff={weekTimeOff}
+              weekAvailabilityByEmployee={weekAvailabilityByEmployee}
+              hoursPerEmployee={hoursPerEmployee}
+              selectionMode={selectionMode}
+              selectedShiftIds={selectedShiftIds}
+              onEditEmployee={handleEditEmployee}
+              onAddShift={handleAddShift}
+              onEditShift={handleEditShift}
+              onDeleteShift={handleDeleteShift}
+              onToggleSelectShift={toggleShiftSelection}
+            />
+            </>
           )}
           <AvailabilityConflictDialog
             open={conflictDialog.open}
@@ -1896,6 +1538,7 @@ const Scheduling = () => {
                   restaurantId={restaurantId}
                   onOpenAvailabilityDialog={handleOpenAvailabilityFromGrid}
                   onOpenExceptionDialog={handleOpenExceptionFromGrid}
+                  onRequestDelete={handleRequestDeleteAvailability}
                 />
               )}
             </CardContent>
@@ -1979,6 +1622,7 @@ const Scheduling = () => {
             availability={gridAvailability}
             defaultEmployeeId={gridDefaultEmployeeId}
             defaultDayOfWeek={gridDefaultDayOfWeek}
+            onRemove={handleRemoveAvailability}
           />
           <AvailabilityExceptionDialog
             open={exceptionDialogOpen}
@@ -1994,6 +1638,16 @@ const Scheduling = () => {
             exception={gridException}
             defaultEmployeeId={gridDefaultEmployeeId}
             defaultDate={gridDefaultDate}
+            onRemove={handleRemoveException}
+          />
+          <DeleteAvailabilityDialog
+            open={deletionTarget !== null}
+            onOpenChange={(open) => {
+              if (!open) setDeletionTarget(null);
+            }}
+            target={deletionTarget}
+            restaurantId={restaurantId}
+            timezone={restaurantTimezone}
           />
         </>
       )}

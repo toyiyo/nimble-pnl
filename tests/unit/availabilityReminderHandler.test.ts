@@ -9,6 +9,18 @@ type FakeClient = {
   from: ReturnType<typeof vi.fn>;
 };
 
+// Default channel-settings response: no row for the restaurant/type, which
+// `resolveChannels` resolves fail-OPEN ({ email: true, push: true }) — matches
+// the pre-Task-3 always-send behavior for every existing test below unless a
+// test overrides this table explicitly.
+function channelSettingsBuilder(row: { email_enabled: boolean; push_enabled: boolean } | null) {
+  return {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: row, error: null }),
+  };
+}
+
 function makeClient(overrides: Partial<FakeClient> = {}): FakeClient {
   const builder = (rows: unknown, error: unknown = null) => ({
     select: vi.fn().mockReturnThis(),
@@ -40,6 +52,7 @@ function makeClient(overrides: Partial<FakeClient> = {}): FakeClient {
         return fluent;
       }
       if (table === 'restaurants') return builder({ name: "Wetzel's" });
+      if (table === 'notification_channel_settings') return channelSettingsBuilder(null);
       throw new Error(`unexpected table ${table}`);
     }),
     ...overrides,
@@ -246,6 +259,7 @@ describe('processAvailabilityReminder', () => {
           in: vi.fn().mockResolvedValue({ data: null, error: { message: 'db down' } }),
         };
       }
+      if (table === 'notification_channel_settings') return channelSettingsBuilder(null);
       throw new Error(`unexpected table ${table}`);
     });
     const res = await processAvailabilityReminder(
@@ -263,6 +277,86 @@ describe('processAvailabilityReminder', () => {
       },
     );
     expect(res.status).toBe(500);
+  });
+
+  it('sends no emails and reports channel_disabled when the email channel is off', async () => {
+    const client = makeClient();
+    client.from = vi.fn((table: string) => {
+      if (table === 'notification_channel_settings') {
+        return channelSettingsBuilder({ email_enabled: false, push_enabled: true });
+      }
+      return makeClient().from(table);
+    });
+    const sendEmail = vi.fn().mockResolvedValue(true);
+    const res = await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1', 'e2'] }),
+      }),
+      {
+        createClient: () => client as never,
+        sendEmail,
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ sent: 0, skipped_no_email: 0, errors: 0, channel_disabled: true });
+    expect(sendEmail).not.toHaveBeenCalled();
+  });
+
+  it('still sends when the email channel is explicitly on', async () => {
+    const client = makeClient();
+    client.from = vi.fn((table: string) => {
+      if (table === 'notification_channel_settings') {
+        return channelSettingsBuilder({ email_enabled: true, push_enabled: true });
+      }
+      return makeClient().from(table);
+    });
+    const sendEmail = vi.fn().mockResolvedValue(true);
+    const res = await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1', 'e2'] }),
+      }),
+      {
+        createClient: () => client as never,
+        sendEmail,
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ sent: 1, skipped_no_email: 1, errors: 0 });
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('still sends (fail-open) when no channel-settings row exists for the restaurant', async () => {
+    // makeClient()'s default notification_channel_settings response is a missing row.
+    const sendEmail = vi.fn().mockResolvedValue(true);
+    const res = await processAvailabilityReminder(
+      new Request('https://x', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer x' },
+        body: JSON.stringify({ restaurant_id: 'r1', employee_ids: ['e1', 'e2'] }),
+      }),
+      {
+        createClient: () => makeClient() as never,
+        sendEmail,
+        appUrl: 'https://app',
+        resendApiKey: 'k',
+        fromEmail: 'from@x',
+      },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toEqual({ sent: 1, skipped_no_email: 1, errors: 0 });
   });
 
   it('returns 500 when an unexpected exception is thrown', async () => {

@@ -391,6 +391,7 @@ export function useApplyRulesV2() {
       });
       queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+      queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });
     },
     onError: (error: Error) => {

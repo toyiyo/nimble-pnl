@@ -65,6 +65,12 @@
     --splh-lean: 0 72% 51%;       /* red — above target, likely understaffed */
     --splh-slack: 211 72% 53%;    /* blue — below target, likely overstaffed */
     --splh-balanced: 240 5% 65%;  /* neutral gray — on target */
+
+    /* Labor financial-balance scale (dedicated — NOT shared with --splh-*,
+       whose red/blue semantics are inverted; see design doc §7) */
+    --labor-over: 0 72% 42%;        /* red — labor cost is over target */
+    --labor-under: 32 90% 34%;      /* amber — labor cost is under target */
+    --labor-balanced: 142 50% 32%;  /* green — labor cost is on target */
   }
 
   .dark {
@@ -125,6 +131,11 @@
     --splh-lean: 0 72% 58%;
     --splh-slack: 211 78% 62%;
     --splh-balanced: 240 5% 55%;
+
+    /* Labor financial-balance scale (dedicated — NOT shared with --splh-*) */
+    --labor-over: 0 72% 62%;
+    --labor-under: 32 92% 62%;
+    --labor-balanced: 142 50% 58%;
   }
 }
 
@@ -322,4 +333,33 @@ iframe[name^="__privateStripe"] {
     hsl(var(--border) / 0.3) 4px,
     hsl(var(--border) / 0.3) 5px
   );
+}
+
+@layer utilities {
+  /* Neutral slate hatch for approved time-off cells in the schedule grid.
+     Deliberately distinct from the emerald/amber/red availability palette
+     AND from info-blue (which server shifts also use). */
+  .timeoff-hatch {
+    background-color: hsl(var(--muted-foreground) / 0.05);
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 4px,
+      hsl(var(--muted-foreground) / 0.14) 4px,
+      hsl(var(--muted-foreground) / 0.14) 5px
+    );
+  }
+
+  /* Same geometry as .timeoff-hatch, in destructive red — for a shift
+     scheduled during approved time off (isOff && hasShift). */
+  .conflict-hatch {
+    background-color: hsl(var(--destructive) / 0.05);
+    background-image: repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 4px,
+      hsl(var(--destructive) / 0.14) 4px,
+      hsl(var(--destructive) / 0.14) 5px
+    );
+  }
 }

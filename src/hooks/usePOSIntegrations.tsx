@@ -3,6 +3,7 @@ import { useSquareSalesAdapter } from './adapters/useSquareSalesAdapter';
 import { useCloverSalesAdapter } from './adapters/useCloverSalesAdapter';
 import { useToastSalesAdapter } from './adapters/useToastSalesAdapter';
 import { useShift4SalesAdapter } from './adapters/useShift4SalesAdapter';
+import { useRevelSalesAdapter } from './adapters/useRevelSalesAdapter';
 import { POSAdapter, POSIntegrationStatus, POSSystemType } from '@/types/pos';
 
 export const usePOSIntegrations = (restaurantId: string | null) => {
@@ -15,6 +16,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
   const cloverAdapter = useCloverSalesAdapter(restaurantId);
   const toastAdapter = useToastSalesAdapter(restaurantId);
   const shift4Adapter = useShift4SalesAdapter(restaurantId);
+  const revelAdapter = useRevelSalesAdapter(restaurantId);
 
   // Use useMemo to stabilize the manual adapter object
   const manualAdapter = useCallback(() => ({
@@ -36,6 +38,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
       clover: cloverAdapter,
       toast: toastAdapter,
       shift4: shift4Adapter,
+      revel: revelAdapter,
       // Future adapters will be added here:
       // resy: useResySalesAdapter(restaurantId),
       manual: manualAdapter(),
@@ -54,6 +57,7 @@ export const usePOSIntegrations = (restaurantId: string | null) => {
     cloverAdapter.isConnected,
     toastAdapter.isConnected,
     shift4Adapter.isConnected,
+    revelAdapter.isConnected,
     manualAdapter
   ]);
 

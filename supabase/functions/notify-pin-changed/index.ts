@@ -2,6 +2,7 @@ import { generateHeader, escapeHtml } from '../_shared/emailTemplates.ts';
 import { serve } from 'https://deno.land/std@0.208.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { Resend } from 'https://esm.sh/resend@4.0.0';
+import { resolveChannels, type SupabaseLike } from '../_shared/resolveChannels.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -110,11 +111,14 @@ const handler = async (req: Request): Promise<Response> => {
       .maybeSingle();
     const restaurantName = restaurant?.name ?? 'your restaurant';
 
+    // Independent per-channel gating (email/push may be toggled separately).
+    const ch = await resolveChannels(supabase as unknown as SupabaseLike, body.restaurantId, 'pin_reset');
+
     // Push notification (no-op if no device tokens; never throw).
     // send-push-notification verifies the Authorization header equals
     // "Bearer ${SUPABASE_SERVICE_ROLE_KEY}" verbatim, so supabase.functions.invoke
     // (which sends the caller's user JWT) would silently 401. Use raw fetch.
-    if (employee.user_id) {
+    if (ch.push && employee.user_id) {
       try {
         await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
           method: 'POST',
@@ -135,7 +139,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Email — PIN value is NEVER included
-    if (employee.email) {
+    if (ch.email && employee.email) {
       const resendKey = Deno.env.get('RESEND_API_KEY');
       if (resendKey) {
         try {

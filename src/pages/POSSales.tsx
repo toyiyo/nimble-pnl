@@ -12,7 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { SearchableAccountSelector } from "@/components/banking/SearchableAccountSelector";
 import { EnhancedCategoryRulesDialog } from "@/components/banking/EnhancedCategoryRulesDialog";
-import { useUnifiedSales } from "@/hooks/useUnifiedSales";
+import { useUnifiedSales, MAX_AUTO_ROWS } from "@/hooks/useUnifiedSales";
+import { useUnifiedSalesGrouped } from "@/hooks/useUnifiedSalesGrouped";
 import { usePOSIntegrations } from "@/hooks/usePOSIntegrations";
 import { useInventoryDeduction } from "@/hooks/useInventoryDeduction";
 import { RestaurantSelector } from "@/components/RestaurantSelector";
@@ -36,10 +37,12 @@ import { useSplitPosSale } from "@/hooks/useSplitPosSale";
 import { SplitPosSaleDialog } from "@/components/pos-sales/SplitPosSaleDialog";
 import { SplitSaleView } from "@/components/pos-sales/SplitSaleView";
 import { SaleCard, RecipeInfo } from "@/components/pos-sales/SaleCard";
+import { SalesTrendsPanel } from "@/components/pos-sales/SalesTrendsPanel";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useRecipes } from "@/hooks/useRecipes";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { createRecipeByItemNameMap, hasRecipeMapping, getRecipeForItem } from "@/utils/recipeMapping";
+import { parseLocalDate } from "@/lib/parseLocalDate";
 import { useBulkSelection } from "@/hooks/useBulkSelection";
 import { BulkActionBar } from "@/components/bulk-edit/BulkActionBar";
 import { BulkCategorizePosSalesPanel } from "@/components/pos-sales/BulkCategorizePosSalesPanel";
@@ -66,6 +69,66 @@ const CATEGORIZATION_EMPTY_SUBCOPY: Record<'uncategorized' | 'pending-review' | 
   categorized: 'Nothing has been categorized in this date range yet.',
 };
 
+// Sizes the virtual grid's column count to the scroll container's width so the
+// grouped grid's row-based virtualizer (row = one lane of cards) matches the
+// CSS grid breakpoints below (1 col / 2 cols sm+ / 3 cols lg+).
+//
+// Uses a callback ref (state), not a passed-in RefObject: the grouped
+// container only mounts once the user switches to Grouped view, and an
+// effect keyed on a stable useRef object's identity never re-runs once that
+// DOM node attaches later, leaving `cols` stuck at its initial value.
+// Keying the effect on the node itself (state) re-runs it exactly when the
+// node actually mounts.
+// Shape: yyyy-MM-dd. Anything else (missing, malformed, an impossible
+// calendar date, or an inverted range) means "leave the existing defaults" —
+// this never throws, it just returns null.
+const DATE_PARAM_SHAPE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidDateParam(value: string | null): value is string {
+  if (!value || !DATE_PARAM_SHAPE.test(value)) return false;
+  // parseLocalDate silently rolls an impossible date like 2026-02-31 forward
+  // (to 2026-03-03) instead of throwing — round-tripping it back through the
+  // same yyyy-MM-dd format catches that case, since the two strings won't match.
+  const parsed = parseLocalDate(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+  return formatDateFn(parsed, "yyyy-MM-dd") === value;
+}
+
+// Pure so it's directly unit-testable without mounting the page — see
+// tests/unit/posSalesSearchParamDates.test.tsx.
+export function parseDateRangeFromSearchParams(
+  searchParams: URLSearchParams,
+): { startDate: string; endDate: string } | null {
+  const startParam = searchParams.get("startDate");
+  const endParam = searchParams.get("endDate");
+  if (!isValidDateParam(startParam) || !isValidDateParam(endParam)) return null;
+  if (startParam > endParam) return null;
+  return { startDate: startParam, endDate: endParam };
+}
+
+function useResponsiveColumns() {
+  const [node, setNode] = useState<HTMLDivElement | null>(null);
+  const [cols, setCols] = useState(1);
+  useEffect(() => {
+    if (!node) return;
+    const update = () => {
+      const w = node.clientWidth;
+      if (w >= 1024) {
+        setCols(3);
+      } else if (w >= 640) {
+        setCols(2);
+      } else {
+        setCols(1);
+      }
+    };
+    update();
+    const ro = new ResizeObserver(() => update());
+    ro.observe(node);
+    return () => ro.disconnect();
+  }, [node]);
+  return { setRef: setNode, node, cols };
+}
+
 export default function POSSales() {
   const {
     selectedRestaurant,
@@ -81,12 +144,63 @@ export default function POSSales() {
   const { simulateDeduction } = useInventoryDeduction();
   const { recipes } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [searchTerm, setSearchTerm] = useState("");
-  // Default to last 30 days for better UX and performance
-  const [startDate, setStartDate] = useState(() => formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState(() => formatDateFn(new Date(), "yyyy-MM-dd"));
+  // Debounced search term: the input stays instant (bound to searchTerm), but
+  // data-fetching hooks (useUnifiedSales/useUnifiedSalesGrouped/useUnifiedSalesTotals)
+  // key off this instead — undebounced, every keystroke changed the query key and
+  // re-triggered useUnifiedSales's auto-load walk (up to ~40 sequential 500-row
+  // pages to the 20k cap), firing dozens of discarded Supabase round trips per
+  // keystroke on busy restaurants.
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedSearchTerm(searchTerm), 350);
+    return () => clearTimeout(timeout);
+  }, [searchTerm]);
+  // Entry point from a shared/bookmarked link (e.g. a Sales vs Break-Even bar
+  // click → /pos-sales?startDate=<d>&endDate=<d>): seed the range from the URL
+  // at first render, falling back to the last 30 days when no valid params are
+  // present. Lazy-initializing here (rather than defaulting to 30 days and
+  // correcting in the effect below) means the very first render already queries
+  // the drilled-down day — no wasted default-range request and no flash of
+  // default-range data before the effect commits. Seeding-only, not
+  // bidirectional: editing the date inputs below does not write back to the URL.
+  const initialDateRange = useMemo(
+    () =>
+      parseDateRangeFromSearchParams(searchParams) ?? {
+        startDate: formatDateFn(subDays(new Date(), 30), "yyyy-MM-dd"),
+        endDate: formatDateFn(new Date(), "yyyy-MM-dd"),
+      },
+    // Intentionally first-render only: later param changes flow through the
+    // effect below, not a recomputed initial value.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+  const [startDate, setStartDate] = useState(initialDateRange.startDate);
+  const [endDate, setEndDate] = useState(initialDateRange.endDate);
+  // Re-apply when the params change on an already-mounted page (not just at
+  // first mount) — matches Recipes.tsx/Inventory.tsx's convention for consuming
+  // incoming query params. The lazy initializer above covers the fresh-mount
+  // case; this covers navigation into a new range while the page stays mounted.
+  useEffect(() => {
+    const parsed = parseDateRangeFromSearchParams(searchParams);
+    if (parsed) {
+      setStartDate(parsed.startDate);
+      setEndDate(parsed.endDate);
+    }
+  }, [searchParams]);
+  // Sales trends panel: expanded by default on lg+ screens, collapsed on
+  // mobile — an expanded stack of charts would push the sales list far
+  // below the fold on small viewports (design doc §4.2).
+  const [trendsPanelDefaultExpanded] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia("(min-width: 1024px)").matches;
+  });
   const [sortBy, setSortBy] = useState<'date' | 'name' | 'quantity' | 'amount'>('date');
+  const [groupedSortBy, setGroupedSortBy] = useState<'revenue' | 'quantity' | 'sales' | 'name'>('revenue');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [recipeFilter, setRecipeFilter] = useState<'all' | 'with-recipe' | 'without-recipe'>('all');
   const [categorizationFilter, setCategorizationFilter] = useState<'all' | 'uncategorized' | 'pending-review' | 'categorized'>('all');
@@ -142,16 +256,32 @@ export default function POSSales() {
     sales,
     loading,
     loadingMore,
-    hasMore,
-    loadMoreSales,
-    getSalesByDateRange,
-    getSalesGroupedByItem,
+    reachedCap,
+    loadAllRemaining,
     deleteManualSale,
   } = useUnifiedSales(selectedRestaurant?.restaurant_id || null, {
-    searchTerm,
+    searchTerm: debouncedSearchTerm,
     startDate: startDate || undefined,
     endDate: endDate || undefined,
     categorizationFilter,
+    autoLoadAll: true,
+  });
+
+  // Server-side grouped-by-item aggregation for the Grouped view — sorted in
+  // SQL over the full date range (fixes the old client-side Map-insertion-order
+  // sort bug where "sort by amount" in Grouped view did nothing).
+  const {
+    groups: groupedSales,
+    isLoading: groupedLoading,
+    error: groupedError,
+  } = useUnifiedSalesGrouped(selectedRestaurant?.restaurant_id || null, {
+    startDate: startDate || undefined,
+    endDate: endDate || undefined,
+    searchTerm: debouncedSearchTerm,
+    categorizationFilter,
+    recipeFilter,
+    sortBy: groupedSortBy,
+    sortDirection,
   });
 
   // Server-side aggregated totals for dashboard metrics (independent of pagination).
@@ -162,7 +292,7 @@ export default function POSSales() {
     {
       startDate: startDate || undefined,
       endDate: endDate || undefined,
-      searchTerm: searchTerm || undefined,
+      searchTerm: debouncedSearchTerm || undefined,
     }
   );
 
@@ -386,30 +516,29 @@ export default function POSSales() {
     overscan: 5, // Render 5 extra items above/below viewport for smooth scrolling
   });
 
+  // Grouped view: row-based virtualization, one row = one lane of responsive
+  // grid cards (1/2/3 columns matching the sm:/lg: breakpoints below).
+  const { setRef: setGroupedScrollRef, node: groupedScrollNode, cols: groupedColumns } = useResponsiveColumns();
+  const groupedRowCount = Math.ceil(groupedSales.length / groupedColumns);
+  const groupedVirtualizer = useVirtualizer({
+    count: groupedRowCount,
+    getScrollElement: () => groupedScrollNode,
+    estimateSize: () => 140, // card height incl. gap
+    overscan: 4,
+  });
+
+  // Computed once (reduce, not per-card Math.max(...spread)) so the revenue
+  // progress bar's percentage denominator isn't recomputed for every card.
+  const groupedMaxRevenue = useMemo(
+    () => groupedSales.reduce((m, g) => (g.total_revenue > m ? g.total_revenue : m), 0),
+    [groupedSales]
+  );
+
   const handleSyncSales = async () => {
     if (selectedRestaurant?.restaurant_id) {
       await syncAllSystems(startDate, endDate);
     }
   };
-
-  const groupedSales = useMemo(() => {
-    // Group filtered sales by item name
-    const byItem = new Map<string, { total_quantity: number; total_revenue: number; sale_count: number }>();
-    for (const sale of filteredSales) {
-      const existing = byItem.get(sale.itemName) ?? { total_quantity: 0, total_revenue: 0, sale_count: 0 };
-      existing.total_quantity += sale.quantity;
-      existing.total_revenue += sale.totalPrice ?? 0;
-      existing.sale_count += 1;
-      byItem.set(sale.itemName, existing);
-    }
-    
-    return Array.from(byItem.entries()).map(([itemName, data]) => ({
-      item_name: itemName,
-      total_quantity: data.total_quantity,
-      total_revenue: data.total_revenue,
-      sale_count: data.sale_count,
-    }));
-  }, [filteredSales]);
 
   const handleSimulateDeduction = useCallback(async (itemName: string, quantity: number) => {
     if (!selectedRestaurant?.restaurant_id) return;
@@ -989,6 +1118,14 @@ export default function POSSales() {
         </div>
 
         <TabsContent value="manual" className="space-y-6 mt-0">
+          <SalesTrendsPanel
+            restaurantId={selectedRestaurant?.restaurant_id || null}
+            startDate={startDate}
+            endDate={endDate}
+            timeZone={selectedRestaurant?.restaurant?.timezone}
+            defaultExpanded={trendsPanelDefaultExpanded}
+          />
+
           {/* Apple/Notion-style filter bar */}
           <div className="space-y-4">
             {/* Search and date row */}
@@ -1147,18 +1284,33 @@ export default function POSSales() {
 
               {/* Sort controls */}
               <div className="flex items-center gap-2 w-full sm:w-auto sm:ml-auto">
-                <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
-                  <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
-                    <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="z-50 bg-background">
-                    <SelectItem value="date">Date</SelectItem>
-                    <SelectItem value="name">Item Name</SelectItem>
-                    <SelectItem value="quantity">Quantity</SelectItem>
-                    <SelectItem value="amount">Amount</SelectItem>
-                  </SelectContent>
-                </Select>
+                {selectedView === 'grouped' ? (
+                  <Select value={groupedSortBy} onValueChange={(value: 'revenue' | 'quantity' | 'sales' | 'name') => setGroupedSortBy(value)}>
+                    <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
+                      <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="z-50 bg-background">
+                      <SelectItem value="revenue">Revenue</SelectItem>
+                      <SelectItem value="quantity">Quantity</SelectItem>
+                      <SelectItem value="sales">Sales</SelectItem>
+                      <SelectItem value="name">Item Name</SelectItem>
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Select value={sortBy} onValueChange={(value: 'date' | 'name' | 'quantity' | 'amount') => setSortBy(value)}>
+                    <SelectTrigger className="h-8 w-[120px] text-[13px] bg-transparent border-0 hover:bg-muted/50 rounded-lg">
+                      <ArrowUpDown className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="z-50 bg-background">
+                      <SelectItem value="date">Date</SelectItem>
+                      <SelectItem value="name">Item Name</SelectItem>
+                      <SelectItem value="quantity">Quantity</SelectItem>
+                      <SelectItem value="amount">Amount</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <button
                   onClick={() => setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')}
                   className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted/50 transition-colors"
@@ -1171,7 +1323,7 @@ export default function POSSales() {
             </div>
           </div>
 
-          {loading ? (
+          {selectedView === 'sales' && loading ? (
             /* Apple-style loading state */
             <div className="flex flex-col items-center justify-center py-20">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
@@ -1180,31 +1332,38 @@ export default function POSSales() {
           ) : selectedView === "sales" ? (
             <div className="space-y-4">
               {/* Results header bar */}
-              <div className="flex items-center justify-between">
-                <p className="text-[13px] text-muted-foreground">
-                  {(() => {
-                    const statusLabel = categorizationFilter !== 'all'
-                      ? `${CATEGORIZATION_FILTER_LABELS[categorizationFilter]} `
-                      : '';
-                    return filteredSales.length === sales.length ? (
-                      <>{sales.length.toLocaleString()} {statusLabel}sales</>
-                    ) : (
-                      <>{filteredSales.length.toLocaleString()} of {sales.length.toLocaleString()} {statusLabel}sales</>
-                    );
-                  })()}
-                </p>
-                <div className="flex items-center gap-2">
-                  {hasMore && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={loadMoreSales}
-                      disabled={loadingMore}
-                      className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      {loadingMore ? "Loading..." : "Load more"}
-                    </Button>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3 flex-wrap" aria-live="polite">
+                  <p className="text-[13px] text-muted-foreground">
+                    {(() => {
+                      const statusLabel = categorizationFilter !== 'all'
+                        ? `${CATEGORIZATION_FILTER_LABELS[categorizationFilter]} `
+                        : '';
+                      return filteredSales.length === sales.length ? (
+                        <>{sales.length.toLocaleString()} {statusLabel}sales</>
+                      ) : (
+                        <>{filteredSales.length.toLocaleString()} of {sales.length.toLocaleString()} {statusLabel}sales</>
+                      );
+                    })()}
+                  </p>
+                  {loadingMore && !reachedCap && (
+                    <span className="text-[13px] text-muted-foreground">Loading more…</span>
                   )}
+                  {reachedCap && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] text-muted-foreground">Showing the first {MAX_AUTO_ROWS.toLocaleString()} rows in this range</span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={loadAllRemaining}
+                        className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        Load all rows
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
                   {dateFilteredSales.length > 0 && (
                     <Button
                       variant={bulkSelection.isSelectionMode ? "default" : "ghost"}
@@ -1333,44 +1492,30 @@ export default function POSSales() {
                       })}
                     </div>
                   </div>
-                  {hasMore && (
-                    <div className="flex justify-center py-4 border-t border-border/40">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={loadMoreSales}
-                        disabled={loadingMore}
-                        className="h-8 px-4 text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                      >
-                        {loadingMore ? "Loading..." : "Load more sales"}
-                      </Button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
           ) : (
-            /* Grouped view - Apple-style cards */
+            /* Grouped view - own three-state (loading/error/empty) + virtualized grid */
             <div className="space-y-4">
               {/* Results header */}
               <div className="flex items-center justify-between">
                 <p className="text-[13px] text-muted-foreground">
                   {groupedSales.length.toLocaleString()} items
                 </p>
-                {hasMore && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={loadMoreSales}
-                    disabled={loadingMore}
-                    className="h-8 px-3 text-[13px] font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    {loadingMore ? "Loading..." : "Load more"}
-                  </Button>
-                )}
               </div>
 
-              {groupedSales.length === 0 ? (
+              {groupedLoading ? (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <div className="h-8 w-8 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
+                  <p className="mt-4 text-[13px] text-muted-foreground">Loading grouped items…</p>
+                </div>
+              ) : groupedError ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="text-[15px] font-medium text-foreground mb-1">Couldn't load grouped items</p>
+                  <p className="text-[13px] text-muted-foreground">Please try again.</p>
+                </div>
+              ) : groupedSales.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
                     <Search className="w-6 h-6 text-muted-foreground/50" />
@@ -1379,91 +1524,108 @@ export default function POSSales() {
                   <p className="text-[13px] text-muted-foreground">Try adjusting your filters.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {groupedSales.map(
-                    (item: {
-                      item_name: string;
-                      total_quantity: number;
-                      sale_count: number;
-                      total_revenue: number;
-                    }) => {
-                      const maxRevenue = Math.max(...groupedSales.map((g: { total_revenue: number }) => g.total_revenue));
-                      const revenuePercentage = maxRevenue > 0 ? (item.total_revenue / maxRevenue) * 100 : 0;
-
+                <div ref={setGroupedScrollRef} className="max-h-[70vh] overflow-y-auto">
+                  <div style={{ height: `${groupedVirtualizer.getTotalSize()}px`, position: 'relative' }}>
+                    {groupedVirtualizer.getVirtualItems().map((virtualRow) => {
+                      const start = virtualRow.index * groupedColumns;
+                      const rowItems = groupedSales.slice(start, start + groupedColumns);
                       return (
                         <div
-                          key={item.item_name}
-                          className="group p-4 rounded-xl border border-border/40 bg-background hover:border-border hover:shadow-sm transition-all"
+                          key={virtualRow.key}
+                          data-index={virtualRow.index}
+                          ref={groupedVirtualizer.measureElement}
+                          style={{
+                            position: 'absolute',
+                            top: 0,
+                            left: 0,
+                            width: '100%',
+                            transform: `translateY(${virtualRow.start}px)`,
+                            // Derive columns from the same measured container width
+                            // as the virtual-row slicing (groupedColumns) so the grid
+                            // layout can't disagree with how many cards are in each row.
+                            gridTemplateColumns: `repeat(${groupedColumns}, minmax(0, 1fr))`,
+                          }}
+                          className="grid gap-4 pb-4"
                         >
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="flex-1 min-w-0">
-                              <h3 className="text-[14px] font-medium text-foreground truncate">{item.item_name}</h3>
-                              {(() => {
-                                const recipe = getRecipeForItem(item.item_name, recipeByItemName);
-                                if (recipe) {
-                                  return (
-                                    <button
-                                      onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
-                                      className="inline-flex items-center gap-1 mt-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
-                                    >
-                                      {!recipe.hasIngredients && (
-                                        <AlertTriangle className="h-3 w-3 text-amber-500" />
-                                      )}
-                                      <ExternalLink className="h-3 w-3" />
-                                      {recipe.name}
-                                      {recipe.profitMargin != null && (
-                                        <span className="font-medium">({recipe.profitMargin.toFixed(0)}%)</span>
-                                      )}
-                                    </button>
-                                  );
-                                }
-                                return (
-                                  <button
-                                    onClick={() => handleMapPOSItem(item.item_name)}
-                                    className="inline-flex items-center gap-1 mt-1 text-[12px] text-destructive hover:text-destructive/80 transition-colors"
-                                  >
-                                    No Recipe
-                                  </button>
-                                );
-                              })()}
-                            </div>
-                            <span className="text-[18px] font-semibold text-foreground tabular-nums">
-                              ${item.total_revenue.toFixed(2)}
-                            </span>
-                          </div>
-
-                          {/* Revenue progress bar - subtle */}
-                          <div className="mb-3">
-                            <div className="h-1 bg-muted rounded-full overflow-hidden">
+                          {rowItems.map((item) => {
+                            const revenuePercentage = groupedMaxRevenue > 0 ? (item.total_revenue / groupedMaxRevenue) * 100 : 0;
+                            return (
                               <div
-                                className="h-full bg-foreground/20 rounded-full transition-all duration-500"
-                                style={{ width: `${revenuePercentage}%` }}
-                              />
-                            </div>
-                          </div>
+                                key={item.item_name}
+                                className="group p-4 rounded-xl border border-border/40 bg-background hover:border-border hover:shadow-sm transition-all"
+                              >
+                                <div className="flex items-start justify-between gap-3 mb-3">
+                                  <div className="flex-1 min-w-0">
+                                    <h3 className="text-[14px] font-medium text-foreground truncate">{item.item_name}</h3>
+                                    {(() => {
+                                      const recipe = getRecipeForItem(item.item_name, recipeByItemName);
+                                      if (recipe) {
+                                        return (
+                                          <button
+                                            onClick={() => navigate(`/recipes?recipeId=${recipe.id}`)}
+                                            className="inline-flex items-center gap-1 mt-1 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                                          >
+                                            {!recipe.hasIngredients && (
+                                              <AlertTriangle className="h-3 w-3 text-amber-500" />
+                                            )}
+                                            <ExternalLink className="h-3 w-3" />
+                                            {recipe.name}
+                                            {recipe.profitMargin != null && (
+                                              <span className="font-medium">({recipe.profitMargin.toFixed(0)}%)</span>
+                                            )}
+                                          </button>
+                                        );
+                                      }
+                                      return (
+                                        <button
+                                          onClick={() => handleMapPOSItem(item.item_name)}
+                                          className="inline-flex items-center gap-1 mt-1 text-[12px] text-destructive hover:text-destructive/80 transition-colors"
+                                        >
+                                          No Recipe
+                                        </button>
+                                      );
+                                    })()}
+                                  </div>
+                                  <span className="text-[18px] font-semibold text-foreground tabular-nums">
+                                    ${item.total_revenue.toFixed(2)}
+                                  </span>
+                                </div>
 
-                          {/* Stats row */}
-                          <div className="flex items-center gap-4 text-[13px]">
-                            <div>
-                              <span className="font-medium text-foreground">{item.total_quantity}</span>
-                              <span className="text-muted-foreground ml-1">qty</span>
-                            </div>
-                            <div>
-                              <span className="font-medium text-foreground">{item.sale_count}</span>
-                              <span className="text-muted-foreground ml-1">sales</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
-                              className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
-                            >
-                              Check impact
-                            </button>
-                          </div>
+                                {/* Revenue progress bar - subtle */}
+                                <div className="mb-3">
+                                  <div className="h-1 bg-muted rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-foreground/20 rounded-full transition-all duration-500"
+                                      style={{ width: `${revenuePercentage}%` }}
+                                    />
+                                  </div>
+                                </div>
+
+                                {/* Stats row */}
+                                <div className="flex items-center gap-4 text-[13px]">
+                                  <div>
+                                    <span className="font-medium text-foreground">{item.total_quantity}</span>
+                                    <span className="text-muted-foreground ml-1">qty</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-foreground">{item.sale_count}</span>
+                                    <span className="text-muted-foreground ml-1">sales</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSimulateDeduction(item.item_name, item.total_quantity)}
+                                    className="ml-auto text-[12px] text-muted-foreground hover:text-foreground transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                                  >
+                                    Check impact
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       );
-                    },
-                  )}
+                    })}
+                  </div>
                 </div>
               )}
             </div>

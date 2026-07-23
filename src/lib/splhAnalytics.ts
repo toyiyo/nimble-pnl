@@ -160,7 +160,7 @@ export function classifySplh(splh: number, target: number): 'lean' | 'balanced' 
   return 'balanced';
 }
 
-function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
+export function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
   if (sale.sold_at) {
     // `Intl.DateTimeFormat.formatToParts` throws a RangeError on an Invalid
     // Date rather than returning parts, so the NaN-ms check must happen
@@ -172,8 +172,12 @@ function hourOfSale(sale: SplhSaleRow, tz: string): number | null {
     return localParts(ms, tz).hour;
   }
   if (sale.sale_time) {
-    const h = parseInt(sale.sale_time.split(':')[0], 10);
-    return Number.isNaN(h) ? null : h;
+    // Reject malformed/out-of-range hours (e.g. "99:00", "-1:00", ":30", " 12")
+    // — the intraday series uses this as an axis bound, so only accept a bare
+    // 1–2 digit 0–23 hour (Number('') would otherwise pass an empty prefix as 0).
+    const hourText = sale.sale_time.split(':', 1)[0];
+    const h = Number(hourText);
+    return /^\d{1,2}$/.test(hourText) && h >= 0 && h < 24 ? h : null;
   }
   return null;
 }
@@ -244,7 +248,8 @@ export function buildSplhGrid(
   return cells;
 }
 
-function mondayOf(dateStr: string): string {
+/** Monday-start bucket key for a local YYYY-MM-DD date (UTC-safe, TZ-portable). */
+export function mondayOf(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   const dt = new Date(Date.UTC(y, m - 1, d));
   const dow = dt.getUTCDay(); // 0=Sun

@@ -42,6 +42,9 @@ if (!Element.prototype.scrollIntoView)
   Element.prototype.scrollIntoView = () => {};
 
 class ResizeObserver {
+  // Accept the callback to match the real ResizeObserver constructor signature,
+  // so `new ResizeObserver(cb)` in app code isn't flagged as a superfluous arg.
+  constructor(_callback?: ResizeObserverCallback) {}
   observe() {}
   unobserve() {}
   disconnect() {}

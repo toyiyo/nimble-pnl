@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Bell, Mail, Users, CheckCircle, Newspaper, AlertTriangle } from 'lucide-react';
+import { Bell, Users, Newspaper, AlertTriangle } from 'lucide-react';
 import { useNotificationSettings, useUpdateNotificationSettings } from '@/hooks/useNotificationSettings';
 import { useNotificationPreferences } from '@/hooks/useNotificationPreferences';
 import { useApproverCount } from '@/hooks/useApproverCount';
+import { NotificationChannelMatrix } from '@/components/NotificationChannelMatrix';
 
 interface NotificationSettingsProps {
   restaurantId: string;
@@ -16,53 +15,29 @@ interface NotificationSettingsProps {
 export function NotificationSettings({ restaurantId }: NotificationSettingsProps) {
   const { settings, loading } = useNotificationSettings(restaurantId);
   const updateSettings = useUpdateNotificationSettings();
-  const { preferences: briefPrefs, updatePreferences: updateBriefPrefs, isUpdating: briefUpdating } = useNotificationPreferences(restaurantId);
+  const { preferences: briefPrefs, updatePreferences: updateBriefPrefs, isUpdating: briefUpdating } =
+    useNotificationPreferences(restaurantId);
   const {
     data: approverCount,
     isLoading: approverCountLoading,
     isError: approverCountError,
   } = useApproverCount(restaurantId);
 
-  const [localSettings, setLocalSettings] = useState({
-    notify_time_off_request: true,
-    notify_time_off_approved: true,
-    notify_time_off_rejected: true,
-    time_off_notify_managers: true,
-    time_off_notify_employee: true,
-  });
-
-  useEffect(() => {
-    if (settings) {
-      setLocalSettings({
-        notify_time_off_request: settings.notify_time_off_request ?? true,
-        notify_time_off_approved: settings.notify_time_off_approved ?? true,
-        notify_time_off_rejected: settings.notify_time_off_rejected ?? true,
-        time_off_notify_managers: settings.time_off_notify_managers ?? true,
-        time_off_notify_employee: settings.time_off_notify_employee ?? true,
-      });
-    }
-  }, [settings]);
-
-  const handleSave = () => {
-    updateSettings.mutate({
-      restaurantId,
-      settings: localSettings,
-    });
-  };
-
-  const hasChanges = settings && (
-    localSettings.notify_time_off_request !== settings.notify_time_off_request ||
-    localSettings.notify_time_off_approved !== settings.notify_time_off_approved ||
-    localSettings.notify_time_off_rejected !== settings.notify_time_off_rejected ||
-    localSettings.time_off_notify_managers !== settings.time_off_notify_managers ||
-    localSettings.time_off_notify_employee !== settings.time_off_notify_employee
-  );
+  // notify_time_off_request/approved/rejected are retired here — those event
+  // toggles are now governed by the NotificationChannelMatrix (per-type ×
+  // per-channel). time_off_notify_managers/employee remain: they're recipient
+  // routing (WHO gets notified), orthogonal to the channel matrix (WHETHER a
+  // channel fires). Like every other control on this page, they save on toggle
+  // (no Save button) — see the design doc.
+  const notifyManagers = settings?.time_off_notify_managers ?? true;
+  const notifyEmployee = settings?.time_off_notify_employee ?? true;
+  const savingRecipients = updateSettings.isPending;
 
   const showNoApproversWarning =
     !approverCountLoading &&
     !approverCountError &&
     approverCount !== undefined &&
-    localSettings.time_off_notify_managers &&
+    notifyManagers &&
     approverCount === 0;
 
   if (loading) {
@@ -85,81 +60,13 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
             <CardTitle>Notification Settings</CardTitle>
           </div>
           <CardDescription>
-            Configure email notifications for time-off requests and other events
+            Choose which channels each notification type sends over, who receives time-off
+            emails, and your weekly performance digest. Every toggle saves automatically.
           </CardDescription>
         </CardHeader>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            Time-Off Request Notifications
-          </CardTitle>
-          <CardDescription>
-            Choose which time-off events trigger email notifications
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="notify-request" className="text-base">
-                New Request Submitted
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Send notification when a time-off request is created
-              </p>
-            </div>
-            <Switch
-              id="notify-request"
-              checked={localSettings.notify_time_off_request}
-              onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, notify_time_off_request: checked })
-              }
-            />
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="notify-approved" className="text-base">
-                Request Approved
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Send notification when a time-off request is approved
-              </p>
-            </div>
-            <Switch
-              id="notify-approved"
-              checked={localSettings.notify_time_off_approved}
-              onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, notify_time_off_approved: checked })
-              }
-            />
-          </div>
-
-          <Separator />
-
-          <div className="flex items-center justify-between">
-            <div>
-              <Label htmlFor="notify-rejected" className="text-base">
-                Request Rejected
-              </Label>
-              <p className="text-sm text-muted-foreground">
-                Send notification when a time-off request is rejected
-              </p>
-            </div>
-            <Switch
-              id="notify-rejected"
-              checked={localSettings.notify_time_off_rejected}
-              onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, notify_time_off_rejected: checked })
-              }
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <NotificationChannelMatrix restaurantId={restaurantId} />
 
       <Card>
         <CardHeader>
@@ -183,10 +90,12 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
             </div>
             <Switch
               id="notify-managers"
-              checked={localSettings.time_off_notify_managers}
+              checked={notifyManagers}
+              disabled={savingRecipients}
               onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, time_off_notify_managers: checked })
+                updateSettings.mutate({ restaurantId, settings: { time_off_notify_managers: checked } })
               }
+              className="data-[state=checked]:bg-foreground"
             />
           </div>
 
@@ -222,10 +131,12 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
             </div>
             <Switch
               id="notify-employee"
-              checked={localSettings.time_off_notify_employee}
+              checked={notifyEmployee}
+              disabled={savingRecipients}
               onCheckedChange={(checked) =>
-                setLocalSettings({ ...localSettings, time_off_notify_employee: checked })
+                updateSettings.mutate({ restaurantId, settings: { time_off_notify_employee: checked } })
               }
+              className="data-[state=checked]:bg-foreground"
             />
           </div>
         </CardContent>
@@ -263,40 +174,6 @@ export function NotificationSettings({ restaurantId }: NotificationSettingsProps
           </div>
         </CardContent>
       </Card>
-
-      <div className="flex justify-end gap-2">
-        {hasChanges && (
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (settings) {
-                setLocalSettings({
-                  notify_time_off_request: settings.notify_time_off_request,
-                  notify_time_off_approved: settings.notify_time_off_approved,
-                  notify_time_off_rejected: settings.notify_time_off_rejected,
-                  time_off_notify_managers: settings.time_off_notify_managers,
-                  time_off_notify_employee: settings.time_off_notify_employee,
-                });
-              }
-            }}
-          >
-            Reset Changes
-          </Button>
-        )}
-        <Button
-          onClick={handleSave}
-          disabled={!hasChanges || updateSettings.isPending}
-        >
-          {updateSettings.isPending ? (
-            'Saving...'
-          ) : (
-            <>
-              <CheckCircle className="h-4 w-4 mr-2" />
-              Save Settings
-            </>
-          )}
-        </Button>
-      </div>
 
       <Card className="bg-muted/50">
         <CardContent className="py-4">

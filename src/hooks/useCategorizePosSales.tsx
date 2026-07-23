@@ -32,6 +32,7 @@ export const useCategorizePosSales = () => {
       toast.success(result?.message || 'AI has suggested categories for your POS sales.');
 
       queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+      queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
       queryClient.invalidateQueries({ queryKey: ['unified-sales-totals', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['income-statement'] });
       queryClient.invalidateQueries({ queryKey: ['chart-of-accounts'] });

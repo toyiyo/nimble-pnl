@@ -73,6 +73,7 @@ export const useCategorizePosSale = (restaurantId: string | null) => {
       if (restaurantId) {
         queryClient.invalidateQueries({ queryKey: ['unified-sales', restaurantId] });
       }
+      queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
       queryClient.invalidateQueries({
         queryKey: restaurantId ? ['unified-sales-totals', restaurantId] : ['unified-sales-totals'],
       });

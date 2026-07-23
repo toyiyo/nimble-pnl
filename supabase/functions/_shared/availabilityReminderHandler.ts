@@ -1,3 +1,5 @@
+import { resolveChannels, type SupabaseLike } from './resolveChannels.ts';
+
 type CreateClientFn = (authHeader: string | null) => {
   auth: { getUser: () => Promise<{ data: { user: { id: string } | null }; error: unknown }> };
   from: (table: string) => {
@@ -6,6 +8,7 @@ type CreateClientFn = (authHeader: string | null) => {
         eq?: (col: string, val: unknown) => unknown;
         in?: (col: string, vals: unknown[]) => Promise<{ data: unknown; error: unknown }>;
         single: () => Promise<{ data: unknown; error: unknown }>;
+        maybeSingle?: () => Promise<{ data: unknown; error: unknown }>;
       };
     };
   };
@@ -107,6 +110,13 @@ export async function processAvailabilityReminder(
       .single();
     if (restRes.error) return json({ error: 'Failed to load restaurant' }, 500);
     const restaurantName = (restRes.data as { name?: string } | null)?.name ?? 'Your restaurant';
+
+    // `availability_reminder` is email-only in the catalog (see
+    // src/lib/notificationTypes.ts) — there is no push variant to gate here.
+    const ch = await resolveChannels(supabase as unknown as SupabaseLike, restaurantId, 'availability_reminder');
+    if (!ch.email) {
+      return json({ sent: 0, skipped_no_email: 0, errors: 0, channel_disabled: true }, 200);
+    }
 
     const empRes = await supabase
       .from('employees')

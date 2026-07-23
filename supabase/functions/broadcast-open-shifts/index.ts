@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendEmail, NOTIFICATION_FROM, APP_URL } from "../_shared/notificationHelpers.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
+import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -94,8 +95,17 @@ serve(async (req) => {
       );
     }
 
-    // Call get_open_shifts RPC to check for open shifts
-    const { data: openShifts, error: openShiftsError } = await serviceClient
+    // Call get_open_shifts RPC to check for open shifts.
+    //
+    // IMPORTANT: use `supabase` (the caller's authenticated client), not
+    // `serviceClient`. get_open_shifts now has an authorization guard
+    // (supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql)
+    // requiring auth.uid() to belong to the restaurant; serviceClient has no
+    // user JWT so auth.uid() would be NULL and the guard would silently
+    // return zero rows every time. The caller's owner/manager membership was
+    // already verified above (lines ~63-72), and that same caller is an
+    // "internal team" member for this restaurant, so the guard passes here.
+    const { data: openShifts, error: openShiftsError } = await supabase
       .rpc("get_open_shifts", {
         p_restaurant_id: restaurant_id,
         p_week_start: publication.week_start_date,
@@ -157,24 +167,33 @@ serve(async (req) => {
     let emailSentCount = 0;
     let emailFailCount = 0;
 
+    // Independent per-channel gating (email/push may be toggled separately).
+    const ch = await resolveChannels(
+      serviceClient as unknown as SupabaseLike,
+      restaurant_id,
+      "open_shifts_broadcast"
+    );
+
     // Send web push notifications to employees with user_id
-    const pushEmployees = allEmployees.filter((emp) => emp.user_id);
-    for (const employee of pushEmployees) {
-      try {
-        const result = await sendWebPushToUser(serviceClient, employee.user_id!, restaurant_id, {
-          title: "Shifts Available",
-          body: notificationBody,
-          url: "/employee/shifts",
-        });
-        pushSentCount += result.sent;
-      } catch (err) {
-        pushFailCount++;
-        console.error(`Push notification failed for employee ${employee.id}:`, err);
+    if (ch.push) {
+      const pushEmployees = allEmployees.filter((emp) => emp.user_id);
+      for (const employee of pushEmployees) {
+        try {
+          const result = await sendWebPushToUser(serviceClient, employee.user_id!, restaurant_id, {
+            title: "Shifts Available",
+            body: notificationBody,
+            url: "/employee/shifts",
+          });
+          pushSentCount += result.sent;
+        } catch (err) {
+          pushFailCount++;
+          console.error(`Push notification failed for employee ${employee.id}:`, err);
+        }
       }
     }
 
     // Send email notifications to employees with email
-    if (RESEND_API_KEY) {
+    if (ch.email && RESEND_API_KEY) {
       const emailEmployees = allEmployees.filter((emp) => emp.email);
       const appUrl = `${APP_URL}/employee/shifts`;
 

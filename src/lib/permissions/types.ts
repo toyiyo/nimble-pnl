@@ -115,6 +115,21 @@ export type Capability =
 export type RoleCategory = 'internal' | 'collaborator';
 
 /**
+ * Which door a role comes through.
+ *
+ * `category` ('internal' | 'collaborator') describes *tenancy* and cannot
+ * express this: 'internal' contains both chef (platform access) and staff
+ * (self-service only), which is precisely the distinction users get wrong
+ * when inviting people.
+ *
+ * - platform:     signs into EasyShiftHQ proper
+ * - employee:     self-service app only (clock in, own schedule, time off)
+ * - collaborator: external specialist, isolated to one surface
+ * - device:       shared credential, not a person — never invitable by email
+ */
+export type AccessGroup = 'platform' | 'employee' | 'collaborator' | 'device';
+
+/**
  * Role metadata for UI rendering and navigation
  */
 export interface RoleMetadata {
@@ -122,6 +137,7 @@ export interface RoleMetadata {
   label: string;
   description: string;
   category: RoleCategory;
+  accessGroup: AccessGroup;
   landingPath: string;
   color: 'default' | 'secondary' | 'outline' | 'destructive';
 }

@@ -8,15 +8,17 @@
 import type { Role } from './types';
 
 const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
-  // owner can invite every internal + collaborator role
+  // owner can invite every internal + collaborator role.
+  // 'kiosk' is deliberately absent: it is a shared device credential, not a
+  // person with an inbox. Kiosk access is provisioned from device setup.
   owner: [
-    'owner', 'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'owner', 'manager', 'operations_manager', 'chef', 'staff',
     'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
     'collaborator_operations_manager',
   ],
   // manager can invite all except owner; collaborators included (separate CollaboratorInvitations UI)
   manager: [
-    'manager', 'operations_manager', 'chef', 'staff', 'kiosk',
+    'manager', 'operations_manager', 'chef', 'staff',
     'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
     'collaborator_operations_manager',
   ],

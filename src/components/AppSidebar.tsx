@@ -52,7 +52,7 @@ const FEATURE_GATED_PATHS: Record<string, keyof typeof SUBSCRIPTION_FEATURES> = 
 };
 
 export function AppSidebar() {
-  const { state: sidebarState } = useSidebar();
+  const { state: sidebarState, isMobile, setOpenMobile } = useSidebar();
   const location = useLocation();
   const navigate = useNavigate();
   const { signOut, user } = useAuth();
@@ -62,6 +62,11 @@ export function AppSidebar() {
   // Get navigation based on user role
   const role = selectedRestaurant?.role;
   const filteredNavigationGroups = getNavigationForRole(role);
+
+  const handleNavigate = (path: string) => {
+    navigate(path);
+    if (isMobile) setOpenMobile(false);
+  };
 
   const isActivePath = (path: string) => {
     if (path === '/') return location.pathname === '/';
@@ -79,7 +84,8 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" className="border-r">
       <SidebarHeader className="border-b h-14 p-0">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => handleNavigate('/')}
+          aria-label="Go to dashboard"
           className={`flex items-center gap-3 group transition-all duration-200 hover:scale-105 w-full h-full ${
             collapsed ? 'justify-center px-3' : 'px-4'
           }`}
@@ -114,7 +120,7 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={item.path}>
                       <SidebarMenuButton
-                        onClick={() => navigate(item.path)}
+                        onClick={() => handleNavigate(item.path)}
                         isActive={isActive}
                         tooltip={needsUpgrade ? `${item.label} (${requiredTier} tier)` : item.label}
                         className={`flex items-center justify-center !px-0 relative ${
@@ -170,7 +176,7 @@ export function AppSidebar() {
                             return (
                               <SidebarMenuItem key={item.path}>
                                 <SidebarMenuButton
-                                  onClick={() => navigate(item.path)}
+                                  onClick={() => handleNavigate(item.path)}
                                   isActive={isActive}
                                   className={
                                     isActive

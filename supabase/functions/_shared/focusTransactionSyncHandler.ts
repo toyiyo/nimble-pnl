@@ -80,7 +80,9 @@ export interface TransactionSupabaseDeps {
     ): {
       select(): Promise<{ data: unknown; error: { message: string } | null }>;
     };
-    delete(): {
+    update(
+      data: Record<string, unknown>,
+    ): {
       eq(col: string, val: string): {
         eq(col: string, val: string): {
           eq(col: string, val: string): Promise<{ error: { message: string } | null }>;
@@ -182,6 +184,12 @@ async function upsertOrder(
         discount_total: check.discountTotal,
         taxable_sales: check.taxableSales,
         tax_amount: check.taxAmount,
+        // A check present in the <Checks> section is active. Clear any prior
+        // void state so a previously-voided check that reappears (un-void) is
+        // treated as active again — the sync RPC then drops its stale _void
+        // offset. Voided checks arrive via <DeleteRecord>, not here.
+        is_voided: false,
+        voided_at: null,
       },
       { onConflict: 'restaurant_id,business_date,focus_check_id' },
     )
@@ -348,28 +356,31 @@ export async function processDayTransactions(
       return { status: 'empty' };
     }
 
-    // ── 4. Delete voided checks (DeleteRecord entries) ────────────────────────
-    // Voided checks are removed from focus_orders; ON DELETE CASCADE cleans up
-    // focus_order_items and focus_payments automatically.
-    // unified_sales orphan-delete is handled by _sync_focus_transactions_to_unified_sales_impl.
+    // ── 4. Soft-delete voided checks (DeleteRecord entries) ───────────────────
+    // Voided checks are marked is_voided/voided_at on focus_orders instead of
+    // being hard-deleted — this preserves the check + its items/payments so
+    // the void amount stays knowable, and gives sync_focus_transactions_to_
+    // unified_sales_impl an auditable negative offset row to emit (rather than
+    // an orphaned/vanished unified_sales row).
 
-    let voidDeleteFailed = false;
+    let voidMarkFailed = false;
+    const voidedAt = new Date().toISOString();
     for (const voidedCheckId of deletedCheckIds) {
-      const { error: delError } = await deps.supabase
+      const { error: updateError } = await deps.supabase
         .from('focus_orders')
-        .delete()
+        .update({ is_voided: true, voided_at: voidedAt })
         .eq('restaurant_id', config.restaurantId)
         .eq('business_date', businessDate)
         .eq('focus_check_id', voidedCheckId);
-      if (delError) {
+      if (updateError) {
         // Non-fatal for THIS run: log and continue — the check may not exist
         // locally yet. But remember the failure: recording the fingerprint
         // below would make the next tick delta-skip this identical feed and
-        // never retry the void, leaving the voided check in focus_orders /
+        // never retry the void, leaving the check un-voided in focus_orders /
         // unified_sales indefinitely (codex review).
-        voidDeleteFailed = true;
+        voidMarkFailed = true;
         console.warn(
-          `focus_orders delete (voided check ${voidedCheckId}): ${delError.message}`,
+          `focus_orders void-mark (voided check ${voidedCheckId}): ${updateError.message}`,
         );
       }
     }
@@ -406,12 +417,12 @@ export async function processDayTransactions(
 
     // Record the fingerprint only once the day is fully synced (voids applied,
     // data written, AND unified_sales caught up). If the RPC or any void
-    // delete failed above, deliberately skip the record so the next tick
+    // mark failed above, deliberately skip the record so the next tick
     // re-fetches, re-parses, and retries instead of matching a
     // "stale-success" fingerprint and delta-skipping forever (codex review:
     // prevents unified_sales — a P&L-critical table — and voided checks from
     // silently drifting stale after a transient failure).
-    if (deps.stateStore && fingerprint && !unifiedSalesSyncFailed && !voidDeleteFailed) {
+    if (deps.stateStore && fingerprint && !unifiedSalesSyncFailed && !voidMarkFailed) {
       const stateStore = deps.stateStore;
       const fp = fingerprint;
       await safeStateStoreCall(

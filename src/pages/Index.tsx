@@ -35,6 +35,7 @@ import { useBreakEvenAnalysis } from '@/hooks/useBreakEvenAnalysis';
 import { useUnifiedCOGS } from '@/hooks/useUnifiedCOGS';
 import { OperationsHealthCard } from '@/components/dashboard/OperationsHealthCard';
 import { LaborEfficiencyCard } from '@/components/dashboard/LaborEfficiencyCard';
+import { LaborPnlCard } from '@/components/dashboard/LaborPnlCard';
 import { OnboardingDrawer } from '@/components/dashboard/OnboardingDrawer';
 import { WelcomeModal } from '@/components/subscription';
 import { OutflowByCategoryCard } from '@/components/dashboard/OutflowByCategoryCard';
@@ -143,6 +144,7 @@ const Index = () => {
   const [operationsOpen, setOperationsOpen] = useState(true);
   const [quickActionsOpen, setQuickActionsOpen] = useState(true);
   const [laborEfficiencyOpen, setLaborEfficiencyOpen] = useState(false);
+  const [laborCostOpen, setLaborCostOpen] = useState(false);
 
   const [selectedPeriod, setSelectedPeriod] = useState<Period>({
     type: 'today',
@@ -260,7 +262,7 @@ const Index = () => {
   );
 
   // Fetch break-even analysis data
-  const { data: breakEvenData, isLoading: breakEvenLoading } = useBreakEvenAnalysis(
+  const { data: breakEvenData, isLoading: breakEvenLoading, error: breakEvenError } = useBreakEvenAnalysis(
     selectedRestaurant?.restaurant_id || null,
     14 // 14 days of history
   );
@@ -630,6 +632,7 @@ const Index = () => {
                     queryClient.invalidateQueries({ queryKey: ['monthly-metrics'] });
                     queryClient.invalidateQueries({ queryKey: ['bank-transactions'] });
                     queryClient.invalidateQueries({ queryKey: ['unified-sales'] });
+                    queryClient.invalidateQueries({ queryKey: ['unified-sales-grouped'] });
                   }}
                   className="w-full sm:w-auto"
                 />
@@ -698,9 +701,30 @@ const Index = () => {
               <SalesVsBreakEvenChart
                 data={breakEvenData ?? null}
                 isLoading={breakEvenLoading}
+                error={breakEvenError}
                 actualCOGSPercentage={actualCOGSPercentage}
                 targetCOGSPercentage={targetCOGSPercentage}
               />
+
+              {/* Labor cost - Collapsible (financial: labor % of sales vs target, distinct from scheduling's Labor Efficiency section below) */}
+              <Collapsible open={laborCostOpen} onOpenChange={setLaborCostOpen}>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-[17px] font-semibold text-foreground">Labor cost</h2>
+                      <p className="text-[13px] text-muted-foreground mt-0.5">What your team costs against sales.</p>
+                    </div>
+                    <CollapsibleTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 px-3 text-[13px] text-muted-foreground hover:text-foreground" aria-label={laborCostOpen ? "Collapse Labor cost" : "Expand Labor cost"}>
+                        {laborCostOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      </Button>
+                    </CollapsibleTrigger>
+                  </div>
+                  <CollapsibleContent>
+                    <LaborPnlCard restaurantId={selectedRestaurant.restaurant_id} />
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
 
               {/* AI Insights */}
               <DashboardInsights insights={insights} />

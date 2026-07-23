@@ -1,11 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
-import { TimePunch } from '@/types/timeTracking';
+import { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import { format } from 'date-fns';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export interface LaborCostData {
   date: string;
@@ -22,23 +23,9 @@ export interface LaborCostsFromTimeTrackingResult {
   isLoading: boolean;
   error: Error | null;
   refetch: () => void;
-}
-
-interface DBTimePunch {
-  id: string;
-  employee_id: string;
-  restaurant_id: string;
-  punch_time: string;
-  punch_type: string;
-  created_at: string;
-  updated_at: string;
-  shift_id: string | null;
-  notes: string | null;
-  photo_path: string | null;
-  device_info: string | null;
-  location: unknown;
-  created_by: string | null;
-  modified_by: string | null;
+  /** True when the time_punches fetch hit the pagination backstop
+   * (`fetchAllRows`'s `maxPages`) — results may be truncated. */
+  capped: boolean;
 }
 
 interface ManualPaymentDB {
@@ -85,9 +72,9 @@ export function useLaborCostsFromTimeTracking(
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['labor-costs-from-time-tracking', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), throughNow],
-    queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number }> => {
+    queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; capped: boolean }> => {
       if (!restaurantId) {
-        return { dailyCosts: [], totalCost: 0 };
+        return { dailyCosts: [], totalCost: 0, capped: false };
       }
 
       // 1. Fetch time punches for the period.
@@ -96,16 +83,25 @@ export function useLaborCostsFromTimeTracking(
       // whose clock-in precedes dateFrom. A look-back would pull a prior-period
       // Sunday-night shift into Monday and overstate labor; the look-ahead still
       // completes an in-range shift whose clock_out lands just after dateTo.
+      //
+      // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
+      // this window can span 18 weeks, and PostgREST caps an unpaginated
+      // response at 1,000 rows — silently dropping the newest punches (the
+      // query orders `punch_time asc`) once a restaurant crosses that
+      // threshold. The `.order('id')` tiebreaker makes each page boundary
+      // deterministic when multiple punches share a `punch_time`.
       const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
-      const { data: punches, error: punchesError } = await supabase
-        .from('time_punches')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .gte('punch_time', fetchStart.toISOString())
-        .lte('punch_time', fetchEnd.toISOString())
-        .order('punch_time', { ascending: true });
-
-      if (punchesError) throw punchesError;
+      const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
+        supabase
+          .from('time_punches')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .gte('punch_time', fetchStart.toISOString())
+          .lte('punch_time', fetchEnd.toISOString())
+          .order('punch_time', { ascending: true })
+          .order('id')
+          .range(from, to),
+      );
 
       // 2. Fetch per-job contractor payments (source records only)
       const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
@@ -181,7 +177,7 @@ export function useLaborCostsFromTimeTracking(
       const dailyCosts = Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
       const totalCost = dailyCosts.reduce((sum, day) => sum + day.total_labor_cost, 0);
 
-      return { dailyCosts, totalCost };
+      return { dailyCosts, totalCost, capped };
     },
     enabled: !!restaurantId && !!employees.length,
     staleTime: 30000, // 30 seconds
@@ -194,5 +190,6 @@ export function useLaborCostsFromTimeTracking(
     isLoading,
     error,
     refetch: () => { refetch(); },
+    capped: data?.capped ?? false,
   };
 }

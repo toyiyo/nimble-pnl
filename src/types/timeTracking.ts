@@ -26,6 +26,29 @@ export interface TimePunch {
   };
 }
 
+/**
+ * Raw `time_punches` row shape as returned by Supabase, before the
+ * `TimePunch` cast/narrowing (e.g. `punch_type` widened to `string`,
+ * nullable columns kept nullable rather than optional) applied by callers.
+ * Used as the `fetchAllRows<T>` type param when paginating `time_punches`.
+ */
+export interface DBTimePunch {
+  id: string;
+  employee_id: string;
+  restaurant_id: string;
+  punch_time: string;
+  punch_type: string;
+  created_at: string;
+  updated_at: string;
+  shift_id: string | null;
+  notes: string | null;
+  photo_path: string | null;
+  device_info: string | null;
+  location: unknown;
+  created_by: string | null;
+  modified_by: string | null;
+}
+
 export interface EmployeeTip {
   id: string;
   restaurant_id: string;

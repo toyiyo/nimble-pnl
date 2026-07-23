@@ -106,6 +106,26 @@ BEGIN
     RETURN;
   END IF;
 
+  -- A user may hold at most one active employee record per restaurant.
+  -- useCurrentEmployee resolves the signed-in user's employee row with
+  -- .single() on (user_id, restaurant_id); a second row sharing this user_id
+  -- makes that query return multiple rows, which the hook treats as "no
+  -- employee" — silently breaking the teammate's clock-in and schedule views.
+  -- Reject rather than mint a duplicate. (Best-effort without a DB constraint;
+  -- the no-schema-change scope of this PR rules out a partial unique index.)
+  IF EXISTS (
+    SELECT 1 FROM public.employees
+    WHERE user_id = p_user_id
+      AND restaurant_id = v_employee.restaurant_id
+      AND id <> p_employee_id
+  ) THEN
+    RETURN QUERY SELECT FALSE,
+      'That account is already linked to another employee in this restaurant'::TEXT,
+      v_employee.name::TEXT,
+      v_employee.email::TEXT;
+    RETURN;
+  END IF;
+
   UPDATE public.employees
   SET user_id = p_user_id, updated_at = NOW()
   WHERE id = p_employee_id
@@ -142,7 +162,9 @@ SET search_path = public, pg_temp;
 COMMENT ON FUNCTION link_employee_to_user IS
   'Links an employee record to an existing user account. Callable by owner, '
   'manager, and operations_manager of the employee''s restaurant, and only for '
-  'a target account that is already a member of that same restaurant. '
+  'a target account that is already a member of that same restaurant, and '
+  'never when that account is already linked to another employee in the '
+  'restaurant (one employee row per user per restaurant). '
   'Re-linking to the same account is idempotent (success=TRUE); a different '
   'account is a conflict. EXECUTE is granted to authenticated by Supabase '
   'default; the in-function authorization check is the only access boundary.';

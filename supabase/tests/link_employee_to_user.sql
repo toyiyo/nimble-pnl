@@ -15,9 +15,13 @@
 --      (the cross-tenant grant this hardening closes) ...
 --   9. ... with a message that names the reason
 --  10. relinking an already-linked employee to a DIFFERENT account is a conflict
+--  11. linking an account that is ALREADY linked to another employee in the
+--      same restaurant is denied — a duplicate (user_id, restaurant_id) would
+--      break useCurrentEmployee's .single() lookup ...
+--  12. ... with a message that names the reason
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(12);
 
 -- ---------- Fixture setup ----------
 -- One restaurant holding the unlinked employees under test, plus an
@@ -148,13 +152,15 @@ SELECT matches(
   'second call reports already-linked rather than a generic failure'
 );
 
--- ---------- 7. owner may still link (no regression) ----------
+-- ---------- 7. owner may still link (no regression). Links to member 106,
+--    who is not yet linked to any employee — linking to 105 here would create
+--    the duplicate (user_id, restaurant_id) that test 11 now forbids. ----------
 SELECT test_set_caller('f1111111-1111-1111-1111-111111111104');
 
 SELECT ok(
   (SELECT success FROM link_employee_to_user(
     'f2222222-2222-2222-2222-222222222203',
-    'f1111111-1111-1111-1111-111111111105'
+    'f1111111-1111-1111-1111-111111111106'
   )),
   'owner can still link'
 );
@@ -191,6 +197,30 @@ SELECT ok(
     'f1111111-1111-1111-1111-111111111106'
   )),
   'relinking to a different account is a conflict'
+);
+
+-- ---------- 11 & 12. linking an unlinked employee (202) to an account (105)
+--    that is ALREADY linked to another employee in this restaurant (201, from
+--    test 1) is denied — a second (user_id, restaurant_id) row would make
+--    useCurrentEmployee's .single() lookup return multiple rows and silently
+--    read as "no employee". ----------
+SELECT test_set_caller('f1111111-1111-1111-1111-111111111101');
+
+SELECT ok(
+  NOT (SELECT success FROM link_employee_to_user(
+    'f2222222-2222-2222-2222-222222222202',
+    'f1111111-1111-1111-1111-111111111105'
+  )),
+  'linking an account already linked to another employee is denied'
+);
+
+SELECT matches(
+  (SELECT message FROM link_employee_to_user(
+    'f2222222-2222-2222-2222-222222222202',
+    'f1111111-1111-1111-1111-111111111105'
+  )),
+  'already linked to another employee',
+  'duplicate-employee denial names the reason'
 );
 
 SELECT * FROM finish();

@@ -169,3 +169,27 @@ const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
 - Left `useSplhData`/`useWeekStaffingSuggestions` on their own inline loops
   rather than migrating them onto `fetchAllRows` now, to keep the blast radius
   on the reported bug. Future cleanup candidate.
+- `capped` reports `true` if total rows are an exact multiple of
+  `pageSize × maxPages` (the loop exits on the `for` bound rather than the
+  short-page check) even though nothing was truncated. Accepted: mirrors the
+  proven `useSplhData` pattern and is unreachable at current volumes (largest
+  tenant 1,039 rows vs the 20,000-row cap, ~19× headroom).
+- `.select('*')` pulls jsonb `location` + `photo_path`/`device_info`/`notes` on
+  every page. Negligible at current volumes; revisit if a tenant's punch volume
+  grows an order of magnitude.
+
+## Out of scope for this PR (explicit)
+
+- This fix changes only `.range()` pagination. The upstream instant-resolution
+  logic that builds `fetchStart`/`fetchEnd` (`lookaheadPunchFetchRange` /
+  `bufferPunchFetchRange`) is unchanged and **not** audited here — its
+  timezone-boundary correctness is a separate concern.
+
+## Design-review outcome (Phase 2.5)
+
+Supabase design reviewer: **no critical/major**. Verified against prod —
+`idx_time_punches_restaurant_punch_time (restaurant_id, punch_time)` exists and
+is actively used (no new index needed); `id` is the uuid PK (valid unique
+tiebreaker); TIMESTAMPTZ + resolved `.toISOString()` filters are tz-safe; RLS
+tenant isolation preserved (the `.eq('restaurant_id', …)` filter is rebuilt on
+every page). Three minor notes folded in above.

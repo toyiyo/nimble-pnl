@@ -16,11 +16,13 @@ const INVITABLE_ROLES: Record<string, string[]> = {
   owner: [
     'owner', 'manager', 'operations_manager', 'chef', 'staff',
     'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+    'collaborator_operations_manager',
   ],
   // manager can invite all except owner; collaborators included (separate CollaboratorInvitations UI)
   manager: [
     'manager', 'operations_manager', 'chef', 'staff',
     'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+    'collaborator_operations_manager',
   ],
   operations_manager: ['staff'],
 };
@@ -192,6 +194,7 @@ const handler = async (req: Request): Promise<Response> => {
       'collaborator_accountant': 'Accountant',
       'collaborator_inventory': 'Inventory Helper',
       'collaborator_chef': 'Recipe Consultant',
+      'collaborator_operations_manager': 'Operations Manager (Collaborator)',
     };
     const friendlyRole = roleLabels[role] || role;
     const isCollaborator = role.startsWith('collaborator_');

@@ -30,6 +30,7 @@ const ALL_ROLES = [
   'collaborator_accountant',
   'collaborator_inventory',
   'collaborator_chef',
+  'collaborator_operations_manager',
 ] as const;
 
 const MANAGER_OWNER = new Set(['manager', 'owner']);
@@ -84,6 +85,33 @@ describe('tools-registry: get_time_punches gating', () => {
     it('returns owner for owner-only tools', () => {
       expect(requiredRoleFor('get_ai_insights')).toBe('owner');
     });
+  });
+});
+
+describe('tools-registry: get_kpis is withheld from collaborator_operations_manager', () => {
+  // get_kpis returns revenue, COGS, labor, prime cost, and margin/profitability
+  // data — the same P&L surface collaborator_operations_manager is explicitly
+  // excluded from (no view:financial_intelligence; kept off the root
+  // dashboard). It remains a "staff+" basic tool for every other role.
+  it('denies get_kpis for collaborator_operations_manager', () => {
+    expect(canUseTool('get_kpis', 'collaborator_operations_manager')).toBe(false);
+  });
+
+  it.each(ALL_ROLES.filter((r) => r !== 'collaborator_operations_manager'))(
+    'still allows get_kpis for %s (unaffected basic tool)',
+    (role) => {
+      expect(canUseTool('get_kpis', role)).toBe(true);
+    },
+  );
+
+  it('omits get_kpis from the tool list for collaborator_operations_manager', () => {
+    const tools = getTools('rest-1', 'collaborator_operations_manager');
+    expect(tools.map((t) => t.name)).not.toContain('get_kpis');
+  });
+
+  it('still lists get_kpis for other roles, e.g. manager', () => {
+    const tools = getTools('rest-1', 'manager');
+    expect(tools.map((t) => t.name)).toContain('get_kpis');
   });
 });
 

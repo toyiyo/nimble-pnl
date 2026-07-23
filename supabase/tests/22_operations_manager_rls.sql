@@ -19,7 +19,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(18);
+SELECT plan(21);
 
 -- ============================================================================
 -- Fixtures (inserted as superuser before we switch to authenticated role)
@@ -333,6 +333,42 @@ SELECT throws_ok(
     NULL,
     NULL,
     'ops-mgr cannot self-grant collaborator_accountant (financial access) via UPDATE'
+);
+
+-- ============================================================================
+-- Tests 19-21: edit:scheduling core-table write regression (Task 8 step 4
+-- functional fix). Before this migration, operations_manager held
+-- edit:scheduling but could NOT write shifts/shift_templates/
+-- time_off_requests — the INSERT/UPDATE/DELETE policies were hardcoded to
+-- role IN ('owner','manager') only. This migration widened those policies to
+-- also admit operations_manager. Guard against a future regression that
+-- narrows them back.
+-- ============================================================================
+
+SELECT lives_ok(
+    $$ INSERT INTO public.shifts
+          (restaurant_id, employee_id, start_time, end_time, position)
+       VALUES ('22000000-0000-0000-0000-000000000099'::uuid,
+               '22000000-0000-0000-0000-000000000301'::uuid,
+               now(), now() + interval '8 hours', 'Server') $$,
+    'ops-mgr can INSERT into shifts (edit:scheduling, core table widened)'
+);
+
+SELECT cmp_ok(
+    (SELECT count(*)::int FROM public.shifts
+     WHERE restaurant_id = '22000000-0000-0000-0000-000000000099'::uuid
+       AND employee_id = '22000000-0000-0000-0000-000000000301'::uuid),
+    '>',
+    0,
+    'ops-mgr shifts INSERT actually persisted a row (not silently a no-op under RLS)'
+);
+
+SELECT lives_ok(
+    $$ INSERT INTO public.shift_templates
+          (restaurant_id, name, days, start_time, end_time, position)
+       VALUES ('22000000-0000-0000-0000-000000000099'::uuid,
+               'Test Template 22', ARRAY[1], '09:00', '17:00', 'Server') $$,
+    'ops-mgr can INSERT into shift_templates (edit:scheduling, core table widened)'
 );
 
 SELECT * FROM finish();

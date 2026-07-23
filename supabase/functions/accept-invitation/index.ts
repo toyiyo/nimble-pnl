@@ -131,59 +131,28 @@ const handler = async (req: Request): Promise<Response> => {
       console.log('User is already a member, just marking invitation as accepted');
     }
 
-    // If this is a staff invitation with an employee_id, link the employee to this user
-    if (invitation.role === 'staff' && invitation.employee_id) {
-      console.log('Linking employee:', invitation.employee_id, 'to user:', user.id);
-      
-      const { data: linkData, error: linkError } = await supabase
-        .from('employees')
-        .update({ user_id: user.id })
-        .eq('id', invitation.employee_id)
-        .eq('restaurant_id', invitation.restaurant_id)
-        .is('user_id', null)
-        .select();
-
-      if (linkError) {
-        console.error('Error linking employee to user:', linkError);
-        // Don't fail the entire request if employee linking fails
-        // The user will still be added to the team
-      } else if (!linkData || linkData.length === 0) {
-        console.log('No unlinked employee found for id:', invitation.employee_id);
-      } else {
-        console.log('Successfully linked employee record to user:', linkData[0]);
+    // Link any accountless employee record (user_id IS NULL) to this account,
+    // for any invitable role -- resolved server-side by the RPC via
+    // employee_id (if set on the invitation) or by email. Never fatal: the
+    // user still joins the team even if linking fails or finds no match.
+    const { data: linkResult, error: linkError } = await supabase.rpc(
+      'link_invited_employee',
+      {
+        p_user_id: user.id,
+        p_restaurant_id: invitation.restaurant_id,
+        p_employee_id: invitation.employee_id ?? null,
+        p_email: invitation.email,
       }
-    } else if (invitation.role === 'staff' && !invitation.employee_id) {
-      // Fallback: Try to find employee by email and link it
-      console.log('Staff invitation but no employee_id found. Trying to find employee by email:', invitation.email);
-      
-      const { data: employeeByEmail, error: findError } = await supabase
-        .from('employees')
-        .select('*')
-        .eq('restaurant_id', invitation.restaurant_id)
-        .eq('email', invitation.email)
-        .is('user_id', null) // Only link if not already linked
-        .single();
+    );
 
-      if (!findError && employeeByEmail) {
-        console.log('Found employee by email:', employeeByEmail.id, 'Linking to user:', user.id);
-        
-        const { data: linkData, error: linkError } = await supabase
-          .from('employees')
-          .update({ user_id: user.id })
-          .eq('id', employeeByEmail.id)
-          .is('user_id', null)
-          .select();
-
-        if (linkError) {
-          console.error('Error linking employee (by email) to user:', linkError);
-        } else if (!linkData || linkData.length === 0) {
-          console.log('No unlinked employee found for id:', employeeByEmail.id);
-        } else {
-          console.log('Successfully linked employee (by email) to user:', linkData[0]);
-        }
-      } else {
-        console.log('No unlinked employee found with email:', invitation.email);
-      }
+    if (linkError) {
+      console.error('Error linking invited employee:', linkError);
+    } else {
+      const result = Array.isArray(linkResult) ? linkResult[0] : linkResult;
+      console.log('link_invited_employee result:', {
+        linked: result?.linked,
+        reason: result?.reason,
+      });
     }
 
     // Delete any old accepted invitations for this email/restaurant combo to avoid unique constraint violations

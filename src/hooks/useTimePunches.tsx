@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { TimePunch, PunchStatus, EmployeeTip } from '@/types/timeTracking';
 import { useToast } from '@/hooks/use-toast';
 import { TimePunchInsert, EmployeeTipInsert } from '@/utils/timePunchImport';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export const useTimePunches = (restaurantId: string | null, employeeId?: string, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
@@ -12,41 +13,58 @@ export const useTimePunches = (restaurantId: string | null, employeeId?: string,
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      let query = supabase
-        .from('time_punches')
-        .select(`
-          id,
-          restaurant_id,
-          employee_id,
-          shift_id,
-          punch_type,
-          punch_time,
-          location,
-          device_info,
-          photo_path,
-          notes,
-          created_at,
-          updated_at,
-          created_by,
-          modified_by,
-          employee:employees(id, name, position)
-        `)
-        .eq('restaurant_id', restaurantId);
+      // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
+      // this query can span a wide window (e.g. TimePunchesManager's month
+      // view with all employees selected), and PostgREST caps an unpaginated
+      // response at 1,000 rows — silently dropping the oldest punches (the
+      // query orders `punch_time desc`) once a busy restaurant crosses that
+      // threshold. The `.order('id')` tiebreaker makes each page boundary
+      // deterministic when multiple punches share a `punch_time`.
+      const { rows, capped } = await fetchAllRows<TimePunch>((from, to) => {
+        let query = supabase
+          .from('time_punches')
+          .select(`
+            id,
+            restaurant_id,
+            employee_id,
+            shift_id,
+            punch_type,
+            punch_time,
+            location,
+            device_info,
+            photo_path,
+            notes,
+            created_at,
+            updated_at,
+            created_by,
+            modified_by,
+            employee:employees(id, name, position)
+          `)
+          .eq('restaurant_id', restaurantId);
 
-      if (employeeId) {
-        query = query.eq('employee_id', employeeId);
-      }
-      if (startDate) {
-        query = query.gte('punch_time', startDate.toISOString());
-      }
-      if (endDate) {
-        query = query.lte('punch_time', endDate.toISOString());
+        if (employeeId) {
+          query = query.eq('employee_id', employeeId);
+        }
+        if (startDate) {
+          query = query.gte('punch_time', startDate.toISOString());
+        }
+        if (endDate) {
+          query = query.lte('punch_time', endDate.toISOString());
+        }
+
+        return query
+          .order('punch_time', { ascending: false })
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: TimePunch[] | null; error: unknown }>;
+      });
+
+      if (capped) {
+        console.warn(
+          '[useTimePunches] time_punches fetch hit the pagination cap (20k rows); results may be truncated',
+        );
       }
 
-      const { data, error } = await query.order('punch_time', { ascending: false });
-
-      if (error) throw error;
-      return data as unknown as TimePunch[];
+      return rows;
     },
     enabled: !!restaurantId,
     staleTime: 10000, // 10 seconds for real-time updates

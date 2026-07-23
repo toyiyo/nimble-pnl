@@ -2,9 +2,10 @@
 
 **Date:** 2026-07-23
 **Author:** Claude (systematic-debugging → development-workflow)
-**Status:** Approved (scope confirmed by user: fix all 3 hooks + PR). A 4th
-call site (`useTimePunches.tsx`) surfaced in Phase 7a review is **deferred to a
-follow-up** to keep this PR at the approved scope — see "Out of scope" below.
+**Status:** Approved. Original scope was 3 hooks; a 4th call site
+(`useTimePunches.tsx`) surfaced in Phase 7a review and the user explicitly chose
+to **fold it into this PR** — so this PR now paginates **4** `time_punches`
+fetches.
 
 ## Problem
 
@@ -39,15 +40,16 @@ punches), not a single day. The single-day view is a **client-side filter
 applied after the already-truncated fetch**. The intraday chart renders because
 its data path (`useSplhData.fetchAllPunches`) already paginates via `.range()`.
 
-### The three affected fetches (same latent bug)
+### The affected fetches (same latent bug)
 
 | Site | Feeds | Error handling |
 |---|---|---|
 | `src/hooks/useLaborCostsFromTimeTracking.tsx:100` | /labor KPI + Dashboard card | `throw` |
 | `src/hooks/usePayroll.tsx:144` | Payroll calculation (pay to employees) | `throw` |
 | `src/hooks/useMonthlyMetrics.tsx:368` | Monthly P&L labor | `console.warn` (non-fatal) |
+| `src/hooks/useTimePunches.tsx:46` | Time Punches manager + Tips screens (`TimePunchesManager.tsx`, `Tips.tsx`) | `throw`; `console.warn` on page-cap |
 
-All three share the exact shape: `.select('*').eq('restaurant_id', …)
+The first three share the exact shape: `.select('*').eq('restaurant_id', …)
 .gte('punch_time', <instant>.toISOString()).lte('punch_time', <instant>.toISOString())
 .order('punch_time', { ascending: true })` with **no `.range()`/`.limit()`**.
 
@@ -186,17 +188,15 @@ const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
   logic that builds `fetchStart`/`fetchEnd` (`lookaheadPunchFetchRange` /
   `bufferPunchFetchRange`) is unchanged and **not** audited here — its
   timezone-boundary correctness is a separate concern.
-- **`src/hooks/useTimePunches.tsx:46` — 4th call site, deferred to a follow-up.**
-  Phase 7a's Codex adversarial reviewer found this hook (feeds
-  `TimePunchesManager` and `Tips.tsx`) runs the same unpaginated `time_punches`
-  `.select()` with no `.range()`, ordered `punch_time desc` — the identical
-  1,000-row-truncation bug class. It was **not** in this PR's approved scope
-  ("fix all 3 hooks"): `useLaborCostsFromTimeTracking`, `usePayroll`,
-  `useMonthlyMetrics`. Folding a 4th hook in would improvise past the approved
-  design, so it is **explicitly deferred to a separate follow-up PR** rather
-  than expanded into this one. The fix is mechanical (same `fetchAllRows`
-  swap), so the follow-up is small. Tracked for the user to approve when they
-  return.
+- ~~`src/hooks/useTimePunches.tsx:46`~~ **— now IN scope (folded in).** Phase
+  7a's Codex adversarial reviewer found this hook (feeds `TimePunchesManager`
+  and `Tips.tsx`) runs the same unpaginated `time_punches` `.select()` with no
+  `.range()`, ordered `punch_time desc` — the identical 1,000-row-truncation
+  bug class. It was outside the original 3-hook scope; when surfaced, the user
+  explicitly chose to **fold it into this PR**. Fixed with the same
+  `fetchAllRows` swap + `.order('id')` tiebreaker (preserving this hook's DESC
+  order), `console.warn` on page-cap (non-fatal, matching the manager/Tips
+  read path), covered by `tests/unit/useTimePunches.pagination.test.ts`.
 
 ## Design-review outcome (Phase 2.5)
 

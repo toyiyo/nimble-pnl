@@ -126,7 +126,12 @@ export function deriveWeekdayPattern(history: BreakEvenHistoryEntry[]): string |
   }
 
   const meanDelta = average(completeDays);
-  const weakest = qualifyingStats.reduce((worst, w) => (w.avgDelta < worst.avgDelta ? w : worst));
+  // qualifyingStats is non-empty here (guarded above), so seeding the reduce
+  // with its first element is safe and keeps the min-by-avgDelta semantics.
+  const weakest = qualifyingStats.reduce(
+    (worst, w) => (w.avgDelta < worst.avgDelta ? w : worst),
+    qualifyingStats[0],
+  );
 
   // Only claim a weakest day when it is actually below break-even on average
   // (not merely the least-good of several profitable days) and materially

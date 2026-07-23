@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   useAccountlessEmployees,
   findAccountlessEmployeeByEmail,
+  combineDescribedByIds,
   type AccountlessEmployee,
 } from '@/hooks/useAccountlessEmployees';
 
@@ -177,5 +178,25 @@ describe('findAccountlessEmployeeByEmail', () => {
   it('ignores employees with no email rather than matching them', () => {
     expect(employees.some((e) => e.email === null)).toBe(true);
     expect(findAccountlessEmployeeByEmail(employees, 'no-email@example.com')).toBeNull();
+  });
+});
+
+describe('combineDescribedByIds', () => {
+  it('joins multiple ids with a single space, preserving order', () => {
+    expect(combineDescribedByIds('a', 'b')).toBe('a b');
+  });
+
+  it('filters out undefined entries', () => {
+    expect(combineDescribedByIds(undefined, 'a', undefined, 'b', undefined)).toBe('a b');
+  });
+
+  it('returns the sole id unchanged when only one is present', () => {
+    expect(combineDescribedByIds('only-one')).toBe('only-one');
+    expect(combineDescribedByIds(undefined, 'only-one')).toBe('only-one');
+  });
+
+  it('returns undefined when every entry is undefined', () => {
+    expect(combineDescribedByIds()).toBeUndefined();
+    expect(combineDescribedByIds(undefined, undefined)).toBeUndefined();
   });
 });

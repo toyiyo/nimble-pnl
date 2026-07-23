@@ -50,7 +50,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
   const [showCancelledInvites, setShowCancelledInvites] = useState(false);
   const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
 
-  const { data: members, isLoading: membersLoading } = useRestaurantMembers(restaurantId);
+  const { data: members, isLoading: membersLoading, isError: membersIsError } = useRestaurantMembers(restaurantId);
   // null while loading, on error, or for a non-member — all "proceed normally".
   const existingMember = findMemberByEmail(members, email);
   const blockedPanelId = 'collab-existing-member-warning';
@@ -59,6 +59,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
   const accountlessEmployee = resolveAccountlessEmployeeHint(
     existingMember,
     membersLoading,
+    membersIsError,
     accountlessEmployees,
     email
   );

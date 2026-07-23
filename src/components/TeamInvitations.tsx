@@ -15,7 +15,7 @@ import type { Role } from '@/lib/permissions/types';
 import { ROLE_METADATA, groupRolesForInvite } from '@/lib/permissions/definitions';
 import { getInvitableRoles } from '@/lib/permissions/invitations';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
-import { useAccountlessEmployees, resolveAccountlessEmployeeHint, resolveDescribedById } from '@/hooks/useAccountlessEmployees';
+import { useAccountlessEmployees, resolveAccountlessEmployeeHint, resolveDescribedById, combineDescribedByIds } from '@/hooks/useAccountlessEmployees';
 import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 interface Invitation {
@@ -52,7 +52,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const [resendConflictId, setResendConflictId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const { data: members, isLoading: membersLoading } = useRestaurantMembers(restaurantId);
+  const { data: members, isLoading: membersLoading, isError: membersIsError } = useRestaurantMembers(restaurantId);
   // null while loading, on error, or for a non-member — all "proceed normally".
   const existingMember = findMemberByEmail(members, inviteForm.email);
   const blockedPanelId = 'invite-existing-member-warning';
@@ -61,11 +61,21 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const accountlessEmployee = resolveAccountlessEmployeeHint(
     existingMember,
     membersLoading,
+    membersIsError,
     accountlessEmployees,
     inviteForm.email
   );
   const hintPanelId = 'invite-existing-employee-hint';
-  const activeDescribedById = resolveDescribedById(existingMember, accountlessEmployee, blockedPanelId, hintPanelId);
+  const pendingConflictPanelId = 'invite-pending-conflict-warning';
+  // The pending-conflict panel is independent of (and can stack with) the
+  // member-block/accountless-hint panel — design doc: "the hint can stack
+  // with the pendingConflict panel (they are not mutually exclusive)". So it
+  // is appended rather than folded into resolveDescribedById's either/or
+  // precedence, which only arbitrates between the block and the hint.
+  const activeDescribedById = combineDescribedByIds(
+    resolveDescribedById(existingMember, accountlessEmployee, blockedPanelId, hintPanelId),
+    pendingConflict ? pendingConflictPanelId : undefined
+  );
 
   useEffect(() => {
     setShowHistory(false);
@@ -350,7 +360,12 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                   </div>
 
                   {pendingConflict && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]">
+                    <div
+                      id={pendingConflictPanelId}
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]"
+                    >
                       <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                       <p className="text-foreground">
                         A pending invite for <strong>{inviteForm.email}</strong> already exists. Sending a new one will cancel the old link.

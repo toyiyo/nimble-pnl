@@ -60,14 +60,27 @@ export function findAccountlessEmployeeByEmail(
  * Gates the accountless-employee match behind existing-member detection:
  * member detection wins and MUST have settled first, so the inform hint
  * never flashes before a block that lands once membership data arrives.
+ *
+ * Also suppressed on `membersIsError`: an errored member lookup means we
+ * don't actually know whether this email already belongs to a member (unlike
+ * a genuine "no match" result), so it would be misleading to surface the
+ * hint — or attach `employeeId` to the invite body — against that unknown.
+ * This mirrors `existingMember`'s own fail-open contract in the other
+ * direction: the *block* fails open (error ≈ "not a member", so Send isn't
+ * disabled), while the *hint* fails closed (error ≈ "don't know", so nothing
+ * is asserted about this email being a free-standing accountless employee
+ * either).
  */
 export function resolveAccountlessEmployeeHint(
   existingMember: unknown,
   membersLoading: boolean,
+  membersIsError: boolean,
   employees: AccountlessEmployee[] | undefined,
   email: string
 ): AccountlessEmployee | null {
-  return existingMember || membersLoading ? null : findAccountlessEmployeeByEmail(employees, email);
+  return existingMember || membersLoading || membersIsError
+    ? null
+    : findAccountlessEmployeeByEmail(employees, email);
 }
 
 /**
@@ -87,4 +100,17 @@ export function resolveDescribedById(
   if (existingMember) return blockedPanelId;
   if (accountlessEmployee) return hintPanelId;
   return undefined;
+}
+
+/**
+ * Joins the ids of every currently-rendered describing panel into a single
+ * `aria-describedby` value (space-separated, per the ARIA spec), or
+ * `undefined` when none are rendered. Unlike `resolveDescribedById`'s
+ * either/or precedence (block vs. hint), panels passed here are independent
+ * and can legitimately stack — e.g. TeamInvitations' `pendingConflict`
+ * warning, which the design doc notes "can stack with" the hint panel.
+ */
+export function combineDescribedByIds(...ids: Array<string | undefined>): string | undefined {
+  const joined = ids.filter(Boolean).join(' ');
+  return joined || undefined;
 }

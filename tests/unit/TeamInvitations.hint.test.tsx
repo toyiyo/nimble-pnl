@@ -142,6 +142,43 @@ describe('TeamInvitations – accountless-employee inform hint', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('suppresses the hint and omits employeeId when the members query errors, even with an accountless match', async () => {
+    // An errored member lookup means we don't actually know whether this
+    // email belongs to an existing member — unlike a settled "no match"
+    // result. The hint must fail closed here (not surface a possibly-wrong
+    // claim, and not attach employeeId to the invite body), even though the
+    // accountless-employees roster itself resolved with a match.
+    mockUseRestaurantMembers.mockReturnValue({ data: undefined, isLoading: false, isError: true });
+    mockUseAccountlessEmployees.mockReturnValue({
+      data: [
+        { id: 'emp-1', name: 'Jordan Lee', email: 'jordan@rushbowls.com' },
+      ],
+      isLoading: false,
+      isError: false,
+    });
+
+    const user = userEvent.setup();
+    renderInvitations('owner');
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.type(screen.getByLabelText(/email address/i), 'jordan@rushbowls.com');
+
+    expect(screen.queryByText(/is already set up for scheduling here/i)).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+
+    const send = screen.getByRole('button', { name: /send invitation/i });
+    expect(send).not.toHaveAttribute('aria-disabled', 'true');
+    await user.click(send);
+
+    expect(supabase.functions.invoke).toHaveBeenCalledWith(
+      'send-team-invitation',
+      expect.objectContaining({
+        body: expect.not.objectContaining({
+          employeeId: expect.anything(),
+        }),
+      })
+    );
+  });
+
   it('shows the inform hint, keeps Send enabled, and includes employeeId in the send body for an accountless-only match', async () => {
     mockUseRestaurantMembers.mockReturnValue({ data: [], isLoading: false, isError: false });
     mockUseAccountlessEmployees.mockReturnValue({
@@ -177,5 +214,73 @@ describe('TeamInvitations – accountless-employee inform hint', () => {
         }),
       })
     );
+  });
+
+  it('describes the email field with both the accountless hint and a stacked pending-conflict warning', async () => {
+    // A pending invite for the same email as the accountless match — the two
+    // panels are independent (not either/or) and both must be announced.
+    // Overriding supabase.from directly (rather than the shared
+    // mockSelect/mockEq/mockOrder chain) because that chain's `from`
+    // implementation rebuilds itself — and re-defaults mockOrder to `[]` —
+    // on every call, clobbering any override made before render.
+    vi.mocked(supabase.from)
+      .mockImplementationOnce((table: string) => {
+        expect(table).toBe('invitations');
+        return {
+          select: () => ({
+            eq: () => ({
+              order: () =>
+                Promise.resolve({
+                  data: [
+                    {
+                      id: 'inv-1',
+                      email: 'jordan@rushbowls.com',
+                      role: 'staff',
+                      status: 'pending',
+                      created_at: '2026-01-01T00:00:00Z',
+                      expires_at: null,
+                      invited_by: 'u1',
+                      employee_id: null,
+                    },
+                  ],
+                  error: null,
+                }),
+            }),
+          }),
+        };
+      })
+      .mockImplementationOnce((table: string) => {
+        expect(table).toBe('profiles');
+        return {
+          select: () => ({
+            in: () => Promise.resolve({ data: [{ user_id: 'u1', full_name: 'Owner' }], error: null }),
+          }),
+        };
+      });
+    mockUseAccountlessEmployees.mockReturnValue({
+      data: [{ id: 'emp-1', name: 'Jordan Lee', email: 'jordan@rushbowls.com' }],
+      isLoading: false,
+      isError: false,
+    });
+
+    const user = userEvent.setup();
+    renderInvitations('owner');
+    // Let the invitations fetch (drives hasConflict) fully settle — the
+    // fetched invitation rendering in the list is proof setInvitations ran.
+    await screen.findByText('jordan@rushbowls.com');
+
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await user.type(screen.getByLabelText(/email address/i), 'jordan@rushbowls.com');
+    await screen.findByText(/is already set up for scheduling here/i);
+
+    // First click surfaces the pending-conflict warning instead of sending.
+    await user.click(screen.getByRole('button', { name: /send invitation/i }));
+    await screen.findByText(/already exists\. Sending a new one will cancel the old link/i);
+
+    const emailInput = screen.getByLabelText(/email address/i);
+    expect(emailInput.getAttribute('aria-describedby')).toBe(
+      'invite-existing-employee-hint invite-pending-conflict-warning'
+    );
+    expect(supabase.functions.invoke).not.toHaveBeenCalled();
   });
 });

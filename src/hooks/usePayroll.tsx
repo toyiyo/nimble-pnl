@@ -17,6 +17,7 @@ import {
   type EmployeeTip as EmployeeTipForAggregation,
 } from '@/utils/tipAggregation';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -140,16 +141,32 @@ export function usePayroll(
       // Fetch time punches for the period, widened by ±18h so overnight shifts
       // that straddle the period boundary are paired whole. calculateEmployeePay
       // then filters periods back to [startDate, endDate] by clock-in day.
+      //
+      // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
+      // PostgREST caps an unpaginated response at 1,000 rows, which would
+      // silently drop the newest punches (the query orders `punch_time asc`)
+      // once a pay period crosses that threshold. The `.order('id')`
+      // tiebreaker makes each page boundary deterministic when multiple
+      // punches share a `punch_time`.
       const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
-      const { data: punches, error: punchesError } = await supabase
-        .from('time_punches')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .gte('punch_time', fetchStart.toISOString())
-        .lte('punch_time', fetchEnd.toISOString())
-        .order('punch_time', { ascending: true });
+      const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
+        supabase
+          .from('time_punches')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .gte('punch_time', fetchStart.toISOString())
+          .lte('punch_time', fetchEnd.toISOString())
+          .order('punch_time', { ascending: true })
+          .order('id')
+          .range(from, to),
+      );
 
-      if (punchesError) throw punchesError;
+      if (capped) {
+        console.warn(
+          '[usePayroll] time_punches fetch hit the pagination cap (maxPages); payroll may be missing punches',
+          { restaurantId, startDate: startDate.toISOString(), endDate: endDate.toISOString() },
+        );
+      }
 
       // Fetch all approved/archived tips for the period from tip_split_items
       // Both 'approved' and 'archived' (locked) splits should be included in payroll

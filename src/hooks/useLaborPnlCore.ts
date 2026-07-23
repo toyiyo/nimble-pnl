@@ -86,6 +86,7 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
     isLoading: laborLoading,
     error: laborError,
     refetch: refetchLabor,
+    capped: laborCapped,
   } = useLaborCostsFromTimeTracking(restaurantId, windowStart, windowEnd, { throughNow: true });
 
   // Close still-open shifts at "now" before deriving sessions, so the intraday
@@ -124,7 +125,11 @@ export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
     // `sessions` alongside its own derived `grid`/`summary`.
     sales: data?.sales ?? [],
     sessions,
-    capped: data?.capped ?? false,
+    // OR'd with the labor-cost fetch's own `capped` (both `useSplhData` and
+    // `useLaborCostsFromTimeTracking` paginate `time_punches` independently
+    // with their own page caps) so a truncation surfaced by either fetch
+    // still reaches the `/labor` banner.
+    capped: (data?.capped ?? false) || laborCapped,
     // Per design §6 (mirroring `useSplhCore`): a restaurant with sales but
     // zero punches anywhere in the window hasn't enabled time tracking yet —
     // a setup-invite empty state, distinct from per-bucket "no labor" cells.

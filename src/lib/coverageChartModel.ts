@@ -38,3 +38,37 @@ export function classifyHour(h: CoverageHour, minStaff: number): HourClassificat
   if (scheduled > needed) return 'spare';
   return 'ok';
 }
+
+export interface ImpliedLaborResult {
+  pct: number;
+  overTarget: boolean;
+}
+
+/**
+ * Implied labor % of a given SPLH target at a given average hourly wage —
+ * the on-chart slider's live readout (`→ X% labor at $W/hr`).
+ *
+ * `overTarget` flags the readout as "over budget" once `pct` clears
+ * `targetLaborPct` by more than a 0.05-point tolerance (so a target hit to
+ * within float/rounding noise doesn't flash red).
+ */
+export function impliedLabor(params: {
+  wage: number;
+  splh: number;
+  targetLaborPct: number;
+}): ImpliedLaborResult {
+  const { wage, splh, targetLaborPct } = params;
+  const pct = (wage / splh) * 100;
+  const overTarget = pct > targetLaborPct + 0.05;
+  return { pct, overTarget };
+}
+
+/**
+ * The SPLH target that exactly hits `targetLaborPct` at `wage` — the value
+ * the slider's track notch is drawn at, so a manager can see where their own
+ * labor goal puts the knob.
+ */
+export function laborConsistentSplh(params: { wage: number; targetLaborPct: number }): number {
+  const { wage, targetLaborPct } = params;
+  return wage / (targetLaborPct / 100);
+}

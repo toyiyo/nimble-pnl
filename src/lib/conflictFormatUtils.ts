@@ -77,13 +77,16 @@ export function formatConflictLine(
   }
 
   if (conflict.available_start && conflict.available_end) {
-    // For exception conflicts the writer anchors to the exception's own date,
-    // not today. Extract that date from the message so the reader uses the
-    // same DST offset (mirrors the fix for recurring conflicts, but per-exception).
-    const anchor =
-      conflict.conflict_type === 'exception'
-        ? (extractDateAnchor(conflict.message) ?? referenceDate)
-        : referenceDate;
+    // Anchor the window's DST offset to the shift's own date, not today. This
+    // is what check_availability_conflict (migration 20260712120000) uses to
+    // detect the conflict: it converts availability against v_current_date (the
+    // shift's local date) for BOTH recurring and exception windows, then returns
+    // the raw stored TIMEs. Re-converting them with the shift-date anchor shows
+    // the window the SQL actually evaluated; anchoring to today instead renders
+    // it off by an hour — and can contradict the conflict — when today and the
+    // shift date fall in different DST periods. Falls back to today (referenceDate)
+    // when the message carries no date; time-off conflicts return earlier.
+    const anchor = extractDateAnchor(conflict.message) ?? referenceDate;
     const start = formatUTCTimeToLocal(conflict.available_start, timezone, anchor);
     const end = formatUTCTimeToLocal(conflict.available_end, timezone, anchor);
     const dayLabel = extractDayLabel(conflict.message);

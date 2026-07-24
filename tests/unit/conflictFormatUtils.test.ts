@@ -246,6 +246,49 @@ describe('formatConflictLine – exception conflict uses exception-date anchor',
   });
 });
 
+describe('formatConflictLine – recurring conflict uses shift-date anchor', () => {
+  // check_availability_conflict (migration 20260712120000) compares recurring
+  // windows against the shift using v_current_date — the shift's own local date —
+  // as the DST anchor, identical to the exception path. The returned
+  // available_start/end are the raw stored TIMEs, so the reader must re-convert
+  // with the shift-date anchor to display the window the SQL actually evaluated.
+  // Anchoring to today instead renders a window off by one hour (and one that can
+  // contradict the conflict) whenever today and the shift date straddle a DST edge.
+  it('uses winter CST offset for a January shift when today is summer CDT', () => {
+    // Recurring window stored 04:00:00 UTC = 10 PM CST (Jan anchor, UTC-6).
+    // With today (CDT, UTC-5): 04:00 UTC - 5 = 11 PM → wrong.
+    // With shift date Jan 15 (CST, UTC-6): 04:00 UTC - 6 = 10 PM → correct.
+    const summerToday = new Date(2026, 5, 23); // June 23 — CDT reference passed as default
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Shift on 2026-01-15 is outside employee availability',
+      available_start: '04:00:00',
+      available_end: '04:30:00',
+    };
+    const result = formatConflictLine(conflict, 'America/Chicago', summerToday);
+    // Must show 10:00 PM / 10:30 PM (CST, Jan anchor), not 11:00 PM / 11:30 PM (CDT, today)
+    expect(result).toContain('10:00 PM – 10:30 PM');
+  });
+
+  it('uses summer CDT offset for a June shift when today is winter CST', () => {
+    // Recurring window stored 03:00:00 UTC = 10 PM CDT (Jun anchor, UTC-5).
+    // With today (CST, UTC-6): 03:00 UTC - 6 = 9 PM → wrong.
+    // With shift date Jun 23 (CDT, UTC-5): 03:00 UTC - 5 = 10 PM → correct.
+    const winterToday = new Date(2026, 0, 15); // Jan 15 — CST reference passed as default
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Shift on 2026-06-23 is outside employee availability',
+      available_start: '03:00:00',
+      available_end: '03:30:00',
+    };
+    const result = formatConflictLine(conflict, 'America/Chicago', winterToday);
+    // Must show 10:00 PM / 10:30 PM (CDT, Jun anchor), not 9:00 PM / 9:30 PM (CST, today)
+    expect(result).toContain('10:00 PM – 10:30 PM');
+  });
+});
+
 describe('formatConflictLine – fallback cases', () => {
   it('returns message when no available_start/end present', () => {
     const conflict: ConflictCheck = {

@@ -44,6 +44,59 @@ const PARAMS: ConflictCheckParams = {
   endTime: '2026-02-01T23:00:00.000Z',
 };
 
+// Shared fixture: one time-off conflict + one recurring-availability conflict, used by both
+// the imperative-path merge/order test and the reactive-hook parity test below so the two
+// stay in lockstep instead of drifting copies of the same RPC response shapes.
+const mockOneConflictFromEachRpc = () => {
+  mockRpc.mockImplementation((fnName: string) => {
+    if (fnName === 'check_timeoff_conflict') {
+      return Promise.resolve({
+        data: [
+          {
+            has_conflict: true,
+            time_off_id: 'to-1',
+            start_date: '2026-02-01',
+            end_date: '2026-02-03',
+            status: 'approved',
+          },
+        ],
+        error: null,
+      });
+    }
+    return Promise.resolve({
+      data: [
+        {
+          has_conflict: true,
+          conflict_type: 'recurring',
+          message: 'Outside recurring availability',
+          available_start: '09:00:00',
+          available_end: '17:00:00',
+        },
+      ],
+      error: null,
+    });
+  });
+};
+
+const EXPECTED_MERGED_CONFLICTS = [
+  {
+    has_conflict: true,
+    conflict_type: 'time-off',
+    message: 'Employee has approved time-off from 2026-02-01 to 2026-02-03',
+    time_off_id: 'to-1',
+    start_date: '2026-02-01',
+    end_date: '2026-02-03',
+    status: 'approved',
+  },
+  {
+    has_conflict: true,
+    conflict_type: 'recurring',
+    message: 'Outside recurring availability',
+    available_start: '09:00:00',
+    available_end: '17:00:00',
+  },
+];
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -101,56 +154,12 @@ describe('useConflictDetection — fetchConflicts concurrency', () => {
 
 describe('useConflictDetection — fetchConflicts merge/order', () => {
   it('preserves conflict ordering: time-off conflicts first, then availability conflicts, with mapped shapes', async () => {
-    mockRpc.mockImplementation((fnName: string) => {
-      if (fnName === 'check_timeoff_conflict') {
-        return Promise.resolve({
-          data: [
-            {
-              has_conflict: true,
-              time_off_id: 'to-1',
-              start_date: '2026-02-01',
-              end_date: '2026-02-03',
-              status: 'approved',
-            },
-          ],
-          error: null,
-        });
-      }
-      return Promise.resolve({
-        data: [
-          {
-            has_conflict: true,
-            conflict_type: 'recurring',
-            message: 'Outside recurring availability',
-            available_start: '09:00:00',
-            available_end: '17:00:00',
-          },
-        ],
-        error: null,
-      });
-    });
+    mockOneConflictFromEachRpc();
 
     const result = await checkConflictsImperative(PARAMS);
 
     expect(result.hasConflicts).toBe(true);
-    expect(result.conflicts).toEqual([
-      {
-        has_conflict: true,
-        conflict_type: 'time-off',
-        message: 'Employee has approved time-off from 2026-02-01 to 2026-02-03',
-        time_off_id: 'to-1',
-        start_date: '2026-02-01',
-        end_date: '2026-02-03',
-        status: 'approved',
-      },
-      {
-        has_conflict: true,
-        conflict_type: 'recurring',
-        message: 'Outside recurring availability',
-        available_start: '09:00:00',
-        available_end: '17:00:00',
-      },
-    ]);
+    expect(result.conflicts).toEqual(EXPECTED_MERGED_CONFLICTS);
   });
 
   it('returns no conflicts and hasConflicts:false when neither RPC reports a conflict', async () => {
@@ -190,34 +199,7 @@ describe('useConflictDetection — fetchConflicts error paths', () => {
 
 describe('useConflictDetection — reactive hook shares fetchConflicts (no duplication)', () => {
   it('useCheckConflicts issues exactly the same two RPCs as checkConflictsImperative, once each', async () => {
-    mockRpc.mockImplementation((fnName: string) => {
-      if (fnName === 'check_timeoff_conflict') {
-        return Promise.resolve({
-          data: [
-            {
-              has_conflict: true,
-              time_off_id: 'to-1',
-              start_date: '2026-02-01',
-              end_date: '2026-02-03',
-              status: 'approved',
-            },
-          ],
-          error: null,
-        });
-      }
-      return Promise.resolve({
-        data: [
-          {
-            has_conflict: true,
-            conflict_type: 'recurring',
-            message: 'Outside recurring availability',
-            available_start: '09:00:00',
-            available_end: '17:00:00',
-          },
-        ],
-        error: null,
-      });
-    });
+    mockOneConflictFromEachRpc();
 
     const { result } = renderHook(() => useCheckConflicts(PARAMS), {
       wrapper: createWrapper(),
@@ -243,24 +225,7 @@ describe('useConflictDetection — reactive hook shares fetchConflicts (no dupli
 
     // Same merge/order semantics as the imperative path (time-off before availability).
     expect(result.current.hasConflicts).toBe(true);
-    expect(result.current.conflicts).toEqual([
-      {
-        has_conflict: true,
-        conflict_type: 'time-off',
-        message: 'Employee has approved time-off from 2026-02-01 to 2026-02-03',
-        time_off_id: 'to-1',
-        start_date: '2026-02-01',
-        end_date: '2026-02-03',
-        status: 'approved',
-      },
-      {
-        has_conflict: true,
-        conflict_type: 'recurring',
-        message: 'Outside recurring availability',
-        available_start: '09:00:00',
-        available_end: '17:00:00',
-      },
-    ]);
+    expect(result.current.conflicts).toEqual(EXPECTED_MERGED_CONFLICTS);
   });
 
   it('useCheckConflicts surfaces the same rejection semantics (error propagates, not swallowed by a duplicated path)', async () => {

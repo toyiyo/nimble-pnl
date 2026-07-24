@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Locator, type Page, type Response } from '@playwright/test';
 import { signUpAndCreateRestaurant, exposeSupabaseHelpers, generateTestUser } from '../helpers/e2e-supabase';
 
 /**
@@ -43,7 +43,7 @@ function localTimeToUTCOnDate(localTime: string, date: Date): string {
 }
 
 /** Shared setup: sign up, create restaurant, seed 2 employees, expose helpers. */
-async function setupTestEnvironment(page: any, prefix: string) {
+async function setupTestEnvironment(page: Page, prefix: string) {
   const testUser = generateTestUser(prefix);
   await signUpAndCreateRestaurant(page, testUser);
   await exposeSupabaseHelpers(page);
@@ -69,7 +69,7 @@ async function setupTestEnvironment(page: any, prefix: string) {
 }
 
 /** Navigate to scheduling and open the ShiftDialog for creating a new shift. */
-async function openShiftDialog(page: any) {
+async function openShiftDialog(page: Page) {
   await page.goto('/scheduling');
   await page.waitForURL(/\/scheduling/, { timeout: 8000 });
 
@@ -94,7 +94,7 @@ async function openShiftDialog(page: any) {
 
 /** Fill the ShiftDialog form fields using element IDs and aria-labels. */
 async function fillShiftDialog(
-  page: any,
+  page: Page,
   dialog: any,
   opts: { employeeName: string; startDate: string; endDate: string; startTime: string; endTime: string },
 ) {
@@ -111,7 +111,7 @@ async function fillShiftDialog(
 
 /** Create a shift template in the planner. */
 async function createTemplate(
-  page: any,
+  page: Page,
   opts: { name: string; startTime: string; endTime: string; position: string; days: string[] },
 ) {
   await page.getByRole('button', { name: /add shift template/i }).click();
@@ -134,11 +134,13 @@ async function createTemplate(
   await dialog.getByRole('button', { name: /add template/i }).click();
   await resp;
 
-  await expect(page.getByText(opts.name)).toBeVisible({ timeout: 10000 });
+  // .first(): the assertion means "the template rendered", not "exactly one node names it" —
+  // the planner is free to echo the name in a row header and elsewhere without tripping strict mode.
+  await expect(page.getByText(opts.name).first()).toBeVisible({ timeout: 10000 });
 }
 
 /** Navigate to planner tab. */
-async function goToPlanner(page: any) {
+async function goToPlanner(page: Page) {
   await page.goto('/scheduling');
   await page.waitForURL(/\/scheduling/, { timeout: 8000 });
   const plannerTab = page.getByRole('tab', { name: /planner/i });
@@ -147,55 +149,82 @@ async function goToPlanner(page: any) {
 }
 
 /**
- * Find a point *on* the draggable `locator` that is actually the topmost hit-test
- * target (not covered by a floating overlay), and return it as the drag press point.
+ * Find a point *on* the draggable `locator` that a real pointer can actually reach — i.e.
+ * one where `locator` is the topmost hit-test target — and return it as the drag press point.
  *
- * Two overlays sit over the bottom-right employee sidebar and would otherwise steal
- * the `pointerdown` so dnd-kit's PointerSensor never activates and the drag silently
- * never starts — the root cause of this file's flakiness:
- *   1. Transient success toasts (e.g. "Template created") — a `z-[200]` viewport that
- *      covers the whole card for ~5s, then auto-dismisses.
- *   2. A *permanent* floating action button (`fixed z-[100] ... w-12 h-12 rounded-full`)
- *      parked at the bottom-right, sitting directly over the card's geometric centre.
+ * Three separate things make the card's geometric centre the wrong place to press, and each
+ * one produced the same silent symptom: the pointerdown lands on something else, @dnd-kit's
+ * PointerSensor never activates, and the gesture no-ops until the popover assertion fails as
+ * if the *drop* had missed.
+ *   1. A *permanent* floating action button (`fixed z-[100] ... w-12 h-12 rounded-full`) parked
+ *      at the bottom-right, sitting directly over the centre of the bottom-most employee cards.
+ *   2. Transient success toasts (e.g. "Template created") — a `z-[200]` viewport covering the
+ *      whole card for ~5s before auto-dismissing.
+ *   3. The conflict dialog is a Radix *modal*, so while it is open Radix sets
+ *      `pointer-events: none` on <body> and react-remove-scroll locks scrolling — both torn
+ *      down asynchronously *after* the close animation. `toBeVisible()` going false on the
+ *      dialog therefore does NOT mean the page is interactive again. `elementFromPoint`
+ *      honours `pointer-events: none`, so this helper stays unsatisfied for exactly as long as
+ *      the lock is up: the precondition is asserted rather than slept through.
  *
- * Pressing at the card centre (as the original helper did) always lands on the FAB, so
- * we instead probe several points biased toward the card's upper-left — away from the
- * bottom-right FAB — and poll until one of them clears (the toast dismissing). Returns
- * the first un-occluded point, which the caller uses as the mouse-down location.
+ * So: probe several points biased toward the card's upper-left — away from the bottom-right
+ * FAB — and poll until one clears.
  */
-async function findDraggablePressPoint(page: any, locator: any) {
-  let point: { x: number; y: number } | null = null;
-  await expect
-    .poll(
-      async () => {
-        const box = await locator.boundingBox();
-        if (!box) return false;
-        // Candidate offsets (fraction of width/height), ordered upper-left first to
-        // dodge the bottom-right FAB; still all comfortably inside the card.
-        const candidates = [
-          [0.5, 0.18],
-          [0.3, 0.18],
-          [0.5, 0.35],
-          [0.2, 0.5],
-          [0.35, 0.5],
-        ].map(([fx, fy]) => ({ x: box.x + box.width * fx, y: box.y + box.height * fy }));
-        const found = await page.evaluate((pts: { x: number; y: number }[]) => {
-          for (const p of pts) {
-            const el = document.elementFromPoint(p.x, p.y);
-            if (el?.closest('[aria-roledescription="draggable"]')) return p;
-          }
-          return null;
-        }, candidates);
-        if (found) {
-          point = found;
-          return true;
-        }
-        return false;
-      },
-      { timeout: 12000, message: 'drag source stayed occluded (toast/FAB never cleared a hittable point)' },
-    )
-    .toBe(true);
-  return point!;
+async function findDraggablePressPoint(locator: Locator) {
+  await expect(locator).toBeVisible({ timeout: 10000 });
+  const found: { point: { x: number; y: number } | null } = { point: null };
+
+  await expect(async () => {
+    // Scroll, measure and hit-test in a SINGLE evaluate. Splitting them across round trips
+    // leaves a window in which the planner re-renders (hover-preview fires setPickedEmployeeId
+    // on every pointer enter/leave) and scrolls, so the point measured in call N gets tested
+    // against the layout of call N+1 — which reports a bogus interceptor and sends you chasing
+    // an overlay that was never there.
+    const result = await locator.evaluate((el: Element) => {
+      // Raw page.mouse events go to viewport coordinates, so unlike locator.click() they get
+      // NO actionability auto-scroll. The employee sidebar sits below several collapsible
+      // panels and can fall off the bottom of a 1280x720 viewport, where every candidate point
+      // hit-tests as `null` forever. Centring it also moves it clear of the corner-anchored FAB.
+      el.scrollIntoView({ block: 'center' });
+      const rect = el.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return { point: null, blockedBy: 'nothing (element has no layout box yet)' };
+      }
+      // Candidate offsets (fraction of width/height), ordered upper-left first to dodge the
+      // bottom-right FAB; still all comfortably inside the card.
+      const candidates = [
+        [0.5, 0.18],
+        [0.3, 0.18],
+        [0.5, 0.35],
+        [0.2, 0.5],
+        [0.35, 0.5],
+      ].map(([fx, fy]) => ({ x: rect.x + rect.width * fx, y: rect.y + rect.height * fy }));
+      for (const p of candidates) {
+        const target = document.elementFromPoint(p.x, p.y);
+        // Require the hit to be *this* card. A looser `closest('[aria-roledescription=
+        // "draggable"]')` would happily accept a neighbouring employee's card showing through
+        // and drag the wrong person.
+        if (target && (el === target || el.contains(target))) return { point: p, blockedBy: null };
+      }
+      const top = document.elementFromPoint(candidates[0].x, candidates[0].y);
+      // Name WHAT is on top when this fails — otherwise a blocked pointer is indistinguishable
+      // from a slow one, and that ambiguity is what made this spec hard to diagnose before.
+      return {
+        point: null,
+        blockedBy: top
+          ? `<${top.tagName.toLowerCase()} class="${top.getAttribute('class') ?? ''}">`
+          : 'nothing (point is outside the viewport)',
+      };
+    });
+    // Throw rather than assert — toPass() retries on throw and surfaces the last message.
+    if (!result.point) {
+      throw new Error(`No reachable press point on the drag source; topmost there is ${result.blockedBy}`);
+    }
+    found.point = result.point;
+  }).toPass({ timeout: 12000 });
+
+  if (!found.point) throw new Error('unreachable: toPass would have thrown');
+  return found.point;
 }
 
 /**
@@ -203,9 +232,8 @@ async function findDraggablePressPoint(page: any, locator: any) {
  * @dnd-kit's PointerSensor requires real pointer events with distance > 8px.
  * Playwright's dragTo doesn't produce the right events, so we use page.mouse.
  */
-async function dragAndAssign(page: any, employeeName: string, assignType: 'day' | 'all') {
+async function dragAndAssign(page: Page, employeeName: string, assignType: 'day' | 'all') {
   const employeeButton = page.getByRole('button', { name: new RegExp(employeeName, 'i') }).first();
-  await expect(employeeButton).toBeVisible({ timeout: 5000 });
 
   const targetCell = page.locator('.border-l-2.border-primary\\/40').first();
   await expect(targetCell).toBeVisible({ timeout: 5000 });
@@ -214,12 +242,25 @@ async function dragAndAssign(page: any, employeeName: string, assignType: 'day' 
     ? page.getByRole('button', { name: /this day only/i })
     : page.getByRole('button', { name: /all.*days/i });
 
-  // Retry the drag up to 3 times — dnd-kit PointerSensor can miss events under load
+  // Why this is fiddly: @dnd-kit's PointerSensor drives collision detection off
+  // requestAnimationFrame, and the planner re-renders mid-drag (hover-to-preview fires
+  // setPickedEmployeeId on every pointer enter/leave). Under CPU load those frames get
+  // starved, so releasing the mouse the instant the pointer reaches the cell can drop with
+  // `over === null` — handleDragEnd then bails (`if (!over) return`) and never sets
+  // pendingAssignment, so the AssignmentPopover never mounts. That's the whole flake.
+  //
+  // The fix is a deterministic handshake instead of a hopeful release: ShiftCell applies
+  // `ring-foreground/20` iff @dnd-kit currently reports the pointer `isOver` this cell. We
+  // keep the pointer alive over the target with tiny ±1px nudges (a static hold can let a
+  // mid-drag re-render drift `over` to a neighbour) and release ONLY once that class shows —
+  // which proves `over` is this cell, so the drop registers and lands on the intended day.
+  // If it never registers, we drop back on the source (off any droppable, so handleDragEnd
+  // makes no assignment) and retry the whole gesture cleanly.
   for (let attempt = 0; attempt < 3; attempt++) {
     // Root-cause guard: press on a part of the card that is actually the topmost
     // hit-test target. Otherwise the pointerdown lands on the transient toast or the
     // permanent bottom-right FAB and dnd-kit's PointerSensor never activates.
-    const { x: srcX, y: srcY } = await findDraggablePressPoint(page, employeeButton);
+    const { x: srcX, y: srcY } = await findDraggablePressPoint(employeeButton);
 
     const targetBox = await targetCell.boundingBox();
     if (!targetBox) throw new Error('Could not get bounding box for drop target');
@@ -228,37 +269,32 @@ async function dragAndAssign(page: any, employeeName: string, assignType: 'day' 
 
     await page.mouse.move(srcX, srcY);
     await page.mouse.down();
-    await page.mouse.move(srcX + 5, srcY, { steps: 2 });
-    await page.mouse.move(srcX + 10, srcY, { steps: 2 });
-    await page.mouse.move(tgtX, tgtY, { steps: 10 });
-    // Settle nudge so dnd-kit recomputes collision with the pointer over the cell.
-    await page.mouse.move(tgtX + 1, tgtY, { steps: 2 });
+    // Cross the PointerSensor 8px activation threshold, then travel onto the target cell.
+    await page.mouse.move(srcX + 12, srcY, { steps: 2 });
+    await page.mouse.move(tgtX, tgtY, { steps: 12 });
 
-    // Defense-in-depth: gate the release on dnd-kit actually flagging this cell as the
-    // active drop target (the `isOver` ring styling). This guarantees `over` is set in
-    // handleDragEnd, so the assignment popover mounts. Best-effort — if it never lights
-    // up (e.g. a genuinely missed activation), fall through and let the retry handle it.
-    await targetCell
-      .evaluate(
-        (node: HTMLElement) =>
-          new Promise<void>((resolve) => {
-            const deadline = Date.now() + 1500;
-            const check = () => {
-              if (node.className.includes('ring-foreground/20') || Date.now() > deadline) resolve();
-              else requestAnimationFrame(check);
-            };
-            check();
-          }),
-      )
-      .catch(() => {});
+    // Actively confirm @dnd-kit registers the pointer over THIS cell before releasing. Each
+    // ±1px nudge emits a pointermove so dnd-kit re-runs collision detection at rest on the
+    // cell; we poll the cell's own isOver styling between nudges. Fast (no long fixed waits).
+    let over = false;
+    for (let i = 0; i < 15 && !over; i++) {
+      await page.mouse.move(tgtX + (i % 2 === 0 ? 1 : -1), tgtY);
+      over = await targetCell
+        .evaluate((el) => el.className.includes('ring-foreground/20'))
+        .catch(() => false);
+    }
 
-    await page.mouse.up();
-
-    const visible = await popoverButton.isVisible({ timeout: 5000 }).catch(() => false);
-    if (visible) break;
+    if (over) {
+      await page.mouse.up();
+      if (await popoverButton.isVisible({ timeout: 5000 }).catch(() => false)) break;
+    } else {
+      // Never registered — drop back on the source so no stray shift is created, then retry.
+      await page.mouse.move(srcX, srcY, { steps: 4 });
+      await page.mouse.up();
+    }
 
     if (attempt < 2) {
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500);
     }
   }
 
@@ -481,8 +517,8 @@ test.describe('Scheduling Conflict Enhancements', () => {
     ).not.toBeVisible({ timeout: 3000 });
 
     // --- Test Assign Anyway ---
-    // Wait for DnD sensors to fully reset after dialog close — needs extra time under load
-    await page.waitForTimeout(2000);
+    // No sleep needed: dragAndAssign waits for the sidebar handle to be pointer-reachable
+    // again, which is exactly what Radix's modal body-lock teardown gates.
     await dragAndAssign(page, 'Alice Johnson', 'day');
 
     await expect(page.getByText(/scheduling warning/i)).toBeVisible({ timeout: 15000 });
@@ -494,10 +530,9 @@ test.describe('Scheduling Conflict Enhancements', () => {
     await page.getByRole('button', { name: /assign anyway/i }).click();
     await shiftResponse;
 
-    // Success toast. The confirmation text renders twice — once in the visible toast
-    // and once in the toast system's aria-live announcement region — so match the
-    // first (same disambiguation as the `outside availability` assertion above);
-    // without `.first()` the two matches trip Playwright strict mode intermittently.
+    // Success toast. Radix renders toast text twice — the visible ToastTitle and a
+    // visually-hidden `role="status"` aria-live announcer — so a bare getByText resolves to
+    // two nodes and trips strict mode. Scope to the first (the visible title).
     await expect(page.getByText(/assigned despite warnings/i).first()).toBeVisible({ timeout: 10000 });
   });
 
@@ -525,6 +560,24 @@ test.describe('Scheduling Conflict Enhancements', () => {
 
     const dialog = await openShiftDialog(page);
 
+    // This test asserts the ABSENCE of a conflict, so it is only meaningful once the
+    // availability check for the *final* form state has actually come back — otherwise it
+    // passes vacuously against a check that never ran. ShiftDialog sends
+    // `new Date(`${date}T${time}`).toISOString()` as p_start_time/p_end_time, so the test can
+    // name the exact request it is waiting for. Match on BOTH bounds: filling the form fires
+    // the query on intermediate states too (start time lands before end time), and a
+    // start-only match would resolve on that earlier, half-filled request.
+    const expectedStart = new Date(`${monStr}T10:00`).toISOString();
+    const expectedEnd = new Date(`${monStr}T18:00`).toISOString();
+    const conflictChecked = page.waitForResponse(
+      (resp: Response) => {
+        if (!resp.url().includes('check_availability_conflict')) return false;
+        const body = resp.request().postData() ?? '';
+        return body.includes(expectedStart) && body.includes(expectedEnd);
+      },
+      { timeout: 20000 },
+    );
+
     await fillShiftDialog(page, dialog, {
       employeeName: 'Alice Johnson',
       startDate: monStr,
@@ -533,10 +586,10 @@ test.describe('Scheduling Conflict Enhancements', () => {
       endTime: '18:00', // Within 8 AM - 11 PM
     });
 
-    // Wait for conflict check
-    await page.waitForTimeout(3000);
+    await conflictChecked;
 
-    // NO conflict — shift is within availability
+    // NO conflict — shift is within availability. The remaining timeout is render slack after
+    // a known-completed round-trip, not a stand-in for the network call itself.
     await expect(page.getByText(/outside availability/i)).not.toBeVisible({ timeout: 3000 });
 
     // Submit should work

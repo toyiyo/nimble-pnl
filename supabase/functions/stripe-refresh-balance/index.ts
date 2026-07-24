@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { computeAsOfDate } from "../_shared/bankBalanceAsOf.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -160,6 +161,12 @@ serve(async (req) => {
         const availableBalance = finalAccount.balance?.available?.usd;
         const hasBalanceData = currentBalance !== undefined || availableBalance !== undefined;
 
+        // Never invent a date: only include `as_of_date` in the payload when
+        // Stripe actually supplied `balance.as_of`. Omitting the key leaves
+        // whatever value is already persisted untouched on conflict, rather
+        // than stamping `now()` (design §4.4).
+        const asOfDate = computeAsOfDate(finalAccount.balance?.as_of);
+
         const balanceData = {
           account_name: finalAccount.display_name || finalAccount.institution_name,
           account_type: finalAccount.subcategory,
@@ -168,7 +175,7 @@ serve(async (req) => {
           available_balance: availableBalance == null ? null : availableBalance / 100,
           currency: "USD",
           is_active: true,
-          as_of_date: new Date().toISOString(),
+          ...(asOfDate !== undefined ? { as_of_date: asOfDate } : {}),
           stripe_financial_account_id: accountId,
         };
 

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { computeAsOfDate } from "../_shared/bankBalanceAsOf.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -374,13 +375,19 @@ serve(async (req) => {
           .single();
 
         if (bank && account.balance) {
+          // Never invent a date: only include `as_of_date` in the update
+          // payload when Stripe actually supplied `balance.as_of`. Omitting
+          // the key leaves whatever value is already persisted untouched,
+          // rather than stamping `now()` (design §4.4).
+          const asOfDate = computeAsOfDate(account.balance.as_of);
+
           // Update balance using stripe_financial_account_id for precise targeting
           const { error: balanceError } = await supabaseClient
             .from("bank_account_balances")
             .update({
               current_balance: (account.balance.current?.usd || 0) / 100,
               available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
-              as_of_date: new Date().toISOString(),
+              ...(asOfDate !== undefined ? { as_of_date: asOfDate } : {}),
             })
             .eq("stripe_financial_account_id", account.id)
             .eq("connected_bank_id", bank.id); // Keep as safety filter

@@ -152,7 +152,13 @@ describe('TeamInvitations – owner invite dropdown', () => {
     await user.click(screen.getByRole('combobox'));
     // owner can invite owner, manager, operations_manager, chef, staff
     expect(screen.getByRole('option', { name: /owner/i })).toBeDefined();
-    expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
+    // The internal role and the collaborator role have DISTINCT labels, so an
+    // exact-match query on the label span resolves each unambiguously
+    // (regression guard for the duplicate-"Operations Manager" dropdown bug).
+    // Queried by label text, not accessible name: an option's name also
+    // includes its description span.
+    expect(screen.getByText('Operations Manager')).toBeInTheDocument();
+    expect(screen.getByText('Operations Manager (Collaborator)')).toBeInTheDocument();
   });
 
   it('opens invite dialog for operations_manager and shows only the Employee (self-service) option', async () => {
@@ -181,9 +187,9 @@ describe('TeamInvitations – owner invite dropdown', () => {
     await user.click(screen.getByRole('combobox'));
 
     // manager cannot invite owner
-    expect(screen.queryByRole('option', { name: /^owner$/i })).toBeNull();
-    // but can invite operations_manager
-    expect(screen.getByRole('option', { name: /operations manager/i })).toBeDefined();
+    expect(screen.queryByText('Owner')).toBeNull();
+    // but can invite operations_manager (exact label match — distinct from the collaborator)
+    expect(screen.getByText('Operations Manager')).toBeInTheDocument();
   });
 
   it('groups roles by access type so platform access reads differently from self-service', async () => {

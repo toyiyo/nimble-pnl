@@ -10,9 +10,10 @@ import {
   type PendingOutflowRow,
   type SplitItemRow,
 } from '@/services/cogsCalculations';
-import type { TimePunch } from '@/types/timeTracking';
+import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -365,15 +366,35 @@ export function useMonthlyMetrics(
       // Look-ahead buffer so an overnight shift clocking out just after the range
       // end (e.g. the 1st of the next month) is fetched whole; the per-month
       // clock-in-day clip drops shifts whose clock-in belongs outside the window.
-      const { data: timePunchesData, error: timePunchesError } = await supabase
-        .from('time_punches')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .gte('punch_time', dateFrom.toISOString())
-        .lte('punch_time', lookaheadPunchFetchRange(dateFrom, dateTo).fetchEnd.toISOString())
-        .order('punch_time', { ascending: true });
-
-      if (timePunchesError) {
+      //
+      // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
+      // PostgREST caps an unpaginated response at 1,000 rows, which would
+      // silently drop the newest punches (the query orders `punch_time asc`)
+      // once the window's punches cross that threshold. The `.order('id')`
+      // tiebreaker makes each page boundary deterministic when multiple
+      // punches share a `punch_time`. Errors stay non-fatal (console.warn)
+      // to match this hook's existing behavior for the labor calculation.
+      let timePunchesData: DBTimePunch[] | null = null;
+      try {
+        const { rows, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
+          supabase
+            .from('time_punches')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .gte('punch_time', dateFrom.toISOString())
+            .lte('punch_time', lookaheadPunchFetchRange(dateFrom, dateTo).fetchEnd.toISOString())
+            .order('punch_time', { ascending: true })
+            .order('id')
+            .range(from, to),
+        );
+        timePunchesData = rows;
+        if (capped) {
+          console.warn(
+            '[useMonthlyMetrics] time_punches fetch hit the pagination cap (maxPages); monthly labor may be missing punches',
+            { restaurantId, dateFrom: dateFrom.toISOString(), dateTo: dateTo.toISOString() },
+          );
+        }
+      } catch (timePunchesError) {
         console.warn('Failed to fetch time punches for labor calculation:', timePunchesError);
       }
 

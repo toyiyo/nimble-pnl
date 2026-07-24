@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
-import { Calculator, Package, ChefHat, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Calculator, Package, ChefHat, Briefcase, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
 import type { Role } from '@/lib/permissions';
 import { formatExpiresIn } from '@/lib/invitationUtils';
@@ -31,6 +31,7 @@ const roleIcons: Record<string, typeof Calculator> = {
   collaborator_accountant: Calculator,
   collaborator_inventory: Package,
   collaborator_chef: ChefHat,
+  collaborator_operations_manager: Briefcase,
 };
 
 export function CollaboratorInvitations({ restaurantId, userRole }: CollaboratorInvitationsProps) {
@@ -147,7 +148,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         {COLLABORATOR_PRESETS.map((preset) => {
           const Icon = roleIcons[preset.role] || Calculator;
           const isSelected = selectedRole === preset.role;
@@ -156,6 +157,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             <button
               key={preset.role}
               onClick={() => setSelectedRole(preset.role)}
+              aria-pressed={isSelected}
               className={`
                 relative p-4 rounded-lg border-2 text-left transition-all
                 hover:border-primary/50 hover:bg-accent/50

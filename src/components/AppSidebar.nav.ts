@@ -212,6 +212,39 @@ export const operationsManagerNav: NavGroup[] = navigationGroups
     items: group.items.filter((item) => item.path !== '/integrations'),
   }));
 
+// Collaborator Operations Manager: bespoke, scoped nav for the external ops
+// collaborator role. DERIVED from navigationGroups (same pattern as
+// operationsManagerNav) rather than re-declaring item objects — keeps a single
+// source of truth for paths/labels/icons. Do NOT reuse operationsManagerNav:
+// that still includes the Admin group's /team, which this role must never see
+// (fail-open risk flagged in Phase 2.5 design review).
+//   - Accounting group: dropped entirely.
+//   - Main: trimmed to POS Sales only (no Dashboard, Integrations, Ops Inbox).
+//   - Admin: relabelled "Settings", trimmed to Settings + Help — /team and
+//     /employees are intentionally excluded (/employees stays in the route
+//     allow-list for scheduling context, but is not surfaced in the sidebar).
+//   - Operations: kept as-is.
+//   - Inventory: kept, minus /reports — the Reports page is P&L (defaults to
+//     P&L Trends), which this accounting-excluded role must not reach
+//     (Codex P1, PR #596).
+export const collaboratorOperationsManagerNav: NavGroup[] = navigationGroups
+  .filter((group) => group.label !== 'Accounting')
+  .map((group) => {
+    if (group.label === 'Main') {
+      return { ...group, items: group.items.filter((item) => item.path === '/pos-sales') };
+    }
+    if (group.label === 'Inventory') {
+      return { ...group, items: group.items.filter((item) => item.path !== '/reports') };
+    }
+    if (group.label === 'Admin') {
+      return {
+        label: 'Settings',
+        items: group.items.filter((item) => item.path === '/settings' || item.path === '/help'),
+      };
+    }
+    return group;
+  });
+
 // Get navigation groups based on role
 export function getNavigationForRole(role: string | undefined): NavGroup[] {
   if (!role) return [];
@@ -227,6 +260,8 @@ export function getNavigationForRole(role: string | undefined): NavGroup[] {
       return collaboratorInventoryNav;
     case 'collaborator_chef':
       return collaboratorChefNav;
+    case 'collaborator_operations_manager':
+      return collaboratorOperationsManagerNav;
     case 'operations_manager':
       return operationsManagerNav;
     default:

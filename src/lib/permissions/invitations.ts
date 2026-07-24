@@ -14,11 +14,13 @@ const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
   owner: [
     'owner', 'manager', 'operations_manager', 'chef', 'staff',
     'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+    'collaborator_operations_manager',
   ],
   // manager can invite all except owner; collaborators included (separate CollaboratorInvitations UI)
   manager: [
     'manager', 'operations_manager', 'chef', 'staff',
     'collaborator_accountant', 'collaborator_inventory', 'collaborator_chef',
+    'collaborator_operations_manager',
   ],
   operations_manager: ['staff'],
   chef: [],
@@ -27,6 +29,7 @@ const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
   collaborator_accountant: [],
   collaborator_inventory: [],
   collaborator_chef: [],
+  collaborator_operations_manager: [],
 };
 
 /** Roles that `inviter` is allowed to invite (empty if none). */

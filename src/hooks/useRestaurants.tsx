@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { createDefaultChartOfAccounts } from '@/lib/chartOfAccountsUtils';
+import type { Role } from '@/lib/permissions/types';
 
 export interface Restaurant {
   id: string;
@@ -44,7 +45,9 @@ export interface UserRestaurant {
   id: string;
   user_id: string;
   restaurant_id: string;
-  role: 'owner' | 'manager' | 'operations_manager' | 'chef' | 'staff' | 'kiosk' | 'collaborator_accountant' | 'collaborator_inventory' | 'collaborator_chef';
+  // Canonical Role union (single source of truth) — avoids the literal-union
+  // drift that previously required manual patching on every new role (CodeRabbit, PR #596).
+  role: Role;
   created_at: string;
   restaurant: Restaurant;
 }

@@ -34,6 +34,23 @@ npm run test:e2e:ui            # Playwright with UI
 npm run test:all               # All tests (unit + db + e2e)
 ```
 
+## Database Access (MCP)
+
+Two Supabase MCP servers exist — pick deliberately:
+
+| Server | Target | Use for |
+|--------|--------|---------|
+| `supabase` | `http://127.0.0.1:54321` (local dev, usually empty) | migrations, pgTAP, local work |
+| `supabase-prod` | `ncdujvdgqtaunuyigflp.supabase.co` (**production**) | diagnosing real customer/tenant issues |
+
+**Production SELECTs are read-only and pre-authorized.** When investigating a live issue (a named restaurant, a specific user), query `mcp__supabase-prod__execute_sql` directly — do not hand the SQL back to the user to run. Verify the target once with `get_project_url` before the first query.
+
+**Writes to prod (INSERT/UPDATE/DELETE) require explicit user confirmation** — state exact row counts and affected tables, then wait.
+
+Both servers are already configured (`claude mcp list` to confirm) and both carry `read_only=true`. If `mcp__supabase-prod__*` tools aren't registered, the entry exists but its **OAuth has lapsed** — the fix is authentication only: the user runs `claude` → `/mcp` → select `supabase-prod` → Authenticate, in a real terminal. Do **not** re-add the server; Supabase's setup docs suggest `claude mcp add ... supabase "…project_ref=ncdujvdgqtaunuyigflp&read_only=true"`, which would repoint the name `supabase` (currently **local dev**) at production and create a scope conflict.
+
+Dead ends, do not explore: `.env.local`'s `SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY` are **local-only**; the Supabase CLI is not logged in. Never request a service-role key in chat.
+
 ## Architecture
 
 ### Tech Stack

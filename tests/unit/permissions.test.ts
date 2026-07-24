@@ -28,6 +28,7 @@ describe('Permission System Integrity', () => {
       'collaborator_accountant',
       'collaborator_inventory',
       'collaborator_chef',
+      'collaborator_operations_manager',
     ];
 
     it('should have metadata for all expected roles', () => {
@@ -415,13 +416,16 @@ describe('Collaborator Isolation', () => {
     }
   });
 
-  it('collaborators should NEVER have AI assistant access', () => {
+  it('collaborators should NEVER have AI assistant access, except operations manager (approved design exception)', () => {
     const collaboratorRoles = getCollaboratorRoles();
 
     for (const role of collaboratorRoles) {
+      if (role === 'collaborator_operations_manager') continue; // explicitly granted per design
       const caps = ROLE_CAPABILITIES[role];
       expect(caps).not.toContain('view:ai_assistant');
     }
+
+    expect(ROLE_CAPABILITIES['collaborator_operations_manager']).toContain('view:ai_assistant');
   });
 });
 
@@ -434,6 +438,7 @@ describe('isCollaboratorRole', () => {
     expect(isCollaboratorRole('collaborator_accountant')).toBe(true);
     expect(isCollaboratorRole('collaborator_inventory')).toBe(true);
     expect(isCollaboratorRole('collaborator_chef')).toBe(true);
+    expect(isCollaboratorRole('collaborator_operations_manager')).toBe(true);
   });
 
   it('returns false for internal roles', () => {
@@ -453,6 +458,7 @@ describe('getCollaboratorRoles', () => {
         'collaborator_accountant',
         'collaborator_inventory',
         'collaborator_chef',
+        'collaborator_operations_manager',
       ])
     );
     expect(roles).not.toContain('owner');
@@ -462,9 +468,9 @@ describe('getCollaboratorRoles', () => {
     expect(roles).not.toContain('kiosk');
   });
 
-  it('returns exactly 3 collaborator roles', () => {
+  it('returns exactly 4 collaborator roles', () => {
     const roles = getCollaboratorRoles();
-    expect(roles.length).toBe(3);
+    expect(roles.length).toBe(4);
   });
 });
 

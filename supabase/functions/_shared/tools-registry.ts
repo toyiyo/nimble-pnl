@@ -859,6 +859,16 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
     });
   }
 
+  // get_kpis exposes P&L-equivalent data (revenue, COGS, labor, prime cost,
+  // margins). collaborator_operations_manager is explicitly excluded from
+  // financial_intelligence/the P&L dashboard, so don't offer this tool to
+  // the model for that role — canUseTool() denies it anyway, but omitting it
+  // here avoids the AI assistant suggesting a tool call that will just be
+  // rejected as TOOL_PERMISSION_DENIED.
+  if (userRole === 'collaborator_operations_manager') {
+    return tools.filter((tool) => tool.name !== 'get_kpis');
+  }
+
   return tools;
 }
 
@@ -866,6 +876,15 @@ export function getTools(restaurantId: string, userRole: string = 'viewer'): Too
  * Check if user has permission to use a tool
  */
 export function canUseTool(toolName: string, userRole: string): boolean {
+  // get_kpis returns revenue, COGS, labor, prime cost, and margin/profitability
+  // data — the same P&L surface that collaborator_operations_manager is
+  // explicitly excluded from (no view:financial_intelligence, kept off the
+  // root dashboard). Block it for that role even though it is otherwise a
+  // "basic" tool available to internal roles.
+  if (toolName === 'get_kpis' && userRole === 'collaborator_operations_manager') {
+    return false;
+  }
+
   // Navigation and basic query tools available to all users
   const basicTools = [
     'navigate',

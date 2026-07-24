@@ -55,7 +55,10 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
       .map((balance) => balance.dataCurrentThrough)
       .filter((value): value is string => Boolean(value));
     if (values.length === 0) return null;
-    return values.reduce((oldest, value) => (new Date(value) < new Date(oldest) ? value : oldest));
+    return values.reduce(
+      (oldest, value) => (new Date(value) < new Date(oldest) ? value : oldest),
+      values[0]
+    );
   }, [bank.balances]);
 
   const handleSyncTransactions = async (targetBankId?: string) => {

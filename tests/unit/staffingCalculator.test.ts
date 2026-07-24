@@ -1,29 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calculateRecommendedStaff,
   checkLaborGuardrail,
   consolidateIntoShiftBlocks,
   buildHourlyRecommendations,
   computeMinStaffFromCrew,
 } from '@/lib/staffingCalculator';
-
-describe('calculateRecommendedStaff', () => {
-  it('divides projected sales by target SPLH and rounds up', () => {
-    expect(calculateRecommendedStaff(200, 60, 1)).toBe(4); // 200/60=3.33 → 4
-  });
-
-  it('returns minStaff when sales are low', () => {
-    expect(calculateRecommendedStaff(10, 60, 2)).toBe(2); // 10/60=0.17 → 1, but min=2
-  });
-
-  it('handles zero sales by returning minStaff', () => {
-    expect(calculateRecommendedStaff(0, 60, 1)).toBe(1);
-  });
-
-  it('handles exact division', () => {
-    expect(calculateRecommendedStaff(120, 60, 1)).toBe(2);
-  });
-});
 
 describe('checkLaborGuardrail', () => {
   it('returns false when labor pct is under target', () => {

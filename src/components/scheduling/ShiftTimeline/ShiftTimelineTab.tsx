@@ -278,7 +278,11 @@ export function ShiftTimelineTab({
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null);
   // The chart's roving-tabindex selection (Stage 3.1's `CoverageChart` props).
   // `null` means "no explicit click yet" — the pinned `CoverageReceipt` below
-  // falls back to `pickDefaultHour` (design doc §C) in that case.
+  // falls back to `pickDefaultHour` (design doc §C) in that case. `CoverageChart`
+  // itself is fed `selectedHour?.startMin` (the resolved value, below) rather
+  // than this raw state directly, so the chart's own tabIndex=0 column always
+  // agrees with whichever hour the receipt is actually showing — including the
+  // `pickDefaultHour` fallback before any explicit click.
   const [selectedStartMin, setSelectedStartMin] = useState<number | null>(null);
   // On-chart SPLH slider's live-preview value (design doc §B/§E). `null` means
   // "no preview — use the saved `target_splh`"; a number is the in-progress
@@ -340,10 +344,17 @@ export function ShiftTimelineTab({
   const { selectedRestaurant } = useRestaurantContext();
 
   // ── Staffing recommendations ───────────────────────────────────────────────
+  // Memoized on `sliderTarget` alone (not recreated on every unrelated
+  // re-render, e.g. rAF-throttled drag-draft updates while a slider preview
+  // is active) so `useWeekStaffingSuggestions`'s internal `activeSettings`/
+  // `daySuggestions` memos — keyed on this object by reference — don't
+  // recompute the whole week's staffing pipeline unless the preview value
+  // itself changes.
+  const settingsOverrides = useMemo(() => resolveSettingsOverrides(sliderTarget), [sliderTarget]);
   const { daySuggestions, activeSettings, updateSettings, isSaving } = useWeekStaffingSuggestions(
     restaurantId,
     weekDays,
-    resolveSettingsOverrides(sliderTarget),
+    settingsOverrides,
   );
 
   const dayRecommendations = useMemo(() => {
@@ -541,12 +552,16 @@ export function ShiftTimelineTab({
 
   const handleSplhSave = useCallback(async () => {
     if (sliderTarget === null) return;
+    // Capture the value being persisted: the native range input isn't
+    // disabled during the save (only the Save button is), so the user can
+    // keep dragging before the request resolves. Only clear the override if
+    // `sliderTarget` still equals what we saved — otherwise a newer in-flight
+    // drag value would be silently discarded, snapping the UI back to the
+    // just-persisted (older) value.
+    const savedValue = sliderTarget;
     try {
-      await updateSettings({ target_splh: sliderTarget });
-      // The saved value now matches the preview — drop the override so future
-      // renders read straight off `activeSettings.target_splh` again (avoids
-      // a stale override masking a settings-page edit made elsewhere).
-      setSliderTarget(null);
+      await updateSettings({ target_splh: savedValue });
+      setSliderTarget((current) => (current === savedValue ? null : current));
       toast({ title: 'SPLH target saved' });
     } catch {
       toast({ title: 'Failed to save SPLH target', variant: 'destructive' });
@@ -919,9 +934,12 @@ export function ShiftTimelineTab({
           <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
 
             {/* Coverage panel — verdict/demand-info header → chart → area
-                strips. No horizontal padding here: the pl-[120px] children
-                must start at the same left offset as TimelineAxis and shift
-                lanes so the chart x-scale aligns with the axis ticks below. */}
+                strips. No horizontal padding here: `CoverageChart` carries its
+                own internal `pl`-equivalent gutter (see below), while
+                `AreaCoverageStrips` (which has no gutter of its own) still
+                needs its `pl-[120px]` wrapper to start at the same left
+                offset as `TimelineAxis` and the shift lanes below, so the
+                chart/strips/axis all share one x-scale. */}
             <div className="pt-3 pb-1 space-y-2 px-0">
               {/* Chart header: plain-language verdict + demand explainer
                   (folds CoverageVerdict/CoverageDemandInfo directly above the
@@ -952,17 +970,20 @@ export function ShiftTimelineTab({
                 </div>
               )}
 
-              {/* Coverage chart — offset to align with the axis ticks */}
-              <div className="pl-[120px]">
-                <CoverageChart
-                  hours={hourlySummary}
-                  minStaff={minStaff}
-                  minToPct={minToPct}
-                  selectedStartMin={selectedStartMin}
-                  onSelect={setSelectedStartMin}
-                  onQuickAdd={handleGapClick}
-                />
-              </div>
+              {/* Coverage chart — no external offset here: CoverageChart already
+                  renders its own internal sticky `w-[120px]` y-axis gutter
+                  before its plot region (design doc §Design-review resolutions
+                  #3), so wrapping it in an extra `pl-[120px]` would double the
+                  offset and misalign the chart's columns against the axis
+                  ticks/lanes below. */}
+              <CoverageChart
+                hours={hourlySummary}
+                minStaff={minStaff}
+                minToPct={minToPct}
+                selectedStartMin={selectedHour?.startMin ?? null}
+                onSelect={setSelectedStartMin}
+                onQuickAdd={handleGapClick}
+              />
 
               {/* Per-area scheduled strips — only when grouped by area */}
               {groupBy === 'area' && (

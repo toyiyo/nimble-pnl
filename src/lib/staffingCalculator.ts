@@ -26,15 +26,6 @@ export function computeMinStaffFromCrew(minCrew: MinCrew | null, fallbackMinStaf
   return sum > 0 ? sum : fallbackMinStaff;
 }
 
-export function calculateRecommendedStaff(
-  projectedSales: number,
-  targetSplh: number,
-  minStaff: number,
-): number {
-  if (projectedSales <= 0 || targetSplh <= 0) return minStaff;
-  return Math.max(Math.ceil(projectedSales / targetSplh), minStaff);
-}
-
 export function checkLaborGuardrail(
   staffCount: number,
   avgHourlyRateCents: number,

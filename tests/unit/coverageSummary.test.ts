@@ -160,10 +160,17 @@ describe('summarizeCoverageHours — zero-coverage with demand', () => {
 // summarizeCoverageHours — sales context (projectedSales / laborPct)
 // ---------------------------------------------------------------------------
 
-const recFull = (hour: number, staff: number, sales: number, laborPct: number): HourlyStaffingRecommendation => ({
+const recFull = (
+  hour: number,
+  staff: number,
+  sales: number,
+  laborPct: number,
+  demandVal = staff,
+): HourlyStaffingRecommendation => ({
   hour,
   recommendedStaff: staff,
   projectedSales: sales,
+  demand: demandVal,
   estimatedLaborCost: 0,
   laborPct,
   overTarget: false,
@@ -184,6 +191,38 @@ describe('summarizeCoverageHours — sales context', () => {
 });
 
 // ---------------------------------------------------------------------------
+// summarizeCoverageHours — demand and scheduledMax (demand/floor split)
+// ---------------------------------------------------------------------------
+
+describe('summarizeCoverageHours — demand and scheduledMax', () => {
+  it('CRITICAL: copies rec.demand into demand per hour', () => {
+    const hrs = summarizeCoverageHours(coverage, demand, win, [
+      recFull(10, 1, 480, 22.5, 1),
+      recFull(11, 4, 900, 30, 3),
+    ]);
+    expect(hrs[0].demand).toBe(1);
+    expect(hrs[1].demand).toBe(3);
+    expect(hrs[2].demand).toBeNull(); // hour 12 has no rec
+  });
+
+  it('CRITICAL: demand is null when recs omitted (back-compat)', () => {
+    const hrs = summarizeCoverageHours(coverage, demand, win);
+    expect(hrs[0].demand).toBeNull();
+  });
+
+  it('CRITICAL: scheduledMax is the per-hour maximum headcount (may exceed scheduled=min)', () => {
+    const hrs = summarizeCoverageHours(coverage, demand, win);
+    expect(hrs[0]).toMatchObject({ scheduled: 1, scheduledMax: 2 }); // hr10 samples: [2,2,1,2]
+    expect(hrs[1]).toMatchObject({ scheduled: 3, scheduledMax: 3 }); // hr11 samples: flat [3,3,3,3]
+  });
+
+  it('CRITICAL: scheduledMax is 0 when the hour has no coverage samples', () => {
+    const hrs = summarizeCoverageHours([], demand, win);
+    expect(hrs[0]).toMatchObject({ scheduled: 0, scheduledMax: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // mergeUnderStaffedRange (Stage E1 — clickable coverage gaps)
 // ---------------------------------------------------------------------------
 
@@ -198,7 +237,9 @@ function hourFixture(
     hour: Math.floor(startMin / 60) % 24,
     startMin,
     scheduled,
+    scheduledMax: scheduled,
     needed,
+    demand: null,
     delta: needed === null ? null : scheduled - needed,
     projectedSales: null,
     laborPct: null,

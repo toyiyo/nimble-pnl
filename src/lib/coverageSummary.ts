@@ -17,8 +17,12 @@ export interface CoverageHour {
   startMin: number;
   /** Per-hour minimum headcount (conservative: mid-hour dip counts as short) */
   scheduled: number;
+  /** Per-hour maximum headcount (for the "moves X→Y mid-hour" note) */
+  scheduledMax: number;
   /** Hourly demand target, or null when no demand is configured */
   needed: number | null;
+  /** Raw pre-floor demand (rec.demand), or null when no staffing rec for this hour */
+  demand: number | null;
   /** scheduled − needed, or null when needed is null */
   delta: number | null;
   /** Projected sales for this hour from staffing recommendations (null when unavailable). */
@@ -125,6 +129,7 @@ export function summarizeCoverageHours(
     if (inHour.length === 0 && needed === null) continue;
 
     const scheduled = inHour.length > 0 ? Math.min(...inHour.map((c) => c.count)) : 0;
+    const scheduledMax = inHour.length > 0 ? Math.max(...inHour.map((c) => c.count)) : 0;
 
     const clockHour = Math.floor(start / HOUR) % 24;
     const rec = recByHour.get(clockHour) ?? null;
@@ -133,7 +138,9 @@ export function summarizeCoverageHours(
       hour: clockHour,
       startMin: start,
       scheduled,
+      scheduledMax,
       needed,
+      demand: rec?.demand ?? null,
       delta: needed === null ? null : scheduled - needed,
       projectedSales: rec?.projectedSales ?? null,
       laborPct: rec?.laborPct ?? null,

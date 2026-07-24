@@ -48,7 +48,7 @@ vi.mock('@/hooks/use-toast', () => ({
 // Mock only the useRestaurantMembers hook (the React Query call); keep
 // findMemberByEmail real since it's a pure function and is exactly the
 // logic under test in the "blocking" describe block below.
-const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isError: false }));
+const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
 vi.mock('@/hooks/useRestaurantMembers', async () => {
   const actual = await vi.importActual<typeof import('@/hooks/useRestaurantMembers')>(
     '@/hooks/useRestaurantMembers'
@@ -56,6 +56,19 @@ vi.mock('@/hooks/useRestaurantMembers', async () => {
   return {
     ...actual,
     useRestaurantMembers: (...args: unknown[]) => mockUseRestaurantMembers(...args),
+  };
+});
+
+// Also mock useAccountlessEmployees (React Query call) — not the focus of
+// this test file, so default to an empty roster throughout.
+const mockUseAccountlessEmployees = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
+vi.mock('@/hooks/useAccountlessEmployees', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useAccountlessEmployees')>(
+    '@/hooks/useAccountlessEmployees'
+  );
+  return {
+    ...actual,
+    useAccountlessEmployees: (...args: unknown[]) => mockUseAccountlessEmployees(...args),
   };
 });
 
@@ -261,7 +274,7 @@ describe('TeamInvitations – blocking invites to existing members', () => {
     expect(supabase.functions.invoke).not.toHaveBeenCalled();
   });
 
-  it('describes the blocked button with the explanation panel', async () => {
+  it('describes the email field with the explanation panel', async () => {
     mockUseRestaurantMembers.mockReturnValue({
       data: [
         { userId: 'u1', email: 'alexis@rushbowls.com', fullName: 'Alexis Sanchez', role: 'manager' },
@@ -275,8 +288,8 @@ describe('TeamInvitations – blocking invites to existing members', () => {
     await user.type(screen.getByLabelText(/email address/i), 'alexis@rushbowls.com');
 
     const panel = await screen.findByRole('status');
-    const send = screen.getByRole('button', { name: /send invitation/i });
-    expect(send.getAttribute('aria-describedby')).toBe(panel.id);
+    const emailInput = screen.getByLabelText(/email address/i);
+    expect(emailInput.getAttribute('aria-describedby')).toBe(panel.id);
   });
 
   it('sends normally for an email that is not already a member', async () => {

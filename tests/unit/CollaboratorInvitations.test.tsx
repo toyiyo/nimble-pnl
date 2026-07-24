@@ -36,7 +36,7 @@ vi.mock('@/hooks/use-toast', () => ({
 // Mock only the useRestaurantMembers hook (the React Query call); keep
 // findMemberByEmail real since it's a pure function and is exactly the
 // logic under test in the "blocking" tests below.
-const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isError: false }));
+const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
 vi.mock('@/hooks/useRestaurantMembers', async () => {
   const actual = await vi.importActual<typeof import('@/hooks/useRestaurantMembers')>(
     '@/hooks/useRestaurantMembers'
@@ -44,6 +44,21 @@ vi.mock('@/hooks/useRestaurantMembers', async () => {
   return {
     ...actual,
     useRestaurantMembers: (...args: unknown[]) => mockUseRestaurantMembers(...args),
+  };
+});
+
+// Also mock useAccountlessEmployees (the React Query call) so this file's
+// tests — which render the component without a QueryClientProvider — don't
+// hit the real hook. Keep findAccountlessEmployeeByEmail real; it's exercised
+// separately in CollaboratorInvitations.hint.test.tsx.
+const mockUseAccountlessEmployees = vi.fn(() => ({ data: [], isLoading: false, isError: false }));
+vi.mock('@/hooks/useAccountlessEmployees', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useAccountlessEmployees')>(
+    '@/hooks/useAccountlessEmployees'
+  );
+  return {
+    ...actual,
+    useAccountlessEmployees: (...args: unknown[]) => mockUseAccountlessEmployees(...args),
   };
 });
 
@@ -66,7 +81,8 @@ describe('CollaboratorInvitations – blocking invites to existing members', () 
     vi.clearAllMocks();
     // Default: nobody on the roster matches — every test below overrides
     // this when it needs an existing member (or a lookup error).
-    mockUseRestaurantMembers.mockReturnValue({ data: [], isError: false });
+    mockUseRestaurantMembers.mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockUseAccountlessEmployees.mockReturnValue({ data: [], isLoading: false, isError: false });
   });
 
   it('blocks a collaborator invite for an email that is already a member', async () => {
@@ -93,7 +109,7 @@ describe('CollaboratorInvitations – blocking invites to existing members', () 
     expect(mockSendMutate).not.toHaveBeenCalled();
   });
 
-  it('describes the blocked button with the explanation panel', async () => {
+  it('describes the email field with the explanation panel', async () => {
     mockUseRestaurantMembers.mockReturnValue({
       data: [{ userId: 'u1', email: 'book@cpa.example', fullName: 'Dana Books', role: 'staff' }],
       isError: false,
@@ -105,8 +121,8 @@ describe('CollaboratorInvitations – blocking invites to existing members', () 
     await user.type(screen.getByLabelText(/email address/i), 'book@cpa.example');
 
     const panel = await screen.findByRole('status');
-    const send = screen.getByRole('button', { name: /send invite/i });
-    expect(send.getAttribute('aria-describedby')).toBe(panel.id);
+    const emailInput = screen.getByLabelText(/email address/i);
+    expect(emailInput.getAttribute('aria-describedby')).toBe(panel.id);
   });
 
   it('sends normally for a non-member email', async () => {

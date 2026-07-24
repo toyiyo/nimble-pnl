@@ -34,7 +34,7 @@ interface RequestBody {
   restaurantId: string;
   email: string;
   role: string;
-  employeeId?: string; // Optional employee ID to link when role is "staff"
+  employeeId?: string; // Optional client hint; server re-resolves for any role (see below)
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -158,9 +158,42 @@ const handler = async (req: Request): Promise<Response> => {
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     };
 
-    // If employeeId is provided (for staff role), include it in the invitation
-    if (employeeId && role === 'staff') {
-      invitationData.employee_id = employeeId;
+    // Resolve employee_id server-side — for ANY invitable role, not just staff.
+    // Restaurant-scoped fetch of accountless active employees (no enumeration
+    // oracle; mirrors src/hooks/useAccountlessEmployees.ts). Fetched once and
+    // reused for both the client-hint check and the email fallback.
+    const { data: accountlessEmployees, error: accountlessError } = await supabase
+      .from('employees')
+      .select('id, name, email')
+      .eq('restaurant_id', restaurantId)
+      .is('user_id', null)
+      .eq('status', 'active');
+
+    if (accountlessError) {
+      // Fail open: never block sending the invitation over this lookup.
+      console.error('Failed to fetch accountless employees for linking:', accountlessError);
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const accountlessMatch =
+      // Accept the client-supplied employeeId only if it is BOTH in this
+      // restaurant's accountless set AND its email matches the invitation's
+      // email — an id-only check would let an authorized inviter link an
+      // arbitrary accountless employee in the restaurant to an unrelated
+      // invitee's email. Otherwise fall through to email derivation rather
+      // than silently dropping the link (a stale client id must not reopen
+      // the double-provisioning gap).
+      (employeeId &&
+        accountlessEmployees?.find(
+          (e) => e.id === employeeId && e.email?.trim().toLowerCase() === normalizedEmail
+        )) ||
+      accountlessEmployees?.find(
+        (e) => e.email && e.email.trim().toLowerCase() === normalizedEmail
+      ) ||
+      null;
+
+    if (accountlessMatch) {
+      invitationData.employee_id = accountlessMatch.id;
     }
 
     const { data: invitation, error: invitationError } = await supabase

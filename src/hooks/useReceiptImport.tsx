@@ -5,6 +5,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
 import { calculateImportedTotal, calculateUnitPrice } from '@/utils/receiptImportUtils';
 import { sha256Hex } from '@/lib/fileHash';
+import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 
 // Get Supabase base URL from the client configuration for environment portability
 const getSupabaseUrl = (): string => {
@@ -119,8 +120,11 @@ const RECEIPT_IMPORT_COLUMNS =
 export const useReceiptImport = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
+
+  const clearUploadError = () => setUploadErrorMessage(null);
 
   // Note on `as any`: RECEIPT_IMPORT_COLUMNS includes `file_hash`, a column
   // added by this feature's migration. Until the generated Supabase types
@@ -190,6 +194,7 @@ export const useReceiptImport = () => {
     }
 
     setIsUploading(true);
+    setUploadErrorMessage(null);
     try {
       let fileHash: string | null = null;
       try {
@@ -248,12 +253,15 @@ export const useReceiptImport = () => {
       });
 
       return { kind: 'uploaded', receipt: receiptData as ReceiptImport };
-    } catch (error) {
-      console.error('Error uploading receipt:', error);
+    } catch (error: unknown) {
+      const info = describeStorageError(error);
+      console.error(info.logLine);
+      setUploadErrorMessage(info.userMessage);
       toast({
-        title: "Error",
-        description: "Failed to upload receipt",
-        variant: "destructive",
+        title: 'Upload failed',
+        description: info.userMessage,
+        variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
       });
       return null;
     } finally {
@@ -925,6 +933,8 @@ export const useReceiptImport = () => {
     updateLineItemMapping,
     bulkImportLineItems,
     isUploading,
-    isProcessing
+    isProcessing,
+    uploadErrorMessage,
+    clearUploadError
   };
 };

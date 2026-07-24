@@ -544,6 +544,46 @@ export type Database = {
           },
         ]
       }
+      bank_reauth_notices: {
+        Row: {
+          connected_bank_id: string
+          deactivated_at: string
+          id: string
+          restaurant_id: string
+          sent_at: string
+          stage: string
+        }
+        Insert: {
+          connected_bank_id: string
+          deactivated_at: string
+          id?: string
+          restaurant_id: string
+          sent_at?: string
+          stage: string
+        }
+        Update: {
+          connected_bank_id?: string
+          deactivated_at?: string
+          id?: string
+          restaurant_id?: string
+          sent_at?: string
+          stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bank_reauth_notices_connected_bank_id_fkey"
+            columns: ["connected_bank_id"]
+            referencedRelation: "connected_banks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_reauth_notices_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bank_statement_lines: {
         Row: {
           amount: number
@@ -1549,8 +1589,11 @@ export type Database = {
       }
       connected_banks: {
         Row: {
+          account_mask: string | null
           connected_at: string
           created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
           disconnected_at: string | null
           id: string
           institution_logo_url: string | null
@@ -1563,8 +1606,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          account_mask?: string | null
           connected_at?: string
           created_at?: string
+          data_current_through?: string | null
+          deactivated_at?: string | null
           disconnected_at?: string | null
           id?: string
           institution_logo_url?: string | null
@@ -1577,8 +1623,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          account_mask?: string | null
           connected_at?: string
           created_at?: string
+          data_current_through?: string | null
+          deactivated_at?: string | null
           disconnected_at?: string | null
           id?: string
           institution_logo_url?: string | null
@@ -10617,6 +10666,19 @@ export type Database = {
           success: boolean
         }[]
       }
+      link_invited_employee: {
+        Args: {
+          p_email?: string
+          p_employee_id?: string
+          p_restaurant_id: string
+          p_user_id: string
+        }
+        Returns: {
+          employee_id: string
+          linked: boolean
+          reason: string
+        }[]
+      }
       lives_ok: { Args: { "": string }; Returns: string }
       log_security_event: {
         Args: {
@@ -10630,6 +10692,58 @@ export type Database = {
       mark_as_transfer: {
         Args: { p_transaction_id_1: string; p_transaction_id_2: string }
         Returns: Json
+      }
+      mark_connected_bank_deactivated: {
+        Args: { p_stripe_financial_account_id: string; p_sync_error: string }
+        Returns: {
+          account_mask: string | null
+          connected_at: string
+          created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
+          disconnected_at: string | null
+          id: string
+          institution_logo_url: string | null
+          institution_name: string
+          last_sync_at: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "connected_banks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      mark_connected_bank_reactivated: {
+        Args: { p_stripe_financial_account_id: string }
+        Returns: {
+          account_mask: string | null
+          connected_at: string
+          created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
+          disconnected_at: string | null
+          id: string
+          institution_logo_url: string | null
+          institution_name: string
+          last_sync_at: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "connected_banks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       mark_stale_pending_outflows: { Args: never; Returns: undefined }
       matches_bank_transaction_rule: {
@@ -10756,6 +10870,38 @@ export type Database = {
         Args: { p_restaurant_id: string }
         Returns: number
       }
+      reconnect_connected_bank: {
+        Args: {
+          p_account_mask: string
+          p_institution_logo_url: string
+          p_institution_name: string
+          p_restaurant_id: string
+          p_stripe_financial_account_id: string
+        }
+        Returns: {
+          account_mask: string | null
+          connected_at: string
+          created_at: string
+          data_current_through: string | null
+          deactivated_at: string | null
+          disconnected_at: string | null
+          id: string
+          institution_logo_url: string | null
+          institution_name: string
+          last_sync_at: string | null
+          restaurant_id: string
+          status: Database["public"]["Enums"]["bank_connection_status_enum"]
+          stripe_financial_account_id: string
+          sync_error: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "connected_banks"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       reject_open_shift_claim: {
         Args: { p_claim_id: string; p_reviewer_note?: string }
         Returns: Json
@@ -10772,11 +10918,34 @@ export type Database = {
         Args: { p_restaurant_id: string; p_tombstone_id: string }
         Returns: Json
       }
+      revel_backfill_invalid_tz_restaurants: {
+        Args: never
+        Returns: {
+          restaurant_id: string
+          restaurant_name: string
+          timezone: string
+        }[]
+      }
+      revel_backfill_pending_count: { Args: never; Returns: number }
+      revel_backfill_sold_at_for_restaurant: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          dates_reaggregated: number
+          orders_updated: number
+          unified_sales_updated: number
+        }[]
+      }
+      revel_created_date_to_utc: {
+        Args: { p_raw: string; p_tz: string }
+        Returns: string
+      }
       revel_due_sync_count: { Args: never; Returns: number }
+      revel_raw_created_date: { Args: { p_raw_json: Json }; Returns: string }
       revel_sync_financial_breakdown: {
         Args: { p_order_id: string; p_restaurant_id: string }
         Returns: number
       }
+      revel_valid_tz: { Args: { p_tz: string }; Returns: string }
       runtests:
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }
@@ -10808,13 +10977,11 @@ export type Database = {
         }
         Returns: undefined
       }
-      shift_slot_min_concurrent: {
+      shift_template_assigned_count: {
         Args: {
           p_date: string
-          p_end: string
-          p_position: string
           p_restaurant_id: string
-          p_start: string
+          p_template_id: string
           p_tz: string
         }
         Returns: number

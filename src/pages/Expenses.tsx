@@ -28,12 +28,8 @@ export default function Expenses() {
   const { data: expenses } = usePendingOutflows();
   
   const {
-    connectedBanks,
+    totalBalance,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
-
-  const totalBalance = connectedBanks
-    .flatMap((bank) => bank.balances || [])
-    .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
 
   const totalExpenses = (expenses || [])
     .filter(expense => ['pending', 'stale_30', 'stale_60', 'stale_90'].includes(expense.status))

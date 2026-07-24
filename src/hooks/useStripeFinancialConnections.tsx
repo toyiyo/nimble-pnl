@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { type ConnectedBank, type GroupedBank, groupBanks, totalBalance as computeTotalBalance, accountCount as computeAccountCount } from '@/utils/financialConnections';
+import { type ConnectedBank, type GroupedBank, groupBanks, totalBalance as computeTotalBalance, accountCount as computeAccountCount, quarantinedBalance as computeQuarantinedBalance } from '@/utils/financialConnections';
 
 interface FinancialConnectionSession {
   clientSecret: string;
@@ -39,6 +39,9 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
           disconnected_at,
           last_sync_at,
           sync_error,
+          account_mask,
+          deactivated_at,
+          data_current_through,
           balances:bank_account_balances(
             id,
             connected_bank_id,
@@ -53,7 +56,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'connected')
+        .in('status', ['connected', 'requires_reauth', 'error'])
         .order('connected_at', { ascending: false });
 
       if (banksError) throw banksError;
@@ -87,6 +90,11 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
 
   const accountCount = useMemo(
     () => computeAccountCount(connectedBanks),
+    [connectedBanks]
+  );
+
+  const quarantinedBalance = useMemo(
+    () => computeQuarantinedBalance(connectedBanks),
     [connectedBanks]
   );
 
@@ -345,6 +353,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     syncTransactions,
     verifyConnectionSession,
     totalBalance,
+    quarantinedBalance,
     bankCount: groupedBanks.length,
     accountCount,
   };

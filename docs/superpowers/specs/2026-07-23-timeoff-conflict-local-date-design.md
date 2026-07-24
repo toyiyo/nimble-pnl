@@ -124,6 +124,23 @@ Timezone is validated against `pg_timezone_names` with a `UTC` fallback,
 identical to `check_availability_conflict`, so a null/blank/garbage
 `restaurants.timezone` degrades to today's behaviour rather than erroring.
 
+`employees.restaurant_id` is `NOT NULL REFERENCES restaurants(id) ON DELETE
+CASCADE` (`20251114100000_create_scheduling_tables.sql:4`), so the join can
+never be null or dangling.
+
+**Note the deliberate asymmetry with `check_availability_conflict`**, which
+resolves its timezone from the *client-supplied* `p_restaurant_id`. This
+function has no such parameter and resolves from the *employee's own*
+`restaurant_id`. The two coincide today because the planner only ever lists
+employees scoped to the selected restaurant, but they are different sources of
+truth: if `params.restaurantId` ever diverged from `employees.restaurant_id`
+(stale context, a future multi-restaurant employee model), the two RPCs backing
+the same dialog could disagree on which local day a shift falls on. We
+intentionally trust the employee row here — a time-off request belongs to the
+employee, so the employee's own restaurant is the correct frame, and it is not
+spoofable by a client-supplied argument. Documented rather than reconciled;
+reconciling would require the signature change D1 exists to avoid.
+
 ### D2 — Replace the three-way OR with a symmetric interval overlap
 
 Once both sides are in the same frame, the three ORs collapse to the standard
@@ -157,8 +174,9 @@ Given root cause 3 is unreachable, there are two options:
 a divergent client mirror is exactly the failure mode the 2026-07-12 lesson
 warns about ("availability readers must mirror the GRID"). The ~8 unit tests
 that cover this option are not lost — their scenarios are re-expressed as pgTAP
-tests against the RPC, where the live logic actually is. That is a net coverage
-gain, not a reduction.
+tests against the RPC, where the live logic actually is (see cases 6–8 under
+*pgTAP cases* below; these are load-bearing for this argument, not optional).
+That is a net coverage gain, not a reduction.
 
 This is a deliberate widening of item 3 from the approved scope (fix → remove).
 Flagged here for review; if the reviewer prefers option 1 the fix is small and
@@ -168,12 +186,30 @@ self-contained either way.
 
 | File | Change |
 |---|---|
-| `supabase/migrations/2026072400000_timeoff_conflict_local_tz.sql` | **new** — `CREATE OR REPLACE check_timeoff_conflict` in restaurant-local frame; adds `SET search_path = public, pg_catalog` (the original has a mutable search_path) |
-| `supabase/tests/timeoff_conflict_local_tz.sql` | **new** — pgTAP: Jul-31 false positive, Aug-10 false negative, midnight-boundary, multi-day span, missing/invalid timezone fallback |
+| `supabase/migrations/20260723180000_timeoff_conflict_local_tz.sql` | **new** — `CREATE OR REPLACE check_timeoff_conflict` in restaurant-local frame; adds `SET search_path = public, pg_catalog` (the original has a mutable search_path) |
+| `supabase/tests/timeoff_conflict_local_tz.sql` | **new** — pgTAP, cases listed below |
 | `src/lib/conflictFormatUtils.ts` | `extractDayLabel` → `formatDateOnly(dateStr, 'EEE, MMM d')`; drop the now-meaningless `timezone` argument on that path |
 | `tests/unit/conflictFormatUtils.test.ts` | assert the **day label**, not just the time range — the assertion whose absence hid this |
 | `src/lib/shiftValidator.ts` | remove `checkTimeOffConflicts`, `ValidateOptions.timeOffRequests`, `TimeOffRequest` import |
 | `tests/unit/shiftValidator.test.ts` | remove the `TIME_OFF` block (~8 tests), superseded by pgTAP |
+
+### pgTAP cases
+
+D4 is only honest if every behaviour the deleted unit tests covered is picked up
+on the DB side. The status filter and employee scoping are carried into the new
+`WHERE` clause unchanged, so without cases 6–7 below they would end up with
+**zero** coverage anywhere:
+
+1. **Jul-31 false positive** — Chicago evening shift adjacent to time off starting the next day → no conflict.
+2. **Aug-10 false negative** — Chicago evening shift *on* an approved day off → conflict (today: silently missed).
+3. **Local-midnight boundary** (D3) — shift ending exactly 00:00 local does not claim the next day.
+4. **Multi-day time off spanning the shift** — the case the original third `OR` existed for.
+5. **Missing / invalid `restaurants.timezone`** — falls back to UTC rather than erroring.
+6. **Rejected status** — a `rejected` request produces no conflict (was `shiftValidator.test.ts:348-367`).
+7. **Different employee** — another employee's time off does not block (was `shiftValidator.test.ts:368-388`).
+8. **Pending status** — a `pending` request still warns.
+9. **DST boundary** — a shift across spring-forward, mirroring the sibling suite's DST-as-first-class-regression-guard style.
+10. **Positive-UTC-offset timezone** — no production restaurant is east of UTC today, but the fix is offset-sign-agnostic and the untested direction is where a future regression would hide.
 
 ## Risks
 

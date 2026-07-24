@@ -103,22 +103,14 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
-    // Get all Stripe account IDs for this bank connection from balances table
-    const { data: balanceRecords } = await supabaseAdmin
-      .from("bank_account_balances")
-      .select("stripe_financial_account_id, account_name")
-      .eq("connected_bank_id", bankId)
-      .not("stripe_financial_account_id", "is", null);
-
-    // Extract unique account IDs
-    const accountIds = [...new Set(
-      balanceRecords?.map(b => b.stripe_financial_account_id).filter(Boolean) || []
-    )];
-
-    // If no account IDs found in balances, fall back to primary one from connected_banks
-    if (accountIds.length === 0 && bank.stripe_financial_account_id) {
-      accountIds.push(bank.stripe_financial_account_id);
-    }
+    // Enumerate the account to refresh from connected_banks' CURRENT fca_ —
+    // the single source of truth for which Stripe account is live. Deriving
+    // this from bank_account_balances instead used to pick up a stale old-fca_
+    // row left by a reconnect (incident 2026-07-24). A connected_banks row is
+    // 1:1 with a real account, so there is exactly one live account id here.
+    const accountIds = bank.stripe_financial_account_id
+      ? [bank.stripe_financial_account_id]
+      : [];
 
     console.log(`[REFRESH-BALANCE] Found ${accountIds.length} account(s) to refresh:`, accountIds);
 
@@ -179,14 +171,23 @@ serve(async (req) => {
           stripe_financial_account_id: accountId,
         };
 
-        // Update balance record for this specific account
+        // Update balance record for this specific account via the identity-safe
+        // RPC. One Stripe row per bank; Stripe rotates fca_ ids on reconnect, so
+        // a plain upsert keyed on the fca_ would orphan the pre-reconnect row
+        // (incident 2026-07-24). The RPC rotates the fca_ in place. as_of_date
+        // is omitted when Stripe gave no balance.as_of (null => keep persisted).
         const { error: upsertError } = await supabaseAdmin
-          .from("bank_account_balances")
-          .upsert({
-            connected_bank_id: bankId,
-            ...balanceData
-          }, {
-            onConflict: 'stripe_financial_account_id'
+          .rpc("upsert_stripe_bank_balance", {
+            p_connected_bank_id: bankId,
+            p_stripe_financial_account_id: accountId,
+            p_account_name: balanceData.account_name,
+            p_account_type: balanceData.account_type,
+            p_account_mask: balanceData.account_mask,
+            p_current_balance: balanceData.current_balance,
+            p_available_balance: balanceData.available_balance,
+            p_currency: balanceData.currency,
+            p_is_active: balanceData.is_active,
+            p_as_of_date: asOfDate ?? null,
           });
 
         if (upsertError) {

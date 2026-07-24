@@ -107,22 +107,16 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
-    // Get all Stripe account IDs for this bank connection from balances table
-    const { data: balanceRecords } = await supabaseAdmin
-      .from("bank_account_balances")
-      .select("stripe_financial_account_id, account_name")
-      .eq("connected_bank_id", bankId)
-      .not("stripe_financial_account_id", "is", null);
-
-    // Extract unique account IDs
-    const accountIds = [...new Set(
-      balanceRecords?.map(b => b.stripe_financial_account_id).filter(Boolean) || []
-    )];
-
-    // If no account IDs found in balances, fall back to primary one from connected_banks
-    if (accountIds.length === 0 && bank.stripe_financial_account_id) {
-      accountIds.push(bank.stripe_financial_account_id);
-    }
+    // Enumerate the account to sync from connected_banks' CURRENT fca_ — the
+    // single source of truth for which Stripe account is live. Deriving this
+    // from bank_account_balances instead used to pick up a stale old-fca_ row
+    // left by a reconnect, retrieve that dead account, see it inactive, and
+    // re-flag the whole bank requires_reauth seconds after the user finished
+    // reconnecting (incident 2026-07-24). A connected_banks row is 1:1 with a
+    // real account, so there is exactly one live account id here.
+    const accountIds = bank.stripe_financial_account_id
+      ? [bank.stripe_financial_account_id]
+      : [];
 
     console.log(`[SYNC-TRANSACTIONS] Found ${accountIds.length} account(s) to sync:`, accountIds);
 

@@ -190,22 +190,25 @@ serve(async (req) => {
         const availableBalance = balanceData?.available?.usd;
         const hasBalanceData = currentBalance !== undefined || availableBalance !== undefined;
 
+        // Identity-safe Stripe balance upsert via RPC. The balance identity is
+        // the partial unique index (one Stripe row per bank); Stripe rotates
+        // fca_ ids on reconnect, so a plain upsert keyed on the fca_ INSERTED a
+        // duplicate row and orphaned the old one (incident 2026-07-24). The RPC
+        // rotates the fca_ in place on the single existing Stripe row instead.
+        // PostgREST cannot express the partial index's WHERE predicate, so this
+        // must be an RPC rather than a REST upsert.
         const { error: balanceError } = await supabaseClient
-          .from("bank_account_balances")
-          .upsert({
-            connected_bank_id: bankData.id,
-            stripe_financial_account_id: account.id,
-            account_name: account.display_name || account.institution_name,
-            account_type: account.subcategory,
-            account_mask: account.last4,
-            current_balance: currentBalance ? currentBalance / 100 : 0,
-            available_balance: availableBalance ? availableBalance / 100 : null,
-            currency: "USD",
-            is_active: true,
-            as_of_date: new Date().toISOString(),
-          }, {
-            onConflict: "stripe_financial_account_id",
-            ignoreDuplicates: false, // Update existing record
+          .rpc("upsert_stripe_bank_balance", {
+            p_connected_bank_id: bankData.id,
+            p_stripe_financial_account_id: account.id,
+            p_account_name: account.display_name || account.institution_name,
+            p_account_type: account.subcategory,
+            p_account_mask: account.last4,
+            p_current_balance: currentBalance ? currentBalance / 100 : 0,
+            p_available_balance: availableBalance ? availableBalance / 100 : null,
+            p_currency: "USD",
+            p_is_active: true,
+            p_as_of_date: new Date().toISOString(),
           });
 
         if (balanceError) {

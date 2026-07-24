@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAssets } from '@/hooks/useAssets';
@@ -95,12 +96,14 @@ export function useAssetImport(): UseAssetImportReturn {
       });
 
       return document;
-    } catch (error) {
-      console.error('Error uploading document:', error);
+    } catch (error: unknown) {
+      const info = describeStorageError(error);
+      console.error(info.logLine);
       toast({
         title: 'Upload failed',
-        description: 'Failed to upload document. Please try again.',
+        description: info.userMessage,
         variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
       });
       return null;
     } finally {
@@ -411,7 +414,7 @@ export function useAssetImport(): UseAssetImportReturn {
           .upload(documentStoragePath, documentFile);
 
         if (uploadError) {
-          console.error('Failed to upload document for attachment:', uploadError);
+          console.error(describeStorageError(uploadError).logLine);
           documentStoragePath = null;
           toast({
             title: 'Warning',

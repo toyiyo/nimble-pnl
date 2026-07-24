@@ -1,5 +1,6 @@
 import { QueryKey, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { describeStorageError } from '@/lib/storageError';
 import { TimePunch, PunchStatus, EmployeeTip } from '@/types/timeTracking';
 import { useToast } from '@/hooks/use-toast';
 import { TimePunchInsert, EmployeeTipInsert } from '@/utils/timePunchImport';
@@ -211,15 +212,15 @@ export const useCreateTimePunch = () => {
           ]);
 
           if (uploadError) {
-            console.error('Photo upload error:', uploadError);
+            console.error(describeStorageError(uploadError).logLine);
             photoUploadFailed = true;
           } else if (uploadData?.path) {
             photo_path = uploadData.path;
           } else {
             photoUploadFailed = true;
           }
-        } catch (error) {
-          console.error('Photo upload exception:', error);
+        } catch (error: unknown) {
+          console.error(describeStorageError(error).logLine);
           photoUploadFailed = true;
           // The upload promise may still resolve/reject after we've moved on
           // (e.g. after a timeout abandons it) — swallow that so it doesn't

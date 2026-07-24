@@ -186,9 +186,13 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
--- CASE 8 (DST): 2026-03-08 is US spring-forward. An evening shift that day is
--- CDT (UTC-5), so it lands on Mar 9 in UTC. Derived via AT TIME ZONE so it stays
--- correct whenever CI runs.
+-- CASE 8 (DST-day local date): 2026-03-08 is US spring-forward. That evening the
+-- zone is CDT (UTC-5), so a 7 PM start is already Mar 9 in UTC — the old
+-- UTC-bucketing computed Mar 9 and missed this Mar 8 day off, so this fails
+-- pre-fix. The offset is derived via AT TIME ZONE, never hardcoded, so it stays
+-- correct whenever CI runs. (The midnight-pullback guard needs no DST case of
+-- its own: it runs on the naive local wall clock — midnight is midnight
+-- regardless of the 2 AM skip — and case 3 already pins it.)
 -- ---------------------------------------------------------------------------
 DELETE FROM time_off_requests WHERE restaurant_id = (SELECT rid FROM t_ids);
 INSERT INTO time_off_requests (restaurant_id, employee_id, start_date, end_date, status)

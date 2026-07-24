@@ -263,6 +263,22 @@ describe('formatConflictLine – fallback cases', () => {
     };
     expect(formatConflictLine(conflict, 'America/Chicago')).toBe('Scheduling conflict');
   });
+
+  it('does not throw on a regex-matching but calendar-invalid date', () => {
+    // The SQL only emits real dates, so this is unreachable in production, but
+    // formatConflictLine runs inside render — a throw here would crash the
+    // conflict dialog. A malformed date must degrade to the raw string, not raise.
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Shift on 2026-02-31 is outside availability',
+    };
+    let result = '';
+    expect(() => {
+      result = formatConflictLine(conflict, 'America/Chicago');
+    }).not.toThrow();
+    expect(result).toContain('2026-02-31');
+  });
 });
 
 // ─── Caller contract verification ─────────────────────────────────────────────

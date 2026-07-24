@@ -38,7 +38,16 @@ export function formatUTCTimeToLocal(
 function extractDayLabel(message: string | undefined): string | null {
   const dateMatch = message?.match(/\d{4}-\d{2}-\d{2}/);
   if (!dateMatch) return null;
-  return formatDateOnly(dateMatch[0], 'EEE, MMM d');
+  try {
+    return formatDateOnly(dateMatch[0], 'EEE, MMM d');
+  } catch {
+    // The SQL only emits real calendar dates, so this is unreachable today.
+    // Guard anyway: `formatDateOnly` throws on a regex-matching but invalid date
+    // (e.g. 2026-02-31 from a future caller). This runs inside render via
+    // `formatConflictLine`, so a throw would crash the conflict dialog. Fall back
+    // to the raw date rather than the old silent UTC-midnight coercion.
+    return dateMatch[0];
+  }
 }
 
 /**

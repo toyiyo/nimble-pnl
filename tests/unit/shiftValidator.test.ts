@@ -256,7 +256,7 @@ describe('validateShift', () => {
     });
   });
 
-  // 11. Multiple overlaps — multiple warnings returned
+  // 8. Multiple overlaps — multiple warnings returned
   describe('multiple overlaps', () => {
     it('returns multiple OVERLAP warnings when proposed conflicts with several existing shifts', () => {
       const shift1 = mockShift({
@@ -283,7 +283,7 @@ describe('validateShift', () => {
     });
   });
 
-  // 12. Empty existing shifts — always valid
+  // 9. Empty existing shifts — always valid
   describe('empty existing shifts', () => {
     it('returns valid when there are no existing shifts', () => {
       const proposed = ShiftInterval.create('2026-03-10', '09:00', '17:00');

@@ -769,6 +769,11 @@ export function ShiftTimelineTab({
   );
 
   // ── Loading state ──────────────────────────────────────────────────────────
+  // Mirrors the loaded-data layout (design doc §States "Loading", resolution #9):
+  // day-picker row -> [slider panel -> chart -> axis -> lane rows] alongside a
+  // pinned receipt column, matching the real SplhSlider/CoverageChart/
+  // TimelineAxis/CoverageReceipt arrangement so nothing jump-shifts once data
+  // lands.
   if (loading) {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading timeline">
@@ -777,11 +782,39 @@ export function ShiftTimelineTab({
             <Skeleton key={k} className="h-8 w-16 rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-20 w-full rounded-xl" />
-        <Skeleton className="h-6 w-full rounded-lg" />
-        {['l0','l1','l2'].map((k) => (
-          <Skeleton key={k} className="h-10 w-full rounded-xl" />
-        ))}
+
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+          {/* Scrollable chart column: slider panel -> chart -> axis -> lanes */}
+          <div className="flex-1 min-w-0 space-y-2">
+            <Skeleton
+              data-testid="skeleton-splh-slider"
+              className="h-16 w-full rounded-xl"
+            />
+            <Skeleton
+              data-testid="skeleton-coverage-chart"
+              className="h-40 w-full rounded-xl"
+            />
+            <Skeleton
+              data-testid="skeleton-timeline-axis"
+              className="h-6 w-full rounded-lg"
+            />
+            {['l0','l1','l2'].map((k) => (
+              <Skeleton key={k} className="h-10 w-full rounded-xl" />
+            ))}
+          </div>
+
+          {/* Pinned receipt column — same lg:w-[320px] lg:shrink-0 contract
+              as the real CoverageReceipt panel. */}
+          <div
+            data-testid="skeleton-receipt-column"
+            className="lg:w-[320px] lg:shrink-0"
+          >
+            <Skeleton
+              data-testid="skeleton-coverage-receipt"
+              className="h-64 w-full rounded-xl"
+            />
+          </div>
+        </div>
       </div>
     );
   }

@@ -194,6 +194,52 @@ describe('ShiftTimelineTab', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
+  it('reshapes the loading skeleton to mirror the slider + axis + chart + receipt layout (Stage 5.4)', () => {
+    const { getByTestId } = render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        loading={true}
+        shifts={[]}
+        employees={[]}
+      />,
+    );
+
+    // Each new panel piece gets a dedicated skeleton band, mirroring the
+    // loaded-state components it stands in for.
+    const sliderSkeleton = getByTestId('skeleton-splh-slider');
+    const chartSkeleton = getByTestId('skeleton-coverage-chart');
+    const axisSkeleton = getByTestId('skeleton-timeline-axis');
+    const receiptSkeleton = getByTestId('skeleton-coverage-receipt');
+
+    expect(sliderSkeleton).toBeInTheDocument();
+    expect(chartSkeleton).toBeInTheDocument();
+    expect(axisSkeleton).toBeInTheDocument();
+    expect(receiptSkeleton).toBeInTheDocument();
+
+    // The receipt band lives in its own pinned column (same lg:w-[320px]
+    // lg:shrink-0 contract as the real CoverageReceipt panel), separate from
+    // the chart/axis column — mirroring the loaded flex layout so the skeleton
+    // doesn't jump-shift when the real data lands.
+    const receiptColumn = getByTestId('skeleton-receipt-column');
+    expect(receiptColumn).toContainElement(receiptSkeleton);
+    expect(receiptColumn.className).toContain('lg:w-[320px]');
+    expect(receiptColumn.className).toContain('lg:shrink-0');
+    expect(receiptColumn).not.toContainElement(chartSkeleton);
+    expect(receiptColumn).not.toContainElement(sliderSkeleton);
+    expect(receiptColumn).not.toContainElement(axisSkeleton);
+
+    // Slider sits above the chart, axis sits below it — same order as the
+    // loaded layout (SplhSlider panel -> CoverageChart -> TimelineAxis).
+    expect(
+      sliderSkeleton.compareDocumentPosition(chartSkeleton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      chartSkeleton.compareDocumentPosition(axisSkeleton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('renders an error message when error is provided', () => {
     render(
       <ShiftTimelineTab

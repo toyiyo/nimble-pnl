@@ -87,14 +87,15 @@ describe('SplhSlider', () => {
 
   it('CRITICAL: Save button calls onSave when clicked for managers (canSave=true)', () => {
     const props = renderSlider();
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^save sales per labor hour target$/i }));
     expect(props.onSave).toHaveBeenCalledTimes(1);
   });
 
   it('CRITICAL: Save button shows a pending "Saving…" state and is disabled while isSaving', () => {
     renderSlider({ isSaving: true });
-    const button = screen.getByRole('button', { name: /saving/i });
+    const button = screen.getByRole('button', { name: /^saving sales per labor hour target$/i });
     expect(button).toBeDisabled();
+    expect(button).toHaveTextContent('Saving…');
   });
 
   it('CRITICAL: aria-valuetext includes the implied labor percentage', () => {

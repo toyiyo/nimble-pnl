@@ -941,7 +941,7 @@ describe('ShiftTimelineTab — SPLH slider Save-gate authz (Stage 5.3)', () => {
 
     const slider = screen.getByLabelText(/sales per labor hour target, in dollars/i);
     fireEvent.change(slider, { target: { value: '60' } });
-    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^save sales per labor hour target$/i }));
 
     await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ target_splh: 60 }));
   });

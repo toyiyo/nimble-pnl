@@ -150,6 +150,7 @@ export function SplhSlider({
             type="button"
             onClick={onSave}
             disabled={isSaving}
+            aria-label={isSaving ? 'Saving sales per labor hour target' : 'Save sales per labor hour target'}
             className="h-8 px-3 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium disabled:opacity-50"
           >
             {isSaving ? 'Saving…' : 'Save'}

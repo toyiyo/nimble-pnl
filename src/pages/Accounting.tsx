@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
-import { BankReauthBanner } from "@/components/banking/BankReauthBanner";
+import { BankReauthBanner, toReauthBannerBanks } from "@/components/banking/BankReauthBanner";
 import { RestaurantSelector } from "@/components/RestaurantSelector";
 import { MetricIcon } from "@/components/MetricIcon";
 import { Building2, Plus, Wallet, TrendingUp } from "lucide-react";
@@ -95,18 +95,7 @@ const Accounting = () => {
 
   // The minimal per-account shape `<BankReauthBanner>` needs — see
   // src/components/banking/BankReauthBanner.tsx (design §5.2).
-  const reauthBannerBanks = useMemo(
-    () =>
-      connectedBanks.map((bank) => ({
-        id: bank.id,
-        institution_name: bank.institution_name,
-        account_mask: bank.account_mask,
-        status: bank.status,
-        deactivated_at: bank.deactivated_at,
-        sync_error: bank.sync_error,
-      })),
-    [connectedBanks]
-  );
+  const reauthBannerBanks = useMemo(() => toReauthBannerBanks(connectedBanks), [connectedBanks]);
 
   return (
     <>

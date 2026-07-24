@@ -3,7 +3,7 @@ import { AlertCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import type { BankStatus } from '@/utils/financialConnections';
+import type { BankStatus, ConnectedBank } from '@/utils/financialConnections';
 
 /**
  * The subset of `connected_banks` fields this banner needs. Deliberately
@@ -19,6 +19,23 @@ export interface BankReauthBannerBank {
   /** `connected_banks.deactivated_at` — when this outage started. */
   deactivated_at: string | null;
   sync_error: string | null;
+}
+
+/**
+ * Projects `useStripeFinancialConnections`'s `connectedBanks` down to the
+ * shape this banner needs. Shared by every page that renders the banner
+ * (Banking, Accounting, Expenses) so the field list only has to change in
+ * one place.
+ */
+export function toReauthBannerBanks(connectedBanks: ConnectedBank[]): BankReauthBannerBank[] {
+  return connectedBanks.map((bank) => ({
+    id: bank.id,
+    institution_name: bank.institution_name,
+    account_mask: bank.account_mask,
+    status: bank.status,
+    deactivated_at: bank.deactivated_at,
+    sync_error: bank.sync_error,
+  }));
 }
 
 interface BankReauthBannerProps {

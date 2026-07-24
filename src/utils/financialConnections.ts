@@ -109,18 +109,18 @@ export const groupBanks = (connectedBanks: ConnectedBank[]): GroupedBank[] => {
   return Array.from(map.values());
 };
 
-export const totalBalance = (connectedBanks: ConnectedBank[]): number => {
-  return connectedBanks
-    .filter((bank) => isHealthyStatus(bank.status))
+const sumBalances = (banks: ConnectedBank[]): number => {
+  return banks
     .flatMap((bank) => bank.balances || [])
     .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
 };
 
+export const totalBalance = (connectedBanks: ConnectedBank[]): number => {
+  return sumBalances(connectedBanks.filter((bank) => isHealthyStatus(bank.status)));
+};
+
 export const quarantinedBalance = (connectedBanks: ConnectedBank[]): number => {
-  return connectedBanks
-    .filter((bank) => !isHealthyStatus(bank.status))
-    .flatMap((bank) => bank.balances || [])
-    .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
+  return sumBalances(connectedBanks.filter((bank) => !isHealthyStatus(bank.status)));
 };
 
 export const accountCount = (connectedBanks: ConnectedBank[]): number => {

@@ -223,6 +223,41 @@ describe('CoverageChart — accessible summary', () => {
   });
 });
 
+describe('CoverageChart — sticky y-axis gutter (mirrors TimelineLane)', () => {
+  it('renders the y-axis gutter with the sticky/left-0/z-10/w-[120px] classes TimelineLane uses for its label column', () => {
+    const { getByTestId } = renderChart();
+    const gutter = getByTestId('coverage-y-axis-gutter');
+    const classes = gutter.className.split(/\s+/);
+    expect(classes).toContain('sticky');
+    expect(classes).toContain('left-0');
+    expect(classes).toContain('z-10');
+    expect(classes).toContain('w-[120px]');
+  });
+
+  it('places the gutter before the scrollable plot region in DOM order, so it stays pinned while the plot scrolls', () => {
+    const { container, getByTestId, getByRole } = renderChart();
+    const gutter = getByTestId('coverage-y-axis-gutter');
+    const toolbar = getByRole('toolbar');
+    const all = Array.from(container.querySelectorAll('*'));
+    expect(all.indexOf(gutter)).toBeLessThan(all.indexOf(toolbar));
+  });
+
+  it('renders the y-axis ticks inside the gutter, not the scrollable plot', () => {
+    const { getByTestId } = renderChart();
+    const gutter = getByTestId('coverage-y-axis-gutter');
+    // MIN_STAFF=6, spareHour.scheduled=8 -> peak >= 9, so at least a 0 and a top tick render.
+    expect(within(gutter).getByText('0')).toBeInTheDocument();
+  });
+
+  it('the plot columns still align to minToPct, unaffected by the sticky gutter wrapper', () => {
+    const { container } = renderChart();
+    const cols = container.querySelectorAll('[role="option"]');
+    expect((cols[0] as HTMLElement).style.left).toBe('0%');
+    expect((cols[0] as HTMLElement).style.width).toBe('20%');
+    expect((cols[4] as HTMLElement).style.left).toBe('80%');
+  });
+});
+
 describe('CoverageChart — legend', () => {
   it('renders all four swatches', () => {
     const { getByTestId } = renderChart();

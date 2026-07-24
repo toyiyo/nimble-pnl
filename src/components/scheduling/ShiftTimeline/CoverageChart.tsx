@@ -237,6 +237,7 @@ export const CoverageChart = memo(function CoverageChart({
             (design doc §Design-review resolutions #3) so it stays visible under
             horizontal scroll. */}
         <div
+          data-testid="coverage-y-axis-gutter"
           className="sticky left-0 z-10 w-[120px] shrink-0 relative bg-background border-r border-border/40"
           style={{ height }}
         >

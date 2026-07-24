@@ -1,4 +1,6 @@
-import { memo, useId, useRef } from 'react';
+import { Fragment, memo, useId, useRef, useState } from 'react';
+
+import { Plus } from 'lucide-react';
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
@@ -28,8 +30,10 @@ interface CoverageChartProps {
   readonly onSelect: (startMin: number) => void;
   /**
    * Called with an hour's `startMin` from the one-click hover "+" quick-add
-   * affordance on `crit`/`floor` columns (wired in a later task). Optional —
-   * omitting it simply hides the affordance.
+   * affordance on `crit`/`floor` columns (design doc §Design-review
+   * resolutions #5 — parity with the old `CoverageStatusStrip` gap-click,
+   * relocated). Optional — omitting it simply hides the affordance; the
+   * `ShiftTimelineTab` caller wires this to the existing `handleGapClick`.
    */
   readonly onQuickAdd?: (startMin: number) => void;
   /** Chart height in px (default 160 — taller than the old two-view chart to fit a real people y-axis). */
@@ -169,11 +173,16 @@ export const CoverageChart = memo(function CoverageChart({
   minToPct,
   selectedStartMin,
   onSelect,
+  onQuickAdd,
   height = 160,
 }: CoverageChartProps) {
   const hatchId = useId();
   const summaryId = useId();
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // Tracks which column is hovered/focused so the one-click "+" quick-add
+  // affordance (design doc §Design-review resolutions #5) can reveal itself —
+  // only for `crit`/`floor` columns, and only when `onQuickAdd` is supplied.
+  const [hoveredStartMin, setHoveredStartMin] = useState<number | null>(null);
 
   if (hours.length === 0) return null;
 
@@ -387,27 +396,71 @@ export const CoverageChart = memo(function CoverageChart({
             const left = effectiveMinToPct(h.startMin);
             const width = effectiveMinToPct(h.startMin + 60) - left;
             const isSelected = i === selectedIndex;
+            const kind = classifyHour(h, minStaff);
+            const clearHover = () =>
+              setHoveredStartMin((prev) => (prev === h.startMin ? null : prev));
+            // One-click hover "+" quick-add (design doc §Design-review resolutions
+            // #5): only ever shown for short (`crit`/`floor`) columns, and only
+            // when the caller opted in via `onQuickAdd` — omitting it hides the
+            // affordance entirely (back-compat with callers that don't wire it).
+            const showQuickAdd =
+              Boolean(onQuickAdd) &&
+              (kind === 'crit' || kind === 'floor') &&
+              hoveredStartMin === h.startMin;
 
             return (
-              <button
-                key={h.startMin}
-                ref={(el) => {
-                  buttonRefs.current[i] = el;
-                }}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                data-hour-col=""
-                data-kind={classifyHour(h, minStaff)}
-                tabIndex={isSelected ? 0 : -1}
-                aria-label={columnAriaLabel(h, minStaff)}
-                onClick={() => onSelect(h.startMin)}
-                className={cn(
-                  'absolute inset-y-0 bg-transparent focus:outline-none',
-                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring',
+              <Fragment key={h.startMin}>
+                <button
+                  ref={(el) => {
+                    buttonRefs.current[i] = el;
+                  }}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  data-hour-col=""
+                  data-kind={kind}
+                  tabIndex={isSelected ? 0 : -1}
+                  aria-label={columnAriaLabel(h, minStaff)}
+                  onClick={() => onSelect(h.startMin)}
+                  onMouseEnter={() => setHoveredStartMin(h.startMin)}
+                  onMouseLeave={clearHover}
+                  onFocus={() => setHoveredStartMin(h.startMin)}
+                  onBlur={clearHover}
+                  className={cn(
+                    'absolute inset-y-0 bg-transparent focus:outline-none',
+                    'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring',
+                  )}
+                  style={{ left: `${left}%`, width: `${width}%` }}
+                />
+                {showQuickAdd && (
+                  <button
+                    type="button"
+                    data-testid="coverage-quick-add"
+                    aria-label={`Add shift for ${formatCoverageHour(h.hour)}`}
+                    onClick={(event) => {
+                      // Independent of column selection — a true one-click
+                      // affordance, not "select then click Add" (design doc's
+                      // "quick-add parity" requirement).
+                      event.stopPropagation();
+                      onQuickAdd?.(h.startMin);
+                    }}
+                    onMouseEnter={() => setHoveredStartMin(h.startMin)}
+                    onMouseLeave={clearHover}
+                    className={cn(
+                      'absolute z-20 flex h-5 w-5 items-center justify-center rounded-full',
+                      'bg-foreground text-background shadow-sm hover:bg-foreground/90',
+                      'focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+                    )}
+                    style={{
+                      left: `${left + width / 2}%`,
+                      top: '50%',
+                      transform: 'translate(-50%, -50%)',
+                    }}
+                  >
+                    <Plus className="h-3 w-3" aria-hidden="true" />
+                  </button>
                 )}
-                style={{ left: `${left}%`, width: `${width}%` }}
-              />
+              </Fragment>
             );
           })}
         </div>

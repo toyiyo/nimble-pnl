@@ -269,6 +269,78 @@ describe('CoverageChart — legend', () => {
   });
 });
 
+describe('CoverageChart — hover quick-add', () => {
+  it('does not render a quick-add button when onQuickAdd is omitted (back-compat)', () => {
+    const { container } = renderChart();
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+    fireEvent.mouseEnter(cols[0]); // crit
+    fireEvent.mouseEnter(cols[1]); // floor
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
+  });
+
+  it('reveals a "+" quick-add button on hover for a crit column and calls onQuickAdd with its startMin on click', () => {
+    const onQuickAdd = vi.fn();
+    const { container, onSelect } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
+
+    fireEvent.mouseEnter(cols[0]); // crit, startMin 600
+    const quickAdd = container.querySelector('[data-testid="coverage-quick-add"]') as HTMLElement;
+    expect(quickAdd).toBeTruthy();
+
+    fireEvent.click(quickAdd);
+    expect(onQuickAdd).toHaveBeenCalledWith(600);
+    // One-click affordance is independent of column selection.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('reveals a "+" quick-add button on hover for a floor column and calls onQuickAdd with its startMin', () => {
+    const onQuickAdd = vi.fn();
+    const { container } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+
+    fireEvent.mouseEnter(cols[1]); // floor, startMin 660
+    const quickAdd = container.querySelector('[data-testid="coverage-quick-add"]') as HTMLElement;
+    expect(quickAdd).toBeTruthy();
+
+    fireEvent.click(quickAdd);
+    expect(onQuickAdd).toHaveBeenCalledWith(660);
+  });
+
+  it('never renders quick-add for spare/ok/nodata columns, even on hover', () => {
+    const onQuickAdd = vi.fn();
+    const { container } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+
+    [2, 3, 4].forEach((i) => {
+      fireEvent.mouseEnter(cols[i]);
+      expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
+      fireEvent.mouseLeave(cols[i]);
+    });
+  });
+
+  it('hides the quick-add button again on mouse leave', () => {
+    const onQuickAdd = vi.fn();
+    const { container } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+
+    fireEvent.mouseEnter(cols[0]);
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeTruthy();
+
+    fireEvent.mouseLeave(cols[0]);
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
+  });
+
+  it('the quick-add button has an accessible label naming the hour', () => {
+    const onQuickAdd = vi.fn();
+    const { container, getByLabelText } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+
+    fireEvent.mouseEnter(cols[0]); // crit, 10 AM
+    expect(getByLabelText(/add shift.*10\s*am/i)).toBeInTheDocument();
+  });
+});
+
 describe('columnAriaLabel', () => {
   it('CRITICAL: crit column names the demand shortfall', () => {
     const label = columnAriaLabel(critHour, MIN_STAFF);

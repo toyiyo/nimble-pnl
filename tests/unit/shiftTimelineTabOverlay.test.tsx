@@ -335,13 +335,18 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
   });
 
   describe('gap-click -> createDraft mapping (E)', () => {
-    it('CRITICAL: clicking a short coverage-strip cell opens the create overlay with a null lane context', () => {
+    it('CRITICAL: clicking "Add shift for this hour" on a short coverage hour opens the create overlay with a null lane context', () => {
       const employees = [makeEmployee('e1', 'Ann')];
       // 1 employee scheduled 10:00-16:00 America/Chicago (16:00Z-22:00Z).
       const shifts = [makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z')];
 
       // Recommend 2 staff for the 10 AM hour — only 1 is scheduled, so that
-      // hour renders as a short (delta < 0) coverage-strip cell.
+      // hour classifies as `crit` (demand 2 > scheduled 1) and is the pinned
+      // CoverageReceipt's default hour (design doc §C: "worst crit hour").
+      // `demand` mirrors `recommendedStaff` so the new demand-driven
+      // classification (`classifyHour`, powering CoverageChart/CoverageReceipt)
+      // agrees with the legacy needed/delta pipeline (`mergeUnderStaffedRange`)
+      // that `handleGapClick` still uses under the hood.
       mockUseWeekStaffingSuggestions.mockReturnValue({
         daySuggestions: new Map([
           [
@@ -352,6 +357,7 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
                   hour: 10,
                   projectedSales: 500,
                   recommendedStaff: 2,
+                  demand: 2,
                   estimatedLaborCost: 0,
                   laborPct: 20,
                   overTarget: false,
@@ -373,8 +379,11 @@ describe('ShiftTimelineTab — activeOverlay wiring (B3)', () => {
 
       render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
 
-      const gapCell = screen.getByRole('button', { name: /short 1/i });
-      fireEvent.click(gapCell);
+      // Entry point relocated from the removed CoverageStatusStrip's gap cell
+      // to the pinned CoverageReceipt's "Add shift for this hour" button
+      // (design doc §D) — same `handleGapClick(h.startMin)` wiring underneath.
+      const addShiftForHour = screen.getByRole('button', { name: /add shift for this hour/i });
+      fireEvent.click(addShiftForHour);
 
       const draftJson = screen.getByTestId('popover-create-draft').textContent;
       expect(draftJson).not.toBe('');

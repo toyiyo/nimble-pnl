@@ -301,11 +301,10 @@ describe('ShiftTimelineTab', () => {
 
 // ─── Coverage panel redesign wiring tests ─────────────────────────────────────
 //
-// Task 5: verify that ShiftTimelineTab now renders the new CoverageVerdict,
-// CoverageChart (with its view toggle), and CoverageStatusStrip — and no
-// longer renders the old CoverageCurve / CoverageGapList components.
-//
-// These tests are RED until the wiring is in place.
+// Task 5.2: verify that ShiftTimelineTab folds CoverageVerdict/CoverageDemandInfo
+// into the chart header, and no longer renders the removed Area/Delta view
+// toggle or CoverageStatusStrip (superseded by the pinned CoverageReceipt —
+// see the "CoverageReceipt wiring" describe block below).
 
 describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
   // A day with one shift so we get the full data state (not the empty state).
@@ -329,7 +328,7 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
     ).toBeInTheDocument();
   });
 
-  it('renders a coverage chart view toggle (Chart | +/- bars)', () => {
+  it('CRITICAL: does not render the removed Area/Delta coverage-view toggle (Stage 5.2)', () => {
     render(
       <ShiftTimelineTab
         {...BASE_PROPS}
@@ -337,9 +336,10 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
         employees={employees}
       />,
     );
-    // The ToggleGroup for coverage view should have both options.
-    expect(screen.getByRole('radio', { name: /chart/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /\+\/−/i })).toBeInTheDocument();
+    // The old "Chart" | "+/−" ToggleGroup is gone — CoverageChart is now the
+    // only view, always rendered.
+    expect(screen.queryByRole('radio', { name: /^chart$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /\+\/−/i })).not.toBeInTheDocument();
   });
 
   it('renders the coverage chart (role="img") in the data state', () => {
@@ -350,13 +350,13 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
         employees={employees}
       />,
     );
-    // CoverageChart renders an SVG with role="img"
+    // AreaCoverageStrips (default groupBy="area") renders per-hour role="img" cells.
     const imgs = screen.getAllByRole('img');
-    // At least one img — the coverage chart
+    // At least one img — the per-area coverage strip
     expect(imgs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders the hourly coverage status strip', () => {
+  it('CRITICAL: does not render the removed CoverageStatusStrip (Stage 5.2 — superseded by CoverageReceipt)', () => {
     render(
       <ShiftTimelineTab
         {...BASE_PROPS}
@@ -364,10 +364,93 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
         employees={employees}
       />,
     );
-    // CoverageStatusStrip wraps cells in a group with aria-label "Hourly coverage status"
+    // CoverageStatusStrip used to wrap cells in a group with this aria-label —
+    // it must no longer render inside ShiftTimelineTab.
     expect(
-      screen.getByRole('group', { name: /hourly coverage status/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole('group', { name: /hourly coverage status/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+// ─── Task 5.2: pinned CoverageReceipt wiring ──────────────────────────────────
+//
+// The removed CoverageStatusStrip is superseded by a pinned CoverageReceipt
+// panel, driven by the chart's selection (defaulting to the worst `crit` hour,
+// else the first hour — design doc §C, `pickDefaultHour`).
+
+describe('ShiftTimelineTab — CoverageReceipt wiring (Stage 5.2)', () => {
+  const employees = [makeEmployee('e1', 'Ann')];
+  const shifts = [
+    makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+  ];
+
+  const rec10 = {
+    hour: 10,
+    projectedSales: 100,
+    recommendedStaff: 2,
+    estimatedLaborCost: 0,
+    laborPct: 20,
+    overTarget: false,
+    demand: 2,
+  } as HourlyStaffingRecommendation;
+
+  const rec11 = {
+    hour: 11,
+    projectedSales: 503,
+    recommendedStaff: 17,
+    estimatedLaborCost: 0,
+    laborPct: 20,
+    overTarget: false,
+    demand: 17,
+  } as HourlyStaffingRecommendation;
+
+  beforeEach(() => {
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map([['2026-01-05', { recommendations: [rec10, rec11] }]]),
+      isLoading: false,
+      error: null,
+      hasSalesData: true,
+      hasHourlyBreakdown: true,
+      activeSettings: { target_splh: 30, lookback_weeks: 6 },
+      updateSettings: vi.fn(),
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+  });
+
+  it('CRITICAL: renders the pinned CoverageReceipt panel in the data state', () => {
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    expect(container.querySelector('[data-testid="coverage-receipt"]')).toBeInTheDocument();
+  });
+
+  it('CRITICAL: defaults the receipt to the worst crit hour (10 AM: demand 2, scheduled 1 — deficit 1) over the ok 11 AM hour (demand 17 fully covered by... wait, only 1 scheduled total) — uses the larger-deficit hour', () => {
+    // Only Ann (1 person) is scheduled across both hours, so BOTH 10 AM (demand
+    // 2, deficit 1) and 11 AM (demand 17, deficit 16) classify crit. The
+    // default must be 11 AM (the larger deficit) per pickDefaultHour.
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    const receipt = container.querySelector('[data-testid="coverage-receipt"]') as HTMLElement;
+    expect(receipt).toBeInTheDocument();
+    // The 11 AM row's $503 sales figure should be present on the ledger.
+    expect(receipt.textContent).toMatch(/\$503/);
+  });
+
+  it('CRITICAL: selecting a different chart column updates the pinned receipt to that hour', () => {
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    // Select the 10 AM column (the chart's per-hour option button).
+    const tenAmOption = screen.getByRole('option', { name: /10 AM/i });
+    fireEvent.click(tenAmOption);
+
+    const receipt = container.querySelector('[data-testid="coverage-receipt"]') as HTMLElement;
+    // Now the receipt should show the 10 AM hour's $100 sales figure, not $503.
+    expect(receipt.textContent).toMatch(/\$100/);
+    expect(receipt.textContent).not.toMatch(/\$503/);
   });
 });
 

@@ -13,6 +13,7 @@ import {
   summarizeAreaCoverage,
   mergeUnderStaffedRange,
 } from '@/lib/coverageSummary';
+import { classifyHour } from '@/lib/coverageChartModel';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useCreateShift } from '@/hooks/useShifts';
@@ -21,7 +22,7 @@ import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffi
 import { useTimelineModel, computeCoverage } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
-import { CoverageStatusStrip } from './CoverageStatusStrip';
+import { CoverageReceipt } from './CoverageReceipt';
 import { CoverageDemandInfo } from './CoverageDemandInfo';
 import { AreaCoverageStrips } from './AreaCoverageStrips';
 import { TimelineAxis } from './TimelineAxis';
@@ -33,6 +34,7 @@ import { formatDayLabel } from '@/lib/shiftInterval';
 import { minutesToIso } from '@/lib/shiftTimeMath';
 
 import type { Shift, Employee, StaffingSettings } from '@/types/scheduling';
+import type { CoverageHour } from '@/lib/coverageSummary';
 import type { GroupByMode } from '@/lib/scheduleGrouping';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
@@ -189,6 +191,44 @@ export function resolveSettingsOverrides(sliderTarget: number | null): Partial<S
   return sliderTarget === null ? null : { target_splh: sliderTarget };
 }
 
+/**
+ * Default hour for the pinned `CoverageReceipt` before the manager has
+ * explicitly clicked a chart column (design doc §C: "defaults to the worst
+ * crit hour, else first hour"). Classifies every hour via `classifyHour` (not
+ * `h.delta`/`h.needed`) so the default can never disagree with the chart's
+ * own kind, including under a live-preview `minStaff` that hasn't
+ * round-tripped through the recommendation pipeline. Among multiple `crit`
+ * hours, picks the largest demand deficit (`demand - scheduled`), earliest
+ * `startMin` breaking ties (first strictly-greater deficit wins, so an
+ * equal-or-lesser later deficit never displaces an earlier one). Returns
+ * `null` for an empty `hours` array (no coverage data at all yet).
+ */
+export function pickDefaultHour(hours: CoverageHour[], minStaff: number): CoverageHour | null {
+  if (hours.length === 0) return null;
+
+  let worst: CoverageHour | null = null;
+  let worstDeficit = -Infinity;
+  for (const h of hours) {
+    if (classifyHour(h, minStaff) !== 'crit') continue;
+    const deficit = (h.demand ?? 0) - h.scheduled;
+    if (deficit > worstDeficit) {
+      worst = h;
+      worstDeficit = deficit;
+    }
+  }
+  return worst ?? hours[0];
+}
+
+/**
+ * Full weekday name (e.g. "Monday") for a `YYYY-MM-DD` day string — feeds the
+ * pinned `CoverageReceipt`'s "Avg {weekday} sales" row and nodata copy (design
+ * doc §C). Noon-anchored (matches `dayStringToDow` in `staffingApply.ts`) so a
+ * host timezone west of UTC never rolls the date back a day when parsed.
+ */
+function weekdayKeyForDay(day: string): string {
+  return new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 /**
@@ -222,11 +262,9 @@ export function ShiftTimelineTab({
   // Single union overlay state (design doc "Overlay state machine") — edit mode is
   // wired here; create mode's producer (paint/gap-click) lands in Stage C.
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null);
-  const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
   // The chart's roving-tabindex selection (Stage 3.1's `CoverageChart` props).
-  // Not yet wired to a receipt panel (Stage 4) — this only satisfies the new
-  // required `selectedStartMin`/`onSelect` contract so the chart's keyboard
-  // navigation has somewhere to land.
+  // `null` means "no explicit click yet" — the pinned `CoverageReceipt` below
+  // falls back to `pickDefaultHour` (design doc §C) in that case.
   const [selectedStartMin, setSelectedStartMin] = useState<number | null>(null);
   // On-chart SPLH slider's live-preview value (design doc §B/§E). `null` means
   // "no preview — use the saved `target_splh`"; a number is the in-progress
@@ -444,6 +482,26 @@ export function ShiftTimelineTab({
     [liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations],
   );
   const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
+
+  // ── Pinned CoverageReceipt inputs (Stage 5.2) ──────────────────────────────
+  // The receipt panel's driving hour: the explicitly-clicked chart column when
+  // one is selected AND still present in this render's `hourlySummary` (a
+  // stale `selectedStartMin` left over from a previous day/window falls back
+  // to `pickDefaultHour` below, same as no selection at all), else the worst
+  // `crit` hour, else the first hour (design doc §C).
+  const selectedHour: CoverageHour | null = useMemo(() => {
+    const explicit = selectedStartMin === null
+      ? undefined
+      : hourlySummary.find((h) => h.startMin === selectedStartMin);
+    return explicit ?? pickDefaultHour(hourlySummary, minStaff);
+  }, [hourlySummary, selectedStartMin, minStaff]);
+  // Weekday name for the receipt's "Avg {weekday} sales" row/nodata copy.
+  const weekdayKey = weekdayKeyForDay(selectedDay);
+  // Lookback window (weeks) surfaced in the receipt's nodata aside — falls
+  // back to the same default `useStaffingSettings` seeds a restaurant with
+  // (src/hooks/useStaffingSettings.ts `DEFAULTS.lookback_weeks`) when
+  // `activeSettings` hasn't loaded yet.
+  const lookbackWeeks = activeSettings?.lookback_weeks ?? 4;
 
   // ── Per-area coverage summary (only when grouped by area) ──────────────────
   const areaCoverage = useMemo(
@@ -768,101 +826,103 @@ export function ShiftTimelineTab({
     <div className="space-y-3">
       {controls}
 
-      {/* Horizontally-scrollable plot region */}
-      <div className="overflow-x-auto rounded-xl border border-border/40">
-        <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
+      {/* Coverage panel + timeline: the scrollable chart/axis/lanes column on
+          the left, the pinned CoverageReceipt outside the horizontal scroll
+          on the right (stacked below on narrow/mobile viewports) — design doc
+          §E "new flex layout". */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+        {/* Horizontally-scrollable plot region */}
+        <div className="flex-1 min-w-0 overflow-x-auto rounded-xl border border-border/40">
+          <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
 
-          {/* Coverage panel — verdict → view toggle → chart → status strip.
-              No horizontal padding here: the pl-[120px] children must start at
-              the same left offset as TimelineAxis and shift lanes so the chart
-              x-scale aligns with the axis ticks below. */}
-          <div className="pt-3 pb-1 space-y-2 px-0">
-            {/* Plain-language verdict + demand explainer */}
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <CoverageVerdict verdict={verdict} />
-              <CoverageDemandInfo />
-            </div>
+            {/* Coverage panel — verdict/demand-info header → chart → area
+                strips. No horizontal padding here: the pl-[120px] children
+                must start at the same left offset as TimelineAxis and shift
+                lanes so the chart x-scale aligns with the axis ticks below. */}
+            <div className="pt-3 pb-1 space-y-2 px-0">
+              {/* Chart header: plain-language verdict + demand explainer
+                  (folds CoverageVerdict/CoverageDemandInfo directly above the
+                  chart now that the old Area/Delta view toggle is gone). */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <CoverageVerdict verdict={verdict} />
+                <CoverageDemandInfo />
+              </div>
 
-            {/* View toggle: area chart vs diverging-bar chart */}
-            <div className="flex items-center gap-2">
-              <ToggleGroup
-                type="single"
-                value={coverageView}
-                onValueChange={(v) => { if (v === 'area' || v === 'delta') setCoverageView(v); }}
-                className="h-7"
-                aria-label="Coverage chart view"
-              >
-                <ToggleGroupItem value="area" className="h-7 px-3 text-[12px]">
-                  Chart
-                </ToggleGroupItem>
-                <ToggleGroupItem value="delta" className="h-7 px-3 text-[12px]">
-                  +/−
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-
-            {/* Coverage chart — offset to align with the axis ticks */}
-            <div className="pl-[120px]">
-              <CoverageChart
-                hours={hourlySummary}
-                minStaff={minStaff}
-                minToPct={minToPct}
-                selectedStartMin={selectedStartMin}
-                onSelect={setSelectedStartMin}
-                onQuickAdd={handleGapClick}
-              />
-            </div>
-
-            {/* Per-hour status strip */}
-            <div className="pl-[120px]">
-              <CoverageStatusStrip hours={hourlySummary} onGapClick={handleGapClick} />
-            </div>
-
-            {/* Per-area scheduled strips — only when grouped by area */}
-            {groupBy === 'area' && (
+              {/* Coverage chart — offset to align with the axis ticks */}
               <div className="pl-[120px]">
-                <AreaCoverageStrips areas={areaCoverage} />
+                <CoverageChart
+                  hours={hourlySummary}
+                  minStaff={minStaff}
+                  minToPct={minToPct}
+                  selectedStartMin={selectedStartMin}
+                  onSelect={setSelectedStartMin}
+                  onQuickAdd={handleGapClick}
+                />
+              </div>
+
+              {/* Per-area scheduled strips — only when grouped by area */}
+              {groupBy === 'area' && (
+                <div className="pl-[120px]">
+                  <AreaCoverageStrips areas={areaCoverage} />
+                </div>
+              )}
+            </div>
+
+            {/* Hour axis */}
+            <div className="relative pl-[120px]">
+              <TimelineAxis window={model.window} minToPct={minToPct} />
+            </div>
+
+            {/* Lanes + NowIndicator overlay, or empty-day message */}
+            {noShiftsMessage ?? (
+              <div className="relative" onClickCapture={handleLanesClickCapture}>
+                {/* NowIndicator sits over the lanes plot region, offset for label column */}
+                <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
+                  <NowIndicator
+                    dateStr={selectedDay}
+                    tz={tz}
+                    window={model.window}
+                    minToPct={minToPct}
+                  />
+                </div>
+
+                {model.lanes.map((lane) => (
+                  <TimelineLane
+                    key={lane.key}
+                    lane={lane}
+                    minToPct={minToPct}
+                    window={model.window}
+                    onSelect={handleSelectShift}
+                    onPaintCommit={handlePaintCommit}
+                    onBarDraftChange={handleBarDraftChange}
+                    onBarDragCommit={handleBarDragCommit}
+                    highlightedShiftId={recentlyChangedShiftId}
+                    availabilityByEmployee={availabilityByEmployee}
+                    dateStr={selectedDay}
+                    tz={tz}
+                  />
+                ))}
               </div>
             )}
           </div>
-
-          {/* Hour axis */}
-          <div className="relative pl-[120px]">
-            <TimelineAxis window={model.window} minToPct={minToPct} />
-          </div>
-
-          {/* Lanes + NowIndicator overlay, or empty-day message */}
-          {noShiftsMessage ?? (
-            <div className="relative" onClickCapture={handleLanesClickCapture}>
-              {/* NowIndicator sits over the lanes plot region, offset for label column */}
-              <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
-                <NowIndicator
-                  dateStr={selectedDay}
-                  tz={tz}
-                  window={model.window}
-                  minToPct={minToPct}
-                />
-              </div>
-
-              {model.lanes.map((lane) => (
-                <TimelineLane
-                  key={lane.key}
-                  lane={lane}
-                  minToPct={minToPct}
-                  window={model.window}
-                  onSelect={handleSelectShift}
-                  onPaintCommit={handlePaintCommit}
-                  onBarDraftChange={handleBarDraftChange}
-                  onBarDragCommit={handleBarDragCommit}
-                  highlightedShiftId={recentlyChangedShiftId}
-                  availabilityByEmployee={availabilityByEmployee}
-                  dateStr={selectedDay}
-                  tz={tz}
-                />
-              ))}
-            </div>
-          )}
         </div>
+
+        {/* Pinned receipt — outside the scrollable region so it never scrolls
+            out of view horizontally; stacks below the chart on mobile
+            (design doc §E/§C). Hidden only when there's no coverage data at
+            all (`pickDefaultHour` returns null for an empty hourlySummary). */}
+        {selectedHour && (
+          <div className="lg:w-[320px] lg:shrink-0">
+            <CoverageReceipt
+              hour={selectedHour}
+              minStaff={minStaff}
+              weekdayKey={weekdayKey}
+              wage={avgWage}
+              lookbackWeeks={lookbackWeeks}
+              onQuickAdd={handleGapClick}
+            />
+          </div>
+        )}
       </div>
 
       {/* Single popover instance per CLAUDE.md pattern — driven entirely by the

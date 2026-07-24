@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(12);
+SELECT plan(13);
 
 SET LOCAL client_min_messages TO WARNING;
 
@@ -184,6 +184,24 @@ SELECT ok(
      ('2027-07-20 07:00'::timestamp AT TIME ZONE 'America/Chicago'),
      ('2027-07-20 08:00'::timestamp AT TIME ZONE 'America/Chicago')) LIMIT 1),
   'Shift outside the exception window returns that window (not NULL)'
+);
+
+-- CASE 7 (fixed-offset timezone accepted, no throw): '+05:00' is not an IANA zone name, but
+-- `AT TIME ZONE` parses it as a fixed UTC offset without raising. Pins the accepted trade-off
+-- for the upcoming EXCEPTION-based tz fallback (perf refactor): parseable fixed-offset strings
+-- are treated as valid rather than coerced to UTC, matching the deployed sibling
+-- check_timeoff_conflict. A recurring availability row exercises the downstream v_tz casts —
+-- the same path CASE 4 guards for genuinely unparsable strings.
+UPDATE restaurants SET timezone = '+05:00' WHERE id = (SELECT rid FROM t_ids);
+DELETE FROM employee_availability WHERE restaurant_id = (SELECT rid FROM t_ids);
+DELETE FROM availability_exceptions WHERE restaurant_id = (SELECT rid FROM t_ids);
+INSERT INTO employee_availability (restaurant_id, employee_id, day_of_week, is_available, start_time, end_time)
+VALUES ((SELECT rid FROM t_ids), (SELECT eid FROM t_ids), 1, true, '09:00:00', '17:00:00');
+SELECT lives_ok(
+  $$ SELECT * FROM check_availability_conflict(
+       (SELECT eid FROM t_ids), (SELECT rid FROM t_ids),
+       '2027-07-12 10:00+00'::timestamptz, '2027-07-12 12:00+00'::timestamptz) $$,
+  'Fixed-offset timezone (+05:00) does not raise'
 );
 
 SELECT * FROM finish();

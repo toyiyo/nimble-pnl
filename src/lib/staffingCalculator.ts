@@ -57,7 +57,9 @@ export function buildHourlyRecommendations(
   },
 ): HourlyStaffingRecommendation[] {
   return hourlySales.map(({ hour, avgSales }) => {
-    const recommendedStaff = calculateRecommendedStaff(avgSales, params.targetSplh, params.minStaff);
+    const demand =
+      avgSales > 0 && params.targetSplh > 0 ? Math.ceil(avgSales / params.targetSplh) : 0;
+    const recommendedStaff = Math.max(demand, params.minStaff);
     const estimatedLaborCost = recommendedStaff * (params.avgHourlyRateCents / 100);
     const laborPct = avgSales > 0 ? (estimatedLaborCost / avgSales) * 100 : 0;
     const overTarget = checkLaborGuardrail(
@@ -69,6 +71,7 @@ export function buildHourlyRecommendations(
     return {
       hour,
       projectedSales: avgSales,
+      demand,
       recommendedStaff,
       estimatedLaborCost,
       laborPct,

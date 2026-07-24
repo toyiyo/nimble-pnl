@@ -138,4 +138,56 @@ describe('buildHourlyRecommendations', () => {
     // 1 staff * $15 = $15, $30 sales → 50% > 22%
     expect(result[0].overTarget).toBe(true);
   });
+
+  it('emits raw pre-floor demand alongside recommendedStaff', () => {
+    const hourlySales = [
+      { hour: 11, avgSales: 200, sampleCount: 4 }, // 200/60=3.33→4, minStaff=1 → demand=recommendedStaff
+    ];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 1,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(4);
+    expect(result[0].recommendedStaff).toBe(4);
+  });
+
+  it('sets recommendedStaff to max(demand, minStaff) when the floor exceeds demand', () => {
+    const hourlySales = [
+      { hour: 8, avgSales: 10, sampleCount: 4 }, // 10/60=0.17→1 demand, but minStaff=3
+    ];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 3,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(1);
+    expect(result[0].recommendedStaff).toBe(3);
+  });
+
+  it('sets demand to 0 when sales are zero, but recommendedStaff still floors to minStaff', () => {
+    const hourlySales = [{ hour: 6, avgSales: 0, sampleCount: 0 }];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 2,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(0);
+    expect(result[0].recommendedStaff).toBe(2);
+  });
+
+  it('sets demand to 0 when targetSplh is zero', () => {
+    const hourlySales = [{ hour: 12, avgSales: 200, sampleCount: 4 }];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 0,
+      minStaff: 1,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(0);
+    expect(result[0].recommendedStaff).toBe(1);
+  });
 });

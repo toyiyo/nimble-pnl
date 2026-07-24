@@ -48,30 +48,71 @@ the existing **uncontrolled** `defaultValue={item.parsed_sku || ''}` in `Receipt
 on first render.
 
 **The SKU input stays uncontrolled.** Making it controlled would force every keystroke through an awaited DB write in
-`handleItemUpdate` before the displayed value updates — a typing-lag / cursor-jump regression. No `ReceiptItemRow`
-change is needed.
+`handleItemUpdate` before the displayed value updates — a typing-lag / cursor-jump regression. The one `ReceiptItemRow`
+change (Change 3 below) moves the commit trigger from `onChange` to `onBlur` while keeping the input uncontrolled.
 
 ### Change 2 — Write the edited barcode back to the matched product (Expectation B)
 
-In `bulkImportLineItems`' mapped branch, fold `gtin` into the existing single `products` UPDATE when
-`item.parsed_sku` is a non-empty trimmed string:
+In `bulkImportLineItems`' mapped branch, fold `gtin` into the `products` UPDATE when `item.parsed_sku` is a non-empty
+trimmed string. Per lessons.md L717 (an unscoped `products` UPDATE was a real bug on PR #545), scope the UPDATE by
+`restaurant_id` in addition to `id`.
+
+Two Supabase design-review majors are folded in here:
+
+1. **Combine the two preceding reads.** The mapped branch currently does two separate `id`-only SELECTs on the same
+   product row (`current_stock`, then `receipt_item_names`). Combine into one `restaurant_id`-scoped read, closing the
+   same scoping gap and removing a duplicate round-trip.
+2. **No silent no-op.** With `restaurant_id` scoping, a 0-row UPDATE returns success (PostgREST does not error). Chain
+   `.select('id').maybeSingle()` and treat an empty result as a failure, so a stale-tenant mismatch surfaces instead
+   of silently dropping the write.
 
 ```ts
+const restaurantId = selectedRestaurant.restaurant_id;
+
+// One scoped read replaces the two id-only SELECTs
+const { data: current, error: fetchError } = await supabase
+  .from('products')
+  .select('current_stock, receipt_item_names')
+  .eq('id', item.matched_product_id)
+  .eq('restaurant_id', restaurantId)
+  .maybeSingle();
+if (fetchError || !current) { console.error(...); continue; }
+
+const barcode = resolveBarcodeWriteBack(item.parsed_sku);   // trimmed non-empty, else null
 const productUpdate = {
   current_stock: newStock,
   cost_per_unit: unitPrice,
   receipt_item_names: updatedMappings,
   supplier_id: supplierId,
   updated_at: new Date().toISOString(),
-  ...(resolveBarcodeWriteBack(item.parsed_sku) ? { gtin: resolveBarcodeWriteBack(item.parsed_sku) } : {}),
+  ...(barcode ? { gtin: barcode } : {}),
 };
-await supabase.from('products').update(productUpdate)
+const { data: updated, error: stockError } = await supabase
+  .from('products')
+  .update(productUpdate)
   .eq('id', item.matched_product_id)
-  .eq('restaurant_id', selectedRestaurant.restaurant_id);   // L717: scope products UPDATE by restaurant_id
+  .eq('restaurant_id', restaurantId)   // L717
+  .select('id')
+  .maybeSingle();
+if (stockError || !updated) { console.error(...); continue; }   // no silent no-op
 ```
 
-Per lessons.md L717 (an unscoped `products` UPDATE was a real bug on PR #545), the write-back UPDATE is scoped by
-`restaurant_id` in addition to `id`.
+### Change 3 — Commit the SKU/Barcode field on blur, not per keystroke (Frontend review majors)
+
+The frontend design review flagged that `ReceiptItemRow`'s SKU input commits on **every keystroke**
+(`onChange → handleSkuChange → await updateLineItemMapping`), with no debounce or cancellation. Two consequences,
+both **escalated by Change 2** (a stale `parsed_sku` now graduates into a real product's `gtin`, a shared record):
+
+- **Write race:** out-of-order resolution of per-keystroke writes can leave `receipt_line_items.parsed_sku` holding a
+  stale value that differs from what's on screen; `bulkImportLineItems` re-reads it fresh and writes it to `gtin`.
+- **Row vanishes mid-edit:** `handleSkuChange`'s live reverse-lookup (`sku.length >= 3`) re-tiers a matched row to
+  `auto-approved`, which collapses it into the collapsed-by-default "Ready" section — yanking the focused input away
+  mid-type. Change 1 makes `parsed_sku` pre-populated more often, widening this trigger.
+
+**Fix:** switch the SKU input to commit on `onBlur` instead of `onChange`. The input stays **uncontrolled**
+(`defaultValue` retained → no typing lag, no display glitch), a single write fires with the final value (no race), and
+the reverse-lookup auto-map runs only after the user leaves the field (no mid-type vanish). This is the one
+`ReceiptItemRow` change; it does not reintroduce the controlled-input problem (Claim 3), since `defaultValue` stays.
 
 ### Testable seam — pure helpers in `receiptImportUtils.ts`
 
@@ -105,8 +146,19 @@ Unit tests cover these directly (TDD RED first).
 - **Auto-fill is display-only (not persisted).** Untouched auto-filled rows write nothing back on import (the product
   keeps its own barcode — a no-op). Only user edits persist and write back.
 
+## Design review feedback folded in (Phase 2.5)
+
+- **Supabase (major):** combined the two `id`-only reads into one `restaurant_id`-scoped read; added `.select('id')`
+  to the write-back UPDATE to reject silent 0-row no-ops. (Change 2.)
+- **Supabase (major):** `restaurant_id` scoping on the UPDATE — kept. **(minor)** no unique constraint on
+  `gtin`/`sku` confirmed against prod → no conflict risk; N+1 in the mapped loop is pre-existing, out of scope.
+- **Frontend (major ×2):** per-keystroke write race + mid-edit row-vanish → fixed by committing on `onBlur`.
+  (Change 3.) **(minor)** avoid double-calling `resolveBarcodeWriteBack` → use a local `const barcode`. **(minor)**
+  `role="button"` Space-key handling on the collapsed row is pre-existing, out of scope.
+
 ## Verification
 
-- Unit tests for `resolveLineItemBarcode` / `resolveBarcodeWriteBack`.
-- Manual/preview: import a receipt where a line matches a product with a `gtin` → field shows it; edit the field →
-  after import the product's `gtin` reflects the edit; matched product's `restaurant_id` scoping enforced.
+- Unit tests (TDD RED first) for `resolveLineItemBarcode` / `resolveBarcodeWriteBack`.
+- Manual/preview: import a receipt where a line matches a product with a `gtin` → field shows it; edit the field then
+  blur → after import the product's `gtin` reflects the edit; confirm typing no longer collapses the row mid-edit; a
+  cross-tenant/stale mismatch logs an error instead of silently dropping.

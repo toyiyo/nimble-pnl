@@ -70,7 +70,10 @@ export function impliedLabor(params: {
   targetLaborPct: number;
 }): ImpliedLaborResult {
   const { wage, splh, targetLaborPct } = params;
-  const pct = (wage / splh) * 100;
+  // Guard against a 0 splh (would otherwise divide to Infinity) — the slider's
+  // own bounds keep this out of reach today, but the readout should degrade to
+  // a plain 0% rather than a nonsensical Infinity if that ever changes.
+  const pct = splh > 0 ? (wage / splh) * 100 : 0;
   const overTarget = pct > targetLaborPct + 0.05;
   return { pct, overTarget };
 }
@@ -82,7 +85,10 @@ export function impliedLabor(params: {
  */
 export function laborConsistentSplh(params: { wage: number; targetLaborPct: number }): number {
   const { wage, targetLaborPct } = params;
-  return wage / (targetLaborPct / 100);
+  // Guard against a 0 targetLaborPct (would otherwise divide to Infinity) —
+  // settings-form input clamps this above 0 today, but the notch position
+  // should degrade to 0 rather than Infinity if that invariant ever slips.
+  return targetLaborPct > 0 ? wage / (targetLaborPct / 100) : 0;
 }
 
 // ── Receipt ──────────────────────────────────────────────────────────────────

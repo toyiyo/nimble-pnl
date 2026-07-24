@@ -140,7 +140,12 @@ export function summarizeCoverageHours(
       scheduled,
       scheduledMax,
       needed,
-      demand: rec?.demand ?? null,
+      // A rec with projectedSales <= 0 has nothing to derive a demand target
+      // from (buildHourlyRecommendations floors its own `demand` to 0 in that
+      // case) — treat it as no-data rather than a real "0 people needed"
+      // target, per the design doc's nodata definition ("no rec, or
+      // projectedSales ≤ 0").
+      demand: rec && rec.projectedSales > 0 ? rec.demand : null,
       delta: needed === null ? null : scheduled - needed,
       projectedSales: rec?.projectedSales ?? null,
       laborPct: rec?.laborPct ?? null,

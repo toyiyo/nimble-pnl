@@ -210,6 +210,13 @@ describe('summarizeCoverageHours — demand and scheduledMax', () => {
     expect(hrs[0].demand).toBeNull();
   });
 
+  it('CRITICAL: demand is null (not 0) when the rec has no sales — treated as nodata, not "0 people needed"', () => {
+    // recFull's demandVal defaults to `staff`, so pass 0 explicitly to mirror
+    // buildHourlyRecommendations' own floor-to-0 behavior for a zero-sales hour.
+    const hrs = summarizeCoverageHours(coverage, demand, win, [recFull(10, 2, 0, 0, 0)]);
+    expect(hrs[0].demand).toBeNull();
+  });
+
   it('CRITICAL: scheduledMax is the per-hour maximum headcount (may exceed scheduled=min)', () => {
     const hrs = summarizeCoverageHours(coverage, demand, win);
     expect(hrs[0]).toMatchObject({ scheduled: 1, scheduledMax: 2 }); // hr10 samples: [2,2,1,2]

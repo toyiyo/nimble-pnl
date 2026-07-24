@@ -644,6 +644,7 @@ describe('ShiftTimelineTab — call-site wiring (Task 2d)', () => {
   const rec: HourlyStaffingRecommendation = {
     hour: 10,
     projectedSales: 480,
+    demand: 3,
     recommendedStaff: 3,
     estimatedLaborCost: 108,
     laborPct: 22.5,

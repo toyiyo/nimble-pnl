@@ -116,6 +116,12 @@ describe('impliedLabor', () => {
     const { overTarget } = impliedLabor({ wage: 15, splh: 20, targetLaborPct: 74.94 });
     expect(overTarget).toBe(true);
   });
+
+  it('BOUNDARY: splh === 0 degrades to pct 0 instead of Infinity', () => {
+    const { pct, overTarget } = impliedLabor({ wage: 15, splh: 0, targetLaborPct: 22 });
+    expect(pct).toBe(0);
+    expect(overTarget).toBe(false);
+  });
 });
 
 describe('laborConsistentSplh', () => {
@@ -131,6 +137,10 @@ describe('laborConsistentSplh', () => {
 
   it('BOUNDARY: targetLaborPct === 100 → consistent === wage', () => {
     expect(laborConsistentSplh({ wage: 30, targetLaborPct: 100 })).toBe(30);
+  });
+
+  it('BOUNDARY: targetLaborPct === 0 degrades to 0 instead of Infinity', () => {
+    expect(laborConsistentSplh({ wage: 30, targetLaborPct: 0 })).toBe(0);
   });
 });
 

@@ -148,7 +148,7 @@ describe('buildHourlyRecommendations', () => {
     expect(result[0].recommendedStaff).toBe(3);
   });
 
-  it('sets demand to 0 when sales are zero, but recommendedStaff still floors to minStaff', () => {
+  it('CRITICAL: sets demand to 0 when sales are zero, but recommendedStaff still floors to minStaff', () => {
     const hourlySales = [{ hour: 6, avgSales: 0, sampleCount: 0 }];
     const result = buildHourlyRecommendations(hourlySales, {
       targetSplh: 60,
@@ -160,7 +160,22 @@ describe('buildHourlyRecommendations', () => {
     expect(result[0].recommendedStaff).toBe(2);
   });
 
-  it('sets demand to 0 when targetSplh is zero', () => {
+  it('CRITICAL: sets demand to 0 when sales are negative, but recommendedStaff still floors to minStaff', () => {
+    // Negative avgSales shouldn't happen in practice, but a bad refund/void
+    // adjustment upstream could produce one — demand must floor to 0 (not a
+    // negative headcount), same as the zero-sales case above.
+    const hourlySales = [{ hour: 6, avgSales: -50, sampleCount: 4 }];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 2,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(0);
+    expect(result[0].recommendedStaff).toBe(2);
+  });
+
+  it('CRITICAL: sets demand to 0 when targetSplh is zero', () => {
     const hourlySales = [{ hour: 12, avgSales: 200, sampleCount: 4 }];
     const result = buildHourlyRecommendations(hourlySales, {
       targetSplh: 0,

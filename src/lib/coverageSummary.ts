@@ -48,8 +48,8 @@ const HOUR = 60;
 
 /**
  * Format a clock hour (0–23) into a compact 12-hour label without minutes,
- * e.g. 0 → "12 AM", 17 → "5 PM".  Used by CoverageVerdict, CoverageChart,
- * and CoverageStatusStrip so the label style is consistent across all three.
+ * e.g. 0 → "12 AM", 17 → "5 PM".  Used by CoverageVerdict and CoverageChart
+ * so the label style is consistent across both.
  */
 export function formatCoverageHour(hour: number): string {
   const h24 = ((hour % 24) + 24) % 24;

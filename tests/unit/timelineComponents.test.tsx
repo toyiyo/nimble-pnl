@@ -8,8 +8,11 @@
  * These tests exercise the rendering paths that bring the new-code coverage
  * above the SonarCloud 80% threshold for this PR.
  *
- * Note: CoverageCurve was removed in Task 5 and replaced by CoverageChart +
- * CoverageStatusStrip (see coverageChart.test.tsx, coverageStatusStrip.test.tsx).
+ * Note: CoverageCurve was removed in Task 5 and replaced by CoverageChart
+ * (see coverageChart.test.tsx). CoverageStatusStrip, its short-lived
+ * successor, was itself removed once CoverageChart absorbed its
+ * gap-click/sr-only-enumeration responsibilities (see
+ * coverageChartModel.test.ts's chartSummaryLabel tests).
  */
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

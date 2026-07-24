@@ -18,7 +18,7 @@
 
 BEGIN;
 
-SELECT plan(13);
+SELECT plan(26);
 
 SET LOCAL role TO postgres;
 
@@ -216,7 +216,7 @@ SELECT throws_ok(
 );
 
 -- ============================================================
--- Cleanup
+-- Cleanup (Tasks 1-13's fixtures)
 -- ============================================================
 
 DELETE FROM public.notification_channel_settings
@@ -229,6 +229,213 @@ DELETE FROM public.user_restaurants
   WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000099';
 DELETE FROM public.restaurants
   WHERE id = '00000000-0000-0000-0000-0000e0000099';
+
+-- ============================================================
+-- Task 14: bank-reauth-notices worker RPCs (design §4.6):
+-- bank_reauth_cohort_a_candidates() / bank_reauth_cohort_b_recovered() /
+-- bank_reauth_notice_recipients(uuid, text[]).
+-- Migration: 20260723130200_schedule_bank_reauth_notices.sql
+-- ============================================================
+
+SELECT has_function(
+  'public', 'bank_reauth_cohort_a_candidates',
+  'bank_reauth_cohort_a_candidates() should exist'
+);
+
+SELECT has_function(
+  'public', 'bank_reauth_cohort_b_recovered',
+  'bank_reauth_cohort_b_recovered() should exist'
+);
+
+SELECT has_function(
+  'public', 'bank_reauth_notice_recipients', ARRAY['uuid', 'text[]'],
+  'bank_reauth_notice_recipients(uuid, text[]) should exist'
+);
+
+-- ------------------------------------------------------------
+-- Fixtures: a dedicated restaurant, two connected_banks (one still down,
+-- one reconnected), and owner/manager/staff users.
+-- ------------------------------------------------------------
+
+DELETE FROM public.bank_reauth_notices
+  WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000199';
+DELETE FROM public.connected_banks
+  WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000199';
+DELETE FROM public.user_restaurants
+  WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000199';
+DELETE FROM public.restaurants
+  WHERE id = '00000000-0000-0000-0000-0000e0000199';
+
+INSERT INTO public.restaurants (id, name, address, phone)
+VALUES (
+  '00000000-0000-0000-0000-0000e0000199', 'Reauth Worker Test', '1 Test Way', '555-0299'
+);
+
+-- Bank A: still down. deactivated_at is `now() - 5 days` (not a date-floored
+-- literal) so the elapsed-days math is exact regardless of what time of day
+-- this test runs — `now()` is frozen to transaction start, so the INSERT
+-- below and the RPC's own `now()` agree exactly.
+INSERT INTO public.connected_banks
+  (id, restaurant_id, stripe_financial_account_id, institution_name, status, deactivated_at)
+VALUES (
+  '00000000-0000-0000-0000-0000e0000198', '00000000-0000-0000-0000-0000e0000199',
+  'fca_reauth_worker_test_a', 'Chase', 'requires_reauth', now() - interval '5 days'
+);
+
+-- Bank B: was down, a day_1 notice was already sent, then it reconnected —
+-- status is back to 'connected' and deactivated_at has been nulled by the
+-- webhook. This is the whole point of cohort B: the correlation key for the
+-- recovery notice must come from bank_reauth_notices, not from this
+-- now-NULL column.
+INSERT INTO public.connected_banks
+  (id, restaurant_id, stripe_financial_account_id, institution_name, status, deactivated_at)
+VALUES (
+  '00000000-0000-0000-0000-0000e0000197', '00000000-0000-0000-0000-0000e0000199',
+  'fca_reauth_worker_test_b', 'Ally', 'connected', NULL
+);
+
+INSERT INTO public.bank_reauth_notices
+  (restaurant_id, connected_bank_id, stage, deactivated_at)
+VALUES (
+  '00000000-0000-0000-0000-0000e0000199', '00000000-0000-0000-0000-0000e0000197',
+  'day_1', '2026-07-10T00:00:00Z'
+);
+
+INSERT INTO auth.users (id, email)
+VALUES ('00000000-0000-0000-0000-0000e0000101', 'reauth-worker-owner@example.com')
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO auth.users (id, email)
+VALUES ('00000000-0000-0000-0000-0000e0000102', 'reauth-worker-manager@example.com')
+ON CONFLICT (id) DO NOTHING;
+INSERT INTO auth.users (id, email)
+VALUES ('00000000-0000-0000-0000-0000e0000103', 'reauth-worker-staff@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
+VALUES
+  ('00000000-0000-0000-0000-0000e0000101', '00000000-0000-0000-0000-0000e0000199', 'owner'),
+  ('00000000-0000-0000-0000-0000e0000102', '00000000-0000-0000-0000-0000e0000199', 'manager'),
+  ('00000000-0000-0000-0000-0000e0000103', '00000000-0000-0000-0000-0000e0000199', 'staff')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
+
+SET LOCAL role TO postgres;
+
+-- ------------------------------------------------------------
+-- Cohort A — still down.
+-- ------------------------------------------------------------
+
+SELECT is(
+  (SELECT elapsed_days FROM public.bank_reauth_cohort_a_candidates()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000198'),
+  5,
+  'cohort A reports 5 whole UTC days elapsed for a bank deactivated 5 days ago'
+);
+
+SELECT is(
+  (SELECT sent_stages FROM public.bank_reauth_cohort_a_candidates()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000198'),
+  ARRAY[]::text[],
+  'cohort A reports no sent_stages yet for a bank with no bank_reauth_notices rows'
+);
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM public.bank_reauth_cohort_a_candidates()
+    WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'
+  ),
+  'cohort A never includes a connected bank (no live outage clock)'
+);
+
+INSERT INTO public.bank_reauth_notices
+  (restaurant_id, connected_bank_id, stage, deactivated_at)
+VALUES (
+  '00000000-0000-0000-0000-0000e0000199', '00000000-0000-0000-0000-0000e0000198', 'day_1',
+  (SELECT deactivated_at FROM public.connected_banks WHERE id = '00000000-0000-0000-0000-0000e0000198')
+);
+
+SELECT is(
+  (SELECT sent_stages FROM public.bank_reauth_cohort_a_candidates()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000198'),
+  ARRAY['day_1']::text[],
+  'cohort A picks up a day_1 notice already sent for this exact outage'
+);
+
+-- ------------------------------------------------------------
+-- Cohort B — recovered. The core RED scenario for this task: the recovery
+-- notice's correlation key comes from bank_reauth_notices, not from
+-- connected_banks.deactivated_at (which is NULL on bank B — the webhook
+-- already cleared it on reconnect).
+-- ------------------------------------------------------------
+
+SELECT is(
+  (SELECT count(*)::int FROM public.bank_reauth_cohort_b_recovered()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'),
+  1,
+  'cohort B finds the reconnected bank via bank_reauth_notices even though connected_banks.deactivated_at is NULL'
+);
+
+SELECT is(
+  (SELECT deactivated_at FROM public.bank_reauth_cohort_b_recovered()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'),
+  '2026-07-10T00:00:00Z'::timestamptz,
+  'cohort B sources deactivated_at from the notices table, not the (now-NULL) bank row'
+);
+
+-- Acknowledge the recovery: once a 'recovered' row exists for this exact
+-- (connected_bank_id, deactivated_at), cohort B stops returning it.
+INSERT INTO public.bank_reauth_notices
+  (restaurant_id, connected_bank_id, stage, deactivated_at)
+VALUES (
+  '00000000-0000-0000-0000-0000e0000199', '00000000-0000-0000-0000-0000e0000197',
+  'recovered', '2026-07-10T00:00:00Z'
+);
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM public.bank_reauth_cohort_b_recovered()
+    WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'
+  ),
+  'cohort B stops returning a bank once its recovery has been acknowledged'
+);
+
+SELECT ok(
+  NOT EXISTS (
+    SELECT 1 FROM public.bank_reauth_cohort_b_recovered()
+    WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000198'
+  ),
+  'cohort B never includes a bank that is still requires_reauth'
+);
+
+-- ------------------------------------------------------------
+-- Recipients — filtered by the roles the current stage calls for.
+-- ------------------------------------------------------------
+
+SELECT is(
+  (SELECT count(*)::int FROM public.bank_reauth_notice_recipients(
+     '00000000-0000-0000-0000-0000e0000199', ARRAY['owner', 'manager'])),
+  2,
+  'bank_reauth_notice_recipients(owner+manager) returns exactly the owner and manager, not staff'
+);
+
+SELECT is(
+  (SELECT count(*)::int FROM public.bank_reauth_notice_recipients(
+     '00000000-0000-0000-0000-0000e0000199', ARRAY['owner'])),
+  1,
+  'bank_reauth_notice_recipients(owner) narrows to owners only, e.g. for the day_10 stage'
+);
+
+-- ------------------------------------------------------------
+-- Cleanup (this section's own fixtures)
+-- ------------------------------------------------------------
+
+DELETE FROM public.bank_reauth_notices
+  WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000199';
+DELETE FROM public.connected_banks
+  WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000199';
+DELETE FROM public.user_restaurants
+  WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000199';
+DELETE FROM public.restaurants
+  WHERE id = '00000000-0000-0000-0000-0000e0000199';
 
 SELECT * FROM finish();
 ROLLBACK;

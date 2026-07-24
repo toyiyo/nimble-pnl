@@ -1,4 +1,5 @@
 import { generateHeader } from '../_shared/emailTemplates.ts';
+import { resolveAccountlessEmployeeLink, normalizeEmail } from '../_shared/resolveAccountlessEmployeeLink.ts';
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "https://esm.sh/resend@4.0.0";
@@ -34,7 +35,7 @@ interface RequestBody {
   restaurantId: string;
   email: string;
   role: string;
-  employeeId?: string; // Optional employee ID to link when role is "staff"
+  employeeId?: string; // Optional client hint; server re-resolves for any role (see below)
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -75,7 +76,14 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Missing required fields: restaurantId, email, or role');
     }
 
-    console.log('Sending team invitation:', { restaurantId, email, role, employeeId });
+    // Canonicalize the email ONCE. Everything downstream — the cancel query, the
+    // stored invitations.email, employee matching, and the send address — uses
+    // this value so they never drift. Storing the raw (mixed-case/whitespace)
+    // email would also break acceptance, where GoTrue's already-lowercased
+    // user.email is compared against invitations.email.
+    const normalizedEmail = normalizeEmail(email);
+
+    console.log('Sending team invitation:', { restaurantId, email: normalizedEmail, role, employeeId });
 
     // Get restaurant details
     const { data: restaurant, error: restaurantError } = await supabase
@@ -120,7 +128,7 @@ const handler = async (req: Request): Promise<Response> => {
     await supabase
       .from('invitations')
       .update({ status: 'cancelled', updated_at: new Date() })
-      .eq('email', email)
+      .eq('email', normalizedEmail)
       .eq('restaurant_id', restaurantId)
       .eq('status', 'pending');
 
@@ -151,16 +159,42 @@ const handler = async (req: Request): Promise<Response> => {
     } = {
       restaurant_id: restaurantId,
       invited_by: user.id,
-      email,
+      email: normalizedEmail,
       role,
       token: hashedToken,
       status: 'pending',
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     };
 
-    // If employeeId is provided (for staff role), include it in the invitation
-    if (employeeId && role === 'staff') {
-      invitationData.employee_id = employeeId;
+    // Resolve employee_id server-side — for ANY invitable role, not just staff.
+    // Restaurant-scoped fetch of accountless active employees (no enumeration
+    // oracle; mirrors src/hooks/useAccountlessEmployees.ts). Fetched once and
+    // reused for both the client-hint check and the email fallback.
+    const { data: accountlessEmployees, error: accountlessError } = await supabase
+      .from('employees')
+      .select('id, name, email')
+      .eq('restaurant_id', restaurantId)
+      .is('user_id', null)
+      .eq('status', 'active');
+
+    if (accountlessError) {
+      // Fail open: never block sending the invitation over this lookup.
+      console.error('Failed to fetch accountless employees for linking:', accountlessError);
+    }
+
+    // Deterministic resolution (see resolveAccountlessEmployeeLink): a client
+    // hint is trusted only if it is an email-matched accountless row, and when
+    // multiple active employees share the invited email we link nothing rather
+    // than pick an arbitrary row from PostgREST's undefined ordering.
+    const link = resolveAccountlessEmployeeLink(accountlessEmployees, normalizedEmail, employeeId);
+    if (link.ambiguous) {
+      console.warn(
+        `Ambiguous accountless-employee link for ${normalizedEmail} in restaurant ${restaurantId}: ` +
+        `multiple active employees share this email and no client hint disambiguated — sending without a link.`,
+      );
+    }
+    if (link.employeeId) {
+      invitationData.employee_id = link.employeeId;
     }
 
     const { data: invitation, error: invitationError } = await supabase
@@ -207,7 +241,7 @@ const handler = async (req: Request): Promise<Response> => {
       try {
         const emailResponse = await resend.emails.send({
           from: "EasyShiftHQ <notifications@easyshifthq.com>",
-          to: [email],
+          to: [normalizedEmail],
           subject: isCollaborator
             ? `You're invited to collaborate with ${restaurant.name}`
             : `You're invited to join ${restaurant.name}`,
@@ -273,12 +307,12 @@ const handler = async (req: Request): Promise<Response> => {
       }
     }
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
-        message: `Invitation sent to ${email}`,
+        message: `Invitation sent to ${normalizedEmail}`,
         invitation: {
           id: invitation.id,
-          email,
+          email: normalizedEmail,
           role,
           restaurantName: restaurant.name,
           expiresAt: invitation.expires_at,

@@ -358,6 +358,59 @@ describe('useCollaborators Hook', () => {
         expect(result.current.isError).toBe(true);
       });
     });
+
+    it('forwards employeeId in the request body when the caller passes one (accountless-employee link intent)', async () => {
+      mockInvoke.mockResolvedValue({ data: {}, error: null });
+
+      const { result } = renderHook(() => useSendCollaboratorInvitation(), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        result.current.mutate({
+          restaurantId: 'restaurant-1',
+          email: 'new@example.com',
+          role: 'collaborator_accountant',
+          employeeId: 'emp-1',
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      expect(mockInvoke).toHaveBeenCalledWith('send-team-invitation', {
+        body: {
+          restaurantId: 'restaurant-1',
+          email: 'new@example.com',
+          role: 'collaborator_accountant',
+          employeeId: 'emp-1',
+        },
+      });
+    });
+
+    it('omits employeeId from the request body when the caller does not pass one', async () => {
+      mockInvoke.mockResolvedValue({ data: {}, error: null });
+
+      const { result } = renderHook(() => useSendCollaboratorInvitation(), {
+        wrapper: createWrapper(),
+      });
+
+      await act(async () => {
+        result.current.mutate({
+          restaurantId: 'restaurant-1',
+          email: 'new@example.com',
+          role: 'collaborator_accountant',
+        });
+      });
+
+      await waitFor(() => {
+        expect(result.current.isSuccess).toBe(true);
+      });
+
+      const body = mockInvoke.mock.calls[0][1].body;
+      expect(body).not.toHaveProperty('employeeId');
+    });
   });
 
   // ============================================================

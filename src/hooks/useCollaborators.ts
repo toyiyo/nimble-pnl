@@ -127,6 +127,11 @@ interface SendInvitationParams {
   restaurantId: string;
   email: string;
   role: Role;
+  // Set when the invite email matches an accountless employee record
+  // (`employees.user_id IS NULL`) detected client-side — passed through as
+  // explicit intent. `send-team-invitation` re-derives/validates it
+  // server-side regardless, so this is not the source of truth.
+  employeeId?: string;
 }
 
 export const useSendCollaboratorInvitation = () => {
@@ -134,13 +139,12 @@ export const useSendCollaboratorInvitation = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, email, role }: SendInvitationParams) => {
+    mutationFn: async ({ restaurantId, email, role, employeeId }: SendInvitationParams) => {
+      const body: Record<string, unknown> = { restaurantId, email, role };
+      if (employeeId) body.employeeId = employeeId;
+
       const { error } = await supabase.functions.invoke('send-team-invitation', {
-        body: {
-          restaurantId,
-          email,
-          role,
-        },
+        body,
       });
 
       if (error) throw error;

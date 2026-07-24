@@ -139,15 +139,50 @@ stops equalling `pending + actual`. All three are in scope:
   included in Labor Cost total this period." Update the child label/copy to match
   the badge language.
 
-### 3. `src/components/MonthlyBreakdownTable.tsx` + `monthlyPerformance.ts` — REQUIRED (separate path)
-- `calculateMonthlyPerformance` sums `actualLaborCents + pendingLaborCents`
-  (line 131); the component also does `laborCostPercent = pendingLaborPercent +
-  actualLaborPercent`.
-  **Fix:** apply the same accrued-basis + paid-fallback rule in
-  `monthlyPerformance.ts`, and update the component's percentage + any
-  pending/actual row rendering to match. Without this, Monthly Breakdown would
-  keep showing the inflated figure while the other two screens are corrected —
-  a *new* 2-of-3 inconsistency, worse than the current state.
+### 3. Monthly Breakdown path — REQUIRED (separate, four-layer path)
+The Monthly table has its own data lineage: `useMonthlyMetrics` →
+`MonthlyBreakdownTable` → `calculateMonthlyPerformance` (`monthlyPerformance.ts`).
+`useMonthlyMetrics` builds `pending_labor_cost` from time punches and
+`actual_labor_cost` from bank labor — the **same overlapping** accrued/paid pair
+as the dashboard — then feeds both into `calculateMonthlyPerformance`, which
+sums them (`laborIncludingPendingCents = actualLaborCents + pendingLaborCents`,
+line 131). The component renders that sum as the "Labor" headline and shows a
+"Projected (incl. pending labor)" profit that subtracts pending labor *on top of*
+`actualExpenses` (which already contains paid labor) — a double-count in both the
+labor figure and the projected-profit figure.
+
+**Fix (minimal, no feature removal — substitute, don't add):**
+- `monthlyPerformance.ts`:
+  - add `laborBasis: 'accrued' | 'paid'` (`pendingLaborCents > 0 → 'accrued'`),
+    applying the same rule as `resolveLaborBasis` (inlined — this module is
+    Deno-targeted and cannot import from `src/lib`; a comment cross-references
+    the canonical rule).
+  - rename `laborIncludingPendingCents` → `laborForPnlCents` = the **basis**
+    labor (`accrued ? pendingLaborCents : actualLaborCents`), never the sum.
+    Keep `actualLaborCents` and `pendingLaborCents` exposed for the breakdown.
+  - keep `actualExpensesCents` and cash-basis `actualNetProfitCents =
+    netRevenue − actualExpenses` unchanged (correct, not double-counted).
+  - rename `projectedExpensesCents` → `accrualExpensesCents = actualExpensesCents
+    − actualLaborCents + laborForPnlCents` (substitutes basis labor for the
+    paid labor already in the ledger; equals `actualExpensesCents` exactly under
+    the paid basis). Rename `projectedNetProfitCents` → `accrualNetProfitCents =
+    netRevenue − accrualExpensesCents`.
+- `MonthlyBreakdownTable.tsx`: read `laborForPnlCents`/`accrualNetProfitCents`;
+  delete the unused `laborCostPercent = pendingLaborPercent + actualLaborPercent`
+  (dead, and it encodes the double-count); mark the counted line with a small
+  basis badge; relabel "Projected (incl. pending labor)" → "Accrual basis
+  (matches hours worked)" (still gated on `pendingLaborCost > 0`).
+- `useMonthlyMetrics.tsx`: the internal `month.labor_cost` also sums accrued +
+  paid. It is display-unused (only gates a `=== 0` availability check and does
+  not feed the labor/profit render) and the reconciliation effect compares only
+  revenue/discounts/food — never labor — so no visible number depends on it
+  today. Still, set the emitted `labor_cost` to the basis value (via the shared
+  `resolveLaborBasis`, which this `src/` hook *can* import) so no double-counted
+  labor total escapes the hook. The `=== 0` guard is unchanged (basis is 0 iff
+  both sources are 0).
+
+Without this whole path fixed, Monthly Breakdown would keep the inflated figure
+while the other two screens are corrected — a *new* 2-of-3 inconsistency.
 
 ### Confirmed unaffected (frontend review)
 `LaborPnlCard.tsx` (separate hook chain), `PnLIntelligenceReport.tsx` (only
@@ -199,13 +234,28 @@ Unit tests against the pure helpers in `src/lib/combineCosts.ts`:
 5. **COGS untouched:** food cost totals and daily `food_cost` are unchanged by
    the labor basis.
 
-Unit tests against `monthlyPerformance.ts`:
+Unit tests against `monthlyPerformance.ts` (updating the existing
+`tests/unit/monthlyPerformance.test.ts`, whose current assertions pin the
+double-count and must be rewritten):
 
-6. `laborIncludingPendingCents` equals the accrued figure when pending > 0, the
-   paid figure when pending == 0 — never the sum. Mirrors tests 1-2 to prove the
-   inlined rule matches `resolveLaborBasis`.
-7. Downstream `projectedExpensesCents` / `otherExpensesCents` remain internally
-   consistent (no negative floor breach) under the new basis.
+6. `laborForPnlCents` equals `pendingLaborCents` when pending > 0 and
+   `actualLaborCents` when pending == 0 — never the sum. `laborBasis` reports the
+   matching value. Mirrors tests 1-2 to prove the inlined rule matches
+   `resolveLaborBasis`.
+7. `accrualExpensesCents === actualExpensesCents` exactly under the paid basis
+   (pending == 0); under the accrued basis it equals `actualExpensesCents −
+   actualLaborCents + pendingLaborCents`. `accrualNetProfitCents === actualNetProfitCents`
+   when pending == 0. `otherExpensesCents` stays invariant under `pendingLabor`
+   (unchanged from today) and never breaches its zero floor.
+8. Update the April-2026 regression fixture assertions to the basis values
+   (`laborForPnlCents === 1_652_800` accrued, `accrualNetProfitCents`
+   recomputed) so the fixture pins corrected numbers, not the double-count.
+
+Unit test against `useMonthlyMetrics` labor emission:
+
+9. For a month with both punch (accrued) and bank (paid) labor, the emitted
+   `labor_cost` equals the basis (accrued) value, not the sum; `=== 0` only when
+   both sources are zero.
 
 Component behavior is verified in Phase 5 (UI review) against the three screens;
 `laborBasis` badge presence is assertable via role/text if a component test is

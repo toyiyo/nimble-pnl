@@ -40,6 +40,7 @@ import { useInventoryMetrics } from '@/hooks/useInventoryMetrics';
 import { useInventoryAlerts } from '@/hooks/useInventoryAlerts';
 import { useAllProductRecipes } from '@/hooks/useAllProductRecipes';
 import { supabase } from '@/integrations/supabase/client';
+import { describeStorageError } from '@/lib/storageError';
 import { useToast } from '@/hooks/use-toast';
 import { productLookupService, ProductLookupResult } from '@/services/productLookupService';
 import { ProductEnhancementService } from '@/services/productEnhancementService';
@@ -741,7 +742,10 @@ export const Inventory: React.FC = () => {
       .from('product-images')
       .upload(filePath, imageBlob);
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      console.error(describeStorageError(uploadError).logLine);
+      throw uploadError;
+    }
 
     const { data } = supabase.storage
       .from('product-images')

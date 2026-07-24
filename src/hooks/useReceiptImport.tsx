@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
-import { calculateImportedTotal, calculateUnitPrice } from '@/utils/receiptImportUtils';
+import { calculateImportedTotal, calculateUnitPrice, resolveLineItemBarcode } from '@/utils/receiptImportUtils';
 import { sha256Hex } from '@/lib/fileHash';
 import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 
@@ -472,7 +472,7 @@ export const useReceiptImport = () => {
     // Fetch matched products with size info (uom_purchase = package type)
     const { data: matchedProducts, error } = await supabase
       .from('products')
-      .select('id, size_value, size_unit, uom_purchase')
+      .select('id, size_value, size_unit, uom_purchase, gtin, sku')
       .in('id', matchedProductIds);
 
     if (error) {
@@ -503,6 +503,10 @@ export const useReceiptImport = () => {
       if (!item.package_type && matchedProduct.uom_purchase) {
         enrichedItem.suggested_package_type = matchedProduct.uom_purchase;
       }
+
+      // Auto-fill SKU/Barcode from the matched product's gtin (fallback to sku)
+      // when the line item doesn't already have one.
+      enrichedItem.parsed_sku = resolveLineItemBarcode(item.parsed_sku, matchedProduct) ?? item.parsed_sku;
 
       return enrichedItem;
     });

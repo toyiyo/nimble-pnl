@@ -171,17 +171,23 @@ serve(async (req) => {
           stripe_financial_account_id: accountId,
         };
 
-        // Update balance record for this specific account
+        // Update balance record for this specific account via the identity-safe
+        // RPC. One Stripe row per bank; Stripe rotates fca_ ids on reconnect, so
+        // a plain upsert keyed on the fca_ would orphan the pre-reconnect row
+        // (incident 2026-07-24). The RPC rotates the fca_ in place. as_of_date
+        // is omitted when Stripe gave no balance.as_of (null => keep persisted).
         const { error: upsertError } = await supabaseAdmin
-          .from("bank_account_balances")
-          .upsert({
-            connected_bank_id: bankId,
-            ...balanceData
-          }, {
-            // 1:1 identity is connected_bank_id; Stripe rotates fca_ ids on
-            // reconnect. Keying on the fca_ would orphan the pre-reconnect
-            // balance row (incident 2026-07-24).
-            onConflict: 'connected_bank_id'
+          .rpc("upsert_stripe_bank_balance", {
+            p_connected_bank_id: bankId,
+            p_stripe_financial_account_id: accountId,
+            p_account_name: balanceData.account_name,
+            p_account_type: balanceData.account_type,
+            p_account_mask: balanceData.account_mask,
+            p_current_balance: balanceData.current_balance,
+            p_available_balance: balanceData.available_balance,
+            p_currency: balanceData.currency,
+            p_is_active: balanceData.is_active,
+            p_as_of_date: asOfDate ?? null,
           });
 
         if (upsertError) {

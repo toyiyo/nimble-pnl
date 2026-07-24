@@ -1437,6 +1437,37 @@
 - **Rule:** Never edit tracked files directly on the `main` checkout, and never let uncommitted changes accumulate there. Every change — features, fixes, **and docs/lessons** — starts on a branch (a worktree off `origin/main`) and lands via PR. This lesson itself was created that way: the loose `main` edits were folded into a `docs/lessons-*` branch and PR'd rather than committed straight to `main`.
 - **Rule (before discarding anything uncommitted):** Prove it exists elsewhere first — `git show origin/main:<path> | grep <needle>` and scan open/merged PRs (`gh pr list --state all --json files`). If it's unique and unmerged, surface it and rescue it onto a branch; do **not** destroy unique work on a "drop them" instruction without confirming it's reproducible. Discarding is irreversible; a branch + PR costs nothing.
 
+## Category: Permissions / RLS
+
+### [2026-07-09] "Parity with an internal role" over-grants when the new role has fewer capabilities
+- **Mistake:** Built `collaborator_operations_manager` by adding it "everywhere the internal `operations_manager` appears" in `user_has_capability` + hardcoded RLS policies. But the collaborator is payroll **read-only** (no `edit:payroll`) and accounting-excluded, whereas `operations_manager` has both. Result: two Codex P1s — the role got INSERT on `daily_labor_allocations` (payroll write, via the Payroll Add-Payment flow) and was routed to `/reports` (which is a P&L page, defaulting to P&L Trends).
+- **Correction:** Map every WRITE grant to a capability the role actually holds (`edit:scheduling`/`edit:tips`/`edit:time_punches`/`edit:inventory`/`edit:recipes`), not to "wherever the sibling role is listed." Excluded the role from `daily_labor_allocations`/`overtime_rules`/`overtime_adjustments` writes; removed `/reports` from routes+nav (mirroring `collaborator_inventory`, which holds `view:reports` but is deliberately not routed there). Added pgTAP denial for `daily_labor_allocations`.
+- **Rule:** When cloning a role's RLS/capability footprint, diff the two roles' capability SETS first and drop the new role from every policy backing a capability it lacks. A copied policy list is a starting point, not the grant.
+
+### [2026-07-09] A new role's display label can collide with an existing role in shared dropdowns
+- **Mistake:** Gave `collaborator_operations_manager` the `ROLE_METADATA.label` "Operations Manager" — identical to the internal `operations_manager`. `TeamInvitations` renders every invitable role by label, so the invite dropdown showed two indistinguishable "Operations Manager" options (a `getByRole('option', {name:/operations manager/i})` test broke on the ambiguity). The `/dev` workflow mis-diagnosed this as "pre-existing" because it stash-bisected only the last commit, not the label-adding commit.
+- **Correction:** Labelled it "Operations Manager (Collaborator)" (card `title` stays "Operations Manager"). Added a uniqueness guard asserting all owner-invitable roles have distinct labels. Note the sibling pattern: `collaborator_chef` is labelled "Recipe Consultant", NOT "Chef", precisely to avoid colliding with the internal `chef` role.
+- **Rule:** New collaborator/role labels must be unique across everything an inviter can pick. When a test failure appears right after adding a role, suspect a duplicate display string before trusting a single-commit bisection that calls it "pre-existing."
+
+## Category: Development Workflow (continued)
+
+### [2026-07-09] Don't `git add -A` in a workflow — tracked scratch artifacts cause merge conflicts
+- **Mistake:** The Phase 7 workflow staged `dev-tools/codex-review-output.md` and `dev-tools/phase7-diff.patch` (tracked, regenerated-per-run scratch files) into a feature commit via `git add -A`. Other PRs update the same files on `main`, so the branch hit a merge conflict entirely in these artifacts (not feature code).
+- **Correction:** Merged `main`, resolved both to `origin/main`'s version (they regenerate anyway). Feature code was conflict-free.
+- **Rule:** Stage explicit paths, never `git add -A`, when a repo tracks regenerated tool output.
+
+## Category: Supabase Migrations / Deploy (continued)
+
+### [2026-07-23] CONFIRMED again — a long-lived branch's migration prefix collides with one `main` merged later
+- **Mistake:** PR #596's migration was named `20260709120000_...` on 2026-07-09. While the branch waited for review, `main` merged `20260709120000_categorize_preserve_metadata_on_noop.sql` — the identical 14-digit prefix. The merge itself was conflict-free (different filenames), so nothing surfaced until `migrationVersionUniqueness` failed locally. This is the 2026-07-03 lesson recurring from the *other* direction: not a stale plan, but a stale branch.
+- **Correction:** `git mv` to `20260723120000_...` — chosen not just for uniqueness but to sort **after every migration on `main`**, then verified no later migration recreates `user_has_capability` or any policy this one recreates (ordering clobber).
+- **Rule:** Re-check migration prefix uniqueness on **every** merge of `main` into a branch, not only at file creation. When rebasing the timestamp, move it past main's newest migration and re-verify ordering assumptions (`grep -l 'CREATE OR REPLACE FUNCTION <fn>' supabase/migrations`) rather than picking the smallest free slot.
+
+### [2026-07-23] A merge that reports "conflict-free" can still break the branch — typecheck and test after every merge
+- **Mistake:** After merging `main`, the only textual conflict was one lucide-react import line. But `main` had also added a required `accessGroup` field to `RoleMetadata` (a new invite-dropdown grouping) and changed `SelectItem` to render label **and** description — so git auto-merged cleanly into code that didn't compile (`TS2741` on the new role's metadata) and two anchored `getByRole('option', {name: /^operations manager$/i})` guards broke because an option's accessible name now includes its description.
+- **Correction:** Added `accessGroup: 'collaborator'`; re-queried the label span with exact `getByText('Operations Manager')` / `getByText('Operations Manager (Collaborator)')`, which still distinguishes the two roles.
+- **Rule:** "Merged with 1 conflict" is not "merged successfully." Always run `npm run typecheck` + the touched test files after merging `main` — semantic conflicts (a new required interface field, a changed render shape) are invisible to git. Prefer test queries that target the specific element carrying the value over accessible-name regexes, which absorb sibling content.
+
 ## Category: E2E / Flaky Tests
 
 ### [2026-07-22] "A varying failure set proves flakiness" is only half right — it proves *multiple causes*, and one of them is usually your environment

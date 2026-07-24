@@ -98,8 +98,11 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     [connectedBanks]
   );
 
-  // Create Financial Connections session
-  const createFinancialConnectionsSession = async (): Promise<FinancialConnectionSession | null> => {
+  // Create Financial Connections session. An optional `connectedBankId`
+  // requests a relink of that specific bank rather than a brand-new link
+  // (design §4.5/§5.4) — forwarded to the edge function as-is; the server
+  // decides whether relink is available and reports back via `mode`.
+  const createFinancialConnectionsSession = async (connectedBankId?: string): Promise<FinancialConnectionSession | null> => {
     if (!restaurantId) {
       toast({
         title: "No Restaurant Selected",
@@ -115,7 +118,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       const { data, error } = await supabase.functions.invoke(
         'stripe-financial-connections-session',
         {
-          body: { restaurantId }
+          body: { restaurantId, connectedBankId }
         }
       );
 

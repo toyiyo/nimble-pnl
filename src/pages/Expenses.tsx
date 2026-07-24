@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { loadStripe } from "@stripe/stripe-js";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,10 +11,12 @@ import { Wallet, TrendingUp, CheckCircle2, Printer } from "lucide-react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { useToast } from "@/hooks/use-toast";
 
 import { PendingOutflowsList } from "@/components/pending-outflows/PendingOutflowsList";
 import { AddExpenseSheet } from "@/components/pending-outflows/AddExpenseSheet";
 import { EditExpenseSheet } from "@/components/pending-outflows/EditExpenseSheet";
+import { BankReauthBanner } from "@/components/banking/BankReauthBanner";
 import { MetricIcon } from "@/components/MetricIcon";
 import { FeatureGate } from "@/components/subscription";
 
@@ -24,11 +27,16 @@ export default function Expenses() {
   const [showAddExpenseSheet, setShowAddExpenseSheet] = useState(false);
   const [editingExpense, setEditingExpense] = useState<PendingOutflow | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
-  
+  const { toast } = useToast();
+
   const { data: expenses } = usePendingOutflows();
-  
+
   const {
+    connectedBanks,
+    loading: banksLoading,
     totalBalance,
+    createFinancialConnectionsSession,
+    verifyConnectionSession,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
 
   const totalExpenses = (expenses || [])
@@ -36,6 +44,54 @@ export default function Expenses() {
     .reduce((sum, expense) => sum + expense.amount, 0);
 
   const bookBalance = totalBalance - totalExpenses;
+
+  // Reconnect flow for a quarantined bank surfaced by <BankReauthBanner> —
+  // same client-side session-collection flow as Banking.tsx/Accounting.tsx;
+  // the difference is entirely server-side (design §4.5/§5.4).
+  const handleConnectBank = async (connectedBankId?: string) => {
+    if (!selectedRestaurant) return;
+
+    try {
+      const sessionData = await createFinancialConnectionsSession(connectedBankId);
+
+      if (sessionData?.clientSecret && sessionData?.sessionId) {
+        const stripe = await loadStripe(
+          "pk_live_51SFateD9w6YUNUOUMLCT8LY9rmy9LtNevR4nhGYdSZdVqsdH2wjtbrMrrAAUZKAWzZq74RflwZQYHYOHu2CheQSn00Ug36fXVY",
+        );
+
+        if (!stripe) {
+          throw new Error("Failed to load Stripe");
+        }
+
+        await stripe.collectFinancialConnectionsAccounts({
+          clientSecret: sessionData.clientSecret,
+        });
+
+        await verifyConnectionSession(sessionData.sessionId, selectedRestaurant.restaurant_id);
+      }
+    } catch (error) {
+      toast({
+        title: "Failed to Connect Bank",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // The minimal per-account shape `<BankReauthBanner>` needs — see
+  // src/components/banking/BankReauthBanner.tsx (design §5.2).
+  const reauthBannerBanks = useMemo(
+    () =>
+      connectedBanks.map((bank) => ({
+        id: bank.id,
+        institution_name: bank.institution_name,
+        account_mask: bank.account_mask,
+        status: bank.status,
+        deactivated_at: bank.deactivated_at,
+        sync_error: bank.sync_error,
+      })),
+    [connectedBanks]
+  );
 
   return (
     <FeatureGate featureKey="expenses">
@@ -106,7 +162,13 @@ export default function Expenses() {
             </Card>
           </div>
 
-          <PendingOutflowsList 
+          <BankReauthBanner
+            banks={reauthBannerBanks}
+            loading={banksLoading}
+            onReconnect={handleConnectBank}
+          />
+
+          <PendingOutflowsList
             onAddClick={() => setShowAddExpenseSheet(true)}
             onEditExpense={setEditingExpense}
             statusFilter="all"

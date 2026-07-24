@@ -1,21 +1,20 @@
-import { forwardRef, memo, type ReactNode } from 'react';
+import { memo, useId, useRef } from 'react';
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { classifyHour, chartSummaryLabel } from '@/lib/coverageChartModel';
+import { cn } from '@/lib/utils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface CoverageChartProps {
   /** Hourly coverage summary from `summarizeCoverageHours`. */
   readonly hours: CoverageHour[];
-  /** Which chart variant to render. */
-  readonly view: 'area' | 'delta';
+  /**
+   * Effective minimum-staff floor (post `computeMinStaffFromCrew`). Drives the
+   * `floor N` rule line and — via `classifyHour` — the demand/floor column split.
+   */
+  readonly minStaff: number;
   /**
    * Maps a minute offset to a percentage of the total plot width.
    * Uses the same scale as TimelineBar/TimelineAxis so columns align with the
@@ -23,295 +22,110 @@ interface CoverageChartProps {
    * When omitted (legacy callers), columns are sized equally.
    */
   readonly minToPct?: (min: number) => number;
+  /** The currently-selected column's `startMin`, or null (defaults selection to the first hour). */
+  readonly selectedStartMin: number | null;
+  /** Called with an hour's `startMin` when its column is selected (click or arrow-key). */
+  readonly onSelect: (startMin: number) => void;
   /**
-   * Target SPLH (sales per labor-hour) from active staffing settings.
-   * Displayed in the per-hour tooltip. Null when settings are not configured.
+   * Called with an hour's `startMin` from the one-click hover "+" quick-add
+   * affordance on `crit`/`floor` columns (wired in a later task). Optional —
+   * omitting it simply hides the affordance.
    */
-  readonly targetSplh?: number | null;
-  /** Chart height in px (default 120). */
+  readonly onQuickAdd?: (startMin: number) => void;
+  /** Chart height in px (default 160 — taller than the old two-view chart to fit a real people y-axis). */
   readonly height?: number;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 /**
- * Build the per-hour tooltip lines for an hour column.
- *
- * Returns an array of strings — one per visual line — so callers can join them
- * as needed (aria-label uses comma-join; TooltipContent renders each on its own line).
- *
- * Content follows the design spec:
- *   Line 1: "10 AM–11 AM"  (time range)
- *   Line 2: "3 scheduled · 5 needed"  (or "4 scheduled" when no demand)
- *   Line 3: "Projected sales $480"  (when projectedSales != null)
- *   Line 4: "÷ $95/labor-hr target ≈ 5 needed"  (when targetSplh and projectedSales)
- *   Line 5: verdict — "Short 2 — add staff" / "Covered · +1 spare" / "Right on target" /
- *            "No demand target — set staffing targets to see needed staff."
- *
- * Exported so it can be unit-tested directly (pure function, no React).
+ * Compute peak headcount across all hours (used for the y-axis scale) —
+ * `max(scheduledMax, needed, minStaff)` over every hour, plus one for headroom.
+ * Always at least 2 (1 + the floor of 1) so a chart with zero everywhere still
+ * has a usable scale.
  */
-export function buildHourTooltip(h: CoverageHour, targetSplh: number | null): string[] {
-  const lines: string[] = [];
-
-  // Line 1: time range, e.g. "10 AM–11 AM"
-  const startLabel = formatCoverageHour(h.hour);
-  const endLabel = formatCoverageHour(h.hour + 1);
-  lines.push(`${startLabel}–${endLabel}`);
-
-  // Line 2: scheduled / needed summary
-  if (h.needed !== null) {
-    lines.push(`${h.scheduled} scheduled · ${h.needed} needed`);
-  } else {
-    lines.push(`${h.scheduled} scheduled`);
-  }
-
-  // Lines 3–4: sales and SPLH math (only when rec data is present)
-  if (h.projectedSales !== null && h.needed !== null) {
-    const salesFmt = h.projectedSales.toLocaleString('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    });
-    lines.push(`Projected sales ${salesFmt}`);
-
-    if (targetSplh !== null && targetSplh > 0) {
-      // Use h.needed (the authoritative value, already computed with Math.ceil + minimum
-      // crew rules) rather than re-dividing here, which would use Math.round and produce
-      // a contradictory number on the same tooltip.
-      lines.push(`÷ $${targetSplh}/labor-hr target ≈ ${h.needed} needed`);
+function computePeak(hours: CoverageHour[], minStaff: number): number {
+  let peak = minStaff;
+  for (const h of hours) {
+    peak = Math.max(peak, h.scheduledMax, h.scheduled);
+    if (h.demand !== null) {
+      peak = Math.max(peak, Math.max(h.demand, minStaff));
     }
   }
+  return Math.max(Math.ceil(peak), 1) + 1;
+}
 
-  // Line 5: verdict
-  if (h.needed === null) {
-    lines.push('No demand target — set staffing targets to see needed staff.');
-  } else if (h.delta !== null && h.delta < 0) {
-    lines.push(`Short ${Math.abs(h.delta)} — add staff`);
-  } else if (h.delta === 0) {
-    lines.push('Right on target');
-  } else if (h.delta !== null && h.delta > 0) {
-    lines.push(`Covered · +${h.delta} spare`);
-  }
-
-  return lines;
+/** Integer y-axis ticks, capped at ~5 so a large peak headcount doesn't crowd the gutter. */
+function computeYTicks(peak: number): number[] {
+  const maxTicks = 5;
+  const step = Math.max(1, Math.ceil(peak / maxTicks));
+  const ticks: number[] = [];
+  for (let v = 0; v <= peak; v += step) ticks.push(v);
+  if (ticks[ticks.length - 1] !== peak) ticks.push(peak);
+  return ticks;
 }
 
 /**
- * Compute peak headcount across all hours (used for bar height scaling).
- * Always returns at least 1 to avoid divide-by-zero.
+ * Build the one-line accessible summary for a single hour column — the chart's
+ * per-option `aria-label` (design doc §Accessibility: "each column focusable,
+ * arrow-navigable, aria-label = its one-line summary").
+ *
+ * Pure and exported so it's directly unit-tested (SonarCloud gate) rather than
+ * only exercised through rendering.
  */
-function computePeak(hours: CoverageHour[]): number {
-  const peak = hours.reduce((acc, h) => {
-    const candidates = [acc, h.scheduled];
-    if (h.needed !== null) candidates.push(h.needed);
-    return Math.max(...candidates);
-  }, 1);
-  return Math.max(Math.ceil(peak), 1);
+export function columnAriaLabel(h: CoverageHour, minStaff: number): string {
+  const label = formatCoverageHour(h.hour);
+  const kind = classifyHour(h, minStaff);
+
+  if (kind === 'nodata') {
+    return `${label}: ${h.scheduled} scheduled, no sales history — no demand target`;
+  }
+
+  const demand = h.demand ?? 0;
+  const needed = Math.max(demand, minStaff);
+
+  switch (kind) {
+    case 'crit':
+      return `${label}: ${h.scheduled} scheduled, ${demand} demand — short ${demand - h.scheduled} on demand`;
+    case 'floor':
+      return `${label}: ${h.scheduled} scheduled, ${needed} needed — short ${needed - h.scheduled} at the floor`;
+    case 'spare':
+      return `${label}: ${h.scheduled} scheduled, ${needed} needed — covered, +${h.scheduled - needed} spare`;
+    default:
+      return `${label}: ${h.scheduled} scheduled, ${needed} needed — on target`;
+  }
 }
-
-// ── Per-Hour Column (area view) ────────────────────────────────────────────────
-
-interface AreaColumnProps {
-  h: CoverageHour;
-  left: number;
-  width: number;
-  peak: number;
-  ariaLabel: string;
-}
-
-const AreaColumn = forwardRef<HTMLDivElement, AreaColumnProps>(
-  function AreaColumn({ h, left, width, peak, ariaLabel }, ref) {
-    const scheduledPct = (h.scheduled / peak) * 100;
-    const neededPct = h.needed !== null ? (h.needed / peak) * 100 : null;
-    const isShort = h.delta !== null && h.delta < 0 && neededPct !== null;
-
-    // Shortfall block spans from "scheduled" height up to "needed" height
-    const shortfallHeightPct = isShort && neededPct !== null ? neededPct - scheduledPct : 0;
-
-    return (
-      <div
-        ref={ref}
-        data-hour-col=""
-        tabIndex={0}
-        aria-label={ariaLabel}
-        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-        style={{ left: `${left}%`, width: `${width}%` }}
-      >
-        {/* Bottom-anchored scheduled block */}
-        <div
-          data-scheduled=""
-          className="absolute bottom-0 left-0 right-0 bg-primary/15 border-t border-primary"
-          style={{ height: `${scheduledPct}%` }}
-        />
-
-        {/* Shortfall block — spans from scheduled up to needed (red fill) */}
-        {isShort && (
-          <div
-            data-shortfall=""
-            className="absolute left-0 right-0 bg-destructive/70 flex items-center justify-center"
-            style={{
-              bottom: `${scheduledPct}%`,
-              height: `${shortfallHeightPct}%`,
-            }}
-          >
-            {shortfallHeightPct > 10 && h.delta !== null && (
-              <span className="text-[9px] text-background font-medium">{h.delta}</span>
-            )}
-          </div>
-        )}
-
-        {/* Dashed needed tick line */}
-        {neededPct !== null && (
-          <div
-            data-needed=""
-            className="absolute left-0 right-0 border-t border-dashed border-muted-foreground"
-            style={{ bottom: `${neededPct}%` }}
-          />
-        )}
-      </div>
-    );
-  },
-);
-
-// ── Per-Hour Column (delta view) ───────────────────────────────────────────────
-
-interface DeltaColumnProps {
-  h: CoverageHour;
-  left: number;
-  width: number;
-  peak: number;
-  deltaPeak: number;
-  ariaLabel: string;
-}
-
-const DeltaColumn = forwardRef<HTMLDivElement, DeltaColumnProps>(
-  function DeltaColumn({ h, left, width, peak, deltaPeak, ariaLabel }, ref) {
-    // Compute inner content once; all three branches share the same outer wrapper.
-    let innerContent: ReactNode;
-
-    if (h.delta === null) {
-      // No-demand hour — show scheduled headcount as an upward bar from the zero line,
-      // scaled by peak (not deltaPeak). height is % of the full column height.
-      const barPct = Math.min(50, Math.max(0.5, (h.scheduled / peak) * 50));
-      innerContent = (
-        <div
-          data-bar="no-demand"
-          className="absolute left-0 right-0 bg-muted/60"
-          style={{ bottom: '50%', height: `${barPct}%` }}
-        />
-      );
-    } else if (h.delta === 0) {
-      innerContent = (
-        // Tick at zero baseline (50%)
-        <div
-          className="absolute left-0 right-0"
-          style={{ top: 'calc(50% - 2px)', height: '2px' }}
-        >
-          <div
-            data-bar="covered"
-            className="bg-success opacity-40 w-full h-full"
-          />
-        </div>
-      );
-    } else {
-      const isShort = h.delta < 0;
-      const absD = Math.abs(h.delta);
-      // cap at 48% (2% headroom for delta label above zero line)
-      const barPct = Math.min(48, (absD / deltaPeak) * 50);
-      const barState = isShort ? 'short' : 'covered';
-      const barClass = isShort ? 'bg-destructive' : 'bg-success';
-      const label = h.delta > 0 ? `+${h.delta}` : String(h.delta);
-
-      innerContent = isShort ? (
-        <>
-          {/* Bar grows downward from zero line (50% from top).
-              height is a percentage of the full column height, so barPct=48 means
-              the bar occupies 48% of the whole chart — not 48% of the lower half. */}
-          <div
-            data-bar={barState}
-            className={`absolute left-0 right-0 ${barClass}`}
-            style={{ top: '50%', height: `${barPct}%` }}
-          />
-          {/* Label sits just below the bar's bottom edge */}
-          <div
-            className="absolute left-0 right-0 flex justify-center"
-            style={{ top: `calc(50% + ${barPct}% + 1px)` }}
-          >
-            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
-          </div>
-        </>
-      ) : (
-        <>
-          {/* Bar grows upward from zero line (50% from top).
-              height is a percentage of the full column height. */}
-          <div
-            data-bar={barState}
-            className={`absolute left-0 right-0 ${barClass}`}
-            style={{ bottom: '50%', height: `${barPct}%` }}
-          />
-          {/* Label sits just above the bar's top edge */}
-          <div
-            className="absolute left-0 right-0 flex justify-center"
-            style={{ bottom: `calc(50% + ${barPct}% + 1px)` }}
-          >
-            <span className="text-[8px] text-foreground/80 leading-none">{label}</span>
-          </div>
-        </>
-      );
-    }
-
-    // Shared outer wrapper — only innerContent differs across the three branches
-    return (
-      <div
-        ref={ref}
-        data-hour-col=""
-        tabIndex={0}
-        aria-label={ariaLabel}
-        className="absolute inset-y-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
-        style={{ left: `${left}%`, width: `${width}%` }}
-      >
-        {innerContent}
-      </div>
-    );
-  },
-);
 
 // ── Legend ────────────────────────────────────────────────────────────────────
 
-function Legend({ hasDemand, view }: { hasDemand: boolean; view: 'area' | 'delta' }) {
-  if (view === 'delta') {
-    return (
-      <div className="flex items-center gap-4 text-[11px] text-muted-foreground mt-1">
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-3 rounded-sm bg-success opacity-80" />
-          Covered
-        </span>
-        <span className="flex items-center gap-1">
-          <span className="inline-block h-2 w-3 rounded-sm bg-destructive opacity-80" />
-          Short
-        </span>
-      </div>
-    );
-  }
-
+function Legend() {
   return (
-    <div className="flex items-center gap-4 text-[11px] text-muted-foreground mt-1">
+    <div
+      data-testid="coverage-chart-legend"
+      className="flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground mt-1"
+    >
       <span className="flex items-center gap-1">
-        <span className="inline-block h-2 w-3 rounded-sm bg-primary opacity-40" />
-        Scheduled
+        <span className="inline-block h-2 w-3 rounded-sm bg-destructive" />
+        Short on demand
       </span>
-      {hasDemand && (
-        <>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-[1.5px] w-4 border-t-[1.5px] border-dashed border-muted-foreground" />
-            Needed
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2 w-3 rounded-sm bg-destructive opacity-70" />
-            Short
-          </span>
-        </>
-      )}
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm border border-dashed border-warning bg-warning/25" />
+        At the floor only
+      </span>
+      <span className="flex items-center gap-1">
+        <span className="inline-block h-2 w-3 rounded-sm bg-primary/40" />
+        Covered
+      </span>
+      <span className="flex items-center gap-1">
+        <span
+          className="inline-block h-2 w-3 rounded-sm border border-muted-foreground/40"
+          style={{
+            backgroundImage:
+              'repeating-linear-gradient(45deg, hsl(var(--muted-foreground)) 0, hsl(var(--muted-foreground)) 1px, transparent 1px, transparent 3px)',
+          }}
+        />
+        No sales history
+      </span>
     </div>
   );
 }
@@ -319,46 +133,54 @@ function Legend({ hasDemand, view }: { hasDemand: boolean; view: 'area' | 'delta
 // ── Main Component ─────────────────────────────────────────────────────────────
 
 /**
- * Grid-aligned HTML column chart with two toggleable views:
- * - **area**: per-hour bottom-anchored scheduled blocks + shortfall fill + dashed needed tick.
- * - **delta**: diverging bars (short below, covered/spare above the zero line).
+ * Single SVG coverage chart with a real people y-axis, replacing the old
+ * Area/Delta toggle chart. Per hour:
+ *  - a **scheduled** bar (0 → scheduled, `--primary`);
+ *  - a solid **demand** slice (`--destructive`) when short of raw demand (`crit`);
+ *  - a dashed/hatched **floor** slice (`--warning`) covering the gap between
+ *    the demand line and the `minStaff` floor (`crit` and `floor` columns);
+ *  - a hatched **nodata** ghost — ` no sales history for this hour, so there is
+ *    no target line at all (replaces the old, misleading `N / 0` reading).
+ * A `floor N` rule line marks the `minStaff` floor across the whole plot.
  *
- * Columns are positioned with the shared `minToPct` scale (same as TimelineBar /
- * TimelineAxis) so they line up exactly with hour-grid ticks at every viewport
- * width, including horizontal scroll.
+ * Accessibility (design doc §Design-review resolutions #1/#2): the container is
+ * `role="toolbar"` (never `role="img"`, which would flatten the interactive
+ * column subtree); each column is `role="option"` with roving `tabIndex`
+ * (selected column = 0, all others = -1) and ArrowLeft/ArrowRight move both
+ * selection and focus. A visually-hidden `<p>` carries the rolled-up
+ * "N short on demand, M at the floor over K hours" summary, and a
+ * `<ul aria-label="Understaffed windows">` enumerates every short hour so
+ * screen-reader users get the full gap list without arrow-keying through each
+ * column.
  *
- * Accessible via `role="img"` + `aria-label` on the container.
- * Colors use semantic Tailwind tokens (never direct color literals).
+ * Colors are semantic tokens only (`hsl(var(--destructive))` /
+ * `hsl(var(--warning))` / `hsl(var(--primary))` / `hsl(var(--muted-foreground))`)
+ * — never raw hex (CLAUDE.md rule). The floor slice's dashed stroke and the
+ * nodata hatch `<pattern>` give each state a texture, not just a color, so the
+ * distinction survives grayscale/color-blindness.
  *
  * Wrapped in React.memo: all inputs are stable primitives/arrays derived from
- * useMemo in ShiftTimelineTab, so setActiveShift calls (popover open/close) do
- * not re-run the O(H) column computations unnecessarily.
+ * useMemo in ShiftTimelineTab, so unrelated re-renders don't re-run the O(H)
+ * column computations.
  */
 export const CoverageChart = memo(function CoverageChart({
   hours,
-  view,
+  minStaff,
   minToPct,
-  targetSplh = null,
-  height = 120,
+  selectedStartMin,
+  onSelect,
+  height = 160,
 }: CoverageChartProps) {
+  const hatchId = useId();
+  const summaryId = useId();
+  const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
   if (hours.length === 0) return null;
 
-  const hasDemand = hours.some((h) => h.needed !== null);
-  const peak = computePeak(hours);
-  // Delta view uses its own scale (max absolute delta) so bars aren't dwarfed by
-  // a large headcount peak when the deltas are small.
-  const deltaPeak = Math.max(1, ...hours.map((h) => Math.abs(h.delta ?? 0)));
-
-  // Compute accessible description — no nested ternaries per project rules.
-  const shortCount = hours.filter((h) => h.delta !== null && h.delta < 0).length;
-  let descText: string;
-  if (!hasDemand) {
-    descText = `Scheduled headcount over ${hours.length} hour${hours.length !== 1 ? 's' : ''}.`;
-  } else if (shortCount > 0) {
-    descText = `Short-staffed in ${shortCount} of ${hours.length} hour${hours.length !== 1 ? 's' : ''}.`;
-  } else {
-    descText = 'Meeting demand all hours.';
-  }
+  const peak = computePeak(hours, minStaff);
+  const yTicks = computeYTicks(peak);
+  const floorY = 100 - (minStaff / peak) * 100;
+  const summary = chartSummaryLabel(hours, minStaff);
 
   // Fallback minToPct: distribute hours equally when no scale is provided
   // (backward-compatible with callers that don't yet pass minToPct).
@@ -370,50 +192,227 @@ export const CoverageChart = memo(function CoverageChart({
       return ((min - startMin) / totalMin) * 100;
     });
 
+  const selectedIndex = (() => {
+    if (selectedStartMin === null) return 0;
+    const idx = hours.findIndex((h) => h.startMin === selectedStartMin);
+    return idx === -1 ? 0 : idx;
+  })();
+
+  const focusAndSelect = (index: number) => {
+    const clamped = Math.max(0, Math.min(hours.length - 1, index));
+    if (clamped === selectedIndex) return;
+    const target = hours[clamped];
+    onSelect(target.startMin);
+    buttonRefs.current[clamped]?.focus();
+  };
+
+  const handleToolbarKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      focusAndSelect(selectedIndex + 1);
+    } else if (event.key === 'ArrowLeft') {
+      event.preventDefault();
+      focusAndSelect(selectedIndex - 1);
+    }
+  };
+
   return (
-    <TooltipProvider delayDuration={0}>
-      <div>
+    <div>
+      {/* sr-only rollup summary — design doc §Design-review resolutions #1 */}
+      <p id={summaryId} className="sr-only">
+        {summary.ariaLabel}
+      </p>
+
+      {/* sr-only understaffed-windows enumeration — resolution #2 */}
+      {summary.understaffedWindows.length > 0 && (
+        <ul aria-label="Understaffed windows" className="sr-only">
+          {summary.understaffedWindows.map((w) => (
+            <li key={w.startMin}>{w.label}</li>
+          ))}
+        </ul>
+      )}
+
+      <div className="flex" style={{ height }}>
+        {/* Sticky people y-axis gutter — mirrors TimelineLane's sticky label column
+            (design doc §Design-review resolutions #3) so it stays visible under
+            horizontal scroll. */}
         <div
-          role="img"
-          aria-label={descText}
-          className="relative w-full"
+          className="sticky left-0 z-10 w-[120px] shrink-0 relative bg-background border-r border-border/40"
           style={{ height }}
         >
-          {hours.map((h) => {
-              const left = effectiveMinToPct(h.startMin);
-              const width = effectiveMinToPct(h.startMin + 60) - left;
-              const tooltipLines = buildHourTooltip(h, targetSplh);
-              const ariaLabel = tooltipLines.join(', ');
-              const col =
-                view === 'area' ? (
-                  <AreaColumn h={h} left={left} width={width} peak={peak} ariaLabel={ariaLabel} />
-                ) : (
-                  <DeltaColumn
-                    h={h}
-                    left={left}
-                    width={width}
-                    peak={peak}
-                    deltaPeak={deltaPeak}
-                    ariaLabel={ariaLabel}
-                  />
-                );
-              return (
-                <Tooltip key={h.startMin}>
-                  <TooltipTrigger asChild>{col}</TooltipTrigger>
-                  <TooltipContent side="top" className="text-[12px] max-w-[220px]">
-                    <div className="space-y-0.5">
-                      {tooltipLines.map((line, i) => (
-                        <p key={i} className={i === 0 ? 'font-medium' : 'text-muted-foreground'}>{line}</p>
-                      ))}
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              );
-            })}
+          {yTicks.map((t) => (
+            <span
+              key={t}
+              className="absolute right-2 -translate-y-1/2 text-[11px] tabular-nums text-muted-foreground"
+              style={{ top: `${100 - (t / peak) * 100}%` }}
+            >
+              {t}
+            </span>
+          ))}
         </div>
 
-        <Legend hasDemand={hasDemand} view={view} />
+        {/* Plot region: pure-visual SVG underneath, interactive option overlay on top */}
+        <div
+          role="toolbar"
+          aria-label="Hourly coverage chart"
+          aria-describedby={summaryId}
+          aria-orientation="horizontal"
+          className="relative flex-1"
+          onKeyDown={handleToolbarKeyDown}
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            className="absolute inset-0 h-full w-full"
+          >
+            <defs>
+              <pattern
+                id={hatchId}
+                patternUnits="userSpaceOnUse"
+                width={4}
+                height={4}
+                patternTransform="rotate(45)"
+              >
+                <rect width={4} height={4} fill="hsl(var(--muted) / 0.4)" />
+                <line x1={0} y1={0} x2={0} y2={4} stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} />
+              </pattern>
+            </defs>
+
+            {/* min_staff floor rule */}
+            <line
+              data-floor-rule=""
+              x1={0}
+              x2={100}
+              y1={floorY}
+              y2={floorY}
+              stroke="hsl(var(--muted-foreground))"
+              strokeDasharray="2 1.5"
+              strokeWidth={0.5}
+              vectorEffect="non-scaling-stroke"
+            />
+
+            {hours.map((h) => {
+              const left = effectiveMinToPct(h.startMin);
+              const width = effectiveMinToPct(h.startMin + 60) - left;
+              const kind = classifyHour(h, minStaff);
+
+              if (kind === 'nodata') {
+                return (
+                  <rect
+                    key={h.startMin}
+                    data-nodata=""
+                    x={left}
+                    y={0}
+                    width={width}
+                    height={100}
+                    fill={`url(#${hatchId})`}
+                  />
+                );
+              }
+
+              const demand = h.demand ?? 0;
+              const needed = Math.max(demand, minStaff);
+              const scheduled = h.scheduled;
+
+              const scheduledTopY = 100 - (scheduled / peak) * 100;
+              const scheduledHeight = (scheduled / peak) * 100;
+
+              // Demand slice: y(demand) → y(scheduled) — only when short of raw demand (`crit`).
+              const hasDemandSlice = kind === 'crit';
+              const demandTopY = 100 - (demand / peak) * 100;
+              const demandSliceHeight = hasDemandSlice ? scheduledTopY - demandTopY : 0;
+
+              // Floor slice: max(scheduled, demand) → needed — `crit` or `floor`, only
+              // when the minStaff floor actually pulls `needed` above that point.
+              const flooredBase = Math.max(scheduled, demand);
+              const floorSliceTopY = 100 - (needed / peak) * 100;
+              const floorBaseY = 100 - (flooredBase / peak) * 100;
+              const hasFloorSlice = (kind === 'crit' || kind === 'floor') && needed > flooredBase;
+              const floorSliceHeight = hasFloorSlice ? floorBaseY - floorSliceTopY : 0;
+
+              return (
+                <g key={h.startMin}>
+                  <rect
+                    data-scheduled=""
+                    x={left}
+                    y={scheduledTopY}
+                    width={width}
+                    height={scheduledHeight}
+                    fill="hsl(var(--primary))"
+                    fillOpacity={0.4}
+                  />
+                  {hasDemandSlice && (
+                    <rect
+                      data-demand-slice=""
+                      x={left}
+                      y={demandTopY}
+                      width={width}
+                      height={demandSliceHeight}
+                      fill="hsl(var(--destructive))"
+                      fillOpacity={0.85}
+                    />
+                  )}
+                  {hasFloorSlice && (
+                    <rect
+                      data-floor-slice=""
+                      x={left}
+                      y={floorSliceTopY}
+                      width={width}
+                      height={floorSliceHeight}
+                      fill="hsl(var(--warning))"
+                      fillOpacity={0.25}
+                      stroke="hsl(var(--warning))"
+                      strokeWidth={0.6}
+                      strokeDasharray="2 1.5"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* floor N label — HTML overlay so it stays legible over any fill */}
+          <span
+            className="absolute left-1 rounded bg-background/80 px-1 text-[10px] text-muted-foreground"
+            style={{ top: `${floorY}%`, transform: 'translateY(-50%)' }}
+          >
+            floor {minStaff}
+          </span>
+
+          {/* Interactive option overlay — roving tabindex, one per hour */}
+          {hours.map((h, i) => {
+            const left = effectiveMinToPct(h.startMin);
+            const width = effectiveMinToPct(h.startMin + 60) - left;
+            const isSelected = i === selectedIndex;
+
+            return (
+              <button
+                key={h.startMin}
+                ref={(el) => {
+                  buttonRefs.current[i] = el;
+                }}
+                type="button"
+                role="option"
+                aria-selected={isSelected}
+                data-hour-col=""
+                data-kind={classifyHour(h, minStaff)}
+                tabIndex={isSelected ? 0 : -1}
+                aria-label={columnAriaLabel(h, minStaff)}
+                onClick={() => onSelect(h.startMin)}
+                className={cn(
+                  'absolute inset-y-0 bg-transparent focus:outline-none',
+                  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring',
+                )}
+                style={{ left: `${left}%`, width: `${width}%` }}
+              />
+            );
+          })}
+        </div>
       </div>
-    </TooltipProvider>
+
+      <Legend />
+    </div>
   );
 });

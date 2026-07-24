@@ -17,6 +17,7 @@ import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useCreateShift } from '@/hooks/useShifts';
 import { useToast } from '@/hooks/use-toast';
+import { computeMinStaffFromCrew } from '@/lib/staffingCalculator';
 import { useTimelineModel, computeCoverage } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
@@ -209,6 +210,11 @@ export function ShiftTimelineTab({
   // wired here; create mode's producer (paint/gap-click) lands in Stage C.
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null);
   const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
+  // The chart's roving-tabindex selection (Stage 3.1's `CoverageChart` props).
+  // Not yet wired to a receipt panel (Stage 4) — this only satisfies the new
+  // required `selectedStartMin`/`onSelect` contract so the chart's keyboard
+  // navigation has somewhere to land.
+  const [selectedStartMin, setSelectedStartMin] = useState<number | null>(null);
 
   // ── Drag-move / edge-resize draft (Stage D2/D3) ───────────────────────────
   // The in-flight drafted range for a bar currently being dragged/resized, or
@@ -396,6 +402,11 @@ export function ShiftTimelineTab({
 
   // ── Hourly coverage summary + verdict (feeds the new coverage panel) ───────
   const targetSplh = activeSettings?.target_splh ?? null;
+  // Effective minimum-staff floor for the chart's demand/floor split (Stage 3.1's
+  // `minStaff` prop) — same `min_crew`-then-`min_staff` fallback the hook and
+  // `StaffingOverlay` already use, so the chart never disagrees with the
+  // recommendation pipeline about what "the floor" means.
+  const minStaff = computeMinStaffFromCrew(activeSettings?.min_crew ?? null, activeSettings?.min_staff ?? 0);
   const hourlySummary = useMemo(
     () => summarizeCoverageHours(liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations),
     [liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations],
@@ -762,9 +773,11 @@ export function ShiftTimelineTab({
             <div className="pl-[120px]">
               <CoverageChart
                 hours={hourlySummary}
-                view={coverageView}
+                minStaff={minStaff}
                 minToPct={minToPct}
-                targetSplh={targetSplh}
+                selectedStartMin={selectedStartMin}
+                onSelect={setSelectedStartMin}
+                onQuickAdd={handleGapClick}
               />
             </div>
 

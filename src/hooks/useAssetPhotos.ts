@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import type { AssetPhoto } from '@/types/assets';
@@ -168,12 +169,14 @@ export function useAssetPhotos({ assetId }: UseAssetPhotosOptions) {
           ...(photoData as AssetPhoto),
           signedUrl: signedUrlData?.signedUrl || '',
         };
-      } catch (error) {
-        console.error('Error uploading photo:', error);
+      } catch (error: unknown) {
+        const info = describeStorageError(error);
+        console.error(info.logLine);
         toast({
           title: 'Upload failed',
-          description: 'Failed to upload the photo. Please try again.',
+          description: info.userMessage,
           variant: 'destructive',
+          duration: UPLOAD_ERROR_TOAST_DURATION,
         });
         return null;
       } finally {

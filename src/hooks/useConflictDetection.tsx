@@ -34,12 +34,21 @@ async function fetchConflicts(
 ): Promise<{ conflicts: ConflictCheck[]; hasConflicts: boolean }> {
   const conflicts: ConflictCheck[] = [];
 
-  const { data: timeOffConflicts, error: timeOffError } = await supabase
-    .rpc('check_timeoff_conflict', {
+  const [timeOffResult, availabilityResult] = await Promise.all([
+    supabase.rpc('check_timeoff_conflict', {
       p_employee_id: params.employeeId,
       p_start_time: params.startTime,
       p_end_time: params.endTime,
-    });
+    }),
+    supabase.rpc('check_availability_conflict', {
+      p_employee_id: params.employeeId,
+      p_restaurant_id: params.restaurantId,
+      p_start_time: params.startTime,
+      p_end_time: params.endTime,
+    }),
+  ]);
+
+  const { data: timeOffConflicts, error: timeOffError } = timeOffResult;
 
   if (timeOffError) throw timeOffError;
 
@@ -57,13 +66,7 @@ async function fetchConflicts(
     }
   }
 
-  const { data: availabilityConflicts, error: availError } = await supabase
-    .rpc('check_availability_conflict', {
-      p_employee_id: params.employeeId,
-      p_restaurant_id: params.restaurantId,
-      p_start_time: params.startTime,
-      p_end_time: params.endTime,
-    });
+  const { data: availabilityConflicts, error: availError } = availabilityResult;
 
   if (availError) throw availError;
 

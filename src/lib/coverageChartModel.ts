@@ -11,6 +11,7 @@
  */
 
 import type { CoverageHour } from '@/lib/coverageSummary';
+import { formatCoverageHour } from '@/lib/coverageSummary';
 
 export type HourClassification = 'crit' | 'floor' | 'spare' | 'ok' | 'nodata';
 
@@ -185,4 +186,66 @@ export function buildReceipt(
   }
 
   return { rows, asides };
+}
+
+// ── Chart summary (aria rollup + sr-only understaffed windows) ──────────────
+
+export interface UnderstaffedWindow {
+  startMin: number;
+  label: string;
+}
+
+export interface ChartSummary {
+  /** "N short on demand, M at the floor over K hours" — the chart's sr-only rolled-up summary. */
+  ariaLabel: string;
+  /** One entry per `crit`/`floor` hour, in `hours` order — feeds the sr-only `<ul>` enumeration. */
+  understaffedWindows: UnderstaffedWindow[];
+}
+
+/**
+ * Roll a day's `CoverageHour[]` up into the chart's accessible summary: the
+ * `aria-label`/sr-only `<p>` text ("N short on demand, M at the floor over K
+ * hours") plus the full per-hour understaffed-windows list for a sr-only
+ * `<ul aria-label="Understaffed windows">` (design doc §Design-review
+ * resolutions, item 2 — SR users must get every gap without arrow-keying
+ * through each column).
+ *
+ * Classifies every hour via `classifyHour` (not `h.delta`/`h.needed`) so this
+ * always agrees with the chart/receipt's own `minStaff`-aware classification,
+ * even when `minStaff` is a live settings-form preview that hasn't
+ * round-tripped through the recommendation pipeline.
+ */
+export function chartSummaryLabel(hours: CoverageHour[], minStaff: number): ChartSummary {
+  let critCount = 0;
+  let floorCount = 0;
+  const understaffedWindows: UnderstaffedWindow[] = [];
+
+  for (const h of hours) {
+    const kind = classifyHour(h, minStaff);
+    if (kind !== 'crit' && kind !== 'floor') continue;
+
+    const demand = h.demand ?? 0; // crit/floor imply demand !== null
+    const label = formatCoverageHour(h.hour);
+
+    if (kind === 'crit') {
+      critCount += 1;
+      understaffedWindows.push({
+        startMin: h.startMin,
+        label: `${label}: short ${demand - h.scheduled} on demand`,
+      });
+    } else {
+      floorCount += 1;
+      const needed = Math.max(demand, minStaff);
+      understaffedWindows.push({
+        startMin: h.startMin,
+        label: `${label}: short ${needed - h.scheduled} at the floor`,
+      });
+    }
+  }
+
+  const totalHours = hours.length;
+  const hourWord = totalHours === 1 ? 'hour' : 'hours';
+  const ariaLabel = `${critCount} short on demand, ${floorCount} at the floor over ${totalHours} ${hourWord}`;
+
+  return { ariaLabel, understaffedWindows };
 }

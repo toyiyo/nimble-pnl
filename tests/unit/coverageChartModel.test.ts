@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { classifyHour, impliedLabor, laborConsistentSplh, buildReceipt } from '@/lib/coverageChartModel';
+import {
+  classifyHour,
+  impliedLabor,
+  laborConsistentSplh,
+  buildReceipt,
+  chartSummaryLabel,
+} from '@/lib/coverageChartModel';
 import type { CoverageHour } from '@/lib/coverageSummary';
 
 /**
@@ -256,6 +262,77 @@ describe('buildReceipt', () => {
     ]);
     expect(receipt.asides).toEqual([
       'Sales only justify 0 here — the rest is your minimum-staff rule.',
+    ]);
+  });
+});
+
+/**
+ * Build a minimal CoverageHour fixture for chartSummaryLabel tests, with a
+ * distinct `hour`/`startMin` per entry (unlike the single-hour fixtures
+ * above) so multi-hour rollups and the per-window list can be asserted.
+ * `needed`/`delta` are irrelevant here too — chartSummaryLabel classifies via
+ * `classifyHour`, which derives its own `needed` from `demand`/`minStaff`.
+ */
+function summaryHour(opts: { hour: number; demand: number | null; scheduled: number }): CoverageHour {
+  const { hour, demand, scheduled } = opts;
+  return {
+    hour,
+    startMin: hour * 60,
+    scheduled,
+    scheduledMax: scheduled,
+    needed: null,
+    demand,
+    delta: null,
+    projectedSales: demand === null ? null : 100,
+    laborPct: null,
+  };
+}
+
+describe('chartSummaryLabel', () => {
+  it('CRITICAL: counts crit/floor hours and rolls them into "N short on demand, M at the floor over K hours"', () => {
+    const hours = [
+      summaryHour({ hour: 9, demand: 5, scheduled: 3 }), // crit (3 < 5)
+      summaryHour({ hour: 10, demand: 3, scheduled: 4 }), // floor (demand=3 met, minStaff=5 -> needed=5, 4<5)
+      summaryHour({ hour: 11, demand: 5, scheduled: 5 }), // ok
+      summaryHour({ hour: 12, demand: 5, scheduled: 6 }), // spare
+      summaryHour({ hour: 13, demand: null, scheduled: 2 }), // nodata
+    ];
+
+    const summary = chartSummaryLabel(hours, 5);
+
+    expect(summary.ariaLabel).toBe('1 short on demand, 1 at the floor over 5 hours');
+  });
+
+  it('BOUNDARY: totalHours === 1 -> singular "hour"', () => {
+    const hours = [summaryHour({ hour: 9, demand: 5, scheduled: 5 })];
+    const summary = chartSummaryLabel(hours, 2);
+    expect(summary.ariaLabel).toBe('0 short on demand, 0 at the floor over 1 hour');
+  });
+
+  it('BOUNDARY: no crit/floor hours -> zero counts, empty windows list', () => {
+    const hours = [
+      summaryHour({ hour: 9, demand: 5, scheduled: 5 }),
+      summaryHour({ hour: 10, demand: null, scheduled: 1 }),
+    ];
+    const summary = chartSummaryLabel(hours, 2);
+    expect(summary.ariaLabel).toBe('0 short on demand, 0 at the floor over 2 hours');
+    expect(summary.understaffedWindows).toEqual([]);
+  });
+
+  it('CRITICAL: understaffedWindows lists one entry per crit/floor hour, in order, excluding ok/spare/nodata', () => {
+    const hours = [
+      summaryHour({ hour: 9, demand: 5, scheduled: 3 }), // crit, deficit vs demand = 2
+      summaryHour({ hour: 10, demand: 3, scheduled: 4 }), // floor: needed=max(3,5)=5, deficit = 1
+      summaryHour({ hour: 11, demand: 5, scheduled: 5 }), // ok - excluded
+      summaryHour({ hour: 12, demand: 5, scheduled: 6 }), // spare - excluded
+      summaryHour({ hour: 13, demand: null, scheduled: 2 }), // nodata - excluded
+    ];
+
+    const summary = chartSummaryLabel(hours, 5);
+
+    expect(summary.understaffedWindows).toEqual([
+      { startMin: 9 * 60, label: '9 AM: short 2 on demand' },
+      { startMin: 10 * 60, label: '10 AM: short 1 at the floor' },
     ]);
   });
 });

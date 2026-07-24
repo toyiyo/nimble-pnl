@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
@@ -25,8 +25,19 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: (...args: unknown[]) => mockUseWeekStaffingSuggestions(...args),
 }));
 
-// useRestaurantContext used indirectly (via useWeekStaffingSuggestions chain) — safe
-// to leave unmocked because the mock above covers the hook that reads it.
+// useRestaurantContext is called directly by ShiftTimelineTab (Stage 5.3's Save-gate
+// role check) in addition to indirectly via the (mocked) useWeekStaffingSuggestions
+// chain — so it needs its own mock now, or every test in this file would throw
+// "must be used within a RestaurantProvider". Defaults to 'owner' (Save allowed) so
+// pre-existing tests that don't care about the gate are unaffected; the dedicated
+// Save-gate describe block below overrides the role per-case.
+const mockUseRestaurantContext = vi.fn(() => ({
+  selectedRestaurant: { role: 'owner' } as { role: string } | null,
+}));
+
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: (...args: unknown[]) => mockUseRestaurantContext(...args),
+}));
 
 // useValidatedShiftMutations pulls in React Query mutation hooks (useCreateShift,
 // useUpdateShift, useDeleteShift, useCheckConflicts) which need a QueryClientProvider
@@ -786,5 +797,125 @@ describe('ShiftTimelineTab — Fix 1: lanes/window frozen during drag, coverage 
     expect(nineAmDuring!.getAttribute('aria-label')).not.toEqual(nineAmLabelBefore);
 
     fireEvent.pointerCancel(annBar, { pointerId: 1 });
+  });
+});
+
+// ─── Stage 5.3: SPLH slider Save-gate authz ──────────────────────────────────
+//
+// RED tests — will fail until ShiftTimelineTab mounts `<SplhSlider>` above the
+// chart and gates its `canSave` prop on
+// `['owner', 'manager', 'operations_manager'].includes(selectedRestaurant?.role)`
+// (design doc §Design-review resolutions #6), matching the existing ad-hoc
+// predicate in TimePunchesManager.tsx/Inventory.tsx. Live preview (the range
+// input) and Reset must stay available to every role — only Save is gated.
+
+describe('ShiftTimelineTab — SPLH slider Save-gate authz (Stage 5.3)', () => {
+  const employees = [makeEmployee('e1', 'Ann')];
+  const shifts = [
+    makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+  ];
+
+  beforeEach(() => {
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map(),
+      isLoading: false,
+      error: null,
+      hasSalesData: false,
+      hasHourlyBreakdown: false,
+      activeSettings: { target_splh: 40, target_labor_pct: 25, lookback_weeks: 4 },
+      updateSettings: vi.fn(),
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+  });
+
+  it.each(['owner', 'manager', 'operations_manager'])(
+    'CRITICAL: shows the Save button for a %s',
+    (role) => {
+      mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role } });
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+      expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
+    },
+  );
+
+  it.each(['staff', 'chef', 'kiosk', 'collaborator_accountant'])(
+    'CRITICAL: hides the Save button for a %s, but keeps the live slider and Reset',
+    (role) => {
+      mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role } });
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+      expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(/sales per labor hour target, in dollars/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
+    },
+  );
+
+  it('CRITICAL: hides the Save button when no restaurant is selected at all', () => {
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: null });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+    expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/sales per labor hour target, in dollars/i),
+    ).toBeInTheDocument();
+  });
+
+  it('dragging the slider previews live, and Reset clears the preview back to the saved target', () => {
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role: 'owner' } });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+    const slider = screen.getByLabelText(/sales per labor hour target, in dollars/i);
+    expect(slider).toHaveValue('40');
+
+    fireEvent.change(slider, { target: { value: '60' } });
+    expect(slider).toHaveValue('60');
+
+    fireEvent.click(screen.getByRole('button', { name: /reset/i }));
+    expect(slider).toHaveValue('40');
+  });
+
+  it('CRITICAL: Save persists the previewed slider value via updateSettings', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map(),
+      isLoading: false,
+      error: null,
+      hasSalesData: false,
+      hasHourlyBreakdown: false,
+      activeSettings: { target_splh: 40, target_labor_pct: 25, lookback_weeks: 4 },
+      updateSettings,
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role: 'owner' } });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+    const slider = screen.getByLabelText(/sales per labor hour target, in dollars/i);
+    fireEvent.change(slider, { target: { value: '60' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ target_splh: 60 }));
+  });
+
+  it('does not render the slider at all when there is no target to preview (activeSettings not loaded)', () => {
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map(),
+      isLoading: false,
+      error: null,
+      hasSalesData: false,
+      hasHourlyBreakdown: false,
+      activeSettings: null,
+      updateSettings: vi.fn(),
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role: 'owner' } });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+    expect(
+      screen.queryByLabelText(/sales per labor hour target, in dollars/i),
+    ).not.toBeInTheDocument();
   });
 });

@@ -44,6 +44,13 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: (...args: unknown[]) => mockUseWeekStaffingSuggestions(...args),
 }));
 
+// ShiftTimelineTab calls useRestaurantContext directly (Stage 5.3's Save-gate role
+// check), so it needs a mock here too or every render throws "must be used within
+// a RestaurantProvider".
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({ selectedRestaurant: { role: 'owner' } }),
+}));
+
 const mockDeleteShift = vi.fn();
 const mockDeleteShiftAsync = vi.fn();
 const mockUseValidatedShiftMutations = vi.fn(() => ({

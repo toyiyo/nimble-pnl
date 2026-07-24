@@ -18,12 +18,14 @@ import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useCreateShift } from '@/hooks/useShifts';
 import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
 import { useTimelineModel, computeCoverage } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
 import { CoverageReceipt } from './CoverageReceipt';
 import { CoverageDemandInfo } from './CoverageDemandInfo';
+import { SplhSlider } from './SplhSlider';
 import { AreaCoverageStrips } from './AreaCoverageStrips';
 import { TimelineAxis } from './TimelineAxis';
 import { TimelineLane, type LanePaintContext } from './TimelineLane';
@@ -54,6 +56,18 @@ const DEFAULT_ADD_RANGE: PaintRange = { startMin: 10 * 60, endMin: 18 * 60 };
 
 /** How long a bar shows its transient change-highlight ring (design doc §Fix 3). */
 const HIGHLIGHT_DURATION_MS = 2000;
+
+/**
+ * Roles allowed to persist the on-chart SPLH slider's target via Save (design
+ * doc §Design-review resolutions #6 — "Save-gate authz: no clean precedent,
+ * define deliberately"). There is no shared role-gate helper for this ad-hoc
+ * style of check in the codebase yet — `TimePunchesManager.tsx` and
+ * `Inventory.tsx` each inline this exact same three-role array, so this
+ * mirrors that established (if uncentralized) convention rather than
+ * introducing a new one. Live preview (the slider itself) and Reset are
+ * NEVER gated — every role can drag/reset, only Save is restricted.
+ */
+const SPLH_SAVE_ROLES = ['owner', 'manager', 'operations_manager'];
 
 /** Clamp a minute range into `window`, preserving its duration where possible. */
 function clampRangeToWindow(range: PaintRange, window: { startMin: number; endMin: number }): PaintRange {
@@ -322,6 +336,9 @@ export function ShiftTimelineTab({
     };
   }, []);
 
+  // ── Restaurant role (drives the SPLH slider's Save-gate — Stage 5.3) ───────
+  const { selectedRestaurant } = useRestaurantContext();
+
   // ── Staffing recommendations ───────────────────────────────────────────────
   const { daySuggestions, activeSettings, updateSettings, isSaving } = useWeekStaffingSuggestions(
     restaurantId,
@@ -472,11 +489,14 @@ export function ShiftTimelineTab({
   const minStaff = computeMinStaffFromCrew(activeSettings?.min_crew ?? null, activeSettings?.min_staff ?? 0);
   // Average hourly wage across the restaurant's employees, in dollars (design
   // doc §B: `avgWage = computeAvgHourlyRateCents(employees)/100`) — feeds the
-  // slider's implied-labor readout (`pct = avgWage ÷ target_splh × 100`) and
-  // its labor-consistent notch. Not yet rendered (Stage 4.1's `SplhSlider`
-  // wiring lands in the next task); derived here alongside `minStaff` since
-  // both come from the same settings/employees inputs this task threads.
+  // `SplhSlider`'s implied-labor readout (`pct = avgWage ÷ target_splh × 100`)
+  // and its labor-consistent notch, rendered below (Stage 5.3).
   const avgWage = computeAvgHourlyRateCents(employees) / 100;
+  // Target labor % from staffing settings — drives the slider pill's
+  // over/under-target threshold and its notch label. Falls back to the same
+  // default `useStaffingSettings` seeds a restaurant with (DEFAULTS.target_labor_pct)
+  // when `activeSettings` hasn't loaded yet — same pattern as `lookbackWeeks` below.
+  const targetLaborPct = activeSettings?.target_labor_pct ?? 22;
   const hourlySummary = useMemo(
     () => summarizeCoverageHours(liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations),
     [liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations],
@@ -502,6 +522,36 @@ export function ShiftTimelineTab({
   // (src/hooks/useStaffingSettings.ts `DEFAULTS.lookback_weeks`) when
   // `activeSettings` hasn't loaded yet.
   const lookbackWeeks = activeSettings?.lookback_weeks ?? 4;
+
+  // ── SPLH slider Save-gate authz (Stage 5.3) ────────────────────────────────
+  // Design doc §Design-review resolutions #6: reuse the ad-hoc inline role
+  // predicate other surfaces already use (see `SPLH_SAVE_ROLES` above) rather
+  // than inventing a new gate — `Save` is hidden for every role outside this
+  // set, but the slider drag (live preview) and Reset stay available to
+  // everyone regardless of `selectedRestaurant`/role.
+  const canSaveSplhTarget = SPLH_SAVE_ROLES.includes(selectedRestaurant?.role ?? '');
+
+  const handleSplhChange = useCallback((value: number) => {
+    setSliderTarget(value);
+  }, []);
+
+  const handleSplhReset = useCallback(() => {
+    setSliderTarget(null);
+  }, []);
+
+  const handleSplhSave = useCallback(async () => {
+    if (sliderTarget === null) return;
+    try {
+      await updateSettings({ target_splh: sliderTarget });
+      // The saved value now matches the preview — drop the override so future
+      // renders read straight off `activeSettings.target_splh` again (avoids
+      // a stale override masking a settings-page edit made elsewhere).
+      setSliderTarget(null);
+      toast({ title: 'SPLH target saved' });
+    } catch {
+      toast({ title: 'Failed to save SPLH target', variant: 'destructive' });
+    }
+  }, [sliderTarget, updateSettings, toast]);
 
   // ── Per-area coverage summary (only when grouped by area) ──────────────────
   const areaCoverage = useMemo(
@@ -847,6 +897,27 @@ export function ShiftTimelineTab({
                 <CoverageVerdict verdict={verdict} />
                 <CoverageDemandInfo />
               </div>
+
+              {/* On-chart SPLH slider + implied-labor readout (design doc §B)
+                  — sits above the chart. Hidden entirely when there's no
+                  target to preview yet (`activeSettings` not loaded), same as
+                  the design doc's "No demand configured" state. Save is
+                  gated to owner/manager/operations_manager (Stage 5.3); the
+                  live preview + Reset stay available to every role. */}
+              {targetSplh !== null && (
+                <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                  <SplhSlider
+                    value={sliderTarget ?? targetSplh}
+                    wage={avgWage}
+                    targetLaborPct={targetLaborPct}
+                    canSave={canSaveSplhTarget}
+                    isSaving={isSaving}
+                    onChange={handleSplhChange}
+                    onSave={handleSplhSave}
+                    onReset={handleSplhReset}
+                  />
+                </div>
+              )}
 
               {/* Coverage chart — offset to align with the axis ticks */}
               <div className="pl-[120px]">

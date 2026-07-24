@@ -178,10 +178,10 @@ SQL/pgTAP: none (no schema or RPC change — writes go through the existing
 
 ## Styling (CLAUDE.md Apple/Notion)
 
-- Semantic tokens only (`bg-foreground/5`, `text-foreground`, `text-muted-foreground`;
-  no `bg-white`/`text-black`).
-- `border-border/40`, `rounded-lg`, existing typography scale (`text-[13px]`/`text-[14px]`).
-- `transition-colors` on hover.
+- Count button uses the CLAUDE.md **primary action** style verbatim:
+  `h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium`
+  (plus `w-full` for the footer). Semantic tokens only — no `bg-white`/`text-black`.
+- `transition-colors` on hover; `CardFooter` inherits the card's existing padding idiom.
 
 ## Decided Trade-offs
 

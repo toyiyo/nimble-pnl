@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { parseBankAmount, type BankColumnMapping } from '@/utils/bankTransactionColumnMapping';
@@ -152,12 +153,14 @@ export function useBankStatementImport() {
       });
 
       return statementData;
-    } catch (error) {
-      console.error('Error uploading bank statement:', error);
+    } catch (error: unknown) {
+      const info = describeStorageError(error);
+      console.error(info.logLine);
       toast({
-        title: "Error",
-        description: "Failed to upload bank statement",
-        variant: "destructive",
+        title: 'Upload failed',
+        description: info.userMessage,
+        variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
       });
       return null;
     } finally {

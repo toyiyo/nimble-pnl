@@ -3,6 +3,7 @@ import React, { ReactNode } from 'react';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAssetPhotos } from '@/hooks/useAssetPhotos';
+import { UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 import type { AssetPhoto } from '@/types/assets';
 
 // Mock Supabase client
@@ -259,10 +260,14 @@ describe('useAssetPhotos Hook', () => {
       const uploadResult = await result.current.uploadPhoto(mockFile);
       expect(uploadResult).toBeNull();
 
+      // A statusless error routes through describeStorageError to the generic
+      // code-keyed message; the raw body stays out of the toast.
       expect(mockToast.toast).toHaveBeenCalledWith({
         title: 'Upload failed',
-        description: 'Failed to upload the photo. Please try again.',
+        description:
+          'Upload failed (code unknown). Please try again — if it keeps happening, share this code with support.',
         variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
       });
     });
 
@@ -280,8 +285,10 @@ describe('useAssetPhotos Hook', () => {
 
       expect(mockToast.toast).toHaveBeenCalledWith({
         title: 'Upload failed',
-        description: 'Failed to upload the photo. Please try again.',
+        description:
+          'Upload failed (code unknown). Please try again — if it keeps happening, share this code with support.',
         variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
       });
     });
   });

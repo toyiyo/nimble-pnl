@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 import type { Json } from '@/integrations/supabase/types';
 
 export interface ExpenseInvoiceUpload {
@@ -100,12 +101,14 @@ export const useExpenseInvoiceUpload = () => {
       }
 
       return invoiceData as ExpenseInvoiceUpload;
-    } catch (error) {
-      console.error('Error uploading invoice:', error);
+    } catch (error: unknown) {
+      const info = describeStorageError(error);
+      console.error(info.logLine);
       toast({
-        title: 'Error',
-        description: 'Failed to upload invoice',
+        title: 'Upload failed',
+        description: info.userMessage,
         variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
       });
       return null;
     } finally {

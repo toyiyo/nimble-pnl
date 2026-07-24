@@ -39,6 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useDropzone } from 'react-dropzone';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { describeStorageError } from '@/lib/storageError';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useAssetPhotos } from '@/hooks/useAssetPhotos';
 import type { Asset, AssetFormData } from '@/types/assets';
@@ -149,7 +150,10 @@ export function AssetDialog(props: Readonly<AssetDialogProps>) {
       .from('asset-images')
       .upload(filePath, file);
 
-    if (uploadError) throw uploadError;
+    if (uploadError) {
+      console.error(describeStorageError(uploadError).logLine);
+      throw uploadError;
+    }
 
     // Create database record
     const { data: photoData, error: photoError } = await supabase

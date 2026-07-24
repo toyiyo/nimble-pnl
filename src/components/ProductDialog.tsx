@@ -40,6 +40,7 @@ import { useSuppliers } from '@/hooks/useSuppliers';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
 import { convertUnits } from '@/lib/enhancedUnitConversion';
+import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 
 const productSchema = z.object({
   sku: z.string().min(1, 'SKU is required'),
@@ -143,6 +144,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
 }) => {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
+  const [imageUploadError, setImageUploadError] = useState<string | null>(null);
   const [imageUrl, setImageUrl] = useState<string>('');
   const [selectedSupplierId, setSelectedSupplierId] = useState<string | undefined>();
   const [isNewSupplier, setIsNewSupplier] = useState(false);
@@ -284,6 +286,7 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
     if (!file) return;
 
     setUploading(true);
+    setImageUploadError(null);
     try {
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -301,10 +304,16 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
 
       setImageUrl(data.publicUrl);
       form.setValue('image_url', data.publicUrl);
-    } catch (error) {
-      if (import.meta.env.DEV) {
-        console.error('Error uploading image:', error);
-      }
+    } catch (error: unknown) {
+      const info = describeStorageError(error);
+      console.error(info.logLine);
+      setImageUploadError(info.userMessage);
+      toast({
+        title: 'Upload failed',
+        description: info.userMessage,
+        variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
+      });
     } finally {
       setUploading(false);
     }
@@ -478,6 +487,11 @@ export const ProductDialog: React.FC<ProductDialogProps> = ({
                   </Label>
                 </div>
               </div>
+              {imageUploadError && (
+                <p className="text-[13px] text-destructive mt-1.5" role="alert">
+                  {imageUploadError}
+                </p>
+              )}
             </div>
 
             <FormField

@@ -22,7 +22,14 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
     file: File;
     existing: ReceiptImport;
   } | null>(null);
-  const { uploadReceipt, processReceipt, isUploading, isProcessing } = useReceiptImport();
+  const {
+    uploadReceipt,
+    processReceipt,
+    isUploading,
+    isProcessing,
+    uploadErrorMessage,
+    clearUploadError,
+  } = useReceiptImport();
   const { toast } = useToast();
   const mountedRef = useRef(true);
 
@@ -36,6 +43,7 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
     const input = event.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
+    clearUploadError();
     try {
       await processReceiptFile(file);
     } finally {
@@ -45,6 +53,7 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
   };
 
   const handleImageCapture = async (imageBlob: Blob) => {
+    clearUploadError();
     const file = new File([imageBlob], `receipt-${Date.now()}.jpg`, { type: 'image/jpeg' });
     await processReceiptFile(file);
   };
@@ -168,6 +177,11 @@ export const ReceiptUpload: React.FC<ReceiptUploadProps> = ({ onReceiptProcessed
               <p className="text-sm text-muted-foreground">
                 Supports JPG, PNG, WEBP images, and PDF files up to 10MB
               </p>
+              {uploadErrorMessage && (
+                <p className="text-[13px] text-destructive mt-1.5" role="alert">
+                  {uploadErrorMessage}
+                </p>
+              )}
             </div>
           )}
 

@@ -39,6 +39,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { SizePackagingSection } from '@/components/SizePackagingSection';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 import { useProductSuppliers } from '@/hooks/useProductSuppliers';
 import { useSuppliers } from '@/hooks/useSuppliers';
 import { SearchableSupplierSelector } from '@/components/SearchableSupplierSelector';
@@ -275,12 +276,14 @@ const ProductUpdateContent: React.FC<ProductUpdateDialogProps> = ({
         title: "Image uploaded",
         description: "Product image updated successfully",
       });
-    } catch (error) {
-      console.error('Error uploading image:', error);
+    } catch (error: unknown) {
+      const info = describeStorageError(error);
+      console.error(info.logLine);
       toast({
-        title: "Upload failed",
-        description: "Failed to upload image",
-        variant: "destructive",
+        title: 'Upload failed',
+        description: info.userMessage,
+        variant: 'destructive',
+        duration: UPLOAD_ERROR_TOAST_DURATION,
       });
     } finally {
       setUploading(false);

@@ -210,16 +210,19 @@ export async function runBankReauthNotices(
 
   const cohortA = cohortARes.data ?? [];
   const cohortB = cohortBRes.data ?? [];
-  const results: BankReauthNoticeResult[] = [];
 
-  for (const row of cohortA) {
-    // Only the currently-applicable stage is ever a candidate — an
-    // already-sent stage, or day 0 (in-app only, no notice), yields null and
-    // this bank is skipped for this run entirely (bankReauthStages.nextStage).
-    const stage = nextStage(row.sent_stages as ElapsedStage[], row.elapsed_days);
-    if (!stage) continue;
-    results.push(
-      await processTarget(deps, {
+  // Each row is an independent bank/restaurant — processTarget's DB and
+  // channel round-trips have no data dependency on any other row in the same
+  // cohort, so both cohorts run concurrently rather than one row at a time.
+  const cohortAResults = await Promise.all(
+    cohortA.map((row) => {
+      // Only the currently-applicable stage is ever a candidate — an
+      // already-sent stage, or day 0 (in-app only, no notice), yields null
+      // and this bank is skipped for this run entirely
+      // (bankReauthStages.nextStage).
+      const stage = nextStage(row.sent_stages as ElapsedStage[], row.elapsed_days);
+      if (!stage) return null;
+      return processTarget(deps, {
         restaurantId: row.restaurant_id,
         connectedBankId: row.connected_bank_id,
         institutionName: row.institution_name,
@@ -227,13 +230,13 @@ export async function runBankReauthNotices(
         deactivatedAt: row.deactivated_at,
         elapsedDays: row.elapsed_days,
         stage,
-      }),
-    );
-  }
+      });
+    }),
+  );
 
-  for (const row of cohortB) {
-    results.push(
-      await processTarget(deps, {
+  const cohortBResults = await Promise.all(
+    cohortB.map((row) =>
+      processTarget(deps, {
         restaurantId: row.restaurant_id,
         connectedBankId: row.connected_bank_id,
         institutionName: row.institution_name,
@@ -242,8 +245,13 @@ export async function runBankReauthNotices(
         dataCurrentThrough: row.data_current_through,
         stage: 'recovered',
       }),
-    );
-  }
+    ),
+  );
+
+  const results: BankReauthNoticeResult[] = [
+    ...cohortAResults.filter((r): r is BankReauthNoticeResult => r !== null),
+    ...cohortBResults,
+  ];
 
   return { cohortACount: cohortA.length, cohortBCount: cohortB.length, results };
 }

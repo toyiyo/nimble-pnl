@@ -254,39 +254,12 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     }
   };
 
-  // Sync transactions for a specific bank
-  const syncTransactions = async (bankId: string) => {
-    // Show immediate feedback that sync is starting
-    toast({
-      title: "Importing Transactions",
-      description: "Fetching all transactions from your bank account. This may take a moment...",
-    });
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        'stripe-sync-transactions',
-        {
-          body: { bankId }
-        }
-      );
-
-      if (error) throw error;
-
-      toast({
-        title: data.message ? "Transaction Sync Started" : "Transactions Synced",
-        description: data.message || `Successfully imported and categorized ${data.synced} new transactions (${data.skipped} already existed). Your financial statements are now up to date.`,
-      });
-
-      return data;
-    } catch (error) {
-      console.error('Error syncing transactions:', error);
-      toast({
-        title: "Failed to Sync Transactions",
-        description: error instanceof Error ? error.message : "An error occurred",
-        variant: "destructive",
-      });
-    }
-  };
+  // Sync transactions for a specific bank lives in `useSyncBankTransactions`
+  // (design §5.3) — it needs the honesty branching (needsReauth / synced=0 /
+  // synced>0) and dual cache invalidation that a plain fire-and-toast
+  // function here can't express as a React Query mutation. Callers resolve
+  // the institution name from `connectedBanks` and call that hook directly;
+  // see src/pages/Banking.tsx and src/pages/Accounting.tsx.
 
   // Verify connection session and process linked accounts
   const verifyConnectionSession = async (sessionId: string, currentRestaurantId?: string) => {
@@ -353,7 +326,6 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     disconnectBank,
     refreshBanks: () => queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] }),
     refreshBalance,
-    syncTransactions,
     verifyConnectionSession,
     totalBalance,
     quarantinedBalance,

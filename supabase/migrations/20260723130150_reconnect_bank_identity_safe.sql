@@ -34,7 +34,7 @@ CREATE OR REPLACE FUNCTION public.mark_connected_bank_deactivated(
 RETURNS public.connected_banks
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_row public.connected_banks;
@@ -67,7 +67,7 @@ CREATE OR REPLACE FUNCTION public.mark_connected_bank_reactivated(
 RETURNS public.connected_banks
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_row public.connected_banks;
@@ -107,7 +107,7 @@ CREATE OR REPLACE FUNCTION public.reconnect_connected_bank(
 RETURNS public.connected_banks
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_row public.connected_banks;

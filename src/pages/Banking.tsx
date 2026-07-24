@@ -19,6 +19,7 @@ import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { useSyncBankTransactions } from "@/hooks/useSyncBankTransactions";
 import { TransactionFiltersSheet, type TransactionFilters } from "@/components/TransactionFilters";
 import { BankStatementUpload } from "@/components/BankStatementUpload";
 import { BankStatementReview } from "@/components/BankStatementReview";
@@ -137,7 +138,6 @@ export default function Banking() {
     createFinancialConnectionsSession,
     isCreatingSession,
     refreshBalance,
-    syncTransactions,
     disconnectBank,
     verifyConnectionSession,
     groupedBanks,
@@ -146,6 +146,15 @@ export default function Banking() {
     accountCount,
     refreshBanks,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
+
+  const { mutateAsync: syncBankTransactionsMutation } = useSyncBankTransactions();
+  // Live sync path (design §5.3): needs the institution name to name the bank
+  // in a reauth toast, so it's resolved here from the already-loaded banks
+  // rather than widening BankConnectionCard's onSyncTransactions signature.
+  const syncTransactions = async (bankId: string) => {
+    const institutionName = connectedBanks.find((b) => b.id === bankId)?.institution_name || 'This bank';
+    await syncBankTransactionsMutation({ bankId, institutionName });
+  };
 
   const { recalculateBankBalance } = useBankStatementImport();
 

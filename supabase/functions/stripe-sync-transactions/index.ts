@@ -333,6 +333,15 @@ serve(async (req) => {
       // sync_error above — a bank can't be "needs reauth" and "refresh
       // failed for an unrelated reason" at the same time in the UI.
       bankUpdate.sync_error = refreshFailures.map((r) => r.error).join('; ');
+    } else if (refreshFailures.length === 0 && !anyNeedsReauth) {
+      // Every account's refresh attempt this run succeeded — clear any
+      // sync_error left over from a prior transient failure. Nothing else
+      // clears this once set: mark_connected_bank_reactivated only fires on
+      // the Stripe `account.reactivated` webhook, not on a later plain sync
+      // where the account simply recovers on its own. Without this, a single
+      // transient refresh hiccup permanently stains an otherwise healthy,
+      // successfully-syncing bank with a stale destructive error message.
+      bankUpdate.sync_error = null;
     }
 
     if (shouldStampLastSyncAt(accountResults)) {

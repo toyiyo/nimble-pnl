@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { useSyncBankTransactions } from "@/hooks/useSyncBankTransactions";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
 import { BankReauthBanner, toReauthBannerBanks } from "@/components/banking/BankReauthBanner";
 import { RestaurantSelector } from "@/components/RestaurantSelector";
@@ -26,7 +27,6 @@ const Accounting = () => {
     createFinancialConnectionsSession,
     isCreatingSession,
     refreshBalance,
-    syncTransactions,
     disconnectBank,
     verifyConnectionSession,
     groupedBanks,
@@ -35,6 +35,15 @@ const Accounting = () => {
     accountCount,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
+
+  const { mutateAsync: syncBankTransactionsMutation } = useSyncBankTransactions();
+  // Live sync path (design §5.3): needs the institution name to name the bank
+  // in a reauth toast, so it's resolved here from the already-loaded banks
+  // rather than widening BankConnectionCard's onSyncTransactions signature.
+  const syncTransactions = async (bankId: string) => {
+    const institutionName = connectedBanks.find((b) => b.id === bankId)?.institution_name || 'This bank';
+    await syncBankTransactionsMutation({ bankId, institutionName });
+  };
 
   // Clean up Stripe iframes when leaving the Accounting page
   useEffect(() => {

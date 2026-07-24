@@ -50,7 +50,8 @@ scanning.
 | Entry point | Dedicated "Count" button on each card (card tap still = Edit) |
 | Default mode | `add` (add to existing stock), matching the scan default; dialog still lets the user switch to reconcile |
 | Scope | Products grid only |
-| Placement | Accented button in the card action area (primary, findable), not crammed into the 7×7 ghost-icon cluster |
+| Placement | **A new full-width `CardFooter`** below the stock/pricing block — NOT the top-right 7×7 ghost-icon cluster (which is hard-capped `max-w-[120px]` below `sm` and would break on the reported iPhone/Safari device) |
+| Button style | The CLAUDE.md **primary** treatment (`bg-foreground text-background hover:bg-foreground/90`), not a subtle tint — the feature exists to make the control *findable* |
 
 ## What Already Exists (reused, not rebuilt)
 
@@ -74,15 +75,26 @@ the dialog. **We are adding a trigger, not a flow.**
 - Add prop `onCountProduct: (product: Product) => void` to
   `VirtualizedProductGridProps`; thread through to the `ProductCard`
   (`onCount: () => void`).
-- Render a **"Count" button** (lucide `Calculator` icon + visible "Count" label) as
-  the **primary** action in the card's action area. It:
-  - calls `e.stopPropagation()` then `onCount()` — must **not** trigger the
-    card-body `onClick={onEdit}` (three-state note: the card body tap remains Edit).
-  - carries `aria-label={`Count ${product.name}`}`; the icon is `aria-hidden`.
-  - is styled with a subtle accent (e.g. `bg-foreground/5` / outline, `border-border/40`,
-    `rounded-lg`, existing typography scale) so it reads as the obvious control —
-    directly answering "I can't find the calculator." Semantic tokens only.
+- Render a **"Count" button** (lucide `Calculator` icon + visible "Count" label) in a
+  **new `CardFooter`** (already exported from `src/components/ui/card.tsx`, currently
+  unused by `ProductCard`) below the stock/pricing `CardContent` block. The button:
+  - is **full-width** and uses the CLAUDE.md primary treatment:
+    `w-full h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium transition-colors`.
+    It is the one obviously-findable control on the card — directly answering "I can't
+    find the calculator." Semantic tokens only.
+  - carries `aria-label={`Count ${product.name}`}` and `title="Count"` (parity with the
+    other cluster buttons); the `Calculator` icon is `aria-hidden`.
+  - **Placement removes the propagation hazard:** `CardFooter` is a **sibling** of
+    `CardContent` (which owns `onClick={onEdit}`), so a footer click never bubbles to
+    Edit — no `stopPropagation()` needed. We still keep a negative test asserting
+    `onEditProduct` is not called, as a guard against future re-placement. (If, during
+    implementation, the button ends up inside `CardContent` for any reason, it MUST
+    call `e.stopPropagation()` — see the recipe `Link` at `VirtualizedProductGrid.tsx:268`.)
 - Keyboard-accessible by default (it is a shadcn `Button`).
+- **`ESTIMATED_ROW_HEIGHT`** (`VirtualizedProductGrid.tsx:51`, currently `320`): bump to
+  account for the added footer so first-paint layout is closer before `measureElement`
+  corrects it (reduces a one-time CLS blip). `measureElement` still handles the exact
+  height dynamically.
 
 ### 2. `src/pages/Inventory.tsx`
 
@@ -120,9 +132,16 @@ export function buildQuickInventoryAudit(
   — **Note:** `Date.now()` is called by the caller and passed in, OR the helper takes
   a `timestamp` argument so it stays pure and unit-testable. Final signature:
   `buildQuickInventoryAudit(source, mode, quantity, timestamp)`.
-- `reason`: preserves today's wording for `scan` (`Adjustment - Added N via quick scan`
-  / `Inventory reconciliation - Set to N via quick scan`) and uses the parallel
-  "manual count" wording for `manual`.
+- `reason`: reproduces today's **exact** scan-path strings byte-for-byte (the current
+  code interpolates the **raw, unformatted** `quantity` — no `.toFixed()` — see
+  `Inventory.tsx:963,967`):
+  - `scan` + `add` → `` `Adjustment - Added ${quantity} via quick scan` ``
+  - `scan` + `reconcile` → `` `Inventory reconciliation - Set to ${quantity} via quick scan` ``
+  - `manual` + `add` → `` `Adjustment - Added ${quantity} via manual count` ``
+  - `manual` + `reconcile` → `` `Inventory reconciliation - Set to ${quantity} via manual count` ``
+  The unit test pins the unformatted `quantity` explicitly so this refactor cannot
+  silently change scan-path audit wording. (The success **toast** keeps its separate
+  `.toFixed(2)` formatting in the page — unchanged, not part of the helper.)
 - Extracting this isolates the only branching logic in the save handler into a
   testable pure function (the save handler itself lives in a large page component that
   is impractical to unit-test in isolation).
@@ -130,8 +149,8 @@ export function buildQuickInventoryAudit(
 ## Data Flow
 
 ```
-ProductCard "Count" button click
-  → e.stopPropagation(); onCount()
+ProductCard CardFooter "Count" button click  (sibling of CardContent → no edit bubble)
+  → onCount()
   → VirtualizedProductGrid onCountProduct(product)
   → Inventory: setScanMode('add'), setQuickEntrySource('manual'),
                setQuickInventoryProduct(product), setShowQuickInventoryDialog(true)
@@ -164,9 +183,24 @@ SQL/pgTAP: none (no schema or RPC change — writes go through the existing
 - `border-border/40`, `rounded-lg`, existing typography scale (`text-[13px]`/`text-[14px]`).
 - `transition-colors` on hover.
 
+## Decided Trade-offs
+
+- **Row memoization left as pre-existing debt (accepted).** `ProductCard` is not
+  wrapped in `React.memo` today and its per-row callbacks are fresh closures created
+  inside `VirtualizedProductGrid`'s `.map()` — a standing gap against CLAUDE.md's
+  "Memoized Components" rule for virtualized rows. This PR adds `onCount` following the
+  same existing pattern. **Rationale for not fixing it here:** because `ProductCard` is
+  already un-memoized, it re-renders on every parent render regardless, so adding one
+  more callback prop has *zero* incremental perf cost; bringing the component into full
+  compliance means memoizing the component *and* stabilizing all six per-row closures
+  (a broader refactor of code this feature doesn't otherwise touch), which conflicts with
+  the tight scope of a targeted bugfix. Filed as follow-up #3 below. This is the
+  reviewer-approved "accept as pre-existing debt, called out explicitly" path.
+
 ## Risks & Mitigations
 
-- **Card-tap Edit vs Count-button conflict** → `stopPropagation` on the Count button;
+- **Card-tap Edit vs Count-button conflict** → Count lives in `CardFooter`, a sibling of
+  the `CardContent` that owns `onClick={onEdit}`, so a footer click never bubbles to Edit;
   covered by a grid test asserting `onEditProduct` is not called.
 - **Audit-log provenance drift** → pure helper + unit test lock the wording per source.
 - **Regression to the scan path** → scan path explicitly sets `quickEntrySource='scan'`,
@@ -178,3 +212,5 @@ SQL/pgTAP: none (no schema or RPC change — writes go through the existing
    `BarcodeDetector` polyfill for the iOS/Safari fallback path.
 2. Exact-match resolution brittleness (Mode B) — normalize GTIN check-digit /
    leading-zero variants, or fuzzy SKU match with confirmation.
+3. `ProductCard` virtualization compliance — wrap in `React.memo` and stabilize all
+   per-row callbacks (see Decided Trade-offs).

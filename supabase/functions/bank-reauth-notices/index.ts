@@ -135,26 +135,34 @@ serve(async (req: Request): Promise<Response> => {
     return { error: error ? { message: error.message } : null };
   };
 
-  const result = await runBankReauthNotices({
-    fetchCohortA,
-    fetchCohortB,
-    fetchRecipients,
-    resolveChannels: resolveChannelsFn,
-    sendEmail: send,
-    sendPush,
-    recordNotice,
-    fromEmail: NOTIFICATION_FROM,
-    appUrl: APP_URL,
-  });
+  try {
+    const result = await runBankReauthNotices({
+      fetchCohortA,
+      fetchCohortB,
+      fetchRecipients,
+      resolveChannels: resolveChannelsFn,
+      sendEmail: send,
+      sendPush,
+      recordNotice,
+      fromEmail: NOTIFICATION_FROM,
+      appUrl: APP_URL,
+    });
 
-  console.log(
-    `[bank-reauth-notices] cohortA=${result.cohortACount} cohortB=${result.cohortBCount} ` +
-      `sent=${result.results.filter((r) => r.status === 'sent').length} ` +
-      `errors=${result.results.filter((r) => r.status === 'error').length}`
-  );
+    console.log(
+      `[bank-reauth-notices] cohortA=${result.cohortACount} cohortB=${result.cohortBCount} ` +
+        `sent=${result.results.filter((r) => r.status === 'sent').length} ` +
+        `errors=${result.results.filter((r) => r.status === 'error').length}`
+    );
 
-  return new Response(JSON.stringify({ ok: !result.error, ...result }), {
-    status: result.error ? 500 : 200,
-    headers: JSON_HEADERS,
-  });
+    return new Response(JSON.stringify({ ok: !result.error, ...result }), {
+      status: result.error ? 500 : 200,
+      headers: JSON_HEADERS,
+    });
+  } catch (err) {
+    console.error('[bank-reauth-notices] unhandled error', err);
+    return new Response(JSON.stringify({ error: 'Internal error' }), {
+      status: 500,
+      headers: JSON_HEADERS,
+    });
+  }
 });

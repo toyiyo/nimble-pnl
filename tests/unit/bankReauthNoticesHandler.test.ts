@@ -254,4 +254,43 @@ describe('runBankReauthNotices', () => {
     // The send already happened before the record failure — not rolled back.
     expect(env.emailCalls).toHaveLength(2);
   });
+
+  it('does not record the dedupe row when every attempted email send fails (transient provider outage)', async () => {
+    const env = makeDeps({ cohortA: [cohortARow({ elapsed_days: 1 })] });
+    env.deps.sendEmail = vi.fn(async () => ({ id: null, error: { message: 'Resend send failed' } }));
+
+    const out = await runBankReauthNotices(env.deps);
+
+    expect(out.results[0].status).toBe('error');
+    expect(out.results[0].error).toBe('all attempted sends failed for this stage');
+    expect(out.results[0].emailsSent).toBe(0);
+    // Not recorded — this stage must be re-evaluated on tomorrow's run, not
+    // silently and permanently skipped.
+    expect(env.recordCalls).toHaveLength(0);
+  });
+
+  it('does not record the dedupe row when push has recipients but delivers to none', async () => {
+    const env = makeDeps({ cohortA: [cohortARow({ elapsed_days: 1 })] });
+    env.deps.sendPush = vi.fn(async () => ({ sent: 0 }));
+
+    const out = await runBankReauthNotices(env.deps);
+
+    expect(out.results[0].status).toBe('error');
+    expect(out.results[0].pushSent).toBe(0);
+    expect(env.recordCalls).toHaveLength(0);
+    // Email still succeeded — only the push channel failed, but a partial
+    // delivery failure still blocks the dedupe record.
+    expect(out.results[0].emailsSent).toBe(2);
+  });
+
+  it('still records normally when a channel is gated off (not attempted), as opposed to attempted-and-failed', async () => {
+    const env = makeDeps({
+      cohortA: [cohortARow({ elapsed_days: 1 })],
+      channels: { email: true, push: false },
+    });
+    const out = await runBankReauthNotices(env.deps);
+
+    expect(out.results[0].status).toBe('sent');
+    expect(env.recordCalls).toHaveLength(1);
+  });
 });

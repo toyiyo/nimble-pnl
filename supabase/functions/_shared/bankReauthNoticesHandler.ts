@@ -154,10 +154,12 @@ async function processTarget(
   });
 
   let emailsSent = 0;
+  let emailAttempted = 0;
   if (wantsEmail) {
     const emailTargets = recipients.filter(
       (r): r is RecipientRow & { email: string } => Boolean(r.email),
     );
+    emailAttempted = emailTargets.length;
     const sends = await Promise.all(
       emailTargets.map((r) =>
         deps.sendEmail({ to: r.email, from: deps.fromEmail, subject: content.subject, html: content.html }),
@@ -167,12 +169,34 @@ async function processTarget(
   }
 
   let pushSent = 0;
+  let pushAttempted = 0;
   if (wantsPush && content.push) {
     const userIds = recipients.map((r) => r.user_id);
     if (userIds.length > 0) {
+      pushAttempted = userIds.length;
       const pushRes = await deps.sendPush(userIds, target.restaurantId, content.push);
       pushSent = pushRes.sent;
     }
+  }
+
+  // A channel that had recipients but delivered to none of them is a
+  // transient failure (e.g. Resend/web-push outage), not a "reached this
+  // stage" event — don't record the dedupe row, or this stage would be
+  // silently and permanently skipped on every future run. This is distinct
+  // from both channels being disabled for this restaurant (wantsEmail/
+  // wantsPush false), which correctly still records below.
+  const deliveryFailed =
+    (emailAttempted > 0 && emailsSent === 0) || (pushAttempted > 0 && pushSent === 0);
+  if (deliveryFailed) {
+    return {
+      connected_bank_id: target.connectedBankId,
+      restaurant_id: target.restaurantId,
+      stage: target.stage,
+      status: 'error',
+      emailsSent,
+      pushSent,
+      error: 'all attempted sends failed for this stage',
+    };
   }
 
   // Record the dedupe row regardless of whether anything actually sent —

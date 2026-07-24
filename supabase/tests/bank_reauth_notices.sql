@@ -18,7 +18,7 @@
 
 BEGIN;
 
-SELECT plan(26);
+SELECT plan(27);
 
 SET LOCAL role TO postgres;
 
@@ -41,9 +41,14 @@ SELECT col_type_is(
   'deactivated_at should be TIMESTAMPTZ'
 );
 
+-- Composite FK (connected_bank_id, restaurant_id) -> connected_banks(id,
+-- restaurant_id) — not a single-column FK on connected_bank_id alone, so
+-- col_is_fk is called with both columns (CodeRabbit finding: prevents a
+-- notice's connected_bank_id from belonging to a different restaurant_id
+-- than the one on the row, which RLS trusts).
 SELECT col_is_fk(
-  'public', 'bank_reauth_notices', 'connected_bank_id',
-  'connected_bank_id should be a foreign key'
+  'public', 'bank_reauth_notices', ARRAY['connected_bank_id', 'restaurant_id'],
+  'connected_bank_id + restaurant_id should be a composite foreign key to connected_banks'
 );
 
 SELECT has_index(
@@ -160,6 +165,39 @@ SELECT lives_ok(
 );
 
 -- ============================================================
+-- Composite FK actually blocks a cross-tenant mismatch (the vulnerability
+-- CodeRabbit flagged: two independent single-column FKs would have allowed
+-- a notice for restaurant A's bank to be tagged with restaurant B, and RLS
+-- authorizes purely from bank_reauth_notices.restaurant_id).
+-- ============================================================
+
+DELETE FROM public.user_restaurants
+  WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000097';
+DELETE FROM public.restaurants
+  WHERE id = '00000000-0000-0000-0000-0000e0000097';
+
+INSERT INTO public.restaurants (id, name, address, phone)
+VALUES (
+  '00000000-0000-0000-0000-0000e0000097', 'Reauth Notices Test (Other Tenant)', '2 Test Way', '555-0197'
+);
+
+SELECT throws_ok(
+  $$
+    INSERT INTO public.bank_reauth_notices
+      (restaurant_id, connected_bank_id, stage, deactivated_at)
+    VALUES (
+      '00000000-0000-0000-0000-0000e0000097',
+      '00000000-0000-0000-0000-0000e0000098',
+      'day_1',
+      '2026-07-20T00:00:00Z'
+    )
+  $$,
+  '23503',
+  NULL,
+  'a notice tagging restaurant B with restaurant A''s connected_bank_id is rejected (composite FK)'
+);
+
+-- ============================================================
 -- GRANT + RLS: a member can SELECT; a non-member sees zero rows.
 -- Run as `authenticated` with JWT claims per user, exactly as Supabase
 -- evaluates RLS in production — proves both the GRANT and the policy.
@@ -229,6 +267,8 @@ DELETE FROM public.user_restaurants
   WHERE restaurant_id = '00000000-0000-0000-0000-0000e0000099';
 DELETE FROM public.restaurants
   WHERE id = '00000000-0000-0000-0000-0000e0000099';
+DELETE FROM public.restaurants
+  WHERE id = '00000000-0000-0000-0000-0000e0000097';
 
 -- ============================================================
 -- Task 14: bank-reauth-notices worker RPCs (design §4.6):

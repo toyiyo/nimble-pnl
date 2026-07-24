@@ -9,15 +9,30 @@
 -- alongside supabase/functions/_shared/resolveChannels.ts and
 -- src/lib/notificationTypes.ts (Phase 4 Task 3 adds those two).
 
+-- Composite uniqueness on (id, restaurant_id) — id is already the primary key
+-- (globally unique) — lets bank_reauth_notices below enforce, at the database
+-- level, that a notice's connected_bank_id actually belongs to its
+-- restaurant_id. Without this, two independent single-column FKs would allow
+-- a notice for a bank owned by restaurant A to be tagged with restaurant B;
+-- since RLS on bank_reauth_notices authorizes purely from restaurant_id, that
+-- mismatch would let restaurant B read restaurant A's bank reference and
+-- outage timestamp.
+ALTER TABLE public.connected_banks
+  ADD CONSTRAINT connected_banks_id_restaurant_uniq UNIQUE (id, restaurant_id);
+
 CREATE TABLE IF NOT EXISTS public.bank_reauth_notices (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   restaurant_id uuid NOT NULL REFERENCES public.restaurants(id) ON DELETE CASCADE,
-  connected_bank_id uuid NOT NULL REFERENCES public.connected_banks(id) ON DELETE CASCADE,
+  connected_bank_id uuid NOT NULL,
   stage text NOT NULL CHECK (stage IN ('day_1', 'day_4', 'day_10', 'recovered')),
   deactivated_at timestamptz NOT NULL,
   sent_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT bank_reauth_notices_once
-    UNIQUE (connected_bank_id, stage, deactivated_at)
+    UNIQUE (connected_bank_id, stage, deactivated_at),
+  CONSTRAINT bank_reauth_notices_bank_restaurant_fk
+    FOREIGN KEY (connected_bank_id, restaurant_id)
+    REFERENCES public.connected_banks (id, restaurant_id)
+    ON DELETE CASCADE
 );
 
 COMMENT ON TABLE public.bank_reauth_notices IS

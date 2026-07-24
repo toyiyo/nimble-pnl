@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  accountCount,
   groupBanks,
   totalBalance,
   quarantinedBalance,
@@ -149,6 +150,7 @@ describe("computeTotalBalance / quarantinedBalance", () => {
 
     expect(totalBalance(banks)).toBe(100);
     expect(quarantinedBalance(banks)).toBe(75);
+    expect(accountCount(banks)).toBe(1);
     expect(totalBalance(banks) + quarantinedBalance(banks)).toBe(oldUnfilteredTotal);
   });
 });

@@ -120,7 +120,7 @@ describe('buildHourlyRecommendations', () => {
     expect(result[0].overTarget).toBe(true);
   });
 
-  it('emits raw pre-floor demand alongside recommendedStaff', () => {
+  it('should emit raw pre-floor demand alongside recommendedStaff when minStaff does not exceed demand', () => {
     const hourlySales = [
       { hour: 11, avgSales: 200, sampleCount: 4 }, // 200/60=3.33→4, minStaff=1 → demand=recommendedStaff
     ];
@@ -134,7 +134,7 @@ describe('buildHourlyRecommendations', () => {
     expect(result[0].recommendedStaff).toBe(4);
   });
 
-  it('sets recommendedStaff to max(demand, minStaff) when the floor exceeds demand', () => {
+  it('should set recommendedStaff to max(demand, minStaff) when the floor exceeds demand', () => {
     const hourlySales = [
       { hour: 8, avgSales: 10, sampleCount: 4 }, // 10/60=0.17→1 demand, but minStaff=3
     ];
@@ -148,7 +148,7 @@ describe('buildHourlyRecommendations', () => {
     expect(result[0].recommendedStaff).toBe(3);
   });
 
-  it('CRITICAL: sets demand to 0 when sales are zero, but recommendedStaff still floors to minStaff', () => {
+  it('should set demand to 0 when sales are zero, while recommendedStaff still floors to minStaff', () => {
     const hourlySales = [{ hour: 6, avgSales: 0, sampleCount: 0 }];
     const result = buildHourlyRecommendations(hourlySales, {
       targetSplh: 60,
@@ -160,7 +160,7 @@ describe('buildHourlyRecommendations', () => {
     expect(result[0].recommendedStaff).toBe(2);
   });
 
-  it('CRITICAL: sets demand to 0 when sales are negative, but recommendedStaff still floors to minStaff', () => {
+  it('should set demand to 0 when sales are negative, while recommendedStaff still floors to minStaff', () => {
     // Negative avgSales shouldn't happen in practice, but a bad refund/void
     // adjustment upstream could produce one — demand must floor to 0 (not a
     // negative headcount), same as the zero-sales case above.
@@ -175,7 +175,7 @@ describe('buildHourlyRecommendations', () => {
     expect(result[0].recommendedStaff).toBe(2);
   });
 
-  it('CRITICAL: sets demand to 0 when targetSplh is zero', () => {
+  it('should set demand to 0 when targetSplh is zero', () => {
     const hourlySales = [{ hour: 12, avgSales: 200, sampleCount: 4 }];
     const result = buildHourlyRecommendations(hourlySales, {
       targetSplh: 0,

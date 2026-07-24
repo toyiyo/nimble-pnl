@@ -87,7 +87,13 @@ async function fetchConflicts(
 
 export function useCheckConflicts(params: ConflictCheckParams | null) {
   const { data, isLoading, error } = useQuery({
-    queryKey: ['conflict-check', params?.employeeId, params?.startTime, params?.endTime],
+    queryKey: [
+      'conflict-check',
+      params?.employeeId,
+      params?.restaurantId,
+      params?.startTime,
+      params?.endTime,
+    ],
     queryFn: () => {
       if (!params) return { conflicts: [] as ConflictCheck[], hasConflicts: false };
       return fetchConflicts(params);

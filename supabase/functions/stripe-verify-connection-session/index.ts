@@ -133,6 +133,11 @@ serve(async (req) => {
               status: 'connected',
               connected_at: new Date().toISOString(),
               disconnected_at: null,
+              // Clear the reauth escalation clock: a completed reconnect makes
+              // this account live again. Omitting this left deactivated_at set
+              // after reconnect, which the sync path then preserved via
+              // COALESCE and kept the bank stuck requires_reauth (2026-07-24).
+              deactivated_at: null,
               sync_error: null,
               institution_name: account.institution_name,
               institution_logo_url: institutionLogoUrl,
@@ -188,7 +193,10 @@ serve(async (req) => {
               as_of_date: new Date(account.balance.as_of * 1000).toISOString(),
               is_active: true,
             }, {
-              onConflict: 'stripe_financial_account_id',
+              // 1:1 identity is connected_bank_id; Stripe rotates fca_ ids on
+              // reconnect. Keying on the fca_ would orphan the pre-reconnect
+              // balance row (incident 2026-07-24).
+              onConflict: 'connected_bank_id',
             });
 
           if (balanceError) {

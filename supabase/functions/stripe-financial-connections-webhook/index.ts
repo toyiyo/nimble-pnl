@@ -204,7 +204,12 @@ serve(async (req) => {
             is_active: true,
             as_of_date: new Date().toISOString(),
           }, {
-            onConflict: "stripe_financial_account_id",
+            // Key on connected_bank_id, the 1:1 identity of the account.
+            // Stripe rotates fca_ ids on reconnect, so keying on
+            // stripe_financial_account_id would INSERT a duplicate row for the
+            // new id and orphan the old one (incident 2026-07-24). Keying on
+            // connected_bank_id rotates the fca_ in place instead.
+            onConflict: "connected_bank_id",
             ignoreDuplicates: false, // Update existing record
           });
 

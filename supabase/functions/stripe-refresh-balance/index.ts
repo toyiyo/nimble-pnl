@@ -103,22 +103,14 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
-    // Get all Stripe account IDs for this bank connection from balances table
-    const { data: balanceRecords } = await supabaseAdmin
-      .from("bank_account_balances")
-      .select("stripe_financial_account_id, account_name")
-      .eq("connected_bank_id", bankId)
-      .not("stripe_financial_account_id", "is", null);
-
-    // Extract unique account IDs
-    const accountIds = [...new Set(
-      balanceRecords?.map(b => b.stripe_financial_account_id).filter(Boolean) || []
-    )];
-
-    // If no account IDs found in balances, fall back to primary one from connected_banks
-    if (accountIds.length === 0 && bank.stripe_financial_account_id) {
-      accountIds.push(bank.stripe_financial_account_id);
-    }
+    // Enumerate the account to refresh from connected_banks' CURRENT fca_ —
+    // the single source of truth for which Stripe account is live. Deriving
+    // this from bank_account_balances instead used to pick up a stale old-fca_
+    // row left by a reconnect (incident 2026-07-24). A connected_banks row is
+    // 1:1 with a real account, so there is exactly one live account id here.
+    const accountIds = bank.stripe_financial_account_id
+      ? [bank.stripe_financial_account_id]
+      : [];
 
     console.log(`[REFRESH-BALANCE] Found ${accountIds.length} account(s) to refresh:`, accountIds);
 
@@ -186,7 +178,10 @@ serve(async (req) => {
             connected_bank_id: bankId,
             ...balanceData
           }, {
-            onConflict: 'stripe_financial_account_id'
+            // 1:1 identity is connected_bank_id; Stripe rotates fca_ ids on
+            // reconnect. Keying on the fca_ would orphan the pre-reconnect
+            // balance row (incident 2026-07-24).
+            onConflict: 'connected_bank_id'
           });
 
         if (upsertError) {

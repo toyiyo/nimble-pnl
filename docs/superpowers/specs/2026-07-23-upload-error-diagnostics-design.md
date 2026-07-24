@@ -105,37 +105,79 @@ Narrowing order:
 
 `userMessage` policy (per lesson 2026-04-22 on leaking raw error text):
 
-- **4xx**: surface the server's message — anticipated and actionable
-  ("File size exceeds limit", "Invalid MIME type", etc.).
-- **5xx / network / unknown**: generic message ("Upload failed — please try
-  again"), but the `code` is still shown so the user can report it.
+**The toast never renders raw server text.** The 400 this investigation is
+chasing is a Supabase Storage RLS/insert rejection whose body is literally
+`new row violates row-level security policy for table "objects"` — not
+actionable for a restaurant manager, and a schema/policy leak. So `userMessage`
+is a **curated, code-keyed string**, never `error.message`:
 
-`logLine` is always a fully stringified, single-line summary
-(`"[400] new row violates ..."`) so a `console.error(logLine)` reaches Faro as
-real text.
+| `code` | `userMessage` |
+|--------|---------------|
+| `413`  | "This file is too large to upload." |
+| `415`  | "That file type isn't supported." |
+| `409`  | "A file with that name already exists." |
+| everything else (incl. `400`, `5xx`, `network`, `unknown`) | "Upload failed (code `<code>`). Please try again — if it keeps happening, share this code with support." |
+
+The generic branch still shows the `code` so the user can report it. The raw
+server body is captured **only** in `logLine`.
+
+`logLine` is always a fully stringified, single-line summary that already
+begins with the code (`"[400] new row violates ..."`), so `console.error(logLine)`
+reaches Faro as real text and carries the raw body for a support report — while
+the on-screen toast stays clean.
 
 ### Delivery at each call site
 
 ```typescript
 } catch (error: unknown) {
   const info = describeStorageError(error);
-  console.error(`Upload failed [${info.code}]: ${info.logLine}`);
+  console.error(info.logLine);        // already prefixed with [code]
   toast({
     title: 'Upload failed',
     description: info.userMessage,
     variant: 'destructive',
+    duration: UPLOAD_ERROR_TOAST_DURATION,  // longer than the 5s default
   });
 } finally {
   setUploading(false);
 }
 ```
 
-- **Toast is primary.** In the failing session the beacon never arrives, so the
-  user reads the code off the screen and can report it.
-- **`console.error` is secondary** and uses a template literal, so Faro captures
-  real text instead of `[object Object]`.
+- **On-screen is primary.** In the failing session the telemetry beacon never
+  arrives, so the user reads the `code` off the screen and reports it.
+- **`console.error(info.logLine)`** is secondary and passes an
+  already-stringified line, so Faro captures real text instead of
+  `[object Object]`. No doubled code prefix.
 - Each site keeps its existing control flow — same return values, same
-  `finally`, same re-throws. Only the catch *body* changes.
+  `finally`, same re-throws. Only the catch *body* changes (except the two
+  exceptions below).
+
+### Toast durability + persistent inline error (reported surfaces)
+
+The default toast is a single-slot (`TOAST_LIMIT = 1`), ~5s self-dismissing
+surface. For a code the user is meant to transcribe and report, that is too
+fragile to be the *only* on-screen channel. Two mitigations:
+
+1. **Longer duration** for these upload-failure toasts via a shared
+   `UPLOAD_ERROR_TOAST_DURATION` constant (e.g. 10–15s), applied at every site.
+2. **Persistent inline error line** on the two surfaces the bug was actually
+   reported against — the product **image** upload (`ProductDialog.tsx`) and the
+   **receipt** upload (`ReceiptUpload.tsx` via `useReceiptImport`). A
+   `text-[13px] text-destructive` line under the file input shows
+   `userMessage` and stays until the next upload attempt, outliving the toast.
+   The other 9 toast sites rely on the toast alone (they already do today).
+
+### Excluded from the toast pattern: `useTimePunches.tsx`
+
+The kiosk clock-in/out photo upload deliberately lets the punch **succeed** when
+the photo fails, setting a `photoUploadFailed` flag and delivering a calm
+message in `onSuccess` ("Punch recorded — photo could not be uploaded"). Firing
+a destructive "Upload failed" toast inside the mutation would (a) alarm someone
+clocking in for a handled background hiccup, and (b) race the calm success toast
+under `TOAST_LIMIT = 1`, non-deterministically suppressing one. This site
+therefore keeps its existing flow; it may still call `describeStorageError()`
+to enrich its `console.error` log line, but it does **not** gain a destructive
+toast.
 
 ### The one behavior change
 
@@ -157,8 +199,8 @@ is the only path whose observable behavior changes; it changes from
 | `src/hooks/useAttachments.ts` | 207 | |
 | `src/hooks/useBankStatementImport.tsx` | 126 | |
 | `src/hooks/useExpenseInvoiceUpload.tsx` | 80 | |
-| `src/hooks/useReceiptImport.tsx` | 222 | inventory receipt path |
-| `src/hooks/useTimePunches.tsx` | 197 | only site passing options |
+| `src/hooks/useReceiptImport.tsx` | 222 | inventory receipt path — **inline error surfaced in `ReceiptUpload.tsx`** |
+| `src/hooks/useTimePunches.tsx` | 197 | **EXCLUDED from toast pattern** — kiosk UX, keeps `photoUploadFailed`/`onSuccess` flow |
 | `src/pages/Inventory.tsx` | 742 | |
 
 Line numbers are indicative and will be re-confirmed against the branch during
@@ -177,14 +219,16 @@ at the boundary.
 assertions (per lesson 2026-07-20: source-text/regex tests do not count toward
 SonarCloud new-code coverage):
 
-- `StorageApiError`-shaped (4xx) → `code` = status, `userMessage` surfaces
-  server message.
-- `StorageApiError`-shaped (5xx) → `code` = status, `userMessage` generic.
+- `StorageApiError`-shaped `413`/`415`/`409` → `code` = status,
+  `userMessage` = the matching curated string.
+- `StorageApiError`-shaped `400` → `code: '400'`, `userMessage` = generic
+  (asserts the raw RLS body is **not** in `userMessage`, only in `logLine`).
+- `StorageApiError`-shaped `5xx` → `code` = status, `userMessage` generic.
 - `StorageUnknownError`-shaped → `code: 'network'`, generic message.
-- Plain `Error` → `code: 'unknown'`, message passed through the 5xx/generic
-  policy.
+- Plain `Error` → `code: 'unknown'`, generic message; raw `message` in `logLine`.
 - Non-error value (string, null) → fallback via `String(error)`.
-- `logLine` is always single-line and contains the code.
+- `logLine` is always single-line, begins with `[code]`, and — for the 400
+  case — contains the raw server body.
 
 Keeping the logic pure in `src/lib/` (not inside a component) is what makes this
 coverage reachable.
@@ -195,3 +239,9 @@ coverage reachable.
 - Capturing the 400 body server-side (the toast now surfaces it client-side).
 - Cleanup of the two production `receipt_imports` diagnostic rows — the user
   confirmed they are harmless to leave.
+- Pre-existing shared-component a11y gaps flagged in design review but not
+  regressions of this change: `ToastClose` lacks an `sr-only`/`aria-label`
+  (`src/components/ui/toast.tsx`), and a toast firing over an open dialog is not
+  keyboard-reachable from inside the dialog's focus trap. Optional one-line
+  `ToastClose` label may be included if trivial; the focus-trap issue is not
+  addressed here.

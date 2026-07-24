@@ -290,3 +290,70 @@ them.
   settings permission (verified in build, not assumed).
 - All figures in this doc are illustrative; no customer name or real wage is
   committed. PII sweep (`grep -niE`) runs before push.
+
+## Design-review resolutions (Phase 2.5)
+
+Incorporated from the frontend-design review of commit `46f5ab1a`.
+
+1. **ARIA structure (was: `role="img"` + focusable columns conflict).** The chart
+   container is **not** `role="img"`. Use `role="toolbar"` (or `role="listbox"`)
+   with **roving tabindex** children: the selected column is `role="option"`/
+   button with `tabIndex=0`, all others `tabIndex=-1`; ArrowLeft/Right move
+   selection and focus. A visually-hidden (`sr-only`) `<p>` carries the rolled-up
+   "N short on demand, M at the floor over K hours" summary. No `role="img"`
+   flattening of the interactive subtree.
+
+2. **Screen-reader enumeration of all gaps.** Port `CoverageStatusStrip`'s
+   `sr-only <ul aria-label="Understaffed windows">` (one `<li>` per short hour)
+   into the new chart so SR users still get the full gap list without arrow-keying
+   through every column. This is a hard requirement, not optional.
+
+3. **Receipt placement / sticky y-axis.** The receipt panel renders **outside**
+   the existing `overflow-x-auto` plot wrapper (a flex row: scrollable chart on the
+   left, pinned receipt on the right on ≥`md`, stacked below on mobile) so "pinned"
+   holds and it never scrolls with the plot. The SVG **y-axis lives in the sticky
+   `pl-[120px]` left gutter** (mirroring `TimelineLane`'s `sticky left-0 z-10
+   w-[120px]` label column) so the people axis stays visible during horizontal
+   scroll on wide days. The plot area keeps the shared `minToPct` x-scale for axis
+   alignment.
+
+4. **`aria-live` debounce.** The receipt is `aria-live="polite"` but its text is
+   updated for SR announcement **only on slider commit** (`pointerup`/`keyup`), not
+   on every drag frame. The slider's own native `aria-valuenow`/`aria-valuetext`
+   update continuously; the visual receipt/chart still redraw live each frame.
+
+5. **Quick-add parity (one-click preserved).** Do **not** regress to two clicks.
+   Short (`crit`/`floor`) columns keep a **one-click** hover-revealed "+" quick-add
+   affordance calling `handleGapClick(h.startMin)` — identical to today's strip
+   button — *in addition to* selection driving the receipt (whose "Add shift for
+   this hour" button is the secondary, discoverable path). `mergeUnderStaffedRange`
+   already handles `floor` hours (delta < 0 for both kinds), confirmed.
+
+6. **Save-gate authz (no clean precedent — define deliberately).** `StaffingOverlay`
+   calls `updateSettings` with **no** role check; other surfaces use ad-hoc inline
+   checks like `['owner','manager','operations_manager'].includes(role)`. Build
+   step: adopt that inline predicate for the Save button
+   (`selectedRestaurant?.role`), **explicitly including `operations_manager`** and
+   **excluding** view-only collaborator roles; live preview + Reset stay available
+   to everyone. Document the chosen role set in the PR. Do not skip this — there is
+   no gate to copy.
+
+7. **Styling conventions (explicit).** Receipt ledger, slider label, labor pill,
+   and notch use the CLAUDE.md scale: labels `text-[12px] font-medium
+   text-muted-foreground uppercase tracking-wider`; ledger rows `text-[13px]`/
+   `text-[14px] font-medium`; containers `rounded-xl border border-border/40
+   bg-muted/30`; pill `text-[11px] px-1.5 py-0.5 rounded-md`. `tabular-nums` on all
+   aligned figures.
+
+8. **SVG hatch = token-compliant.** `<pattern>`/`<rect>` fills reference
+   `hsl(var(--muted-foreground))` / `hsl(var(--warning))` via inline `style` or a
+   bound CSS custom property — never a raw hex. Dashed floor slice uses
+   `stroke-dasharray`, hatch `nodata` uses a diagonal-line `<pattern>` — texture,
+   not color alone.
+
+9. **Loading skeleton reshape.** Replace the current generic bar skeleton with one
+   mirroring the new layout (slider row + axis + chart + adjacent receipt block).
+
+10. **Preserve settings deep-link.** `CoverageDemandInfo`'s "Adjust targets in
+    Staffing settings →" link to `/settings` is retained in the new chart header so
+    the full-settings path isn't lost when the popover folds in.

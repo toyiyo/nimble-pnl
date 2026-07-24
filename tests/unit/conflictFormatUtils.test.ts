@@ -156,10 +156,40 @@ describe('formatConflictLine – availability conflict with time window', () => 
     const result = formatConflictLine(conflict, 'America/Chicago', summerDate);
     // The core fix: time window must show 10:00/10:30 PM (CDT), not 9:00/9:30 PM (CST).
     expect(result).toContain('10:00 PM – 10:30 PM');
-    // Note: extractDayLabel parses the ISO date as UTC midnight, which in CDT (UTC-5) falls
-    // on Jun 22. This is a known out-of-scope display issue (design doc non-goal #2).
-    // We verify the label is present (whatever day is shown) rather than asserting the exact date.
-    expect(result).toMatch(/Jun 2[23]/);
+    // The date in the message is a calendar day the SQL already resolved in the
+    // restaurant's frame. It must render verbatim — previously it was parsed as
+    // UTC midnight and rendered as Jun 22 in CDT.
+    expect(result).toContain('Tue, Jun 23');
+  });
+
+  it('renders the exact reported day, not the day before (2026-07-31 in America/Chicago)', () => {
+    // The bug as reported: assigning a Fri Jul 31 shift produced
+    // "Shift on Thu, Jul 30 is outside availability".
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Shift on 2026-07-31 is outside employee availability',
+      available_start: '15:00:00',
+      available_end: '04:30:00',
+    };
+    const result = formatConflictLine(conflict, 'America/Chicago', new Date(2026, 6, 31));
+    expect(result).toContain('Fri, Jul 31');
+    expect(result).not.toContain('Jul 30');
+  });
+
+  it('renders the same day label regardless of the restaurant timezone', () => {
+    // A calendar day has no timezone; the label must not vary with one.
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Shift on 2026-07-31 is outside employee availability',
+      available_start: '15:00:00',
+      available_end: '22:00:00',
+    };
+    const ref = new Date(2026, 6, 31);
+    for (const tz of ['America/Chicago', 'America/Los_Angeles', 'Asia/Tokyo', 'UTC']) {
+      expect(formatConflictLine(conflict, tz, ref)).toContain('Fri, Jul 31');
+    }
   });
 
 });
@@ -232,6 +262,22 @@ describe('formatConflictLine – fallback cases', () => {
       has_conflict: true,
     };
     expect(formatConflictLine(conflict, 'America/Chicago')).toBe('Scheduling conflict');
+  });
+
+  it('does not throw on a regex-matching but calendar-invalid date', () => {
+    // The SQL only emits real dates, so this is unreachable in production, but
+    // formatConflictLine runs inside render — a throw here would crash the
+    // conflict dialog. A malformed date must degrade to the raw string, not raise.
+    const conflict: ConflictCheck = {
+      has_conflict: true,
+      conflict_type: 'recurring',
+      message: 'Shift on 2026-02-31 is outside availability',
+    };
+    let result = '';
+    expect(() => {
+      result = formatConflictLine(conflict, 'America/Chicago');
+    }).not.toThrow();
+    expect(result).toContain('2026-02-31');
   });
 });
 

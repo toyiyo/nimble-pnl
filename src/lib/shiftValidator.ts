@@ -2,9 +2,17 @@
  * ShiftValidator — runs business-rule checks against existing shifts.
  *
  * Returns errors (block mutation) and warnings (show in UI, allow override).
+ *
+ * Scope note: time-off and availability conflicts are NOT checked here. They are
+ * owned by the `check_timeoff_conflict` / `check_availability_conflict` RPCs
+ * (see `useConflictDetection`), which resolve calendar days in the restaurant's
+ * timezone. A client-side mirror of the time-off check used to live here; it was
+ * unreachable (no caller ever supplied the requests) and bucketed by the
+ * viewer's browser timezone, so it would have disagreed with the server. Don't
+ * reintroduce one — the dialog would render the same warning twice.
  */
 import { ShiftInterval } from './shiftInterval';
-import type { Shift, TimeOffRequest } from '@/types/scheduling';
+import type { Shift } from '@/types/scheduling';
 
 export interface ValidationIssue {
   code: string;
@@ -19,7 +27,6 @@ export interface ValidationResult {
 
 export interface ValidateOptions {
   excludeShiftId?: string;
-  timeOffRequests?: TimeOffRequest[];
 }
 
 const MIN_REST_HOURS = 8;
@@ -36,34 +43,6 @@ function checkRestGap(
       code: 'CLOPEN',
       message: `Only ${gap.toFixed(1)}h rest ${label} (minimum ${MIN_REST_HOURS}h)`,
     });
-  }
-}
-
-/** Check time-off conflicts for an employee. */
-function checkTimeOffConflicts(
-  proposed: { employeeId: string; interval: ShiftInterval },
-  timeOffRequests: TimeOffRequest[],
-  warnings: ValidationIssue[],
-): void {
-  const relevant = timeOffRequests.filter(
-    (r) =>
-      r.employee_id === proposed.employeeId &&
-      (r.status === 'approved' || r.status === 'pending'),
-  );
-
-  for (const request of relevant) {
-    const requestStart = new Date(`${request.start_date}T00:00:00`);
-    const requestEnd = new Date(`${request.end_date}T23:59:59`);
-
-    if (
-      proposed.interval.startAt <= requestEnd &&
-      proposed.interval.endAt >= requestStart
-    ) {
-      warnings.push({
-        code: 'TIME_OFF',
-        message: `Employee has ${request.status} time-off from ${request.start_date} to ${request.end_date}`,
-      });
-    }
   }
 }
 
@@ -103,10 +82,6 @@ export function validateShift(
 
     checkRestGap(existingInterval.restHoursUntil(proposed.interval), 'after', warnings);
     checkRestGap(proposed.interval.restHoursUntil(existingInterval), 'before', warnings);
-  }
-
-  if (options?.timeOffRequests) {
-    checkTimeOffConflicts(proposed, options.timeOffRequests, warnings);
   }
 
   return {

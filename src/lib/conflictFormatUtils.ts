@@ -1,5 +1,6 @@
 import type { ConflictCheck } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { formatDateOnly } from '@/lib/dateOnly';
 import { formatHourToTime } from '@/lib/timeUtils';
 
 /**
@@ -24,12 +25,29 @@ export function formatUTCTimeToLocal(
   return formatHourToTime(h + m / 60); // "10:30 PM"
 }
 
-/** Extract an ISO date from a message and format it as a short day label (e.g. "Mon, Mar 22"). */
-function extractDayLabel(message: string | undefined, timezone: string): string | null {
+/**
+ * Extract an ISO date from a message and format it as a short day label
+ * (e.g. "Mon, Mar 22").
+ *
+ * Takes NO timezone: the date embedded in a conflict message is a calendar day
+ * the SQL already resolved in the restaurant's frame (`'Shift on ' ||
+ * v_current_date`), not an instant. Round-tripping it through UTC midnight and
+ * back — as this did — rendered the PREVIOUS day for every restaurant west of
+ * UTC, i.e. all of them.
+ */
+function extractDayLabel(message: string | undefined): string | null {
   const dateMatch = message?.match(/\d{4}-\d{2}-\d{2}/);
   if (!dateMatch) return null;
-  const date = new Date(dateMatch[0] + 'T00:00:00Z');
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: timezone });
+  try {
+    return formatDateOnly(dateMatch[0], 'EEE, MMM d');
+  } catch {
+    // The SQL only emits real calendar dates, so this is unreachable today.
+    // Guard anyway: `formatDateOnly` throws on a regex-matching but invalid date
+    // (e.g. 2026-02-31 from a future caller). This runs inside render via
+    // `formatConflictLine`, so a throw would crash the conflict dialog. Fall back
+    // to the raw date rather than the old silent UTC-midnight coercion.
+    return dateMatch[0];
+  }
 }
 
 /**
@@ -68,14 +86,14 @@ export function formatConflictLine(
         : referenceDate;
     const start = formatUTCTimeToLocal(conflict.available_start, timezone, anchor);
     const end = formatUTCTimeToLocal(conflict.available_end, timezone, anchor);
-    const dayLabel = extractDayLabel(conflict.message, timezone);
+    const dayLabel = extractDayLabel(conflict.message);
     if (dayLabel) {
       return `Shift on ${dayLabel} is outside availability (available ${start} – ${end})`;
     }
     return `Outside availability window (available ${start} – ${end})`;
   }
 
-  const dayLabel = extractDayLabel(conflict.message, timezone);
+  const dayLabel = extractDayLabel(conflict.message);
   if (dayLabel && conflict.message) {
     return conflict.message.replace(/\d{4}-\d{2}-\d{2}/, dayLabel);
   }

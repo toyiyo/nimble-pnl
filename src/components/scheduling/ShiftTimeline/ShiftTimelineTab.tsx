@@ -17,7 +17,7 @@ import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useCreateShift } from '@/hooks/useShifts';
 import { useToast } from '@/hooks/use-toast';
-import { computeMinStaffFromCrew } from '@/lib/staffingCalculator';
+import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
 import { useTimelineModel, computeCoverage } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
@@ -32,7 +32,7 @@ import { AvailabilityConflictDialog, type ConflictDialogData } from '@/component
 import { formatDayLabel } from '@/lib/shiftInterval';
 import { minutesToIso } from '@/lib/shiftTimeMath';
 
-import type { Shift, Employee } from '@/types/scheduling';
+import type { Shift, Employee, StaffingSettings } from '@/types/scheduling';
 import type { GroupByMode } from '@/lib/scheduleGrouping';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
@@ -176,6 +176,19 @@ export function resolveLaneContext(laneKey: string | null, groupBy: GroupByMode)
   return { position: null, area: laneKey };
 }
 
+/**
+ * Turns the on-chart SPLH slider's local preview state into the
+ * `settingsOverrides` argument `useWeekStaffingSuggestions` expects (design
+ * doc §B/§E). `sliderTarget === null` means "no live preview — use the saved
+ * settings", which must produce `null` rather than `{ target_splh: undefined
+ * }`: the hook filters `undefined` override values out of the merge, but a
+ * bare `null` here skips the merge (and the `dateRange`/query-key
+ * recomputation it would otherwise trigger) entirely.
+ */
+export function resolveSettingsOverrides(sliderTarget: number | null): Partial<StaffingSettings> | null {
+  return sliderTarget === null ? null : { target_splh: sliderTarget };
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 /**
@@ -215,6 +228,14 @@ export function ShiftTimelineTab({
   // required `selectedStartMin`/`onSelect` contract so the chart's keyboard
   // navigation has somewhere to land.
   const [selectedStartMin, setSelectedStartMin] = useState<number | null>(null);
+  // On-chart SPLH slider's live-preview value (design doc §B/§E). `null` means
+  // "no preview — use the saved `target_splh`"; a number is the in-progress
+  // drag value, fed to `useWeekStaffingSuggestions` via `settingsOverrides` so
+  // the whole pipeline (chart/receipt/verdict) redraws off ONE source of
+  // truth. Not yet wired to a slider UI (Stage 4.1's `SplhSlider` render lands
+  // in the next task) — this only satisfies the state/plumbing half of the
+  // contract.
+  const [sliderTarget, setSliderTarget] = useState<number | null>(null);
 
   // ── Drag-move / edge-resize draft (Stage D2/D3) ───────────────────────────
   // The in-flight drafted range for a bar currently being dragged/resized, or
@@ -264,7 +285,11 @@ export function ShiftTimelineTab({
   }, []);
 
   // ── Staffing recommendations ───────────────────────────────────────────────
-  const { daySuggestions, activeSettings } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
+  const { daySuggestions, activeSettings, updateSettings, isSaving } = useWeekStaffingSuggestions(
+    restaurantId,
+    weekDays,
+    resolveSettingsOverrides(sliderTarget),
+  );
 
   const dayRecommendations = useMemo(() => {
     const result = daySuggestions.get(selectedDay);
@@ -407,6 +432,13 @@ export function ShiftTimelineTab({
   // `StaffingOverlay` already use, so the chart never disagrees with the
   // recommendation pipeline about what "the floor" means.
   const minStaff = computeMinStaffFromCrew(activeSettings?.min_crew ?? null, activeSettings?.min_staff ?? 0);
+  // Average hourly wage across the restaurant's employees, in dollars (design
+  // doc §B: `avgWage = computeAvgHourlyRateCents(employees)/100`) — feeds the
+  // slider's implied-labor readout (`pct = avgWage ÷ target_splh × 100`) and
+  // its labor-consistent notch. Not yet rendered (Stage 4.1's `SplhSlider`
+  // wiring lands in the next task); derived here alongside `minStaff` since
+  // both come from the same settings/employees inputs this task threads.
+  const avgWage = computeAvgHourlyRateCents(employees) / 100;
   const hourlySummary = useMemo(
     () => summarizeCoverageHours(liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations),
     [liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations],

@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react';
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
-import { classifyHour, chartSummaryLabel } from '@/lib/coverageChartModel';
+import { classifyHour, chartSummaryLabel, neededFor } from '@/lib/coverageChartModel';
 import { cn } from '@/lib/utils';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ function computePeak(hours: CoverageHour[], minStaff: number): number {
   for (const h of hours) {
     peak = Math.max(peak, h.scheduledMax, h.scheduled);
     if (h.demand !== null) {
-      peak = Math.max(peak, Math.max(h.demand, minStaff));
+      peak = Math.max(peak, neededFor(h.demand, minStaff));
     }
   }
   return Math.max(Math.ceil(peak), 1) + 1;
@@ -86,7 +86,7 @@ export function columnAriaLabel(h: CoverageHour, minStaff: number): string {
   }
 
   const demand = h.demand ?? 0;
-  const needed = Math.max(demand, minStaff);
+  const needed = neededFor(demand, minStaff);
 
   switch (kind) {
     case 'crit':
@@ -322,7 +322,7 @@ export const CoverageChart = memo(function CoverageChart({
               }
 
               const demand = h.demand ?? 0;
-              const needed = Math.max(demand, minStaff);
+              const needed = neededFor(demand, minStaff);
               const scheduled = h.scheduled;
 
               const scheduledTopY = 100 - (scheduled / peak) * 100;

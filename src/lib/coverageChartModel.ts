@@ -16,11 +16,22 @@ import { formatCoverageHour } from '@/lib/coverageSummary';
 export type HourClassification = 'crit' | 'floor' | 'spare' | 'ok' | 'nodata';
 
 /**
+ * The effective headcount target for an hour once the minimum-staff floor is
+ * folded in — `max(demand, minStaff)`. Shared by every consumer that derives
+ * "needed" from a raw `demand` figure (`classifyHour`, `buildReceipt`,
+ * `chartSummaryLabel`, and `CoverageChart`'s own peak/label helpers) so the
+ * formula lives in exactly one place.
+ */
+export function neededFor(demand: number, minStaff: number): number {
+  return Math.max(demand, minStaff);
+}
+
+/**
  * Classify an hour's coverage column for the chart/receipt.
  *
  * - `nodata` — no demand target for this hour (`h.demand === null`): no
  *   sales history / no recommendation, excluded from every shortfall count.
- * - Otherwise `needed = max(h.demand, minStaff)`:
+ * - Otherwise `needed = max(h.demand, minStaff)` (see `neededFor`):
  *   - `crit`  — `scheduled < demand` (short even of the raw sales-driven demand)
  *   - `floor` — `demand <= scheduled < needed` (demand is met, but the
  *     minimum-staff floor still isn't)
@@ -31,7 +42,7 @@ export function classifyHour(h: CoverageHour, minStaff: number): HourClassificat
   if (h.demand === null) return 'nodata';
 
   const demand = h.demand;
-  const needed = Math.max(demand, minStaff);
+  const needed = neededFor(demand, minStaff);
   const scheduled = h.scheduled;
 
   if (scheduled < demand) return 'crit';
@@ -129,7 +140,7 @@ export function buildReceipt(
   const scheduled = h.scheduled;
   const scheduledMax = h.scheduledMax;
   const projectedSales = h.projectedSales ?? 0;
-  const needed = Math.max(demand, minStaff);
+  const needed = neededFor(demand, minStaff);
   const kind = classifyHour(h, minStaff);
 
   const rows: ReceiptRow[] = [
@@ -235,7 +246,7 @@ export function chartSummaryLabel(hours: CoverageHour[], minStaff: number): Char
       });
     } else {
       floorCount += 1;
-      const needed = Math.max(demand, minStaff);
+      const needed = neededFor(demand, minStaff);
       understaffedWindows.push({
         startMin: h.startMin,
         label: `${label}: short ${needed - h.scheduled} at the floor`,

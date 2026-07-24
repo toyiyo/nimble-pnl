@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useRevenueBreakdown } from './useRevenueBreakdown';
 import { useCostsFromSource } from './useCostsFromSource';
+import type { LaborBasis } from '@/lib/combineCosts';
 
 export interface PeriodMetrics {
   // Revenue from unified_sales (accurate source)
@@ -17,6 +18,7 @@ export interface PeriodMetrics {
   laborCost: number;
   pendingLaborCost: number;
   actualLaborCost: number;
+  laborBasis: LaborBasis;
   primeCost: number;
   
   // Calculated metrics
@@ -78,6 +80,7 @@ export function usePeriodMetrics(
     totalLaborCost,
     pendingLaborCost: pendingLaborCostRaw,
     actualLaborCost: actualLaborCostRaw,
+    laborBasis,
     isLoading: costsLoading,
     refetch: refetchCosts,
     error: costsError,
@@ -111,6 +114,7 @@ export function usePeriodMetrics(
       laborCost,
   pendingLaborCost,
   actualLaborCost,
+  laborBasis,
       primeCost,
       
       foodCostPercentage: netRevenue > 0 ? (foodCost / netRevenue) * 100 : 0,
@@ -132,7 +136,7 @@ export function usePeriodMetrics(
       hasRevenueData: revenueData.has_categorization_data || revenueData.totals.gross_revenue > 0,
       hasCostData: totalFoodCost > 0 || totalLaborCost > 0,
     };
-  }, [revenueData, totalFoodCost, totalLaborCost, pendingLaborCostRaw, actualLaborCostRaw, dateFrom, dateTo]);
+  }, [revenueData, totalFoodCost, totalLaborCost, pendingLaborCostRaw, actualLaborCostRaw, laborBasis, dateFrom, dateTo]);
   
   const refetch = () => {
     refetchRevenue();

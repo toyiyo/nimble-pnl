@@ -147,6 +147,51 @@ export interface ParsedLineItemInput {
  * - line_sequence is 1-based (index + 1).
  * - pack_quantity is null when unitsPerPack is absent or not provided.
  */
+export interface BarcodeSourceProduct {
+  gtin?: string | null;
+  sku?: string | null;
+}
+
+/**
+ * Resolve the value to auto-fill into the SKU/Barcode field when a line item
+ * is matched to an existing product.
+ *
+ * - Never overwrites an already-populated (non-whitespace) parsedSku.
+ * - Otherwise prefers product.gtin, falling back to product.sku.
+ * - Returns null when there's nothing to fill.
+ */
+export function resolveLineItemBarcode(
+  parsedSku: string | null,
+  product: BarcodeSourceProduct,
+): string | null {
+  if (parsedSku && parsedSku.trim().length > 0) {
+    return null;
+  }
+
+  const gtin = product.gtin?.trim();
+  if (gtin) {
+    return gtin;
+  }
+
+  const sku = product.sku?.trim();
+  if (sku) {
+    return sku;
+  }
+
+  return null;
+}
+
+/**
+ * Resolve the value to write back to a matched product's `gtin` column when
+ * the SKU/Barcode field was edited.
+ *
+ * Returns the trimmed, non-empty parsedSku, or null when there's nothing to write.
+ */
+export function resolveBarcodeWriteBack(parsedSku: string | null): string | null {
+  const trimmed = parsedSku?.trim();
+  return trimmed ? trimmed : null;
+}
+
 export function buildLineItemInsert(receiptId: string, item: ParsedLineItemInput, index: number) {
   return {
     receipt_id: receiptId,

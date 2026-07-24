@@ -28,7 +28,7 @@ conflict warning"), which restricted the shift-date anchor to `exception`.
 
 ## Verification of PR #549's exception-only restriction
 
-#549 restricted the shift-date anchor to exceptions because the two writers
+PR `#549` restricted the shift-date anchor to exceptions because the two writers
 anchor differently:
 
 - Exception writer `AvailabilityExceptionDialog.tsx` calls
@@ -89,6 +89,24 @@ Add to `tests/unit/conflictFormatUtils.test.ts`, mirroring the existing
   not `11:00 PM` (today's CDT anchor).
 - Symmetric **June** shift (`03:00:00` UTC = 10 PM CDT) with a **winter**
   `referenceDate` → must render `10:00 PM`, not `9:00 PM`.
+
+## Known limitation — overnight windows anchored to the previous day
+
+`check_availability_conflict`'s overnight-spanning path (section 3c of migration
+`20260712120000`) converts the window against `v_prev_date` (the day *before*
+the shift) rather than `v_current_date`. But the message it emits still embeds
+only `v_current_date` (`'Shift on ' || v_current_date`), so `extractDateAnchor`
+can never recover `v_prev_date` at the display layer. For an overnight recurring
+conflict whose window straddles a DST transition falling *between* the previous
+day and the shift day, the rendered window can still be off by an hour.
+
+This is not a regression from this change: the prior code anchored such windows
+to *today*, which is strictly worse (wrong whenever today differs from the shift
+date at all, not just across the rare intra-window DST boundary). Fixing it
+properly requires the SQL to also emit `v_prev_date` in the message; that is a
+migration-level change deferred to a follow-up. Flagged by Codex on PR #652 and
+accepted as a documented narrow edge rather than blocking this fix. See the
+plan's Task 3 note.
 
 ## Out of scope
 

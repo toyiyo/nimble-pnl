@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { computeAsOfDate } from "../_shared/bankBalanceAsOf.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -114,66 +115,34 @@ serve(async (req) => {
 
         console.log("[FC-WEBHOOK] Restaurant ID from customer metadata:", restaurantId);
 
-        // Check if there's an existing disconnected bank for this restaurant/institution
-        // When reconnecting, Stripe assigns a new financial_account_id, so we need to update the old record
-        const { data: existingBank } = await supabaseClient
-          .from("connected_banks")
-          .select("id")
-          .eq("restaurant_id", restaurantId)
-          .eq("institution_name", account.institution_name)
-          .eq("status", "disconnected")
-          .order("disconnected_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Identity-safe reconnect matching (design §4.2): relink the row that
+        // matches (restaurant, institution, account_mask) if one exists in a
+        // reconnectable state, else insert a new row. Never claim an
+        // arbitrary disconnected row at the same institution — with multiple
+        // accounts at one bank sharing an institution_name, that used to
+        // graft one account's history onto an unrelated row.
+        const { data: reconnectData, error: reconnectError } = await supabaseClient
+          .rpc("reconnect_connected_bank", {
+            p_restaurant_id: restaurantId,
+            p_stripe_financial_account_id: account.id,
+            p_institution_name: account.institution_name,
+            p_institution_logo_url: institutionLogoUrl,
+            p_account_mask: account.last4 ?? null,
+          })
+          .single();
 
-        let bankData;
-        
-        if (existingBank) {
-          // Update existing disconnected record with new Stripe account ID
-          console.log("[FC-WEBHOOK] Updating existing disconnected bank:", existingBank.id);
-          const { data, error: updateError } = await supabaseClient
-            .from("connected_banks")
-            .update({
-              stripe_financial_account_id: account.id,
-              status: "connected",
-              connected_at: new Date().toISOString(),
-              disconnected_at: null,
-              last_sync_at: new Date().toISOString(),
-              sync_error: null,
-              institution_logo_url: institutionLogoUrl,
-            })
-            .eq("id", existingBank.id)
-            .select()
-            .single();
-
-          if (updateError) {
-            console.error("[FC-WEBHOOK] Error updating bank:", updateError);
-            throw updateError;
-          }
-          bankData = data;
-        } else {
-          // Create new bank connection
-          console.log("[FC-WEBHOOK] Creating new bank connection");
-          const { data, error: insertError } = await supabaseClient
-            .from("connected_banks")
-            .insert({
-              restaurant_id: restaurantId,
-              stripe_financial_account_id: account.id,
-              institution_name: account.institution_name,
-              institution_logo_url: institutionLogoUrl,
-              status: "connected",
-              connected_at: new Date().toISOString(),
-              last_sync_at: new Date().toISOString(),
-            })
-            .select()
-            .single();
-
-          if (insertError) {
-            console.error("[FC-WEBHOOK] Error creating bank:", insertError);
-            throw insertError;
-          }
-          bankData = data;
+        if (reconnectError) {
+          console.error("[FC-WEBHOOK] Error reconnecting bank:", reconnectError);
+          throw reconnectError;
         }
+
+        // supabaseClient is untyped (createClient without a Database generic,
+        // matching this file's existing convention — see accountDetails/customer
+        // `as any` casts above), so .rpc().single() returns `unknown`.
+        const bankData = reconnectData as { id: string };
+
+        // last_sync_at is stamped by stripe-sync-transactions on a
+        // successful fetch, not here — see design §4.3/§1 defect #1.
 
         console.log("[FC-WEBHOOK] Bank stored/updated with ID:", bankData.id);
 
@@ -298,6 +267,102 @@ serve(async (req) => {
         break;
       }
 
+      case "financial_connections.account.deactivated": {
+        const account = event.data.object as Stripe.FinancialConnections.Account;
+        console.log("[FC-WEBHOOK] Account deactivated:", account.id);
+
+        // COALESCE inside the RPC keeps the *first* deactivated_at across a
+        // redelivered event — the escalation clock must not reset (design §4.1).
+        const { error: deactivateError } = await supabaseClient
+          .rpc("mark_connected_bank_deactivated", {
+            p_stripe_financial_account_id: account.id,
+            p_sync_error: "Your bank ended this connection. Reconnect to resume transactions.",
+          });
+
+        if (deactivateError) {
+          console.error("[FC-WEBHOOK] Error marking bank deactivated:", deactivateError);
+          throw deactivateError;
+        }
+
+        // Record event as processed
+        const { error: recordError } = await supabaseClient
+          .from("stripe_events")
+          .insert({
+            stripe_event_id: event.id,
+            event_type: event.type,
+          });
+
+        if (recordError) {
+          console.error("[FC-WEBHOOK] Error recording event:", recordError);
+        }
+
+        console.log("[FC-WEBHOOK] Bank status updated to requires_reauth");
+        break;
+      }
+
+      case "financial_connections.account.reactivated": {
+        const account = event.data.object as Stripe.FinancialConnections.Account;
+        console.log("[FC-WEBHOOK] Account reactivated:", account.id);
+
+        const { data: reactivateData, error: reactivateError } = await supabaseClient
+          .rpc("mark_connected_bank_reactivated", {
+            p_stripe_financial_account_id: account.id,
+          })
+          .single();
+
+        if (reactivateError) {
+          console.error("[FC-WEBHOOK] Error marking bank reactivated:", reactivateError);
+          throw reactivateError;
+        }
+
+        // See the reconnect_connected_bank cast above for why this is
+        // necessary — the client has no Database generic.
+        const bank = reactivateData as { id: string } | null;
+
+        // Record event as processed
+        const { error: recordError } = await supabaseClient
+          .from("stripe_events")
+          .insert({
+            stripe_event_id: event.id,
+            event_type: event.type,
+          });
+
+        if (recordError) {
+          console.error("[FC-WEBHOOK] Error recording event:", recordError);
+        }
+
+        console.log("[FC-WEBHOOK] Bank status restored to connected");
+
+        // Resume syncing now that the authorization is valid again.
+        if (bank?.id) {
+          console.log("[FC-WEBHOOK] Triggering transaction sync for reactivated bank:", bank.id);
+          try {
+            const syncResponse = await fetch(
+              `${Deno.env.get("SUPABASE_URL")}/functions/v1/stripe-sync-transactions`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+                },
+                body: JSON.stringify({ bankId: bank.id }),
+              }
+            );
+
+            if (syncResponse.ok) {
+              console.log("[FC-WEBHOOK] Sync triggered successfully for reactivated bank");
+            } else {
+              const errorText = await syncResponse.text();
+              console.error("[FC-WEBHOOK] Failed to trigger sync for reactivated bank:", errorText);
+            }
+          } catch (syncError) {
+            console.error("[FC-WEBHOOK] Error triggering sync for reactivated bank:", syncError);
+          }
+        }
+
+        break;
+      }
+
       case "financial_connections.account.refreshed_balance": {
         const account = event.data.object as Stripe.FinancialConnections.Account;
         console.log("[FC-WEBHOOK] Balance refreshed:", account.id);
@@ -310,13 +375,19 @@ serve(async (req) => {
           .single();
 
         if (bank && account.balance) {
+          // Never invent a date: only include `as_of_date` in the update
+          // payload when Stripe actually supplied `balance.as_of`. Omitting
+          // the key leaves whatever value is already persisted untouched,
+          // rather than stamping `now()` (design §4.4).
+          const asOfDate = computeAsOfDate(account.balance.as_of);
+
           // Update balance using stripe_financial_account_id for precise targeting
           const { error: balanceError } = await supabaseClient
             .from("bank_account_balances")
             .update({
               current_balance: (account.balance.current?.usd || 0) / 100,
               available_balance: account.balance.available?.usd ? account.balance.available.usd / 100 : null,
-              as_of_date: new Date().toISOString(),
+              ...(asOfDate !== undefined ? { as_of_date: asOfDate } : {}),
             })
             .eq("stripe_financial_account_id", account.id)
             .eq("connected_bank_id", bank.id); // Keep as safety filter

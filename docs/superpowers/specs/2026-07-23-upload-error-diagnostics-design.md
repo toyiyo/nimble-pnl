@@ -126,7 +126,19 @@ begins with the code (`"[400] new row violates ..."`), so `console.error(logLine
 reaches Faro as real text and carries the raw body for a support report — while
 the on-screen toast stays clean.
 
-### Delivery at each call site
+### Delivery — three tiers
+
+Reading the 12 sites showed they are **not** uniform: only 8 have a catch that
+unambiguously wraps the storage upload and surfaces to a user via `useToast()`.
+The other 4 either `throw` into a broad parent catch that also handles OCR/save
+errors (and, for `AssetDialog`, uses the `sonner` `toast.error()` API), or
+deliberately degrade without alarming the user. Forcing a code-keyed
+"Upload failed" toast into those would mislabel non-upload errors or break
+intentional UX. So each site gets exactly one of three treatments — but **all
+12 emit a stringified `logLine`**, fixing `[object Object]` everywhere.
+
+**Tier A — user-facing toast.** The catch already wraps the upload (+immediate
+DB insert) and surfaces via `useToast()`:
 
 ```typescript
 } catch (error: unknown) {
@@ -136,38 +148,44 @@ the on-screen toast stays clean.
     title: 'Upload failed',
     description: info.userMessage,
     variant: 'destructive',
-    duration: UPLOAD_ERROR_TOAST_DURATION,  // longer than the 5s default
+    duration: UPLOAD_ERROR_TOAST_DURATION,  // longer than the ~5s default
   });
 } finally {
   setUploading(false);
 }
 ```
 
-- **On-screen is primary.** In the failing session the telemetry beacon never
-  arrives, so the user reads the `code` off the screen and reports it.
-- **`console.error(info.logLine)`** is secondary and passes an
-  already-stringified line, so Faro captures real text instead of
-  `[object Object]`. No doubled code prefix.
-- Each site keeps its existing control flow — same return values, same
-  `finally`, same re-throws. Only the catch *body* changes (except the two
-  exceptions below).
+Existing control flow is preserved — same return values, same `finally`, same
+re-throws. Only the catch *body* changes.
 
-### Toast durability + persistent inline error (reported surfaces)
+**Tier A + inline.** The two surfaces the bug was reported against — product
+**image** (`ProductDialog.tsx`) and **receipt** (`ReceiptUpload.tsx` via
+`useReceiptImport`) — additionally set a `uploadError` state string rendered as
+a `text-[13px] text-destructive` line under the file input. It shows
+`userMessage`, clears on the next attempt, and outlives the toast. This exists
+because the failing session is exactly the one where the ~5s single-slot
+(`TOAST_LIMIT = 1`) toast is too fragile to be the *only* channel.
 
-The default toast is a single-slot (`TOAST_LIMIT = 1`), ~5s self-dismissing
-surface. For a code the user is meant to transcribe and report, that is too
-fragile to be the *only* on-screen channel. Two mitigations:
+**Tier B — log-only.** The catch/throw is not a clean user-facing upload
+surface. Emit the stringified diagnostic and preserve existing behavior — no new
+toast:
 
-1. **Longer duration** for these upload-failure toasts via a shared
-   `UPLOAD_ERROR_TOAST_DURATION` constant (e.g. 10–15s), applied at every site.
-2. **Persistent inline error line** on the two surfaces the bug was actually
-   reported against — the product **image** upload (`ProductDialog.tsx`) and the
-   **receipt** upload (`ReceiptUpload.tsx` via `useReceiptImport`). A
-   `text-[13px] text-destructive` line under the file input shows
-   `userMessage` and stays until the next upload attempt, outliving the toast.
-   The other 9 toast sites rely on the toast alone (they already do today).
+```typescript
+if (uploadError) {
+  console.error(describeStorageError(uploadError).logLine);
+  throw uploadError;   // or: existing degradation (set path=null, Warning toast, etc.)
+}
+```
 
-### Excluded from the toast pattern: `useTimePunches.tsx`
+Tier B sites: `AssetDialog` (throw-only; parents use `sonner` + mix save
+errors), `Inventory.tsx` (throw-only; parents mix OCR errors),
+`useAssetImport.ts:411` (best-effort attach — keeps its non-destructive
+"Warning" toast), and `useTimePunches.tsx` (kiosk — see below).
+
+`UPLOAD_ERROR_TOAST_DURATION` is exported from `src/lib/storageError.ts`
+(e.g. 12000 ms) and used by every Tier A toast.
+
+### Why `useTimePunches.tsx` is Tier B, not Tier A
 
 The kiosk clock-in/out photo upload deliberately lets the punch **succeed** when
 the photo fails, setting a `photoUploadFailed` flag and delivering a calm
@@ -187,23 +205,26 @@ gate is removed and the site gains a destructive toast like every sibling. This
 is the only path whose observable behavior changes; it changes from
 "silent in production" to "shows the same toast as the others".
 
-### Call sites (12 across 11 files)
+### Call sites (12 across 11 files) with tier
 
-| File | Line | Notes |
-|------|------|-------|
-| `src/components/ProductDialog.tsx` | 294 | **DEV-gated swallow — behavior fix** |
-| `src/components/ProductUpdateDialog.tsx` | 263 | toasts, discards detail |
-| `src/components/assets/AssetDialog.tsx` | 150 | |
-| `src/hooks/useAssetImport.ts` | 74, 411 | two sites |
-| `src/hooks/useAssetPhotos.ts` | 129 | |
-| `src/hooks/useAttachments.ts` | 207 | |
-| `src/hooks/useBankStatementImport.tsx` | 126 | |
-| `src/hooks/useExpenseInvoiceUpload.tsx` | 80 | |
-| `src/hooks/useReceiptImport.tsx` | 222 | inventory receipt path — **inline error surfaced in `ReceiptUpload.tsx`** |
-| `src/hooks/useTimePunches.tsx` | 197 | **EXCLUDED from toast pattern** — kiosk UX, keeps `photoUploadFailed`/`onSuccess` flow |
-| `src/pages/Inventory.tsx` | 742 | |
+| File | Line | Tier | Notes |
+|------|------|------|-------|
+| `src/components/ProductDialog.tsx` | 294 | **A + inline** | DEV-gated swallow — the reported "pictures" bug; remove gate |
+| `src/hooks/useReceiptImport.tsx` (inline in `ReceiptUpload.tsx`) | 222 | **A + inline** | the reported "PDFs" path |
+| `src/components/ProductUpdateDialog.tsx` | 263 | A | already toasts generic; enrich with code |
+| `src/hooks/useAssetImport.ts` | 74 | A | primary asset-import upload; already toasts |
+| `src/hooks/useAssetPhotos.ts` | 129 | A | catch (~line 171) wraps upload+insert; already toasts |
+| `src/hooks/useAttachments.ts` | 207 | A | catch (~line 267) wraps upload+insert; already toasts |
+| `src/hooks/useBankStatementImport.tsx` | 126 | A | local catch; already toasts |
+| `src/hooks/useExpenseInvoiceUpload.tsx` | 80 | A | local catch; already toasts |
+| `src/components/assets/AssetDialog.tsx` | 150 | B | `throw`-only; parents use `sonner` + mix save errors |
+| `src/pages/Inventory.tsx` | 742 | B | `throw`-only; parents (`handleImageCaptured`, fallback) mix OCR errors |
+| `src/hooks/useAssetImport.ts` | 411 | B | best-effort attach; keeps its non-destructive "Warning" toast |
+| `src/hooks/useTimePunches.tsx` | 197 | B | kiosk — keeps `photoUploadFailed`/`onSuccess` flow |
 
-Line numbers are indicative and will be re-confirmed against the branch during
+Tier A = code-keyed destructive toast; A+inline adds a persistent inline error
+line; Tier B = `console.error(logLine)` only, existing UX preserved. Line
+numbers are current as of the branch base and will be re-confirmed during
 implementation.
 
 ### Error typing

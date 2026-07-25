@@ -292,7 +292,7 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     <Input
                       id={`sku-${item.id}`}
                       defaultValue={item.parsed_sku || ''}
-                      onChange={(e) => onSkuChange(item.id, e.target.value)}
+                      onBlur={(e) => onSkuChange(item.id, e.target.value)}
                       placeholder="Scan or type"
                       disabled={isImported}
                       className="h-9"

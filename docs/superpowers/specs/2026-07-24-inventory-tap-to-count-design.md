@@ -125,13 +125,13 @@ export function buildQuickInventoryAudit(
   source: QuickEntrySource,
   mode: QuickEntryMode,
   quantity: number,
+  timestamp: number,
 ): { reason: string; reference: string };
 ```
 
-- `reference`: `` `${source === 'manual' ? 'manual_count' : 'quick_scan'}_${Date.now()}` ``
-  — **Note:** `Date.now()` is called by the caller and passed in, OR the helper takes
-  a `timestamp` argument so it stays pure and unit-testable. Final signature:
-  `buildQuickInventoryAudit(source, mode, quantity, timestamp)`.
+- `reference`: `` `${source === 'manual' ? 'manual_count' : 'quick_scan'}_${timestamp}` ``
+  — the caller passes `timestamp` (e.g. `Date.now()`) so the helper stays pure and
+  unit-testable (no hidden dependency on the system clock).
 - `reason`: reproduces today's **exact** scan-path strings byte-for-byte (the current
   code interpolates the **raw, unformatted** `quantity` — no `.toFixed()` — see
   `Inventory.tsx:963,967`):

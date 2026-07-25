@@ -6,7 +6,7 @@
  * QuickInventoryDialog in 'add' mode for that exact product.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
@@ -220,6 +220,10 @@ vi.mock('react-router-dom', () => ({
 import { Inventory } from '@/pages/Inventory';
 
 // ─── Tests ─────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  updateProductStockWithAuditMock.mockClear();
+});
 
 describe('Inventory "Count" button wiring (Task 3.3)', () => {
   it('opens the QuickInventoryDialog in add mode for the counted product', async () => {

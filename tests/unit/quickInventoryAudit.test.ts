@@ -36,4 +36,17 @@ describe('buildQuickInventoryAudit', () => {
     const { reason } = buildQuickInventoryAudit('manual', 'add', 0.333333, 1000);
     expect(reason).toBe('Adjustment - Added 0.333333 via manual count');
   });
+
+  it('accepts a zero quantity (e.g. reconciling a stock-out to 0)', () => {
+    const { reason } = buildQuickInventoryAudit('manual', 'reconcile', 0, 1000);
+    expect(reason).toBe('Inventory reconciliation - Set to 0 via manual count');
+  });
+
+  it('does not reject or clamp a negative quantity — interpolates it as-is', () => {
+    // buildQuickInventoryAudit is a pure string formatter; validating/rejecting
+    // negative quantities is the caller's responsibility (QuickInventoryDialog's
+    // input), not this helper's. Documenting the current pass-through behavior.
+    const { reason } = buildQuickInventoryAudit('scan', 'add', -2, 1000);
+    expect(reason).toBe('Adjustment - Added -2 via quick scan');
+  });
 });

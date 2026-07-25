@@ -1,9 +1,34 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { VirtualizedProductGrid } from '@/components/inventory/VirtualizedProductGrid';
+
+// jsdom never runs layout, so every element's offsetWidth/offsetHeight is 0.
+// @tanstack/react-virtual measures its scroll container via `element.offsetHeight`
+// (see `getRect` in virtual-core) and only computes a visible range when that
+// size is > 0 — without this stub, `getVirtualItems()` always returns `[]` and
+// no rows (and therefore no Count button) are ever rendered, regardless of what
+// the component renders. Same "stub the layout jsdom won't compute" pattern
+// already used for `getBoundingClientRect` elsewhere in this test suite (e.g.
+// tests/unit/shiftTimelineTab.test.tsx).
+let offsetHeightSpy: ReturnType<typeof vi.spyOn>;
+let offsetWidthSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  offsetHeightSpy = vi
+    .spyOn(HTMLElement.prototype, 'offsetHeight', 'get')
+    .mockReturnValue(800);
+  offsetWidthSpy = vi
+    .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+    .mockReturnValue(1200);
+});
+
+afterEach(() => {
+  offsetHeightSpy.mockRestore();
+  offsetWidthSpy.mockRestore();
+});
 
 // Minimal product matching the fields ProductCard reads. If the existing test
 // file already has a factory, use that instead of this literal.

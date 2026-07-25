@@ -239,10 +239,10 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const foodCost = perf.cogsCents / 100;
                   const pendingLaborCost = perf.pendingLaborCents / 100;
                   const actualLaborCost = perf.actualLaborCents / 100;
-                  const laborCost = perf.laborIncludingPendingCents / 100;
+                  const laborCost = perf.laborForPnlCents / 100;
                   const otherExpenses = perf.otherExpensesCents / 100;
                   const actualNetProfit = perf.actualNetProfitCents / 100;
-                  const projectedNetProfit = perf.projectedNetProfitCents / 100;
+                  const accrualNetProfit = perf.accrualNetProfitCents / 100;
                   const posCollected = perf.posCollectedFromBreakdownCents / 100;
                   const posReconciliationDelta = perf.posReconciliationDeltaCents == null
                     ? null
@@ -254,11 +254,10 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                   const pendingLaborPercent = month.net_revenue > 0 
                     ? (pendingLaborCost / month.net_revenue) * 100 
                     : 0;
-                  const actualLaborPercent = month.net_revenue > 0 
-                    ? (actualLaborCost / month.net_revenue) * 100 
+                  const actualLaborPercent = month.net_revenue > 0
+                    ? (actualLaborCost / month.net_revenue) * 100
                     : 0;
-                  const laborCostPercent = pendingLaborPercent + actualLaborPercent;
-                  
+
                   return (
                     <Fragment key={month.period}>
                       <tr
@@ -315,11 +314,17 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                         <td className="text-right py-2 px-2 sm:py-3 sm:px-4">
                           <div className="flex flex-col items-end gap-0.5 sm:gap-1">
                             <span className="font-semibold text-xs sm:text-sm">{formatCurrency(laborCost)}</span>
-                            <span className="text-[10px] sm:text-xs text-amber-600">
+                            <span className="text-[10px] sm:text-xs text-amber-600 flex items-center gap-1 justify-end">
                               Pending: {formatCurrency(pendingLaborCost)} ({pendingLaborPercent.toFixed(1)}%)
+                              {perf.laborBasis === 'accrued' && (
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">counted</span>
+                              )}
                             </span>
-                            <span className="text-[10px] sm:text-xs text-blue-600">
+                            <span className="text-[10px] sm:text-xs text-blue-600 flex items-center gap-1 justify-end">
                               Actual: {formatCurrency(actualLaborCost)} ({actualLaborPercent.toFixed(1)}%)
+                              {perf.laborBasis === 'paid' && (
+                                <span className="text-[9px] px-1 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">counted</span>
+                              )}
                             </span>
                           </div>
                         </td>
@@ -349,16 +354,16 @@ export const MonthlyBreakdownTable = ({ monthlyData }: MonthlyBreakdownTableProp
                             {pendingLaborCost > 0 && (
                               <>
                                 <span className={`font-semibold text-xs sm:text-sm ${
-                                  projectedNetProfit > 0 ? 'text-primary'
-                                    : projectedNetProfit < 0 ? 'text-destructive'
+                                  accrualNetProfit > 0 ? 'text-primary'
+                                    : accrualNetProfit < 0 ? 'text-destructive'
                                     : 'text-foreground'
                                 }`}>
-                                  {formatCurrency(projectedNetProfit)}
+                                  {formatCurrency(accrualNetProfit)}
                                 </span>
                                 <span className="text-[10px] sm:text-xs text-amber-600">
-                                  Projected (incl. pending labor)
+                                  Accrual basis (matches hours worked)
                                   {month.net_revenue > 0
-                                    ? ` (${((projectedNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
+                                    ? ` (${((accrualNetProfit / month.net_revenue) * 100).toFixed(1)}%)`
                                     : ''}
                                 </span>
                               </>

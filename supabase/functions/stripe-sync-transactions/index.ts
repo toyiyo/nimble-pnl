@@ -1,6 +1,15 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import {
+  decideAccountAction,
+  resultForNeedsReauth,
+  resultForSubscribing,
+  resultForRefresh,
+  shouldStampLastSyncAt,
+  computeDataCurrentThrough,
+  type AccountSyncResult,
+} from "../_shared/bankSyncAccountDecision.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -98,42 +107,50 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
-    // Get all Stripe account IDs for this bank connection from balances table
-    const { data: balanceRecords } = await supabaseAdmin
-      .from("bank_account_balances")
-      .select("stripe_financial_account_id, account_name")
-      .eq("connected_bank_id", bankId)
-      .not("stripe_financial_account_id", "is", null);
-
-    // Extract unique account IDs
-    const accountIds = [...new Set(
-      balanceRecords?.map(b => b.stripe_financial_account_id).filter(Boolean) || []
-    )];
-
-    // If no account IDs found in balances, fall back to primary one from connected_banks
-    if (accountIds.length === 0 && bank.stripe_financial_account_id) {
-      accountIds.push(bank.stripe_financial_account_id);
-    }
+    // Enumerate the account to sync from connected_banks' CURRENT fca_ — the
+    // single source of truth for which Stripe account is live. Deriving this
+    // from bank_account_balances instead used to pick up a stale old-fca_ row
+    // left by a reconnect, retrieve that dead account, see it inactive, and
+    // re-flag the whole bank requires_reauth seconds after the user finished
+    // reconnecting (incident 2026-07-24). A connected_banks row is 1:1 with a
+    // real account, so there is exactly one live account id here.
+    const accountIds = bank.stripe_financial_account_id
+      ? [bank.stripe_financial_account_id]
+      : [];
 
     console.log(`[SYNC-TRANSACTIONS] Found ${accountIds.length} account(s) to sync:`, accountIds);
 
-    let needsSubscriptionSetup = false;
     let allTransactions: Stripe.FinancialConnections.Transaction[] = [];
+    const accountResults: AccountSyncResult[] = [];
+    // Accounts whose transactions were fetched this run; each entry's final
+    // AccountSyncResult is pushed after insert, once its real synced count
+    // is known (design §4.3.4 — per-account results, not a bank-wide
+    // synced: 0 whenever one account in the mix is still cold).
+    const pendingFetchAccounts: Array<{ accountId: string; refreshStatus: string | undefined }> = [];
+    let anyNeedsReauth = false;
 
     // Process each account
     for (const accountId of accountIds) {
       console.log(`[SYNC-TRANSACTIONS] Processing account: ${accountId}`);
 
-      // Get current account details to check subscription
+      // Get current account details to check status + subscription
       const account = await stripe.financialConnections.accounts.retrieve(accountId);
-      const hasTransactionsSub = account.subscriptions?.includes('transactions');
-      
-      console.log(`[SYNC-TRANSACTIONS] Account ${accountId} has transactions subscription:`, hasTransactionsSub);
+      const hasTransactionsSub = !!account.subscriptions?.includes('transactions');
 
-      if (!hasTransactionsSub) {
+      console.log(`[SYNC-TRANSACTIONS] Account ${accountId} status:`, account.status, 'transactions subscription:', hasTransactionsSub);
+
+      const action = decideAccountAction({ accountStatus: account.status, hasTransactionsSub });
+
+      if (action.kind === 'needs_reauth') {
+        console.log(`[SYNC-TRANSACTIONS] Account ${accountId} is not active (status: ${account.status}) - flagging for reauth, skipping fetch`);
+        anyNeedsReauth = true;
+        accountResults.push(resultForNeedsReauth(accountId));
+        continue;
+      }
+
+      if (action.kind === 'subscribe') {
         console.log(`[SYNC-TRANSACTIONS] Subscribing account ${accountId} to transactions for first time`);
-        needsSubscriptionSetup = true;
-        
+
         try {
           await stripe.financialConnections.accounts.subscribe(
             accountId,
@@ -143,66 +160,62 @@ serve(async (req) => {
         } catch (subscribeError: any) {
           console.error(`[SYNC-TRANSACTIONS] Subscribe error for ${accountId}:`, subscribeError.message);
         }
-      } else {
-        // Trigger refresh for accounts already subscribed
-        try {
-          const refreshResult = await stripe.financialConnections.accounts.refresh(
-            accountId,
-            { features: ['transactions'] }
-          );
-          console.log(`[SYNC-TRANSACTIONS] Refresh status for ${accountId}:`, refreshResult.transaction_refresh?.status);
-        } catch (refreshError: any) {
-          console.log(`[SYNC-TRANSACTIONS] Refresh error for ${accountId} (may be normal):`, refreshError.message);
-        }
 
-        // Fetch transactions for this account
-        try {
-          let hasMore = true;
-          let startingAfter: string | undefined = undefined;
-          
-          while (hasMore) {
-            const params: any = {
-              account: accountId,
-              limit: 100,
-            };
-            
-            if (startingAfter) {
-              params.starting_after = startingAfter;
-            }
-            
-            const page = await stripe.financialConnections.transactions.list(params);
-            allTransactions = allTransactions.concat(page.data);
-            hasMore = page.has_more;
-            
-            if (hasMore && page.data.length > 0) {
-              startingAfter = page.data[page.data.length - 1].id;
-            }
-            
-            console.log(`[SYNC-TRANSACTIONS] Fetched ${page.data.length} transactions from ${accountId}, total so far: ${allTransactions.length}`);
-          }
-        } catch (fetchError: any) {
-          console.log(`[SYNC-TRANSACTIONS] No transactions available yet for ${accountId}:`, fetchError.message);
-        }
+        accountResults.push(resultForSubscribing(accountId));
+        continue;
       }
-    }
 
-    // If any accounts needed subscription setup, return early
-    if (needsSubscriptionSetup) {
-      console.log("[SYNC-TRANSACTIONS] One or more accounts needed subscription setup - initial sync will take a few minutes");
-      
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          synced: 0,
-          skipped: 0,
-          total: 0,
-          message: "Transaction sync initiated. This will take a few minutes as we fetch your transaction history from the bank. You'll see transactions appear automatically once the sync completes."
-        }),
-        {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: 200,
+      // action.kind === 'refresh_and_fetch': already-subscribed, active account.
+      let refreshStatus: string | undefined;
+      try {
+        const refreshResult = await stripe.financialConnections.accounts.refresh(
+          accountId,
+          { features: ['transactions'] }
+        );
+        refreshStatus = refreshResult.transaction_refresh?.status;
+        console.log(`[SYNC-TRANSACTIONS] Refresh status for ${accountId}:`, refreshStatus);
+      } catch (refreshError: any) {
+        console.log(`[SYNC-TRANSACTIONS] Refresh error for ${accountId} (may be normal):`, refreshError.message);
+      }
+
+      if (refreshStatus === 'failed') {
+        // Hard signal (design §4.3.2): don't continue into a paginated
+        // fetch that will just return nothing.
+        console.log(`[SYNC-TRANSACTIONS] Refresh failed for ${accountId} - skipping fetch`);
+        accountResults.push(resultForRefresh(accountId, refreshStatus, 0));
+        continue;
+      }
+
+      // Fetch transactions for this account
+      try {
+        let hasMore = true;
+        let startingAfter: string | undefined = undefined;
+
+        while (hasMore) {
+          const params: any = {
+            account: accountId,
+            limit: 100,
+          };
+
+          if (startingAfter) {
+            params.starting_after = startingAfter;
+          }
+
+          const page = await stripe.financialConnections.transactions.list(params);
+          allTransactions = allTransactions.concat(page.data);
+          hasMore = page.has_more;
+
+          if (hasMore && page.data.length > 0) {
+            startingAfter = page.data[page.data.length - 1].id;
+          }
+
+          console.log(`[SYNC-TRANSACTIONS] Fetched ${page.data.length} transactions from ${accountId}, total so far: ${allTransactions.length}`);
         }
-      );
+      } catch (fetchError: any) {
+        console.log(`[SYNC-TRANSACTIONS] No transactions available yet for ${accountId}:`, fetchError.message);
+      }
+
+      pendingFetchAccounts.push({ accountId, refreshStatus });
     }
 
     console.log(`[SYNC-TRANSACTIONS] Total transactions fetched across all accounts: ${allTransactions.length}`);
@@ -228,6 +241,7 @@ serve(async (req) => {
 
     let syncedCount = 0;
     let skippedCount = 0;
+    const syncedByAccount = new Map<string, number>();
 
     // Store each transaction
     for (const txn of allTransactions) {
@@ -277,14 +291,84 @@ serve(async (req) => {
         console.error("[SYNC-TRANSACTIONS] Error inserting transaction:", insertError);
       } else {
         syncedCount++;
+        syncedByAccount.set(txn.account, (syncedByAccount.get(txn.account) ?? 0) + 1);
       }
     }
 
-    // Update last_sync_at on the bank
-    await supabaseAdmin
-      .from("connected_banks")
-      .update({ last_sync_at: new Date().toISOString() })
-      .eq("id", bankId);
+    // Finalize per-account results for accounts whose transactions were
+    // actually fetched this run, now that their real synced counts are known.
+    for (const { accountId, refreshStatus } of pendingFetchAccounts) {
+      accountResults.push(resultForRefresh(accountId, refreshStatus, syncedByAccount.get(accountId) ?? 0));
+    }
+
+    // Stamp truth, not intent (design §4.3.3). last_sync_at only advances
+    // when at least one account actually completed a successful
+    // refresh+fetch this run — never unconditionally.
+    const bankUpdate: Record<string, unknown> = {};
+
+    if (anyNeedsReauth) {
+      // COALESCE-preserving deactivated_at (first outage wins the clock) and
+      // sync_error are only expressible via this RPC, not a plain REST
+      // update — same reason stripe-financial-connections-webhook's
+      // `deactivated` branch uses it (design §4.1/§4.3.1).
+      const { error: deactivateError } = await supabaseAdmin.rpc("mark_connected_bank_deactivated", {
+        p_stripe_financial_account_id: bank.stripe_financial_account_id,
+        p_sync_error: "Stripe reports one or more accounts on this connection are no longer active. Reconnect to resume syncing.",
+      });
+
+      if (deactivateError) {
+        console.error("[SYNC-TRANSACTIONS] Error marking bank requires_reauth:", deactivateError);
+      }
+    }
+
+    const refreshFailures = accountResults.filter((r) => r.status === 'refresh_failed');
+    if (refreshFailures.length > 0 && !anyNeedsReauth) {
+      // Only set here when reauth didn't already write a more specific
+      // sync_error above — a bank can't be "needs reauth" and "refresh
+      // failed for an unrelated reason" at the same time in the UI.
+      bankUpdate.sync_error = refreshFailures.map((r) => r.error).join('; ');
+    } else if (refreshFailures.length === 0 && !anyNeedsReauth) {
+      // Every account's refresh attempt this run succeeded — clear any
+      // sync_error left over from a prior transient failure. Nothing else
+      // clears this once set: mark_connected_bank_reactivated only fires on
+      // the Stripe `account.reactivated` webhook, not on a later plain sync
+      // where the account simply recovers on its own. Without this, a single
+      // transient refresh hiccup permanently stains an otherwise healthy,
+      // successfully-syncing bank with a stale destructive error message.
+      bankUpdate.sync_error = null;
+    }
+
+    if (shouldStampLastSyncAt(accountResults)) {
+      bankUpdate.last_sync_at = new Date().toISOString();
+
+      // Recompute data_current_through = MAX(transaction_date) over the rows
+      // we actually hold for this bank (backward index scan on
+      // idx_bank_transactions_bank_date). This is the value the UI prints —
+      // never last_sync_at.
+      const { data: latestTxn } = await supabaseAdmin
+        .from("bank_transactions")
+        .select("transaction_date")
+        .eq("connected_bank_id", bankId)
+        .order("transaction_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const dataCurrentThrough = computeDataCurrentThrough([latestTxn?.transaction_date]);
+      if (dataCurrentThrough) {
+        bankUpdate.data_current_through = dataCurrentThrough;
+      }
+    }
+
+    if (Object.keys(bankUpdate).length > 0) {
+      const { error: bankUpdateError } = await supabaseAdmin
+        .from("connected_banks")
+        .update(bankUpdate)
+        .eq("id", bankId);
+
+      if (bankUpdateError) {
+        console.error("[SYNC-TRANSACTIONS] Error updating bank:", bankUpdateError);
+      }
+    }
 
     console.log("[SYNC-TRANSACTIONS] Sync complete:", syncedCount, "new,", skippedCount, "skipped");
 
@@ -351,13 +435,29 @@ serve(async (req) => {
       }
     }
 
+    const needsReauth = accountResults
+      .filter((r) => r.status === 'needs_reauth')
+      .map((r) => r.accountId);
+    const stillSubscribing = accountResults.some((r) => r.status === 'subscribing');
+
+    let message: string | undefined;
+    if (syncedCount > 0) {
+      message = `Imported and categorized ${syncedCount} new transactions`;
+    } else if (stillSubscribing) {
+      message = "Transaction sync initiated for one or more accounts. This will take a few minutes as we fetch your transaction history from the bank. You'll see transactions appear automatically once the sync completes.";
+    } else if (needsReauth.length > 0) {
+      message = "One or more accounts need to be reconnected before they can sync.";
+    }
+
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         success: true,
         synced: syncedCount,
         skipped: skippedCount,
         total: allTransactions.length,
-        message: syncedCount > 0 ? `Imported and categorized ${syncedCount} new transactions` : undefined
+        accounts: accountResults,
+        needsReauth,
+        message,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

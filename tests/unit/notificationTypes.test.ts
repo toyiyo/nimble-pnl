@@ -24,6 +24,7 @@ const RESOLVER_TYPES: ResolverNotificationType[] = [
   'pin_reset',
   'availability_reminder',
   'open_shift_claim_reviewed',
+  'bank_reauth_required',
 ];
 
 // Compile-time guard: every catalog key must be assignable to the resolver's
@@ -35,8 +36,8 @@ function assertNotificationTypeAssignable(_key: NotificationType): ResolverNotif
 void assertNotificationTypeAssignable;
 
 describe('NOTIFICATION_TYPES catalog', () => {
-  it('has exactly 16 rows', () => {
-    expect(NOTIFICATION_TYPES).toHaveLength(16);
+  it('has exactly 17 rows', () => {
+    expect(NOTIFICATION_TYPES).toHaveLength(17);
   });
 
   it('has no duplicate keys', () => {
@@ -51,7 +52,7 @@ describe('NOTIFICATION_TYPES catalog', () => {
   });
 
   it('every row has a non-empty label and a known group', () => {
-    const validGroups = new Set(['Scheduling', 'Trades', 'Time off', 'Access']);
+    const validGroups = new Set(['Scheduling', 'Trades', 'Time off', 'Access', 'Banking']);
     for (const t of NOTIFICATION_TYPES) {
       expect(t.label.length).toBeGreaterThan(0);
       expect(validGroups.has(t.group)).toBe(true);

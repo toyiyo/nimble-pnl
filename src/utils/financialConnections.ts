@@ -11,6 +11,8 @@ export interface BankBalance {
   currency: string;
   as_of_date: string;
   is_active: boolean;
+  bankStatus: BankStatus;          // NEW — inherited from the owning connected_banks row
+  dataCurrentThrough: string | null; // NEW — the owning row's data_current_through
 }
 
 export interface ConnectedBank {
@@ -23,6 +25,9 @@ export interface ConnectedBank {
   disconnected_at: string | null;
   last_sync_at: string | null;
   sync_error: string | null;
+  account_mask: string | null;
+  deactivated_at: string | null;
+  data_current_through: string | null;
   balances: BankBalance[];
 }
 
@@ -35,6 +40,8 @@ export interface GroupedBank {
   last_sync_at: string | null;
   sync_error?: string | null;
   bankIds: string[];
+  reauthBankIds: string[];   // NEW — the subset of bankIds needing reauthorization
+  healthyBankIds: string[];  // NEW — the complement; drives which controls stay live
   balances: BankBalance[];
 }
 
@@ -44,6 +51,12 @@ const pickStatus = (a: BankStatus | undefined, b: BankStatus) => {
   if (!a) return b;
   return STATUS_PRIORITY.indexOf(b) < STATUS_PRIORITY.indexOf(a) ? b : a;
 };
+
+// A single connected_banks row is "healthy" only when it is fully usable —
+// 'requires_reauth' and 'error' both mean the account's own controls
+// (Sync/Refresh) cannot work, so healthyBankIds/reauthBankIds partition on
+// this, not on 'requires_reauth' alone.
+const isHealthyStatus = (status: BankStatus): boolean => status === 'connected';
 
 export const groupBanks = (connectedBanks: ConnectedBank[]): GroupedBank[] => {
   const map = new Map<string, GroupedBank>();
@@ -60,6 +73,8 @@ export const groupBanks = (connectedBanks: ConnectedBank[]): GroupedBank[] => {
       last_sync_at: bank.last_sync_at,
       sync_error: bank.sync_error,
       bankIds: [],
+      reauthBankIds: [],
+      healthyBankIds: [],
       balances: [],
     };
 
@@ -73,11 +88,18 @@ export const groupBanks = (connectedBanks: ConnectedBank[]): GroupedBank[] => {
       : bank.last_sync_at || merged.last_sync_at;
     merged.sync_error = merged.sync_error || bank.sync_error;
     merged.bankIds.push(bank.id);
+    if (isHealthyStatus(bank.status)) {
+      merged.healthyBankIds.push(bank.id);
+    } else {
+      merged.reauthBankIds.push(bank.id);
+    }
     merged.balances = [
       ...merged.balances,
       ...bank.balances.map((bal) => ({
         ...bal,
         connected_bank_id: bal.connected_bank_id || bank.id,
+        bankStatus: bank.status,
+        dataCurrentThrough: bank.data_current_through,
       })),
     ];
 
@@ -87,12 +109,22 @@ export const groupBanks = (connectedBanks: ConnectedBank[]): GroupedBank[] => {
   return Array.from(map.values());
 };
 
-export const totalBalance = (connectedBanks: ConnectedBank[]): number => {
-  return connectedBanks
+const sumBalances = (banks: ConnectedBank[]): number => {
+  return banks
     .flatMap((bank) => bank.balances || [])
     .reduce((sum, balance) => sum + (Number(balance?.current_balance) || 0), 0);
 };
 
+export const totalBalance = (connectedBanks: ConnectedBank[]): number => {
+  return sumBalances(connectedBanks.filter((bank) => isHealthyStatus(bank.status)));
+};
+
+export const quarantinedBalance = (connectedBanks: ConnectedBank[]): number => {
+  return sumBalances(connectedBanks.filter((bank) => !isHealthyStatus(bank.status)));
+};
+
 export const accountCount = (connectedBanks: ConnectedBank[]): number => {
-  return connectedBanks.reduce((sum, bank) => sum + (bank.balances?.length || 0), 0);
+  return connectedBanks
+    .filter((bank) => isHealthyStatus(bank.status))
+    .reduce((sum, bank) => sum + (bank.balances?.length || 0), 0);
 };

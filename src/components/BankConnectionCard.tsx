@@ -4,45 +4,35 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Wallet, TrendingUp, AlertCircle, Loader2, MoreVertical, ChevronDown, RefreshCw, Database, Unplug } from 'lucide-react';
+import { Wallet, TrendingUp, AlertCircle, Loader2, MoreVertical, ChevronDown, RefreshCw, Database, Unplug, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { DisconnectBankDialog } from '@/components/banking/DisconnectBankDialog';
-
-interface BankBalance {
-  id: string;
-  connected_bank_id?: string | null;
-  account_name: string;
-  account_type: string | null;
-  account_mask: string | null;
-  current_balance: number;
-  available_balance: number | null;
-  currency: string;
-  as_of_date: string;
-  is_active: boolean;
-}
+import { FreshnessStamp } from '@/components/banking/FreshnessStamp';
+import type { GroupedBank } from '@/utils/financialConnections';
 
 interface BankConnectionCardProps {
-  bank: {
-    id: string;
-    institution_name: string;
-    institution_logo_url: string | null;
-    status: 'connected' | 'disconnected' | 'error' | 'requires_reauth';
-    connected_at: string;
-    last_sync_at: string | null;
-    sync_error?: string | null;
-    bankIds: string[];
-    balances: BankBalance[];
-  };
+  bank: GroupedBank;
   onRefreshBalance?: (bankId: string) => Promise<void>;
   onSyncTransactions?: (bankId: string) => Promise<void>;
   onDisconnect?: (bankId: string, deleteData: boolean) => Promise<void>;
+  onReconnect?: (connectedBankId: string) => Promise<void>;
 }
 
-export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions, onDisconnect }: BankConnectionCardProps) => {
+// Contrast-safe historical-row treatment (design §5.3): texture, not opacity.
+// opacity-50 on text-foreground over bg-background drops below the WCAG
+// 1.4.3 4.5:1 floor for normal-size text — the hatch plus the muted token
+// and the literal "Historical" chip carry the meaning instead.
+const HISTORICAL_HATCH_STYLE: CSSProperties = {
+  backgroundImage:
+    'repeating-linear-gradient(45deg, hsl(var(--muted-foreground) / 0.06) 0 1px, transparent 1px 8px)',
+};
+
+export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions, onDisconnect, onReconnect }: BankConnectionCardProps) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [reconnectingId, setReconnectingId] = useState<string | null>(null);
   const [showAccounts, setShowAccounts] = useState(false);
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<{ name: string; ids: string | string[] } | null>(null);
@@ -57,10 +47,24 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
   );
   const primaryAccount = bank.balances[0];
 
+  // The group's own freshness stamp is the oldest `dataCurrentThrough` across
+  // every balance it holds — the same worst-of convention STATUS_PRIORITY
+  // already uses for the headline status badge, applied to freshness too.
+  const dataCurrentThrough = useMemo(() => {
+    const values = bank.balances
+      .map((balance) => balance.dataCurrentThrough)
+      .filter((value): value is string => Boolean(value));
+    if (values.length === 0) return null;
+    return values.reduce(
+      (oldest, value) => (new Date(value) < new Date(oldest) ? value : oldest),
+      values[0]
+    );
+  }, [bank.balances]);
+
   const handleSyncTransactions = async (targetBankId?: string) => {
     if (!onSyncTransactions) return;
     setIsSyncing(true);
-    const targets = targetBankId ? [targetBankId] : bank.bankIds;
+    const targets = targetBankId ? [targetBankId] : bank.healthyBankIds;
     try {
       for (const id of targets) {
         await onSyncTransactions(id);
@@ -84,7 +88,7 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
   const handleRefreshBalance = async (targetBankId?: string) => {
     if (!onRefreshBalance) return;
     setIsRefreshing(true);
-    const targets = targetBankId ? [targetBankId] : bank.bankIds;
+    const targets = targetBankId ? [targetBankId] : bank.healthyBankIds;
     try {
       for (const id of targets) {
         await onRefreshBalance(id);
@@ -102,6 +106,38 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
       });
     } finally {
       setIsRefreshing(false);
+    }
+  };
+
+  const handleReconnect = async (targetBankId: string) => {
+    if (!onReconnect) return;
+    setReconnectingId(targetBankId);
+    try {
+      await onReconnect(targetBankId);
+      toast({
+        title: "Success",
+        description: "Reconnected successfully",
+      });
+    } catch (error) {
+      console.error('Reconnect error:', error);
+      toast({
+        variant: "destructive",
+        title: "Reconnect Failed",
+        description: error instanceof Error ? error.message : "Failed to reconnect. Please try again.",
+      });
+    } finally {
+      setReconnectingId(null);
+    }
+  };
+
+  // A single quarantined account is targeted directly; more than one opens
+  // the accounts list so the user picks — never a silent "first of N"
+  // (design §5.3).
+  const handleTopLevelReconnect = () => {
+    if (bank.reauthBankIds.length === 1) {
+      handleReconnect(bank.reauthBankIds[0]);
+    } else {
+      setShowAccounts(true);
     }
   };
 
@@ -137,8 +173,8 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <div className="font-semibold text-base leading-tight truncate">{bank.institution_name}</div>
-              <Badge 
-                variant="outline" 
+              <Badge
+                variant="outline"
                 className={cn(
                   "text-xs",
                   bank.status === 'connected' && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/20",
@@ -152,9 +188,10 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
                 {bank.balances.length} account{bank.balances.length !== 1 ? 's' : ''}
               </Badge>
             </div>
-            <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
-              <span>Connected {formatDate(bank.connected_at)}</span>
-              {bank.last_sync_at && <span className="text-muted-foreground/70">• Synced {formatDate(bank.last_sync_at)}</span>}
+            <div className="mt-1 flex items-center gap-1 flex-wrap">
+              <span className="text-xs text-muted-foreground">Connected {formatDate(bank.connected_at)}</span>
+              <span className="text-xs text-muted-foreground/70">&bull;</span>
+              <FreshnessStamp dataCurrentThrough={dataCurrentThrough} />
             </div>
             {primaryAccount && (
               <div className="text-sm text-muted-foreground mt-1 line-clamp-1">
@@ -180,16 +217,30 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem onClick={() => handleRefreshBalance()} disabled={isRefreshing} className="flex items-center gap-2">
-                {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                Refresh balance
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleSyncTransactions()} disabled={isSyncing} className="flex items-center gap-2">
-                {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                Sync transactions
-              </DropdownMenuItem>
+              {bank.healthyBankIds.length > 0 && (
+                <>
+                  <DropdownMenuItem onClick={() => handleRefreshBalance()} disabled={isRefreshing} className="flex items-center gap-2">
+                    {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Refresh balance
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleSyncTransactions()} disabled={isSyncing} className="flex items-center gap-2">
+                    {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                    Sync transactions
+                  </DropdownMenuItem>
+                </>
+              )}
+              {bank.reauthBankIds.length > 0 && onReconnect && (
+                <DropdownMenuItem
+                  onClick={handleTopLevelReconnect}
+                  disabled={reconnectingId !== null}
+                  className="flex items-center gap-2 text-amber-700 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-400"
+                >
+                  {reconnectingId !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                  Reconnect
+                </DropdownMenuItem>
+              )}
               {onDisconnect && (
-                <DropdownMenuItem 
+                <DropdownMenuItem
                   className="flex items-center gap-2 text-destructive focus:text-destructive"
                   onSelect={(e) => {
                     e.preventDefault();
@@ -215,74 +266,100 @@ export const BankConnectionCard = ({ bank, onRefreshBalance, onSyncTransactions,
               <ChevronDown className={cn("h-4 w-4 transition-transform", showAccounts ? "rotate-180" : "")} />
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 mt-3">
-              {bank.balances.map((balance) => (
-                <div 
-                  key={balance.id}
-                  className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2 bg-background/60"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-medium truncate">
-                      {balance.account_name}
-                      {balance.account_mask && (
-                        <span className="text-xs text-muted-foreground">••••{balance.account_mask}</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground capitalize">
-                      {balance.account_type || 'account'} • As of {formatDate(balance.as_of_date)}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="text-right">
-                      <div className="text-sm font-semibold">
-                        {formatCurrency(balance.current_balance, balance.currency)}
-                      </div>
-                      {balance.available_balance !== null && balance.available_balance !== balance.current_balance && (
-                        <div className="text-xs text-muted-foreground">
-                          {formatCurrency(balance.available_balance, balance.currency)} available
-                        </div>
-                      )}
-                    </div>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open account options">
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-52">
-                        <DropdownMenuItem 
-                          onClick={() => handleRefreshBalance(balance.connected_bank_id || bank.bankIds[0])} 
-                          disabled={isRefreshing}
-                          className="flex items-center gap-2"
-                        >
-                          {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                          Refresh balance
-                        </DropdownMenuItem>
-                        <DropdownMenuItem 
-                          onClick={() => handleSyncTransactions(balance.connected_bank_id || bank.bankIds[0])} 
-                          disabled={isSyncing}
-                          className="flex items-center gap-2"
-                        >
-                          {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
-                          Sync transactions
-                        </DropdownMenuItem>
-                        {onDisconnect && (
-                          <DropdownMenuItem 
-                            className="flex items-center gap-2 text-destructive focus:text-destructive"
-                            onSelect={(e) => {
-                              e.preventDefault();
-                              setDisconnectTarget({ name: balance.account_name, ids: balance.connected_bank_id || bank.bankIds[0] });
-                              setDisconnectDialogOpen(true);
-                            }}
-                          >
-                            <Unplug className="h-4 w-4" />
-                            Disconnect account
-                          </DropdownMenuItem>
+              {bank.balances.map((balance) => {
+                const isHistorical = balance.bankStatus !== 'connected';
+                const targetBankId = balance.connected_bank_id || bank.bankIds[0];
+
+                return (
+                  <div
+                    key={balance.id}
+                    className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2 bg-background/60"
+                    style={isHistorical ? HISTORICAL_HATCH_STYLE : undefined}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-medium truncate">
+                        {balance.account_name}
+                        {balance.account_mask && (
+                          <span className="text-xs text-muted-foreground">••••{balance.account_mask}</span>
                         )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                        {isHistorical && (
+                          <Badge variant="outline" className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground border-border/40">
+                            Historical
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="text-xs text-muted-foreground capitalize">
+                        {balance.account_type || 'account'} • As of {formatDate(balance.as_of_date)}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <div className="text-right">
+                        <div className={cn("text-sm font-semibold", isHistorical && "text-muted-foreground")}>
+                          {formatCurrency(balance.current_balance, balance.currency)}
+                        </div>
+                        {balance.available_balance !== null && balance.available_balance !== balance.current_balance && (
+                          <div className="text-xs text-muted-foreground">
+                            {formatCurrency(balance.available_balance, balance.currency)} available
+                          </div>
+                        )}
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Open account options">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-52">
+                          {isHistorical ? (
+                            onReconnect && (
+                              <DropdownMenuItem
+                                onClick={() => handleReconnect(targetBankId)}
+                                disabled={reconnectingId !== null}
+                                className="flex items-center gap-2 text-amber-700 dark:text-amber-400 focus:text-amber-700 dark:focus:text-amber-400"
+                              >
+                                {reconnectingId === targetBankId ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                                Reconnect
+                              </DropdownMenuItem>
+                            )
+                          ) : (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => handleRefreshBalance(targetBankId)}
+                                disabled={isRefreshing}
+                                className="flex items-center gap-2"
+                              >
+                                {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                                Refresh balance
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => handleSyncTransactions(targetBankId)}
+                                disabled={isSyncing}
+                                className="flex items-center gap-2"
+                              >
+                                {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Database className="h-4 w-4" />}
+                                Sync transactions
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {onDisconnect && (
+                            <DropdownMenuItem
+                              className="flex items-center gap-2 text-destructive focus:text-destructive"
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                setDisconnectTarget({ name: balance.account_name, ids: targetBankId });
+                                setDisconnectDialogOpen(true);
+                              }}
+                            >
+                              <Unplug className="h-4 w-4" />
+                              Disconnect account
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </CollapsibleContent>
           </Collapsible>
         </div>

@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import { computeAsOfDate } from "../_shared/bankBalanceAsOf.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -102,22 +103,14 @@ serve(async (req) => {
       apiVersion: "2025-08-27.basil" as any
     });
 
-    // Get all Stripe account IDs for this bank connection from balances table
-    const { data: balanceRecords } = await supabaseAdmin
-      .from("bank_account_balances")
-      .select("stripe_financial_account_id, account_name")
-      .eq("connected_bank_id", bankId)
-      .not("stripe_financial_account_id", "is", null);
-
-    // Extract unique account IDs
-    const accountIds = [...new Set(
-      balanceRecords?.map(b => b.stripe_financial_account_id).filter(Boolean) || []
-    )];
-
-    // If no account IDs found in balances, fall back to primary one from connected_banks
-    if (accountIds.length === 0 && bank.stripe_financial_account_id) {
-      accountIds.push(bank.stripe_financial_account_id);
-    }
+    // Enumerate the account to refresh from connected_banks' CURRENT fca_ —
+    // the single source of truth for which Stripe account is live. Deriving
+    // this from bank_account_balances instead used to pick up a stale old-fca_
+    // row left by a reconnect (incident 2026-07-24). A connected_banks row is
+    // 1:1 with a real account, so there is exactly one live account id here.
+    const accountIds = bank.stripe_financial_account_id
+      ? [bank.stripe_financial_account_id]
+      : [];
 
     console.log(`[REFRESH-BALANCE] Found ${accountIds.length} account(s) to refresh:`, accountIds);
 
@@ -160,6 +153,12 @@ serve(async (req) => {
         const availableBalance = finalAccount.balance?.available?.usd;
         const hasBalanceData = currentBalance !== undefined || availableBalance !== undefined;
 
+        // Never invent a date: only include `as_of_date` in the payload when
+        // Stripe actually supplied `balance.as_of`. Omitting the key leaves
+        // whatever value is already persisted untouched on conflict, rather
+        // than stamping `now()` (design §4.4).
+        const asOfDate = computeAsOfDate(finalAccount.balance?.as_of);
+
         const balanceData = {
           account_name: finalAccount.display_name || finalAccount.institution_name,
           account_type: finalAccount.subcategory,
@@ -168,18 +167,27 @@ serve(async (req) => {
           available_balance: availableBalance == null ? null : availableBalance / 100,
           currency: "USD",
           is_active: true,
-          as_of_date: new Date().toISOString(),
+          ...(asOfDate !== undefined ? { as_of_date: asOfDate } : {}),
           stripe_financial_account_id: accountId,
         };
 
-        // Update balance record for this specific account
+        // Update balance record for this specific account via the identity-safe
+        // RPC. One Stripe row per bank; Stripe rotates fca_ ids on reconnect, so
+        // a plain upsert keyed on the fca_ would orphan the pre-reconnect row
+        // (incident 2026-07-24). The RPC rotates the fca_ in place. as_of_date
+        // is omitted when Stripe gave no balance.as_of (null => keep persisted).
         const { error: upsertError } = await supabaseAdmin
-          .from("bank_account_balances")
-          .upsert({
-            connected_bank_id: bankId,
-            ...balanceData
-          }, {
-            onConflict: 'stripe_financial_account_id'
+          .rpc("upsert_stripe_bank_balance", {
+            p_connected_bank_id: bankId,
+            p_stripe_financial_account_id: accountId,
+            p_account_name: balanceData.account_name,
+            p_account_type: balanceData.account_type,
+            p_account_mask: balanceData.account_mask,
+            p_current_balance: balanceData.current_balance,
+            p_available_balance: balanceData.available_balance,
+            p_currency: balanceData.currency,
+            p_is_active: balanceData.is_active,
+            p_as_of_date: asOfDate ?? null,
           });
 
         if (upsertError) {

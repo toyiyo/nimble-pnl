@@ -1,9 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { useSyncBankTransactions } from "@/hooks/useSyncBankTransactions";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
+import { BankReauthBanner, toReauthBannerBanks } from "@/components/banking/BankReauthBanner";
 import { RestaurantSelector } from "@/components/RestaurantSelector";
 import { MetricIcon } from "@/components/MetricIcon";
 import { Building2, Plus, Wallet, TrendingUp } from "lucide-react";
@@ -25,7 +27,6 @@ const Accounting = () => {
     createFinancialConnectionsSession,
     isCreatingSession,
     refreshBalance,
-    syncTransactions,
     disconnectBank,
     verifyConnectionSession,
     groupedBanks,
@@ -34,6 +35,15 @@ const Accounting = () => {
     accountCount,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
   const { toast } = useToast();
+
+  const { mutateAsync: syncBankTransactionsMutation } = useSyncBankTransactions();
+  // Live sync path (design §5.3): needs the institution name to name the bank
+  // in a reauth toast, so it's resolved here from the already-loaded banks
+  // rather than widening BankConnectionCard's onSyncTransactions signature.
+  const syncTransactions = async (bankId: string) => {
+    const institutionName = connectedBanks.find((b) => b.id === bankId)?.institution_name || 'This bank';
+    await syncBankTransactionsMutation({ bankId, institutionName });
+  };
 
   // Clean up Stripe iframes when leaving the Accounting page
   useEffect(() => {
@@ -51,11 +61,14 @@ const Accounting = () => {
     setSelectedRestaurant(restaurant);
   };
 
-  const handleConnectBank = async () => {
+  // `connectedBankId` is present for a reconnect (from the card's
+  // Reconnect entry or the reauth banner) rather than a brand-new "Connect
+  // Bank" click — same client-side flow either way (design §4.5/§5.4).
+  const handleConnectBank = async (connectedBankId?: string) => {
     if (!selectedRestaurant) return;
 
     try {
-      const sessionData = await createFinancialConnectionsSession();
+      const sessionData = await createFinancialConnectionsSession(connectedBankId);
 
       if (sessionData?.clientSecret && sessionData?.sessionId) {
         // Load Stripe.js with your live publishable key
@@ -88,6 +101,10 @@ const Accounting = () => {
       });
     }
   };
+
+  // The minimal per-account shape `<BankReauthBanner>` needs — see
+  // src/components/banking/BankReauthBanner.tsx (design §5.2).
+  const reauthBannerBanks = useMemo(() => toReauthBannerBanks(connectedBanks), [connectedBanks]);
 
   return (
     <>
@@ -173,11 +190,17 @@ const Accounting = () => {
           <div className="space-y-4">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-xl font-semibold">Connected Banks</h2>
-              <Button onClick={handleConnectBank} disabled={isCreatingSession} className="gap-2">
+              <Button onClick={() => handleConnectBank()} disabled={isCreatingSession} className="gap-2">
                 <Plus className="h-4 w-4" />
                 {isCreatingSession ? "Connecting..." : "Connect Bank"}
               </Button>
             </div>
+
+            <BankReauthBanner
+              banks={reauthBannerBanks}
+              loading={loading}
+              onReconnect={handleConnectBank}
+            />
 
             {loading ? (
               <div className="text-center p-8 text-muted-foreground">Loading connected banks...</div>
@@ -190,7 +213,7 @@ const Accounting = () => {
                     Connect your bank accounts to automatically track transactions, reconcile expenses, and gain
                     real-time financial insights.
                   </p>
-                  <Button onClick={handleConnectBank} disabled={isCreatingSession}>
+                  <Button onClick={() => handleConnectBank()} disabled={isCreatingSession}>
                     <Plus className="h-4 w-4 mr-2" />
                     Connect Your First Bank
                   </Button>
@@ -205,6 +228,7 @@ const Accounting = () => {
                     onRefreshBalance={refreshBalance}
                     onSyncTransactions={syncTransactions}
                     onDisconnect={disconnectBank}
+                    onReconnect={handleConnectBank}
                   />
                 ))}
               </div>

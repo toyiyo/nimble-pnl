@@ -26,11 +26,12 @@ export type NotificationType =
   | 'time_off_rejected'
   | 'pin_reset'
   | 'availability_reminder'
-  | 'open_shift_claim_reviewed';
+  | 'open_shift_claim_reviewed'
+  | 'bank_reauth_required';
 
 export type NotificationChannel = 'email' | 'push';
 
-export type NotificationGroup = 'Scheduling' | 'Trades' | 'Time off' | 'Access';
+export type NotificationGroup = 'Scheduling' | 'Trades' | 'Time off' | 'Access' | 'Banking';
 
 export interface NotificationTypeDef {
   key: NotificationType;
@@ -59,6 +60,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { key: 'time_off_approved', label: 'Time off approved', group: 'Time off', channels: ['email', 'push'] },
   { key: 'time_off_rejected', label: 'Time off rejected', group: 'Time off', channels: ['email', 'push'] },
   { key: 'pin_reset', label: 'PIN reset', group: 'Access', channels: ['email', 'push'] },
+  { key: 'bank_reauth_required', label: 'Bank needs reauthorization', group: 'Banking', channels: ['email', 'push'] },
   // NOTE: `team_invite` is intentionally NOT a matrix row. A team-invitation email is
   // transactional — it carries the only copy of the accept link (token is hashed and
   // unrecoverable), so it must always send and is not admin-toggleable.

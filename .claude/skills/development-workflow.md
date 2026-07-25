@@ -452,6 +452,29 @@ workflow- or doc-only (no diff under `src/`, `supabase/`, or
 - **If any check fails:** Fix the issue, commit the fix, re-run. Loop locally until green before proceeding. Max 5 local fix iterations — if still failing after 5, report to user.
 - Update `progress.md` with verification results
 
+<HARD-GATE>
+**E2E coverage gate — large/behavioral changes MUST be E2E-tested.**
+Any change that alters user-facing behavior or a cross-layer seam — a new
+or changed page/route/dialog/flow, a new edge function or RPC in a request
+path, or a change to how records are created/linked/authorized — must add or
+extend a Playwright spec under `tests/e2e/` that exercises the new behavior
+end to end. Unit and pgTAP tests do not satisfy this gate; they cover pieces,
+not the seam.
+
+Before leaving Phase 8, state explicitly one of:
+- **Covered** — name the `tests/e2e/*.spec.ts` file(s) added/extended and the
+  behavior each asserts, with passing output evidence; **or**
+- **Justified exception** — one sentence on why an E2E is genuinely
+  inapplicable (e.g. pure refactor with no behavior change, docs/config only,
+  or the flow is infeasible to drive in CI — in which case cover the largest
+  runnable slice and say what was left out and why).
+
+"Hard to seed" is not an exception — seed via the existing `tests/helpers/`
+patterns, or a service-role client confined to the Node test process (never
+the browser page) when RLS blocks the setup. Silent omission is a gate
+failure, not a judgment call.
+</HARD-GATE>
+
 **Skip condition:** None. Evidence before assertions, always.
 
 ## Phase 9: Ship & CI Loop

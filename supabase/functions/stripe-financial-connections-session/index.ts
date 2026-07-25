@@ -1,6 +1,12 @@
 import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@18.5.0";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
+import {
+  buildRelinkSessionParams,
+  isRelinkOptionsRejected,
+  resolveSessionMode,
+  type BaseSessionParams,
+} from "../_shared/bankRelinkSession.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -37,9 +43,11 @@ serve(async (req) => {
 
     console.log("[FC-SESSION] User authenticated:", user.id);
 
-    // Get request body
-    const { restaurantId } = await req.json();
-    
+    // Get request body. `connectedBankId` is optional (design §4.5) — when
+    // present it requests a relink of that specific bank rather than a
+    // brand-new link.
+    const { restaurantId, connectedBankId } = await req.json();
+
     if (!restaurantId) {
       throw new Error("Restaurant ID is required");
     }
@@ -202,8 +210,8 @@ serve(async (req) => {
 
     // Create Financial Connections session
     const origin = req.headers.get("origin") || "http://localhost:3000";
-    
-    const session = await stripe.financialConnections.sessions.create({
+
+    const baseSessionParams: BaseSessionParams = {
       account_holder: {
         type: "customer",
         customer: stripeCustomerId,
@@ -213,14 +221,67 @@ serve(async (req) => {
         countries: ["US"],
       },
       return_url: `${origin}/banking?restaurant_id=${restaurantId}`,
-    });
+    };
 
-    console.log("[FC-SESSION] Session created successfully:", session.id);
+    let session;
+    let relinkSucceeded = false;
+    const attemptedRelink = Boolean(connectedBankId);
+
+    if (connectedBankId) {
+      // Scope the bank lookup to the already-authorised restaurantId — no
+      // widening of the owner/manager gate above (design §4.5).
+      const { data: bank, error: bankLookupError } = await supabaseAdmin
+        .from("connected_banks")
+        .select("stripe_financial_account_id")
+        .eq("id", connectedBankId)
+        .eq("restaurant_id", restaurantId)
+        .maybeSingle();
+
+      if (bankLookupError) {
+        console.error("[FC-SESSION] Database error looking up bank for relink:", bankLookupError);
+        throw new Error(`Database error looking up bank: ${bankLookupError.message}`);
+      }
+
+      if (!bank?.stripe_financial_account_id) {
+        throw new Error("Bank not found for this restaurant");
+      }
+
+      try {
+        // `relink_options` is not (yet) part of the official Stripe SDK's
+        // `SessionCreateParams` type — it's a private-beta field the SDK
+        // doesn't know about — so the merged params need an `unknown`
+        // round-trip rather than a structural cast.
+        const relinkParams = buildRelinkSessionParams(
+          baseSessionParams,
+          bank.stripe_financial_account_id
+        ) as unknown as Stripe.FinancialConnections.SessionCreateParams;
+        session = await stripe.financialConnections.sessions.create(relinkParams);
+        relinkSucceeded = true;
+        console.log("[FC-SESSION] Relink session created:", session.id);
+      } catch (relinkError: unknown) {
+        if (!isRelinkOptionsRejected(relinkError)) {
+          throw relinkError;
+        }
+        // relink_options is in private beta and may be rejected — fall back
+        // to a normal session. Task 5's identity matching (design §4.2) is
+        // what makes this fallback survivable: a fresh link lands on the
+        // correct row by (institution, last4) rather than an arbitrary one.
+        console.warn("[FC-SESSION] relink_options rejected by Stripe (private beta) — falling back to a normal session");
+        session = await stripe.financialConnections.sessions.create(baseSessionParams);
+      }
+    } else {
+      session = await stripe.financialConnections.sessions.create(baseSessionParams);
+    }
+
+    const mode = resolveSessionMode(attemptedRelink, relinkSucceeded);
+
+    console.log("[FC-SESSION] Session created successfully:", session.id, "mode:", mode);
 
     return new Response(
       JSON.stringify({
         clientSecret: session.client_secret,
         sessionId: session.id,
+        mode,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

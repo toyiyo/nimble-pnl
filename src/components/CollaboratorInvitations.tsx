@@ -19,6 +19,8 @@ import {
   useResendCollaboratorInvitation,
 } from '@/hooks/useCollaborators';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
+import { useAccountlessEmployees, resolveAccountlessEmployeeHint, resolveDescribedById } from '@/hooks/useAccountlessEmployees';
+import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 interface CollaboratorInvitationsProps {
   restaurantId: string;
@@ -49,10 +51,21 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
   const [showCancelledInvites, setShowCancelledInvites] = useState(false);
   const [resendingIds, setResendingIds] = useState<Set<string>>(new Set());
 
-  const { data: members } = useRestaurantMembers(restaurantId);
+  const { data: members, isLoading: membersLoading, isError: membersIsError } = useRestaurantMembers(restaurantId);
   // null while loading, on error, or for a non-member — all "proceed normally".
   const existingMember = findMemberByEmail(members, email);
   const blockedPanelId = 'collab-existing-member-warning';
+
+  const { data: accountlessEmployees } = useAccountlessEmployees(restaurantId);
+  const accountlessEmployee = resolveAccountlessEmployeeHint(
+    existingMember,
+    membersLoading,
+    membersIsError,
+    accountlessEmployees,
+    email
+  );
+  const hintPanelId = 'collab-existing-employee-hint';
+  const activeDescribedById = resolveDescribedById(existingMember, accountlessEmployee, blockedPanelId, hintPanelId);
 
   const handleSendInvitation = () => {
     // aria-disabled keeps the button focusable, so the handler owns the block.
@@ -71,7 +84,12 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
     }
 
     sendInvitationMutation.mutate(
-      { restaurantId, email: normalizedEmail, role: selectedRole },
+      {
+        restaurantId,
+        email: normalizedEmail,
+        role: selectedRole,
+        ...(accountlessEmployee ? { employeeId: accountlessEmployee.id } : {}),
+      },
       {
         onSuccess: () => {
           setEmail('');
@@ -227,12 +245,21 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             </div>
           )}
 
+          {accountlessEmployee && (
+            <AccountlessEmployeeHint
+              id={hintPanelId}
+              employeeName={accountlessEmployee.name}
+              roleLabel={ROLE_METADATA[preset.role]?.label ?? preset.title}
+            />
+          )}
+
           <div className="flex gap-2">
             <Input
               id="collaborator-email"
               type="email"
               placeholder="collaborator@example.com"
               value={email}
+              aria-describedby={activeDescribedById}
               onChange={(e) => setEmail(e.target.value)}
               className="flex-1"
             />
@@ -240,7 +267,6 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
               onClick={handleSendInvitation}
               disabled={sendInvitationMutation.isPending || !email.trim()}
               aria-disabled={existingMember ? true : undefined}
-              aria-describedby={existingMember ? blockedPanelId : undefined}
               className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >
               {sendInvitationMutation.isPending ? 'Sending...' : 'Send Invite'}

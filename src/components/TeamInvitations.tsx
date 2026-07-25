@@ -15,6 +15,8 @@ import type { Role } from '@/lib/permissions/types';
 import { ROLE_METADATA, groupRolesForInvite } from '@/lib/permissions/definitions';
 import { getInvitableRoles } from '@/lib/permissions/invitations';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
+import { useAccountlessEmployees, resolveAccountlessEmployeeHint, resolveDescribedById, combineDescribedByIds } from '@/hooks/useAccountlessEmployees';
+import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 interface Invitation {
   id: string;
@@ -50,10 +52,30 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
   const [resendConflictId, setResendConflictId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const { data: members } = useRestaurantMembers(restaurantId);
+  const { data: members, isLoading: membersLoading, isError: membersIsError } = useRestaurantMembers(restaurantId);
   // null while loading, on error, or for a non-member — all "proceed normally".
   const existingMember = findMemberByEmail(members, inviteForm.email);
   const blockedPanelId = 'invite-existing-member-warning';
+
+  const { data: accountlessEmployees } = useAccountlessEmployees(restaurantId);
+  const accountlessEmployee = resolveAccountlessEmployeeHint(
+    existingMember,
+    membersLoading,
+    membersIsError,
+    accountlessEmployees,
+    inviteForm.email
+  );
+  const hintPanelId = 'invite-existing-employee-hint';
+  const pendingConflictPanelId = 'invite-pending-conflict-warning';
+  // The pending-conflict panel is independent of (and can stack with) the
+  // member-block/accountless-hint panel — design doc: "the hint can stack
+  // with the pendingConflict panel (they are not mutually exclusive)". So it
+  // is appended rather than folded into resolveDescribedById's either/or
+  // precedence, which only arbitrates between the block and the hint.
+  const activeDescribedById = combineDescribedByIds(
+    resolveDescribedById(existingMember, accountlessEmployee, blockedPanelId, hintPanelId),
+    pendingConflict ? pendingConflictPanelId : undefined
+  );
 
   useEffect(() => {
     setShowHistory(false);
@@ -156,12 +178,15 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
 
     setSending(true);
     try {
+      const body: Record<string, unknown> = {
+        restaurantId,
+        email: normalizedEmail,
+        role: inviteForm.role,
+      };
+      if (accountlessEmployee) body.employeeId = accountlessEmployee.id;
+
       const { data, error } = await supabase.functions.invoke('send-team-invitation', {
-        body: {
-          restaurantId,
-          email: normalizedEmail,
-          role: inviteForm.role,
-        },
+        body,
       });
 
       if (error) throw error;
@@ -262,7 +287,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                   <span className="sm:inline">Send Invitation</span>
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-md p-0 gap-0 border-border/40">
+              <DialogContent className="max-w-md max-h-[80vh] overflow-y-auto p-0 gap-0 border-border/40">
                 <DialogHeader className="px-6 pt-6 pb-4 border-b border-border/40">
                   <div className="flex items-center gap-3">
                     <div className="h-10 w-10 rounded-xl bg-muted/50 flex items-center justify-center">
@@ -285,6 +310,7 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       type="email"
                       placeholder="Enter email address"
                       value={inviteForm.email}
+                      aria-describedby={activeDescribedById}
                       className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
                       onChange={(e) => {
                         setPendingConflict(false);
@@ -334,7 +360,12 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                   </div>
 
                   {pendingConflict && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]">
+                    <div
+                      id={pendingConflictPanelId}
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-start gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[13px]"
+                    >
                       <Clock className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
                       <p className="text-foreground">
                         A pending invite for <strong>{inviteForm.email}</strong> already exists. Sending a new one will cancel the old link.
@@ -359,6 +390,14 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                       </p>
                     </div>
                   )}
+
+                  {accountlessEmployee && (
+                    <AccountlessEmployeeHint
+                      id={hintPanelId}
+                      employeeName={accountlessEmployee.name}
+                      roleLabel={ROLE_METADATA[inviteForm.role as Role]?.label ?? inviteForm.role}
+                    />
+                  )}
                 </div>
 
                 <DialogFooter className="px-6 py-4 border-t border-border/40">
@@ -369,7 +408,6 @@ export function TeamInvitations({ restaurantId, userRole }: TeamInvitationsProps
                     onClick={sendInvitation}
                     disabled={sending}
                     aria-disabled={existingMember ? true : undefined}
-                    aria-describedby={existingMember ? blockedPanelId : undefined}
                     className="h-9 px-4 rounded-lg text-[13px] font-medium bg-foreground text-background hover:bg-foreground/90 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
                   >
                     {sending ? 'Sending...' : pendingConflict ? 'Yes, resend anyway' : 'Send Invitation'}

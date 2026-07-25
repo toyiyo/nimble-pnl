@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { PageHeader } from "@/components/PageHeader";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,6 +11,7 @@ import { EnhancedCategoryRulesDialog } from "@/components/banking/EnhancedCatego
 import { EnhancedReconciliationDialog } from "@/components/banking/EnhancedReconciliationDialog";
 import { ReconciliationReport } from "@/components/banking/ReconciliationReport";
 import { BankConnectionCard } from "@/components/BankConnectionCard";
+import { BankReauthBanner, toReauthBannerBanks } from "@/components/banking/BankReauthBanner";
 import { MetricIcon } from "@/components/MetricIcon";
 import { Link, useLocation } from "react-router-dom";
 import { FeatureGate } from "@/components/subscription";
@@ -18,6 +19,7 @@ import { useCategorizeTransactions } from "@/hooks/useCategorizeTransactions";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { useSyncBankTransactions } from "@/hooks/useSyncBankTransactions";
 import { TransactionFiltersSheet, type TransactionFilters } from "@/components/TransactionFilters";
 import { BankStatementUpload } from "@/components/BankStatementUpload";
 import { BankStatementReview } from "@/components/BankStatementReview";
@@ -136,7 +138,6 @@ export default function Banking() {
     createFinancialConnectionsSession,
     isCreatingSession,
     refreshBalance,
-    syncTransactions,
     disconnectBank,
     verifyConnectionSession,
     groupedBanks,
@@ -145,6 +146,15 @@ export default function Banking() {
     accountCount,
     refreshBanks,
   } = useStripeFinancialConnections(selectedRestaurant?.restaurant_id || null);
+
+  const { mutateAsync: syncBankTransactionsMutation } = useSyncBankTransactions();
+  // Live sync path (design §5.3): needs the institution name to name the bank
+  // in a reauth toast, so it's resolved here from the already-loaded banks
+  // rather than widening BankConnectionCard's onSyncTransactions signature.
+  const syncTransactions = async (bankId: string) => {
+    const institutionName = connectedBanks.find((b) => b.id === bankId)?.institution_name || 'This bank';
+    await syncBankTransactionsMutation({ bankId, institutionName });
+  };
 
   const { recalculateBankBalance } = useBankStatementImport();
 
@@ -189,11 +199,15 @@ export default function Banking() {
     }
   };
 
-  const handleConnectBank = async () => {
+  // `connectedBankId` is present when this is a reconnect (from the card's
+  // per-account/top-level Reconnect entry or the reauth banner) rather than
+  // a brand-new "Connect Bank" click. The client-side flow is identical
+  // either way — the only difference is server-side (design §4.5/§5.4).
+  const handleConnectBank = async (connectedBankId?: string) => {
     if (!selectedRestaurant) return;
 
     try {
-      const sessionData = await createFinancialConnectionsSession();
+      const sessionData = await createFinancialConnectionsSession(connectedBankId);
 
       if (sessionData?.clientSecret && sessionData?.sessionId) {
         const stripe = await loadStripe(
@@ -212,7 +226,7 @@ export default function Banking() {
         // This handles cases where webhooks fail or aren't sent (e.g., reconnections)
         console.log("[BANKING] Session completed, verifying with backend...");
         await verifyConnectionSession(sessionData.sessionId, selectedRestaurant.restaurant_id);
-        
+
         // The verifyConnectionSession function will show appropriate toasts
         // and refresh the banks list automatically
       }
@@ -220,6 +234,10 @@ export default function Banking() {
       toast.error(error instanceof Error ? error.message : "Failed to connect bank");
     }
   };
+
+  // The minimal per-account shape `<BankReauthBanner>` needs — see
+  // src/components/banking/BankReauthBanner.tsx (design §5.2).
+  const reauthBannerBanks = useMemo(() => toReauthBannerBanks(connectedBanks), [connectedBanks]);
 
   // Bulk selection handlers
   const handleSelectionToggle = (id: string, event: React.MouseEvent) => {
@@ -427,15 +445,21 @@ export default function Banking() {
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h2 className="text-xl font-semibold">Connected Banks</h2>
-              <Button 
-                onClick={handleConnectBank} 
-                disabled={isCreatingSession} 
+              <Button
+                onClick={() => handleConnectBank()}
+                disabled={isCreatingSession}
                 className="gap-2 w-full sm:w-auto"
               >
                 <Plus className="h-4 w-4" />
                 {isCreatingSession ? "Connecting..." : "Connect Bank"}
               </Button>
             </div>
+
+            <BankReauthBanner
+              banks={reauthBannerBanks}
+              loading={banksLoading}
+              onReconnect={handleConnectBank}
+            />
 
             {banksLoading ? (
               <div className="text-center p-8 text-muted-foreground">Loading connected banks...</div>
@@ -448,7 +472,7 @@ export default function Banking() {
                     Connect your bank accounts to automatically track transactions, reconcile expenses, and gain
                     real-time financial insights.
                   </p>
-                  <Button onClick={handleConnectBank} disabled={isCreatingSession}>
+                  <Button onClick={() => handleConnectBank()} disabled={isCreatingSession}>
                     <Plus className="h-4 w-4 mr-2" />
                     Connect Your First Bank
                   </Button>
@@ -463,6 +487,7 @@ export default function Banking() {
                     onRefreshBalance={refreshBalance}
                     onSyncTransactions={syncTransactions}
                     onDisconnect={disconnectBank}
+                    onReconnect={handleConnectBank}
                   />
                 ))}
               </div>

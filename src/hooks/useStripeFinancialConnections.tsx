@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { type ConnectedBank, type GroupedBank, groupBanks, totalBalance as computeTotalBalance, accountCount as computeAccountCount } from '@/utils/financialConnections';
+import { type ConnectedBank, type GroupedBank, groupBanks, totalBalance as computeTotalBalance, accountCount as computeAccountCount, quarantinedBalance as computeQuarantinedBalance } from '@/utils/financialConnections';
 
 interface FinancialConnectionSession {
   clientSecret: string;
@@ -39,6 +39,9 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
           disconnected_at,
           last_sync_at,
           sync_error,
+          account_mask,
+          deactivated_at,
+          data_current_through,
           balances:bank_account_balances(
             id,
             connected_bank_id,
@@ -53,7 +56,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .eq('status', 'connected')
+        .in('status', ['connected', 'requires_reauth', 'error'])
         .order('connected_at', { ascending: false });
 
       if (banksError) throw banksError;
@@ -90,8 +93,16 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     [connectedBanks]
   );
 
-  // Create Financial Connections session
-  const createFinancialConnectionsSession = async (): Promise<FinancialConnectionSession | null> => {
+  const quarantinedBalance = useMemo(
+    () => computeQuarantinedBalance(connectedBanks),
+    [connectedBanks]
+  );
+
+  // Create Financial Connections session. An optional `connectedBankId`
+  // requests a relink of that specific bank rather than a brand-new link
+  // (design §4.5/§5.4) — forwarded to the edge function as-is; the server
+  // decides whether relink is available and reports back via `mode`.
+  const createFinancialConnectionsSession = async (connectedBankId?: string): Promise<FinancialConnectionSession | null> => {
     if (!restaurantId) {
       toast({
         title: "No Restaurant Selected",
@@ -107,7 +118,7 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
       const { data, error } = await supabase.functions.invoke(
         'stripe-financial-connections-session',
         {
-          body: { restaurantId }
+          body: { restaurantId, connectedBankId }
         }
       );
 
@@ -243,39 +254,12 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     }
   };
 
-  // Sync transactions for a specific bank
-  const syncTransactions = async (bankId: string) => {
-    // Show immediate feedback that sync is starting
-    toast({
-      title: "Importing Transactions",
-      description: "Fetching all transactions from your bank account. This may take a moment...",
-    });
-
-    try {
-      const { data, error } = await supabase.functions.invoke(
-        'stripe-sync-transactions',
-        {
-          body: { bankId }
-        }
-      );
-
-      if (error) throw error;
-
-      toast({
-        title: data.message ? "Transaction Sync Started" : "Transactions Synced",
-        description: data.message || `Successfully imported and categorized ${data.synced} new transactions (${data.skipped} already existed). Your financial statements are now up to date.`,
-      });
-
-      return data;
-    } catch (error) {
-      console.error('Error syncing transactions:', error);
-      toast({
-        title: "Failed to Sync Transactions",
-        description: error instanceof Error ? error.message : "An error occurred",
-        variant: "destructive",
-      });
-    }
-  };
+  // Sync transactions for a specific bank lives in `useSyncBankTransactions`
+  // (design §5.3) — it needs the honesty branching (needsReauth / synced=0 /
+  // synced>0) and dual cache invalidation that a plain fire-and-toast
+  // function here can't express as a React Query mutation. Callers resolve
+  // the institution name from `connectedBanks` and call that hook directly;
+  // see src/pages/Banking.tsx and src/pages/Accounting.tsx.
 
   // Verify connection session and process linked accounts
   const verifyConnectionSession = async (sessionId: string, currentRestaurantId?: string) => {
@@ -342,9 +326,9 @@ export const useStripeFinancialConnections = (restaurantId: string | null) => {
     disconnectBank,
     refreshBanks: () => queryClient.invalidateQueries({ queryKey: ['connectedBanks', restaurantId] }),
     refreshBalance,
-    syncTransactions,
     verifyConnectionSession,
     totalBalance,
+    quarantinedBalance,
     bankCount: groupedBanks.length,
     accountCount,
   };

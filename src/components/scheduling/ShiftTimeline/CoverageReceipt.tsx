@@ -106,6 +106,14 @@ export function CoverageReceipt({
      
   }, [hour.startMin]);
 
+  // The ledger's last row is always the verdict (Short on demand / Short on
+  // floor / Covered / On target) — set it off as an emphasized "total" below a
+  // divider, the way the mock's receipt reads. `nodata` hours have no rows, so
+  // guard the split.
+  const hasRows = receipt.rows.length > 0;
+  const ledgerRows = hasRows ? receipt.rows.slice(0, -1) : [];
+  const totalRow = hasRows ? receipt.rows[receipt.rows.length - 1] : null;
+
   return (
     <div
       data-testid="coverage-receipt"
@@ -116,8 +124,18 @@ export function CoverageReceipt({
         {announced}
       </div>
 
+      {/* Header — eyebrow + the hour this arithmetic explains. */}
+      <div className="px-4 pt-4 pb-3 border-b border-border/40">
+        <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+          The arithmetic
+        </p>
+        <p className="text-[15px] font-semibold text-foreground tabular-nums mt-0.5">
+          {formatCoverageHour(hour.hour)}
+        </p>
+      </div>
+
       <div className="p-4 space-y-1.5">
-        {receipt.rows.map((row) => (
+        {ledgerRows.map((row) => (
           <div key={row.label} className="flex items-baseline justify-between gap-3">
             <span className="text-[13px] text-muted-foreground">{row.label}</span>
             <span className={cn('text-[14px] font-medium tabular-nums', TONE_CLASS[row.tone])}>
@@ -126,8 +144,19 @@ export function CoverageReceipt({
           </div>
         ))}
 
+        {totalRow && (
+          <div className="flex items-baseline justify-between gap-3 mt-1.5 pt-2.5 border-t border-border/40">
+            <span className={cn('text-[13px] font-semibold', TONE_CLASS[totalRow.tone])}>
+              {totalRow.label}
+            </span>
+            <span className={cn('text-[16px] font-semibold tabular-nums', TONE_CLASS[totalRow.tone])}>
+              {totalRow.value}
+            </span>
+          </div>
+        )}
+
         {receipt.asides.map((aside) => (
-          <p key={aside} className="text-[12px] text-muted-foreground pt-1">
+          <p key={aside} className="text-[12px] text-muted-foreground pt-1 leading-relaxed">
             {aside}
           </p>
         ))}

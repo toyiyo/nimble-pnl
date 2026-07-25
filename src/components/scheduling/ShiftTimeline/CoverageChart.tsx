@@ -108,21 +108,21 @@ function Legend() {
       data-testid="coverage-chart-legend"
       className="flex flex-wrap items-center gap-4 text-[11px] text-muted-foreground mt-1"
     >
-      <span className="flex items-center gap-1">
-        <span className="inline-block h-2 w-3 rounded-sm bg-destructive" />
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-[3px] w-4 rounded-full bg-destructive" />
         Short on demand
       </span>
-      <span className="flex items-center gap-1">
-        <span className="inline-block h-2 w-3 rounded-sm border border-dashed border-warning bg-warning/25" />
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block w-4 border-b-2 border-dashed border-warning" />
         At the floor only
       </span>
-      <span className="flex items-center gap-1">
-        <span className="inline-block h-2 w-3 rounded-sm bg-primary/40" />
+      <span className="flex items-center gap-1.5">
+        <span className="inline-block h-[3px] w-4 rounded-full bg-primary" />
         Covered
       </span>
-      <span className="flex items-center gap-1">
+      <span className="flex items-center gap-1.5">
         <span
-          className="inline-block h-2 w-3 rounded-sm border border-muted-foreground/40"
+          className="inline-block h-2.5 w-4 rounded-sm border border-muted-foreground/40"
           style={{
             backgroundImage:
               'repeating-linear-gradient(45deg, hsl(var(--muted-foreground)) 0, hsl(var(--muted-foreground)) 1px, transparent 1px, transparent 3px)',
@@ -321,12 +321,21 @@ export const CoverageChart = memo(function CoverageChart({
                 );
               }
 
+              // Inset the drawn bar within its column so adjacent hours read as
+              // discrete bars, not one abutting block (the flat-block look the
+              // first cut had). The full-width transparent hit target below is
+              // unaffected — only the visual fill is inset.
+              const pad = width * 0.16;
+              const bx = left + pad;
+              const bw = width - pad * 2;
+
               const demand = h.demand ?? 0;
               const needed = neededFor(demand, minStaff);
               const scheduled = h.scheduled;
 
               const scheduledTopY = 100 - (scheduled / peak) * 100;
               const scheduledHeight = (scheduled / peak) * 100;
+              const neededY = 100 - (needed / peak) * 100;
 
               // Demand slice: y(demand) → y(scheduled) — only when short of raw demand (`crit`).
               const hasDemandSlice = kind === 'crit';
@@ -336,48 +345,97 @@ export const CoverageChart = memo(function CoverageChart({
               // Floor slice: max(scheduled, demand) → needed — `crit` or `floor`, only
               // when the minStaff floor actually pulls `needed` above that point.
               const flooredBase = Math.max(scheduled, demand);
-              const floorSliceTopY = 100 - (needed / peak) * 100;
+              const floorSliceTopY = neededY;
               const floorBaseY = 100 - (flooredBase / peak) * 100;
               const hasFloorSlice = (kind === 'crit' || kind === 'floor') && needed > flooredBase;
               const floorSliceHeight = hasFloorSlice ? floorBaseY - floorSliceTopY : 0;
 
               return (
                 <g key={h.startMin}>
+                  {/* Scheduled fill + a crisp solid cap line at its top — "what you scheduled". */}
                   <rect
                     data-scheduled=""
-                    x={left}
+                    x={bx}
                     y={scheduledTopY}
-                    width={width}
+                    width={bw}
                     height={scheduledHeight}
                     fill="hsl(var(--primary))"
-                    fillOpacity={0.4}
+                    fillOpacity={0.28}
                   />
-                  {hasDemandSlice && (
-                    <rect
-                      data-demand-slice=""
-                      x={left}
-                      y={demandTopY}
-                      width={width}
-                      height={demandSliceHeight}
-                      fill="hsl(var(--destructive))"
-                      fillOpacity={0.85}
-                    />
-                  )}
-                  {hasFloorSlice && (
-                    <rect
-                      data-floor-slice=""
-                      x={left}
-                      y={floorSliceTopY}
-                      width={width}
-                      height={floorSliceHeight}
-                      fill="hsl(var(--warning))"
-                      fillOpacity={0.25}
-                      stroke="hsl(var(--warning))"
-                      strokeWidth={0.6}
-                      strokeDasharray="2 1.5"
+                  {scheduled > 0 && (
+                    <line
+                      x1={bx}
+                      x2={bx + bw}
+                      y1={scheduledTopY}
+                      y2={scheduledTopY}
+                      stroke="hsl(var(--primary))"
+                      strokeWidth={1.5}
                       vectorEffect="non-scaling-stroke"
                     />
                   )}
+
+                  {/* Demand-short slice: red fill + SOLID red cap at the demand line. */}
+                  {hasDemandSlice && (
+                    <>
+                      <rect
+                        data-demand-slice=""
+                        x={bx}
+                        y={demandTopY}
+                        width={bw}
+                        height={demandSliceHeight}
+                        fill="hsl(var(--destructive))"
+                        fillOpacity={0.82}
+                      />
+                      <line
+                        x1={bx}
+                        x2={bx + bw}
+                        y1={demandTopY}
+                        y2={demandTopY}
+                        stroke="hsl(var(--destructive))"
+                        strokeWidth={2}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </>
+                  )}
+
+                  {/* Floor-only slice: faint amber fill + DASHED amber cap at the needed line. */}
+                  {hasFloorSlice && (
+                    <>
+                      <rect
+                        data-floor-slice=""
+                        x={bx}
+                        y={floorSliceTopY}
+                        width={bw}
+                        height={floorSliceHeight}
+                        fill="hsl(var(--warning))"
+                        fillOpacity={0.18}
+                      />
+                      <line
+                        data-floor-cap=""
+                        x1={bx}
+                        x2={bx + bw}
+                        y1={floorSliceTopY}
+                        y2={floorSliceTopY}
+                        stroke="hsl(var(--warning))"
+                        strokeWidth={2}
+                        strokeDasharray="4 3"
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    </>
+                  )}
+
+                  {/* Needed tick — a short dark reference mark at the target level. */}
+                  <line
+                    data-need-tick=""
+                    x1={bx}
+                    x2={bx + bw}
+                    y1={neededY}
+                    y2={neededY}
+                    stroke="hsl(var(--foreground))"
+                    strokeWidth={1}
+                    strokeOpacity={0.4}
+                    vectorEffect="non-scaling-stroke"
+                  />
                 </g>
               );
             })}
@@ -390,6 +448,42 @@ export const CoverageChart = memo(function CoverageChart({
           >
             floor {minStaff}
           </span>
+
+          {/* On-bar shortfall labels (−N), centered in the gap they name — HTML
+              overlay so the digits stay upright under the non-uniform SVG scale.
+              aria-hidden: each column's <button> already carries the full
+              spoken shortfall in its aria-label. */}
+          {hours.map((h) => {
+            const kind = classifyHour(h, minStaff);
+            if (kind !== 'crit' && kind !== 'floor') return null;
+
+            const left = effectiveMinToPct(h.startMin);
+            const width = effectiveMinToPct(h.startMin + 60) - left;
+            const demand = h.demand ?? 0;
+            const needed = neededFor(demand, minStaff);
+            const scheduled = h.scheduled;
+
+            const scheduledTopY = 100 - (scheduled / peak) * 100;
+            const short = kind === 'crit' ? demand - scheduled : needed - scheduled;
+            const gapTopY = kind === 'crit' ? 100 - (demand / peak) * 100 : 100 - (needed / peak) * 100;
+            const midY = (gapTopY + scheduledTopY) / 2;
+
+            return (
+              <span
+                key={h.startMin}
+                aria-hidden
+                className={cn(
+                  'absolute -translate-x-1/2 -translate-y-1/2 text-[11px] font-semibold tabular-nums',
+                  kind === 'crit'
+                    ? 'text-destructive-foreground'
+                    : 'rounded bg-background/70 px-0.5 text-warning',
+                )}
+                style={{ left: `${left + width / 2}%`, top: `${midY}%` }}
+              >
+                −{short}
+              </span>
+            );
+          })}
 
           {/* Interactive option overlay — roving tabindex, one per hour */}
           {hours.map((h, i) => {

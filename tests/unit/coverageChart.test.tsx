@@ -172,10 +172,12 @@ describe('CoverageChart — SVG demand/floor split', () => {
     expect(container.querySelectorAll('[data-floor-slice]')).toHaveLength(2);
   });
 
-  it('the floor slice uses stroke-dasharray (texture, not color alone)', () => {
+  it('the floor slice is capped by a dashed line (texture, not color alone)', () => {
     const { container } = renderChart();
-    const slices = Array.from(container.querySelectorAll('[data-floor-slice]'));
-    slices.forEach((el) => {
+    const caps = Array.from(container.querySelectorAll('[data-floor-cap]'));
+    // One dashed cap per floor slice (crit + floor columns).
+    expect(caps).toHaveLength(2);
+    caps.forEach((el) => {
       expect(el.getAttribute('stroke-dasharray')).toBeTruthy();
     });
   });

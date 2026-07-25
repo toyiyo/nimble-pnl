@@ -512,7 +512,7 @@ export function ShiftTimelineTab({
     () => summarizeCoverageHours(liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations),
     [liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations],
   );
-  const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
+  const verdict = useMemo(() => buildVerdict(hourlySummary, minStaff), [hourlySummary, minStaff]);
 
   // ── Pinned CoverageReceipt inputs (Stage 5.2) ──────────────────────────────
   // The receipt panel's driving hour: the explicitly-clicked chart column when
@@ -940,11 +940,11 @@ export function ShiftTimelineTab({
                 needs its `pl-[120px]` wrapper to start at the same left
                 offset as `TimelineAxis` and the shift lanes below, so the
                 chart/strips/axis all share one x-scale. */}
-            <div className="pt-3 pb-1 space-y-2 px-0">
+            <div className="pt-4 pb-1 space-y-3 px-0">
               {/* Chart header: plain-language verdict + demand explainer
                   (folds CoverageVerdict/CoverageDemandInfo directly above the
                   chart now that the old Area/Delta view toggle is gone). */}
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-start justify-between gap-3 flex-wrap px-4">
                 <CoverageVerdict verdict={verdict} />
                 <CoverageDemandInfo />
               </div>
@@ -956,7 +956,7 @@ export function ShiftTimelineTab({
                   gated to owner/manager/operations_manager (Stage 5.3); the
                   live preview + Reset stay available to every role. */}
               {targetSplh !== null && (
-                <div className="rounded-xl border border-border/40 bg-muted/30 p-3">
+                <div className="mx-4 rounded-xl border border-border/40 bg-muted/30 p-4">
                   <SplhSlider
                     value={sliderTarget ?? targetSplh}
                     wage={avgWage}

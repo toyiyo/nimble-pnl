@@ -84,23 +84,29 @@ export function SplhSlider({
   const pctLabel = pct.toFixed(1);
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Label
-          htmlFor={sliderId}
-          className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
-        >
-          Sales per Labor Hour
-        </Label>
+    <div className="space-y-3">
+      {/* Header: friendly label + the big implied-labor readout it drives. */}
+      <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <Label htmlFor={sliderId} className="block text-[13px] font-medium text-foreground">
+            Each labor hour should bring in
+          </Label>
+          <p className="text-[12px] text-muted-foreground mt-0.5">
+            Your sales-per-labor-hour target — a lower target schedules more staff.
+          </p>
+        </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] text-foreground tabular-nums">
+        <div className="flex items-baseline gap-2 whitespace-nowrap">
+          <span className="text-[22px] font-semibold text-foreground tabular-nums leading-none">
+            ${value}
+          </span>
+          <span className="text-[13px] text-muted-foreground tabular-nums">
             → {pctLabel}% labor at ${wage.toFixed(2)}/hr
           </span>
           <span
             data-testid="splh-slider-pill"
             className={cn(
-              'text-[11px] font-medium px-1.5 py-0.5 rounded-md whitespace-nowrap',
+              'text-[11px] font-medium px-1.5 py-0.5 rounded-md',
               overTarget ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success',
             )}
           >
@@ -109,7 +115,7 @@ export function SplhSlider({
         </div>
       </div>
 
-      <div className="relative pt-4 pb-1">
+      <div className="relative pt-4 pb-0.5">
         {/* Labor-consistent notch — display-clamped into the 25–120 track (never persisted) */}
         <div
           data-testid="splh-slider-notch"
@@ -135,6 +141,12 @@ export function SplhSlider({
           aria-valuetext={`$${value}/hr → ${pctLabel}% labor`}
           className="w-full accent-primary"
         />
+
+        {/* Scale ends — orient the manager without reading the thumb. */}
+        <div className="flex justify-between text-[10px] text-muted-foreground tabular-nums mt-0.5">
+          <span>${SPLH_SLIDER_MIN}</span>
+          <span>${SPLH_SLIDER_MAX}</span>
+        </div>
       </div>
 
       <div className="flex items-center gap-2">

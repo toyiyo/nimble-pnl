@@ -42,6 +42,24 @@ export interface CoverageVerdict {
   totalHours: number;
   /** Hour with the most-negative delta (null when no shorts or no demand) */
   worst: { hour: number; delta: number } | null;
+
+  // ── Demand-short vs floor-only split (drives the plain-English sentence) ──
+  /** The `minStaff` floor this verdict was classified against. */
+  minStaff: number;
+  /** Hours where `scheduled < demand` — sales genuinely justify more hands. */
+  demandShortHours: number;
+  /** People-hours short of raw demand — Σ(demand − scheduled) over `crit` hours. */
+  demandShortPeopleHours: number;
+  /** The single worst `crit` hour and how many people it's short (null when none). */
+  worstCrit: { hour: number; short: number } | null;
+  /** Hours where demand is met but the `minStaff` floor still isn't (`floor`). */
+  floorOnlyHours: number;
+  /** People-hours short of the floor only — Σ(needed − scheduled) over `floor` hours. */
+  floorPeopleHours: number;
+  /** Hours meeting or exceeding `needed` (`ok` + `spare`). */
+  coveredHours: number;
+  /** Hours with no demand target at all (`nodata`). */
+  nodataHours: number;
 }
 
 const HOUR = 60;
@@ -157,8 +175,14 @@ export function summarizeCoverageHours(
 
 /**
  * Derive a plain-language verdict from the hourly summary.
+ *
+ * `minStaff` splits each hour into `crit` (scheduled < raw demand — sales
+ * genuinely justify more hands) vs `floor` (demand met, but the minimum-staff
+ * rule still isn't) so the sentence can say *why* an hour is short. The rule
+ * is inlined rather than imported from `coverageChartModel` to keep this
+ * module dependency-free (that module already imports from this one).
  */
-export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
+export function buildVerdict(hours: CoverageHour[], minStaff = 0): CoverageVerdict {
   const hasDemand = hours.some((h) => h.needed !== null);
   const shortHours = hours.filter((h) => h.delta !== null && h.delta < 0);
 
@@ -169,12 +193,49 @@ export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
     }
   }
 
+  let demandShortHours = 0;
+  let demandShortPeopleHours = 0;
+  let worstCrit: { hour: number; short: number } | null = null;
+  let floorOnlyHours = 0;
+  let floorPeopleHours = 0;
+  let coveredHours = 0;
+  let nodataHours = 0;
+
+  for (const h of hours) {
+    if (h.demand === null) {
+      nodataHours += 1;
+      continue;
+    }
+    const needed = Math.max(h.demand, minStaff);
+    if (h.scheduled < h.demand) {
+      const short = h.demand - h.scheduled;
+      demandShortHours += 1;
+      demandShortPeopleHours += short;
+      if (worstCrit === null || short > worstCrit.short) {
+        worstCrit = { hour: h.hour, short };
+      }
+    } else if (h.scheduled < needed) {
+      floorOnlyHours += 1;
+      floorPeopleHours += needed - h.scheduled;
+    } else {
+      coveredHours += 1;
+    }
+  }
+
   return {
     hasDemand,
     metAll: hasDemand && shortHours.length === 0,
     shortHours: shortHours.length,
     totalHours: hours.length,
     worst,
+    minStaff,
+    demandShortHours,
+    demandShortPeopleHours,
+    worstCrit,
+    floorOnlyHours,
+    floorPeopleHours,
+    coveredHours,
+    nodataHours,
   };
 }
 

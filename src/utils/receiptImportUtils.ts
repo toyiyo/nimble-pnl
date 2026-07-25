@@ -140,13 +140,6 @@ export interface ParsedLineItemInput {
   confidenceScore: number;
 }
 
-/**
- * Build a receipt_line_items DB insert row from a parsed AI line item.
- *
- * - pack_quantity maps from item.unitsPerPack (the distributor pack count).
- * - line_sequence is 1-based (index + 1).
- * - pack_quantity is null when unitsPerPack is absent or not provided.
- */
 export interface BarcodeSourceProduct {
   gtin?: string | null;
   sku?: string | null;
@@ -192,6 +185,13 @@ export function resolveBarcodeWriteBack(parsedSku: string | null): string | null
   return trimmed ? trimmed : null;
 }
 
+/**
+ * Build a receipt_line_items DB insert row from a parsed AI line item.
+ *
+ * - pack_quantity maps from item.unitsPerPack (the distributor pack count).
+ * - line_sequence is 1-based (index + 1).
+ * - pack_quantity is null when unitsPerPack is absent or not provided.
+ */
 export function buildLineItemInsert(receiptId: string, item: ParsedLineItemInput, index: number) {
   return {
     receipt_id: receiptId,

@@ -98,7 +98,12 @@ export function useCheckConflicts(params: ConflictCheckParams | null) {
       if (!params) return { conflicts: [] as ConflictCheck[], hasConflicts: false };
       return fetchConflicts(params);
     },
-    enabled: !!params && !!params.employeeId && !!params.startTime && !!params.endTime,
+    enabled:
+      !!params &&
+      !!params.employeeId &&
+      !!params.restaurantId &&
+      !!params.startTime &&
+      !!params.endTime,
     staleTime: 10000,
     refetchOnWindowFocus: true,
   });

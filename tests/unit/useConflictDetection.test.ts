@@ -228,6 +228,28 @@ describe('useConflictDetection — reactive hook shares fetchConflicts (no dupli
     expect(result.current.conflicts).toEqual(EXPECTED_MERGED_CONFLICTS);
   });
 
+  it('stays disabled (fires no RPC) when restaurantId is missing, since the availability RPC requires it', async () => {
+    mockRpc.mockResolvedValue({ data: [], error: null });
+
+    // employeeId/startTime/endTime present but restaurantId blank — the query key and the
+    // availability RPC both need restaurantId, so the `enabled` guard must keep it off rather
+    // than call check_availability_conflict with an empty (invalid-UUID) restaurant id.
+    const paramsWithoutRestaurant: ConflictCheckParams = { ...PARAMS, restaurantId: '' };
+
+    const { result } = renderHook(() => useCheckConflicts(paramsWithoutRestaurant), {
+      wrapper: createWrapper(),
+    });
+
+    // Give React Query a few turns; a disabled query never leaves the idle/non-loading state
+    // and never invokes the mocked rpc.
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await Promise.resolve();
+
+    expect(mockRpc).not.toHaveBeenCalled();
+    expect(result.current.conflicts).toEqual([]);
+    expect(result.current.hasConflicts).toBe(false);
+  });
+
   it('useCheckConflicts surfaces the same rejection semantics (error propagates, not swallowed by a duplicated path)', async () => {
     const availError = { message: 'function not found', code: '42883' };
     mockRpc.mockImplementation((fnName: string) => {

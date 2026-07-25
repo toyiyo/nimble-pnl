@@ -381,7 +381,7 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
     // CoverageVerdict always renders one of three messages.
     // With no demand configured, it shows the "Add staffing targets" prompt.
     expect(
-      screen.getByText(/add staffing targets to see demand/i),
+      screen.getByText(/add staffing targets to see where sales justify more hands/i),
     ).toBeInTheDocument();
   });
 

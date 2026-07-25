@@ -36,10 +36,12 @@ test.describe('Bank Transaction Filtering', () => {
     const { bankAccountIds } = await page.evaluate(async ({ rid }) => {
       const { supabase } = await import('/src/integrations/supabase/client');
       
-      // Generate unique IDs to avoid constraint violations
+      // Generate unique IDs to avoid constraint violations. Use crypto.randomUUID
+      // (available in the page's secure context) rather than Math.random so these
+      // synthetic Stripe ids don't trip CodeQL's js/insecure-randomness rule.
       const timestamp = Date.now();
-      const random = Math.random().toString(36).slice(2, 8);
-      
+      const random = crypto.randomUUID().slice(0, 8);
+
       // Create two connected banks — one per account — at the same institution.
       // This mirrors production: the connect flow creates one connected_banks
       // row per Stripe account (reconnect_connected_bank is keyed on

@@ -40,26 +40,48 @@ test.describe('Bank Transaction Filtering', () => {
       const timestamp = Date.now();
       const random = Math.random().toString(36).slice(2, 8);
       
-      // Create connected bank
-      const { data: connectedBank, error: bankError } = await supabase
+      // Create two connected banks — one per account — at the same institution.
+      // This mirrors production: the connect flow creates one connected_banks
+      // row per Stripe account (reconnect_connected_bank is keyed on
+      // account_mask), so checking and savings are distinct rows. A single bank
+      // cannot hold two Stripe balance rows — the partial unique index
+      // bank_account_balances_stripe_bank_uniq forbids it.
+      const { data: checkingBank, error: checkingBankError } = await supabase
         .from('connected_banks')
         .insert({
           restaurant_id: rid,
           institution_name: 'Test Bank',
-          stripe_financial_account_id: `fca_test_${timestamp}_${random}`,
+          stripe_financial_account_id: `fca_checking_${timestamp}_${random}`,
+          account_mask: '1234',
           status: 'connected',
         })
         .select()
         .single();
 
-      if (bankError) throw new Error(`Failed to create bank: ${bankError.message}`);
+      if (checkingBankError) throw new Error(`Failed to create checking bank: ${checkingBankError.message}`);
 
-      // Create two bank accounts with different Stripe account IDs
+      const { data: savingsBank, error: savingsBankError } = await supabase
+        .from('connected_banks')
+        .insert({
+          restaurant_id: rid,
+          institution_name: 'Test Bank',
+          stripe_financial_account_id: `fca_savings_${timestamp}_${random}`,
+          account_mask: '5678',
+          status: 'connected',
+        })
+        .select()
+        .single();
+
+      if (savingsBankError) throw new Error(`Failed to create savings bank: ${savingsBankError.message}`);
+
+      // One Stripe balance row per bank (the invariant). The balance row's
+      // stripe_financial_account_id is what the account filter matches against
+      // each transaction's raw_data.account.
       const { data: accounts, error: accountsError } = await supabase
         .from('bank_account_balances')
         .insert([
           {
-            connected_bank_id: connectedBank.id,
+            connected_bank_id: checkingBank.id,
             stripe_financial_account_id: `fa_checking_${timestamp}_${random}`,
             account_name: 'Checking Account',
             account_type: 'checking',
@@ -68,7 +90,7 @@ test.describe('Bank Transaction Filtering', () => {
             as_of_date: new Date().toISOString(),
           },
           {
-            connected_bank_id: connectedBank.id,
+            connected_bank_id: savingsBank.id,
             stripe_financial_account_id: `fa_savings_${timestamp}_${random}`,
             account_name: 'Savings Account',
             account_type: 'savings',
@@ -90,7 +112,7 @@ test.describe('Bank Transaction Filtering', () => {
         // Checking account transactions
         {
           restaurant_id: rid,
-          connected_bank_id: connectedBank.id,
+          connected_bank_id: checkingBank.id,
           stripe_transaction_id: `txn_checking_1_${Date.now()}`,
           transaction_date: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
           description: 'Checking - Grocery Store',
@@ -104,7 +126,7 @@ test.describe('Bank Transaction Filtering', () => {
         },
         {
           restaurant_id: rid,
-          connected_bank_id: connectedBank.id,
+          connected_bank_id: checkingBank.id,
           stripe_transaction_id: `txn_checking_2_${Date.now()}`,
           transaction_date: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
           description: 'Checking - Restaurant Supply',
@@ -119,7 +141,7 @@ test.describe('Bank Transaction Filtering', () => {
         // Savings account transactions
         {
           restaurant_id: rid,
-          connected_bank_id: connectedBank.id,
+          connected_bank_id: savingsBank.id,
           stripe_transaction_id: `txn_savings_1_${Date.now()}`,
           transaction_date: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
           description: 'Savings - Interest Payment',
@@ -133,7 +155,7 @@ test.describe('Bank Transaction Filtering', () => {
         },
         {
           restaurant_id: rid,
-          connected_bank_id: connectedBank.id,
+          connected_bank_id: savingsBank.id,
           stripe_transaction_id: `txn_savings_2_${Date.now()}`,
           transaction_date: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString(), // 4 days ago
           description: 'Savings - Transfer In',

@@ -63,7 +63,7 @@ restaurants that already have punches. A single per-period decision avoids this:
 when a restaurant has any accrued labor in the period, all bank labor is ignored
 for P&L purposes.
 
-```
+```text
 useAccrued   = pendingTotal > 0
 totalLabor   = useAccrued ? pendingTotal : actualTotal
 dailyLabor[] = useAccrued ? day.pending_labor_cost : day.actual_labor_cost
@@ -74,7 +74,7 @@ dailyLabor[] = useAccrued ? day.pending_labor_cost : day.actual_labor_cost
 Extract the cost-combination arithmetic out of the hook into a pure, directly
 unit-testable module — **`src/lib/combineCosts.ts`**:
 
-- `resolveLaborBasis(pendingTotal, actualTotal): 'accrued' | 'paid'` — the
+- `resolveLaborBasis(pendingTotal): 'accrued' | 'paid'` — the
   per-period decision. `pendingTotal > 0 → 'accrued'`, else `'paid'`.
 - `combineDailyCosts(unifiedDailyCOGS, pendingDaily, actualDaily, basis)` —
   merges COGS + labor by date, using the chosen basis for `labor_cost` and

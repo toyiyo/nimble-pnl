@@ -138,7 +138,11 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const needsAttentionRef = React.useRef<HTMLDivElement>(null);
-  
+  // In-flight handleItemUpdate writes (e.g. the SKU field's onBlur commit). bulkImportLineItems
+  // re-reads receipt_line_items fresh from the DB, so importing before these land would use
+  // stale values and silently drop the user's edit. Tracked so handleBulkImport can await them.
+  const pendingUpdatesRef = React.useRef<Set<Promise<unknown>>>(new Set());
+
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems, findSemanticDuplicate } = useReceiptImport();
   const { products } = useProducts(selectedRestaurant?.restaurant_id || null);
@@ -270,12 +274,17 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   // Handlers
   const handleItemUpdate = async (itemId: string, updates: Record<string, any>) => {
-    const success = await updateLineItemMapping(itemId, updates);
-    if (success) {
-      setLineItems(prev => prev.map(item => 
-        item.id === itemId ? { ...item, ...updates } : item
-      ));
-    }
+    const writePromise = updateLineItemMapping(itemId, updates).then((success) => {
+      if (success) {
+        setLineItems(prev => prev.map(item =>
+          item.id === itemId ? { ...item, ...updates } : item
+        ));
+      }
+      return success;
+    });
+    pendingUpdatesRef.current.add(writePromise);
+    writePromise.finally(() => pendingUpdatesRef.current.delete(writePromise));
+    return writePromise;
   };
 
   const handleMappingChange = (itemId: string, productId: string | null) => {
@@ -482,6 +491,10 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handleBulkImport = async () => {
     setImporting(true);
+    // Wait for any in-flight field edits (e.g. a SKU/Barcode onBlur commit) to land before
+    // bulkImportLineItems re-reads receipt_line_items from the DB, so a click-right-after-blur
+    // can't race the import into using a stale value.
+    await Promise.all(pendingUpdatesRef.current);
     const success = await bulkImportLineItems(receiptId);
     if (success) {
       onImportComplete();

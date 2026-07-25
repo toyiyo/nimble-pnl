@@ -1,11 +1,12 @@
 /**
- * Task 4 (Phase 4, task 4/4): Commit SKU field on blur, not per keystroke (Change 3)
+ * Commit SKU field on blur, not per keystroke.
  *
- * RED: Written before the ReceiptItemRow change — the SKU input currently calls
- *   onSkuChange on every keystroke (onChange), which races per-keystroke writes
- *   and can re-tier a matched row out from under the user mid-type.
- * GREEN: Pass once the SKU input commits via onBlur instead, while remaining
- *   uncontrolled (defaultValue, not value).
+ * The SKU input calls onSkuChange on blur, but only when the value actually
+ * changed from the last-committed one. Since parsed_sku can arrive pre-filled
+ * from a matched product's gtin/sku (auto-fill, display-only), a blur on an
+ * untouched field — or a repeat blur with no intervening edit — must be a
+ * no-op: it must not re-commit the auto-filled value as if the user had typed
+ * it, and it must not re-tier a matched row out from under the user mid-type.
  */
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
@@ -102,9 +103,18 @@ describe('ReceiptItemRow — SKU/Barcode input commits on blur', () => {
     fireEvent.change(skuInput, { target: { value: '999' } });
     fireEvent.blur(skuInput);
     fireEvent.blur(skuInput);
-    expect(onSkuChange).toHaveBeenCalledTimes(2);
-    expect(onSkuChange).toHaveBeenNthCalledWith(1, 'item-1', '999');
-    expect(onSkuChange).toHaveBeenNthCalledWith(2, 'item-1', '999');
+    expect(onSkuChange).toHaveBeenCalledTimes(1);
+    expect(onSkuChange).toHaveBeenCalledWith('item-1', '999');
+  });
+
+  it('does not call onSkuChange on blur when the field was never edited (auto-filled value)', () => {
+    // Regression: an auto-filled parsed_sku (from the matched product's gtin/sku) must not be
+    // re-committed just because the user tabbed/clicked through the field without changing it.
+    const onSkuChange = vi.fn();
+    renderRow(onSkuChange, { parsed_sku: 'ABC-123' });
+    const skuInput = screen.getByLabelText(/SKU \/ Barcode/i);
+    fireEvent.blur(skuInput);
+    expect(onSkuChange).not.toHaveBeenCalled();
   });
 
   it('stays uncontrolled: uses defaultValue seeded from parsed_sku, not a controlled value prop', () => {

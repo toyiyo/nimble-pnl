@@ -21,6 +21,7 @@ import {
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { resolveLaborBasis } from '@/lib/combineCosts';
 import { format } from 'date-fns';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { useCostsFromSource } from '@/hooks/useCostsFromSource';
@@ -253,7 +254,7 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
         children: current.labor_cost > 0 ? (() => {
           const pendingTotal = dailyCosts.reduce((sum, d) => sum + d.pending_labor_cost, 0);
           const actualTotal = dailyCosts.reduce((sum, d) => sum + d.actual_labor_cost, 0);
-          const basis: 'accrued' | 'paid' = pendingTotal > 0 ? 'accrued' : 'paid';
+          const basis = resolveLaborBasis(pendingTotal);
           const netRevenue = current.revenue;
           const pct = (v: number) => (netRevenue > 0 ? (v / netRevenue) * 100 : 0);
 

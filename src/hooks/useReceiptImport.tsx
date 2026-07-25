@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { WEIGHT_UNITS, VOLUME_UNITS } from '@/lib/enhancedUnitConversion';
-import { calculateImportedTotal, calculateUnitPrice, resolveLineItemBarcode } from '@/utils/receiptImportUtils';
+import { calculateImportedTotal, calculateUnitPrice, resolveLineItemBarcode, resolveBarcodeWriteBack } from '@/utils/receiptImportUtils';
 import { sha256Hex } from '@/lib/fileHash';
 import { describeStorageError, UPLOAD_ERROR_TOAST_DURATION } from '@/lib/storageError';
 
@@ -654,56 +654,55 @@ export const useReceiptImport = () => {
       // Track created products by parsed_name to reuse for duplicates
       const createdProducts = new Map<string, string>(); // parsed_name (lowercase) -> product_id
 
+      const restaurantId = selectedRestaurant.restaurant_id;
+
       for (const item of lineItems) {
         if (item.mapping_status === 'mapped' && item.matched_product_id) {
-          // First get current stock
-          const { data: currentProduct, error: fetchError } = await supabase
+          // One restaurant_id-scoped read replaces the two id-only SELECTs
+          // (L717: an unscoped products UPDATE was a real bug on PR #545 —
+          // scope reads too, since a stale/cross-tenant matched_product_id
+          // should fail loudly rather than silently reading someone else's row).
+          const { data: current, error: fetchError } = await supabase
             .from('products')
-            .select('current_stock')
+            .select('current_stock, receipt_item_names')
             .eq('id', item.matched_product_id)
-            .single();
+            .eq('restaurant_id', restaurantId)
+            .maybeSingle();
 
-          if (fetchError) {
+          if (fetchError || !current) {
             console.error('Error fetching current product:', fetchError);
             continue;
           }
 
           // Update existing product stock and store receipt item mapping
-          const newStock = (currentProduct.current_stock || 0) + (item.parsed_quantity || 0);
-          
-          // Get current receipt_item_names to add the new mapping
-          const { data: currentProductData, error: currentProductError } = await supabase
-            .from('products')
-            .select('receipt_item_names')
-            .eq('id', item.matched_product_id)
-            .single();
-
-          if (currentProductError) {
-            console.error('Error fetching current product data:', currentProductError);
-            continue;
-          }
+          const newStock = (current.current_stock || 0) + (item.parsed_quantity || 0);
 
           // Add the receipt item name to the product's mapping list if not already present
-          const currentMappings = currentProductData.receipt_item_names || [];
+          const currentMappings = current.receipt_item_names || [];
           const receiptItemName = item.parsed_name || item.raw_text;
-          const updatedMappings = currentMappings.includes(receiptItemName) 
-            ? currentMappings 
+          const updatedMappings = currentMappings.includes(receiptItemName)
+            ? currentMappings
             : [...currentMappings, receiptItemName];
 
           const unitPrice = calculateUnitPrice(item);
+          const barcode = resolveBarcodeWriteBack(item.parsed_sku);
 
-          const { error: stockError } = await supabase
+          const { data: updated, error: stockError } = await supabase
             .from('products')
             .update({
               current_stock: newStock,
               cost_per_unit: unitPrice,
               receipt_item_names: updatedMappings,
               supplier_id: supplierId,
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
+              ...(barcode ? { gtin: barcode } : {}),
             })
-            .eq('id', item.matched_product_id);
+            .eq('id', item.matched_product_id)
+            .eq('restaurant_id', restaurantId)
+            .select('id')
+            .maybeSingle();
 
-          if (stockError) {
+          if (stockError || !updated) {
             console.error('Error updating product stock:', stockError);
             continue;
           }

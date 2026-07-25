@@ -23,6 +23,12 @@ const testProduct: Product = {
   uom_purchase: 'kg',
 } as Product;
 
+// Hoisted so both the vi.mock factory (hoisted above imports) and the test
+// body can reference the same spy instance.
+const { updateProductStockWithAuditMock } = vi.hoisted(() => ({
+  updateProductStockWithAuditMock: vi.fn(async () => true),
+}));
+
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
 vi.mock('@/components/SmartBarcodeScanner', () => ({
@@ -58,13 +64,16 @@ vi.mock('@/components/QuickInventoryDialog', () => ({
     open: boolean;
     mode: 'add' | 'reconcile';
     product: Product;
+    onSave: (quantity: number) => void;
   }) => (
     <div
       data-testid="quick-inventory-dialog"
       data-open={props.open}
       data-mode={props.mode}
       data-product-name={props.product?.name}
-    />
+    >
+      <button onClick={() => props.onSave(3.5)}>trigger-save</button>
+    </div>
   ),
 }));
 
@@ -123,7 +132,7 @@ vi.mock('@/hooks/useProducts', () => ({
 
 vi.mock('@/hooks/useInventoryAudit', () => ({
   useInventoryAudit: () => ({
-    updateProductStockWithAudit: vi.fn(async () => true),
+    updateProductStockWithAudit: updateProductStockWithAuditMock,
   }),
 }));
 
@@ -229,5 +238,25 @@ describe('Inventory "Count" button wiring (Task 3.3)', () => {
     expect(dialog).toHaveAttribute('data-open', 'true');
     expect(dialog).toHaveAttribute('data-mode', 'add');
     expect(dialog).toHaveAttribute('data-product-name', 'Tomatoes');
+  });
+});
+
+describe('Inventory quick-count audit wording (Task 3.4)', () => {
+  it('labels a manual (tap-to-count) save "via manual count" with a manual_count_ reference', async () => {
+    const user = userEvent.setup();
+    render(<Inventory />);
+
+    // Open the dialog via the Count button (tags quickEntrySource='manual').
+    await user.click(screen.getByRole('button', { name: 'trigger-count' }));
+    expect(screen.getByTestId('quick-inventory-dialog')).toHaveAttribute('data-open', 'true');
+
+    // Trigger the dialog's onSave(3.5), as the real QuickInventoryDialog would
+    // on user confirmation.
+    await user.click(screen.getByRole('button', { name: 'trigger-save' }));
+
+    expect(updateProductStockWithAuditMock).toHaveBeenCalledTimes(1);
+    const [, , , , , , reason, reference] = updateProductStockWithAuditMock.mock.calls[0];
+    expect(reason).toBe('Adjustment - Added 3.5 via manual count');
+    expect(reference).toMatch(/^manual_count_\d+$/);
   });
 });

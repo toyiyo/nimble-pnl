@@ -953,23 +953,27 @@ export const Inventory: React.FC = () => {
 
     const currentStock = quickInventoryProduct.current_stock || 0;
     const costPerUnit = quickInventoryProduct.cost_per_unit || 0;
-    
+
     let finalStock: number;
     // All quick scan updates should be adjustments
     // Only receipt uploads should create purchases
     const transactionType: 'adjustment' = 'adjustment';
-    let reason: string;
-    
+
     if (scanMode === 'add') {
       // Add mode: add to existing stock
       finalStock = currentStock + quantity;
-      reason = `Adjustment - Added ${quantity} via quick scan`;
     } else {
       // Reconcile mode: set total stock to scanned quantity
       finalStock = quantity;
-      reason = `Inventory reconciliation - Set to ${quantity} via quick scan`;
     }
-    
+
+    const { reason, reference } = buildQuickInventoryAudit(
+      quickEntrySource,
+      scanMode,
+      quantity,
+      Date.now(),
+    );
+
     const success = await updateProductStockWithAudit(
       selectedRestaurant.restaurant_id,
       quickInventoryProduct.id,
@@ -978,7 +982,7 @@ export const Inventory: React.FC = () => {
       costPerUnit,
       transactionType,
       reason,
-      `quick_scan_${Date.now()}`
+      reference
     );
     
     if (success) {

@@ -307,27 +307,29 @@ export const CoverageChart = memo(function CoverageChart({
               const width = effectiveMinToPct(h.startMin + 60) - left;
               const kind = classifyHour(h, minStaff);
 
+              // Inset the drawn bar within its column so adjacent hours read as
+              // discrete bars, not one abutting block (the flat-block look the
+              // first cut had). Shared by the hatched nodata ghost and the real
+              // data bars so hatched hours separate too. The full-width
+              // transparent hit target below is unaffected — only the visual
+              // fill is inset.
+              const pad = width * 0.16;
+              const bx = left + pad;
+              const bw = width - pad * 2;
+
               if (kind === 'nodata') {
                 return (
                   <rect
                     key={h.startMin}
                     data-nodata=""
-                    x={left}
+                    x={bx}
                     y={0}
-                    width={width}
+                    width={bw}
                     height={100}
                     fill={`url(#${hatchId})`}
                   />
                 );
               }
-
-              // Inset the drawn bar within its column so adjacent hours read as
-              // discrete bars, not one abutting block (the flat-block look the
-              // first cut had). The full-width transparent hit target below is
-              // unaffected — only the visual fill is inset.
-              const pad = width * 0.16;
-              const bx = left + pad;
-              const bw = width - pad * 2;
 
               const demand = h.demand ?? 0;
               const needed = neededFor(demand, minStaff);

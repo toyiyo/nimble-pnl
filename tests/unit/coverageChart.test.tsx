@@ -188,6 +188,25 @@ describe('CoverageChart — SVG demand/floor split', () => {
     expect(nodataEls).toHaveLength(1);
   });
 
+  it('insets the nodata ghost within its column so hatched hours read as separate bars', () => {
+    const { container } = renderChart();
+    const nodata = container.querySelector('[data-nodata]') as SVGRectElement;
+    const nodataX = parseFloat(nodata.getAttribute('x')!);
+    const nodataW = parseFloat(nodata.getAttribute('width')!);
+
+    // The nodata column spans 80%–100% (startMin 840 in a 600–900 window).
+    // An inset ghost must start after 80% and be narrower than the full 20%
+    // column — otherwise adjacent hatched hours abut into one solid block.
+    expect(nodataX).toBeGreaterThan(80);
+    expect(nodataW).toBeLessThan(20);
+
+    // And it must match the drawn data bars' width exactly (same pad = 16%),
+    // so hatched and real bars share one visual rhythm.
+    const scheduled = container.querySelector('[data-scheduled]') as SVGRectElement;
+    const scheduledW = parseFloat(scheduled.getAttribute('width')!);
+    expect(nodataW).toBeCloseTo(scheduledW, 5);
+  });
+
   it('defines a <pattern> for the nodata hatch', () => {
     const { container } = renderChart();
     expect(container.querySelector('pattern')).toBeTruthy();

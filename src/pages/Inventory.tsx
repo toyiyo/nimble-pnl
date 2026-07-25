@@ -1717,6 +1717,12 @@ export const Inventory: React.FC = () => {
                     setSelectedProduct(product);
                     setShowUpdateDialog(true);
                   }}
+                  onCountProduct={(product) => {
+                    setScanMode('add');
+                    setQuickEntrySource('manual');
+                    setQuickInventoryProduct(product);
+                    setShowQuickInventoryDialog(true);
+                  }}
                   onWasteProduct={(product) => {
                     setWasteProduct(product);
                     setShowWasteDialog(true);

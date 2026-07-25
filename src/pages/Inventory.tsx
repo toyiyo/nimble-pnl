@@ -49,6 +49,7 @@ import { cn } from '@/lib/utils';
 import { formatInventoryLevel } from '@/lib/inventoryDisplay';
 import { exportToCSV, generateCSVFilename } from '@/utils/csvExport';
 import { generateTablePDF } from '@/utils/pdfExport';
+import { buildQuickInventoryAudit, type QuickEntrySource } from '@/utils/quickInventoryAudit';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -85,6 +86,7 @@ export const Inventory: React.FC = () => {
   const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
   const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
   const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
+  const [quickEntrySource, setQuickEntrySource] = useState<QuickEntrySource>('scan');
   
   // Filter and sorting state
   const [categoryFilter, setCategoryFilter] = useState('all');

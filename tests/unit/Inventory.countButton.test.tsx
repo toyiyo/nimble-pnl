@@ -255,8 +255,10 @@ describe('Inventory quick-count audit wording (Task 3.4)', () => {
     await user.click(screen.getByRole('button', { name: 'trigger-save' }));
 
     expect(updateProductStockWithAuditMock).toHaveBeenCalledTimes(1);
-    const [, , , , , , reason, reference] = updateProductStockWithAuditMock.mock.calls[0];
-    expect(reason).toBe('Adjustment - Added 3.5 via manual count');
-    expect(reference).toMatch(/^manual_count_\d+$/);
+    // updateProductStockWithAudit(restaurantId, productId, newStock, oldStock,
+    // unitCost, transactionType, reason, referenceId) — args 6 and 7.
+    const call = updateProductStockWithAuditMock.mock.calls[0];
+    expect(call[6]).toBe('Adjustment - Added 3.5 via manual count');
+    expect(call[7]).toMatch(/^manual_count_\d+$/);
   });
 });

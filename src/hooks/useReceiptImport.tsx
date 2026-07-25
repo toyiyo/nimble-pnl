@@ -654,6 +654,10 @@ export const useReceiptImport = () => {
       const purchaseDate = receiptResult.data?.purchase_date || null;
 
       let importedCount = 0;
+      // Items skipped due to a failed/missing restaurant-scoped read or write (see the two new
+      // `continue` sites below) — surfaced in the closing toast so a silent partial import
+      // doesn't read as a full "Success".
+      let skippedCount = 0;
       // Track created products by parsed_name to reuse for duplicates
       const createdProducts = new Map<string, string>(); // parsed_name (lowercase) -> product_id
 
@@ -674,6 +678,7 @@ export const useReceiptImport = () => {
 
           if (fetchError || !current) {
             console.error('Error fetching current product:', fetchError);
+            skippedCount++;
             continue;
           }
 
@@ -707,6 +712,7 @@ export const useReceiptImport = () => {
 
           if (stockError || !updated) {
             console.error('Error updating product stock:', stockError);
+            skippedCount++;
             continue;
           }
 
@@ -912,8 +918,11 @@ export const useReceiptImport = () => {
       }
 
       toast({
-        title: "Success",
-        description: `Successfully imported ${importedCount} items to inventory`,
+        title: skippedCount > 0 ? "Partial Import" : "Success",
+        description: skippedCount > 0
+          ? `Imported ${importedCount} item(s); ${skippedCount} item(s) failed and were skipped.`
+          : `Successfully imported ${importedCount} items to inventory`,
+        variant: skippedCount > 0 ? "destructive" : "default",
       });
 
       return true;

@@ -182,7 +182,7 @@ export function resolveLineItemBarcode(
  */
 export function resolveBarcodeWriteBack(parsedSku: string | null): string | null {
   const trimmed = parsedSku?.trim();
-  return trimmed ? trimmed : null;
+  return trimmed || null;
 }
 
 /**

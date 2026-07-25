@@ -298,6 +298,14 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     <Input
                       id={`sku-${item.id}`}
                       defaultValue={item.parsed_sku || ''}
+                      onFocus={() => {
+                        // Re-baseline against the current source-of-truth value on every focus.
+                        // If the last commit attempt failed (updateLineItemMapping resolved
+                        // false), `item.parsed_sku` was never advanced, so this lets a plain
+                        // focus + blur (no retyping needed) retry the same value instead of
+                        // being silently swallowed by the "no intervening edit" guard below.
+                        skuCommittedRef.current = item.parsed_sku || '';
+                      }}
                       onBlur={(e) => {
                         if (e.target.value !== skuCommittedRef.current) {
                           skuCommittedRef.current = e.target.value;

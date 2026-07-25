@@ -138,10 +138,15 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   const [isNewSupplier, setIsNewSupplier] = useState(false);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const needsAttentionRef = React.useRef<HTMLDivElement>(null);
-  // In-flight handleItemUpdate writes (e.g. the SKU field's onBlur commit). bulkImportLineItems
-  // re-reads receipt_line_items fresh from the DB, so importing before these land would use
-  // stale values and silently drop the user's edit. Tracked so handleBulkImport can await them.
-  const pendingUpdatesRef = React.useRef<Set<Promise<unknown>>>(new Set());
+  // In-flight (and most-recently-settled) handleItemUpdate writes, keyed by itemId, e.g. the SKU
+  // field's onBlur commit. bulkImportLineItems re-reads receipt_line_items fresh from the DB, so
+  // importing before these land would use stale values and silently drop the user's edit. Tracked
+  // so handleBulkImport can await them.
+  // Keyed by itemId (not a bare Set of promises) so a *failed* write's entry survives until a
+  // later successful retry for the same item overwrites it — otherwise, once a write settles
+  // (success or failure) before Import is clicked, a Set-based approach would already have
+  // forgotten it, letting handleBulkImport proceed on a stale value despite the earlier failure.
+  const pendingUpdatesRef = React.useRef<Map<string, Promise<boolean>>>(new Map());
 
   const { selectedRestaurant } = useRestaurantContext();
   const { getReceiptDetails, getReceiptLineItems, updateLineItemMapping, bulkImportLineItems, findSemanticDuplicate } = useReceiptImport();
@@ -273,17 +278,31 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
   }, [lineItems]);
 
   // Handlers
-  const handleItemUpdate = async (itemId: string, updates: Record<string, any>) => {
+  // Applies a successful write's updates to local state. Extracted to a standalone function
+  // (rather than inlined in handleItemUpdate's .then callback) to keep handleItemUpdate's nesting
+  // shallow: inlining `setLineItems(prev => prev.map(...))` inside `.then((success) => {...})`
+  // inside `handleItemUpdate` put the `.map` callback 4 arrow-functions deep.
+  const applyLineItemUpdate = (itemId: string, updates: Record<string, any>) => {
+    setLineItems(prev => prev.map(item =>
+      item.id === itemId ? { ...item, ...updates } : item
+    ));
+  };
+
+  const handleItemUpdate = (itemId: string, updates: Record<string, any>): Promise<boolean> => {
     const writePromise = updateLineItemMapping(itemId, updates).then((success) => {
       if (success) {
-        setLineItems(prev => prev.map(item =>
-          item.id === itemId ? { ...item, ...updates } : item
-        ));
+        applyLineItemUpdate(itemId, updates);
+        // Only clear this item's tracked entry if no newer write has since been queued for it
+        // (a slower earlier write resolving after a newer one was issued must not clobber it).
+        if (pendingUpdatesRef.current.get(itemId) === writePromise) {
+          pendingUpdatesRef.current.delete(itemId);
+        }
       }
+      // On failure, deliberately leave the (already-settled) entry in the map — see the
+      // pendingUpdatesRef declaration comment above for why.
       return success;
     });
-    pendingUpdatesRef.current.add(writePromise);
-    writePromise.finally(() => pendingUpdatesRef.current.delete(writePromise));
+    pendingUpdatesRef.current.set(itemId, writePromise);
     return writePromise;
   };
 
@@ -497,7 +516,7 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
       // can't race the import into using a stale value. A failed write must abort the import —
       // otherwise the re-read falls back to the stale DB value, the exact race this guard exists
       // to prevent.
-      const results = await Promise.allSettled(pendingUpdatesRef.current);
+      const results = await Promise.allSettled(pendingUpdatesRef.current.values());
       const hasFailedUpdate = results.some(
         (r) => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === false),
       );

@@ -117,6 +117,27 @@ describe('ReceiptItemRow — SKU/Barcode input commits on blur', () => {
     expect(onSkuChange).not.toHaveBeenCalled();
   });
 
+  it('re-commits on a focus + blur cycle when the prior commit never landed (retry after a failed write)', () => {
+    // Regression: if updateLineItemMapping resolved false, item.parsed_sku (the source of truth)
+    // never advances past its pre-edit value, but the old code's skuCommittedRef advanced
+    // optimistically at blur time regardless of write outcome — permanently blocking a retry of
+    // the same value. onFocus now re-baselines the ref from item.parsed_sku, so a focus + blur
+    // with no intervening edit still re-fires the commit.
+    const onSkuChange = vi.fn();
+    renderRow(onSkuChange, { parsed_sku: null });
+    const skuInput = screen.getByLabelText(/SKU \/ Barcode/i);
+    fireEvent.change(skuInput, { target: { value: '999' } });
+    fireEvent.blur(skuInput);
+    expect(onSkuChange).toHaveBeenCalledTimes(1);
+
+    // Simulate the parent's write having failed: item.parsed_sku prop is unchanged (still null),
+    // so the next focus resets the baseline back to it, not to the failed attempt's '999'.
+    fireEvent.focus(skuInput);
+    fireEvent.blur(skuInput);
+    expect(onSkuChange).toHaveBeenCalledTimes(2);
+    expect(onSkuChange).toHaveBeenNthCalledWith(2, 'item-1', '999');
+  });
+
   it('stays uncontrolled: uses defaultValue seeded from parsed_sku, not a controlled value prop', () => {
     const onSkuChange = vi.fn();
     renderRow(onSkuChange, { parsed_sku: 'ABC-123' });

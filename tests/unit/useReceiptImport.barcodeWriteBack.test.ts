@@ -184,8 +184,13 @@ describe('useReceiptImport — bulkImportLineItems mapped-branch barcode write-b
     expect(ok).toBe(true);
     expect(consoleErrorSpy).toHaveBeenCalled();
     expect(productUpdateBuilder.update).not.toHaveBeenCalled();
+    // A skipped item must surface as a partial import, not a silent "Success".
     expect(toastSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringContaining('0 items') }),
+      expect.objectContaining({
+        title: 'Partial Import',
+        description: expect.stringContaining('1 item(s) failed'),
+        variant: 'destructive',
+      }),
     );
 
     consoleErrorSpy.mockRestore();
@@ -203,7 +208,11 @@ describe('useReceiptImport — bulkImportLineItems mapped-branch barcode write-b
     expect(ok).toBe(true);
     expect(consoleErrorSpy).toHaveBeenCalled();
     expect(toastSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ description: expect.stringContaining('0 items') }),
+      expect.objectContaining({
+        title: 'Partial Import',
+        description: expect.stringContaining('1 item(s) failed'),
+        variant: 'destructive',
+      }),
     );
 
     consoleErrorSpy.mockRestore();

@@ -145,17 +145,20 @@ describe('useReceiptImport — bulkImportLineItems mapped-branch barcode write-b
     );
   });
 
-  it('omits gtin from the update when parsed_sku is null/empty/whitespace-only', async () => {
-    const { productUpdateBuilder } = setupMocks({
-      lineItems: [{ ...baseLineItem, parsed_sku: '   ' }],
-    });
+  it.each([null, '', '   '])(
+    'omits gtin from the update when parsed_sku is %p',
+    async (parsedSku) => {
+      const { productUpdateBuilder } = setupMocks({
+        lineItems: [{ ...baseLineItem, parsed_sku: parsedSku }],
+      });
 
-    const { result } = renderHook(() => useReceiptImport());
-    await result.current.bulkImportLineItems('r-1');
+      const { result } = renderHook(() => useReceiptImport());
+      await result.current.bulkImportLineItems('r-1');
 
-    const updateCall = productUpdateBuilder.update.mock.calls[0][0] as Record<string, unknown>;
-    expect(updateCall).not.toHaveProperty('gtin');
-  });
+      const updateCall = productUpdateBuilder.update.mock.calls[0][0] as Record<string, unknown>;
+      expect(updateCall).not.toHaveProperty('gtin');
+    },
+  );
 
   it('never includes a sku key in the update payload (write-back targets gtin only)', async () => {
     const { productUpdateBuilder } = setupMocks({

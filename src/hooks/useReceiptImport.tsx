@@ -470,10 +470,13 @@ export const useReceiptImport = () => {
     if (matchedProductIds.length === 0) return lineItems;
 
     // Fetch matched products with size info (uom_purchase = package type)
+    // Scoped by restaurant_id (L717): a stale/cross-tenant matched_product_id must not
+    // enrich this receipt with another restaurant's size/barcode data.
     const { data: matchedProducts, error } = await supabase
       .from('products')
       .select('id, size_value, size_unit, uom_purchase, gtin, sku')
-      .in('id', matchedProductIds);
+      .in('id', matchedProductIds)
+      .eq('restaurant_id', selectedRestaurant.restaurant_id);
 
     if (error) {
       console.error('Error fetching matched products for enrichment:', error);

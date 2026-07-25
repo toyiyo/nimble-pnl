@@ -38,7 +38,8 @@ function makeLineItemsBuilder(rows: unknown[]) {
 function makeProductsBuilder(rows: unknown[]) {
   const builder: Record<string, ReturnType<typeof vi.fn>> = {};
   builder.select = vi.fn(() => builder);
-  builder.in = vi.fn().mockResolvedValue({ data: rows, error: null });
+  builder.in = vi.fn(() => builder);
+  builder.eq = vi.fn().mockResolvedValue({ data: rows, error: null });
   return builder;
 }
 
@@ -89,6 +90,20 @@ describe('useReceiptImport — getReceiptLineItems SKU/Barcode auto-fill (Expect
     expect(productsBuilder.select).toHaveBeenCalledWith(expect.stringContaining('sku'));
   });
 
+  it('scopes the enrichment query to the selected restaurant', async () => {
+    const row = { ...baseRow, parsed_sku: null };
+    const product = { id: 'prod-1', size_value: null, size_unit: null, uom_purchase: null, gtin: '012345678905', sku: 'SKU-1' };
+
+    const lineItemsBuilder = makeLineItemsBuilder([row]);
+    const productsBuilder = makeProductsBuilder([product]);
+    mockFromByTable(lineItemsBuilder, productsBuilder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    await result.current.getReceiptLineItems('r-1');
+
+    expect(productsBuilder.eq).toHaveBeenCalledWith('restaurant_id', 'rest-123');
+  });
+
   it('auto-fills parsed_sku from the matched product gtin when the line item has none', async () => {
     const row = { ...baseRow, parsed_sku: null };
     const product = { id: 'prod-1', size_value: null, size_unit: null, uom_purchase: null, gtin: '012345678905', sku: 'SKU-1' };
@@ -103,9 +118,23 @@ describe('useReceiptImport — getReceiptLineItems SKU/Barcode auto-fill (Expect
     expect(items[0].parsed_sku).toBe('012345678905');
   });
 
-  it('falls back to the matched product sku when gtin is empty', async () => {
+  it('falls back to the matched product sku when gtin is null', async () => {
     const row = { ...baseRow, parsed_sku: null };
     const product = { id: 'prod-1', size_value: null, size_unit: null, uom_purchase: null, gtin: null, sku: 'SKU-1' };
+
+    const lineItemsBuilder = makeLineItemsBuilder([row]);
+    const productsBuilder = makeProductsBuilder([product]);
+    mockFromByTable(lineItemsBuilder, productsBuilder);
+
+    const { result } = renderHook(() => useReceiptImport());
+    const items = await result.current.getReceiptLineItems('r-1');
+
+    expect(items[0].parsed_sku).toBe('SKU-1');
+  });
+
+  it('falls back to the matched product sku when gtin is an empty string', async () => {
+    const row = { ...baseRow, parsed_sku: null };
+    const product = { id: 'prod-1', size_value: null, size_unit: null, uom_purchase: null, gtin: '', sku: 'SKU-1' };
 
     const lineItemsBuilder = makeLineItemsBuilder([row]);
     const productsBuilder = makeProductsBuilder([product]);

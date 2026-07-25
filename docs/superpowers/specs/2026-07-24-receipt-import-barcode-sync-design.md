@@ -144,7 +144,12 @@ Unit tests cover these directly (TDD RED first).
   will, after an edit, have the new value in `gtin` and the stale value in `sku`; fill prefers `gtin`, so the UI stays
   correct.
 - **Auto-fill is display-only (not persisted).** Untouched auto-filled rows write nothing back on import (the product
-  keeps its own barcode — a no-op). Only user edits persist and write back.
+  keeps its own barcode — a no-op). Only user edits persist and write back. **Implementation note (Phase 7b):** the
+  auto-filled value lands in `item.parsed_sku` (Change 1) and `resolveBarcodeWriteBack` derives the write-back
+  candidate from that same field (Change 2), so an unguarded `onBlur` commit would copy an untouched auto-fill into
+  `gtin`. `ReceiptItemRow` closes this gap with a `skuCommittedRef` seeded from the auto-filled value: a blur only
+  calls `onSkuChange` when the field's value differs from what's already committed, so tabbing/clicking through an
+  untouched field is a no-op, matching this trade-off.
 
 ## Design review feedback folded in (Phase 2.5)
 

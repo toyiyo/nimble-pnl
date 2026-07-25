@@ -491,15 +491,32 @@ export const ReceiptMappingReview: React.FC<ReceiptMappingReviewProps> = ({
 
   const handleBulkImport = async () => {
     setImporting(true);
-    // Wait for any in-flight field edits (e.g. a SKU/Barcode onBlur commit) to land before
-    // bulkImportLineItems re-reads receipt_line_items from the DB, so a click-right-after-blur
-    // can't race the import into using a stale value.
-    await Promise.all(pendingUpdatesRef.current);
-    const success = await bulkImportLineItems(receiptId);
-    if (success) {
-      onImportComplete();
+    try {
+      // Wait for any in-flight field edits (e.g. a SKU/Barcode onBlur commit) to land before
+      // bulkImportLineItems re-reads receipt_line_items from the DB, so a click-right-after-blur
+      // can't race the import into using a stale value. A failed write must abort the import —
+      // otherwise the re-read falls back to the stale DB value, the exact race this guard exists
+      // to prevent.
+      const results = await Promise.allSettled(pendingUpdatesRef.current);
+      const hasFailedUpdate = results.some(
+        (r) => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === false),
+      );
+      if (hasFailedUpdate) {
+        toast({
+          title: "Unsaved changes",
+          description: "Fix the failed item update before importing.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      const success = await bulkImportLineItems(receiptId);
+      if (success) {
+        onImportComplete();
+      }
+    } finally {
+      setImporting(false);
     }
-    setImporting(false);
   };
 
   const handleBatchAcceptAll = (itemIds: string[]) => {

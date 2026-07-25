@@ -492,6 +492,7 @@ export const Inventory: React.FC = () => {
     
     if (existingProduct) {
       // Use quick inventory dialog for scanning existing products
+      setQuickEntrySource('scan');
       setQuickInventoryProduct(existingProduct);
       setShowQuickInventoryDialog(true);
       return;

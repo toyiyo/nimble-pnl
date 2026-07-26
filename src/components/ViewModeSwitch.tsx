@@ -1,7 +1,32 @@
-import { LayoutDashboard, UserRound } from 'lucide-react';
+import { LayoutDashboard, UserRound, type LucideIcon } from 'lucide-react';
 
 import { useViewMode } from '@/contexts/ViewModeContext';
 import { cn } from '@/lib/utils';
+
+interface SegmentButtonProps {
+  icon: LucideIcon;
+  label: string;
+  pressed: boolean;
+  onClick: () => void;
+}
+
+/** One toggle button of the Admin / My Work segmented control. */
+function SegmentButton({ icon: Icon, label, pressed, onClick }: SegmentButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      className={cn(
+        'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
+        pressed ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+      )}
+    >
+      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+      {label}
+    </button>
+  );
+}
 
 /**
  * `ViewModeSwitch` — the "You're viewing as" persona card.
@@ -27,9 +52,6 @@ export function ViewModeSwitch() {
     return null;
   }
 
-  const isAdmin = viewMode === 'admin';
-  const isWork = viewMode === 'work';
-
   return (
     <div className="rounded-lg border border-personal-view-border bg-personal-view/40 p-2.5">
       <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -40,34 +62,18 @@ export function ViewModeSwitch() {
         aria-label="View mode"
         className="mt-1.5 flex items-center gap-0.5 rounded-lg bg-muted/30 p-0.5"
       >
-        <button
-          type="button"
-          aria-pressed={isAdmin}
+        <SegmentButton
+          icon={LayoutDashboard}
+          label="Admin"
+          pressed={viewMode === 'admin'}
           onClick={exitWorkMode}
-          className={cn(
-            'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
-            isAdmin
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />
-          Admin
-        </button>
-        <button
-          type="button"
-          aria-pressed={isWork}
+        />
+        <SegmentButton
+          icon={UserRound}
+          label="My Work"
+          pressed={viewMode === 'work'}
           onClick={enterWorkMode}
-          className={cn(
-            'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
-            isWork
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
-          My Work
-        </button>
+        />
       </div>
       <p className="mt-1.5 text-[12px] text-muted-foreground">
         Switch to clock in, view your schedule, timecard, and pay.

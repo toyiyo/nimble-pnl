@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ShiftTimelineTab } from '@/components/scheduling/ShiftTimeline/ShiftTimelineTab';
 import type { Shift, Employee, HourlyStaffingRecommendation } from '@/types/scheduling';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
@@ -25,8 +25,19 @@ vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: (...args: unknown[]) => mockUseWeekStaffingSuggestions(...args),
 }));
 
-// useRestaurantContext used indirectly (via useWeekStaffingSuggestions chain) — safe
-// to leave unmocked because the mock above covers the hook that reads it.
+// useRestaurantContext is called directly by ShiftTimelineTab (Stage 5.3's Save-gate
+// role check) in addition to indirectly via the (mocked) useWeekStaffingSuggestions
+// chain — so it needs its own mock now, or every test in this file would throw
+// "must be used within a RestaurantProvider". Defaults to 'owner' (Save allowed) so
+// pre-existing tests that don't care about the gate are unaffected; the dedicated
+// Save-gate describe block below overrides the role per-case.
+const mockUseRestaurantContext = vi.fn(() => ({
+  selectedRestaurant: { role: 'owner' } as { role: string } | null,
+}));
+
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: (...args: unknown[]) => mockUseRestaurantContext(...args),
+}));
 
 // useValidatedShiftMutations pulls in React Query mutation hooks (useCreateShift,
 // useUpdateShift, useDeleteShift, useCheckConflicts) which need a QueryClientProvider
@@ -183,6 +194,52 @@ describe('ShiftTimelineTab', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
+  it('reshapes the loading skeleton to mirror the slider + axis + chart + receipt layout (Stage 5.4)', () => {
+    const { getByTestId } = render(
+      <ShiftTimelineTab
+        {...BASE_PROPS}
+        loading={true}
+        shifts={[]}
+        employees={[]}
+      />,
+    );
+
+    // Each new panel piece gets a dedicated skeleton band, mirroring the
+    // loaded-state components it stands in for.
+    const sliderSkeleton = getByTestId('skeleton-splh-slider');
+    const chartSkeleton = getByTestId('skeleton-coverage-chart');
+    const axisSkeleton = getByTestId('skeleton-timeline-axis');
+    const receiptSkeleton = getByTestId('skeleton-coverage-receipt');
+
+    expect(sliderSkeleton).toBeInTheDocument();
+    expect(chartSkeleton).toBeInTheDocument();
+    expect(axisSkeleton).toBeInTheDocument();
+    expect(receiptSkeleton).toBeInTheDocument();
+
+    // The receipt band lives in its own pinned column (same lg:w-[320px]
+    // lg:shrink-0 contract as the real CoverageReceipt panel), separate from
+    // the chart/axis column — mirroring the loaded flex layout so the skeleton
+    // doesn't jump-shift when the real data lands.
+    const receiptColumn = getByTestId('skeleton-receipt-column');
+    expect(receiptColumn).toContainElement(receiptSkeleton);
+    expect(receiptColumn.className).toContain('lg:w-[320px]');
+    expect(receiptColumn.className).toContain('lg:shrink-0');
+    expect(receiptColumn).not.toContainElement(chartSkeleton);
+    expect(receiptColumn).not.toContainElement(sliderSkeleton);
+    expect(receiptColumn).not.toContainElement(axisSkeleton);
+
+    // Slider sits above the chart, axis sits below it — same order as the
+    // loaded layout (SplhSlider panel -> CoverageChart -> TimelineAxis).
+    expect(
+      sliderSkeleton.compareDocumentPosition(chartSkeleton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      chartSkeleton.compareDocumentPosition(axisSkeleton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('renders an error message when error is provided', () => {
     render(
       <ShiftTimelineTab
@@ -301,11 +358,10 @@ describe('ShiftTimelineTab', () => {
 
 // ─── Coverage panel redesign wiring tests ─────────────────────────────────────
 //
-// Task 5: verify that ShiftTimelineTab now renders the new CoverageVerdict,
-// CoverageChart (with its view toggle), and CoverageStatusStrip — and no
-// longer renders the old CoverageCurve / CoverageGapList components.
-//
-// These tests are RED until the wiring is in place.
+// Task 5.2: verify that ShiftTimelineTab folds CoverageVerdict/CoverageDemandInfo
+// into the chart header, and no longer renders the removed Area/Delta view
+// toggle or CoverageStatusStrip (superseded by the pinned CoverageReceipt —
+// see the "CoverageReceipt wiring" describe block below).
 
 describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
   // A day with one shift so we get the full data state (not the empty state).
@@ -325,11 +381,11 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
     // CoverageVerdict always renders one of three messages.
     // With no demand configured, it shows the "Add staffing targets" prompt.
     expect(
-      screen.getByText(/add staffing targets to see demand/i),
+      screen.getByText(/add staffing targets to see where sales justify more hands/i),
     ).toBeInTheDocument();
   });
 
-  it('renders a coverage chart view toggle (Chart | +/- bars)', () => {
+  it('CRITICAL: does not render the removed Area/Delta coverage-view toggle (Stage 5.2)', () => {
     render(
       <ShiftTimelineTab
         {...BASE_PROPS}
@@ -337,9 +393,10 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
         employees={employees}
       />,
     );
-    // The ToggleGroup for coverage view should have both options.
-    expect(screen.getByRole('radio', { name: /chart/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /\+\/−/i })).toBeInTheDocument();
+    // The old "Chart" | "+/−" ToggleGroup is gone — CoverageChart is now the
+    // only view, always rendered.
+    expect(screen.queryByRole('radio', { name: /^chart$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: /\+\/−/i })).not.toBeInTheDocument();
   });
 
   it('renders the coverage chart (role="img") in the data state', () => {
@@ -350,13 +407,13 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
         employees={employees}
       />,
     );
-    // CoverageChart renders an SVG with role="img"
+    // AreaCoverageStrips (default groupBy="area") renders per-hour role="img" cells.
     const imgs = screen.getAllByRole('img');
-    // At least one img — the coverage chart
+    // At least one img — the per-area coverage strip
     expect(imgs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('renders the hourly coverage status strip', () => {
+  it('CRITICAL: does not render the removed CoverageStatusStrip (Stage 5.2 — superseded by CoverageReceipt)', () => {
     render(
       <ShiftTimelineTab
         {...BASE_PROPS}
@@ -364,10 +421,93 @@ describe('ShiftTimelineTab — coverage panel redesign wiring', () => {
         employees={employees}
       />,
     );
-    // CoverageStatusStrip wraps cells in a group with aria-label "Hourly coverage status"
+    // CoverageStatusStrip used to wrap cells in a group with this aria-label —
+    // it must no longer render inside ShiftTimelineTab.
     expect(
-      screen.getByRole('group', { name: /hourly coverage status/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole('group', { name: /hourly coverage status/i }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+// ─── Task 5.2: pinned CoverageReceipt wiring ──────────────────────────────────
+//
+// The removed CoverageStatusStrip is superseded by a pinned CoverageReceipt
+// panel, driven by the chart's selection (defaulting to the worst `crit` hour,
+// else the first hour — design doc §C, `pickDefaultHour`).
+
+describe('ShiftTimelineTab — CoverageReceipt wiring (Stage 5.2)', () => {
+  const employees = [makeEmployee('e1', 'Ann')];
+  const shifts = [
+    makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+  ];
+
+  const rec10 = {
+    hour: 10,
+    projectedSales: 100,
+    recommendedStaff: 2,
+    estimatedLaborCost: 0,
+    laborPct: 20,
+    overTarget: false,
+    demand: 2,
+  } as HourlyStaffingRecommendation;
+
+  const rec11 = {
+    hour: 11,
+    projectedSales: 503,
+    recommendedStaff: 17,
+    estimatedLaborCost: 0,
+    laborPct: 20,
+    overTarget: false,
+    demand: 17,
+  } as HourlyStaffingRecommendation;
+
+  beforeEach(() => {
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map([['2026-01-05', { recommendations: [rec10, rec11] }]]),
+      isLoading: false,
+      error: null,
+      hasSalesData: true,
+      hasHourlyBreakdown: true,
+      activeSettings: { target_splh: 30, lookback_weeks: 6 },
+      updateSettings: vi.fn(),
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+  });
+
+  it('CRITICAL: renders the pinned CoverageReceipt panel in the data state', () => {
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    expect(container.querySelector('[data-testid="coverage-receipt"]')).toBeInTheDocument();
+  });
+
+  it('CRITICAL: defaults the receipt to the worst crit hour (10 AM: demand 2, scheduled 1 — deficit 1) over the ok 11 AM hour (demand 17 fully covered by... wait, only 1 scheduled total) — uses the larger-deficit hour', () => {
+    // Only Ann (1 person) is scheduled across both hours, so BOTH 10 AM (demand
+    // 2, deficit 1) and 11 AM (demand 17, deficit 16) classify crit. The
+    // default must be 11 AM (the larger deficit) per pickDefaultHour.
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    const receipt = container.querySelector('[data-testid="coverage-receipt"]') as HTMLElement;
+    expect(receipt).toBeInTheDocument();
+    // The 11 AM row's $503 sales figure should be present on the ledger.
+    expect(receipt.textContent).toMatch(/\$503/);
+  });
+
+  it('CRITICAL: selecting a different chart column updates the pinned receipt to that hour', () => {
+    const { container } = render(
+      <ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />,
+    );
+    // Select the 10 AM column (the chart's per-hour option button).
+    const tenAmOption = screen.getByRole('option', { name: /10 AM/i });
+    fireEvent.click(tenAmOption);
+
+    const receipt = container.querySelector('[data-testid="coverage-receipt"]') as HTMLElement;
+    // Now the receipt should show the 10 AM hour's $100 sales figure, not $503.
+    expect(receipt.textContent).toMatch(/\$100/);
+    expect(receipt.textContent).not.toMatch(/\$503/);
   });
 });
 
@@ -504,6 +644,7 @@ describe('ShiftTimelineTab — call-site wiring (Task 2d)', () => {
   const rec: HourlyStaffingRecommendation = {
     hour: 10,
     projectedSales: 480,
+    demand: 3,
     recommendedStaff: 3,
     estimatedLaborCost: 108,
     laborPct: 22.5,
@@ -703,5 +844,125 @@ describe('ShiftTimelineTab — Fix 1: lanes/window frozen during drag, coverage 
     expect(nineAmDuring!.getAttribute('aria-label')).not.toEqual(nineAmLabelBefore);
 
     fireEvent.pointerCancel(annBar, { pointerId: 1 });
+  });
+});
+
+// ─── Stage 5.3: SPLH slider Save-gate authz ──────────────────────────────────
+//
+// RED tests — will fail until ShiftTimelineTab mounts `<SplhSlider>` above the
+// chart and gates its `canSave` prop on
+// `['owner', 'manager', 'operations_manager'].includes(selectedRestaurant?.role)`
+// (design doc §Design-review resolutions #6), matching the existing ad-hoc
+// predicate in TimePunchesManager.tsx/Inventory.tsx. Live preview (the range
+// input) and Reset must stay available to every role — only Save is gated.
+
+describe('ShiftTimelineTab — SPLH slider Save-gate authz (Stage 5.3)', () => {
+  const employees = [makeEmployee('e1', 'Ann')];
+  const shifts = [
+    makeShift('s1', 'e1', '2026-01-05T16:00:00Z', '2026-01-05T22:00:00Z'),
+  ];
+
+  beforeEach(() => {
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map(),
+      isLoading: false,
+      error: null,
+      hasSalesData: false,
+      hasHourlyBreakdown: false,
+      activeSettings: { target_splh: 40, target_labor_pct: 25, lookback_weeks: 4 },
+      updateSettings: vi.fn(),
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+  });
+
+  it.each(['owner', 'manager', 'operations_manager'])(
+    'CRITICAL: shows the Save button for a %s',
+    (role) => {
+      mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role } });
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+      expect(screen.getByRole('button', { name: /save/i })).toBeInTheDocument();
+    },
+  );
+
+  it.each(['staff', 'chef', 'kiosk', 'collaborator_accountant'])(
+    'CRITICAL: hides the Save button for a %s, but keeps the live slider and Reset',
+    (role) => {
+      mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role } });
+      render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+      expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+      expect(
+        screen.getByLabelText(/sales per labor hour target, in dollars/i),
+      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
+    },
+  );
+
+  it('CRITICAL: hides the Save button when no restaurant is selected at all', () => {
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: null });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+    expect(screen.queryByRole('button', { name: /save/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText(/sales per labor hour target, in dollars/i),
+    ).toBeInTheDocument();
+  });
+
+  it('dragging the slider previews live, and Reset clears the preview back to the saved target', () => {
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role: 'owner' } });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+    const slider = screen.getByLabelText(/sales per labor hour target, in dollars/i);
+    expect(slider).toHaveValue('40');
+
+    fireEvent.change(slider, { target: { value: '60' } });
+    expect(slider).toHaveValue('60');
+
+    fireEvent.click(screen.getByRole('button', { name: /reset/i }));
+    expect(slider).toHaveValue('40');
+  });
+
+  it('CRITICAL: Save persists the previewed slider value via updateSettings', async () => {
+    const updateSettings = vi.fn().mockResolvedValue(undefined);
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map(),
+      isLoading: false,
+      error: null,
+      hasSalesData: false,
+      hasHourlyBreakdown: false,
+      activeSettings: { target_splh: 40, target_labor_pct: 25, lookback_weeks: 4 },
+      updateSettings,
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role: 'owner' } });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+
+    const slider = screen.getByLabelText(/sales per labor hour target, in dollars/i);
+    fireEvent.change(slider, { target: { value: '60' } });
+    fireEvent.click(screen.getByRole('button', { name: /^save sales per labor hour target$/i }));
+
+    await waitFor(() => expect(updateSettings).toHaveBeenCalledWith({ target_splh: 60 }));
+  });
+
+  it('does not render the slider at all when there is no target to preview (activeSettings not loaded)', () => {
+    mockUseWeekStaffingSuggestions.mockReturnValue({
+      daySuggestions: new Map(),
+      isLoading: false,
+      error: null,
+      hasSalesData: false,
+      hasHourlyBreakdown: false,
+      activeSettings: null,
+      updateSettings: vi.fn(),
+      isSaving: false,
+      employeePositions: [],
+      actualSplh: null,
+    });
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: { role: 'owner' } });
+    render(<ShiftTimelineTab {...BASE_PROPS} shifts={shifts} employees={employees} />);
+    expect(
+      screen.queryByLabelText(/sales per labor hour target, in dollars/i),
+    ).not.toBeInTheDocument();
   });
 });

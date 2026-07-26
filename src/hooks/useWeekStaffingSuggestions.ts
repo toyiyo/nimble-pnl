@@ -23,6 +23,15 @@ interface ActualSplhSaleRow {
   total_price: number | string;
 }
 
+/** Row shape selected by the hourly-sales query. Mirrors `aggregateHourlySales`'s
+ *  `RawSale` so the paginated result feeds straight into the aggregation. */
+interface HourlySaleRow {
+  sale_date: string;
+  sale_time: string | null;
+  sold_at: string | null;
+  total_price: number;
+}
+
 /**
  * Sums total sales and divides by total worked hours to produce a rough
  * actual-SPLH figure. Pure helper (no hook deps) so it's independently
@@ -109,19 +118,37 @@ export function useWeekStaffingSuggestions(
     queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],
     queryFn: async () => {
       if (!restaurantId) return [];
-      const { data, error } = await supabase
-        .from('unified_sales')
-        .select('sale_date, sale_time, sold_at, total_price')
-        .eq('restaurant_id', restaurantId)
-        .eq('item_type', 'sale')
-        // Split-sale guard (§5 S-M1): exclude split-parent/child rows so a
-        // split sale's total isn't summed twice, matching useSplhData.ts.
-        .is('parent_sale_id', null)
-        .gte('sale_date', dateRange.startStr)
-        .lte('sale_date', dateRange.endStr)
-        .order('sale_date');
-      if (error) throw error;
-      return data ?? [];
+      // Paginated (matches useSplhData.ts's fetchAllPunches / the time-punch
+      // query below): an unbounded select is subject to PostgREST's default
+      // row cap, which a busy restaurant's multi-week lookback easily exceeds.
+      // Because the rows are ordered by `sale_date`, silent truncation drops
+      // the most-recent days first — so the current week (including today, the
+      // default-selected day) would aggregate to zero sales and the coverage
+      // chart would render every hour as "No sales history".
+      const PAGE_SIZE = 1000;
+      const MAX_PAGES = 20;
+      const rows: HourlySaleRow[] = [];
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const from = page * PAGE_SIZE;
+        const { data, error } = await supabase
+          .from('unified_sales')
+          .select('sale_date, sale_time, sold_at, total_price')
+          .eq('restaurant_id', restaurantId)
+          .eq('item_type', 'sale')
+          // Split-sale guard (§5 S-M1): exclude split-parent/child rows so a
+          // split sale's total isn't summed twice, matching useSplhData.ts.
+          .is('parent_sale_id', null)
+          .gte('sale_date', dateRange.startStr)
+          .lte('sale_date', dateRange.endStr)
+          .order('sale_date')
+          .order('created_at')
+          .order('id')
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) throw error;
+        rows.push(...((data ?? []) as unknown as HourlySaleRow[]));
+        if (!data || data.length < PAGE_SIZE) break;
+      }
+      return rows;
     },
     enabled: !!restaurantId,
     staleTime: 60000,

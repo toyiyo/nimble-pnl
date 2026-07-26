@@ -17,8 +17,12 @@ export interface CoverageHour {
   startMin: number;
   /** Per-hour minimum headcount (conservative: mid-hour dip counts as short) */
   scheduled: number;
+  /** Per-hour maximum headcount (for the "moves X→Y mid-hour" note) */
+  scheduledMax: number;
   /** Hourly demand target, or null when no demand is configured */
   needed: number | null;
+  /** Raw pre-floor demand (rec.demand), or null when no staffing rec for this hour */
+  demand: number | null;
   /** scheduled − needed, or null when needed is null */
   delta: number | null;
   /** Projected sales for this hour from staffing recommendations (null when unavailable). */
@@ -38,14 +42,32 @@ export interface CoverageVerdict {
   totalHours: number;
   /** Hour with the most-negative delta (null when no shorts or no demand) */
   worst: { hour: number; delta: number } | null;
+
+  // ── Demand-short vs floor-only split (drives the plain-English sentence) ──
+  /** The `minStaff` floor this verdict was classified against. */
+  minStaff: number;
+  /** Hours where `scheduled < demand` — sales genuinely justify more hands. */
+  demandShortHours: number;
+  /** People-hours short of raw demand — Σ(demand − scheduled) over `crit` hours. */
+  demandShortPeopleHours: number;
+  /** The single worst `crit` hour and how many people it's short (null when none). */
+  worstCrit: { hour: number; short: number } | null;
+  /** Hours where demand is met but the `minStaff` floor still isn't (`floor`). */
+  floorOnlyHours: number;
+  /** People-hours short of the floor only — Σ(needed − scheduled) over `floor` hours. */
+  floorPeopleHours: number;
+  /** Hours meeting or exceeding `needed` (`ok` + `spare`). */
+  coveredHours: number;
+  /** Hours with no demand target at all (`nodata`). */
+  nodataHours: number;
 }
 
 const HOUR = 60;
 
 /**
  * Format a clock hour (0–23) into a compact 12-hour label without minutes,
- * e.g. 0 → "12 AM", 17 → "5 PM".  Used by CoverageVerdict, CoverageChart,
- * and CoverageStatusStrip so the label style is consistent across all three.
+ * e.g. 0 → "12 AM", 17 → "5 PM".  Used by CoverageVerdict and CoverageChart
+ * so the label style is consistent across both.
  */
 export function formatCoverageHour(hour: number): string {
   const h24 = ((hour % 24) + 24) % 24;
@@ -125,6 +147,7 @@ export function summarizeCoverageHours(
     if (inHour.length === 0 && needed === null) continue;
 
     const scheduled = inHour.length > 0 ? Math.min(...inHour.map((c) => c.count)) : 0;
+    const scheduledMax = inHour.length > 0 ? Math.max(...inHour.map((c) => c.count)) : 0;
 
     const clockHour = Math.floor(start / HOUR) % 24;
     const rec = recByHour.get(clockHour) ?? null;
@@ -133,7 +156,14 @@ export function summarizeCoverageHours(
       hour: clockHour,
       startMin: start,
       scheduled,
+      scheduledMax,
       needed,
+      // A rec with projectedSales <= 0 has nothing to derive a demand target
+      // from (buildHourlyRecommendations floors its own `demand` to 0 in that
+      // case) — treat it as no-data rather than a real "0 people needed"
+      // target, per the design doc's nodata definition ("no rec, or
+      // projectedSales ≤ 0").
+      demand: rec && rec.projectedSales > 0 ? rec.demand : null,
       delta: needed === null ? null : scheduled - needed,
       projectedSales: rec?.projectedSales ?? null,
       laborPct: rec?.laborPct ?? null,
@@ -145,8 +175,14 @@ export function summarizeCoverageHours(
 
 /**
  * Derive a plain-language verdict from the hourly summary.
+ *
+ * `minStaff` splits each hour into `crit` (scheduled < raw demand — sales
+ * genuinely justify more hands) vs `floor` (demand met, but the minimum-staff
+ * rule still isn't) so the sentence can say *why* an hour is short. The rule
+ * is inlined rather than imported from `coverageChartModel` to keep this
+ * module dependency-free (that module already imports from this one).
  */
-export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
+export function buildVerdict(hours: CoverageHour[], minStaff = 0): CoverageVerdict {
   const hasDemand = hours.some((h) => h.needed !== null);
   const shortHours = hours.filter((h) => h.delta !== null && h.delta < 0);
 
@@ -157,12 +193,49 @@ export function buildVerdict(hours: CoverageHour[]): CoverageVerdict {
     }
   }
 
+  let demandShortHours = 0;
+  let demandShortPeopleHours = 0;
+  let worstCrit: { hour: number; short: number } | null = null;
+  let floorOnlyHours = 0;
+  let floorPeopleHours = 0;
+  let coveredHours = 0;
+  let nodataHours = 0;
+
+  for (const h of hours) {
+    if (h.demand === null) {
+      nodataHours += 1;
+      continue;
+    }
+    const needed = Math.max(h.demand, minStaff);
+    if (h.scheduled < h.demand) {
+      const short = h.demand - h.scheduled;
+      demandShortHours += 1;
+      demandShortPeopleHours += short;
+      if (worstCrit === null || short > worstCrit.short) {
+        worstCrit = { hour: h.hour, short };
+      }
+    } else if (h.scheduled < needed) {
+      floorOnlyHours += 1;
+      floorPeopleHours += needed - h.scheduled;
+    } else {
+      coveredHours += 1;
+    }
+  }
+
   return {
     hasDemand,
     metAll: hasDemand && shortHours.length === 0,
     shortHours: shortHours.length,
     totalHours: hours.length,
     worst,
+    minStaff,
+    demandShortHours,
+    demandShortPeopleHours,
+    worstCrit,
+    floorOnlyHours,
+    floorPeopleHours,
+    coveredHours,
+    nodataHours,
   };
 }
 

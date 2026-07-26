@@ -1,362 +1,395 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
-import { CoverageChart, buildHourTooltip } from '@/components/scheduling/ShiftTimeline/CoverageChart';
+import { describe, it, expect, vi } from 'vitest';
+import { render, fireEvent, within } from '@testing-library/react';
+import { CoverageChart, columnAriaLabel } from '@/components/scheduling/ShiftTimeline/CoverageChart';
+import { chartSummaryLabel } from '@/lib/coverageChartModel';
+import type { CoverageHour } from '@/lib/coverageSummary';
 
-// Shared minToPct for a 10:00–14:00 window (600–840 min, 240 min total).
-// Each 60-min hour occupies 60/240 = 25% of the width.
-const minToPct = (min: number) => ((min - 600) / 240) * 100;
+// Shared minToPct for a 10:00–15:00 window (600–900 min, 5 hours, 300 min total).
+// Each 60-min hour occupies 60/300 = 20% of the width.
+const minToPct = (min: number) => ((min - 600) / 300) * 100;
 
-// Two hours: hour 10 (short: delta -2) and hour 11 (covered: delta 0).
-// projectedSales / laborPct are populated to test that they round-trip through
-// the chart without breaking rendering (tooltip content is tested in Task 3).
-const hours = [
-  { hour: 10, startMin: 600, scheduled: 3, needed: 5, delta: -2, projectedSales: 480, laborPct: 22 },
-  { hour: 11, startMin: 660, scheduled: 5, needed: 5, delta: 0, projectedSales: 900, laborPct: 30 },
-];
+const MIN_STAFF = 6;
 
-// Two hours with no demand target (needed = null).
-const hoursNoDemand = [
-  { hour: 10, startMin: 600, scheduled: 3, needed: null, delta: null, projectedSales: null, laborPct: null },
-  { hour: 11, startMin: 660, scheduled: 4, needed: null, delta: null, projectedSales: null, laborPct: null },
-];
+// One hour per classification bucket, all under minStaff=6 so `crit`/`floor`
+// columns both exercise the demand-slice + floor-slice stack (needed=6 > demand
+// in both cases — see design doc's two-segment stacking rule).
+const critHour: CoverageHour = {
+  hour: 10,
+  startMin: 600,
+  scheduled: 3,
+  scheduledMax: 3,
+  needed: 6,
+  demand: 5,
+  delta: -3,
+  projectedSales: 250,
+  laborPct: null,
+};
+const floorHour: CoverageHour = {
+  hour: 11,
+  startMin: 660,
+  scheduled: 4,
+  scheduledMax: 4,
+  needed: 6,
+  demand: 3,
+  delta: -2,
+  projectedSales: 150,
+  laborPct: null,
+};
+const spareHour: CoverageHour = {
+  hour: 12,
+  startMin: 720,
+  scheduled: 8,
+  scheduledMax: 8,
+  needed: 6,
+  demand: 3,
+  delta: 2,
+  projectedSales: 150,
+  laborPct: null,
+};
+const okHour: CoverageHour = {
+  hour: 13,
+  startMin: 780,
+  scheduled: 6,
+  scheduledMax: 6,
+  needed: 6,
+  demand: 6,
+  delta: 0,
+  projectedSales: 300,
+  laborPct: null,
+};
+const nodataHour: CoverageHour = {
+  hour: 14,
+  startMin: 840,
+  scheduled: 2,
+  scheduledMax: 2,
+  needed: null,
+  demand: null,
+  delta: null,
+  projectedSales: null,
+  laborPct: null,
+};
+
+const hours: CoverageHour[] = [critHour, floorHour, spareHour, okHour, nodataHour];
+
+function renderChart(overrides: Partial<React.ComponentProps<typeof CoverageChart>> = {}) {
+  const onSelect = vi.fn();
+  const utils = render(
+    <CoverageChart
+      hours={hours}
+      minStaff={MIN_STAFF}
+      minToPct={minToPct}
+      selectedStartMin={null}
+      onSelect={onSelect}
+      {...overrides}
+    />,
+  );
+  return { ...utils, onSelect };
+}
 
 describe('CoverageChart — column layout', () => {
-  it('renders one positioned column per hour, aligned to minToPct', () => {
-    const { container } = render(
-      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
-    );
-    const cols = container.querySelectorAll('[data-hour-col]');
-    expect(cols).toHaveLength(2);
-    // Hour 10: startMin 600 → minToPct(600) = 0%
+  it('renders one option per hour, aligned to minToPct', () => {
+    const { container } = renderChart();
+    const cols = container.querySelectorAll('[role="option"]');
+    expect(cols).toHaveLength(5);
     expect((cols[0] as HTMLElement).style.left).toBe('0%');
-    // Width = minToPct(660) - minToPct(600) = 25% - 0% = 25%
-    expect((cols[0] as HTMLElement).style.width).toBe('25%');
-    // Hour 11: startMin 660 → minToPct(660) = 25%
-    expect((cols[1] as HTMLElement).style.left).toBe('25%');
-  });
-
-  it('renders an accessible container with role="img"', () => {
-    const { getByRole } = render(
-      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
-    );
-    expect(getByRole('img')).toBeInTheDocument();
+    expect((cols[0] as HTMLElement).style.width).toBe('20%');
+    expect((cols[1] as HTMLElement).style.left).toBe('20%');
   });
 
   it('renders nothing when hours array is empty', () => {
-    const { container } = render(
-      <CoverageChart hours={[]} view="delta" minToPct={minToPct} targetSplh={null} />,
-    );
-    // No columns, no chart content
-    expect(container.querySelectorAll('[data-hour-col]')).toHaveLength(0);
+    const { container } = renderChart({ hours: [] });
+    expect(container.querySelectorAll('[role="option"]')).toHaveLength(0);
+  });
+
+  it('renders a role="toolbar" container', () => {
+    const { getByRole } = renderChart();
+    expect(getByRole('toolbar')).toBeInTheDocument();
   });
 });
 
-describe('CoverageChart — area view', () => {
-  it('renders a shortfall block only for short hours', () => {
-    const { container } = render(
-      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
-    );
-    // Only hour 10 is short (delta -2); hour 11 is covered
-    expect(container.querySelectorAll('[data-shortfall]')).toHaveLength(1);
+describe('CoverageChart — roving tabindex + keyboard selection', () => {
+  it('defaults the first column to tabIndex 0 when selectedStartMin is null', () => {
+    const { container } = renderChart();
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+    expect(cols[0].getAttribute('tabindex')).toBe('0');
+    cols.slice(1).forEach((col) => expect(col.getAttribute('tabindex')).toBe('-1'));
   });
 
-  it('does not render a shortfall block when every hour is covered', () => {
-    const coveredHours = [
-      { hour: 10, startMin: 600, scheduled: 5, needed: 5, delta: 0, projectedSales: null, laborPct: null },
-      { hour: 11, startMin: 660, scheduled: 6, needed: 5, delta: 1, projectedSales: null, laborPct: null },
-    ];
-    const { container } = render(
-      <CoverageChart hours={coveredHours} view="area" minToPct={minToPct} targetSplh={null} />,
-    );
-    expect(container.querySelector('[data-shortfall]')).toBeFalsy();
+  it('marks the column matching selectedStartMin as tabIndex 0 and aria-selected', () => {
+    const { container } = renderChart({ selectedStartMin: 660 });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+    expect(cols[1].getAttribute('tabindex')).toBe('0');
+    expect(cols[1].getAttribute('aria-selected')).toBe('true');
+    expect(cols[0].getAttribute('tabindex')).toBe('-1');
+    expect(cols[0].getAttribute('aria-selected')).toBe('false');
   });
 
-  it('renders the legend labels (Scheduled and Needed) when demand exists', () => {
-    const { getAllByText, getByText } = render(
-      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
-    );
-    expect(getByText(/scheduled/i)).toBeInTheDocument();
-    // "Needed" should appear at least once (legend)
-    expect(getAllByText(/needed/i).length).toBeGreaterThanOrEqual(1);
+  it('clicking a column calls onSelect with its startMin', () => {
+    const { container, onSelect } = renderChart();
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+    fireEvent.click(cols[2]);
+    expect(onSelect).toHaveBeenCalledWith(720);
   });
 
-  it('does not render a Needed legend item when demand is absent', () => {
-    const { queryByText } = render(
-      <CoverageChart hours={hoursNoDemand} view="area" minToPct={minToPct} targetSplh={null} />,
-    );
-    expect(queryByText(/needed/i)).not.toBeInTheDocument();
+  it('ArrowRight moves selection to the next column', () => {
+    const { container, onSelect } = renderChart({ selectedStartMin: 600 });
+    const toolbar = container.querySelector('[role="toolbar"]') as HTMLElement;
+    fireEvent.keyDown(toolbar, { key: 'ArrowRight' });
+    expect(onSelect).toHaveBeenCalledWith(660);
+  });
+
+  it('ArrowLeft moves selection to the previous column', () => {
+    const { container, onSelect } = renderChart({ selectedStartMin: 660 });
+    const toolbar = container.querySelector('[role="toolbar"]') as HTMLElement;
+    fireEvent.keyDown(toolbar, { key: 'ArrowLeft' });
+    expect(onSelect).toHaveBeenCalledWith(600);
+  });
+
+  it('ArrowLeft on the first column is a no-op (stays clamped)', () => {
+    const { container, onSelect } = renderChart({ selectedStartMin: 600 });
+    const toolbar = container.querySelector('[role="toolbar"]') as HTMLElement;
+    fireEvent.keyDown(toolbar, { key: 'ArrowLeft' });
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('ArrowRight on the last column is a no-op (stays clamped)', () => {
+    const { container, onSelect } = renderChart({ selectedStartMin: 840 });
+    const toolbar = container.querySelector('[role="toolbar"]') as HTMLElement;
+    fireEvent.keyDown(toolbar, { key: 'ArrowRight' });
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });
 
-describe('CoverageChart — accessibility (tooltip shell)', () => {
-  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
-
-  beforeEach(() => {
-    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+describe('CoverageChart — SVG demand/floor split', () => {
+  it('renders a demand slice only for the crit column', () => {
+    const { container } = renderChart();
+    expect(container.querySelectorAll('[data-demand-slice]')).toHaveLength(1);
   });
 
-  afterEach(() => {
-    consoleErrorSpy.mockRestore();
+  it('renders a floor slice for both crit and floor columns', () => {
+    const { container } = renderChart();
+    expect(container.querySelectorAll('[data-floor-slice]')).toHaveLength(2);
   });
 
-  it('each hour column is keyboard-focusable (tabIndex=0)', () => {
-    const { container } = render(
-      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
-    );
-    const cols = Array.from(container.querySelectorAll('[data-hour-col]')) as HTMLElement[];
-    expect(cols).toHaveLength(2);
-    cols.forEach((col) => {
-      expect(col.getAttribute('tabindex')).toBe('0');
+  it('the floor slice is capped by a dashed line (texture, not color alone)', () => {
+    const { container } = renderChart();
+    const caps = Array.from(container.querySelectorAll('[data-floor-cap]'));
+    // One dashed cap per floor slice (crit + floor columns).
+    expect(caps).toHaveLength(2);
+    caps.forEach((el) => {
+      expect(el.getAttribute('stroke-dasharray')).toBeTruthy();
     });
   });
 
-  it('each hour column has a descriptive aria-label', () => {
-    const { container } = render(
-      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
-    );
-    const cols = Array.from(container.querySelectorAll('[data-hour-col]')) as HTMLElement[];
-    cols.forEach((col) => {
-      const label = col.getAttribute('aria-label');
-      expect(label).toBeTruthy();
-      expect(label!.length).toBeGreaterThan(0);
+  it('renders a hatched nodata ghost for the no-sales-history column, with no other slices', () => {
+    const { container } = renderChart();
+    const nodataEls = container.querySelectorAll('[data-nodata]');
+    expect(nodataEls).toHaveLength(1);
+  });
+
+  it('insets the nodata ghost within its column so hatched hours read as separate bars', () => {
+    const { container } = renderChart();
+    const nodata = container.querySelector('[data-nodata]') as SVGRectElement;
+    const nodataX = parseFloat(nodata.getAttribute('x')!);
+    const nodataW = parseFloat(nodata.getAttribute('width')!);
+
+    // The nodata column spans 80%–100% (startMin 840 in a 600–900 window).
+    // An inset ghost must start after 80% and be narrower than the full 20%
+    // column — otherwise adjacent hatched hours abut into one solid block.
+    expect(nodataX).toBeGreaterThan(80);
+    expect(nodataW).toBeLessThan(20);
+
+    // And it must match the drawn data bars' width exactly (same pad = 16%),
+    // so hatched and real bars share one visual rhythm.
+    const scheduled = container.querySelector('[data-scheduled]') as SVGRectElement;
+    const scheduledW = parseFloat(scheduled.getAttribute('width')!);
+    expect(nodataW).toBeCloseTo(scheduledW, 5);
+  });
+
+  it('defines a <pattern> for the nodata hatch', () => {
+    const { container } = renderChart();
+    expect(container.querySelector('pattern')).toBeTruthy();
+  });
+
+  it('renders a floor rule line labeled with minStaff', () => {
+    const { container, getByText } = renderChart();
+    expect(container.querySelectorAll('[data-floor-rule]')).toHaveLength(1);
+    expect(getByText(new RegExp(`floor\\s*${MIN_STAFF}`, 'i'))).toBeInTheDocument();
+  });
+
+  it('uses only semantic HSL tokens for fills/strokes, never raw hex', () => {
+    const { container } = renderChart();
+    const svg = container.querySelector('svg')!;
+    expect(svg.innerHTML).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+  });
+});
+
+describe('CoverageChart — accessible summary', () => {
+  it('renders a sr-only <p> with the chartSummaryLabel rollup', () => {
+    const { container } = renderChart();
+    const expected = chartSummaryLabel(hours, MIN_STAFF).ariaLabel;
+    const p = container.querySelector('p.sr-only');
+    expect(p).toBeTruthy();
+    expect(p!.textContent).toBe(expected);
+  });
+
+  it('renders a sr-only <ul aria-label="Understaffed windows"> with one <li> per crit/floor hour', () => {
+    const { getByLabelText } = renderChart();
+    const list = getByLabelText('Understaffed windows');
+    const items = list.querySelectorAll('li');
+    // crit + floor = 2 short hours in this fixture
+    expect(items).toHaveLength(2);
+    expect(list.className).toMatch(/sr-only/);
+  });
+});
+
+describe('CoverageChart — sticky y-axis gutter (mirrors TimelineLane)', () => {
+  it('renders the y-axis gutter with the sticky/left-0/z-10/w-[120px] classes TimelineLane uses for its label column', () => {
+    const { getByTestId } = renderChart();
+    const gutter = getByTestId('coverage-y-axis-gutter');
+    const classes = gutter.className.split(/\s+/);
+    expect(classes).toContain('sticky');
+    expect(classes).toContain('left-0');
+    expect(classes).toContain('z-10');
+    expect(classes).toContain('w-[120px]');
+  });
+
+  it('places the gutter before the scrollable plot region in DOM order, so it stays pinned while the plot scrolls', () => {
+    const { container, getByTestId, getByRole } = renderChart();
+    const gutter = getByTestId('coverage-y-axis-gutter');
+    const toolbar = getByRole('toolbar');
+    const all = Array.from(container.querySelectorAll('*'));
+    expect(all.indexOf(gutter)).toBeLessThan(all.indexOf(toolbar));
+  });
+
+  it('renders the y-axis ticks inside the gutter, not the scrollable plot', () => {
+    const { getByTestId } = renderChart();
+    const gutter = getByTestId('coverage-y-axis-gutter');
+    // MIN_STAFF=6, spareHour.scheduled=8 -> peak >= 9, so at least a 0 and a top tick render.
+    expect(within(gutter).getByText('0')).toBeInTheDocument();
+  });
+
+  it('the plot columns still align to minToPct, unaffected by the sticky gutter wrapper', () => {
+    const { container } = renderChart();
+    const cols = container.querySelectorAll('[role="option"]');
+    expect((cols[0] as HTMLElement).style.left).toBe('0%');
+    expect((cols[0] as HTMLElement).style.width).toBe('20%');
+    expect((cols[4] as HTMLElement).style.left).toBe('80%');
+  });
+});
+
+describe('CoverageChart — legend', () => {
+  it('renders all four swatches', () => {
+    const { getByTestId } = renderChart();
+    const legend = within(getByTestId('coverage-chart-legend'));
+    expect(legend.getByText(/short on demand/i)).toBeInTheDocument();
+    expect(legend.getByText(/at the floor only/i)).toBeInTheDocument();
+    expect(legend.getByText(/covered/i)).toBeInTheDocument();
+    expect(legend.getByText(/no sales history/i)).toBeInTheDocument();
+  });
+});
+
+describe('CoverageChart — hover quick-add', () => {
+  it('does not render a quick-add button when onQuickAdd is omitted (back-compat)', () => {
+    const { container } = renderChart();
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+    fireEvent.mouseEnter(cols[0]); // crit
+    fireEvent.mouseEnter(cols[1]); // floor
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
+  });
+
+  it('reveals a "+" quick-add button on hover for a crit column and calls onQuickAdd with its startMin on click', () => {
+    const onQuickAdd = vi.fn();
+    const { container, onSelect } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
+
+    fireEvent.mouseEnter(cols[0]); // crit, startMin 600
+    const quickAdd = container.querySelector('[data-testid="coverage-quick-add"]') as HTMLElement;
+    expect(quickAdd).toBeTruthy();
+
+    fireEvent.click(quickAdd);
+    expect(onQuickAdd).toHaveBeenCalledWith(600);
+    // One-click affordance is independent of column selection.
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('reveals a "+" quick-add button on hover for a floor column and calls onQuickAdd with its startMin', () => {
+    const onQuickAdd = vi.fn();
+    const { container } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+
+    fireEvent.mouseEnter(cols[1]); // floor, startMin 660
+    const quickAdd = container.querySelector('[data-testid="coverage-quick-add"]') as HTMLElement;
+    expect(quickAdd).toBeTruthy();
+
+    fireEvent.click(quickAdd);
+    expect(onQuickAdd).toHaveBeenCalledWith(660);
+  });
+
+  it('never renders quick-add for spare/ok/nodata columns, even on hover', () => {
+    const onQuickAdd = vi.fn();
+    const { container } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+
+    [2, 3, 4].forEach((i) => {
+      fireEvent.mouseEnter(cols[i]);
+      expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
+      fireEvent.mouseLeave(cols[i]);
     });
   });
 
-  it('renders tooltip shell without React ref-forwarding warnings (area view)', () => {
-    render(<CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />);
-    const refWarning = consoleErrorSpy.mock.calls.find((args) =>
-      typeof args[0] === 'string' && args[0].includes('Function components cannot be given refs'),
-    );
-    expect(refWarning).toBeUndefined();
+  it('hides the quick-add button again on mouse leave', () => {
+    const onQuickAdd = vi.fn();
+    const { container } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
+
+    fireEvent.mouseEnter(cols[0]);
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeTruthy();
+
+    fireEvent.mouseLeave(cols[0]);
+    expect(container.querySelector('[data-testid="coverage-quick-add"]')).toBeNull();
   });
 
-  it('renders tooltip shell without React ref-forwarding warnings (delta view)', () => {
-    render(<CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />);
-    const refWarning = consoleErrorSpy.mock.calls.find((args) =>
-      typeof args[0] === 'string' && args[0].includes('Function components cannot be given refs'),
-    );
-    expect(refWarning).toBeUndefined();
-  });
-});
+  it('the quick-add button has an accessible label naming the hour', () => {
+    const onQuickAdd = vi.fn();
+    const { container, getByLabelText } = renderChart({ onQuickAdd });
+    const cols = Array.from(container.querySelectorAll('[role="option"]')) as HTMLElement[];
 
-describe('CoverageChart — tooltip content (buildHourTooltip)', () => {
-  // Hour 10: 3 scheduled, 5 needed (short by 2), projected sales $480, targetSplh $95
-  const shortHour = {
-    hour: 10,
-    startMin: 600,
-    scheduled: 3,
-    needed: 5,
-    delta: -2,
-    projectedSales: 480,
-    laborPct: 22,
-  };
-
-  // Hour 11: 5 scheduled, 5 needed (covered, no surplus), with sales data
-  const coveredExactHour = {
-    hour: 11,
-    startMin: 660,
-    scheduled: 5,
-    needed: 5,
-    delta: 0,
-    projectedSales: 900,
-    laborPct: 30,
-  };
-
-  // Hour 12: 6 scheduled, 5 needed (covered + 1 spare)
-  const spareHour = {
-    hour: 12,
-    startMin: 720,
-    scheduled: 6,
-    needed: 5,
-    delta: 1,
-    projectedSales: null,
-    laborPct: null,
-  };
-
-  // No-demand hour: scheduled only
-  const noDemandHour = {
-    hour: 10,
-    startMin: 600,
-    scheduled: 4,
-    needed: null,
-    delta: null,
-    projectedSales: null,
-    laborPct: null,
-  };
-
-  it('CRITICAL: includes time range in tooltip for short hour', () => {
-    const lines = buildHourTooltip(shortHour, 95);
-    // Line 1 should contain the time range (e.g. "10 AM" or "10–11 AM")
-    expect(lines[0]).toMatch(/10\s*(AM|am)/i);
-  });
-
-  it('CRITICAL: includes scheduled and needed counts for short hour', () => {
-    const lines = buildHourTooltip(shortHour, 95);
-    const combined = lines.join(' ');
-    expect(combined).toMatch(/3 scheduled/i);
-    expect(combined).toMatch(/5 needed/i);
-  });
-
-  it('CRITICAL: includes projected sales when rec data present', () => {
-    const lines = buildHourTooltip(shortHour, 95);
-    const combined = lines.join(' ');
-    // Should include "Projected sales $480" (or similar formatting)
-    expect(combined).toMatch(/projected sales/i);
-    expect(combined).toMatch(/480/);
-  });
-
-  it('CRITICAL: includes SPLH math (÷ $95/labor-hr) when targetSplh and projectedSales present', () => {
-    const lines = buildHourTooltip(shortHour, 95);
-    const combined = lines.join(' ');
-    // Should explain the math: divisor = $95/labor-hr, result ≈ 5 needed
-    expect(combined).toMatch(/\$?95/);
-    expect(combined).toMatch(/labor.hr|labor-hr/i);
-  });
-
-  it('CRITICAL: short hour verdict is "Short 2 — add staff"', () => {
-    const lines = buildHourTooltip(shortHour, 95);
-    const combined = lines.join(' ');
-    expect(combined).toMatch(/short 2/i);
-    expect(combined).toMatch(/add staff/i);
-  });
-
-  it('CRITICAL: covered hour with exact fit shows "Right on target"', () => {
-    const lines = buildHourTooltip(coveredExactHour, 95);
-    const combined = lines.join(' ');
-    expect(combined).toMatch(/right on target/i);
-  });
-
-  it('CRITICAL: spare hour verdict includes "Covered" and spare count', () => {
-    const lines = buildHourTooltip(spareHour, null);
-    const combined = lines.join(' ');
-    expect(combined).toMatch(/covered/i);
-    expect(combined).toMatch(/\+1 spare/i);
-  });
-
-  it('CRITICAL: no-demand hour shows "no demand target" message without sales rows', () => {
-    const lines = buildHourTooltip(noDemandHour, null);
-    const combined = lines.join(' ');
-    expect(combined).toMatch(/no demand target/i);
-    expect(combined).toMatch(/set staffing targets/i);
-    // Must NOT include projected sales or SPLH math rows
-    expect(combined).not.toMatch(/projected sales/i);
-    expect(combined).not.toMatch(/labor.hr/i);
-  });
-
-  it('CRITICAL: omits sales line when projectedSales is null', () => {
-    const lines = buildHourTooltip(spareHour, 95);
-    const combined = lines.join(' ');
-    expect(combined).not.toMatch(/projected sales/i);
-    expect(combined).not.toMatch(/labor.hr/i);
-  });
-
-  it('omits SPLH math row when targetSplh is null (even if sales present)', () => {
-    const lines = buildHourTooltip(shortHour, null);
-    const combined = lines.join(' ');
-    // Sales line should still show
-    expect(combined).toMatch(/projected sales/i);
-    // But SPLH math row must not appear
-    expect(combined).not.toMatch(/labor.hr/i);
-  });
-
-  it('CRITICAL: aria-label on each column contains the scheduled/needed summary', () => {
-    const { container } = render(
-      <CoverageChart hours={hours} view="area" minToPct={minToPct} targetSplh={95} />,
-    );
-    const cols = Array.from(container.querySelectorAll('[data-hour-col]')) as HTMLElement[];
-    // Hour 10: short — aria-label should mention "3 scheduled" and "5 needed"
-    expect(cols[0].getAttribute('aria-label')).toMatch(/3 scheduled/i);
-    expect(cols[0].getAttribute('aria-label')).toMatch(/5 needed/i);
-    // Hour 11: covered — aria-label should mention scheduled and needed
-    expect(cols[1].getAttribute('aria-label')).toMatch(/5 scheduled/i);
-    expect(cols[1].getAttribute('aria-label')).toMatch(/5 needed/i);
-  });
-
-  it('CRITICAL: tooltip content renders correct lines for short hour with sales (TooltipContent wiring)', () => {
-    // Use buildHourTooltip directly to verify the content wired into TooltipContent
-    // is correct — the tooltip shell wiring is validated by the tooltip shell tests above.
-    // This test ensures the full content contract: time, counts, sales, SPLH math, verdict.
-    const shortHourFull = {
-      hour: 10,
-      startMin: 600,
-      scheduled: 3,
-      needed: 5,
-      delta: -2,
-      projectedSales: 480,
-      laborPct: 22,
-    };
-    const lines = buildHourTooltip(shortHourFull, 95);
-    // Lines wired into <TooltipContent> via tooltipLines.map(...)
-    // Verify the full set of lines that will appear in the portal:
-    expect(lines).toHaveLength(5); // time, scheduled/needed, sales, SPLH math, verdict
-    expect(lines[0]).toMatch(/10 AM/i); // time range
-    expect(lines[1]).toBe('3 scheduled · 5 needed');
-    expect(lines[2]).toBe('Projected sales $480');
-    expect(lines[3]).toMatch(/\$95\/labor-hr/);
-    expect(lines[4]).toBe('Short 2 — add staff');
-  });
-
-  it('tooltip degrades gracefully with no demand/recs', () => {
-    // Verify the graceful-degradation path: no demand, no sales rows.
-    const noDemandH = {
-      hour: 10,
-      startMin: 600,
-      scheduled: 4,
-      needed: null,
-      delta: null,
-      projectedSales: null,
-      laborPct: null,
-    };
-    const lines = buildHourTooltip(noDemandH, null);
-    // Lines wired into <TooltipContent>:
-    expect(lines).toHaveLength(3); // time, scheduled count, no-demand verdict
-    expect(lines[1]).toBe('4 scheduled');
-    expect(lines[2]).toMatch(/no demand target/i);
-    // Must NOT contain projected sales or SPLH rows
-    const combined = lines.join(' ');
-    expect(combined).not.toMatch(/projected sales/i);
-    expect(combined).not.toMatch(/labor-hr/i);
+    fireEvent.mouseEnter(cols[0]); // crit, 10 AM
+    expect(getByLabelText(/add shift.*10\s*am/i)).toBeInTheDocument();
   });
 });
 
-describe('CoverageChart — delta view', () => {
-  it('renders diverging bars with signed labels in delta view', () => {
-    const { container, getByText } = render(
-      <CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />,
-    );
-    // Hour 10 is short → data-bar="short"
-    expect(container.querySelectorAll('[data-bar="short"]')).toHaveLength(1);
-    // Signed delta label "-2" for the short hour
-    expect(getByText('-2')).toBeInTheDocument();
+describe('columnAriaLabel', () => {
+  it('CRITICAL: crit column names the demand shortfall', () => {
+    const label = columnAriaLabel(critHour, MIN_STAFF);
+    expect(label).toMatch(/10\s*AM/i);
+    expect(label).toMatch(/3 scheduled/i);
+    expect(label).toMatch(/short 2 on demand/i);
   });
 
-  it('renders a covered bar for the zero-delta hour', () => {
-    const { container } = render(
-      <CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />,
-    );
-    expect(container.querySelectorAll('[data-bar="covered"]')).toHaveLength(1);
+  it('CRITICAL: floor column names the floor shortfall (not demand)', () => {
+    const label = columnAriaLabel(floorHour, MIN_STAFF);
+    expect(label).toMatch(/short 2 at the floor/i);
+    expect(label).not.toMatch(/on demand/i);
   });
 
-  it('renders one bar per hour via data-bar attribute', () => {
-    const { container } = render(
-      <CoverageChart hours={hours} view="delta" minToPct={minToPct} targetSplh={95} />,
-    );
-    expect(container.querySelectorAll('[data-bar]')).toHaveLength(2);
+  it('CRITICAL: spare column names the surplus', () => {
+    const label = columnAriaLabel(spareHour, MIN_STAFF);
+    expect(label).toMatch(/covered/i);
+    expect(label).toMatch(/\+2 spare/i);
   });
 
-  it('scales no-demand bars by headcount peak (delta view)', () => {
-    const nd = [
-      { hour: 10, startMin: 600, scheduled: 1, needed: null, delta: null, projectedSales: null, laborPct: null },
-      { hour: 11, startMin: 660, scheduled: 4, needed: null, delta: null, projectedSales: null, laborPct: null },
-    ];
-    const { container } = render(
-      <CoverageChart hours={nd} view="delta" minToPct={minToPct} targetSplh={null} />,
-    );
-    const bars = Array.from(container.querySelectorAll('[data-bar="no-demand"]')) as HTMLElement[];
-    expect(bars).toHaveLength(2);
-    const h = (el: HTMLElement) => parseFloat(el.style.height);
-    // Hour 11 (scheduled=4) must be proportionally taller than hour 10 (scheduled=1)
-    expect(h(bars[1])).toBeGreaterThan(h(bars[0]) * 3); // 4 vs 1, proportional not pegged
+  it('CRITICAL: ok column reads "on target"', () => {
+    const label = columnAriaLabel(okHour, MIN_STAFF);
+    expect(label).toMatch(/on target/i);
+  });
+
+  it('CRITICAL: nodata column names the missing sales history, not a demand number', () => {
+    const label = columnAriaLabel(nodataHour, MIN_STAFF);
+    expect(label).toMatch(/no sales history/i);
+    expect(label).not.toMatch(/demand target: \d/i);
   });
 });

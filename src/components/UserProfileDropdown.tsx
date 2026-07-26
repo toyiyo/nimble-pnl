@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { ViewModeSwitch } from '@/components/ViewModeSwitch';
 
 export const UserProfileDropdown = () => {
   const { user, signOut } = useAuth();
@@ -41,8 +42,8 @@ export const UserProfileDropdown = () => {
           <ChevronDown className="h-3 w-3 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent 
-        align="end" 
+      <DropdownMenuContent
+        align="end"
         className="w-56 bg-background/95 backdrop-blur-xl border-border/50 shadow-xl"
       >
         <DropdownMenuLabel className="font-normal">
@@ -51,8 +52,11 @@ export const UserProfileDropdown = () => {
             <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
           </div>
         </DropdownMenuLabel>
+        <div className="px-2 pb-1">
+          <ViewModeSwitch />
+        </div>
         <DropdownMenuSeparator />
-        <DropdownMenuItem 
+        <DropdownMenuItem
           onClick={() => { navigate('/settings'); setOpen(false); }}
           className="cursor-pointer hover:bg-accent/50 transition-colors duration-200"
         >

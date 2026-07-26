@@ -152,6 +152,30 @@ access follows `role` (unchanged).
   the typography scale).
 - Transition respects `prefers-reduced-motion` (fade fallback, no sweep).
 
+## Mock-exact copy & layout (build to these strings)
+
+Captured from the approved prototype (`scratchpad/dual-mode-transition.html`). Match text and structure closely.
+
+**`ViewModeSwitch` (persona card)** — sits directly under the account header (email line):
+- Wrapper: slate-tinted card, `border-personal-view-border`, subtle `bg-personal-view` tint, `rounded-lg`, small padding.
+- Eyebrow label: `YOU'RE VIEWING AS` — `text-[11px] font-medium uppercase tracking-wider text-muted-foreground`.
+- Segmented control (two toggle buttons, full width, equal split): **`Admin`** (Home/`LayoutDashboard` icon) and **`My Work`** (`User`/`UserRound` icon). Active button gets a raised pill (`bg-background` + subtle shadow); inactive is transparent muted text. `aria-pressed` reflects the current effective mode.
+- Hint line under the control: **`Switch to clock in, view your schedule, timecard, and pay.`** — `text-[12px] text-muted-foreground`.
+
+**`PersonalViewBanner variant="desktop"`** — full-width bar at the top of the main content, slate:
+- Left: `UserRound` icon in a small slate chip, then **`You're in your personal view.`** (`font-medium`/semibold) followed by **`Seeing your own schedule & pay — not the restaurant's admin tools.`** (`text-muted-foreground`).
+- Right: **`Back to admin`** button with a leading `ArrowLeft` icon; calls `exitWorkMode`.
+- Surface: `bg-personal-view text-personal-view-foreground border border-personal-view-border rounded-xl`.
+
+**`PersonalViewBanner variant="mobile"`** — slim strip directly above `<MobileTabBar />`:
+- Left: `UserRound` icon + **`Personal view`** (`text-[13px] font-medium`).
+- Right: **`Admin ›`** (a labeled button, e.g. `aria-label="Back to admin"`), `text-[13px]`.
+- Same slate token surface; compact height, honors `env(safe-area-inset-bottom)` stacking above the tab bar.
+
+**Avatar sublabel in work mode:** the account trigger's secondary line reads **`{Role} · My Work`** (e.g. `Owner · My Work`) while in work mode, replacing the email-domain sublabel. (Applies to the `UserProfileDropdown` trigger; the mock capitalizes the role.)
+
+**Work-mode sidebar:** groups become `EMPLOYEE` (Time Clock, My Timecard, My Schedule, My Pay, My Requests) + `SETTINGS` (Settings) — this is exactly `staffNav`, so no new nav content is authored.
+
 ## Three-state / a11y
 
 - `ViewModeSwitch` renders `null` when ineligible (no empty shell). Its layout is

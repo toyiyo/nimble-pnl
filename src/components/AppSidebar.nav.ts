@@ -245,9 +245,18 @@ export const collaboratorOperationsManagerNav: NavGroup[] = navigationGroups
     return group;
   });
 
-// Get navigation groups based on role
-export function getNavigationForRole(role: string | undefined): NavGroup[] {
+// Get navigation groups based on role. Optional `viewMode`: when 'work',
+// the nav collapses to staffNav regardless of role (personal "My Work" lens).
+// Omitted/'admin' preserves existing role-based behavior.
+export function getNavigationForRole(
+  role: string | undefined,
+  viewMode?: 'admin' | 'work'
+): NavGroup[] {
   if (!role) return [];
+
+  if (viewMode === 'work') {
+    return staffNav;
+  }
 
   switch (role) {
     case 'kiosk':

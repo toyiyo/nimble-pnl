@@ -14,7 +14,10 @@
 --   5 & 6. idempotent re-link: calling again for a user already linked to the
 --      resolved target returns linked=true, reason='already_linked'
 --   7. conflict: target employee is already linked to a DIFFERENT user
---   9 & 10. authenticated role has no EXECUTE privilege (service_role only)
+--   9 & 10. ambiguous email match (multiple active employees share the
+--      invited email, no p_employee_id to disambiguate) -> fails closed to
+--      no_match instead of picking one arbitrarily
+--   11 & 12. authenticated role has no EXECUTE privilege (service_role only)
 --
 -- Fixture note: unlike link_employee_to_user (caller-authorized via
 -- auth.uid()), this function has no in-function caller check — it is
@@ -24,7 +27,7 @@
 -- has_function_privilege.
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(12);
 
 -- ---------- Fixture setup ----------
 INSERT INTO restaurants (id, name) VALUES
@@ -37,7 +40,8 @@ INSERT INTO auth.users (id, email, encrypted_password, aud, role) VALUES
   ('a1111111-1111-1111-1111-111111111103', 'no-match-user@test.com', '', 'authenticated', 'authenticated'),
   ('a1111111-1111-1111-1111-111111111104', 'already-has-employee@test.com', '', 'authenticated', 'authenticated'),
   ('a1111111-1111-1111-1111-111111111105', 'conflict-user@test.com', '', 'authenticated', 'authenticated'),
-  ('a1111111-1111-1111-1111-111111111106', 'other-account@test.com', '', 'authenticated', 'authenticated')
+  ('a1111111-1111-1111-1111-111111111106', 'other-account@test.com', '', 'authenticated', 'authenticated'),
+  ('a1111111-1111-1111-1111-111111111107', 'ambiguous-user@test.com', '', 'authenticated', 'authenticated')
 ON CONFLICT (id) DO UPDATE SET
   email = EXCLUDED.email,
   encrypted_password = EXCLUDED.encrypted_password,
@@ -51,7 +55,9 @@ INSERT INTO employees (id, restaurant_id, name, email, position, status, user_id
   ('a2222222-2222-2222-2222-222222222202', 'a0000000-0000-0000-0000-000000000001', 'Resolve By Email', 'RESOLVE-BY-EMAIL@Test.com', 'Cook',      'active', NULL),
   ('a2222222-2222-2222-2222-222222222203', 'a0000000-0000-0000-0000-000000000001', 'Already Owned',    'already-owned@test.com',    'Bartender', 'active', 'a1111111-1111-1111-1111-111111111104'),
   ('a2222222-2222-2222-2222-222222222204', 'a0000000-0000-0000-0000-000000000001', 'Second Row',       'second-row@test.com',       'Host',      'active', NULL),
-  ('a2222222-2222-2222-2222-222222222205', 'a0000000-0000-0000-0000-000000000001', 'Conflict Target',  'conflict-target@test.com',  'Busser',    'active', 'a1111111-1111-1111-1111-111111111106')
+  ('a2222222-2222-2222-2222-222222222205', 'a0000000-0000-0000-0000-000000000001', 'Conflict Target',  'conflict-target@test.com',  'Busser',    'active', 'a1111111-1111-1111-1111-111111111106'),
+  ('a2222222-2222-2222-2222-222222222206', 'a0000000-0000-0000-0000-000000000001', 'Ambiguous One',    'ambiguous-dup@test.com',    'Server',    'active', NULL),
+  ('a2222222-2222-2222-2222-222222222207', 'a0000000-0000-0000-0000-000000000001', 'Ambiguous Two',    'ambiguous-dup@test.com',    'Cook',      'active', NULL)
 ON CONFLICT (id) DO UPDATE SET
   restaurant_id = EXCLUDED.restaurant_id,
   name = EXCLUDED.name,
@@ -148,7 +154,30 @@ SELECT results_eq(
   'linking to a target already owned by a different user is a conflict'
 );
 
--- ---------- 8 & 9. authenticated role lacks EXECUTE (service_role only) ----------
+-- ---------- 8. ambiguous email match -> no_match (fail closed, no arbitrary pick) ----------
+-- Two active employees (206, 207) share 'ambiguous-dup@test.com'. Resolving
+-- by email alone (no p_employee_id) must not pick either row arbitrarily --
+-- mirrors send-team-invitation's resolveAccountlessEmployeeLink, which also
+-- fails closed on ambiguity. See lessons.md #641.
+SELECT results_eq(
+  $$ SELECT linked, reason, employee_id FROM link_invited_employee(
+       'a1111111-1111-1111-1111-111111111107'::uuid,
+       'a0000000-0000-0000-0000-000000000001'::uuid,
+       NULL,
+       'ambiguous-dup@test.com'
+     ) $$,
+  $$ VALUES (false, 'no_match'::text, NULL::uuid) $$,
+  'ambiguous email match (multiple active employees) fails closed to no_match'
+);
+
+SELECT ok(
+  (SELECT user_id FROM employees WHERE id IN (
+     'a2222222-2222-2222-2222-222222222206', 'a2222222-2222-2222-2222-222222222207'
+   ) AND user_id IS NOT NULL) IS NULL,
+  'neither ambiguous row is linked by the failed-closed call'
+);
+
+-- ---------- 9 & 10. authenticated role lacks EXECUTE (service_role only) ----------
 SELECT ok(
   has_function_privilege(
     'service_role',

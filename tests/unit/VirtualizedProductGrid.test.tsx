@@ -4,6 +4,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { VirtualizedProductGrid } from '@/components/inventory/VirtualizedProductGrid';
+import type { Product } from '@/hooks/useProducts';
 
 // jsdom never runs layout, so every element's offsetWidth/offsetHeight is 0.
 // @tanstack/react-virtual measures its scroll container via `element.offsetHeight`
@@ -30,18 +31,18 @@ afterEach(() => {
   offsetWidthSpy.mockRestore();
 });
 
-// Minimal product matching the fields ProductCard reads. If the existing test
-// file already has a factory, use that instead of this literal.
-const product = {
+// Minimal product covering only the fields ProductCard actually reads.
+const product: Product = {
   id: 'p1',
   name: 'Tomatoes',
   current_stock: 5,
   uom_purchase: 'kg',
-  // add any other non-optional fields the component dereferences:
-} as any;
+} as Product;
 
-function renderGrid(overrides: Record<string, any> = {}) {
-  const props = {
+type GridProps = React.ComponentProps<typeof VirtualizedProductGrid>;
+
+function renderGrid(overrides: Partial<GridProps> = {}) {
+  const props: GridProps = {
     products: [product],
     inventoryMetrics: { productMetrics: {} },
     recipesByProduct: {},
@@ -52,10 +53,10 @@ function renderGrid(overrides: Record<string, any> = {}) {
     onTransferProduct: vi.fn(),
     onDeleteProduct: vi.fn(),
     ...overrides,
-  };
+  } as GridProps;
   render(
     <MemoryRouter>
-      <VirtualizedProductGrid {...(props as any)} />
+      <VirtualizedProductGrid {...props} />
     </MemoryRouter>,
   );
   return props;

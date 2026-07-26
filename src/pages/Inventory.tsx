@@ -955,15 +955,15 @@ export const Inventory: React.FC = () => {
     const costPerUnit = quickInventoryProduct.cost_per_unit || 0;
 
     let finalStock: number;
-    // All quick scan updates should be adjustments
+    // All quick inventory updates (scan or manual count) should be adjustments
     // Only receipt uploads should create purchases
-    const transactionType: 'adjustment' = 'adjustment';
+    const transactionType = 'adjustment' as const;
 
     if (scanMode === 'add') {
       // Add mode: add to existing stock
       finalStock = currentStock + quantity;
     } else {
-      // Reconcile mode: set total stock to scanned quantity
+      // Reconcile mode: set total stock to the entered quantity
       finalStock = quantity;
     }
 

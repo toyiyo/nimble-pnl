@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { useDeviceToken } from '@/hooks/useDeviceToken';
 import { useBiometricAuth } from '@/hooks/useBiometricAuth';
 import { BiometricLockScreen } from '@/components/BiometricLockScreen';
+import { PersonalViewBanner } from '@/components/PersonalViewBanner';
+import { useViewMode } from '@/contexts/ViewModeContext';
 import { MobileTabBar } from './MobileTabBar';
 
 interface MobileLayoutProps {
@@ -13,6 +15,7 @@ interface MobileLayoutProps {
 export function MobileLayout({ children }: MobileLayoutProps) {
   const { signOut } = useAuth();
   const bio = useBiometricAuth();
+  const { viewMode } = useViewMode();
 
   // Register push notification token on mount
   useDeviceToken();
@@ -58,6 +61,7 @@ export function MobileLayout({ children }: MobileLayoutProps) {
         >
           {children}
         </main>
+        {viewMode === 'work' && <PersonalViewBanner variant="mobile" />}
         <MobileTabBar />
       </div>
     </>

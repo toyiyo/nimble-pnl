@@ -76,10 +76,15 @@ export function ViewModeProvider({ children }: ViewModeProviderProps) {
     storeSaysWork && !confirmedWrongRestaurant && !confirmedIneligible ? 'work' : 'admin';
 
   const enterWorkMode = useCallback(() => {
-    if (!restaurantId) return;
+    // Guard against re-entry while already in (effective) work mode: without
+    // this, clicking "My Work" again from an employee page (e.g. after
+    // enterWorkMode() already navigated once) would re-stash the current
+    // employee-page path as returnPath, clobbering the original admin route
+    // that exitWorkMode should return to.
+    if (!restaurantId || viewMode === 'work') return;
     storeEnterWorkMode(restaurantId, location.pathname);
     navigate('/employee/schedule');
-  }, [restaurantId, location.pathname, navigate]);
+  }, [restaurantId, location.pathname, navigate, viewMode]);
 
   const exitWorkMode = useCallback(() => {
     storeExitWorkMode();

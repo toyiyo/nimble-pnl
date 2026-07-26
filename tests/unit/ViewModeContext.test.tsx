@@ -184,6 +184,29 @@ describe('ViewModeProvider / useViewMode', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/employee/schedule');
   });
 
+  it('enterWorkMode() is a no-op while already in (effective) work mode — does not clobber the stashed returnPath', () => {
+    // Regression: clicking "My Work" again while already in work mode (e.g.
+    // from an employee-only page reachable via the persona card, which is
+    // gated only on canUseWorkView, not viewMode) must not re-stash the
+    // current employee-page path over the originally-stashed admin route.
+    storeEnterWorkMode('rest-1', '/dashboard');
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: { restaurant_id: 'rest-1', role: 'owner' },
+    });
+    mockUseCurrentEmployee.mockReturnValue({ currentEmployee: eligibleEmployee, loading: false });
+
+    // Render as if currently on an employee-only page — enterWorkMode() would
+    // otherwise stash THIS path as returnPath if it re-ran.
+    renderHarness('/employee/pay');
+    expect(screen.getByTestId('viewMode')).toHaveTextContent('work');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enter' }));
+
+    const snapshot = getSnapshot();
+    expect(snapshot.returnPath).toBe('/dashboard');
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
   it('exitWorkMode() sets store to admin and navigates to the stashed return path', () => {
     storeEnterWorkMode('rest-1', '/dashboard');
     mockUseRestaurantContext.mockReturnValue({

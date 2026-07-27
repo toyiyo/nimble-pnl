@@ -112,6 +112,17 @@ describe('PersonalViewBanner', () => {
 
       expect(screen.getByText(/admin/i, { selector: 'button *' })).toBeInTheDocument();
     });
+
+    it('does not reserve the bottom safe-area inset, which MobileTabBar below it owns', () => {
+      // The strip is an interior element of MobileLayout's `fixed bottom-0`
+      // stack, with MobileTabBar rendered beneath it — and MobileTabBar
+      // already applies env(safe-area-inset-bottom). Reserving it here too
+      // double-counts the inset and opens a dead gap inside the strip on
+      // devices with a home indicator.
+      render(<PersonalViewBanner variant="mobile" />);
+
+      expect(screen.getByRole('status').className).not.toMatch(/safe-area-inset-bottom/);
+    });
   });
 
   describe('reduced motion', () => {

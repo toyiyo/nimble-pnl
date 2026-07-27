@@ -53,8 +53,13 @@ export function PersonalViewBanner({ variant }: PersonalViewBannerProps) {
       <div
         role="status"
         className={cn(
+          // No bottom safe-area inset here: this strip is an interior element
+          // of MobileLayout's `fixed bottom-0` stack, with MobileTabBar
+          // rendered directly beneath it — and MobileTabBar already reserves
+          // env(safe-area-inset-bottom). Reserving it again would double-count
+          // the inset and open a dead gap inside the strip on devices with a
+          // home indicator.
           'flex items-center justify-between gap-2 border-t border-personal-view-border bg-personal-view px-4 py-2 text-personal-view-foreground',
-          'pb-[calc(0.5rem+env(safe-area-inset-bottom))]',
           animationClass
         )}
       >

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VERDICTS, composeReply, parseVerdict, classifyThreads, isBotActor } from '../../dev-tools/pr-triage.js';
+import { VERDICTS, composeReply, parseVerdict, classifyThreads, isBotActor, renderSummary } from '../../dev-tools/pr-triage.js';
 
 describe('pr-triage: VERDICTS', () => {
   it('defines exactly the three verdict keys', () => {
@@ -298,5 +298,46 @@ describe('pr-triage: classifyThreads', () => {
     expect(
       classifyThreads({ threads: [thread([])], prAuthor: PR_AUTHOR }).unanswered,
     ).toHaveLength(0);
+  });
+});
+
+describe('pr-triage: renderSummary', () => {
+  it('reports success when nothing is unanswered', () => {
+    const md = renderSummary({ unanswered: [], answered: [], skipped: [] });
+    expect(md).toMatch(/every finding has a verdict reply/i);
+  });
+
+  it('lists each unanswered finding with author, location and reason', () => {
+    const md = renderSummary({
+      unanswered: [
+        {
+          kind: 'thread',
+          author: 'coderabbitai',
+          path: 'src/hooks/useReceiptImport.tsx',
+          line: 717,
+          excerpt: 'Potential off-by-one in the loop bound.',
+          reason: 'no reply',
+        },
+      ],
+      answered: [{ kind: 'thread', author: 'Copilot' }],
+      skipped: [],
+    });
+    expect(md).toContain('coderabbitai');
+    expect(md).toContain('src/hooks/useReceiptImport.tsx:717');
+    expect(md).toContain('no reply');
+    expect(md).toMatch(/1 unanswered/i);
+  });
+
+  it('renders a review finding that has no file location', () => {
+    const md = renderSummary({
+      unanswered: [
+        { kind: 'review', author: 'a-human', path: '', line: null, excerpt: 'Needs rework.', reason: 'no reply' },
+      ],
+      answered: [],
+      skipped: [],
+    });
+    expect(md).toContain('a-human');
+    expect(md).not.toContain('undefined');
+    expect(md).not.toContain('null');
   });
 });

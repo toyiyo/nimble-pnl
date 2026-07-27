@@ -260,3 +260,43 @@ function excerpt(body, max = 120) {
   const flat = (body ?? '').replace(/\s+/gu, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
+
+/**
+ * Render the classification as markdown for the check-run summary, so the
+ * reason for a red gate is legible without opening the job log.
+ * @param {{unanswered: object[], answered: object[], skipped: object[]}} result
+ * @returns {string}
+ */
+export function renderSummary(result) {
+  const { unanswered = [], answered = [], skipped = [] } = result ?? {};
+  const tallies =
+    `**${unanswered.length} unanswered** · ${answered.length} answered · ${skipped.length} skipped (own threads)`;
+
+  if (unanswered.length === 0) {
+    return `${tallies}\n\n✅ every finding has a verdict reply on the PR.`;
+  }
+
+  const rows = unanswered
+    .map((f) => {
+      const where = f.path ? `\`${f.path}${f.line ? `:${f.line}` : ''}\`` : '_PR review_';
+      return `| ${f.author} | ${where} | ${f.reason} | ${f.excerpt || ''} |`;
+    })
+    .join('\n');
+
+  return [
+    tallies,
+    '',
+    'Each finding below needs a threaded reply stating whether you agreed',
+    '(naming the commit), pushed back, or deliberately ignored it:',
+    '',
+    '```bash',
+    'node dev-tools/pr-triage.js list --pr <PR>',
+    'node dev-tools/pr-triage.js reply --pr <PR> --comment <id> \\',
+    '  --verdict agreed --commit <sha> --rationale "what you changed and why"',
+    '```',
+    '',
+    '| Reviewer | Location | Why it is unanswered | Finding |',
+    '| --- | --- | --- | --- |',
+    rows,
+  ].join('\n');
+}

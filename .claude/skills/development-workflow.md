@@ -638,15 +638,26 @@ Do not narrow the filter to one bot. Codex, Copilot, CodeRabbit, and humans
 all post under different logins and at different layers (inline vs issue vs
 review). Print all three lists. Skim every row.
 
-**Step 3 — Classify and act on each row:**
+**Step 3 — Reply to every finding, then classify and act:**
 
-- **Bug / security / correctness / contract drift** → Fix it. Commit with
-  a message that names the source (`fix(...): coerce X (CodeRabbit #PR)`).
-  After commit, loop back to 9b (push triggers fresh CI).
-- **Refactor / suggestion** → Decide: implement OR reply on the PR with a
-  short reason for declining. Use `gh api -X POST repos/$OWNER_REPO/pulls/$PR/reviews -f event=COMMENT -f body=...` for a top-level reply, or `gh pr comment` for an issue-level reply. **Silent skipping is not allowed.**
-- **Nit / informational** → Read it, decide it's a nit, move on. Reading is
-  mandatory; acting is not.
+Every inline finding gets a **threaded verdict reply on the PR**. A fix is an
+`agreed` reply naming the commit — it is not a substitute for replying. The
+reasoning must live on the PR, not only in a local artifact:
+
+```bash
+node dev-tools/pr-triage.js list --pr <PR>     # unanswered findings + their comment ids
+node dev-tools/pr-triage.js reply --pr <PR> --comment <id> \
+  --verdict agreed --commit <sha> --rationale "what changed and why"
+```
+
+- **Bug / security / correctness / contract drift** → Fix it, commit naming the
+  source, then reply `--verdict agreed --commit <sha>`.
+- **Refactor / suggestion you are not taking** → reply `--verdict pushed-back`
+  with the reason (e.g. it contradicts a documented CLAUDE.md convention).
+- **Nit / informational** → reply `--verdict ignored` with one line on why.
+
+`node dev-tools/pr-triage.js audit --pr <PR>` must exit 0 before 9e. The
+`pr-comment-response` check enforces the same rule in CI.
 
 **Red-flag thoughts that mean STOP and re-run 9d:**
 
@@ -668,6 +679,8 @@ in the current transcript, against the latest pushed commit, and no
 context compaction has dropped them. If compaction has happened or the
 commands ran before the most recent push, re-run them.
 
+- `node dev-tools/pr-triage.js audit --pr <PR>` exits 0 — every finding from a
+  bot or a human carries a verdict reply visible on the PR.
 - `gh pr checks <PR>` shows all checks passing, against the latest
   commit, in the current 9a–9e execution window.
 - SonarCloud quality gate query returned PASS (coverage ≥80% on new
@@ -787,6 +800,6 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |
 | 9c Iteration limits | — | Informational only |
-| 9d Comment triage | `dev-tools/refresh-queue.sh` + `gh api .../comments` + `gh pr view --json reviews` | Never — green CI does NOT exempt |
+| 9d Comment triage | `dev-tools/pr-triage.js list/reply` + `audit` exits 0 + `gh api .../comments` | Never — green CI does NOT exempt |
 | 9e Done | All checks ✓, SonarCloud ✓, 9d triage transcript visible | Never |
 | 10. Retrospective | Write to `memory/lessons.md` | No corrections occurred |

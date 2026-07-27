@@ -356,7 +356,8 @@ const triage = await agent(
       `   - gh api repos/{owner}/{repo}/pulls/${PR}/comments --paginate   (inline review comments — Codex posts here)\n` +
       `   - gh api repos/{owner}/{repo}/issues/${PR}/comments --paginate  (PR conversation)\n` +
       `   - gh pr view ${PR} --json reviews                               (PR-level reviews)\n` +
-      '4. Classify EVERY row: bug/correctness -> fix + commit + push (set pushedFix=true); refactor/suggestion -> implement OR reply on the PR declining with a reason; nit/info -> read only.\n' +
+      `4. Reply to EVERY finding on the PR with node dev-tools/pr-triage.js reply --pr ${PR} --comment <id> --verdict <agreed|pushed-back|ignored> [--commit <sha>] --rationale "<why>". A fix is an "agreed" reply naming the commit, NOT a substitute for replying. Use \`node dev-tools/pr-triage.js list --pr ${PR}\` to enumerate unanswered findings and their comment ids.\n` +
+      `4b. Then run: node dev-tools/pr-triage.js audit --pr ${PR} — it must exit 0 before you return. If it exits 1, you have missed a finding.\n` +
       `5. Write the full classified list to dev-tools/9d-triage-${ctx.branch}.md (persistent artifact for the done gate).\n` +
       'Return counts + latestSha. If there are genuinely ambiguous comments you cannot resolve, return status=needs_human with them.',
   ),
@@ -388,6 +389,7 @@ phase('Done Gate')
 const done = await agent(
   envelope(
     `PHASE 9e (Done gate) for PR #${PR}. Verify against the LATEST commit (git rev-parse HEAD):\n` +
+      `- node dev-tools/pr-triage.js audit --pr ${PR} exits 0 (every finding has a verdict reply on the PR).\n` +
       `- gh pr checks ${PR} : all passing.\n` +
       '- SonarCloud quality gate: PASS (or explicitly note it is unconfigured).\n' +
       `- dev-tools/9d-triage-${ctx.branch}.md exists and every row is fixed / replied / classified-as-nit.\n` +

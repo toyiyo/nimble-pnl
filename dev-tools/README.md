@@ -97,3 +97,22 @@ Statuses: `open`, `in_progress`, `fixed`, `blocked`.
 - If lint/tests fail, `refresh-queue.sh` will still ingest any JSON output produced.
 - IDs are stable hashes; duplicates are skipped automatically.
 - Keep `review_queue.json` checked into git if you want history; otherwise add to `.gitignore` to keep local-only.
+
+## `pr-triage.js` — every review finding gets a visible answer
+
+Enforces that each finding on a PR (AI bot or human) carries a threaded reply
+saying whether we agreed, pushed back, or deliberately ignored it. The
+`pr-comment-response` GitHub check runs `audit` and blocks merge while anything
+is unanswered.
+
+```bash
+node dev-tools/pr-triage.js list  --pr 657   # unanswered findings + comment ids
+node dev-tools/pr-triage.js reply --pr 657 --comment 3649239869 \
+  --verdict agreed --commit abc1234 --rationale "Retained failed writes until import checks them."
+node dev-tools/pr-triage.js audit --pr 657   # exit 0 clean, 1 unanswered
+```
+
+Verdicts: `agreed` (requires `--commit`), `pushed-back`, `ignored`. A reply
+counts only from a non-bot maintainer, and an `agreed` reply must cite a commit
+that is actually on the PR. Resolving a thread without replying does **not**
+count — silent resolution is the failure mode this gate exists to catch.

@@ -7,6 +7,8 @@
  *
  * See docs/superpowers/specs/2026-07-27-pr-comment-response-gate-design.md
  */
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 /** The three verdicts a finding may receive. Keys are the machine form. */
 export const VERDICTS = Object.freeze({
@@ -299,4 +301,224 @@ export function renderSummary(result) {
     '| --- | --- | --- | --- |',
     rows,
   ].join('\n');
+}
+
+const execFileAsync = promisify(execFile);
+
+/** Run `gh api ...` and parse the JSON it prints. */
+async function ghApi(args) {
+  const { stdout } = await execFileAsync('gh', ['api', ...args], {
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  return stdout.trim() ? JSON.parse(stdout) : {};
+}
+
+/** Run a GraphQL query through `gh api graphql`. */
+async function ghGraphql(query, variables = {}) {
+  const args = ['graphql', '-f', `query=${query}`];
+  for (const [k, v] of Object.entries(variables)) {
+    args.push('-F', `${k}=${v}`);
+  }
+  return ghApi(args);
+}
+
+const THREADS_QUERY = `
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      author { login }
+      reviewThreads(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
+        nodes {
+          id
+          isResolved
+          isOutdated
+          path
+          line
+          comments(first: 100) {
+            nodes {
+              databaseId
+              body
+              authorAssociation
+              author { login __typename }
+            }
+          }
+        }
+      }
+      reviews(first: 100) {
+        nodes { id state body authorAssociation author { login __typename } }
+      }
+    }
+  }
+}`;
+
+const RESOLVE_MUTATION = `
+mutation($threadId: ID!) {
+  resolveReviewThread(input: {threadId: $threadId}) {
+    thread { isResolved }
+  }
+}`;
+
+function parseArgs(argv) {
+  const opts = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    if (!argv[i].startsWith('--')) continue;
+    const key = argv[i].slice(2);
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) {
+      opts[key] = true;
+    } else {
+      opts[key] = next;
+      i += 1;
+    }
+  }
+  return opts;
+}
+
+/** Derive `owner/repo` from the git remote, or from GITHUB_REPOSITORY in CI. */
+async function resolveRepo(opts) {
+  if (opts.repo) return opts.repo;
+  if (process.env.GITHUB_REPOSITORY) return process.env.GITHUB_REPOSITORY;
+  const { stdout } = await execFileAsync('gh', [
+    'repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner',
+  ]);
+  return stdout.trim();
+}
+
+/** Fetch every review thread and review for a PR, following pagination. */
+async function fetchPr({ owner, repo, pr, graphql }) {
+  const threads = [];
+  let cursor = null;
+  let author = '';
+  let reviews = [];
+
+  for (;;) {
+    const res = await graphql(THREADS_QUERY, { owner, repo, pr, ...(cursor ? { cursor } : {}) });
+    const node = res?.data?.repository?.pullRequest;
+    if (!node) break;
+    author = node.author?.login ?? author;
+    reviews = node.reviews?.nodes ?? reviews;
+    threads.push(...(node.reviewThreads?.nodes ?? []));
+    const page = node.reviewThreads?.pageInfo;
+    if (!page?.hasNextPage) break;
+    cursor = page.endCursor;
+  }
+
+  return { threads, reviews, prAuthor: author };
+}
+
+const USAGE = `Usage:
+  node dev-tools/pr-triage.js audit --pr <N>
+  node dev-tools/pr-triage.js list  --pr <N>
+  node dev-tools/pr-triage.js reply --pr <N> --comment <id> --verdict <agreed|pushed-back|ignored> \\
+      [--commit <sha>] --rationale "<why>"
+
+Exit codes: 0 clean, 1 unanswered findings, 2 usage error.`;
+
+/**
+ * @param {string[]} argv
+ * @param {{log?: Function, error?: Function, gh?: Function, graphql?: Function}} io
+ * @returns {Promise<number>} process exit code
+ */
+export async function runCli(argv, io = {}) {
+  const log = io.log ?? console.log;
+  const error = io.error ?? console.error;
+  const gh = io.gh ?? ghApi;
+  const graphql = io.graphql ?? ghGraphql;
+
+  const [verb, ...rest] = argv;
+  const opts = parseArgs(rest);
+
+  if (!['audit', 'list', 'reply'].includes(verb)) {
+    error(USAGE);
+    return 2;
+  }
+  if (!opts.pr) {
+    error('--pr <N> is required.\n' + USAGE);
+    return 2;
+  }
+
+  const nameWithOwner = await resolveRepo(opts);
+  const [owner, repo] = nameWithOwner.split('/');
+  const pr = Number(opts.pr);
+
+  if (verb === 'reply') {
+    // Compose FIRST so an invalid reply is rejected before anything is posted.
+    let body;
+    try {
+      body = composeReply({
+        verdict: opts.verdict,
+        rationale: opts.rationale,
+        commit: opts.commit,
+      });
+    } catch (e) {
+      error(e.message);
+      return 2;
+    }
+    if (!opts.comment) {
+      error('--comment <id> is required for reply.\n' + USAGE);
+      return 2;
+    }
+
+    await gh([
+      '--method', 'POST',
+      `repos/${owner}/${repo}/pulls/${pr}/comments/${opts.comment}/replies`,
+      '-f', `body=${body}`,
+    ]);
+    log(`Replied to comment ${opts.comment} on PR #${pr}.`);
+
+    // Resolving is a courtesy for readability; the audit never keys on it, so a
+    // failure here (e.g. the thread is already resolved) must not fail the reply.
+    const { threads } = await fetchPr({ owner, repo, pr, graphql });
+    const owning = threads.find((t) =>
+      (t.comments?.nodes ?? []).some((c) => String(c.databaseId) === String(opts.comment)),
+    );
+    if (owning && !owning.isResolved) {
+      try {
+        await graphql(RESOLVE_MUTATION, { threadId: owning.id });
+        log(`Resolved thread ${owning.id}.`);
+      } catch (e) {
+        log(`Reply posted; could not resolve the thread (${e.message}).`);
+      }
+    }
+    return 0;
+  }
+
+  const { threads, reviews, prAuthor } = await fetchPr({ owner, repo, pr, graphql });
+
+  let knownShas;
+  try {
+    const commits = await gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']);
+    knownShas = (Array.isArray(commits) ? commits : []).map((c) => c.sha).filter(Boolean);
+  } catch {
+    knownShas = undefined; // Verification is skipped rather than failing the gate.
+  }
+
+  const result = classifyThreads({ threads, reviews, prAuthor, knownShas });
+
+  if (verb === 'list') {
+    if (result.unanswered.length === 0) {
+      log('No unanswered findings.');
+      return 0;
+    }
+    for (const f of result.unanswered) {
+      const where = f.path ? `${f.path}:${f.line ?? '?'}` : 'PR review';
+      log(`--comment ${f.commentId ?? '(review — reply on the PR)'}  ${f.author}  ${where}  [${f.reason}]`);
+      log(`    ${f.excerpt}`);
+    }
+    return 0;
+  }
+
+  log(renderSummary(result));
+  return result.unanswered.length === 0 ? 0 : 1;
+}
+
+// Only run the CLI when executed directly, never when imported by tests.
+if (process.argv[1] && process.argv[1].endsWith('pr-triage.js')) {
+  runCli(process.argv.slice(2))
+    .then((code) => { process.exitCode = code; })
+    .catch((err) => {
+      console.error(err.message);
+      process.exitCode = 2;
+    });
 }

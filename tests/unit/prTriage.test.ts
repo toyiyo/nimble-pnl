@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { VERDICTS, composeReply, parseVerdict, classifyThreads, isBotActor, renderSummary } from '../../dev-tools/pr-triage.js';
+import { VERDICTS, composeReply, parseVerdict, classifyThreads, isBotActor, renderSummary, runCli } from '../../dev-tools/pr-triage.js';
 
 describe('pr-triage: VERDICTS', () => {
   it('defines exactly the three verdict keys', () => {
@@ -339,5 +339,118 @@ describe('pr-triage: renderSummary', () => {
     expect(md).toContain('a-human');
     expect(md).not.toContain('undefined');
     expect(md).not.toContain('null');
+  });
+});
+
+/** Minimal fake io: records output, serves canned GitHub responses. */
+function fakeIo({ threads = [], reviews = [], commits = [], onPost } = {}) {
+  const out: string[] = [];
+  return {
+    out,
+    log: (m: unknown) => out.push(String(m)),
+    error: (m: unknown) => out.push(String(m)),
+    graphql: async () => ({
+      data: {
+        repository: {
+          pullRequest: {
+            author: { login: 'toyiyo' },
+            reviewThreads: { nodes: threads, pageInfo: { hasNextPage: false, endCursor: null } },
+            reviews: { nodes: reviews },
+          },
+        },
+      },
+    }),
+    gh: async (args: string[]) => {
+      if (args.some((a) => a.includes('/commits'))) return commits;
+      if (onPost) return onPost(args);
+      return {};
+    },
+  };
+}
+
+const BOT_FINDING = {
+  id: 'T1',
+  isResolved: false,
+  isOutdated: false,
+  path: 'src/a.ts',
+  line: 3,
+  comments: {
+    nodes: [
+      {
+        databaseId: 99,
+        author: { login: 'coderabbitai', __typename: 'Bot' },
+        authorAssociation: 'NONE',
+        body: 'This loop bound looks wrong.',
+      },
+    ],
+  },
+};
+
+describe('pr-triage: runCli audit', () => {
+  it('exits 0 and says so when there is nothing unanswered', async () => {
+    const io = fakeIo();
+    const code = await runCli(['audit', '--pr', '1'], io);
+    expect(code).toBe(0);
+    expect(io.out.join('\n')).toMatch(/every finding has a verdict reply/i);
+  });
+
+  it('exits 1 and prints the finding when one is unanswered', async () => {
+    const io = fakeIo({ threads: [BOT_FINDING] });
+    const code = await runCli(['audit', '--pr', '1'], io);
+    expect(code).toBe(1);
+    expect(io.out.join('\n')).toContain('coderabbitai');
+    expect(io.out.join('\n')).toContain('src/a.ts:3');
+  });
+
+  it('exits 2 when --pr is missing', async () => {
+    const io = fakeIo();
+    expect(await runCli(['audit'], io)).toBe(2);
+    expect(io.out.join('\n')).toMatch(/--pr/);
+  });
+});
+
+describe('pr-triage: runCli list', () => {
+  it('prints the comment id needed to reply', async () => {
+    const io = fakeIo({ threads: [BOT_FINDING] });
+    const code = await runCli(['list', '--pr', '1'], io);
+    expect(code).toBe(0);
+    expect(io.out.join('\n')).toContain('99');
+  });
+});
+
+describe('pr-triage: runCli reply', () => {
+  it('posts a composed reply to the thread and resolves it', async () => {
+    const posted: string[][] = [];
+    const io = fakeIo({
+      threads: [BOT_FINDING],
+      onPost: (args: string[]) => { posted.push(args); return {}; },
+    });
+    const code = await runCli(
+      ['reply', '--pr', '1', '--comment', '99', '--verdict', 'pushed-back',
+       '--rationale', 'The bound is exclusive; this is correct.'],
+      io,
+    );
+    expect(code).toBe(0);
+    const flat = posted.flat().join(' ');
+    expect(flat).toContain('/pulls/1/comments/99/replies');
+    expect(flat).toContain('↩️ Pushed back');
+  });
+
+  it('refuses an agreed reply with no commit, without posting', async () => {
+    const posted: string[][] = [];
+    const io = fakeIo({ onPost: (args: string[]) => { posted.push(args); return {}; } });
+    const code = await runCli(
+      ['reply', '--pr', '1', '--comment', '99', '--verdict', 'agreed',
+       '--rationale', 'Fixed it in the follow-up.'],
+      io,
+    );
+    expect(code).toBe(2);
+    expect(posted).toHaveLength(0);
+    expect(io.out.join('\n')).toMatch(/commit/i);
+  });
+
+  it('exits 2 on an unknown verb', async () => {
+    const io = fakeIo();
+    expect(await runCli(['frobnicate'], io)).toBe(2);
   });
 });

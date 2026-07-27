@@ -1587,3 +1587,49 @@
 - **Mistake:** Read a red `Unit Tests` check as a test failure. It wasn't: `✓ Run unit tests with coverage` passed and the *job* was killed by the 10-minute cap during the later SonarCloud step.
 - **Correction:** `unit-tests.yml` triggers on **both** `push: branches: [main, develop, 'feature/**']` and `pull_request: [main]`, so any `feature/*` branch spawns two identical concurrent runs that compete for runners; one tips past the cap while its twin passes (observed 8m45s pass vs 10m15s timeout on the same commit). Re-running the job clears it.
 - **Rule:** On a red CI check, read the *step* list before the conclusion — a green test step with a red job means infra, not code. For this repo specifically: the job runs near its cap even solo (#649 took 9m10s), so raising `timeout-minutes` or adding a `concurrency` group is a real fix worth filing separately.
+
+---
+
+## Category: Gates and Fail-Open Design
+
+### [2026-07-27] A gate that errors must fail CLOSED, or it manufactures confidence
+- **Mistake:** The first working version of `dev-tools/pr-triage.js` (PR #662) treated every read failure as "nothing to report": a GraphQL error returned an empty thread list, a missing `pullRequest` node `break`ed out of the fetch loop, and a failed PR-commits fetch merely warned and skipped commit verification. Each path produced `0 unanswered` — a **green gate** — on data the tool had never actually read. Three separate reviewers (CodeRabbit, Codex, Copilot) flagged variants of this across two rounds. A later "fix" repeated the mistake in a new place: the bootstrap fallback treated *any* failure to fetch the auditor from the default branch as "not installed yet" and published a neutral check, so a rate limit would silently disarm the gate.
+- **Correction:** Every unreadable-state path now throws `AuditUnavailableError`, exits 2, and publishes a **failed** check. The bootstrap fallback distinguishes a genuine 404 ("not installed") from any other error ("refuse to disarm"). Truncated pagination is also an error, not a partial answer.
+- **Rule:** For anything whose job is to *withhold* approval, the error path and the success path are not symmetric. "I could not check" must never render as "I checked and it is fine." When writing a gate, enumerate every `catch`, every `?? []`, every early `break`, and ask what conclusion it produces — if the answer is "pass," it is a bug. This generalizes beyond CI: the same asymmetry applies to permission checks, validation, and quota enforcement.
+
+### [2026-07-27] Verify a regex built by string concatenation actually compiles
+- **Mistake:** `mentionsLogin` escaped regex metacharacters with `login.replace(/[.*+?^${}()|[\]\\-]/gu, '\\$&')`, which turns `-` into `\-`. Outside a character class, under the `/u` flag, `\-` is an **invalid identity escape** — `new RegExp` throws `SyntaxError`. Every hyphenated reviewer login (`chatgpt-codex-connector`, `copilot-pull-request-reviewer` — i.e. most of the bots) would have crashed the entire audit. My own unit tests missed it because the only hyphenated login in a fixture was behind an `isBotActor` short-circuit that returned before reaching the regex.
+- **Correction:** Dropped `-` from the escape set (it needs no escaping outside a class) and added a test using `chatgpt-codex-connector` on the path that actually reaches the regex. CodeRabbit caught this; I confirmed it in one line with `node -e "new RegExp(...)"` before fixing.
+- **Rule:** A dynamically built `RegExp` is executable code assembled from data — test it with realistic *data*, not just realistic shapes. When a test passes for a value you expected to exercise a path, confirm it reached that path; a short-circuit above the code under test makes a green test meaningless. Escaping helpers are a classic source of this: `\-`, `\/`, and `\ ` are all invalid identity escapes under `/u`.
+
+### [2026-07-27] `gh api --paginate` concatenates JSON arrays; use `--slurp`
+- **Mistake:** Fetched PR commits with `gh api <path> --paginate` and ran `JSON.parse` on stdout. For any response spanning more than one page, `--paginate` emits one complete JSON array **per page**, back to back (`[...][...]`), which `JSON.parse` rejects outright.
+- **Correction:** Added `--slurp`, which wraps the pages in a single outer array, then `.flat()` (a no-op on a single flat page, so the injected test fake needed no change).
+- **Rule:** `gh api --paginate` without `--slurp` is only safe when piped to `jq` in streaming mode or when the result is known to fit one page. Any code doing `JSON.parse` on it must pass `--slurp`. Verify with a real multi-page endpoint rather than assuming — one `gh api ... | head -c 60` settles it.
+
+### [2026-07-27] GitHub clears CHANGES_REQUESTED only on APPROVED or DISMISSED
+- **Mistake:** Collapsed a PR's reviews to "the most recent review per author" to decide who was still requesting changes. A reviewer who submits `CHANGES_REQUESTED` and later posts an ordinary `COMMENTED` review therefore stopped counting as blocking — and review bots post `COMMENTED` reviews constantly, so this quietly retired real findings. Codex flagged it P1.
+- **Correction:** Only `CHANGES_REQUESTED`, `APPROVED`, and `DISMISSED` set a reviewer's standing; `COMMENTED` is explicitly excluded from the collapse.
+- **Rule:** When mirroring a platform's state machine, mirror the *transitions*, not just "latest wins." GitHub review states are not a simple recency stack: `COMMENTED` is a no-op on standing. Encode which states are state-*setting* as an explicit named set, so the exclusion is visible rather than implied by ordering.
+
+### [2026-07-27] Two paths to the same guarantee need the same checks, or one becomes the soft way in
+- **Mistake:** Inline-thread replies with an `agreed` verdict were required to cite a commit actually on the PR, but the parallel review-level path (`--review`) accepted `agreed` with no commit verification at all. Anyone taking the second path bypassed the guarantee entirely.
+- **Correction:** Extracted the check and applied it on both paths; added tests asserting a bogus SHA blocks and a real short SHA passes on *each* path.
+- **Rule:** Whenever a feature grows a second entry point for the same operation, immediately diff the invariants enforced on each. The newer path is usually the thinner one, and the asymmetry is invisible in review unless you look for it deliberately. A shared helper called from both is the structural fix; parallel inline checks drift.
+
+---
+
+## Category: Development Workflow (continued)
+
+### [2026-07-27] The `coderabbit review` CLI flags changed; the skill's command was stale
+- **Mistake:** `.claude/skills/development-workflow.md` Phase 7c documents `coderabbit review --plain --type committed`. On CLI v0.7.0 that fails with `error: unknown option '--plain'` — the flags are now `--committed` / `--uncommitted`, and plain text is the default output mode.
+- **Correction:** Ran `coderabbit review --committed --base main` instead. Worth updating the skill text when next editing it.
+- **Rule:** When a documented third-party CLI invocation fails on an unknown option, read `--help` and adapt rather than treating the tool as unavailable and skipping the phase. A skipped review phase is a silent quality loss; a flag rename is a 30-second fix.
+
+### [2026-07-27] Dogfooding a review tool on its own PR is the strongest verification available
+- **Observation:** PR #662 added a gate requiring a verdict reply on every review finding. Rather than only unit-testing it, I used the tool to answer all 20 findings on its own PR. That exercised the real GraphQL fetch, the reply POST, thread resolution, and the audit — and surfaced three defects that fixtures never would have: a shell-quoting failure in my own invocation, `list` advertising a flag that cannot work for review-level findings, and the concurrency/`action_required` behaviour of the workflow itself.
+- **Rule:** When a change produces a tool that acts on the development process, run it against the very PR that introduces it. Fixtures prove the logic; the live run proves the integration, the ergonomics, and the operational caveats. Budget for it — the findings arrive in rounds, and each round of replies triggers new bot reviews.
+
+### [2026-07-27] `action_required` — bot-triggered workflow runs can be held for approval
+- **Observation:** Workflow runs on PR #662 triggered by `Copilot` submitting a review came back `conclusion: action_required` — GitHub held them pending maintainer approval rather than running them. Separately, runs kept showing as `cancelled` even with `concurrency.cancel-in-progress: false`, because GitHub cancels a *previously pending* run when a newer one joins the same group, and a cancelled run surfaces as a **failed** check on the PR.
+- **Rule:** A workflow whose whole purpose is to react to bot activity cannot assume bot-triggered events will actually run it — check `gh run list --json conclusion` for `action_required` before believing the trigger works. And do not put a `concurrency` group on a short job that fires in bursts: the cancellations read as failures. Keep a `workflow_dispatch` escape hatch and a push-triggered path (human actor, never gated) so the check can always be brought current.

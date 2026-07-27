@@ -252,11 +252,15 @@ export function getNavigationForRole(
   role: string | undefined,
   viewMode?: 'admin' | 'work'
 ): NavGroup[] {
-  if (!role) return [];
-
+  // Work mode wins over an undefined role: during the remount-timing window
+  // right after enterWorkMode()'s navigate(), role can be briefly undefined
+  // before RestaurantProvider re-hydrates. Checking this before the `!role`
+  // early-return prevents the sidebar from flashing empty in that window.
   if (viewMode === 'work') {
     return staffNav;
   }
+
+  if (!role) return [];
 
   switch (role) {
     case 'kiosk':

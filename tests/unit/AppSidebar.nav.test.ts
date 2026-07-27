@@ -119,4 +119,11 @@ describe('AppSidebar.nav – viewMode param', () => {
   it('still returns staffNav for the staff role itself when viewMode is "work"', () => {
     expect(getNavigationForRole('staff', 'work')).toEqual(staffNav);
   });
+
+  it('returns staffNav when viewMode is "work" even while role is undefined (remount-timing window)', () => {
+    // During the remount right after enterWorkMode()'s navigate(),
+    // selectedRestaurant/role can be briefly undefined before re-hydrating.
+    // Work mode must still win so the sidebar doesn't flash empty.
+    expect(getNavigationForRole(undefined, 'work')).toEqual(staffNav);
+  });
 });

@@ -491,7 +491,9 @@ export const Inventory: React.FC = () => {
     const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {
-      // Use quick inventory dialog for scanning existing products
+      // Use quick inventory dialog for scanning existing products.
+      // Reset the mode so a prior manual "Set total" choice never leaks into a scan.
+      setScanMode('add');
       setQuickEntrySource('scan');
       setQuickInventoryProduct(existingProduct);
       setShowQuickInventoryDialog(true);
@@ -1986,6 +1988,7 @@ export const Inventory: React.FC = () => {
           onOpenChange={handleCloseQuickInventoryDialog}
           product={quickInventoryProduct}
           mode={scanMode}
+          onModeChange={setScanMode}
           onSave={handleQuickInventorySave}
           restaurantId={selectedRestaurant?.restaurant_id || null}
         />

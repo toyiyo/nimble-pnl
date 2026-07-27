@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -88,6 +88,12 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
 }) => {
   // Auto-approved items start collapsed, others start expanded
   const [isOpen, setIsOpen] = useState(tier !== 'auto-approved');
+
+  // The SKU/Barcode input is uncontrolled and commits on blur (see onSkuChange below).
+  // Track the last value we actually committed so a blur on an unedited (or already
+  // re-blurred) field is a no-op: auto-filled values must only write back when the user
+  // genuinely changes them, never merely by tabbing/clicking through the field.
+  const skuCommittedRef = useRef(item.parsed_sku || '');
 
   const hasSuggestions = !!(item.suggested_size_value || item.suggested_package_type);
   const needsSizeInfo = !item.size_value && !item.size_unit && tier !== 'auto-approved';
@@ -292,7 +298,20 @@ export const ReceiptItemRow: React.FC<ReceiptItemRowProps> = ({
                     <Input
                       id={`sku-${item.id}`}
                       defaultValue={item.parsed_sku || ''}
-                      onChange={(e) => onSkuChange(item.id, e.target.value)}
+                      onFocus={() => {
+                        // Re-baseline against the current source-of-truth value on every focus.
+                        // If the last commit attempt failed (updateLineItemMapping resolved
+                        // false), `item.parsed_sku` was never advanced, so this lets a plain
+                        // focus + blur (no retyping needed) retry the same value instead of
+                        // being silently swallowed by the "no intervening edit" guard below.
+                        skuCommittedRef.current = item.parsed_sku || '';
+                      }}
+                      onBlur={(e) => {
+                        if (e.target.value !== skuCommittedRef.current) {
+                          skuCommittedRef.current = e.target.value;
+                          onSkuChange(item.id, e.target.value);
+                        }
+                      }}
                       placeholder="Scan or type"
                       disabled={isImported}
                       className="h-9"

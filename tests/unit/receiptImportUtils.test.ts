@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parsePackSizeToken, computeImportedQuantity, buildLineItemInsert } from '@/utils/receiptImportUtils';
+import {
+  parsePackSizeToken,
+  computeImportedQuantity,
+  buildLineItemInsert,
+  resolveLineItemBarcode,
+  resolveBarcodeWriteBack,
+} from '@/utils/receiptImportUtils';
 
 describe('computeImportedQuantity', () => {
   it('multiplies cases by pack (butter: 2 × 4 = 8)', () => {
@@ -80,5 +86,58 @@ describe('buildLineItemInsert (DB insert mapping for process-receipt)', () => {
     const row = buildLineItemInsert('receipt-xyz', butterItem, 0);
     expect(row.pack_quantity).toBe(4);
     expect(row.parsed_quantity).toBe(8);
+  });
+});
+
+describe('resolveLineItemBarcode (auto-fill SKU/Barcode from matched product)', () => {
+  it('returns null when parsedSku is already a non-empty string (does not overwrite)', () => {
+    expect(resolveLineItemBarcode('123456', { gtin: '999999', sku: 'SKU-1' })).toBeNull();
+  });
+
+  it('returns product.gtin when parsedSku is null and gtin present', () => {
+    expect(resolveLineItemBarcode(null, { gtin: '111', sku: 'SKU-1' })).toBe('111');
+  });
+
+  it('returns product.gtin when parsedSku is empty string and gtin present', () => {
+    expect(resolveLineItemBarcode('', { gtin: '111', sku: 'SKU-1' })).toBe('111');
+  });
+
+  it('falls back to product.sku when gtin is null but sku present', () => {
+    expect(resolveLineItemBarcode(null, { gtin: null, sku: 'SKU-1' })).toBe('SKU-1');
+  });
+
+  it('falls back to product.sku when gtin is empty string but sku present', () => {
+    expect(resolveLineItemBarcode(null, { gtin: '', sku: 'SKU-1' })).toBe('SKU-1');
+  });
+
+  it('returns null when both gtin and sku are null/empty', () => {
+    expect(resolveLineItemBarcode(null, { gtin: null, sku: null })).toBeNull();
+    expect(resolveLineItemBarcode('', { gtin: '', sku: '' })).toBeNull();
+  });
+
+  it('treats a whitespace-only parsedSku as empty (fills from product)', () => {
+    expect(resolveLineItemBarcode('   ', { gtin: '111', sku: null })).toBe('111');
+  });
+});
+
+describe('resolveBarcodeWriteBack (write edited barcode back to product.gtin)', () => {
+  it('returns the trimmed value for a non-empty string', () => {
+    expect(resolveBarcodeWriteBack('  123456  ')).toBe('123456');
+  });
+
+  it('returns the value unchanged when already trimmed', () => {
+    expect(resolveBarcodeWriteBack('ABC123')).toBe('ABC123');
+  });
+
+  it('returns null for null', () => {
+    expect(resolveBarcodeWriteBack(null)).toBeNull();
+  });
+
+  it('returns null for an empty string', () => {
+    expect(resolveBarcodeWriteBack('')).toBeNull();
+  });
+
+  it('returns null for a whitespace-only string', () => {
+    expect(resolveBarcodeWriteBack('   ')).toBeNull();
   });
 });

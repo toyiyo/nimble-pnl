@@ -175,6 +175,24 @@ Covering fork comment events properly would need a trusted executor (a
 GitHub App or webhook service) — disproportionate for a repo whose PRs
 come from same-repo branches.
 
+**Bot-trigger approval (observed, not theoretical):** on this repo, a run
+triggered by `Copilot` submitting a review came back `action_required`
+— GitHub held it for maintainer approval rather than running it. While
+that holds, a finding posted after the last push will not turn the check
+red on its own. Three things blunt it: `pull_request_target: synchronize`
+re-audits on every push (a human actor, never gated), `workflow_dispatch`
+allows a manual re-run, and the `/dev` workflow runs `pr-triage.js audit`
+locally at Phase 9d, which no Actions setting can gate. The repository
+setting under Settings → Actions → General controls the approval
+requirement if it should be relaxed.
+
+**No concurrency group.** Even with `cancel-in-progress: false`, GitHub
+cancels a *previously pending* run when a newer one joins the group, and
+a burst of bot comments produces exactly that. Each cancelled run then
+surfaces as a failed check — red for a reason unrelated to unanswered
+findings. The audit takes seconds, so running every event is cheaper than
+explaining the noise.
+
 **Failing closed:** every path that cannot see the whole PR — a GraphQL
 error, a missing `pullRequest` node, a commits fetch that fails, a thread
 whose replies exceed one page — exits non-zero and publishes a *failed*

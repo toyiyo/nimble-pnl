@@ -343,7 +343,7 @@ describe('pr-triage: renderSummary', () => {
 });
 
 /** Minimal fake io: records output, serves canned GitHub responses. */
-function fakeIo({ threads = [], reviews = [], commits = [], onPost } = {}) {
+function fakeIo({ threads = [], reviews = [], commits = [], commitsError, onPost } = {}) {
   const out: string[] = [];
   return {
     out,
@@ -361,7 +361,10 @@ function fakeIo({ threads = [], reviews = [], commits = [], onPost } = {}) {
       },
     }),
     gh: async (args: string[]) => {
-      if (args.some((a) => a.includes('/commits'))) return commits;
+      if (args.some((a) => a.includes('/commits'))) {
+        if (commitsError) throw new Error(commitsError);
+        return commits;
+      }
       if (onPost) return onPost(args);
       return {};
     },
@@ -406,6 +409,15 @@ describe('pr-triage: runCli audit', () => {
     const io = fakeIo();
     expect(await runCli(['audit'], io)).toBe(2);
     expect(io.out.join('\n')).toMatch(/--pr/);
+  });
+
+  it('surfaces a visible warning when the commits fetch fails, rather than silently skipping verification', async () => {
+    const io = fakeIo({ commitsError: 'rate limited' });
+    const code = await runCli(['audit', '--pr', '1'], io);
+    // No unanswered findings in this fixture, so the run still exits 0 — but the
+    // warning must be visible in the same output the check-run summary is built from.
+    expect(code).toBe(0);
+    expect(io.out.join('\n')).toMatch(/could not fetch pr commits.*rate limited/i);
   });
 });
 

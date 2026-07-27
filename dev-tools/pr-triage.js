@@ -239,7 +239,8 @@ function firstUnansweredReason(replies, knownShas) {
  */
 function citesKnownCommit(body, knownShas) {
   if (!Array.isArray(knownShas) || knownShas.length === 0) return true;
-  const cited = body.match(/\b[0-9a-f]{7,40}\b/gi) ?? [];
+  const shaPattern = new RegExp(`\\b[0-9a-f]{${MIN_SHA_PREFIX},40}\\b`, 'gi');
+  const cited = body.match(shaPattern) ?? [];
   return cited.some((c) =>
     knownShas.some((sha) => sha.toLowerCase().startsWith(c.toLowerCase())),
   );
@@ -259,6 +260,13 @@ function excerpt(body, max = 120) {
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
 }
 
+/** Render a finding's file:line as markdown, or a fallback for review-level findings. */
+function formatLocation(f) {
+  if (!f.path) return '_PR review_';
+  const line = f.line ? `:${f.line}` : '';
+  return `\`${f.path}${line}\``;
+}
+
 /**
  * Render the classification as markdown for the check-run summary, so the
  * reason for a red gate is legible without opening the job log.
@@ -275,10 +283,7 @@ export function renderSummary(result) {
   }
 
   const rows = unanswered
-    .map((f) => {
-      const where = f.path ? `\`${f.path}${f.line ? `:${f.line}` : ''}\`` : '_PR review_';
-      return `| ${f.author} | ${where} | ${f.reason} | ${f.excerpt || ''} |`;
-    })
+    .map((f) => `| ${f.author} | ${formatLocation(f)} | ${f.reason} | ${f.excerpt || ''} |`)
     .join('\n');
 
   return [
@@ -481,10 +486,22 @@ export async function runCli(argv, io = {}) {
   }
 
   // Independent reads — run concurrently rather than paying for both round trips in series.
+  let commitsFetchFailed = false;
   const [{ threads, reviews, prAuthor }, commits] = await Promise.all([
     fetchPr({ owner, repo, pr, graphql }),
-    gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']).catch(() => undefined), // Verification is skipped rather than failing the gate.
+    gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']).catch((e) => {
+      // Verification is skipped rather than failing the gate, but that must be
+      // visible — a silent skip here would reopen the exact loophole ("agreed"
+      // replies citing an unverifiable commit) this check exists to close.
+      commitsFetchFailed = true;
+      error(`Warning: could not fetch PR commits to verify "agreed" replies (${e.message}). ` +
+        'Commit-citation checks are skipped for this run.');
+      return undefined;
+    }),
   ]);
+  if (!commitsFetchFailed && Array.isArray(commits) === false) {
+    error('Warning: PR commits fetch returned an unexpected shape; commit-citation checks are skipped for this run.');
+  }
   const knownShas = Array.isArray(commits) ? commits.map((c) => c.sha).filter(Boolean) : undefined;
 
   const result = classifyThreads({ threads, reviews, prAuthor, knownShas });

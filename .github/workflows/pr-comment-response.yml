@@ -1,0 +1,103 @@
+name: PR Comment Response
+
+# Every review finding on a PR must carry a visible verdict reply — agreed
+# (naming the commit), pushed back, or deliberately ignored. This job only
+# AUDITS: it reads the PR and publishes a check run. It never writes a reply.
+# See docs/superpowers/specs/2026-07-27-pr-comment-response-gate-design.md
+
+on:
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  issue_comment:
+    types: [created]
+  # pull_request_target, not pull_request: a fork PR's `pull_request` token is
+  # read-only and cannot create a check run, so the gate would never report on
+  # forks. This job never checks out the repository and never executes PR code —
+  # it reads the API and writes a check run — so the usual pull_request_target
+  # risk does not apply.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+concurrency:
+  group: pr-comment-response-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    # issue_comment fires for issues too; only PRs have a .pull_request key.
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Resolve PR number
+        id: pr
+        env:
+          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+        run: |
+          if [ -z "$NUMBER" ]; then
+            echo "Could not resolve a PR number from event ${{ github.event_name }}." >&2
+            exit 1
+          fi
+          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+
+      # Only the auditor script is needed, so fetch it from the BASE repo at the
+      # default branch rather than checking out the PR — a fork must not be able
+      # to swap out the script that grades it.
+      - name: Fetch the auditor from the base branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dev-tools
+          gh api "repos/${{ github.repository }}/contents/dev-tools/pr-triage.js?ref=${{ github.event.repository.default_branch }}" \
+            --jq '.content' | base64 --decode > dev-tools/pr-triage.js
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Audit replies
+        id: audit
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set +e
+          node dev-tools/pr-triage.js audit --pr "${{ steps.pr.outputs.number }}" > summary.md 2>&1
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+          cat summary.md
+
+      - name: Publish the check run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          HEAD_SHA=$(gh api "repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}" --jq .head.sha)
+          if [ "${{ steps.audit.outputs.exit_code }}" = "0" ]; then
+            CONCLUSION=success
+            TITLE="All review findings have a verdict reply"
+          else
+            CONCLUSION=failure
+            TITLE="Review findings are waiting for a verdict reply"
+          fi
+          jq -n \
+            --arg name "pr-comment-response" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg conclusion "$CONCLUSION" \
+            --arg title "$TITLE" \
+            --rawfile summary summary.md \
+            '{name: $name, head_sha: $head_sha, status: "completed",
+              conclusion: $conclusion,
+              output: {title: $title, summary: $summary}}' \
+            | gh api --method POST "repos/${{ github.repository }}/check-runs" --input -
+
+      - name: Fail the job when findings are unanswered
+        if: steps.audit.outputs.exit_code != '0'
+        run: |
+          echo "::error::Some review findings have no verdict reply. See the pr-comment-response check."
+          exit 1

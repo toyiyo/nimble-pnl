@@ -70,10 +70,19 @@ jobs:
           mkdir -p dev-tools
           # Deliberately the DEFAULT branch, never the PR head: a PR must not be
           # able to swap out the script that grades it.
-          if gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
-               --jq '.content' 2>/dev/null | base64 --decode > dev-tools/pr-triage.js \
+          # Distinguish "not there yet" from "could not ask". Only a genuine 404
+          # means the gate is not installed; any other failure (rate limit, token
+          # trouble, outage) must NOT disarm the gate — that would be a silent
+          # fail-open, the one thing this whole check exists to prevent.
+          HTTP=$(gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
+                   --jq '.content' > content.b64 2>err.txt; echo $?)
+          if [ "$HTTP" = "0" ] && base64 --decode < content.b64 > dev-tools/pr-triage.js \
              && [ -s dev-tools/pr-triage.js ]; then
             echo "installed=true" >> "$GITHUB_OUTPUT"
+          elif ! grep -q "HTTP 404" err.txt; then
+            echo "::error::Could not fetch the auditor from $DEFAULT_BRANCH (not a 404). Refusing to disarm the gate."
+            cat err.txt
+            exit 1
           else
             # Expected exactly once: on the PR that introduces this gate, before
             # it exists on the default branch. Reporting "not installed" is

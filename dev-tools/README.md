@@ -102,8 +102,9 @@ Statuses: `open`, `in_progress`, `fixed`, `blocked`.
 
 Enforces that each finding on a PR (AI bot or human) carries a threaded reply
 saying whether we agreed, pushed back, or deliberately ignored it. The
-`pr-comment-response` GitHub check runs `audit` and blocks merge while anything
-is unanswered.
+`pr-comment-response` GitHub check runs `audit` and reports red while anything is
+unanswered. It only *blocks* merge once it is added as a required status check in
+branch protection for `main` — until then it is advisory.
 
 ```bash
 node dev-tools/pr-triage.js list  --pr 657   # unanswered findings + comment ids

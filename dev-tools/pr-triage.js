@@ -622,7 +622,18 @@ export async function runCli(argv, io = {}) {
   }
 
   if (verb === 'reply') {
-    // Compose FIRST so an invalid reply is rejected before anything is posted.
+    // Validate the TARGET before composing: composing with `answers` set only
+    // makes sense once we know this is the review path.
+    if (!opts.comment && !opts.review) {
+      error('reply needs --comment <id> (inline finding) or --review <login> (CHANGES_REQUESTED review).\n' + USAGE);
+      return 2;
+    }
+    if (opts.comment && opts.review) {
+      // Silently preferring one would post the answer in the wrong place.
+      error('reply takes --comment OR --review, not both.\n' + USAGE);
+      return 2;
+    }
+    // Compose before posting so an invalid reply is rejected while nothing is public.
     let body;
     try {
       body = composeReply({
@@ -633,15 +644,6 @@ export async function runCli(argv, io = {}) {
       });
     } catch (e) {
       error(e.message);
-      return 2;
-    }
-    if (!opts.comment && !opts.review) {
-      error('reply needs --comment <id> (inline finding) or --review <login> (CHANGES_REQUESTED review).\n' + USAGE);
-      return 2;
-    }
-    if (opts.comment && opts.review) {
-      // Silently preferring one would post the answer in the wrong place.
-      error('reply takes --comment OR --review, not both.\n' + USAGE);
       return 2;
     }
 

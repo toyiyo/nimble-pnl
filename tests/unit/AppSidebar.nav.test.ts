@@ -9,6 +9,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getNavigationForRole,
   navigationGroups,
+  staffNav,
 } from '@/components/AppSidebar.nav';
 
 describe('AppSidebar.nav – operations_manager', () => {
@@ -89,5 +90,40 @@ describe('AppSidebar.nav – Labor entry', () => {
       const paths = operations?.items.map((i) => i.path) ?? [];
       expect(paths).toContain('/labor');
     }
+  });
+});
+
+describe('AppSidebar.nav – viewMode param', () => {
+  it('returns staffNav when viewMode is "work", regardless of role', () => {
+    for (const role of ['owner', 'manager', 'chef', 'operations_manager']) {
+      expect(getNavigationForRole(role, 'work')).toEqual(staffNav);
+    }
+  });
+
+  it('returns unchanged behavior when viewMode is omitted', () => {
+    expect(getNavigationForRole('owner')).toEqual(navigationGroups);
+    expect(getNavigationForRole('manager')).toEqual(navigationGroups);
+    expect(getNavigationForRole('operations_manager')).toEqual(
+      getNavigationForRole('operations_manager', undefined)
+    );
+  });
+
+  it('returns unchanged behavior when viewMode is "admin"', () => {
+    expect(getNavigationForRole('owner', 'admin')).toEqual(navigationGroups);
+    expect(getNavigationForRole('manager', 'admin')).toEqual(navigationGroups);
+    expect(getNavigationForRole('operations_manager', 'admin')).toEqual(
+      getNavigationForRole('operations_manager')
+    );
+  });
+
+  it('still returns staffNav for the staff role itself when viewMode is "work"', () => {
+    expect(getNavigationForRole('staff', 'work')).toEqual(staffNav);
+  });
+
+  it('returns staffNav when viewMode is "work" even while role is undefined (remount-timing window)', () => {
+    // During the remount right after enterWorkMode()'s navigate(),
+    // selectedRestaurant/role can be briefly undefined before re-hydrating.
+    // Work mode must still win so the sidebar doesn't flash empty.
+    expect(getNavigationForRole(undefined, 'work')).toEqual(staffNav);
   });
 });

@@ -23,8 +23,12 @@ export function MobileTabBar() {
   };
 
   return (
+    // Not self-positioned: `MobileLayout` wraps this in a single
+    // `fixed bottom-0` stack (together with `PersonalViewBanner` in work
+    // mode) so the two stack in normal flow instead of both independently
+    // pinning to the viewport bottom and overlapping.
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 border-t border-border/40 bg-background"
+      className="border-t border-border/40 bg-background"
       style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       role="navigation"
       aria-label="Employee navigation"

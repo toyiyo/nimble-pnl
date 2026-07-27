@@ -189,7 +189,7 @@ const handler = async (req: Request): Promise<Response> => {
     const link = resolveAccountlessEmployeeLink(accountlessEmployees, normalizedEmail, employeeId);
     if (link.ambiguous) {
       console.warn(
-        `Ambiguous accountless-employee link for ${normalizedEmail} in restaurant ${restaurantId}: ` +
+        `Ambiguous accountless-employee link in restaurant ${restaurantId}: ` +
         `multiple active employees share this email and no client hint disambiguated — sending without a link.`,
       );
     }

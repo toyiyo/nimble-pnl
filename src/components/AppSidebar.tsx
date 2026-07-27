@@ -26,6 +26,8 @@ import type { NavGroup } from '@/components/AppSidebar.nav';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useViewMode } from '@/contexts/ViewModeContext';
+import { ViewModeSwitch } from '@/components/ViewModeSwitch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -58,10 +60,11 @@ export function AppSidebar() {
   const { signOut, user } = useAuth();
   const { selectedRestaurant } = useRestaurantContext();
   const { hasFeature } = useSubscription();
+  const { viewMode } = useViewMode();
 
-  // Get navigation based on user role
+  // Get navigation based on user role (collapses to staffNav in work mode)
   const role = selectedRestaurant?.role;
-  const filteredNavigationGroups = getNavigationForRole(role);
+  const filteredNavigationGroups = getNavigationForRole(role, viewMode);
 
   const handleNavigate = (path: string) => {
     navigate(path);
@@ -222,6 +225,7 @@ export function AppSidebar() {
                 {user?.email}
               </div>
             </div>
+            <ViewModeSwitch />
             <Button
               variant="outline"
               size="sm"

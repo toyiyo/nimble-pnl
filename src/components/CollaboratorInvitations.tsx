@@ -68,8 +68,15 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
   const activeDescribedById = resolveDescribedById(existingMember, accountlessEmployee, blockedPanelId, hintPanelId);
 
   const handleSendInvitation = () => {
-    // aria-disabled keeps the button focusable, so the handler owns the block.
-    if (existingMember) return;
+    // existingMember only ever soft-disables via aria-disabled (see the Send
+    // button below), which deliberately keeps it focusable for screen-reader
+    // users — so this guard is load-bearing, not defensive: without it a
+    // click would still fire.
+    // membersLoading, by contrast, drives the button's real `disabled`
+    // attribute, which already blocks clicks natively. It's guarded here too
+    // (belt-and-suspenders) because the member lookup hasn't resolved yet, so
+    // existingMember can't be trusted to catch a duplicate invite.
+    if (membersLoading || existingMember) return;
 
     // Normalize once so whitespace-only input is rejected and the trimmed
     // address is what we send — matching findMemberByEmail, which also trims.
@@ -265,7 +272,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             />
             <Button
               onClick={handleSendInvitation}
-              disabled={sendInvitationMutation.isPending || !email.trim()}
+              disabled={membersLoading || sendInvitationMutation.isPending || !email.trim()}
               aria-disabled={existingMember ? true : undefined}
               className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >

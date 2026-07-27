@@ -1608,6 +1608,38 @@
 - **Correction:** `unit-tests.yml` triggers on **both** `push: branches: [main, develop, 'feature/**']` and `pull_request: [main]`, so any `feature/*` branch spawns two identical concurrent runs that compete for runners; one tips past the cap while its twin passes (observed 8m45s pass vs 10m15s timeout on the same commit). Re-running the job clears it.
 - **Rule:** On a red CI check, read the *step* list before the conclusion — a green test step with a red job means infra, not code. For this repo specifically: the job runs near its cap even solo (#649 took 9m10s), so raising `timeout-minutes` or adding a `concurrency` group is a real fix worth filing separately.
 
+## Category: Git / PR Hygiene (continued)
+
+### [2026-07-27] Reusing a branch after its PR was squash-merged leaves a stale merge-base
+- **Mistake:** Kept building on `claude/heuristic-leakey-2802d4` after PR #648 was **squash-merged** from it. Squash rewrites history, so the branch's merge-base with `main` still predated that work — `git diff origin/main...HEAD` re-proposed ~20 already-merged files (49 files / +4091) even though `main` demonstrably contained them (`git show origin/main:<path>` succeeded). The PR would have looked like it was re-adding merged code.
+- **Correction:** Merged fresh `origin/main` into the branch before opening the PR. That surfaced 6 conflicts, all the same shape: HEAD had the later review fixes, `main` had the pre-fix squash. Resolved every one in favour of HEAD, then verified the net delta against `main` was exactly the intended fixes. Diff dropped to 34 files / +2193.
+- **Rule:** Before opening a PR on a branch that already had a squash-merged PR, merge `origin/main` in first. A three-dot diff that shows files you know are already merged is the tell. Resolve conflicts by *hunk*, not `git checkout --ours` — `--ours` takes the whole file and silently discards `main`'s auto-merged hunks.
+
+## Category: React Query (continued)
+
+### [2026-07-27] A *disabled* query reports `isLoading === false`, so it is not a "still loading" signal
+- **Mistake:** Gated an optimistic view-mode derivation on `!employeeLoading && !canUseWorkView` to mean "ineligibility is confirmed". `useCurrentEmployee(restaurantId)` uses `enabled: !!restaurantId`; during the post-navigation remount `restaurantId` is briefly `null`, so the query is **disabled**. In query-core, `isLoading = isPending && isFetching` — a disabled query never sets `isFetching`, so `isLoading` is `false` despite nothing ever having resolved. Ineligibility was "confirmed" from a query that never ran, flashing admin chrome during exactly the window the optimistic rule existed to survive.
+- **Correction:** Required the upstream input to be present before the negative can be confirmed (`!!selectedRestaurant && !employeeLoading && !canUseWorkView`). The pre-existing test mocked `loading: true`, which never exercised the bug; the new test mocks the real shape (`loading: false` with no data).
+- **Rule:** `isLoading === false` means "not fetching", not "settled". Any gate meaning "we now know the answer" must also assert the query was actually *enabled*. When writing the test, mock the state the app really produces — a mock that makes the bug impossible proves nothing.
+
+## Category: CI / Tooling Config (continued)
+
+### [2026-07-27] Coverage-exclusion lists drift by file extension and score untested-looking 0%
+- **Mistake:** SonarCloud failed the gate on new-code coverage (46.4% vs 80%) for a file with a complete unit-test suite. `vitest.config.ts` excluded `src/contexts/**` (everything) while `sonar-project.properties` excluded `src/contexts/**/*.tsx` (only TSX). A plain-`.ts` logic module in that directory was therefore *counted* by Sonar but never *instrumented* by vitest — 0% with no lcov data behind it.
+- **Correction:** Narrowed the vitest exclude to `src/contexts/**/*.tsx` so the two configs agree; the module reported 100% and the gate went green. Checked blast radius first — it was the only `.ts` file there.
+- **Rule:** When a well-tested file shows 0% new coverage, suspect exclusion drift before writing more tests. Diff the exclusion globs across *every* tool, comparing extensions, not just directories. If a config comment says "must stay aligned with X", treat that as a standing invariant to re-check.
+
+### [2026-07-27] CodeQL taints `Math.random()` on any object that also carries a credential field
+- **Mistake:** A test helper built its uniqueness suffix with `Math.random()` and returned `{ email, password, ... }`. Routing two new lines through it tripped `js/insecure-randomness` (high) — the randomness is adjacent to a `password` field, so taint analysis reads it as a security context, even though the suffix only ever needed uniqueness.
+- **Correction:** Switched the suffix to `crypto.randomUUID()`. This also resolved a conflict where one reviewer had asked for the helper and another flagged its output.
+- **Rule:** In helpers that return credential-shaped objects, use a CSPRNG even for non-security fields — it costs nothing and avoids a class of static-analysis findings. When two reviewers demand opposite things, fix the shared dependency rather than reverting either.
+
+## Category: Mobile / Layout (continued)
+
+### [2026-07-27] Moving an element into a fixed stack invalidates its safe-area reservation
+- **Mistake:** Twice, on the same component. (1) A mobile banner was a plain in-flow sibling of a `fixed bottom-0` tab bar inside a `min-h-screen flex-col` container; flex arithmetic pinned it to the container's bottom edge — the viewport bottom whenever content was shorter than the screen — and the opaque `z-50` bar painted straight over it. Measured at 375x812: banner `y:[780,812]` sat entirely inside tab bar `y:[745.5,812]`, i.e. **invisible in the common case**. (2) After fixing that by stacking both inside one `fixed inset-x-0 bottom-0 flex flex-col`, the banner kept its `pb-[calc(0.5rem+env(safe-area-inset-bottom))]` from when it *was* the bottom-most element — now interior, double-counting the inset the tab bar already reserves (~34px dead gap on a home-indicator device).
+- **Correction:** Composed both into a single fixed stack, and moved safe-area ownership to the bottom-most element only.
+- **Rule:** `env(safe-area-inset-bottom)` belongs to exactly one element — the last one in the fixed stack. Whenever you re-parent something relative to a `fixed`/`sticky` sibling, re-derive both its position and its inset ownership. Verify with real `getBoundingClientRect()` at a device viewport; unit tests assert markup, not that an element is actually visible.
 ## Category: Testing (React) (continued)
 
 ### [2026-07-24] Confirmed again: a basis-dependent dashboard relabel broke a *different feature's* E2E that pinned the exact old title string

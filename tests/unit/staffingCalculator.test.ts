@@ -1,29 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-  calculateRecommendedStaff,
   checkLaborGuardrail,
   consolidateIntoShiftBlocks,
   buildHourlyRecommendations,
   computeMinStaffFromCrew,
 } from '@/lib/staffingCalculator';
-
-describe('calculateRecommendedStaff', () => {
-  it('divides projected sales by target SPLH and rounds up', () => {
-    expect(calculateRecommendedStaff(200, 60, 1)).toBe(4); // 200/60=3.33 → 4
-  });
-
-  it('returns minStaff when sales are low', () => {
-    expect(calculateRecommendedStaff(10, 60, 2)).toBe(2); // 10/60=0.17 → 1, but min=2
-  });
-
-  it('handles zero sales by returning minStaff', () => {
-    expect(calculateRecommendedStaff(0, 60, 1)).toBe(1);
-  });
-
-  it('handles exact division', () => {
-    expect(calculateRecommendedStaff(120, 60, 1)).toBe(2);
-  });
-});
 
 describe('checkLaborGuardrail', () => {
   it('returns false when labor pct is under target', () => {
@@ -137,5 +118,72 @@ describe('buildHourlyRecommendations', () => {
     });
     // 1 staff * $15 = $15, $30 sales → 50% > 22%
     expect(result[0].overTarget).toBe(true);
+  });
+
+  it('should emit raw pre-floor demand alongside recommendedStaff when minStaff does not exceed demand', () => {
+    const hourlySales = [
+      { hour: 11, avgSales: 200, sampleCount: 4 }, // 200/60=3.33→4, minStaff=1 → demand=recommendedStaff
+    ];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 1,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(4);
+    expect(result[0].recommendedStaff).toBe(4);
+  });
+
+  it('should set recommendedStaff to max(demand, minStaff) when the floor exceeds demand', () => {
+    const hourlySales = [
+      { hour: 8, avgSales: 10, sampleCount: 4 }, // 10/60=0.17→1 demand, but minStaff=3
+    ];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 3,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(1);
+    expect(result[0].recommendedStaff).toBe(3);
+  });
+
+  it('should set demand to 0 when sales are zero, while recommendedStaff still floors to minStaff', () => {
+    const hourlySales = [{ hour: 6, avgSales: 0, sampleCount: 0 }];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 2,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(0);
+    expect(result[0].recommendedStaff).toBe(2);
+  });
+
+  it('should set demand to 0 when sales are negative, while recommendedStaff still floors to minStaff', () => {
+    // Negative avgSales shouldn't happen in practice, but a bad refund/void
+    // adjustment upstream could produce one — demand must floor to 0 (not a
+    // negative headcount), same as the zero-sales case above.
+    const hourlySales = [{ hour: 6, avgSales: -50, sampleCount: 4 }];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 60,
+      minStaff: 2,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(0);
+    expect(result[0].recommendedStaff).toBe(2);
+  });
+
+  it('should set demand to 0 when targetSplh is zero', () => {
+    const hourlySales = [{ hour: 12, avgSales: 200, sampleCount: 4 }];
+    const result = buildHourlyRecommendations(hourlySales, {
+      targetSplh: 0,
+      minStaff: 1,
+      avgHourlyRateCents: 1500,
+      targetLaborPct: 22,
+    });
+    expect(result[0].demand).toBe(0);
+    expect(result[0].recommendedStaff).toBe(1);
   });
 });

@@ -11,70 +11,131 @@ interface CoverageVerdictProps {
   readonly formatHour?: (hour: number) => string;
 }
 
+/** `1 → "1 hour"`, `2 → "2 hours"`. */
+function plural(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+// ── Chips ────────────────────────────────────────────────────────────────────
+
+interface ChipSpec {
+  readonly count: number;
+  readonly dot: string;
+  readonly label: string;
+}
+
 /**
- * Plain-language coverage verdict displayed above the coverage chart.
+ * The colored-dot + count chips beneath the verdict sentence (design mock's
+ * `.chips` row). Only nonzero categories render, so a fully-covered day shows a
+ * single "covered" chip rather than a wall of zeroes. `data-testid` lets the
+ * chart legend and this row stay independently testable.
+ */
+function VerdictChips({ verdict }: { readonly verdict: CVType }) {
+  const chips: ChipSpec[] = [
+    { count: verdict.demandShortHours, dot: 'bg-destructive', label: 'short on demand' },
+    { count: verdict.floorOnlyHours, dot: 'bg-warning', label: 'at the floor only' },
+    { count: verdict.coveredHours, dot: 'bg-primary', label: 'covered' },
+    { count: verdict.nodataHours, dot: 'bg-muted-foreground/40', label: 'no sales history' },
+  ].filter((c) => c.count > 0);
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div data-testid="coverage-verdict-chips" className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+      {chips.map((c) => (
+        <span key={c.label} className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span aria-hidden className={`h-2 w-2 flex-shrink-0 rounded-full ${c.dot}`} />
+          <span className="font-medium tabular-nums text-foreground">{c.count}</span>
+          {c.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// ── Verdict ────────────────────────────────────────────────────────────────
+
+/**
+ * Plain-language coverage verdict shown above the coverage chart — the mock's
+ * lead sentence that tells the manager, in words, *why* the day is short:
  *
- * Three states:
- * - No demand configured → neutral dot + "Add staffing targets to see demand."
- * - All hours met → green dot + "Meeting demand all day."
- * - Some hours short → red dot + "Short-staffed N of M hours today" + worst-hour subline.
+ * - No demand configured → "Add staffing targets to see where sales justify
+ *   more hands."
+ * - Everything covered → "Every hour is covered — you're meeting demand all day."
+ * - Otherwise a two-clause sentence distinguishing **demand-short** hours
+ *   (sales genuinely justify more hands, red emphasis) from **floor-only**
+ *   hours (demand met, only the minimum-staff rule trips, amber emphasis) —
+ *   followed by the chips row.
  *
- * Colors use semantic tokens only (never direct bg-* color literals).
+ * Colors use semantic tokens only (`text-destructive` / `text-warning` /
+ * `bg-primary`); the demand/floor emphasis carries meaning, not decoration.
  */
 export function CoverageVerdict({
   verdict,
   formatHour = formatCoverageHour,
 }: CoverageVerdictProps) {
-  const { hasDemand, metAll, shortHours, totalHours, worst } = verdict;
+  const {
+    hasDemand,
+    minStaff,
+    demandShortHours,
+    demandShortPeopleHours,
+    worstCrit,
+    floorOnlyHours,
+  } = verdict;
 
   if (!hasDemand) {
     return (
-      <div className="flex items-center gap-2 py-1">
-        <span
-          aria-hidden
-          className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-muted-foreground/50"
-        />
-        <p className="text-[15px] font-medium text-muted-foreground">
-          Add staffing targets to see demand.
-        </p>
-      </div>
+      <p className="font-serif text-[19px] leading-snug text-muted-foreground max-w-[62ch]">
+        Add staffing targets to see where sales justify more hands.
+      </p>
     );
   }
 
-  if (metAll) {
+  if (demandShortHours === 0 && floorOnlyHours === 0) {
     return (
-      <div className="flex items-center gap-2 py-1">
-        <span
-          aria-hidden
-          className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-success"
-        />
-        <p className="text-[15px] font-medium text-foreground">
-          Meeting demand all day.
+      <div className="space-y-2.5">
+        <p className="font-serif text-[19px] leading-snug text-foreground max-w-[62ch]">
+          Every hour is covered — you're meeting demand all day.
         </p>
+        <VerdictChips verdict={verdict} />
       </div>
     );
   }
 
-  // Short-staffed state
-  const worstLabel = worst ? formatHour(worst.hour) : null;
-  const deficit = worst ? Math.abs(worst.delta) : null;
+  const critClause = demandShortHours > 0 && (
+    <>
+      Sales justify{' '}
+      <span className="font-medium text-destructive">
+        {plural(demandShortPeopleHours, 'more people-hour', 'more people-hours')}
+      </span>{' '}
+      than you've scheduled
+      {worstCrit && (
+        <>
+          , worst at {formatHour(worstCrit.hour)} (short {worstCrit.short})
+        </>
+      )}
+      .{' '}
+    </>
+  );
+
+  const floorClause = floorOnlyHours > 0 && (
+    <>
+      {demandShortHours > 0 ? 'Another ' : ''}
+      <span className="font-medium text-warning">
+        {plural(floorOnlyHours, 'hour', 'hours')}
+      </span>{' '}
+      only {floorOnlyHours === 1 ? 'trips' : 'trip'} the {minStaff}-person floor — demand there is
+      already met.
+    </>
+  );
 
   return (
-    <div className="flex items-start gap-2 py-1">
-      <span
-        aria-hidden
-        className="mt-[3px] h-2.5 w-2.5 flex-shrink-0 rounded-full bg-destructive"
-      />
-      <div>
-        <p className="text-[15px] font-medium text-foreground">
-          Short-staffed {shortHours} of {totalHours} hours today
-        </p>
-        {worstLabel !== null && deficit !== null && (
-          <p className="text-[13px] text-muted-foreground mt-0.5">
-            Biggest gap: {worstLabel} — short {deficit}
-          </p>
-        )}
-      </div>
+    <div className="space-y-2.5">
+      <p className="font-serif text-[19px] leading-snug text-foreground max-w-[62ch]">
+        {critClause}
+        {floorClause}
+      </p>
+      <VerdictChips verdict={verdict} />
     </div>
   );
 }

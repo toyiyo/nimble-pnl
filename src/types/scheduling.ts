@@ -314,6 +314,8 @@ export interface HourlySalesData {
 export interface HourlyStaffingRecommendation {
   hour: number;
   projectedSales: number;
+  /** Raw pre-floor demand: ceil(projectedSales / target_splh), 0 when projectedSales <= 0. */
+  demand: number;
   recommendedStaff: number;
   estimatedLaborCost: number;
   laborPct: number;

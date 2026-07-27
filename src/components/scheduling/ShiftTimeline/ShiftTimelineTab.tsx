@@ -13,15 +13,19 @@ import {
   summarizeAreaCoverage,
   mergeUnderStaffedRange,
 } from '@/lib/coverageSummary';
+import { classifyHour } from '@/lib/coverageChartModel';
 import { useWeekStaffingSuggestions } from '@/hooks/useWeekStaffingSuggestions';
 import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useCreateShift } from '@/hooks/useShifts';
 import { useToast } from '@/hooks/use-toast';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
 import { useTimelineModel, computeCoverage } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
-import { CoverageStatusStrip } from './CoverageStatusStrip';
+import { CoverageReceipt } from './CoverageReceipt';
 import { CoverageDemandInfo } from './CoverageDemandInfo';
+import { SplhSlider } from './SplhSlider';
 import { AreaCoverageStrips } from './AreaCoverageStrips';
 import { TimelineAxis } from './TimelineAxis';
 import { TimelineLane, type LanePaintContext } from './TimelineLane';
@@ -31,7 +35,8 @@ import { AvailabilityConflictDialog, type ConflictDialogData } from '@/component
 import { formatDayLabel } from '@/lib/shiftInterval';
 import { minutesToIso } from '@/lib/shiftTimeMath';
 
-import type { Shift, Employee } from '@/types/scheduling';
+import type { Shift, Employee, StaffingSettings } from '@/types/scheduling';
+import type { CoverageHour } from '@/lib/coverageSummary';
 import type { GroupByMode } from '@/lib/scheduleGrouping';
 import type { EffectiveAvailability } from '@/lib/effectiveAvailability';
 import { buildDraftShiftValues, mergeDraftShift, type PaintRange, type DragShiftDraft } from '@/lib/timelineDraft';
@@ -51,6 +56,18 @@ const DEFAULT_ADD_RANGE: PaintRange = { startMin: 10 * 60, endMin: 18 * 60 };
 
 /** How long a bar shows its transient change-highlight ring (design doc §Fix 3). */
 const HIGHLIGHT_DURATION_MS = 2000;
+
+/**
+ * Roles allowed to persist the on-chart SPLH slider's target via Save (design
+ * doc §Design-review resolutions #6 — "Save-gate authz: no clean precedent,
+ * define deliberately"). There is no shared role-gate helper for this ad-hoc
+ * style of check in the codebase yet — `TimePunchesManager.tsx` and
+ * `Inventory.tsx` each inline this exact same three-role array, so this
+ * mirrors that established (if uncentralized) convention rather than
+ * introducing a new one. Live preview (the slider itself) and Reset are
+ * NEVER gated — every role can drag/reset, only Save is restricted.
+ */
+const SPLH_SAVE_ROLES = ['owner', 'manager', 'operations_manager'];
 
 /** Clamp a minute range into `window`, preserving its duration where possible. */
 function clampRangeToWindow(range: PaintRange, window: { startMin: number; endMin: number }): PaintRange {
@@ -175,6 +192,57 @@ export function resolveLaneContext(laneKey: string | null, groupBy: GroupByMode)
   return { position: null, area: laneKey };
 }
 
+/**
+ * Turns the on-chart SPLH slider's local preview state into the
+ * `settingsOverrides` argument `useWeekStaffingSuggestions` expects (design
+ * doc §B/§E). `sliderTarget === null` means "no live preview — use the saved
+ * settings", which must produce `null` rather than `{ target_splh: undefined
+ * }`: the hook filters `undefined` override values out of the merge, but a
+ * bare `null` here skips the merge (and the `dateRange`/query-key
+ * recomputation it would otherwise trigger) entirely.
+ */
+export function resolveSettingsOverrides(sliderTarget: number | null): Partial<StaffingSettings> | null {
+  return sliderTarget === null ? null : { target_splh: sliderTarget };
+}
+
+/**
+ * Default hour for the pinned `CoverageReceipt` before the manager has
+ * explicitly clicked a chart column (design doc §C: "defaults to the worst
+ * crit hour, else first hour"). Classifies every hour via `classifyHour` (not
+ * `h.delta`/`h.needed`) so the default can never disagree with the chart's
+ * own kind, including under a live-preview `minStaff` that hasn't
+ * round-tripped through the recommendation pipeline. Among multiple `crit`
+ * hours, picks the largest demand deficit (`demand - scheduled`), earliest
+ * `startMin` breaking ties (first strictly-greater deficit wins, so an
+ * equal-or-lesser later deficit never displaces an earlier one). Returns
+ * `null` for an empty `hours` array (no coverage data at all yet).
+ */
+export function pickDefaultHour(hours: CoverageHour[], minStaff: number): CoverageHour | null {
+  if (hours.length === 0) return null;
+
+  let worst: CoverageHour | null = null;
+  let worstDeficit = -Infinity;
+  for (const h of hours) {
+    if (classifyHour(h, minStaff) !== 'crit') continue;
+    const deficit = (h.demand ?? 0) - h.scheduled;
+    if (deficit > worstDeficit) {
+      worst = h;
+      worstDeficit = deficit;
+    }
+  }
+  return worst ?? hours[0];
+}
+
+/**
+ * Full weekday name (e.g. "Monday") for a `YYYY-MM-DD` day string — feeds the
+ * pinned `CoverageReceipt`'s "Avg {weekday} sales" row and nodata copy (design
+ * doc §C). Noon-anchored (matches `dayStringToDow` in `staffingApply.ts`) so a
+ * host timezone west of UTC never rolls the date back a day when parsed.
+ */
+function weekdayKeyForDay(day: string): string {
+  return new Date(`${day}T12:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 /**
@@ -208,7 +276,22 @@ export function ShiftTimelineTab({
   // Single union overlay state (design doc "Overlay state machine") — edit mode is
   // wired here; create mode's producer (paint/gap-click) lands in Stage C.
   const [activeOverlay, setActiveOverlay] = useState<ActiveOverlay>(null);
-  const [coverageView, setCoverageView] = useState<'area' | 'delta'>('area');
+  // The chart's roving-tabindex selection (Stage 3.1's `CoverageChart` props).
+  // `null` means "no explicit click yet" — the pinned `CoverageReceipt` below
+  // falls back to `pickDefaultHour` (design doc §C) in that case. `CoverageChart`
+  // itself is fed `selectedHour?.startMin` (the resolved value, below) rather
+  // than this raw state directly, so the chart's own tabIndex=0 column always
+  // agrees with whichever hour the receipt is actually showing — including the
+  // `pickDefaultHour` fallback before any explicit click.
+  const [selectedStartMin, setSelectedStartMin] = useState<number | null>(null);
+  // On-chart SPLH slider's live-preview value (design doc §B/§E). `null` means
+  // "no preview — use the saved `target_splh`"; a number is the in-progress
+  // drag value, fed to `useWeekStaffingSuggestions` via `settingsOverrides` so
+  // the whole pipeline (chart/receipt/verdict) redraws off ONE source of
+  // truth. Not yet wired to a slider UI (Stage 4.1's `SplhSlider` render lands
+  // in the next task) — this only satisfies the state/plumbing half of the
+  // contract.
+  const [sliderTarget, setSliderTarget] = useState<number | null>(null);
 
   // ── Drag-move / edge-resize draft (Stage D2/D3) ───────────────────────────
   // The in-flight drafted range for a bar currently being dragged/resized, or
@@ -257,8 +340,22 @@ export function ShiftTimelineTab({
     };
   }, []);
 
+  // ── Restaurant role (drives the SPLH slider's Save-gate — Stage 5.3) ───────
+  const { selectedRestaurant } = useRestaurantContext();
+
   // ── Staffing recommendations ───────────────────────────────────────────────
-  const { daySuggestions, activeSettings } = useWeekStaffingSuggestions(restaurantId, weekDays, null);
+  // Memoized on `sliderTarget` alone (not recreated on every unrelated
+  // re-render, e.g. rAF-throttled drag-draft updates while a slider preview
+  // is active) so `useWeekStaffingSuggestions`'s internal `activeSettings`/
+  // `daySuggestions` memos — keyed on this object by reference — don't
+  // recompute the whole week's staffing pipeline unless the preview value
+  // itself changes.
+  const settingsOverrides = useMemo(() => resolveSettingsOverrides(sliderTarget), [sliderTarget]);
+  const { daySuggestions, activeSettings, updateSettings, isSaving } = useWeekStaffingSuggestions(
+    restaurantId,
+    weekDays,
+    settingsOverrides,
+  );
 
   const dayRecommendations = useMemo(() => {
     const result = daySuggestions.get(selectedDay);
@@ -396,11 +493,80 @@ export function ShiftTimelineTab({
 
   // ── Hourly coverage summary + verdict (feeds the new coverage panel) ───────
   const targetSplh = activeSettings?.target_splh ?? null;
+  // Effective minimum-staff floor for the chart's demand/floor split (Stage 3.1's
+  // `minStaff` prop) — same `min_crew`-then-`min_staff` fallback the hook and
+  // `StaffingOverlay` already use, so the chart never disagrees with the
+  // recommendation pipeline about what "the floor" means.
+  const minStaff = computeMinStaffFromCrew(activeSettings?.min_crew ?? null, activeSettings?.min_staff ?? 0);
+  // Average hourly wage across the restaurant's employees, in dollars (design
+  // doc §B: `avgWage = computeAvgHourlyRateCents(employees)/100`) — feeds the
+  // `SplhSlider`'s implied-labor readout (`pct = avgWage ÷ target_splh × 100`)
+  // and its labor-consistent notch, rendered below (Stage 5.3).
+  const avgWage = computeAvgHourlyRateCents(employees) / 100;
+  // Target labor % from staffing settings — drives the slider pill's
+  // over/under-target threshold and its notch label. Falls back to the same
+  // default `useStaffingSettings` seeds a restaurant with (DEFAULTS.target_labor_pct)
+  // when `activeSettings` hasn't loaded yet — same pattern as `lookbackWeeks` below.
+  const targetLaborPct = activeSettings?.target_labor_pct ?? 22;
   const hourlySummary = useMemo(
     () => summarizeCoverageHours(liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations),
     [liveCoverage.coverage, liveCoverage.demand, model.window, dayRecommendations],
   );
-  const verdict = useMemo(() => buildVerdict(hourlySummary), [hourlySummary]);
+  const verdict = useMemo(() => buildVerdict(hourlySummary, minStaff), [hourlySummary, minStaff]);
+
+  // ── Pinned CoverageReceipt inputs (Stage 5.2) ──────────────────────────────
+  // The receipt panel's driving hour: the explicitly-clicked chart column when
+  // one is selected AND still present in this render's `hourlySummary` (a
+  // stale `selectedStartMin` left over from a previous day/window falls back
+  // to `pickDefaultHour` below, same as no selection at all), else the worst
+  // `crit` hour, else the first hour (design doc §C).
+  const selectedHour: CoverageHour | null = useMemo(() => {
+    const explicit = selectedStartMin === null
+      ? undefined
+      : hourlySummary.find((h) => h.startMin === selectedStartMin);
+    return explicit ?? pickDefaultHour(hourlySummary, minStaff);
+  }, [hourlySummary, selectedStartMin, minStaff]);
+  // Weekday name for the receipt's "Avg {weekday} sales" row/nodata copy.
+  const weekdayKey = weekdayKeyForDay(selectedDay);
+  // Lookback window (weeks) surfaced in the receipt's nodata aside — falls
+  // back to the same default `useStaffingSettings` seeds a restaurant with
+  // (src/hooks/useStaffingSettings.ts `DEFAULTS.lookback_weeks`) when
+  // `activeSettings` hasn't loaded yet.
+  const lookbackWeeks = activeSettings?.lookback_weeks ?? 4;
+
+  // ── SPLH slider Save-gate authz (Stage 5.3) ────────────────────────────────
+  // Design doc §Design-review resolutions #6: reuse the ad-hoc inline role
+  // predicate other surfaces already use (see `SPLH_SAVE_ROLES` above) rather
+  // than inventing a new gate — `Save` is hidden for every role outside this
+  // set, but the slider drag (live preview) and Reset stay available to
+  // everyone regardless of `selectedRestaurant`/role.
+  const canSaveSplhTarget = SPLH_SAVE_ROLES.includes(selectedRestaurant?.role ?? '');
+
+  const handleSplhChange = useCallback((value: number) => {
+    setSliderTarget(value);
+  }, []);
+
+  const handleSplhReset = useCallback(() => {
+    setSliderTarget(null);
+  }, []);
+
+  const handleSplhSave = useCallback(async () => {
+    if (sliderTarget === null) return;
+    // Capture the value being persisted: the native range input isn't
+    // disabled during the save (only the Save button is), so the user can
+    // keep dragging before the request resolves. Only clear the override if
+    // `sliderTarget` still equals what we saved — otherwise a newer in-flight
+    // drag value would be silently discarded, snapping the UI back to the
+    // just-persisted (older) value.
+    const savedValue = sliderTarget;
+    try {
+      await updateSettings({ target_splh: savedValue });
+      setSliderTarget((current) => (current === savedValue ? null : current));
+      toast({ title: 'SPLH target saved' });
+    } catch {
+      toast({ title: 'Failed to save SPLH target', variant: 'destructive' });
+    }
+  }, [sliderTarget, updateSettings, toast]);
 
   // ── Per-area coverage summary (only when grouped by area) ──────────────────
   const areaCoverage = useMemo(
@@ -618,6 +784,11 @@ export function ShiftTimelineTab({
   );
 
   // ── Loading state ──────────────────────────────────────────────────────────
+  // Mirrors the loaded-data layout (design doc §States "Loading", resolution #9):
+  // day-picker row -> [slider panel -> chart -> axis -> lane rows] alongside a
+  // pinned receipt column, matching the real SplhSlider/CoverageChart/
+  // TimelineAxis/CoverageReceipt arrangement so nothing jump-shifts once data
+  // lands.
   if (loading) {
     return (
       <div className="space-y-3" aria-busy="true" aria-label="Loading timeline">
@@ -626,11 +797,39 @@ export function ShiftTimelineTab({
             <Skeleton key={k} className="h-8 w-16 rounded-lg" />
           ))}
         </div>
-        <Skeleton className="h-20 w-full rounded-xl" />
-        <Skeleton className="h-6 w-full rounded-lg" />
-        {['l0','l1','l2'].map((k) => (
-          <Skeleton key={k} className="h-10 w-full rounded-xl" />
-        ))}
+
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+          {/* Scrollable chart column: slider panel -> chart -> axis -> lanes */}
+          <div className="flex-1 min-w-0 space-y-2">
+            <Skeleton
+              data-testid="skeleton-splh-slider"
+              className="h-16 w-full rounded-xl"
+            />
+            <Skeleton
+              data-testid="skeleton-coverage-chart"
+              className="h-40 w-full rounded-xl"
+            />
+            <Skeleton
+              data-testid="skeleton-timeline-axis"
+              className="h-6 w-full rounded-lg"
+            />
+            {['l0','l1','l2'].map((k) => (
+              <Skeleton key={k} className="h-10 w-full rounded-xl" />
+            ))}
+          </div>
+
+          {/* Pinned receipt column — same lg:w-[320px] lg:shrink-0 contract
+              as the real CoverageReceipt panel. */}
+          <div
+            data-testid="skeleton-receipt-column"
+            className="lg:w-[320px] lg:shrink-0"
+          >
+            <Skeleton
+              data-testid="skeleton-coverage-receipt"
+              className="h-64 w-full rounded-xl"
+            />
+          </div>
+        </div>
       </div>
     );
   }
@@ -725,99 +924,130 @@ export function ShiftTimelineTab({
     <div className="space-y-3">
       {controls}
 
-      {/* Horizontally-scrollable plot region */}
-      <div className="overflow-x-auto rounded-xl border border-border/40">
-        <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
+      {/* Coverage panel + timeline: the scrollable chart/axis/lanes column on
+          the left, the pinned CoverageReceipt outside the horizontal scroll
+          on the right (stacked below on narrow/mobile viewports) — design doc
+          §E "new flex layout". */}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start">
+        {/* Horizontally-scrollable plot region */}
+        <div className="flex-1 min-w-0 overflow-x-auto rounded-xl border border-border/40">
+          <div style={{ minWidth: `max(100%, ${plotMinWidth}px)` }}>
 
-          {/* Coverage panel — verdict → view toggle → chart → status strip.
-              No horizontal padding here: the pl-[120px] children must start at
-              the same left offset as TimelineAxis and shift lanes so the chart
-              x-scale aligns with the axis ticks below. */}
-          <div className="pt-3 pb-1 space-y-2 px-0">
-            {/* Plain-language verdict + demand explainer */}
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <CoverageVerdict verdict={verdict} />
-              <CoverageDemandInfo />
-            </div>
+            {/* Coverage panel — verdict/demand-info header → chart → area
+                strips. No horizontal padding here: `CoverageChart` carries its
+                own internal `pl`-equivalent gutter (see below), while
+                `AreaCoverageStrips` (which has no gutter of its own) still
+                needs its `pl-[120px]` wrapper to start at the same left
+                offset as `TimelineAxis` and the shift lanes below, so the
+                chart/strips/axis all share one x-scale. */}
+            <div className="pt-4 pb-1 space-y-3 px-0">
+              {/* Chart header: plain-language verdict + demand explainer
+                  (folds CoverageVerdict/CoverageDemandInfo directly above the
+                  chart now that the old Area/Delta view toggle is gone). */}
+              <div className="flex items-start justify-between gap-3 flex-wrap px-4">
+                <CoverageVerdict verdict={verdict} />
+                <CoverageDemandInfo />
+              </div>
 
-            {/* View toggle: area chart vs diverging-bar chart */}
-            <div className="flex items-center gap-2">
-              <ToggleGroup
-                type="single"
-                value={coverageView}
-                onValueChange={(v) => { if (v === 'area' || v === 'delta') setCoverageView(v); }}
-                className="h-7"
-                aria-label="Coverage chart view"
-              >
-                <ToggleGroupItem value="area" className="h-7 px-3 text-[12px]">
-                  Chart
-                </ToggleGroupItem>
-                <ToggleGroupItem value="delta" className="h-7 px-3 text-[12px]">
-                  +/−
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
+              {/* On-chart SPLH slider + implied-labor readout (design doc §B)
+                  — sits above the chart. Hidden entirely when there's no
+                  target to preview yet (`activeSettings` not loaded), same as
+                  the design doc's "No demand configured" state. Save is
+                  gated to owner/manager/operations_manager (Stage 5.3); the
+                  live preview + Reset stay available to every role. */}
+              {targetSplh !== null && (
+                <div className="mx-4 rounded-xl border border-border/40 bg-muted/30 p-4">
+                  <SplhSlider
+                    value={sliderTarget ?? targetSplh}
+                    wage={avgWage}
+                    targetLaborPct={targetLaborPct}
+                    canSave={canSaveSplhTarget}
+                    isSaving={isSaving}
+                    onChange={handleSplhChange}
+                    onSave={handleSplhSave}
+                    onReset={handleSplhReset}
+                  />
+                </div>
+              )}
 
-            {/* Coverage chart — offset to align with the axis ticks */}
-            <div className="pl-[120px]">
+              {/* Coverage chart — no external offset here: CoverageChart already
+                  renders its own internal sticky `w-[120px]` y-axis gutter
+                  before its plot region (design doc §Design-review resolutions
+                  #3), so wrapping it in an extra `pl-[120px]` would double the
+                  offset and misalign the chart's columns against the axis
+                  ticks/lanes below. */}
               <CoverageChart
                 hours={hourlySummary}
-                view={coverageView}
+                minStaff={minStaff}
                 minToPct={minToPct}
-                targetSplh={targetSplh}
+                selectedStartMin={selectedHour?.startMin ?? null}
+                onSelect={setSelectedStartMin}
+                onQuickAdd={handleGapClick}
               />
+
+              {/* Per-area scheduled strips — only when grouped by area */}
+              {groupBy === 'area' && (
+                <div className="pl-[120px]">
+                  <AreaCoverageStrips areas={areaCoverage} />
+                </div>
+              )}
             </div>
 
-            {/* Per-hour status strip */}
-            <div className="pl-[120px]">
-              <CoverageStatusStrip hours={hourlySummary} onGapClick={handleGapClick} />
+            {/* Hour axis */}
+            <div className="relative pl-[120px]">
+              <TimelineAxis window={model.window} minToPct={minToPct} />
             </div>
 
-            {/* Per-area scheduled strips — only when grouped by area */}
-            {groupBy === 'area' && (
-              <div className="pl-[120px]">
-                <AreaCoverageStrips areas={areaCoverage} />
+            {/* Lanes + NowIndicator overlay, or empty-day message */}
+            {noShiftsMessage ?? (
+              <div className="relative" onClickCapture={handleLanesClickCapture}>
+                {/* NowIndicator sits over the lanes plot region, offset for label column */}
+                <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
+                  <NowIndicator
+                    dateStr={selectedDay}
+                    tz={tz}
+                    window={model.window}
+                    minToPct={minToPct}
+                  />
+                </div>
+
+                {model.lanes.map((lane) => (
+                  <TimelineLane
+                    key={lane.key}
+                    lane={lane}
+                    minToPct={minToPct}
+                    window={model.window}
+                    onSelect={handleSelectShift}
+                    onPaintCommit={handlePaintCommit}
+                    onBarDraftChange={handleBarDraftChange}
+                    onBarDragCommit={handleBarDragCommit}
+                    highlightedShiftId={recentlyChangedShiftId}
+                    availabilityByEmployee={availabilityByEmployee}
+                    dateStr={selectedDay}
+                    tz={tz}
+                  />
+                ))}
               </div>
             )}
           </div>
-
-          {/* Hour axis */}
-          <div className="relative pl-[120px]">
-            <TimelineAxis window={model.window} minToPct={minToPct} />
-          </div>
-
-          {/* Lanes + NowIndicator overlay, or empty-day message */}
-          {noShiftsMessage ?? (
-            <div className="relative" onClickCapture={handleLanesClickCapture}>
-              {/* NowIndicator sits over the lanes plot region, offset for label column */}
-              <div className="absolute top-0 bottom-0 left-[120px] right-0 pointer-events-none">
-                <NowIndicator
-                  dateStr={selectedDay}
-                  tz={tz}
-                  window={model.window}
-                  minToPct={minToPct}
-                />
-              </div>
-
-              {model.lanes.map((lane) => (
-                <TimelineLane
-                  key={lane.key}
-                  lane={lane}
-                  minToPct={minToPct}
-                  window={model.window}
-                  onSelect={handleSelectShift}
-                  onPaintCommit={handlePaintCommit}
-                  onBarDraftChange={handleBarDraftChange}
-                  onBarDragCommit={handleBarDragCommit}
-                  highlightedShiftId={recentlyChangedShiftId}
-                  availabilityByEmployee={availabilityByEmployee}
-                  dateStr={selectedDay}
-                  tz={tz}
-                />
-              ))}
-            </div>
-          )}
         </div>
+
+        {/* Pinned receipt — outside the scrollable region so it never scrolls
+            out of view horizontally; stacks below the chart on mobile
+            (design doc §E/§C). Hidden only when there's no coverage data at
+            all (`pickDefaultHour` returns null for an empty hourlySummary). */}
+        {selectedHour && (
+          <div className="lg:w-[320px] lg:shrink-0">
+            <CoverageReceipt
+              hour={selectedHour}
+              minStaff={minStaff}
+              weekdayKey={weekdayKey}
+              wage={avgWage}
+              lookbackWeeks={lookbackWeeks}
+              onQuickAdd={handleGapClick}
+            />
+          </div>
+        )}
       </div>
 
       {/* Single popover instance per CLAUDE.md pattern — driven entirely by the

@@ -1570,3 +1570,40 @@
 - **Mistake:** `useCheckConflicts`'s `enabled` guard checked `employeeId`, `startTime`, `endTime` but omitted `restaurantId`, even though the queryKey includes `restaurantId` and the `check_availability_conflict` RPC takes `p_restaurant_id`. With a blank `restaurantId` the query still ran, firing the RPC with an empty string where a UUID is expected — a wasted round-trip that errors server-side (and, worse, a distinct cache entry keyed on `''`). Copilot flagged it low-confidence; it was legitimate.
 - **Correction:** Added `!!params.restaurantId` to the `enabled` conjunction, and pinned it with a regression test asserting the hook fires *no* RPC when `restaurantId` is blank.
 - **Rule:** The `enabled` predicate must be the conjunction of *every* input that either (a) appears in the `queryKey` or (b) is passed into the `queryFn` (including RPC args). If the key or the fetch depends on a value, an empty/undefined value for it is never a valid fetch — guard it. Cross-check the guard against the key array and the fetch signature whenever you add a param to either.
+## Category: Design Docs / Brainstorming (continued)
+
+### [2026-07-26] Verify claims about existing component capabilities before putting them in a design doc
+- **Mistake:** The tap-to-count design (PR #658) stated "default to `add`; the dialog still lets the user switch to reconcile" without ever opening `QuickInventoryDialog`. It was false — `mode` was a **read-only prop** with no toggle, setter or callback, and `setScanMode` was called in exactly one place app-wide, making `reconcile` unreachable dead code. The product owner picked "default add" partly *because* of that stated escape hatch, so a false premise fed a real product decision. Codex caught it at PR review; a "Count" button that silently did `currentStock + quantity` would have inflated inventory whenever a user entered a physical on-hand total.
+- **Correction:** Grep/read the component before asserting what it can do. A one-line `grep -n "mode" QuickInventoryDialog.tsx` would have shown every reference was a read.
+- **Rule:** Any design-doc claim about *existing* behaviour is a factual assertion that must be verified against code, not recalled. Escalate the bar when the claim is load-bearing for a user decision — if the user might choose differently once it's false, verify it before asking.
+
+### [2026-07-26] A "safe default" is not safe when the alternative is unreachable
+- **Mistake:** Treated "defaults to add, user can switch" and "only ever does add" as roughly equivalent risk. They are not: with no switch, the default becomes the *only* behaviour, and the control's label ("Count") implied the opposite semantics (count on hand = set total).
+- **Correction:** Added an optional `onModeChange` prop rendering an Add/Set-total radiogroup, controlled so the parent keeps a single source of truth. Kept it **optional** so the three reconciliation call sites that hardcode `mode="add"` in an "add a find" context stay unchanged.
+- **Rule:** When defending a default, confirm the non-default is actually reachable. If it isn't, you're shipping a hardcoded behaviour — evaluate it as such, and check the control's *label* matches what it does.
+
+## Category: Development Workflow (continued)
+
+### [2026-07-26] Strip plan scaffolding from code before committing
+- **Mistake:** The implementation copied instruction text out of the plan straight into a committed test file — comments like "If the existing test file already has a factory, use that instead of this literal" and "add any other non-optional fields the component dereferences:" shipped in `VirtualizedProductGrid.test.tsx`. Plans are written *to* an implementer; that voice is nonsense in the repo.
+- **Correction:** Removed them while addressing review nits.
+- **Rule:** Plan prose is instructions, not source. After implementing from a plan, re-read the new files for second-person/conditional comments and delete them.
+
+### [2026-07-26] Making a de-facto constant mutable requires auditing every consumer for reset semantics
+- **Mistake:** `scanMode` was nominally `useState<'add'|'reconcile'>` but nothing ever set it — effectively a constant `'add'`. Wiring a user-facing toggle to it made it genuinely mutable, which silently created cross-flow leakage: choosing "Set total" on a manual count would persist into the *next barcode scan*, changing scan behaviour that was explicitly out of scope.
+- **Correction:** Reset `setScanMode('add')` on the scan entry path so a prior manual choice cannot leak.
+- **Rule:** When state that was never written becomes writable, enumerate every entry point that consumes it and decide explicitly whether each should reset or inherit. "It was always X" is an invariant other code may silently depend on.
+
+## Category: E2E / Flaky Tests (continued)
+
+### [2026-07-26] Reproduce a local e2e failure on `main` before treating it as a regression
+- **Mistake:** Nearly treated a failing `manual-sale-tip-not-doubled.spec.ts` as a blocker for an inventory-only diff. Two contributing factors: a *second worktree* was running Playwright against the same local Supabase concurrently (shared-DB contamination), and the test is independently broken locally.
+- **Correction:** Ran the identical spec on `main` with no diff applied — it failed there too. All 8 CI e2e shards passed on the branch, confirming no regression.
+- **Rule:** Before diagnosing a local e2e failure, (a) check `ps` for a competing Playwright/vite run from another worktree sharing local Supabase, and (b) run the same spec on `main`. A failure that reproduces on `main` is pre-existing — say so with the evidence rather than "fixing" unrelated code.
+
+## Category: CI / Migrations (continued)
+
+### [2026-07-26] `unit-tests.yml` double-fires on `feature/**` branches and sits near its 10m job cap
+- **Mistake:** Read a red `Unit Tests` check as a test failure. It wasn't: `✓ Run unit tests with coverage` passed and the *job* was killed by the 10-minute cap during the later SonarCloud step.
+- **Correction:** `unit-tests.yml` triggers on **both** `push: branches: [main, develop, 'feature/**']` and `pull_request: [main]`, so any `feature/*` branch spawns two identical concurrent runs that compete for runners; one tips past the cap while its twin passes (observed 8m45s pass vs 10m15s timeout on the same commit). Re-running the job clears it.
+- **Rule:** On a red CI check, read the *step* list before the conclusion — a green test step with a red job means infra, not code. For this repo specifically: the job runs near its cap even solo (#649 took 9m10s), so raising `timeout-minutes` or adding a `concurrency` group is a real fix worth filing separately.

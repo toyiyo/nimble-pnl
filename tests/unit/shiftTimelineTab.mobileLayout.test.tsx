@@ -15,6 +15,13 @@ import type { Shift, Employee } from '@/types/scheduling';
 
 // ─── Module mocks ──────────────────────────────────────────────────────────────
 
+// ShiftTimelineTab calls useRestaurantContext directly (Stage 5.3's Save-gate role
+// check), so it needs a mock here too or every render throws "must be used within
+// a RestaurantProvider".
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({ selectedRestaurant: { role: 'owner' } }),
+}));
+
 vi.mock('@/hooks/useWeekStaffingSuggestions', () => ({
   useWeekStaffingSuggestions: () => ({
     daySuggestions: new Map(),

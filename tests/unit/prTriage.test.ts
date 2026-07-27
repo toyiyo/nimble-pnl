@@ -100,6 +100,10 @@ describe('pr-triage: parseVerdict', () => {
     expect(parseVerdict('Agreed: ok')).toBeNull();
   });
 
+  it('rejects a marker-form reply whose rationale explains nothing', () => {
+    expect(parseVerdict('<!-- pr-triage: ignored -->\n**⏭️ Ignored** — ok')).toBeNull();
+  });
+
   it('rejects unrelated prose', () => {
     expect(parseVerdict('Thanks, nice catch!')).toBeNull();
     expect(parseVerdict('')).toBeNull();
@@ -271,6 +275,7 @@ describe('pr-triage: classifyThreads', () => {
       reviews: [{
         id: 'REVIEW_1',
         state: 'CHANGES_REQUESTED',
+        submittedAt: '2026-07-27T10:00:00Z',
         author: { login: 'a-human', __typename: 'User' },
         authorAssociation: 'MEMBER',
         body: 'This needs rework before merge.',
@@ -291,6 +296,100 @@ describe('pr-triage: classifyThreads', () => {
       prAuthor: PR_AUTHOR,
     });
     expect(r.unanswered).toHaveLength(0);
+  });
+
+  // --- Review-level correlation. Without these rules one maintainer reply
+  // would silently satisfy every simultaneous CHANGES_REQUESTED at once.
+  const reviewFrom = (login, state, at, body = 'Please rework this section.') => ({
+    id: `R_${login}_${at}`,
+    state,
+    submittedAt: at,
+    author: { login, __typename: login === 'a-human' ? 'User' : 'Bot' },
+    authorAssociation: login === 'a-human' ? 'MEMBER' : 'NONE',
+    body,
+  });
+
+  const verdictReview = (at, body) => ({
+    id: `R_ANSWER_${at}`,
+    state: 'COMMENTED',
+    submittedAt: at,
+    author: { login: PR_AUTHOR, __typename: 'User' },
+    authorAssociation: 'OWNER',
+    body,
+  });
+
+  it('answers only the reviewer a verdict reply names, not every open review', () => {
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+        reviewFrom('Copilot', 'CHANGES_REQUESTED', '2026-07-27T10:01:00Z'),
+        verdictReview(
+          '2026-07-27T11:00:00Z',
+          'Pushed back — @coderabbitai the bound is exclusive, the loop is correct.',
+        ),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.answered.map((f) => f.author)).toEqual(['coderabbitai']);
+    expect(r.unanswered.map((f) => f.author)).toEqual(['Copilot']);
+  });
+
+  it('does not accept a verdict reply submitted before the review it would answer', () => {
+    const r = classifyThreads({
+      reviews: [
+        verdictReview('2026-07-27T09:00:00Z', 'Agreed — @coderabbitai fixed already in abc1234.'),
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(1);
+    expect(r.unanswered[0].author).toBe('coderabbitai');
+  });
+
+  it('matches the reviewer login with or without a leading @', () => {
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+        verdictReview('2026-07-27T11:00:00Z', 'Ignored - coderabbitai flagged a style nit here.'),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(0);
+  });
+
+  it('stops blocking once the reviewer itself re-reviews and drops the request', () => {
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+        reviewFrom('coderabbitai', 'APPROVED', '2026-07-27T12:00:00Z', 'All addressed.'),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(0);
+  });
+
+  it('keeps blocking when the reviewer re-requests changes after approving', () => {
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'APPROVED', '2026-07-27T10:00:00Z', 'Looks fine.'),
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T12:00:00Z'),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(1);
+  });
+
+  it('does not let a bot verdict answer a CHANGES_REQUESTED review', () => {
+    const botAnswer = {
+      ...verdictReview('2026-07-27T11:00:00Z', 'Agreed — @a-human this is now handled in abc1234.'),
+      author: { login: 'Copilot', __typename: 'User' },
+      authorAssociation: 'NONE',
+    };
+    const r = classifyThreads({
+      reviews: [reviewFrom('a-human', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'), botAnswer],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(1);
   });
 
   it('tolerates missing threads, reviews and comment nodes', () => {

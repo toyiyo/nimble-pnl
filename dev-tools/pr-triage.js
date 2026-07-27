@@ -85,8 +85,11 @@ export function parseVerdict(body) {
   // Preferred form: the machine marker, wherever it appears in the body.
   for (const spec of Object.values(VERDICTS)) {
     if (body.includes(spec.marker)) {
+      // Hold the marker path to the same floor as the hand-typed one: our own
+      // composeReply enforces it, but a marker reply written by hand must not
+      // pass the gate with a rationale like "ok".
       const rationale = stripToRationale(body.replace(spec.marker, ''), spec.display);
-      return rationale ? { verdict: spec.key, rationale } : null;
+      return rationale.length >= MIN_RATIONALE_LENGTH ? { verdict: spec.key, rationale } : null;
     }
   }
 
@@ -180,25 +183,77 @@ export function classifyThreads({ threads = [], reviews = [], prAuthor, knownSha
     else result.answered.push(finding);
   }
 
-  for (const r of reviews) {
+  // GitHub tracks a request for changes per reviewer, not per review: a reviewer
+  // who re-reviews and drops the request is no longer blocking. So collapse to
+  // each reviewer's latest review before deciding what still needs an answer.
+  for (const r of latestReviewPerAuthor(reviews)) {
     if (!BLOCKING_REVIEW_STATES.has(r?.state)) continue;
     if (sameUser(r.author?.login, prAuthor)) continue;
 
     const finding = makeFinding('review', { id: r.id, author: r.author?.login, body: r.body });
-    // A CHANGES_REQUESTED review is answered by a later review or a PR comment
-    // carrying a verdict; the caller supplies those as `reviews` too.
-    const answeredBy = reviews.some(
-      (other) =>
-        other !== r &&
-        !isBotActor(other.author) &&
-        MAINTAINER_ASSOCIATIONS.has(other.authorAssociation) &&
-        parseVerdict(other.body),
-    );
-    if (answeredBy) result.answered.push(finding);
+    if (isReviewAnswered(r, reviews)) result.answered.push(finding);
     else result.unanswered.push({ ...finding, reason: 'no reply' });
   }
 
   return result;
+}
+
+/**
+ * Reduce a flat review list to each author's most recent review, mirroring how
+ * GitHub itself decides whether a reviewer is currently requesting changes.
+ * @param {object[]} reviews
+ * @returns {object[]}
+ */
+function latestReviewPerAuthor(reviews) {
+  const latest = new Map();
+  for (const r of reviews) {
+    const login = r?.author?.login;
+    if (!login) continue;
+    const seen = latest.get(login.toLowerCase());
+    // Equal/absent timestamps fall back to list order, which GitHub returns
+    // chronologically — so the last one wins, as it should.
+    if (!seen || submittedAtMs(r) >= submittedAtMs(seen)) latest.set(login.toLowerCase(), r);
+  }
+  return [...latest.values()];
+}
+
+function submittedAtMs(review) {
+  const t = Date.parse(review?.submittedAt ?? '');
+  return Number.isNaN(t) ? 0 : t;
+}
+
+/**
+ * A CHANGES_REQUESTED review is answered only by a LATER review that carries a
+ * verdict from a non-bot maintainer AND names the reviewer it answers.
+ *
+ * Both conditions matter. Without the name check, one reply would silently
+ * satisfy every bot that requested changes at the same time — the exact hole
+ * this gate exists to close. Without the ordering check, a verdict written
+ * before the finding existed would pre-answer it.
+ *
+ * @param {object} review the CHANGES_REQUESTED review needing an answer
+ * @param {object[]} allReviews every review on the PR
+ * @returns {boolean}
+ */
+function isReviewAnswered(review, allReviews) {
+  const target = (review.author?.login ?? '').toLowerCase();
+  if (!target) return false;
+  const askedAt = submittedAtMs(review);
+
+  return allReviews.some((other) => {
+    if (other === review) return false;
+    if (isBotActor(other.author)) return false;
+    if (!MAINTAINER_ASSOCIATIONS.has(other.authorAssociation)) return false;
+    if (!parseVerdict(other.body)) return false;
+    if (submittedAtMs(other) < askedAt) return false;
+    return mentionsLogin(other.body, target);
+  });
+}
+
+/** True when the body names this reviewer, with or without a leading `@`. */
+function mentionsLogin(body, login) {
+  const escaped = login.replace(/[.*+?^${}()|[\]\\-]/gu, '\\$&');
+  return new RegExp(`(^|[^\\w/-])@?${escaped}([^\\w-]|$)`, 'iu').test(body ?? '');
 }
 
 /**
@@ -347,7 +402,7 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
         }
       }
       reviews(first: 100) {
-        nodes { id state body authorAssociation author { login __typename } }
+        nodes { id state body submittedAt authorAssociation author { login __typename } }
       }
     }
   }

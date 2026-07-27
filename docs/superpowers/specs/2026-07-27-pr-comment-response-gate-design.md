@@ -242,6 +242,19 @@ Consequences of that rule, each deliberate:
   need to be added.
 - **A thread the PR author started does not need an answer.** It is a
   note to reviewers, not a finding.
+- **A `CHANGES_REQUESTED` review is answered per reviewer, not in bulk.**
+  Inline threads correlate structurally — a reply is nested inside the
+  thread it answers. GitHub's `PullRequest.reviews` is a flat list with no
+  such nesting, so review-level findings need an explicit correlation
+  rule, or one reply would silently satisfy every reviewer who requested
+  changes at the same time. The rule is: reviews are first collapsed to
+  each author's **latest** review (mirroring how GitHub itself decides
+  whether a reviewer currently blocks — a bot that re-reviews and drops
+  its request stops blocking). A review still in `CHANGES_REQUESTED` is
+  answered only by a later review that carries a verdict from a non-bot
+  maintainer **and names that reviewer's login**, with or without a
+  leading `@`. Ordering matters too: a verdict written before the finding
+  existed cannot pre-answer it.
 - **Outdated threads still need an answer.** GitHub marks a thread
   outdated when its line changes, which usually means we fixed it — so
   the correct response is an `agreed` reply naming the commit, not
@@ -291,6 +304,16 @@ has no user-facing surface a Playwright spec could drive.
   means someone with context decided something.
 - **`pull_request_target` accepted** for the push-triggered re-audit,
   mitigated by never checking out or executing PR code.
+- **Review-level correlation is by reviewer login, not by content.** A
+  Phase 7 reviewer flagged that the first implementation let any single
+  maintainer verdict answer every open `CHANGES_REQUESTED` at once.
+  Measured against the last five PRs (#657, #658, #650, #654, #641),
+  `CHANGES_REQUESTED` never actually occurs — every bot posts
+  `COMMENTED` — so this is a latent path rather than a live hole, and the
+  cheapest correct rule was preferred over machinery that tries to match
+  a reply to a finding's *content*. Naming the reviewer is a weak
+  correlation, but it is structural, testable, and cannot be satisfied by
+  accident.
 - **Issue-level comments do not block.** Accepts that a human question
   asked in the PR conversation can go unanswered without failing CI. The
   alternative — blocking on all conversation — makes the gate noisy

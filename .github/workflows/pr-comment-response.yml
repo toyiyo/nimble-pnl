@@ -40,9 +40,10 @@ jobs:
         id: pr
         env:
           NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ -z "$NUMBER" ]; then
-            echo "Could not resolve a PR number from event ${{ github.event_name }}." >&2
+            echo "Could not resolve a PR number from event $EVENT_NAME." >&2
             exit 1
           fi
           echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
@@ -53,9 +54,11 @@ jobs:
       - name: Fetch the auditor from the base branch
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           mkdir -p dev-tools
-          gh api "repos/${{ github.repository }}/contents/dev-tools/pr-triage.js?ref=${{ github.event.repository.default_branch }}" \
+          gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
             --jq '.content' | base64 --decode > dev-tools/pr-triage.js
 
       - uses: actions/setup-node@v4
@@ -67,18 +70,22 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
         run: |
           set +e
-          node dev-tools/pr-triage.js audit --pr "${{ steps.pr.outputs.number }}" > summary.md 2>&1
+          node dev-tools/pr-triage.js audit --pr "$PR_NUMBER" > summary.md 2>&1
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
           cat summary.md
 
       - name: Publish the check run
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
         run: |
-          HEAD_SHA=$(gh api "repos/${{ github.repository }}/pulls/${{ steps.pr.outputs.number }}" --jq .head.sha)
-          if [ "${{ steps.audit.outputs.exit_code }}" = "0" ]; then
+          HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
+          if [ "$EXIT_CODE" = "0" ]; then
             CONCLUSION=success
             TITLE="All review findings have a verdict reply"
           else
@@ -94,7 +101,7 @@ jobs:
             '{name: $name, head_sha: $head_sha, status: "completed",
               conclusion: $conclusion,
               output: {title: $title, summary: $summary}}' \
-            | gh api --method POST "repos/${{ github.repository }}/check-runs" --input -
+            | gh api --method POST "repos/$REPO/check-runs" --input -
 
       - name: Fail the job when findings are unanswered
         if: steps.audit.outputs.exit_code != '0'

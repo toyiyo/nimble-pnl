@@ -69,7 +69,9 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
 
   const handleSendInvitation = () => {
     // aria-disabled keeps the button focusable, so the handler owns the block.
-    if (existingMember) return;
+    // membersLoading is guarded too: the member lookup hasn't resolved yet, so
+    // existingMember can't be trusted to catch a duplicate invite.
+    if (membersLoading || existingMember) return;
 
     // Normalize once so whitespace-only input is rejected and the trimmed
     // address is what we send — matching findMemberByEmail, which also trims.
@@ -265,7 +267,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             />
             <Button
               onClick={handleSendInvitation}
-              disabled={sendInvitationMutation.isPending || !email.trim()}
+              disabled={membersLoading || sendInvitationMutation.isPending || !email.trim()}
               aria-disabled={existingMember ? true : undefined}
               className="aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
             >

@@ -105,11 +105,15 @@ export const Inventory: React.FC = () => {
     }
   }, [searchParams, setSearchParams]);
 
-  // Handler to close quick inventory dialog and clear product state
+  // Handler to close quick inventory dialog and clear product state.
+  // Resetting scanMode here (not only at each open site) keeps "a session starts
+  // in 'add' mode" a single invariant, so a future entry point that forgets to
+  // reset cannot inherit a leftover 'reconcile' selection.
   const handleCloseQuickInventoryDialog = (open: boolean) => {
     setShowQuickInventoryDialog(open);
     if (!open) {
       setQuickInventoryProduct(null);
+      setScanMode('add');
     }
   };
   const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');

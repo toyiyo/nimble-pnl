@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Package, Check, Plus, Minus, X, Divide } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
 import { LocationCombobox } from '@/components/LocationCombobox';
@@ -145,34 +146,38 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
             )}
           </div>
 
-          {/* Count Mode toggle — only when the parent opts in via onModeChange */}
+          {/* Count Mode toggle — only when the parent opts in via onModeChange.
+              Uses ToggleGroup (Radix) rather than hand-rolled radio buttons so
+              roving tabindex and arrow-key navigation come for free. */}
           {onModeChange && (
             <div>
-              <span className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+              <span
+                id="count-mode-label"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
                 Count Mode
               </span>
-              <div
-                role="radiogroup"
-                aria-label="Count mode"
+              <ToggleGroup
+                type="single"
+                value={mode}
+                // Radix emits '' when the active item is re-clicked (deselect);
+                // ignore that so mode can never become empty.
+                onValueChange={(value) => {
+                  if (value === 'add' || value === 'reconcile') onModeChange(value);
+                }}
+                aria-labelledby="count-mode-label"
                 className="mt-2 grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted/50 border border-border/40"
               >
                 {MODE_OPTIONS.map((option) => (
-                  <button
+                  <ToggleGroupItem
                     key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={mode === option.value}
-                    onClick={() => onModeChange(option.value)}
-                    className={`h-8 rounded-md text-[13px] font-medium transition-colors ${
-                      mode === option.value
-                        ? 'bg-foreground text-background'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
+                    value={option.value}
+                    className="h-9 rounded-md text-[13px] font-medium transition-colors data-[state=on]:bg-foreground data-[state=on]:text-background"
                   >
                     {option.label}
-                  </button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
               <p className="text-[12px] text-muted-foreground mt-1.5">
                 {MODE_OPTIONS.find((option) => option.value === mode)?.hint}
               </p>

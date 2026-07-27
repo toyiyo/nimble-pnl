@@ -125,14 +125,41 @@ describe('QuickInventoryDialog — count mode toggle', () => {
     // The reconciliation call sites pass a fixed mode="add" and must keep
     // their current, non-switchable UI.
     renderDialog();
-    expect(screen.queryByRole('radiogroup', { name: /count mode/i })).toBeNull();
+    expect(screen.queryByRole('group', { name: /count mode/i })).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
   });
 
   it('renders the toggle when onModeChange is provided', () => {
     renderDialog({ onModeChange: vi.fn() });
     expect(
-      screen.getByRole('radiogroup', { name: /count mode/i })
+      screen.getByRole('group', { name: /count mode/i })
     ).toBeInTheDocument();
+  });
+
+  it('is keyboard navigable: single tab stop, arrow moves focus, Enter selects', async () => {
+    // Regression guard for the original hand-rolled version, where BOTH options
+    // were independently tabbable and arrow keys did nothing at all.
+    //
+    // Radix ToggleGroup uses toggle-button semantics: arrows move focus, and
+    // Enter/Space commits the selection (it does not select on focus).
+    const onModeChange = vi.fn();
+    renderDialog({ mode: 'add', onModeChange });
+
+    const addRadio = screen.getByRole('radio', { name: /add to stock/i });
+    const setTotalRadio = screen.getByRole('radio', { name: /set total/i });
+
+    await userEvent.tab();
+    expect(addRadio).toHaveFocus();
+
+    // Roving tabindex: exactly one option is reachable via Tab.
+    expect(addRadio).toHaveAttribute('tabindex', '0');
+    expect(setTotalRadio).toHaveAttribute('tabindex', '-1');
+
+    await userEvent.keyboard('{ArrowRight}');
+    expect(setTotalRadio).toHaveFocus();
+
+    await userEvent.keyboard('{Enter}');
+    expect(onModeChange).toHaveBeenCalledWith('reconcile');
   });
 
   it('marks the active mode as checked', () => {

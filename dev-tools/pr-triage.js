@@ -160,15 +160,14 @@ export function classifyThreads({ threads = [], reviews = [], prAuthor, knownSha
     const root = comments[0];
     if (!root) continue;
 
-    const finding = {
-      kind: 'thread',
+    const finding = makeFinding('thread', {
       id: t.id,
       commentId: root.databaseId,
-      author: root.author?.login ?? 'unknown',
+      author: root.author?.login,
       path: t.path ?? '',
       line: t.line ?? null,
-      excerpt: excerpt(root.body),
-    };
+      body: root.body,
+    });
 
     // A note the PR author left for reviewers is not a finding against us.
     if (sameUser(root.author?.login, prAuthor)) {
@@ -185,15 +184,7 @@ export function classifyThreads({ threads = [], reviews = [], prAuthor, knownSha
     if (!BLOCKING_REVIEW_STATES.has(r?.state)) continue;
     if (sameUser(r.author?.login, prAuthor)) continue;
 
-    const finding = {
-      kind: 'review',
-      id: r.id,
-      commentId: null,
-      author: r.author?.login ?? 'unknown',
-      path: '',
-      line: null,
-      excerpt: excerpt(r.body),
-    };
+    const finding = makeFinding('review', { id: r.id, author: r.author?.login, body: r.body });
     // A CHANGES_REQUESTED review is answered by a later review or a PR comment
     // carrying a verdict; the caller supplies those as `reviews` too.
     const answeredBy = reviews.some(
@@ -252,6 +243,11 @@ function citesKnownCommit(body, knownShas) {
   return cited.some((c) =>
     knownShas.some((sha) => sha.toLowerCase().startsWith(c.toLowerCase())),
   );
+}
+
+/** Shape a thread or review into the common finding record the classifier tracks. */
+function makeFinding(kind, { id, commentId = null, author, path = '', line = null, body }) {
+  return { kind, id, commentId, author: author ?? 'unknown', path, line, excerpt: excerpt(body) };
 }
 
 function sameUser(a, b) {
@@ -484,15 +480,12 @@ export async function runCli(argv, io = {}) {
     return 0;
   }
 
-  const { threads, reviews, prAuthor } = await fetchPr({ owner, repo, pr, graphql });
-
-  let knownShas;
-  try {
-    const commits = await gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']);
-    knownShas = (Array.isArray(commits) ? commits : []).map((c) => c.sha).filter(Boolean);
-  } catch {
-    knownShas = undefined; // Verification is skipped rather than failing the gate.
-  }
+  // Independent reads — run concurrently rather than paying for both round trips in series.
+  const [{ threads, reviews, prAuthor }, commits] = await Promise.all([
+    fetchPr({ owner, repo, pr, graphql }),
+    gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']).catch(() => undefined), // Verification is skipped rather than failing the gate.
+  ]);
+  const knownShas = Array.isArray(commits) ? commits.map((c) => c.sha).filter(Boolean) : undefined;
 
   const result = classifyThreads({ threads, reviews, prAuthor, knownShas });
 

@@ -2,6 +2,11 @@ import { useMemo } from 'react';
 import { useUnifiedCOGS } from './useUnifiedCOGS';
 import { useLaborCostsFromTimeTracking } from './useLaborCostsFromTimeTracking';
 import { useLaborCostsFromTransactions } from './useLaborCostsFromTransactions';
+import {
+  resolveLaborBasis,
+  combineDailyCosts,
+  type LaborBasis,
+} from '@/lib/combineCosts';
 
 export interface DailyCostData {
   date: string;
@@ -18,6 +23,7 @@ export interface CostsFromSourceResult {
   totalLaborCost: number;
   pendingLaborCost: number;  // From time punches (scheduled/accrued)
   actualLaborCost: number;   // From bank transactions (paid)
+  laborBasis: LaborBasis;    // Which source is authoritative for this period
   totalCost: number;
   isLoading: boolean;
   error: Error | null;
@@ -56,63 +62,25 @@ export function useCostsFromSource(
   const isLoading = unifiedCOGS.isLoading || laborCosts.isLoading || transactionLaborCosts.isLoading;
   const error = unifiedCOGS.error || laborCosts.error || transactionLaborCosts.error;
 
-  // Combine daily costs from all sources
-  const dailyCosts = useMemo(() => {
-    const dateMap = new Map<string, DailyCostData>();
+  // Per-period labor basis: accrued (time punches) when any exist, else paid.
+  const laborBasis = resolveLaborBasis(laborCosts.totalCost);
 
-    // Add COGS (unified: inventory, financials, or combined per restaurant setting)
-    unifiedCOGS.dailyCOGS.forEach((day) => {
-      dateMap.set(day.date, {
-        date: day.date,
-        food_cost: day.amount,
-        labor_cost: 0,
-        pending_labor_cost: 0,
-        actual_labor_cost: 0,
-        total_cost: day.amount,
-      });
-    });
-
-    // Add pending labor costs from time punches (scheduled/accrued labor)
-    laborCosts.dailyCosts.forEach((day) => {
-      const existing = dateMap.get(day.date);
-      if (existing) {
-        existing.pending_labor_cost = day.total_labor_cost;
-        existing.labor_cost = existing.pending_labor_cost + existing.actual_labor_cost;
-        existing.total_cost = existing.food_cost + existing.labor_cost;
-      } else {
-        dateMap.set(day.date, {
-          date: day.date,
-          food_cost: 0,
-          labor_cost: day.total_labor_cost,
-          pending_labor_cost: day.total_labor_cost,
-          actual_labor_cost: 0,
-          total_cost: day.total_labor_cost,
-        });
-      }
-    });
-
-    // Add actual labor costs from bank transactions and pending outflows (paid labor)
-    transactionLaborCosts.dailyCosts.forEach((day) => {
-      const existing = dateMap.get(day.date);
-      if (existing) {
-        existing.actual_labor_cost = day.labor_cost;
-        existing.labor_cost = existing.pending_labor_cost + existing.actual_labor_cost;
-        existing.total_cost = existing.food_cost + existing.labor_cost;
-      } else {
-        dateMap.set(day.date, {
-          date: day.date,
-          food_cost: 0,
-          labor_cost: day.labor_cost,
-          pending_labor_cost: 0,
-          actual_labor_cost: day.labor_cost,
-          total_cost: day.labor_cost,
-        });
-      }
-    });
-
-    // Convert to array and sort by date
-    return Array.from(dateMap.values()).sort((a, b) => a.date.localeCompare(b.date));
-  }, [unifiedCOGS.dailyCOGS, laborCosts.dailyCosts, transactionLaborCosts.dailyCosts]);
+  // Combine daily costs; the daily labor_cost/total_cost respect the basis.
+  const dailyCosts = useMemo(
+    () =>
+      combineDailyCosts(
+        unifiedCOGS.dailyCOGS,
+        laborCosts.dailyCosts,
+        transactionLaborCosts.dailyCosts,
+        laborBasis,
+      ),
+    [
+      unifiedCOGS.dailyCOGS,
+      laborCosts.dailyCosts,
+      transactionLaborCosts.dailyCosts,
+      laborBasis,
+    ],
+  );
 
   const refetch = () => {
     // useUnifiedCOGS relies on React Query auto-refetch (no manual refetch exposed)
@@ -120,7 +88,9 @@ export function useCostsFromSource(
     transactionLaborCosts.refetch();
   };
 
-  const totalLaborCost = laborCosts.totalCost + transactionLaborCosts.totalCost;
+  // De-duplicated period labor: the basis source only, never the sum.
+  const totalLaborCost =
+    laborBasis === 'accrued' ? laborCosts.totalCost : transactionLaborCosts.totalCost;
 
   return {
     dailyCosts,
@@ -128,6 +98,7 @@ export function useCostsFromSource(
     totalLaborCost,
     pendingLaborCost: laborCosts.totalCost,
     actualLaborCost: transactionLaborCosts.totalCost,
+    laborBasis,
     totalCost: unifiedCOGS.totalCOGS + totalLaborCost,
     isLoading,
     error,

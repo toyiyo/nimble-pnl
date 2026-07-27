@@ -72,14 +72,20 @@ export interface MonthlyPerformanceResult {
   cogsCents: number;
   actualLaborCents: number;
   pendingLaborCents: number;
-  laborIncludingPendingCents: number;
+  /** Which labor source is authoritative for this month (mirrors
+   *  `resolveLaborBasis` in src/lib/combineCosts.ts — kept inline because this
+   *  is a Deno module and cannot import from src/). */
+  laborBasis: 'accrued' | 'paid';
+  /** Labor counted toward P&L: the basis source only, never actual + pending. */
+  laborForPnlCents: number;
   otherExpensesCents: number;
   actualExpensesCents: number;
-  projectedExpensesCents: number;
+  /** Accrual-basis expenses: paid labor swapped for basis labor. */
+  accrualExpensesCents: number;
 
   // Profit (cents)
   actualNetProfitCents: number;
-  projectedNetProfitCents: number;
+  accrualNetProfitCents: number;
 }
 
 // ===== HELPERS =====
@@ -128,10 +134,16 @@ export function calculateMonthlyPerformance(
   const cogsCents = toCents(input.expenses.foodCost);
   const actualLaborCents = toCents(input.expenses.actualLaborCost);
   const pendingLaborCents = toCents(input.pendingLabor);
-  const laborIncludingPendingCents = actualLaborCents + pendingLaborCents;
+
+  // Labor de-duplication (see src/lib/combineCosts.ts resolveLaborBasis):
+  // accrued (time-punch) labor when it exists this month, else paid (bank).
+  // NEVER actual + pending — those describe the same labor.
+  const laborBasis: 'accrued' | 'paid' =
+    pendingLaborCents > 0 ? 'accrued' : 'paid';
+  const laborForPnlCents =
+    laborBasis === 'accrued' ? pendingLaborCents : actualLaborCents;
 
   const actualExpensesCents = toCents(input.expenses.totalExpenses);
-  const projectedExpensesCents = actualExpensesCents + pendingLaborCents;
 
   // otherExpenses = actual - cogs - actualLabor. Floor at 0: rounding in the
   // source data can make this slightly negative when COGS + labor ≈ total.
@@ -140,9 +152,15 @@ export function calculateMonthlyPerformance(
     actualExpensesCents - cogsCents - actualLaborCents
   );
 
+  // Accrual basis swaps the paid labor already in the ledger for the basis
+  // labor (a substitution, not an addition). Under the paid basis this is
+  // exactly actualExpensesCents.
+  const accrualExpensesCents =
+    actualExpensesCents - actualLaborCents + laborForPnlCents;
+
   // Profit
   const actualNetProfitCents = netRevenueCents - actualExpensesCents;
-  const projectedNetProfitCents = netRevenueCents - projectedExpensesCents;
+  const accrualNetProfitCents = netRevenueCents - accrualExpensesCents;
 
   return {
     grossRevenueCents,
@@ -158,11 +176,12 @@ export function calculateMonthlyPerformance(
     cogsCents,
     actualLaborCents,
     pendingLaborCents,
-    laborIncludingPendingCents,
+    laborBasis,
+    laborForPnlCents,
     otherExpensesCents,
     actualExpensesCents,
-    projectedExpensesCents,
+    accrualExpensesCents,
     actualNetProfitCents,
-    projectedNetProfitCents,
+    accrualNetProfitCents,
   };
 }

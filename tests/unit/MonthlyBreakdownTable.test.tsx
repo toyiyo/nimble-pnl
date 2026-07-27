@@ -4,7 +4,7 @@
  * Pins the rendering contract introduced by the monthly-performance hardening:
  * - The "Actual" net-profit cell shows netRevenue - actualExpenses (not the
  *   actual + pending mash-up that was previously labeled "Net Profit").
- * - The "Projected (incl. pending labor)" sub-block only renders when
+ * - The "Accrual basis (matches hours worked)" sub-block only renders when
  *   pending_labor_cost > 0.
  */
 
@@ -83,16 +83,18 @@ describe('MonthlyBreakdownTable — single source of truth', () => {
     expect(screen.getAllByText(/Actual/i).length).toBeGreaterThan(0);
   });
 
-  it('renders a Projected label and value when pending labor > 0', () => {
+  it('renders an Accrual basis label and value when pending labor > 0', () => {
     renderWithClient(<MonthlyBreakdownTable monthlyData={[aprilFixture]} />);
-    expect(screen.getAllByText(/Projected/i).length).toBeGreaterThan(0);
-    // Projected = 73019 - 111220 - 16528 = -$54,729.
-    expect(screen.getByText('-$54,729')).toBeDefined();
+    expect(screen.getAllByText(/Accrual basis/i).length).toBeGreaterThan(0);
+    // Accrual expenses substitute basis labor (pending, $16,528) for paid labor
+    // ($32,959) in the actual expense total ($111,220): 111220 - 32959 + 16528 = 94789.
+    // Accrual net profit = 73019 - 94789 = -$21,770.
+    expect(screen.getByText('-$21,770')).toBeDefined();
   });
 
-  it('omits the Projected line when pending labor is 0', () => {
+  it('omits the Accrual basis line when pending labor is 0', () => {
     const noPending = { ...aprilFixture, pending_labor_cost: 0, labor_cost: 32959 };
     renderWithClient(<MonthlyBreakdownTable monthlyData={[noPending]} />);
-    expect(screen.queryByText(/Projected/i)).toBeNull();
+    expect(screen.queryByText(/Accrual basis/i)).toBeNull();
   });
 });

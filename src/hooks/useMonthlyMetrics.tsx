@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
+import { resolveLaborBasis } from '@/lib/combineCosts';
 import {
   aggregateInventoryCOGSByDate,
   aggregateFinancialCOGSByDate,
@@ -580,7 +581,10 @@ export function useMonthlyMetrics(
         tips: Math.round(month.tips) / 100,
         other_liabilities: Math.round(month.other_liabilities) / 100,
         food_cost: Math.round(month.food_cost) / 100,
-        labor_cost: Math.round(month.labor_cost) / 100,
+        labor_cost:
+          resolveLaborBasis(month.pending_labor_cost) === 'accrued'
+            ? Math.round(month.pending_labor_cost) / 100
+            : Math.round(month.actual_labor_cost) / 100,
         pending_labor_cost: Math.round(month.pending_labor_cost) / 100,
         actual_labor_cost: Math.round(month.actual_labor_cost) / 100,
         has_data: month.has_data,

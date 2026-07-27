@@ -193,14 +193,19 @@ test.describe('Labor cost alignment across Payroll and Dashboard', () => {
     await expect(page.getByText('Performance Overview')).toBeVisible({ timeout: 20000 });
     await page.getByRole('button', { name: /this month/i }).click();
 
-    const laborCard = page.getByText('Labor Cost (Wages + Payroll)').locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]');
+    // The card title is now basis-aware — "Labor Cost · Accrued" or "Labor Cost · Paid"
+    // (was "Labor Cost (Wages + Payroll)"). Match on the "Labor Cost ·" prefix so the
+    // test is basis-agnostic; this run seeds time punches, so the basis is accrued.
+    const laborCard = page.getByText(/Labor Cost ·/).locator('xpath=ancestor::div[contains(@class,"rounded-xl")][1]');
     const laborValueText = await laborCard.locator('[class*="text-[22px]"], .text-3xl, .text-2xl').first().innerText();
     const laborValue = parseCurrency(laborValueText);
 
-    // The pending value is in the subtitle text like "30.0% of revenue | Pending $1,580 • Actual $0"
-    const laborCardText = await laborCard.textContent();
-    const pendingMatch = laborCardText?.match(/Pending\s*\$([0-9,]+)/);
-    const pendingValue = pendingMatch ? parseCurrency(pendingMatch[1]) : 0;
+    // Pending payroll moved out of the card subtitle into a labeled summary cell:
+    // a "Pending Payroll" label with the dollar value in the sibling <p> below it.
+    const pendingCell = page
+      .getByText('Pending Payroll', { exact: true })
+      .locator('xpath=following-sibling::p[1]');
+    const pendingValue = parseCurrency(await pendingCell.innerText());
 
     expect(laborValue).toBeCloseTo(payrollRounded, 0);
     expect(pendingValue).toBeCloseTo(payrollRounded, 0);

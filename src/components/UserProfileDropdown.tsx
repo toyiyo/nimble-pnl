@@ -52,9 +52,7 @@ export const UserProfileDropdown = () => {
             <p className="text-xs leading-none text-muted-foreground">{userEmail}</p>
           </div>
         </DropdownMenuLabel>
-        <div className="px-2 pb-1">
-          <ViewModeSwitch />
-        </div>
+        <ViewModeSwitch className="mx-2 mb-1" />
         <DropdownMenuSeparator />
         <DropdownMenuItem
           onClick={() => { navigate('/settings'); setOpen(false); }}

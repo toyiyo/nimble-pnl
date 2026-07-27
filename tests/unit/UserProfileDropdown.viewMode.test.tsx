@@ -96,6 +96,29 @@ describe('UserProfileDropdown – view-mode wiring', () => {
     expect(screen.queryByRole('group', { name: /view mode/i })).not.toBeInTheDocument();
   });
 
+  it('leaves no stray empty wrapper element when ineligible', async () => {
+    // ViewModeSwitch itself renders null when ineligible. The dropdown must
+    // not keep a leftover wrapper `<div>` (e.g. one still carrying padding)
+    // around that empty render — it should contribute nothing to the DOM.
+    mocks.canUseWorkView = false;
+    const user = userEvent.setup();
+    renderDropdown();
+
+    await user.click(screen.getByRole('button', { name: /owner/i }));
+
+    const menu = screen.getByRole('menu');
+    // `role="separator"` divs are deliberate structural elements (rendered
+    // by `DropdownMenuSeparator`) and are legitimately empty — exclude
+    // those, we only care about a purposeless leftover wrapper `<div>`.
+    const emptyDivs = Array.from(menu.querySelectorAll('div')).filter(
+      (el) =>
+        el.childElementCount === 0 &&
+        el.textContent === '' &&
+        el.getAttribute('role') !== 'separator'
+    );
+    expect(emptyDivs).toHaveLength(0);
+  });
+
   it('clicking "My Work" in the dropdown calls enterWorkMode', async () => {
     const user = userEvent.setup();
     renderDropdown();

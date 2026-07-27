@@ -44,8 +44,15 @@ function SegmentButton({ icon: Icon, label, pressed, onClick }: SegmentButtonPro
  *
  * See docs/superpowers/specs/2026-07-24-admin-work-view-mode-design.md
  * ("Mock-exact copy & layout" section).
+ *
+ * `className` merges onto the card's own root — it does NOT wrap in an
+ * extra element. That keeps the "renders null when ineligible, no empty
+ * shell" guarantee intact for callers that need mount-specific spacing
+ * (e.g. `UserProfileDropdown` aligning it with the dropdown's padding):
+ * a wrapping `<div>` supplied by the caller would still render (with its
+ * padding) even when this component itself renders `null`.
  */
-export function ViewModeSwitch() {
+export function ViewModeSwitch({ className }: { className?: string } = {}) {
   const { viewMode, canUseWorkView, enterWorkMode, exitWorkMode } = useViewMode();
 
   if (!canUseWorkView) {
@@ -53,7 +60,12 @@ export function ViewModeSwitch() {
   }
 
   return (
-    <div className="rounded-lg border border-personal-view-border bg-personal-view/40 p-2.5">
+    <div
+      className={cn(
+        'rounded-lg border border-personal-view-border bg-personal-view/40 p-2.5',
+        className
+      )}
+    >
       <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
         You&apos;re viewing as
       </p>

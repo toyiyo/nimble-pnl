@@ -116,6 +116,7 @@ describe('pr-triage: parseVerdict', () => {
 });
 
 const PR_AUTHOR = 'toyiyo';
+const REPO = 'toyiyo/nimble-pnl';
 const SHAS = ['abc1234def5678abc1234def5678abc1234def56'];
 
 /** Build a GraphQL-shaped review thread. */
@@ -392,6 +393,31 @@ describe('pr-triage: classifyThreads', () => {
     expect(r.unanswered).toHaveLength(1);
   });
 
+  it('handles hyphenated reviewer logins without throwing', () => {
+    // Most reviewer bots are hyphenated (chatgpt-codex-connector,
+    // copilot-pull-request-reviewer), so a regex that throws here takes the
+    // whole gate down rather than reporting findings.
+    const r = classifyThreads({
+      reviews: [
+        {
+          id: 'R1',
+          state: 'CHANGES_REQUESTED',
+          submittedAt: '2026-07-27T10:00:00Z',
+          author: { login: 'chatgpt-codex-connector', __typename: 'User' },
+          authorAssociation: 'NONE',
+          body: 'Please rework this.',
+        },
+        verdictReview(
+          '2026-07-27T11:00:00Z',
+          'Pushed back — @chatgpt-codex-connector the guard is correct as written.',
+        ),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(0);
+    expect(r.answered).toHaveLength(1);
+  });
+
   it('tolerates missing threads, reviews and comment nodes', () => {
     expect(classifyThreads({ prAuthor: PR_AUTHOR }).unanswered).toHaveLength(0);
     expect(
@@ -425,6 +451,27 @@ describe('pr-triage: renderSummary', () => {
     expect(md).toContain('src/hooks/useReceiptImport.tsx:717');
     expect(md).toContain('no reply');
     expect(md).toMatch(/1 unanswered/i);
+  });
+
+  it('escapes pipes so a finding cannot break the summary table', () => {
+    // CodeRabbit bodies routinely contain "| Major | Quick win |" badge rows;
+    // unescaped they split the row into bogus columns.
+    const md = renderSummary({
+      unanswered: [{
+        kind: 'thread',
+        author: 'coderabbitai',
+        path: 'src/a.ts',
+        line: 1,
+        excerpt: '_Correctness_ | _Major_ | _Quick win_ toast ignores failures',
+        reason: 'no reply',
+      }],
+      answered: [],
+      skipped: [],
+    });
+    const row = md.split('\n').find((l) => l.includes('coderabbitai')) ?? '';
+    // Split on UNESCAPED pipes only — that is what the markdown renderer sees.
+    expect(row.split(/(?<!\\)\|/u).filter((c) => c.trim()).length).toBe(4);
+    expect(row).toContain('\\|');
   });
 
   it('renders a review finding that has no file location', () => {
@@ -491,14 +538,14 @@ const BOT_FINDING = {
 describe('pr-triage: runCli audit', () => {
   it('exits 0 and says so when there is nothing unanswered', async () => {
     const io = fakeIo();
-    const code = await runCli(['audit', '--pr', '1'], io);
+    const code = await runCli(['audit', '--pr', '1', '--repo', REPO], io);
     expect(code).toBe(0);
     expect(io.out.join('\n')).toMatch(/every finding has a verdict reply/i);
   });
 
   it('exits 1 and prints the finding when one is unanswered', async () => {
     const io = fakeIo({ threads: [BOT_FINDING] });
-    const code = await runCli(['audit', '--pr', '1'], io);
+    const code = await runCli(['audit', '--pr', '1', '--repo', REPO], io);
     expect(code).toBe(1);
     expect(io.out.join('\n')).toContain('coderabbitai');
     expect(io.out.join('\n')).toContain('src/a.ts:3');
@@ -510,20 +557,97 @@ describe('pr-triage: runCli audit', () => {
     expect(io.out.join('\n')).toMatch(/--pr/);
   });
 
-  it('surfaces a visible warning when the commits fetch fails, rather than silently skipping verification', async () => {
+  it('fails closed when the commits fetch fails, rather than skipping verification', async () => {
+    // A gate that cannot verify must not report success: skipping the check
+    // would let an "agreed" reply citing an unverifiable commit pass.
     const io = fakeIo({ commitsError: 'rate limited' });
-    const code = await runCli(['audit', '--pr', '1'], io);
-    // No unanswered findings in this fixture, so the run still exits 0 — but the
-    // warning must be visible in the same output the check-run summary is built from.
-    expect(code).toBe(0);
+    const code = await runCli(['audit', '--pr', '1', '--repo', REPO], io);
+    expect(code).toBe(2);
     expect(io.out.join('\n')).toMatch(/could not fetch pr commits.*rate limited/i);
+  });
+
+  it('fails closed when GraphQL returns no pull request data', async () => {
+    const io = fakeIo();
+    io.graphql = async () => ({ data: { repository: null } });
+    const code = await runCli(['audit', '--pr', '1', '--repo', REPO], io);
+    expect(code).toBe(2);
+    expect(io.out.join('\n')).toMatch(/could not read pull request/i);
+  });
+
+  it('fails closed when GraphQL reports errors', async () => {
+    const io = fakeIo();
+    io.graphql = async () => ({ errors: [{ message: 'Bad credentials' }] });
+    const code = await runCli(['audit', '--pr', '1', '--repo', REPO], io);
+    expect(code).toBe(2);
+    expect(io.out.join('\n')).toMatch(/bad credentials/i);
+  });
+
+  it('fails closed when a thread has more comments than one page', async () => {
+    const io = fakeIo({
+      threads: [{
+        ...BOT_FINDING,
+        comments: { ...BOT_FINDING.comments, pageInfo: { hasNextPage: true, endCursor: 'x' } },
+      }],
+    });
+    const code = await runCli(['audit', '--pr', '1', '--repo', REPO], io);
+    expect(code).toBe(2);
+    expect(io.out.join('\n')).toMatch(/more replies than.*could read/i);
+  });
+
+  it('follows pagination across review pages', async () => {
+    let reviewPages = 0;
+    const io = fakeIo();
+    io.graphql = async (query: string) => {
+      if (!query.includes('reviews(first: 100, after:')) {
+        return {
+          data: {
+            repository: {
+              pullRequest: {
+                author: { login: 'toyiyo' },
+                reviewThreads: { nodes: [], pageInfo: { hasNextPage: false } },
+              },
+            },
+          },
+        };
+      }
+      reviewPages += 1;
+      return {
+        data: {
+          repository: {
+            pullRequest: {
+              reviews: {
+                nodes: reviewPages === 1
+                  ? [{ id: 'R1', state: 'COMMENTED', submittedAt: '2026-07-27T10:00:00Z', author: { login: 'coderabbitai', __typename: 'Bot' }, authorAssociation: 'NONE', body: 'note' }]
+                  : [{ id: 'R2', state: 'CHANGES_REQUESTED', submittedAt: '2026-07-27T11:00:00Z', author: { login: 'a-human', __typename: 'User' }, authorAssociation: 'MEMBER', body: 'Needs rework.' }],
+                pageInfo: { hasNextPage: reviewPages === 1, endCursor: 'c1' },
+              },
+            },
+          },
+        },
+      };
+    };
+    const code = await runCli(['audit', '--pr', '1', '--repo', REPO], io);
+    expect(reviewPages).toBe(2); // the second page must actually be requested
+    expect(code).toBe(1); // and its CHANGES_REQUESTED must be seen
+    expect(io.out.join('\n')).toContain('a-human');
+  });
+
+  it('rejects --pr with no value instead of silently targeting PR #1', async () => {
+    const io = fakeIo();
+    expect(await runCli(['audit', '--pr', '--repo', REPO], io)).toBe(2);
+    expect(io.out.join('\n')).toMatch(/--pr/);
+  });
+
+  it('rejects a non-numeric --pr', async () => {
+    const io = fakeIo();
+    expect(await runCli(['audit', '--pr', 'abc', '--repo', REPO], io)).toBe(2);
   });
 });
 
 describe('pr-triage: runCli list', () => {
   it('prints the comment id needed to reply', async () => {
     const io = fakeIo({ threads: [BOT_FINDING] });
-    const code = await runCli(['list', '--pr', '1'], io);
+    const code = await runCli(['list', '--pr', '1', '--repo', REPO], io);
     expect(code).toBe(0);
     expect(io.out.join('\n')).toContain('99');
   });
@@ -537,7 +661,7 @@ describe('pr-triage: runCli reply', () => {
       onPost: (args: string[]) => { posted.push(args); return {}; },
     });
     const code = await runCli(
-      ['reply', '--pr', '1', '--comment', '99', '--verdict', 'pushed-back',
+      ['reply', '--pr', '1', '--repo', REPO, '--comment', '99', '--verdict', 'pushed-back',
        '--rationale', 'The bound is exclusive; this is correct.'],
       io,
     );
@@ -551,13 +675,51 @@ describe('pr-triage: runCli reply', () => {
     const posted: string[][] = [];
     const io = fakeIo({ onPost: (args: string[]) => { posted.push(args); return {}; } });
     const code = await runCli(
-      ['reply', '--pr', '1', '--comment', '99', '--verdict', 'agreed',
+      ['reply', '--pr', '1', '--repo', REPO, '--comment', '99', '--verdict', 'agreed',
        '--rationale', 'Fixed it in the follow-up.'],
       io,
     );
     expect(code).toBe(2);
     expect(posted).toHaveLength(0);
     expect(io.out.join('\n')).toMatch(/commit/i);
+  });
+
+  it('answers a CHANGES_REQUESTED review with a PR-level review naming the reviewer', async () => {
+    const posted: string[][] = [];
+    const io = fakeIo({ onPost: (args: string[]) => { posted.push(args); return {}; } });
+    const code = await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--review', 'a-human', '--verdict', 'pushed-back',
+       '--rationale', 'The guard is correct as written.'],
+      io,
+    );
+    expect(code).toBe(0);
+    const flat = posted.flat().join(' ');
+    expect(flat).toContain('/pulls/1/reviews');
+    expect(flat).toContain('event=COMMENT');
+    // Naming the reviewer is what lets classifyThreads tell which review this answers.
+    expect(flat).toContain('@a-human');
+  });
+
+  it('does not double up the @ when the reviewer is passed with one', async () => {
+    const posted: string[][] = [];
+    const io = fakeIo({ onPost: (args: string[]) => { posted.push(args); return {}; } });
+    await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--review', '@a-human', '--verdict', 'ignored',
+       '--rationale', 'Style nit, house convention differs.'],
+      io,
+    );
+    expect(posted.flat().join(' ')).not.toContain('@@');
+  });
+
+  it('exits 2 when reply is given neither --comment nor --review', async () => {
+    const io = fakeIo();
+    const code = await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--verdict', 'ignored',
+       '--rationale', 'Style nit, house convention differs.'],
+      io,
+    );
+    expect(code).toBe(2);
+    expect(io.out.join('\n')).toMatch(/--comment.*--review/s);
   });
 
   it('exits 2 on an unknown verb', async () => {

@@ -109,6 +109,10 @@ is unanswered.
 node dev-tools/pr-triage.js list  --pr 657   # unanswered findings + comment ids
 node dev-tools/pr-triage.js reply --pr 657 --comment 3649239869 \
   --verdict agreed --commit abc1234 --rationale "Retained failed writes until import checks them."
+
+# answer a CHANGES_REQUESTED review (no thread to nest under, so it names the reviewer)
+node dev-tools/pr-triage.js reply --pr 657 --review chatgpt-codex-connector \
+  --verdict pushed-back --rationale "The guard is correct as written."
 node dev-tools/pr-triage.js audit --pr 657   # exit 0 clean, 1 unanswered
 ```
 

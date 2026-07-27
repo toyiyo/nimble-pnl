@@ -33,11 +33,15 @@ export const VERDICTS = Object.freeze({
 const MIN_RATIONALE_LENGTH = 10;
 
 /**
- * Build the body of a threaded reply.
- * @param {{verdict: string, rationale: string, commit?: string}} input
+ * Build the body of a reply.
+ * @param {{verdict: string, rationale: string, commit?: string, answers?: string}} input
+ *   `answers` is the reviewer login this reply addresses. Inline replies nest
+ *   under their thread and need none; a PR-level reply answering a
+ *   CHANGES_REQUESTED review must name its reviewer, because a flat review list
+ *   offers no other way to tell which finding it answers.
  * @returns {string} the markdown body to post
  */
-export function composeReply({ verdict, rationale, commit } = {}) {
+export function composeReply({ verdict, rationale, commit, answers } = {}) {
   const spec = VERDICTS[verdict];
   if (!spec) {
     throw new Error(
@@ -58,7 +62,8 @@ export function composeReply({ verdict, rationale, commit } = {}) {
   }
 
   const suffix = verdict === 'agreed' ? ` Fixed in \`${commit.trim()}\`.` : '';
-  return `${spec.marker}\n**${spec.display}** — ${text}${suffix}`;
+  const mention = answers ? `@${String(answers).replace(/^@/, '')} ` : '';
+  return `${spec.marker}\n**${spec.display}** — ${mention}${text}${suffix}`;
 }
 
 /**
@@ -250,9 +255,16 @@ function isReviewAnswered(review, allReviews) {
   });
 }
 
-/** True when the body names this reviewer, with or without a leading `@`. */
+/**
+ * True when the body names this reviewer, with or without a leading `@`.
+ * NOTE: `-` must NOT be escaped here. Outside a character class `\-` is an
+ * invalid identity escape under the `u` flag, so escaping it would make this
+ * throw for every hyphenated login — which is most reviewer bots
+ * (chatgpt-codex-connector, copilot-pull-request-reviewer), taking down the
+ * whole audit instead of reporting findings.
+ */
 function mentionsLogin(body, login) {
-  const escaped = login.replace(/[.*+?^${}()|[\]\\-]/gu, '\\$&');
+  const escaped = login.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
   return new RegExp(`(^|[^\\w/-])@?${escaped}([^\\w-]|$)`, 'iu').test(body ?? '');
 }
 
@@ -295,7 +307,11 @@ function firstUnansweredReason(replies, knownShas) {
 function citesKnownCommit(body, knownShas) {
   if (!Array.isArray(knownShas) || knownShas.length === 0) return true;
   const shaPattern = new RegExp(`\\b[0-9a-f]{${MIN_SHA_PREFIX},40}\\b`, 'gi');
-  const cited = body.match(shaPattern) ?? [];
+  // composeReply always backticks the SHA. Prefer backticked tokens so an
+  // unrelated hex string in the prose cannot stand in for a real citation;
+  // fall back to bare tokens only for replies typed by hand without backticks.
+  const backticked = [...body.matchAll(/`([^`]+)`/gu)].flatMap((m) => m[1].match(shaPattern) ?? []);
+  const cited = backticked.length > 0 ? backticked : (body.match(shaPattern) ?? []);
   return cited.some((c) =>
     knownShas.some((sha) => sha.toLowerCase().startsWith(c.toLowerCase())),
   );
@@ -313,6 +329,15 @@ function sameUser(a, b) {
 function excerpt(body, max = 120) {
   const flat = (body ?? '').replace(/\s+/gu, ' ').trim();
   return flat.length > max ? `${flat.slice(0, max)}…` : flat;
+}
+
+/**
+ * Make text safe for a markdown table cell. CodeRabbit bodies routinely carry
+ * badge rows like "| Major | Quick win |"; unescaped, those split one finding
+ * across several bogus columns and the summary stops being readable.
+ */
+function cell(text) {
+  return (text ?? '').replace(/\|/gu, '\\|');
 }
 
 /** Render a finding's file:line as markdown, or a fallback for review-level findings. */
@@ -338,7 +363,7 @@ export function renderSummary(result) {
   }
 
   const rows = unanswered
-    .map((f) => `| ${f.author} | ${formatLocation(f)} | ${f.reason} | ${f.excerpt || ''} |`)
+    .map((f) => `| ${f.author} | ${formatLocation(f)} | ${f.reason} | ${cell(f.excerpt)} |`)
     .join('\n');
 
   return [
@@ -392,6 +417,7 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
           path
           line
           comments(first: 100) {
+            pageInfo { hasNextPage }
             nodes {
               databaseId
               body
@@ -401,7 +427,19 @@ query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
           }
         }
       }
-      reviews(first: 100) {
+    }
+  }
+}`;
+
+// Reviews paginate independently of threads, so they get their own query and
+// cursor. Folding them into the threads query would re-fetch the same first
+// page of reviews on every thread page and silently drop anything past 100.
+const REVIEWS_QUERY = `
+query($owner: String!, $repo: String!, $pr: Int!, $cursor: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $pr) {
+      reviews(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
         nodes { id state body submittedAt authorAssociation author { login __typename } }
       }
     }
@@ -441,21 +479,64 @@ async function resolveRepo(opts) {
   return stdout.trim();
 }
 
-/** Fetch every review thread and review for a PR, following pagination. */
+/** Raised when the PR cannot be read. The gate must fail closed, never green. */
+class AuditUnavailableError extends Error {}
+
+/** Unwrap a GraphQL response, turning any error or missing PR into a failure. */
+function pullRequestOf(res) {
+  if (res?.errors?.length) {
+    throw new AuditUnavailableError(
+      `GitHub GraphQL error: ${res.errors.map((e) => e.message).join('; ')}`,
+    );
+  }
+  const node = res?.data?.repository?.pullRequest;
+  if (!node) {
+    throw new AuditUnavailableError(
+      'Could not read pull request data from GitHub (no pullRequest in the response).',
+    );
+  }
+  return node;
+}
+
+/**
+ * Fetch every review thread and review for a PR, following pagination on both.
+ * Throws AuditUnavailableError rather than returning partial data — a gate that
+ * silently audits half a PR reports success it has not earned.
+ */
 async function fetchPr({ owner, repo, pr, graphql }) {
   const threads = [];
   let cursor = null;
   let author = '';
-  let reviews = [];
 
   for (;;) {
-    const res = await graphql(THREADS_QUERY, { owner, repo, pr, ...(cursor ? { cursor } : {}) });
-    const node = res?.data?.repository?.pullRequest;
-    if (!node) break;
+    const node = pullRequestOf(
+      await graphql(THREADS_QUERY, { owner, repo, pr, ...(cursor ? { cursor } : {}) }),
+    );
     author = node.author?.login ?? author;
-    reviews = node.reviews?.nodes ?? reviews;
     threads.push(...(node.reviewThreads?.nodes ?? []));
     const page = node.reviewThreads?.pageInfo;
+    if (!page?.hasNextPage) break;
+    cursor = page.endCursor;
+  }
+
+  // A truncated comment list could hide the very reply that answers a finding,
+  // or hide a finding's replies entirely. Refuse to judge on partial data.
+  const truncated = threads.find((t) => t.comments?.pageInfo?.hasNextPage);
+  if (truncated) {
+    throw new AuditUnavailableError(
+      `Thread ${truncated.id} (${truncated.path ?? 'unknown file'}) has more replies than ` +
+        'this tool could read in one page; refusing to report a verdict on partial data.',
+    );
+  }
+
+  const reviews = [];
+  cursor = null;
+  for (;;) {
+    const node = pullRequestOf(
+      await graphql(REVIEWS_QUERY, { owner, repo, pr, ...(cursor ? { cursor } : {}) }),
+    );
+    reviews.push(...(node.reviews?.nodes ?? []));
+    const page = node.reviews?.pageInfo;
     if (!page?.hasNextPage) break;
     cursor = page.endCursor;
   }
@@ -466,10 +547,18 @@ async function fetchPr({ owner, repo, pr, graphql }) {
 const USAGE = `Usage:
   node dev-tools/pr-triage.js audit --pr <N>
   node dev-tools/pr-triage.js list  --pr <N>
+
+  # answer an inline finding (reply nested under its thread, then resolve)
   node dev-tools/pr-triage.js reply --pr <N> --comment <id> --verdict <agreed|pushed-back|ignored> \\
       [--commit <sha>] --rationale "<why>"
 
-Exit codes: 0 clean, 1 unanswered findings, 2 usage error.`;
+  # answer a CHANGES_REQUESTED review (posts a PR-level review naming the reviewer)
+  node dev-tools/pr-triage.js reply --pr <N> --review <reviewer-login> --verdict <...> \\
+      [--commit <sha>] --rationale "<why>"
+
+Common: --repo <owner/name> (defaults to GITHUB_REPOSITORY, else the git remote).
+
+Exit codes: 0 clean, 1 unanswered findings, 2 usage error or audit unavailable.`;
 
 /**
  * @param {string[]} argv
@@ -489,14 +578,20 @@ export async function runCli(argv, io = {}) {
     error(USAGE);
     return 2;
   }
-  if (!opts.pr) {
-    error('--pr <N> is required.\n' + USAGE);
+  // parseArgs gives a valueless flag the value `true`, and Number(true) === 1 —
+  // so a bare `--pr` would silently target PR #1. Demand a real number.
+  const pr = /^\d+$/.test(String(opts.pr ?? '')) ? Number(opts.pr) : NaN;
+  if (!Number.isInteger(pr) || pr <= 0) {
+    error('--pr <N> is required and must be a positive integer.\n' + USAGE);
     return 2;
   }
 
-  const nameWithOwner = await resolveRepo(opts);
-  const [owner, repo] = nameWithOwner.split('/');
-  const pr = Number(opts.pr);
+  const nameWithOwner = await (io.resolveRepo ?? resolveRepo)(opts);
+  const [owner, repo] = String(nameWithOwner ?? '').split('/');
+  if (!owner || !repo) {
+    error(`Could not determine owner/repo (got "${nameWithOwner}"). Pass --repo <owner/name>.`);
+    return 2;
+  }
 
   if (verb === 'reply') {
     // Compose FIRST so an invalid reply is rejected before anything is posted.
@@ -506,14 +601,30 @@ export async function runCli(argv, io = {}) {
         verdict: opts.verdict,
         rationale: opts.rationale,
         commit: opts.commit,
+        answers: opts.review,
       });
     } catch (e) {
       error(e.message);
       return 2;
     }
-    if (!opts.comment) {
-      error('--comment <id> is required for reply.\n' + USAGE);
+    if (!opts.comment && !opts.review) {
+      error('reply needs --comment <id> (inline finding) or --review <login> (CHANGES_REQUESTED review).\n' + USAGE);
       return 2;
+    }
+
+    // A CHANGES_REQUESTED review has no thread to nest under, so it is answered
+    // by a PR-level review that names the reviewer — which is exactly what
+    // classifyThreads looks for. Without this path a blocking finding would have
+    // no supported way to be answered at all.
+    if (opts.review) {
+      await gh([
+        '--method', 'POST',
+        `repos/${owner}/${repo}/pulls/${pr}/reviews`,
+        '-f', 'event=COMMENT',
+        '-f', `body=${body}`,
+      ]);
+      log(`Posted a PR-level verdict answering ${opts.review} on PR #${pr}.`);
+      return 0;
     }
 
     await gh([
@@ -541,23 +652,31 @@ export async function runCli(argv, io = {}) {
   }
 
   // Independent reads — run concurrently rather than paying for both round trips in series.
-  let commitsFetchFailed = false;
-  const [{ threads, reviews, prAuthor }, commits] = await Promise.all([
-    fetchPr({ owner, repo, pr, graphql }),
-    gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']).catch((e) => {
-      // Verification is skipped rather than failing the gate, but that must be
-      // visible — a silent skip here would reopen the exact loophole ("agreed"
-      // replies citing an unverifiable commit) this check exists to close.
-      commitsFetchFailed = true;
-      error(`Warning: could not fetch PR commits to verify "agreed" replies (${e.message}). ` +
-        'Commit-citation checks are skipped for this run.');
-      return undefined;
-    }),
-  ]);
-  if (!commitsFetchFailed && Array.isArray(commits) === false) {
-    error('Warning: PR commits fetch returned an unexpected shape; commit-citation checks are skipped for this run.');
+  // Both must succeed: a gate that cannot see the whole PR must fail closed, never
+  // report the success it has not earned.
+  let threads;
+  let reviews;
+  let prAuthor;
+  let commits;
+  try {
+    [{ threads, reviews, prAuthor }, commits] = await Promise.all([
+      fetchPr({ owner, repo, pr, graphql }),
+      gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']).catch((e) => {
+        throw new AuditUnavailableError(
+          `Could not fetch PR commits to verify "agreed" replies (${e.message}).`,
+        );
+      }),
+    ]);
+  } catch (e) {
+    if (!(e instanceof AuditUnavailableError)) throw e;
+    error(`Audit could not complete: ${e.message}`);
+    return 2;
   }
-  const knownShas = Array.isArray(commits) ? commits.map((c) => c.sha).filter(Boolean) : undefined;
+  if (!Array.isArray(commits)) {
+    error('Audit could not complete: the PR commits fetch returned an unexpected shape.');
+    return 2;
+  }
+  const knownShas = commits.map((c) => c.sha).filter(Boolean);
 
   const result = classifyThreads({ threads, reviews, prAuthor, knownShas });
 

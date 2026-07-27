@@ -166,6 +166,21 @@ given name for a SHA, so repeated runs update the gate in place.
 
 **Permissions:** `pull-requests: read`, `checks: write`, `contents: read`.
 
+**Fork limitation (accepted):** for a PR from a fork, the comment and
+review events run from the PR merge commit with a read-only token, so the
+check-run POST fails. The job reports that explicitly rather than passing
+silently, and fork PRs are still audited on every push through
+`pull_request_target: synchronize`, which does carry a writable token.
+Covering fork comment events properly would need a trusted executor (a
+GitHub App or webhook service) — disproportionate for a repo whose PRs
+come from same-repo branches.
+
+**Failing closed:** every path that cannot see the whole PR — a GraphQL
+error, a missing `pullRequest` node, a commits fetch that fails, a thread
+whose replies exceed one page — exits non-zero and publishes a *failed*
+check. A gate that reports success on data it could not read is worse
+than no gate, because it manufactures confidence.
+
 **Output:** the check summary is `renderSummary()` — a table of every
 unanswered finding as `author · file:line · first line of the finding`,
 so the reason for the red is legible without opening the log.
@@ -191,11 +206,17 @@ so the reason for the red is legible without opening the log.
   author, or
 - It is a PR review with state `CHANGES_REQUESTED`.
 
-**Reported, not blocking** — listed in the check summary so nothing is
-invisible, but they do not fail the check:
+**Out of scope** — neither blocking nor listed:
 
 - PR conversation (issue-level) comments.
 - Reviews with state `COMMENTED` or `APPROVED`.
+
+An earlier draft promised to list these in the check summary "so nothing
+is invisible." That promise is withdrawn: the gate never fetches
+issue-level comments, so claiming to report them would have been a lie in
+the doc, and listing every CodeRabbit walkthrough and "LGTM" would bury
+the findings that actually need action. Conversation is conversation; the
+gate covers findings.
 
 This line is drawn where it is because bot summary comments — CodeRabbit
 walkthroughs, "review in progress", rate-limit notices — arrive at the

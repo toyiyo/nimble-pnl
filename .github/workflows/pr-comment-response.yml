@@ -6,17 +6,26 @@ name: PR Comment Response
 # See docs/superpowers/specs/2026-07-27-pr-comment-response-gate-design.md
 
 on:
+  # `edited` and `deleted` matter as much as `created`: a verdict reply that is
+  # edited to remove its verdict, or deleted outright, must turn the gate red
+  # again rather than leaving a stale green behind.
   pull_request_review_comment:
-    types: [created]
+    types: [created, edited, deleted]
   pull_request_review:
-    types: [submitted]
+    types: [submitted, edited, dismissed]
   issue_comment:
-    types: [created]
+    types: [created, edited, deleted]
   # pull_request_target, not pull_request: a fork PR's `pull_request` token is
-  # read-only and cannot create a check run, so the gate would never report on
-  # forks. This job never checks out the repository and never executes PR code —
-  # it reads the API and writes a check run — so the usual pull_request_target
-  # risk does not apply.
+  # read-only and cannot create a check run. This job never checks out the
+  # repository and never executes PR code — it reads the API and writes a check
+  # run — so the usual pull_request_target risk does not apply.
+  #
+  # FORK LIMITATION: for a PR from a fork, the three comment/review events above
+  # run from the PR merge commit with a read-only token, so publishing the check
+  # fails (the job reports that explicitly rather than passing silently). Fork
+  # PRs are still audited on every push via pull_request_target/synchronize,
+  # which does carry a writable token. Same-repo branch PRs — how this repo
+  # actually works — are covered by all four triggers.
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
 
@@ -85,13 +94,13 @@ jobs:
           EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
         run: |
           HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
-          if [ "$EXIT_CODE" = "0" ]; then
-            CONCLUSION=success
-            TITLE="All review findings have a verdict reply"
-          else
-            CONCLUSION=failure
-            TITLE="Review findings are waiting for a verdict reply"
-          fi
+          case "$EXIT_CODE" in
+            0) CONCLUSION=success; TITLE="All review findings have a verdict reply" ;;
+            1) CONCLUSION=failure; TITLE="Review findings are waiting for a verdict reply" ;;
+            # Exit 2 means the audit could not read the PR at all. That is not a
+            # pass: an unreadable PR must never be reported as clean.
+            *) CONCLUSION=failure; TITLE="Audit could not complete — treating as unanswered" ;;
+          esac
           jq -n \
             --arg name "pr-comment-response" \
             --arg head_sha "$HEAD_SHA" \
@@ -101,7 +110,14 @@ jobs:
             '{name: $name, head_sha: $head_sha, status: "completed",
               conclusion: $conclusion,
               output: {title: $title, summary: $summary}}' \
-            | gh api --method POST "repos/$REPO/check-runs" --input -
+            > check.json
+          if ! gh api --method POST "repos/$REPO/check-runs" --input check.json; then
+            # Expected for a fork PR on comment/review events: those run with a
+            # read-only token. Say so plainly instead of failing cryptically —
+            # the pull_request_target push audit still covers the PR.
+            echo "::error::Could not publish the pr-comment-response check run. If this PR is from a fork, comment/review events carry a read-only token; the check is published on push instead."
+            exit 1
+          fi
 
       - name: Fail the job when findings are unanswered
         if: steps.audit.outputs.exit_code != '0'

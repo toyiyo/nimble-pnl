@@ -648,6 +648,9 @@ reasoning must live on the PR, not only in a local artifact:
 node dev-tools/pr-triage.js list --pr <PR>     # unanswered findings + their comment ids
 node dev-tools/pr-triage.js reply --pr <PR> --comment <id> \
   --verdict agreed --commit <sha> --rationale "what changed and why"
+# CHANGES_REQUESTED reviews have no thread — answer them by reviewer login:
+node dev-tools/pr-triage.js reply --pr <PR> --review <reviewer-login> \
+  --verdict pushed-back --rationale "why we disagree"
 ```
 
 - **Bug / security / correctness / contract drift** → Fix it, commit naming the

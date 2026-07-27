@@ -202,6 +202,19 @@ describe('ViewModeProvider / useViewMode', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/employee/schedule');
   });
 
+  it('enterWorkMode() stashes pathname + search + hash so filters/tab selection survive the round trip', () => {
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: { restaurant_id: 'rest-1', role: 'owner' },
+    });
+    mockUseCurrentEmployee.mockReturnValue({ currentEmployee: eligibleEmployee, loading: false });
+
+    renderHarness('/reports?tab=pnl&range=week#section-2');
+    fireEvent.click(screen.getByRole('button', { name: 'Enter' }));
+
+    const snapshot = getSnapshot();
+    expect(snapshot.returnPath).toBe('/reports?tab=pnl&range=week#section-2');
+  });
+
   it('enterWorkMode() is a no-op while already in (effective) work mode — does not clobber the stashed returnPath', () => {
     // Regression: clicking "My Work" again while already in work mode (e.g.
     // from an employee-only page reachable via the persona card, which is

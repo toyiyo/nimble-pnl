@@ -88,9 +88,11 @@ export function ViewModeProvider({ children }: ViewModeProviderProps) {
     // employee-page path as returnPath, clobbering the original admin route
     // that exitWorkMode should return to.
     if (!restaurantId || viewMode === 'work') return;
-    storeEnterWorkMode(restaurantId, location.pathname);
+    // Stash pathname + search + hash (not just pathname) so filters, tab
+    // selection, etc. survive the round trip back via exitWorkMode().
+    storeEnterWorkMode(restaurantId, location.pathname + location.search + location.hash);
     navigate('/employee/schedule');
-  }, [restaurantId, location.pathname, navigate, viewMode]);
+  }, [restaurantId, location.pathname, location.search, location.hash, navigate, viewMode]);
 
   const exitWorkMode = useCallback(() => {
     // Symmetric with enterWorkMode's re-entry guard: if the effective

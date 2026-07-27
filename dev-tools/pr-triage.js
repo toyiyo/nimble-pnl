@@ -637,6 +637,18 @@ export async function runCli(argv, io = {}) {
       error('reply takes --comment OR --review, not both.\n' + USAGE);
       return 2;
     }
+    // A valueless flag is `true` (see parseArgs), which would otherwise build a
+    // URL like /comments/true/replies, or a mention of "@true".
+    if (opts.comment && !/^\d+$/.test(String(opts.comment))) {
+      error('--comment needs a numeric review-comment id.\n' + USAGE);
+      return 2;
+    }
+    // `opts.review === true` is the discriminator, not the string "true": a
+    // valueless flag stringifies to "true", which would pass a login pattern.
+    if (opts.review === true || (opts.review && !/^[\w.-]+$/u.test(String(opts.review).trim().replace(/^@/, '')))) {
+      error('--review needs a reviewer login.\n' + USAGE);
+      return 2;
+    }
     // Compose before posting so an invalid reply is rejected while nothing is public.
     let body;
     try {

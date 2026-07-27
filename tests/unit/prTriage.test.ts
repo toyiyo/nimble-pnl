@@ -823,6 +823,42 @@ describe('pr-triage: runCli reply', () => {
     expect(io.out.join('\n')).toMatch(/reply posted/i);
   });
 
+  it('CRITICAL: rejects a valueless --comment instead of posting to /comments/true', async () => {
+    const posted: string[][] = [];
+    const io = fakeIo({ onPost: (args: string[]) => { posted.push(args); return {}; } });
+    const code = await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--comment', '--verdict', 'ignored',
+       '--rationale', 'Style nit, house convention differs.'],
+      io,
+    );
+    expect(code).toBe(2);
+    expect(posted).toHaveLength(0);
+    expect(io.out.join('\n')).toMatch(/--comment needs a numeric/i);
+  });
+
+  it('rejects a non-numeric --comment', async () => {
+    const io = fakeIo();
+    const code = await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--comment', 'abc', '--verdict', 'ignored',
+       '--rationale', 'Style nit, house convention differs.'],
+      io,
+    );
+    expect(code).toBe(2);
+  });
+
+  it('CRITICAL: rejects a valueless --review instead of mentioning "@true"', async () => {
+    const posted: string[][] = [];
+    const io = fakeIo({ onPost: (args: string[]) => { posted.push(args); return {}; } });
+    const code = await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--review', '--verdict', 'ignored',
+       '--rationale', 'Style nit, house convention differs.'],
+      io,
+    );
+    expect(code).toBe(2);
+    expect(posted).toHaveLength(0);
+    expect(io.out.join('\n')).toMatch(/--review needs a reviewer login/i);
+  });
+
   it('exits 2 when reply is given neither --comment nor --review', async () => {
     const io = fakeIo();
     const code = await runCli(

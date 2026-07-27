@@ -48,7 +48,7 @@ scanning.
 | Decision | Choice |
 |---|---|
 | Entry point | Dedicated "Count" button on each card (card tap still = Edit) |
-| Default mode | `add` (add to existing stock), matching the scan default; dialog still lets the user switch to reconcile |
+| Default mode | `add` (add to existing stock), matching the scan default. **Corrected during PR review (see Amendment below):** the dialog did *not* let the user switch — a Count Mode toggle was added so it now does |
 | Scope | Products grid only |
 | Placement | **A new full-width `CardFooter`** below the stock/pricing block — NOT the top-right 7×7 ghost-icon cluster (which is hard-capped `max-w-[120px]` below `sm` and would break on the reported iPhone/Safari device) |
 | Button style | The CLAUDE.md **primary** treatment (`bg-foreground text-background hover:bg-foreground/90`), not a subtle tint — the feature exists to make the control *findable* |
@@ -196,6 +196,39 @@ SQL/pgTAP: none (no schema or RPC change — writes go through the existing
   (a broader refactor of code this feature doesn't otherwise touch), which conflicts with
   the tight scope of a targeted bugfix. Filed as follow-up #3 below. This is the
   reviewer-approved "accept as pre-existing debt, called out explicitly" path.
+
+## Amendment (PR #658 review) — Count Mode toggle
+
+The original design asserted that the dialog "still lets the user switch to
+reconcile." **That was false.** Verification during PR review found:
+
+- `QuickInventoryDialog` took `mode` as a **read-only** prop — no toggle, setter
+  or callback existed; every reference was a read.
+- `setScanMode` was called in exactly **one** place app-wide (the new Count
+  handler). It was initialised to `'add'` and never otherwise changed, so
+  `reconcile` was **unreachable dead code** for the scan path too (pre-existing).
+
+Consequence: a control labelled "Count" — which invites "count what's on the
+shelf" — would silently compute `currentStock + quantity`. A user entering a
+physical on-hand total of 12 against a stored 5 would write **17**, inflating
+inventory in a system where data accuracy is critical.
+
+**Resolution (product owner decision):** add the toggle rather than change the
+default or ship as-is.
+
+- `QuickInventoryDialog` gains an **optional** `onModeChange` prop. When supplied,
+  it renders an *Add to stock / Set total* `radiogroup` (controlled — the parent
+  keeps owning `mode`, so `handleQuickInventorySave` and `buildQuickInventoryAudit`
+  retain a single source of truth), plus a hint line describing the write.
+- The prop is **optional** deliberately: `ReconciliationItemDetail`,
+  `ReconciliationSession` and `ScanSessionView` all hardcode `mode="add"` in an
+  "add a find" context where a toggle would be wrong. They omit it and are
+  visually unchanged.
+- `Inventory.tsx` passes `setScanMode`, and now also resets to `'add'` on the
+  **scan** path so a prior manual "Set total" choice cannot leak into a later scan.
+
+Default remains `'add'` as originally agreed; `reconcile` is now reachable from
+both the scan and manual entry points.
 
 ## Risks & Mitigations
 

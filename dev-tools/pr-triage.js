@@ -58,3 +58,57 @@ export function composeReply({ verdict, rationale, commit } = {}) {
   const suffix = verdict === 'agreed' ? ` Fixed in \`${commit.trim()}\`.` : '';
   return `${spec.marker}\n**${spec.display}** — ${text}${suffix}`;
 }
+
+/**
+ * Hand-typed aliases, so a human replying in the GitHub UI is never blocked
+ * by having to remember the HTML marker. Longest first: "pushed back" must be
+ * tried before any shorter prefix of it could match.
+ */
+const VERDICT_ALIASES = [
+  ['pushed back', 'pushed-back'],
+  ['pushed-back', 'pushed-back'],
+  ['declined', 'pushed-back'],
+  ['agreed', 'agreed'],
+  ['ignored', 'ignored'],
+];
+
+/**
+ * Extract a verdict and its rationale from a reply body.
+ * @param {string} body
+ * @returns {{verdict: string, rationale: string} | null} null when the body carries no verdict
+ */
+export function parseVerdict(body) {
+  if (typeof body !== 'string' || !body.trim()) return null;
+
+  // Preferred form: the machine marker, wherever it appears in the body.
+  for (const spec of Object.values(VERDICTS)) {
+    if (body.includes(spec.marker)) {
+      const rationale = stripToRationale(body.replace(spec.marker, ''), spec.display);
+      return rationale ? { verdict: spec.key, rationale } : null;
+    }
+  }
+
+  // Fallback: a hand-typed reply whose FIRST line opens with a verdict word.
+  // Anchoring to the start is what stops "everyone agreed: ..." from matching.
+  const firstLine = body.trim().split('\n')[0].trim();
+  const plain = firstLine.replace(/\*\*/g, '').replace(/[✅↩️⏭️]/gu, '').trim();
+  for (const [alias, key] of VERDICT_ALIASES) {
+    const pattern = new RegExp(`^${alias}\\s*(?::|—|–|-)\\s*(.+)$`, 'iu');
+    const match = plain.match(pattern);
+    if (match) {
+      const rationale = match[1].trim();
+      return rationale.length >= MIN_RATIONALE_LENGTH ? { verdict: key, rationale } : null;
+    }
+  }
+
+  return null;
+}
+
+/** Pull the human rationale out of a marker-form body. */
+function stripToRationale(body, display) {
+  return body
+    .replace(/\*\*/g, '')
+    .replace(display, '')
+    .replace(/^[\s—–-]+/u, '')
+    .trim();
+}

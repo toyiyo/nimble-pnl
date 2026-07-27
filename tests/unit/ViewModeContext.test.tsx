@@ -168,6 +168,23 @@ describe('ViewModeProvider / useViewMode', () => {
     expect(screen.getByTestId('viewMode')).toHaveTextContent('work');
   });
 
+  it('stays work optimistically when selectedRestaurant is null AND the (disabled) employee query reports loading=false', () => {
+    // Real-world shape: useCurrentEmployee(null) is a `enabled: !!restaurantId`
+    // React Query query. A *disabled* query never fetches, so React Query v5
+    // reports isLoading===false (isLoading = isPending && isFetching) even
+    // though no data has ever resolved. The remount-timing window right after
+    // enterWorkMode()'s navigate() has selectedRestaurant briefly null — this
+    // must NOT be treated as confirmed ineligibility just because
+    // employeeLoading happens to be false.
+    storeEnterWorkMode('rest-1', '/dashboard');
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: null });
+    mockUseCurrentEmployee.mockReturnValue({ currentEmployee: null, loading: false });
+
+    renderHarness();
+
+    expect(screen.getByTestId('viewMode')).toHaveTextContent('work');
+  });
+
   it('enterWorkMode() stashes the current path, sets store to work, and navigates to /employee/schedule', () => {
     mockUseRestaurantContext.mockReturnValue({
       selectedRestaurant: { restaurant_id: 'rest-1', role: 'owner' },

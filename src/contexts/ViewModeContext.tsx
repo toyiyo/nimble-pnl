@@ -70,7 +70,13 @@ export function ViewModeProvider({ children }: ViewModeProviderProps) {
   const storeSaysWork = store.mode === 'work' && store.restaurantId != null;
   const confirmedWrongRestaurant =
     !!selectedRestaurant && selectedRestaurant.restaurant_id !== store.restaurantId;
-  const confirmedIneligible = !employeeLoading && !canUseWorkView;
+  // `useCurrentEmployee` is a React Query `enabled: !!restaurantId` query. A
+  // *disabled* query never fetches, so `isLoading` (isPending && isFetching)
+  // reports false even though eligibility has never actually resolved. Guard
+  // with `!!selectedRestaurant` so the brief remount window — where
+  // selectedRestaurant is null and the query is therefore disabled — is never
+  // mistaken for a confirmed "not eligible" result.
+  const confirmedIneligible = !!selectedRestaurant && !employeeLoading && !canUseWorkView;
 
   const viewMode: ViewMode =
     storeSaysWork && !confirmedWrongRestaurant && !confirmedIneligible ? 'work' : 'admin';

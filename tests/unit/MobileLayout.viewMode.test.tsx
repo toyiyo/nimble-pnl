@@ -107,4 +107,36 @@ describe('MobileLayout – view-mode wiring', () => {
 
     expect(mocks.exitWorkMode).toHaveBeenCalledTimes(1);
   });
+
+  it('renders the banner and the tab bar inside the same fixed bottom stack', () => {
+    // Both `MobileTabBar` and the mobile `PersonalViewBanner` must share one
+    // `position: fixed; bottom: 0` ancestor so they stack in normal flow
+    // (banner directly above the bar) instead of each independently pinning
+    // to the viewport bottom and overlapping one another.
+    mocks.viewMode = 'work';
+    renderLayout();
+
+    const banner = screen.getByRole('status');
+    const tabBar = screen.getByRole('navigation', { name: /employee navigation/i });
+
+    expect(banner.parentElement).toBe(tabBar.parentElement);
+    expect(banner.parentElement?.className).toMatch(/\bfixed\b/);
+    expect(banner.parentElement?.className).toMatch(/\bbottom-0\b/);
+
+    // The tab bar itself must not carry its own fixed positioning anymore
+    // (the wrapper owns it) — otherwise it would still pin independently.
+    expect(tabBar.className).not.toMatch(/\bfixed\b/);
+  });
+
+  it('reserves extra bottom padding for the banner in work mode', () => {
+    // In admin mode, `<main>` only needs to clear the tab bar (5rem, see
+    // MobileLayout.test.tsx). In work mode the banner also stacks above the
+    // tab bar, so the reserve must grow — otherwise the last bit of page
+    // content is hidden behind the banner+tab-bar stack.
+    mocks.viewMode = 'work';
+    renderLayout();
+
+    const main = screen.getByRole('main');
+    expect(main.style.paddingBottom).toContain('7.5rem');
+  });
 });

@@ -67,12 +67,15 @@ This gives us exactly the desired lifecycle for free:
 > the natural fit for the remount-driven provider. No secrets or PII are stored.
 
 **`getSnapshot()` reference stability (critical `useSyncExternalStore` rule).**
-The store keeps a *single* mutable module-level object. `getSnapshot()` returns
-that same reference every call; `enterWorkMode`/`exitWorkMode`/restaurant-change
-mutate its fields **in place** and then call `emitChange()` to notify subscribers.
-`getSnapshot()` must NEVER allocate (`return { ...state }` is a bug — it makes
-React see a new snapshot every render and loops/throws "getSnapshot should be
-cached"). No `getServerSnapshot` is needed — this is Vite CSR, not SSR.
+The store keeps a module-level `snapshot` variable. `getSnapshot()` just
+returns it — never allocates — so repeated reads between mutations stay
+reference-equal. `enterWorkMode`/`exitWorkMode`/restaurant-change *replace*
+`snapshot` with a new object (`snapshot = { ... }`) and then call `emitChange()`
+to notify subscribers. `getSnapshot()` must NEVER allocate (`return { ...state }`
+inside the getter is a bug — it makes React see a new snapshot every render and
+loops/throws "getSnapshot should be cached"); the allocation belongs in the
+mutators, once per real state change, so React's `Object.is` check correctly
+detects it. No `getServerSnapshot` is needed — this is Vite CSR, not SSR.
 
 The provider derives the **effective** mode so a stale entry can never leak
 across restaurants or past eligibility — but **optimistically**, to avoid a
@@ -211,7 +214,7 @@ Captured from the approved prototype (`scratchpad/dual-mode-transition.html`). M
 Frontend reviewer (Supabase reviewer skipped — no DB/RLS/edge-function/SQL surface).
 All folded into this doc:
 
-- **[critical] `getSnapshot()` reference stability** → folded into "State model" (single mutable object, in-place mutation, never allocate in getter).
+- **[critical] `getSnapshot()` reference stability** → folded into "State model" (getter never allocates; mutators swap in a new snapshot object and notify).
 - **[major] chrome flash on entry remount** → folded: optimistic `effectiveViewMode` derivation that only downgrades on *confirmed* mismatch/ineligibility.
 - **[major] `slate-*` raw colors violate No-Direct-Colors + shadcn `dark:` ban** → folded: semantic `--personal-view*` token trio wired like `sidebar`.
 - **[major] `role="radiogroup"` + `aria-pressed` non-conforming** → folded: two `aria-pressed` toggle buttons in `role="group"` w/ `aria-label`.

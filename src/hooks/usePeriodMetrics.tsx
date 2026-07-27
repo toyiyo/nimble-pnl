@@ -92,10 +92,10 @@ export function usePeriodMetrics(
     }
     
     const netRevenue = revenueData.totals.net_revenue;
-  const foodCost = totalFoodCost;
-  const pendingLaborCost = pendingLaborCostRaw;
-  const actualLaborCost = actualLaborCostRaw;
-  const laborCost = totalLaborCost;
+    const foodCost = totalFoodCost;
+    const pendingLaborCost = pendingLaborCostRaw;
+    const actualLaborCost = actualLaborCostRaw;
+    const laborCost = totalLaborCost;
     const primeCost = foodCost + laborCost;
     
     // Calculate days in period (inclusive)
@@ -112,15 +112,15 @@ export function usePeriodMetrics(
       
       foodCost,
       laborCost,
-  pendingLaborCost,
-  actualLaborCost,
-  laborBasis,
+      pendingLaborCost,
+      actualLaborCost,
+      laborBasis,
       primeCost,
       
       foodCostPercentage: netRevenue > 0 ? (foodCost / netRevenue) * 100 : 0,
       laborCostPercentage: netRevenue > 0 ? (laborCost / netRevenue) * 100 : 0,
-  pendingLaborCostPercentage: netRevenue > 0 ? (pendingLaborCost / netRevenue) * 100 : 0,
-  actualLaborCostPercentage: netRevenue > 0 ? (actualLaborCost / netRevenue) * 100 : 0,
+      pendingLaborCostPercentage: netRevenue > 0 ? (pendingLaborCost / netRevenue) * 100 : 0,
+      actualLaborCostPercentage: netRevenue > 0 ? (actualLaborCost / netRevenue) * 100 : 0,
       primeCostPercentage: netRevenue > 0 ? (primeCost / netRevenue) * 100 : 0,
       grossProfit: netRevenue - primeCost,
       profitMargin: netRevenue > 0 ? ((netRevenue - primeCost) / netRevenue) * 100 : 0,

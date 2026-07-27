@@ -108,87 +108,62 @@ serve(async (req) => {
             ? `https://financialconnections.stripe.com/v1/institution/${account.institution_name.toLowerCase().replace(/\s+/g, '-')}/logo`
             : null);
 
-        // Check if this account already exists (reconnection case)
-        const { data: existingBank, error: checkError } = await supabaseAdmin
-          .from('connected_banks')
-          .select('id, status')
-          .eq('restaurant_id', restaurantId)
-          .eq('stripe_financial_account_id', account.id)
-          .maybeSingle();
+        // Identity-safe reconnect matching (design §4.2), identical to the
+        // account.created webhook path: relink the connected_banks row matching
+        // (restaurant, institution, account_mask) if one exists in a
+        // reconnectable state, else insert a new row — conflict-aware for
+        // double-submitted Link flows. This converges on the same row and
+        // clears deactivated_at regardless of whether this function or the
+        // webhook runs first. The previous lookup here keyed on
+        // stripe_financial_account_id = account.id, but Stripe ROTATES the fca_
+        // on reconnect, so it missed the pre-reconnect row, fell through to an
+        // INSERT, and left the old row's deactivated_at set — keeping the bank
+        // stuck requires_reauth after a completed reconnect (incident 2026-07-24).
+        const { data: reconnectData, error: reconnectError } = await supabaseAdmin
+          .rpc('reconnect_connected_bank', {
+            p_restaurant_id: restaurantId,
+            p_stripe_financial_account_id: account.id,
+            p_institution_name: account.institution_name,
+            p_institution_logo_url: institutionLogoUrl,
+            p_account_mask: account.last4 ?? null,
+          })
+          .single();
 
-        if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = no rows returned
-          console.error(`[VERIFY-SESSION] Error checking existing bank:`, checkError);
-          throw checkError;
+        if (reconnectError || !reconnectData) {
+          console.error(`[VERIFY-SESSION] Error reconnecting bank:`, reconnectError);
+          throw reconnectError ?? new Error('reconnect_connected_bank returned no row');
         }
 
-        let bankId: string;
+        const reconnectRow = reconnectData as { id: string; created_at: string; connected_at: string };
+        const bankId: string = reconnectRow.id;
+        // Best-effort telemetry flag for the response only (not used for logic):
+        // a fresh insert stamps created_at == connected_at, a relink keeps the
+        // original (older) created_at while connected_at is now().
+        const isReconnection =
+          new Date(reconnectRow.connected_at).getTime() -
+            new Date(reconnectRow.created_at).getTime() > 2000;
+        console.log(`[VERIFY-SESSION] ${isReconnection ? 'Reconnected' : 'Connected'} bank ${bankId}`);
 
-        if (existingBank) {
-          // Reconnection - update existing record
-          console.log(`[VERIFY-SESSION] Reconnecting existing bank: ${existingBank.id}`);
-          
-          const { error: updateError } = await supabaseAdmin
-            .from('connected_banks')
-            .update({
-              status: 'connected',
-              connected_at: new Date().toISOString(),
-              disconnected_at: null,
-              sync_error: null,
-              institution_name: account.institution_name,
-              institution_logo_url: institutionLogoUrl,
-            })
-            .eq('id', existingBank.id);
-
-          if (updateError) {
-            console.error(`[VERIFY-SESSION] Error updating bank:`, updateError);
-            throw updateError;
-          }
-
-          bankId = existingBank.id;
-        } else {
-          // New connection - create new record
-          console.log(`[VERIFY-SESSION] Creating new bank connection`);
-          
-          const { data: newBank, error: insertError } = await supabaseAdmin
-            .from('connected_banks')
-            .insert({
-              restaurant_id: restaurantId,
-              stripe_financial_account_id: account.id,
-              institution_name: account.institution_name,
-              institution_logo_url: institutionLogoUrl,
-              status: 'connected',
-              connected_at: new Date().toISOString(),
-            })
-            .select('id')
-            .single();
-
-          if (insertError) {
-            console.error(`[VERIFY-SESSION] Error creating bank:`, insertError);
-            throw insertError;
-          }
-
-          bankId = newBank.id;
-        }
-
-        // Store balance information if available
+        // Store balance information if available, via the identity-safe RPC.
+        // One Stripe balance row per bank (partial unique index); the RPC rotates
+        // the fca_ in place on reconnect instead of inserting a duplicate
+        // (incident 2026-07-24). PostgREST cannot express the partial index's
+        // WHERE predicate, so this must be an RPC rather than a REST upsert.
         if (account.balance) {
           console.log(`[VERIFY-SESSION] Storing balance for bank ${bankId}`);
-          
+
           const { error: balanceError } = await supabaseAdmin
-            .from('bank_account_balances')
-            .upsert({
-              connected_bank_id: bankId,
-              stripe_financial_account_id: account.id,
-              account_name: account.display_name,
-              account_type: account.subcategory || account.category,
-              account_mask: account.last4,
-              current_balance: account.balance.current?.[Object.keys(account.balance.current)[0]] || 0,
-              available_balance: account.balance.cash?.available?.[Object.keys(account.balance.cash.available)[0]] || null,
-              currency: Object.keys(account.balance.current || {})[0]?.toUpperCase() || 'USD',
-              as_of_date: new Date(account.balance.as_of * 1000).toISOString(),
-              is_active: true,
-            }, {
-              onConflict: 'stripe_financial_account_id',
+            .rpc('upsert_stripe_bank_balance', {
+              p_connected_bank_id: bankId,
+              p_stripe_financial_account_id: account.id,
+              p_account_name: account.display_name,
+              p_account_type: account.subcategory || account.category,
+              p_account_mask: account.last4,
+              p_current_balance: account.balance.current?.[Object.keys(account.balance.current)[0]] || 0,
+              p_available_balance: account.balance.cash?.available?.[Object.keys(account.balance.cash.available)[0]] ?? null,
+              p_currency: Object.keys(account.balance.current || {})[0]?.toUpperCase() || 'USD',
+              p_is_active: true,
+              p_as_of_date: new Date(account.balance.as_of * 1000).toISOString(),
             });
 
           if (balanceError) {
@@ -234,7 +209,7 @@ serve(async (req) => {
           accountId: account.id,
           displayName: account.display_name,
           status: 'success',
-          isReconnection: !!existingBank,
+          isReconnection,
         });
 
       } catch (accountError) {

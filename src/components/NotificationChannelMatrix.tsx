@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertCircle,
   ArrowLeftRight,
+  Banknote,
   CalendarClock,
   CalendarDays,
   KeyRound,
@@ -26,12 +27,13 @@ interface NotificationChannelMatrixProps {
   restaurantId: string;
 }
 
-const GROUP_ORDER: NotificationGroup[] = ['Scheduling', 'Trades', 'Time off', 'Access'];
+const GROUP_ORDER: NotificationGroup[] = ['Scheduling', 'Trades', 'Time off', 'Access', 'Banking'];
 const GROUP_ICON: Record<NotificationGroup, LucideIcon> = {
   Scheduling: CalendarDays,
   Trades: ArrowLeftRight,
   'Time off': CalendarClock,
   Access: KeyRound,
+  Banking: Banknote,
 };
 const CHANNEL_LABEL: Record<NotificationChannel, string> = { email: 'Email', push: 'Push' };
 const CHANNEL_ICON: Record<NotificationChannel, LucideIcon> = { email: Mail, push: Smartphone };

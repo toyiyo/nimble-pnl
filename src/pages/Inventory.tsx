@@ -49,6 +49,7 @@ import { cn } from '@/lib/utils';
 import { formatInventoryLevel } from '@/lib/inventoryDisplay';
 import { exportToCSV, generateCSVFilename } from '@/utils/csvExport';
 import { generateTablePDF } from '@/utils/pdfExport';
+import { buildQuickInventoryAudit, type QuickEntrySource } from '@/utils/quickInventoryAudit';
 
 export const Inventory: React.FC = () => {
   const navigate = useNavigate();
@@ -85,6 +86,7 @@ export const Inventory: React.FC = () => {
   const [showQuickInventoryDialog, setShowQuickInventoryDialog] = useState(false);
   const [quickInventoryProduct, setQuickInventoryProduct] = useState<Product | null>(null);
   const [scanMode, setScanMode] = useState<'add' | 'reconcile'>('add');
+  const [quickEntrySource, setQuickEntrySource] = useState<QuickEntrySource>('scan');
   
   // Filter and sorting state
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -103,11 +105,15 @@ export const Inventory: React.FC = () => {
     }
   }, [searchParams, setSearchParams]);
 
-  // Handler to close quick inventory dialog and clear product state
+  // Handler to close quick inventory dialog and clear product state.
+  // Resetting scanMode here (not only at each open site) keeps "a session starts
+  // in 'add' mode" a single invariant, so a future entry point that forgets to
+  // reset cannot inherit a leftover 'reconcile' selection.
   const handleCloseQuickInventoryDialog = (open: boolean) => {
     setShowQuickInventoryDialog(open);
     if (!open) {
       setQuickInventoryProduct(null);
+      setScanMode('add');
     }
   };
   const [reconciliationView, setReconciliationView] = useState<'history' | 'session' | 'summary'>('history');
@@ -489,7 +495,10 @@ export const Inventory: React.FC = () => {
     const existingProduct = await findProductByGtin(gtin);
     
     if (existingProduct) {
-      // Use quick inventory dialog for scanning existing products
+      // Use quick inventory dialog for scanning existing products.
+      // Reset the mode so a prior manual "Set total" choice never leaks into a scan.
+      setScanMode('add');
+      setQuickEntrySource('scan');
       setQuickInventoryProduct(existingProduct);
       setShowQuickInventoryDialog(true);
       return;
@@ -950,23 +959,27 @@ export const Inventory: React.FC = () => {
 
     const currentStock = quickInventoryProduct.current_stock || 0;
     const costPerUnit = quickInventoryProduct.cost_per_unit || 0;
-    
+
     let finalStock: number;
-    // All quick scan updates should be adjustments
+    // All quick inventory updates (scan or manual count) should be adjustments
     // Only receipt uploads should create purchases
-    const transactionType: 'adjustment' = 'adjustment';
-    let reason: string;
-    
+    const transactionType = 'adjustment' as const;
+
     if (scanMode === 'add') {
       // Add mode: add to existing stock
       finalStock = currentStock + quantity;
-      reason = `Adjustment - Added ${quantity} via quick scan`;
     } else {
-      // Reconcile mode: set total stock to scanned quantity
+      // Reconcile mode: set total stock to the entered quantity
       finalStock = quantity;
-      reason = `Inventory reconciliation - Set to ${quantity} via quick scan`;
     }
-    
+
+    const { reason, reference } = buildQuickInventoryAudit(
+      quickEntrySource,
+      scanMode,
+      quantity,
+      Date.now(),
+    );
+
     const success = await updateProductStockWithAudit(
       selectedRestaurant.restaurant_id,
       quickInventoryProduct.id,
@@ -975,7 +988,7 @@ export const Inventory: React.FC = () => {
       costPerUnit,
       transactionType,
       reason,
-      `quick_scan_${Date.now()}`
+      reference
     );
     
     if (success) {
@@ -1714,6 +1727,12 @@ export const Inventory: React.FC = () => {
                     setSelectedProduct(product);
                     setShowUpdateDialog(true);
                   }}
+                  onCountProduct={(product) => {
+                    setScanMode('add');
+                    setQuickEntrySource('manual');
+                    setQuickInventoryProduct(product);
+                    setShowQuickInventoryDialog(true);
+                  }}
                   onWasteProduct={(product) => {
                     setWasteProduct(product);
                     setShowWasteDialog(true);
@@ -1973,6 +1992,7 @@ export const Inventory: React.FC = () => {
           onOpenChange={handleCloseQuickInventoryDialog}
           product={quickInventoryProduct}
           mode={scanMode}
+          onModeChange={setScanMode}
           onSave={handleQuickInventorySave}
           restaurantId={selectedRestaurant?.restaurant_id || null}
         />

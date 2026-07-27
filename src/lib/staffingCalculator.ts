@@ -26,15 +26,6 @@ export function computeMinStaffFromCrew(minCrew: MinCrew | null, fallbackMinStaf
   return sum > 0 ? sum : fallbackMinStaff;
 }
 
-export function calculateRecommendedStaff(
-  projectedSales: number,
-  targetSplh: number,
-  minStaff: number,
-): number {
-  if (projectedSales <= 0 || targetSplh <= 0) return minStaff;
-  return Math.max(Math.ceil(projectedSales / targetSplh), minStaff);
-}
-
 export function checkLaborGuardrail(
   staffCount: number,
   avgHourlyRateCents: number,
@@ -57,7 +48,9 @@ export function buildHourlyRecommendations(
   },
 ): HourlyStaffingRecommendation[] {
   return hourlySales.map(({ hour, avgSales }) => {
-    const recommendedStaff = calculateRecommendedStaff(avgSales, params.targetSplh, params.minStaff);
+    const demand =
+      avgSales > 0 && params.targetSplh > 0 ? Math.ceil(avgSales / params.targetSplh) : 0;
+    const recommendedStaff = Math.max(demand, params.minStaff);
     const estimatedLaborCost = recommendedStaff * (params.avgHourlyRateCents / 100);
     const laborPct = avgSales > 0 ? (estimatedLaborCost / avgSales) * 100 : 0;
     const overTarget = checkLaborGuardrail(
@@ -69,6 +62,7 @@ export function buildHourlyRecommendations(
     return {
       hour,
       projectedSales: avgSales,
+      demand,
       recommendedStaff,
       estimatedLaborCost,
       laborPct,

@@ -232,6 +232,9 @@ verify_jwt = false
 [functions.trial-expiry-emails]
 verify_jwt = false
 
+[functions.bank-reauth-notices]
+verify_jwt = false
+
 [functions.unsubscribe-email]
 verify_jwt = false
 

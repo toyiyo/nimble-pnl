@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { Package, Check, Plus, Minus, X, Divide } from 'lucide-react';
 import { Product } from '@/hooks/useProducts';
 import { LocationCombobox } from '@/components/LocationCombobox';
@@ -12,16 +13,37 @@ interface QuickInventoryDialogProps {
   onOpenChange: (open: boolean) => void;
   product: Product;
   mode: 'add' | 'reconcile';
+  /**
+   * When provided, the dialog renders a Count Mode toggle and reports the
+   * user's choice back to the parent (controlled — the parent owns `mode`).
+   * Omit it for flows where the mode is fixed by context (e.g. adding a find
+   * during a reconciliation session), which keeps the toggle hidden.
+   */
+  onModeChange?: (mode: 'add' | 'reconcile') => void;
   onSave: (quantity: number, location?: string) => Promise<void>;
   currentTotal?: number;
   restaurantId: string | null;
 }
+
+const MODE_OPTIONS = [
+  {
+    value: 'add' as const,
+    label: 'Add to stock',
+    hint: 'Adds the entered amount to the current stock.',
+  },
+  {
+    value: 'reconcile' as const,
+    label: 'Set total',
+    hint: 'Replaces the current stock with the entered amount.',
+  },
+];
 
 export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
   open,
   onOpenChange,
   product,
   mode,
+  onModeChange,
   onSave,
   currentTotal,
   restaurantId
@@ -123,6 +145,44 @@ export const QuickInventoryDialog: React.FC<QuickInventoryDialogProps> = ({
               </div>
             )}
           </div>
+
+          {/* Count Mode toggle — only when the parent opts in via onModeChange.
+              Uses ToggleGroup (Radix) rather than hand-rolled radio buttons so
+              roving tabindex and arrow-key navigation come for free. */}
+          {onModeChange && (
+            <div>
+              <span
+                id="count-mode-label"
+                className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+              >
+                Count Mode
+              </span>
+              <ToggleGroup
+                type="single"
+                value={mode}
+                // Radix emits '' when the active item is re-clicked (deselect);
+                // ignore that so mode can never become empty.
+                onValueChange={(value) => {
+                  if (value === 'add' || value === 'reconcile') onModeChange(value);
+                }}
+                aria-labelledby="count-mode-label"
+                className="mt-2 grid grid-cols-2 gap-1 p-1 rounded-lg bg-muted/50 border border-border/40"
+              >
+                {MODE_OPTIONS.map((option) => (
+                  <ToggleGroupItem
+                    key={option.value}
+                    value={option.value}
+                    className="h-9 rounded-md text-[13px] font-medium transition-colors data-[state=on]:bg-foreground data-[state=on]:text-background"
+                  >
+                    {option.label}
+                  </ToggleGroupItem>
+                ))}
+              </ToggleGroup>
+              <p className="text-[12px] text-muted-foreground mt-1.5">
+                {MODE_OPTIONS.find((option) => option.value === mode)?.hint}
+              </p>
+            </div>
+          )}
 
           {/* Current Total (if adding finds) */}
           {mode === 'add' && currentTotal !== undefined && (

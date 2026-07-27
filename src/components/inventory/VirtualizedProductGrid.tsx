@@ -1,12 +1,12 @@
 import React, { useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Edit, Trash, Trash2, ArrowRightLeft, ChefHat } from 'lucide-react';
+import { AlertTriangle, Calculator, Edit, Trash, Trash2, ArrowRightLeft, ChefHat } from 'lucide-react';
 import { LazyImage } from '@/components/ui/lazy-image';
 import { InventoryValueBadge } from '@/components/InventoryValueBadge';
 import { Product } from '@/hooks/useProducts';
@@ -42,13 +42,14 @@ interface VirtualizedProductGridProps {
   recipesByProduct: ProductRecipeMap;
   canDeleteProducts: boolean;
   onEditProduct: (product: Product) => void;
+  onCountProduct: (product: Product) => void;
   onWasteProduct: (product: Product) => void;
   onTransferProduct: (product: Product) => void;
   onDeleteProduct: (product: Product) => void;
 }
 
 // Estimated row height - will be measured dynamically
-const ESTIMATED_ROW_HEIGHT = 320;
+const ESTIMATED_ROW_HEIGHT = 380;
 const OVERSCAN = 3;
 
 /**
@@ -86,6 +87,7 @@ const ProductCard: React.FC<{
   recipes?: RecipeIngredient[];
   canDelete: boolean;
   onEdit: () => void;
+  onCount: () => void;
   onWaste: () => void;
   onTransfer: () => void;
   onDelete: () => void;
@@ -95,6 +97,7 @@ const ProductCard: React.FC<{
   recipes,
   canDelete,
   onEdit,
+  onCount,
   onWaste,
   onTransfer,
   onDelete,
@@ -284,6 +287,17 @@ const ProductCard: React.FC<{
           )}
         </div>
       </CardContent>
+      <CardFooter className="pt-0">
+        <Button
+          onClick={onCount}
+          aria-label={`Count ${product.name}`}
+          title="Count"
+          className="w-full h-9 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium transition-colors"
+        >
+          <Calculator className="h-4 w-4 mr-2" aria-hidden="true" />
+          Count
+        </Button>
+      </CardFooter>
     </Card>
   );
 };
@@ -300,6 +314,7 @@ export const VirtualizedProductGrid: React.FC<VirtualizedProductGridProps> = ({
   recipesByProduct,
   canDeleteProducts,
   onEditProduct,
+  onCountProduct,
   onWasteProduct,
   onTransferProduct,
   onDeleteProduct,
@@ -361,6 +376,7 @@ export const VirtualizedProductGrid: React.FC<VirtualizedProductGridProps> = ({
                   recipes={recipesByProduct[product.id]}
                   canDelete={canDeleteProducts}
                   onEdit={() => onEditProduct(product)}
+                  onCount={() => onCountProduct(product)}
                   onWaste={() => onWasteProduct(product)}
                   onTransfer={() => onTransferProduct(product)}
                   onDelete={() => onDeleteProduct(product)}

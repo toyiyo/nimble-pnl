@@ -653,6 +653,10 @@ node dev-tools/pr-triage.js reply --pr <PR> --review <reviewer-login> \
   --verdict pushed-back --rationale "why we disagree"
 ```
 
+**Push before you reply.** An `agreed` reply must cite a commit that is already
+on the PR — `audit` verifies the SHA against the PR's commit list, so a reply
+written before pushing will fail the gate.
+
 - **Bug / security / correctness / contract drift** → Fix it, commit naming the
   source, then reply `--verdict agreed --commit <sha>`.
 - **Refactor / suggestion you are not taking** → reply `--verdict pushed-back`

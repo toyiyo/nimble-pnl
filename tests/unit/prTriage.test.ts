@@ -369,6 +369,45 @@ describe('pr-triage: classifyThreads', () => {
     expect(r.unanswered).toHaveLength(0);
   });
 
+  it('CRITICAL: a later COMMENTED review does not dismiss a change request', () => {
+    // GitHub only clears CHANGES_REQUESTED on APPROVED or DISMISSED. Treating a
+    // routine follow-up COMMENTED review as clearing it would silently drop a
+    // blocking finding — bots post COMMENTED reviews constantly.
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+        reviewFrom('coderabbitai', 'COMMENTED', '2026-07-27T12:00:00Z', 'One more note.'),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(1);
+  });
+
+  it('CRITICAL: a review-level agreed verdict must cite a real commit too', () => {
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+        verdictReview('2026-07-27T11:00:00Z', 'Agreed — @coderabbitai fixed in `deadbee`.'),
+      ],
+      prAuthor: PR_AUTHOR,
+      knownShas: SHAS,
+    });
+    expect(r.unanswered).toHaveLength(1);
+    expect(r.unanswered[0].reason).toBe('cites an unknown commit');
+  });
+
+  it('accepts a review-level agreed verdict citing a real commit', () => {
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+        verdictReview('2026-07-27T11:00:00Z', 'Agreed — @coderabbitai fixed in `abc1234`.'),
+      ],
+      prAuthor: PR_AUTHOR,
+      knownShas: SHAS,
+    });
+    expect(r.unanswered).toHaveLength(0);
+  });
+
   it('keeps blocking when the reviewer re-requests changes after approving', () => {
     const r = classifyThreads({
       reviews: [
@@ -451,6 +490,22 @@ describe('pr-triage: renderSummary', () => {
     expect(md).toContain('src/hooks/useReceiptImport.tsx:717');
     expect(md).toContain('no reply');
     expect(md).toMatch(/1 unanswered/i);
+  });
+
+  it('escapes backslashes before pipes so escaping cannot be spoofed', () => {
+    // Escaping | -> \| without first escaping \ lets a body ending in a
+    // backslash produce \\| , which renders as a literal backslash followed by
+    // a live column separator.
+    const md = renderSummary({
+      unanswered: [{
+        kind: 'thread', author: 'bot', path: 'a.ts', line: 1,
+        excerpt: 'trailing backslash \\ | then more',
+        reason: 'no reply',
+      }],
+      answered: [], skipped: [],
+    });
+    const row = md.split('\n').find((l) => l.includes('bot')) ?? '';
+    expect(row.split(/(?<!\\)\|/u).filter((c) => c.trim()).length).toBe(4);
   });
 
   it('escapes pipes so a finding cannot break the summary table', () => {
@@ -645,6 +700,20 @@ describe('pr-triage: runCli audit', () => {
 });
 
 describe('pr-triage: runCli list', () => {
+  it('tells review-level findings to use --review, not --comment', async () => {
+    const io = fakeIo({
+      reviews: [{
+        id: 'R1', state: 'CHANGES_REQUESTED', submittedAt: '2026-07-27T10:00:00Z',
+        author: { login: 'a-human', __typename: 'User' },
+        authorAssociation: 'MEMBER', body: 'Needs rework.',
+      }],
+    });
+    await runCli(['list', '--pr', '1', '--repo', REPO], io);
+    const out = io.out.join('\n');
+    expect(out).toContain('--review a-human');
+    expect(out).not.toMatch(/--comment (null|undefined)/);
+  });
+
   it('prints the comment id needed to reply', async () => {
     const io = fakeIo({ threads: [BOT_FINDING] });
     const code = await runCli(['list', '--pr', '1', '--repo', REPO], io);
@@ -709,6 +778,41 @@ describe('pr-triage: runCli reply', () => {
       io,
     );
     expect(posted.flat().join(' ')).not.toContain('@@');
+  });
+
+  it('exits 2 when reply is given BOTH --comment and --review', async () => {
+    // Silently preferring one path posts the answer in the wrong place.
+    const posted: string[][] = [];
+    const io = fakeIo({ onPost: (args: string[]) => { posted.push(args); return {}; } });
+    const code = await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--comment', '99', '--review', 'a-human',
+       '--verdict', 'ignored', '--rationale', 'Style nit, house convention differs.'],
+      io,
+    );
+    expect(code).toBe(2);
+    expect(posted).toHaveLength(0);
+  });
+
+  it('still succeeds when the post-reply thread lookup fails', async () => {
+    // The reply is already public at that point; failing the command would
+    // invite a duplicate re-run.
+    const io = fakeIo({ threads: [BOT_FINDING] });
+    const realGraphql = io.graphql;
+    let calls = 0;
+    io.graphql = async (...args: unknown[]) => {
+      calls += 1;
+      if (calls > 0 && args[0] && String(args[0]).includes('reviewThreads')) {
+        throw new Error('secondary rate limit');
+      }
+      return realGraphql(...args);
+    };
+    const code = await runCli(
+      ['reply', '--pr', '1', '--repo', REPO, '--comment', '99', '--verdict', 'ignored',
+       '--rationale', 'Style nit, house convention differs.'],
+      io,
+    );
+    expect(code).toBe(0);
+    expect(io.out.join('\n')).toMatch(/reply posted/i);
   });
 
   it('exits 2 when reply is given neither --comment nor --review', async () => {

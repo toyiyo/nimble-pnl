@@ -13,8 +13,6 @@ on:
     types: [created, edited, deleted]
   pull_request_review:
     types: [submitted, edited, dismissed]
-  issue_comment:
-    types: [created, edited, deleted]
   # pull_request_target, not pull_request: a fork PR's `pull_request` token is
   # read-only and cannot create a check run. This job never checks out the
   # repository and never executes PR code — it reads the API and writes a check
@@ -44,8 +42,6 @@ concurrency:
 
 jobs:
   audit:
-    # issue_comment fires for issues too; only PRs have a .pull_request key.
-    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

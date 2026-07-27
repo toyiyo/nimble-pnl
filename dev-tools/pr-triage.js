@@ -101,7 +101,11 @@ export function parseVerdict(body) {
   // Fallback: a hand-typed reply whose FIRST line opens with a verdict word.
   // Anchoring to the start is what stops "everyone agreed: ..." from matching.
   const firstLine = body.trim().split('\n')[0].trim();
-  const plain = firstLine.replace(/\*\*/g, '').replace(/[✅↩️⏭️]/gu, '').trim();
+  // Strip the display emoji by literal, not a character class: the verdict
+  // glyphs share a U+FE0F variation selector, so a class would repeat it.
+  let plain = firstLine.replace(/\*\*/g, '');
+  for (const spec of Object.values(VERDICTS)) plain = plain.split(spec.display.split(' ')[0]).join('');
+  plain = plain.trim();
   for (const [alias, key] of VERDICT_ALIASES) {
     const pattern = new RegExp(`^${alias}\\s*(?::|—|–|-)\\s*(.+)$`, 'iu');
     const match = plain.match(pattern);
@@ -137,6 +141,9 @@ const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'MEMBER', 'COLLABORATOR']);
 
 /** Review states that represent a finding requiring an answer. */
 const BLOCKING_REVIEW_STATES = new Set(['CHANGES_REQUESTED']);
+
+/** Review states that set a reviewer's standing. COMMENTED deliberately absent. */
+const STATE_SETTING_REVIEW_STATES = new Set(['CHANGES_REQUESTED', 'APPROVED', 'DISMISSED']);
 
 /** The shortest abbreviated SHA git will accept as unambiguous. */
 const MIN_SHA_PREFIX = 7;
@@ -196,8 +203,9 @@ export function classifyThreads({ threads = [], reviews = [], prAuthor, knownSha
     if (sameUser(r.author?.login, prAuthor)) continue;
 
     const finding = makeFinding('review', { id: r.id, author: r.author?.login, body: r.body });
-    if (isReviewAnswered(r, reviews)) result.answered.push(finding);
-    else result.unanswered.push({ ...finding, reason: 'no reply' });
+    const reason = reviewUnansweredReason(r, reviews, knownShas);
+    if (reason) result.unanswered.push({ ...finding, reason });
+    else result.answered.push(finding);
   }
 
   return result;
@@ -214,6 +222,11 @@ function latestReviewPerAuthor(reviews) {
   for (const r of reviews) {
     const login = r?.author?.login;
     if (!login) continue;
+    // Only state-changing reviews count. GitHub clears a CHANGES_REQUESTED on
+    // APPROVED or DISMISSED — never on COMMENTED. Letting a routine follow-up
+    // COMMENTED review win here would silently retire a blocking finding, and
+    // bots post COMMENTED reviews constantly.
+    if (!STATE_SETTING_REVIEW_STATES.has(r.state)) continue;
     const seen = latest.get(login.toLowerCase());
     // Equal/absent timestamps fall back to list order, which GitHub returns
     // chronologically — so the last one wins, as it should.
@@ -228,8 +241,9 @@ function submittedAtMs(review) {
 }
 
 /**
- * A CHANGES_REQUESTED review is answered only by a LATER review that carries a
- * verdict from a non-bot maintainer AND names the reviewer it answers.
+ * Report why nothing answers this CHANGES_REQUESTED review, or null if something
+ * does. An answer is a LATER review carrying a verdict from a non-bot maintainer
+ * that NAMES the reviewer it answers.
  *
  * Both conditions matter. Without the name check, one reply would silently
  * satisfy every bot that requested changes at the same time — the exact hole
@@ -238,21 +252,33 @@ function submittedAtMs(review) {
  *
  * @param {object} review the CHANGES_REQUESTED review needing an answer
  * @param {object[]} allReviews every review on the PR
- * @returns {boolean}
+ * @param {string[]} [knownShas] SHAs on the PR, for verifying an "agreed" citation
+ * @returns {string|null} null when the review IS answered
  */
-function isReviewAnswered(review, allReviews) {
+function reviewUnansweredReason(review, allReviews, knownShas) {
   const target = (review.author?.login ?? '').toLowerCase();
-  if (!target) return false;
+  if (!target) return 'no reply';
   const askedAt = submittedAtMs(review);
 
-  return allReviews.some((other) => {
-    if (other === review) return false;
-    if (isBotActor(other.author)) return false;
-    if (!MAINTAINER_ASSOCIATIONS.has(other.authorAssociation)) return false;
-    if (!parseVerdict(other.body)) return false;
-    if (submittedAtMs(other) < askedAt) return false;
-    return mentionsLogin(other.body, target);
-  });
+  let reason = 'no reply';
+  for (const other of allReviews) {
+    if (other === review) continue;
+    if (isBotActor(other.author)) continue;
+    if (!MAINTAINER_ASSOCIATIONS.has(other.authorAssociation)) continue;
+    if (submittedAtMs(other) < askedAt) continue;
+    if (!mentionsLogin(other.body, target)) continue;
+
+    const parsed = parseVerdict(other.body);
+    if (!parsed) { reason = 'no verdict in reply'; continue; }
+    // An "agreed" verdict must name a real commit here exactly as it must on a
+    // thread — otherwise the review-level path would be the soft way in.
+    if (parsed.verdict === 'agreed' && !citesKnownCommit(other.body, knownShas)) {
+      reason = 'cites an unknown commit';
+      continue;
+    }
+    return null; // answered
+  }
+  return reason;
 }
 
 /**
@@ -337,7 +363,9 @@ function excerpt(body, max = 120) {
  * across several bogus columns and the summary stops being readable.
  */
 function cell(text) {
-  return (text ?? '').replace(/\|/gu, '\\|');
+  // Backslashes first — escaping | -> \| on a body that already ends in a
+  // backslash would otherwise yield \\| , a live column separator.
+  return (text ?? '').replace(/\\/gu, '\\\\').replace(/\|/gu, '\\|');
 }
 
 /** Render a finding's file:line as markdown, or a fallback for review-level findings. */
@@ -611,6 +639,11 @@ export async function runCli(argv, io = {}) {
       error('reply needs --comment <id> (inline finding) or --review <login> (CHANGES_REQUESTED review).\n' + USAGE);
       return 2;
     }
+    if (opts.comment && opts.review) {
+      // Silently preferring one would post the answer in the wrong place.
+      error('reply takes --comment OR --review, not both.\n' + USAGE);
+      return 2;
+    }
 
     // A CHANGES_REQUESTED review has no thread to nest under, so it is answered
     // by a PR-level review that names the reviewer — which is exactly what
@@ -634,19 +667,20 @@ export async function runCli(argv, io = {}) {
     ]);
     log(`Replied to comment ${opts.comment} on PR #${pr}.`);
 
-    // Resolving is a courtesy for readability; the audit never keys on it, so a
-    // failure here (e.g. the thread is already resolved) must not fail the reply.
-    const { threads } = await fetchPr({ owner, repo, pr, graphql });
-    const owning = threads.find((t) =>
-      (t.comments?.nodes ?? []).some((c) => String(c.databaseId) === String(opts.comment)),
-    );
-    if (owning && !owning.isResolved) {
-      try {
+    // Resolving is a courtesy for readability; the audit never keys on it. The
+    // reply is already public by now, so NOTHING below may fail the command —
+    // a non-zero exit here would invite a re-run and a duplicate reply.
+    try {
+      const { threads } = await fetchPr({ owner, repo, pr, graphql });
+      const owning = threads.find((t) =>
+        (t.comments?.nodes ?? []).some((c) => String(c.databaseId) === String(opts.comment)),
+      );
+      if (owning && !owning.isResolved) {
         await graphql(RESOLVE_MUTATION, { threadId: owning.id });
         log(`Resolved thread ${owning.id}.`);
-      } catch (e) {
-        log(`Reply posted; could not resolve the thread (${e.message}).`);
       }
+    } catch (e) {
+      log(`Reply posted; could not resolve the thread (${e.message}).`);
     }
     return 0;
   }
@@ -661,7 +695,9 @@ export async function runCli(argv, io = {}) {
   try {
     [{ threads, reviews, prAuthor }, commits] = await Promise.all([
       fetchPr({ owner, repo, pr, graphql }),
-      gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate']).catch((e) => {
+      // --slurp: without it, --paginate emits one JSON array PER PAGE, and
+      // JSON.parse chokes on the concatenation.
+      gh([`repos/${owner}/${repo}/pulls/${pr}/commits`, '--paginate', '--slurp']).catch((e) => {
         throw new AuditUnavailableError(
           `Could not fetch PR commits to verify "agreed" replies (${e.message}).`,
         );
@@ -676,7 +712,8 @@ export async function runCli(argv, io = {}) {
     error('Audit could not complete: the PR commits fetch returned an unexpected shape.');
     return 2;
   }
-  const knownShas = commits.map((c) => c.sha).filter(Boolean);
+  // --slurp yields an array of pages; flat() also no-ops on a single flat page.
+  const knownShas = commits.flat().map((c) => c?.sha).filter(Boolean);
 
   const result = classifyThreads({ threads, reviews, prAuthor, knownShas });
 
@@ -687,7 +724,10 @@ export async function runCli(argv, io = {}) {
     }
     for (const f of result.unanswered) {
       const where = f.path ? `${f.path}:${f.line ?? '?'}` : 'PR review';
-      log(`--comment ${f.commentId ?? '(review — reply on the PR)'}  ${f.author}  ${where}  [${f.reason}]`);
+      // Name the flag that actually works for this kind of finding — a review
+      // has no comment id to reply to.
+      const how = f.kind === 'review' ? `--review ${f.author}` : `--comment ${f.commentId}`;
+      log(`${how}  ${f.author}  ${where}  [${f.reason}]`);
       log(`    ${f.excerpt}`);
     }
     return 0;

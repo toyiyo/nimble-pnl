@@ -26,6 +26,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 import {
   enterWorkMode as storeEnterWorkMode,
+  exitWorkMode as storeExitWorkMode,
   getSnapshot,
   __resetStore,
 } from '@/contexts/viewModeStore';
@@ -249,6 +250,24 @@ describe('ViewModeProvider / useViewMode', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
 
     expect(mockNavigate).toHaveBeenCalledWith('/');
+  });
+
+  it('exitWorkMode() is a no-op when the effective viewMode is already admin — does not navigate away to a stale stashed path', () => {
+    // Store still has a stashed returnPath from a previous session (e.g.
+    // '/dashboard'), but the effective viewMode is 'admin' (store.mode is
+    // 'admin'). Clicking the already-active "Admin" segment must not
+    // navigate anywhere.
+    storeEnterWorkMode('rest-1', '/dashboard');
+    storeExitWorkMode();
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: { restaurant_id: 'rest-1', role: 'owner' },
+    });
+    mockUseCurrentEmployee.mockReturnValue({ currentEmployee: eligibleEmployee, loading: false });
+
+    renderHarness('/some-admin-page');
+    fireEvent.click(screen.getByRole('button', { name: 'Exit' }));
+
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('throws when useViewMode is used outside a ViewModeProvider', () => {

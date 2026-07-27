@@ -93,9 +93,13 @@ export function ViewModeProvider({ children }: ViewModeProviderProps) {
   }, [restaurantId, location.pathname, navigate, viewMode]);
 
   const exitWorkMode = useCallback(() => {
+    // Symmetric with enterWorkMode's re-entry guard: if the effective
+    // viewMode is already 'admin', clicking the already-active "Admin"
+    // segment must not navigate to a possibly-stale stashed returnPath.
+    if (viewMode === 'admin') return;
     storeExitWorkMode();
     navigate(getSnapshot().returnPath || '/');
-  }, [navigate]);
+  }, [navigate, viewMode]);
 
   const value = useMemo<ViewModeContextValue>(
     () => ({ viewMode, canUseWorkView, enterWorkMode, exitWorkMode }),

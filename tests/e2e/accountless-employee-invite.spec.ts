@@ -52,7 +52,7 @@ test.describe('accountless employee invite detection', () => {
     expect(restaurantId).toBeTruthy();
 
     // An active employee with no linked account yet (user_id defaults to NULL).
-    const employeeEmail = `acct-chef-${Date.now()}@test.com`;
+    const employeeEmail = generateTestUser('acct-chef').email;
     await page.evaluate(
       async ({ email, restId }) => {
         const insert = (window as WindowWithHelpers).__insertEmployees;
@@ -65,7 +65,7 @@ test.describe('accountless employee invite detection', () => {
       { email: employeeEmail, restId: restaurantId as string },
     );
 
-    const strangerEmail = `stranger-${Date.now()}@test.com`;
+    const strangerEmail = generateTestUser('stranger').email;
     const hint = page.getByText(/already set up for scheduling here/i);
 
     // --- Member invite surface: Team → Invitations tab → Send Invitation ---

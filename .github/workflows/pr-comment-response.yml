@@ -36,7 +36,11 @@ permissions:
 
 concurrency:
   group: pr-comment-response-${{ github.event.pull_request.number || github.event.issue.number }}
-  cancel-in-progress: true
+  # NOT cancel-in-progress: a burst of bot comments would cancel the earlier
+  # runs, and a cancelled run reports as a FAILED check on the PR — the gate
+  # would show red for a reason that has nothing to do with unanswered
+  # findings. The audit takes seconds; let each event run to completion.
+  cancel-in-progress: false
 
 jobs:
   audit:
@@ -61,21 +65,40 @@ jobs:
       # default branch rather than checking out the PR — a fork must not be able
       # to swap out the script that grades it.
       - name: Fetch the auditor from the base branch
+        id: fetch
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           mkdir -p dev-tools
-          gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
-            --jq '.content' | base64 --decode > dev-tools/pr-triage.js
+          # Deliberately the DEFAULT branch, never the PR head: a PR must not be
+          # able to swap out the script that grades it.
+          if gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
+               --jq '.content' 2>/dev/null | base64 --decode > dev-tools/pr-triage.js \
+             && [ -s dev-tools/pr-triage.js ]; then
+            echo "installed=true" >> "$GITHUB_OUTPUT"
+          else
+            # Expected exactly once: on the PR that introduces this gate, before
+            # it exists on the default branch. Reporting "not installed" is
+            # honest; claiming a pass would be a lie, and failing would block the
+            # very PR that installs the gate.
+            #
+            # This is also the one bypass: deleting the auditor from the default
+            # branch disarms the gate. That takes a visible commit to the
+            # default branch, which is a deliberate act, not an oversight.
+            echo "installed=false" >> "$GITHUB_OUTPUT"
+            echo "pr-triage.js is not on $DEFAULT_BRANCH yet; the gate is not active."
+          fi
 
       - uses: actions/setup-node@v4
+        if: steps.fetch.outputs.installed == 'true'
         with:
           node-version: '20'
 
       - name: Audit replies
         id: audit
+        if: steps.fetch.outputs.installed == 'true'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
@@ -87,6 +110,7 @@ jobs:
           cat summary.md
 
       - name: Publish the check run
+        if: steps.fetch.outputs.installed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -119,8 +143,25 @@ jobs:
             exit 1
           fi
 
+      - name: Report that the gate is not installed yet
+        if: steps.fetch.outputs.installed != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
+          jq -n \
+            --arg head_sha "$HEAD_SHA" \
+            --arg summary "\`dev-tools/pr-triage.js\` is not on \`$DEFAULT_BRANCH\` yet, so this gate is not active. It begins enforcing once the PR that adds it merges." \
+            '{name: "pr-comment-response", head_sha: $head_sha, status: "completed",
+              conclusion: "neutral",
+              output: {title: "Gate not installed on the default branch yet", summary: $summary}}' \
+            | gh api --method POST "repos/$REPO/check-runs" --input -
+
       - name: Fail the job when findings are unanswered
-        if: steps.audit.outputs.exit_code != '0'
+        if: steps.fetch.outputs.installed == 'true' && steps.audit.outputs.exit_code != '0'
         run: |
           echo "::error::Some review findings have no verdict reply. See the pr-comment-response check."
           exit 1

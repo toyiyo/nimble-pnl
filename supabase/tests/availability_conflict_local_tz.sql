@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(12);
+SELECT plan(14);
 
 SET LOCAL client_min_messages TO WARNING;
 
@@ -184,6 +184,49 @@ SELECT ok(
      ('2027-07-20 07:00'::timestamp AT TIME ZONE 'America/Chicago'),
      ('2027-07-20 08:00'::timestamp AT TIME ZONE 'America/Chicago')) LIMIT 1),
   'Shift outside the exception window returns that window (not NULL)'
+);
+
+-- CASE 7 (fixed-offset timezone accepted, no throw, AND actually applied as an offset):
+-- '+05:00' is not an IANA zone name, but `AT TIME ZONE` parses it as a fixed UTC offset
+-- without raising. Pins the accepted trade-off for the EXCEPTION-based tz fallback (perf
+-- refactor): parseable fixed-offset strings are treated as valid rather than coerced to
+-- UTC, matching the deployed sibling check_timeoff_conflict.
+--
+-- A same-day, whole-hour offset can't distinguish "+05:00 applied" from "coerced to UTC":
+-- both the shift instant and the (UTC-of-day-encoded) availability window get the same
+-- `AT TIME ZONE v_tz` translation, which cancels out in the inside/outside-window
+-- comparison whenever no local date boundary is crossed. So this case instead picks a
+-- shift instant that crosses a local *date* boundary under +05:00 (Postgres applies
+-- fixed-offset zones with POSIX sign semantics, reversed from ISO-8601: local = UTC - 5h,
+-- verified empirically), landing on a different day with different availability data:
+--   - Mon 2027-07-12 has an exception marking the WHOLE DAY unavailable.
+--   - Sun 2027-07-11 has an exception available 01:00-04:00 (UTC-of-day encoding).
+-- The shift '2027-07-12 02:00-02:30+00' is UTC-hour 2, so `AT TIME ZONE '+05:00'` (-5h)
+-- rolls it back to Sun 21:00-21:30 local, inside Sunday's available window -> no conflict.
+-- If '+05:00' were instead coerced to UTC (the behaviour being guarded against), the local
+-- date would stay Mon 2027-07-12 -> the whole-day-unavailable exception -> a conflict. So a
+-- passing "no conflict" result here can only come from the offset actually being applied.
+UPDATE restaurants SET timezone = '+05:00' WHERE id = (SELECT rid FROM t_ids);
+DELETE FROM employee_availability WHERE restaurant_id = (SELECT rid FROM t_ids);
+DELETE FROM availability_exceptions WHERE restaurant_id = (SELECT rid FROM t_ids);
+INSERT INTO availability_exceptions (restaurant_id, employee_id, date, is_available)
+VALUES ((SELECT rid FROM t_ids), (SELECT eid FROM t_ids), '2027-07-12', false);
+INSERT INTO availability_exceptions (restaurant_id, employee_id, date, is_available, start_time, end_time)
+VALUES ((SELECT rid FROM t_ids), (SELECT eid FROM t_ids), '2027-07-11', true, '01:00:00', '04:00:00');
+SELECT lives_ok(
+  $$ SELECT * FROM check_availability_conflict(
+       (SELECT eid FROM t_ids), (SELECT rid FROM t_ids),
+       '2027-07-12 02:00+00'::timestamptz, '2027-07-12 02:30+00'::timestamptz) $$,
+  'Fixed-offset timezone (+05:00) does not raise'
+);
+SELECT is(
+  (SELECT count(*)::int FROM check_availability_conflict(
+     (SELECT eid FROM t_ids), (SELECT rid FROM t_ids),
+     '2027-07-12 02:00+00'::timestamptz, '2027-07-12 02:30+00'::timestamptz)),
+  0,
+  'Fixed-offset timezone (+05:00) rolls the shift back to Sun 21:00-21:30 local (inside '
+  || 'Sunday''s available window) rather than staying on Mon (fully unavailable exception), '
+  || 'proving the offset is applied rather than coerced to UTC'
 );
 
 SELECT * FROM finish();

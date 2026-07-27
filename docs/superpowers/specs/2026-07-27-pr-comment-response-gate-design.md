@@ -135,7 +135,6 @@ to a thread.
 |---|---|
 | `pull_request_review_comment: [created]` | A new inline finding appeared — the check must go red immediately. Also fires when we post a reply, which flips it green. |
 | `pull_request_review: [submitted]` | Catches `CHANGES_REQUESTED` reviews. |
-| `issue_comment: [created]` | PR conversation activity; guarded on `github.event.issue.pull_request`. |
 | `pull_request_target: [opened, synchronize, reopened, ready_for_review]` | Re-audits on every push so the gate cannot go stale. |
 
 **Why `pull_request_target` and not `pull_request`:** a `pull_request`
@@ -147,14 +146,14 @@ PR code with elevated permissions; this job **never checks out the
 repository and never runs PR code**. It reads the GitHub API and writes a
 check run. That is the whole job.
 
-**Resolving the PR number across four event shapes:** the triggers do not
-agree on where the number lives — `pull_request_target`,
-`pull_request_review` and `pull_request_review_comment` carry
-`github.event.pull_request.number`, while `issue_comment` carries
-`github.event.issue.number`. The job derives it once as
-`${{ github.event.pull_request.number || github.event.issue.number }}`
+**Resolving the PR number:** the review triggers carry
+`github.event.pull_request.number`, while a manual `workflow_dispatch`
+supplies it as an input. The job derives it once as
+`${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}`
 and fails fast if the result is empty, rather than silently auditing the
-wrong PR or no-opping.
+wrong PR or no-opping. (`issue_comment` was dropped as a trigger: PR
+conversation is out of scope, so those events could never change the
+outcome — the `issue.number` fallback is kept only as a cheap safety net.)
 
 **Check run, not job status:** workflows triggered by
 `pull_request_review_comment` / `issue_comment` do not appear in a PR's

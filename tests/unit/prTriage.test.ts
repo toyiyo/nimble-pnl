@@ -42,6 +42,14 @@ describe('pr-triage: composeReply', () => {
     ).toThrow(/commit/i);
   });
 
+  it('CRITICAL: reports a usage error, not a TypeError, for a valueless --commit', () => {
+    // parseArgs gives a valueless flag the boolean `true`; calling .trim() on
+    // it crashed with a raw TypeError instead of telling the author what to fix.
+    expect(() =>
+      composeReply({ verdict: 'agreed', rationale: 'A valid rationale here.', commit: true }),
+    ).toThrow(/must cite the commit/i);
+  });
+
   it('throws on an unknown verdict', () => {
     expect(() =>
       composeReply({ verdict: 'maybe', rationale: 'Some rationale here.' }),

@@ -49,7 +49,10 @@ export function composeReply({ verdict, rationale, commit, answers } = {}) {
     );
   }
 
-  const text = (rationale ?? '').trim();
+  // parseArgs gives a valueless flag the value `true`, so coerce before any
+  // string work — otherwise `--commit` with no value throws a raw TypeError
+  // instead of the usage error the author needs to see.
+  const text = String(rationale ?? '').trim();
   if (text.length < MIN_RATIONALE_LENGTH) {
     throw new Error(
       `A rationale of at least ${MIN_RATIONALE_LENGTH} characters is required — ` +
@@ -57,11 +60,12 @@ export function composeReply({ verdict, rationale, commit, answers } = {}) {
     );
   }
 
-  if (verdict === 'agreed' && !(commit ?? '').trim()) {
+  const sha = String(commit ?? '').trim();
+  if (verdict === 'agreed' && (!sha || sha === 'true')) {
     throw new Error('An "agreed" reply must cite the commit that fixed the finding.');
   }
 
-  const suffix = verdict === 'agreed' ? ` Fixed in \`${commit.trim()}\`.` : '';
+  const suffix = verdict === 'agreed' ? ` Fixed in \`${sha}\`.` : '';
   const mention = answers ? `@${String(answers).replace(/^@/, '')} ` : '';
   return `${spec.marker}\n**${spec.display}** — ${mention}${text}${suffix}`;
 }

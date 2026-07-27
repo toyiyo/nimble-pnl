@@ -78,7 +78,7 @@ logic is unit-testable without network access.
 | `VERDICTS` | The three verdict keys and their display forms. |
 | `composeReply({verdict, rationale, commit})` | Build a reply body. Throws when the verdict is unknown, the rationale is empty, or `agreed` is missing a commit SHA. |
 | `parseVerdict(body)` | Extract a verdict from a reply body; `null` if the body carries none. |
-| `classifyThreads({threads, reviews, prAuthor})` | Partition findings into answered / unanswered. The single source of truth for "answered". |
+| `classifyThreads({threads, reviews, prAuthor, knownShas})` | Partition findings into answered / unanswered. The single source of truth for "answered". Pure — `knownShas` is passed in, never fetched here. |
 | `renderSummary(result)` | Markdown table for the check-run output. |
 | `runCli(argv, io)` | Verbs: `audit`, `list`, `reply`. |
 
@@ -147,6 +147,15 @@ PR code with elevated permissions; this job **never checks out the
 repository and never runs PR code**. It reads the GitHub API and writes a
 check run. That is the whole job.
 
+**Resolving the PR number across four event shapes:** the triggers do not
+agree on where the number lives — `pull_request_target`,
+`pull_request_review` and `pull_request_review_comment` carry
+`github.event.pull_request.number`, while `issue_comment` carries
+`github.event.issue.number`. The job derives it once as
+`${{ github.event.pull_request.number || github.event.issue.number }}`
+and fails fast if the result is empty, rather than silently auditing the
+wrong PR or no-opping.
+
 **Check run, not job status:** workflows triggered by
 `pull_request_review_comment` / `issue_comment` do not appear in a PR's
 status-check list. So the job explicitly resolves the PR head SHA
@@ -201,17 +210,36 @@ A thread is answered when it contains a reply that:
 
 1. Carries a parseable verdict with a rationale, **and**
 2. Is authored by a non-bot whose `authorAssociation` is `OWNER`,
-   `MEMBER`, or `COLLABORATOR`.
+   `MEMBER`, or `COLLABORATOR`, **and**
+3. If the verdict is `agreed`, cites a commit SHA that actually exists on
+   the PR.
 
 Consequences of that rule, each deliberate:
 
 - **Resolving a thread does not answer it.** Silent resolution is the
   precise failure mode this gate exists to catch; accepting it as an
   answer would reopen the hole.
-- **A reply from another bot does not count.** Bot logins are matched by
-  a `[bot]` suffix *and* by an explicit list — `Copilot` and
-  `chatgpt-codex-connector` carry no `[bot]` suffix, so suffix-matching
-  alone would let a Copilot reply satisfy a Codex finding.
+- **An `agreed` reply must name a real commit.** `composeReply` refuses
+  to build an `agreed` body without a SHA, but that only constrains
+  replies posted through our own CLI — a hand-typed or mistyped SHA would
+  otherwise sail through. The `audit` verb fetches the PR's commit list
+  (`gh api repos/{o}/{r}/pulls/{n}/commits`) once and passes the SHAs to
+  `classifyThreads` as `knownShas`; an `agreed` reply citing a SHA not in
+  that set is treated as unanswered. Matching is on any SHA prefix of
+  7 or more characters, so `abc1234` matches the full hash. This closes
+  the one remaining path by which a confident-sounding but unverifiable
+  response could satisfy the gate — which is the exact class of thing the
+  gate exists to prevent.
+- **A reply from another bot does not count.** Bot identity is decided
+  primarily by the GraphQL actor type (`author.__typename === 'Bot'`),
+  which is authoritative for GitHub Apps and requires no maintenance —
+  `Copilot` and `chatgpt-codex-connector` both carry no `[bot]` login
+  suffix, so suffix-matching alone would let a Copilot reply satisfy a
+  Codex finding. A `[bot]` suffix check and a small explicit login list
+  remain as backstops for actors GraphQL reports as `User`. The list is a
+  known maintenance trap and is commented as such at its definition:
+  a future reviewer bot that is neither typed `Bot` nor suffixed would
+  need to be added.
 - **A thread the PR author started does not need an answer.** It is a
   note to reviewers, not a finding.
 - **Outdated threads still need an answer.** GitHub marks a thread
@@ -231,11 +259,14 @@ the manner of the existing `tests/unit/feedbackLog.test.ts`):
 - `composeReply` — embeds marker and display form; `agreed` without a
   commit throws; empty rationale throws; unknown verdict throws.
 - `classifyThreads` — bot thread with no reply blocks; bot thread with a
-  maintainer verdict reply passes; a reply from another bot does not
+  maintainer verdict reply passes; a reply from an actor typed `Bot` does
+  not count; a reply from a `User`-typed bot on the login list does not
   count; a reply from a non-member does not count; a thread rooted by the
   PR author is skipped; a resolved-but-silent thread blocks; an outdated
-  thread still blocks; `CHANGES_REQUESTED` without a reply blocks;
-  `COMMENTED` / `APPROVED` never block.
+  thread still blocks; an `agreed` reply citing a SHA absent from
+  `knownShas` blocks; the same reply with a 7-char prefix of a real SHA
+  passes; `CHANGES_REQUESTED` without a reply blocks; `COMMENTED` /
+  `APPROVED` never block.
 - `renderSummary` — renders counts and one row per unanswered finding;
   handles the empty case without crashing.
 

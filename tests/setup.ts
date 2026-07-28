@@ -41,6 +41,23 @@ if (!Element.prototype.releasePointerCapture)
 if (!Element.prototype.scrollIntoView)
   Element.prototype.scrollIntoView = () => {};
 
+// jsdom implements no media queries, so `useIsMobile` (and anything else that
+// asks) throws "window.matchMedia is not a function". Default to a desktop
+// viewport -- `matches: false` for the mobile breakpoint query -- which is what
+// component tests assume unless they override this themselves.
+if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 class ResizeObserver {
   // Accept the callback to match the real ResizeObserver constructor signature,
   // so `new ResizeObserver(cb)` in app code isn't flagged as a superfluous arg.

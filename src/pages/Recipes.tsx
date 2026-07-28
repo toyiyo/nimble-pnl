@@ -26,6 +26,7 @@ import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
 import { BulkInventoryDeductionDialog } from '@/components/BulkInventoryDeductionDialog';
 import { ProductUpdateSheet } from '@/components/ProductUpdateDialog';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useUnifiedSales } from '@/hooks/useUnifiedSales';
 import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
 import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
@@ -41,7 +42,7 @@ export default function Recipes() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
-  const { recipes, loading, fetchRecipes, fetchRecipeIngredients } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const { recipes, loading, isError, fetchRecipes, fetchRecipeIngredients } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { products, updateProductWithQuantity } = useProducts(selectedRestaurant?.restaurant_id || null);
   const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -151,11 +152,19 @@ export default function Recipes() {
     setSelectedRestaurant(restaurant);
   };
 
-  // Compute filtered recipes and memoized lists before early returns
-  const filteredRecipes = recipes.filter(recipe =>
-    recipe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    recipe.pos_item_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Compute filtered recipes and memoized lists before early returns.
+  // Memoized: an unmemoized filter here produces a new array on every render
+  // (including every keystroke elsewhere on the page), which invalidates the
+  // `unmappedRecipes`/`mappedRecipes` memos below and re-sorts and re-validates
+  // every recipe in all three RecipeTables.
+  const filteredRecipes = useMemo(() => {
+    const needle = searchTerm.toLowerCase();
+    if (!needle) return recipes;
+    return recipes.filter(recipe =>
+      recipe.name.toLowerCase().includes(needle) ||
+      recipe.pos_item_name?.toLowerCase().includes(needle)
+    );
+  }, [recipes, searchTerm]);
 
   const unmappedRecipes = useMemo(() => {
     return filteredRecipes.filter(recipe => !recipe.pos_item_name);
@@ -391,6 +400,8 @@ export default function Recipes() {
           recipes={filteredRecipes}
           products={products}
           loading={loading}
+          isError={isError}
+          onRetry={fetchRecipes}
           onEdit={setEditingRecipe}
           onDelete={setDeletingRecipe}
           sortBy={sortBy}
@@ -409,6 +420,8 @@ export default function Recipes() {
             recipes={mappedRecipes}
             products={products}
             loading={loading}
+            isError={isError}
+            onRetry={fetchRecipes}
           onEdit={setEditingRecipe}
           onDelete={setDeletingRecipe}
           sortBy={sortBy}
@@ -427,6 +440,8 @@ export default function Recipes() {
             recipes={unmappedRecipes}
             products={products}
             loading={loading}
+            isError={isError}
+            onRetry={fetchRecipes}
           onEdit={setEditingRecipe}
           onDelete={setDeletingRecipe}
           sortBy={sortBy}
@@ -517,6 +532,8 @@ interface RecipeTableProps {
   recipes: any[];
   products: any[];
   loading: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
   onEdit: (recipe: any) => void;
   onDelete: (recipe: any) => void;
   sortBy: 'name' | 'cost' | 'salePrice' | 'margin' | 'created';
@@ -526,7 +543,8 @@ interface RecipeTableProps {
   onCreateFromBase?: (recipe: any) => void;
 }
 
-function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate, onCreateFromBase }: RecipeTableProps) {
+function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate, onCreateFromBase }: RecipeTableProps) {
+  const isMobile = useIsMobile();
   // Pre-calculate conversion validation for all recipes (keyed by recipe ID)
   const recipeValidationsById = useMemo(() => {
     const validationMap = new Map();
@@ -594,6 +612,32 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
     );
   }
 
+  // Distinct from "no recipes": a failed load must never look like an empty
+  // menu, or a user reacts to an outage by re-creating recipes that exist.
+  if (isError) {
+    return (
+      <Card className="border-destructive/20 bg-gradient-to-br from-destructive/5 via-destructive/10 to-transparent shadow-sm">
+        <CardContent className="p-12">
+          <div className="text-center space-y-4" role="alert" aria-live="assertive">
+            <MetricIcon icon={AlertTriangle} variant="red" className="mx-auto" />
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Couldn't load recipes</h3>
+              <p className="text-muted-foreground max-w-md mx-auto mb-4">
+                Your recipes are still here — we just couldn't reach them. Check your
+                connection and try again.
+              </p>
+              {onRetry && (
+                <Button onClick={onRetry} variant="outline" className="gap-2" aria-label="Retry loading recipes">
+                  Try again
+                </Button>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
   if (processedRecipes.length === 0) {
     return (
       <Card className="border-border/50 bg-gradient-to-br from-background via-accent/5 to-background shadow-sm">
@@ -635,8 +679,11 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
   return (
     <Card className="border-border/50 overflow-hidden">
       <CardContent className="p-0">
-        {/* Mobile-friendly cards for small screens */}
-        <div className="block md:hidden">
+        {/* Mobile-friendly cards for small screens. Rendered conditionally, not
+            hidden with `md:hidden`: both variants used to mount, so every recipe
+            row was built twice and only one was ever visible. */}
+        {isMobile && (
+        <div>
         {processedRecipes.map((recipe) => {
             const validation = recipeValidationsById.get(recipe.id);
             
@@ -708,9 +755,11 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
             );
           })}
         </div>
+        )}
 
         {/* Desktop table for larger screens */}
-        <div className="hidden md:block overflow-x-auto">
+        {!isMobile && (
+        <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -835,6 +884,7 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
             </TableBody>
           </Table>
         </div>
+        )}
       </CardContent>
     </Card>
   );

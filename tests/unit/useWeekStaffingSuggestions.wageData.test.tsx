@@ -100,4 +100,38 @@ describe('useWeekStaffingSuggestions wage data', () => {
     expect(result.current.avgHourlyRateCents).toBe(1500); // the $15 default
     expect(result.current.hasWageData).toBe(false); // …but not real data
   });
+
+  it('should treat a roster of unset ($0) rates as having no wage data', async () => {
+    mockEmployees([
+      { compensation_type: 'hourly', is_active: true, hourly_rate: 0 },
+      { compensation_type: 'hourly', is_active: true, hourly_rate: 0 },
+    ]);
+
+    const { result } = renderHook(
+      () => useWeekStaffingSuggestions('r1', ['2026-07-27'], null),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.avgHourlyRateCents).toBe(1500);
+    expect(result.current.hasWageData).toBe(false);
+  });
+
+  it('should exclude unset rates from the blended wage it advertises', async () => {
+    // A $20/hr employee alongside one whose rate was never set must not be
+    // averaged down to $10/hr and then reported as real (Codex P2 on PR #663).
+    mockEmployees([
+      { compensation_type: 'hourly', is_active: true, hourly_rate: 2000 },
+      { compensation_type: 'hourly', is_active: true, hourly_rate: 0 },
+    ]);
+
+    const { result } = renderHook(
+      () => useWeekStaffingSuggestions('r1', ['2026-07-27'], null),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.avgHourlyRateCents).toBe(2000);
+    expect(result.current.hasWageData).toBe(true);
+  });
 });

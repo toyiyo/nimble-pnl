@@ -203,6 +203,32 @@ function emp(overrides: Partial<Employee> = {}): Employee {
   } as Employee;
 }
 
+describe('computeAvgHourlyRateCents and hasHourlyWageData agree on the paid set', () => {
+  it('should exclude unset (zero) rates from the blended average', () => {
+    // EmployeeDialog stores a blank hourly-rate field as 0 cents. Averaging a
+    // real $20/hr against that 0 advertises a $10/hr blended wage nobody is
+    // paid, and every implied-labor readout inherits the error.
+    const roster = [
+      emp({ hourly_rate: 2000 }),
+      emp({ hourly_rate: 0 }),
+    ];
+    expect(computeAvgHourlyRateCents(roster)).toBe(2000);
+    expect(hasHourlyWageData(roster)).toBe(true);
+  });
+
+  it('should fall back to the default wage when every rate is unset', () => {
+    const roster = [emp({ hourly_rate: 0 }), emp({ hourly_rate: 0 })];
+    expect(computeAvgHourlyRateCents(roster)).toBe(1500);
+    expect(hasHourlyWageData(roster)).toBe(false);
+  });
+
+  it('should ignore a negative rate in both the average and the predicate', () => {
+    const roster = [emp({ hourly_rate: -500 })];
+    expect(computeAvgHourlyRateCents(roster)).toBe(1500);
+    expect(hasHourlyWageData(roster)).toBe(false);
+  });
+});
+
 describe('hasHourlyWageData', () => {
   it('should be false when the roster is undefined or empty', () => {
     expect(hasHourlyWageData(undefined)).toBe(false);
@@ -229,12 +255,13 @@ describe('hasHourlyWageData', () => {
   });
 
   it('should be false when the only active hourly employee has an unset ($0) rate', () => {
-    // EmployeeDialog saves a blank hourly-rate field as 0 cents. Without excluding
-    // this, hasWageData would be true while computeAvgHourlyRateCents returns 0,
-    // fabricating a "0% labor" readout instead of suppressing it.
+    // EmployeeDialog saves a blank hourly-rate field as 0 cents. Both functions
+    // derive from the same paid-employee set, so the roster reduces to "no wage
+    // data": the predicate is false and the average reports its documented
+    // DEFAULT_HOURLY_RATE_CENTS sentinel rather than a fabricated $0/hr.
     const unsetRate = [emp({ hourly_rate: 0 })];
     expect(hasHourlyWageData(unsetRate)).toBe(false);
-    expect(computeAvgHourlyRateCents(unsetRate)).toBe(0);
+    expect(computeAvgHourlyRateCents(unsetRate)).toBe(1500);
   });
 });
 

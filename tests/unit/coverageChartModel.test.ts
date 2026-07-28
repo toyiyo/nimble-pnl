@@ -167,7 +167,7 @@ describe('buildReceipt', () => {
     ]);
   });
 
-  it('CRITICAL: ok — last row "On target" / 0, default tone throughout', () => {
+  it('ok — last row "On target" / 0, default tone throughout', () => {
     const h = receiptFixture({ demand: 5, scheduled: 5, projectedSales: 150 });
     const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6, hasWageData: true });
     const last = receipt.rows[receipt.rows.length - 1];
@@ -175,7 +175,17 @@ describe('buildReceipt', () => {
     expect(receipt.rows.every((r) => r.tone === 'default')).toBe(true);
   });
 
-  it('CRITICAL: spare — last row "Covered" / +N, positive tone', () => {
+  it('should omit the implied-SPLH aside when there are no sales to divide', () => {
+    // Staff on the clock with $0 projected sales means labor is *infinitely*
+    // over target, not 0% — `splhAt` collapses to 0 and impliedLabor's
+    // divide-by-zero guard returns 0%, which reads as the opposite of the
+    // truth. Omit the line rather than state a number that is backwards.
+    const h = receiptFixture({ demand: 0, scheduled: 3, projectedSales: 0 });
+    const receipt = buildReceipt(h, { minStaff: 1, weekdayKey: 'Monday', wage: 15, lookbackWeeks: 6, hasWageData: true });
+    expect(receipt.asides.some((a) => a.includes('implied SPLH'))).toBe(false);
+  });
+
+  it('spare — last row "Covered" / +N, positive tone', () => {
     const h = receiptFixture({ demand: 5, scheduled: 7, projectedSales: 150 });
     const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6, hasWageData: true });
     const last = receipt.rows[receipt.rows.length - 1];

@@ -148,7 +148,11 @@ export function buildReceipt(
   // actually scheduled (avoids a divide-by-zero and a nonsensical "$Infinity/hr"),
   // and only honest when `wage` is real roster data rather than the $15/hr
   // fallback (design §4a2).
-  if (scheduled > 0 && hasWageData) {
+  // `projectedSales > 0` matters independently of `scheduled`: with staff on
+  // the clock and no sales, labor is infinitely over target, but `splhAt`
+  // collapses to 0 and impliedLabor's divide-by-zero guard returns 0% — a
+  // number that reads as the exact opposite of the truth. Say nothing instead.
+  if (scheduled > 0 && projectedSales > 0 && hasWageData) {
     const splhAt = projectedSales / scheduled;
     const laborPctAt = Math.round(impliedLabor({ wage, splh: splhAt, targetLaborPct: 0 }).pct);
     asides.push(`At ${scheduled} scheduled, implied SPLH is ${fmtUsd(Math.round(splhAt))}/hr → ${laborPctAt}% labor.`);

@@ -104,10 +104,13 @@ export function CoverageReceipt({
 
   // Selecting a different hour is independent of slider dragging and should
   // announce right away (design doc §C: "selecting updates the receipt").
+  // `hasWageData` is here for the same reason: it adds/removes the implied-SPLH
+  // aside, and it changes on a roster refetch rather than on a drag, so the
+  // live region would otherwise stay stale until the next pointer/key event.
   useEffect(() => {
     setAnnounced(announcementText(latestRef.current.receipt, latestRef.current.hour));
-     
-  }, [hour.startMin]);
+
+  }, [hour.startMin, hasWageData]);
 
   // The ledger's last row is always the verdict (Short on demand / Short on
   // floor / Covered / On target) — set it off as an emphasized "total" below a

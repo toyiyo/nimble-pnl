@@ -3,33 +3,41 @@ import type { Employee, HourlySalesData, HourlyStaffingRecommendation, MinCrew, 
 const MAX_SHIFT_HOURS = 8;
 const DEFAULT_HOURLY_RATE_CENTS = 1500; // $15/hr
 
+/**
+ * The employees whose wages are real: active, hourly, and actually paid a
+ * positive rate. `EmployeeDialog` stores a blank hourly-rate field as `0`
+ * cents, so an unset rate is indistinguishable from a genuine `$0/hr` and must
+ * be excluded from both the blended average and the has-real-wage predicate.
+ *
+ * Both `computeAvgHourlyRateCents` and `hasHourlyWageData` derive from this one
+ * set so they cannot disagree: if they used different filters, a roster mixing
+ * one employee at $20/hr with one unset rate would report "wage data is real"
+ * while advertising a blended $10/hr that nobody is paid, and every implied-labor
+ * readout downstream would inherit that error.
+ */
+function paidHourlyEmployees(employees: Employee[] | undefined): Employee[] {
+  return (
+    employees?.filter(
+      (e) => e.compensation_type === 'hourly' && e.is_active && e.hourly_rate > 0,
+    ) ?? []
+  );
+}
+
 export function computeAvgHourlyRateCents(employees: Employee[] | undefined): number {
-  if (!employees?.length) return DEFAULT_HOURLY_RATE_CENTS;
-  const hourlyEmployees = employees.filter(
-    (e) => e.compensation_type === 'hourly' && e.is_active,
-  );
-  if (hourlyEmployees.length === 0) return DEFAULT_HOURLY_RATE_CENTS;
-  return Math.round(
-    hourlyEmployees.reduce((sum, e) => sum + e.hourly_rate, 0) / hourlyEmployees.length,
-  );
+  const paid = paidHourlyEmployees(employees);
+  if (paid.length === 0) return DEFAULT_HOURLY_RATE_CENTS;
+  return Math.round(paid.reduce((sum, e) => sum + e.hourly_rate, 0) / paid.length);
 }
 
 /**
  * True when the roster has at least one active hourly employee with a real,
- * nonzero rate — i.e. the wage from computeAvgHourlyRateCents is real, not the
- * DEFAULT_HOURLY_RATE_CENTS ($15/hr) fallback. Mirrors that function's own
- * `compensation_type === 'hourly' && is_active` filter, plus an `hourly_rate >
- * 0` check: `EmployeeDialog` saves a blank hourly-rate field as `0` cents, and
- * a roster whose only active hourly employee has an unset rate would
- * otherwise make this predicate true while the computed average is a
- * fabricated `$0/hr` — surfacing a "0% labor" readout as if it were real.
- * Surfaces use this to suppress an implied-labor readout that would
- * otherwise be derived from a wage nobody is paid.
+ * positive rate — i.e. the wage from `computeAvgHourlyRateCents` is derived
+ * from real data rather than its `DEFAULT_HOURLY_RATE_CENTS` ($15/hr) fallback.
+ * Surfaces use this to suppress an implied-labor readout that would otherwise
+ * be presented as fact while resting on a wage nobody is paid.
  */
 export function hasHourlyWageData(employees: Employee[] | undefined): boolean {
-  return !!employees?.some(
-    (e) => e.compensation_type === 'hourly' && e.is_active && e.hourly_rate > 0,
-  );
+  return paidHourlyEmployees(employees).length > 0;
 }
 
 export interface ImpliedLaborResult {

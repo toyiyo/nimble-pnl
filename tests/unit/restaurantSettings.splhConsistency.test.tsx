@@ -11,17 +11,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 // supabase client — RestaurantSettings fetches `overtime_rules` directly in a
 // useEffect on mount; a chainable no-op mock keeps that from throwing/hanging.
 vi.mock('@/integrations/supabase/client', () => {
-  function makeChain(): any {
-    const chain: any = {};
-    chain.select = () => makeChain();
-    chain.eq = () => makeChain();
-    chain.order = () => makeChain();
-    chain.maybeSingle = () => Promise.resolve({ data: null, error: null });
-    chain.single = () => Promise.resolve({ data: null, error: null });
-    chain.upsert = () => Promise.resolve({ data: null, error: null });
-    chain.then = (resolve: (v: { data: unknown; error: null }) => unknown) =>
-      Promise.resolve({ data: null, error: null }).then(resolve);
-    return chain;
+  type EmptyResult = { data: null; error: null };
+  interface QueryChain extends PromiseLike<EmptyResult> {
+    select: () => QueryChain;
+    eq: () => QueryChain;
+    order: () => QueryChain;
+    maybeSingle: () => Promise<EmptyResult>;
+    single: () => Promise<EmptyResult>;
+    upsert: () => Promise<EmptyResult>;
+  }
+  const empty = (): Promise<EmptyResult> => Promise.resolve({ data: null, error: null });
+  function makeChain(): QueryChain {
+    return {
+      select: makeChain,
+      eq: makeChain,
+      order: makeChain,
+      maybeSingle: empty,
+      single: empty,
+      upsert: empty,
+      then: (resolve, reject) => empty().then(resolve, reject),
+    };
   }
   return {
     supabase: {

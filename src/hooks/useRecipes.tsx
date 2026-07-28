@@ -3,6 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { MEASUREMENT_UNITS, type IngredientUnit } from '@/lib/recipeUnits';
+import { calculateInventoryImpact, getProductUnitInfo } from '@/lib/enhancedUnitConversion';
+import { fetchAllRows, type PagedResult } from '@/utils/fetchAllRows';
+import { fetchInChunks } from '@/utils/fetchInChunks';
 
 export interface Recipe {
   id: string;
@@ -59,6 +62,153 @@ export interface CreateRecipeData {
   }[];
 }
 
+// Row shapes for the bulk queries (Q1/Q3/Q4/Q5) — narrower than the full
+// generated DB types since each query selects an explicit column list
+// (design doc §3), never `select('*')`.
+interface RecipeRow {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  description: string | null;
+  pos_item_name: string | null;
+  pos_item_id: string | null;
+  serving_size: number | null;
+  estimated_cost: number | null;
+  is_active: boolean | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+}
+
+interface IngredientRow {
+  id: string;
+  recipe_id: string;
+  product_id: string;
+  quantity: number;
+  unit: string;
+}
+
+interface ProductRow {
+  id: string;
+  name: string;
+  cost_per_unit: number | null;
+  uom_purchase: string | null;
+  size_value: number | null;
+  size_unit: string | null;
+  package_qty: number | null;
+}
+
+interface SalesStatsRow {
+  item_name: string;
+  avg_sale_price: number | null;
+}
+
+/**
+ * Groups Q3 ingredients by recipe, looks products up from a `Map`, and calls
+ * `calculateInventoryImpact` unchanged (design §3.6) to compute cost +
+ * profitability entirely in memory — replacing the per-recipe N+1 that used
+ * to issue one `recipe_ingredients` + `unified_sales` round trip per recipe.
+ *
+ * Exported (not just used internally) so it can be unit tested directly
+ * against fixtures for cost/margin parity without standing up the full
+ * `supabase` mock.
+ */
+export function buildEnhancedRecipes(
+  recipes: RecipeRow[],
+  ingredients: IngredientRow[],
+  products: ProductRow[],
+  salesStats: SalesStatsRow[],
+): Recipe[] {
+  const ingredientsByRecipe = new Map<string, IngredientRow[]>();
+  for (const ingredient of ingredients) {
+    const existing = ingredientsByRecipe.get(ingredient.recipe_id);
+    if (existing) {
+      existing.push(ingredient);
+    } else {
+      ingredientsByRecipe.set(ingredient.recipe_id, [ingredient]);
+    }
+  }
+
+  const productsById = new Map(products.map((product) => [product.id, product]));
+
+  // get_recipe_sales_stats returns avg_sale_price as NULL only when its
+  // denominator (sum of coalesce(nullif(quantity,0),1)) is 0 -- i.e. no
+  // matching sales rows -- which cannot happen for a GROUP BY row that
+  // exists, but is filtered defensively to keep the Map's values `number`.
+  const salesByItemName = new Map(
+    salesStats
+      .filter((row): row is SalesStatsRow & { avg_sale_price: number } => row.avg_sale_price !== null)
+      .map((row) => [row.item_name, row.avg_sale_price])
+  );
+
+  return recipes.map((recipe) => {
+    const recipeIngredients = ingredientsByRecipe.get(recipe.id) || [];
+
+    let totalCost = 0;
+    for (const ingredient of recipeIngredients) {
+      const product = productsById.get(ingredient.product_id);
+      if (!product || !product.cost_per_unit) continue;
+
+      try {
+        const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
+        const result = calculateInventoryImpact(
+          ingredient.quantity,
+          ingredient.unit,
+          quantityPerPurchaseUnit,
+          purchaseUnit,
+          product.name || '',
+          product.cost_per_unit || 0,
+          sizeValue,
+          sizeUnit
+        );
+        totalCost += result.costImpact;
+      } catch (conversionError) {
+        console.warn(`Conversion error for ${product.name}:`, conversionError);
+      }
+    }
+
+    // Mirrors the pre-existing `updatedCost || recipe.estimated_cost`
+    // fallback exactly: a computed cost of precisely 0 (e.g. no ingredient
+    // has a cost_per_unit yet) keeps the last-known stored cost rather than
+    // displaying $0.00.
+    const estimatedCost = totalCost || recipe.estimated_cost || 0;
+
+    const avgSalePrice = recipe.pos_item_name
+      ? salesByItemName.get(recipe.pos_item_name)
+      : undefined;
+
+    let profitMargin: number | undefined;
+    let profitPerServing: number | undefined;
+    if (avgSalePrice !== undefined) {
+      profitPerServing = avgSalePrice - estimatedCost;
+      profitMargin = avgSalePrice > 0 ? (profitPerServing / avgSalePrice) * 100 : 0;
+    }
+
+    return {
+      id: recipe.id,
+      restaurant_id: recipe.restaurant_id,
+      name: recipe.name,
+      description: recipe.description ?? undefined,
+      pos_item_name: recipe.pos_item_name ?? undefined,
+      pos_item_id: recipe.pos_item_id ?? undefined,
+      serving_size: recipe.serving_size ?? 0,
+      estimated_cost: estimatedCost,
+      is_active: recipe.is_active ?? true,
+      created_at: recipe.created_at,
+      updated_at: recipe.updated_at,
+      created_by: recipe.created_by ?? undefined,
+      ingredients: recipeIngredients.map((ingredient) => ({
+        product_id: ingredient.product_id,
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+      })),
+      avg_sale_price: avgSalePrice,
+      profit_margin: profitMargin,
+      profit_per_serving: profitPerServing,
+    };
+  });
+}
+
 export const useRecipes = (restaurantId: string | null) => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,62 +223,87 @@ export const useRecipes = (restaurantId: string | null) => {
 
     try {
       setLoading(true);
+
+      // Bulk fetch (design §3): Q1 recipes, Q2 prep-recipe shadow links, Q4
+      // products, and Q5 sales stats are mutually independent and run in
+      // parallel. Q3 (recipe ingredients) needs Q1's recipe ids, so it runs
+      // after -- two waterfall levels, five bounded requests total
+      // regardless of recipe count. This replaces the ~400-request N+1 (one
+      // recipe_ingredients + one unified_sales round trip per recipe, plus a
+      // write-back) for the largest tenant.
+      //
       // Shadow recipes (rows backing prep_recipes) are managed from the Prep
       // page and must not appear here. Fail closed: if the prep_recipes query
-      // errors we abort the whole fetch rather than leak shadows back in.
-      const [recipesResult, prepLinksResult] = await Promise.all([
-        supabase
-          .from('recipes')
-          .select(`
-            *,
-            ingredients:recipe_ingredients(product_id, quantity, unit)
-          `)
-          .eq('restaurant_id', restaurantId)
-          .eq('is_active', true)
-          .order('name'),
-        supabase
-          .from('prep_recipes')
-          .select('recipe_id')
-          .eq('restaurant_id', restaurantId)
-          .not('recipe_id', 'is', null),
+      // errors, fetchAllRows throws and the whole fetch aborts rather than
+      // leak shadows back in.
+      const [recipesResult, prepLinksResult, productsResult, salesStatsResult] = await Promise.all([
+        fetchAllRows<RecipeRow>((from, to) =>
+          supabase
+            .from('recipes')
+            .select(
+              'id, restaurant_id, name, description, pos_item_name, pos_item_id, serving_size, estimated_cost, is_active, created_at, updated_at, created_by'
+            )
+            .eq('restaurant_id', restaurantId)
+            .eq('is_active', true)
+            .order('name')
+            .order('id')
+            .range(from, to) as unknown as PromiseLike<{ data: RecipeRow[] | null; error: unknown }>
+        ),
+        fetchAllRows<{ recipe_id: string | null }>((from, to) =>
+          supabase
+            .from('prep_recipes')
+            .select('recipe_id')
+            .eq('restaurant_id', restaurantId)
+            .not('recipe_id', 'is', null)
+            .order('id')
+            .range(from, to) as unknown as PromiseLike<{ data: { recipe_id: string | null }[] | null; error: unknown }>
+        ),
+        fetchAllRows<ProductRow>((from, to) =>
+          supabase
+            .from('products')
+            .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit, package_qty')
+            .eq('restaurant_id', restaurantId)
+            .order('id')
+            .range(from, to) as unknown as PromiseLike<{ data: ProductRow[] | null; error: unknown }>
+        ),
+        fetchAllRows<SalesStatsRow>((from, to) =>
+          supabase
+            .rpc('get_recipe_sales_stats', { p_restaurant_id: restaurantId })
+            .range(from, to) as unknown as PromiseLike<{ data: SalesStatsRow[] | null; error: unknown }>
+        ),
       ]);
 
-      if (recipesResult.error) throw recipesResult.error;
-      if (prepLinksResult.error) throw prepLinksResult.error;
-
       const shadowRecipeIds = new Set(
-        (prepLinksResult.data || []).map((link) => link.recipe_id)
+        prepLinksResult.rows.map((link) => link.recipe_id)
       );
-      const data = (recipesResult.data || []).filter(
+      const activeRecipes = recipesResult.rows.filter(
         (recipe) => !shadowRecipeIds.has(recipe.id)
       );
 
-      // Enhance recipes with updated costs and profitability data
-      const enhancedRecipes = await Promise.all(
-        data.map(async (recipe) => {
-          // Recalculate cost using the updated calculation function
-          const updatedCost = await calculateRecipeCost(recipe.id);
-          const recipeWithUpdatedCost = {
-            ...recipe,
-            estimated_cost: updatedCost || recipe.estimated_cost
-          };
-          
-          // If cost was updated, save it to database
-          if (updatedCost !== null && updatedCost !== recipe.estimated_cost) {
-            await supabase
-              .from('recipes')
-              .update({ estimated_cost: updatedCost })
-              .eq('id', recipe.id);
-          }
-          
-          const profitData = await calculateRecipeProfitability(recipeWithUpdatedCost);
-          return {
-            ...recipeWithUpdatedCost,
-            avg_sale_price: profitData?.avg_sale_price,
-            profit_margin: profitData?.profit_margin,
-            profit_per_serving: profitData?.profit_per_serving
-          };
-        })
+      // Q3: recipe_ingredients for the surviving (non-shadow) recipes,
+      // chunked at 200 ids/request (fetchInChunks short-circuits to zero
+      // requests when activeRecipes is empty), each chunk independently
+      // paginated via fetchAllRows.
+      const recipeIds = activeRecipes.map((recipe) => recipe.id);
+      const ingredientsResult: PagedResult<IngredientRow> = await fetchInChunks<string, IngredientRow>(
+        recipeIds,
+        (chunk) =>
+          fetchAllRows<IngredientRow>((from, to) =>
+            supabase
+              .from('recipe_ingredients')
+              .select('id, recipe_id, product_id, quantity, unit')
+              .in('recipe_id', chunk)
+              .order('recipe_id')
+              .order('id')
+              .range(from, to) as unknown as PromiseLike<{ data: IngredientRow[] | null; error: unknown }>
+          )
+      );
+
+      const enhancedRecipes = buildEnhancedRecipes(
+        activeRecipes,
+        ingredientsResult.rows,
+        productsResult.rows,
+        salesStatsResult.rows,
       );
 
       setRecipes(enhancedRecipes);
@@ -406,42 +581,15 @@ export const useRecipes = (restaurantId: string | null) => {
       if (error) throw error;
       if (!ingredients || ingredients.length === 0) return 0;
 
-      // Import the calculation logic and helper
-      const { calculateInventoryImpact, getProductUnitInfo } = await import('@/lib/enhancedUnitConversion');
-
-      console.log(`[calculateRecipeCost] Starting calculation for recipe ${recipeId}`);
-      console.log(`[calculateRecipeCost] Found ${ingredients.length} ingredients`);
-
       let totalCost = 0;
-      
-      ingredients.forEach((ingredient: any, idx: number) => {
-        console.log(`[calculateRecipeCost] Ingredient ${idx + 1}:`, {
-          product_name: ingredient.product?.name,
-          has_cost: !!ingredient.product?.cost_per_unit,
-          cost_per_unit: ingredient.product?.cost_per_unit,
-          quantity: ingredient.quantity,
-          unit: ingredient.unit,
-          uom_purchase: ingredient.product?.uom_purchase,
-          size_value: ingredient.product?.size_value,
-          size_unit: ingredient.product?.size_unit
-        });
 
+      ingredients.forEach((ingredient: any) => {
         if (ingredient.product && ingredient.product.cost_per_unit) {
           const product = ingredient.product;
           try {
             // Use shared helper to get validated product unit info
             const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
             const costPerUnit = product.cost_per_unit || 0;
-            
-            console.log(`[calculateRecipeCost] Calling calculateInventoryImpact with:`, {
-              recipeQuantity: ingredient.quantity,
-              recipeUnit: ingredient.unit,
-              quantityPerPurchaseUnit,
-              purchaseUnit,
-              costPerUnit,
-              sizeValue,
-              sizeUnit
-            });
 
             const result = calculateInventoryImpact(
               ingredient.quantity,
@@ -453,23 +601,14 @@ export const useRecipes = (restaurantId: string | null) => {
               sizeValue,
               sizeUnit
             );
-            
-            console.log(`[calculateRecipeCost] Result for ${product.name}:`, {
-              costImpact: result.costImpact,
-              inventoryDeduction: result.inventoryDeduction,
-              percentageOfPackage: result.percentageOfPackage
-            });
 
             totalCost += result.costImpact;
           } catch (conversionError) {
             console.warn(`Conversion error for ${product.name}:`, conversionError);
           }
-        } else {
-          console.log(`[calculateRecipeCost] Skipping ingredient - no cost_per_unit`);
         }
       });
 
-      console.log(`[calculateRecipeCost] Total cost calculated: $${totalCost.toFixed(2)}`);
       return totalCost;
     } catch (error: any) {
       console.error('Error calculating recipe cost:', error);

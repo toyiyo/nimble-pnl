@@ -630,6 +630,37 @@ function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onD
     overscan: 10,
   });
 
+  // Mobile card and desktop row share this exact positioning/lookup logic;
+  // only the memoized component rendered at each virtual slot differs.
+  const renderVirtualRow = (
+    virtualRow: ReturnType<typeof virtualizer.getVirtualItems>[number],
+    RowComponent: typeof MemoizedRecipeCard | typeof MemoizedRecipeRow
+  ) => {
+    const recipe = processedRecipes[virtualRow.index];
+    const displayValues = recipe && displayValuesById.get(recipe.id);
+    if (!displayValues) return null;
+
+    return (
+      <RowComponent
+        key={recipe.id}
+        recipe={recipe}
+        displayValues={displayValues}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onCreateFromBase={onCreateFromBase}
+        index={virtualRow.index}
+        measureRef={virtualizer.measureElement}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          transform: `translateY(${virtualRow.start}px)`,
+        }}
+      />
+    );
+  };
+
   if (loading) {
     return (
       <Card className="border-border/50 shadow-sm">
@@ -725,31 +756,7 @@ function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onD
             role="presentation"
             style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
           >
-            {virtualizer.getVirtualItems().map((virtualRow) => {
-              const recipe = processedRecipes[virtualRow.index];
-              const displayValues = recipe && displayValuesById.get(recipe.id);
-              if (!displayValues) return null;
-
-              return (
-                <MemoizedRecipeCard
-                  key={recipe.id}
-                  recipe={recipe}
-                  displayValues={displayValues}
-                  onEdit={onEdit}
-                  onDelete={onDelete}
-                  onCreateFromBase={onCreateFromBase}
-                  index={virtualRow.index}
-                  measureRef={virtualizer.measureElement}
-                  style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                />
-              );
-            })}
+            {virtualizer.getVirtualItems().map((virtualRow) => renderVirtualRow(virtualRow, MemoizedRecipeCard))}
           </div>
         </div>
         )}
@@ -788,31 +795,7 @@ function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onD
                 role="presentation"
                 style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
               >
-                {virtualizer.getVirtualItems().map((virtualRow) => {
-                  const recipe = processedRecipes[virtualRow.index];
-                  const displayValues = recipe && displayValuesById.get(recipe.id);
-                  if (!displayValues) return null;
-
-                  return (
-                    <MemoizedRecipeRow
-                      key={recipe.id}
-                      recipe={recipe}
-                      displayValues={displayValues}
-                      onEdit={onEdit}
-                      onDelete={onDelete}
-                      onCreateFromBase={onCreateFromBase}
-                      index={virtualRow.index}
-                      measureRef={virtualizer.measureElement}
-                      style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        width: '100%',
-                        transform: `translateY(${virtualRow.start}px)`,
-                      }}
-                    />
-                  );
-                })}
+                {virtualizer.getVirtualItems().map((virtualRow) => renderVirtualRow(virtualRow, MemoizedRecipeRow))}
               </div>
             </div>
           </div>

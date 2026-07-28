@@ -80,6 +80,16 @@ interface RecipeShape {
   serving_size?: number | null;
 }
 
+/** Identical in the desktop row and the mobile card, so it lives once here. */
+function NoIngredientsBadge() {
+  return (
+    <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
+      <AlertTriangle className="h-3 w-3 mr-1" aria-hidden="true" />
+      No ingredients
+    </Badge>
+  );
+}
+
 function RecipeRow<TRecipe extends RecipeShape>({
   recipe,
   displayValues,
@@ -105,12 +115,7 @@ function RecipeRow<TRecipe extends RecipeShape>({
       <div role="cell" className={RECIPE_COLUMN_WIDTHS.name}>
         <div className="flex items-center gap-2">
           <span className="font-medium" data-testid="recipe-name">{recipe.name}</span>
-          {displayValues.hasNoIngredients && (
-            <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
-              <AlertTriangle className="h-3 w-3 mr-1" aria-hidden="true" />
-              No ingredients
-            </Badge>
-          )}
+          {displayValues.hasNoIngredients && <NoIngredientsBadge />}
         </div>
         {recipe.description && (
           <div className="text-sm text-muted-foreground">{recipe.description}</div>
@@ -221,12 +226,7 @@ function RecipeCard<TRecipe extends RecipeShape>({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="font-medium truncate" data-testid="recipe-name">{recipe.name}</h3>
-              {displayValues.hasNoIngredients && (
-                <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
-                  <AlertTriangle className="h-3 w-3 mr-1" aria-hidden="true" />
-                  No ingredients
-                </Badge>
-              )}
+              {displayValues.hasNoIngredients && <NoIngredientsBadge />}
             </div>
             {recipe.description && (
               <p className="text-sm text-muted-foreground line-clamp-2">{recipe.description}</p>

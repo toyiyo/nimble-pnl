@@ -107,6 +107,40 @@ interface SalesStatsRow {
 }
 
 /**
+ * Cost contribution of a single ingredient line, via `calculateInventoryImpact`.
+ * Shared by `buildEnhancedRecipes` (bulk path) and `calculateRecipeCost`
+ * (single-recipe path still used by `RecipeDialog`) so the conversion call and
+ * its failure handling exist in exactly one place.
+ *
+ * Returns 0 (not skipped) when the product has no `cost_per_unit` or the
+ * conversion throws, so callers can unconditionally `+=` the result.
+ */
+function computeIngredientCost(
+  ingredient: { quantity: number; unit: string },
+  product: { name?: string | null; cost_per_unit?: number | null; uom_purchase?: string | null; size_value?: number | null; size_unit?: string | null } | null | undefined
+): number {
+  if (!product || !product.cost_per_unit) return 0;
+
+  try {
+    const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
+    const result = calculateInventoryImpact(
+      ingredient.quantity,
+      ingredient.unit,
+      quantityPerPurchaseUnit,
+      purchaseUnit,
+      product.name || '',
+      product.cost_per_unit || 0,
+      sizeValue,
+      sizeUnit
+    );
+    return result.costImpact;
+  } catch (conversionError) {
+    console.warn(`Conversion error for ${product.name}:`, conversionError);
+    return 0;
+  }
+}
+
+/**
  * Groups Q3 ingredients by recipe, looks products up from a `Map`, and calls
  * `calculateInventoryImpact` unchanged (design §3.6) to compute cost +
  * profitability entirely in memory — replacing the per-recipe N+1 that used
@@ -150,24 +184,7 @@ export function buildEnhancedRecipes(
     let totalCost = 0;
     for (const ingredient of recipeIngredients) {
       const product = productsById.get(ingredient.product_id);
-      if (!product || !product.cost_per_unit) continue;
-
-      try {
-        const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
-        const result = calculateInventoryImpact(
-          ingredient.quantity,
-          ingredient.unit,
-          quantityPerPurchaseUnit,
-          purchaseUnit,
-          product.name || '',
-          product.cost_per_unit || 0,
-          sizeValue,
-          sizeUnit
-        );
-        totalCost += result.costImpact;
-      } catch (conversionError) {
-        console.warn(`Conversion error for ${product.name}:`, conversionError);
-      }
+      totalCost += computeIngredientCost(ingredient, product);
     }
 
     // Mirrors the pre-existing `updatedCost || recipe.estimated_cost`
@@ -856,71 +873,12 @@ export const useRecipes = (restaurantId: string | null) => {
       let totalCost = 0;
 
       ingredients.forEach((ingredient: any) => {
-        if (ingredient.product && ingredient.product.cost_per_unit) {
-          const product = ingredient.product;
-          try {
-            // Use shared helper to get validated product unit info
-            const { purchaseUnit, quantityPerPurchaseUnit, sizeValue, sizeUnit } = getProductUnitInfo(product);
-            const costPerUnit = product.cost_per_unit || 0;
-
-            const result = calculateInventoryImpact(
-              ingredient.quantity,
-              ingredient.unit,
-              quantityPerPurchaseUnit,
-              purchaseUnit,
-              product.name || '',
-              costPerUnit,
-              sizeValue,
-              sizeUnit
-            );
-
-            totalCost += result.costImpact;
-          } catch (conversionError) {
-            console.warn(`Conversion error for ${product.name}:`, conversionError);
-          }
-        }
+        totalCost += computeIngredientCost(ingredient, ingredient.product);
       });
 
       return totalCost;
     } catch (error: any) {
       console.error('Error calculating recipe cost:', error);
-      return null;
-    }
-  };
-
-  const calculateRecipeProfitability = async (recipe: Recipe): Promise<{ avg_sale_price: number; profit_margin: number; profit_per_serving: number } | null> => {
-    if (!recipe.pos_item_name) return null;
-
-    try {
-      // Get sales data for this POS item
-      const { data: salesData, error } = await supabase
-        .from('unified_sales')
-        .select('unit_price, total_price, quantity')
-        .eq('restaurant_id', recipe.restaurant_id)
-        .eq('item_name', recipe.pos_item_name)
-        .not('unit_price', 'is', null);
-
-      if (error) throw error;
-
-      if (!salesData || salesData.length === 0) return null;
-
-      // Calculate average sale price
-      const totalRevenue = salesData.reduce((sum, sale) => sum + (sale.total_price || 0), 0);
-      const totalQuantity = salesData.reduce((sum, sale) => sum + (sale.quantity || 1), 0);
-      const avgSalePrice = totalQuantity > 0 ? totalRevenue / totalQuantity : 0;
-
-      // Calculate profit metrics
-      const recipeCost = recipe.estimated_cost || 0;
-      const profitPerServing = avgSalePrice - recipeCost;
-      const profitMargin = avgSalePrice > 0 ? (profitPerServing / avgSalePrice) * 100 : 0;
-
-      return {
-        avg_sale_price: avgSalePrice,
-        profit_margin: profitMargin,
-        profit_per_serving: profitPerServing
-      };
-    } catch (error: any) {
-      console.error('Error calculating recipe profitability:', error);
       return null;
     }
   };
@@ -944,6 +902,5 @@ export const useRecipes = (restaurantId: string | null) => {
     updateRecipeIngredients,
     deleteRecipe,
     calculateRecipeCost,
-    calculateRecipeProfitability,
   };
 };

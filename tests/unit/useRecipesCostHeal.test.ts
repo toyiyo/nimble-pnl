@@ -98,6 +98,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 import { useRecipes, selectDriftedCostRows, buildEnhancedRecipes } from '@/hooks/useRecipes';
+import { createQueryWrapper } from './helpers/queryWrapper';
 
 const makeRecipe = (id: string, name: string, estimatedCost: number) => ({
   id,
@@ -128,7 +129,10 @@ const PRODUCTS = [
 ];
 const INGREDIENTS = [{ id: 'i1', recipe_id: 'r1', product_id: 'p1', quantity: 2, unit: 'lb' }];
 
+let wrapper: ReturnType<typeof createQueryWrapper>['wrapper'];
+
 beforeEach(() => {
+  ({ wrapper } = createQueryWrapper());
   vi.clearAllMocks();
   upsertCalls = [];
   recipesResponse = { data: [], error: null };
@@ -193,7 +197,7 @@ describe('useRecipes cost heal -- batched, convergent', () => {
       error: null,
     };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(upsertCalls.length).toBe(1));
 
@@ -205,7 +209,7 @@ describe('useRecipes cost heal -- batched, convergent', () => {
   it('issues ZERO writes once costs have converged (stored cost already matches)', async () => {
     recipesResponse = { data: [makeRecipe('r1', 'Burrito', 10)], error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(upsertCalls).toEqual([]);
@@ -214,7 +218,7 @@ describe('useRecipes cost heal -- batched, convergent', () => {
   it('does not block the render: recipes are exposed with the freshly computed cost', async () => {
     recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.recipes).toHaveLength(1);
@@ -225,7 +229,7 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
     upsertResponse = { data: null, error: { message: 'new row violates row-level security policy' } };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(upsertCalls.length).toBe(1));
 
@@ -238,7 +242,7 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     recipesResponse = { data: stored, error: null };
     const [expected] = buildEnhancedRecipes(stored, INGREDIENTS, PRODUCTS, []);
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(upsertCalls.length).toBe(1));
 

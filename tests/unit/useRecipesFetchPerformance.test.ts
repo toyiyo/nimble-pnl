@@ -112,6 +112,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 import { useRecipes, buildEnhancedRecipes } from '@/hooks/useRecipes';
+import { createQueryWrapper } from './helpers/queryWrapper';
 
 const makeRecipe = (id: string, name: string) => ({
   id,
@@ -128,7 +129,10 @@ const makeRecipe = (id: string, name: string) => ({
   created_by: null,
 });
 
+let wrapper: ReturnType<typeof createQueryWrapper>['wrapper'];
+
 beforeEach(() => {
+  ({ wrapper } = createQueryWrapper());
   vi.clearAllMocks();
   requestCount = 0;
   recipesResponse = { data: [], error: null };
@@ -145,7 +149,7 @@ describe('useRecipes fetchRecipes -- N+1 regression guard', () => {
       error: null,
     };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(requestCount).toBe(5);
@@ -157,7 +161,7 @@ describe('useRecipes fetchRecipes -- N+1 regression guard', () => {
       error: null,
     };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(requestCount).toBe(5);

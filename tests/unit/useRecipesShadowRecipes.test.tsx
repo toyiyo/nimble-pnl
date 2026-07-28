@@ -130,6 +130,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 import { useRecipes } from '@/hooks/useRecipes';
+import { createQueryWrapper } from './helpers/queryWrapper';
 
 const makeRecipe = (id: string, name: string) => ({
   id,
@@ -142,7 +143,10 @@ const makeRecipe = (id: string, name: string) => ({
   updated_at: '',
 });
 
+let wrapper: ReturnType<typeof createQueryWrapper>['wrapper'];
+
 beforeEach(() => {
+  ({ wrapper } = createQueryWrapper());
   vi.clearAllMocks();
   recipesResponse = { data: [], error: null };
   prepLinksResponse = { data: [], error: null };
@@ -160,7 +164,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
     };
     prepLinksResponse = { data: [{ recipe_id: 'r-shadow' }], error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.recipes.map((r) => r.id)).toEqual(['r-menu']);
@@ -173,7 +177,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
     };
     prepLinksResponse = { data: null, error: { message: 'prep_recipes unavailable' } };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.recipes).toEqual([]);
@@ -191,7 +195,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
 
     const { result, rerender } = renderHook(
       ({ restaurantId }: { restaurantId: string }) => useRecipes(restaurantId),
-      { initialProps: { restaurantId: 'rest-1' } }
+      { wrapper, initialProps: { restaurantId: 'rest-1' } }
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -214,7 +218,7 @@ describe('useRecipes shadow-recipe guard (deleteRecipe)', () => {
   it('CRITICAL: blocks deleting a prep-linked recipe: destructive toast, returns false, no update', async () => {
     prepLinkSingleResponse = { data: { name: 'Sweet Cream - pans' }, error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     let deleted: boolean | undefined;
@@ -235,7 +239,7 @@ describe('useRecipes shadow-recipe guard (deleteRecipe)', () => {
   it('still soft-deletes a normal recipe', async () => {
     prepLinkSingleResponse = { data: null, error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     let deleted: boolean | undefined;

@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -280,125 +281,155 @@ async function healRecipeCosts(
   return drifted.map((row) => row.id);
 }
 
+/** Shared cache key root. `useRecipes` is mounted at six independent points
+ * (Recipes, POSSales, POSSaleDialog, MapPOSItemDialog, RecipeDialog,
+ * DeleteRecipeDialog); they must all read and invalidate the same entry, or
+ * each one re-runs the whole fetch and writes go stale on the others. */
+export const RECIPES_QUERY_KEY = 'recipes';
+
+export const recipesQueryKey = (restaurantId: string | null) =>
+  [RECIPES_QUERY_KEY, restaurantId] as const;
+
+/**
+ * The whole page-load fetch, as a plain function so React Query owns the
+ * caching, deduplication and error state. Throws on failure — the caller
+ * renders an explicit error state rather than an empty list.
+ */
+export async function fetchRecipesData(restaurantId: string): Promise<Recipe[]> {
+  // Bulk fetch (design §3): Q1 recipes, Q2 prep-recipe shadow links, Q4
+  // products, and Q5 sales stats are mutually independent and run in
+  // parallel. Q3 (recipe ingredients) needs Q1's recipe ids, so it runs
+  // after -- two waterfall levels, five bounded requests total
+  // regardless of recipe count. This replaces the ~400-request N+1 (one
+  // recipe_ingredients + one unified_sales round trip per recipe, plus a
+  // write-back) for the largest tenant.
+  //
+  // Shadow recipes (rows backing prep_recipes) are managed from the Prep
+  // page and must not appear here. Fail closed: if the prep_recipes query
+  // errors, fetchAllRows throws and the whole fetch aborts rather than
+  // leak shadows back in.
+  const [recipesResult, prepLinksResult, productsResult, salesStatsResult] = await Promise.all([
+    fetchAllRows<RecipeRow>((from, to) =>
+      supabase
+        .from('recipes')
+        .select(
+          'id, restaurant_id, name, description, pos_item_name, pos_item_id, serving_size, estimated_cost, is_active, created_at, updated_at, created_by'
+        )
+        .eq('restaurant_id', restaurantId)
+        .eq('is_active', true)
+        .order('name')
+        .order('id')
+        .range(from, to) as unknown as PromiseLike<{ data: RecipeRow[] | null; error: unknown }>
+    ),
+    fetchAllRows<{ recipe_id: string | null }>((from, to) =>
+      supabase
+        .from('prep_recipes')
+        .select('recipe_id')
+        .eq('restaurant_id', restaurantId)
+        .not('recipe_id', 'is', null)
+        .order('id')
+        .range(from, to) as unknown as PromiseLike<{ data: { recipe_id: string | null }[] | null; error: unknown }>
+    ),
+    fetchAllRows<ProductRow>((from, to) =>
+      supabase
+        .from('products')
+        .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit, package_qty')
+        .eq('restaurant_id', restaurantId)
+        .order('id')
+        .range(from, to) as unknown as PromiseLike<{ data: ProductRow[] | null; error: unknown }>
+    ),
+    fetchAllRows<SalesStatsRow>((from, to) =>
+      supabase
+        .rpc('get_recipe_sales_stats', { p_restaurant_id: restaurantId })
+        .range(from, to) as unknown as PromiseLike<{ data: SalesStatsRow[] | null; error: unknown }>
+    ),
+  ]);
+
+  const shadowRecipeIds = new Set(
+    prepLinksResult.rows.map((link) => link.recipe_id)
+  );
+  const activeRecipes = recipesResult.rows.filter(
+    (recipe) => !shadowRecipeIds.has(recipe.id)
+  );
+
+  // Q3: recipe_ingredients for the surviving (non-shadow) recipes,
+  // chunked at 200 ids/request (fetchInChunks short-circuits to zero
+  // requests when activeRecipes is empty), each chunk independently
+  // paginated via fetchAllRows.
+  const recipeIds = activeRecipes.map((recipe) => recipe.id);
+  const ingredientsResult: PagedResult<IngredientRow> = await fetchInChunks<string, IngredientRow>(
+    recipeIds,
+    (chunk) =>
+      fetchAllRows<IngredientRow>((from, to) =>
+        supabase
+          .from('recipe_ingredients')
+          .select('id, recipe_id, product_id, quantity, unit')
+          .in('recipe_id', chunk)
+          .order('recipe_id')
+          .order('id')
+          .range(from, to) as unknown as PromiseLike<{ data: IngredientRow[] | null; error: unknown }>
+      )
+  );
+
+  const enhancedRecipes = buildEnhancedRecipes(
+    activeRecipes,
+    ingredientsResult.rows,
+    productsResult.rows,
+    salesStatsResult.rows,
+  );
+
+  // Heal stored costs off the render path (design §3.7): one batched
+  // upsert of only the drifted rows, deliberately not awaited so it
+  // never delays first paint, and convergent — the next load finds no
+  // drift and issues zero writes.
+  void healRecipeCosts(activeRecipes, enhancedRecipes);
+
+  return enhancedRecipes;
+}
+
 export const useRecipes = (restaurantId: string | null) => {
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
-  const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const queryKey = recipesQueryKey(restaurantId);
+
+  const {
+    data,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey,
+    queryFn: () => fetchRecipesData(restaurantId as string),
+    enabled: !!restaurantId && !!user,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+  });
+
+  // Fail closed: React Query keeps the last successful `data` when a refetch
+  // fails, which for a multi-tenant page means a failed load can leave the
+  // previous restaurant's recipes on screen. Surface nothing instead.
+  const recipes = isError ? [] : (data ?? []);
+
+  useEffect(() => {
+    if (!error) return;
+    console.error('Error fetching recipes:', error);
+    toast({
+      title: "Error fetching recipes",
+      description: (error as Error).message,
+      variant: "destructive",
+    });
+  }, [error, toast]);
+
+  const invalidateRecipes = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: [RECIPES_QUERY_KEY, restaurantId] });
+  }, [queryClient, restaurantId]);
 
   const fetchRecipes = useCallback(async () => {
-    if (!restaurantId || !user) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      // Bulk fetch (design §3): Q1 recipes, Q2 prep-recipe shadow links, Q4
-      // products, and Q5 sales stats are mutually independent and run in
-      // parallel. Q3 (recipe ingredients) needs Q1's recipe ids, so it runs
-      // after -- two waterfall levels, five bounded requests total
-      // regardless of recipe count. This replaces the ~400-request N+1 (one
-      // recipe_ingredients + one unified_sales round trip per recipe, plus a
-      // write-back) for the largest tenant.
-      //
-      // Shadow recipes (rows backing prep_recipes) are managed from the Prep
-      // page and must not appear here. Fail closed: if the prep_recipes query
-      // errors, fetchAllRows throws and the whole fetch aborts rather than
-      // leak shadows back in.
-      const [recipesResult, prepLinksResult, productsResult, salesStatsResult] = await Promise.all([
-        fetchAllRows<RecipeRow>((from, to) =>
-          supabase
-            .from('recipes')
-            .select(
-              'id, restaurant_id, name, description, pos_item_name, pos_item_id, serving_size, estimated_cost, is_active, created_at, updated_at, created_by'
-            )
-            .eq('restaurant_id', restaurantId)
-            .eq('is_active', true)
-            .order('name')
-            .order('id')
-            .range(from, to) as unknown as PromiseLike<{ data: RecipeRow[] | null; error: unknown }>
-        ),
-        fetchAllRows<{ recipe_id: string | null }>((from, to) =>
-          supabase
-            .from('prep_recipes')
-            .select('recipe_id')
-            .eq('restaurant_id', restaurantId)
-            .not('recipe_id', 'is', null)
-            .order('id')
-            .range(from, to) as unknown as PromiseLike<{ data: { recipe_id: string | null }[] | null; error: unknown }>
-        ),
-        fetchAllRows<ProductRow>((from, to) =>
-          supabase
-            .from('products')
-            .select('id, name, cost_per_unit, uom_purchase, size_value, size_unit, package_qty')
-            .eq('restaurant_id', restaurantId)
-            .order('id')
-            .range(from, to) as unknown as PromiseLike<{ data: ProductRow[] | null; error: unknown }>
-        ),
-        fetchAllRows<SalesStatsRow>((from, to) =>
-          supabase
-            .rpc('get_recipe_sales_stats', { p_restaurant_id: restaurantId })
-            .range(from, to) as unknown as PromiseLike<{ data: SalesStatsRow[] | null; error: unknown }>
-        ),
-      ]);
-
-      const shadowRecipeIds = new Set(
-        prepLinksResult.rows.map((link) => link.recipe_id)
-      );
-      const activeRecipes = recipesResult.rows.filter(
-        (recipe) => !shadowRecipeIds.has(recipe.id)
-      );
-
-      // Q3: recipe_ingredients for the surviving (non-shadow) recipes,
-      // chunked at 200 ids/request (fetchInChunks short-circuits to zero
-      // requests when activeRecipes is empty), each chunk independently
-      // paginated via fetchAllRows.
-      const recipeIds = activeRecipes.map((recipe) => recipe.id);
-      const ingredientsResult: PagedResult<IngredientRow> = await fetchInChunks<string, IngredientRow>(
-        recipeIds,
-        (chunk) =>
-          fetchAllRows<IngredientRow>((from, to) =>
-            supabase
-              .from('recipe_ingredients')
-              .select('id, recipe_id, product_id, quantity, unit')
-              .in('recipe_id', chunk)
-              .order('recipe_id')
-              .order('id')
-              .range(from, to) as unknown as PromiseLike<{ data: IngredientRow[] | null; error: unknown }>
-          )
-      );
-
-      const enhancedRecipes = buildEnhancedRecipes(
-        activeRecipes,
-        ingredientsResult.rows,
-        productsResult.rows,
-        salesStatsResult.rows,
-      );
-
-      setRecipes(enhancedRecipes);
-
-      // Heal stored costs off the render path (design §3.7): one batched
-      // upsert of only the drifted rows, deliberately not awaited so it
-      // never delays first paint, and convergent — the next load finds no
-      // drift and issues zero writes.
-      void healRecipeCosts(activeRecipes, enhancedRecipes);
-    } catch (error: any) {
-      console.error('Error fetching recipes:', error);
-      // Fail closed: clear any previously-loaded recipes (e.g. from a prior
-      // restaurant selection or a stale successful fetch) so a failed
-      // refetch never leaves cross-tenant/stale data on screen.
-      setRecipes([]);
-      toast({
-        title: "Error fetching recipes",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [restaurantId, user, toast]);
+    await refetch();
+  }, [refetch]);
 
   const fetchRecipeIngredients = async (recipeId: string): Promise<RecipeIngredient[]> => {
     try {
@@ -424,7 +455,8 @@ export const useRecipes = (restaurantId: string | null) => {
     }
   };
 
-  const createRecipe = async (recipeData: CreateRecipeData): Promise<Recipe | null> => {
+  const createRecipeMutation = useMutation({
+    mutationFn: async (recipeData: CreateRecipeData): Promise<Recipe | null> => {
     if (!user) return null;
 
     try {
@@ -476,34 +508,17 @@ export const useRecipes = (restaurantId: string | null) => {
           if (ingredientsError) throw ingredientsError;
         }
 
-      // Calculate and update recipe cost
-      const cost = await calculateRecipeCost(recipe.id);
-      if (cost !== null) {
-        await supabase
-          .from('recipes')
-          .update({ estimated_cost: cost })
-          .eq('id', recipe.id);
-        
-        recipe.estimated_cost = cost;
-      }
-
-      // Calculate profitability
-      const profitData = await calculateRecipeProfitability(recipe);
-      const enhancedRecipe = {
-        ...recipe,
-        avg_sale_price: profitData?.avg_sale_price,
-        profit_margin: profitData?.profit_margin,
-        profit_per_serving: profitData?.profit_per_serving
-      };
-
-      setRecipes(prev => [...prev, enhancedRecipe]);
-      
+      // Cost and profitability are deliberately NOT computed here any more.
+      // The invalidation below refetches through fetchRecipesData, which
+      // derives both in memory and heals the stored cost in its batched
+      // upsert — so the old three extra round trips (cost query, cost
+      // UPDATE, unbounded unified_sales query) are pure duplication now.
       toast({
         title: "Recipe created",
         description: `${recipe.name} has been created successfully.`,
       });
 
-      return enhancedRecipe;
+      return recipe as Recipe;
     } catch (error: any) {
       console.error('Error creating recipe:', error);
       toast({
@@ -513,9 +528,19 @@ export const useRecipes = (restaurantId: string | null) => {
       });
       return null;
     }
-  };
+    },
+    onSuccess: (created) => {
+      if (created) invalidateRecipes();
+    },
+  });
 
-  const updateRecipe = async (id: string, updates: Partial<Recipe>): Promise<boolean> => {
+  const createRecipe = useCallback(
+    (recipeData: CreateRecipeData) => createRecipeMutation.mutateAsync(recipeData),
+    [createRecipeMutation]
+  );
+
+  const updateRecipeMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Recipe> }): Promise<boolean> => {
     try {
       const { error } = await supabase
         .from('recipes')
@@ -523,12 +548,6 @@ export const useRecipes = (restaurantId: string | null) => {
         .eq('id', id);
 
       if (error) throw error;
-
-      setRecipes(prev =>
-        prev.map(recipe =>
-          recipe.id === id ? { ...recipe, ...updates } : recipe
-        )
-      );
 
       toast({
         title: "Recipe updated",
@@ -545,14 +564,27 @@ export const useRecipes = (restaurantId: string | null) => {
       });
       return false;
     }
-  };
+    },
+    onSuccess: (ok) => {
+      if (ok) invalidateRecipes();
+    },
+  });
 
-  const updateRecipeIngredients = async (recipeId: string, ingredients: {
-    product_id: string;
-    quantity: number;
-    unit: IngredientUnit;
-    notes?: string;
-  }[]): Promise<boolean> => {
+  const updateRecipe = useCallback(
+    (id: string, updates: Partial<Recipe>) => updateRecipeMutation.mutateAsync({ id, updates }),
+    [updateRecipeMutation]
+  );
+
+  const updateRecipeIngredientsMutation = useMutation({
+    mutationFn: async ({ recipeId, ingredients }: {
+      recipeId: string;
+      ingredients: {
+        product_id: string;
+        quantity: number;
+        unit: IngredientUnit;
+        notes?: string;
+      }[];
+    }): Promise<boolean> => {
     try {
       // Delete existing ingredients
       const { error: deleteError } = await supabase
@@ -586,9 +618,27 @@ export const useRecipes = (restaurantId: string | null) => {
       });
       return false;
     }
-  };
+    },
+    onSuccess: (ok) => {
+      if (ok) invalidateRecipes();
+    },
+  });
 
-  const deleteRecipe = async (id: string): Promise<boolean> => {
+  const updateRecipeIngredients = useCallback(
+    (
+      recipeId: string,
+      ingredients: {
+        product_id: string;
+        quantity: number;
+        unit: IngredientUnit;
+        notes?: string;
+      }[]
+    ) => updateRecipeIngredientsMutation.mutateAsync({ recipeId, ingredients }),
+    [updateRecipeIngredientsMutation]
+  );
+
+  const deleteRecipeMutation = useMutation({
+    mutationFn: async (id: string): Promise<boolean> => {
     try {
       // Shadow recipes back a prep (batch) recipe; soft-deleting one silently
       // breaks production deduction/costing. Blocked here AND by a DB trigger.
@@ -618,8 +668,6 @@ export const useRecipes = (restaurantId: string | null) => {
 
       if (error) throw error;
 
-      setRecipes(prev => prev.filter(recipe => recipe.id !== id));
-      
       toast({
         title: "Recipe deleted",
         description: "Recipe has been deleted successfully.",
@@ -635,7 +683,16 @@ export const useRecipes = (restaurantId: string | null) => {
       });
       return false;
     }
-  };
+    },
+    onSuccess: (ok) => {
+      if (ok) invalidateRecipes();
+    },
+  });
+
+  const deleteRecipe = useCallback(
+    (id: string) => deleteRecipeMutation.mutateAsync(id),
+    [deleteRecipeMutation]
+  );
 
   const calculateRecipeCost = async (recipeId: string): Promise<number | null> => {
     try {
@@ -734,9 +791,8 @@ export const useRecipes = (restaurantId: string | null) => {
   const fetchRecipesRef = useRef(fetchRecipes);
   fetchRecipesRef.current = fetchRecipes;
 
-  useEffect(() => {
-    fetchRecipes();
-  }, [fetchRecipes]);
+  // No manual fetch effect: useQuery owns when to fetch, dedupes the six
+  // mount points onto one request, and re-uses the cache within staleTime.
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -784,7 +840,8 @@ export const useRecipes = (restaurantId: string | null) => {
 
   return {
     recipes,
-    loading,
+    loading: isLoading,
+    isError,
     fetchRecipes,
     fetchRecipeIngredients,
     createRecipe,

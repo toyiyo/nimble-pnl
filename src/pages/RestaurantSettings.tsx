@@ -110,6 +110,20 @@ export default function RestaurantSettings() {
     return { pct, overTarget, consistent: laborConsistentSplh({ wage, targetLaborPct: target }) };
   }, [staffEmployees, lpTargetSplh, lpTargetLaborPct]);
 
+  const splhHintBlock = splhHint && (
+    <div aria-live="polite" className="flex flex-col gap-0.5">
+      <p className={`text-[13px] ${splhHint.overTarget ? 'text-warning' : 'text-muted-foreground'}`}>
+        ≈ {splhHint.pct.toFixed(0)}% labor at your current average wage
+        {splhHint.overTarget && (
+          <> — above your {lpTargetLaborPct}% target. Try ${Math.round(splhHint.consistent)} to hit it.</>
+        )}
+      </p>
+      <p className="text-[13px] text-muted-foreground/70">
+        Lowering this target increases recommended headcount.
+      </p>
+    </div>
+  );
+
   // Sync labor planning form when staffing defaults load
   useEffect(() => {
     setLpTargetSplh(String(staffDefaults.target_splh));
@@ -1166,6 +1180,7 @@ export default function RestaurantSettings() {
                             <p id="lpTargetSplh-help" className="text-[13px] text-muted-foreground">
                               Sales Per Labor Hour — the revenue each staff member should generate per hour
                             </p>
+                            {splhHintBlock}
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="lpAvgTicket" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -1217,6 +1232,7 @@ export default function RestaurantSettings() {
                             <p id="lpTargetLaborPct-help" className="text-[13px] text-muted-foreground">
                               Maximum percentage of revenue that should go to labor costs
                             </p>
+                            {splhHintBlock}
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="lpMinStaff" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">

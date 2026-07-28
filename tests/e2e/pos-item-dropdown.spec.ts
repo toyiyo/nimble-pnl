@@ -42,7 +42,99 @@ async function seedPosItems(page: import('@playwright/test').Page, count: number
   );
 }
 
+/**
+ * Bug 1 — `usePOSItems` issued two unbounded selects (no `.limit()`, no
+ * `.order()`) and aggregated the results in the browser. PostgREST caps an
+ * unbounded response at 1000 rows and still returns HTTP 200, so the old
+ * code silently aggregated over an arbitrary 1000-row window instead of the
+ * tenant's whole catalogue (see design doc "Root cause 1"). This seeds 1000
+ * decoy sale rows first, then a handful more for a distinct item -- so that
+ * item's contributing rows land strictly outside the first 1000 rows of the
+ * table -- and asserts `search_pos_items` still surfaces it (with its true
+ * sales count) when its name is typed into the dropdown.
+ */
+async function seedItemBeyondRow1000(page: import('@playwright/test').Page) {
+  await page.evaluate(
+    async ({ saleDate }) => {
+      const supabase = (window as any).__supabase;
+      const restaurantId = await (window as any).__getRestaurantId();
+
+      // 1000 decoy rows for a single common item, inserted (and therefore
+      // occupying table rows) before the target item's rows.
+      const decoyRows = Array.from({ length: 1000 }, (_, i) => ({
+        restaurant_id: restaurantId,
+        pos_system: 'test',
+        external_order_id: `row-1000-decoy-${i}`,
+        item_name: 'Common Decoy Item',
+        quantity: 1,
+        total_price: 10,
+        sale_date: saleDate,
+      }));
+
+      // Insert in batches -- a single 1000-row request risks hitting a
+      // request-size/timeout ceiling that has nothing to do with what this
+      // test is proving.
+      const BATCH = 250;
+      for (let i = 0; i < decoyRows.length; i += BATCH) {
+        const { error } = await supabase.from('unified_sales').insert(decoyRows.slice(i, i + BATCH));
+        if (error) throw new Error(error.message);
+      }
+
+      // The target item's 5 sale rows are inserted last, i.e. strictly
+      // outside the first-1000-row window the pre-fix client code read.
+      const targetRows = Array.from({ length: 5 }, (_, i) => ({
+        restaurant_id: restaurantId,
+        pos_system: 'test',
+        external_order_id: `row-1000-target-${i}`,
+        item_name: 'Rare Item Past Row 1000',
+        quantity: 1,
+        total_price: 10,
+        sale_date: saleDate,
+      }));
+
+      const { error: targetError } = await supabase.from('unified_sales').insert(targetRows);
+      if (targetError) throw new Error(targetError.message);
+    },
+    { saleDate: SALE_DATE },
+  );
+}
+
 test.describe('POS Item Dropdown', () => {
+  test('surfaces an item outside the first 1000 sale rows when its name is typed', async ({ page }) => {
+    const user = generateTestUser('pos-item-1000');
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    await seedItemBeyondRow1000(page);
+
+    await page.goto('/recipes');
+    await page.getByRole('button', { name: 'Create new recipe' }).click();
+
+    const dialog = page.getByRole('dialog', { name: /create new recipe/i });
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+
+    const posItemCombobox = dialog.getByRole('combobox').filter({ hasText: 'Search POS items or leave blank' });
+    await expect(posItemCombobox).toBeVisible({ timeout: 15000 });
+    await posItemCombobox.click();
+
+    const listbox = page.getByRole('listbox');
+    await expect(listbox).toBeVisible({ timeout: 5000 });
+
+    // Type the target item's name. RecipeDialog owns a 250ms debounce
+    // before this reaches search_pos_items (Task 3c), so the assertion
+    // below needs to tolerate that plus a real network round-trip.
+    const searchInput = page.getByPlaceholder('Search POS items...');
+    await searchInput.fill('Rare Item Past Row 1000');
+
+    const targetOption = page.getByRole('option', { name: /Rare Item Past Row 1000/i });
+    await expect(targetOption).toBeVisible({ timeout: 10000 });
+    // Proves the RPC aggregated all 5 of the target's rows, not a
+    // truncated subset -- the specific failure mode of the old 1000-row
+    // cap bug (a partially-visible window would under-report this count,
+    // or the item could be missing from the result entirely).
+    await expect(targetOption).toContainText('5 sales');
+  });
+
   test('scrolls with a mouse wheel inside the Recipe dialog', async ({ page }) => {
     const user = generateTestUser('pos-item-scroll');
     await signUpAndCreateRestaurant(page, user);

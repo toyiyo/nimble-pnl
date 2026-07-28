@@ -1047,6 +1047,7 @@ export function ShiftTimelineTab({
               minStaff={minStaff}
               weekdayKey={weekdayKey}
               wage={avgWage}
+              hasWageData={hasWageData}
               lookbackWeeks={lookbackWeeks}
               onQuickAdd={handleGapClick}
             />

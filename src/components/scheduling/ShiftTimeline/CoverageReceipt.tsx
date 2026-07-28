@@ -16,6 +16,8 @@ interface CoverageReceiptProps {
   readonly weekdayKey: string;
   /** Average hourly wage — drives the implied-SPLH-at-scheduled aside. */
   readonly wage: number;
+  /** Whether `wage` is real roster data — gates the implied-SPLH aside. */
+  readonly hasWageData: boolean;
   /** Lookback window (in weeks) — surfaced in the nodata aside's copy. */
   readonly lookbackWeeks: number;
   /**
@@ -72,10 +74,11 @@ export function CoverageReceipt({
   minStaff,
   weekdayKey,
   wage,
+  hasWageData,
   lookbackWeeks,
   onQuickAdd,
 }: CoverageReceiptProps) {
-  const receipt = buildReceipt(hour, { minStaff, weekdayKey, wage, lookbackWeeks });
+  const receipt = buildReceipt(hour, { minStaff, weekdayKey, wage, lookbackWeeks, hasWageData });
   const kind = classifyHour(hour, minStaff);
   const showQuickAdd = Boolean(onQuickAdd) && (kind === 'crit' || kind === 'floor');
 

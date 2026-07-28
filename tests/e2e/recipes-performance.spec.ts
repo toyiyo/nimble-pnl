@@ -220,6 +220,6 @@ test.describe('Recipes page load', () => {
     // The empty state invites creating a first recipe -- exactly the wrong
     // prompt during an outage, since the recipes still exist.
     await expect(page.getByText('Create your first recipe to start tracking')).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Retry loading recipes' }).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again to load recipes' }).first()).toBeVisible();
   });
 });

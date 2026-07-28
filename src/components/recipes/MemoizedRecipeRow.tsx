@@ -93,6 +93,10 @@ function RecipeRow<TRecipe extends RecipeShape>({
   return (
     <div
       role="row"
+      // Only the visible window is mounted, so without an explicit index a
+      // screen reader would announce row 3 of 3 while 130 recipes exist.
+      // 1-based, and row 1 is the header.
+      aria-rowindex={index + 2}
       data-index={index}
       ref={measureRef}
       style={style}

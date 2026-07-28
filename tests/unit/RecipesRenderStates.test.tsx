@@ -137,7 +137,7 @@ describe("Recipes error state", () => {
     recipesState.isError = true;
     renderPage();
 
-    fireEvent.click(screen.getAllByRole("button", { name: /retry loading recipes/i })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /try again to load recipes/i })[0]);
 
     expect(retryMock).toHaveBeenCalled();
   });

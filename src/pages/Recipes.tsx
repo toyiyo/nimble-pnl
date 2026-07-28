@@ -661,8 +661,10 @@ function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onD
                 Your recipes are still here — we just couldn't reach them. Check your
                 connection and try again.
               </p>
+              {/* The accessible name has to contain the visible text (WCAG
+                  2.5.3), or voice-control users saying "Try again" miss it. */}
               {onRetry && (
-                <Button onClick={onRetry} variant="outline" className="gap-2" aria-label="Retry loading recipes">
+                <Button onClick={onRetry} variant="outline" className="gap-2" aria-label="Try again to load recipes">
                   Try again
                 </Button>
               )}
@@ -757,9 +759,16 @@ function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onD
             which table layout cannot express. */}
         {!isMobile && (
         <div className="overflow-x-auto">
-          <div role="table" aria-label="Recipes" className={RECIPE_TABLE_MIN_WIDTH}>
+          {/* aria-rowcount covers the header plus every recipe, not just the
+              mounted window -- virtualization otherwise hides the real size. */}
+          <div
+            role="table"
+            aria-label="Recipes"
+            aria-rowcount={processedRecipes.length + 1}
+            className={RECIPE_TABLE_MIN_WIDTH}
+          >
             <div role="rowgroup">
-              <div role="row" className="flex items-center gap-2 px-4 py-3 border-b bg-muted/50 font-medium text-sm text-muted-foreground">
+              <div role="row" aria-rowindex={1} className="flex items-center gap-2 px-4 py-3 border-b bg-muted/50 font-medium text-sm text-muted-foreground">
                 <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.name}>Recipe Name</div>
                 <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.posItem}>POS Item</div>
                 <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.conversions}>Conversions</div>

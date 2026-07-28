@@ -1,5 +1,7 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from '@/hooks/use-toast';
@@ -281,6 +283,47 @@ async function healRecipeCosts(
   return drifted.map((row) => row.id);
 }
 
+/** How long a heal write stays eligible to be recognised as its own realtime
+ * echo. Long enough to cover the round trip, short enough that a genuine edit
+ * of the same recipe moments later is never swallowed. */
+const HEAL_ECHO_TTL_MS = 10_000;
+
+/** Recipe ids written by a cost heal, mapped to when they expire.
+ *
+ * The heal runs inside `fetchRecipesData`, which is module scope rather than
+ * hook scope, so the record has to live here too — and that is also what makes
+ * it correct: any of the six mount points can be the one that healed, and every
+ * one of them must recognise the resulting realtime event as its own.
+ */
+const pendingHealEchoes = new Map<string, number>();
+
+export function recordHealEchoes(ids: string[]): void {
+  const expiresAt = Date.now() + HEAL_ECHO_TTL_MS;
+  for (const id of ids) pendingHealEchoes.set(id, expiresAt);
+}
+
+/**
+ * True when a realtime `recipes` event is the echo of a heal we just wrote.
+ *
+ * Consumes the entry, so only the first event for a healed id is ignored: a
+ * genuine edit to the same recipe a moment later still refetches. Without this
+ * the heal writes an UPDATE, the UPDATE echoes back over realtime, the echo
+ * triggers a refetch, and the refetch runs the heal again — the write→refetch
+ * stampede (5,748 updates over 588 rows) this change exists to kill.
+ */
+export function isHealEcho(recipeId: string | undefined | null): boolean {
+  if (!recipeId) return false;
+  const expiresAt = pendingHealEchoes.get(recipeId);
+  if (expiresAt === undefined) return false;
+  pendingHealEchoes.delete(recipeId);
+  return expiresAt > Date.now();
+}
+
+/** Test seam: drop every recorded echo. */
+export function resetHealEchoes(): void {
+  pendingHealEchoes.clear();
+}
+
 /** Shared cache key root. `useRecipes` is mounted at six independent points
  * (Recipes, POSSales, POSSaleDialog, MapPOSItemDialog, RecipeDialog,
  * DeleteRecipeDialog); they must all read and invalidate the same entry, or
@@ -289,6 +332,99 @@ export const RECIPES_QUERY_KEY = 'recipes';
 
 export const recipesQueryKey = (restaurantId: string | null) =>
   [RECIPES_QUERY_KEY, restaurantId] as const;
+
+interface RecipeChannelEntry {
+  channel: RealtimeChannel;
+  refCount: number;
+}
+
+/**
+ * One realtime channel per (QueryClient, restaurant), shared by every mount.
+ *
+ * Keyed by QueryClient so separate React trees (and separate tests) never
+ * share a subscription. `useRecipes` is mounted at six points; a channel per
+ * mount would mean six websocket subscriptions and — worse — six
+ * `invalidateQueries` calls per database change. `invalidateQueries` defaults
+ * to `cancelRefetch: true`, so those six would cancel and restart each other's
+ * refetch: six requests for one change, which is the fan-out this whole change
+ * exists to remove. One channel means one invalidation means one request.
+ */
+const recipeChannelsByClient = new WeakMap<QueryClient, Map<string, RecipeChannelEntry>>();
+
+/**
+ * Subscribes to recipe changes for a restaurant and returns an unsubscribe
+ * function. The underlying channel is created on the first subscriber and torn
+ * down when the last one leaves.
+ *
+ * Also listens on prep_recipes: the fetch filters shadow recipes out by
+ * checking prep_recipes, and `usePrepRecipes.createPrepRecipe` inserts the
+ * backing recipes row *before* the prep_recipes link row. Without the second
+ * subscription an open Recipes page refreshes on that recipes INSERT (while
+ * the link is still missing) and never again once the link lands, leaving the
+ * shadow recipe visible until an unrelated change or a manual refresh.
+ */
+function subscribeToRecipeChanges(restaurantId: string, queryClient: QueryClient): () => void {
+  let byRestaurant = recipeChannelsByClient.get(queryClient);
+  if (!byRestaurant) {
+    byRestaurant = new Map();
+    recipeChannelsByClient.set(queryClient, byRestaurant);
+  }
+
+  let entry = byRestaurant.get(restaurantId);
+  if (!entry) {
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: [RECIPES_QUERY_KEY, restaurantId] });
+    };
+
+    const channel = supabase
+      .channel(`recipe-changes:${restaurantId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'recipes',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        (payload: RealtimePostgresChangesPayload<{ id?: string }>) => {
+          // Invalidate rather than fetch directly: every mount point reads one
+          // cache entry, so a single invalidation refreshes all of them with
+          // one request, and React Query does nothing at all when the page is
+          // unmounted.
+          const changedId =
+            (payload.new as { id?: string } | null)?.id ??
+            (payload.old as { id?: string } | null)?.id;
+          if (isHealEcho(changedId)) return;
+          invalidate();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'prep_recipes',
+          filter: `restaurant_id=eq.${restaurantId}`,
+        },
+        // No echo guard: nothing in this hook writes prep_recipes.
+        invalidate
+      )
+      .subscribe();
+
+    entry = { channel, refCount: 0 };
+    byRestaurant.set(restaurantId, entry);
+  }
+
+  entry.refCount += 1;
+  const subscribed = entry;
+
+  return () => {
+    subscribed.refCount -= 1;
+    if (subscribed.refCount > 0) return;
+    supabase.removeChannel(subscribed.channel);
+    byRestaurant.delete(restaurantId);
+  };
+}
 
 /**
  * The whole page-load fetch, as a plain function so React Query owns the
@@ -381,8 +517,10 @@ export async function fetchRecipesData(restaurantId: string): Promise<Recipe[]> 
   // Heal stored costs off the render path (design §3.7): one batched
   // upsert of only the drifted rows, deliberately not awaited so it
   // never delays first paint, and convergent — the next load finds no
-  // drift and issues zero writes.
-  void healRecipeCosts(activeRecipes, enhancedRecipes);
+  // drift and issues zero writes. The ids it wrote are recorded so the
+  // realtime subscription can recognise the resulting UPDATE as its own echo
+  // instead of refetching (and re-healing) in a loop.
+  void healRecipeCosts(activeRecipes, enhancedRecipes).then(recordHealEchoes);
 
   return enhancedRecipes;
 }
@@ -787,56 +925,13 @@ export const useRecipes = (restaurantId: string | null) => {
     }
   };
 
-  // Ref so the realtime callback always calls the latest fetchRecipes
-  const fetchRecipesRef = useRef(fetchRecipes);
-  fetchRecipesRef.current = fetchRecipes;
-
   // No manual fetch effect: useQuery owns when to fetch, dedupes the six
   // mount points onto one request, and re-uses the cache within staleTime.
 
   useEffect(() => {
     if (!restaurantId) return;
-
-    // Set up real-time subscription for recipe updates. Also listen on
-    // prep_recipes: fetchRecipes filters shadow recipes out by checking
-    // prep_recipes, and usePrepRecipes.createPrepRecipe inserts the backing
-    // recipes row before the prep_recipes link row. Without this second
-    // subscription, an open Recipes page can refetch on that recipes INSERT
-    // (before the link exists) and never refetch again once the link lands,
-    // leaving the shadow recipe visible until an unrelated change or manual
-    // refresh.
-    const channel = supabase
-      .channel(`recipe-changes:${restaurantId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'recipes',
-          filter: `restaurant_id=eq.${restaurantId}`
-        },
-        () => {
-          fetchRecipesRef.current();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'prep_recipes',
-          filter: `restaurant_id=eq.${restaurantId}`
-        },
-        () => {
-          fetchRecipesRef.current();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurantId]);
+    return subscribeToRecipeChanges(restaurantId, queryClient);
+  }, [restaurantId, queryClient]);
 
   return {
     recipes,

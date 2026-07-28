@@ -121,8 +121,8 @@ serve(async (req) => {
       .from("shifts")
       .select("employee_id")
       .eq("restaurant_id", restaurantId)
-      .gte("start_time", `${weekStart}T00:00:00Z`)
-      .lte("start_time", `${weekEnd}T23:59:59Z`)
+      .gte("start_time", weekStartInstant)
+      .lte("start_time", weekEndInstant)
       .eq("is_published", true);
 
     if (shiftsError) {

@@ -19,7 +19,9 @@ function SegmentButton({ icon: Icon, label, pressed, onClick }: SegmentButtonPro
       onClick={onClick}
       className={cn(
         'flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[13px] font-medium transition-colors',
-        pressed ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+        pressed
+          ? 'bg-background text-foreground shadow-sm'
+          : 'text-personal-view-foreground/80 hover:text-personal-view-foreground'
       )}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -36,6 +38,16 @@ function SegmentButton({ icon: Icon, label, pressed, onClick }: SegmentButtonPro
  * a compact segmented control (Admin / My Work) plus a hint line. Mounted at
  * two places (the `UserProfileDropdown` and the expanded `SidebarFooter`), so
  * layout stays compact/truncating to fit both widths.
+ *
+ * The card paints its **own** opaque surface (`bg-personal-view`) and pairs it
+ * with its **own** foreground (`text-personal-view-foreground`), so it renders
+ * identically in both mounts. Do not reintroduce alpha here, and do not reach
+ * for `text-muted-foreground`/`text-foreground` inside this card: those tokens
+ * are scoped to the main-content surface, but the sidebar is dark *even in
+ * light theme* (`--sidebar-background: 30 15% 12%`). The original version did
+ * both — `bg-personal-view/40` let the dark sidebar bleed through into a
+ * mid-gray, on which `text-muted-foreground` measured 1.03:1. Guarded by
+ * tests/unit/ViewModeSwitch.contrast.test.tsx.
  *
  * The segmented control is two `aria-pressed` toggle buttons inside a
  * `role="group"` — NOT `role="radiogroup"` (see design doc "Three-state /
@@ -62,11 +74,11 @@ export function ViewModeSwitch({ className }: { className?: string } = {}) {
   return (
     <div
       className={cn(
-        'rounded-lg border border-personal-view-border bg-personal-view/40 p-2.5',
+        'rounded-lg border border-personal-view-border bg-personal-view p-2.5',
         className
       )}
     >
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-personal-view-foreground">
         You&apos;re viewing as
       </p>
       <div
@@ -87,7 +99,7 @@ export function ViewModeSwitch({ className }: { className?: string } = {}) {
           onClick={enterWorkMode}
         />
       </div>
-      <p className="mt-1.5 text-[12px] text-muted-foreground">
+      <p className="mt-1.5 text-[12px] text-personal-view-foreground/80">
         Switch to clock in, view your schedule, timecard, and pay.
       </p>
     </div>

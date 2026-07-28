@@ -51,14 +51,19 @@ to the surfaces #650 did not touch.
 |---|---|
 | 1. Settings Labor Planning tab has no implied %, warning, suggestion, or directional line | `src/pages/RestaurantSettings.tsx` |
 | 2. Planner's inline staffing overrides have the same absence (`SplhSlider` is rendered only by `ShiftTimelineTab`, not `ShiftPlannerTab`) | `src/components/scheduling/ShiftPlanner/StaffingConfigPanel.tsx` |
-| 3. The readout is computed off a **fabricated wage** for rosters with no active hourly employees | `SplhSlider` via `ShiftTimelineTab.tsx:505` |
+| 3. The readout is computed off a **fabricated wage** for rosters with no active hourly employees | `SplhSlider` (visible readout + `aria-valuetext`) and `buildReceipt`'s implied-SPLH aside, both fed from `ShiftTimelineTab.tsx:505` |
 
 Gap 3 is a real correctness bug in shipped code:
 `computeAvgHourlyRateCents` (`staffingCalculator.ts:6-15`) falls back to
 `DEFAULT_HOURLY_RATE_CENTS = 1500` ($15/hr) when the roster has no active hourly
 employees, and `ShiftTimelineTab` divides that by 100 with no guard. An empty or
 salaried-only restaurant is shown an implied labor % presented as fact, derived
-from a wage nobody is paid.
+from a wage nobody is paid. It surfaces in **three** places off that one value:
+the slider's visible readout, the slider's `aria-valuetext`
+(`SplhSlider.tsx:141` — otherwise screen-reader users still hear the fabricated
+percentage after the visible readout is suppressed), and `buildReceipt`'s
+`laborPctAt` aside (`coverageChartModel.ts:190`), which renders in the pinned
+receipt column beside the slider on the same tab. All three are gated.
 
 ## Goals
 
@@ -120,11 +125,33 @@ form holds SPLH/labor-% as raw strings with no coercion, and
 check lets `NaN` through into the arithmetic. Each surface gates on
 `Number.isFinite(x) && x > 0` for both inputs before rendering.
 
+**Colour token.** The over-target emphasis uses the semantic `text-warning`
+token (`tailwind.config.ts:47-49`, `src/index.css:35-36`) — **not** raw
+`text-amber-600 dark:text-amber-400`. CLAUDE.md forbids direct colours, and
+`CoverageVerdict.tsx:70-71` already documents `text-warning` as this codebase's
+convention for exactly this amber "over target" emphasis.
+
 **(a) `SplhSlider.tsx`** — new required prop `hasWageData: boolean`, passed from
-`ShiftTimelineTab` as `hasHourlyWageData(employees)`. When `false`: hide the
-On/Over-target pill and the labor-consistent notch, and replace the
-`→ X% labor at $W/hr` readout with a muted *"Add hourly rates to see implied
-labor %"*. The `$value` figure and the slider itself are unaffected.
+`ShiftTimelineTab` as `hasHourlyWageData(employees)`. When `false`:
+
+- Hide the On/Over-target pill and the labor-consistent notch.
+- Replace the `→ X% labor at $W/hr` readout with `Add hourly rates`, at
+  `text-[13px] text-muted-foreground` (the same classes as the span it
+  replaces). The copy is kept this short deliberately: it sits in a
+  `whitespace-nowrap` flex row (`SplhSlider.tsx:99`) alongside the `$value`
+  figure, so a longer sentence would overflow at 375px.
+- Drop the labor % from `aria-valuetext` (`SplhSlider.tsx:141`), leaving
+  `` `$${value}/hr` ``. Without this, screen-reader users still hear the
+  fabricated percentage the visible change just suppressed.
+
+The `$value` figure and the slider control itself are unaffected.
+
+**(a2) `buildReceipt` (`coverageChartModel.ts`)** — takes a `hasWageData:
+boolean` param (threaded from `ShiftTimelineTab.tsx:1045`). When `false`, omit
+the `implied SPLH is $X/hr → Y% labor` aside (line 190-191) entirely, keeping the
+rest of the receipt intact. While this call site is open, replace the aside's
+hand-inlined `Math.round((wage / splhAt) * 100)` with a call to the relocated
+`impliedLabor`, so the identity has one implementation rather than two.
 
 **(b) `StaffingConfigPanel.tsx`** — new props `avgHourlyRateCents: number` and
 `hasWageData: boolean`, threaded from the hook through `StaffingOverlay`. Under
@@ -132,9 +159,8 @@ the SPLH input, in an `aria-live="polite"` container at `text-[11px]`,
 `max-w-[220px]` (so it wraps inside its flex column rather than displacing the
 Labor% / Min Staff columns at 375px):
 
-- Implied line: `≈ {pct}% labor at current wage`, coloured
-  `text-amber-600 dark:text-amber-400` when `overTarget`, else
-  `text-muted-foreground/80`.
+- Implied line: `≈ {pct}% labor at current wage`, coloured `text-warning` when
+  `overTarget`, else `text-muted-foreground/80`.
 - When `overTarget`, append: `— above your {target}% target, try ${Math.round(consistent)}`.
 - A persistent directional line at `text-[11px] text-muted-foreground/70`:
   *"Lower SPLH → more staff recommended."*
@@ -144,6 +170,14 @@ Labor% / Min Staff columns at 375px):
 strings. Same three lines under the Target SPLH help text, at `text-[13px]` to
 match sibling captions, in an `aria-live="polite"` container. Gating on
 `hasWageData` also means no `$15`-default flash while `useEmployees` loads.
+
+The tab splits the two inputs across separate cards — `target_splh` in "Revenue
+Targets" (~line 1122) and `target_labor_pct` in "Labor Constraints" (~line 1172)
+— and at 375px the grid is single-column, so a manager editing Target Labor %
+cannot see a hint anchored to the SPLH field. The same `aria-live` hint block is
+therefore rendered under **both** fields, so the warning is present at whichever
+field is being edited. Both render from the one derived value; the copy is
+identical.
 
 ### Data flow
 
@@ -181,10 +215,20 @@ verbatim (behavior is unchanged; they must keep passing as-is).
   value when over target; directional line always present when shown;
   `aria-live="polite"` wrapper.
 - `RestaurantSettings` Labor Planning: same visibility matrix driven by the form
-  strings, including the cleared-field (`NaN`) case.
+  strings, including the cleared-field (`NaN`) case, asserted under **both** the
+  Target SPLH and Target Labor % fields.
 - `splhSlider.test.tsx`: extend with `hasWageData={false}` → no pill, no notch,
-  fallback copy; existing `hasWageData={true}` assertions unchanged.
+  `Add hourly rates` copy, and `aria-valuetext` carrying no percentage; existing
+  `hasWageData={true}` assertions unchanged.
+- `coverageReceipt` / `buildReceipt`: with `hasWageData: false` the implied-SPLH
+  aside is absent; with `true` it is byte-identical to today's output (guards the
+  `impliedLabor` swap against rounding drift).
 - `StaffingOverlay` wiring: `avgHourlyRateCents` / `hasWageData` reach the panel.
+
+**Existing suites that must stay green unmodified:** the moved `impliedLabor` /
+`laborConsistentSplh` blocks, and `tests/e2e/coverage-chart-explainer.spec.ts`
+(its fixture seeds one active hourly employee, so `hasWageData` is `true` there
+and its pill/notch assertions are unaffected by the new prop).
 
 ## Decided trade-offs
 
@@ -200,6 +244,16 @@ verbatim (behavior is unchanged; they must keep passing as-is).
 - **Inline per surface, shared math.** The three surfaces have different type
   scales and layouts; copy is kept consistent by convention rather than by a
   component that must flex across all three.
+- **`SplhSlider`'s existing "Over target" pill keeps `bg-destructive/15
+  text-destructive`.** New inline hint text uses `text-warning`. A filled status
+  pill and inline body text are different affordances, and re-colouring
+  just-shipped UI from #650 is churn this change does not need. Both are semantic
+  tokens, so the CLAUDE.md rule is satisfied either way; harmonising the pill is
+  noted as a follow-up rather than done here.
+- **The Settings hint is duplicated under both inputs** rather than placed once
+  between the two cards. Restructuring the tab's card layout is a larger,
+  unrelated change; rendering the same derived block twice is the cheap fix that
+  puts the warning at the point of edit.
 
 ## Superseded approach
 

@@ -12,7 +12,7 @@ import {
 
 import { HelpCircle, Plus, X } from 'lucide-react';
 
-import { impliedLabor, laborConsistentSplh } from '@/lib/staffingCalculator';
+import { deriveSplhHint } from '@/lib/staffingCalculator';
 
 import type { MinCrew, StaffingSettings } from '@/types/scheduling';
 
@@ -72,15 +72,16 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
   // Implied labor % of the current SPLH target at the blended wage. Null when
   // there is no real wage, or when either input is non-finite/non-positive —
   // a cleared field parses to NaN, and `NaN <= 0` is false (design §4).
-  const splhHint = useMemo(() => {
-    const splh = settings.target_splh;
-    const target = settings.target_labor_pct;
-    const positive = (n: number) => Number.isFinite(n) && n > 0;
-    if (!hasWageData || !positive(splh) || !positive(target)) return null;
-    const wage = avgHourlyRateCents / 100;
-    const { pct, overTarget } = impliedLabor({ wage, splh, targetLaborPct: target });
-    return { pct, overTarget, consistent: laborConsistentSplh({ wage, targetLaborPct: target }) };
-  }, [avgHourlyRateCents, hasWageData, settings.target_splh, settings.target_labor_pct]);
+  const splhHint = useMemo(
+    () =>
+      deriveSplhHint({
+        splh: settings.target_splh,
+        targetLaborPct: settings.target_labor_pct,
+        hasWageData,
+        wageCents: avgHourlyRateCents,
+      }),
+    [avgHourlyRateCents, hasWageData, settings.target_splh, settings.target_labor_pct],
+  );
 
   const minCrew = useMemo(() => settings.min_crew ?? {}, [settings.min_crew]);
   const crewPositions = Object.keys(minCrew);

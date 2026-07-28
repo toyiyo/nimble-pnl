@@ -33,9 +33,8 @@ import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useEmployees } from '@/hooks/useEmployees';
 import {
   computeAvgHourlyRateCents,
+  deriveSplhHint,
   hasHourlyWageData,
-  impliedLabor,
-  laborConsistentSplh,
 } from '@/lib/staffingCalculator';
 
 export default function RestaurantSettings() {
@@ -100,15 +99,16 @@ export default function RestaurantSettings() {
   // Implied labor % of the SPLH currently typed into the form. Null when the
   // roster has no real hourly wage, or when either field is blank/non-numeric
   // (Number.parseFloat('') is NaN, and `NaN <= 0` is false — design §4).
-  const splhHint = useMemo(() => {
-    const splh = Number.parseFloat(lpTargetSplh);
-    const target = Number.parseFloat(lpTargetLaborPct);
-    const positive = (n: number) => Number.isFinite(n) && n > 0;
-    if (!hasHourlyWageData(staffEmployees) || !positive(splh) || !positive(target)) return null;
-    const wage = computeAvgHourlyRateCents(staffEmployees) / 100;
-    const { pct, overTarget } = impliedLabor({ wage, splh, targetLaborPct: target });
-    return { pct, overTarget, consistent: laborConsistentSplh({ wage, targetLaborPct: target }) };
-  }, [staffEmployees, lpTargetSplh, lpTargetLaborPct]);
+  const splhHint = useMemo(
+    () =>
+      deriveSplhHint({
+        splh: Number.parseFloat(lpTargetSplh),
+        targetLaborPct: Number.parseFloat(lpTargetLaborPct),
+        hasWageData: hasHourlyWageData(staffEmployees),
+        wageCents: computeAvgHourlyRateCents(staffEmployees),
+      }),
+    [staffEmployees, lpTargetSplh, lpTargetLaborPct],
+  );
 
   const splhHintBlock = splhHint && (
     <div aria-live="polite" className="flex flex-col gap-0.5">

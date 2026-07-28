@@ -65,6 +65,35 @@ export function laborConsistentSplh(params: { wage: number; targetLaborPct: numb
   return targetLaborPct > 0 ? wage / (targetLaborPct / 100) : 0;
 }
 
+export interface SplhHint extends ImpliedLaborResult {
+  /** SPLH value that would exactly hit `targetLaborPct` at `wageCents`. */
+  consistent: number;
+}
+
+/**
+ * The "≈ X% labor at current wage" hint shown next to the SPLH/labor-%
+ * inputs in both the on-chart config panel (`StaffingConfigPanel`) and the
+ * Labor Planning settings page (`RestaurantSettings`) — same guard and math
+ * in both places, centralized here so they can't drift.
+ *
+ * Null when there's no real wage, or when either input is blank/non-finite/
+ * non-positive (a cleared field parses to NaN, and `NaN > 0` is false —
+ * design §4).
+ */
+export function deriveSplhHint(params: {
+  splh: number;
+  targetLaborPct: number;
+  hasWageData: boolean;
+  wageCents: number;
+}): SplhHint | null {
+  const { splh, targetLaborPct, hasWageData, wageCents } = params;
+  const positive = (n: number) => Number.isFinite(n) && n > 0;
+  if (!hasWageData || !positive(splh) || !positive(targetLaborPct)) return null;
+  const wage = wageCents / 100;
+  const { pct, overTarget } = impliedLabor({ wage, splh, targetLaborPct });
+  return { pct, overTarget, consistent: laborConsistentSplh({ wage, targetLaborPct }) };
+}
+
 /**
  * Compute the effective minimum staff from position-based min_crew.
  * Falls back to the global min_staff when min_crew is null or empty.

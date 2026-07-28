@@ -230,9 +230,19 @@ describe.each(comboboxCases)('$name — modal resolution', ({ renderCombobox }) 
 
     await user.click(screen.getByRole('combobox'));
 
-    expect(screen.getByTestId('dialog-sibling')).toHaveAttribute(
-      'aria-hidden',
-      'true',
-    );
+    // aria-hidden's `hideOthers` (node_modules/aria-hidden/dist/es2019/index.js
+    // `deep()`) stops descending as soon as it hits a branch that isn't an
+    // ancestor of the kept node, and sets `aria-hidden="true"` on that
+    // branch's *root* only — it does not walk into the branch to tag every
+    // descendant individually. Verified empirically: with `dialog-sibling`
+    // nested inside `DialogContent`, the attribute lands on the
+    // `role="dialog"` element (the boundary `hideOthers` stopped at), not on
+    // `dialog-sibling` itself, even though `dialog-sibling` is hidden from
+    // the accessibility tree by inheritance. So the correct assertion is
+    // "hidden by some aria-hidden ancestor (or itself)", not "has the
+    // attribute directly" — matching how a screen reader actually treats it.
+    expect(
+      screen.getByTestId('dialog-sibling').closest('[aria-hidden="true"]'),
+    ).not.toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { useInsideScrollLock } from '@/components/ui/scroll-lock-boundary';
 import { useInventoryLocations } from '@/hooks/useInventoryLocations';
 
 interface LocationComboboxProps {
@@ -67,8 +68,10 @@ export function LocationCombobox({
   );
   const showCreateOption = searchValue.trim() && !exactMatch;
 
+  const modal = useInsideScrollLock();
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"

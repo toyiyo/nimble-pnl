@@ -15,14 +15,21 @@ export function computeAvgHourlyRateCents(employees: Employee[] | undefined): nu
 }
 
 /**
- * True when the roster has at least one active hourly employee — i.e. the wage
- * from computeAvgHourlyRateCents is real, not the DEFAULT_HOURLY_RATE_CENTS
- * ($15/hr) fallback. Mirrors that function's own filter so the two can never
- * disagree. Surfaces use this to suppress an implied-labor readout that would
+ * True when the roster has at least one active hourly employee with a real,
+ * nonzero rate — i.e. the wage from computeAvgHourlyRateCents is real, not the
+ * DEFAULT_HOURLY_RATE_CENTS ($15/hr) fallback. Mirrors that function's own
+ * `compensation_type === 'hourly' && is_active` filter, plus an `hourly_rate >
+ * 0` check: `EmployeeDialog` saves a blank hourly-rate field as `0` cents, and
+ * a roster whose only active hourly employee has an unset rate would
+ * otherwise make this predicate true while the computed average is a
+ * fabricated `$0/hr` — surfacing a "0% labor" readout as if it were real.
+ * Surfaces use this to suppress an implied-labor readout that would
  * otherwise be derived from a wage nobody is paid.
  */
 export function hasHourlyWageData(employees: Employee[] | undefined): boolean {
-  return !!employees?.some((e) => e.compensation_type === 'hourly' && e.is_active);
+  return !!employees?.some(
+    (e) => e.compensation_type === 'hourly' && e.is_active && e.hourly_rate > 0,
+  );
 }
 
 export interface ImpliedLaborResult {

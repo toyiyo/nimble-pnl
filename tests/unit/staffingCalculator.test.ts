@@ -226,6 +226,15 @@ describe('hasHourlyWageData', () => {
     expect(hasHourlyWageData(salaried)).toBe(false);
     expect(computeAvgHourlyRateCents(salaried)).toBe(1500);
   });
+
+  it('should be false when the only active hourly employee has an unset ($0) rate', () => {
+    // EmployeeDialog saves a blank hourly-rate field as 0 cents. Without excluding
+    // this, hasWageData would be true while computeAvgHourlyRateCents returns 0,
+    // fabricating a "0% labor" readout instead of suppressing it.
+    const unsetRate = [emp({ hourly_rate: 0 })];
+    expect(hasHourlyWageData(unsetRate)).toBe(false);
+    expect(computeAvgHourlyRateCents(unsetRate)).toBe(0);
+  });
 });
 
 describe('impliedLabor', () => {

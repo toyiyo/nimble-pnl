@@ -183,22 +183,44 @@ back to the column default `America/Chicago` — an invalid IANA string throws
 `schedule_publications` has no invariant on its stored range, which is how 44 bad
 rows accumulated silently. Add:
 
+a `BEFORE INSERT` trigger plus a `BEFORE UPDATE OF week_start_date,
+week_end_date` trigger, both calling
+`assert_schedule_publication_week_range()`, which raises `23514` when the span
+is negative or exceeds 6 days. The update trigger additionally carries a `WHEN`
+clause requiring the dates to actually change.
+
+**Revised — this section originally specified a `NOT VALID CHECK` constraint,
+and that was wrong.** Postgres re-evaluates a `CHECK` against the *full new row*
+on every `UPDATE`, not just on `INSERT` or on updates that touch the checked
+columns; `NOT VALID` only skips the one-time validation scan when the constraint
+is created. Since all 44 historical rows hold an 8-day span, the constraint would
+have rejected
+
 ```sql
-ALTER TABLE schedule_publications
-  ADD CONSTRAINT schedule_publications_week_range_valid
-  CHECK (week_end_date >= week_start_date
-         AND week_end_date - week_start_date <= 6)
-  NOT VALID;
+UPDATE schedule_publications
+SET open_shifts_broadcast_at = ..., open_shifts_broadcast_by = ...
+WHERE id = ...
 ```
 
-`NOT VALID` is deliberate and load-bearing: it enforces the invariant on every
-**new** write while leaving the 44 historical rows untouched, which is exactly
-the product decision made for this fix. The bound is `<= 6` rather than `= 6` so
-a future partial-week publish stays legal; only the 8-day spill is forbidden.
+which is precisely what `broadcast-open-shifts` (`index.ts:273-280`) issues every
+time a manager broadcasts open shifts for an already-published week. Because that
+call site only logs `updateError` rather than throwing, the failure would have
+been silent: push and email still go out, but `open_shifts_broadcast_at` never
+gets stamped, so the button in `Scheduling.tsx:1009-1018` never flips to its
+"already broadcast" state and managers are invited to re-broadcast and re-spam
+staff. Reproduced against the local DB in a rolled-back transaction, and covered
+now by test 5 of the pgTAP suite.
 
-This is a `CHECK`, not the clamp rejected in Approach C. The objection to a clamp
-was that silently coercing bad input hides caller bugs — a `CHECK` does the
-opposite, failing the write loudly. The two are complementary, not contradictory.
+Scoping the update trigger to the two date columns keeps the historical rows
+writable — the product decision not to backfill — while still rejecting any new
+write that would produce a spilled span. The bound is `<= 6` rather than `= 6` so
+a future partial-week publish stays legal; only the 8-day spill is forbidden, and
+repairing a legacy row *to* a correct span stays allowed so a backfill remains
+possible later without dropping the guard.
+
+This raises loudly rather than clamping, which is the objection that ruled out
+Approach C: silently coercing bad input hides caller bugs. The two are
+complementary, not contradictory.
 
 ### Not changed
 
@@ -269,8 +291,10 @@ protection while appearing to be the headline test.
 
 ### pgTAP — `supabase/tests/`
 
-Cover the new `CHECK` constraint: a 6-day range inserts cleanly, an 8-day range
-raises. This locks in the invariant at the layer that will outlive any particular
+Cover the new triggers: a 6-day range inserts cleanly, an 8-day range raises,
+and — the case that drove the mechanism — a broadcast-columns-only `UPDATE` on a
+legacy 8-day row still succeeds while an update that widens the span is rejected.
+This locks in the invariant at the layer that will outlive any particular
 frontend call site.
 
 ## Non-goals / decided trade-offs
@@ -314,8 +338,11 @@ codebase, which is what made the deviation diagnosable:
 - **Moderate for `notify-schedule-published`,** which is the one place this
   change could regress behavior if done wrong — it decides who gets notified.
   Covered by the E2E and by explicit review of the Sunday-evening boundary case.
-- The new `CHECK` is `NOT VALID`, so it cannot fail on existing rows; the only
+- **The guard cannot fail on existing rows,** because the update trigger only
+  fires on statements that change `week_start_date` / `week_end_date`. The only
   way it can break a write is if that write is genuinely producing an 8+ day
-  span, which is the bug.
+  span, which is the bug. (An earlier revision of this design used a `NOT VALID
+  CHECK` and claimed the same property; that claim was false for `UPDATE` — see
+  the migration section above.)
 - Managers who came to rely on the extra Monday appearing in the broadcast will
   see it stop. That is the reported bug, not a regression.

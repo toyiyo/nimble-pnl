@@ -3,6 +3,7 @@
 **Date:** 2026-07-27
 **Branch:** `perf/recipes-page-load`
 **Target:** `/recipes` interactive in **≤ 500ms**
+**Status:** revised after Phase 2.5 design review (Supabase + Frontend)
 
 ## 1. Problem (measured, not assumed)
 
@@ -36,32 +37,24 @@ The database is **not** the bottleneck. The dataset is tiny. The page is bound e
 
 ~400 requests to render 229 ingredient rows.
 
-**Why it is slow even with 3 recipes:** the waterfall is 4 levels deep (recipes → cost → write → profitability). That is ~350–400ms of purely serialized network before first paint — over budget at three recipes, before counting `useProducts` (`select('*')`) and `useUnifiedSales` (500 rows + two `chart_of_accounts` joins, fetched only to populate the suggestions banner).
+**Why it is slow even with 3 recipes:** the waterfall is 4 levels deep. That is ~350–400ms of purely serialized network before first paint — over budget at three recipes.
 
 ### Aggravating factors (all confirmed)
 
-- **Write amplification → realtime stampede.** `pg_stat_user_tables` shows **5,748 updates on 588 live rows (9.8×)**; 307 of 484 active recipes were updated after creation. Each write-back fires the `recipes` realtime subscription (`:536`), which calls `fetchRecipes` again, undebounced. A load correcting N costs queues N full refetches.
-- **No React Query.** Raw `useState`/`useEffect`; no caching, and any `user` object identity change re-runs the whole cascade. Violates the CLAUDE.md data-fetching rule.
-- **7 `console.log` calls in the hot path**, several per-ingredient (`:412-472`), shipping to production.
+- **Write amplification → realtime stampede.** `pg_stat_user_tables`: **5,748 updates on 588 live rows (9.8×)**; 307 of 484 active recipes updated after creation. Each write-back fires the `recipes` realtime subscription (`:536`) → `fetchRecipes` again, undebounced.
+- **No React Query.** Raw `useState`/`useEffect`; any `user` identity change re-runs the cascade. Violates the CLAUDE.md data-fetching rule.
+- **7 `console.log` calls in the hot path** (`:412-472`), shipping to production.
+- **A second, redundant recipes fetch.** `useUnifiedSales` (mounted at `Recipes.tsx:46` purely for the suggestions banner) runs its own `['recipes-for-mapping']` query *and* pulls 500 sales rows with two `chart_of_accounts` joins.
 
 ### Pre-existing correctness bug found during diagnosis
 
-`calculateRecipeProfitability` selects sales rows with **no `.limit()`**, so PostgREST silently caps at 1000. Four live Cold Stone recipes exceed that:
-
-| Recipe | Sales rows | True avg | Displayed (capped) |
-|---|---|---|---|
-| CYO ice cream - like it | 1716 | $5.49 | $5.49 |
-| signature ice cream - love it | 1399 | $7.49 | $7.49 |
-| signature ice cream - like it | 1159 | $6.49 | $6.49 |
-| CYO ice cream - love it | 1077 | $6.49 | $6.49 |
-
-Error is currently **$0.00 only because those items have uniform pricing** — any 1000-row sample yields the same mean. The moment a price varies (promo, price change, size variant), margins drift silently. This design fixes it.
+`calculateRecipeProfitability` selects sales rows with **no `.limit()`** → PostgREST silently caps at 1000. Four live Cold Stone recipes exceed it (1716, 1399, 1159, 1077 rows). Error is currently **$0.00 only because those items have uniform pricing** — any 1000-row sample yields the same mean. The moment a price varies, margins drift silently. This design fixes it.
 
 ## 2. Decisions taken
 
 ### Cost math stays in TypeScript
 
-Originally considered moving to a SQL RPC, on the premise that `calculate_recipe_cost` existed and CLAUDE.md called SQL authoritative. **Verification disproved the premise:** the function was deliberately dropped in `20251010164523_cc311241-01fd-4ca6-99c5-2afaa393d48a.sql` —
+Moving to a SQL RPC was considered and rejected on evidence. The premise — that `calculate_recipe_cost` existed and CLAUDE.md deemed SQL authoritative — is false: the function was deliberately dropped in `20251010164523_...sql`:
 
 > Drop the unused calculate_recipe_cost function — This function is not being used anywhere in the application. Recipe costs are calculated on the frontend instead.
 
@@ -70,113 +63,141 @@ Originally considered moving to a SQL RPC, on the premise that `calculate_recipe
 | Size | 655 lines | 189 lines |
 | Approach | general conversion engine | 18 hardcoded unit-pair `IF/ELSIF` branches |
 | Tests | 4 suites | none |
-| Status | live, authoritative in practice | deleted 2025-10-10 |
+| Status | live, authoritative | deleted 2025-10-10 |
 
-CLAUDE.md's "SQL function is authoritative" refers to the **inventory deduction** path (`*_inventory_*.sql`), not recipe-cost display.
-
-**Decision:** keep the TS engine untouched. The 400 requests are caused by *where queries are issued*, not by *which language does the math*. Bulk-fetching yields the identical win with zero risk of a displayed cost changing. Approved by the user after this evidence was presented.
+CLAUDE.md's "SQL function is authoritative" refers to the **inventory deduction** path (`*_inventory_*.sql`), not recipe-cost display. The bottleneck is *where queries are issued*, not *which language does the math*.
 
 ### Write-back is replaced, not deleted
 
-`recipes.estimated_cost` is read by `useRecipeIntelligence`, `useInventoryMetrics`, `RecipeProfitabilityChart`, `MapPOSItemDialog`, and `RecipeCreateFromExistingDialog`. `RecipeDialog.tsx:273` persists it on recipe save.
-
-The page-load write-back exists to heal drift when a **product's `cost_per_unit` changes** — recipe save does not cover that. So it is replaced with a single batched heal, not removed outright (see §3.5).
+`recipes.estimated_cost` is read by `useRecipeIntelligence`, `useInventoryMetrics`, `RecipeProfitabilityChart`, `MapPOSItemDialog`, `RecipeCreateFromExistingDialog`. `RecipeDialog.tsx:273` persists on save. The page-load write-back exists to heal drift when a **product's `cost_per_unit` changes** — save does not cover that. So it is replaced by a batched heal (§3.7), not removed.
 
 ## 3. Design
 
-Five bounded requests replace ~400. **Explicit queries over nested embeds**, per `memory/lessons.md:141` ("no FK, no embed… prefer two explicit queries with `.in('id', ids)`; the wire cost of one extra round-trip is negligible"). This also keeps every query independently paginatable — the 1000-row cap is a recurring source of bugs in this codebase and must be handled explicitly at every step, never left to the default.
+Five bounded requests replace ~400. **Explicit queries over nested embeds**, per `memory/lessons.md:141`. Every query independently paginatable — the 1000-row cap is a recurring source of bugs here and is handled explicitly at every step, never left to the default.
 
-FKs verified present via `pg_constraint`: `recipe_ingredients.recipe_id → recipes.id`, `recipe_ingredients.product_id → products.id`.
+FKs verified via `pg_constraint`: `recipe_ingredients.recipe_id → recipes.id`, `recipe_ingredients.product_id → products.id`.
 
 ### 3.1 Q1 — recipes
-
-`.eq(restaurant_id).eq(is_active,true).order('name')`, explicit column list (no `select('*')`).
-**Cap handling:** paginate with `.range()` until a short page. Bounded today at 133; must not silently truncate at scale.
+Explicit column list (no `select('*')`), `.eq(restaurant_id).eq(is_active,true)`.
+**Cap:** paginate with `.range()` until short page. **Order by `('name')` then `('id')`** — a tiebreaker is required or equal names can split unstably across pages under concurrent writes.
 
 ### 3.2 Q2 — prep shadow links
-
-`prep_recipes.recipe_id` for the restaurant. Unchanged semantics (fail-closed on error, per the existing shadow-recipe guard). Paginated.
+`prep_recipes.recipe_id` for the restaurant. Unchanged fail-closed semantics. Paginated.
 
 ### 3.3 Q3 — recipe ingredients
-
-`.in('recipe_id', recipeIds)` — **chunk `recipeIds` at 200 per request** and paginate each, so neither the URL length nor the 1000-row cap can truncate. Replaces N per-recipe queries.
+`.in('recipe_id', recipeIds)`, **chunked at 200 ids/request**, each chunk paginated. Replaces N per-recipe queries.
 
 ### 3.4 Q4 — products
+**Fetch all products for the restaurant** (`.eq('restaurant_id')`, explicit columns: `id, name, cost_per_unit, uom_purchase, size_value, size_unit, package_qty`), paginated.
 
-`.in('id', productIds)` for only the products actually referenced, explicit columns (`id, name, cost_per_unit, uom_purchase, size_value, size_unit, package_qty`). Same chunking + pagination rule.
+> Review fix: an earlier draft fetched `.in('id', productIds)`, but `productIds` only exists after Q3 returns — that made Q4 *depend* on Q3 and the claimed 2-level waterfall was wrong (really 3). Fetching by `restaurant_id` needs only `restaurantId`, restoring genuine parallelism, and matches the pattern `useProducts` already uses.
 
 ### 3.5 Q5 — sales stats RPC
 
-New `get_recipe_sales_stats(p_restaurant_id uuid)` returning `(item_name text, avg_sale_price numeric)`:
+New `get_recipe_sales_stats(p_restaurant_id uuid)` → `(item_name text, avg_sale_price numeric)`:
 
 ```sql
-select us.item_name,
-       sum(us.total_price) / nullif(sum(us.quantity), 0)
-from unified_sales us
-join recipes r
-  on r.restaurant_id = us.restaurant_id
- and r.pos_item_name = us.item_name
- and r.is_active
-where us.restaurant_id = p_restaurant_id
-  and us.unit_price is not null
-group by us.item_name;
+create or replace function public.get_recipe_sales_stats(p_restaurant_id uuid)
+returns table (item_name text, avg_sale_price numeric)
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select us.item_name,
+         sum(us.total_price) / nullif(sum(coalesce(nullif(us.quantity, 0), 1)), 0)
+  from unified_sales us
+  join recipes r
+    on r.restaurant_id = us.restaurant_id
+   and r.pos_item_name = us.item_name
+   and r.is_active
+  where us.restaurant_id = p_restaurant_id
+    and us.unit_price is not null
+  group by us.item_name;
+$$;
 ```
 
-Rationale:
-- **Aggregation, not cost math** — `sum(total_price)/sum(quantity)` is exactly what the TS does today (`:497-499`). No unit conversion, no drift risk against the TS engine.
-- **Fixes the 1000-row truncation** — aggregation happens server-side over all rows.
-- **Bounded output** — the join to `recipes` means at most one row per mapped recipe (≤133 today), so the RPC result itself cannot hit the cap. Still paginated defensively.
-- Avoids the alternative of fetching raw sales rows client-side, which would be far worse: Russo's alone has 10,857 "Sales Tax" rows.
+**`coalesce(nullif(quantity,0), 1)` is load-bearing.** The TS it replaces does `sum + (sale.quantity || 1)` (`:498`) — every row with NULL or `0` quantity counts as `1`. A bare `sum(quantity)` would skip NULLs and let zeros contribute 0, shrinking the denominator, **inflating `avg_sale_price` and every downstream margin**; for an item where all rows have null quantity the recipe would lose profitability data entirely. This is exactly the silent-drift class this work exists to eliminate.
 
-`SECURITY INVOKER` so RLS on `unified_sales` and `recipes` still applies; tenant-scoped by `p_restaurant_id`. pgTAP test asserts a caller from another restaurant gets zero rows.
+Other properties:
+- **Aggregation, not cost math** — no unit conversion, no drift risk against the TS engine.
+- **Fixes the 1000-row truncation** — aggregation is server-side over all rows.
+- **Output provably bounded** — the inner join to active `recipes` on `(restaurant_id, pos_item_name)` bounds the result to the count of distinct mapped `pos_item_name` values (≤133 today), so the PostgREST cap cannot bite. Still paginated defensively.
+- `stable` + `set search_path = public` + `security invoker` — matches every comparable RPC in this repo and satisfies Supabase's mutable-search-path advisor. RLS on `unified_sales`/`recipes` enforces tenant isolation regardless of the `p_restaurant_id` passed.
 
 ### 3.6 Cost + profitability computed in memory
+Group ingredients by `recipe_id`; look up products from a `Map`; call existing `calculateInventoryImpact` unchanged. Join `avg_sale_price` from Q5, derive margin/profit with existing formulas.
 
-Group ingredients by `recipe_id`, look up products from a `Map`, call the existing `calculateInventoryImpact` unchanged. Join `avg_sale_price` from Q5 and derive margin/profit with the existing formulas.
+### 3.7 Batched cost heal + realtime, specified concretely
 
-### 3.7 Batched cost heal (replaces the per-recipe write-back)
+**Heal:** compare computed vs stored cost **rounded to currency precision** (`Math.abs(a - b) >= 0.005`), never bare `!==`. `calculateInventoryImpact` is JS float math; a bare inequality can report drift forever (`12.340000000000002` vs `12.34`), re-issuing the upsert on *every* load and reintroducing the write→realtime→refetch stampede at reduced scale. Rounded comparison is what makes "0 writes once converged" true.
 
-After computing, diff against stored `estimated_cost`. If any drifted, issue **one** `upsert` for just those rows (typically zero after the first converged load) instead of N updates. Guard the realtime subscription against the echo of our own write so the heal cannot retrigger a fetch.
+Only drifted rows go into **one** `upsert`. Heal writes are subject to the existing `edit:recipes` capability RLS gate — view-only roles (`collaborator_accountant`, `staff`) silently no-op, matching today's behavior (`:118-121` doesn't check its error either). Tests assert the no-op surfaces no error.
 
-### 3.8 React Query
+**Realtime → cache, not a fetch function.** The subscription calls `queryClient.invalidateQueries({ queryKey: ['recipes', restaurantId] })`, not an imperative fetch (which cannot work once the data lives in the query cache). **Echo guard:** the heal records the row ids it is about to write in a ref; realtime events whose payload ids are all in that set are ignored and the set cleared. This is the specified mechanism — not left to be invented during TDD.
 
-Wrap in `useQuery` with `staleTime: 30000`, `enabled: !!restaurantId && !!user` (house style, `lessons.md:155`). Consumers must distinguish `isError` from empty (`lessons.md:160`). Fixes the `user`-identity refetch churn.
+### 3.8 React Query — including an explicit mutation strategy
 
-### 3.9 Index
+`useQuery` with `queryKey: ['recipes', restaurantId]`, `staleTime: 30000`, `enabled: !!restaurantId && !!user` (house style, `lessons.md:155`).
 
+**`useRecipes` is mounted at four independent points** — `Recipes.tsx:44`, twice in `RecipeDialog.tsx:73` (create + edit), `MapPOSItemDialog.tsx:36` — and all four mutations (`createRecipe`, `updateRecipe`, `deleteRecipe`, `updateRecipeIngredients`) currently write via local `setRecipes(prev => ...)` (`:175-386`). Once data comes from `useQuery`, those `setRecipes` calls have nothing to write to, and a naive swap silently breaks create/edit/delete — the page's primary CTA.
+
+**Required:** all four call sites share the same `queryKey`; every mutation becomes a `useMutation` whose `onSuccess` calls `queryClient.invalidateQueries({ queryKey: ['recipes', restaurantId] })`. No local `setRecipes`. The hook keeps its existing public function signatures so callers don't change.
+
+**Error state:** `RecipeTable` gains an explicit `isError` branch. Today a fetch failure and zero recipes render identically (`Recipes.tsx:580-633` has only loading + empty), which CLAUDE.md's three-states rule forbids and `lessons.md:160` calls out specifically.
+
+### 3.9 Index — its own migration file
 ```sql
 create index concurrently if not exists idx_unified_sales_restaurant_item_name
-  on unified_sales (restaurant_id, item_name);
+  on unified_sales (restaurant_id, item_name)
+  where unit_price is not null;
 ```
-Today the planner does a `BitmapAnd` of two separate indexes. Minor next to the round-trip fix, but it is what the RPC's `group by` wants.
+Partial, matching the RPC's predicate, excluding noise rows (Russo's has 10,857 "Sales Tax" rows). **Ships in a dedicated migration file containing only this statement** — `CONCURRENTLY` cannot run in a transaction block, and repo precedent (5 prior migrations) is strictly one such statement per file.
 
-### 3.10 Remove the 7 hot-path `console.log` calls
+### 3.10 Render-path fixes (cheap, same critical path)
+- **Memoize `filteredRecipes`** (`Recipes.tsx:155`) — it is a fresh array every render, which defeats the `useMemo`s at `:160` and `:164` that depend on it.
+- **Conditionally render mobile vs desktop** instead of `block md:hidden` / `hidden md:block` (`:639`, `:712`). Tailwind hides via CSS only, so both trees mount — 133 recipes render ~266 row components.
+- **`Map` lookup in `validateRecipeConversions`** (`recipeConversionValidation.ts:30`) instead of O(ingredients × products) `.find()`.
+- **Remove the 7 hot-path `console.log` calls.**
 
-## 4. Expected result
+### 3.11 Suggestions banner — stop the redundant fetch
+Replace `useUnifiedSales(restaurantId)` on this page with a lightweight query for distinct unmapped item names. Removes a 500-row + two-join fetch *and* a duplicate `['recipes-for-mapping']` recipes query from the critical path. Contained to `Recipes.tsx`; `useUnifiedSales` itself is untouched so POSSales is unaffected.
+
+## 4. Decided trade-offs (deferred, with rationale)
+
+- **Full list virtualization** — CLAUDE.md mandates it at 100+ items and the top tenant has 133. **Deferred.** §3.10 halves the mounted node count for a fraction of the cost; the dominant term is ~400 round trips, not render. Per the performance skill, measure after the network fix and virtualize only if render is then the binding constraint. Tracked as a follow-up.
+- **`useProducts` React Query conversion + `select('*')`** — real violations on this critical path, but the hook carries auth-retry/session-refresh logic (`:89-171`) that a naive conversion would drop. Own risk profile; separate change.
+- **Dropping the now-redundant `idx_unified_sales_item_name`** — follow-up; not this PR's job.
+
+## 5. Expected result
 
 | | Before | After |
 |---|---|---|
 | Requests (133 recipes) | ~400 | **5** |
 | Requests (3 recipes) | ~10 | **5** |
-| Waterfall depth | 4 | **2** (Q1+Q2 parallel → Q3+Q4+Q5 parallel) |
+| Waterfall depth | 4 | **2** (Q1+Q2+Q4+Q5 parallel → Q3) |
 | Writes per load | up to N | 0 (converged) |
+| Row components mounted | ~266 | ~133 |
 | Sales average accuracy | truncated at 1000 rows | exact |
 
 At 60–90ms/round trip, 2 levels ≈ **120–180ms** of network — inside the 500ms budget with headroom.
 
-## 5. Risks
+## 6. Risks
 
 | Risk | Mitigation |
 |---|---|
-| **1000-row cap anywhere** | Every query explicitly paginated or provably bounded; §3.1–3.5 each state their handling. Verified in tests with a >1000-row fixture. |
-| `.in()` URL length with many ids | Chunk at 200 ids/request. |
-| Displayed costs change | TS engine untouched; test asserts parity against current stored values for real fixtures. |
-| Removing write-back staleness | Replaced by batched heal (§3.7), not deleted. |
-| Realtime echo loop | Heal writes guarded against self-triggered refetch. |
-| RLS regression via RPC | `SECURITY INVOKER` + pgTAP cross-tenant isolation test. |
+| **1000-row cap anywhere** | Every query explicitly paginated or provably bounded; §3.1–3.5 state handling individually. Tested with a >1000-row fixture. |
+| Mutations break under React Query | §3.8 mandates `useMutation` + `invalidateQueries`, shared key across all 4 mount points; E2E covers create/edit/delete. |
+| Heal never converges → stampede | Currency-rounded drift comparison (§3.7). Test asserts second load issues zero writes. |
+| Realtime echo loop | Explicit id-set guard (§3.7). |
+| Displayed costs change | TS engine untouched; parity test against current stored values. |
+| `avg_sale_price` drift vs TS | `coalesce(nullif(quantity,0),1)` mirrors `quantity || 1`; pgTAP fixture with null/zero-quantity rows. |
+| `.in()` URL length | Chunk at 200 ids. |
+| RLS regression via RPC | `security invoker` + pgTAP cross-tenant isolation test. |
+| `CONCURRENTLY` migration fails | Dedicated migration file, single statement. |
 
-## 6. Test plan
+## 7. Test plan
 
-- **Unit:** cost/profitability parity vs current implementation on real fixtures; ingredient→recipe grouping; chunking correctness; **>1000-row pagination** for each paginated query.
-- **pgTAP:** `get_recipe_sales_stats` correctness incl. a >1000-row item; cross-tenant isolation returns zero rows.
-- **E2E:** `/recipes` renders costs and margins for a seeded tenant; asserts request count stays bounded as recipe count grows (the regression guard for this N+1).
+- **Unit:** cost/profitability parity vs current implementation on real fixtures; null/zero-quantity averaging parity; ingredient→recipe grouping; `.in()` chunking; **>1000-row pagination for every paginated query**; heal drift comparison converges (second load = zero writes); realtime echo guard suppresses self-writes.
+- **pgTAP:** `get_recipe_sales_stats` correctness incl. a >1000-row item and null/zero-quantity rows; cross-tenant isolation returns zero rows.
+- **E2E:** `/recipes` renders costs and margins for a seeded tenant; create/edit/delete round-trip through the query cache; error state renders distinctly from empty; request count stays bounded as recipe count grows (the regression guard for this N+1).

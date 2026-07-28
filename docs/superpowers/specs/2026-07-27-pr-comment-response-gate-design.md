@@ -133,9 +133,28 @@ to a thread.
 
 | Event | Why |
 |---|---|
-| `pull_request_review_comment: [created]` | A new inline finding appeared — the check must go red immediately. Also fires when we post a reply, which flips it green. |
-| `pull_request_review: [submitted]` | Catches `CHANGES_REQUESTED` reviews. |
-| `pull_request_target: [opened, synchronize, reopened, ready_for_review]` | Re-audits on every push so the gate cannot go stale. |
+| `pull_request_target: [opened, synchronize, reopened, ready_for_review]` | Re-audits on every push. |
+| `schedule: */30 * * * *` | Re-audits every open non-draft PR, so a finding posted *between* pushes still turns the check red. |
+| `workflow_dispatch` (optional `pr` input) | Manual re-run; blank input audits every open PR. |
+
+**Why the review-comment triggers are absent.** The obvious design fires
+on `pull_request_review_comment` and `pull_request_review` so the check
+flips the instant a bot posts a finding. Two things rule that out:
+
+1. **Those events run the workflow file *from the PR*.** Verified on this
+   PR: a `pull_request_review_comment` run reported
+   `headBranch: feature/pr-comment-response-gate`. So a contributor could
+   edit this YAML in their own PR to publish a passing check and disarm
+   the gate. Fetching `pr-triage.js` from the default branch protects the
+   *script* but not the *workflow that invokes it* — the check would be
+   grading itself with PR-supplied code.
+2. **They were unreliable anyway.** Runs triggered by a bot actor
+   (`Copilot`) came back `action_required`, held for maintainer approval,
+   so they often did not run at all.
+
+All three retained triggers execute the **default branch's** copy of this
+file, which no PR can modify. The staleness that the removed triggers
+were meant to cover is handled by the 30-minute schedule instead.
 
 **Why `pull_request_target` and not `pull_request`:** a `pull_request`
 event from a fork receives a read-only `GITHUB_TOKEN`, which cannot
@@ -146,18 +165,15 @@ PR code with elevated permissions; this job **never checks out the
 repository and never runs PR code**. It reads the GitHub API and writes a
 check run. That is the whole job.
 
-**Resolving the PR number:** the review triggers carry
-`github.event.pull_request.number`, while a manual `workflow_dispatch`
-supplies it as an input. The job derives it once as
-`${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}`
-and fails fast if the result is empty, rather than silently auditing the
-wrong PR or no-opping. (`issue_comment` was dropped as a trigger: PR
-conversation is out of scope, so those events could never change the
-outcome — the `issue.number` fallback is kept only as a cheap safety net.)
+**Selecting which PRs to audit:** `pull_request_target` supplies
+`github.event.pull_request.number`; `workflow_dispatch` supplies an
+optional `pr` input; `schedule` supplies neither, so the job enumerates
+every open non-draft PR and audits each in turn. One job handles all
+three rather than three near-duplicate workflows.
 
-**Check run, not job status:** workflows triggered by
-`pull_request_review_comment` / `issue_comment` do not appear in a PR's
-status-check list. So the job explicitly resolves the PR head SHA
+**Check run, not job status:** a `schedule`- or `workflow_dispatch`-
+triggered workflow does not appear in any PR's status-check list. So the
+job explicitly resolves the PR head SHA
 (`gh api repos/{o}/{r}/pulls/{n} --jq .head.sha` — always current,
 regardless of trigger) and publishes a check run named
 `pr-comment-response` against it. GitHub uses the latest check run of a
@@ -165,14 +181,18 @@ given name for a SHA, so repeated runs update the gate in place.
 
 **Permissions:** `pull-requests: read`, `checks: write`, `contents: read`.
 
-**Fork limitation (accepted):** for a PR from a fork, the comment and
-review events run from the PR merge commit with a read-only token, so the
-check-run POST fails. The job reports that explicitly rather than passing
-silently, and fork PRs are still audited on every push through
-`pull_request_target: synchronize`, which does carry a writable token.
-Covering fork comment events properly would need a trusted executor (a
-GitHub App or webhook service) — disproportionate for a repo whose PRs
-come from same-repo branches.
+**Forks:** all three triggers run in the base-repo context with a
+writable token, so fork PRs are audited on the same footing as branch
+PRs. This is a direct consequence of dropping the review-comment
+triggers, which were the only ones that would have run read-only on a
+fork.
+
+**Race against a mid-audit push:** the head SHA is captured *before* the
+audit and re-read immediately after. If the PR advanced in between, the
+result describes a commit that is no longer current and is discarded
+rather than published — otherwise a green verdict computed against the
+old commit would be stamped onto the new one. The push that moved the
+head triggers its own run.
 
 **Bot-trigger approval (observed, not theoretical):** on this repo, a run
 triggered by `Copilot` submitting a review came back `action_required`

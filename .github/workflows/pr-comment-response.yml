@@ -4,108 +4,83 @@ name: PR Comment Response
 # (naming the commit), pushed back, or deliberately ignored. This job only
 # AUDITS: it reads the PR and publishes a check run. It never writes a reply.
 # See docs/superpowers/specs/2026-07-27-pr-comment-response-gate-design.md
-#
-# BOT-TRIGGER CAVEAT: depending on the repo's Actions approval settings, a run
-# triggered by a bot actor (Copilot, CodeRabbit, Codex) can land in
-# `action_required` and wait for a maintainer to approve it. When that happens
-# the audit does not re-run on its own, so a finding posted after the last push
-# will not turn the check red until the next push, a manual approval, or a
-# workflow_dispatch. Settings -> Actions -> General -> "Approval for running
-# workflows from..." controls this. The /dev workflow also runs
-# `pr-triage.js audit` locally at Phase 9d, which no Actions setting can gate.
 
 on:
-  # `edited` and `deleted` matter as much as `created`: a verdict reply that is
-  # edited to remove its verdict, or deleted outright, must turn the gate red
-  # again rather than leaving a stale green behind.
-  pull_request_review_comment:
-    types: [created, edited, deleted]
-  pull_request_review:
-    types: [submitted, edited, dismissed]
-  # pull_request_target, not pull_request: a fork PR's `pull_request` token is
-  # read-only and cannot create a check run. This job never checks out the
-  # repository and never executes PR code — it reads the API and writes a check
-  # run — so the usual pull_request_target risk does not apply.
+  # ONLY trusted triggers. `pull_request_review` and `pull_request_review_comment`
+  # are deliberately ABSENT: those events run the workflow file FROM THE PR, so a
+  # contributor could edit this YAML to publish a passing check and disarm the
+  # gate on their own PR. Fetching pr-triage.js from the default branch protects
+  # the script but not the workflow that invokes it. (Those events were also
+  # landing in `action_required` for bot actors, so they were unreliable anyway.)
   #
-  # FORK LIMITATION: for a PR from a fork, the three comment/review events above
-  # run from the PR merge commit with a read-only token, so publishing the check
-  # fails (the job reports that explicitly rather than passing silently). Fork
-  # PRs are still audited on every push via pull_request_target/synchronize,
-  # which does carry a writable token. Same-repo branch PRs — how this repo
-  # actually works — are covered by all four triggers.
+  # All three triggers below run the DEFAULT branch's copy of this file:
   pull_request_target:
     types: [opened, synchronize, reopened, ready_for_review]
-  # Lets a maintainer re-run the audit by hand when a bot-triggered run was
-  # held for approval (see BOT-TRIGGER CAVEAT below).
+  # Closes the staleness window the removed triggers used to cover: a finding
+  # posted after the last push would otherwise leave a green check behind.
+  schedule:
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       pr:
-        description: PR number to audit
-        required: true
+        description: PR number to audit (blank = every open PR)
+        required: false
 
 permissions:
   contents: read
   pull-requests: read
   checks: write
 
-# NO concurrency group. Even with cancel-in-progress: false, GitHub cancels a
-# PREVIOUSLY PENDING run when a newer one joins the group — and a burst of bot
-# comments produces exactly that. Each cancelled run then shows as a FAILED
-# check on the PR, red for a reason unrelated to unanswered findings. The audit
-# takes seconds, so letting every event run its own is the cheaper trade.
-
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Resolve PR number
-        id: pr
+      - name: Select the PRs to audit
+        id: select
         env:
-          NUMBER: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
-          EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          INPUT_PR: ${{ inputs.pr }}
         run: |
-          if [ -z "$NUMBER" ]; then
-            echo "Could not resolve a PR number from event $EVENT_NAME." >&2
-            exit 1
+          set -euo pipefail
+          if [ -n "$EVENT_PR" ]; then
+            PRS="$EVENT_PR"
+          elif [ -n "$INPUT_PR" ]; then
+            PRS="$INPUT_PR"
+          else
+            # schedule (or a blank dispatch): re-audit every open non-draft PR.
+            PRS=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp \
+                    --jq '[.[][] | select(.draft | not) | .number] | join(" ")')
           fi
-          echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+          echo "prs=$PRS" >> "$GITHUB_OUTPUT"
+          echo "Auditing: ${PRS:-<none>}"
 
-      # Only the auditor script is needed, so fetch it from the BASE repo at the
-      # default branch rather than checking out the PR — a fork must not be able
-      # to swap out the script that grades it.
-      - name: Fetch the auditor from the base branch
+      - name: Fetch the auditor from the default branch
         id: fetch
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
         run: |
+          set -uo pipefail
           mkdir -p dev-tools
-          # Deliberately the DEFAULT branch, never the PR head: a PR must not be
-          # able to swap out the script that grades it.
-          # Distinguish "not there yet" from "could not ask". Only a genuine 404
-          # means the gate is not installed; any other failure (rate limit, token
-          # trouble, outage) must NOT disarm the gate — that would be a silent
-          # fail-open, the one thing this whole check exists to prevent.
-          HTTP=$(gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
-                   --jq '.content' > content.b64 2>err.txt; echo $?)
-          if [ "$HTTP" = "0" ] && base64 --decode < content.b64 > dev-tools/pr-triage.js \
+          # Deliberately the DEFAULT branch, never a PR head.
+          if gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
+               --jq '.content' > content.b64 2>err.txt \
+             && base64 --decode < content.b64 > dev-tools/pr-triage.js \
              && [ -s dev-tools/pr-triage.js ]; then
             echo "installed=true" >> "$GITHUB_OUTPUT"
           elif ! grep -q "HTTP 404" err.txt; then
+            # Only a genuine 404 means "not installed". Any other failure must not
+            # disarm the gate — that would be a silent fail-open.
             echo "::error::Could not fetch the auditor from $DEFAULT_BRANCH (not a 404). Refusing to disarm the gate."
             cat err.txt
             exit 1
           else
             # Expected exactly once: on the PR that introduces this gate, before
-            # it exists on the default branch. Reporting "not installed" is
-            # honest; claiming a pass would be a lie, and failing would block the
-            # very PR that installs the gate.
-            #
-            # This is also the one bypass: deleting the auditor from the default
-            # branch disarms the gate. That takes a visible commit to the
-            # default branch, which is a deliberate act, not an oversight.
+            # it exists on the default branch.
             echo "installed=false" >> "$GITHUB_OUTPUT"
             echo "pr-triage.js is not on $DEFAULT_BRANCH yet; the gate is not active."
           fi
@@ -115,61 +90,72 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Audit replies
-        id: audit
-        if: steps.fetch.outputs.installed == 'true'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-        run: |
-          set +e
-          node dev-tools/pr-triage.js audit --pr "$PR_NUMBER" > summary.md 2>&1
-          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
-          cat summary.md
-
-      - name: Publish the check run
+      - name: Audit each PR and publish its check
         if: steps.fetch.outputs.installed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          EXIT_CODE: ${{ steps.audit.outputs.exit_code }}
+          PRS: ${{ steps.select.outputs.prs }}
         run: |
-          HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
-          case "$EXIT_CODE" in
-            0) CONCLUSION=success; TITLE="All review findings have a verdict reply" ;;
-            1) CONCLUSION=failure; TITLE="Review findings are waiting for a verdict reply" ;;
-            # Exit 2 means the audit could not read the PR at all. That is not a
-            # pass: an unreadable PR must never be reported as clean.
-            *) CONCLUSION=failure; TITLE="Audit could not complete — treating as unanswered" ;;
-          esac
-          jq -n \
-            --arg name "pr-comment-response" \
-            --arg head_sha "$HEAD_SHA" \
-            --arg conclusion "$CONCLUSION" \
-            --arg title "$TITLE" \
-            --rawfile summary summary.md \
-            '{name: $name, head_sha: $head_sha, status: "completed",
-              conclusion: $conclusion,
-              output: {title: $title, summary: $summary}}' \
-            > check.json
-          if ! gh api --method POST "repos/$REPO/check-runs" --input check.json; then
-            # Expected for a fork PR on comment/review events: those run with a
-            # read-only token. Say so plainly instead of failing cryptically —
-            # the pull_request_target push audit still covers the PR.
-            echo "::error::Could not publish the pr-comment-response check run. If this PR is from a fork, comment/review events carry a read-only token; the check is published on push instead."
+          set -uo pipefail
+          FAILED=0
+          for PR in $PRS; do
+            # Snapshot the head BEFORE auditing. If the PR advances mid-audit the
+            # result describes a commit that is no longer current, and publishing
+            # it would mark the NEW head green on stale evidence.
+            BEFORE=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+
+            set +e
+            node dev-tools/pr-triage.js audit --pr "$PR" > "summary-$PR.md" 2>&1
+            CODE=$?
+            set -e
+            cat "summary-$PR.md"
+
+            AFTER=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+            if [ "$BEFORE" != "$AFTER" ]; then
+              echo "::notice::PR #$PR advanced $BEFORE -> $AFTER during the audit; discarding this stale result. The push that moved it triggers its own run."
+              continue
+            fi
+
+            case "$CODE" in
+              0) CONCLUSION=success; TITLE="All review findings have a verdict reply" ;;
+              1) CONCLUSION=failure; TITLE="Review findings are waiting for a verdict reply" ;;
+              # Exit 2 means the audit could not read the PR. Never a pass.
+              *) CONCLUSION=failure; TITLE="Audit could not complete — treating as unanswered" ;;
+            esac
+            [ "$CODE" = "0" ] || FAILED=1
+
+            jq -n \
+              --arg name "pr-comment-response" \
+              --arg head_sha "$AFTER" \
+              --arg conclusion "$CONCLUSION" \
+              --arg title "$TITLE" \
+              --rawfile summary "summary-$PR.md" \
+              '{name: $name, head_sha: $head_sha, status: "completed",
+                conclusion: $conclusion,
+                output: {title: $title, summary: $summary}}' \
+              > "check-$PR.json"
+
+            if ! gh api --method POST "repos/$REPO/check-runs" --input "check-$PR.json"; then
+              echo "::error::Could not publish the pr-comment-response check run for PR #$PR."
+              exit 1
+            fi
+          done
+
+          if [ "$FAILED" = "1" ]; then
+            echo "::error::Some review findings have no verdict reply. See the pr-comment-response check."
             exit 1
           fi
 
       - name: Report that the gate is not installed yet
-        if: steps.fetch.outputs.installed != 'true'
+        if: steps.fetch.outputs.installed != 'true' && github.event.pull_request.number
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.pr.outputs.number }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
         run: |
+          set -euo pipefail
           HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
           jq -n \
             --arg head_sha "$HEAD_SHA" \
@@ -178,9 +164,3 @@ jobs:
               conclusion: "neutral",
               output: {title: "Gate not installed on the default branch yet", summary: $summary}}' \
             | gh api --method POST "repos/$REPO/check-runs" --input -
-
-      - name: Fail the job when findings are unanswered
-        if: steps.fetch.outputs.installed == 'true' && steps.audit.outputs.exit_code != '0'
-        run: |
-          echo "::error::Some review findings have no verdict reply. See the pr-comment-response check."
-          exit 1

@@ -16,7 +16,11 @@ const mockToast = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }));
 
 import { useOpenShifts } from '@/hooks/useOpenShifts';
-import { usePublishSchedule, useUnpublishSchedule } from '@/hooks/useSchedulePublish';
+import {
+  usePublishSchedule,
+  useUnpublishSchedule,
+  useWeekPublicationStatus,
+} from '@/hooks/useSchedulePublish';
 
 /**
  * The week of Mon 2026-07-27. `new Date(y, m, d)` yields local midnight on that
@@ -27,6 +31,24 @@ function makeWeek() {
   const weekStart = new Date(2026, 6, 27);
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   return { weekStart, weekEnd };
+}
+
+/**
+ * Postgrest-style chainable mock: every filter returns the same builder, and
+ * the builder is thenable so `await query` resolves to `result`.
+ */
+function makeBuilder(result: { data?: unknown; error?: unknown; count?: number | null }) {
+  const builder: Record<string, unknown> = { calls: [] as Array<[string, unknown, unknown]> };
+  for (const m of ['select', 'eq', 'gte', 'lte', 'order', 'limit']) {
+    builder[m] = vi.fn((...args: unknown[]) => {
+      (builder.calls as Array<unknown[]>).push([m, ...args]);
+      return builder;
+    });
+  }
+  builder.maybeSingle = vi.fn(() => Promise.resolve(result));
+  builder.then = (res: (v: unknown) => unknown, rej: (e: unknown) => unknown) =>
+    Promise.resolve(result).then(res, rej);
+  return builder;
 }
 
 function createWrapper() {
@@ -107,5 +129,26 @@ describe('week range serialization', () => {
       p_week_end: '2026-08-02',
       p_reason: null,
     });
+  });
+
+  it('useWeekPublicationStatus uses instants for start_time and dates for date columns', async () => {
+    const shiftsBuilder = makeBuilder({ count: 2, error: null });
+    const pubsBuilder = makeBuilder({ data: null, error: null });
+    mockSupabase.from.mockImplementation((table: string) =>
+      table === 'shifts' ? shiftsBuilder : pubsBuilder,
+    );
+
+    const { weekStart, weekEnd } = makeWeek();
+    renderHook(() => useWeekPublicationStatus('r1', weekStart, weekEnd), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(pubsBuilder.maybeSingle).toHaveBeenCalled());
+
+    // timestamptz column -> full instants, so no local wall-clock hours are lost.
+    expect(shiftsBuilder.gte).toHaveBeenCalledWith('start_time', weekStart.toISOString());
+    expect(shiftsBuilder.lte).toHaveBeenCalledWith('start_time', weekEnd.toISOString());
+
+    // date columns -> local calendar days.
+    expect(pubsBuilder.eq).toHaveBeenCalledWith('week_start_date', '2026-07-27');
+    expect(pubsBuilder.eq).toHaveBeenCalledWith('week_end_date', '2026-08-02');
   });
 });

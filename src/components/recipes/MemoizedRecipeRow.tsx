@@ -21,7 +21,14 @@ import type { ConversionValidation } from '@/utils/recipeConversionValidation';
  */
 export interface RecipeDisplayValues {
   hasNoIngredients: boolean;
-  validation: ConversionValidation;
+  /**
+   * Undefined only if a recipe reached the list without a validation entry.
+   * The parent builds both maps from the same recipe array in the same render,
+   * so that should not happen -- but `strictNullChecks` is off project-wide, so
+   * the compiler would not catch it, and a row is not the place to crash over
+   * it. Consumers below degrade to "no issues" instead.
+   */
+  validation: ConversionValidation | undefined;
   formattedCost: string;
   /** null when there are no sales for this recipe. */
   formattedSalePrice: string | null;
@@ -130,8 +137,8 @@ function RecipeRow<TRecipe extends RecipeShape>({
       </div>
       <div role="cell" className={RECIPE_COLUMN_WIDTHS.conversions}>
         <RecipeConversionStatusBadge
-          hasIssues={displayValues.validation.hasIssues}
-          issueCount={displayValues.validation.issueCount}
+          hasIssues={displayValues.validation?.hasIssues ?? false}
+          issueCount={displayValues.validation?.issueCount ?? 0}
           size="sm"
           showText={true}
         />
@@ -254,8 +261,8 @@ function RecipeCard<TRecipe extends RecipeShape>({
             <Badge variant="outline" className="text-xs">Not mapped</Badge>
           )}
           <RecipeConversionStatusBadge
-            hasIssues={displayValues.validation.hasIssues}
-            issueCount={displayValues.validation.issueCount}
+            hasIssues={displayValues.validation?.hasIssues ?? false}
+            issueCount={displayValues.validation?.issueCount ?? 0}
             size="sm"
             showText={false}
           />

@@ -58,6 +58,23 @@ describe('fetchInChunks', () => {
     expect((fn.mock.calls[1][0] as number[]).length).toBe(1);
   });
 
+  it.each([0, -1, 1.5, NaN])(
+    'rejects a chunk size of %p rather than looping forever',
+    async (chunkSize) => {
+      // A chunk size below 1 never advances the slicing loop. Hanging is the
+      // worst possible failure here: the caller is a page load, so it would
+      // spin on a blank screen with nothing in the console to explain it.
+      const ids = Array.from({ length: 10 }, (_, i) => i);
+      const fn = vi.fn(async (chunk: number[]): Promise<PagedResult<Row>> => ({
+        rows: chunk.map((id) => ({ id })),
+        capped: false,
+      }));
+
+      await expect(fetchInChunks(ids, fn, chunkSize)).rejects.toThrow(RangeError);
+      expect(fn).not.toHaveBeenCalled();
+    }
+  );
+
   it('propagates capped:true if any chunk reports capped', async () => {
     const ids = Array.from({ length: 450 }, (_, i) => i);
     const fn = vi

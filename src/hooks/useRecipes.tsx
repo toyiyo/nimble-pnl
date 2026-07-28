@@ -300,16 +300,23 @@ async function healRecipeCosts(
   // refetches for nothing.
   recordHealEchoes(ids);
 
-  const { error } = await supabase.from('recipes').upsert(drifted);
-  if (error) {
-    console.warn('Recipe cost heal skipped:', error.message);
+  // `try` rather than just checking `error`: a PostgREST failure arrives as a
+  // resolved `{ error }`, but a dropped connection rejects instead. Both mean
+  // the same thing here -- nothing was written -- and the rejection path also
+  // has to be caught because the caller invokes this fire-and-forget, where an
+  // escaping rejection would surface as an unhandled promise rejection.
+  try {
+    const { error } = await supabase.from('recipes').upsert(drifted);
+    if (error) throw new Error(error.message);
+    return ids;
+  } catch (healError) {
+    console.warn('Recipe cost heal skipped:', healError);
     // Nothing was written, so nothing will echo. Leaving the ids armed would
     // make the next genuine edit of one of these recipes look like our echo
     // and get swallowed.
     forgetHealEchoes(ids);
     return [];
   }
-  return ids;
 }
 
 /** How long a heal write stays eligible to be recognised as its own realtime
@@ -581,8 +588,15 @@ export async function fetchRecipesData(restaurantId: string): Promise<Recipe[]> 
   // may degrade what the screen shows; it must never corrupt what is stored.
   // A capped `recipes`/`prep_recipes` page is different: the recipes that did
   // arrive still have complete ingredients, so their heal stays sound.
+  //
+  // Fire-and-forget, so it needs its own `.catch`: the heal is a background
+  // nicety and must never reject the load the user is waiting on. The upsert
+  // itself is already guarded inside; this catches anything that throws before
+  // it, on the way to computing the drift.
   if (!ingredientsResult.capped && !productsResult.capped) {
-    void healRecipeCosts(activeRecipes, enhancedRecipes);
+    void healRecipeCosts(activeRecipes, enhancedRecipes).catch((healError) => {
+      console.warn('Recipe cost heal skipped:', healError);
+    });
   }
 
   return enhancedRecipes;

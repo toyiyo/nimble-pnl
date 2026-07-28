@@ -25,6 +25,12 @@ export async function fetchInChunks<TId, TRow>(
   fn: (chunk: TId[]) => Promise<PagedResult<TRow>>,
   chunkSize: number = DEFAULT_CHUNK_SIZE,
 ): Promise<PagedResult<TRow>> {
+  // A non-positive size never advances the loop below, so the call would hang
+  // forever instead of failing. Fail loudly at the boundary instead.
+  if (!Number.isInteger(chunkSize) || chunkSize < 1) {
+    throw new RangeError(`fetchInChunks: chunkSize must be a positive integer, got ${chunkSize}`);
+  }
+
   const chunks: TId[][] = [];
   for (let i = 0; i < ids.length; i += chunkSize) {
     chunks.push(ids.slice(i, i + chunkSize));

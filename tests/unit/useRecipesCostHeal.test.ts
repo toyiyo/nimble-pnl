@@ -20,6 +20,10 @@ let productsResponse: { data: unknown[] | null; error: unknown };
 let ingredientsResponse: { data: unknown[] | null; error: unknown };
 let upsertResponse: { data: unknown[] | null; error: unknown };
 
+/** When set, `recipes.upsert()` REJECTS with this instead of resolving. */
+ 
+let upsertRejection: Error | null = null;
+
 /** Every payload handed to `recipes.upsert()` during a run. Length is the
  * write count -- the heal must issue at most ONE write per load, and zero
  * once costs have converged. */
@@ -50,6 +54,10 @@ vi.mock('@/integrations/supabase/client', () => ({
           upsert: vi.fn().mockImplementation((rows: { id: string }[]) => {
             upsertCalls.push(rows);
             observeUpsert?.(rows);
+            // A PostgREST error resolves as `{ error }`; a dropped connection
+            // rejects instead. Both are real, and only the second one can
+            // escape as an unhandled rejection, so both need a seam.
+            if (upsertRejection) return Promise.reject(upsertRejection);
             return Promise.resolve(upsertResponse);
           }),
         };
@@ -161,6 +169,7 @@ beforeEach(() => {
   productsResponse = { data: PRODUCTS, error: null };
   ingredientsResponse = { data: INGREDIENTS, error: null };
   upsertResponse = { data: null, error: null };
+  upsertRejection = null;
 });
 
 describe('selectDriftedCostRows -- rounded comparison', () => {
@@ -287,6 +296,37 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     // Nothing was written, so nothing will echo. A leftover armed id would
     // swallow the next real UPDATE to this recipe.
     expect(isHealEcho('r1')).toBe(false);
+  });
+
+  it('forgets the echo when the write REJECTS, and does not surface an unhandled rejection', async () => {
+    // The offline case: PostgREST never answers, so the promise rejects rather
+    // than resolving with `{ error }`. Same consequence -- nothing was written
+    // -- but a different code path, and the only one that can escape the
+    // fire-and-forget call site as an unhandled rejection.
+    recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
+    upsertRejection = new Error('Failed to fetch');
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      event.preventDefault();
+      unhandled.push(event.reason);
+    };
+    window.addEventListener('unhandledrejection', onUnhandled);
+    try {
+      const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      await waitFor(() => expect(upsertCalls.length).toBe(1));
+
+      // The heal is background work; a failed one must not take the page down.
+      expect(result.current.recipes).toHaveLength(1);
+      expect(isHealEcho('r1')).toBe(false);
+
+      // Give a rejection a full macrotask to surface before declaring none did.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(unhandled).toEqual([]);
+    } finally {
+      window.removeEventListener('unhandledrejection', onUnhandled);
+    }
   });
 
   it('writes NOTHING when recipe_ingredients came back truncated', async () => {

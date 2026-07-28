@@ -27,7 +27,7 @@ import {
   type RecipeDisplayValues,
 } from '@/components/recipes/MemoizedRecipeRow';
 import { RECIPE_COLUMN_WIDTHS, RECIPE_TABLE_MIN_WIDTH } from '@/components/recipes/recipeTableColumns';
-import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
+import { validateRecipeConversions, type ConversionValidation } from '@/utils/recipeConversionValidation';
 import { ChefHat, Plus, Search, Settings, ArrowUpDown, AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MetricIcon } from '@/components/MetricIcon';
@@ -544,7 +544,7 @@ function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onD
   const isMobile = useIsMobile();
   // Pre-calculate conversion validation for all recipes (keyed by recipe ID)
   const recipeValidationsById = useMemo(() => {
-    const validationMap = new Map();
+    const validationMap = new Map<string, ConversionValidation>();
     recipes.forEach(recipe => {
       const ingredients = recipe.ingredients || [];
       validationMap.set(recipe.id, validateRecipeConversions(ingredients, products));

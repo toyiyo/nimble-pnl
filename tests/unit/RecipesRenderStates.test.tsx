@@ -73,6 +73,31 @@ const setViewport = (width: number) => {
 const originalMatchMedia = window.matchMedia;
 const originalInnerWidth = window.innerWidth;
 
+/**
+ * The list is virtualized, and jsdom runs no layout: without a measurable
+ * scroll container and row height the virtual window is empty and no recipe
+ * renders at all. Stub both paths @tanstack/react-virtual measures with.
+ */
+let offsetHeightSpy: ReturnType<typeof vi.spyOn>;
+let rectSpy: ReturnType<typeof vi.spyOn>;
+
+const stubLayout = () => {
+  offsetHeightSpy = vi
+    .spyOn(HTMLElement.prototype, "offsetHeight", "get")
+    .mockReturnValue(800);
+  rectSpy = vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({
+    height: 72,
+    width: 1280,
+    top: 0,
+    left: 0,
+    right: 1280,
+    bottom: 72,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+};
+
 const renderPage = () =>
   render(
     <MemoryRouter>
@@ -86,9 +111,12 @@ beforeEach(() => {
   recipesState.loading = false;
   recipesState.isError = false;
   setViewport(1280);
+  stubLayout();
 });
 
 afterEach(() => {
+  offsetHeightSpy.mockRestore();
+  rectSpy.mockRestore();
   window.matchMedia = originalMatchMedia;
   window.innerWidth = originalInnerWidth;
 });

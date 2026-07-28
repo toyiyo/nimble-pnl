@@ -6,6 +6,7 @@ import { corsHeaders } from "../_shared/cors.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
 import { notifySchedulePublishedPush } from "../_shared/schedulePublishedPush.ts";
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
+import { safeTz } from "../_shared/timezone.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -103,14 +104,12 @@ serve(async (req) => {
     // drop Sunday-evening shifts (already Monday in UTC for US restaurants),
     // silently excluding those employees from the notification.
     //
-    // An invalid/legacy IANA string makes date-fns-tz throw, so probe first and
-    // fall back to the restaurants.timezone column default.
-    let tz = restaurant.timezone || "America/Chicago";
-    try {
-      new Intl.DateTimeFormat("en-US", { timeZone: tz });
-    } catch {
-      console.warn(`Invalid timezone "${tz}" for restaurant ${restaurantId}; falling back to America/Chicago`);
-      tz = "America/Chicago";
+    // An invalid/legacy IANA string makes date-fns-tz throw, so validate via
+    // the shared `safeTz` (same fallback used by the Revel sync path) before
+    // it reaches `fromZonedTime`.
+    const tz = safeTz(restaurant.timezone);
+    if (tz !== restaurant.timezone) {
+      console.warn(`Invalid timezone "${restaurant.timezone}" for restaurant ${restaurantId}; falling back to ${tz}`);
     }
 
     const weekStartInstant = fromZonedTime(`${weekStart}T00:00:00`, tz).toISOString();

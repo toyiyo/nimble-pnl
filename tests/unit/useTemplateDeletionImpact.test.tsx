@@ -192,6 +192,27 @@ describe('useTemplateDeletionImpact', () => {
     });
   });
 
+  it('sends the open-spots window as local calendar days', async () => {
+    mockFromByTable(
+      makeQueryBuilder({ data: [], error: null }),
+      makeQueryBuilder({ count: 0, error: null }),
+    );
+    mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+
+    renderHook(() => useTemplateDeletionImpact('r1', 't1'), { wrapper: createWrapper() });
+
+    await waitFor(() => expect(mockSupabase.rpc).toHaveBeenCalled());
+
+    const params = mockSupabase.rpc.mock.calls[0][1];
+    const today = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const localToday = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+    // Must be the manager's local calendar day, not the UTC day (which is
+    // already tomorrow during US evening hours).
+    expect(params.p_week_start).toBe(localToday);
+  });
+
   it('surfaces an error when the pending-claims read fails', async () => {
     const claimsBuilder = makeQueryBuilder({ data: null, error: { message: 'claims boom' } });
     const shiftsBuilder = makeQueryBuilder({ count: 0, error: null });

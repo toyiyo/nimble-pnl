@@ -16,9 +16,11 @@
 - L151 Coolify Pre Deployment Command → `npm ci && npm run build`
 - Commit: `docs(readme): npm as the documented install path`
 
-### 3. Update `trigger-bulk-pnl-recalc.ts` usage comment
-- L8 `bun run trigger-bulk-pnl-recalc.ts` → `npx tsx trigger-bulk-pnl-recalc.ts`
-- Commit: folded into task 2's commit (one-line doc comment)
+### 3. Restore a TS runner for `trigger-bulk-pnl-recalc.ts`
+- Add `tsx` as a locked devDependency (bun was the only TS-capable runtime here)
+- L8 `bun run trigger-bulk-pnl-recalc.ts` → `npx tsx trigger-bulk-pnl-recalc.ts`,
+  which resolves the local `node_modules/.bin/tsx`
+- Commit: folded into task 2's commit
 
 ### 4. Sweep for missed references
 - `grep -rniI 'bun' --exclude-dir=node_modules --exclude-dir=.git .`
@@ -46,9 +48,10 @@ management or the edited files, and both require a running local Supabase stack.
 
 ## Risks
 
-- **Coolify still configured for bun.** After merge, `bun install` would run with
-  no lockfile and resolve fresh semver ranges. Mitigation: called out in the PR
-  body as a required manual follow-up in the Coolify UI. Cannot be fixed from
+- **Coolify still configured for bun.** After merge, `bun install` finds no
+  `bun.lock` and migrates `package-lock.json` into an untracked one, installing via
+  bun's resolver — an install path no CI job verifies. Mitigation: called out in the
+  PR body as a required manual follow-up in the Coolify UI. Cannot be fixed from
   this repo.
 - **A contributor with muscle-memory `bun install`.** Post-merge, bun would
   generate a fresh untracked `bun.lock`. Acceptable — it resolves from the same

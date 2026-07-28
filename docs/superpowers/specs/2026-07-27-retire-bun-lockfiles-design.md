@@ -53,11 +53,19 @@ Full retirement of bun as a supported package manager.
 
 ### Note on the script's npm equivalent
 
-`npm run` cannot execute a bare `.ts` file the way `bun run` can, and the repo has
-no `tsx`/`ts-node` dependency. Node 20 also cannot strip types natively
-(`--experimental-strip-types` arrived in Node 22.6). `npx tsx` is therefore the
-accurate replacement — it fetches `tsx` on demand and needs no new dependency.
-The script is dependency-free (plain `fetch` + `console.log`), so this runs clean.
+`npm run` cannot execute a bare `.ts` file the way `bun run` can, and Node 20
+cannot strip types natively (`--experimental-strip-types` arrived in Node 22.6).
+Removing bun therefore removes the only runtime in the repo capable of executing
+that script — so a replacement runner has to be added, not just documented.
+
+`tsx` is added as a **locked devDependency** (`^4.23.1`). `npx tsx` then resolves
+`node_modules/.bin/tsx` rather than fetching from the network, so the documented
+command is pinned by `package-lock.json`, works offline, and never prompts. An
+unpinned `npx tsx@latest` was rejected: recommending an unlocked remote fetch
+inside a PR whose thesis is "one locked source of truth" is self-contradictory.
+
+The script itself is dependency-free (plain `fetch` + `console.log`), so it runs
+clean under `tsx`.
 
 ### `npm ci` vs `npm install` in the README
 
@@ -75,9 +83,12 @@ That is the property being restored here, and it is what CI runs.
 ## Operational follow-up (cannot be done in this PR)
 
 Editing README line 151 does **not** change the live Coolify configuration. If the
-deployment's Pre Deployment Command is still `bun install && bun run build`, after
-this merges bun will run with **no lockfile present** and resolve fresh semver
-ranges on every deploy — strictly worse than today's stale-but-pinned state.
+deployment's Pre Deployment Command is still `bun install && bun run build`, then
+after this merges bun finds no `bun.lock` and **migrates `package-lock.json` into a
+fresh, untracked `bun.lock`** (bun has done this automatically since 1.1). So the
+deploy is not unpinned — but it is resolved by bun's installer from a migrated
+lockfile, which is not the tree `npm ci` produces and is not what any CI job has
+verified. The build would be exercising an install path no gate covers.
 
 **Whoever owns the Coolify instance must update that command to
 `npm ci && npm run build` in the Coolify UI.** This is called out explicitly in the

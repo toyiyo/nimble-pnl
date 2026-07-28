@@ -209,6 +209,77 @@ export function buildEnhancedRecipes(
   });
 }
 
+/** Costs are money, so drift is measured at currency precision. A difference
+ * below half a cent is float noise out of `calculateInventoryImpact`, not a
+ * real change: comparing with a bare `!==` reports drift forever
+ * (`12.340000000000002` vs `12.34`), re-issuing the heal on every load and
+ * reviving the write→realtime→refetch stampede this change exists to kill. */
+const COST_DRIFT_EPSILON = 0.005;
+
+export interface RecipeCostHealRow {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  estimated_cost: number;
+}
+
+/**
+ * Picks the recipes whose freshly computed cost differs from what is stored
+ * by at least half a cent (design §3.7). Pure and exported so the rounded
+ * comparison — the property that makes "zero writes once converged" true —
+ * is testable without the supabase mock.
+ */
+export function selectDriftedCostRows(
+  storedRecipes: RecipeRow[],
+  enhancedRecipes: Recipe[],
+): RecipeCostHealRow[] {
+  const storedById = new Map(storedRecipes.map((recipe) => [recipe.id, recipe]));
+  const drifted: RecipeCostHealRow[] = [];
+
+  for (const enhanced of enhancedRecipes) {
+    const stored = storedById.get(enhanced.id);
+    if (!stored) continue;
+    if (Math.abs(enhanced.estimated_cost - (stored.estimated_cost ?? 0)) < COST_DRIFT_EPSILON) {
+      continue;
+    }
+    drifted.push({
+      id: enhanced.id,
+      restaurant_id: enhanced.restaurant_id,
+      name: enhanced.name,
+      estimated_cost: enhanced.estimated_cost,
+    });
+  }
+
+  return drifted;
+}
+
+/**
+ * Writes drifted costs back in a single batched upsert, replacing the
+ * per-recipe `UPDATE` that used to run inside the N+1 loop.
+ *
+ * Deliberately non-fatal: heal writes go through the existing `edit:recipes`
+ * capability RLS gate, so view-only roles (`collaborator_accountant`,
+ * `staff`) are rejected. That is expected, matches the previous behaviour
+ * (the old write-back never checked its error either), and must never
+ * surface as an error toast on a page the user can legitimately read.
+ *
+ * Returns the ids actually written, for the realtime echo guard.
+ */
+async function healRecipeCosts(
+  storedRecipes: RecipeRow[],
+  enhancedRecipes: Recipe[],
+): Promise<string[]> {
+  const drifted = selectDriftedCostRows(storedRecipes, enhancedRecipes);
+  if (drifted.length === 0) return [];
+
+  const { error } = await supabase.from('recipes').upsert(drifted);
+  if (error) {
+    console.warn('Recipe cost heal skipped:', error.message);
+    return [];
+  }
+  return drifted.map((row) => row.id);
+}
+
 export const useRecipes = (restaurantId: string | null) => {
   const [recipes, setRecipes] = useState<Recipe[]>([]);
   const [loading, setLoading] = useState(true);
@@ -307,6 +378,12 @@ export const useRecipes = (restaurantId: string | null) => {
       );
 
       setRecipes(enhancedRecipes);
+
+      // Heal stored costs off the render path (design §3.7): one batched
+      // upsert of only the drifted rows, deliberately not awaited so it
+      // never delays first paint, and convergent — the next load finds no
+      // drift and issues zero writes.
+      void healRecipeCosts(activeRecipes, enhancedRecipes);
     } catch (error: any) {
       console.error('Error fetching recipes:', error);
       // Fail closed: clear any previously-loaded recipes (e.g. from a prior

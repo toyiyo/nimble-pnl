@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SchedulePublication } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
+import { formatLocalDate } from '@/lib/shiftInterval';
 
 interface PublishScheduleParams {
   restaurantId: string;
@@ -51,9 +52,9 @@ export const usePublishSchedule = () => {
 
   return useMutation({
     mutationFn: async ({ restaurantId, weekStart, weekEnd, notes }: PublishScheduleParams) => {
-      // Format dates as YYYY-MM-DD
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      const weekEndStr = weekEnd.toISOString().split('T')[0];
+      // Format dates as YYYY-MM-DD (local calendar day, not UTC)
+      const weekStartStr = formatLocalDate(weekStart);
+      const weekEndStr = formatLocalDate(weekEnd);
 
       // Call the publish_schedule function
       const { data, error } = await supabase.rpc('publish_schedule', {
@@ -113,9 +114,9 @@ export const useUnpublishSchedule = () => {
 
   return useMutation({
     mutationFn: async ({ restaurantId, weekStart, weekEnd, reason }: UnpublishScheduleParams) => {
-      // Format dates as YYYY-MM-DD
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      const weekEndStr = weekEnd.toISOString().split('T')[0];
+      // Format dates as YYYY-MM-DD (local calendar day, not UTC)
+      const weekStartStr = formatLocalDate(weekStart);
+      const weekEndStr = formatLocalDate(weekEnd);
 
       // Call the unpublish_schedule function
       const { data, error } = await supabase.rpc('unpublish_schedule', {

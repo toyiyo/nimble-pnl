@@ -157,27 +157,39 @@ test.describe('Recipes page load', () => {
     await page.goto('/recipes');
     await exposeSupabaseHelpers(page);
 
-    // Two counters: every PostgREST call (the app shell contributes a fixed
-    // number of these, so only its growth is meaningful) and the subset that
-    // actually feeds the recipe list (where an absolute number means something).
-    let restCalls = 0;
-    let recipeDataCalls = 0;
-    const RECIPE_DATA_ENDPOINTS = /\/rest\/v1\/(recipes|recipe_ingredients|rpc\/get_recipe_sales_stats|rpc\/get_unmapped_sale_item_names)/;
+    // Count the queries the recipe list itself owns, per endpoint.
+    //
+    // Deliberately NOT counting every `/rest/v1/` call: the app shell fetches
+    // `user_restaurants`, `pos_sales`, `unified_sales` and `products` on its
+    // own schedule, and measurement showed those varying run to run (28 total
+    // calls on one load, 22 on the next, in whichever direction). A total-call
+    // comparison therefore measures shell noise, not this page's fan-out, and
+    // passes or fails by luck. `products` is excluded for the same reason —
+    // several components fetch it, so its count cannot be attributed here.
+    const RECIPE_OWNED_ENDPOINTS = [
+      'recipes',
+      'prep_recipes',
+      'recipe_ingredients',
+      'rpc/get_recipe_sales_stats',
+      'rpc/get_unmapped_sale_item_names',
+    ] as const;
+    let perEndpoint: Record<string, number> = {};
     page.on('request', (request) => {
       const url = request.url();
       if (!url.includes('/rest/v1/')) return;
-      restCalls += 1;
-      if (RECIPE_DATA_ENDPOINTS.test(url)) recipeDataCalls += 1;
+      const path = url.split('/rest/v1/')[1].split('?')[0];
+      if ((RECIPE_OWNED_ENDPOINTS as readonly string[]).includes(path)) {
+        perEndpoint[path] = (perEndpoint[path] ?? 0) + 1;
+      }
     });
 
     const countLoad = async (expectedFirstRecipe: string) => {
-      restCalls = 0;
-      recipeDataCalls = 0;
+      perEndpoint = {};
       await page.reload();
       await expect(page.getByRole('row').filter({ hasText: expectedFirstRecipe })).toBeVisible({ timeout: 20000 });
       // Let anything the page fires just after first paint land in the count.
       await page.waitForTimeout(3000);
-      return { restCalls, recipeDataCalls };
+      return { ...perEndpoint };
     };
 
     await seedRecipes(
@@ -192,15 +204,29 @@ test.describe('Recipes page load', () => {
     );
     const withSixty = await countLoad('Fanout 000');
 
-    // The old page issued a sales query and an ingredients query per recipe:
-    // 60 recipes cost ~12x what 5 did. Now the fetch is a fixed set of bulk
-    // queries, so twelve times the data costs the same round trips (allowing
-    // one for a stray refetch landing inside the measurement window).
-    expect(withSixty.restCalls).toBeLessThanOrEqual(withFive.restCalls + 1);
-    // Absolute ceiling on the recipe queries themselves: "equal but both
-    // enormous" would also pass the comparison above. A handful of bulk
-    // queries is the design; anything near per-recipe would blow past this.
-    expect(withSixty.recipeDataCalls).toBeLessThanOrEqual(8);
+    // Prove the counter is actually counting. Every ceiling below is an upper
+    // bound, so a counter that silently matched nothing — a renamed table, a
+    // changed RPC path — would sail through all of them at zero.
+    for (const endpoint of RECIPE_OWNED_ENDPOINTS) {
+      expect(withFive[endpoint] ?? 0, `${endpoint} was never observed`).toBeGreaterThanOrEqual(1);
+    }
+
+    // The old page issued a sales query and an ingredients query per recipe,
+    // so 60 recipes cost ~12x what 5 did. Now each of these is one bulk query
+    // whatever the recipe count: twelve times the data, the same round trips.
+    // Two ceilings rather than one, because either alone has a hole —
+    // comparing the two loads would accept "equal but both enormous", and an
+    // absolute cap alone would accept slow growth under the cap.
+    for (const endpoint of RECIPE_OWNED_ENDPOINTS) {
+      expect(
+        withSixty[endpoint] ?? 0,
+        `${endpoint} must not grow with the recipe count`
+      ).toBeLessThanOrEqual((withFive[endpoint] ?? 0) + 1);
+      expect(
+        withSixty[endpoint] ?? 0,
+        `${endpoint} must be a bulk query, not one per recipe`
+      ).toBeLessThanOrEqual(2);
+    }
   });
 
   test('a failed load reads as an outage, not as an empty recipe book', async ({ page }) => {

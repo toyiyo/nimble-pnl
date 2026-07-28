@@ -116,7 +116,7 @@ function receiptFixture(opts: {
 describe('buildReceipt', () => {
   it('CRITICAL: nodata — no rows, single explanatory aside using weekdayKey/lookbackWeeks/scheduled', () => {
     const h = receiptFixture({ demand: null, scheduled: 5 });
-    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Monday', wage: 15, lookbackWeeks: 6 });
+    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Monday', wage: 15, lookbackWeeks: 6, hasWageData: true });
     expect(receipt.rows).toEqual([]);
     expect(receipt.asides).toEqual([
       'No sales in the last 6 Mondays — no demand target to compare against. (The old chart used to show this hour as 5 / 0.)',
@@ -127,7 +127,7 @@ describe('buildReceipt', () => {
     // Avg sales $503, demand 17 (⇒ implied target round(503/17)=$30/hr), minStaff 4
     // (below demand, so needed stays 17), scheduled 14 ⇒ short on demand −3.
     const h = receiptFixture({ demand: 17, scheduled: 14, projectedSales: 503 });
-    const receipt = buildReceipt(h, { minStaff: 4, weekdayKey: 'Monday', wage: 15, lookbackWeeks: 6 });
+    const receipt = buildReceipt(h, { minStaff: 4, weekdayKey: 'Monday', wage: 15, lookbackWeeks: 6, hasWageData: true });
 
     expect(receipt.rows).toEqual([
       { label: 'Avg Monday sales', value: '$503', tone: 'default' },
@@ -148,7 +148,7 @@ describe('buildReceipt', () => {
     // demand=3 (target implied $30/hr from $90 sales), minStaff=5 pulls needed to 5;
     // scheduled=4 meets demand but misses the floor by 1.
     const h = receiptFixture({ demand: 3, scheduled: 4, projectedSales: 90 });
-    const receipt = buildReceipt(h, { minStaff: 5, weekdayKey: 'Friday', wage: 15, lookbackWeeks: 4 });
+    const receipt = buildReceipt(h, { minStaff: 5, weekdayKey: 'Friday', wage: 15, lookbackWeeks: 4, hasWageData: true });
 
     expect(receipt.rows).toEqual([
       { label: 'Avg Friday sales', value: '$90', tone: 'default' },
@@ -169,7 +169,7 @@ describe('buildReceipt', () => {
 
   it('CRITICAL: ok — last row "On target" / 0, default tone throughout', () => {
     const h = receiptFixture({ demand: 5, scheduled: 5, projectedSales: 150 });
-    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6 });
+    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6, hasWageData: true });
     const last = receipt.rows[receipt.rows.length - 1];
     expect(last).toEqual({ label: 'On target', value: '0', tone: 'default' });
     expect(receipt.rows.every((r) => r.tone === 'default')).toBe(true);
@@ -177,7 +177,7 @@ describe('buildReceipt', () => {
 
   it('CRITICAL: spare — last row "Covered" / +N, positive tone', () => {
     const h = receiptFixture({ demand: 5, scheduled: 7, projectedSales: 150 });
-    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6 });
+    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6, hasWageData: true });
     const last = receipt.rows[receipt.rows.length - 1];
     expect(last).toEqual({ label: 'Covered', value: '+2', tone: 'positive' });
   });
@@ -186,8 +186,8 @@ describe('buildReceipt', () => {
     const steady = receiptFixture({ demand: 5, scheduled: 5, scheduledMax: 5, projectedSales: 150 });
     const dips = receiptFixture({ demand: 5, scheduled: 5, scheduledMax: 8, projectedSales: 150 });
 
-    const steadyReceipt = buildReceipt(steady, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6 });
-    const dipsReceipt = buildReceipt(dips, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6 });
+    const steadyReceipt = buildReceipt(steady, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6, hasWageData: true });
+    const dipsReceipt = buildReceipt(dips, { minStaff: 2, weekdayKey: 'Tuesday', wage: 15, lookbackWeeks: 6, hasWageData: true });
 
     expect(steadyReceipt.asides.some((a) => a.startsWith('Headcount moves'))).toBe(false);
     expect(dipsReceipt.asides).toContain(
@@ -198,7 +198,7 @@ describe('buildReceipt', () => {
   it('BOUNDARY: demand === 0 (no sales but a rec exists) — "÷ target" row omitted, no implied-SPLH aside at scheduled=0', () => {
     // demand=0, minStaff=2 ⇒ needed=2; scheduled=0 ⇒ floor (0 >= demand(0) but < needed(2)).
     const h = receiptFixture({ demand: 0, scheduled: 0, scheduledMax: 0, projectedSales: 0 });
-    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Sunday', wage: 15, lookbackWeeks: 6 });
+    const receipt = buildReceipt(h, { minStaff: 2, weekdayKey: 'Sunday', wage: 15, lookbackWeeks: 6, hasWageData: true });
 
     expect(receipt.rows).toEqual([
       { label: 'Avg Sunday sales', value: '$0', tone: 'default' },

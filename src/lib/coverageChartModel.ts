@@ -12,6 +12,7 @@
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
+import { impliedLabor } from '@/lib/staffingCalculator';
 
 export type HourClassification = 'crit' | 'floor' | 'spare' | 'ok' | 'nodata';
 
@@ -88,9 +89,9 @@ function fmtUsd(n: number): string {
  */
 export function buildReceipt(
   h: CoverageHour,
-  params: { minStaff: number; weekdayKey: string; wage: number; lookbackWeeks: number },
+  params: { minStaff: number; weekdayKey: string; wage: number; lookbackWeeks: number; hasWageData: boolean },
 ): Receipt {
-  const { minStaff, weekdayKey, wage, lookbackWeeks } = params;
+  const { minStaff, weekdayKey, wage, lookbackWeeks, hasWageData } = params;
 
   if (h.demand === null) {
     return {
@@ -144,10 +145,12 @@ export function buildReceipt(
   const asides: string[] = [];
 
   // Implied SPLH at the scheduled count — only meaningful when someone is
-  // actually scheduled (avoids a divide-by-zero and a nonsensical "$Infinity/hr").
-  if (scheduled > 0) {
+  // actually scheduled (avoids a divide-by-zero and a nonsensical "$Infinity/hr"),
+  // and only honest when `wage` is real roster data rather than the $15/hr
+  // fallback (design §4a2).
+  if (scheduled > 0 && hasWageData) {
     const splhAt = projectedSales / scheduled;
-    const laborPctAt = Math.round((wage / splhAt) * 100);
+    const laborPctAt = Math.round(impliedLabor({ wage, splh: splhAt, targetLaborPct: 0 }).pct);
     asides.push(`At ${scheduled} scheduled, implied SPLH is ${fmtUsd(Math.round(splhAt))}/hr → ${laborPctAt}% labor.`);
   }
 

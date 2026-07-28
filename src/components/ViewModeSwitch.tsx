@@ -11,7 +11,7 @@ interface SegmentButtonProps {
 }
 
 /** One toggle button of the Admin / My Work segmented control. */
-function SegmentButton({ icon: Icon, label, pressed, onClick }: SegmentButtonProps) {
+function SegmentButton({ icon: Icon, label, pressed, onClick }: Readonly<SegmentButtonProps>) {
   return (
     <button
       type="button"
@@ -50,7 +50,7 @@ function SegmentButton({ icon: Icon, label, pressed, onClick }: SegmentButtonPro
  * tests/unit/ViewModeSwitch.contrast.test.tsx.
  *
  * The segmented control is two `aria-pressed` toggle buttons inside a
- * `role="group"` — NOT `role="radiogroup"` (see design doc "Three-state /
+ * `<fieldset>` (implicit `role="group"`) — NOT `role="radiogroup"` (see design doc "Three-state /
  * a11y" — the CLAUDE.md "Apple-Style Underline Tabs" convention already used
  * in the codebase).
  *
@@ -81,10 +81,16 @@ export function ViewModeSwitch({ className }: { className?: string } = {}) {
       <p className="text-[11px] font-medium uppercase tracking-wider text-personal-view-foreground">
         You&apos;re viewing as
       </p>
-      <div
-        role="group"
+      {/*
+        `<fieldset>` — not `<div role="group">`. Same implicit ARIA role, but the
+        semantic element keeps assistive tech working where the explicit role is
+        unevenly supported (sonar typescript:S6819). `min-w-0` is required: a
+        fieldset's default `min-inline-size: min-content` would otherwise stop the
+        card shrinking to the collapsed sidebar's width.
+      */}
+      <fieldset
         aria-label="View mode"
-        className="mt-1.5 flex items-center gap-0.5 rounded-lg bg-muted/30 p-0.5"
+        className="mt-1.5 flex min-w-0 items-center gap-0.5 rounded-lg bg-muted/30 p-0.5"
       >
         <SegmentButton
           icon={LayoutDashboard}
@@ -98,7 +104,7 @@ export function ViewModeSwitch({ className }: { className?: string } = {}) {
           pressed={viewMode === 'work'}
           onClick={enterWorkMode}
         />
-      </div>
+      </fieldset>
       <p className="mt-1.5 text-[12px] text-personal-view-foreground/80">
         Switch to clock in, view your schedule, timecard, and pay.
       </p>

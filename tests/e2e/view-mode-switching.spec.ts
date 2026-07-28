@@ -50,7 +50,7 @@ async function linkCurrentUserAsEmployee(page: Page, name = 'View Mode Owner') {
   }, { name });
 }
 
-/** The "You're viewing as" persona card — `role="group"` per the design's non-radiogroup a11y note. */
+/** The "You're viewing as" persona card — a `<fieldset>` (implicit `role="group"`) per the design's non-radiogroup a11y note. */
 function viewModeSwitchGroup(page: Page) {
   return page.getByRole('group', { name: 'View mode' });
 }

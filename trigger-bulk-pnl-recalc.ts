@@ -5,7 +5,7 @@
  * all P&L data from existing sales and cost records.
  * 
  * Usage:
- *   bun run trigger-bulk-pnl-recalc.ts
+ *   npx tsx trigger-bulk-pnl-recalc.ts
  * 
  * Options (modify the payload below):
  *   - restaurant_id: Specific restaurant (optional, omit to process all)

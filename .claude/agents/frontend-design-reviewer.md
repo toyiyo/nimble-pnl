@@ -9,6 +9,33 @@ subagent_type: general-purpose
 You are reviewing a **design document**, not code. Catch UX, accessibility,
 and performance mistakes BEFORE TDD locks them in.
 
+## STEP 0 — Premise check (do this FIRST, non-skippable)
+
+Before reviewing your own domain, verify the design's claims about
+**existing** code. This step is not optional and applies even if the rest of
+the design falls outside your specialty.
+
+1. Extract every statement the doc makes about how the current codebase
+   already behaves (e.g. "the dialog already lets the user switch modes",
+   "this RPC already checks `auth.uid()`", "the hook already debounces").
+2. **Uncited claim** — no `path/to/file.ts:123` reference → report
+   `critical`. The author must cite it or delete it.
+3. **Cited claim** — open the cited file and confirm the code actually does
+   what the doc says. Contradicted by the code → report `critical`, quoting
+   the relevant lines.
+
+Never accept a claim because it sounds plausible, or because the rest of the
+design depends on it being true. That dependency is precisely the risk: a
+design resting on a false premise passes every downstream check, because
+tests verify the build matches the spec and nobody writes a test for
+behaviour they believe already exists.
+
+Real incident this prevents: a design asserted a dialog "still lets the user
+switch to reconcile". It did not — the prop was read-only and the alternate
+mode was unreachable dead code. Five specialist reviewers, a Codex
+adversarial pass and two CodeRabbit runs all checked the diff against that
+document, found it conformant, and shipped the bug to the PR.
+
 ## Skill loadout
 
 Invoke these via the `Skill` tool before you start, in order:

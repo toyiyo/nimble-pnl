@@ -190,10 +190,10 @@ phase('Review')
 // can't reliably re-derive them).
 const snap = await agent(
   envelope(
-    'PHASE 7 setup. In the worktree, capture and RETURN as strings: (1) git diff origin/main...HEAD ; (2) git log origin/main..HEAD --oneline ; (3) the full contents of the design doc at ' + ctx.designDocPath + '. ' +
+    'PHASE 7 setup. In the worktree, capture and RETURN as strings: (1) git diff origin/main...HEAD ; (2) git log origin/main..HEAD --oneline ; (3) the full contents of the design doc at ' + ctx.designDocPath + ' ; (4) headSha = `git rev-parse HEAD` (used later to re-review anything committed after this snapshot). ' +
       'If the diff exceeds ~60000 chars, set diffTruncated=true, return it truncated, and ALSO write the full patch to dev-tools/phase7-diff.patch in the worktree.',
   ),
-  { label: 'review-snapshot', phase: 'Review', schema: statusSchema({ diff: { type: 'string' }, gitLog: { type: 'string' }, designDoc: { type: 'string' }, diffTruncated: { type: 'boolean' } }, ['diff', 'gitLog', 'designDoc']) },
+  { label: 'review-snapshot', phase: 'Review', schema: statusSchema({ diff: { type: 'string' }, gitLog: { type: 'string' }, designDoc: { type: 'string' }, headSha: { type: 'string' }, diffTruncated: { type: 'boolean' } }, ['diff', 'gitLog', 'designDoc', 'headSha']) },
 )
 { const g = gate(snap, 'Review'); if (g.halt) return g.out }
 
@@ -261,6 +261,23 @@ REVIEWERS.forEach((d, i) => {
   if (!reviewResults[i]) log(`⚠️ Phase 7a reviewer "${d.key}" returned no result (both attempts failed) — findings absent this run`)
 })
 
+// Shared return shape for the fold steps: every finding a fold agent chooses NOT
+// to fix must come back in `deferred[]`, so nothing is dropped on the floor.
+const DEFERRED = statusSchema(
+  {
+    deferred: {
+      type: 'array',
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { file: { type: 'string' }, line: { type: 'number' }, severity: { type: 'string' }, message: { type: 'string' }, reason: { type: 'string' } },
+        required: ['severity', 'message', 'reason'],
+      },
+    },
+  },
+  ['deferred'],
+)
+
 // 7b: fold findings (single agent holds all results) -> fix actionable critical/major.
 const reviewerNames = [...REVIEWERS.map((d) => d.key), 'codex']
 const foldInput = JSON.stringify(
@@ -270,13 +287,20 @@ const foldInput = JSON.stringify(
 )
 const fold = await agent(
   envelope(
-    'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (5 Claude — security, performance, maintainability, sound-logic, ocr-rules — plus Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>"). Style/nits -> skip (CodeRabbit catches them in 7c). ' +
+    'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (5 Claude — security, performance, maintainability, sound-logic, ocr-rules — plus Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>"). ' +
+      'MINOR/INFO findings: fix any that are trivially safe (one-line, mechanical, no behaviour change) in the same commit. For every minor/info finding you do NOT fix, you MUST return it in `deferred[]` with file, line, severity, message and a one-line reason. ' +
+      'NEVER discard a finding silently — "CodeRabbit will catch it in 7c" is NOT a valid reason to drop one, because 7c reviews a different surface and regularly misses them. Anything omitted from both your fixes and `deferred[]` is lost.\n' +
       'If a critical/major fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human with details — do NOT improvise. After fixing, re-verify critical/security findings only. Also read dev-tools/codex-review-output.md if it exists.\n\n' +
       '=== findings JSON ===\n' + foldInput,
   ),
-  { label: 'fold-findings', phase: 'Review', schema: statusSchema() },
+  { label: 'fold-findings', phase: 'Review', schema: DEFERRED },
 )
 { const g = gate(fold, 'Review'); if (g.halt) return g.out }
+
+// Carry unfixed findings forward so Phase 9 can surface them in the PR body.
+// Silent drops are how minor findings reached a PR unaddressed in the past.
+const deferredFindings = fold.deferred || []
+if (deferredFindings.length) log(`Phase 7b deferred ${deferredFindings.length} minor/info finding(s) — will be listed in the PR body`)
 
 // 7c: CodeRabbit loop (script-level counter, max 3).
 let crClean = false
@@ -292,6 +316,52 @@ for (let it = 1; it <= 3 && !crClean; it++) {
   const g = gate(cr, 'Review'); if (g.halt) return g.out
   crClean = cr.clean
   log(`CodeRabbit ${it}/3: ${crClean ? 'clean' : 'fixed findings, re-running'}`)
+}
+
+// 7d: bounded re-review of code committed AFTER the 7a snapshot.
+// The 7a diff is frozen, so 7b/7c fixes — and any late edits — otherwise ship
+// completely unreviewed. Exactly one extra pass; skipped when nothing changed.
+const postSnap = await agent(
+  envelope(
+    'PHASE 7d setup. In the worktree, return as strings: (1) newCommits = output of `git log ' + snap.headSha + '..HEAD --oneline` (empty string if there are none); ' +
+      '(2) diff = output of `git diff ' + snap.headSha + '..HEAD -- . ":(exclude)dev-tools" ":(exclude)progress.md"` (empty string if empty). Truncate diff to ~60000 chars if larger. Do NOT modify anything.',
+  ),
+  { label: 're-review-snapshot', phase: 'Review', schema: statusSchema({ newCommits: { type: 'string' }, diff: { type: 'string' } }, ['newCommits', 'diff']) },
+)
+{ const g = gate(postSnap, 'Review'); if (g.halt) return g.out }
+
+if (postSnap.diff && postSnap.diff.trim()) {
+  log('Phase 7d: re-reviewing code committed after the 7a snapshot')
+  const reResults = await parallel(
+    REVIEWERS.map((d) => () =>
+      agent(
+        envelope(
+          `PHASE 7d — ${d.key} re-review. Read your reviewer instructions at ${ctx.worktreePath}/${d.promptFile} and load the skills it names. ` +
+            'The changes below were committed AFTER the main review pass (Phase 7b/7c fixes and any late edits) and have NEVER been reviewed. Review ONLY this diff. Report findings with severity. DO NOT fix anything.\n\n' +
+            '=== new commits ===\n' + postSnap.newCommits + '\n\n=== diff ===\n' + postSnap.diff,
+        ),
+        { label: `re-review:${d.key}`, phase: 'Review', agentType: d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer', schema: FINDINGS },
+      ),
+    ),
+  )
+  const reFindings = reResults.map((r, i) => (r ? { reviewer: REVIEWERS[i].key, findings: r.findings || [] } : null)).filter(Boolean)
+  if (reFindings.some((r) => r.findings.length)) {
+    const reFold = await agent(
+      envelope(
+        'PHASE 7d (fold re-review). The findings below come from re-reviewing code committed AFTER the main review pass. Deduplicate by file:line. FIX actionable critical/major findings and commit ("fix(review): <area> — addresses <reviewer> re-review"). ' +
+          'Fix trivially-safe minors too; return EVERY unfixed minor/info in `deferred[]` with a reason. Never discard a finding silently. ' +
+          'If a fix would require changing the approved design (' + ctx.designDocPath + '), return status=needs_human — do NOT improvise.\n\n' +
+          '=== findings JSON ===\n' + JSON.stringify(reFindings),
+      ),
+      { label: 're-review-fold', phase: 'Review', schema: DEFERRED },
+    )
+    const g = gate(reFold, 'Review'); if (g.halt) return g.out
+    deferredFindings.push(...(reFold.deferred || []))
+  } else {
+    log('Phase 7d: re-review found nothing in post-snapshot code')
+  }
+} else {
+  log('Phase 7d: no new commits since the 7a snapshot — re-review skipped')
 }
 
 // ===========================================================================
@@ -315,6 +385,10 @@ phase('Ship')
 const ship = await agent(
   envelope(
     'PHASE 9a (Ship). Push the branch: git push -u origin ' + ctx.branch + '. Open a PR with gh pr create: concise title (<70 chars), body with ## Summary (bullets from the plan), ## Test plan, and a link to the design doc. ' +
+      (deferredFindings.length
+        ? 'ALSO add a "## Known deferred review findings" section listing each item below verbatim (file:line — severity — message — why deferred), so reviewers see what was consciously not fixed rather than it being silently dropped:\n' +
+          JSON.stringify(deferredFindings, null, 2) + '\n'
+        : '') +
       'Return the PR number as prNumber. Update progress.md with it.',
   ),
   { label: 'ship', phase: 'Ship', schema: statusSchema({ prNumber: { type: 'number' } }, ['prNumber']) },

@@ -30,6 +30,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { COGSPreferenceSettings } from '@/components/settings/COGSPreferenceSettings';
 import { GeofenceSettings } from '@/components/settings/GeofenceSettings';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
+import { useEmployees } from '@/hooks/useEmployees';
+import {
+  computeAvgHourlyRateCents,
+  hasHourlyWageData,
+  impliedLabor,
+  laborConsistentSplh,
+} from '@/lib/staffingCalculator';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
@@ -83,11 +90,25 @@ export default function RestaurantSettings() {
 
   // Labor planning state (staffing settings)
   const { effectiveSettings: staffDefaults, updateSettings: saveStaffingSettings, isSaving: staffingSaving, isLoading: staffingLoading } = useStaffingSettings(selectedRestaurant?.restaurant_id ?? null);
+  const { employees: staffEmployees } = useEmployees(selectedRestaurant?.restaurant_id ?? null);
   const [lpTargetSplh, setLpTargetSplh] = useState('60');
   const [lpAvgTicket, setLpAvgTicket] = useState('8');
   const [lpTargetLaborPct, setLpTargetLaborPct] = useState('22');
   const [lpMinStaff, setLpMinStaff] = useState('1');
   const [lpLookbackWeeks, setLpLookbackWeeks] = useState('4');
+
+  // Implied labor % of the SPLH currently typed into the form. Null when the
+  // roster has no real hourly wage, or when either field is blank/non-numeric
+  // (Number.parseFloat('') is NaN, and `NaN <= 0` is false — design §4).
+  const splhHint = useMemo(() => {
+    const splh = Number.parseFloat(lpTargetSplh);
+    const target = Number.parseFloat(lpTargetLaborPct);
+    const positive = (n: number) => Number.isFinite(n) && n > 0;
+    if (!hasHourlyWageData(staffEmployees) || !positive(splh) || !positive(target)) return null;
+    const wage = computeAvgHourlyRateCents(staffEmployees) / 100;
+    const { pct, overTarget } = impliedLabor({ wage, splh, targetLaborPct: target });
+    return { pct, overTarget, consistent: laborConsistentSplh({ wage, targetLaborPct: target }) };
+  }, [staffEmployees, lpTargetSplh, lpTargetLaborPct]);
 
   // Sync labor planning form when staffing defaults load
   useEffect(() => {

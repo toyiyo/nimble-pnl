@@ -43,6 +43,9 @@ vi.mock("@/hooks/useAutomaticInventoryDeduction", () => ({ useAutomaticInventory
 // QueryClientProvider, so mock the peripheral hook (same pattern as the others
 // above) to keep the test isolated to the create-from-base menu behavior.
 vi.mock("@/hooks/useBulkInventoryDeduction", () => ({ useBulkInventoryDeduction: () => ({ loading: false, bulkProcessHistoricalSales: vi.fn() }) }));
+// RecipeDialog (rendered inside Recipes) calls usePOSItems, which now uses
+// useQuery internally; same reasoning as useBulkInventoryDeduction above.
+vi.mock("@/hooks/usePOSItems", () => ({ usePOSItems: () => ({ posItems: [], loading: false, error: null, refetch: vi.fn() }) }));
 
 vi.mock("@/components/RecipeCreateFromExistingDialog", () => ({
   RecipeCreateFromExistingDialog: ({ isOpen }: { isOpen: boolean }) =>

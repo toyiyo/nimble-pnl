@@ -23,6 +23,9 @@ interface SearchablePOSItemSelectorProps {
   posItems: POSItem[];
   loading?: boolean;
   disabled?: boolean;
+  onSearchChange?: (search: string) => void;
+  error?: unknown;
+  onRetry?: () => void;
 }
 
 export function SearchablePOSItemSelector({
@@ -31,16 +34,17 @@ export function SearchablePOSItemSelector({
   posItems,
   loading = false,
   disabled = false,
+  onSearchChange,
+  error,
+  onRetry,
 }: SearchablePOSItemSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
-  
-  // Show all items if no search, otherwise filter
-  const filteredItems = searchValue
-    ? posItems.filter((item) =>
-        item.item_name.toLowerCase().includes(searchValue.toLowerCase())
-      )
-    : posItems;
+
+  const handleSearchChange = (search: string) => {
+    setSearchValue(search);
+    onSearchChange?.(search);
+  };
 
   const selectedItem = posItems.find((item) => item.item_name === value);
 
@@ -70,8 +74,8 @@ export function SearchablePOSItemSelector({
           <span className="truncate">
             {loading ? (
               "Loading POS items..."
-            ) : selectedItem ? (
-              selectedItem.item_name
+            ) : value ? (
+              selectedItem ? selectedItem.item_name : value
             ) : (
               "Search POS items or leave blank"
             )}
@@ -84,16 +88,31 @@ export function SearchablePOSItemSelector({
           <CommandInput
             placeholder="Search POS items..."
             value={searchValue}
-            onValueChange={setSearchValue}
+            onValueChange={handleSearchChange}
           />
-          <CommandList 
-            className="max-h-72 overflow-y-auto overscroll-contain"
-            style={{ WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
-          >
+          <CommandList className="max-h-72 overflow-y-auto">
             <CommandEmpty>
-              <div className="py-6 text-center text-sm">
-                <p className="text-muted-foreground">No POS items found</p>
-              </div>
+              {error ? (
+                <div className="py-6 text-center text-sm space-y-2">
+                  <p className="text-muted-foreground">
+                    Couldn't load POS items. Something went wrong.
+                  </p>
+                  {onRetry && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={onRetry}
+                    >
+                      Try again
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="py-6 text-center text-sm">
+                  <p className="text-muted-foreground">No POS items found</p>
+                </div>
+              )}
             </CommandEmpty>
             <CommandGroup>
               {value && (
@@ -104,7 +123,7 @@ export function SearchablePOSItemSelector({
                   Clear selection
                 </CommandItem>
               )}
-              {filteredItems.map((item) => (
+              {posItems.map((item) => (
                 <CommandItem
                   key={item.item_name}
                   value={item.item_name}

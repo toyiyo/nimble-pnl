@@ -15,11 +15,13 @@ test.describe('Schedule publish week range', () => {
     await signUpAndCreateRestaurant(page, testUser);
     await exposeSupabaseHelpers(page);
 
+    // `window` has no type declarations for the test-only helpers exposeSupabaseHelpers attaches.
     const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
     expect(restaurantId).toBeTruthy();
 
     // Seed one shift so there is something to publish.
     await page.evaluate(async ({ restId }) => {
+      // `window` has no type declarations for the test-only Supabase client exposeSupabaseHelpers attaches.
       const supabase = (window as any).__supabase;
       const { data: { user } } = await supabase.auth.getUser();
       if (!user?.id) throw new Error('No authenticated user found');
@@ -86,6 +88,7 @@ test.describe('Schedule publish week range', () => {
     await publishResponsePromise;
 
     const publication = await page.evaluate(async ({ restId }) => {
+      // `window` has no type declarations for the test-only Supabase client exposeSupabaseHelpers attaches.
       const supabase = (window as any).__supabase;
       const { data } = await supabase
         .from('schedule_publications')

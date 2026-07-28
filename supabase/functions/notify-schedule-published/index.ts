@@ -98,6 +98,24 @@ serve(async (req) => {
       throw new Error("Failed to fetch employees");
     }
 
+    // The payload carries restaurant-local calendar days. Splicing them into
+    // hardcoded `Z` literals would compare local dates against UTC instants and
+    // drop Sunday-evening shifts (already Monday in UTC for US restaurants),
+    // silently excluding those employees from the notification.
+    //
+    // An invalid/legacy IANA string makes date-fns-tz throw, so probe first and
+    // fall back to the restaurants.timezone column default.
+    let tz = restaurant.timezone || "America/Chicago";
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    } catch {
+      console.warn(`Invalid timezone "${tz}" for restaurant ${restaurantId}; falling back to America/Chicago`);
+      tz = "America/Chicago";
+    }
+
+    const weekStartInstant = fromZonedTime(`${weekStart}T00:00:00`, tz).toISOString();
+    const weekEndInstant = fromZonedTime(`${weekEnd}T23:59:59.999`, tz).toISOString();
+
     // Get shifts for this publication to determine which employees are scheduled
     const { data: shifts, error: shiftsError } = await supabase
       .from("shifts")

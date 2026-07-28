@@ -71,9 +71,20 @@ interface RecipeDialogProps {
 
 export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], recipe, onRecipeUpdated, initialPosItemName, prefill, basedOn, onCreateFromBase, onEditProduct }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
-  const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
+
+  // Debounced search term: the input stays instant (bound to posItemSearch),
+  // but usePOSItems keys off this instead — undebounced, every keystroke
+  // would fire a fresh RPC call against search_pos_items.
+  const [posItemSearch, setPosItemSearch] = useState('');
+  const [debouncedPosItemSearch, setDebouncedPosItemSearch] = useState('');
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedPosItemSearch(posItemSearch), 250);
+    return () => clearTimeout(timeout);
+  }, [posItemSearch]);
+
+  const { posItems, loading: posItemsLoading, error: posItemsError, refetch: refetchPosItems } = usePOSItems(restaurantId, { search: debouncedPosItemSearch });
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
   const [expandedIngredients, setExpandedIngredients] = useState<Record<number, boolean>>({});
@@ -471,6 +482,9 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                             }}
                             posItems={posItems}
                             loading={posItemsLoading}
+                            onSearchChange={setPosItemSearch}
+                            error={posItemsError}
+                            onRetry={refetchPosItems}
                           />
                         </FormControl>
                         <FormMessage />

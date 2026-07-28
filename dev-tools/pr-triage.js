@@ -114,7 +114,7 @@ export function parseVerdict(body) {
     const pattern = new RegExp(`^${alias}\\s*(?::|—|–|-)\\s*(.+)$`, 'iu');
     const match = plain.match(pattern);
     if (match) {
-      const rationale = match[1].trim();
+      const rationale = stripLeadingMentions(match[1].trim());
       return rationale.length >= MIN_RATIONALE_LENGTH ? { verdict: key, rationale } : null;
     }
   }
@@ -122,13 +122,24 @@ export function parseVerdict(body) {
   return null;
 }
 
+/**
+ * Drop leading @mentions before a rationale is measured. A review-level reply
+ * opens with the reviewer it answers, and that mention is addressing, not
+ * explaining — counting it toward MIN_RATIONALE_LENGTH would let
+ * "@coderabbitai ok" pass as a considered response.
+ */
+function stripLeadingMentions(text) {
+  return text.replace(/^(?:@[\w.-]+[\s,:]*)+/u, '').trim();
+}
+
 /** Pull the human rationale out of a marker-form body. */
 function stripToRationale(body, display) {
-  return body
+  const stripped = body
     .replace(/\*\*/g, '')
     .replace(display, '')
     .replace(/^[\s—–-]+/u, '')
     .trim();
+  return stripLeadingMentions(stripped);
 }
 
 /**

@@ -108,6 +108,19 @@ describe('pr-triage: parseVerdict', () => {
     expect(parseVerdict('Agreed: ok')).toBeNull();
   });
 
+  it('CRITICAL: a leading @mention does not pad a trivial rationale', () => {
+    // Review-level replies open with the reviewer they answer; that mention is
+    // addressing, not explaining, so it must not count toward the length floor.
+    expect(parseVerdict('Agreed — @coderabbitai ok')).toBeNull();
+    expect(parseVerdict('<!-- pr-triage: ignored -->\n**⏭️ Ignored** — @coderabbitai ok')).toBeNull();
+  });
+
+  it('keeps a real rationale that follows a mention', () => {
+    const parsed = parseVerdict('Pushed back — @coderabbitai the guard is correct as written.');
+    expect(parsed?.verdict).toBe('pushed-back');
+    expect(parsed?.rationale).toBe('the guard is correct as written.');
+  });
+
   it('rejects a marker-form reply whose rationale explains nothing', () => {
     expect(parseVerdict('<!-- pr-triage: ignored -->\n**⏭️ Ignored** — ok')).toBeNull();
   });

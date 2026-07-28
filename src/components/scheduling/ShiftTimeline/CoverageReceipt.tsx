@@ -16,6 +16,8 @@ interface CoverageReceiptProps {
   readonly weekdayKey: string;
   /** Average hourly wage — drives the implied-SPLH-at-scheduled aside. */
   readonly wage: number;
+  /** Whether `wage` is real roster data — gates the implied-SPLH aside. */
+  readonly hasWageData: boolean;
   /** Lookback window (in weeks) — surfaced in the nodata aside's copy. */
   readonly lookbackWeeks: number;
   /**
@@ -72,10 +74,11 @@ export function CoverageReceipt({
   minStaff,
   weekdayKey,
   wage,
+  hasWageData,
   lookbackWeeks,
   onQuickAdd,
 }: CoverageReceiptProps) {
-  const receipt = buildReceipt(hour, { minStaff, weekdayKey, wage, lookbackWeeks });
+  const receipt = buildReceipt(hour, { minStaff, weekdayKey, wage, lookbackWeeks, hasWageData });
   const kind = classifyHour(hour, minStaff);
   const showQuickAdd = Boolean(onQuickAdd) && (kind === 'crit' || kind === 'floor');
 
@@ -101,10 +104,13 @@ export function CoverageReceipt({
 
   // Selecting a different hour is independent of slider dragging and should
   // announce right away (design doc §C: "selecting updates the receipt").
+  // `hasWageData` is here for the same reason: it adds/removes the implied-SPLH
+  // aside, and it changes on a roster refetch rather than on a drag, so the
+  // live region would otherwise stay stale until the next pointer/key event.
   useEffect(() => {
     setAnnounced(announcementText(latestRef.current.receipt, latestRef.current.hour));
-     
-  }, [hour.startMin]);
+
+  }, [hour.startMin, hasWageData]);
 
   // The ledger's last row is always the verdict (Short on demand / Short on
   // floor / Covered / On target) — set it off as an emphasized "total" below a

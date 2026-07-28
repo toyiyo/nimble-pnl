@@ -85,6 +85,11 @@ export default {
           "4": "hsl(var(--chart-4))",
           "5": "hsl(var(--chart-5))",
         },
+        "personal-view": {
+          DEFAULT: "hsl(var(--personal-view))",
+          foreground: "hsl(var(--personal-view-foreground))",
+          border: "hsl(var(--personal-view-border))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -84,6 +84,29 @@ BEGIN
     RETURN;
   END IF;
 
+  -- Ambiguity check (email-fallback path only -- an explicit p_employee_id
+  -- is already a unique-key match). If a second active employee in this
+  -- restaurant shares the invited email, the LIMIT 1 above picked one
+  -- arbitrarily under Postgres's undefined tie-break order. Fail closed the
+  -- same way send-team-invitation's resolveAccountlessEmployeeLink already
+  -- does at invite time (see fix(invitations): deterministic
+  -- accountless-employee linking) rather than silently linking the wrong
+  -- row -- see lessons.md #641 (duplicate employee -> fail closed, not an
+  -- arbitrary pick).
+  IF p_employee_id IS NULL AND p_email IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1
+      FROM public.employees e2
+      WHERE e2.restaurant_id = p_restaurant_id
+        AND e2.status = 'active'
+        AND e2.id <> v_target.id
+        AND lower(trim(e2.email)) = lower(trim(p_email))
+    ) THEN
+      RETURN QUERY SELECT FALSE, 'no_match'::TEXT, NULL::UUID;
+      RETURN;
+    END IF;
+  END IF;
+
   -- Idempotency: the resolved target is already this user's row.
   IF v_target.user_id = p_user_id THEN
     RETURN QUERY SELECT TRUE, 'already_linked'::TEXT, v_target.id;

@@ -38,6 +38,15 @@ vi.mock('@/hooks/useBiometricAuth', () => ({
   }),
 }));
 
+vi.mock('@/contexts/ViewModeContext', () => ({
+  useViewMode: () => ({
+    viewMode: 'admin' as const,
+    canUseWorkView: false,
+    enterWorkMode: vi.fn(),
+    exitWorkMode: vi.fn(),
+  }),
+}));
+
 describe('MobileLayout', () => {
   it('renders children and the tab bar', () => {
     render(

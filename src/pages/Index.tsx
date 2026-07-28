@@ -210,6 +210,7 @@ const Index = () => {
       labor_cost: periodMetrics.laborCost,
       pending_labor_cost: periodMetrics.pendingLaborCost,
       actual_labor_cost: periodMetrics.actualLaborCost,
+      labor_basis: periodMetrics.laborBasis,
       food_cost_percentage: periodMetrics.foodCostPercentage,
       labor_cost_percentage: periodMetrics.laborCostPercentage,
       pending_labor_cost_percentage: periodMetrics.pendingLaborCostPercentage,
@@ -789,7 +790,9 @@ const Index = () => {
                     periodLabel={selectedPeriod.label}
                   />
                   <DashboardMetricCard
-                    title="Labor Cost (Wages + Payroll)"
+                    title={periodData
+                      ? `Labor Cost · ${periodData.labor_basis === 'accrued' ? 'Accrued' : 'Paid'}`
+                      : 'Labor Cost (Wages + Payroll)'}
                     value={periodData ? `$${periodData.labor_cost.toFixed(0)}` : '--'}
                     trend={periodData && previousPeriodData ? {
                       value: getTrendValue(periodData.labor_cost_percentage, previousPeriodData.labor_cost_percentage),
@@ -798,7 +801,7 @@ const Index = () => {
                     icon={Clock}
                     variant={periodData && periodData.labor_cost_percentage > 35 ? 'warning' : 'default'}
                     subtitle={periodData
-                      ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue | Pending ${currencyFormatter.format(periodData.pending_labor_cost)} • Actual ${currencyFormatter.format(periodData.actual_labor_cost)}`
+                      ? `${periodData.labor_cost_percentage.toFixed(1)}% of revenue · ${periodData.labor_basis === 'accrued' ? 'Accrued from time punches' : 'Paid via bank'}`
                       : undefined}
                     periodLabel={selectedPeriod.label}
                   />
@@ -849,6 +852,11 @@ const Index = () => {
                         )}
                       </p>
                     </div>
+                    <p className="px-4 pt-3 text-[11px] text-muted-foreground">
+                      {periodData.labor_basis === 'accrued'
+                        ? 'Only accrued (time-punch) labor counts toward the totals above.'
+                        : 'Only paid (bank) labor counts toward the totals above.'}
+                    </p>
                     <div className="grid grid-cols-1 gap-px sm:grid-cols-2 bg-border/40">
                       <div className="bg-background p-3">
                         <p className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Pending Payroll</p>

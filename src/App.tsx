@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { RestaurantProvider, useRestaurantContext } from "@/contexts/RestaurantContext";
+import { ViewModeProvider, useViewMode } from "@/contexts/ViewModeContext";
 import { AiChatProvider } from "@/contexts/AiChatContext";
 import { AiChatBubble } from "@/components/ai-chat/AiChatBubble";
 import { AiChatPanel } from "@/components/ai-chat/AiChatPanel";
@@ -12,6 +13,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { AppSidebar } from "@/components/AppSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { InstallBanner } from "@/components/InstallBanner";
+import { PersonalViewBanner } from "@/components/PersonalViewBanner";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileLayout } from '@/components/employee/MobileLayout';
 import Index from "./pages/Index";
@@ -79,13 +81,14 @@ const queryClient = new QueryClient(queryClientConfig);
 // Layout switcher - chooses between mobile employee layout, desktop layout, or no-chrome
 function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.ReactNode; noChrome: boolean; isMobile: boolean }) {
   const { selectedRestaurant } = useRestaurantContext();
+  const { viewMode } = useViewMode();
   const isStaff = selectedRestaurant?.role === 'staff';
 
   if (noChrome) {
     return <div className="min-h-screen bg-background">{children}</div>;
   }
 
-  if (isStaff && isMobile) {
+  if ((isStaff || viewMode === 'work') && isMobile) {
     return <MobileLayout>{children}</MobileLayout>;
   }
 
@@ -97,6 +100,11 @@ function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.Reac
           <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
             <AppHeader />
             <main className="flex-1 container px-4 py-4 md:py-6 max-w-full overflow-x-hidden">
+              {viewMode === 'work' && (
+                <div className="mb-4">
+                  <PersonalViewBanner variant="desktop" />
+                </div>
+              )}
               {children}
             </main>
           </div>
@@ -131,13 +139,15 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
 
   return (
     <RestaurantProvider>
-      <AiChatProvider>
-        <StaffRoleChecker allowStaff={allowStaff} currentPath={pathname}>
-          <LayoutSwitcher noChrome={noChrome} isMobile={isMobile}>
-            {children}
-          </LayoutSwitcher>
-        </StaffRoleChecker>
-      </AiChatProvider>
+      <ViewModeProvider>
+        <AiChatProvider>
+          <StaffRoleChecker allowStaff={allowStaff} currentPath={pathname}>
+            <LayoutSwitcher noChrome={noChrome} isMobile={isMobile}>
+              {children}
+            </LayoutSwitcher>
+          </StaffRoleChecker>
+        </AiChatProvider>
+      </ViewModeProvider>
     </RestaurantProvider>
   );
 }

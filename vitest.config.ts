@@ -27,7 +27,13 @@ export default defineConfig({
         'tests/**',
         'src/components/**',
         'src/pages/**',
-        'src/contexts/**',
+        // Only the provider components are excluded (they are exercised via
+        // Playwright, not unit tests). Plain-.ts logic modules under contexts/
+        // — e.g. viewModeStore.ts — are unit-tested and must report coverage;
+        // sonar-project.properties excludes `src/contexts/**/*.tsx` only, so
+        // excluding all of `src/contexts/**` here made Sonar count those lines
+        // as new-code-to-cover with no lcov data behind them.
+        'src/contexts/**/*.tsx',
         // Data-fetch hook relocated verbatim from StaffingOverlay (a coverage-
         // excluded component); its pure math is covered via computeStaffingSuggestions.
         'src/hooks/useWeekStaffingSuggestions.ts',

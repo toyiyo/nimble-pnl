@@ -61,7 +61,14 @@ Each task is RED → GREEN → REFACTOR → COMMIT. Dependencies noted.
 - Conditionally render mobile vs desktop instead of `block md:hidden`/`hidden md:block` (`:639`, `:712`) so only one tree mounts.
 - **RED:** unit test for the `Map`-based lookup in `validateRecipeConversions`; **GREEN:** replace the O(ingredients × products) `.find()` at `recipeConversionValidation.ts:30`.
 
-### D3. Suggestions banner
+### D3. Virtualize RecipeTable
+- **RED:** test that with a 133-recipe fixture only a viewport-sized subset of rows is in the DOM (not all 133), and that rows are keyed by `recipe.id` rather than index (reordering via a sort change must not remount the wrong rows).
+- **GREEN:** `useVirtualizer` per design §3.12 — `overscan: 10`, `data-index` + `measureElement` for dynamic heights, key on `recipe.id`.
+- **REFACTOR:** extract `MemoizedRecipeRow` (`React.memo` + custom comparator, **no hooks inside**); stabilize `onEdit`/`onDelete`/`onCreateFromBase` with `useCallback`; pre-compute formatted currency/date/validation with `useMemo`.
+- Reference existing implementations: `VirtualizedProductGrid.tsx`, `BankTransactionList.tsx`, `POSSales.tsx`.
+- Depends on: D2 (conditional mobile/desktop render — virtualize whichever tree mounts).
+
+### D4. Suggestions banner
 - **RED:** test that the banner's data source no longer triggers the 500-row sales fetch or the duplicate `['recipes-for-mapping']` query.
 - **GREEN:** replace `useUnifiedSales(restaurantId)` in `Recipes.tsx` with a lightweight distinct-unmapped-item-names query. Do **not** modify `useUnifiedSales` itself (POSSales depends on it).
 

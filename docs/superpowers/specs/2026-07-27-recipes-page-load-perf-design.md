@@ -163,9 +163,22 @@ Partial, matching the RPC's predicate, excluding noise rows (Russo's has 10,857 
 ### 3.11 Suggestions banner — stop the redundant fetch
 Replace `useUnifiedSales(restaurantId)` on this page with a lightweight query for distinct unmapped item names. Removes a 500-row + two-join fetch *and* a duplicate `['recipes-for-mapping']` recipes query from the critical path. Contained to `Recipes.tsx`; `useUnifiedSales` itself is untouched so POSSales is unaffected.
 
+### 3.12 List virtualization
+
+`RecipeTable` plain-`.map()`s over every recipe (`Recipes.tsx:640`, `:730`). At the top tenant's 133 recipes this crosses CLAUDE.md's 100+ virtualization threshold, so it is **in scope for this PR**.
+
+Follow the documented repo pattern (`@tanstack/react-virtual` ^3.13.18, already a dependency; 8 existing implementations incl. `VirtualizedProductGrid.tsx`, `BankTransactionList.tsx`, `POSSales.tsx`):
+
+- `useVirtualizer` with `getScrollElement`, `estimateSize`, `overscan: 10`.
+- **Key by `recipes[virtualRow.index].id`, never the index.**
+- `data-index={virtualRow.index}` + `ref={virtualizer.measureElement}` for dynamic row heights.
+- Extract a `MemoizedRecipeRow` via `React.memo` with a custom comparator: **no hooks inside**, all data passed as props, callbacks stabilized with `useCallback` in the parent, display values (formatted currency, dates, validation result) pre-computed with `useMemo`.
+- The existing single-dialog-at-list-level pattern (`Recipes.tsx:464-494`) is already correct and stays.
+
+Interaction with §3.10's conditional mobile/desktop render: only the active tree mounts, and that tree is the one virtualized. The desktop table needs a bounded-height vertical scroll parent; keep the existing `overflow-x-auto` for horizontal scroll.
+
 ## 4. Decided trade-offs (deferred, with rationale)
 
-- **Full list virtualization** — CLAUDE.md mandates it at 100+ items and the top tenant has 133. **Deferred.** §3.10 halves the mounted node count for a fraction of the cost; the dominant term is ~400 round trips, not render. Per the performance skill, measure after the network fix and virtualize only if render is then the binding constraint. Tracked as a follow-up.
 - **`useProducts` React Query conversion + `select('*')`** — real violations on this critical path, but the hook carries auth-retry/session-refresh logic (`:89-171`) that a naive conversion would drop. Own risk profile; separate change.
 - **Dropping the now-redundant `idx_unified_sales_item_name`** — follow-up; not this PR's job.
 
@@ -177,7 +190,7 @@ Replace `useUnifiedSales(restaurantId)` on this page with a lightweight query fo
 | Requests (3 recipes) | ~10 | **5** |
 | Waterfall depth | 4 | **2** (Q1+Q2+Q4+Q5 parallel → Q3) |
 | Writes per load | up to N | 0 (converged) |
-| Row components mounted | ~266 | ~133 |
+| Row components mounted | ~266 | **~15 (viewport + overscan)** |
 | Sales average accuracy | truncated at 1000 rows | exact |
 
 At 60–90ms/round trip, 2 levels ≈ **120–180ms** of network — inside the 500ms budget with headroom.

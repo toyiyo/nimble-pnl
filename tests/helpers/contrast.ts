@@ -16,11 +16,18 @@ export type ThemeName = 'light' | 'dark';
 export type TokenMap = Record<string, string>;
 export type Rgb = readonly [number, number, number];
 
+/** Blank out CSS block comments, preserving offsets so error messages stay meaningful. */
+function stripComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, (match) => ' '.repeat(match.length));
+}
+
 /**
  * Extract the custom-property block for a selector, honouring nesting so a
- * stray `{` inside a comment or nested rule cannot truncate the match.
+ * stray `{` inside a nested rule cannot truncate the match. Comments are
+ * blanked out first, so a `{`, `}`, or a decoy selector inside one is inert.
  */
-function extractBlock(css: string, selector: string): string {
+function extractBlock(rawCss: string, selector: string): string {
+  const css = stripComments(rawCss);
   const start = css.indexOf(selector);
   if (start === -1) throw new Error(`contrast helper: "${selector}" not found in CSS`);
 

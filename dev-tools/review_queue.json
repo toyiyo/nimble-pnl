@@ -93418,6 +93418,87 @@
       "status": "open",
       "created_at": "2026-07-21T19:13:46.978Z",
       "updated_at": "2026-07-21T19:13:46.978Z"
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "666",
+        "comment_id": 3666792491,
+        "file": "src/components/ViewModeSwitch.tsx",
+        "line": 46
+      },
+      "title": "The doc comment says not to use `text-foreground` inside this card, but the pressed segment intentionally uses `text-foreground` (`bg-background text-foreground",
+      "body": "The doc comment says not to use `text-foreground` inside this card, but the pressed segment intentionally uses `text-foreground` (`bg-background text-foreground`). This makes the guidance internally inconsistent and could mislead future edits; clarify that the restriction applies to the eyebrow/hint/unpressed labels, while the pressed pill is an intentional exception.",
+      "severity": "info",
+      "id": "a7e413a1d65aaba8d339f069359e2a548d979a8e",
+      "status": "open",
+      "created_at": "2026-07-28T15:38:47.585Z",
+      "updated_at": "2026-07-28T15:38:47.585Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "666",
+        "comment_id": 3666792527,
+        "file": "tests/helpers/contrast.ts",
+        "line": 22
+      },
+      "title": "`extractBlock` counts `{`/`}` characters but does not ignore CSS comments/strings, so a stray `{` inside a comment could still break the nesting depth and cause",
+      "body": "`extractBlock` counts `{`/`}` characters but does not ignore CSS comments/strings, so a stray `{` inside a comment could still break the nesting depth and cause incorrect extraction. The doc comment currently claims comments are handled; please either adjust the comment to match the implementation or enhance the parser to skip comment bodies.",
+      "severity": "info",
+      "id": "7b0af973f6582bfb323468c01552882eea42ab61",
+      "status": "open",
+      "created_at": "2026-07-28T15:38:47.589Z",
+      "updated_at": "2026-07-28T15:38:47.589Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "666",
+        "comment_id": 3666792561,
+        "file": "tests/unit/ViewModeSwitch.contrast.test.tsx",
+        "line": 54
+      },
+      "title": "The unit test models the dropdown mount surface as `--popover`, but `UserProfileDropdown` currently renders the menu content with `bg-background/95` (see `src/c",
+      "body": "The unit test models the dropdown mount surface as `--popover`, but `UserProfileDropdown` currently renders the menu content with `bg-background/95` (see `src/components/UserProfileDropdown.tsx:45-48`). If the card ever reintroduces alpha (or if other layers become translucent), this mismatch could make the unit contrast model diverge from the real mount surface. Consider using `--background` here to reflect the actual dropdown surface token.",
+      "severity": "info",
+      "id": "80852a844123bd31bb9c9f084b6a9d7b494b386f",
+      "status": "open",
+      "created_at": "2026-07-28T15:38:47.589Z",
+      "updated_at": "2026-07-28T15:38:47.589Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "666",
+        "comment_id": 5105976317
+      },
+      "title": "### <span aria-hidden=\"true\">❌</span> Deploy Preview for *easyshifthq* failed.",
+      "body": "### <span aria-hidden=\"true\">❌</span> Deploy Preview for *easyshifthq* failed.\n\n\n|  Name | Link |\n|:-:|------------------------|\n|<span aria-hidden=\"true\">🔨</span> Latest commit | 864dc1b0a09fe50c9d5b2bc0d3690f9e5013cdaa |\n|<span aria-hidden=\"true\">🔍</span> Latest deploy log | https://app.netlify.com/projects/easyshifthq/deploys/6a68ccfae26bc1000939d504 |",
+      "severity": "info",
+      "id": "7e88881c8cac2287d80dd78a68a403e60002965c",
+      "status": "open",
+      "created_at": "2026-07-28T15:38:47.591Z",
+      "updated_at": "2026-07-28T15:38:47.591Z",
+      "tests_to_run": []
+    },
+    {
+      "source": "github-comment",
+      "origin_ref": {
+        "pr": "666",
+        "comment_id": 5106082737
+      },
+      "title": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')",
+      "body": "## [![Quality Gate Failed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-failed-20px.png 'Quality Gate Failed')](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=666) **Quality Gate failed**  \nFailed conditions  \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/failed-16px.png '') [B Maintainability Rating on New Code](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=666) (required ≥ A)  \n  \n<!-- sqra:qg_revision=31a52c6ed834b78337e8fb6ec662e74ebd706993c63ac86d2d250d92b7036681 -->\n<!-- sqra-placement-anchor -->\n[See analysis details on SonarQube Cloud](https://sonarcloud.io/dashboard?id=toyiyo_nimble-pnl&pullRequest=666)\n\n##   \n![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/light_bulb-16px.png '') Catch issues before they fail your Quality Gate with our IDE extension ![](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/common/sonarlint-16px.png '') [SonarQube for IDE](https://www.sonarsource.com/products/sonarlint/features/connected-mode/?referrer=pull-request)\n\n",
+      "severity": "info",
+      "id": "a6cfc9ddd771a0f7c8338588919fecb79f0b64ce",
+      "status": "open",
+      "created_at": "2026-07-28T15:38:47.591Z",
+      "updated_at": "2026-07-28T15:38:47.591Z",
+      "tests_to_run": []
     }
   ]
 }

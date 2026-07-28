@@ -41,13 +41,18 @@ function SegmentButton({ icon: Icon, label, pressed, onClick }: Readonly<Segment
  *
  * The card paints its **own** opaque surface (`bg-personal-view`) and pairs it
  * with its **own** foreground (`text-personal-view-foreground`), so it renders
- * identically in both mounts. Do not reintroduce alpha here, and do not reach
- * for `text-muted-foreground`/`text-foreground` inside this card: those tokens
- * are scoped to the main-content surface, but the sidebar is dark *even in
- * light theme* (`--sidebar-background: 30 15% 12%`). The original version did
- * both — `bg-personal-view/40` let the dark sidebar bleed through into a
- * mid-gray, on which `text-muted-foreground` measured 1.03:1. Guarded by
- * tests/unit/ViewModeSwitch.contrast.test.tsx.
+ * identically in both mounts. Do not reintroduce alpha on the card, and do not
+ * put `text-muted-foreground`/`text-foreground` on anything sitting directly on
+ * `bg-personal-view` (the eyebrow, the hint, the *unpressed* segment): those
+ * tokens are scoped to the main-content surface, but the sidebar is dark *even
+ * in light theme* (`--sidebar-background: 30 15% 12%`). The original version
+ * did both — `bg-personal-view/40` let the dark sidebar bleed through into a
+ * mid-gray, on which `text-muted-foreground` measured 1.03:1.
+ *
+ * The *pressed* segment is the one deliberate exception: it paints its own
+ * `bg-background`, so `text-foreground` is the correctly paired token there.
+ * The rule is "pair the foreground to the surface you're actually on", not
+ * "never name these tokens". Guarded by tests/unit/ViewModeSwitch.contrast.test.tsx.
  *
  * The segmented control is two `aria-pressed` toggle buttons inside a
  * `<fieldset>` (implicit `role="group"`) — NOT `role="radiogroup"` (see design doc "Three-state /

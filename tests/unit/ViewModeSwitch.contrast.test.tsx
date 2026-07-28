@@ -50,7 +50,11 @@ const MIN_TEXT_CONTRAST = 4.5;
  */
 const MOUNTS = [
   { name: 'sidebar footer', surfaceToken: '--sidebar-background' },
-  { name: 'account dropdown', surfaceToken: '--popover' },
+  // NOT `--popover`: `UserProfileDropdown` passes `bg-background/95` to
+  // `DropdownMenuContent`, and tailwind-merge drops the primitive's own
+  // `bg-popover`. The two tokens differ in both themes (light `40 33% 98%` vs
+  // `0 0% 100%`), so modelling the wrong one would model the wrong surface.
+  { name: 'account dropdown', surfaceToken: '--background' },
 ] as const;
 
 let themes: Record<ThemeName, TokenMap>;

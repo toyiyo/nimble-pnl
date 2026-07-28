@@ -144,6 +144,19 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
               <span className="text-muted-foreground/50">(last {lookbackWeeks} wks)</span>
             </span>
           )}
+          {splhHint && (
+            <div aria-live="polite" className="flex flex-col gap-0.5 max-w-[220px]">
+              <span className={`text-[11px] ${splhHint.overTarget ? 'text-warning' : 'text-muted-foreground/80'}`}>
+                ≈ {splhHint.pct.toFixed(0)}% labor at current wage
+                {splhHint.overTarget && (
+                  <> — above your {settings.target_labor_pct}% target, try ${Math.round(splhHint.consistent)}</>
+                )}
+              </span>
+              <span className="text-[11px] text-muted-foreground/70">
+                Lower SPLH → more staff recommended.
+              </span>
+            </div>
+          )}
         </div>
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-1">

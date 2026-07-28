@@ -15,6 +15,57 @@ export function computeAvgHourlyRateCents(employees: Employee[] | undefined): nu
 }
 
 /**
+ * True when the roster has at least one active hourly employee — i.e. the wage
+ * from computeAvgHourlyRateCents is real, not the DEFAULT_HOURLY_RATE_CENTS
+ * ($15/hr) fallback. Mirrors that function's own filter so the two can never
+ * disagree. Surfaces use this to suppress an implied-labor readout that would
+ * otherwise be derived from a wage nobody is paid.
+ */
+export function hasHourlyWageData(employees: Employee[] | undefined): boolean {
+  return !!employees?.some((e) => e.compensation_type === 'hourly' && e.is_active);
+}
+
+export interface ImpliedLaborResult {
+  pct: number;
+  overTarget: boolean;
+}
+
+/**
+ * Implied labor % of a given SPLH target at a given average hourly wage —
+ * the on-chart slider's live readout (`→ X% labor at $W/hr`).
+ *
+ * `overTarget` flags the readout as "over budget" once `pct` clears
+ * `targetLaborPct` by more than a 0.05-point tolerance (so a target hit to
+ * within float/rounding noise doesn't flash red).
+ */
+export function impliedLabor(params: {
+  wage: number;
+  splh: number;
+  targetLaborPct: number;
+}): ImpliedLaborResult {
+  const { wage, splh, targetLaborPct } = params;
+  // Guard against a 0 splh (would otherwise divide to Infinity) — the slider's
+  // own bounds keep this out of reach today, but the readout should degrade to
+  // a plain 0% rather than a nonsensical Infinity if that ever changes.
+  const pct = splh > 0 ? (wage / splh) * 100 : 0;
+  const overTarget = pct > targetLaborPct + 0.05;
+  return { pct, overTarget };
+}
+
+/**
+ * The SPLH target that exactly hits `targetLaborPct` at `wage` — the value
+ * the slider's track notch is drawn at, so a manager can see where their own
+ * labor goal puts the knob.
+ */
+export function laborConsistentSplh(params: { wage: number; targetLaborPct: number }): number {
+  const { wage, targetLaborPct } = params;
+  // Guard against a 0 targetLaborPct (would otherwise divide to Infinity) —
+  // settings-form input clamps this above 0 today, but the notch position
+  // should degrade to 0 rather than Infinity if that invariant ever slips.
+  return targetLaborPct > 0 ? wage / (targetLaborPct / 100) : 0;
+}
+
+/**
  * Compute the effective minimum staff from position-based min_crew.
  * Falls back to the global min_staff when min_crew is null or empty.
  */

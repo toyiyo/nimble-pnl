@@ -54,8 +54,10 @@ FROM public.restaurants r WHERE r.id = p_restaurant_id;
 (s.start_time AT TIME ZONE v_tz)::date
 ```
 
-(`20260529120000_fix_open_shifts_capacity_one.sql:107-109`,
-`20260721140000_open_shift_claim_authz_guard.sql:92-95`.)
+That snippet is a composite of two migrations, not one continuous excerpt: the
+`COALESCE` resolution is
+`20260721140000_open_shift_claim_authz_guard.sql:92-95`, the bucketing expression
+is `20260529120000_fix_open_shifts_capacity_one.sql:107-109`.
 
 So `get_open_shifts` and `publish_schedule` disagree today about which shifts a
 week contains — the read path is restaurant-local, the write path is UTC.
@@ -122,6 +124,17 @@ BEGIN
   END;
 ```
 
+The probe is a third variant of the sibling convention: `20260723180000` and
+`20260724120000` wrap their *production* casts in the `EXCEPTION` block, because
+each has a single cast to guard. Here there are three casts across two functions,
+so the block guards a throwaway expression instead. This is sound —
+`invalid_parameter_value` depends only on the zone string, not on the
+`timestamptz` being converted, so `now()` raises exactly when `s.start_time`
+would. It requires that the whole resolution block precede **every** later use of
+`v_tz`: the count and the `UPDATE` in `publish_schedule`, and the `UPDATE` in
+`unpublish_schedule`. PL/pgSQL puts it at the top of the body, so this is
+mechanical, but it is the thing to check when reviewing the migration.
+
 `NULLIF` covers an empty string; the `SELECT ... INTO` leaving `v_tz` NULL (no
 such restaurant) is covered by the same `COALESCE`. The fallback zone is `'UTC'`,
 matching `get_open_shifts` and the TypeScript `computeOpenShiftCount` path.
@@ -148,6 +161,24 @@ per the 2026-07-20 lesson:
   on the pinned path.
 - `SECURITY DEFINER` restated explicitly. `CREATE OR REPLACE` does not carry it
   forward.
+- **`EXECUTE` privilege boundary** (added after the Phase 2.5 review — see
+  *Design review* below):
+
+  ```sql
+  REVOKE ALL ON FUNCTION public.publish_schedule(UUID, DATE, DATE, TEXT) FROM PUBLIC, anon;
+  GRANT EXECUTE ON FUNCTION public.publish_schedule(UUID, DATE, DATE, TEXT) TO authenticated, service_role;
+  ```
+
+  and the same pair for `unpublish_schedule(UUID, DATE, DATE, TEXT)`. Neither
+  function has ever had a `GRANT`/`REVOKE`, so both still carry Postgres's
+  default `PUBLIC EXECUTE` — and both are `SECURITY DEFINER`, which bypasses RLS.
+  An unauthenticated caller holding only the publishable key can therefore
+  publish-and-lock or unpublish any restaurant's week today. Removing `anon`
+  costs nothing: the only callers are `src/hooks/useSchedulePublish.tsx`
+  (browser, authenticated) and the E2E spec, which signs in; no edge function
+  calls either RPC (`grep -rn "publish_schedule" src supabase/functions tests`).
+  Every comparable definer RPC in this repo already carries this boundary —
+  `20260723170000_link_invited_employee.sql:165-166` is the template.
 
 Everything else is copied unchanged: signatures, return types, `auth.uid()`
 attribution, the `schedule_publications` insert, `GET DIAGNOSTICS ROW_COUNT`, and
@@ -155,10 +186,17 @@ the `schedule_change_logs` entry.
 
 ### Not changed
 
-- **No authorization guard.** These functions have no caller check today. Adding
-  one is a defensible change but a separate PR: per the 2026-07-22 lesson it
-  turns every existing pgTAP call of the RPC vacuous and is a test-suite-wide
-  edit, which would bury the one-line bucketing fix this PR is about.
+- **No in-body authorization guard.** Neither function checks that the caller
+  belongs to `p_restaurant_id`, so any *authenticated* user can still publish or
+  unpublish any restaurant's week by passing a foreign UUID. The `EXECUTE`
+  boundary above closes the anonymous half of this and is in scope; the identity
+  check is not. It needs a decision about which roles may publish (owner and
+  manager, presumably, not staff), it touches the shared
+  `user_has_restaurant_access`-style helper surface, and it is the kind of change
+  that should be reviewable on its own rather than buried under a date-bucketing
+  fix. **Tracked follow-up, and the more serious half of the exposure** — a
+  short-lived gap, since the `authenticated` role is reachable by anyone who can
+  sign up.
 - **`get_open_shifts`.** Already correct; this change makes the write path agree
   with it.
 - **Existing rows.** No backfill. A shift wrongly published under the old
@@ -189,8 +227,9 @@ local wall-clock into an instant, `(<local timestamp>) AT TIME ZONE
 'America/Chicago'`, rather than hardcoding a UTC offset, so the fixtures stay
 correct across the CST/CDT transition.
 
-**Auth context.** `publish_schedule` writes `published_by = auth.uid()` into a
-`NOT NULL` column, `unpublish_schedule` writes `changed_by = auth.uid()`, and the
+**Auth context.** `publish_schedule` writes `published_by = auth.uid()` into
+`schedule_publications.published_by`, which is `NOT NULL` (the same-named column
+on `shifts` is nullable and is not the constraint that bites), `unpublish_schedule` writes `changed_by = auth.uid()`, and the
 `log_shift_change` trigger does the same on every update to a published shift.
 Run as bare `postgres`, `auth.uid()` is NULL and all three violate `NOT NULL`. The
 test therefore sets `request.jwt.claims` via `set_config(..., true)` — which is
@@ -223,6 +262,11 @@ For `Asia/Tokyo`, the mirror image: a 06:00 Monday opening shift on `week_start`
 For the invalid-timezone restaurant, `publish_schedule` must return a publication
 id rather than raising, and must bucket as if UTC — pinning the `EXCEPTION`
 fallback.
+
+**Privilege assertions.** Two `has_function_privilege` checks pin the new
+`EXECUTE` boundary — `anon` must not hold it, `authenticated` must. These are
+catalog assertions, so they hold even though the suite itself runs as `postgres`
+and bypasses grant enforcement.
 
 **Migration application.** The suite is run after `npm run db:reset`, not against
 the already-running database — the 2026-07-13 lesson. `npm run test:db` does not
@@ -262,3 +306,39 @@ unchanged. No pgTAP suite calls these RPCs today.
   schema-qualified in the new body, and `pg_catalog` is always searched first, so
   unqualified built-ins (`now()`, `auth.uid()`) still resolve. The full pgTAP
   suite is the check.
+- **Revoking `anon` could break an unknown caller.** The grep above covers this
+  repo; anything calling these RPCs with the publishable key from outside it
+  would start getting a permission error. No such integration is known, and an
+  anonymous publish is not a capability worth preserving.
+
+## Design review
+
+Reviewed in Phase 2.5 by `supabase-design-reviewer` against the committed doc.
+
+**Critical — accepted, scope widened.** The reviewer found that neither function
+has ever had a `GRANT`/`REVOKE`, so both still carry the default `PUBLIC EXECUTE`
+while being `SECURITY DEFINER` — an anonymous cross-tenant write path, and an
+outlier against a convention every comparable RPC in this repo follows. It also
+correctly pointed out that this design's reason for punting on authorization
+(that a guard makes existing pgTAP calls vacuous) does not apply to the *privilege*
+half: there are no existing pgTAP suites for these RPCs to invalidate, the new
+suite runs as `postgres`, and the migration re-declares both functions anyway. The
+`REVOKE`/`GRANT` pair is now in scope, with two `has_function_privilege`
+assertions. The in-body identity check stays out of scope, for the reasons under
+*Not changed*.
+
+This widens what the approved design covered. It is additive, it does not change
+the bucketing fix, and it is a security boundary rather than a refactor — but it
+is a deviation, and it is called out here rather than folded in silently.
+
+**Three minor findings — all applied to this doc:** the `get_open_shifts` snippet
+is now labelled as a composite of two migrations; the `NOT NULL` column is now
+named as `schedule_publications.published_by`; the `PERFORM now()` probe is now
+documented as a deliberate third variant of the sibling convention, with the
+"resolution block must precede every use of `v_tz`" check written down.
+
+**Independently verified by the reviewer:** the sole-definer provenance, the
+`AT TIME ZONE` direction and both worked boundary tables, the `pg_temp`-last
+search_path form, the `set_config('request.jwt.claims', ...)` auth mechanic, the
+non-vacuousness of the lower/upper edge pair, the migration prefix collision, the
+`restaurants.timezone` nullability, and the stale E2E comment.

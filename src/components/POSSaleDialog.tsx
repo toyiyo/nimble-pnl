@@ -81,7 +81,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   editingSale = null,
 }) => {
   const { createManualSale, createManualSaleWithAdjustments, updateManualSale } = useUnifiedSales(restaurantId);
-  const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId);
+  const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId, { limit: 500 });
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
 
   const [comboboxOpen, setComboboxOpen] = useState(false);

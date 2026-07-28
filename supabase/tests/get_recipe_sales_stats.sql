@@ -22,7 +22,7 @@
 -- the live-fixture half (quantity = 0, fully constructible) is tested end-to-end
 -- through the RPC (test 3).
 BEGIN;
-SELECT plan(10);
+SELECT plan(11);
 
 -- ============================================================
 -- Setup: two restaurants, two owners, RLS enforced via role switch
@@ -51,7 +51,8 @@ INSERT INTO recipes (id, restaurant_id, name, pos_item_name, is_active) VALUES
   ('aa000000-0000-0000-0000-0000000000b1'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'Burger Recipe', 'Burger', true),
   ('aa000000-0000-0000-0000-0000000000b2'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'Soda Recipe', 'Soda', true),
   ('aa000000-0000-0000-0000-0000000000b3'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'Fries Recipe', 'Fries', false),
-  ('aa000000-0000-0000-0000-0000000000b4'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'Taco Recipe', 'Taco', true)
+  ('aa000000-0000-0000-0000-0000000000b4'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'Taco Recipe', 'Taco', true),
+  ('aa000000-0000-0000-0000-0000000000b5'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'Nachos Recipe', 'Nachos', true)
 ON CONFLICT (id) DO UPDATE SET pos_item_name = EXCLUDED.pos_item_name, is_active = EXCLUDED.is_active;
 
 -- ============================================================
@@ -72,6 +73,17 @@ ON CONFLICT (id) DO UPDATE SET item_name = EXCLUDED.item_name, quantity = EXCLUD
 -- (A bare sum(quantity) would divide by 0 -> NULL: NOT 3.0.)
 INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, unit_price, sale_date) VALUES
   ('aa000000-0000-0000-0000-0000000000c4'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'manual', 'rs-4', 'Soda', 0, 3.00, 3.00, '2026-07-01')
+ON CONFLICT (id) DO UPDATE SET item_name = EXCLUDED.item_name, quantity = EXCLUDED.quantity, total_price = EXCLUDED.total_price, unit_price = EXCLUDED.unit_price;
+
+-- Nachos: every sales row has a NULL total_price (a manual sale entered with a
+-- unit price but no line total -- total_price is NULLABLE). The TS this RPC
+-- replaces summed `sale.total_price || 0`, so this item read as an average of
+-- 0, not as missing. A bare sum() returns NULL for an all-NULL group, which
+-- would flip the recipe to "No sales data"; coalesce(total_price, 0) keeps it
+-- at 0 (test 11).
+INSERT INTO unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, quantity, total_price, unit_price, sale_date) VALUES
+  ('aa000000-0000-0000-0000-0000000000c7'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'manual', 'rs-7', 'Nachos', 2, NULL, 6.00, '2026-07-01'),
+  ('aa000000-0000-0000-0000-0000000000c8'::uuid, 'aa000000-0000-0000-0000-000000000001'::uuid, 'manual', 'rs-8', 'Nachos', 1, NULL, 6.00, '2026-07-01')
 ON CONFLICT (id) DO UPDATE SET item_name = EXCLUDED.item_name, quantity = EXCLUDED.quantity, total_price = EXCLUDED.total_price, unit_price = EXCLUDED.unit_price;
 
 -- Fries: recipe is inactive -> must not appear in results at all (test e),
@@ -144,11 +156,11 @@ SELECT is(
   'Fries (inactive recipe) does not appear in results'
 );
 
--- Test 6: result set is exactly the 3 active, mapped, priced items
+-- Test 6: result set is exactly the 4 active, mapped, priced items
 SELECT is(
   (SELECT COUNT(*)::int FROM get_recipe_sales_stats('aa000000-0000-0000-0000-000000000001'::uuid)),
-  3,
-  'Result set contains exactly one row per active mapped item name (Burger, Soda, Taco)'
+  4,
+  'Result set contains exactly one row per active mapped item name (Burger, Soda, Taco, Nachos)'
 );
 
 -- ============================================================
@@ -184,6 +196,23 @@ SELECT is(
    WHERE p.proname = 'get_recipe_sales_stats' AND p.pronamespace = 'public'::regnamespace),
   'sql',
   'get_recipe_sales_stats is LANGUAGE SQL'
+);
+
+-- Test 11: an item whose sales rows ALL have a NULL total_price averages to 0,
+-- not NULL. `is()` is the whole point here -- a NULL result would make
+-- buildEnhancedRecipes filter the row out and the recipe would read
+-- "No sales data", where the pre-refactor TS (`sale.total_price || 0`) showed 0.
+--
+-- Test 7 left the session as Restaurant B's owner to prove RLS isolation and
+-- tests 8-10 are catalog lookups that don't care, so the membership has to be
+-- restored here or this data assertion silently reads zero rows and passes NULL
+-- for the wrong reason.
+SET LOCAL "request.jwt.claims" TO '{"sub": "aa000000-0000-0000-0000-0000000000a1", "role": "authenticated"}';
+
+SELECT is(
+  (SELECT avg_sale_price FROM get_recipe_sales_stats('aa000000-0000-0000-0000-000000000001'::uuid) WHERE item_name = 'Nachos'),
+  0::numeric,
+  'an all-NULL total_price group averages to 0, not NULL (matches sale.total_price || 0)'
 );
 
 SELECT * FROM finish();

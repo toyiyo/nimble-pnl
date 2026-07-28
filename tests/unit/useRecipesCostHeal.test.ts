@@ -118,6 +118,9 @@ import {
   buildEnhancedRecipes,
   isHealEcho,
   resetHealEchoes,
+  pendingHealEchoCount,
+  recordHealEchoes,
+  HEAL_ECHO_TTL_MS,
 } from '@/hooks/useRecipes';
 import { SUPABASE_MAX_ROWS } from '@/utils/fetchAllRows';
 import { createQueryWrapper } from './helpers/queryWrapper';
@@ -217,14 +220,42 @@ describe('selectDriftedCostRows -- rounded comparison', () => {
 
     expect(selectDriftedCostRows(stored as never[], enhanced)).toEqual([]);
   });
+
+  // `estimated_cost` on an enhanced recipe is the *display* value, which falls
+  // back to the stored cost when the computed sum is 0 (no ingredient carries a
+  // price yet). Drift must be measured against the raw computed sum instead, or
+  // a recipe that has genuinely fallen to zero compares equal to its own stale
+  // stored value and can never heal -- the stale cost then feeds profit_margin
+  // and profit_per_serving forever.
+  it('heals a genuine zero: computed 0 against a stored 12.34 is drift', () => {
+    const stored = [makeRecipe('r1', 'Burrito', 12.34)];
+    const enhanced = [{ ...stored[0], estimated_cost: 12.34, computed_cost: 0 } as never];
+
+    expect(selectDriftedCostRows(stored, enhanced)).toEqual([
+      { id: 'r1', restaurant_id: 'rest-1', name: 'Burrito', estimated_cost: 0 },
+    ]);
+  });
+
+  it('heals against the computed cost, not the display fallback', () => {
+    const stored = [makeRecipe('r1', 'Burrito', 12.34)];
+    const enhanced = [{ ...stored[0], estimated_cost: 12.34, computed_cost: 9.5 } as never];
+
+    expect(selectDriftedCostRows(stored, enhanced)).toEqual([
+      { id: 'r1', restaurant_id: 'rest-1', name: 'Burrito', estimated_cost: 9.5 },
+    ]);
+  });
 });
 
 describe('useRecipes cost heal -- batched, convergent', () => {
   it('issues exactly ONE upsert containing only the drifted rows', async () => {
     // r1 computes to $10.00 but is stored at $3.00 -> drift.
-    // r2 has no ingredients, so it keeps its stored cost -> no drift.
+    // r3 computes to $10.00 and is stored at $10.00 -> converged, no drift.
     recipesResponse = {
-      data: [makeRecipe('r1', 'Burrito', 3), makeRecipe('r2', 'Taco', 4)],
+      data: [makeRecipe('r1', 'Burrito', 3), makeRecipe('r3', 'Nachos', 10)],
+      error: null,
+    };
+    ingredientsResponse = {
+      data: [...INGREDIENTS, { id: 'i3', recipe_id: 'r3', product_id: 'p1', quantity: 2, unit: 'lb' }],
       error: null,
     };
 
@@ -237,6 +268,23 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     ]);
   });
 
+  // Pre-refactor `main` returned 0 from calculateRecipeCost for an
+  // ingredient-less recipe and wrote that 0 back (`updatedCost !== stored`).
+  // The heal has to do the same, or a recipe whose ingredients were all removed
+  // keeps billing against a stale cost forever.
+  it('heals an ingredient-less recipe down to 0, matching the pre-refactor write', async () => {
+    recipesResponse = { data: [makeRecipe('r2', 'Taco', 4)], error: null };
+    ingredientsResponse = { data: [], error: null };
+
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(upsertCalls.length).toBe(1));
+
+    expect(upsertCalls[0]).toEqual([
+      { id: 'r2', restaurant_id: 'rest-1', name: 'Taco', estimated_cost: 0 },
+    ]);
+  });
+
   it('issues ZERO writes once costs have converged (stored cost already matches)', async () => {
     recipesResponse = { data: [makeRecipe('r1', 'Burrito', 10)], error: null };
 
@@ -244,6 +292,26 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(upsertCalls).toEqual([]);
+  });
+
+  // End-to-end counterpart of the `selectDriftedCostRows` zero case: an
+  // unpriced product makes the computed sum 0, and pre-refactor `main` wrote
+  // that 0 back (its write used the raw cost, only its *display* used the
+  // fallback). The screen still shows the last-known 12.34 on this load, then
+  // reads 0 on the next -- exactly `main`'s sequence.
+  it('writes back a computed zero when every ingredient product is unpriced', async () => {
+    recipesResponse = { data: [makeRecipe('r1', 'Burrito', 12.34)], error: null };
+    productsResponse = { data: [{ ...PRODUCTS[0], cost_per_unit: null }], error: null };
+
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(upsertCalls.length).toBe(1));
+
+    expect(upsertCalls[0]).toEqual([
+      { id: 'r1', restaurant_id: 'rest-1', name: 'Burrito', estimated_cost: 0 },
+    ]);
+    // Display keeps the last-known cost rather than flashing $0.00.
+    expect(result.current.recipes[0].estimated_cost).toBe(12.34);
   });
 
   it('does not block the render: recipes are exposed with the freshly computed cost', async () => {
@@ -365,7 +433,7 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     expect(toastMock).not.toHaveBeenCalled();
   });
 
-  it('healed costs match what buildEnhancedRecipes computed (heal writes the displayed value)', async () => {
+  it('healed costs match the cost buildEnhancedRecipes computed', async () => {
     const stored = [makeRecipe('r1', 'Burrito', 3)];
     recipesResponse = { data: stored, error: null };
     const [expected] = buildEnhancedRecipes(stored, INGREDIENTS, PRODUCTS, []);
@@ -374,8 +442,48 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(upsertCalls.length).toBe(1));
 
+    // `computed_cost`, not `estimated_cost`: the two agree here (the computed
+    // sum is non-zero, so no fallback applies) but only the former is what the
+    // heal is contracted to persist.
     expect((upsertCalls[0][0] as { estimated_cost: number }).estimated_cost).toBe(
-      expected.estimated_cost
+      expected.computed_cost
     );
+  });
+});
+
+describe('heal echo bookkeeping -- the map does not grow without bound', () => {
+  // `isHealEcho` is the only consumer that deletes, and it only runs when the
+  // matching realtime frame actually arrives. If the channel is down (or the
+  // row is filtered out before the handler sees it), the armed id is never
+  // collected and parks for the life of the tab. Every later heal adds more.
+  it('drops entries whose TTL has lapsed when the next heal arms', () => {
+    vi.useFakeTimers();
+    try {
+      recordHealEchoes(['stale-1', 'stale-2']);
+      expect(pendingHealEchoCount()).toBe(2);
+
+      // Past the TTL: these two can never be recognised as echoes again.
+      vi.advanceTimersByTime(HEAL_ECHO_TTL_MS + 1);
+      recordHealEchoes(['fresh-1']);
+
+      expect(pendingHealEchoCount()).toBe(1);
+      expect(isHealEcho('fresh-1')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps entries that are still within their TTL', () => {
+    vi.useFakeTimers();
+    try {
+      recordHealEchoes(['recent-1']);
+      vi.advanceTimersByTime(HEAL_ECHO_TTL_MS - 1);
+      recordHealEchoes(['recent-2']);
+
+      expect(pendingHealEchoCount()).toBe(2);
+      expect(isHealEcho('recent-1')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

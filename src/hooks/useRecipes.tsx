@@ -26,6 +26,11 @@ export interface Recipe {
   avg_sale_price?: number;
   profit_margin?: number;
   profit_per_serving?: number;
+  /** The raw sum of ingredient costs, *before* the display fallback that keeps
+   * the last-known stored cost when that sum is 0. `estimated_cost` above is
+   * the number to show; this is the number to persist. Set by
+   * `buildEnhancedRecipes`; absent on recipes built anywhere else. */
+  computed_cost?: number;
   ingredients?: Array<{
     product_id: string;
     quantity: number;
@@ -213,6 +218,7 @@ export function buildEnhancedRecipes(
       pos_item_id: recipe.pos_item_id ?? undefined,
       serving_size: recipe.serving_size ?? 0,
       estimated_cost: estimatedCost,
+      computed_cost: totalCost,
       is_active: recipe.is_active ?? true,
       created_at: recipe.created_at,
       updated_at: recipe.updated_at,
@@ -259,14 +265,24 @@ export function selectDriftedCostRows(
   for (const enhanced of enhancedRecipes) {
     const stored = storedById.get(enhanced.id);
     if (!stored) continue;
-    if (Math.abs(enhanced.estimated_cost - (stored.estimated_cost ?? 0)) < COST_DRIFT_EPSILON) {
+
+    // Persist the raw computed sum, never the display fallback. When no
+    // ingredient carries a price the sum is 0 while `estimated_cost` shows the
+    // last-known stored value — comparing *that* against the stored cost makes
+    // a genuinely-zero recipe look converged, so it could never heal and the
+    // stale cost would feed profit_margin and profit_per_serving forever.
+    // Pre-refactor `main` had the same split: it displayed
+    // `updatedCost || recipe.estimated_cost` but wrote the bare `updatedCost`.
+    const computed = enhanced.computed_cost ?? enhanced.estimated_cost;
+
+    if (Math.abs(computed - (stored.estimated_cost ?? 0)) < COST_DRIFT_EPSILON) {
       continue;
     }
     drifted.push({
       id: enhanced.id,
       restaurant_id: enhanced.restaurant_id,
       name: enhanced.name,
-      estimated_cost: enhanced.estimated_cost,
+      estimated_cost: computed,
     });
   }
 
@@ -322,7 +338,7 @@ async function healRecipeCosts(
 /** How long a heal write stays eligible to be recognised as its own realtime
  * echo. Long enough to cover the round trip, short enough that a genuine edit
  * of the same recipe moments later is never swallowed. */
-const HEAL_ECHO_TTL_MS = 10_000;
+export const HEAL_ECHO_TTL_MS = 10_000;
 
 /** Recipe ids written by a cost heal, mapped to when they expire.
  *
@@ -334,8 +350,23 @@ const HEAL_ECHO_TTL_MS = 10_000;
 const pendingHealEchoes = new Map<string, number>();
 
 export function recordHealEchoes(ids: string[]): void {
-  const expiresAt = Date.now() + HEAL_ECHO_TTL_MS;
+  const now = Date.now();
+  // Sweep before arming. `isHealEcho` is the only other consumer that deletes,
+  // and it only runs when the matching realtime frame actually arrives — so an
+  // id whose echo never came back (channel down, row filtered out upstream)
+  // would otherwise park for the life of the tab, and every later heal would
+  // add more. Deleting during Map iteration is well-defined.
+  for (const [id, expiresAt] of pendingHealEchoes) {
+    if (expiresAt <= now) pendingHealEchoes.delete(id);
+  }
+
+  const expiresAt = now + HEAL_ECHO_TTL_MS;
   for (const id of ids) pendingHealEchoes.set(id, expiresAt);
+}
+
+/** Test seam: how many ids are currently armed. */
+export function pendingHealEchoCount(): number {
+  return pendingHealEchoes.size;
 }
 
 /** Undo `recordHealEchoes` for ids whose write never landed. */

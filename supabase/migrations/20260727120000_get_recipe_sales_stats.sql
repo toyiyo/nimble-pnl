@@ -10,6 +10,12 @@
 -- every downstream margin). unified_sales.quantity is NUMERIC NOT NULL
 -- DEFAULT 1 today, so the NULL branch is defensive; the 0 branch is live.
 --
+-- coalesce(total_price, 0) is load-bearing for the same reason, on the
+-- numerator side: unified_sales.total_price is NULLABLE, and the TS this
+-- replaces summed `sale.total_price || 0`. A bare sum() returns NULL when every
+-- row in a group has a NULL total_price (a manual sale with unit_price set but
+-- no total), which would flip that item from "avg price 0" to "No sales data".
+--
 -- The inner join to active recipes on (restaurant_id, pos_item_name) bounds
 -- the result to the count of distinct mapped pos_item_name values, so the
 -- PostgREST 1000-row response cap cannot bite here even though the aggregate
@@ -26,7 +32,7 @@ SECURITY INVOKER
 SET search_path = public
 AS $$
   SELECT us.item_name,
-         SUM(us.total_price) / NULLIF(SUM(COALESCE(NULLIF(us.quantity, 0), 1)), 0)
+         SUM(COALESCE(us.total_price, 0)) / NULLIF(SUM(COALESCE(NULLIF(us.quantity, 0), 1)), 0)
   FROM unified_sales us
   JOIN recipes r
     ON r.restaurant_id = us.restaurant_id

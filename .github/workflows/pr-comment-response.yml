@@ -51,8 +51,10 @@ jobs:
             PRS="$INPUT_PR"
           else
             # schedule (or a blank dispatch): re-audit every open non-draft PR.
-            PRS=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp \
-                    --jq '[.[][] | select(.draft | not) | .number] | join(" ")')
+            # --slurp cannot be combined with --jq, so paginate to a file and
+            # run jq over it separately.
+            gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp > pulls.json
+            PRS=$(jq -r '[.[][] | select(.draft | not) | .number] | join(" ")' pulls.json)
           fi
           echo "prs=$PRS" >> "$GITHUB_OUTPUT"
           echo "Auditing: ${PRS:-<none>}"
@@ -103,7 +105,11 @@ jobs:
             # Snapshot the head BEFORE auditing. If the PR advances mid-audit the
             # result describes a commit that is no longer current, and publishing
             # it would mark the NEW head green on stale evidence.
-            BEFORE=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+            if ! BEFORE=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha) || [ -z "$BEFORE" ]; then
+              echo "::error::Could not read the head SHA for PR #$PR before auditing; failing closed."
+              FAILED=1
+              continue
+            fi
 
             set +e
             node dev-tools/pr-triage.js audit --pr "$PR" > "summary-$PR.md" 2>&1
@@ -111,7 +117,11 @@ jobs:
             set -e
             cat "summary-$PR.md"
 
-            AFTER=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha)
+            if ! AFTER=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha) || [ -z "$AFTER" ]; then
+              echo "::error::Could not re-read the head SHA for PR #$PR after auditing; failing closed."
+              FAILED=1
+              continue
+            fi
             if [ "$BEFORE" != "$AFTER" ]; then
               echo "::notice::PR #$PR advanced $BEFORE -> $AFTER during the audit; discarding this stale result. The push that moved it triggers its own run."
               continue

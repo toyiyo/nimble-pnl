@@ -10532,6 +10532,13 @@ export type Database = {
         Args: { product_id: string }
         Returns: number
       }
+      get_recipe_sales_stats: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          avg_sale_price: number
+          item_name: string
+        }[]
+      }
       get_revenue_by_account: {
         Args: {
           p_date_from: string
@@ -10626,6 +10633,12 @@ export type Database = {
           uncategorized_count: number
           unique_items: number
           voids: number
+        }[]
+      }
+      get_unmapped_sale_item_names: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: {
+          item_name: string
         }[]
       }
       get_users_by_ids: {

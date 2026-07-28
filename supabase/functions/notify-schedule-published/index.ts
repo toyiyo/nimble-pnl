@@ -67,7 +67,7 @@ serve(async (req) => {
     // Get restaurant details
     const { data: restaurant, error: restError } = await supabase
       .from("restaurants")
-      .select("name")
+      .select("name, timezone")
       .eq("id", restaurantId)
       .single();
 

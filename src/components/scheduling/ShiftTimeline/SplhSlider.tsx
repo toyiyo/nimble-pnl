@@ -2,7 +2,7 @@ import { useId } from 'react';
 
 import { Label } from '@/components/ui/label';
 
-import { impliedLabor, laborConsistentSplh } from '@/lib/coverageChartModel';
+import { impliedLabor, laborConsistentSplh } from '@/lib/staffingCalculator';
 import { cn } from '@/lib/utils';
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -60,7 +60,7 @@ interface SplhSliderProps {
  * A native `<input type="range">` (25–120 step 5) drives `onChange` on every
  * drag frame so the caller can re-run the whole staffing pipeline live — this
  * component holds no derived staffing state of its own, only the pure
- * `impliedLabor`/`laborConsistentSplh` math from `coverageChartModel`.
+ * `impliedLabor`/`laborConsistentSplh` math from `staffingCalculator`.
  *
  * The notch marks the SPLH value that would exactly hit `targetLaborPct` at
  * `wage` (`laborConsistentSplh`), so a manager can see at a glance where their

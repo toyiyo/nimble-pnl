@@ -7,7 +7,7 @@ import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useEmployees } from '@/hooks/useEmployees';
 import { aggregateHourlySales } from '@/hooks/useHourlySalesPattern';
 import { computeStaffingSuggestions } from '@/hooks/useStaffingSuggestions';
-import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
+import { computeAvgHourlyRateCents, computeMinStaffFromCrew, hasHourlyWageData } from '@/lib/staffingCalculator';
 import { dayStringToDow } from '@/lib/staffingApply';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -76,6 +76,14 @@ export function useWeekStaffingSuggestions(
 
   const avgHourlyRateCents = useMemo(
     () => computeAvgHourlyRateCents(employees),
+    [employees],
+  );
+
+  // Gates every implied-%/implied-SPLH readout downstream (design §4a): true
+  // only when at least one active hourly employee has a real wage, false
+  // when avgHourlyRateCents is just the DEFAULT_HOURLY_RATE_CENTS fallback.
+  const hasWageData = useMemo(
+    () => hasHourlyWageData(employees),
     [employees],
   );
 
@@ -263,6 +271,8 @@ export function useWeekStaffingSuggestions(
     isSaving,
     employeePositions,
     actualSplh,
+    avgHourlyRateCents,
+    hasWageData,
   };
 }
 

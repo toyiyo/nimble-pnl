@@ -8,6 +8,7 @@ import {
   hasHourlyWageData,
   impliedLabor,
   laborConsistentSplh,
+  deriveSplhHint,
 } from '@/lib/staffingCalculator';
 import type { Employee } from '@/types/scheduling';
 
@@ -294,6 +295,40 @@ describe('laborConsistentSplh', () => {
 
   it('BOUNDARY: targetLaborPct === 0 degrades to 0 instead of Infinity', () => {
     expect(laborConsistentSplh({ wage: 30, targetLaborPct: 0 })).toBe(0);
+  });
+});
+
+describe('deriveSplhHint', () => {
+  it('returns the cents-to-dollars converted hint when all inputs are valid', () => {
+    const hint = deriveSplhHint({ splh: 30, targetLaborPct: 25, hasWageData: true, wageCents: 1000 });
+    expect(hint).not.toBeNull();
+    expect(hint!.pct).toBeCloseTo(33.33, 1);
+    expect(hint!.overTarget).toBe(true);
+    expect(hint!.consistent).toBe(40);
+  });
+
+  it('CRITICAL: returns null when wageCents is 0, even if hasWageData is true', () => {
+    expect(deriveSplhHint({ splh: 30, targetLaborPct: 25, hasWageData: true, wageCents: 0 })).toBeNull();
+  });
+
+  it('CRITICAL: returns null when wageCents is NaN', () => {
+    expect(deriveSplhHint({ splh: 30, targetLaborPct: 25, hasWageData: true, wageCents: NaN })).toBeNull();
+  });
+
+  it('CRITICAL: returns null when wageCents is Infinity', () => {
+    expect(deriveSplhHint({ splh: 30, targetLaborPct: 25, hasWageData: true, wageCents: Infinity })).toBeNull();
+  });
+
+  it('returns null when hasWageData is false', () => {
+    expect(deriveSplhHint({ splh: 30, targetLaborPct: 25, hasWageData: false, wageCents: 1000 })).toBeNull();
+  });
+
+  it('returns null when splh is not positive', () => {
+    expect(deriveSplhHint({ splh: 0, targetLaborPct: 25, hasWageData: true, wageCents: 1000 })).toBeNull();
+  });
+
+  it('returns null when targetLaborPct is not positive', () => {
+    expect(deriveSplhHint({ splh: 30, targetLaborPct: 0, hasWageData: true, wageCents: 1000 })).toBeNull();
   });
 });
 

@@ -95,7 +95,7 @@ export function deriveSplhHint(params: {
 }): SplhHint | null {
   const { splh, targetLaborPct, hasWageData, wageCents } = params;
   const positive = (n: number) => Number.isFinite(n) && n > 0;
-  if (!hasWageData || !positive(splh) || !positive(targetLaborPct)) return null;
+  if (!hasWageData || !positive(wageCents) || !positive(splh) || !positive(targetLaborPct)) return null;
   const wage = wageCents / 100;
   const { pct, overTarget } = impliedLabor({ wage, splh, targetLaborPct });
   return { pct, overTarget, consistent: laborConsistentSplh({ wage, targetLaborPct }) };

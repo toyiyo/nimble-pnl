@@ -100,14 +100,18 @@ jobs:
           PRS: ${{ steps.select.outputs.prs }}
         run: |
           set -uo pipefail
-          FAILED=0
+          # BROKEN means the audit could not do its job — that is a red JOB.
+          # Unanswered findings are NOT a broken job: they are a red CHECK RUN,
+          # which is what branch protection reads. Failing the job for them made
+          # a normal triage backlog look like a broken pipeline in the Actions tab.
+          BROKEN=0
           for PR in $PRS; do
             # Snapshot the head BEFORE auditing. If the PR advances mid-audit the
             # result describes a commit that is no longer current, and publishing
             # it would mark the NEW head green on stale evidence.
             if ! BEFORE=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha) || [ -z "$BEFORE" ]; then
               echo "::error::Could not read the head SHA for PR #$PR before auditing; failing closed."
-              FAILED=1
+              BROKEN=1
               continue
             fi
 
@@ -119,7 +123,7 @@ jobs:
 
             if ! AFTER=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha) || [ -z "$AFTER" ]; then
               echo "::error::Could not re-read the head SHA for PR #$PR after auditing; failing closed."
-              FAILED=1
+              BROKEN=1
               continue
             fi
             if [ "$BEFORE" != "$AFTER" ]; then
@@ -133,7 +137,16 @@ jobs:
               # Exit 2 means the audit could not read the PR. Never a pass.
               *) CONCLUSION=failure; TITLE="Audit could not complete — treating as unanswered" ;;
             esac
-            [ "$CODE" = "0" ] || FAILED=1
+            # Exit 2 = the audit could not read the PR: broken, so fail the job.
+            # Exit 1 = findings are unanswered: expected, so the check run alone
+            # carries it.
+            # `set -e` is active here, so use if/fi rather than `[ ] && x=1` —
+            # a false test would make the compound return 1 and abort the job.
+            if [ "$CODE" = "2" ]; then
+              BROKEN=1
+            elif [ "$CODE" != "0" ]; then
+              echo "::notice::PR #$PR has review findings awaiting a verdict reply — see the pr-comment-response check."
+            fi
 
             jq -n \
               --arg name "pr-comment-response" \
@@ -152,8 +165,8 @@ jobs:
             fi
           done
 
-          if [ "$FAILED" = "1" ]; then
-            echo "::error::Some review findings have no verdict reply. See the pr-comment-response check."
+          if [ "$BROKEN" = "1" ]; then
+            echo "::error::The audit could not complete for at least one PR. The check run is red and this job failed because the gate itself is broken, not because findings are unanswered."
             exit 1
           fi
 

@@ -58,14 +58,30 @@ cannot strip types natively (`--experimental-strip-types` arrived in Node 22.6).
 Removing bun therefore removes the only runtime in the repo capable of executing
 that script — so a replacement runner has to be added, not just documented.
 
-`tsx` is added as a **locked devDependency** (`^4.23.1`). `npx tsx` then resolves
-`node_modules/.bin/tsx` rather than fetching from the network, so the documented
-command is pinned by `package-lock.json`, works offline, and never prompts. An
-unpinned `npx tsx@latest` was rejected: recommending an unlocked remote fetch
-inside a PR whose thesis is "one locked source of truth" is self-contradictory.
+`tsx` is added as a **locked devDependency** (`^4.23.1`) and invoked through an
+npm script, `npm run recalc:pnl`. npm puts `node_modules/.bin` on PATH for script
+execution, so the runner is resolved locally and deterministically — pinned by
+`package-lock.json`, works offline, never prompts.
+
+Two weaker options were rejected:
+
+- `npx tsx@latest` — an unpinned remote fetch. Recommending an unlocked install
+  inside a PR whose thesis is "one locked source of truth" is self-contradictory.
+- bare `npx tsx` — prefers the local binary, but silently falls back to a registry
+  install if it is ever absent, so the documented command is not deterministic.
 
 The script itself is dependency-free (plain `fetch` + `console.log`), so it runs
 clean under `tsx`.
+
+### Runner verification, and why the script itself is not smoke-run
+
+`npm exec --offline --no -- tsx <scratch>.ts` executes a scratch TypeScript file
+using the locked binary with **registry access disabled** — proving local
+resolution and TS execution across the seam without side effects.
+
+The real script is deliberately **not** executed as a smoke test: it calls
+`bulk-recalculate-pnl` against production immediately on load, with no dry-run and
+no confirmation. A header warning to that effect was added to the file.
 
 ### `npm ci` vs `npm install` in the README
 

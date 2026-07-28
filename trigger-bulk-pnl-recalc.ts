@@ -5,7 +5,10 @@
  * all P&L data from existing sales and cost records.
  * 
  * Usage:
- *   npx tsx trigger-bulk-pnl-recalc.ts
+ *   npm run recalc:pnl
+ *
+ * WARNING: this runs immediately against PRODUCTION on invocation — there is
+ * no dry-run and no confirmation prompt. Edit the payload below first.
  * 
  * Options (modify the payload below):
  *   - restaurant_id: Specific restaurant (optional, omit to process all)

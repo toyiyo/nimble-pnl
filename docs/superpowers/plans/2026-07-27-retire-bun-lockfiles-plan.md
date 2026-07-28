@@ -18,8 +18,10 @@
 
 ### 3. Restore a TS runner for `trigger-bulk-pnl-recalc.ts`
 - Add `tsx` as a locked devDependency (bun was the only TS-capable runtime here)
-- L8 `bun run trigger-bulk-pnl-recalc.ts` → `npx tsx trigger-bulk-pnl-recalc.ts`,
-  which resolves the local `node_modules/.bin/tsx`
+- Add script `"recalc:pnl": "tsx trigger-bulk-pnl-recalc.ts"` — npm scripts resolve
+  `node_modules/.bin` deterministically, with no registry fallback
+- L8 `bun run trigger-bulk-pnl-recalc.ts` → `npm run recalc:pnl`, plus a header
+  warning that the script hits production immediately with no dry-run
 - Commit: folded into task 2's commit
 
 ### 4. Sweep for missed references
@@ -42,6 +44,10 @@ The meaningful verification is that the npm-only path works end to end:
 | `npm run typecheck` | `trigger-bulk-pnl-recalc.ts` is a `.ts` file being edited |
 | `npm run lint` | Same |
 | `npm run test` | Regression guard; no source changed, must stay green |
+| `npm exec --offline --no -- tsx <scratch>.ts` | Proves the locked runner executes TS with registry access disabled |
+
+The real `recalc:pnl` script is **not** smoke-run: it fires a production bulk P&L
+recalculation on load, with no dry-run and no confirmation prompt.
 
 `npm run test:db` and `npm run test:e2e` are not run: neither exercises package
 management or the edited files, and both require a running local Supabase stack.

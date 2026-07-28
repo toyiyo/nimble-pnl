@@ -12,7 +12,7 @@
 
 BEGIN;
 
-SELECT plan(7);
+SELECT plan(8);
 
 SET LOCAL role TO postgres;
 ALTER TABLE restaurants DISABLE ROW LEVEL SECURITY;
@@ -65,6 +65,20 @@ SELECT throws_ok(
   '23514',
   NULL,
   'the 8-day Mon..Mon spill is rejected on insert'
+);
+
+-- Test 4b: a reversed range (end before start) is rejected too, not just
+-- an over-long span
+SELECT throws_ok(
+  $$
+    INSERT INTO schedule_publications
+      (restaurant_id, week_start_date, week_end_date, published_by)
+    VALUES
+      ('dddddddd-2222-0000-0000-000000000001', DATE '2026-08-02', DATE '2026-07-27', 'dddddddd-2222-0000-0000-000000000099')
+  $$,
+  '23514',
+  NULL,
+  'a week range with an end before its start is rejected'
 );
 
 -- Seed a legacy 8-day row, the shape all 44 production rows already have. The

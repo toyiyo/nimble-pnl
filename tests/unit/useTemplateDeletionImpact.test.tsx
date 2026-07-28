@@ -193,24 +193,37 @@ describe('useTemplateDeletionImpact', () => {
   });
 
   it('sends the open-spots window as local calendar days', async () => {
-    mockFromByTable(
-      makeQueryBuilder({ data: [], error: null }),
-      makeQueryBuilder({ count: 0, error: null }),
-    );
-    mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+    // 2026-07-28T01:30:00Z is already July 28 in UTC, but still July 27 in a
+    // negative-offset local timezone (e.g. the test:tz America/New_York run)
+    // — the exact boundary a `toISOString()` regression would misbucket.
+    // Fake only `Date` (leave timers real) so `waitFor`'s internal polling
+    // still advances — faking the timer queue too would deadlock it (see the
+    // matching idiom in useSplhData.test.ts).
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-07-28T01:30:00Z'));
 
-    renderHook(() => useTemplateDeletionImpact('r1', 't1'), { wrapper: createWrapper() });
+    try {
+      mockFromByTable(
+        makeQueryBuilder({ data: [], error: null }),
+        makeQueryBuilder({ count: 0, error: null }),
+      );
+      mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
 
-    await waitFor(() => expect(mockSupabase.rpc).toHaveBeenCalled());
+      renderHook(() => useTemplateDeletionImpact('r1', 't1'), { wrapper: createWrapper() });
 
-    const params = mockSupabase.rpc.mock.calls[0][1];
-    const today = new Date();
-    const pad = (n: number) => String(n).padStart(2, '0');
-    const localToday = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      await waitFor(() => expect(mockSupabase.rpc).toHaveBeenCalled());
 
-    // Must be the manager's local calendar day, not the UTC day (which is
-    // already tomorrow during US evening hours).
-    expect(params.p_week_start).toBe(localToday);
+      const params = mockSupabase.rpc.mock.calls[0][1];
+      const today = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const localToday = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+
+      // Must be the manager's local calendar day, not the UTC day (which is
+      // already tomorrow during US evening hours).
+      expect(params.p_week_start).toBe(localToday);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('surfaces an error when the pending-claims read fails', async () => {

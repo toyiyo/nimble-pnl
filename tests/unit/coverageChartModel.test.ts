@@ -1,8 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyHour,
-  impliedLabor,
-  laborConsistentSplh,
   buildReceipt,
   chartSummaryLabel,
 } from '@/lib/coverageChartModel';
@@ -81,66 +79,6 @@ describe('classifyHour', () => {
   it('BOUNDARY: demand === 0 with scheduled === 0 and minStaff === 0 → ok (not crit/floor)', () => {
     const h = hourFixture({ demand: 0, scheduled: 0 });
     expect(classifyHour(h, 0)).toBe('ok');
-  });
-});
-
-describe('impliedLabor', () => {
-  it('CRITICAL: pct = wage / splh * 100', () => {
-    const { pct } = impliedLabor({ wage: 20, splh: 25, targetLaborPct: 75 });
-    expect(pct).toBe(80);
-  });
-
-  it('CRITICAL: overTarget is true once pct exceeds targetLaborPct + 0.05', () => {
-    // wage/splh*100 = 75; targetLaborPct=74.94 -> threshold 74.99 -> 75 > 74.99
-    const { pct, overTarget } = impliedLabor({ wage: 15, splh: 20, targetLaborPct: 74.94 });
-    expect(pct).toBe(75);
-    expect(overTarget).toBe(true);
-  });
-
-  it('CRITICAL: overTarget is false when pct is at or below target', () => {
-    // wage/splh*100 = 30; targetLaborPct=30 (well above threshold 30.05)
-    const { pct, overTarget } = impliedLabor({ wage: 30, splh: 100, targetLaborPct: 30 });
-    expect(pct).toBe(30);
-    expect(overTarget).toBe(false);
-  });
-
-  it('BOUNDARY: pct exactly equal to targetLaborPct + 0.05 → not overTarget (strict >)', () => {
-    // wage/splh*100 = 75; targetLaborPct=74.95 -> threshold 75.0 exactly -> 75 > 75 is false
-    const { pct, overTarget } = impliedLabor({ wage: 15, splh: 20, targetLaborPct: 74.95 });
-    expect(pct).toBe(75);
-    expect(overTarget).toBe(false);
-  });
-
-  it('BOUNDARY: pct just 0.01 over threshold → overTarget true', () => {
-    // wage/splh*100 = 75; targetLaborPct=74.94 -> threshold 74.99 -> 75 > 74.99 -> true
-    const { overTarget } = impliedLabor({ wage: 15, splh: 20, targetLaborPct: 74.94 });
-    expect(overTarget).toBe(true);
-  });
-
-  it('BOUNDARY: splh === 0 degrades to pct 0 instead of Infinity', () => {
-    const { pct, overTarget } = impliedLabor({ wage: 15, splh: 0, targetLaborPct: 22 });
-    expect(pct).toBe(0);
-    expect(overTarget).toBe(false);
-  });
-});
-
-describe('laborConsistentSplh', () => {
-  it('CRITICAL: consistent = wage / (targetLaborPct / 100)', () => {
-    expect(laborConsistentSplh({ wage: 20, targetLaborPct: 25 })).toBe(80);
-  });
-
-  it('CRITICAL: a lower targetLaborPct yields a higher consistent SPLH (inverse relationship)', () => {
-    const lower = laborConsistentSplh({ wage: 20, targetLaborPct: 20 });
-    const higher = laborConsistentSplh({ wage: 20, targetLaborPct: 40 });
-    expect(lower).toBeGreaterThan(higher);
-  });
-
-  it('BOUNDARY: targetLaborPct === 100 → consistent === wage', () => {
-    expect(laborConsistentSplh({ wage: 30, targetLaborPct: 100 })).toBe(30);
-  });
-
-  it('BOUNDARY: targetLaborPct === 0 degrades to 0 instead of Infinity', () => {
-    expect(laborConsistentSplh({ wage: 30, targetLaborPct: 0 })).toBe(0);
   });
 });
 

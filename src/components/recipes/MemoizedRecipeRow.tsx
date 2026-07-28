@@ -162,7 +162,7 @@ function RecipeRow<TRecipe extends RecipeShape>({
       </div>
       <div role="cell" className={RECIPE_COLUMN_WIDTHS.profit}>
         {displayValues.formattedProfit !== null ? (
-          <div className={`flex items-center ${displayValues.profitIsPositive ? 'text-green-600' : 'text-red-600'}`}>
+          <div className={`flex items-center ${displayValues.profitIsPositive ? 'text-success' : 'text-destructive'}`}>
             <DollarSign className="w-4 h-4 mr-1" aria-hidden="true" />
             {displayValues.formattedProfit}
           </div>

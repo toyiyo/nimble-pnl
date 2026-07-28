@@ -241,7 +241,7 @@ export default function Recipes() {
               <>
                 <span className="hidden sm:inline" aria-hidden="true">•</span>
                 <span className="flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-green-600" aria-hidden="true" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-success" aria-hidden="true" />
                   <span aria-label={`${mappedRecipes.length} recipes mapped to POS`}>{mappedRecipes.length} mapped to POS</span>
                 </span>
               </>

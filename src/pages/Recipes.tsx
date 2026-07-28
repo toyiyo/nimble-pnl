@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useRecipes } from '@/hooks/useRecipes';
+import { useRecipes, type Recipe } from '@/hooks/useRecipes';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,14 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { RecipeDialog } from '@/components/RecipeDialog';
 import { DeleteRecipeDialog } from '@/components/DeleteRecipeDialog';
@@ -26,10 +19,16 @@ import { AutoDeductionSettings } from '@/components/AutoDeductionSettings';
 import { BulkInventoryDeductionDialog } from '@/components/BulkInventoryDeductionDialog';
 import { ProductUpdateSheet } from '@/components/ProductUpdateDialog';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
-import { useUnifiedSales } from '@/hooks/useUnifiedSales';
-import { RecipeConversionStatusBadge } from '@/components/RecipeConversionStatusBadge';
-import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
-import { ChefHat, Plus, Search, Edit, Trash2, DollarSign, Clock, Settings, ArrowUpDown, AlertTriangle, Sparkles, TrendingUp, CheckCircle2, ChevronDown, MoreHorizontal } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useUnmappedSaleItems } from '@/hooks/useUnmappedSaleItems';
+import {
+  MemoizedRecipeCard,
+  MemoizedRecipeRow,
+  type RecipeDisplayValues,
+} from '@/components/recipes/MemoizedRecipeRow';
+import { RECIPE_COLUMN_WIDTHS, RECIPE_TABLE_MIN_WIDTH } from '@/components/recipes/recipeTableColumns';
+import { validateRecipeConversions, type ConversionValidation } from '@/utils/recipeConversionValidation';
+import { ChefHat, Plus, Search, Settings, ArrowUpDown, AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MetricIcon } from '@/components/MetricIcon';
 import { PageHeader } from '@/components/PageHeader';
@@ -41,9 +40,9 @@ export default function Recipes() {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
-  const { recipes, loading, fetchRecipes, fetchRecipeIngredients } = useRecipes(selectedRestaurant?.restaurant_id || null);
+  const { recipes, loading, isError, fetchRecipes, fetchRecipeIngredients } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { products, updateProductWithQuantity } = useProducts(selectedRestaurant?.restaurant_id || null);
-  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const { unmappedItems } = useUnmappedSaleItems(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);
@@ -151,11 +150,19 @@ export default function Recipes() {
     setSelectedRestaurant(restaurant);
   };
 
-  // Compute filtered recipes and memoized lists before early returns
-  const filteredRecipes = recipes.filter(recipe =>
-    recipe.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    recipe.pos_item_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Compute filtered recipes and memoized lists before early returns.
+  // Memoized: an unmemoized filter here produces a new array on every render
+  // (including every keystroke elsewhere on the page), which invalidates the
+  // `unmappedRecipes`/`mappedRecipes` memos below and re-sorts and re-validates
+  // every recipe in all three RecipeTables.
+  const filteredRecipes = useMemo(() => {
+    const needle = searchTerm.toLowerCase();
+    if (!needle) return recipes;
+    return recipes.filter(recipe =>
+      recipe.name.toLowerCase().includes(needle) ||
+      recipe.pos_item_name?.toLowerCase().includes(needle)
+    );
+  }, [recipes, searchTerm]);
 
   const unmappedRecipes = useMemo(() => {
     return filteredRecipes.filter(recipe => !recipe.pos_item_name);
@@ -164,6 +171,14 @@ export default function Recipes() {
   const mappedRecipes = useMemo(() => {
     return filteredRecipes.filter(recipe => recipe.pos_item_name);
   }, [filteredRecipes]);
+
+  // Rows are memoized on callback identity, so an inline arrow here would
+  // re-render every visible row on every keystroke elsewhere on the page.
+  const handleOpenCreate = useCallback(() => setIsCreateDialogOpen(true), []);
+  const handleCreateFromBase = useCallback((recipe: { id: string }) => {
+    setCreateFromBaseRecipeId(recipe.id);
+    setIsFromExistingOpen(true);
+  }, []);
 
   if (!user) {
     return (
@@ -226,7 +241,7 @@ export default function Recipes() {
               <>
                 <span className="hidden sm:inline" aria-hidden="true">•</span>
                 <span className="flex items-center gap-1">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-green-600" aria-hidden="true" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-success" aria-hidden="true" />
                   <span aria-label={`${mappedRecipes.length} recipes mapped to POS`}>{mappedRecipes.length} mapped to POS</span>
                 </span>
               </>
@@ -391,16 +406,15 @@ export default function Recipes() {
           recipes={filteredRecipes}
           products={products}
           loading={loading}
+          isError={isError}
+          onRetry={fetchRecipes}
           onEdit={setEditingRecipe}
           onDelete={setDeletingRecipe}
           sortBy={sortBy}
           sortDirection={sortDirection}
           showOnlyWarnings={showOnlyWarnings}
-          onCreate={() => setIsCreateDialogOpen(true)}
-          onCreateFromBase={(recipe) => {
-            setCreateFromBaseRecipeId(recipe.id);
-            setIsFromExistingOpen(true);
-          }}
+          onCreate={handleOpenCreate}
+          onCreateFromBase={handleCreateFromBase}
         />
       </TabsContent>
 
@@ -409,16 +423,15 @@ export default function Recipes() {
             recipes={mappedRecipes}
             products={products}
             loading={loading}
+            isError={isError}
+            onRetry={fetchRecipes}
           onEdit={setEditingRecipe}
           onDelete={setDeletingRecipe}
           sortBy={sortBy}
           sortDirection={sortDirection}
           showOnlyWarnings={showOnlyWarnings}
-          onCreate={() => setIsCreateDialogOpen(true)}
-          onCreateFromBase={(recipe) => {
-            setCreateFromBaseRecipeId(recipe.id);
-            setIsFromExistingOpen(true);
-          }}
+          onCreate={handleOpenCreate}
+          onCreateFromBase={handleCreateFromBase}
         />
       </TabsContent>
 
@@ -427,16 +440,15 @@ export default function Recipes() {
             recipes={unmappedRecipes}
             products={products}
             loading={loading}
+            isError={isError}
+            onRetry={fetchRecipes}
           onEdit={setEditingRecipe}
           onDelete={setDeletingRecipe}
           sortBy={sortBy}
           sortDirection={sortDirection}
           showOnlyWarnings={showOnlyWarnings}
-          onCreate={() => setIsCreateDialogOpen(true)}
-          onCreateFromBase={(recipe) => {
-            setCreateFromBaseRecipeId(recipe.id);
-            setIsFromExistingOpen(true);
-          }}
+          onCreate={handleOpenCreate}
+          onCreateFromBase={handleCreateFromBase}
         />
       </TabsContent>
       </Tabs>
@@ -514,22 +526,25 @@ export default function Recipes() {
 }
 
 interface RecipeTableProps {
-  recipes: any[];
-  products: any[];
+  recipes: Recipe[];
+  products: Product[];
   loading: boolean;
-  onEdit: (recipe: any) => void;
-  onDelete: (recipe: any) => void;
+  isError?: boolean;
+  onRetry?: () => void;
+  onEdit: (recipe: Recipe) => void;
+  onDelete: (recipe: Recipe) => void;
   sortBy: 'name' | 'cost' | 'salePrice' | 'margin' | 'created';
   sortDirection: 'asc' | 'desc';
   showOnlyWarnings: boolean;
   onCreate?: () => void;
-  onCreateFromBase?: (recipe: any) => void;
+  onCreateFromBase?: (recipe: Recipe) => void;
 }
 
-function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate, onCreateFromBase }: RecipeTableProps) {
+function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate, onCreateFromBase }: RecipeTableProps) {
+  const isMobile = useIsMobile();
   // Pre-calculate conversion validation for all recipes (keyed by recipe ID)
   const recipeValidationsById = useMemo(() => {
-    const validationMap = new Map();
+    const validationMap = new Map<string, ConversionValidation>();
     recipes.forEach(recipe => {
       const ingredients = recipe.ingredients || [];
       validationMap.set(recipe.id, validateRecipeConversions(ingredients, products));
@@ -577,6 +592,75 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
 
     return result;
   }, [recipes, recipeValidationsById, sortBy, sortDirection, showOnlyWarnings]);
+
+  // Everything a row would otherwise derive during render, computed once per
+  // list. Rows are memoized on this object's identity, so it must not be
+  // rebuilt on scroll.
+  const displayValuesById = useMemo(() => {
+    const map = new Map<string, RecipeDisplayValues>();
+
+    for (const recipe of processedRecipes) {
+      const profit = recipe.profit_per_serving;
+      const margin = recipe.profit_margin;
+
+      map.set(recipe.id, {
+        hasNoIngredients: !recipe.ingredients || recipe.ingredients.length === 0,
+        validation: recipeValidationsById.get(recipe.id),
+        formattedCost: `$${recipe.estimated_cost?.toFixed(2) || '0.00'}`,
+        formattedSalePrice: recipe.avg_sale_price ? `$${recipe.avg_sale_price.toFixed(2)}` : null,
+        formattedProfit: profit !== undefined ? `${profit > 0 ? '+' : ''}$${profit.toFixed(2)}` : null,
+        profitIsPositive: (profit ?? 0) > 0,
+        formattedMargin: margin !== undefined ? `${margin.toFixed(1)}%` : null,
+        marginBadgeLabel: margin ? `${margin.toFixed(1)}%` : 'No profit data',
+        marginIsPositive: (margin ?? 0) > 0,
+        formattedDate: new Date(recipe.created_at).toLocaleDateString(),
+      });
+    }
+
+    return map;
+  }, [processedRecipes, recipeValidationsById]);
+
+  // 133 recipes at the largest tenant crosses the 100+ virtualization
+  // threshold; only the visible window plus overscan is ever mounted.
+  const parentRef = useRef<HTMLDivElement>(null);
+  const virtualizer = useVirtualizer({
+    count: processedRecipes.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => (isMobile ? 200 : 72),
+    overscan: 10,
+  });
+
+  // Mobile card and desktop row share this exact positioning/lookup logic;
+  // only the memoized component rendered at each virtual slot differs.
+  const renderVirtualRow = (
+    virtualRow: ReturnType<typeof virtualizer.getVirtualItems>[number],
+    RowComponent: typeof MemoizedRecipeCard | typeof MemoizedRecipeRow
+  ) => {
+    const recipe = processedRecipes[virtualRow.index];
+    const displayValues = recipe && displayValuesById.get(recipe.id);
+    if (!displayValues) return null;
+
+    return (
+      <RowComponent
+        key={recipe.id}
+        recipe={recipe}
+        displayValues={displayValues}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onCreateFromBase={onCreateFromBase}
+        index={virtualRow.index}
+        measureRef={virtualizer.measureElement}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '100%',
+          transform: `translateY(${virtualRow.start}px)`,
+        }}
+      />
+    );
+  };
+
   if (loading) {
     return (
       <Card className="border-border/50 shadow-sm">
@@ -588,6 +672,34 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
               <Skeleton className="h-16 w-full" />
             </div>
             <p className="text-sm text-muted-foreground sr-only">Loading recipes...</p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Distinct from "no recipes": a failed load must never look like an empty
+  // menu, or a user reacts to an outage by re-creating recipes that exist.
+  if (isError) {
+    return (
+      <Card className="border-destructive/20 bg-gradient-to-br from-destructive/5 via-destructive/10 to-transparent shadow-sm">
+        <CardContent className="p-12">
+          <div className="text-center space-y-4" role="alert" aria-live="assertive">
+            <MetricIcon icon={AlertTriangle} variant="red" className="mx-auto" />
+            <div>
+              <h3 className="text-xl font-semibold mb-2">Couldn't load recipes</h3>
+              <p className="text-muted-foreground max-w-md mx-auto mb-4">
+                Your recipes are still here — we just couldn't reach them. Check your
+                connection and try again.
+              </p>
+              {/* The accessible name has to contain the visible text (WCAG
+                  2.5.3), or voice-control users saying "Try again" miss it. */}
+              {onRetry && (
+                <Button onClick={onRetry} variant="outline" className="gap-2" aria-label="Try again to load recipes">
+                  Try again
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -635,207 +747,62 @@ function RecipeTable({ recipes, products, loading, onEdit, onDelete, sortBy, sor
   return (
     <Card className="border-border/50 overflow-hidden">
       <CardContent className="p-0">
-        {/* Mobile-friendly cards for small screens */}
-        <div className="block md:hidden">
-        {processedRecipes.map((recipe) => {
-            const validation = recipeValidationsById.get(recipe.id);
-            
-            return (
-              <div key={recipe.id} className="p-4 border-b last:border-b-0 hover:bg-accent/50 transition-colors">
-                <div className="space-y-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-medium truncate">{recipe.name}</h3>
-                        {(!recipe.ingredients || recipe.ingredients.length === 0) && (
-                          <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            No ingredients
-                          </Badge>
-                        )}
-                      </div>
-                      {recipe.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">{recipe.description}</p>
-                      )}
-                    </div>
-                    <div className="flex gap-1 ml-2">
-                      <Button variant="ghost" size="sm" onClick={() => onEdit(recipe)} className="h-8 w-8 p-0" aria-label="Edit recipe">
-                        <Edit className="w-3 h-3" />
-                      </Button>
-                      {onCreateFromBase && (
-                        <Button variant="ghost" size="sm" onClick={() => onCreateFromBase(recipe)} className="h-8 px-2 text-xs">
-                          Create variation
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="sm" onClick={() => onDelete(recipe)} className="h-8 w-8 p-0" aria-label="Delete recipe">
-                        <Trash2 className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-wrap gap-2">
-                    {recipe.pos_item_name ? (
-                      <Badge variant="secondary" className="text-xs">{recipe.pos_item_name}</Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">Not mapped</Badge>
-                    )}
-                    <RecipeConversionStatusBadge 
-                      hasIssues={validation.hasIssues} 
-                      issueCount={validation.issueCount}
-                      size="sm"
-                      showText={false}
-                    />
-                    <Badge variant="outline" className="text-xs">Size: {recipe.serving_size || 1}</Badge>
-                    <Badge variant="outline" className="text-xs">Cost: ${recipe.estimated_cost?.toFixed(2) || '0.00'}</Badge>
-                    {recipe.avg_sale_price && (
-                      <>
-                        <Badge variant="outline" className="text-xs">Sale: ${recipe.avg_sale_price.toFixed(2)}</Badge>
-                        <Badge 
-                          variant={recipe.profit_margin && recipe.profit_margin > 0 ? "default" : "destructive"} 
-                          className="text-xs"
-                        >
-                          {recipe.profit_margin ? `${recipe.profit_margin.toFixed(1)}%` : 'No profit data'}
-                        </Badge>
-                      </>
-                    )}
-                  </div>
-                  
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(recipe.created_at).toLocaleDateString()}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+        {/* Mobile-friendly cards for small screens. Rendered conditionally, not
+            hidden with `md:hidden`: both variants used to mount, so every recipe
+            row was built twice and only one was ever visible. */}
+        {isMobile && (
+        <div ref={parentRef} className="max-h-[70vh] overflow-y-auto">
+          <div
+            role="presentation"
+            style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
+          >
+            {virtualizer.getVirtualItems().map((virtualRow) => renderVirtualRow(virtualRow, MemoizedRecipeCard))}
+          </div>
         </div>
+        )}
 
-        {/* Desktop table for larger screens */}
-        <div className="hidden md:block overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Recipe Name</TableHead>
-                <TableHead>POS Item</TableHead>
-                <TableHead>Conversions</TableHead>
-                <TableHead>Serving Size</TableHead>
-                <TableHead>Cost</TableHead>
-                <TableHead>Avg Sale Price</TableHead>
-                <TableHead>Profit</TableHead>
-                <TableHead>Margin %</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {processedRecipes.map((recipe) => {
-                const validation = recipeValidationsById.get(recipe.id);
-                
-                return (
-                  <TableRow key={recipe.id}>
-                    <TableCell>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{recipe.name}</span>
-                          {(!recipe.ingredients || recipe.ingredients.length === 0) && (
-                            <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30">
-                              <AlertTriangle className="h-3 w-3 mr-1" />
-                              No ingredients
-                            </Badge>
-                          )}
-                        </div>
-                        {recipe.description && (
-                          <div className="text-sm text-muted-foreground">
-                            {recipe.description}
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {recipe.pos_item_name ? (
-                        <Badge variant="secondary">{recipe.pos_item_name}</Badge>
-                      ) : (
-                        <Badge variant="outline">Not mapped</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <RecipeConversionStatusBadge 
-                        hasIssues={validation.hasIssues} 
-                        issueCount={validation.issueCount}
-                        size="sm"
-                        showText={true}
-                      />
-                    </TableCell>
-                    <TableCell>{recipe.serving_size || 1}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center">
-                      <DollarSign className="w-4 h-4 mr-1" />
-                      ${recipe.estimated_cost?.toFixed(2) || '0.00'}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {recipe.avg_sale_price ? (
-                      <div className="flex items-center">
-                        <DollarSign className="w-4 h-4 mr-1" />
-                        ${recipe.avg_sale_price.toFixed(2)}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">No sales data</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {recipe.profit_per_serving !== undefined ? (
-                      <div className={`flex items-center ${recipe.profit_per_serving > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        <DollarSign className="w-4 h-4 mr-1" />
-                        {recipe.profit_per_serving > 0 ? '+' : ''}${recipe.profit_per_serving.toFixed(2)}
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {recipe.profit_margin !== undefined ? (
-                      <Badge variant={recipe.profit_margin > 0 ? "default" : "destructive"}>
-                        {recipe.profit_margin.toFixed(1)}%
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center text-sm text-muted-foreground">
-                      <Clock className="w-4 h-4 mr-1" />
-                      {new Date(recipe.created_at).toLocaleDateString()}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" aria-label="Recipe actions">
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="bg-background">
-                          <DropdownMenuItem onClick={() => onEdit(recipe)}>Edit</DropdownMenuItem>
-                          {onCreateFromBase && (
-                            <DropdownMenuItem onClick={() => onCreateFromBase(recipe)}>
-                              Create variation
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem onClick={() => onDelete(recipe)} className="text-destructive focus:text-destructive">
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </TableCell>
-                 </TableRow>
-               );
-             })}
-            </TableBody>
-          </Table>
+        {/* Desktop table for larger screens. An ARIA table of flex rows rather
+            than a real <table>: virtualized rows are absolutely positioned,
+            which table layout cannot express. */}
+        {!isMobile && (
+        <div className="overflow-x-auto">
+          {/* aria-rowcount covers the header plus every recipe, not just the
+              mounted window -- virtualization otherwise hides the real size. */}
+          <div
+            role="table"
+            aria-label="Recipes"
+            aria-rowcount={processedRecipes.length + 1}
+            className={RECIPE_TABLE_MIN_WIDTH}
+          >
+            <div role="rowgroup">
+              <div role="row" aria-rowindex={1} className="flex items-center gap-2 px-4 py-3 border-b bg-muted/50 font-medium text-sm text-muted-foreground">
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.name}>Recipe Name</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.posItem}>POS Item</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.conversions}>Conversions</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.servingSize}>Serving Size</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.cost}>Cost</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.salePrice}>Avg Sale Price</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.profit}>Profit</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.margin}>Margin %</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.created}>Created</div>
+                <div role="columnheader" className={RECIPE_COLUMN_WIDTHS.actions}>Actions</div>
+              </div>
+            </div>
+            {/* The scroll container is the rowgroup; the sizer inside it is
+                presentational so the rows stay owned by the rowgroup. */}
+            <div role="rowgroup" ref={parentRef} className="max-h-[70vh] overflow-y-auto">
+              <div
+                role="presentation"
+                style={{ height: `${virtualizer.getTotalSize()}px`, width: '100%', position: 'relative' }}
+              >
+                {virtualizer.getVirtualItems().map((virtualRow) => renderVirtualRow(virtualRow, MemoizedRecipeRow))}
+              </div>
+            </div>
+          </div>
         </div>
+        )}
       </CardContent>
     </Card>
   );
 }
+

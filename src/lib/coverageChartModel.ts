@@ -12,6 +12,7 @@
 
 import type { CoverageHour } from '@/lib/coverageSummary';
 import { formatCoverageHour } from '@/lib/coverageSummary';
+import { impliedLabor } from '@/lib/staffingCalculator';
 
 export type HourClassification = 'crit' | 'floor' | 'spare' | 'ok' | 'nodata';
 
@@ -51,46 +52,6 @@ export function classifyHour(h: CoverageHour, minStaff: number): HourClassificat
   return 'ok';
 }
 
-export interface ImpliedLaborResult {
-  pct: number;
-  overTarget: boolean;
-}
-
-/**
- * Implied labor % of a given SPLH target at a given average hourly wage —
- * the on-chart slider's live readout (`→ X% labor at $W/hr`).
- *
- * `overTarget` flags the readout as "over budget" once `pct` clears
- * `targetLaborPct` by more than a 0.05-point tolerance (so a target hit to
- * within float/rounding noise doesn't flash red).
- */
-export function impliedLabor(params: {
-  wage: number;
-  splh: number;
-  targetLaborPct: number;
-}): ImpliedLaborResult {
-  const { wage, splh, targetLaborPct } = params;
-  // Guard against a 0 splh (would otherwise divide to Infinity) — the slider's
-  // own bounds keep this out of reach today, but the readout should degrade to
-  // a plain 0% rather than a nonsensical Infinity if that ever changes.
-  const pct = splh > 0 ? (wage / splh) * 100 : 0;
-  const overTarget = pct > targetLaborPct + 0.05;
-  return { pct, overTarget };
-}
-
-/**
- * The SPLH target that exactly hits `targetLaborPct` at `wage` — the value
- * the slider's track notch is drawn at, so a manager can see where their own
- * labor goal puts the knob.
- */
-export function laborConsistentSplh(params: { wage: number; targetLaborPct: number }): number {
-  const { wage, targetLaborPct } = params;
-  // Guard against a 0 targetLaborPct (would otherwise divide to Infinity) —
-  // settings-form input clamps this above 0 today, but the notch position
-  // should degrade to 0 rather than Infinity if that invariant ever slips.
-  return targetLaborPct > 0 ? wage / (targetLaborPct / 100) : 0;
-}
-
 // ── Receipt ──────────────────────────────────────────────────────────────────
 
 export type ReceiptTone = 'default' | 'critical' | 'warning' | 'positive';
@@ -128,9 +89,9 @@ function fmtUsd(n: number): string {
  */
 export function buildReceipt(
   h: CoverageHour,
-  params: { minStaff: number; weekdayKey: string; wage: number; lookbackWeeks: number },
+  params: { minStaff: number; weekdayKey: string; wage: number; lookbackWeeks: number; hasWageData: boolean },
 ): Receipt {
-  const { minStaff, weekdayKey, wage, lookbackWeeks } = params;
+  const { minStaff, weekdayKey, wage, lookbackWeeks, hasWageData } = params;
 
   if (h.demand === null) {
     return {
@@ -184,10 +145,16 @@ export function buildReceipt(
   const asides: string[] = [];
 
   // Implied SPLH at the scheduled count — only meaningful when someone is
-  // actually scheduled (avoids a divide-by-zero and a nonsensical "$Infinity/hr").
-  if (scheduled > 0) {
+  // actually scheduled (avoids a divide-by-zero and a nonsensical "$Infinity/hr"),
+  // and only honest when `wage` is real roster data rather than the $15/hr
+  // fallback (design §4a2).
+  // `projectedSales > 0` matters independently of `scheduled`: with staff on
+  // the clock and no sales, labor is infinitely over target, but `splhAt`
+  // collapses to 0 and impliedLabor's divide-by-zero guard returns 0% — a
+  // number that reads as the exact opposite of the truth. Say nothing instead.
+  if (scheduled > 0 && projectedSales > 0 && hasWageData) {
     const splhAt = projectedSales / scheduled;
-    const laborPctAt = Math.round((wage / splhAt) * 100);
+    const laborPctAt = Math.round(impliedLabor({ wage, splh: splhAt, targetLaborPct: 0 }).pct);
     asides.push(`At ${scheduled} scheduled, implied SPLH is ${fmtUsd(Math.round(splhAt))}/hr → ${laborPctAt}% labor.`);
   }
 

@@ -21,6 +21,7 @@ import {
 import { usePeriodMetrics } from '@/hooks/usePeriodMetrics';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { resolveLaborBasis } from '@/lib/combineCosts';
 import { format } from 'date-fns';
 import { useRevenueBreakdown } from '@/hooks/useRevenueBreakdown';
 import { useCostsFromSource } from '@/hooks/useCostsFromSource';
@@ -247,33 +248,58 @@ export function DetailedPnLBreakdown({ restaurantId, days = 30, dateFrom, dateTo
               'Labor cost'
             ),
         status: current.labor_cost === 0 ? 'warning' : getStatus(current.avg_labor_cost_pct, benchmarks.industry_avg_labor_cost),
-        // Add breakdown children to show where labor costs come from
-        children: current.labor_cost > 0 ? [
-          {
-            id: 'labor-pending',
-            label: 'Pending Payroll (Scheduled)',
-            value: dailyCosts.reduce((sum, d) => sum + d.pending_labor_cost, 0),
-            percentage: current.labor_cost > 0 
-              ? (dailyCosts.reduce((sum, d) => sum + d.pending_labor_cost, 0) / current.labor_cost) * 100 
-              : 0,
-            type: 'line-item' as const,
-            level: 1,
-            insight: 'Labor costs calculated from employee time punches (scheduled/accrued labor that will be paid)',
-            status: 'neutral' as const,
-          },
-          {
-            id: 'labor-actual',
-            label: 'Actual Payroll (Paid)',
-            value: dailyCosts.reduce((sum, d) => sum + d.actual_labor_cost, 0),
-            percentage: current.labor_cost > 0 
-              ? (dailyCosts.reduce((sum, d) => sum + d.actual_labor_cost, 0) / current.labor_cost) * 100 
-              : 0,
-            type: 'line-item' as const,
-            level: 1,
-            insight: 'Labor expenses from bank transactions and checks categorized to payroll/labor accounts (money actually paid out)',
-            status: 'neutral' as const,
-          },
-        ] : undefined,
+        // Children reflect the de-dup basis: exactly ONE source is counted
+        // toward Labor Cost. Percentages are of net revenue (not of the parent,
+        // which previously made pending + actual sum to ~183%).
+        children: current.labor_cost > 0 ? (() => {
+          const pendingTotal = dailyCosts.reduce((sum, d) => sum + d.pending_labor_cost, 0);
+          const actualTotal = dailyCosts.reduce((sum, d) => sum + d.actual_labor_cost, 0);
+          const basis = resolveLaborBasis(pendingTotal);
+          const netRevenue = current.revenue;
+          const pct = (v: number) => (netRevenue > 0 ? (v / netRevenue) * 100 : 0);
+
+          const countedChild = basis === 'accrued'
+            ? {
+                id: 'labor-pending',
+                label: 'Pending Payroll (Scheduled) — counted',
+                value: pendingTotal,
+                percentage: pct(pendingTotal),
+                type: 'line-item' as const,
+                level: 1,
+                insight: 'Accrued labor from employee time punches. This is the labor counted toward Labor Cost and Prime Cost for this period.',
+                status: 'neutral' as const,
+              }
+            : {
+                id: 'labor-actual',
+                label: 'Actual Payroll (Paid) — counted',
+                value: actualTotal,
+                percentage: pct(actualTotal),
+                type: 'line-item' as const,
+                level: 1,
+                insight: 'Paid labor from bank transactions. Counted toward Labor Cost because no time-punch labor was recorded for this period.',
+                status: 'neutral' as const,
+              };
+
+          const otherValue = basis === 'accrued' ? actualTotal : pendingTotal;
+          const otherChild = otherValue > 0
+            ? [{
+                id: basis === 'accrued' ? 'labor-actual' : 'labor-pending',
+                label: basis === 'accrued'
+                  ? 'Actual Payroll (Paid) — not counted this period'
+                  : 'Pending Payroll (Scheduled) — not counted this period',
+                value: otherValue,
+                percentage: 0,
+                type: 'line-item' as const,
+                level: 1,
+                insight: basis === 'accrued'
+                  ? 'Bank payroll for the period. Excluded from the total to avoid double-counting the same labor already captured by time punches.'
+                  : 'Scheduled/accrued labor. Zero or excluded because paid (bank) labor is the basis this period.',
+                status: 'neutral' as const,
+              }]
+            : [];
+
+          return [countedChild, ...otherChild];
+        })() : undefined,
       },
 
       // PRIME COST

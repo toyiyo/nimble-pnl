@@ -4,7 +4,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react';
 import { CoverageReceipt } from '@/components/scheduling/ShiftTimeline/CoverageReceipt';
 import type { CoverageHour } from '@/lib/coverageSummary';
 
-const BASE_PARAMS = { minStaff: 4, weekdayKey: 'Monday', wage: 15, lookbackWeeks: 6 };
+const BASE_PARAMS = { minStaff: 4, weekdayKey: 'Monday', wage: 15, lookbackWeeks: 6, hasWageData: true };
 
 function hourFixture(opts: Partial<CoverageHour> & { demand: number | null; scheduled: number }): CoverageHour {
   const { demand, scheduled, scheduledMax = scheduled, projectedSales = demand === null ? null : 100, ...rest } = opts;
@@ -46,6 +46,16 @@ describe('CoverageReceipt', () => {
   it('renders buildReceipt asides below the ledger (implied SPLH note)', () => {
     render(<CoverageReceipt hour={critHour} {...BASE_PARAMS} minStaff={4} />);
     expect(screen.getByText(/implied SPLH is \$36\/hr/i)).toBeInTheDocument();
+  });
+
+  it('should omit the implied-SPLH aside when there is no real wage data', () => {
+    render(<CoverageReceipt hour={critHour} {...BASE_PARAMS} minStaff={4} hasWageData={false} />);
+    expect(screen.queryByText(/implied SPLH is/)).not.toBeInTheDocument();
+  });
+
+  it('should still show the implied-SPLH aside when wage data is real', () => {
+    render(<CoverageReceipt hour={critHour} {...BASE_PARAMS} minStaff={4} hasWageData={true} />);
+    expect(screen.getByText(/implied SPLH is/)).toBeInTheDocument();
   });
 
   it('CRITICAL: nodata hour renders no ledger rows, only the explanatory aside', () => {

@@ -30,6 +30,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { COGSPreferenceSettings } from '@/components/settings/COGSPreferenceSettings';
 import { GeofenceSettings } from '@/components/settings/GeofenceSettings';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
+import { useEmployees } from '@/hooks/useEmployees';
+import {
+  computeAvgHourlyRateCents,
+  deriveSplhHint,
+  hasHourlyWageData,
+} from '@/lib/staffingCalculator';
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
@@ -83,11 +89,40 @@ export default function RestaurantSettings() {
 
   // Labor planning state (staffing settings)
   const { effectiveSettings: staffDefaults, updateSettings: saveStaffingSettings, isSaving: staffingSaving, isLoading: staffingLoading } = useStaffingSettings(selectedRestaurant?.restaurant_id ?? null);
+  const { employees: staffEmployees } = useEmployees(selectedRestaurant?.restaurant_id ?? null);
   const [lpTargetSplh, setLpTargetSplh] = useState('60');
   const [lpAvgTicket, setLpAvgTicket] = useState('8');
   const [lpTargetLaborPct, setLpTargetLaborPct] = useState('22');
   const [lpMinStaff, setLpMinStaff] = useState('1');
   const [lpLookbackWeeks, setLpLookbackWeeks] = useState('4');
+
+  // Implied labor % of the SPLH currently typed into the form. Null when the
+  // roster has no real hourly wage, or when either field is blank/non-numeric
+  // (Number.parseFloat('') is NaN, and `NaN <= 0` is false — design §4).
+  const splhHint = useMemo(
+    () =>
+      deriveSplhHint({
+        splh: Number.parseFloat(lpTargetSplh),
+        targetLaborPct: Number.parseFloat(lpTargetLaborPct),
+        hasWageData: hasHourlyWageData(staffEmployees),
+        wageCents: computeAvgHourlyRateCents(staffEmployees),
+      }),
+    [staffEmployees, lpTargetSplh, lpTargetLaborPct],
+  );
+
+  const splhHintBlock = splhHint && (
+    <div aria-live="polite" className="flex flex-col gap-0.5">
+      <p className={`text-[13px] ${splhHint.overTarget ? 'text-warning' : 'text-muted-foreground'}`}>
+        ≈ {splhHint.pct.toFixed(0)}% labor at your current average wage
+        {splhHint.overTarget && (
+          <> — above your {lpTargetLaborPct}% target. Try ${Math.round(splhHint.consistent)} to hit it.</>
+        )}
+      </p>
+      <p className="text-[13px] text-muted-foreground/70">
+        Lowering this target increases recommended headcount.
+      </p>
+    </div>
+  );
 
   // Sync labor planning form when staffing defaults load
   useEffect(() => {
@@ -1145,6 +1180,7 @@ export default function RestaurantSettings() {
                             <p id="lpTargetSplh-help" className="text-[13px] text-muted-foreground">
                               Sales Per Labor Hour — the revenue each staff member should generate per hour
                             </p>
+                            {splhHintBlock}
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="lpAvgTicket" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -1196,6 +1232,7 @@ export default function RestaurantSettings() {
                             <p id="lpTargetLaborPct-help" className="text-[13px] text-muted-foreground">
                               Maximum percentage of revenue that should go to labor costs
                             </p>
+                            {splhHintBlock}
                           </div>
                           <div className="space-y-2">
                             <Label htmlFor="lpMinStaff" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">

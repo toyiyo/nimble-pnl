@@ -81,6 +81,15 @@ vi.mock('@/hooks/useSubscription', () => ({
   }),
 }));
 
+vi.mock('@/contexts/ViewModeContext', () => ({
+  useViewMode: () => ({
+    viewMode: 'admin',
+    canUseWorkView: false,
+    enterWorkMode: vi.fn(),
+    exitWorkMode: vi.fn(),
+  }),
+}));
+
 /** Opens the mobile Sheet on mount, mirroring the AppHeader hamburger toggle. */
 function OpenMobileSidebarOnMount() {
   const { setOpenMobile } = useSidebar();

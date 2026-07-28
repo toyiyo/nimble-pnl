@@ -19,7 +19,7 @@ import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 import { useCreateShift } from '@/hooks/useShifts';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { computeAvgHourlyRateCents, computeMinStaffFromCrew } from '@/lib/staffingCalculator';
+import { computeAvgHourlyRateCents, computeMinStaffFromCrew, hasHourlyWageData } from '@/lib/staffingCalculator';
 import { useTimelineModel, computeCoverage } from './useTimelineModel';
 import { CoverageVerdict } from './CoverageVerdict';
 import { CoverageChart } from './CoverageChart';
@@ -503,6 +503,9 @@ export function ShiftTimelineTab({
   // `SplhSlider`'s implied-labor readout (`pct = avgWage ÷ target_splh × 100`)
   // and its labor-consistent notch, rendered below (Stage 5.3).
   const avgWage = computeAvgHourlyRateCents(employees) / 100;
+  // Whether `avgWage` is real roster data or computeAvgHourlyRateCents's $15/hr
+  // fallback — gates every implied-labor readout (design §4a).
+  const hasWageData = hasHourlyWageData(employees);
   // Target labor % from staffing settings — drives the slider pill's
   // over/under-target threshold and its notch label. Falls back to the same
   // default `useStaffingSettings` seeds a restaurant with (DEFAULTS.target_labor_pct)
@@ -960,6 +963,7 @@ export function ShiftTimelineTab({
                   <SplhSlider
                     value={sliderTarget ?? targetSplh}
                     wage={avgWage}
+                    hasWageData={hasWageData}
                     targetLaborPct={targetLaborPct}
                     canSave={canSaveSplhTarget}
                     isSaving={isSaving}
@@ -1043,6 +1047,7 @@ export function ShiftTimelineTab({
               minStaff={minStaff}
               weekdayKey={weekdayKey}
               wage={avgWage}
+              hasWageData={hasWageData}
               lookbackWeeks={lookbackWeeks}
               onQuickAdd={handleGapClick}
             />

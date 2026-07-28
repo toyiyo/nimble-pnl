@@ -79,7 +79,7 @@ supabase/
 
 ## Prerequisites
 
-- Node.js 18+ or Bun
+- Node.js 20+
 - Supabase account
 - Square developer account
 - OpenAI API key (for AI features)
@@ -120,9 +120,7 @@ OPENAI_API_KEY=your_openai_key
 
 2. Install dependencies:
    ```bash
-   bun install
-   # or
-   npm install
+   npm ci
    ```
 
 3. Set up environment variables:
@@ -131,8 +129,6 @@ OPENAI_API_KEY=your_openai_key
 
 4. Start the development server:
    ```bash
-   bun run dev
-   # or
    npm run dev
    ```
 
@@ -148,7 +144,7 @@ OPENAI_API_KEY=your_openai_key
 1. **Build Settings**
    - Build Pack: Static
    - Base Directory: `/`
-   - Pre Deployment Command: `bun install && bun run build`
+   - Pre Deployment Command: `npm ci && npm run build`
    - Output Directory: `dist` (automatic)
 
 2. **Environment Variables**

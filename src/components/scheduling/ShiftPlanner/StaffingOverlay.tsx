@@ -43,6 +43,8 @@ export function StaffingOverlay({
     isSaving,
     employeePositions,
     actualSplh,
+    avgHourlyRateCents,
+    hasWageData,
   } = useWeekStaffingSuggestions(restaurantId, weekDays, localSettings);
 
   const handleSettingsChange = useCallback((updates: Partial<StaffingSettings>) => {
@@ -160,6 +162,8 @@ export function StaffingOverlay({
                 employeePositions={employeePositions}
                 actualSplh={actualSplh}
                 lookbackWeeks={activeSettings.lookback_weeks}
+                avgHourlyRateCents={avgHourlyRateCents}
+                hasWageData={hasWageData}
               />
 
               {/* How it works explainer — always visible so it educates even with no data */}

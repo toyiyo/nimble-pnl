@@ -1,0 +1,189 @@
+name: PR Comment Response
+
+# Every review finding on a PR must carry a visible verdict reply — agreed
+# (naming the commit), pushed back, or deliberately ignored. This job only
+# AUDITS: it reads the PR and publishes a check run. It never writes a reply.
+# See docs/superpowers/specs/2026-07-27-pr-comment-response-gate-design.md
+
+on:
+  # ONLY trusted triggers. `pull_request_review` and `pull_request_review_comment`
+  # are deliberately ABSENT: those events run the workflow file FROM THE PR, so a
+  # contributor could edit this YAML to publish a passing check and disarm the
+  # gate on their own PR. Fetching pr-triage.js from the default branch protects
+  # the script but not the workflow that invokes it. (Those events were also
+  # landing in `action_required` for bot actors, so they were unreliable anyway.)
+  #
+  # All three triggers below run the DEFAULT branch's copy of this file:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Closes the staleness window the removed triggers used to cover: a finding
+  # posted after the last push would otherwise leave a green check behind.
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to audit (blank = every open PR)
+        required: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Select the PRs to audit
+        id: select
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+          INPUT_PR: ${{ inputs.pr }}
+        run: |
+          set -euo pipefail
+          if [ -n "$EVENT_PR" ]; then
+            PRS="$EVENT_PR"
+          elif [ -n "$INPUT_PR" ]; then
+            PRS="$INPUT_PR"
+          else
+            # schedule (or a blank dispatch): re-audit every open non-draft PR.
+            # --slurp cannot be combined with --jq, so paginate to a file and
+            # run jq over it separately.
+            gh api "repos/$REPO/pulls?state=open&per_page=100" --paginate --slurp > pulls.json
+            PRS=$(jq -r '[.[][] | select(.draft | not) | .number] | join(" ")' pulls.json)
+          fi
+          echo "prs=$PRS" >> "$GITHUB_OUTPUT"
+          echo "Auditing: ${PRS:-<none>}"
+
+      - name: Fetch the auditor from the default branch
+        id: fetch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+        run: |
+          set -uo pipefail
+          mkdir -p dev-tools
+          # Deliberately the DEFAULT branch, never a PR head.
+          if gh api "repos/$REPO/contents/dev-tools/pr-triage.js?ref=$DEFAULT_BRANCH" \
+               --jq '.content' > content.b64 2>err.txt \
+             && base64 --decode < content.b64 > dev-tools/pr-triage.js \
+             && [ -s dev-tools/pr-triage.js ]; then
+            echo "installed=true" >> "$GITHUB_OUTPUT"
+          elif ! grep -q "HTTP 404" err.txt; then
+            # Only a genuine 404 means "not installed". Any other failure must not
+            # disarm the gate — that would be a silent fail-open.
+            echo "::error::Could not fetch the auditor from $DEFAULT_BRANCH (not a 404). Refusing to disarm the gate."
+            cat err.txt
+            exit 1
+          else
+            # Expected exactly once: on the PR that introduces this gate, before
+            # it exists on the default branch.
+            echo "installed=false" >> "$GITHUB_OUTPUT"
+            echo "pr-triage.js is not on $DEFAULT_BRANCH yet; the gate is not active."
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.fetch.outputs.installed == 'true'
+        with:
+          node-version: '20'
+
+      - name: Audit each PR and publish its check
+        if: steps.fetch.outputs.installed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PRS: ${{ steps.select.outputs.prs }}
+        run: |
+          set -uo pipefail
+          # BROKEN means the audit could not do its job — that is a red JOB.
+          # Unanswered findings are NOT a broken job: they are a red CHECK RUN,
+          # which is what branch protection reads. Failing the job for them made
+          # a normal triage backlog look like a broken pipeline in the Actions tab.
+          BROKEN=0
+          for PR in $PRS; do
+            # Snapshot the head BEFORE auditing. If the PR advances mid-audit the
+            # result describes a commit that is no longer current, and publishing
+            # it would mark the NEW head green on stale evidence.
+            if ! BEFORE=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha) || [ -z "$BEFORE" ]; then
+              echo "::error::Could not read the head SHA for PR #$PR before auditing; failing closed."
+              BROKEN=1
+              continue
+            fi
+
+            set +e
+            node dev-tools/pr-triage.js audit --pr "$PR" > "summary-$PR.md" 2>&1
+            CODE=$?
+            set -e
+            cat "summary-$PR.md"
+
+            if ! AFTER=$(gh api "repos/$REPO/pulls/$PR" --jq .head.sha) || [ -z "$AFTER" ]; then
+              echo "::error::Could not re-read the head SHA for PR #$PR after auditing; failing closed."
+              BROKEN=1
+              continue
+            fi
+            if [ "$BEFORE" != "$AFTER" ]; then
+              echo "::notice::PR #$PR advanced $BEFORE -> $AFTER during the audit; discarding this stale result. The push that moved it triggers its own run."
+              continue
+            fi
+
+            case "$CODE" in
+              0) CONCLUSION=success; TITLE="All review findings have a verdict reply" ;;
+              1) CONCLUSION=failure; TITLE="Review findings are waiting for a verdict reply" ;;
+              # Exit 2 means the audit could not read the PR. Never a pass.
+              *) CONCLUSION=failure; TITLE="Audit could not complete — treating as unanswered" ;;
+            esac
+            # Exit 2 = the audit could not read the PR: broken, so fail the job.
+            # Exit 1 = findings are unanswered: expected, so the check run alone
+            # carries it.
+            # `set -e` is active here, so use if/fi rather than `[ ] && x=1` —
+            # a false test would make the compound return 1 and abort the job.
+            if [ "$CODE" = "2" ]; then
+              BROKEN=1
+            elif [ "$CODE" != "0" ]; then
+              echo "::notice::PR #$PR has review findings awaiting a verdict reply — see the pr-comment-response check."
+            fi
+
+            jq -n \
+              --arg name "pr-comment-response" \
+              --arg head_sha "$AFTER" \
+              --arg conclusion "$CONCLUSION" \
+              --arg title "$TITLE" \
+              --rawfile summary "summary-$PR.md" \
+              '{name: $name, head_sha: $head_sha, status: "completed",
+                conclusion: $conclusion,
+                output: {title: $title, summary: $summary}}' \
+              > "check-$PR.json"
+
+            if ! gh api --method POST "repos/$REPO/check-runs" --input "check-$PR.json"; then
+              echo "::error::Could not publish the pr-comment-response check run for PR #$PR."
+              exit 1
+            fi
+          done
+
+          if [ "$BROKEN" = "1" ]; then
+            echo "::error::The audit could not complete for at least one PR. The check run is red and this job failed because the gate itself is broken, not because findings are unanswered."
+            exit 1
+          fi
+
+      - name: Report that the gate is not installed yet
+        if: steps.fetch.outputs.installed != 'true' && github.event.pull_request.number
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA=$(gh api "repos/$REPO/pulls/$PR_NUMBER" --jq .head.sha)
+          jq -n \
+            --arg head_sha "$HEAD_SHA" \
+            --arg summary "\`dev-tools/pr-triage.js\` is not on \`$DEFAULT_BRANCH\` yet, so this gate is not active. It begins enforcing once the PR that adds it merges." \
+            '{name: "pr-comment-response", head_sha: $head_sha, status: "completed",
+              conclusion: "neutral",
+              output: {title: "Gate not installed on the default branch yet", summary: $summary}}' \
+            | gh api --method POST "repos/$REPO/check-runs" --input -

@@ -12,6 +12,8 @@ import {
 
 import { HelpCircle, Plus, X } from 'lucide-react';
 
+import { deriveSplhHint } from '@/lib/staffingCalculator';
+
 import type { MinCrew, StaffingSettings } from '@/types/scheduling';
 
 interface StaffingConfigPanelProps {
@@ -31,6 +33,10 @@ interface StaffingConfigPanelProps {
   employeePositions: string[];
   actualSplh: number | null;
   lookbackWeeks: number;
+  /** Blended hourly wage in cents (`computeAvgHourlyRateCents`). */
+  avgHourlyRateCents: number;
+  /** Whether that wage is real roster data — gates the implied-labor hint. */
+  hasWageData: boolean;
 }
 
 function HelpTip({ text, fieldName }: Readonly<{ text: string; fieldName: string }>) {
@@ -58,8 +64,24 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
   employeePositions,
   actualSplh,
   lookbackWeeks,
+  avgHourlyRateCents,
+  hasWageData,
 }: Readonly<StaffingConfigPanelProps>) {
   const [newPosition, setNewPosition] = useState('');
+
+  // Implied labor % of the current SPLH target at the blended wage. Null when
+  // there is no real wage, or when either input is non-finite/non-positive —
+  // a cleared field parses to NaN, and `NaN <= 0` is false (design §4).
+  const splhHint = useMemo(
+    () =>
+      deriveSplhHint({
+        splh: settings.target_splh,
+        targetLaborPct: settings.target_labor_pct,
+        hasWageData,
+        wageCents: avgHourlyRateCents,
+      }),
+    [avgHourlyRateCents, hasWageData, settings.target_splh, settings.target_labor_pct],
+  );
 
   const minCrew = useMemo(() => settings.min_crew ?? {}, [settings.min_crew]);
   const crewPositions = Object.keys(minCrew);
@@ -122,6 +144,19 @@ export const StaffingConfigPanel = memo(function StaffingConfigPanel({
               Your actual: ${actualSplh}/hr{' '}
               <span className="text-muted-foreground/50">(last {lookbackWeeks} wks)</span>
             </span>
+          )}
+          {splhHint && (
+            <div aria-live="polite" className="flex flex-col gap-0.5 max-w-[220px]">
+              <span className={`text-[11px] ${splhHint.overTarget ? 'text-warning' : 'text-muted-foreground/80'}`}>
+                ≈ {splhHint.pct.toFixed(0)}% labor at current wage
+                {splhHint.overTarget && (
+                  <> — above your {settings.target_labor_pct}% target, try ${Math.round(splhHint.consistent)}</>
+                )}
+              </span>
+              <span className="text-[11px] text-muted-foreground/70">
+                Lower SPLH → more staff recommended.
+              </span>
+            </div>
           )}
         </div>
         <div className="flex flex-col gap-1">

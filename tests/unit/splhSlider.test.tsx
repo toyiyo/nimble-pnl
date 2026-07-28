@@ -9,6 +9,7 @@ const BASE_PROPS = {
   value: 50,
   wage: 15,
   targetLaborPct: 25,
+  hasWageData: true,
   canSave: true,
   isSaving: false,
   onChange: vi.fn(),
@@ -102,5 +103,23 @@ describe('SplhSlider', () => {
     renderSlider();
     const slider = screen.getByRole('slider', { name: 'Sales per labor hour target, in dollars' });
     expect(slider.getAttribute('aria-valuetext')).toMatch(/30(\.0)?%/);
+  });
+});
+
+describe('SplhSlider without wage data', () => {
+  it('should hide the pill and notch and show a prompt instead of a fabricated labor %', () => {
+    renderSlider({ value: 60, targetLaborPct: 22, hasWageData: false });
+    expect(screen.queryByTestId('splh-slider-pill')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('splh-slider-notch')).not.toBeInTheDocument();
+    expect(screen.getByText('Add hourly rates')).toBeInTheDocument();
+    expect(screen.queryByText(/% labor at/)).not.toBeInTheDocument();
+  });
+
+  it('should keep the fabricated percentage out of aria-valuetext', () => {
+    renderSlider({ value: 60, targetLaborPct: 22, hasWageData: false });
+    expect(screen.getByRole('slider', { name: 'Sales per labor hour target, in dollars' })).toHaveAttribute(
+      'aria-valuetext',
+      '$60/hr',
+    );
   });
 });

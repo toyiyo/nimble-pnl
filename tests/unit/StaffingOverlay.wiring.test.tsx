@@ -20,9 +20,13 @@ vi.mock('@/components/scheduling/ShiftPlanner/SuggestedShifts', () => ({
   },
 }));
 
-// StaffingConfigPanel: stub
+// StaffingConfigPanel: stub, capturing props to assert wiring
+const configPanelProps: Array<Record<string, unknown>> = [];
 vi.mock('@/components/scheduling/ShiftPlanner/StaffingConfigPanel', () => ({
-  StaffingConfigPanel: () => <div data-testid="config-panel" />,
+  StaffingConfigPanel: (props: Record<string, unknown>) => {
+    configPanelProps.push(props);
+    return <div data-testid="config-panel" />;
+  },
 }));
 
 // StaffingDayColumn: stub
@@ -116,6 +120,7 @@ const expandPanel = () =>
 describe('<StaffingOverlay> wiring', () => {
   beforeEach(() => {
     suggestedShiftsProps.length = 0;
+    configPanelProps.length = 0;
     vi.clearAllMocks();
 
     // Default: queries return real-looking data with no loading
@@ -203,5 +208,21 @@ describe('<StaffingOverlay> wiring', () => {
     );
     expandPanel();
     expect(screen.getByTestId('config-panel')).toBeTruthy();
+  });
+
+  it('passes avgHourlyRateCents and hasWageData through to StaffingConfigPanel', () => {
+    render(
+      <StaffingOverlay restaurantId="r1" weekDays={WEEK_DAYS} />,
+      { wrapper },
+    );
+    expandPanel();
+    expect(configPanelProps.length).toBeGreaterThan(0);
+    const lastProps = configPanelProps[configPanelProps.length - 1];
+    // useEmployees is mocked to return no employees, so the hook falls back
+    // to the DEFAULT_HOURLY_RATE_CENTS ($15/hr) with hasWageData=false —
+    // asserting these reach the panel confirms the wiring, not the math
+    // (that's staffingCalculator.test.ts's job).
+    expect(lastProps.avgHourlyRateCents).toBe(1500);
+    expect(lastProps.hasWageData).toBe(false);
   });
 });

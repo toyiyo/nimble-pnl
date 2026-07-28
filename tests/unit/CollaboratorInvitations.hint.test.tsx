@@ -114,6 +114,22 @@ describe('CollaboratorInvitations – accountless-employee inform hint', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('disables Send while the members query is still loading, so a duplicate invite cannot be sent before the block/hint can land', async () => {
+    mockUseRestaurantMembers.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    mockUseAccountlessEmployees.mockReturnValue({ data: [], isLoading: false, isError: false });
+
+    const user = userEvent.setup();
+    renderInvitations();
+    await pickAccountantPreset(user);
+    await user.type(screen.getByLabelText(/email address/i), 'book@cpa.example');
+
+    const send = screen.getByRole('button', { name: /send invite/i });
+    expect(send).toBeDisabled();
+
+    await user.click(send);
+    expect(mockSendMutate).not.toHaveBeenCalled();
+  });
+
   it('shows the inform hint, keeps Send enabled, and includes employeeId in the mutation for an accountless-only match', async () => {
     mockUseRestaurantMembers.mockReturnValue({ data: [], isLoading: false, isError: false });
     mockUseAccountlessEmployees.mockReturnValue({

@@ -71,6 +71,11 @@
     --labor-over: 0 72% 42%;        /* red — labor cost is over target */
     --labor-under: 32 90% 34%;      /* amber — labor cost is under target */
     --labor-balanced: 142 50% 32%;  /* green — labor cost is on target */
+
+    /* Personal-view (Admin ↔ My Work) slate accent */
+    --personal-view: 214 32% 91%;
+    --personal-view-foreground: 215 25% 27%;
+    --personal-view-border: 214 20% 78%;
   }
 
   .dark {
@@ -136,6 +141,11 @@
     --labor-over: 0 72% 62%;
     --labor-under: 32 92% 62%;
     --labor-balanced: 142 50% 58%;
+
+    /* Personal-view (Admin ↔ My Work) slate accent */
+    --personal-view: 215 25% 20%;
+    --personal-view-foreground: 214 32% 84%;
+    --personal-view-border: 215 20% 32%;
   }
 }
 

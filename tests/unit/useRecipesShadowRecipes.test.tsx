@@ -15,10 +15,16 @@ vi.mock('@/hooks/useAuth', () => ({
   useAuth: () => ({ user: authUser }),
 }));
 
-// Configurable per-test responses
+// Configurable per-test responses. Query shapes below mirror the bulk
+// fetchRecipes implementation (design doc §3, Q1/Q2/Q3/Q4/Q5): every list
+// query is paginated via a terminal `.range()`, and recipe_ingredients (Q3)
+// is fetched with `.in('recipe_id', chunk)` rather than one query per recipe.
 let recipesResponse: { data: unknown[] | null; error: unknown };
 let prepLinksResponse: { data: unknown[] | null; error: unknown };
 let prepLinkSingleResponse: { data: unknown | null; error: unknown };
+let productsResponse: { data: unknown[] | null; error: unknown };
+let ingredientsResponse: { data: unknown[] | null; error: unknown };
+let salesStatsResponse: { data: unknown[] | null; error: unknown };
 const recipesUpdateMock = vi.fn().mockReturnValue({
   eq: vi.fn().mockResolvedValue({ error: null }),
 });
@@ -28,29 +34,59 @@ vi.mock('@/integrations/supabase/client', () => ({
     from: vi.fn((table: string) => {
       if (table === 'recipes') {
         return {
-          // fetch chain: .select().eq().eq().order()
+          // Q1: .select(cols).eq('restaurant_id').eq('is_active', true).order('name').order('id').range(from, to)
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockReturnValue({
               eq: vi.fn().mockReturnValue({
-                order: vi.fn().mockImplementation(() => Promise.resolve(recipesResponse)),
+                order: vi.fn().mockReturnValue({
+                  order: vi.fn().mockImplementation(() => ({
+                    range: vi.fn().mockImplementation(() => Promise.resolve(recipesResponse)),
+                  })),
+                }),
               }),
             }),
           }),
-          // deleteRecipe chain: .update().eq()
+          // deleteRecipe chain: .update({ is_active: false }).eq(id)
           update: recipesUpdateMock,
         };
       }
       if (table === 'prep_recipes') {
         return {
           select: vi.fn().mockReturnValue({
-            // fetch chain: .select('recipe_id').eq().not()
-            // deleteRecipe guard chain: .select('name').eq('recipe_id', id).eq('restaurant_id', restaurantId).limit().maybeSingle()
-            eq: vi.fn().mockReturnValue({
-              not: vi.fn().mockImplementation(() => Promise.resolve(prepLinksResponse)),
-              eq: vi.fn().mockReturnValue({
-                limit: vi.fn().mockReturnValue({
-                  maybeSingle: vi.fn().mockImplementation(() => Promise.resolve(prepLinkSingleResponse)),
+            // Routed by which column the first .eq() call targets, matching
+            // the two real call sites: Q2's fetch chain starts with
+            // .eq('restaurant_id', ...); deleteRecipe's guard chain starts
+            // with .eq('recipe_id', ...).
+            eq: vi.fn().mockImplementation((column: string) => {
+              if (column === 'restaurant_id') {
+                // Q2: .eq('restaurant_id', id).not('recipe_id', 'is', null).order('id').range(from, to)
+                return {
+                  not: vi.fn().mockReturnValue({
+                    order: vi.fn().mockReturnValue({
+                      range: vi.fn().mockImplementation(() => Promise.resolve(prepLinksResponse)),
+                    }),
+                  }),
+                };
+              }
+              // deleteRecipe guard: .eq('recipe_id', id).eq('restaurant_id', restaurantId).limit(1).maybeSingle()
+              return {
+                eq: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockReturnValue({
+                    maybeSingle: vi.fn().mockImplementation(() => Promise.resolve(prepLinkSingleResponse)),
+                  }),
                 }),
+              };
+            }),
+          }),
+        };
+      }
+      if (table === 'products') {
+        return {
+          // Q4: .select(cols).eq('restaurant_id').order('id').range(from, to)
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn().mockReturnValue({
+                range: vi.fn().mockImplementation(() => Promise.resolve(productsResponse)),
               }),
             }),
           }),
@@ -58,12 +94,19 @@ vi.mock('@/integrations/supabase/client', () => ({
       }
       if (table === 'recipe_ingredients') {
         return {
+          // Q3: .select(cols).in('recipe_id', chunk).order('recipe_id').order('id').range(from, to)
           select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockResolvedValue({ data: [], error: null }),
+            in: vi.fn().mockReturnValue({
+              order: vi.fn().mockReturnValue({
+                order: vi.fn().mockReturnValue({
+                  range: vi.fn().mockImplementation(() => Promise.resolve(ingredientsResponse)),
+                }),
+              }),
+            }),
           }),
         };
       }
-      // unified_sales & anything else: benign empty result
+      // Anything else: benign empty result
       return {
         select: vi.fn().mockReturnValue({
           eq: vi.fn().mockReturnValue({
@@ -74,6 +117,10 @@ vi.mock('@/integrations/supabase/client', () => ({
         }),
       };
     }),
+    // Q5: .rpc('get_recipe_sales_stats', { p_restaurant_id }).range(from, to)
+    rpc: vi.fn().mockReturnValue({
+      range: vi.fn().mockImplementation(() => Promise.resolve(salesStatsResponse)),
+    }),
     channel: vi.fn().mockReturnValue({
       on: vi.fn().mockReturnThis(),
       subscribe: vi.fn().mockReturnThis(),
@@ -83,6 +130,7 @@ vi.mock('@/integrations/supabase/client', () => ({
 }));
 
 import { useRecipes } from '@/hooks/useRecipes';
+import { createQueryWrapper } from './helpers/queryWrapper';
 
 const makeRecipe = (id: string, name: string) => ({
   id,
@@ -93,14 +141,19 @@ const makeRecipe = (id: string, name: string) => ({
   is_active: true,
   created_at: '',
   updated_at: '',
-  ingredients: [],
 });
 
+let wrapper: ReturnType<typeof createQueryWrapper>['wrapper'];
+
 beforeEach(() => {
+  ({ wrapper } = createQueryWrapper());
   vi.clearAllMocks();
   recipesResponse = { data: [], error: null };
   prepLinksResponse = { data: [], error: null };
   prepLinkSingleResponse = { data: null, error: null };
+  productsResponse = { data: [], error: null };
+  ingredientsResponse = { data: [], error: null };
+  salesStatsResponse = { data: [], error: null };
 });
 
 describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
@@ -111,7 +164,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
     };
     prepLinksResponse = { data: [{ recipe_id: 'r-shadow' }], error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.recipes.map((r) => r.id)).toEqual(['r-menu']);
@@ -124,7 +177,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
     };
     prepLinksResponse = { data: null, error: { message: 'prep_recipes unavailable' } };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.recipes).toEqual([]);
@@ -142,7 +195,7 @@ describe('useRecipes shadow-recipe filtering (fetchRecipes)', () => {
 
     const { result, rerender } = renderHook(
       ({ restaurantId }: { restaurantId: string }) => useRecipes(restaurantId),
-      { initialProps: { restaurantId: 'rest-1' } }
+      { wrapper, initialProps: { restaurantId: 'rest-1' } }
     );
 
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -165,7 +218,7 @@ describe('useRecipes shadow-recipe guard (deleteRecipe)', () => {
   it('CRITICAL: blocks deleting a prep-linked recipe: destructive toast, returns false, no update', async () => {
     prepLinkSingleResponse = { data: { name: 'Sweet Cream - pans' }, error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     let deleted: boolean | undefined;
@@ -186,7 +239,7 @@ describe('useRecipes shadow-recipe guard (deleteRecipe)', () => {
   it('still soft-deletes a normal recipe', async () => {
     prepLinkSingleResponse = { data: null, error: null };
 
-    const { result } = renderHook(() => useRecipes('rest-1'));
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     let deleted: boolean | undefined;

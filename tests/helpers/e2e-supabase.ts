@@ -667,7 +667,11 @@ export async function fillHours(page: Page, employeeName: string, hours: string)
  */
 export const generateTestUser = (prefix: string = 'test') => {
   const ts = Date.now();
-  const random = Math.random().toString(36).slice(2, 6);
+  // crypto.randomUUID() rather than Math.random(): the returned object also
+  // carries a `password`, so CodeQL (js/insecure-randomness) taints any
+  // Math.random()-derived field here as randomness in a security context.
+  // The suffix only needs to make emails unique, but a CSPRNG costs nothing.
+  const random = crypto.randomUUID().slice(0, 8);
   return {
     email: `${prefix}-${ts}-${random}@test.com`,
     password: 'TestPassword123!',

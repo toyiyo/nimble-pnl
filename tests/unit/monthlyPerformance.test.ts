@@ -182,7 +182,10 @@ describe('calculateMonthlyPerformance — costs', () => {
     );
     expect(result.actualLaborCents).toBe(3295900);
     expect(result.pendingLaborCents).toBe(1652800);
-    expect(result.laborIncludingPendingCents).toBe(4948700);
+    // accrued basis wins when pending > 0: labor for P&L is the accrued figure,
+    // NOT actual + pending (the old double-count returned 4948700).
+    expect(result.laborBasis).toBe('accrued');
+    expect(result.laborForPnlCents).toBe(1652800);
   });
 
   it('computes other expenses as actualExpenses - cogs - actualLabor (no pending labor)', () => {
@@ -221,14 +224,27 @@ describe('calculateMonthlyPerformance — costs', () => {
     expect(result.otherExpensesCents).toBe(0);
   });
 
-  it('computes projectedExpenses as actualExpenses + pendingLabor', () => {
+  it('accrualExpenses substitutes basis labor for paid labor (no add-on double-count)', () => {
     const result = calculateMonthlyPerformance(
       makeInput({
-        expenses: { totalExpenses: 111220, foodCost: 0, actualLaborCost: 0 },
+        expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
         pendingLabor: 16528,
       })
     );
-    expect(result.projectedExpensesCents).toBe(11122000 + 1652800);
+    // actualExpenses - actualLabor + accruedLabor = 111220 - 32959 + 16528
+    expect(result.accrualExpensesCents).toBe(11122000 - 3295900 + 1652800);
+  });
+
+  it('accrualExpenses equals actualExpenses exactly under the paid basis (pending 0)', () => {
+    const result = calculateMonthlyPerformance(
+      makeInput({
+        expenses: { totalExpenses: 111220, foodCost: 25562, actualLaborCost: 32959 },
+        pendingLabor: 0,
+      })
+    );
+    expect(result.laborBasis).toBe('paid');
+    expect(result.laborForPnlCents).toBe(3295900);
+    expect(result.accrualExpensesCents).toBe(result.actualExpensesCents);
   });
 });
 
@@ -246,18 +262,19 @@ describe('calculateMonthlyPerformance — profit', () => {
     expect(result.actualNetProfitCents).toBe(7301900 - 11122000); // -3,820,100
   });
 
-  it('projectedNetProfit = netRevenue - projectedExpenses (subtracts pending labor)', () => {
+  it('accrualNetProfit = netRevenue - accrualExpenses (substitutes, not adds, labor)', () => {
     const result = calculateMonthlyPerformance(
       makeInput({
         revenue: {
           grossRevenue: 0, discounts: 0, netRevenue: 73019,
           salesTax: 0, tips: 0, otherLiabilities: 0, totalCollectedAtPos: 0,
         },
-        expenses: { totalExpenses: 111220, foodCost: 0, actualLaborCost: 0 },
+        expenses: { totalExpenses: 111220, foodCost: 0, actualLaborCost: 32959 },
         pendingLabor: 16528,
       })
     );
-    expect(result.projectedNetProfitCents).toBe(7301900 - 11122000 - 1652800); // -5,472,900
+    const accrualExpenses = 11122000 - 3295900 + 1652800;
+    expect(result.accrualNetProfitCents).toBe(7301900 - accrualExpenses);
   });
 
   it('projectedNetProfit equals actualNetProfit when pendingLabor is 0', () => {
@@ -271,7 +288,7 @@ describe('calculateMonthlyPerformance — profit', () => {
         pendingLabor: 0,
       })
     );
-    expect(result.actualNetProfitCents).toBe(result.projectedNetProfitCents);
+    expect(result.actualNetProfitCents).toBe(result.accrualNetProfitCents);
   });
 });
 
@@ -374,14 +391,14 @@ describe('calculateMonthlyPerformance — April 2026 fixture (regression anchor)
     expect(result.otherLiabilitiesCents).toBe(0);
     expect(result.passThroughTotalCents).toBe(0);
     expect(result.cogsCents).toBe(2556200);
+    expect(result.laborBasis).toBe('accrued');
+    expect(result.laborForPnlCents).toBe(1652800);       // accrued only, not 4948700
     expect(result.actualLaborCents).toBe(3295900);
     expect(result.pendingLaborCents).toBe(1652800);
-    expect(result.laborIncludingPendingCents).toBe(4948700);
-    expect(result.actualExpensesCents).toBe(11122000);
-    expect(result.projectedExpensesCents).toBe(12774800);
+    expect(result.accrualExpensesCents).toBe(11122000 - 3295900 + 1652800); // 9479100
     expect(result.otherExpensesCents).toBe(5269900);
-    expect(result.actualNetProfitCents).toBe(-3820100);   // loss: -$38,201
-    expect(result.projectedNetProfitCents).toBe(-5472900); // loss: -$54,729
+    expect(result.actualNetProfitCents).toBe(-3820100);   // cash basis unchanged
+    expect(result.accrualNetProfitCents).toBe(7301900 - (11122000 - 3295900 + 1652800)); // -2177200
     expect(result.posCollectedFromBreakdownCents).toBe(7445800); // gross only — no pass-through this fixture
     expect(result.posReconciliationDeltaCents).toBeNull();
   });

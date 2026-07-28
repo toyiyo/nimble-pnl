@@ -151,6 +151,31 @@ If `git stash push` reports "No local changes to save," skip step 3's `git stash
 
 **Skip condition:** None. Every task gets at least a brief design pass.
 
+### MANDATORY: cite `file:line` for every claim about existing code
+
+Any statement the design doc makes about how the **current** codebase
+behaves — "the dialog already lets the user switch modes", "this hook
+already debounces", "the RPC already checks `auth.uid()`" — MUST carry a
+`path/to/file.ts:123` citation.
+
+**Why:** claims about code you are *not* changing are invisible to every
+downstream check. Tests verify that what you built matches the spec; they
+cannot tell you the spec's premises were false, and nobody writes a test
+for behaviour they believe already exists. A false premise therefore
+passes build, review, unit tests and E2E untouched.
+
+This happened: a design asserted a dialog "still lets the user switch to
+reconcile". It did not — the prop was read-only and the alternate mode was
+unreachable dead code. Five specialist reviewers, a Codex adversarial pass
+and two CodeRabbit runs all validated the diff *against that document* and
+found nothing. The bug reached the PR.
+
+The rule is cheap because **the act of looking up the line number is what
+exposes the falsehood.** Write the claim, go find its line, and either cite
+it or discover you were wrong.
+
+Uncited claims about existing behaviour are a Phase 2.5 blocker.
+
 ## Phase 2.5: Design Review
 
 **Trigger:** Runs immediately after the design doc is committed (end of
@@ -194,10 +219,29 @@ passing the design doc path. Prompts live at:
   performance (virtualization, memoization, single-dialog pattern,
   React Query staleTime), shadcn idioms, routing, form ergonomics.
 
+#### Premise check (BOTH reviewers, non-skippable)
+
+Before reviewing anything else, each reviewer verifies the design's claims
+about **existing** code:
+
+1. Extract every statement the doc makes about how the current codebase
+   behaves.
+2. **Uncited claim** (no `file:line`) → report as `critical`. The author
+   must cite it or remove it.
+3. **Cited claim** → open the cited file and confirm it actually says that.
+   A claim contradicted by the code is `critical`.
+
+Do not accept a claim because it is plausible or because the rest of the
+design depends on it — a design whose foundation is false is exactly the
+case this check exists to catch. This runs even when the reviewer would
+otherwise be skipped for its domain.
+
 ### Skip conditions
 
 - **Supabase reviewer:** Skipped only when the design touches no
   DB/edge-function/SQL surface (keyword-based). When ambiguous, run it.
+- **Premise check:** Never skipped. If both domain reviewers are skipped,
+  still run one of them for the premise check alone.
 - **Frontend reviewer:** Skipped only when no UI/component surface is
   touched. When ambiguous, run it.
 - **Both skipped** when the task is a workflow- or doc-only change
@@ -396,12 +440,37 @@ npm i -g @openai/codex && codex login
 3. Classify each:
    - **Actionable bug / security / correctness** → Fix it. Commit:
      `fix(review): <area> — addresses <reviewer> finding`.
-   - **Style / nit** → Skip (CodeRabbit Phase 7c catches these).
-   - **False positive** → Note in retrospective; skip.
+   - **Trivially safe minor** (one-line, mechanical, no behaviour change)
+     → Fix it in the same commit.
+   - **Everything else not fixed** → Return it in `deferred[]` with a
+     reason. It gets listed in the PR body under
+     "Known deferred review findings".
 4. After fixes commit, **re-invoke any reviewer that flagged a fixed
    issue** to confirm the fix resolved it.
 
-`minor` findings are deferred to CodeRabbit and/or the retrospective.
+**Never discard a finding silently.** "CodeRabbit will catch it in 7c" is
+not a valid reason to drop one — 7c reviews a different surface and misses
+them regularly. This is not hypothetical: three `minor` ocr-rules findings
+were dropped here on that assumption, local CodeRabbit never saw them, and
+the CodeRabbit *GitHub bot* re-flagged the identical lines after the PR was
+already open. Anything absent from both the fixes and `deferred[]` is lost.
+
+### 7d — Re-review of post-snapshot code
+
+The Phase 7a diff is captured **once**, so 7b/7c fixes and any later edits
+would otherwise ship having never been reviewed by anyone.
+
+1. Diff `<7a snapshot SHA>..HEAD`. If empty, skip this step.
+2. Re-run the five reviewers against **only** that diff.
+3. Fold the results with the same rules as 7b (fix critical/major, fix
+   trivially-safe minors, `deferred[]` for the rest).
+
+Exactly **one** extra pass — it is a safety net, not a loop.
+
+Why it exists: on the tap-to-count PR the single riskiest change (a mode
+toggle altering inventory-write semantics in a dialog shared by four call
+sites) was written after the snapshot. No reviewer ever saw it; reviewing it
+after the fact found a real major a11y defect and a real minor logic bug.
 
 ### 7c — CodeRabbit local CLI (final gate)
 
@@ -638,15 +707,33 @@ Do not narrow the filter to one bot. Codex, Copilot, CodeRabbit, and humans
 all post under different logins and at different layers (inline vs issue vs
 review). Print all three lists. Skim every row.
 
-**Step 3 — Classify and act on each row:**
+**Step 3 — Reply to every finding, then classify and act:**
 
-- **Bug / security / correctness / contract drift** → Fix it. Commit with
-  a message that names the source (`fix(...): coerce X (CodeRabbit #PR)`).
-  After commit, loop back to 9b (push triggers fresh CI).
-- **Refactor / suggestion** → Decide: implement OR reply on the PR with a
-  short reason for declining. Use `gh api -X POST repos/$OWNER_REPO/pulls/$PR/reviews -f event=COMMENT -f body=...` for a top-level reply, or `gh pr comment` for an issue-level reply. **Silent skipping is not allowed.**
-- **Nit / informational** → Read it, decide it's a nit, move on. Reading is
-  mandatory; acting is not.
+Every inline finding gets a **threaded verdict reply on the PR**. A fix is an
+`agreed` reply naming the commit — it is not a substitute for replying. The
+reasoning must live on the PR, not only in a local artifact:
+
+```bash
+node dev-tools/pr-triage.js list --pr <PR>     # unanswered findings + their comment ids
+node dev-tools/pr-triage.js reply --pr <PR> --comment <id> \
+  --verdict agreed --commit <sha> --rationale "what changed and why"
+# CHANGES_REQUESTED reviews have no thread — answer them by reviewer login:
+node dev-tools/pr-triage.js reply --pr <PR> --review <reviewer-login> \
+  --verdict pushed-back --rationale "why we disagree"
+```
+
+**Push before you reply.** An `agreed` reply must cite a commit that is already
+on the PR — `audit` verifies the SHA against the PR's commit list, so a reply
+written before pushing will fail the gate.
+
+- **Bug / security / correctness / contract drift** → Fix it, commit naming the
+  source, then reply `--verdict agreed --commit <sha>`.
+- **Refactor / suggestion you are not taking** → reply `--verdict pushed-back`
+  with the reason (e.g. it contradicts a documented CLAUDE.md convention).
+- **Nit / informational** → reply `--verdict ignored` with one line on why.
+
+`node dev-tools/pr-triage.js audit --pr <PR>` must exit 0 before 9e. The
+`pr-comment-response` check enforces the same rule in CI.
 
 **Red-flag thoughts that mean STOP and re-run 9d:**
 
@@ -668,6 +755,8 @@ in the current transcript, against the latest pushed commit, and no
 context compaction has dropped them. If compaction has happened or the
 commands ran before the most recent push, re-run them.
 
+- `node dev-tools/pr-triage.js audit --pr <PR>` exits 0 — every finding from a
+  bot or a human carries a verdict reply visible on the PR.
 - `gh pr checks <PR>` shows all checks passing, against the latest
   commit, in the current 9a–9e execution window.
 - SonarCloud quality gate query returned PASS (coverage ≥80% on new
@@ -787,6 +876,6 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |
 | 9c Iteration limits | — | Informational only |
-| 9d Comment triage | `dev-tools/refresh-queue.sh` + `gh api .../comments` + `gh pr view --json reviews` | Never — green CI does NOT exempt |
+| 9d Comment triage | `dev-tools/pr-triage.js list/reply` + `audit` exits 0 + `gh api .../comments` | Never — green CI does NOT exempt |
 | 9e Done | All checks ✓, SonarCloud ✓, 9d triage transcript visible | Never |
 | 10. Retrospective | Write to `memory/lessons.md` | No corrections occurred |

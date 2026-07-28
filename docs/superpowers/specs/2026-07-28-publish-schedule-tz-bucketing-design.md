@@ -221,7 +221,7 @@ spec is testing broadcast, not the boundary.
 ### pgTAP — `supabase/tests/publish_schedule_tz_bucketing.test.sql`
 
 **Date anchoring.** The anchor is the next Monday computed from `CURRENT_DATE`
-(`CURRENT_DATE + (7 - (EXTRACT(ISODOW FROM CURRENT_DATE)::int - 1))`), never a
+(`CURRENT_DATE + (8 - EXTRACT(ISODOW FROM CURRENT_DATE)::int)`), never a
 literal date — the 2026-04-21 lesson. Shift instants are built by converting a
 local wall-clock into an instant, `(<local timestamp>) AT TIME ZONE
 'America/Chicago'`, rather than hardcoding a UTC offset, so the fixtures stay

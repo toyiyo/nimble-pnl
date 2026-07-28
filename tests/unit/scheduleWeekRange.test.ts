@@ -1,6 +1,6 @@
 import React, { ReactNode } from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { endOfWeek } from 'date-fns';
 
@@ -16,6 +16,7 @@ const mockToast = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }));
 
 import { useOpenShifts } from '@/hooks/useOpenShifts';
+import { usePublishSchedule, useUnpublishSchedule } from '@/hooks/useSchedulePublish';
 
 /**
  * The week of Mon 2026-07-27. `new Date(y, m, d)` yields local midnight on that
@@ -60,5 +61,51 @@ describe('week range serialization', () => {
     // Explicit regression guard: the reported bug produced the following Monday.
     const { p_week_end } = mockSupabase.rpc.mock.calls[0][1];
     expect(p_week_end).not.toBe('2026-08-03');
+  });
+
+  it('usePublishSchedule sends a Mon..Sun range, not Mon..Mon', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 'pub-1', error: null });
+    mockSupabase.functions.invoke.mockResolvedValue({ data: {}, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => usePublishSchedule(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('publish_schedule', {
+      p_restaurant_id: 'r1',
+      p_week_start: '2026-07-27',
+      p_week_end: '2026-08-02',
+      p_notes: null,
+    });
+
+    // The notification payload must carry the same corrected range — the edge
+    // function re-derives its own shift boundary from it (see Task 5).
+    expect(mockSupabase.functions.invoke).toHaveBeenCalledWith(
+      'notify-schedule-published',
+      expect.objectContaining({
+        body: expect.objectContaining({ weekStart: '2026-07-27', weekEnd: '2026-08-02' }),
+      }),
+    );
+  });
+
+  it('useUnpublishSchedule sends a Mon..Sun range, not Mon..Mon', async () => {
+    mockSupabase.rpc.mockResolvedValue({ data: 3, error: null });
+    const { weekStart, weekEnd } = makeWeek();
+
+    const { result } = renderHook(() => useUnpublishSchedule(), { wrapper: createWrapper() });
+
+    await act(async () => {
+      await result.current.mutateAsync({ restaurantId: 'r1', weekStart, weekEnd });
+    });
+
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('unpublish_schedule', {
+      p_restaurant_id: 'r1',
+      p_week_start: '2026-07-27',
+      p_week_end: '2026-08-02',
+      p_reason: null,
+    });
   });
 });

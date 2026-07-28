@@ -20,7 +20,7 @@ import { BulkInventoryDeductionDialog } from '@/components/BulkInventoryDeductio
 import { ProductUpdateSheet } from '@/components/ProductUpdateDialog';
 import { useAutomaticInventoryDeduction } from '@/hooks/useAutomaticInventoryDeduction';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { useUnifiedSales } from '@/hooks/useUnifiedSales';
+import { useUnmappedSaleItems } from '@/hooks/useUnmappedSaleItems';
 import {
   MemoizedRecipeCard,
   MemoizedRecipeRow,
@@ -42,7 +42,7 @@ export default function Recipes() {
   const { selectedRestaurant, setSelectedRestaurant, restaurants, loading: restaurantsLoading, createRestaurant, canCreateRestaurant } = useRestaurantContext();
   const { recipes, loading, isError, fetchRecipes, fetchRecipeIngredients } = useRecipes(selectedRestaurant?.restaurant_id || null);
   const { products, updateProductWithQuantity } = useProducts(selectedRestaurant?.restaurant_id || null);
-  const { unmappedItems } = useUnifiedSales(selectedRestaurant?.restaurant_id || null);
+  const { unmappedItems } = useUnmappedSaleItems(selectedRestaurant?.restaurant_id || null);
   const [searchTerm, setSearchTerm] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState<any>(null);

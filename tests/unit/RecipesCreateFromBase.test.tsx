@@ -36,7 +36,7 @@ vi.mock("@/hooks/useRecipes", () => ({
   }),
 }));
 vi.mock("@/hooks/useProducts", () => ({ useProducts: () => ({ products: [] }) }));
-vi.mock("@/hooks/useUnifiedSales", () => ({ useUnifiedSales: () => ({ unmappedItems: [] }) }));
+vi.mock("@/hooks/useUnmappedSaleItems", () => ({ useUnmappedSaleItems: () => ({ unmappedItems: [] }) }));
 vi.mock("@/hooks/useAutomaticInventoryDeduction", () => ({ useAutomaticInventoryDeduction: () => ({ setupAutoDeduction: vi.fn() }) }));
 // The Recipes header renders <BulkInventoryDeductionDialog />, whose hook now
 // calls useQueryClient(); this test renders the page without a

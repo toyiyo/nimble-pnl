@@ -140,7 +140,7 @@ Only drifted rows go into **one** `upsert`. Heal writes are subject to the exist
 
 `useQuery` with `queryKey: ['recipes', restaurantId]`, `staleTime: 30000`, `enabled: !!restaurantId && !!user` (house style, `lessons.md:155`).
 
-**`useRecipes` is mounted at four independent points** — `Recipes.tsx:44`, twice in `RecipeDialog.tsx:73` (create + edit), `MapPOSItemDialog.tsx:36` — and all four mutations (`createRecipe`, `updateRecipe`, `deleteRecipe`, `updateRecipeIngredients`) currently write via local `setRecipes(prev => ...)` (`:175-386`). Once data comes from `useQuery`, those `setRecipes` calls have nothing to write to, and a naive swap silently breaks create/edit/delete — the page's primary CTA.
+**`useRecipes` is mounted at six independent points** — `Recipes.tsx:45`, `POSSales.tsx:145`, `MapPOSItemDialog.tsx:36`, `RecipeDialog.tsx:73`, `POSSaleDialog.tsx:85`, `DeleteRecipeDialog.tsx:22` (this design originally said four; the extra two were found while implementing) — and all four mutations (`createRecipe`, `updateRecipe`, `deleteRecipe`, `updateRecipeIngredients`) currently write via local `setRecipes(prev => ...)` (`:175-386`). Once data comes from `useQuery`, those `setRecipes` calls have nothing to write to, and a naive swap silently breaks create/edit/delete — the page's primary CTA.
 
 **Required:** all four call sites share the same `queryKey`; every mutation becomes a `useMutation` whose `onSuccess` calls `queryClient.invalidateQueries({ queryKey: ['recipes', restaurantId] })`. No local `setRecipes`. The hook keeps its existing public function signatures so callers don't change.
 
@@ -154,6 +154,8 @@ create index concurrently if not exists idx_unified_sales_restaurant_item_name
 ```
 Partial, matching the RPC's predicate, excluding noise rows (Russo's has 10,857 "Sales Tax" rows). **Ships in a dedicated migration file containing only this statement** — `CONCURRENTLY` cannot run in a transaction block, and repo precedent (5 prior migrations) is strictly one such statement per file.
 
+**As built: the `where unit_price is not null` predicate was dropped.** §3.11's `get_unmapped_sale_item_names` keys on the same `(restaurant_id, item_name)` pair but has no `unit_price` filter, so a partial index is unusable to it. Partiality bought the stats RPC only a smaller index — it reads `total_price` and `quantity` from the heap regardless, so it was never index-only — and one shared index costs less on write than two overlapping ones.
+
 ### 3.10 Render-path fixes (cheap, same critical path)
 - **Memoize `filteredRecipes`** (`Recipes.tsx:155`) — it is a fresh array every render, which defeats the `useMemo`s at `:160` and `:164` that depend on it.
 - **Conditionally render mobile vs desktop** instead of `block md:hidden` / `hidden md:block` (`:639`, `:712`). Tailwind hides via CSS only, so both trees mount — 133 recipes render ~266 row components.
@@ -162,6 +164,8 @@ Partial, matching the RPC's predicate, excluding noise rows (Russo's has 10,857 
 
 ### 3.11 Suggestions banner — stop the redundant fetch
 Replace `useUnifiedSales(restaurantId)` on this page with a lightweight query for distinct unmapped item names. Removes a 500-row + two-join fetch *and* a duplicate `['recipes-for-mapping']` recipes query from the critical path. Contained to `Recipes.tsx`; `useUnifiedSales` itself is untouched so POSSales is unaffected.
+
+**As built:** a `SECURITY INVOKER` RPC, `get_unmapped_sale_item_names(p_restaurant_id, p_limit default 200)`, behind `useUnmappedSaleItems`. Fetching every `unified_sales.item_name` to diff client-side is unbounded, so the diff moves server-side. The RPC mirrors the TS it replaces exactly — `lower()` on both sides with **no** trimming (`recipeMapping.ts:68-91`), no `is_active` filter on recipes, `parent_sale_id IS NULL` — so the banner's contents don't shift in a perf change. `p_limit` keeps the response far below the PostgREST 1000-row cap; the banner shows five names and a count, and that count was already an approximation off a single 500-row sales page.
 
 ### 3.12 List virtualization
 

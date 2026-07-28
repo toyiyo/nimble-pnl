@@ -10635,6 +10635,12 @@ export type Database = {
           voids: number
         }[]
       }
+      get_unmapped_sale_item_names: {
+        Args: { p_limit?: number; p_restaurant_id: string }
+        Returns: {
+          item_name: string
+        }[]
+      }
       get_users_by_ids: {
         Args: { user_ids: string[] }
         Returns: {

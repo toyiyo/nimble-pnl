@@ -28,7 +28,7 @@ vi.mock("@/hooks/useRecipes", () => ({
   }),
 }));
 vi.mock("@/hooks/useProducts", () => ({ useProducts: () => ({ products: [] }) }));
-vi.mock("@/hooks/useUnifiedSales", () => ({ useUnifiedSales: () => ({ unmappedItems: [] }) }));
+vi.mock("@/hooks/useUnmappedSaleItems", () => ({ useUnmappedSaleItems: () => ({ unmappedItems: [] }) }));
 vi.mock("@/hooks/useAutomaticInventoryDeduction", () => ({
   useAutomaticInventoryDeduction: () => ({ setupAutoDeduction: vi.fn() }),
 }));

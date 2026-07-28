@@ -35,6 +35,12 @@ interface SplhSliderProps {
   readonly value: number;
   /** Average hourly wage across employees — drives the implied-labor readout and notch. */
   readonly wage: number;
+  /**
+   * Whether `wage` reflects real roster data (`hasHourlyWageData`). When false,
+   * `computeAvgHourlyRateCents` returned its $15/hr fallback, so every
+   * implied-labor output is suppressed rather than presented as fact.
+   */
+  readonly hasWageData: boolean;
   /** Target labor % from staffing settings — drives the pill threshold and notch label. */
   readonly targetLaborPct: number;
   /**
@@ -69,6 +75,7 @@ interface SplhSliderProps {
 export function SplhSlider({
   value,
   wage,
+  hasWageData,
   targetLaborPct,
   canSave,
   isSaving,
@@ -100,34 +107,42 @@ export function SplhSlider({
           <span className="text-[22px] font-semibold text-foreground tabular-nums leading-none">
             ${value}
           </span>
-          <span className="text-[13px] text-muted-foreground tabular-nums">
-            → {pctLabel}% labor at ${wage.toFixed(2)}/hr
-          </span>
-          <span
-            data-testid="splh-slider-pill"
-            className={cn(
-              'text-[11px] font-medium px-1.5 py-0.5 rounded-md',
-              overTarget ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success',
-            )}
-          >
-            {overTarget ? 'Over target' : 'On target'}
-          </span>
+          {hasWageData ? (
+            <>
+              <span className="text-[13px] text-muted-foreground tabular-nums">
+                → {pctLabel}% labor at ${wage.toFixed(2)}/hr
+              </span>
+              <span
+                data-testid="splh-slider-pill"
+                className={cn(
+                  'text-[11px] font-medium px-1.5 py-0.5 rounded-md',
+                  overTarget ? 'bg-destructive/15 text-destructive' : 'bg-success/15 text-success',
+                )}
+              >
+                {overTarget ? 'Over target' : 'On target'}
+              </span>
+            </>
+          ) : (
+            <span className="text-[13px] text-muted-foreground">Add hourly rates</span>
+          )}
         </div>
       </div>
 
       <div className="relative pt-4 pb-0.5">
         {/* Labor-consistent notch — display-clamped into the 25–120 track (never persisted) */}
-        <div
-          data-testid="splh-slider-notch"
-          className="absolute top-0 flex -translate-x-1/2 flex-col items-center"
-          style={{ left: `${notchPct}%` }}
-          aria-hidden="true"
-        >
-          <span className="whitespace-nowrap text-[10px] text-muted-foreground">
-            ${Math.round(consistent)} · {targetLaborPct}% labor
-          </span>
-          <span className="h-2 w-px bg-muted-foreground/60" />
-        </div>
+        {hasWageData && (
+          <div
+            data-testid="splh-slider-notch"
+            className="absolute top-0 flex -translate-x-1/2 flex-col items-center"
+            style={{ left: `${notchPct}%` }}
+            aria-hidden="true"
+          >
+            <span className="whitespace-nowrap text-[10px] text-muted-foreground">
+              ${Math.round(consistent)} · {targetLaborPct}% labor
+            </span>
+            <span className="h-2 w-px bg-muted-foreground/60" />
+          </div>
+        )}
 
         <input
           id={sliderId}
@@ -138,7 +153,7 @@ export function SplhSlider({
           value={value}
           onChange={(e) => onChange(Number(e.target.value))}
           aria-label="Sales per labor hour target, in dollars"
-          aria-valuetext={`$${value}/hr → ${pctLabel}% labor`}
+          aria-valuetext={hasWageData ? `$${value}/hr → ${pctLabel}% labor` : `$${value}/hr`}
           className="w-full accent-primary"
         />
 

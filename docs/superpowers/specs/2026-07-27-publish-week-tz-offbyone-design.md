@@ -130,53 +130,192 @@ instead of fixing them.
 
 - `formatLocalDate` for both `get_open_shifts` date params.
 
+### `src/hooks/useTemplateDeletionImpact.ts` *(added after design review)*
+
+`toDateStr` (line 21-23) is the same `toISOString().split('T')[0]` anti-pattern,
+feeding `p_week_start` / `p_week_end` of the same `get_open_shifts` RPC (lines
+55-56). Its seed is `new Date()` — a genuine instant, not a calendar-day token —
+but the intent is "today on the manager's calendar," so reading UTC fields makes
+the 28-day open-spots window start a day early whenever a US manager loads the
+page after ~7pm local. Replace `toDateStr` with `formatLocalDate`.
+
+### `supabase/functions/notify-schedule-published/index.ts` *(added after design review — REQUIRED)*
+
+**This fix is not optional: narrowing `weekEnd` without it introduces a new bug.**
+
+Lines 105-106 select the "who is scheduled this week" set with:
+
+```ts
+.gte("start_time", `${weekStart}T00:00:00Z`)
+.lte("start_time", `${weekEnd}T23:59:59Z`)
+```
+
+That splices a restaurant-local calendar date into a hardcoded **UTC** literal to
+filter a `timestamptz` column — the same class of error as the primary bug. Today
+it is *masked* by the primary bug: because `weekEnd` currently carries the
+following Monday, the upper bound is a full day too generous and incidentally
+covers Sunday-evening shifts (which are already Monday in UTC for US
+restaurants).
+
+Correcting `weekEnd` removes that accidental slack. Any employee whose only shift
+that week starts Sunday evening after roughly 7pm local would fall outside the
+bound and **silently stop receiving the "schedule published" notification**. The
+set feeds `scheduledEmployeeIds` (line 114), which gates both push and email.
+
+Fix: resolve the bounds as real instants in the restaurant's timezone using
+`fromZonedTime` from `date-fns-tz` (already a dependency of the edge-function
+runtime — see `_shared/availability-tz.ts`), matching the tz-aware
+`AT TIME ZONE v_tz` convention the SQL layer already uses:
+
+```ts
+const startUtc = fromZonedTime(`${weekStart}T00:00:00`, tz).toISOString();
+const endUtc   = fromZonedTime(`${weekEnd}T23:59:59.999`, tz).toISOString();
+```
+
+This requires adding `timezone` to the existing `restaurants` select (line 66,
+currently `select("name")`). Per the 2026-07-02 lesson, the stored IANA value is
+validated with a throwaway `Intl.DateTimeFormat` probe in try/catch and falls
+back to the column default `America/Chicago` — an invalid IANA string throws
+`RangeError` and would crash the whole notification send.
+
+### `supabase/migrations/<ts>_schedule_publication_range_check.sql` *(added after design review)*
+
+`schedule_publications` has no invariant on its stored range, which is how 44 bad
+rows accumulated silently. Add:
+
+```sql
+ALTER TABLE schedule_publications
+  ADD CONSTRAINT schedule_publications_week_range_valid
+  CHECK (week_end_date >= week_start_date
+         AND week_end_date - week_start_date <= 6)
+  NOT VALID;
+```
+
+`NOT VALID` is deliberate and load-bearing: it enforces the invariant on every
+**new** write while leaving the 44 historical rows untouched, which is exactly
+the product decision made for this fix. The bound is `<= 6` rather than `= 6` so
+a future partial-week publish stays legal; only the 8-day spill is forbidden.
+
+This is a `CHECK`, not the clamp rejected in Approach C. The objection to a clamp
+was that silently coercing bad input hides caller bugs — a `CHECK` does the
+opposite, failing the write loudly. The two are complementary, not contradictory.
+
 ### Not changed
 
-- **SQL / migrations.** `publish_schedule`, `unpublish_schedule`, and
-  `get_open_shifts` are correct once handed a correct range.
-- **Edge functions.** `broadcast-open-shifts` and `notify-schedule-published`
-  read `week_start_date` / `week_end_date` straight from the publication row.
+- **`publish_schedule` / `unpublish_schedule` / `get_open_shifts` bodies.** They
+  consume a 6-day-inclusive `DATE` range correctly once handed one.
+- **`broadcast-open-shifts`.** Verified: it reads `week_start_date` /
+  `week_end_date` straight from the publication row (`index.ts:83,111-112`) and
+  passes them to `get_open_shifts` unmodified. Unlike `notify-schedule-published`,
+  it never re-derives a timestamp boundary.
 - **Existing data.** Per product decision, the 44 stored rows are left as-is. No
-  backfill migration, and no shift is unpublished. The one live spill
-  (Mon 2026-08-03) is handled manually in the UI; the 2 pending claims are
-  ordinary approve/reject business decisions.
+  backfill, and no shift is unpublished. The one live spill (Mon 2026-08-03) is
+  handled manually in the UI; the 2 pending claims are ordinary approve/reject
+  business decisions.
 
 ## Testing
 
-### Unit — `tests/unit/scheduleWeekRange.test.ts`
+Design review flagged that the first draft's test plan was doubly ineffective —
+it asserted against the wrong unit, in the one timezone where the bug is
+invisible. Both are corrected below.
 
-TZ-portable by construction. Per the 2026-05-10 lesson, fixtures use
-`new Date(year, month, day)` (local midnight on the requested calendar day in
-**any** process TZ) rather than ISO-string fixtures, which mask this bug class
-entirely.
+### Unit — `tests/unit/scheduleWeekRange.test.ts` (hook-level)
+
+The tests must exercise **the hooks**, not `formatLocalDate`. `formatLocalDate`
+is pre-existing and already correct; the bug lived in a raw
+`toISOString().split('T')[0]` inlined in the hook bodies. A test asserting only
+`formatLocalDate`'s output would still pass if someone reintroduced the inline
+call tomorrow.
+
+So: mock `supabase.rpc` / `supabase.from` and assert the exact `p_week_start` /
+`p_week_end` string values that `usePublishSchedule`, `useUnpublishSchedule`,
+`useOpenShifts`, `useWeekPublicationStatus`, and `useTemplateDeletionImpact`
+actually send.
+
+Fixtures use `new Date(year, month, day)` per the 2026-05-10 lesson — local
+midnight on the requested calendar day in **any** process TZ. ISO-string
+fixtures mask this bug class entirely.
 
 Assertions:
-- `formatLocalDate(weekStart)` → `2026-07-27` and `formatLocalDate(weekEnd)` →
-  `2026-08-02` for `weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 })`.
+- Publishing the week of `new Date(2026, 6, 27)` sends exactly
+  `p_week_start: '2026-07-27'`, `p_week_end: '2026-08-02'`.
 - The range spans exactly **6** days, never 7.
-- A regression guard asserting the serialized end is **not** the following
-  Monday.
+- An explicit guard that the serialized end is **not** `2026-08-03`.
+- `useWeekPublicationStatus` sends full ISO instants (not date-only strings) for
+  the `shifts.start_time` range.
 
-The suite is additionally run under `TZ=America/New_York` (reproduces the
-reported forward slip), `TZ=UTC` (CI's zone, where the bug is invisible), and
-`TZ=Asia/Tokyo` (catches the mirror-image backward slip on `weekStart`). All
-three must pass.
+### TZ matrix — the part that actually catches the bug
+
+Run the suite under `TZ=America/New_York` (reproduces the reported forward
+slip), `TZ=UTC` (CI's zone — where the bug is invisible), and `TZ=Asia/Tokyo`
+(catches the mirror-image backward slip on `weekStart`). All three must pass.
+
+An existing `test:tz` npm script covers only `schedule-solver-tz.test.ts` and is
+**not wired into any CI workflow** (`.github/workflows/unit-tests.yml` runs
+`npm run test:coverage` with no `TZ`). Extend `test:tz` to include this suite and
+wire it into CI — otherwise the matrix exists only on developer machines and the
+regression window reopens on the next refactor.
 
 ### E2E
 
 Extend a scheduling spec to publish a week and assert the resulting
 `schedule_publications` row satisfies `week_end_date - week_start_date = 6`.
-This is the assertion that would have caught the bug in production, and it
-covers the cross-layer seam (UI → hook → RPC → row) that unit tests cannot.
 
-### Verification of the mirror-image case
+**The spec must pin `test.use({ timezoneId: 'America/New_York' })`.** Playwright
+sets no `timezoneId` today and CI runs UTC — the exact zone the table above shows
+as blind to this bug. Without the pin, this assertion would pass identically
+before the fix, after the fix, and after a future regression, providing zero
+protection while appearing to be the headline test.
 
-Before/after runs under a UTC+ zone confirm `weekStart` no longer slips backward
-to Sunday — the failure mode a US-only test matrix would miss.
+### pgTAP — `supabase/tests/`
+
+Cover the new `CHECK` constraint: a 6-day range inserts cleanly, an 8-day range
+raises. This locks in the invariant at the layer that will outlive any particular
+frontend call site.
+
+## Non-goals / decided trade-offs
+
+Two pre-existing timezone issues surfaced during design review. Both are real,
+neither is introduced or worsened by this change, and both are deliberately left
+out of scope so the fix stays reviewable.
+
+1. **The week boundary is browser-local, not restaurant-local.** `useSharedWeek`
+   anchors the Mon–Sun token to the *viewer's* timezone. A manager working from a
+   different zone than the restaurant gets a different week boundary than on-site
+   staff. This is a distinct mismatch (viewer-tz vs restaurant-tz) from the one
+   fixed here (UTC-field-read vs local-field-read). Recorded so a future reader
+   does not mistake it for solved.
+
+2. **`publish_schedule` / `unpublish_schedule` bucket shifts with
+   `start_time::date`, which uses the database session timezone (UTC on
+   Supabase), not the restaurant's.** Compare `get_open_shifts`, which correctly
+   uses `(s.start_time AT TIME ZONE v_tz)::date`. A late-night shift can
+   therefore land on the wrong side of the week boundary independent of the
+   JS-layer bug. The first draft of this doc claimed the SQL was simply
+   "correct"; that claim is **withdrawn** — it is correct for the specific
+   off-by-one fixed here, and separately wrong for late-night shifts in non-UTC
+   restaurants. Tracked as a follow-up, not fixed here.
+
+## Prior art
+
+The two-serialization rule is not novel — it is already the convention in the
+codebase, which is what made the deviation diagnosable:
+
+- `src/hooks/useShifts.tsx:63,66` and `src/hooks/useCopyWeekShifts.ts:41-42`
+  correctly use full `toISOString()` for `timestamptz` comparisons.
+- `src/lib/shiftInterval.ts:140` (`formatLocalDate`) and its use in
+  `getWeekDays` / `buildGridData` correctly use local-field extraction for
+  calendar days.
 
 ## Risks
 
-- **Low.** The change narrows an over-broad range to its intended bounds. No
-  schema change, no data mutation, no API contract change.
-- Managers who had come to rely on the extra Monday appearing in the broadcast
-  will see it stop. That is the reported bug, not a regression.
+- **Low for the hook changes.** They narrow an over-broad range to its intended
+  bounds. No data mutation, no API contract change.
+- **Moderate for `notify-schedule-published`,** which is the one place this
+  change could regress behavior if done wrong — it decides who gets notified.
+  Covered by the E2E and by explicit review of the Sunday-evening boundary case.
+- The new `CHECK` is `NOT VALID`, so it cannot fail on existing rows; the only
+  way it can break a write is if that write is genuinely producing an 8+ day
+  span, which is the bug.
+- Managers who came to rely on the extra Monday appearing in the broadcast will
+  see it stop. That is the reported bug, not a regression.

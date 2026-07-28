@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { useLocation, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { useRecipes } from '@/hooks/useRecipes';
+import { useRecipes, type Recipe } from '@/hooks/useRecipes';
 import { useProducts, Product } from '@/hooks/useProducts';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -28,7 +28,7 @@ import {
 } from '@/components/recipes/MemoizedRecipeRow';
 import { RECIPE_COLUMN_WIDTHS, RECIPE_TABLE_MIN_WIDTH } from '@/components/recipes/recipeTableColumns';
 import { validateRecipeConversions } from '@/utils/recipeConversionValidation';
-import { ChefHat, Plus, Search, Settings, ArrowUpDown, AlertTriangle, Sparkles, TrendingUp, CheckCircle2, ChevronDown } from 'lucide-react';
+import { ChefHat, Plus, Search, Settings, ArrowUpDown, AlertTriangle, CheckCircle2, ChevronDown } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { MetricIcon } from '@/components/MetricIcon';
 import { PageHeader } from '@/components/PageHeader';
@@ -526,18 +526,18 @@ export default function Recipes() {
 }
 
 interface RecipeTableProps {
-  recipes: any[];
-  products: any[];
+  recipes: Recipe[];
+  products: Product[];
   loading: boolean;
   isError?: boolean;
   onRetry?: () => void;
-  onEdit: (recipe: any) => void;
-  onDelete: (recipe: any) => void;
+  onEdit: (recipe: Recipe) => void;
+  onDelete: (recipe: Recipe) => void;
   sortBy: 'name' | 'cost' | 'salePrice' | 'margin' | 'created';
   sortDirection: 'asc' | 'desc';
   showOnlyWarnings: boolean;
   onCreate?: () => void;
-  onCreateFromBase?: (recipe: any) => void;
+  onCreateFromBase?: (recipe: Recipe) => void;
 }
 
 function RecipeTable({ recipes, products, loading, isError, onRetry, onEdit, onDelete, sortBy, sortDirection, showOnlyWarnings, onCreate, onCreateFromBase }: RecipeTableProps) {

@@ -291,13 +291,25 @@ async function healRecipeCosts(
 ): Promise<string[]> {
   const drifted = selectDriftedCostRows(storedRecipes, enhancedRecipes);
   if (drifted.length === 0) return [];
+  const ids = drifted.map((row) => row.id);
+
+  // Arm the echo guard *before* the write, not after it resolves. Postgres
+  // broadcasts the UPDATE the moment the transaction commits, and that
+  // websocket frame can reach the realtime handler before this HTTP promise
+  // settles. Armed late, the page treats its own heal as a foreign edit and
+  // refetches for nothing.
+  recordHealEchoes(ids);
 
   const { error } = await supabase.from('recipes').upsert(drifted);
   if (error) {
     console.warn('Recipe cost heal skipped:', error.message);
+    // Nothing was written, so nothing will echo. Leaving the ids armed would
+    // make the next genuine edit of one of these recipes look like our echo
+    // and get swallowed.
+    forgetHealEchoes(ids);
     return [];
   }
-  return drifted.map((row) => row.id);
+  return ids;
 }
 
 /** How long a heal write stays eligible to be recognised as its own realtime
@@ -317,6 +329,11 @@ const pendingHealEchoes = new Map<string, number>();
 export function recordHealEchoes(ids: string[]): void {
   const expiresAt = Date.now() + HEAL_ECHO_TTL_MS;
   for (const id of ids) pendingHealEchoes.set(id, expiresAt);
+}
+
+/** Undo `recordHealEchoes` for ids whose write never landed. */
+export function forgetHealEchoes(ids: string[]): void {
+  for (const id of ids) pendingHealEchoes.delete(id);
 }
 
 /**
@@ -531,13 +548,42 @@ export async function fetchRecipesData(restaurantId: string): Promise<Recipe[]> 
     salesStatsResult.rows,
   );
 
+  // `fetchAllRows`/`fetchInChunks` stop at DEFAULT_MAX_PAGES (20k rows) and
+  // report it through `capped` rather than throwing, so a truncated load is
+  // otherwise indistinguishable from a complete one. Say so, the way every
+  // other consumer of the helper does.
+  const cappedQueries = [
+    recipesResult.capped && 'recipes',
+    prepLinksResult.capped && 'prep_recipes',
+    productsResult.capped && 'products',
+    salesStatsResult.capped && 'get_recipe_sales_stats',
+    ingredientsResult.capped && 'recipe_ingredients',
+  ].filter((name): name is string => Boolean(name));
+  if (cappedQueries.length > 0) {
+    console.warn(
+      '[useRecipes] fetch hit the pagination cap (20k rows); results may be truncated',
+      { restaurantId, queries: cappedQueries },
+    );
+  }
+
   // Heal stored costs off the render path (design §3.7): one batched
   // upsert of only the drifted rows, deliberately not awaited so it
   // never delays first paint, and convergent — the next load finds no
-  // drift and issues zero writes. The ids it wrote are recorded so the
-  // realtime subscription can recognise the resulting UPDATE as its own echo
+  // drift and issues zero writes. It records the ids it is about to write so
+  // the realtime subscription recognises the resulting UPDATE as its own echo
   // instead of refetching (and re-healing) in a loop.
-  void healRecipeCosts(activeRecipes, enhancedRecipes).then(recordHealEchoes);
+  //
+  // Not when the cost inputs were truncated, though. A capped
+  // `recipe_ingredients` or `products` page means ingredient lines or product
+  // costs are simply missing, so `buildEnhancedRecipes` computes an
+  // understated cost — and healing would write that wrong number to the
+  // database, where every later load reads it back as truth. A truncated page
+  // may degrade what the screen shows; it must never corrupt what is stored.
+  // A capped `recipes`/`prep_recipes` page is different: the recipes that did
+  // arrive still have complete ingredients, so their heal stays sound.
+  if (!ingredientsResult.capped && !productsResult.capped) {
+    void healRecipeCosts(activeRecipes, enhancedRecipes);
+  }
 
   return enhancedRecipes;
 }
@@ -872,12 +918,12 @@ export const useRecipes = (restaurantId: string | null) => {
 
       let totalCost = 0;
 
-      ingredients.forEach((ingredient: any) => {
+      ingredients.forEach((ingredient) => {
         totalCost += computeIngredientCost(ingredient, ingredient.product);
       });
 
       return totalCost;
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error calculating recipe cost:', error);
       return null;
     }

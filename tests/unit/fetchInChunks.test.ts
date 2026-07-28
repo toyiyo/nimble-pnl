@@ -71,6 +71,33 @@ describe('fetchInChunks', () => {
     expect(capped).toBe(true);
   });
 
+  it('fetches chunks concurrently rather than one after another', async () => {
+    // Chunks are independent, so awaiting them in sequence would just add up
+    // their round trips. Proof: every chunk must be in flight before any of
+    // them is allowed to settle -- impossible under sequential awaits.
+    const ids = Array.from({ length: 450 }, (_, i) => i);
+    let inFlight = 0;
+    let peakInFlight = 0;
+    const releases: Array<() => void> = [];
+
+    const fn = vi.fn(async (chunk: number[]): Promise<PagedResult<Row>> => {
+      inFlight++;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      await new Promise<void>((resolve) => releases.push(resolve));
+      inFlight--;
+      return { rows: chunk.map((id) => ({ id })), capped: false };
+    });
+
+    const pending = fetchInChunks(ids, fn, 200);
+    await vi.waitFor(() => expect(releases).toHaveLength(3));
+    releases.forEach((release) => release());
+    const { rows } = await pending;
+
+    expect(peakInFlight).toBe(3);
+    // Concurrency must not scramble the output order.
+    expect(rows.map((r) => r.id)).toEqual(ids);
+  });
+
   it('propagates an error thrown by any chunk', async () => {
     const ids = Array.from({ length: 450 }, (_, i) => i);
     const fn = vi

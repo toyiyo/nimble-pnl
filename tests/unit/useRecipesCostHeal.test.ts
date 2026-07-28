@@ -25,6 +25,12 @@ let upsertResponse: { data: unknown[] | null; error: unknown };
  * once costs have converged. */
 let upsertCalls: unknown[][] = [];
 
+/** Called synchronously inside the `recipes.upsert()` mock, before the write's
+ * promise resolves — the seam a test needs to observe state *at write time*
+ * rather than after the round trip. */
+ 
+let observeUpsert: ((rows: { id: string }[]) => void) | null = null;
+
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn((table: string) => {
@@ -41,8 +47,9 @@ vi.mock('@/integrations/supabase/client', () => ({
               }),
             }),
           }),
-          upsert: vi.fn().mockImplementation((rows: unknown[]) => {
+          upsert: vi.fn().mockImplementation((rows: { id: string }[]) => {
             upsertCalls.push(rows);
+            observeUpsert?.(rows);
             return Promise.resolve(upsertResponse);
           }),
         };
@@ -97,7 +104,14 @@ vi.mock('@/integrations/supabase/client', () => ({
   },
 }));
 
-import { useRecipes, selectDriftedCostRows, buildEnhancedRecipes } from '@/hooks/useRecipes';
+import {
+  useRecipes,
+  selectDriftedCostRows,
+  buildEnhancedRecipes,
+  isHealEcho,
+  resetHealEchoes,
+} from '@/hooks/useRecipes';
+import { SUPABASE_MAX_ROWS } from '@/utils/fetchAllRows';
 import { createQueryWrapper } from './helpers/queryWrapper';
 
 const makeRecipe = (id: string, name: string, estimatedCost: number) => ({
@@ -131,10 +145,18 @@ const INGREDIENTS = [{ id: 'i1', recipe_id: 'r1', product_id: 'p1', quantity: 2,
 
 let wrapper: ReturnType<typeof createQueryWrapper>['wrapper'];
 
+/** A page that is exactly `SUPABASE_MAX_ROWS` long looks "full" to
+ * `fetchAllRows`, so it keeps paging; the mock hands back the same full page
+ * every time, so the loop runs out at `DEFAULT_MAX_PAGES` and reports
+ * `capped: true`. That is the truncated-input condition under test. */
+const fullPageOf = <T>(row: T): T[] => Array.from({ length: SUPABASE_MAX_ROWS }, () => row);
+
 beforeEach(() => {
   ({ wrapper } = createQueryWrapper());
   vi.clearAllMocks();
+  resetHealEchoes();
   upsertCalls = [];
+  observeUpsert = null;
   recipesResponse = { data: [], error: null };
   productsResponse = { data: PRODUCTS, error: null };
   ingredientsResponse = { data: INGREDIENTS, error: null };
@@ -232,6 +254,72 @@ describe('useRecipes cost heal -- batched, convergent', () => {
     const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(upsertCalls.length).toBe(1));
+
+    expect(result.current.recipes).toHaveLength(1);
+    expect(toastMock).not.toHaveBeenCalled();
+  });
+
+  it('arms the realtime echo guard BEFORE issuing the write, not after it resolves', async () => {
+    // Postgres broadcasts the UPDATE at commit, so the realtime frame can beat
+    // the upsert's HTTP promise. Standing in for that frame: ask the guard the
+    // same question the subscription would, at the moment the write goes out.
+    let echoRecognisedAtWriteTime: boolean | null = null;
+    recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
+    observeUpsert = (rows) => {
+      echoRecognisedAtWriteTime = isHealEcho(rows[0].id);
+    };
+
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(echoRecognisedAtWriteTime).not.toBeNull());
+
+    expect(echoRecognisedAtWriteTime).toBe(true);
+  });
+
+  it('forgets the echo when the write fails, so the next genuine edit still refetches', async () => {
+    recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
+    upsertResponse = { data: null, error: { message: 'row-level security' } };
+
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(upsertCalls.length).toBe(1));
+
+    // Nothing was written, so nothing will echo. A leftover armed id would
+    // swallow the next real UPDATE to this recipe.
+    expect(isHealEcho('r1')).toBe(false);
+  });
+
+  it('writes NOTHING when recipe_ingredients came back truncated', async () => {
+    // A capped ingredients page means lines are missing, so the computed cost
+    // is understated. Displaying a wrong number is recoverable; writing it to
+    // the database is not -- every later load would read it back as truth.
+    recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
+    ingredientsResponse = { data: fullPageOf(INGREDIENTS[0]), error: null };
+
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(upsertCalls).toEqual([]);
+  });
+
+  it('writes NOTHING when products came back truncated', async () => {
+    // Same hazard from the other input: a missing product means its
+    // ingredient contributes $0, silently understating the recipe.
+    recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
+    productsResponse = { data: fullPageOf(PRODUCTS[0]), error: null };
+
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(upsertCalls).toEqual([]);
+  });
+
+  it('still renders the recipes when an input was truncated -- degraded, not broken', async () => {
+    recipesResponse = { data: [makeRecipe('r1', 'Burrito', 3)], error: null };
+    ingredientsResponse = { data: fullPageOf(INGREDIENTS[0]), error: null };
+
+    const { result } = renderHook(() => useRecipes('rest-1'), { wrapper });
+    await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.recipes).toHaveLength(1);
     expect(toastMock).not.toHaveBeenCalled();

@@ -49,7 +49,8 @@ Full retirement of bun as a supported package manager.
    - L151 Coolify Pre Deployment Command `bun install && bun run build`
      → `npm ci && npm run build`
 3. **`trigger-bulk-pnl-recalc.ts:8`** — usage comment `bun run trigger-bulk-pnl-recalc.ts`
-   → `npx tsx trigger-bulk-pnl-recalc.ts`.
+   → `npm run recalc:pnl`, backed by a new `tsx` devDependency and npm script
+   (see below), plus a header warning that the script hits production on load.
 
 ### Note on the script's npm equivalent
 

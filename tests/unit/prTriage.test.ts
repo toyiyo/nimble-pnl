@@ -355,6 +355,20 @@ describe('pr-triage: classifyThreads', () => {
     expect(r.unanswered[0].author).toBe('coderabbitai');
   });
 
+  it('CRITICAL: does not accept a verdict sharing the review\'s exact timestamp', () => {
+    // GitHub timestamps resolve to the second, so an equal stamp cannot be
+    // ordered — treating it as "later" would let a verdict written first
+    // pre-answer the finding.
+    const r = classifyThreads({
+      reviews: [
+        reviewFrom('coderabbitai', 'CHANGES_REQUESTED', '2026-07-27T10:00:00Z'),
+        verdictReview('2026-07-27T10:00:00Z', 'Agreed — @coderabbitai fixed in `abc1234`.'),
+      ],
+      prAuthor: PR_AUTHOR,
+    });
+    expect(r.unanswered).toHaveLength(1);
+  });
+
   it('matches the reviewer login with or without a leading @', () => {
     const r = classifyThreads({
       reviews: [

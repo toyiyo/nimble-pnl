@@ -269,7 +269,10 @@ function reviewUnansweredReason(review, allReviews, knownShas) {
     if (other === review) continue;
     if (isBotActor(other.author)) continue;
     if (!MAINTAINER_ASSOCIATIONS.has(other.authorAssociation)) continue;
-    if (submittedAtMs(other) < askedAt) continue;
+    // Strictly later. GitHub timestamps resolve to the second, so an equal
+    // stamp cannot be ordered — and "cannot be ordered" must not read as
+    // "came after", or a verdict written first could pre-answer the finding.
+    if (submittedAtMs(other) <= askedAt) continue;
     if (!mentionsLogin(other.body, target)) continue;
 
     const parsed = parseVerdict(other.body);

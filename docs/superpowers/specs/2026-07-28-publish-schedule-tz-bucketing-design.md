@@ -206,6 +206,23 @@ the `schedule_change_logs` entry.
   manager action, so no migration-time repair is warranted.
 - **Frontend.** No TypeScript, hook, or UI change. The RPC signature is
   identical.
+- **`useWeekPublicationStatus`'s browser-local week anchor.** The hook
+  (`src/hooks/useSchedulePublish.tsx`) gates "is this week published" on a
+  `shifts` count bounded by `weekStart.toISOString()`..`weekEnd.toISOString()`.
+  Post-#671 those are full instants, so a viewer *in the restaurant's own
+  timezone* agrees with the corrected RPC: a Sun 22:00 America/Chicago shift
+  (Mon 03:00 UTC) still falls under `endOfWeek` = Sun 23:59:59.999 CDT =
+  Mon 04:59:59.999 UTC. The two disagree only for a viewer in a *different*
+  zone than the restaurant, which is exactly non-goal #1 recorded in
+  `2026-07-27-publish-week-tz-offbyone-design.md:306` — the week boundary is
+  anchored to the viewer, not the restaurant. This change does not introduce
+  that mismatch, but it does make it observable in one more place: a
+  cross-timezone manager whose week contains *only* a boundary late-night shift
+  would see the week reported unpublished despite a real `schedule_publications`
+  row. Closing it means threading the restaurant timezone through the shared
+  week anchor (`useSharedWeek`, `useShifts`, the grid, and the
+  `week_start_date`/`week_end_date` lookup), which is the tracked follow-up —
+  not something to bury under a date-bucketing migration.
 
 ### Incidental fix
 

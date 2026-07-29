@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SchedulePublication } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
+import { formatLocalDate } from '@/lib/shiftInterval';
 
 interface PublishScheduleParams {
   restaurantId: string;
@@ -51,9 +52,9 @@ export const usePublishSchedule = () => {
 
   return useMutation({
     mutationFn: async ({ restaurantId, weekStart, weekEnd, notes }: PublishScheduleParams) => {
-      // Format dates as YYYY-MM-DD
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      const weekEndStr = weekEnd.toISOString().split('T')[0];
+      // Format dates as YYYY-MM-DD (local calendar day, not UTC)
+      const weekStartStr = formatLocalDate(weekStart);
+      const weekEndStr = formatLocalDate(weekEnd);
 
       // Call the publish_schedule function
       const { data, error } = await supabase.rpc('publish_schedule', {
@@ -113,9 +114,9 @@ export const useUnpublishSchedule = () => {
 
   return useMutation({
     mutationFn: async ({ restaurantId, weekStart, weekEnd, reason }: UnpublishScheduleParams) => {
-      // Format dates as YYYY-MM-DD
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      const weekEndStr = weekEnd.toISOString().split('T')[0];
+      // Format dates as YYYY-MM-DD (local calendar day, not UTC)
+      const weekStartStr = formatLocalDate(weekStart);
+      const weekEndStr = formatLocalDate(weekEnd);
 
       // Call the unpublish_schedule function
       const { data, error } = await supabase.rpc('unpublish_schedule', {
@@ -160,16 +161,17 @@ export const useWeekPublicationStatus = (
     queryFn: async () => {
       if (!restaurantId) return null;
 
-      const weekStartStr = weekStart.toISOString().split('T')[0];
-      const weekEndStr = weekEnd.toISOString().split('T')[0];
+      const weekStartStr = formatLocalDate(weekStart);
+      const weekEndStr = formatLocalDate(weekEnd);
 
       // Check if there are actually published shifts for this week
+      // (timestamptz column -> compare against full instants, not local-day strings)
       const { count: publishedShiftCount, error: shiftError } = await supabase
         .from('shifts')
         .select('id', { count: 'exact', head: true })
         .eq('restaurant_id', restaurantId)
-        .gte('start_time', `${weekStartStr}T00:00:00Z`)
-        .lte('start_time', `${weekEndStr}T23:59:59Z`)
+        .gte('start_time', weekStart.toISOString())
+        .lte('start_time', weekEnd.toISOString())
         .eq('is_published', true);
 
       if (shiftError) throw shiftError;

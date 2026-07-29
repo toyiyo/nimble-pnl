@@ -1,10 +1,12 @@
 import { generateHeader } from '../_shared/emailTemplates.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fromZonedTime } from "https://esm.sh/date-fns-tz@3.2.0";
 import { corsHeaders } from "../_shared/cors.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
 import { notifySchedulePublishedPush } from "../_shared/schedulePublishedPush.ts";
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
+import { safeTz } from "../_shared/timezone.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -66,7 +68,7 @@ serve(async (req) => {
     // Get restaurant details
     const { data: restaurant, error: restError } = await supabase
       .from("restaurants")
-      .select("name")
+      .select("name, timezone")
       .eq("id", restaurantId)
       .single();
 
@@ -97,13 +99,29 @@ serve(async (req) => {
       throw new Error("Failed to fetch employees");
     }
 
+    // The payload carries restaurant-local calendar days. Splicing them into
+    // hardcoded `Z` literals would compare local dates against UTC instants and
+    // drop Sunday-evening shifts (already Monday in UTC for US restaurants),
+    // silently excluding those employees from the notification.
+    //
+    // An invalid/legacy IANA string makes date-fns-tz throw, so validate via
+    // the shared `safeTz` (same fallback used by the Revel sync path) before
+    // it reaches `fromZonedTime`.
+    const tz = safeTz(restaurant.timezone);
+    if (tz !== restaurant.timezone) {
+      console.warn(`Invalid timezone "${restaurant.timezone}" for restaurant ${restaurantId}; falling back to ${tz}`);
+    }
+
+    const weekStartInstant = fromZonedTime(`${weekStart}T00:00:00`, tz).toISOString();
+    const weekEndInstant = fromZonedTime(`${weekEnd}T23:59:59.999`, tz).toISOString();
+
     // Get shifts for this publication to determine which employees are scheduled
     const { data: shifts, error: shiftsError } = await supabase
       .from("shifts")
       .select("employee_id")
       .eq("restaurant_id", restaurantId)
-      .gte("start_time", `${weekStart}T00:00:00Z`)
-      .lte("start_time", `${weekEnd}T23:59:59Z`)
+      .gte("start_time", weekStartInstant)
+      .lte("start_time", weekEndInstant)
       .eq("is_published", true);
 
     if (shiftsError) {

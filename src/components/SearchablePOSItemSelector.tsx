@@ -49,35 +49,32 @@ export function SearchablePOSItemSelector({
   const selectedItem = posItems.find((item) => item.item_name === value);
 
   /** Clearing the visible input is not enough: the search is served by the
-   * server-side RPC, so the *owner's* term has to be reset too or the next
-   * open still shows the previous query's narrowed list. */
-  const resetSearch = () => {
-    setSearchValue('');
-    onSearchChange?.('');
-  };
-
+   * server-side RPC, so the *owner's* term has to be reset too (via
+   * `handleSearchChange('')`) or the next open still shows the previous
+   * query's narrowed list. */
   const handleSelect = (itemName: string) => {
     const item = posItems.find((i) => i.item_name === itemName);
     onValueChange(itemName, item?.item_id);
     setOpen(false);
-    resetSearch();
+    handleSearchChange('');
   };
 
   const handleClear = () => {
     onValueChange('', '');
     setOpen(false);
-    resetSearch();
+    handleSearchChange('');
   };
 
   const modal = useInsideScrollLock();
 
   /** A selection can outlive the item's presence in the current search page,
    * so fall back to the raw `value` rather than rendering the placeholder. */
-  const triggerLabel = loading
-    ? "Loading POS items..."
-    : value
-      ? (selectedItem?.item_name ?? value)
-      : "Search POS items or leave blank";
+  let triggerLabel = "Search POS items or leave blank";
+  if (loading) {
+    triggerLabel = "Loading POS items...";
+  } else if (value) {
+    triggerLabel = selectedItem?.item_name ?? value;
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={modal}>

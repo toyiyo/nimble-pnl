@@ -355,7 +355,16 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                   <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Item Name
                   </FormLabel>
-                  <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                  {/* Hardcoded `modal`, not `useInsideScrollLock()` like the
+                      eight reusable comboboxes: those are children rendered
+                      inside some other DialogContent, so they read the
+                      boundary from context. This Popover is inside *this*
+                      component's own DialogContent, and the hook would have to
+                      be called in the body above it -- outside the provider it
+                      is asking about, which always resolves `false`. The
+                      answer here is statically known: this combobox is never
+                      free-standing, so it is always under a scroll lock. */}
+                  <Popover open={comboboxOpen} onOpenChange={setComboboxOpen} modal>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button

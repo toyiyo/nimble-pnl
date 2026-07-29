@@ -63,15 +63,30 @@ coexist:
 
 The third is the reported bug installed as a default.
 
-The consequence of opt-in correctness is recurrence: 289 commits across the
-repository mention timezone/tz/utc, including dedicated branches
-`fix/publish-week-tz-offbyone` and `fix/publish-schedule-tz-bucketing`. The
-project already holds the correct *rule* — `memory/lessons.md:1301`: "Before
-serializing a `Date`, decide which of the two things it is — a *day on a
-calendar* or a *moment in time*." Nothing mechanically enforces it.
+The consequence of opt-in correctness is recurrence. `git log --all
+--regexp-ignore-case --extended-regexp --grep="timezone|\btz\b|\butc\b"` returns
+**148** commits across all refs (81 reachable from `main`), including the branch
+`fix/publish-schedule-tz-bucketing` and, most recently, `c675d566`
+"fix(scheduling): publish-week timezone off-by-one across hooks + notify fn
+(#671)".
 
-Compounding: CI runs in UTC, the one zone where these bugs are invisible
-(`memory/lessons.md:1303`).
+`memory/lessons.md` records this bug class five separate times:
+`memory/lessons.md:271` (a $2,246 payroll swing from a TZ-dependent week
+boundary), `memory/lessons.md:281` (the `parseDateOnly` local-vs-UTC-midnight
+regression), `memory/lessons.md:1007`, `memory/lessons.md:1186`, and
+`memory/lessons.md:1298`.
+
+What the file does **not** contain is a single stated rule covering both halves
+of the problem. The rule this design adopts — *before serializing a `Date`,
+decide whether it is a day on a calendar or a moment in time, and serialize
+accordingly* — is a synthesis of those five entries, not a quotation. Today it
+is encoded only in prose docstrings (`src/lib/dateOnly.ts:5-12`,
+`src/lib/dateOnly.ts:32-36`). Nothing mechanically enforces it. Making it
+mechanical is the point of this PR.
+
+Compounding: CI runs in UTC, the one zone where these bugs are invisible —
+"CI runs in UTC and prod servers run in UTC; a green local test on PT means
+nothing for either" (`memory/lessons.md:273`).
 
 ## Defects this PR fixes
 
@@ -106,8 +121,16 @@ const dateKey = formatDateUTC(period.clockIn ?? period.startTime);
 
 `formatDateUTC` is **misnamed**. Its body reads *local* fields, not UTC
 (`src/services/laborCalculations.ts:43-48`), and its own doc comment says as
-much (`src/services/laborCalculations.ts:40`). Hours therefore attribute to
-whatever day it is in the *viewer's* browser.
+much — "in the user's local timezone" (`src/services/laborCalculations.ts:38`).
+Hours therefore attribute to whatever day it is in the *viewer's* browser.
+
+This is not hypothetical. `memory/lessons.md:1403` records the exact mechanism
+already biting CI: employee `0f5da8cc`'s split shift clocks in at
+`2026-07-23T01:56:20Z` — Jul 22 20:56 in Chicago, Jul 23 01:56 in UTC — so
+`$26.44` of labor lands on a different day depending on the host zone, and a
+day-total assertion read `$560.28` on the UTC runner versus `$586.72` on a
+Chicago machine. Every viewer outside the restaurant's zone sees that same
+misattribution in production, silently.
 
 ### 3. Payroll bucketing, same defect, explicitly coupled
 
@@ -117,7 +140,7 @@ whatever day it is in the *viewer's* browser.
 const dateKey = format(new Date(period.clockIn), 'yyyy-MM-dd');
 ```
 
-`src/services/laborCalculations.ts:41-42` states this bucketing "must match
+`src/services/laborCalculations.ts:40-41` states this bucketing "must match
 Payroll's day-bucketing (payrollCalculations.ts) so period totals and monthly
 aggregation stay consistent." **The two must change together** or the Labor and
 Payroll screens will disagree.
@@ -175,7 +198,7 @@ Binds the pure functions to the selected restaurant and returns
 - `tz` is declared **immediately after** `useRestaurantContext()`. Threading it
   into an earlier `useMemo` while declaring it lower causes a TDZ
   `ReferenceError` at render that `tsc` does not catch
-  (`memory/lessons.md:1300`).
+  (`memory/lessons.md:1303-1304`).
 - `viewerTzDiffers` compares the **current UTC offset**, not the IANA string:
   `America/Chicago` and `US/Central` name the same zone and must not trigger a
   cue.
@@ -194,9 +217,16 @@ viewer in another zone still has no cue whose 6 PM they are reading.
 
 `no-restricted-syntax` AST selectors banning `format(`, `parseISO(`,
 `toLocaleDateString`, `toLocaleTimeString`, `toLocaleString`, and
-`.toISOString().split('T')[0]` in files that reference instant columns, scoped
-via `overrides` globs. The ~37 not-yet-migrated files are allowlisted by a
-second override that disables the rule for them.
+`.toISOString().split('T')[0]` in files that touch instant columns.
+
+**Flat config, not `.eslintrc`.** `eslint.config.js` is a flat config built with
+`tseslint.config(...)` (`eslint.config.js:7`) and there is no `.eslintrc*` file
+in the repo. Flat config has **no `overrides` key** — writing one produces a
+silently ignored no-op, which here would mean the allowlist never applies and
+the rule breaks the build on every not-yet-migrated file. The equivalent is two
+config objects in the exported array: the first turns the rule on for a broad
+`files` glob, and a **later** object re-declares it as `"off"` for the narrower
+allowlist glob. Later entries win.
 
 No custom ESLint plugin. The allowlist doubles as the migration tracker; its
 length is an honest progress metric.
@@ -208,9 +238,32 @@ length is an honest progress metric.
   field, assert the persisted instant is byte-identical. This fails today.
 - Guard tests asserting `formatInstant` rejects `'2026-07-28'` and
   `formatDateOnly` rejects `'2026-07-28T18:00:00Z'`.
-- `test:tz` (`package.json:32`) currently runs 4 test files across 5 zones.
-  Expand it to the **full unit suite** under `Pacific/Auckland` (ahead of UTC),
-  `America/Chicago` (behind), and `UTC` (what CI runs).
+- `test:tz` (`package.json:32`) currently runs **3 distinct test files across 5
+  zone invocations** (`scheduleWeekRange.test.ts` runs three times; 6 commands
+  total). Expand it to the **full unit suite** under `Pacific/Auckland` (ahead
+  of UTC), `America/Chicago` (behind), and `UTC` (what CI runs).
+
+### SQL parity for `toBusinessDay` — required, not optional
+
+Per CLAUDE.md the SQL side is authoritative and TypeScript is preview-only.
+`toBusinessDay(instant, tz)` is a client-side reimplementation of what 46
+migrations already do as `(instant AT TIME ZONE tz)::date` — and
+`src/lib/shiftInterval.ts:147-156` documents that `shift_template_assigned_count`
+buckets exactly that way. Nothing currently pins the two together, and
+`memory/lessons.md:1297` is the record of a client bucketing helper silently
+drifting from its fixtures.
+
+Mitigation: one **shared fixture table** of `(instant, tz, expected_day)` rows,
+consumed twice —
+
+1. a Vitest case asserting `toBusinessDay(instant, tz) === expected_day`;
+2. a pgTAP case in `supabase/tests/` asserting
+   `(instant AT TIME ZONE tz)::date = expected_day`.
+
+Rows must include a DST transition (Mar 8 / Nov 1), a zone ahead of UTC, a zone
+behind, and an instant whose local time falls before 06:00 (where the two
+implementations diverge first if either is wrong). If SQL and TS ever disagree,
+SQL wins and `toBusinessDay` is the bug.
 
 **Fixture hazard.** `memory/lessons.md:1297` records that making a shared
 bucketing helper timezone-aware broke CI in three places at once, because

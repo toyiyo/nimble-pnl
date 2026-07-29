@@ -30,6 +30,28 @@ function defer<T>(): Deferred<T> {
   return { promise, resolve };
 }
 
+type RpcResponse = { data: POSItem[] | null; error: { message: string } | null };
+
+/** The signal the hook last handed to PostgREST. */
+let lastAbortSignal: AbortSignal | undefined;
+
+/**
+ * `supabase.rpc()` returns a PostgREST builder, not a promise: the hook chains
+ * `.abortSignal(signal)` onto it and awaits that. Mocking a bare promise leaves
+ * `.abortSignal` undefined, and the resulting TypeError is indistinguishable
+ * from a real query failure to React Query -- which turns the "RPC failed" case
+ * green for the wrong reason while every data assertion goes red. Mirror the
+ * builder so the chain under test is the chain that ships.
+ */
+function rpcBuilder(promise: Promise<RpcResponse>) {
+  return {
+    abortSignal(signal: AbortSignal) {
+      lastAbortSignal = signal;
+      return promise;
+    },
+  };
+}
+
 const SAMPLE_ROWS: POSItem[] = [
   {
     item_name: 'House Burger',
@@ -50,10 +72,11 @@ const SAMPLE_ROWS: POSItem[] = [
 describe('usePOSItems', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    lastAbortSignal = undefined;
   });
 
   it('calls search_pos_items with the restaurant id, search term, and limit', async () => {
-    mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+    mockSupabase.rpc.mockReturnValue(rpcBuilder(Promise.resolve({ data: [], error: null })));
 
     renderHook(() => usePOSItems('rest-1', { search: 'burger', limit: 250 }), {
       wrapper: createWrapper(),
@@ -69,7 +92,7 @@ describe('usePOSItems', () => {
   });
 
   it('omits search/limit args when no opts are given, letting the RPC defaults apply', async () => {
-    mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+    mockSupabase.rpc.mockReturnValue(rpcBuilder(Promise.resolve({ data: [], error: null })));
 
     renderHook(() => usePOSItems('rest-1'), { wrapper: createWrapper() });
 
@@ -85,7 +108,7 @@ describe('usePOSItems', () => {
   });
 
   it('maps the RPC row shape onto POSItem unchanged', async () => {
-    mockSupabase.rpc.mockResolvedValue({ data: SAMPLE_ROWS, error: null });
+    mockSupabase.rpc.mockReturnValue(rpcBuilder(Promise.resolve({ data: SAMPLE_ROWS, error: null })));
 
     const { result } = renderHook(() => usePOSItems('rest-1'), {
       wrapper: createWrapper(),
@@ -117,7 +140,7 @@ describe('usePOSItems', () => {
 
   it('reports loading=true while the RPC call is in flight', async () => {
     const gate = defer<{ data: POSItem[]; error: null }>();
-    mockSupabase.rpc.mockReturnValue(gate.promise);
+    mockSupabase.rpc.mockReturnValue(rpcBuilder(gate.promise));
 
     const { result } = renderHook(() => usePOSItems('rest-1'), {
       wrapper: createWrapper(),
@@ -133,10 +156,9 @@ describe('usePOSItems', () => {
   });
 
   it('populates error and keeps posItems=[] when the RPC call fails', async () => {
-    mockSupabase.rpc.mockResolvedValue({
-      data: null,
-      error: { message: 'connection reset' },
-    });
+    mockSupabase.rpc.mockReturnValue(
+      rpcBuilder(Promise.resolve({ data: null, error: { message: 'connection reset' } })),
+    );
 
     const { result } = renderHook(() => usePOSItems('rest-1'), {
       wrapper: createWrapper(),
@@ -146,5 +168,25 @@ describe('usePOSItems', () => {
 
     expect(result.current.posItems).toEqual([]);
     expect(result.current.loading).toBe(false);
+  });
+
+  it("hands React Query's abort signal to PostgREST so superseded searches are cancelled", async () => {
+    // Held open deliberately: a query that has already settled has nothing
+    // left to cancel, so the signal must be inspected mid-flight.
+    const gate = defer<RpcResponse>();
+    mockSupabase.rpc.mockReturnValue(rpcBuilder(gate.promise));
+
+    const { unmount } = renderHook(() => usePOSItems('rest-1', { search: 'burger' }), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(lastAbortSignal).toBeInstanceOf(AbortSignal));
+    expect(lastAbortSignal!.aborted).toBe(false);
+
+    // Typing is debounced, so a superseded keystroke must take its in-flight
+    // RPC down with it rather than leaving the server computing a result
+    // nobody will read.
+    unmount();
+    await waitFor(() => expect(lastAbortSignal!.aborted).toBe(true));
   });
 });

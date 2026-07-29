@@ -71,7 +71,9 @@ test.describe('Broadcast Open Shifts', () => {
       const mondayStr = fmt(monday);
 
       // Insert a draft shift for Monday at noon local time (avoids timezone edge cases)
-      // The publish_schedule RPC uses start_time::date which compares local date
+      // publish_schedule buckets shifts by the restaurant's IANA timezone
+      // (restaurants.timezone), so noon is unambiguous — it is the same
+      // calendar day in the restaurant's zone and in UTC.
       const shiftStart = new Date(monday);
       shiftStart.setHours(12, 0, 0, 0); // noon local
 

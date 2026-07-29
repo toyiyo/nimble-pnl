@@ -44,7 +44,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(30);
+SELECT plan(31);
 
 -- ============================================================================
 -- Fixtures (inserted as the default `postgres` role, which bypasses RLS)
@@ -204,9 +204,38 @@ SELECT has_function(
   'search_pos_items function should exist'
 );
 
-SELECT function_returns(
-  'public', 'search_pos_items', ARRAY['uuid', 'text', 'int'], 'setof record',
-  'search_pos_items should return setof record'
+-- Deliberately NOT pgTAP's function_returns(): on the pgTAP build shipped in
+-- CI's Supabase image that assertion reports "Function public.search_pos_items
+-- (uuid, text, int) does not exist" for this function while has_function()
+-- above resolves the very same signature in the same transaction. It passes on
+-- pgTAP 1.3.3 locally, so it is a version-dependent quirk of how _returns()
+-- reads a RETURNS TABLE function out of tap_funky -- not a statement about
+-- this migration.
+--
+-- Reading the catalog directly is version-independent, and it asserts the
+-- contract that actually matters: 'setof record' would have been satisfied by
+-- any five columns in any order, whereas src/hooks/usePOSItems.tsx's POSItem
+-- type depends on these exact names and types. This is the assertion that
+-- fails if a future edit reorders or retypes a column.
+SELECT is(
+  (SELECT p.proretset
+     FROM pg_proc p
+     JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public' AND p.proname = 'search_pos_items'),
+  true,
+  'search_pos_items should be set-returning'
+);
+
+SELECT is(
+  (SELECT string_agg(a.name || ' ' || a.typ, ', ' ORDER BY a.ord)
+     FROM pg_proc p
+     JOIN pg_namespace n ON n.oid = p.pronamespace,
+     LATERAL unnest(p.proargnames, p.proallargtypes::regtype[]::text[], p.proargmodes)
+          WITH ORDINALITY AS a(name, typ, mode, ord)
+    WHERE n.nspname = 'public' AND p.proname = 'search_pos_items'
+      AND a.mode = 't'),
+  'item_name text, item_id text, source text, sales_count bigint, last_sold date',
+  'search_pos_items should return the documented column contract'
 );
 
 -- ============================================================================

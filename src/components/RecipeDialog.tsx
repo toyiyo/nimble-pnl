@@ -489,9 +489,14 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                             value={field.value}
                             onValueChange={(itemName, itemId) => {
                               field.onChange(itemName);
-                              if (itemId) {
-                                form.setValue('pos_item_id', itemId);
-                              }
+                              // Always write the id alongside the name, never
+                              // only when it is truthy. Clearing the selection
+                              // sends ('', ''), and an item can legitimately
+                              // carry no id at all -- in both cases a
+                              // conditional write leaves the *previous*
+                              // item's id attached to the new name, so the
+                              // recipe submits a mismatched name/id pair.
+                              form.setValue('pos_item_id', itemId ?? '');
                             }}
                             posItems={posItems}
                             loading={posItemsLoading}
@@ -512,10 +517,13 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                       <FormItem>
                         <FormLabel>POS Item ID</FormLabel>
                         <FormControl>
-                          <Input 
-                            placeholder="Internal POS system ID" 
-                            id="pos-item-id"
-                            {...field} 
+                          {/* No hardcoded `id`: this FormLabel carries no
+                              `htmlFor`, so it points at the id `FormControl`
+                              generates. Overriding that id here left the
+                              label associated with nothing. */}
+                          <Input
+                            placeholder="Internal POS system ID"
+                            {...field}
                           />
                         </FormControl>
                         <FormMessage />

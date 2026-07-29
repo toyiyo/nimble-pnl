@@ -250,3 +250,44 @@ describe('SearchablePOSItemSelector — error empty-state', () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('SearchablePOSItemSelector — form-control prop hand-off', () => {
+  it('forwards id / aria-describedby / aria-invalid onto the combobox trigger', () => {
+    render(
+      <SearchablePOSItemSelector
+        id="pos-item-name-field"
+        aria-describedby="pos-item-name-message"
+        aria-invalid
+        onValueChange={() => {}}
+        posItems={POS_ITEMS}
+      />,
+    );
+
+    // `FormControl` injects these through a Radix `Slot`, but this component's
+    // root is a `Popover` -- not a DOM node -- so they have to be forwarded by
+    // hand or `FormLabel`'s `htmlFor` and `FormMessage`'s wiring both dangle.
+    const trigger = screen.getByRole('combobox');
+    expect(trigger).toHaveAttribute('id', 'pos-item-name-field');
+    expect(trigger).toHaveAttribute('aria-describedby', 'pos-item-name-message');
+    expect(trigger).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('emits an empty id alongside the empty name when the selection is cleared', async () => {
+    const user = userEvent.setup();
+    const onValueChange = vi.fn();
+    render(
+      <SearchablePOSItemSelector
+        value="House Burger"
+        onValueChange={onValueChange}
+        posItems={POS_ITEMS}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.click(screen.getByText('Clear selection'));
+
+    // The second argument is the whole point: an owner that writes the id only
+    // when it is truthy would keep the previous item's id on a now-empty name.
+    expect(onValueChange).toHaveBeenCalledWith('', '');
+  });
+});

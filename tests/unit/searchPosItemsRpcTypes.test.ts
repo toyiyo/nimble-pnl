@@ -23,10 +23,15 @@ describe('search_pos_items RPC types', () => {
     expectTypeOf<SearchPosItemsFn['Returns']>().toEqualTypeOf<
       {
         item_name: string;
-        item_id: string;
+        // Nullable: the migration's `FILTER (WHERE item_id IS NOT NULL)` yields
+        // NULL when no contributing sale row carried an id, and `last_sold`
+        // follows a sale_date that can itself be NULL. The generator cannot
+        // infer nullability for a RETURNS TABLE function, so pinning it here is
+        // what keeps the hand-corrected types.ts honest.
+        item_id: string | null;
         source: string;
         sales_count: number;
-        last_sold: string;
+        last_sold: string | null;
       }[]
     >();
   });

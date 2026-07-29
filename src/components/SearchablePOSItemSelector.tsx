@@ -19,13 +19,22 @@ import { POSItem } from "@/hooks/usePOSItems";
 
 interface SearchablePOSItemSelectorProps {
   value?: string;
-  onValueChange: (value: string, itemId?: string) => void;
+  onValueChange: (value: string, itemId?: string | null) => void;
   posItems: POSItem[];
   loading?: boolean;
   disabled?: boolean;
   onSearchChange?: (search: string) => void;
   error?: unknown;
   onRetry?: () => void;
+  /** Injected by shadcn's `FormControl` via Radix `Slot` when this selector is
+   * used inside a `FormField`. They have to reach the `<button
+   * role="combobox">` itself: `FormLabel` renders `htmlFor={formItemId}`, and
+   * the root of this component is a `<Popover>` -- not a DOM node -- so
+   * without an explicit hand-off the label associates with nothing and the
+   * field is unlabelled for screen readers. */
+  id?: string;
+  'aria-describedby'?: string;
+  'aria-invalid'?: boolean | 'true' | 'false';
 }
 
 export function SearchablePOSItemSelector({
@@ -37,6 +46,9 @@ export function SearchablePOSItemSelector({
   onSearchChange,
   error,
   onRetry,
+  id,
+  'aria-describedby': ariaDescribedBy,
+  'aria-invalid': ariaInvalid,
 }: SearchablePOSItemSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
@@ -85,9 +97,12 @@ export function SearchablePOSItemSelector({
     <Popover open={open} onOpenChange={handleOpenChange} modal={modal}>
       <PopoverTrigger asChild>
         <Button
+          id={id}
           variant="outline"
           role="combobox"
           aria-expanded={open}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           className="w-full justify-between"
           disabled={disabled || loading}
         >

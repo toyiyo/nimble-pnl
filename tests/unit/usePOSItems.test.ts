@@ -189,4 +189,58 @@ describe('usePOSItems', () => {
     unmount();
     await waitFor(() => expect(lastAbortSignal!.aborted).toBe(true));
   });
+
+  it('keeps the previous page while a new search term for the SAME restaurant is in flight', async () => {
+    mockSupabase.rpc.mockReturnValueOnce(
+      rpcBuilder(Promise.resolve({ data: SAMPLE_ROWS, error: null })),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ search }: { search: string }) => usePOSItems('rest-1', { search }),
+      { wrapper: createWrapper(), initialProps: { search: 'bur' } },
+    );
+
+    await waitFor(() => expect(result.current.posItems).toEqual(SAMPLE_ROWS));
+
+    // Next keystroke: held open so the intermediate render is observable.
+    const gate = defer<RpcResponse>();
+    mockSupabase.rpc.mockReturnValueOnce(rpcBuilder(gate.promise));
+    rerender({ search: 'burg' });
+
+    // The whole point of keeping previous data: the list must not blink empty
+    // between debounced keystrokes.
+    expect(result.current.posItems).toEqual(SAMPLE_ROWS);
+
+    gate.resolve({ data: [SAMPLE_ROWS[0]], error: null });
+    await waitFor(() => expect(result.current.posItems).toEqual([SAMPLE_ROWS[0]]));
+  });
+
+  it('drops the previous page immediately when the RESTAURANT changes (no cross-tenant bleed)', async () => {
+    mockSupabase.rpc.mockReturnValueOnce(
+      rpcBuilder(Promise.resolve({ data: SAMPLE_ROWS, error: null })),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ restaurantId }: { restaurantId: string }) =>
+        usePOSItems(restaurantId, { search: 'bur' }),
+      { wrapper: createWrapper(), initialProps: { restaurantId: 'rest-1' } },
+    );
+
+    await waitFor(() => expect(result.current.posItems).toEqual(SAMPLE_ROWS));
+
+    const gate = defer<RpcResponse>();
+    mockSupabase.rpc.mockReturnValueOnce(rpcBuilder(gate.promise));
+    rerender({ restaurantId: 'rest-2' });
+
+    // rest-1's items must never be rendered under rest-2, not even for the
+    // duration of one fetch: this dropdown writes the chosen name onto a
+    // recipe, so a stale tenant's item is a silently wrong mapping.
+    expect(result.current.posItems).toEqual([]);
+
+    const REST_2_ROWS: POSItem[] = [
+      { item_name: 'Corner Cafe Wrap', item_id: 'pos-item-9', source: 'pos_sales', sales_count: 7, last_sold: '2026-07-21' },
+    ];
+    gate.resolve({ data: REST_2_ROWS, error: null });
+    await waitFor(() => expect(result.current.posItems).toEqual(REST_2_ROWS));
+  });
 });

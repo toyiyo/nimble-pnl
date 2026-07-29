@@ -405,29 +405,37 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                           className="text-[14px]"
                         />
                         <CommandList className="max-h-[300px]">
+                          {/* Rendered outside CommandEmpty deliberately. With
+                              `shouldFilter={false}` cmdk renders CommandEmpty
+                              only when zero items are *registered*, and this
+                              list registers a row per recipe. So any
+                              restaurant that has recipes would never see a POS
+                              load failure: the dropdown would look like an
+                              ordinary list that merely happens to omit POS
+                              items, inviting the user to create a duplicate of
+                              an item that already exists. Same defect, and
+                              same fix, as SearchablePOSItemSelector. */}
+                          {posError && !posLoading && (
+                            <div className="p-3 space-y-2">
+                              <p className="text-[13px] text-muted-foreground text-center">
+                                Couldn't load POS items. Something went wrong.
+                              </p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="w-full justify-center h-9 rounded-lg border-border/40 text-[13px]"
+                                onClick={() => refetchPOSItems()}
+                              >
+                                Try again
+                              </Button>
+                            </div>
+                          )}
                           <CommandEmpty>
                             {posLoading || recipesLoading ? (
                               <div className="flex flex-col items-center justify-center py-8">
                                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
                                 <p className="mt-2 text-[13px] text-muted-foreground">Loading items...</p>
-                              </div>
-                            ) : posError ? (
-                              // A failed load must not read as "this restaurant
-                              // has no items" -- that invites creating a
-                              // duplicate of an item that already exists.
-                              <div className="p-3 space-y-2">
-                                <p className="text-[13px] text-muted-foreground text-center">
-                                  Couldn't load POS items. Something went wrong.
-                                </p>
-                                <Button
-                                  type="button"
-                                  variant="outline"
-                                  size="sm"
-                                  className="w-full justify-center h-9 rounded-lg border-border/40 text-[13px]"
-                                  onClick={() => refetchPOSItems()}
-                                >
-                                  Try again
-                                </Button>
                               </div>
                             ) : searchQuery ? (
                               <div className="p-3 space-y-2">

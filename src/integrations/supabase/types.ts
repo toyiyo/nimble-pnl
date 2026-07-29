@@ -10970,9 +10970,9 @@ export type Database = {
       search_pos_items: {
         Args: { p_limit?: number; p_restaurant_id: string; p_search?: string }
         Returns: {
-          item_id: string
+          item_id: string | null
           item_name: string
-          last_sold: string
+          last_sold: string | null
           sales_count: number
           source: string
         }[]

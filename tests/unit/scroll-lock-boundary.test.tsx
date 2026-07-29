@@ -3,9 +3,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// The module under test does not exist yet (this is the RED step for plan
-// Task 4 / design §"The fix: `modal` follows the scroll-lock context").
-// It must export:
+// The contract under test:
 //   - `ScrollLockBoundary`: a context provider component
 //   - `useInsideScrollLock(): boolean`: a hook reading that context,
 //     defaulting to `false` when there is no provider ancestor

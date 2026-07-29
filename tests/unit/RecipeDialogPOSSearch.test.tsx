@@ -125,3 +125,86 @@ describe('RecipeDialog — POS item search wiring', () => {
     expect(refetch).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('RecipeDialog — pos_item_id follows pos_item_name', () => {
+  beforeEach(() => {
+    usePOSItemsMock.mockReset();
+    usePOSItemsMock.mockReturnValue({
+      posItems: [
+        {
+          item_name: 'House Burger',
+          item_id: 'pos-item-1',
+          source: 'pos_sales',
+          sales_count: 92,
+          last_sold: '2026-07-20',
+        },
+        {
+          item_name: 'Untracked Special',
+          item_id: null,
+          source: 'unified_sales',
+          sales_count: 4,
+          last_sold: '2026-07-19',
+        },
+      ],
+      loading: false,
+      error: null,
+      refetch: vi.fn(),
+    });
+  });
+
+  const posItemIdInput = () =>
+    screen.getByLabelText('POS Item ID') as HTMLInputElement;
+
+  it('writes the selected item id into pos_item_id', async () => {
+    const user = userEvent.setup();
+    render(<RecipeDialog isOpen={true} onClose={vi.fn()} restaurantId="rest-1" />);
+
+    await user.click(screen.getByLabelText('POS Item Name'));
+    await user.click(screen.getByText('House Burger'));
+
+    expect(posItemIdInput().value).toBe('pos-item-1');
+  });
+
+  it('CRITICAL: clears pos_item_id when the selection is cleared', async () => {
+    const user = userEvent.setup();
+    render(<RecipeDialog isOpen={true} onClose={vi.fn()} restaurantId="rest-1" />);
+
+    await user.click(screen.getByLabelText('POS Item Name'));
+    await user.click(screen.getByText('House Burger'));
+    expect(posItemIdInput().value).toBe('pos-item-1');
+
+    await user.click(screen.getByLabelText('POS Item Name'));
+    await user.click(screen.getByText('Clear selection'));
+
+    // Leaving the id behind would submit an empty pos_item_name paired with a
+    // real POS id -- a recipe that maps to nothing by name but still claims
+    // an item by id.
+    expect(posItemIdInput().value).toBe('');
+  });
+
+  it('CRITICAL: clears pos_item_id when switching to an item that has none', async () => {
+    const user = userEvent.setup();
+    render(<RecipeDialog isOpen={true} onClose={vi.fn()} restaurantId="rest-1" />);
+
+    await user.click(screen.getByLabelText('POS Item Name'));
+    await user.click(screen.getByText('House Burger'));
+    expect(posItemIdInput().value).toBe('pos-item-1');
+
+    await user.click(screen.getByLabelText('POS Item Name'));
+    await user.click(screen.getByText('Untracked Special'));
+
+    // search_pos_items returns a NULL item_id when no contributing sale row
+    // carried one. Writing only truthy ids would leave House Burger's id
+    // attached to Untracked Special's name.
+    expect(posItemIdInput().value).toBe('');
+  });
+
+  it('associates the POS Item Name label with the combobox trigger', () => {
+    render(<RecipeDialog isOpen={true} onClose={vi.fn()} restaurantId="rest-1" />);
+
+    // The selector's root is a Radix `Popover`, not a DOM node, so the `id`
+    // that `FormControl` injects has to be forwarded onto the trigger by hand
+    // or `FormLabel`'s `htmlFor` points at nothing.
+    expect(screen.getByLabelText('POS Item Name')).toHaveAttribute('role', 'combobox');
+  });
+});

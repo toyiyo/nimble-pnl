@@ -1,5 +1,5 @@
 -- pgTAP tests for timezone-aware week bucketing in publish_schedule /
--- unpublish_schedule (supabase/migrations/20260728140000_publish_schedule_tz_bucketing.sql).
+-- unpublish_schedule (supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql).
 --
 -- Both functions used to select shifts with a bare `start_time::date`, which
 -- casts a timestamptz using the DATABASE SESSION TimeZone (UTC on Supabase)

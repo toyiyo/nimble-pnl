@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - **Worktree:** all work happens in `.claude/worktrees/publish-schedule-tz-bucketing` on branch `fix/publish-schedule-tz-bucketing`. Never edit the primary checkout at `/Users/josedelgado/Documents/GitHub/nimble-pnl`.
-- **Migration filename:** `supabase/migrations/20260728140000_publish_schedule_tz_bucketing.sql`. The `20260728120000` prefix is already taken by `_get_unmapped_sale_item_names.sql`. Re-verify uniqueness immediately before pushing — a duplicate prefix breaks `db:start` for every open PR.
+- **Migration filename:** `supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql`. The `20260728120000` prefix is already taken by `_get_unmapped_sale_item_names.sql`. Re-verify uniqueness immediately before pushing — a duplicate prefix breaks `db:start` for every open PR.
 - **`CREATE OR REPLACE` is a full-body rewrite.** Both bodies are copied from `supabase/migrations/20251123000000_schedule_publishing.sql:172-265`, which is their sole prior definition. Nothing else in that file changes.
 - **No in-body authorization check.** Deliberately out of scope (design doc, *Not changed*). Do not add one.
 - **No frontend changes.** The RPC signatures are unchanged, so `src/hooks/useSchedulePublish.tsx` and the generated types in `src/types/supabase.ts` / `src/integrations/supabase/types.ts` stay as they are.
@@ -47,7 +47,7 @@ Create `supabase/tests/publish_schedule_tz_bucketing.test.sql` with exactly this
 
 ```sql
 -- pgTAP tests for timezone-aware week bucketing in publish_schedule /
--- unpublish_schedule (supabase/migrations/20260728140000_publish_schedule_tz_bucketing.sql).
+-- unpublish_schedule (supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql).
 --
 -- Both functions used to select shifts with a bare `start_time::date`, which
 -- casts a timestamptz using the DATABASE SESSION TimeZone (UTC on Supabase)
@@ -408,7 +408,7 @@ migration is about to add."
 ### Task 2: Timezone-aware migration (green)
 
 **Files:**
-- Create: `supabase/migrations/20260728140000_publish_schedule_tz_bucketing.sql`
+- Create: `supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql`
 - Reference (do not modify): `supabase/migrations/20251123000000_schedule_publishing.sql:172-265`
 
 **Interfaces:**
@@ -421,11 +421,13 @@ migration is about to add."
 ls supabase/migrations/ | grep '^20260728'
 ```
 
-Expected: only `20260728120000_get_unmapped_sale_item_names.sql`. If a `20260728140000_*` appeared, pick the next free two-hour slot and update every reference in this plan and the design doc.
+Expected: only `20260728120000_get_unmapped_sale_item_names.sql`. If a `20260729120000_*` appeared, pick the next free two-hour slot and update every reference in this plan and the design doc.
+
+This is what actually happened: the migration was authored as `20260728140000`, and PR #673 landed `20260728140000_search_pos_items.sql` on `main` mid-branch. Check the *merged* set (branch ∪ `origin/main`), not just `ls` on the branch — the branch alone never sees the collision.
 
 - [ ] **Step 2: Write the migration**
 
-Create `supabase/migrations/20260728140000_publish_schedule_tz_bucketing.sql`:
+Create `supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql`:
 
 ```sql
 -- Timezone-aware week bucketing for publish_schedule / unpublish_schedule.
@@ -635,7 +637,7 @@ COMMENT ON FUNCTION public.unpublish_schedule(UUID, DATE, DATE, TEXT) IS
 npm run db:reset
 ```
 
-Expected: the reset completes and lists `20260728140000_publish_schedule_tz_bucketing.sql` among the applied migrations, with no SQL error.
+Expected: the reset completes and lists `20260729120000_publish_schedule_tz_bucketing.sql` among the applied migrations, with no SQL error.
 
 - [ ] **Step 4: Run the suite and confirm all 15 pass**
 
@@ -656,7 +658,7 @@ Expected: `Failed:       0`. Pay particular attention to any suite touching `shi
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260728140000_publish_schedule_tz_bucketing.sql
+git add supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql
 git commit -m "fix(schedule): bucket publish/unpublish weeks in the restaurant's timezone
 
 publish_schedule and unpublish_schedule selected shifts with a bare
@@ -748,10 +750,13 @@ Nothing new is written here — this is the pre-PR check that the branch is clea
 - [ ] **Step 1: Re-check the migration prefix against the latest `main`**
 
 ```bash
-git fetch origin && git ls-tree origin/main --name-only supabase/migrations/ | grep '^supabase/migrations/20260728'
+git fetch origin && { git ls-tree --name-only origin/main supabase/migrations/; git ls-tree --name-only HEAD supabase/migrations/; } \
+  | sed 's|.*/||' | awk -F_ '{print $1}' | sort -u | tail -5
 ```
 
-Expected: no `20260728140000_*` on `origin/main`. If one appeared while this branch was open, rename the local migration to the next free slot and update the design doc and this plan.
+Expected: no `20260729120000_*` from any source other than this branch. If one appeared while this branch was open, rename the local migration to the next free slot and update the design doc and this plan.
+
+Run this against the *merged* set, not `ls` on the branch — CI builds the merge ref, so a collision introduced by another PR is invisible to a branch-local check.
 
 - [ ] **Step 2: Typecheck**
 

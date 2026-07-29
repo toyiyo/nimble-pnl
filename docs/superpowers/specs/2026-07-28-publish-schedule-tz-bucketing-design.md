@@ -87,7 +87,7 @@ here so a future indexing pass knows the option exists.
 
 ## Design
 
-### Migration — `supabase/migrations/20260728140000_publish_schedule_tz_bucketing.sql`
+### Migration — `supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql`
 
 **Provenance.** `grep -rlE "FUNCTION\s+(public\.)?(publish_schedule|unpublish_schedule)\b" supabase/migrations/`
 returns exactly one file: `20251123000000_schedule_publishing.sql`. It is both
@@ -95,11 +95,14 @@ the original and the latest definition, so the bodies are copied from there. The
 migration header records this, per the 2026-07-22 lesson — a `CREATE OR REPLACE`
 is a full-body rewrite and silently reverts anything it does not carry forward.
 
-The `20260728140000` prefix is unused repo-wide — `20260728120000` is already
-taken by `_get_unmapped_sale_item_names.sql` on `main`, so this migration lands
-two hours later on the same day. Re-checked immediately before push: a colliding
-prefix breaks `db:start` for every open PR and silently skips one migration on
-production.
+This migration lands at `20260729120000`. It was originally written as
+`20260728140000`, but PR #673 merged `20260728140000_search_pos_items.sql` to
+`main` while this branch was open, and CI — which builds the *merge* ref, not
+the branch tip — caught the collision: `migrationVersionUniqueness` failed, and
+`supabase start` failed in every DB job downstream of it. A local
+`ls supabase/migrations | uniq -d` stayed clean throughout, because the
+colliding file was never on this branch. The check that matters is against the
+merged set, re-run immediately before every push, not once at authoring time.
 
 **Timezone resolution.** Both functions gain, verbatim from the deployed sibling
 `20260723180000_timeoff_conflict_local_tz.sql`:

@@ -16,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useInsideScrollLock } from "@/components/ui/scroll-lock-boundary";
 
 export interface LocationOption {
   id: string;
@@ -80,8 +81,10 @@ export function SearchableLocationSelector({
     !!onCreateNew && searchValue.trim().length > 0 &&
     !locations.some((loc) => loc.name.toLowerCase() === searchValue.trim().toLowerCase());
 
+  const modal = useInsideScrollLock();
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"

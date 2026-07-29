@@ -35,6 +35,12 @@ vi.mock("@/hooks/useAutomaticInventoryDeduction", () => ({
 vi.mock("@/hooks/useBulkInventoryDeduction", () => ({
   useBulkInventoryDeduction: () => ({ loading: false, bulkProcessHistoricalSales: vi.fn() }),
 }));
+// Recipes mounts RecipeDialog even while closed, and the dialog reads POS
+// items through React Query -- which needs a QueryClientProvider this suite
+// deliberately does not set up. Mocked like every other data hook above.
+vi.mock("@/hooks/usePOSItems", () => ({
+  usePOSItems: () => ({ posItems: [], loading: false, error: null, refetch: vi.fn() }),
+}));
 
 import Recipes from "@/pages/Recipes";
 

@@ -16,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useInsideScrollLock } from "@/components/ui/scroll-lock-boundary";
 import { Product } from '@/hooks/useProducts';
 
 interface SearchableProductSelectorProps {
@@ -88,8 +89,10 @@ export function SearchableProductSelector({
     setSearchValue('');
   };
 
+  const modal = useInsideScrollLock();
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={setOpen} modal={modal}>
       <PopoverTrigger asChild>
         <Button
           id={id}

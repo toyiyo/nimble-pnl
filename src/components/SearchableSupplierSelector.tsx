@@ -16,6 +16,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { useInsideScrollLock } from "@/components/ui/scroll-lock-boundary";
 import { Supplier } from '@/hooks/useSuppliers';
 
 interface SearchableSupplierSelectorProps {
@@ -84,9 +85,11 @@ export function SearchableSupplierSelector({
     setSearchValue('');
   };
 
+  const modal = useInsideScrollLock();
+
   return (
     <div className="relative w-full">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover open={open} onOpenChange={setOpen} modal={modal}>
         <PopoverTrigger asChild>
           <Button
             variant="outline"

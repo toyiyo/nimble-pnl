@@ -44,7 +44,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(28);
+SELECT plan(29);
 
 -- ============================================================================
 -- Fixtures (inserted as the default `postgres` role, which bypasses RLS)
@@ -123,6 +123,18 @@ ON CONFLICT DO NOTHING;
 INSERT INTO public.unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, external_item_id, quantity, total_price, sale_date) VALUES
   ('88000000-0000-0000-0000-000000050001', '88000000-0000-0000-0000-000000000001', 'square', 'order-fallback-1', 'Fallback Item', 'FALLBACK-OLD', 1, 7.00, '2024-01-01'),
   ('88000000-0000-0000-0000-000000050002', '88000000-0000-0000-0000-000000000001', 'square', 'order-fallback-2', 'Fallback Item', NULL, 1, 7.00, '2024-01-05')
+ON CONFLICT DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- Group: tie-break determinism (assertion 29)
+-- Two rows for one item share the newest sale_date but carry different ids,
+-- and one differs only in casing so it also exercises the display-name pick.
+-- Whichever value wins, it must be the *same* one on every execution --
+-- the ordered-aggregate spelling left this up to the query plan.
+-- ----------------------------------------------------------------------------
+INSERT INTO public.unified_sales (id, restaurant_id, pos_system, external_order_id, item_name, external_item_id, quantity, total_price, sale_date) VALUES
+  ('88000000-0000-0000-0000-000000080001', '88000000-0000-0000-0000-000000000001', 'square', 'order-tie-1', 'Tiebreak Item', 'TIE-AAA', 1, 3.00, '2024-02-01'),
+  ('88000000-0000-0000-0000-000000080002', '88000000-0000-0000-0000-000000000001', 'square', 'order-tie-2', 'TIEBREAK ITEM', 'TIE-ZZZ', 1, 3.00, '2024-02-01')
 ON CONFLICT DO NOTHING;
 
 -- ----------------------------------------------------------------------------
@@ -340,6 +352,22 @@ SELECT is(
   )),
   'FALLBACK-OLD',
   'item_id fallback: the older non-NULL id is returned, not the newer NULL one'
+);
+
+-- ============================================================================
+-- Test: same-date tie-break is deterministic
+-- ============================================================================
+
+-- Both contributing rows sit on the same newest date, so "most recent" alone
+-- does not decide it. The array-max spelling breaks the tie on the value,
+-- giving one fixed answer instead of a plan-dependent one -- otherwise the
+-- same item could render under a different id/casing between page loads.
+SELECT is(
+  (SELECT item_id FROM public.search_pos_items(
+    '88000000-0000-0000-0000-000000000001'::uuid, 'Tiebreak', 100
+  )),
+  'TIE-ZZZ',
+  'same-date tie: item_id resolves deterministically rather than by query plan'
 );
 
 -- ============================================================================

@@ -23,12 +23,17 @@ export const usePOSItems = (
     refetch,
   } = useQuery({
     queryKey: ['pos-items', restaurantId, search, limit],
-    queryFn: async () => {
-      const { data, error } = await supabase.rpc('search_pos_items', {
-        p_restaurant_id: restaurantId,
-        p_search: search,
-        p_limit: limit,
-      });
+    // Typing is debounced, so superseded keystrokes would otherwise leave
+    // their RPC running server-side for results nobody reads. Hand React
+    // Query's signal to PostgREST so the aborted fetch takes the query with it.
+    queryFn: async ({ signal }) => {
+      const { data, error } = await supabase
+        .rpc('search_pos_items', {
+          p_restaurant_id: restaurantId,
+          p_search: search,
+          p_limit: limit,
+        })
+        .abortSignal(signal);
 
       if (error) throw error;
       return (data ?? []) as POSItem[];

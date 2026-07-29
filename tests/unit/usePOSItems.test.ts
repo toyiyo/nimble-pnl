@@ -80,8 +80,8 @@ describe('usePOSItems', () => {
     expect(args.p_restaurant_id).toBe('rest-1');
     // Server-side defaults (p_search DEFAULT NULL, p_limit DEFAULT 100) are
     // what should apply — the hook must not invent its own values here.
-    expect(args.p_search == null).toBe(true);
-    expect(args.p_limit == null).toBe(true);
+    expect(args.p_search).toBeUndefined();
+    expect(args.p_limit).toBeUndefined();
   });
 
   it('maps the RPC row shape onto POSItem unchanged', async () => {

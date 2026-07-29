@@ -91,17 +91,30 @@ AS $function$
        OR r.item_name ILIKE ('%' || es.pattern || '%') ESCAPE '\'
   ),
   grouped AS (
+    -- Both "most recent value" picks below are spelled as max() over a
+    -- [sale_date, value] array rather than the more obvious
+    -- array_agg(value ORDER BY sale_date DESC). That is deliberate and
+    -- load-bearing for performance: an aggregate carrying its own ORDER BY
+    -- disqualifies the whole grouping step from hash aggregation, so the
+    -- planner must sort every one of the tenant's sales rows first. On the
+    -- largest production tenant (~70k rows) that sort spilled to disk
+    -- ("external merge Disk: 6968kB") and the call took 332ms; as a plain
+    -- max() it hash-aggregates in parallel with no spill, at 174ms.
+    -- Array comparison is element-wise and sale_date is a `date`, whose
+    -- ::text form (YYYY-MM-DD) sorts chronologically, so element 1 decides
+    -- the winner and only rows tied on the newest date ever reach element
+    -- 2. That makes the tie-break the value itself -- deterministic, where
+    -- the ordered-aggregate form left it up to the query plan.
     SELECT
       -- Display name comes from the most recent contributing row.
-      (array_agg(item_name ORDER BY sale_date DESC))[1] AS item_name,
+      (max(ARRAY[sale_date::text, item_name]))[2] AS item_name,
       -- item_id must survive a newer row whose id is NULL: the FILTER
       -- drops NULL ids before taking the most-recent survivor, so an
       -- older non-NULL id is returned instead of NULL. This mirrors the
-      -- fallback the client code performs today
-      -- (src/hooks/usePOSItems.tsx:55-58) and is load-bearing, not
+      -- fallback the client code performs today and is load-bearing, not
       -- decoration.
-      (array_agg(item_id ORDER BY sale_date DESC)
-         FILTER (WHERE item_id IS NOT NULL))[1] AS item_id,
+      (max(ARRAY[sale_date::text, item_id])
+         FILTER (WHERE item_id IS NOT NULL))[2] AS item_id,
       -- 'pos_sales' wins whenever any contributing row came from that
       -- table, preserving today's POS/Unified badge.
       CASE WHEN bool_or(source = 'pos_sales')

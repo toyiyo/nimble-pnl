@@ -62,6 +62,49 @@ describe('SearchablePOSItemSelector — server-side search', () => {
   });
 });
 
+describe('SearchablePOSItemSelector — search reset on close', () => {
+  it('CRITICAL: clears the owner\'s search term on select, not just the visible input', async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    render(
+      <SearchablePOSItemSelector
+        onValueChange={() => {}}
+        posItems={POS_ITEMS}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByPlaceholderText('Search POS items...'), 'salad');
+    await user.click(screen.getByText('Garden Salad'));
+
+    // The search is served by the server-side RPC, so leaving the parent's
+    // term set keeps the *next* open narrowed to the old query -- with an
+    // empty-looking search box, which reads as missing data. The dialog is a
+    // single persistent instance, so nothing else resets this.
+    expect(onSearchChange).toHaveBeenLastCalledWith('');
+  });
+
+  it('clears the owner\'s search term on clear-selection too', async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    render(
+      <SearchablePOSItemSelector
+        value="House Burger"
+        onValueChange={() => {}}
+        posItems={POS_ITEMS}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByPlaceholderText('Search POS items...'), 'salad');
+    await user.click(screen.getByText('Clear selection'));
+
+    expect(onSearchChange).toHaveBeenLastCalledWith('');
+  });
+});
+
 describe('SearchablePOSItemSelector — selected-value display fix', () => {
   it('renders the trigger value verbatim when it is absent from the current posItems page', () => {
     render(
@@ -124,6 +167,46 @@ describe('SearchablePOSItemSelector — error empty-state', () => {
     expect(
       screen.queryByText(/couldn't load|failed to load|something went wrong/i),
     ).not.toBeInTheDocument();
+  });
+
+  it('CRITICAL: still surfaces the failure when a value is already selected — the edit-an-existing-recipe path', async () => {
+    const user = userEvent.setup();
+    render(
+      <SearchablePOSItemSelector
+        value="House Burger"
+        onValueChange={() => {}}
+        posItems={[]}
+        error={new Error('connection reset')}
+        onRetry={() => {}}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+
+    // A set `value` renders the "Clear selection" row, which registers with
+    // cmdk and drives its item count above zero -- so a `CommandEmpty`-based
+    // empty state would never fire here, leaving a failed load looking like
+    // an ordinary empty list on the single most common path.
+    expect(screen.getByText('Clear selection')).toBeInTheDocument();
+    expect(
+      screen.getByText(/couldn't load|failed to load|something went wrong/i),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it('surfaces the plain empty state with a value selected too', async () => {
+    const user = userEvent.setup();
+    render(
+      <SearchablePOSItemSelector
+        value="House Burger"
+        onValueChange={() => {}}
+        posItems={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+
+    expect(screen.getByText('No POS items found')).toBeInTheDocument();
   });
 
   it('offers a retry affordance that calls onRetry when error is set', async () => {

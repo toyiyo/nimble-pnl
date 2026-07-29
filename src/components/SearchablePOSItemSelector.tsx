@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Check, ChevronsUpDown, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Command,
-  CommandEmpty,
   CommandGroup,
   CommandInput,
   CommandItem,
@@ -49,20 +48,36 @@ export function SearchablePOSItemSelector({
 
   const selectedItem = posItems.find((item) => item.item_name === value);
 
+  /** Clearing the visible input is not enough: the search is served by the
+   * server-side RPC, so the *owner's* term has to be reset too or the next
+   * open still shows the previous query's narrowed list. */
+  const resetSearch = () => {
+    setSearchValue('');
+    onSearchChange?.('');
+  };
+
   const handleSelect = (itemName: string) => {
     const item = posItems.find((i) => i.item_name === itemName);
     onValueChange(itemName, item?.item_id);
     setOpen(false);
-    setSearchValue('');
+    resetSearch();
   };
 
   const handleClear = () => {
     onValueChange('', '');
     setOpen(false);
-    setSearchValue('');
+    resetSearch();
   };
 
   const modal = useInsideScrollLock();
+
+  /** A selection can outlive the item's presence in the current search page,
+   * so fall back to the raw `value` rather than rendering the placeholder. */
+  const triggerLabel = loading
+    ? "Loading POS items..."
+    : value
+      ? (selectedItem?.item_name ?? value)
+      : "Search POS items or leave blank";
 
   return (
     <Popover open={open} onOpenChange={setOpen} modal={modal}>
@@ -74,15 +89,7 @@ export function SearchablePOSItemSelector({
           className="w-full justify-between"
           disabled={disabled || loading}
         >
-          <span className="truncate">
-            {loading ? (
-              "Loading POS items..."
-            ) : value ? (
-              selectedItem ? selectedItem.item_name : value
-            ) : (
-              "Search POS items or leave blank"
-            )}
-          </span>
+          <span className="truncate">{triggerLabel}</span>
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -94,8 +101,14 @@ export function SearchablePOSItemSelector({
             onValueChange={handleSearchChange}
           />
           <CommandList className="max-h-72 overflow-y-auto">
-            <CommandEmpty>
-              {error ? (
+            {/* Branch on the data, not on cmdk's `CommandEmpty`: with
+                `shouldFilter={false}` cmdk's empty-state counts *registered*
+                items, and the "Clear selection" row below is registered
+                whenever a value is set -- so `CommandEmpty` would never fire
+                on the edit-an-existing-recipe path, silently swallowing both
+                the failure and the no-matches message. */}
+            {posItems.length === 0 && (
+              error ? (
                 <div className="py-6 text-center text-sm space-y-2">
                   <p className="text-muted-foreground">
                     Couldn't load POS items. Something went wrong.
@@ -115,8 +128,8 @@ export function SearchablePOSItemSelector({
                 <div className="py-6 text-center text-sm">
                   <p className="text-muted-foreground">No POS items found</p>
                 </div>
-              )}
-            </CommandEmpty>
+              )
+            )}
             <CommandGroup>
               {value && (
                 <CommandItem

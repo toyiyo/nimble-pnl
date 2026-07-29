@@ -81,7 +81,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   editingSale = null,
 }) => {
   const { createManualSale, createManualSaleWithAdjustments, updateManualSale } = useUnifiedSales(restaurantId);
-  const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId, { limit: 500 });
+  const { posItems, loading: posLoading, error: posError, refetch: refetchPOSItems } = usePOSItems(restaurantId, { limit: 500 });
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
 
   const [comboboxOpen, setComboboxOpen] = useState(false);
@@ -401,6 +401,24 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                               <div className="flex flex-col items-center justify-center py-8">
                                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-muted-foreground/20 border-t-foreground/70" />
                                 <p className="mt-2 text-[13px] text-muted-foreground">Loading items...</p>
+                              </div>
+                            ) : posError ? (
+                              // A failed load must not read as "this restaurant
+                              // has no items" -- that invites creating a
+                              // duplicate of an item that already exists.
+                              <div className="p-3 space-y-2">
+                                <p className="text-[13px] text-muted-foreground text-center">
+                                  Couldn't load POS items. Something went wrong.
+                                </p>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full justify-center h-9 rounded-lg border-border/40 text-[13px]"
+                                  onClick={() => refetchPOSItems()}
+                                >
+                                  Try again
+                                </Button>
                               </div>
                             ) : searchQuery ? (
                               <div className="p-3 space-y-2">

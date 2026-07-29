@@ -1,6 +1,15 @@
 import { test, expect } from '@playwright/test';
 import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
+interface WindowHelpers {
+  __supabase: {
+    from: (table: string) => {
+      insert: (rows: unknown[]) => Promise<{ error: { message: string } | null }>;
+    };
+  };
+  __getRestaurantId: (userId?: string) => Promise<string | null>;
+}
+
 /**
  * E2E: POS item dropdown (Recipe dialog)
  *
@@ -22,8 +31,9 @@ const SALE_DATE = '2026-07-01';
 async function seedPosItems(page: import('@playwright/test').Page, count: number) {
   await page.evaluate(
     async ({ count, saleDate }) => {
-      const supabase = (window as any).__supabase;
-      const restaurantId = await (window as any).__getRestaurantId();
+      const win = window as unknown as WindowHelpers;
+      const supabase = win.__supabase;
+      const restaurantId = await win.__getRestaurantId();
 
       const rows = Array.from({ length: count }, (_, i) => ({
         restaurant_id: restaurantId,
@@ -56,8 +66,9 @@ async function seedPosItems(page: import('@playwright/test').Page, count: number
 async function seedItemBeyondRow1000(page: import('@playwright/test').Page) {
   await page.evaluate(
     async ({ saleDate }) => {
-      const supabase = (window as any).__supabase;
-      const restaurantId = await (window as any).__getRestaurantId();
+      const win = window as unknown as WindowHelpers;
+      const supabase = win.__supabase;
+      const restaurantId = await win.__getRestaurantId();
 
       // 1000 decoy rows for a single common item, inserted (and therefore
       // occupying table rows) before the target item's rows.

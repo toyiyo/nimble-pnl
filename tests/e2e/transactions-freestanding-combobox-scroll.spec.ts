@@ -1,6 +1,26 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signUpAndCreateRestaurant, generateTestUser, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
 
+interface SupabaseError {
+  message: string;
+}
+
+interface WindowHelpers {
+  __supabase: {
+    from: (table: string) => {
+      insert: (rows: unknown) => {
+        select: () => {
+          single: () => Promise<{ data: { id: string }; error: SupabaseError | null }>;
+        };
+        then: (
+          onfulfilled: (value: { error: SupabaseError | null }) => unknown,
+        ) => Promise<unknown>;
+      };
+    };
+  };
+  __getRestaurantId: (userId?: string) => Promise<string | null>;
+}
+
 /**
  * E2E: free-standing regression guard (design doc "Test strategy",
  * plan Task 5 item 3).
@@ -34,8 +54,9 @@ const TRANSACTION_DATE = '2026-07-01';
 async function seedBankTransactions(page: Page, count: number) {
   await page.evaluate(
     async ({ count, date }) => {
-      const supabase = (window as any).__supabase;
-      const restaurantId = await (window as any).__getRestaurantId();
+      const win = window as unknown as WindowHelpers;
+      const supabase = win.__supabase;
+      const restaurantId = await win.__getRestaurantId();
 
       const timestamp = Date.now();
       const random = crypto.randomUUID().slice(0, 8);

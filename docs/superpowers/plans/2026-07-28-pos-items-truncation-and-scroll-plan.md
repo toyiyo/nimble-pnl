@@ -47,7 +47,7 @@ principals; assert:
 9. an item ranked beyond the 1000th raw sale row is still returned — the
    regression test for the reported bug
 
-**Then** `supabase/migrations/20260728120000_search_pos_items.sql`:
+**Then** `supabase/migrations/20260728140000_search_pos_items.sql`:
 
 - `CREATE INDEX IF NOT EXISTS idx_pos_sales_restaurant_id ON public.pos_sales(restaurant_id);`
 - `CREATE OR REPLACE FUNCTION public.search_pos_items(p_restaurant_id uuid, p_search text DEFAULT NULL, p_limit int DEFAULT 100)` returning

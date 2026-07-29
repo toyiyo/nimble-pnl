@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest';
 import type { Database } from '@/integrations/supabase/types';
 
-// search_pos_items is a SQL RPC (supabase/migrations/20260728120000_search_pos_items.sql)
+// search_pos_items is a SQL RPC (supabase/migrations/20260728140000_search_pos_items.sql)
 // that Task 2 (usePOSItems rewrite) calls via `supabase.rpc('search_pos_items', ...)`.
 // supabase-js only type-checks the RPC name and payload when the generated
 // `Database['public']['Functions']` map includes the function -- this test pins

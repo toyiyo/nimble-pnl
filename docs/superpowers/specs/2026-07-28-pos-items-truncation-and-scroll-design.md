@@ -189,7 +189,7 @@ rather than forgotten.
 
 ### 1. `search_pos_items` RPC
 
-New migration `supabase/migrations/20260728120000_search_pos_items.sql`
+New migration `supabase/migrations/20260728140000_search_pos_items.sql`
 (prefix verified unique — the latest existing migration is
 `20260724180300`, and a colliding 14-digit prefix breaks `db-start` for
 every PR per the [2026-07-21] and [2026-07-23] lessons).

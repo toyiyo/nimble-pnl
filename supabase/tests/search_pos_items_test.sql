@@ -7,7 +7,7 @@
 --          tenant, person or item name appears in this file.
 --
 -- Migration under test (not yet applied when this test is written):
---   supabase/migrations/20260728120000_search_pos_items.sql
+--   supabase/migrations/20260728140000_search_pos_items.sql
 --
 -- Covers, per the plan's Task 1 test list:
 --   1. case-insensitive dedupe across pos_sales + unified_sales

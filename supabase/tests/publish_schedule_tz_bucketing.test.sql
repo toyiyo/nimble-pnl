@@ -31,7 +31,7 @@
 
 BEGIN;
 
-SELECT plan(15);
+SELECT plan(19);
 
 -- ============================================
 -- Setup
@@ -43,6 +43,7 @@ ALTER TABLE employees              DISABLE ROW LEVEL SECURITY;
 ALTER TABLE shifts                 DISABLE ROW LEVEL SECURITY;
 ALTER TABLE schedule_publications  DISABLE ROW LEVEL SECURITY;
 ALTER TABLE schedule_change_logs   DISABLE ROW LEVEL SECURITY;
+ALTER TABLE user_restaurants       DISABLE ROW LEVEL SECURITY;
 
 -- Next Monday from today. ISODOW: Monday = 1 ... Sunday = 7, so 8 - ISODOW is
 -- always in [1, 7] and never resolves to today.
@@ -71,16 +72,44 @@ SELECT set_config(
 
 -- Three restaurants: behind UTC, ahead of UTC, and one with a garbage IANA
 -- string to exercise the invalid_parameter_value fallback.
+-- DO UPDATE, not DO NOTHING: these are fixed IDs, and the timezone is the whole
+-- subject of this suite. A retained row from an earlier run with a different
+-- zone would silently invalidate every bucketing assertion below.
 INSERT INTO restaurants (id, name, timezone) VALUES
   ('a0000000-0000-0000-0000-00000000c001', 'Chicago Test Restaurant', 'America/Chicago'),
   ('a0000000-0000-0000-0000-00000000d002', 'Tokyo Test Restaurant',   'Asia/Tokyo'),
   ('a0000000-0000-0000-0000-00000000e003', 'Bad TZ Test Restaurant',  'Not/AZone')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE
+  SET name = EXCLUDED.name, timezone = EXCLUDED.timezone;
 
 INSERT INTO employees (id, restaurant_id, name, position) VALUES
   ('e0000000-0000-0000-0000-00000000c001', 'a0000000-0000-0000-0000-00000000c001', 'Chicago Server', 'Server'),
   ('e0000000-0000-0000-0000-00000000d002', 'a0000000-0000-0000-0000-00000000d002', 'Tokyo Server',   'Server'),
-  ('e0000000-0000-0000-0000-00000000e003', 'a0000000-0000-0000-0000-00000000e003', 'Bad TZ Server',  'Server');
+  ('e0000000-0000-0000-0000-00000000e003', 'a0000000-0000-0000-0000-00000000e003', 'Bad TZ Server',  'Server')
+ON CONFLICT (id) DO UPDATE
+  SET restaurant_id = EXCLUDED.restaurant_id, name = EXCLUDED.name, position = EXCLUDED.position;
+
+-- publish_schedule / unpublish_schedule now require the caller to be a member of
+-- the target restaurant. Without these rows every publish below fails with
+-- insufficient_privilege before any bucketing is exercised.
+INSERT INTO user_restaurants (user_id, restaurant_id, role) VALUES
+  ('a11ce000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-00000000c001', 'owner'),
+  ('a11ce000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-00000000d002', 'owner'),
+  ('a11ce000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-00000000e003', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
+
+-- A second authenticated user who is a member of NOTHING, for the cross-tenant
+-- denial assertions at the end of the file.
+INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change)
+VALUES (
+  'b22de000-0000-0000-0000-000000000002',
+  '00000000-0000-0000-0000-000000000000',
+  'authenticated', 'authenticated',
+  'publish-tz-outsider@example.com',
+  crypt('password123', gen_salt('bf')),
+  now(), now(), now(), '', '', '', ''
+)
+ON CONFLICT (id) DO NOTHING;
 
 -- --- America/Chicago fixtures (UTC-5 / UTC-6) ---
 
@@ -317,6 +346,68 @@ SELECT is(
   has_function_privilege('authenticated', 'public.unpublish_schedule(uuid,date,date,text)', 'EXECUTE'),
   true,
   'authenticated can execute unpublish_schedule'
+);
+
+-- ============================================
+-- Cross-tenant authorization
+-- ============================================
+--
+-- Both functions are SECURITY DEFINER and so bypass RLS on shifts. The EXECUTE
+-- grants above stop `anon`, but every authenticated user shares the same
+-- `authenticated` role — the grant cannot distinguish tenants. Only the
+-- in-function membership check can, which is what these four assertions pin.
+--
+-- Tokyo is the target for the unpublish attempt because test 8 left
+-- f...d0001 published: a successful cross-tenant call would be visibly
+-- destructive, so "still published" is a real unchanged-state assertion rather
+-- than a vacuous one.
+
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"b22de000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+
+-- Test 16
+SELECT throws_ok(
+  $$ SELECT publish_schedule(
+       'a0000000-0000-0000-0000-00000000c001',
+       (SELECT week_start FROM test_config),
+       (SELECT week_end   FROM test_config),
+       'cross-tenant attempt'
+     ) $$,
+  '42501',
+  NULL,
+  'a non-member authenticated caller cannot publish another restaurant''s week'
+);
+
+-- Test 17
+SELECT throws_ok(
+  $$ SELECT unpublish_schedule(
+       'a0000000-0000-0000-0000-00000000d002',
+       (SELECT week_start FROM test_config),
+       (SELECT week_end   FROM test_config),
+       'cross-tenant attempt'
+     ) $$,
+  '42501',
+  NULL,
+  'a non-member authenticated caller cannot unpublish another restaurant''s week'
+);
+
+-- Test 18
+SELECT is(
+  (SELECT is_published FROM shifts WHERE id = 'f0000000-0000-0000-0000-0000000d0001'),
+  true,
+  'the denied unpublish left the target restaurant''s published shift untouched'
+);
+
+-- Test 19 -- exactly the one publication from the Chicago block; the denied
+-- publish must not have inserted a second.
+SELECT is(
+  (SELECT COUNT(*)::int FROM schedule_publications
+    WHERE restaurant_id = 'a0000000-0000-0000-0000-00000000c001'),
+  1,
+  'the denied publish recorded no schedule_publications row'
 );
 
 SELECT * FROM finish();

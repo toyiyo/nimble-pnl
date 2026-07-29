@@ -236,6 +236,51 @@ the spec deliberately seeds a noon shift to dodge the boundary. The comment is
 corrected to describe restaurant-local bucketing; the noon seed stays, since that
 spec is testing broadcast, not the boundary.
 
+### Added in review — cross-tenant authorization guard
+
+CodeRabbit flagged, at Critical, that both functions are `SECURITY DEFINER` and
+carried no authorization check: any authenticated caller could pass another
+restaurant's UUID and publish, lock, or unpublish that tenant's shifts.
+
+Verified as **pre-existing, not introduced here** — `20251123000000` defines both
+with `$$ LANGUAGE plpgsql SECURITY DEFINER;` (lines 222, 265) and no check, and
+no migration between then and now redefines them. This PR had in fact already
+*narrowed* it, by revoking the default `PUBLIC`/`anon` EXECUTE.
+
+Fixed rather than deferred, because this migration is already restating the
+access control on these two functions — shipping a hardening pass that closes
+the anonymous half of a hole and leaves the cross-tenant half open would be
+worse than not touching grants at all. The guard uses the canonical, production-
+verified helper:
+
+```sql
+IF NOT public.user_has_restaurant_access(p_restaurant_id, false) THEN
+  RAISE EXCEPTION '...' USING ERRCODE = 'insufficient_privilege';
+END IF;
+```
+
+**`false`, not `true`, is deliberate.** The helper's second argument restricts to
+`owner`/`manager`. Which roles may publish is a product decision, and the UI's
+own gating is the current authority on it; passing `true` here would silently
+change who can publish as a side effect of a timezone fix. `false` makes
+cross-tenant calls impossible while keeping every caller that works today
+working. **Tracked non-goal:** whether publishing should additionally require
+manager role deserves its own change, with the UI gating audited alongside it.
+
+Blast-radius check: the only callers are `useSchedulePublish.tsx` via
+`supabase.rpc()` with the user's own JWT. No edge function, cron, or
+service_role path invokes either function, so no caller loses access.
+
+### Also added in review — `shift_count` derived from the UPDATE
+
+`publish_schedule` counted draft shifts with a `SELECT COUNT(*)` and then ran the
+`UPDATE` as a separate statement. Under READ COMMITTED two concurrent publishes
+of the same week both see the same drafts; the loser updates zero rows but still
+inserts a publication row claiming the pre-update count. Replaced with
+`GET DIAGNOSTICS v_shift_count = ROW_COUNT` — which is what `unpublish_schedule`
+in the same file already did, so this also removes an inconsistency between the
+two halves.
+
 ## Testing
 
 ### pgTAP — `supabase/tests/publish_schedule_tz_bucketing.test.sql`

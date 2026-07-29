@@ -55,6 +55,21 @@ DECLARE
   v_publication_id UUID;
   v_tz TEXT;
 BEGIN
+  -- Both functions are SECURITY DEFINER, so they bypass RLS on shifts. Without
+  -- this guard any authenticated caller could pass an arbitrary restaurant UUID
+  -- and publish/lock another tenant's schedule. Pre-existing (the original
+  -- 20251123000000 definition was SECURITY DEFINER with no check and executable
+  -- by PUBLIC); closed here because this migration is already restating the
+  -- access control on these two functions.
+  --
+  -- Membership, not manager-role: which roles may publish is a product decision
+  -- and the UI's own gating is the current authority. `false` keeps every caller
+  -- that works today working, while making cross-tenant calls impossible.
+  IF NOT public.user_has_restaurant_access(p_restaurant_id, false) THEN
+    RAISE EXCEPTION 'Not authorized to publish schedules for restaurant %', p_restaurant_id
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
   -- Resolve the restaurant's IANA zone ONCE, before any use of v_tz below.
   SELECT r.timezone INTO v_tz
   FROM public.restaurants r
@@ -75,14 +90,6 @@ BEGIN
     v_tz := 'UTC';
   END;
 
-  -- Count shifts to be published
-  SELECT COUNT(*) INTO v_shift_count
-  FROM public.shifts s
-  WHERE s.restaurant_id = p_restaurant_id
-    AND (s.start_time AT TIME ZONE v_tz)::date >= p_week_start
-    AND (s.start_time AT TIME ZONE v_tz)::date <= p_week_end
-    AND s.is_published = false;
-
   -- Update shifts to published
   UPDATE public.shifts s
   SET
@@ -94,6 +101,13 @@ BEGIN
     AND (s.start_time AT TIME ZONE v_tz)::date >= p_week_start
     AND (s.start_time AT TIME ZONE v_tz)::date <= p_week_end
     AND s.is_published = false;
+
+  -- Derive the count from the UPDATE rather than a preceding COUNT(*). Two
+  -- concurrent publishes of the same week would both see the same draft rows
+  -- under READ COMMITTED; the loser updates zero rows but would still have
+  -- recorded the pre-update count, inserting a publication that claims shifts
+  -- it did not publish. unpublish_schedule below already does it this way.
+  GET DIAGNOSTICS v_shift_count = ROW_COUNT;
 
   -- Create publication record
   INSERT INTO public.schedule_publications (
@@ -131,6 +145,14 @@ DECLARE
   v_shift_count INTEGER;
   v_tz TEXT;
 BEGIN
+  -- Same authorization guard as publish_schedule; see the comment there.
+  -- Unpublishing another tenant's week is the more damaging direction of the
+  -- two: it clears is_published/locked and silently retracts a live schedule.
+  IF NOT public.user_has_restaurant_access(p_restaurant_id, false) THEN
+    RAISE EXCEPTION 'Not authorized to unpublish schedules for restaurant %', p_restaurant_id
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
   -- Same resolution as publish_schedule; see the comment there.
   SELECT r.timezone INTO v_tz
   FROM public.restaurants r

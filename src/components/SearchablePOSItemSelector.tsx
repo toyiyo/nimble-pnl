@@ -48,21 +48,26 @@ export function SearchablePOSItemSelector({
 
   const selectedItem = posItems.find((item) => item.item_name === value);
 
-  /** Clearing the visible input is not enough: the search is served by the
-   * server-side RPC, so the *owner's* term has to be reset too (via
-   * `handleSearchChange('')`) or the next open still shows the previous
-   * query's narrowed list. */
+  /** The search term's lifetime is the popover's. Clearing the visible input
+   * is not enough: the search is served by the server-side RPC, so the
+   * *owner's* term has to be reset too (via `handleSearchChange('')`) or the
+   * next open still shows the previous query's narrowed list. Resetting here
+   * rather than in `handleSelect`/`handleClear` also covers dismissal without
+   * a selection -- Escape, or a click outside. */
+  const handleOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (!next) handleSearchChange('');
+  };
+
   const handleSelect = (itemName: string) => {
     const item = posItems.find((i) => i.item_name === itemName);
     onValueChange(itemName, item?.item_id);
-    setOpen(false);
-    handleSearchChange('');
+    handleOpenChange(false);
   };
 
   const handleClear = () => {
     onValueChange('', '');
-    setOpen(false);
-    handleSearchChange('');
+    handleOpenChange(false);
   };
 
   const modal = useInsideScrollLock();
@@ -77,7 +82,7 @@ export function SearchablePOSItemSelector({
   }
 
   return (
-    <Popover open={open} onOpenChange={setOpen} modal={modal}>
+    <Popover open={open} onOpenChange={handleOpenChange} modal={modal}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"

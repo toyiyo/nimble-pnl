@@ -42,14 +42,19 @@ SET search_path = public
 AS $function$
   WITH escaped_search AS (
     -- NULL/blank p_search means "no filter". Otherwise the term is
-    -- treated as a literal: backslash is escaped first (so a user's own
-    -- backslash isn't later mistaken for an escape character), then %
-    -- and _ so they match themselves instead of acting as ILIKE
-    -- wildcards.
+    -- trimmed and then treated as a literal: backslash is escaped first
+    -- (so a user's own backslash isn't later mistaken for an escape
+    -- character), then % and _ so they match themselves instead of acting
+    -- as ILIKE wildcards.
+    --
+    -- The btrim() must wrap the escaped term too, not just the blank
+    -- check: surrounding whitespace otherwise survives into the pattern,
+    -- and '%  burger  %' matches nothing. A trailing space is easy to type
+    -- and easier to paste, so this reads as "search is broken".
     SELECT
       CASE
         WHEN p_search IS NULL OR btrim(p_search) = '' THEN NULL
-        ELSE replace(replace(replace(p_search, '\', '\\'), '%', '\%'), '_', '\_')
+        ELSE replace(replace(replace(btrim(p_search), '\', '\\'), '%', '\%'), '_', '\_')
       END AS pattern
   ),
   clamped_limit AS (

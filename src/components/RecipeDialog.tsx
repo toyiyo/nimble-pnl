@@ -82,6 +82,19 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
     return () => clearTimeout(timeout);
   }, [posItemSearch]);
 
+  // This dialog is rendered unconditionally by Recipes.tsx and driven by
+  // `isOpen`, so it never unmounts and the search term would otherwise
+  // outlive the session that typed it -- reopening would silently show the
+  // previous query's narrowed item list. The selector clears itself whenever
+  // its popover closes; this covers the case where the dialog is dismissed
+  // while that popover is still open, so no close event ever arrives.
+  useEffect(() => {
+    if (isOpen) {
+      setPosItemSearch('');
+      setDebouncedPosItemSearch('');
+    }
+  }, [isOpen]);
+
   const { posItems, loading: posItemsLoading, error: posItemsError, refetch: refetchPosItems } = usePOSItems(restaurantId, { search: debouncedPosItemSearch });
   const navigate = useNavigate();
 

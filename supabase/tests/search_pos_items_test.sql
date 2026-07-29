@@ -44,7 +44,7 @@
 -- ============================================================================
 
 BEGIN;
-SELECT plan(29);
+SELECT plan(30);
 
 -- ============================================================================
 -- Fixtures (inserted as the default `postgres` role, which bypasses RLS)
@@ -486,6 +486,24 @@ SELECT ok(
 );
 
 RESET ROLE;
+
+-- ============================================================================
+-- Test: surrounding whitespace on the search term is trimmed
+--
+-- A trailing space is easy to type and easier to paste. Untrimmed it
+-- survives into the ILIKE pattern ('%  Rank  %'), which matches nothing --
+-- so search reads as broken for a term that is otherwise perfectly valid.
+-- ============================================================================
+
+SELECT is(
+  (SELECT count(*)::int FROM public.search_pos_items(
+    '88000000-0000-0000-0000-000000000001'::uuid, '  Rank  ', 100
+  )),
+  (SELECT count(*)::int FROM public.search_pos_items(
+    '88000000-0000-0000-0000-000000000001'::uuid, 'Rank', 100
+  )),
+  'whitespace: a padded search term returns the same rows as the trimmed one'
+);
 
 SELECT * FROM finish();
 ROLLBACK;

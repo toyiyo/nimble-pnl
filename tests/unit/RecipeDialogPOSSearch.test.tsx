@@ -76,6 +76,32 @@ describe('RecipeDialog — POS item search wiring', () => {
     expect(usePOSItemsMock).toHaveBeenLastCalledWith('rest-1', { search: 'burger' });
   });
 
+  it('CRITICAL: resets the search term when the dialog is reopened', () => {
+    vi.useFakeTimers();
+
+    const { rerender } = render(
+      <RecipeDialog isOpen={true} onClose={vi.fn()} restaurantId="rest-1" />
+    );
+
+    fireEvent.click(screen.getByText('Search POS items or leave blank').closest('button')!);
+    fireEvent.change(screen.getByPlaceholderText('Search POS items...'), {
+      target: { value: 'burger' },
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(usePOSItemsMock).toHaveBeenLastCalledWith('rest-1', { search: 'burger' });
+
+    // Recipes.tsx renders this dialog unconditionally and drives it with
+    // `isOpen`, so it never unmounts and the term survives the close. Without
+    // an explicit reset, reopening serves the previous session's narrowed
+    // list -- indistinguishable from the truncation bug this branch fixes.
+    rerender(<RecipeDialog isOpen={false} onClose={vi.fn()} restaurantId="rest-1" />);
+    rerender(<RecipeDialog isOpen={true} onClose={vi.fn()} restaurantId="rest-1" />);
+
+    expect(usePOSItemsMock).toHaveBeenLastCalledWith('rest-1', { search: '' });
+  });
+
   it('renders the failure empty-state and calls refetch via the retry button when usePOSItems reports an error', async () => {
     const refetch = vi.fn();
     usePOSItemsMock.mockReturnValue({

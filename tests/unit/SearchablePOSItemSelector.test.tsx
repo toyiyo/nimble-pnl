@@ -85,6 +85,29 @@ describe('SearchablePOSItemSelector — search reset on close', () => {
     expect(onSearchChange).toHaveBeenLastCalledWith('');
   });
 
+  it('CRITICAL: clears the search term when the popover is dismissed without a selection', async () => {
+    const user = userEvent.setup();
+    const onSearchChange = vi.fn();
+    render(
+      <SearchablePOSItemSelector
+        onValueChange={() => {}}
+        posItems={POS_ITEMS}
+        onSearchChange={onSearchChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('combobox'));
+    await user.type(screen.getByPlaceholderText('Search POS items...'), 'salad');
+
+    // Abandoning the search is at least as common as completing it: the user
+    // types, doesn't see what they wanted, and presses Escape. Resetting only
+    // on select/clear would leave the RPC term set, so the next open serves
+    // the abandoned query's narrowed list behind an empty-looking search box.
+    await user.keyboard('{Escape}');
+
+    expect(onSearchChange).toHaveBeenLastCalledWith('');
+  });
+
   it('clears the owner\'s search term on clear-selection too', async () => {
     const user = userEvent.setup();
     const onSearchChange = vi.fn();

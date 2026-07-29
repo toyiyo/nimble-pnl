@@ -307,4 +307,80 @@ test.describe('POS Item Dropdown', () => {
     await nameInput.fill('Nested Overlay Regression Check');
     await expect(nameInput).toHaveValue('Nested Overlay Regression Check');
   });
+
+  /**
+   * Mobile-viewport re-run of the wheel-scroll assertion above, per design §"Test
+   * strategy" / design-review finding F5: removing the two dead CSS rules
+   * (`overscroll-contain`, `WebkitOverflowScrolling` — Task 3b) needed "a real
+   * mobile-viewport check in the E2E rather than an assumption".
+   *
+   * `-webkit-overflow-scrolling` only ever affected WebKit/iOS Safari's own rendering,
+   * and this repo's `e2e` Playwright project runs Chromium (`devices['Desktop
+   * Chrome']`), so this cannot exercise that CSS property's browser-specific behaviour
+   * directly. What it *can* and does prove: at a real narrow viewport — below the 768px
+   * breakpoint this codebase already switches layout on elsewhere (e.g.
+   * `Transactions.tsx`'s `TransactionCard` list, Task 5d) — the dropdown still scrolls
+   * with a wheel input after that CSS was removed, and the context-driven `modal` fix
+   * (Task 4) still resolves correctly once the Recipe dialog's own responsive layout
+   * kicks in.
+   *
+   * The viewport is resized *after* `signUpAndCreateRestaurant`, not via `test.use()`
+   * up front (same ordering as the free-standing regression guard's `setViewportSize`
+   * call, Task 5d): `OnboardingDrawer` (`src/components/dashboard/OnboardingDrawer.tsx`)
+   * renders a fixed, non-modal 400px-wide `Sheet` docked to the right the moment a new
+   * user lands post-signup, before any restaurant exists. Below ~400px of viewport width
+   * that panel has nowhere to go and physically covers the "Add Restaurant" button the
+   * signup helper needs to click, hanging the whole test on an unrelated pre-existing
+   * flow issue that has nothing to do with bug 2. Running signup at the default desktop
+   * viewport sidesteps it — the helper's own drawer-dismiss step
+   * (`tests/helpers/e2e-supabase.ts:731-743`) then closes the drawer and persists
+   * `onboarding_drawer_dismissed` in `localStorage` before the viewport ever narrows.
+   */
+  test.describe('mobile viewport', () => {
+    test('scrolls with a wheel input inside the Recipe dialog at a mobile viewport', async ({ page }) => {
+      const user = generateTestUser('pos-item-mobile');
+      await signUpAndCreateRestaurant(page, user);
+      await exposeSupabaseHelpers(page);
+
+      // Same overflow trigger as the desktop wheel-scroll test above.
+      await seedPosItems(page, 40);
+
+      // Narrow to a real mobile-sized viewport now that signup/onboarding-drawer
+      // dismissal (both viewport-sensitive, see comment above) are already done.
+      await page.setViewportSize({ width: 390, height: 844 });
+
+      await page.goto('/recipes');
+      await page.getByRole('button', { name: 'Create new recipe' }).click();
+
+      const dialog = page.getByRole('dialog', { name: /create new recipe/i });
+      await expect(dialog).toBeVisible({ timeout: 10000 });
+
+      const posItemCombobox = dialog.getByRole('combobox').filter({ hasText: 'Search POS items or leave blank' });
+      await expect(posItemCombobox).toBeVisible({ timeout: 15000 });
+      await posItemCombobox.click();
+
+      // Still portals to document.body at a mobile viewport — same root cause 2 as the
+      // desktop test, so query the page directly rather than scoping to `dialog`.
+      const listbox = page.getByRole('listbox');
+      await expect(listbox).toBeVisible({ timeout: 5000 });
+
+      const isScrollable = await listbox.evaluate((el) => el.scrollHeight > el.clientHeight);
+      expect(isScrollable).toBe(true);
+
+      const scrollTopBefore = await listbox.evaluate((el) => el.scrollTop);
+      expect(scrollTopBefore).toBe(0);
+
+      // Same trusted, real wheel input as the desktop assertion — the only tool that
+      // exercises the actual bug (see the comment on the desktop test above).
+      await listbox.hover();
+      await page.mouse.wheel(0, 400);
+
+      await expect
+        .poll(async () => listbox.evaluate((el) => el.scrollTop), {
+          message: 'CommandList scrollTop should advance after a wheel event at a mobile viewport',
+          timeout: 5000,
+        })
+        .toBeGreaterThan(0);
+    });
+  });
 });

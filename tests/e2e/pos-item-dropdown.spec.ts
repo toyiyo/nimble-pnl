@@ -99,6 +99,31 @@ async function seedItemBeyondRow1000(page: import('@playwright/test').Page) {
   );
 }
 
+/**
+ * Poll until `locator`'s centre point is genuinely hit-testable, rather than assuming that a
+ * closed overlay means the rest of the page can receive pointer input again. Radix's nested-
+ * layer teardown (releasing focus traps / pointer-events locks) happens asynchronously after
+ * a layer's `open` state flips, so `toBeVisible()` going false on the listbox does NOT by
+ * itself prove the page is interactive again -- see the [2026-07-22] lesson (documented for a
+ * *single* Dialog's async close teardown) and design doc §"Test strategy"/"Risks": this specific
+ * nested-Popover-in-Dialog case has no prior-incident coverage, so it must be asserted via
+ * `document.elementFromPoint`, never inferred from visibility or a sleep.
+ */
+async function waitUntilHitTestable(locator: import('@playwright/test').Locator) {
+  await expect(async () => {
+    const reachable = await locator.evaluate((el) => {
+      const rect = el.getBoundingClientRect();
+      const x = rect.x + rect.width / 2;
+      const y = rect.y + rect.height / 2;
+      const target = document.elementFromPoint(x, y);
+      return !!target && (el === target || el.contains(target) || target.contains(el));
+    });
+    if (!reachable) {
+      throw new Error('element is not hit-testable yet (stranded pointer-events/focus lock?)');
+    }
+  }).toPass({ timeout: 5000 });
+}
+
 test.describe('POS Item Dropdown', () => {
   test('surfaces an item outside the first 1000 sale rows when its name is typed', async ({ page }) => {
     const user = generateTestUser('pos-item-1000');
@@ -192,5 +217,94 @@ test.describe('POS Item Dropdown', () => {
         timeout: 5000,
       })
       .toBeGreaterThan(0);
+  });
+
+  /**
+   * Bug 2's fix (Task 4) makes the Popover's `modal` prop context-driven: `true` inside a
+   * Dialog, `false` free-standing. Design §4 states four acceptance criteria for what that
+   * nested modal-Popover-in-modal-Dialog combination must do, tracing each to Radix's layer
+   * source. This is the only place those criteria are provable -- they depend on Radix's real
+   * runtime layer stack (`DismissableLayer`'s shared `branches` set, `FocusScope`'s trap/auto-
+   * focus, the browser's real `document.elementFromPoint` hit-testing), none of which jsdom
+   * reproduces.
+   */
+  test('nested overlay: Escape closes only the popover, an outside click does not dismiss the Recipe dialog, focus returns to the trigger, and the body stays interactive', async ({
+    page,
+  }) => {
+    const user = generateTestUser('pos-item-nested');
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    await seedPosItems(page, 5);
+
+    await page.goto('/recipes');
+    await page.getByRole('button', { name: 'Create new recipe' }).click();
+
+    const dialog = page.getByRole('dialog', { name: /create new recipe/i });
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+
+    const posItemCombobox = dialog.getByRole('combobox').filter({ hasText: 'Search POS items or leave blank' });
+    await expect(posItemCombobox).toBeVisible({ timeout: 15000 });
+    await posItemCombobox.click();
+
+    const listbox = page.getByRole('listbox');
+    await expect(listbox).toBeVisible({ timeout: 5000 });
+
+    // While the modal Popover is open, Radix's `hideOthers` (called from
+    // `PopoverContentModal`'s own mount effect, independent of the `DismissableLayer`
+    // mechanics §4 cites) marks the Dialog's portal root `aria-hidden="true"` -- confirmed by
+    // instrumenting the DOM directly during this task. That is correct, standard nested-modal
+    // stacking (only the topmost active modal should be exposed to assistive tech at a time,
+    // matching how Select-in-Dialog already behaves), not the Dialog being dismissed: it stays
+    // mounted with `data-state="open"` and visually on screen the whole time. `getByRole`
+    // deliberately excludes `aria-hidden` subtrees (that's what makes it accessibility-tree
+    // aware), so asserting `dialog` (a role locator) while the Popover is still open would
+    // read a correct accessibility side effect as a false "dismissed" failure. Use a plain
+    // text locator instead here -- it matches on rendered text/CSS visibility, not the pruned
+    // accessibility tree -- to prove the Dialog is still literally on screen.
+    const dialogTitleText = page.getByText('Create New Recipe', { exact: true });
+
+    // --- Criterion: outside click does not dismiss the Dialog ---
+    // `PopoverContent` portals to `document.body` (design "Root cause 2"), so it is a
+    // *sibling* of the Recipe dialog in the DOM, not a descendant. A click anywhere inside it
+    // therefore lands outside `DialogContent`'s own subtree, and would look like an "outside
+    // click" to the Dialog's own dismiss detection -- unless Radix's shared `branches` set
+    // correctly excludes it (design §4: "the same mechanism that already makes
+    // Select-in-Dialog work today"). Click the popover's own search input: it is inside the
+    // Popover (so this should not close the Popover either) but is a real click on a sibling
+    // DOM node of the Dialog.
+    const searchInput = page.getByPlaceholder('Search POS items...');
+    await searchInput.click();
+    await expect(listbox).toBeVisible();
+    await expect(dialogTitleText).toBeVisible();
+
+    // --- Criterion: Escape dismisses only the Popover, not the Dialog ---
+    // Radix's `DismissableLayer` picks the highest layer by index, and the Popover mounts
+    // after the Dialog, so only the Popover should respond to this Escape.
+    await page.keyboard.press('Escape');
+    await expect(listbox).not.toBeVisible({ timeout: 5000 });
+    // The Dialog is exposed to the accessibility tree again now that the nested modal Popover
+    // has unmounted and released its `hideOthers` lock -- a *dismissed* Dialog could never
+    // satisfy a role-based query again without re-opening it, so this is the proof (not just
+    // the plain-text one above) that the Dialog was never actually closed by any of this.
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+
+    // --- Criterion: focus returns to the Popover trigger on close ---
+    // `PopoverContentModal.onCloseAutoFocus` composes with the Dialog's `FocusScope` because
+    // the trigger is inside the Dialog's trapped subtree.
+    await expect(posItemCombobox).toBeFocused({ timeout: 5000 });
+
+    // --- Criterion: `pointer-events: none` is not stranded on <body> ---
+    // The Popover's layer count is a shared set whose original `pointer-events` value is
+    // captured only on the 0->1 transition, so a Popover mounting under an already-open Dialog
+    // should not stomp it when the Popover unmounts. Prove the rest of the Dialog can still be
+    // clicked and typed into -- gated on `document.elementFromPoint`, per the [2026-07-22]
+    // lesson, rather than inferred from the listbox's visibility already having gone false
+    // above (that only proves the Popover's own state flipped, not that the DOM-level lock
+    // finished tearing down).
+    const nameInput = dialog.getByPlaceholder('e.g., Margarita');
+    await waitUntilHitTestable(nameInput);
+    await nameInput.fill('Nested Overlay Regression Check');
+    await expect(nameInput).toHaveValue('Nested Overlay Regression Check');
   });
 });

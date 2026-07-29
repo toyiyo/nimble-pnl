@@ -64,8 +64,10 @@ coexist:
 The third is the reported bug installed as a default.
 
 The consequence of opt-in correctness is recurrence. `git log --all
---regexp-ignore-case --extended-regexp --grep="timezone|\btz\b|\butc\b"` returns
-**148** commits across all refs (81 reachable from `main`), including the branch
+--regexp-ignore-case --extended-regexp --grep="timezone|\btz\b|\butc\b"` returned
+**148** commits across all refs (81 reachable from `main`) as of `b24dc4eb`; the
+count drifts upward as work lands, so treat it as an order of magnitude rather
+than a fixed figure. Among them, the branch
 `fix/publish-schedule-tz-bucketing` and, most recently, `c675d566`
 "fix(scheduling): publish-week timezone off-by-one across hooks + notify fn
 (#671)".
@@ -158,9 +160,17 @@ the precise bug `parseDateOnly` exists to prevent (`src/lib/dateOnly.ts:13`).
 
 `src/hooks/useLaborCostsFromTimeTracking.tsx:112-113` calls
 `format(dateFrom, 'yyyy-MM-dd')` against a `date` column. `dateFrom` is a
-local-midnight `Date` *token* (a calendar day), and reading its local fields is
-the **correct** serialization per the two-serialization rule
-(`memory/lessons.md:1301`). This file is not changed.
+local-midnight `Date` *token* (a calendar day), so reading its local fields is
+the correct serialization — the calendar-day half of the rule stated above, not
+a quotation from anywhere. This file is not changed.
+
+**Caveat.** That conclusion rests on a caller-side invariant the file itself does
+not enforce: `dateFrom: Date` (`src/hooks/useLaborCostsFromTimeTracking.tsx:59`)
+is a parameter, and nothing stops a future caller passing an instant. The one
+caller today builds it via `new Date(y, m-1, d, ...)` from `useTodayInTimezone`
+(`src/hooks/useLaborPnlCore.ts:44-48`) — genuinely local midnight. Implementation
+must re-audit callers before treating this exclusion as closed, and should add a
+type-level marker (a branded `CalendarDay` type) if the audit finds more than one.
 
 ## Design
 
@@ -180,12 +190,37 @@ This becomes the single fallback, replacing all three above.
 `memory/lessons.md:807` records that an invalid IANA string makes `Intl` throw
 `RangeError`, which is why validation is mandatory rather than cosmetic.
 
-**Load-bearing guard.** `formatInstant` **throws** when handed a date-only
-string, and `formatDateOnly` (`src/lib/dateOnly.ts:49`) **throws** when handed
-an ISO instant. This converts the "calendar day vs. moment in time" rule from a
-convention people forget into a runtime error. It is the single highest-value
-element of this design: it is what makes the next 35-file migration
-self-checking rather than another round of manual vigilance.
+**Load-bearing guard — and why it must not throw in production.**
+
+`formatInstant` rejects a date-only string, and `formatDateOnly`
+(`src/lib/dateOnly.ts:49`) rejects an ISO instant. This converts the calendar-day
+vs. moment-in-time rule from a convention people forget into a mechanical check,
+and it is what makes the remaining migration self-checking rather than another
+round of manual vigilance.
+
+The original draft of this design had both **throw unconditionally**. That is
+wrong, and the reason is specific to this codebase: `grep -rn
+"componentDidCatch\|getDerivedStateFromError\|ErrorBoundary" src` returns
+**zero** matches, and `react-error-boundary` is not a dependency. **There is no
+error boundary anywhere in this application.** An uncaught throw inside render
+unmounts the entire React tree — a blank white screen on the whole route, not a
+degraded widget. For a manager checking labor cost mid-shift, that is strictly
+worse than the bug being fixed: a wrong date is readable and recoverable, a
+white screen is neither.
+
+The guard is therefore **environment-split**:
+
+| Environment | Behavior on wrong-shape input |
+|---|---|
+| `import.meta.env.DEV`, and under Vitest | **Throw.** Authoring-time and CI feedback, where a loud failure is the entire point. |
+| Production build | **Do not throw.** Log once via the existing error path, and render the value through the correct branch inferred from its shape (a date-only string formats as a calendar day; an instant formats in `tz`). |
+
+Production degradation is a *correct render plus a logged defect*, never a
+crash. This keeps the mechanical guarantee where it pays — the migration and CI —
+without making a latent call site a customer-visible outage.
+
+The missing error boundary is a real gap independent of this work, but adding
+one is out of scope here; see Scope boundary.
 
 ### `src/hooks/useRestaurantClock.ts` (new)
 
@@ -203,15 +238,47 @@ Binds the pure functions to the selected restaurant and returns
   `America/Chicago` and `US/Central` name the same zone and must not trigger a
   cue.
 
+**Memoization is specified, not left to the implementer.** The returned object
+is wrapped in `useMemo` with dependency array **`[tz, today]`** — both, exactly.
+Neither plausible default is safe:
+
+- `[tz]` alone freezes `today` at first render. `useTodayInTimezone` bails out of
+  re-render on every no-op tick and only yields a new string when the day
+  actually rolls over (`src/hooks/useTodayInTimezone.ts:20-38`), so a stale
+  closure here would silently defeat the exact midnight-rollover behavior the
+  hook was reused for — the overnight-dashboard case in its own docstring.
+- No `useMemo` at all returns fresh closures every render, retriggering any
+  consumer `useEffect`/`useCallback` that lists them.
+
+With `[tz, today]`, consumers get a new object identity at most **once per day**
+(rollover) plus on restaurant switch. That contract is documented in the hook's
+docstring so consumers can safely put the returned functions in dep arrays.
+
 ### `src/components/RestaurantTzNotice.tsx` (new)
 
 Returns `null` when offsets match. Otherwise renders a muted
 `text-[13px] text-muted-foreground` line ("times shown in restaurant time
-(CDT)"), per the CLAUDE.md typography scale and semantic-token rules. Mounted on
-the scheduling and timecard headers in this PR.
+(CDT)"), per the CLAUDE.md typography scale and semantic-token rules.
+
+The abbreviation is wrapped in `<abbr title="Central Daylight Time">` so screen
+readers announce the expansion rather than spelling "C D T".
 
 Rationale: correctness alone does not resolve the reported *confusion* — a
 viewer in another zone still has no cue whose 6 PM they are reading.
+
+**Placement gate — the notice makes a claim the page must actually honor.**
+A header-level notice asserts *every* time on that screen is in restaurant time.
+Since ~35+ display-only call sites stay unmigrated until follow-up PRs, mounting
+it page-wide risks a screen that vouches for a number rendered in the viewer's
+zone right beside one rendered in the restaurant's — worse than no notice, since
+the UI now actively endorses the wrong value.
+
+Implementation must therefore, **before mounting it on any page header**, audit
+every time/date display on that page and confirm each one routes through
+`useRestaurantClock`. Where the audit does not come back clean, the notice
+attaches to the specific migrated widget instead of the page header, and the
+page header waits for the follow-up PR that finishes it. Scheduling and Timecard
+are the intended targets; the audit decides whether they qualify in this PR.
 
 ### Enforcement — `eslint.config.js`, configuration only
 
@@ -278,8 +345,19 @@ Before touching the bucketers, grep test seeds for naive datetime strings and
 the CI zone matrix, and the four defect sites above.
 
 **Out, deliberately:**
-- ~35 display-only call sites — allowlisted, migrated in follow-up PRs.
+- The remaining display-only call sites — allowlisted, migrated in follow-up PRs.
+  Estimates range from ~35 (banned-pattern grep) to 51 (banned pattern *and* an
+  instant-column field name), the upper bound inflated by `start_time`/`end_time`
+  matches on the out-of-scope wall-clock tables. **The authoritative count is
+  whatever lands in the ESLint allowlist** once the ratchet exists; the spec
+  should not pretend to a number before then.
 - Availability (`employee_availability`) — the dual-convention hazard above.
+- **An app-wide error boundary.** There is none today (verified: zero matches in
+  `src`), which is a standing fragility this design works around rather than
+  fixes. Out of scope here because it is an app-shell concern with its own
+  blast radius, but it should be tracked — with one in place, the clock guard
+  could throw in production and degrade to a bounded fallback UI instead of
+  needing the environment split above.
 - Per-restaurant business-day cutoff — tracked as a separate task. Note for that
   work: `period.clockIn` is already the bucketing anchor at both
   `src/services/laborCalculations.ts:945` and
@@ -293,5 +371,7 @@ the CI zone matrix, and the four defect sites above.
 |---|---|
 | Labor and Payroll bucketing drift apart | Change both in one commit; assert equality in a shared test. |
 | Timezone-fragile fixtures break CI | Re-anchor seeds first; verify under `TZ=UTC` before pushing. |
-| The throw-on-wrong-type guard breaks a caller passing a date-only string to `formatInstant` | Intended — that caller is a latent bug. Full unit suite under 3 zones surfaces them before merge. |
-| Half-migrated period: some screens restaurant-tz, others browser-tz | Accepted. The corrupting and cost-attribution paths are fixed first; display-only drift is cosmetic and already the status quo. |
+| The guard rejects a caller passing a date-only string to `formatInstant` | Intended — that caller is a latent bug. Throws in dev/CI, where the full unit suite under 3 zones surfaces it before merge. |
+| A guard rejection reaches production from a path fixtures never covered (bad POS import, null, a call site wired up after merge) | Production never throws: it logs and renders via the shape-inferred branch. No render crash, because there is no error boundary to catch one. |
+| Half-migrated period: some screens restaurant-tz, others browser-tz | Accepted at the screen level — the corrupting and cost-attribution paths go first, and display-only drift is the status quo. **Not** accepted *within* a page carrying the tz notice; the placement gate above resolves that case. |
+| `useRestaurantClock` returns unstable identities and thrashes consumer effects | `useMemo` keyed `[tz, today]` — new identity at most once per day plus on restaurant switch. |

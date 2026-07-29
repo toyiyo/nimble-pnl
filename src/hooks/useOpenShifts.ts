@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { formatLocalDate } from '@/lib/shiftInterval';
 import type { OpenShift } from '@/types/scheduling';
 
 export function useOpenShifts(restaurantId: string | null, weekStart: Date | null, weekEnd: Date | null) {
@@ -8,8 +9,8 @@ export function useOpenShifts(restaurantId: string | null, weekStart: Date | nul
     queryFn: async () => {
       if (!restaurantId || !weekStart || !weekEnd) return [];
 
-      const startStr = weekStart.toISOString().split('T')[0];
-      const endStr = weekEnd.toISOString().split('T')[0];
+      const startStr = formatLocalDate(weekStart);
+      const endStr = formatLocalDate(weekEnd);
 
       const { data, error } = await (supabase.rpc as any)('get_open_shifts', {
         p_restaurant_id: restaurantId,

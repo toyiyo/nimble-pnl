@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { formatLocalDate } from '@/lib/shiftInterval';
 import type { OpenShift } from '@/types/scheduling';
 import type { TemplateDeletionImpact } from '@/lib/scheduling/deletionCopy';
 
@@ -16,10 +17,6 @@ export interface TemplateDeletionImpactResult extends TemplateDeletionImpact {
   error: Error | null;
   /** Retry affordance for the ledger's error-state row (design review #3). */
   refetch: () => void;
-}
-
-function toDateStr(d: Date): string {
-  return d.toISOString().split('T')[0];
 }
 
 async function fetchTemplateDeletionImpact(
@@ -52,8 +49,8 @@ async function fetchTemplateDeletionImpact(
     //    client-side below (design non-goal #15).
     (supabase.rpc as any)('get_open_shifts', {
       p_restaurant_id: restaurantId,
-      p_week_start: toDateStr(today),
-      p_week_end: toDateStr(windowEnd),
+      p_week_start: formatLocalDate(today),
+      p_week_end: formatLocalDate(windowEnd),
     }),
   ]);
 

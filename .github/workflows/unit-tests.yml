@@ -36,6 +36,9 @@ jobs:
       - name: Run unit tests with coverage
         run: npm run test:coverage
 
+      - name: Run timezone matrix tests
+        run: npm run test:tz
+
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4

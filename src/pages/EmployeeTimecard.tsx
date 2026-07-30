@@ -30,8 +30,7 @@ import {
   parseISO,
 } from 'date-fns';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
-import { hoursByClockInDay } from '@/utils/timecardHours';
-import { TimePunch } from '@/types/timeTracking';
+import { hoursByClockInDay, punchesByBusinessDay } from '@/utils/timecardHours';
 
 const formatHoursMinutes = (hours: number) => {
   const h = Math.floor(hours);
@@ -83,38 +82,29 @@ const EmployeeTimecard = () => {
     fetchEnd
   );
 
-  // Filter punches to the current period (display list only — visual
-  // per-punch timeline). Hours are computed separately from the buffered
-  // `punches` via `dayHours` below so overnight shifts aren't split.
-  const periodPunches = useMemo(() => {
-    return punches.filter((punch) => {
-      const punchDate = new Date(punch.punch_time);
-      return punchDate >= startDate && punchDate <= endDate;
-    });
-  }, [punches, startDate, endDate]);
+  // Destructured to primitives so they can go into the dep arrays individually;
+  // the config object is constructed inline and is a new reference every render.
+  const tz = selectedRestaurant?.restaurant?.timezone;
+  const cutoffHour = selectedRestaurant?.restaurant?.business_day_start_hour;
 
-  // Group punches by day
-  const punchesByDay = useMemo(() => {
-    const grouped = new Map<string, TimePunch[]>();
-    weekDays.forEach((day) => {
-      const dayKey = format(day, 'yyyy-MM-dd');
-      grouped.set(dayKey, []);
-    });
+  // Group punches by the business day of the SHIFT they belong to, computed
+  // from the BUFFERED punches. Both the window clip and the per-day bucketing
+  // happen inside punchesByBusinessDay: it seeds only `weekDays`, so a shift
+  // outside the displayed range is dropped there. Filtering by raw instant
+  // first (as this used to) would discard the 1 AM punches of a shift that the
+  // cutoff assigns to a day still on screen.
+  const punchesByDay = useMemo(
+    () => punchesByBusinessDay(punches, weekDays, { tz, cutoffHour }),
+    [punches, weekDays, tz, cutoffHour]
+  );
 
-    periodPunches.forEach((punch) => {
-      const punchDate = parseISO(punch.punch_time);
-      const dayKey = format(punchDate, 'yyyy-MM-dd');
-      if (grouped.has(dayKey)) {
-        grouped.get(dayKey)!.push(punch);
-      }
-    });
-
-    return grouped;
-  }, [periodPunches, weekDays]);
-
-  // Hours attributed by clock-in day, computed from the BUFFERED punches so
-  // overnight shifts pair whole before being bucketed to their clock-in day.
-  const dayHours = useMemo(() => hoursByClockInDay(punches, weekDays), [punches, weekDays]);
+  // Hours attributed by clock-in business day, from the same buffered punches
+  // so overnight shifts pair whole before being bucketed. Same framing as
+  // punchesByDay above, so a row's punches and its hours always agree.
+  const dayHours = useMemo(
+    () => hoursByClockInDay(punches, weekDays, { tz, cutoffHour }),
+    [punches, weekDays, tz, cutoffHour]
+  );
 
   // Calculate weekly totals
   const weeklyTotals = useMemo(() => {

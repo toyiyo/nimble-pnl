@@ -323,3 +323,68 @@ export function expandAreas(
 
   return Array.from(capabilities);
 }
+
+/**
+ * One representative nav path per `area_key` — the page a role holding that
+ * area lands on, and (via `AREA_PRIORITY`) the page it lands on by default.
+ * Moved here (out of `usePermissions.ts`, where this lived until task 9b)
+ * so `preview.ts`'s live preview and `usePermissions.ts`'s `landingPath` both
+ * read one copy rather than risking two hand-maintained lists drifting apart.
+ * Paths mirror the builtin `landingPath`s already in `ROLE_METADATA`
+ * (definitions.ts) — e.g. `collaborator_operations_manager` -> `/scheduling`,
+ * `collaborator_inventory` -> `/inventory` — so a custom role built from the
+ * same areas lands in the same place a builtin with that area would.
+ */
+export const AREA_LANDING_PATHS: Record<AreaKey, string> = {
+  reports: '/',
+  sales: '/pos-sales',
+  inventory: '/inventory',
+  purchasing: '/purchase-orders',
+  recipes: '/recipes',
+  scheduling: '/scheduling',
+  books: '/transactions',
+  chart_of_accounts: '/chart-of-accounts',
+  payroll: '/payroll',
+  employees: '/employees',
+  team: '/team',
+  collaborators: '/team',
+  settings: '/settings',
+  integrations: '/integrations',
+};
+
+/**
+ * Priority order for picking a landing path (or, in `preview.ts`, the "opens
+ * here" nav item) when multiple areas are granted — mirrors
+ * `AREA_DEFINITIONS`' band ordering (Operations, then Money, then People &
+ * admin).
+ */
+export const AREA_PRIORITY: readonly AreaKey[] = [
+  'reports',
+  'sales',
+  'inventory',
+  'purchasing',
+  'recipes',
+  'scheduling',
+  'books',
+  'chart_of_accounts',
+  'payroll',
+  'employees',
+  'team',
+  'collaborators',
+  'settings',
+  'integrations',
+];
+
+/** The first `area_key` in `AREA_PRIORITY` that `grants` holds, or `null` if none are granted. */
+export function landingAreaKey(grants: Partial<Record<AreaKey, AreaLevel>>): AreaKey | null {
+  for (const areaKey of AREA_PRIORITY) {
+    if (grants[areaKey]) return areaKey;
+  }
+  return null;
+}
+
+/** Derives a landing path from a role's granted areas in fixed priority order. */
+export function resolveLandingPath(grants: Partial<Record<AreaKey, AreaLevel>>): string | null {
+  const key = landingAreaKey(grants);
+  return key ? AREA_LANDING_PATHS[key] : null;
+}

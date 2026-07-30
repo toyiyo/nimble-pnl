@@ -37,63 +37,7 @@ import {
   ROLE_METADATA,
   isCollaboratorRole,
 } from '@/lib/permissions/definitions';
-import { expandAreas, AreaKey, AreaLevel } from '@/lib/permissions/areas';
-
-/**
- * Landing path for a role resolved through its embedded area grants, keyed
- * by the fourteen SQL `area_key`s (matching `role_areas` row granularity).
- * Mirrors the paths already used by `ROLE_METADATA`'s builtin
- * `landingPath`s (e.g. `collaborator_operations_manager` -> `/scheduling`,
- * `collaborator_inventory` -> `/inventory`) so a custom role built from the
- * same areas lands in the same place a builtin with that area would.
- */
-const AREA_LANDING_PATHS: Record<AreaKey, string> = {
-  reports: '/',
-  sales: '/pos-sales',
-  inventory: '/inventory',
-  purchasing: '/purchase-orders',
-  recipes: '/recipes',
-  scheduling: '/scheduling',
-  books: '/transactions',
-  chart_of_accounts: '/chart-of-accounts',
-  payroll: '/payroll',
-  employees: '/employees',
-  team: '/team',
-  collaborators: '/team',
-  settings: '/settings',
-  integrations: '/integrations',
-};
-
-/**
- * Priority order for picking a landing path when multiple areas are
- * granted — mirrors `AREA_DEFINITIONS`' band ordering (Operations, then
- * Money, then People & admin) from `src/lib/permissions/areas.ts`.
- */
-const AREA_PRIORITY: readonly AreaKey[] = [
-  'reports',
-  'sales',
-  'inventory',
-  'purchasing',
-  'recipes',
-  'scheduling',
-  'books',
-  'chart_of_accounts',
-  'payroll',
-  'employees',
-  'team',
-  'collaborators',
-  'settings',
-  'integrations',
-];
-
-/** Derives a landing path from a role's granted areas in fixed priority order. */
-function landingPathFromAreas(roleAreas: Array<{ area_key: AreaKey; level: AreaLevel }>): string | null {
-  const granted = new Set(roleAreas.map((grant) => grant.area_key));
-  for (const areaKey of AREA_PRIORITY) {
-    if (granted.has(areaKey)) return AREA_LANDING_PATHS[areaKey];
-  }
-  return null;
-}
+import { expandAreas, resolveLandingPath, AreaKey, AreaLevel } from '@/lib/permissions/areas';
 
 export interface PermissionContext {
   /** Current user's role, or null if not loaded */
@@ -199,7 +143,7 @@ export function usePermissions(): PermissionContext {
       capabilities = expandAreas(grants, flags);
 
       isCollaborator = roleRecord.flavor === 'collaborator';
-      landingPath = landingPathFromAreas(roleRecord.role_areas) ?? ROLE_METADATA[role]?.landingPath ?? '/';
+      landingPath = resolveLandingPath(grants) ?? ROLE_METADATA[role]?.landingPath ?? '/';
       roleLabel = roleRecord.name;
       roleColor = ROLE_METADATA[role]?.color ?? 'outline';
     } else {

@@ -81,8 +81,13 @@ function findNavLabel(path: string): string | undefined {
   return undefined;
 }
 
-/** Highest grant level among a UI row's underlying `area_key`s, or `null` if none are granted. */
-function rowLevel(row: AreaDefinition, grants: Partial<Record<AreaKey, AreaLevel>>): AreaLevel | null {
+/**
+ * Highest grant level among a UI row's underlying `area_key`s, or `null` if
+ * none are granted. Exported (task 9c) so `RolesList.tsx`'s per-role chip
+ * derivation reads the same per-row level this file already computes for the
+ * editor's live preview, instead of a second hand-written copy.
+ */
+export function rowLevel(row: AreaDefinition, grants: Partial<Record<AreaKey, AreaLevel>>): AreaLevel | null {
   let level: AreaLevel | null = null;
   for (const areaKey of row.areaKeys) {
     const granted = grants[areaKey];

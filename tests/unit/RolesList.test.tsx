@@ -1,0 +1,172 @@
+import React from 'react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { RolesList } from '../../src/components/roles/RolesList';
+import type { RoleWithGrants } from '../../src/hooks/useRoles';
+
+/**
+ * Phase 4 task 9c (roles-and-areas plan, 2026-07-29): RolesList.tsx — the
+ * card grid on the "Roles & areas" tab.
+ *
+ * Chip/badge/copy conventions asserted below (the " · manage" suffix, the
+ * "No areas yet" fallback chip, "N person"/"N people", BUILT-IN vs Custom)
+ * are transcribed from the approved prototype,
+ * docs/design-reference/roles-and-areas.html (`renderRoles`), not invented.
+ * Area *labels* ("Inventory & Purchasing", "Payroll", ...) come from the
+ * already-built src/lib/permissions/areas.ts AREA_DEFINITIONS, the real
+ * single source of truth, not the prototype's own (sometimes differently
+ * worded) copy — see progress.md task 9a's note on this same distinction.
+ */
+
+vi.mock('../../src/hooks/useRoles');
+
+import { useRoles } from '../../src/hooks/useRoles';
+
+const wrapper = ({ children }: { children: React.ReactNode }) => (
+  <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
+);
+
+function makeRole(overrides: Partial<RoleWithGrants> = {}): RoleWithGrants {
+  return {
+    id: 'role-1',
+    restaurant_id: null,
+    name: 'Accountant',
+    description: 'Keeps the books and closes the month',
+    flavor: 'collaborator',
+    builtin: true,
+    created_at: '2026-07-01T00:00:00Z',
+    role_areas: [],
+    role_flags: [],
+    memberCount: 0,
+    ...overrides,
+  };
+}
+
+function mockUseRoles(partial: Partial<ReturnType<typeof useRoles>>) {
+  (useRoles as ReturnType<typeof vi.fn>).mockReturnValue({
+    roles: [],
+    isLoading: false,
+    error: null,
+    createRole: vi.fn(),
+    updateRole: vi.fn(),
+    deleteRole: vi.fn(),
+    copyRole: vi.fn(),
+    isMutating: false,
+    ...partial,
+  });
+}
+
+describe('RolesList', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('shows a loading skeleton while roles are loading', () => {
+    mockUseRoles({ isLoading: true });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+    expect(screen.getByTestId('roles-list-loading')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /new role/i })).not.toBeInTheDocument();
+  });
+
+  it('shows an error message when the roles query fails', () => {
+    mockUseRoles({ error: new Error('boom') });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+    expect(screen.getByText(/failed to load roles/i)).toBeInTheDocument();
+  });
+
+  it('always renders the dashed "New role" card, even with zero roles', () => {
+    mockUseRoles({ roles: [] });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+    expect(screen.getByRole('button', { name: /new role/i })).toBeInTheDocument();
+  });
+
+  it('calls onNewRole when the "New role" card is clicked', async () => {
+    const user = userEvent.setup();
+    const onNewRole = vi.fn();
+    mockUseRoles({ roles: [] });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={onNewRole} />, { wrapper });
+    await user.click(screen.getByRole('button', { name: /new role/i }));
+    expect(onNewRole).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a BUILT-IN badge for a builtin role and a Custom badge for a custom role', () => {
+    mockUseRoles({
+      roles: [
+        makeRole({ id: 'r-builtin', name: 'Accountant', builtin: true }),
+        makeRole({ id: 'r-custom', name: 'Weekend Supervisor', builtin: false }),
+      ],
+    });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+
+    const builtinCard = screen.getByRole('button', { name: /accountant/i });
+    expect(builtinCard).toHaveTextContent(/built-in/i);
+    expect(builtinCard).not.toHaveTextContent(/custom/i);
+
+    const customCard = screen.getByRole('button', { name: /weekend supervisor/i });
+    expect(customCard).toHaveTextContent(/custom/i);
+  });
+
+  it('shows "No areas yet" when a role has zero area grants', () => {
+    mockUseRoles({ roles: [makeRole({ name: 'Empty Role', role_areas: [] })] });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+    const card = screen.getByRole('button', { name: /empty role/i });
+    expect(card).toHaveTextContent(/no areas yet/i);
+  });
+
+  it('renders a manage-level chip with the " · manage" suffix, and a view-level chip without it', () => {
+    mockUseRoles({
+      roles: [
+        makeRole({
+          name: 'Operations Manager',
+          role_areas: [
+            { area_key: 'inventory', level: 'manage' },
+            { area_key: 'reports', level: 'view' },
+          ],
+        }),
+      ],
+    });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+    const card = screen.getByRole('button', { name: /operations manager/i });
+
+    expect(card).toHaveTextContent(/inventory & purchasing\s*·\s*manage/i);
+    // The view-level chip carries the area label but never the "· manage" suffix.
+    expect(card).toHaveTextContent(/dashboard & reports/i);
+    expect(card).not.toHaveTextContent(/dashboard & reports\s*·\s*manage/i);
+  });
+
+  it('shows singular/plural member counts correctly, including zero', () => {
+    mockUseRoles({
+      roles: [
+        makeRole({ id: 'r0', name: 'Zero People', memberCount: 0 }),
+        makeRole({ id: 'r1', name: 'One Person', memberCount: 1 }),
+        makeRole({ id: 'r3', name: 'Three People', memberCount: 3 }),
+      ],
+    });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+
+    expect(screen.getByRole('button', { name: /zero people/i })).toHaveTextContent('0 people');
+    expect(screen.getByRole('button', { name: /one person/i })).toHaveTextContent('1 person');
+    expect(screen.getByRole('button', { name: /three people/i })).toHaveTextContent('3 people');
+  });
+
+  it('calls onSelectRole with the role when a card is clicked, including builtin roles (read-only open)', async () => {
+    const user = userEvent.setup();
+    const onSelectRole = vi.fn();
+    const builtin = makeRole({ id: 'r-builtin', name: 'Accountant', builtin: true });
+    mockUseRoles({ roles: [builtin] });
+    render(<RolesList restaurantId="rest-1" onSelectRole={onSelectRole} onNewRole={vi.fn()} />, { wrapper });
+
+    await user.click(screen.getByRole('button', { name: /accountant/i }));
+    expect(onSelectRole).toHaveBeenCalledTimes(1);
+    expect(onSelectRole).toHaveBeenCalledWith(builtin);
+  });
+
+  it('renders role cards before the "New role" card, in query order', () => {
+    mockUseRoles({ roles: [makeRole({ id: 'r1', name: 'Accountant' })] });
+    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} />, { wrapper });
+    const buttons = screen.getAllByRole('button');
+    expect(buttons[buttons.length - 1]).toHaveAccessibleName(/new role/i);
+  });
+});

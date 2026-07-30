@@ -105,7 +105,7 @@ function jul22Labor(punches: TimePunch[]): number {
 
 describe('time_punches 1000-row truncation zeroes recent-day labor (/labor bug)', () => {
   // Pin to the restaurant's real timezone (America/Chicago). Day-bucketing in
-  // calculateActualLaborCost uses the HOST-local day (formatDateUTC reads
+  // calculateActualLaborCost uses the HOST-local day (formatLocalDate reads
   // getFullYear/Month/Date), and $586.72 is the Jul 22 total as seen in
   // Chicago. Without pinning, CI's UTC host buckets employee 0f5da8cc's second
   // split shift (clock-in 2026-07-23T01:56Z = Jul 22 20:56 Chicago) onto Jul 23

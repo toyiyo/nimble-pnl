@@ -35,12 +35,15 @@ import type { TimePunch } from '@/types/timeTracking';
 // ============================================================================
 
 /**
- * Format a date as YYYY-MM-DD in the user's local timezone.
+ * Format a Date as YYYY-MM-DD using LOCAL fields.
  *
- * IMPORTANT: This must match Payroll's day-bucketing (payrollCalculations.ts)
- * so period totals and monthly aggregation stay consistent.
+ * Named for what it does. The previous name (formatDateUTC) asserted the
+ * opposite and is how the browser-frame bucketing bug survived review.
+ * Correct for cursor-walking an already-bucketed day range (generateDateRange);
+ * NOT correct for deriving a business day from an instant -- use
+ * toBusinessDayFor from @/lib/businessDay for that.
  */
-function formatDateUTC(date: Date): string {
+function formatLocalDate(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -65,7 +68,7 @@ function generateDateRange(startDate: Date, endDate: Date): string[] {
   );
 
   while (current <= end) {
-    dates.push(formatDateUTC(current));
+    dates.push(formatLocalDate(current));
     current.setDate(current.getDate() + 1);
   }
 
@@ -402,7 +405,7 @@ export function calculateScheduledLaborCost(
     const employee = employeeMap.get(shift.employee_id);
     if (!employee || employee.status !== 'active') return;
 
-    const shiftDate = formatDateUTC(new Date(shift.start_time));
+    const shiftDate = formatLocalDate(new Date(shift.start_time));
     const dayData = dateMap.get(shiftDate);
     if (!dayData) return;
 
@@ -554,7 +557,7 @@ export function calculateActualLaborCost(
         return;
       }
       
-      const workDate = formatDateUTC(new Date(period.startTime));
+      const workDate = formatLocalDate(new Date(period.startTime));
       const hoursWorked = period.hours;
       
       // Accumulate hours for this employee on this date (start date of work period)
@@ -578,7 +581,7 @@ export function calculateActualLaborCost(
 
       // Add employee to active set for each LOCAL day the period touches
       for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
-        const dateStr = formatDateUTC(d);
+        const dateStr = formatLocalDate(d);
         if (!employeesActivePerDay.has(dateStr)) {
           employeesActivePerDay.set(dateStr, new Set());
         }
@@ -723,14 +726,14 @@ export function calculateHoursPerEmployee(
       if (period.isBreak) return;
       const start = new Date(period.startTime);
       const end = new Date(period.endTime);
-      const startDay = formatDateUTC(start);
+      const startDay = formatLocalDate(start);
       hoursPerDay[startDay] = (hoursPerDay[startDay] ?? 0) + period.hours;
       totalHours += period.hours;
 
       const dayCursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
       const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
       while (dayCursor <= lastDay) {
-        activeDays.add(formatDateUTC(dayCursor));
+        activeDays.add(formatLocalDate(dayCursor));
         dayCursor.setDate(dayCursor.getDate() + 1);
       }
     });
@@ -942,7 +945,7 @@ export function calculateActualLaborCostForMonth(
         // Attribute by the shift's clock-in day (not the segment start), so a
         // break-after-midnight segment's hours land on the clock-in day for both
         // the proportional split and the [monthStart, monthEnd] clip.
-        const dateKey = formatDateUTC(period.clockIn ?? period.startTime);
+        const dateKey = formatLocalDate(period.clockIn ?? period.startTime);
         hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
       }
 

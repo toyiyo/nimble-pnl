@@ -5,7 +5,8 @@ import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { useEmployees } from '@/hooks/useEmployees';
 import { computeAvgHourlyRateCents } from '@/lib/staffingCalculator';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
-import { validateTimeZone, buildSplhGrid, summarizeSplh, summarizeSplhTotals } from '@/lib/splhAnalytics';
+import { buildSplhGrid, summarizeSplh, summarizeSplhTotals } from '@/lib/splhAnalytics';
+import { safeTz } from '@/lib/restaurantClock';
 import { useSplhData } from '@/hooks/useSplhData';
 
 export interface UseSplhCoreOptions {
@@ -31,7 +32,7 @@ export interface UseSplhCoreOptions {
 export function useSplhCore(restaurantId: string | null, weeks: number, options?: UseSplhCoreOptions) {
   const buildGrid = options?.buildGrid ?? true;
   const { selectedRestaurant } = useRestaurantContext();
-  const tz = validateTimeZone(selectedRestaurant?.restaurant?.timezone);
+  const tz = safeTz(selectedRestaurant?.restaurant?.timezone);
   const { effectiveSettings } = useStaffingSettings(restaurantId);
   const { employees } = useEmployees(restaurantId);
   const target = effectiveSettings.target_splh;

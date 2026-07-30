@@ -70,16 +70,6 @@ function partsFormatter(tz: string): Intl.DateTimeFormat {
   return f;
 }
 
-export function validateTimeZone(tz: string | undefined | null): string {
-  if (!tz) return 'UTC';
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return tz;
-  } catch {
-    return 'UTC';
-  }
-}
-
 interface LocalParts { date: string; dow: number; hour: number; minuteOfHour: number; }
 
 function localParts(ms: number, tz: string): LocalParts {

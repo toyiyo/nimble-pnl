@@ -12,6 +12,7 @@ import { dayStringToDow } from '@/lib/staffingApply';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
+import { safeTz } from '@/lib/restaurantClock';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
 import type { StaffingSettings } from '@/types/scheduling';
@@ -69,7 +70,7 @@ export function useWeekStaffingSuggestions(
   settingsOverrides: Partial<StaffingSettings> | null,
 ) {
   const { selectedRestaurant } = useRestaurantContext();
-  const tz = selectedRestaurant?.restaurant?.timezone ?? 'America/Chicago';
+  const tz = safeTz(selectedRestaurant?.restaurant?.timezone);
 
   const { effectiveSettings, isLoading: settingsLoading, updateSettings, isSaving } = useStaffingSettings(restaurantId);
   const { employees } = useEmployees(restaurantId);

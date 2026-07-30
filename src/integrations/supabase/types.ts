@@ -10685,6 +10685,10 @@ export type Database = {
         Args: { p_restaurant_id: string; p_week_end: string }
         Returns: Json
       }
+      copy_role_to_restaurants: {
+        Args: { p_role_id: string; p_target_restaurant_ids: string[] }
+        Returns: Json
+      }
       copy_week_shifts: {
         Args: {
           p_restaurant_id: string

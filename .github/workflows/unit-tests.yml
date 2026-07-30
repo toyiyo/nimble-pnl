@@ -16,13 +16,15 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # ~7m45s on a warm runner now that the Sonar scan has its own job (the
+    # combined job measured ~9m30s, ~1m45s of it Sonar). The cap is a hang
+    # detector, not a performance budget — leave room for the suite
+    # (654 files, 8017 tests) to keep growing.
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for SonarQube
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -39,6 +41,7 @@ jobs:
       - name: Run timezone matrix tests
         run: npm run test:tz
 
+      # Also consumed by the `sonarcloud` job below.
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
@@ -46,6 +49,32 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 7
+
+  # Kept out of the `test` job on purpose. When the two shared a job, a slow
+  # or cancelled Sonar upload reported to PR authors as "Unit Tests: fail"
+  # with the whole suite green (runs 30472141373, 30480912925). Two jobs, two
+  # independent status checks.
+  sonarcloud:
+    name: SonarCloud
+    needs: [test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for SonarQube new-code detection
+
+      # `path: coverage/` on the upload stores that directory's *contents* at
+      # the artifact root, so this restores `coverage/lcov.info` — the path
+      # sonar-project.properties reads. Get it wrong and Sonar reports 0%
+      # coverage on new code without logging a missing file.
+      - name: Download coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@v5

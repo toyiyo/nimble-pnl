@@ -48,8 +48,12 @@ is roughly 2× the measured cost. This supersedes the `20` on
 `ci/unit-tests-timeout-headroom`, which was sized for a job that still
 included Sonar.
 
-`fetch-depth: 0` stays. It is now redundant for this job, but removing it is
-an unrelated change and a shallow clone is not obviously cheaper here.
+`fetch-depth: 0` is **dropped** from this job. Its only stated purpose was
+Sonar (the comment read "Full history for SonarQube"), which now lives
+elsewhere, and nothing in the unit suite reads git history — the one test that
+shells out (`tests/unit/schedule-prompt-builder-retired.test.ts:42`) invokes
+`grep`, not `git`. Leaving a full-history clone behind with no consumer is
+cruft, so it goes with the step that needed it.
 
 ### `sonarcloud` — "SonarCloud"
 
@@ -121,8 +125,6 @@ more churn than a small block-splitting helper.
   the test job's teardown, and it re-checks-out and re-downloads (~15s).
   Sonar's result also arrives ~7m45s after the run starts rather than
   interleaved. Signal clarity is the point of the change; ~15s is the price.
-- **`fetch-depth: 0` kept on the `test` job** even though only Sonar needed
-  it. Out of scope.
 - **Branch protection is a repo setting, not a file.** Splitting the job
   introduces a new check name, `SonarCloud`. If the quality gate is meant to
   block merges, that check has to be added to the required-checks list in

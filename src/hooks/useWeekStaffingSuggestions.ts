@@ -128,7 +128,10 @@ export function useWeekStaffingSuggestions(
   }, [activeSettings.lookback_weeks, tz]);
 
   const { data: allSales, isLoading: salesLoading, error: salesError, refetch: refetchSales } = useQuery({
-    queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],
+    // `tz` belongs in the key because `dateRange` is now derived from it --
+    // without it, changing the restaurant's zone leaves this window cached
+    // against the old business days. The punch query below already keys on tz.
+    queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks, tz],
     queryFn: async () => {
       if (!restaurantId) return [];
       // Paginated (matches useSplhData.ts's fetchAllPunches / the time-punch

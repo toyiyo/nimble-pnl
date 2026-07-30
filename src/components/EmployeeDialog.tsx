@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -115,7 +115,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // effective date pre-filled from the restaurant's business day -- the UTC
   // day (toISOString) rolls to tomorrow hours before local midnight, which
   // would otherwise write a compensation-history row dated a day early.
-  const getToday = () => toBusinessDay(new Date(), restaurantTimezone);
+  // Memoized on the zone: now that this closes over `restaurantTimezone`, the
+  // reset effect below has to re-run when the zone changes, or a dialog left
+  // open across a settings change keeps pre-filling the stale business day.
+  const getToday = useCallback(
+    () => toBusinessDay(new Date(), restaurantTimezone),
+    [restaurantTimezone],
+  );
 
   type CompensationHistoryPayload = {
     restaurantId: string;
@@ -210,7 +216,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     } else {
       resetForm();
     }
-  }, [employee, open]);
+    // `getToday` is tz-derived, so the zone changing has to re-seed the
+    // effective date -- see its useCallback above.
+  }, [employee, open, getToday]);
 
   // Editing the email invalidates the access decision the user made against the
   // previous address (grant a new login vs. link to whoever that email belongs

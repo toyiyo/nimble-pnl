@@ -30,6 +30,7 @@ import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
+import { safeTz } from '@/lib/restaurantClock';
 import {
   buildActiveShiftEmployeeIds,
   filterEmployeesForScheduleView,
@@ -218,7 +219,7 @@ const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();

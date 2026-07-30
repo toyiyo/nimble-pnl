@@ -20,6 +20,7 @@ import { format, parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
 import { DatePicker } from '@/components/ui/date-picker';
+import { safeTz } from '@/lib/restaurantClock';
 
 interface ParsedSale {
   itemName: string;
@@ -152,8 +153,9 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     if (!date) return;
     
     setSelectedDate(date);
-    // Get restaurant timezone or fallback to browser timezone
-    const timezone = selectedRestaurant?.restaurant?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    // Restaurant timezone, never the viewer's -- an importer in another zone
+    // would otherwise stamp sales with their own calendar day.
+    const timezone = safeTz(selectedRestaurant?.restaurant?.timezone);
     // Format the date in the restaurant's timezone to ensure it stays as the selected date
     const dateString = formatInTimeZone(date, timezone, 'yyyy-MM-dd');
     

@@ -30,6 +30,7 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
 import { generateTablePDF } from '@/utils/pdfExport';
 import { formatDateInTimezone } from '@/lib/timezone';
+import { safeTz } from '@/lib/restaurantClock';
 
 const TRANSACTION_TYPES = [
   {
@@ -152,7 +153,7 @@ export default function InventoryAudit() {
 
   const displayValuesMap = useMemo(() => {
     const map = new Map<string, AuditDisplayValues>();
-    const tz = selectedRestaurant?.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const tz = safeTz(selectedRestaurant?.restaurant.timezone);
     for (const txn of filteredTransactions) {
       map.set(txn.id, computeAuditDisplayValues(txn, tz));
     }

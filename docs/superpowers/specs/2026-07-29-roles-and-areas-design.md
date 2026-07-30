@@ -164,6 +164,60 @@ restaurants.
    exact P&L exposure PR #596 closed. Dropping it makes the enforcement layer
    agree with the intent the routing layer has expressed all along.
 
+### A fourth drift, deliberately *not* closed here: `receipt_imports`
+
+Found while mapping Task 6's policies. Unlike the three above, this one is
+left exactly as it is, because closing it either way is a product decision
+this design was never asked to make.
+
+The three `receipt_imports` policies admit exactly
+`{owner, manager, operations_manager, collaborator_operations_manager}`. The
+capability named for the feature, `view:receipt_import` / `edit:receipt_import`,
+resolves through `inventory` at `manage` and covers a **wider** set — it also
+includes `chef` and `collaborator_inventory`. So the app layer believes Chef
+can import receipts and the database refuses. Chef is not route-restricted at
+all ([App.tsx](src/App.tsx) gates only kiosk, staff and collaborators), and
+`collaborator_inventory` is explicitly routed to `/receipt-import`
+([App.tsx:183](src/App.tsx:183)) — both reach the page and both are denied by
+RLS today.
+
+The narrowness is not an oversight. It was introduced by a migration titled
+"SECURITY FIX … Restrict receipt imports to owners and managers"
+([20251006212711…sql:79](supabase/migrations/20251006212711_4eb82642-2d43-473f-bcbb-143901533a61.sql:79)),
+which replaced an any-member policy with `{owner, manager}`; the two later
+widenings added only the operations-manager roles. Chef was never re-admitted.
+
+Neither available move is acceptable inside a no-behavior-change refactor:
+
+- Mapping to `edit:receipt_import` — the semantically correct name — would
+  silently grant every Chef in every restaurant access they do not have
+  today, reversing an explicit security fix as a side effect of a refactor.
+  Chef is a heavily-used builtin and Task 3's backfill already gave every
+  such membership a `role_id`, so this would take effect immediately.
+- Mapping to one of the five capabilities whose legacy role list happens to
+  match exactly (`edit:scheduling`, `view:tips`, `edit:tips`,
+  `view:time_punches`, `edit:time_punches`) preserves behavior but is
+  precisely what the [2026-07-09] lesson and this plan forbid: "each WRITE
+  grant maps to a capability the role actually holds — never to wherever a
+  sibling role happened to appear in the old policy."
+
+**Resolution: leave the three `receipt_imports` policies on role literals.**
+Task 6 rewrites the other 47 policies and skips these, with a comment on each
+naming this section. Consequences, all acceptable: behavior is unchanged;
+no comment in the diff claims a capability the policy does not check; and
+custom roles cannot reach receipt imports, which is fail-closed and matches
+the posture the rest of the design takes toward the 224 untouched policies.
+Task 6's test asserts these three policies still carry literals, so a later
+"cleanup" cannot quietly convert them to `edit:receipt_import` and widen
+access without revisiting this.
+
+**Open question for the operator**, deferred rather than answered: *should*
+Chef be able to import receipts? If yes, the fix is to widen these policies
+deliberately, in its own migration, reviewed as an access-control change. If
+no, the fix is to drop `receipt_import` from Chef in `ROLE_CAPABILITIES` and
+the capability `CASE` so the app stops offering a feature the database will
+refuse. Either is a small change; neither belongs inside this refactor.
+
 ## Approach
 
 ### The model

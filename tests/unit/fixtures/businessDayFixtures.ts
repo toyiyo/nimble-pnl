@@ -77,7 +77,8 @@ export const SQL_PARITY_FIXTURES: SqlParityFixture[] = [
     expected: '2026-03-07',
   },
   {
-    name: 'east of UTC: 01:30 NZDT, cutoff 2 -> previous day',
+    // NZST (+12), not NZDT: July is winter in Auckland, so DST is off.
+    name: 'east of UTC: 01:30 NZST, cutoff 2 -> previous day',
     instant: '2026-07-28T13:30:00+00:00',
     tz: 'Pacific/Auckland',
     cutoffHour: 2,

@@ -113,12 +113,16 @@ function jul22Labor(punches: TimePunch[]): number {
 }
 
 describe('time_punches 1000-row truncation zeroes recent-day labor (/labor bug)', () => {
-  // Pin to the restaurant's real timezone (America/Chicago). Day-bucketing in
-  // calculateActualLaborCost uses the HOST-local day (formatLocalDate reads
-  // getFullYear/Month/Date), and $586.72 is the Jul 22 total as seen in
-  // Chicago. Without pinning, CI's UTC host buckets employee 0f5da8cc's second
-  // split shift (clock-in 2026-07-23T01:56Z = Jul 22 20:56 Chicago) onto Jul 23
-  // instead of Jul 22, dropping $26.44 and yielding $560.28.
+  // The TZ pin below is no longer load-bearing, and the reason it isn't is the
+  // point of this change. It used to be: bucketing read the HOST-local day, so
+  // under CI's UTC host employee 0f5da8cc's second split shift (clock-in
+  // 2026-07-23T01:56Z = Jul 22 20:56 Chicago) landed on Jul 23 and dropped
+  // $26.44 from the $586.72 Jul 22 total. Bucketing now takes the frame from
+  // CHICAGO_FRAME explicitly, and the window bounds are `new Date(y, m, d)`
+  // whose local fields read back unchanged in any zone, so the file passes
+  // under UTC without the pin (verified). It stays as a regression guard: if
+  // host-frame bucketing ever returns, this file should keep asserting the
+  // Chicago numbers it was captured from.
   let originalTZ: string | undefined;
   beforeAll(() => {
     originalTZ = process.env.TZ;

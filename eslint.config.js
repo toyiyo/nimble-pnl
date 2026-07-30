@@ -58,8 +58,12 @@ export default tseslint.config(
             "restaurant-clock: .toISOString().split('T')[0] is neither a calendar day nor a moment in time. Use toBusinessDay() or toDateOnlyString().",
         },
         {
+          // Both the bare `DateTimeFormat()` and the `Intl.`-qualified form.
+          // The latter nests a MemberExpression under `object.callee`, so a
+          // plain `object.callee.name` test silently matches nothing -- and
+          // `Intl.DateTimeFormat()` is the only form this codebase uses.
           selector:
-            "MemberExpression[object.callee.name='DateTimeFormat'][property.name='resolvedOptions']",
+            "MemberExpression[property.name='resolvedOptions']:matches([object.callee.name='DateTimeFormat'], [object.callee.property.name='DateTimeFormat'])",
           message:
             "restaurant-clock: never default to the viewer's timezone. Use safeTz(restaurant.timezone).",
         },

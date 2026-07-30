@@ -57,6 +57,11 @@ export default function RestaurantSettings() {
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [cuisineType, setCuisineType] = useState('');
+  // Settings-form carve-out: every browser-zone read in this file seeds or
+  // compares the timezone *input control* before the saved value loads. This
+  // is the one screen where the viewer's zone is the right default -- the ban
+  // exists to stop instants from being displayed or attributed in it.
+  // eslint-disable-next-line no-restricted-syntax
   const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone);
   const [saving, setSaving] = useState(false);
   const [geofenceSaving, setGeofenceSaving] = useState(false);
@@ -141,6 +146,7 @@ export default function RestaurantSettings() {
       setAddress(r.address || '');
       setPhone(r.phone || '');
       setCuisineType(r.cuisine_type || '');
+      // eslint-disable-next-line no-restricted-syntax -- settings-form carve-out
       setTimezone(r.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
       // Business info
       setLegalName(r.legal_name || '');
@@ -202,6 +208,7 @@ export default function RestaurantSettings() {
       address !== (selectedRestaurant.restaurant.address || '') ||
       phone !== (selectedRestaurant.restaurant.phone || '') ||
       cuisineType !== (selectedRestaurant.restaurant.cuisine_type || '') ||
+      // eslint-disable-next-line no-restricted-syntax -- settings-form carve-out
       timezone !== (selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone)
     );
   }, [selectedRestaurant, name, address, phone, cuisineType, timezone]);
@@ -657,7 +664,9 @@ export default function RestaurantSettings() {
                   disabled={!canEdit}
                 />
                 <p id="timezone-help" className="text-xs text-muted-foreground">
-                  Used for reports and inventory tracking. Browser timezone: {Intl.DateTimeFormat().resolvedOptions().timeZone}
+                  Used for reports and inventory tracking. Browser timezone:{' '}
+                  {/* eslint-disable-next-line no-restricted-syntax -- this label's whole purpose is to show the viewer's own zone */}
+                  {Intl.DateTimeFormat().resolvedOptions().timeZone}
                 </p>
               </div>
 
@@ -674,6 +683,7 @@ export default function RestaurantSettings() {
                       setAddress(selectedRestaurant.restaurant.address || '');
                       setPhone(selectedRestaurant.restaurant.phone || '');
                       setCuisineType(selectedRestaurant.restaurant.cuisine_type || '');
+                      // eslint-disable-next-line no-restricted-syntax -- settings-form carve-out
                       setTimezone(selectedRestaurant.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone);
                     }}
                     disabled={saving || !hasChanges}

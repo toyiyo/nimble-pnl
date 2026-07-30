@@ -1,0 +1,496 @@
+-- ============================================================================
+-- collaborator_custom_rls_test.sql
+--
+-- Task 6 of the "data-driven roles built from areas" design
+-- (docs/superpowers/specs/2026-07-29-roles-and-areas-design.md). RED test for
+-- the migration that rewrites the 47 role-literal policies (on the 20
+-- collaborator-reachable tables outside the pre-existing capability funnel)
+-- to call public.user_has_capability() instead of enumerating roles.
+--
+-- Before that migration exists, a `collaborator_custom` role can never match
+-- any of the 224 role-literal policies (verified in the design doc: 0 of
+-- them use negation/pattern-matching, all are positive `role = ANY(...)`
+-- enumeration, so an unrecognized role string is denied everywhere). This
+-- file locks in:
+--
+--  1. Denied-baseline-first throughout: every assertion pair below tests
+--     denial before it tests access.
+--  2/3. A custom role granted {inventory: view} can SELECT `products` (the
+--     pre-existing capability-tier table for the inventory domain) in its
+--     own restaurant and cannot UPDATE it. Granted {inventory: manage}, it
+--     can UPDATE. (This pair already passes today — Task 5 already wired
+--     custom-role resolution into user_has_capability, and `products` has
+--     called it since 20260120100100. It stays here as a stable regression
+--     guard on the view/manage boundary the new migration must preserve.)
+--  4. The genuinely RED pair for Task 6 itself: a *different* custom role,
+--     granted {scheduling: manage} — the area the design doc says
+--     `edit:scheduling`/`view:tips`/`edit:tips`/`view:time_punches`/
+--     `edit:time_punches` all resolve through — must currently be DENIED on
+--     `tip_pool_settings` (a shape-2 table: role literal
+--     {owner,manager,operations_manager,collaborator_operations_manager}, no
+--     open-to-any-member SELECT policy to confound the result) despite
+--     holding that grant, because tip_pool_settings' policies still check
+--     the role column directly. Once Task 6's migration lands, converting
+--     tip_pool_settings to call user_has_capability, these two assertions
+--     flip to GRANTED without this file changing — that is the RED->GREEN
+--     transition this test exists to drive.
+--  5. Fail-closed property, tested rather than trusted: the {inventory:
+--     manage}-only custom role from (2/3) is denied on one representative
+--     table from EACH of the ten role-set shapes catalogued in the design
+--     doc (including the three shapes — 2, 7, 8 — that Task 6 will actually
+--     convert). This holds both before and after Task 6 lands: the sample
+--     tables are chosen so their post-migration capability domain
+--     (`scheduling` for the shape-2/8 tables, `books` for the shape-7
+--     table) never overlaps with the `inventory` grant this role holds, so
+--     the denial is durable across the RED->GREEN transition, not just true
+--     by accident of the migration not existing yet.
+--  6. Cross-tenant isolation: the same custom role, granted {inventory:
+--     manage} and a member only of restaurant R1, sees nothing in R2.
+--  7. The receipt_imports drift guard, from commit 94505ec5 (design doc
+--     section "A fourth drift, deliberately not closed here:
+--     receipt_imports"): Task 6 deliberately skips these three policies
+--     rather than mapping them to `edit:receipt_import` (would silently
+--     widen every Chef's access) or to a capability whose legacy role list
+--     happens to match today (would misrepresent what the policy checks, a
+--     landmine for the next reader). Assert they still carry role literals
+--     and do not call user_has_capability, so a later "cleanup" cannot
+--     quietly convert them and widen access without revisiting that
+--     decision.
+--
+-- All fixture rows (restaurants, auth.users, user_restaurants, roles,
+-- role_areas, employees, and data rows) exist only for the duration of this
+-- transaction (ROLLBACK).
+-- ============================================================================
+
+BEGIN;
+
+SELECT plan(26);
+
+-- ----------------------------------------------------------------------------
+-- Fixture: two restaurants (R1 primary, R2 for cross-tenant isolation).
+-- ----------------------------------------------------------------------------
+INSERT INTO public.restaurants (id, name)
+VALUES
+  ('6a000000-0000-0000-0000-000000000001', 'Task 6 Test Restaurant R1'),
+  ('6a000000-0000-0000-0000-000000000002', 'Task 6 Test Restaurant R2')
+ON CONFLICT (id) DO NOTHING;
+
+-- Role A: custom role in R1, starts with zero area grants (denied baseline),
+-- then granted {inventory: view} then upgraded to {inventory: manage}. Used
+-- for the products view/manage split (2/3) and the fail-closed sample (5).
+INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin)
+VALUES (
+  '6a000000-0000-0000-0000-0000000000a1',
+  '6a000000-0000-0000-0000-000000000001',
+  'Task 6 Custom Role A (inventory)',
+  'pgTAP fixture — view/manage split + fail-closed sample',
+  'platform',
+  false
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email)
+VALUES ('6a000000-0000-0000-0000-000000000101', 'task6-role-a@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id)
+VALUES (
+  '6a000000-0000-0000-0000-000000000101',
+  '6a000000-0000-0000-0000-000000000001',
+  'collaborator_custom',
+  '6a000000-0000-0000-0000-0000000000a1'
+)
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'collaborator_custom', role_id = EXCLUDED.role_id;
+
+-- Role B: a second custom role in R1, granted {scheduling: manage} directly.
+-- Kept separate from Role A so the tip_pool_settings RED assertions (4) are
+-- never contaminated by the inventory grant used in the fail-closed sample.
+INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin)
+VALUES (
+  '6a000000-0000-0000-0000-0000000000b1',
+  '6a000000-0000-0000-0000-000000000001',
+  'Task 6 Custom Role B (scheduling)',
+  'pgTAP fixture — scheduling capability-funnel RED/GREEN pair',
+  'platform',
+  false
+)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email)
+VALUES ('6a000000-0000-0000-0000-000000000102', 'task6-role-b@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id)
+VALUES (
+  '6a000000-0000-0000-0000-000000000102',
+  '6a000000-0000-0000-0000-000000000001',
+  'collaborator_custom',
+  '6a000000-0000-0000-0000-0000000000b1'
+)
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'collaborator_custom', role_id = EXCLUDED.role_id;
+
+-- One employee row per restaurant, needed only to satisfy FK constraints on
+-- time_punches/employee_pins (shapes 8/10) — the tables' role-gated policies
+-- check user_restaurants.role, not this employee's identity.
+INSERT INTO public.employees (id, restaurant_id, name, position)
+VALUES ('6a000000-0000-0000-0000-000000000e01', '6a000000-0000-0000-0000-000000000001', 'Task 6 Fixture Employee', 'Server')
+ON CONFLICT (id) DO NOTHING;
+
+-- ----------------------------------------------------------------------------
+-- Generic RLS-scoped-execution helpers (same pattern as
+-- receipt_duplicate_detection.test.sql: switch role+jwt claims, run, switch
+-- back). Dynamic SQL so one helper covers every table below instead of a
+-- bespoke function per table.
+-- ----------------------------------------------------------------------------
+
+-- Runs p_sql (expected to be a SELECT count(*) ... statement) as p_user_id
+-- and returns the count.
+CREATE OR REPLACE FUNCTION pg_temp.as_user_count(p_user_id UUID, p_sql TEXT)
+RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+  v_count BIGINT;
+BEGIN
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', p_user_id::text, 'role', 'authenticated')::text,
+    true);
+  EXECUTE p_sql INTO v_count;
+  PERFORM set_config('role', 'postgres', true);
+  RETURN v_count;
+END;
+$$;
+
+-- Runs p_sql (expected to be an UPDATE statement) as p_user_id and returns
+-- the number of rows actually updated. A USING clause that excludes the
+-- target row filters it out silently (0 rows, no error) — this is the right
+-- helper for policies where denial is silent.
+CREATE OR REPLACE FUNCTION pg_temp.as_user_update_count(p_user_id UUID, p_sql TEXT)
+RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+  v_count BIGINT;
+BEGIN
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', p_user_id::text, 'role', 'authenticated')::text,
+    true);
+  EXECUTE p_sql;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  PERFORM set_config('role', 'postgres', true);
+  RETURN v_count;
+END;
+$$;
+
+-- Runs p_sql (an INSERT or UPDATE whose denial is enforced via WITH CHECK,
+-- which raises 42501/insufficient_privilege rather than silently filtering)
+-- as p_user_id and returns 'allowed' or 'denied'.
+CREATE OR REPLACE FUNCTION pg_temp.as_user_try(p_user_id UUID, p_sql TEXT)
+RETURNS TEXT LANGUAGE plpgsql AS $$
+DECLARE
+  v_result TEXT;
+BEGIN
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', p_user_id::text, 'role', 'authenticated')::text,
+    true);
+  BEGIN
+    EXECUTE p_sql;
+    v_result := 'allowed';
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_result := 'denied';
+  END;
+  PERFORM set_config('role', 'postgres', true);
+  RETURN v_result;
+END;
+$$;
+
+-- ============================================================================
+-- 2/3. products (inventory domain): view-vs-manage split, denied first.
+-- ============================================================================
+INSERT INTO public.products (id, restaurant_id, sku, name)
+VALUES ('6a000000-0000-0000-0000-000000000d01', '6a000000-0000-0000-0000-000000000001', 'TASK6-SKU-1', 'Task 6 Fixture Product')
+ON CONFLICT (id) DO NOTHING;
+
+-- Denied baseline: Role A holds zero area grants.
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'SELECT count(*) FROM public.products WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
+  0::bigint,
+  'denied baseline: custom role with zero area grants cannot SELECT products'
+);
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.products SET name = ''nope'' WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
+  0::bigint,
+  'denied baseline: custom role with zero area grants cannot UPDATE products'
+);
+
+-- Grant {inventory: view}.
+INSERT INTO public.role_areas (role_id, area_key, level)
+VALUES ('6a000000-0000-0000-0000-0000000000a1', 'inventory', 'view')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = 'view';
+
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'SELECT count(*) FROM public.products WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
+  1::bigint,
+  'custom role {inventory: view}: can SELECT products in its own restaurant'
+);
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.products SET name = ''still nope'' WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
+  0::bigint,
+  'custom role {inventory: view}: cannot UPDATE products (view is not manage)'
+);
+
+-- Upgrade to {inventory: manage}. Deliberately DELETE + INSERT rather than
+-- `ON CONFLICT ... DO UPDATE`: public.block_builtin_role_child_mutation()
+-- (20260730100000_roles_and_areas_tables.sql) is a BEFORE UPDATE OR DELETE
+-- trigger on role_areas/role_flags that `RETURN OLD` unconditionally once the
+-- builtin check clears — correct for DELETE (Postgres requires OLD there),
+-- but for UPDATE that silently rewrites the incoming row back to its old
+-- values, so an UPDATE on a non-builtin role's row is a confirmed no-op
+-- today (verified directly: `UPDATE ... SET level = 'manage'` reports
+-- "UPDATE 1" but leaves the row at 'view'). That is a real bug in already-
+-- shipped code, out of scope for this task and flagged separately — this
+-- fixture just avoids the affected code path so the RED test for Task 6
+-- itself isn't confounded by it.
+DELETE FROM public.role_areas
+WHERE role_id = '6a000000-0000-0000-0000-0000000000a1' AND area_key = 'inventory';
+INSERT INTO public.role_areas (role_id, area_key, level)
+VALUES ('6a000000-0000-0000-0000-0000000000a1', 'inventory', 'manage');
+
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.products SET name = ''updated by manage grant'' WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
+  1::bigint,
+  'custom role {inventory: manage}: can UPDATE products'
+);
+
+-- ============================================================================
+-- 4. tip_pool_settings (shape 2, scheduling domain): the genuinely RED pair.
+--    Role B, denied first with zero grants, then still denied even after
+--    {scheduling: manage} is granted — because tip_pool_settings' policies
+--    are still role literals until Task 6's migration lands. These last two
+--    assertions are expected to flip from FAIL to PASS once that migration
+--    ships, with no change to this file.
+-- ============================================================================
+INSERT INTO public.tip_pool_settings (id, restaurant_id)
+VALUES ('6a000000-0000-0000-0000-000000000701', '6a000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+
+-- Denied baseline: Role B holds zero area grants.
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000102'::uuid,
+    'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+  0::bigint,
+  'denied baseline: custom role with zero area grants cannot SELECT tip_pool_settings'
+);
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000102'::uuid,
+    'UPDATE public.tip_pool_settings SET pooling_model = ''full_pool'' WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+  0::bigint,
+  'denied baseline: custom role with zero area grants cannot UPDATE tip_pool_settings'
+);
+
+-- Grant {scheduling: manage} to Role B.
+INSERT INTO public.role_areas (role_id, area_key, level)
+VALUES ('6a000000-0000-0000-0000-0000000000b1', 'scheduling', 'manage')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = 'manage';
+
+-- RED: expected to fail until Task 6's migration rewrites tip_pool_settings'
+-- policies to call user_has_capability(restaurant_id, 'view:tips'/'edit:tips').
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000102'::uuid,
+    'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+  1::bigint,
+  'custom role {scheduling: manage} can SELECT tip_pool_settings once Task 6 converts its policies (RED until that migration lands)'
+);
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000102'::uuid,
+    'UPDATE public.tip_pool_settings SET pooling_model = ''full_pool'' WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+  1::bigint,
+  'custom role {scheduling: manage} can UPDATE tip_pool_settings once Task 6 converts its policies (RED until that migration lands)'
+);
+
+-- Role B's scheduling grant must not leak into unrelated domains (inventory,
+-- books) — fail-closed holds for the broader-grant role too.
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000102'::uuid,
+    'SELECT count(*) FROM public.products WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
+  0::bigint,
+  'custom role {scheduling: manage} still cannot SELECT products (inventory domain, not granted)'
+);
+
+INSERT INTO public.assets (id, restaurant_id, name, category, purchase_date, purchase_cost, useful_life_months, unit_cost)
+VALUES ('6a000000-0000-0000-0000-000000000a51', '6a000000-0000-0000-0000-000000000001', 'Task 6 Fixture Asset', 'equipment', '2026-01-01', 1000, 60, 1000)
+ON CONFLICT (id) DO NOTHING;
+
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000102'::uuid,
+    'UPDATE public.assets SET notes = ''nope'' WHERE id = ''6a000000-0000-0000-0000-000000000a51'''),
+  0::bigint,
+  'custom role {scheduling: manage} still cannot UPDATE assets (books domain, not granted)'
+);
+
+-- ============================================================================
+-- 5. Fail-closed sample: one representative table per role-set shape,
+--    against Role A (holds only {inventory: manage} from section 2/3).
+--    Durable across the RED->GREEN transition: none of these tables' future
+--    capability domain is `inventory`, so denial holds whether or not Task 6
+--    has run.
+-- ============================================================================
+
+-- Shape 1: {owner, manager} — auto_deduction_settings.
+INSERT INTO public.auto_deduction_settings (id, restaurant_id)
+VALUES ('6a000000-0000-0000-0000-000000000501', '6a000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.auto_deduction_settings SET enabled = false WHERE id = ''6a000000-0000-0000-0000-000000000501'''),
+  0::bigint,
+  'fail-closed shape {owner,manager}: auto_deduction_settings UPDATE denied'
+);
+
+-- Shape 2: {owner, manager, operations_manager, collaborator_operations_manager}
+-- — tip_pool_settings, same row as section 4, but under Role A (inventory
+-- only, no scheduling grant at all) so this holds permanently.
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+  0::bigint,
+  'fail-closed shape {owner,manager,operations_manager,collaborator_operations_manager}: tip_pool_settings SELECT denied for a role holding no scheduling grant'
+);
+
+-- Shape 3: {owner, manager, chef} — daily_food_costs.
+INSERT INTO public.daily_food_costs (id, restaurant_id, date)
+VALUES ('6a000000-0000-0000-0000-000000000503', '6a000000-0000-0000-0000-000000000001', '2026-07-01')
+ON CONFLICT (id) DO NOTHING;
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.daily_food_costs SET source = ''manual'' WHERE id = ''6a000000-0000-0000-0000-000000000503'''),
+  0::bigint,
+  'fail-closed shape {owner,manager,chef}: daily_food_costs UPDATE denied'
+);
+
+-- Shape 4: {owner, manager, operations_manager} — overtime_rules.
+INSERT INTO public.overtime_rules (id, restaurant_id)
+VALUES ('6a000000-0000-0000-0000-000000000504', '6a000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.overtime_rules SET weekly_ot_multiplier = 2.00 WHERE id = ''6a000000-0000-0000-0000-000000000504'''),
+  0::bigint,
+  'fail-closed shape {owner,manager,operations_manager}: overtime_rules UPDATE denied'
+);
+
+-- Shape 5: {owner} — enterprise_settings.
+INSERT INTO public.enterprise_settings (id, restaurant_id)
+VALUES ('6a000000-0000-0000-0000-000000000505', '6a000000-0000-0000-0000-000000000001')
+ON CONFLICT (id) DO NOTHING;
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.enterprise_settings SET sso_enabled = true WHERE id = ''6a000000-0000-0000-0000-000000000505'''),
+  0::bigint,
+  'fail-closed shape {owner}: enterprise_settings UPDATE denied'
+);
+
+-- Shape 6: {owner, manager, chef, staff} — inventory_locations INSERT
+-- (denial enforced via WITH CHECK, so it raises rather than filters silently).
+SELECT is(
+  pg_temp.as_user_try('6a000000-0000-0000-0000-000000000101'::uuid,
+    'INSERT INTO public.inventory_locations (restaurant_id, name) VALUES (''6a000000-0000-0000-0000-000000000001'', ''Task 6 Fixture Location'')'),
+  'denied',
+  'fail-closed shape {owner,manager,chef,staff}: inventory_locations INSERT denied'
+);
+
+-- Shape 7: {owner, manager, collaborator_accountant} — assets, same row as
+-- section 4 but under Role A (no books grant).
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.assets SET notes = ''nope'' WHERE id = ''6a000000-0000-0000-0000-000000000a51'''),
+  0::bigint,
+  'fail-closed shape {owner,manager,collaborator_accountant}: assets UPDATE denied'
+);
+
+-- Shape 8: {owner, manager, operations_manager, collaborator_operations_manager, kiosk}
+-- — time_punches INSERT (WITH CHECK denial, raises).
+SELECT is(
+  pg_temp.as_user_try('6a000000-0000-0000-0000-000000000101'::uuid,
+    'INSERT INTO public.time_punches (restaurant_id, employee_id, punch_type) VALUES (''6a000000-0000-0000-0000-000000000001'', ''6a000000-0000-0000-0000-000000000e01'', ''clock_in'')'),
+  'denied',
+  'fail-closed shape {owner,manager,operations_manager,collaborator_operations_manager,kiosk}: time_punches INSERT denied'
+);
+
+-- Shape 9: {staff, kiosk} — user_restaurants self-escalation prevention.
+-- A custom role is not in {staff,kiosk} either, so it cannot use the
+-- self-editor allowance to set its own role to anything, let alone escalate.
+SELECT is(
+  pg_temp.as_user_try('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.user_restaurants SET role = ''owner'' WHERE user_id = ''6a000000-0000-0000-0000-000000000101'' AND restaurant_id = ''6a000000-0000-0000-0000-000000000001'''),
+  'denied',
+  'fail-closed shape {staff,kiosk}: custom role cannot self-escalate its own user_restaurants.role'
+);
+
+-- Shape 10: {kiosk} — employee_pins (employee_pins_usage_updates policy).
+INSERT INTO public.employee_pins (id, restaurant_id, employee_id, pin_hash)
+VALUES ('6a000000-0000-0000-0000-000000000510', '6a000000-0000-0000-0000-000000000001', '6a000000-0000-0000-0000-000000000e01', 'hashed-pin')
+ON CONFLICT (id) DO NOTHING;
+SELECT is(
+  pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'UPDATE public.employee_pins SET last_used_at = now() WHERE id = ''6a000000-0000-0000-0000-000000000510'''),
+  0::bigint,
+  'fail-closed shape {kiosk}: employee_pins kiosk-only UPDATE denied'
+);
+
+-- ============================================================================
+-- 6. Cross-tenant isolation: Role A (inventory: manage, member of R1 only)
+--    sees nothing in R2, even though R2 has its own products row.
+-- ============================================================================
+INSERT INTO public.products (id, restaurant_id, sku, name)
+VALUES ('6a000000-0000-0000-0000-000000000d02', '6a000000-0000-0000-0000-000000000002', 'TASK6-SKU-R2', 'R2 Fixture Product')
+ON CONFLICT (id) DO NOTHING;
+
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'SELECT count(*) FROM public.products WHERE restaurant_id = ''6a000000-0000-0000-0000-000000000002'''),
+  0::bigint,
+  'cross-tenant isolation: custom role with {inventory: manage} in R1 sees zero products rows in R2'
+);
+SELECT is(
+  pg_temp.as_user_count('6a000000-0000-0000-0000-000000000101'::uuid,
+    'SELECT count(*) FROM public.products'),
+  1::bigint,
+  'cross-tenant isolation: custom role''s unfiltered products count is exactly R1''s one row, never R2''s'
+);
+
+-- ============================================================================
+-- 7. receipt_imports drift guard (commit 94505ec5 / design doc "A fourth
+--    drift, deliberately not closed here: receipt_imports"). Static metadata
+--    check, no RLS session needed.
+-- ============================================================================
+SELECT is(
+  (SELECT count(*)::int FROM pg_policies WHERE schemaname = 'public' AND tablename = 'receipt_imports'),
+  3,
+  'receipt_imports still carries exactly its three original policies'
+);
+SELECT is(
+  (
+    SELECT count(*)::int FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'receipt_imports'
+      AND (coalesce(qual, '') ~ 'user_has_capability' OR coalesce(with_check, '') ~ 'user_has_capability')
+  ),
+  0,
+  'receipt_imports policies do not call user_has_capability — deliberately left on role literals so a later cleanup cannot quietly widen Chef''s access'
+);
+SELECT is(
+  (
+    SELECT count(*)::int FROM pg_policies
+    WHERE schemaname = 'public' AND tablename = 'receipt_imports'
+      AND (coalesce(qual, '') ~ 'role = ANY' OR coalesce(with_check, '') ~ 'role = ANY')
+  ),
+  3,
+  'all three receipt_imports policies still match against a role literal array'
+);
+
+SELECT * FROM finish();
+ROLLBACK;

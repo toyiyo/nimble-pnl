@@ -9,8 +9,8 @@
 
 `.github/workflows/unit-tests.yml` runs the unit suite, uploads coverage, and
 scans with SonarCloud in a single job named `Unit Tests`
-([unit-tests.yml:16-54](.github/workflows/unit-tests.yml#L16-L54)). The Sonar
-step is the last one ([unit-tests.yml:50-54](.github/workflows/unit-tests.yml#L50-L54)),
+([unit-tests.yml:16-54](../../../.github/workflows/unit-tests.yml#L16-L54)). The Sonar
+step is the last one ([unit-tests.yml:50-54](../../../.github/workflows/unit-tests.yml#L50-L54)),
 costing ~1m45s of a ~9m30s job.
 
 Because the two live in one job, one status check carries two independent
@@ -26,14 +26,14 @@ signals: a Sonar-side hang still reports as a unit-test failure.
 
 | Claim | Citation |
 |---|---|
-| Sonar runs as the final step of the `test` job | [unit-tests.yml:50-54](.github/workflows/unit-tests.yml#L50-L54) |
-| The `test` job checks out with `fetch-depth: 0` for Sonar | [unit-tests.yml:22-25](.github/workflows/unit-tests.yml#L22-L25) |
-| Coverage is already uploaded as artifact `coverage-report` from `coverage/`, `if: always()` | [unit-tests.yml:42-48](.github/workflows/unit-tests.yml#L42-L48) |
-| `pull-requests: read` is declared at **workflow** level, not job level | [unit-tests.yml:11-13](.github/workflows/unit-tests.yml#L11-L13) |
-| The `test` job cap is currently `timeout-minutes: 10` on `main` | [unit-tests.yml:19](.github/workflows/unit-tests.yml#L19) |
-| Sonar reads lcov from `coverage/lcov.info` | [sonar-project.properties:41-42](sonar-project.properties#L41-L42) |
-| Sonar analyses `src` and `tests` from the checkout | [sonar-project.properties:8-9](sonar-project.properties#L8-L9) |
-| Vitest writes lcov into `./coverage` | [vitest.config.ts:18,46](vitest.config.ts#L46) |
+| Sonar runs as the final step of the `test` job | [unit-tests.yml:50-54](../../../.github/workflows/unit-tests.yml#L50-L54) |
+| The `test` job checks out with `fetch-depth: 0` for Sonar | [unit-tests.yml:22-25](../../../.github/workflows/unit-tests.yml#L22-L25) |
+| Coverage is already uploaded as artifact `coverage-report` from `coverage/`, `if: always()` | [unit-tests.yml:42-48](../../../.github/workflows/unit-tests.yml#L42-L48) |
+| `pull-requests: read` is declared at **workflow** level, not job level | [unit-tests.yml:11-13](../../../.github/workflows/unit-tests.yml#L11-L13) |
+| The `test` job cap is currently `timeout-minutes: 10` on `main` | [unit-tests.yml:19](../../../.github/workflows/unit-tests.yml#L19) |
+| Sonar reads lcov from `coverage/lcov.info` | [sonar-project.properties:41-42](../../../sonar-project.properties#L41-L42) |
+| Sonar analyses `src` and `tests` from the checkout | [sonar-project.properties:8-9](../../../sonar-project.properties#L8-L9) |
+| Vitest writes lcov into `./coverage` | [vitest.config.ts:18,46](../../../vitest.config.ts#L46) |
 
 ## Design
 
@@ -103,7 +103,7 @@ Five things this has to get right:
    what the analysis can see.
 
 4. **PR decoration.** `permissions:` is workflow-level
-   ([unit-tests.yml:11-13](.github/workflows/unit-tests.yml#L11-L13)), so it
+   ([unit-tests.yml:11-13](../../../.github/workflows/unit-tests.yml#L11-L13)), so it
    already applies to every job including the new one. No job-level
    `permissions` block is added — adding one would *replace* the workflow
    default, not merge with it, which is the easy way to silently break

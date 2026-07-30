@@ -71,7 +71,14 @@ test.describe('Broadcast Open Shifts', () => {
       const mondayStr = fmt(monday);
 
       // Insert a draft shift for Monday at noon local time (avoids timezone edge cases)
-      // The publish_schedule RPC uses start_time::date which compares local date
+      // publish_schedule buckets shifts by the restaurant's IANA timezone
+      // (restaurants.timezone), not by UTC. Noon keeps this spec off that
+      // boundary: it sits ~12h from either end of the local day, so the
+      // browser-local Monday it is seeded as is still Monday in the
+      // restaurant's zone for any offset difference under ~12h — which covers
+      // the America/Chicago default this test signs up with. This spec is
+      // testing broadcast, not the bucketing boundary itself; that boundary
+      // has dedicated coverage in supabase/tests/publish_schedule_tz_bucketing.test.sql.
       const shiftStart = new Date(monday);
       shiftStart.setHours(12, 0, 0, 0); // noon local
 

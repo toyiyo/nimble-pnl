@@ -115,7 +115,7 @@ admitted, on every one of them.
 enumerating exactly the 10 known roles. 156 memberships exist across 35
 restaurants.
 
-### Two real defects this design should close
+### Three real defects this design should close
 
 1. **`view:assets` / `edit:assets` exist in SQL but not in TypeScript.** The
    SQL `CASE` answers them
@@ -135,6 +135,34 @@ restaurants.
    ([definitions.ts:393-441](src/lib/permissions/definitions.ts:393)) make no
    such promise to users. So this is an unenforceable design intent, not a
    broken promise shown in the UI.
+
+3. **`collaborator_inventory` holds `view:reports` in SQL but not in
+   TypeScript.** Found while writing Task 5's round-trip test, not by the
+   original audit. The SQL `CASE` grants it
+   ([20260723120000…sql:120](supabase/migrations/20260723120000_add_collaborator_operations_manager_role.sql:120)),
+   sitting in the middle of the inventory block; `ROLE_CAPABILITIES.collaborator_inventory`
+   ([definitions.ts:228-241](src/lib/permissions/definitions.ts:228)) is that
+   same list *minus* `view:reports`.
+
+   **Resolved: follow TypeScript — Inventory Helper gets no `reports` grant.**
+   The SQL grant is inert and was never intended to take effect:
+
+   - No RLS policy anywhere references `view:reports` (verified against
+     production `pg_policies`), so the grant gates nothing server-side.
+   - The capability is consumed only client-side, and the client deliberately
+     withholds Reports from this role.
+     [App.tsx:206-210](src/App.tsx:206) documents it: `/reports` is excluded
+     because Reports defaults to P&L Trends and exposes revenue/COGS/labor/
+     margin, "Mirrors `collaborator_inventory`, which also holds `view:reports`
+     but is not routed to `/reports`" (Codex P1, PR #596).
+   - Production has **zero** `collaborator_inventory` memberships and zero
+     invitations in any state, so nobody's access changes.
+
+   Preserving the grant would be the actively harmful option here. This design
+   **derives nav and landing path from areas** — so seeding Inventory Helper a
+   `reports` area at `view` would newly route it to `/reports`, re-opening the
+   exact P&L exposure PR #596 closed. Dropping it makes the enforcement layer
+   agree with the intent the routing layer has expressed all along.
 
 ## Approach
 

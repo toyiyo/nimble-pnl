@@ -483,13 +483,20 @@ export interface UseShiftPlannerOptions {
    */
   externalWeekStart?: Date;
   onExternalWeekStartChange?: (next: Date) => void;
+  /**
+   * IANA timezone (the restaurant's) — forwarded to `useValidatedShiftMutations`
+   * and used by `validateAndUpdateTime`'s own `ShiftInterval.create` reconstruction.
+   * Optional here purely so tz-agnostic unit tests can omit it; every production
+   * caller (`ShiftPlannerTab`) always supplies the restaurant's real zone.
+   */
+  tz?: string;
 }
 
 export function useShiftPlanner(
   restaurantId: string | null,
   options: UseShiftPlannerOptions = {},
 ): UseShiftPlannerReturn {
-  const { externalWeekStart, onExternalWeekStartChange } = options;
+  const { externalWeekStart, onExternalWeekStartChange, tz } = options;
 
   if (
     process.env.NODE_ENV !== 'production' &&
@@ -539,7 +546,7 @@ export function useShiftPlanner(
   });
 
   // Validated mutation pipeline (shared with the Timeline edit/create surface).
-  const pipeline = useValidatedShiftMutations(restaurantId, shifts);
+  const pipeline = useValidatedShiftMutations(restaurantId, shifts, { tz });
 
   // Computed data
   const totalHours = useMemo(() => computeTotalHours(shifts), [shifts]);
@@ -597,19 +604,16 @@ export function useShiftPlanner(
       const endHHMM = endTimePart.substring(0, 5);
 
       try {
-        // Reconstruct the host-local interval the same way the planner always
-        // has, then hand its ISO instants to the pipeline (fromTimestamps),
-        // preserving this hook's existing host-local create semantics.
-        // `tz` is required as of ShiftInterval.create's timezone-anchored
-        // signature; the browser's own zone reproduces the prior host-local
-        // behavior unchanged. Threading the restaurant's real `tz` through
-        // here is Task 4's job (see plan), not this mechanical compile fix.
-        const interval = ShiftInterval.create(
-          date,
-          startHHMM,
-          endHHMM,
-          Intl.DateTimeFormat().resolvedOptions().timeZone,
-        );
+        // Reconstruct the interval in the restaurant's own timezone (options.tz,
+        // threaded from ShiftPlannerTab), then hand its ISO instants to the
+        // pipeline (fromTimestamps). `tz` is required as of ShiftInterval.create's
+        // timezone-anchored signature — no more falling back to the browser's own
+        // zone, which was the exact bug this plan exists to fix.
+        if (!tz) {
+          throw new TypeError('INVALID_DATE');
+        }
+
+        const interval = ShiftInterval.create(date, startHHMM, endHHMM, tz);
 
         const { updated } = await pipeline.validateAndUpdateTime({
           shift: input.shift,
@@ -620,12 +624,13 @@ export function useShiftPlanner(
 
         return updated;
       } catch {
-        // ShiftInterval.create validation failure (e.g. invalid/zero duration).
-        // Matches this hook's pre-refactor contract: never throws, returns false.
+        // ShiftInterval.create validation failure (e.g. invalid/zero duration,
+        // or a missing tz) — matches this hook's pre-refactor contract: never
+        // throws, returns false.
         return false;
       }
     },
-    [pipeline],
+    [pipeline, tz],
   );
 
   const validateAndReassign = useCallback(

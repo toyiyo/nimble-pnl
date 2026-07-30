@@ -137,6 +137,7 @@ export function ShiftPlannerTab({
   } = useShiftPlanner(restaurantId, {
     externalWeekStart,
     onExternalWeekStartChange: onWeekStartChange,
+    tz: restaurantTimezone,
   });
 
   const {

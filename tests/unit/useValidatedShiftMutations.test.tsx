@@ -57,10 +57,24 @@ const createWrapper = () => {
   return Wrapper;
 };
 
-function renderPipeline(shifts: Shift[] = [], checkConflicts = vi.fn().mockResolvedValue(NO_CONFLICTS)) {
+/** Fixed, host-TZ-independent zone used by default so fixtures never depend on the test host's clock. */
+const DEFAULT_TZ = 'America/Chicago';
+
+/**
+ * `tz` takes a 3-state sentinel — `'omit'` leaves it out of the options object
+ * entirely — rather than a plain optional param, because a plain default
+ * parameter treats an explicit `undefined` argument as "not passed" (JS
+ * spec), which would make it impossible to write a test that truly omits `tz`.
+ */
+function renderPipeline(
+  shifts: Shift[] = [],
+  checkConflicts = vi.fn().mockResolvedValue(NO_CONFLICTS),
+  tz: string | 'omit' = DEFAULT_TZ,
+) {
   const Wrapper = createWrapper();
+  const options = tz === 'omit' ? { checkConflicts } : { checkConflicts, tz };
   return renderHook(
-    () => useValidatedShiftMutations('rest-1', shifts, { checkConflicts }),
+    () => useValidatedShiftMutations('rest-1', shifts, options),
     { wrapper: Wrapper },
   );
 }
@@ -92,10 +106,9 @@ describe('useValidatedShiftMutations — create', () => {
 
   it('validateAndCreate returns pending issues (does not mutate) when warnings exist', async () => {
     // Existing shift built the same way validateAndCreate builds its own interval
-    // (ShiftInterval.create with the browser's own zone, the Task 4 stopgap — see
-    // useValidatedShiftMutations.ts) so the overlap holds regardless of host TZ.
-    const hostTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', hostTz);
+    // (ShiftInterval.create with the options.tz threaded through as of Task 4 —
+    // see useValidatedShiftMutations.ts) so the overlap holds regardless of host TZ.
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', DEFAULT_TZ);
     const existing = makeShift({
       start_time: existingInterval.startAt.toISOString(),
       end_time: existingInterval.endAt.toISOString(),
@@ -116,8 +129,7 @@ describe('useValidatedShiftMutations — create', () => {
   });
 
   it('forceCreate mutates regardless of pending issues', async () => {
-    const hostTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', hostTz);
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', DEFAULT_TZ);
     const existing = makeShift({
       start_time: existingInterval.startAt.toISOString(),
       end_time: existingInterval.endAt.toISOString(),
@@ -134,6 +146,67 @@ describe('useValidatedShiftMutations — create', () => {
 
     expect(created).toBe(true);
     expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useValidatedShiftMutations — options.tz (Task 4)', () => {
+  // `tz` is optional on UseValidatedShiftMutationsOptions (ShiftTimelineTab's
+  // fromTimestamps-only usage never needs it), but validateAndCreate/forceCreate
+  // route through the host-local ShiftInterval.create and must not silently fall
+  // back to the browser's zone — that's the exact bug this whole plan exists to fix.
+  it('validateAndCreate throws INVALID_DATE and surfaces it as the validation result when tz is not provided', async () => {
+    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'omit');
+
+    const outcome = await result.current.validateAndCreate({
+      employeeId: 'emp-2',
+      date: '2026-02-01',
+      startTime: '09:00',
+      endTime: '17:00',
+      position: 'server',
+    });
+
+    expect(outcome.created).toBe(false);
+    expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.validationResult?.errors[0]?.message).toBe('INVALID_DATE'),
+    );
+  });
+
+  it('forceCreate throws INVALID_DATE and does not mutate when tz is not provided', async () => {
+    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'omit');
+
+    const created = await result.current.forceCreate({
+      employeeId: 'emp-2',
+      date: '2026-02-01',
+      startTime: '09:00',
+      endTime: '17:00',
+      position: 'server',
+    });
+
+    expect(created).toBe(false);
+    expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.validationResult?.errors[0]?.message).toBe('INVALID_DATE'),
+    );
+  });
+
+  it('validateAndCreate anchors the interval in the given tz, not the browser zone', async () => {
+    // Restaurant in Chicago, `tz` explicitly Chicago — the pipeline must use it
+    // regardless of whatever zone the test process happens to run in.
+    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'America/Chicago');
+
+    await result.current.validateAndCreate({
+      employeeId: 'emp-2',
+      date: '2026-08-12',
+      startTime: '06:30',
+      endTime: '12:30',
+      position: 'server',
+    });
+
+    expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1);
+    const payload = mockCreateMutateAsync.mock.calls[0][0];
+    // 06:30 Chicago (CDT, UTC-5) on 2026-08-12 is 11:30 UTC.
+    expect(payload.start_time).toBe('2026-08-12T11:30:00.000Z');
   });
 });
 

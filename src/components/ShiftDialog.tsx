@@ -67,7 +67,7 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
   const [customRecurrenceOpen, setCustomRecurrenceOpen] = useState(false);
 
   const { employees } = useEmployees(restaurantId);
-  const createShift = useCreateShift();
+  const createShift = useCreateShift({ tz: timezone });
   const updateShift = useUpdateShift();
   const updateShiftSeries = useUpdateShiftSeries();
 

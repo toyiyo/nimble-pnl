@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
+import { formatLocalDate, formatLocalDateInTz, formatLocalTimeInTz, wallClockToInstant } from '@/lib/shiftInterval';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
@@ -96,17 +97,31 @@ export interface UseCreateShiftOptions {
    * caller's behavior is unchanged.
    */
   silent?: boolean;
+  /**
+   * The restaurant's IANA timezone. Only consulted for a recurring create —
+   * a single-shift create's `start_time`/`end_time` already arrive as
+   * correct UTC instants from the caller (ShiftDialog resolves them via
+   * `wallClockToInstant` before calling `mutate`). Required whenever
+   * `shift.recurrence_pattern && shift.is_recurring`: every child after the
+   * first is rebuilt from the parent's restaurant-local wall clock, and
+   * doing that without a real `tz` is exactly the bug this option exists to
+   * prevent (see `createRecurringShifts`).
+   */
+  tz?: string;
 }
 
 export function useCreateShift(options: UseCreateShiftOptions = {}) {
-  const { silent = false } = options;
+  const { silent = false, tz } = options;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (shift: ShiftInput) => {
       if (shift.recurrence_pattern && shift.is_recurring) {
-        return createRecurringShifts(shift);
+        if (!tz) {
+          throw new TypeError('INVALID_DATE');
+        }
+        return createRecurringShifts(shift, tz);
       }
       return createSingleShift(shift);
     },
@@ -147,12 +162,27 @@ async function createSingleShift(shift: ShiftInput): Promise<Shift> {
   return toTypedShift(data);
 }
 
-async function createRecurringShifts(shift: ShiftInput): Promise<Shift> {
+async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shift> {
   const startDate = parseISO(shift.start_time);
   const endDate = parseISO(shift.end_time);
   const durationMs = endDate.getTime() - startDate.getTime();
 
-  const recurringDates = generateRecurringDates(startDate, shift.recurrence_pattern!);
+  // Seed the recurrence generator with a calendar-only Date built from the
+  // restaurant-local calendar date (noon, clear of any host-local DST edge),
+  // not `startDate` itself — `generateRecurringDates` steps days/weeks via
+  // host-local `Date` getters/setters, so feeding it the raw instant would
+  // advance the HOST's calendar day, not the restaurant's. This keeps every
+  // occurrence's calendar date anchored to the restaurant regardless of the
+  // manager's device timezone.
+  const startDateStr = formatLocalDateInTz(startDate, tz);
+  const [seedYear, seedMonth, seedDay] = startDateStr.split('-').map(Number);
+  const calendarSeed = new Date(seedYear, seedMonth - 1, seedDay, 12, 0, 0);
+
+  const recurringDates = generateRecurringDates(calendarSeed, shift.recurrence_pattern!);
+  // The parent's restaurant-local wall clock (HH:MM) — every child keeps
+  // this exact wall clock, so a series spanning a DST transition stays at
+  // the same local time instead of drifting by the transition's offset.
+  const wallClockTime = formatLocalTimeInTz(shift.start_time, tz).slice(0, 5);
 
   const { data: parentShift, error: parentError } = await supabase
     .from('shifts')
@@ -168,8 +198,8 @@ async function createRecurringShifts(shift: ShiftInput): Promise<Shift> {
 
   if (recurringDates.length > 1) {
     const childShifts = recurringDates.slice(1).map((date) => {
-      const childStartTime = new Date(date);
-      childStartTime.setHours(startDate.getHours(), startDate.getMinutes(), startDate.getSeconds());
+      const childDateStr = formatLocalDate(date);
+      const childStartTime = wallClockToInstant(childDateStr, wallClockTime, tz);
       const childEndTime = new Date(childStartTime.getTime() + durationMs);
 
       return {

@@ -432,27 +432,29 @@ test.describe('Editing a shift without changing it does not move its start_time'
 });
 
 // ---------------------------------------------------------------------------
-// SURFACE 4: recurring shifts ("Repeat"). `createRecurringShifts` builds every
+// SURFACE 4: recurring shifts ("Repeat"). `createRecurringShifts` built every
 // child after the first via host-local `Date` getters/setters
 // (`useShifts.tsx`), the same defect class as the other surfaces. This drives
 // the real dialog with a 3-occurrence daily custom recurrence and asserts
 // EVERY occurrence — parent included — lands on the correct restaurant-local
 // wall clock. All three dates sit inside the same DST regime, so a passing
 // fix should show identical +0 drift on every row.
+//
+// Note: a host/restaurant pair with *constant* offsets across the whole
+// recurrence window (as here — LA/Chicago, no DST transition between
+// 2026-08-12 and -14) cannot actually distinguish the old host-local bug
+// from the fix — "add N days at a fixed host-local hour" and "add N days at
+// a fixed restaurant-local hour" land on the same instant when neither zone's
+// offset changes in between. The DST-crossing case that *does* distinguish
+// them is covered by `tests/unit/useShiftsRecurringCreateTz.test.ts` (Phoenix
+// host, Chicago restaurant, spans the 2026-03-08 spring-forward). This E2E
+// spec still earns its keep: it is the only test driving the real dialog's
+// custom-recurrence UI end to end for this surface.
 // ---------------------------------------------------------------------------
 test.describe('Recurring shifts anchor every occurrence to the restaurant timezone', () => {
   test.use({ timezoneId: 'America/Los_Angeles' });
 
-  // SKIPPED — lands with its fix in Task 6 (surface 4, recurring shifts).
-  // This test does not currently reproduce the timezone defect: it dies earlier,
-  // on the occurrence *count* (`expected 3, got 2`), so the timezone assertions
-  // below never execute. `generateRecurringDates` seeds `[startDate]` at
-  // `count = 1` and loops `while (count < occurrences)`, so `occurrences: 3`
-  // should yield exactly 3 rows — 2 is neither that nor the dialog's default of
-  // 10, and the discrepancy is a separate, unexplained product question.
-  // Leaving it enabled would be worse than skipping it: a later reader would
-  // "fix" the count assertion and never notice the timezone check still never ran.
-  test.skip('a daily 3-occurrence 06:30 Chicago recurrence stores 11:30Z on every date', async ({ page }) => {
+  test('a daily 3-occurrence 06:30 Chicago recurrence stores 11:30Z on every date', async ({ page }) => {
     const testUser = generateTestUser('tzrepeat');
     await signUpAndCreateRestaurant(page, testUser);
     await exposeSupabaseHelpers(page);

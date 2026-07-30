@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { toBusinessDay } from '@/lib/businessDay';
+import {
+  toBusinessDay,
+  toBusinessDayFor,
+  businessDayStartInstant,
+  addDaysToDayToken,
+  MAX_BUSINESS_DAY_START_HOUR,
+} from '@/lib/businessDay';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import { calculateEmployeePay } from '@/utils/payrollCalculations';
 import { hoursByClockInDay } from '@/utils/timecardHours';
@@ -131,5 +137,73 @@ describe(`frame independence (process TZ = ${PROCESS_TZ})`, () => {
     { name: 'the 1st of a 30-day month', instant: '2026-05-01T06:00:00.000Z', expected: '2026-04-30' },
   ])('rolls back across a month boundary onto the right calendar: $name', ({ instant, expected }) => {
     expect(toBusinessDay(instant, TZ, 2)).toBe(expected);
+  });
+
+  /**
+   * businessDayStartInstant is what lets the payroll fetch cover exactly the
+   * business days its filter will select, in any pair of zones. That rests on
+   * two properties:
+   *
+   *   1. It is toBusinessDay's left inverse at each day's lower edge -- the
+   *      returned instant is in `day`, one millisecond earlier is not.
+   *   2. Where 1 cannot hold it is still within ONE HOUR of the true edge, in
+   *      either direction. A DST transition is what breaks 1, and it breaks it
+   *      both ways: a spring-forward can skip the cutoff wall clock (02:00 in
+   *      US zones) so no instant is the edge, and a fall-back can repeat it so
+   *      two are, of which fromZonedTime returns the second. That one hour is
+   *      exactly what DST_SLACK_HOURS in punchWindow pays for -- with
+   *      OVERNIGHT_BUFFER_HOURS already equal to MAX_SHIFT_GAP_HOURS, an
+   *      unbudgeted hour on either bound costs a real pairing.
+   *
+   * Hard-coded zones and days, deliberately including both DST transitions and
+   * a zone (Kolkata) on a half-hour offset, where an implementation that
+   * rounded to whole hours would land on the wrong side.
+   */
+  describe('businessDayStartInstant is the lower edge of the business day', () => {
+    const HOUR_MS = 3_600_000;
+    // Transition-free in every zone below, so property 1 holds exactly.
+    const PLAIN_DAYS = ['2026-01-11', '2026-07-12', '2026-02-28', '2026-12-31'];
+    const DST_DAYS = [
+      '2026-03-08', // US spring-forward: 02:00 does not exist
+      '2026-11-01', // US fall-back: 01:00 happens twice
+      '2026-04-05', // NZ fall-back
+      '2026-09-27', // NZ spring-forward
+    ];
+    for (const tz of ['America/Chicago', 'America/Los_Angeles', 'Pacific/Auckland', 'Asia/Kolkata', 'UTC']) {
+      for (let cutoffHour = 0; cutoffHour <= MAX_BUSINESS_DAY_START_HOUR; cutoffHour++) {
+        it(`${tz} @ cutoff ${cutoffHour}`, () => {
+          const cfg = { tz, cutoffHour };
+          for (const day of [...PLAIN_DAYS, ...DST_DAYS]) {
+            const at = `${tz}/${day}@${cutoffHour}`;
+            const startsAt = businessDayStartInstant(day, cfg);
+
+            // Property 2, for every day: an hour before is definitely outside
+            // `day`, an hour after is definitely inside it.
+            const before = toBusinessDayFor(new Date(startsAt.getTime() - HOUR_MS - 1), cfg);
+            const after = toBusinessDayFor(new Date(startsAt.getTime() + HOUR_MS), cfg);
+            expect(before, `${at}: an hour before the start is not before ${day}`)
+              .toBe(addDaysToDayToken(day, -1));
+            expect(after, `${at}: an hour after the start is not yet ${day}`).toBe(day);
+
+            // Property 1, on the days where nothing perturbs the wall clock.
+            if (PLAIN_DAYS.includes(day)) {
+              expect(toBusinessDayFor(startsAt, cfg), at).toBe(day);
+              expect(toBusinessDayFor(new Date(startsAt.getTime() - 1), cfg), at)
+                .toBe(addDaysToDayToken(day, -1));
+            }
+          }
+        });
+      }
+    }
+  });
+
+  it('addDaysToDayToken rolls months, years and leap days in token space', () => {
+    expect(addDaysToDayToken('2026-07-12', 1)).toBe('2026-07-13');
+    expect(addDaysToDayToken('2026-07-31', 1)).toBe('2026-08-01');
+    expect(addDaysToDayToken('2026-12-31', 1)).toBe('2027-01-01');
+    expect(addDaysToDayToken('2026-02-28', 1)).toBe('2026-03-01');
+    expect(addDaysToDayToken('2024-02-28', 1)).toBe('2024-02-29'); // leap year
+    expect(addDaysToDayToken('2100-02-28', 1)).toBe('2100-03-01'); // century rule
+    expect(addDaysToDayToken('2026-01-01', -1)).toBe('2025-12-31');
   });
 });

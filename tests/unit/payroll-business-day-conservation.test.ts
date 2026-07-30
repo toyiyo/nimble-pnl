@@ -549,3 +549,91 @@ describe('payroll: hourly OT bands by business day', () => {
     }
   });
 });
+
+/**
+ * The pay-period window is a range of BUSINESS days, not of instants.
+ *
+ * calculateEmployeePay bands OT by business-day week. If the window that
+ * selects which shifts belong to the period is framed on the raw clock-in
+ * INSTANT instead, the two frames disagree for exactly one strip of time --
+ * midnight to the cutoff on the day after the period ends -- and a shift in
+ * that strip is banded, alone, against a business week whose other 48 hours
+ * were paid on the previous check. Total hours still conserve (the instant
+ * windows tile), so this is invisible to the conservation invariant; what
+ * leaks is the OVERTIME PREMIUM on those hours.
+ */
+describe('payroll: the period window selects BUSINESS days, not instants', () => {
+  const OT_RULES: OvertimeRules = {
+    weeklyThresholdHours: 40,
+    weeklyOtMultiplier: 1.5,
+    dailyThresholdHours: null,
+    dailyOtMultiplier: 1.5,
+    dailyDoubleThresholdHours: null,
+    dailyDoubleMultiplier: 2,
+    excludeTipsFromOtRate: false,
+  };
+  const RATE_CENTS = 2000;
+
+  const iso = (d: number, hhmm: string) => `2026-07-${String(d).padStart(2, '0')}T${hhmm}:00.000Z`;
+
+  // Mon Jul 6 .. Sat Jul 11, 09:00-17:00 CDT: six 8h days = 48h.
+  const SIX_EIGHTS = [6, 7, 8, 9, 10, 11].flatMap((d) =>
+    pair('e10', iso(d, '14:00'), iso(d, '22:00')),
+  );
+  // Mon Jul 13, 01:00-07:00 CDT (6h). Business day at cutoff 2: Sun Jul 12,
+  // the LAST day of the Jul 6-12 pay period.
+  const MONDAY_1AM = pair('e10', iso(13, '06:00'), iso(13, '12:00'));
+  const ALL = [...SIX_EIGHTS, ...MONDAY_1AM];
+
+  // Three adjacent weekly pay periods, as local-midnight calendar-day tokens --
+  // the same shape src/pages/Payroll.tsx builds from startOfWeek/endOfWeek.
+  const WEEKS: ReadonlyArray<readonly [Date, Date]> = [
+    [new Date(2026, 5, 29), new Date(2026, 6, 5, 23, 59, 59, 999)],
+    [new Date(2026, 6, 6), new Date(2026, 6, 12, 23, 59, 59, 999)],
+    [new Date(2026, 6, 13), new Date(2026, 6, 19, 23, 59, 59, 999)],
+  ];
+
+  const run = (week: readonly [Date, Date], cutoffHour: number) =>
+    calculateEmployeePay(
+      hourly('e10', RATE_CENTS), ALL,
+      0, week[0], week[1], [], 0, OT_RULES, [], true,
+      { tz: TZ, cutoffHour },
+    );
+
+  it('pays the 01:00 Monday shift as OT on the week it belongs to', () => {
+    const w1 = run(WEEKS[1], 2);
+    // 48h + 6h = 54h on business week Jul 6-12: 40 regular, 14 at 1.5x.
+    expect(w1.regularHours).toBeCloseTo(40, 6);
+    expect(w1.overtimeHours).toBeCloseTo(14, 6);
+  });
+
+  it('does not pay it a second time on the following period', () => {
+    const w2 = run(WEEKS[2], 2);
+    expect(w2.regularHours + w2.overtimeHours).toBeCloseTo(0, 6);
+  });
+
+  it('at cutoff 0 the shift genuinely belongs to the next period', () => {
+    const w1 = run(WEEKS[1], 0);
+    expect(w1.regularHours).toBeCloseTo(40, 6);
+    expect(w1.overtimeHours).toBeCloseTo(8, 6);
+
+    const w2 = run(WEEKS[2], 0);
+    expect(w2.regularHours).toBeCloseTo(6, 6);
+    expect(w2.overtimeHours).toBeCloseTo(0, 6);
+  });
+
+  it('every hour is paid exactly once across adjacent periods, at every cutoff', () => {
+    const expected = parseWorkPeriods(ALL).periods
+      .filter((p) => !p.isBreak)
+      .reduce((sum, p) => sum + p.hours, 0);
+
+    for (let cutoffHour = 0; cutoffHour <= 11; cutoffHour++) {
+      const paid = WEEKS.reduce((sum, w) => {
+        const r = run(w, cutoffHour);
+        return sum + r.regularHours + r.overtimeHours;
+      }, 0);
+      expect(paid, `cutoff ${cutoffHour} paid an hour twice or not at all`)
+        .toBeCloseTo(expected, 6);
+    }
+  });
+});

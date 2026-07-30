@@ -16,9 +16,9 @@ import {
   type TipSplitItem as TipSplitItemForAggregation,
   type EmployeeTip as EmployeeTipForAggregation,
 } from '@/utils/tipAggregation';
-import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
-import type { BusinessDayConfig } from '@/lib/businessDay';
+import { type BusinessDayConfig } from '@/lib/businessDay';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -132,9 +132,15 @@ export function usePayroll(
     queryFn: async (): Promise<PayrollPeriod | null> => {
       if (!restaurantId) return null;
 
-      // Fetch time punches for the period, widened by ±18h so overnight shifts
-      // that straddle the period boundary are paired whole. calculateEmployeePay
-      // then filters periods back to [startDate, endDate] by clock-in day.
+      // Fetch time punches spanning the period's BUSINESS days, plus ±18h so
+      // overnight shifts that straddle a boundary are paired whole.
+      // calculateEmployeePay then filters periods back to the business days
+      // [startDate, endDate] name, by clock-in.
+      //
+      // The fetch is anchored on the business-day boundary instants rather than
+      // on a fixed buffer around the bounds, so it covers the same span the
+      // filter selects no matter how far apart the viewer's zone and the
+      // restaurant's are. See businessDayPunchFetchRange.
       //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // PostgREST caps an unpaginated response at 1,000 rows, which would
@@ -142,7 +148,9 @@ export function usePayroll(
       // once a pay period crosses that threshold. The `.order('id')`
       // tiebreaker makes each page boundary deterministic when multiple
       // punches share a `punch_time`.
-      const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+      const { fetchStart, fetchEnd } = businessDayPunchFetchRange(
+        startDate, endDate, businessDay,
+      );
       const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
         supabase
           .from('time_punches')

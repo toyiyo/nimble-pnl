@@ -12,7 +12,11 @@ import {
   type OvertimeRules as OTRules,
   type OvertimeAdjustment,
 } from '@/lib/overtimeCalculations';
-import { periodsInWindow, incompleteShiftsInWindow } from '@/utils/punchWindow';
+import {
+  periodsInWindow,
+  periodsInBusinessDayWindow,
+  incompleteShiftsInBusinessDayWindow,
+} from '@/utils/punchWindow';
 import {
   toBusinessDayFor,
   HOST_CALENDAR_DAY_FRAME,
@@ -456,12 +460,14 @@ export function calculateEmployeePay(
   overtimeRules?: OTRules,
   overtimeAdjustments: OvertimeAdjustment[] = [],
   // When true, attribute each shift to its clock-in day and drop periods/
-  // incomplete shifts whose anchor punch falls outside [periodStartDate,
-  // periodEndDate]. ONLY the payroll path (calculatePayrollPeriod) opts in — it
-  // fetches a ±18h buffer so boundary-crossing shifts pair whole first.
-  // calculateActualLaborCostForMonth intentionally leaves this false: it
-  // pre-buckets by ISO week and passes NOON-anchored bounds this filter would
-  // misinterpret.
+  // incomplete shifts whose clock-in BUSINESS day falls outside the calendar
+  // days [periodStartDate, periodEndDate] name. ONLY the payroll path
+  // (calculatePayrollPeriod) opts in — it fetches a ±18h buffer so
+  // boundary-crossing shifts pair whole first, and the buffer exceeds
+  // MAX_BUSINESS_DAY_START_HOUR so every business day in the period is
+  // reachable. calculateActualLaborCostForMonth intentionally leaves this
+  // false: it pre-buckets by ISO week and passes NOON-anchored bounds this
+  // filter would misinterpret.
   attributeToWindow: boolean = false,
   // The restaurant's business-day framing. Defaults to the HOST zone with no
   // cutoff -- the frame that reproduces this function's pre-cutoff output byte
@@ -492,8 +498,17 @@ export function calculateEmployeePay(
   if (compensationType === 'hourly') {
     const parsed = parseWorkPeriods(punches);
     if (attributeToWindow && periodStartDate && periodEndDate) {
-      parsed.periods = periodsInWindow(parsed.periods, periodStartDate, periodEndDate);
-      parsed.incompleteShifts = incompleteShiftsInWindow(parsed.incompleteShifts, periodStartDate, periodEndDate);
+      // Selected on the BUSINESS day, the same frame the OT banding below uses.
+      // Selecting on the raw instant instead would leave a 01:00 shift on the
+      // morning after periodEndDate out of the period that bands its business
+      // week, and drop it into the next one where it bands alone -- six hours of
+      // OT premium, silently paid at straight time.
+      parsed.periods = periodsInBusinessDayWindow(
+        parsed.periods, periodStartDate, periodEndDate, businessDay,
+      );
+      parsed.incompleteShifts = incompleteShiftsInBusinessDayWindow(
+        parsed.incompleteShifts, periodStartDate, periodEndDate, businessDay,
+      );
     }
     const hoursByDate = new Map<string, number>();
 

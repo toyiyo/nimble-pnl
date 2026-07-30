@@ -1,3 +1,4 @@
+import { fromZonedTime } from 'date-fns-tz';
 import { validateTimeZone } from '@/lib/splhAnalytics';
 
 export const DEFAULT_BUSINESS_DAY_START_HOUR = 0;
@@ -131,6 +132,56 @@ export function toBusinessDay(
 /** Config-object form of {@link toBusinessDay}, for threaded call sites. */
 export function toBusinessDayFor(instant: Date | string, cfg: BusinessDayConfig): string {
   return toBusinessDay(instant, cfg.tz, cfg.cutoffHour);
+}
+
+/**
+ * Shift a YYYY-MM-DD day token by whole days, staying in token space.
+ *
+ * Never leaves the token frame, so there is no local-midnight Date to be
+ * misread by `.toISOString()` — the memory/lessons.md 2026-07-28 failure mode.
+ * Month and year rollover come from Date's own normalization; seeding from
+ * `new Date(0)` (Jan 1) means the three-arg setUTCFullYear never transits a
+ * short month, matching toBusinessDay above.
+ */
+export function addDaysToDayToken(day: string, days: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const shifted = new Date(0);
+  shifted.setUTCFullYear(y, m - 1, d + days);
+  shifted.setUTCHours(0, 0, 0, 0);
+  const mm = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${shifted.getUTCFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * The instant at which the business day named by `day` BEGINS: that day's wall
+ * clock at the cutoff hour, resolved in the restaurant's zone.
+ *
+ * The left inverse of {@link toBusinessDay} at each day's lower edge --
+ * `toBusinessDay(businessDayStartInstant(d, cfg), cfg) === d`, and one
+ * millisecond earlier belongs to `d - 1`. That is what makes it usable to
+ * derive a fetch window that provably covers a range of business days, in any
+ * pair of zones, rather than a fixed-hour buffer that covers it only when the
+ * viewer's zone is close enough to the restaurant's.
+ *
+ * ONE EXCEPTION, and it is why callers must pad: on a DST transition the cutoff
+ * wall clock may not name exactly one instant, and then no instant is the edge.
+ * It goes wrong in BOTH directions, so a caller cannot lean on a sign:
+ *
+ *   - Spring forward, cutoff 2 in a US zone: 02:00 never happens. The day truly
+ *     begins at 03:00 local; `fromZonedTime` returns the hour before the gap,
+ *     which is still the PREVIOUS business day. An hour early.
+ *   - Fall back, cutoff 1 in a US zone: 01:00 happens twice. The day truly
+ *     begins at the first one; `fromZonedTime` returns the second. An hour late.
+ *
+ * The result is therefore within one hour of the true edge, either way, and
+ * callers pad by DST_SLACK_HOURS (punchWindow) on top of their own buffer to
+ * absorb it. Pinned in five zones at every cutoff by
+ * tests/unit/businessDay.tz.test.ts.
+ */
+export function businessDayStartInstant(day: string, cfg: BusinessDayConfig): Date {
+  const hh = String(safeCutoffHour(cfg.cutoffHour)).padStart(2, '0');
+  return fromZonedTime(`${day}T${hh}:00:00`, validateTimeZone(cfg.tz));
 }
 
 /**

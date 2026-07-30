@@ -1,9 +1,9 @@
 /**
- * Regression: usePayroll's time_punches fetch must be widened by the
- * overnight buffer (±18h, via bufferPunchFetchRange) so a shift whose
- * clock-in and clock-out straddle the period boundary is fetched whole.
- * calculateEmployeePay then attributes each shift back to its clock-in day
- * within [startDate, endDate].
+ * Regression: usePayroll's time_punches fetch must span the period's BUSINESS
+ * days widened by the overnight buffer (via businessDayPunchFetchRange), so a
+ * shift whose clock-in and clock-out straddle a boundary is fetched whole.
+ * calculateEmployeePay then attributes each shift back to its clock-in
+ * business day within [startDate, endDate].
  *
  * The React Query cache key must stay keyed on the *logical* startDate/
  * endDate (not the buffered range) so cache identity is unaffected by the
@@ -14,7 +14,7 @@ import { HOST_LOCAL_FRAME } from './fixtures/businessDayFixtures';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
 
 // Generic chainable Supabase query-builder mock: every method returns
 // `this` so any chain shape resolves, and the builder is thenable so
@@ -76,9 +76,13 @@ describe('usePayroll time_punches fetch range', () => {
   it('fetches time_punches widened by the overnight buffer, not the raw logical bounds', async () => {
     const { usePayroll } = await import('@/hooks/usePayroll');
 
-    const startDate = new Date('2026-03-02T00:00:00.000Z');
-    const endDate = new Date('2026-03-08T23:59:59.999Z');
-    const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+    // Local-midnight calendar-day tokens, the shape Payroll.tsx builds from
+    // startOfWeek/endOfWeek -- the fetch range reads their local fields.
+    const startDate = new Date(2026, 2, 2);
+    const endDate = new Date(2026, 2, 8, 23, 59, 59, 999);
+    const { fetchStart, fetchEnd } = businessDayPunchFetchRange(
+      startDate, endDate, HOST_LOCAL_FRAME,
+    );
 
     const { result } = renderHook(
       () => usePayroll('rest-1', startDate, endDate, HOST_LOCAL_FRAME),

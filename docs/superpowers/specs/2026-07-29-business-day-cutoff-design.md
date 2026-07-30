@@ -41,15 +41,24 @@ nothing on `origin/main` at `4e293abc`. What does exist:
 can wrap it rather than duplicate it: pure function, explicit `(instant, tz,
 cutoffHour)` signature, no hook dependency, no context access.
 
-### 2.2 There is almost no server-side punch→business-day bucketing to route through
+### 2.2 Audit of all three named columns: there is almost nothing server-side to route
 
 The brief asks to "audit every RPC/view deriving a business day from
 `time_punches.punch_time`, `shifts.start_time`, or `unified_sales.sold_at` and route
 them through it."
 
-Full sweep of `supabase/migrations` + `supabase/functions` for a `punch_time` cast or
-truncation to a date returns exactly two sites, neither of which is a payroll or
-reporting bucket:
+All three columns are audited below. The audit is run against **live prod function
+bodies** (`pg_get_functiondef` over `pg_proc`), not against migration files — migration
+archaeology is unreliable here because several of these functions have been redefined
+three or four times and one (`shift_slot_min_concurrent`) was dropped outright by
+[`20260720120000_shift_fill_by_assignment.sql:625`](../../../supabase/migrations/20260720120000_shift_fill_by_assignment.sql).
+Grepping migrations alone would have produced findings for expressions that no longer
+exist in the database.
+
+#### `time_punches.punch_time` — two sites, neither an attribution bucket
+
+Full sweep for a `punch_time` cast or truncation to a date returns exactly two sites,
+neither of which is a payroll or reporting bucket:
 
 | Site | What it does | Route through helper? |
 |---|---|---|
@@ -67,6 +76,57 @@ service_date = p_service_date AND status = 'CLOSED'`
 ([`20250929212801_…sql`](../../../supabase/migrations/20250929212801_5e70703f-586d-4149-bf21-3c84e38e9c48.sql)),
 i.e. a POS-supplied service date. Out of scope: rebucketing a vendor's service date is
 a different feature with a different correctness argument.
+
+#### `shifts.start_time` — three live sites, all already tz-aware, all answering a different question
+
+| Live function | Expression | Question it answers | Route through helper? |
+|---|---|---|---|
+| `publish_schedule` | `(s.start_time AT TIME ZONE v_tz)::date` between `p_week_start`/`p_week_end` | which shifts fall in the week the manager is publishing | **No** |
+| `unpublish_schedule` | same | same | **No** |
+| `shift_template_assigned_count` | `(s.start_time AT TIME ZONE p_tz)::date = p_date` and `(… )::time` | does this shift instance match this template on this calendar date | **No** |
+
+All three were made tz-aware by
+[`20260729120000_publish_schedule_tz_bucketing.sql`](../../../supabase/migrations/20260729120000_publish_schedule_tz_bucketing.sql)
+(the publish pair, commit `c675d566`) and
+[`20260720120000_shift_fill_by_assignment.sql:109`](../../../supabase/migrations/20260720120000_shift_fill_by_assignment.sql)
+(the count). Verified: **zero** bare `start_time::date` casts survive anywhere in
+`public` in prod.
+
+**Why they are intentionally out of scope.** These derive a *calendar* day for
+schedule-grid placement and template matching — the answer to "which cell of the
+Mon–Sun grid does this shift render in", which is what a manager laying out a week
+means by a day. A business-day cutoff would move a Saturday 01:00 shift into Friday's
+column in the scheduling UI, which is not what anyone asked for and would desynchronize
+the grid from `shift_templates.day_of_week` (a `0-6` integer, with no notion of a
+cutoff). Payroll attribution and schedule-grid placement are genuinely different
+questions about the same timestamp; the cutoff belongs only to the first.
+
+Two further functions touch `start_time` in the **inverse** direction —
+`claim_open_shift` and `approve_open_shift_claim` build an instant from a date plus a
+template wall time, `(p_shift_date || ' ' || v_template.start_time)::timestamp AT TIME
+ZONE v_tz`. That is `parseWallClock`, not business-day bucketing, and it is correct as
+written. `get_open_shifts` derives no date from `shifts.start_time` at all; it reads
+`shift_templates.start_time` (a `time without time zone`) and delegates counting to
+`shift_template_assigned_count`.
+
+#### `unified_sales.sold_at` — one live site, and `sale_date` is vendor-supplied
+
+`sold_at` is a real `timestamptz` column (the brief is right that it exists). Exactly
+one live prod function derives anything from it: `get_sales_trends`, via
+`EXTRACT(HOUR FROM (us.sold_at AT TIME ZONE v_time_zone))` — already tz-aware, and an
+hour-of-day extraction for the trends histogram rather than a day bucket.
+
+The decisive fact is that **`sale_date` is never computed from `sold_at`.** Both
+`sync_toast_to_unified_sales` and `sync_revel_to_unified_sales` copy the POS-supplied
+per-order date (`o.order_date` for Revel) into `sale_date` and carry `sold_at`
+alongside as the true instant. Every downstream aggregate — `daily_pnl`,
+`aggregate_unified_sales_to_daily`, the trends day series — keys off `sale_date`.
+
+So applying a cutoff to sales is not a routing change at all; it would mean
+**recomputing `sale_date` from `sold_at` for every historical row** and re-aggregating
+every affected `daily_pnl` day. That is a separate feature with a separate correctness
+argument (and a separate conversation about restating published financials), the same
+reasoning already applied to `daily_labor_costs` above. Tracked in §9, not done here.
 
 **Consequence:** the punch→business-day mapping lives *in the client*, and the SQL
 helper has no production consumer on day one. It is still built, because (a) the
@@ -233,13 +293,46 @@ day," which is the current *intended* behavior with §3.2's frame bug corrected.
 
 ### 4.1 Why subtract after converting, not before
 
-`(instant AT TIME ZONE tz) - interval` converts into naive-local timestamp space
-first, then subtracts. Doing it the other way (`(instant - interval) AT TIME ZONE tz`)
-is arithmetically equivalent on a `timestamptz` but reads as if the cutoff were a UTC
-offset, and invites the DST mistake of constructing a local wall-clock time that does
-not exist — 02:00–03:00 on spring-forward Sunday. Because we only ever *subtract from*
-a real instant and never *construct* a local time, the nonexistent-hour case cannot
-arise. §8 pins this with tests on both DST transitions.
+The ordering is load-bearing, not cosmetic. The two candidates are:
+
+```sql
+((instant AT TIME ZONE tz) - make_interval(hours => cutoff))::date  -- chosen
+((instant - make_interval(hours => cutoff)) AT TIME ZONE tz)::date  -- rejected
+```
+
+**These are not equivalent.** They disagree by a full calendar day for any instant
+inside the fall-back repeated hour. Verified directly against Postgres,
+`America/Chicago`, `cutoff = 2`:
+
+| instant (UTC) | local wall clock | chosen | rejected | agree |
+|---|---|---|---|---|
+| `2026-11-01 07:30:00+00` | 01:30 CST (2nd pass) | **2026-10-31** | **2026-11-01** | **no** |
+| `2026-11-01 08:30:00+00` | 02:30 CST | 2026-11-01 | 2026-11-01 | yes |
+| `2026-03-08 09:30:00+00` | 03:30 CDT | 2026-03-08 | 2026-03-08 | yes |
+| `2026-07-29 06:30:00+00` | 01:30 CDT | 2026-07-28 | 2026-07-28 | yes |
+
+The mechanism: the chosen form subtracts 2 hours of **wall-clock** time from the
+naive-local timestamp the employee actually experienced — 01:30 minus 2h is 23:30 the
+previous evening, so the shift lands on Oct 31. The rejected form subtracts 2 hours of
+**elapsed** time from the instant, and on fall-back night 2 elapsed hours spans only 1
+wall-clock hour, landing at 00:30 on Nov 1.
+
+Wall-clock is the correct semantics: the cutoff is a statement about the clock on the
+restaurant's wall ("our day starts at 2 AM"), not about a duration of elapsed time.
+An employee who clocks in during the repeated 01:30 is, by that definition, still on
+the previous business day.
+
+The rejected form also reads as if the cutoff were a UTC offset, which invites the
+separate DST mistake of *constructing* a local wall-clock time that does not exist
+(02:00–03:00 on spring-forward Sunday). Because we only ever subtract from a real
+instant and never construct a local time, the nonexistent-hour case cannot arise in
+either form — but that hazard is why the rejected form looks tempting and is worth
+naming.
+
+A future "simplification" to the rejected ordering would misbucket every fall-back
+repeated-hour punch. §11.5 pins the divergence with a pgTAP case that asserts the
+rejected expression produces the *wrong* date, so the equivalence can never be
+silently reintroduced.
 
 ### 4.2 Cutoff range
 
@@ -271,6 +364,13 @@ existing rows read `0` immediately. `0` reproduces "business day == calendar day
 which is today's definition, so no restaurant's cutoff semantics change on deploy.
 `NOT NULL` means no consumer needs a `COALESCE`, removing the class of bug where one
 call site defaults a null differently from another.
+
+**Why a plain CHECK and not `NOT VALID`.** The `NOT VALID` + `VALIDATE CONSTRAINT`
+two-step exists to avoid holding an `ACCESS EXCLUSIVE` lock while scanning a large
+table. Here the constraint is added in the same migration as the column, so every row
+already satisfies it by construction, and `restaurants` is a 35-row settings table.
+The validating scan is sub-millisecond. `NOT VALID` would add a second migration step
+and a window in which the constraint is unenforced, buying nothing.
 
 **RLS:** none needed. `restaurants` already has policies; adding a column inherits
 them. Precedent for a per-restaurant payroll knob:
@@ -350,6 +450,22 @@ inventing one:
   create a cross-tenant read oracle for `timezone` and the cutoff. This is the
   opposite call from `publish_schedule`, which mutates and therefore needs DEFINER
   plus an in-body identity check.
+- **`SECURITY INVOKER` makes "no RLS access" and "row does not exist" deliberately
+  indistinguishable.** Under INVOKER, a `restaurants` row the caller cannot see is
+  filtered by RLS before `SELECT … INTO` runs, so `v_tz`/`v_hour` come back NULL — the
+  same state as a nonexistent `p_restaurant_id`. Both then fall through the `COALESCE`
+  pair to `UTC`/`0` and return a date rather than raising.
+
+  This is the correct behavior, for two reasons. It is not an information leak: the
+  function cannot be used to probe whether a foreign restaurant exists, because both
+  cases return the identical value. And a bucketing helper is the wrong layer to enforce
+  authorization — its callers are already inside an RLS-filtered query over rows they
+  can see, so a raise here would only ever fire on a caller bug, not on an attack.
+
+  The cost is that a genuine caller bug (wrong `restaurant_id` threaded through) degrades
+  silently to UTC/calendar-day instead of failing loudly. §11.6 pins this with an
+  explicit pgTAP case asserting the UTC/`0` fallback for an unknown UUID, so the
+  behavior is a documented contract rather than an accident of `COALESCE` placement.
 - **A per-call `SELECT` is accepted** because there is no bulk consumer (§2.2). Should
   one appear, the sibling to add is a set-returning or two-arg
   `business_day(p_instant, p_tz, p_hour)` overload that the caller feeds from a single
@@ -493,9 +609,14 @@ name asserts the opposite of what it does.
   See the `hoursByClockInDay` row in §8.1.
 - `daily_labor_costs` / `daily_pnl` / `unified_sales`. Fed from POS service dates
   (§2.2), not punches.
-- `unified_sales.sold_at` bucketing, named in the brief. No punch-derived business day
-  passes through it; rebucketing revenue is a larger change that would move P&L for
-  all 35 restaurants and needs its own risk argument.
+- `unified_sales.sold_at` bucketing, named in the brief. Its one live consumer
+  (`get_sales_trends`) is already tz-aware and extracts an hour, not a day; the actual
+  day bucket `sale_date` is vendor-supplied and never derived from `sold_at`. Applying a
+  cutoff here means restating historical `daily_pnl`, not routing a call. Full audit and
+  reasoning in §2.2; tracked as §9 item 3.
+- The three scheduling functions that bucket `shifts.start_time`
+  (`publish_schedule`, `unpublish_schedule`, `shift_template_assigned_count`). All
+  already tz-aware; all answer "which grid cell", not "which pay day". §2.2.
 
 ### 8.3 Settings UI
 
@@ -539,11 +660,21 @@ via `aria-describedby`.
    displayed date for 35 restaurants for no payroll gain.
 2. No bulk/set-returning `business_day` overload. Justified by §2.2 — no bulk consumer
    exists. Add when one does.
-3. `unified_sales.sold_at` business-day bucketing (§8.2). Named in the brief, out of
-   scope here.
+3. `unified_sales` business-day bucketing. Named in the brief; out of scope with a
+   concrete reason (§2.2): `sale_date` is copied from the POS, never derived from
+   `sold_at`, so this is not a routing change but a historical restatement — recompute
+   `sale_date` from `sold_at` for every row, then re-run
+   `aggregate_unified_sales_to_daily` for every touched day, which rewrites published
+   `daily_pnl` figures. Needs its own decision about restating financials that owners
+   have already read.
 4. `restaurants.timezone` is `NOT NULL`-clean in prod but nullable in schema and types
    ([`types.ts:5720`](../../../src/integrations/supabase/types.ts)). Tightening it is a
    separate migration with its own backfill argument; `safeTz` covers us meanwhile.
+5. Scheduling's three `shifts.start_time` sites (§2.2) stay on calendar-day semantics.
+   If a restaurant with a late cutoff ever reports that the schedule grid and the
+   payroll report disagree about which day a 01:00 shift belongs to, that is the
+   conversation to reopen — it needs a product decision about what a "day" means in the
+   scheduling UI, not a code change to this helper.
 6. Neither existing `Select` in `RestaurantSettings.tsx` wraps its items in a
    `SelectGroup` ([`:759-766`](../../../src/pages/RestaurantSettings.tsx),
    [`:1276-1281`](../../../src/pages/RestaurantSettings.tsx)), and the file does not
@@ -624,6 +755,28 @@ one clocking in inside the skipped hour. Assert both the business day and the ho
 total (a 22:00→06:00 shift is 7h in spring, 9h in fall — a real payroll fact, not a
 rounding artifact).
 
+**Plus one anti-regression case pinning the §4.1 ordering.** A pgTAP test that asserts
+*both* halves of the divergence for `2026-11-01 07:30:00+00`, `America/Chicago`,
+cutoff 2:
+
+```sql
+-- the shipped ordering is correct
+SELECT is( public.business_day('2026-11-01 07:30:00+00'::timestamptz, :rid),
+           '2026-10-31'::date,
+           'fall-back repeated hour buckets to the previous business day' );
+
+-- and the tempting "equivalent" ordering is provably wrong
+SELECT isnt( (('2026-11-01 07:30:00+00'::timestamptz - make_interval(hours => 2))
+                AT TIME ZONE 'America/Chicago')::date,
+             '2026-10-31'::date,
+             'subtract-before-convert gives the WRONG day here -- see design §4.1' );
+```
+
+The second assertion is the one that matters. Without it, a maintainer who "simplifies"
+the helper to the rejected ordering would still pass every other test in this plan,
+because all the other fixtures are outside the repeated hour and the two forms agree
+there. This test fails loudly and points at the reasoning.
+
 ### 11.6 pgTAP ↔ TS parity
 
 One shared fixture table of `(instant, tz, cutoff_hour, expected_business_day)` —
@@ -631,8 +784,20 @@ authored once, consumed by
 `supabase/tests/business_day_cutoff.test.sql` and by the Vitest suite. Both must agree
 with the *stated expectation*, not merely with each other; two implementations
 agreeing on a wrong answer is the failure mode a mutual-comparison test cannot see.
-pgTAP also covers null instant, null/empty tz, invalid tz string, missing restaurant,
-and CHECK-constraint rejection at -1 and 12.
+pgTAP also covers null instant, null/empty tz, and invalid tz string.
+
+Two cases stated explicitly because they are easy to omit:
+
+- **CHECK boundaries in both directions.** `throws_ok` on `-1` and `12`, *and*
+  `lives_ok` on `0` and `11`. Rejection tests alone would still pass against a
+  constraint that was accidentally tightened to `BETWEEN 1 AND 10`, or to a single
+  value — an over-restrictive CHECK is as much a bug as a missing one, and it would
+  lock out the `0` default that every existing row depends on.
+- **The missing-restaurant contract.** An unknown `p_restaurant_id` must return the
+  UTC/cutoff-`0` bucketing rather than NULL or an error, per the §6 note on
+  `SECURITY INVOKER`. Asserting this makes the RLS-invisible and
+  row-does-not-exist behavior a documented contract instead of an emergent property of
+  where the `COALESCE`s happen to sit.
 
 ### 11.7 Dashboard == Payroll == Timecard
 

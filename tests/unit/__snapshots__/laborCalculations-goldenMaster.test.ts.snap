@@ -1,0 +1,297 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden master: calculateActualLaborCost > matches the pre-change snapshot 1`] = `
+{
+  "breakdown": {
+    "contractor": {
+      "cost": 0,
+      "daysScheduled": 0,
+      "employees": 0,
+    },
+    "daily_rate": {
+      "cost": 300,
+      "daysScheduled": 2,
+      "employees": 1,
+    },
+    "hourly": {
+      "cost": 488,
+      "hours": 23,
+    },
+    "salary": {
+      "cost": 0,
+      "daysScheduled": 0,
+      "employees": 0,
+    },
+    "total": 788,
+  },
+  "dailyCosts": [
+    {
+      "contractor_cost": 0,
+      "daily_rate_cost": 0,
+      "date": "2026-07-26",
+      "hourly_cost": 0,
+      "hours_worked": 0,
+      "salary_cost": 0,
+      "total_cost": 0,
+    },
+    {
+      "contractor_cost": 0,
+      "daily_rate_cost": 0,
+      "date": "2026-07-27",
+      "hourly_cost": 0,
+      "hours_worked": 0,
+      "salary_cost": 0,
+      "total_cost": 0,
+    },
+    {
+      "contractor_cost": 0,
+      "daily_rate_cost": 150,
+      "date": "2026-07-28",
+      "hourly_cost": 180,
+      "hours_worked": 9,
+      "salary_cost": 0,
+      "total_cost": 330,
+    },
+    {
+      "contractor_cost": 0,
+      "daily_rate_cost": 150,
+      "date": "2026-07-29",
+      "hourly_cost": 308,
+      "hours_worked": 14,
+      "salary_cost": 0,
+      "total_cost": 458,
+    },
+    {
+      "contractor_cost": 0,
+      "daily_rate_cost": 0,
+      "date": "2026-07-30",
+      "hourly_cost": 0,
+      "hours_worked": 0,
+      "salary_cost": 0,
+      "total_cost": 0,
+    },
+    {
+      "contractor_cost": 0,
+      "daily_rate_cost": 0,
+      "date": "2026-07-31",
+      "hourly_cost": 0,
+      "hours_worked": 0,
+      "salary_cost": 0,
+      "total_cost": 0,
+    },
+  ],
+}
+`;
+
+exports[`golden master: calculateEmployeePay > matches the pre-change snapshot: daily_rate overnight 1`] = `
+{
+  "area": null,
+  "compensationType": "daily_rate",
+  "contractorPay": 0,
+  "dailyOvertimeHours": 0,
+  "dailyRatePay": 30000,
+  "daysWorked": 2,
+  "doubleTimeHours": 0,
+  "doubleTimePay": 0,
+  "employeeId": "e4",
+  "employeeName": "Employee e4",
+  "grossPay": 30000,
+  "hourlyRate": undefined,
+  "incompleteShifts": undefined,
+  "manualPayments": [],
+  "manualPaymentsTotal": 0,
+  "overtimeHours": 0,
+  "overtimePay": 0,
+  "position": undefined,
+  "regularHours": 0,
+  "regularPay": 0,
+  "salaryPay": 0,
+  "tipsOwed": 0,
+  "tipsPaidOut": 0,
+  "totalPay": 30000,
+  "totalTips": 0,
+  "weeklyOvertimeHours": 0,
+}
+`;
+
+exports[`golden master: calculateEmployeePay > matches the pre-change snapshot: hourly overnight 1`] = `
+{
+  "area": null,
+  "compensationType": "hourly",
+  "contractorPay": 0,
+  "dailyOvertimeHours": 0,
+  "dailyRatePay": 0,
+  "daysWorked": undefined,
+  "doubleTimeHours": 0,
+  "doubleTimePay": 0,
+  "employeeId": "e1",
+  "employeeName": "Employee e1",
+  "grossPay": 18000,
+  "hourlyRate": 2000,
+  "incompleteShifts": undefined,
+  "manualPayments": [],
+  "manualPaymentsTotal": 0,
+  "overtimeHours": 0,
+  "overtimePay": 0,
+  "position": undefined,
+  "regularHours": 9,
+  "regularPay": 18000,
+  "salaryPay": 0,
+  "tipsOwed": 0,
+  "tipsPaidOut": 0,
+  "totalPay": 18000,
+  "totalTips": 0,
+  "weeklyOvertimeHours": 0,
+}
+`;
+
+exports[`golden master: calculateEmployeePay > matches the pre-change snapshot: hourly post-midnight 1`] = `
+{
+  "area": null,
+  "compensationType": "hourly",
+  "contractorPay": 0,
+  "dailyOvertimeHours": 0,
+  "dailyRatePay": 0,
+  "daysWorked": undefined,
+  "doubleTimeHours": 0,
+  "doubleTimePay": 0,
+  "employeeId": "e3",
+  "employeeName": "Employee e3",
+  "grossPay": 10800,
+  "hourlyRate": 1800,
+  "incompleteShifts": undefined,
+  "manualPayments": [],
+  "manualPaymentsTotal": 0,
+  "overtimeHours": 0,
+  "overtimePay": 0,
+  "position": undefined,
+  "regularHours": 6,
+  "regularPay": 10800,
+  "salaryPay": 0,
+  "tipsOwed": 0,
+  "tipsPaidOut": 0,
+  "totalPay": 10800,
+  "totalTips": 0,
+  "weeklyOvertimeHours": 0,
+}
+`;
+
+exports[`golden master: calculateEmployeePay > matches the pre-change snapshot: hourly same-day 1`] = `
+{
+  "area": null,
+  "compensationType": "hourly",
+  "contractorPay": 0,
+  "dailyOvertimeHours": 0,
+  "dailyRatePay": 0,
+  "daysWorked": undefined,
+  "doubleTimeHours": 0,
+  "doubleTimePay": 0,
+  "employeeId": "e2",
+  "employeeName": "Employee e2",
+  "grossPay": 20000,
+  "hourlyRate": 2500,
+  "incompleteShifts": undefined,
+  "manualPayments": [],
+  "manualPaymentsTotal": 0,
+  "overtimeHours": 0,
+  "overtimePay": 0,
+  "position": undefined,
+  "regularHours": 8,
+  "regularPay": 20000,
+  "salaryPay": 0,
+  "tipsOwed": 0,
+  "tipsPaidOut": 0,
+  "totalPay": 20000,
+  "totalTips": 0,
+  "weeklyOvertimeHours": 0,
+}
+`;
+
+exports[`golden master: calculateHoursPerEmployee > matches the pre-change snapshot 1`] = `
+[
+  {
+    "compensation_type": "hourly",
+    "days_worked": 2,
+    "employee_id": "e1",
+    "employee_name": "Employee e1",
+    "hours_per_day": {
+      "2026-07-28": 9,
+    },
+    "position": null,
+    "total_cost_cents": 18000,
+    "total_hours": 9,
+    "work_periods": [
+      {
+        "clockIn": 2026-07-28T23:00:00.000Z,
+        "endTime": 2026-07-29T08:00:00.000Z,
+        "hours": 9,
+        "isBreak": false,
+        "startTime": 2026-07-28T23:00:00.000Z,
+      },
+    ],
+  },
+  {
+    "compensation_type": "hourly",
+    "days_worked": 1,
+    "employee_id": "e2",
+    "employee_name": "Employee e2",
+    "hours_per_day": {
+      "2026-07-29": 8,
+    },
+    "position": null,
+    "total_cost_cents": 20000,
+    "total_hours": 8,
+    "work_periods": [
+      {
+        "clockIn": 2026-07-29T15:00:00.000Z,
+        "endTime": 2026-07-29T23:00:00.000Z,
+        "hours": 8,
+        "isBreak": false,
+        "startTime": 2026-07-29T15:00:00.000Z,
+      },
+    ],
+  },
+  {
+    "compensation_type": "hourly",
+    "days_worked": 1,
+    "employee_id": "e3",
+    "employee_name": "Employee e3",
+    "hours_per_day": {
+      "2026-07-29": 6,
+    },
+    "position": null,
+    "total_cost_cents": 10800,
+    "total_hours": 6,
+    "work_periods": [
+      {
+        "clockIn": 2026-07-29T06:00:00.000Z,
+        "endTime": 2026-07-29T12:00:00.000Z,
+        "hours": 6,
+        "isBreak": false,
+        "startTime": 2026-07-29T06:00:00.000Z,
+      },
+    ],
+  },
+  {
+    "compensation_type": "daily_rate",
+    "days_worked": 2,
+    "employee_id": "e4",
+    "employee_name": "Employee e4",
+    "hours_per_day": {
+      "2026-07-28": 9,
+    },
+    "position": null,
+    "total_cost_cents": 30000,
+    "total_hours": 9,
+    "work_periods": [
+      {
+        "clockIn": 2026-07-28T23:00:00.000Z,
+        "endTime": 2026-07-29T08:00:00.000Z,
+        "hours": 9,
+        "isBreak": false,
+        "startTime": 2026-07-28T23:00:00.000Z,
+      },
+    ],
+  },
+]
+`;

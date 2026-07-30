@@ -22,6 +22,15 @@ const DrawerOverlay = React.forwardRef<
 ));
 DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 
+/**
+ * Deliberately NOT wrapped in `ScrollLockBoundary`, unlike `DialogContent`,
+ * `SheetContent` and `AlertDialogContent`. That boundary tells a nested
+ * combobox's `Popover` to go `modal` so its wheel events escape Radix's
+ * scroll lock; vaul manages its own scroll locking rather than Radix's, so
+ * the boundary would be answering for a lock that isn't there. If a combobox
+ * inside a Drawer ever does turn out to swallow wheel scroll, that needs a
+ * vaul-specific fix -- not a copy of the Dialog wrapper.
+ */
 const DrawerContent = React.forwardRef<
   React.ElementRef<typeof DrawerPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content>

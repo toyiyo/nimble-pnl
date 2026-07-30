@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { ScrollLockBoundary } from "@/components/ui/scroll-lock-boundary";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -58,13 +59,15 @@ const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Con
     <SheetPortal>
       <SheetOverlay />
       <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), className)} {...props}>
-        {children}
-        {!hideCloseButton && (
-          <SheetPrimitive.Close className="absolute right-3 top-3 p-2 rounded-lg opacity-70 ring-offset-background transition-opacity data-[state=open]:bg-secondary hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none" style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}>
-            <X className="h-5 w-5" />
-            <span className="sr-only">Close</span>
-          </SheetPrimitive.Close>
-        )}
+        <ScrollLockBoundary>
+          {children}
+          {!hideCloseButton && (
+            <SheetPrimitive.Close className="absolute right-3 top-3 p-2 rounded-lg opacity-70 ring-offset-background transition-opacity data-[state=open]:bg-secondary hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none" style={{ marginTop: 'env(safe-area-inset-top, 0px)' }}>
+              <X className="h-5 w-5" />
+              <span className="sr-only">Close</span>
+            </SheetPrimitive.Close>
+          )}
+        </ScrollLockBoundary>
       </SheetPrimitive.Content>
     </SheetPortal>
   ),

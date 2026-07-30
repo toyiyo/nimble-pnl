@@ -10967,6 +10967,16 @@ export type Database = {
         Args: { p_name: string; p_restaurant_id: string; p_shifts: Json }
         Returns: Json
       }
+      search_pos_items: {
+        Args: { p_limit?: number; p_restaurant_id: string; p_search?: string }
+        Returns: {
+          item_id: string | null
+          item_name: string
+          last_sold: string | null
+          sales_count: number
+          source: string
+        }[]
+      }
       search_products_by_name: {
         Args: { p_restaurant_id: string; p_search_term: string }
         Returns: {

@@ -81,7 +81,7 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
   editingSale = null,
 }) => {
   const { createManualSale, createManualSaleWithAdjustments, updateManualSale } = useUnifiedSales(restaurantId);
-  const { posItems, loading: posLoading, refetch: refetchPOSItems } = usePOSItems(restaurantId);
+  const { posItems, loading: posLoading, error: posError, refetch: refetchPOSItems } = usePOSItems(restaurantId, { limit: 500 });
   const { recipes, loading: recipesLoading } = useRecipes(restaurantId);
 
   const [comboboxOpen, setComboboxOpen] = useState(false);
@@ -355,7 +355,16 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                   <FormLabel className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
                     Item Name
                   </FormLabel>
-                  <Popover open={comboboxOpen} onOpenChange={setComboboxOpen}>
+                  {/* Hardcoded `modal`, not `useInsideScrollLock()` like the
+                      eight reusable comboboxes: those are children rendered
+                      inside some other DialogContent, so they read the
+                      boundary from context. This Popover is inside *this*
+                      component's own DialogContent, and the hook would have to
+                      be called in the body above it -- outside the provider it
+                      is asking about, which always resolves `false`. The
+                      answer here is statically known: this combobox is never
+                      free-standing, so it is always under a scroll lock. */}
+                  <Popover open={comboboxOpen} onOpenChange={setComboboxOpen} modal>
                     <PopoverTrigger asChild>
                       <FormControl>
                         <Button
@@ -396,6 +405,32 @@ export const POSSaleDialog: React.FC<POSSaleDialogProps> = ({
                           className="text-[14px]"
                         />
                         <CommandList className="max-h-[300px]">
+                          {/* Rendered outside CommandEmpty deliberately. With
+                              `shouldFilter={false}` cmdk renders CommandEmpty
+                              only when zero items are *registered*, and this
+                              list registers a row per recipe. So any
+                              restaurant that has recipes would never see a POS
+                              load failure: the dropdown would look like an
+                              ordinary list that merely happens to omit POS
+                              items, inviting the user to create a duplicate of
+                              an item that already exists. Same defect, and
+                              same fix, as SearchablePOSItemSelector. */}
+                          {posError && !posLoading && (
+                            <div className="p-3 space-y-2">
+                              <p className="text-[13px] text-muted-foreground text-center">
+                                Couldn't load POS items. Something went wrong.
+                              </p>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="w-full justify-center h-9 rounded-lg border-border/40 text-[13px]"
+                                onClick={() => refetchPOSItems()}
+                              >
+                                Try again
+                              </Button>
+                            </div>
+                          )}
                           <CommandEmpty>
                             {posLoading || recipesLoading ? (
                               <div className="flex flex-col items-center justify-center py-8">

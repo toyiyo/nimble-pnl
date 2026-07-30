@@ -44,6 +44,14 @@ function parseCustomRoleInviters(source: string, file: string): string[] {
   return [...match![1].matchAll(/(['"])([^'"]+)\1/g)].map((r) => r[2]);
 }
 
+/** Extract the string literal assigned to `const CUSTOM_ROLE`. */
+function parseCustomRoleLiteral(source: string, file: string): string {
+  // `[^_]` after the name so this cannot match CUSTOM_ROLE_INVITERS.
+  const match = /const CUSTOM_ROLE[^_A-Za-z0-9]*=\s*(['"])([^'"]+)\1/.exec(source);
+  expect(match, `CUSTOM_ROLE literal not found in ${file}`).not.toBeNull();
+  return match![2];
+}
+
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8');
 
 const TS_PATH = 'src/lib/permissions/invitations.ts';
@@ -72,6 +80,14 @@ describe('invite matrix mirror', () => {
     // endpoint still honours the call, or the reverse.
     expect(parseCustomRoleInviters(read(DENO_PATH), DENO_PATH))
       .toEqual(parseCustomRoleInviters(read(TS_PATH), TS_PATH));
+  });
+
+  it('the custom-role literal is identical between TS and Deno', () => {
+    // The client puts this string in the request body and the endpoint
+    // compares against its own copy. Drift means every custom-role invite is
+    // rejected as an unknown role — or, worse, accepted as a builtin one.
+    expect(parseCustomRoleLiteral(read(DENO_PATH), DENO_PATH))
+      .toEqual(parseCustomRoleLiteral(read(TS_PATH), TS_PATH));
   });
 
   it('custom roles cannot be invited by anyone who cannot invite builtin collaborators', () => {

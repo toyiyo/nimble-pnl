@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,9 +7,13 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useToast } from '@/hooks/use-toast';
 import { Calculator, Package, ChefHat, Briefcase, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
-import { COLLABORATOR_PRESETS, ROLE_METADATA } from '@/lib/permissions';
-import type { Role } from '@/lib/permissions';
+import { canInviteCustomRole, COLLABORATOR_PRESETS, CUSTOM_ROLE, ROLE_METADATA } from '@/lib/permissions';
+import type { CollaboratorPreset, InviteRoleLiteral, Role } from '@/lib/permissions';
 import { formatExpiresIn } from '@/lib/invitationUtils';
+import { grantMap } from '@/lib/permissions/areas';
+import { useRoles, type RoleWithGrants } from '@/hooks/useRoles';
+import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
+import { buildRolePreview } from '@/lib/permissions/preview';
 import {
   useCollaboratorsQuery,
   useCollaboratorInvitesQuery,
@@ -32,14 +36,112 @@ const roleIcons: Record<string, typeof Calculator> = {
   collaborator_inventory: Package,
   collaborator_chef: ChefHat,
   collaborator_operations_manager: Briefcase,
+  // Every custom role shares this one literal, so this is the icon for all of
+  // them — the same `Users` glyph RolesList gives a custom role's card.
+  [CUSTOM_ROLE]: Users,
 };
 
+/**
+ * What the picker has selected. A discriminated union rather than the old
+ * `Role | null`, because a user-created role has no member of that closed
+ * union: it is identified by a `roles` row, and only *carries* the shared
+ * 'collaborator_custom' literal on the wire.
+ */
+type InviteSelection =
+  | { kind: 'builtin'; preset: CollaboratorPreset }
+  | { kind: 'custom'; role: RoleWithGrants };
+
+/**
+ * One card in the picker. Shared by the four built-in presets and the
+ * restaurant's own custom roles so the two are visually the same choice —
+ * only the CUSTOM badge distinguishes them.
+ */
+function RoleChoiceCard({
+  icon: Icon,
+  title,
+  description,
+  isSelected,
+  isCustom = false,
+  onSelect,
+}: {
+  icon: typeof Calculator;
+  title: string;
+  description: string | null;
+  isSelected: boolean;
+  isCustom?: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      aria-pressed={isSelected}
+      className={`
+        relative p-4 rounded-lg border-2 text-left transition-all
+        hover:border-primary/50 hover:bg-accent/50
+        ${isSelected ? 'border-primary bg-primary/5' : 'border-border'}
+      `}
+    >
+      {isSelected && (
+        <div className="absolute top-2 right-2">
+          <Check className="h-5 w-5 text-primary" />
+        </div>
+      )}
+      <div className="flex items-start gap-3">
+        <div className={`
+          p-2 rounded-lg
+          ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted'}
+        `}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-sm">{title}</h4>
+          {description && (
+            <p className="text-xs text-muted-foreground mt-1">{description}</p>
+          )}
+          {isCustom && (
+            <span className="inline-block mt-2 text-[10px] px-1.5 py-0.5 rounded-md border border-border/40 font-mono uppercase tracking-wider text-muted-foreground">
+              Custom
+            </span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export function CollaboratorInvitations({ restaurantId, userRole }: CollaboratorInvitationsProps) {
-  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [selection, setSelection] = useState<InviteSelection | null>(null);
   const [email, setEmail] = useState('');
   const { toast } = useToast();
 
   const canManage = userRole === 'owner' || userRole === 'manager';
+  // Read through the shared predicate rather than reusing `canManage`, so the
+  // picker can never offer a role the endpoint would refuse to send.
+  const canOfferCustomRoles = canInviteCustomRole(userRole);
+
+  // Loaded for everyone with access to this screen, not just managers: the
+  // Active Collaborators list below needs role *names* to label a custom-role
+  // member, whose `role` column is only ever the bare literal.
+  const { roles, isLoading: rolesLoading, error: rolesError } = useRoles(restaurantId);
+
+  const customRoles = useMemo(
+    () => roles.filter((role) => !role.builtin && role.flavor === 'collaborator'),
+    [roles]
+  );
+
+  const roleNamesById = useMemo(
+    () => new Map(roles.map((role) => [role.id, role.name])),
+    [roles]
+  );
+
+  /**
+   * The label to show for a membership or invitation. A custom role's name
+   * comes from its `roles` row; anything else falls back to the static
+   * metadata, and finally to the raw literal so an unknown role still renders
+   * something rather than blank.
+   */
+  const roleLabelFor = (role: string, roleId: string | null) =>
+    (roleId ? roleNamesById.get(roleId) : undefined) ?? ROLE_METADATA[role as Role]?.label ?? role;
 
   const { data: collaborators, isLoading: collaboratorsLoading, error: collaboratorsError } = useCollaboratorsQuery(restaurantId);
   const { data: pendingInvites, isLoading: invitesLoading, error: invitesError } = useCollaboratorInvitesQuery(restaurantId);
@@ -81,7 +183,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
     // Normalize once so whitespace-only input is rejected and the trimmed
     // address is what we send — matching findMemberByEmail, which also trims.
     const normalizedEmail = email.trim();
-    if (!normalizedEmail || !selectedRole) {
+    if (!normalizedEmail || !selection) {
       toast({
         title: "Error",
         description: "Please select a role and enter an email",
@@ -94,13 +196,17 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
       {
         restaurantId,
         email: normalizedEmail,
-        role: selectedRole,
+        // A custom role travels as the shared literal plus the id that names
+        // the actual grant; a builtin travels as its own role string alone.
+        ...(selection.kind === 'custom'
+          ? { role: CUSTOM_ROLE, roleId: selection.role.id, roleLabel: selection.role.name }
+          : { role: selection.preset.role }),
         ...(accountlessEmployee ? { employeeId: accountlessEmployee.id } : {}),
       },
       {
         onSuccess: () => {
           setEmail('');
-          setSelectedRole(null);
+          setSelection(null);
         },
       }
     );
@@ -122,10 +228,17 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
     });
   };
 
-  const handleResendInvitation = (invite: { id: string; email: string; role: string }) => {
+  const handleResendInvitation = (invite: { id: string; email: string; role: string; roleId: string | null }) => {
     setResendingIds(prev => new Set(prev).add(invite.id));
     resendInvitationMutation.mutate(
-      { restaurantId, email: invite.email, role: invite.role as Role },
+      {
+        restaurantId,
+        email: invite.email,
+        role: invite.role as InviteRoleLiteral,
+        // Carried through so a custom-role resend still names its role.
+        ...(invite.roleId ? { roleId: invite.roleId } : {}),
+        roleLabel: roleLabelFor(invite.role, invite.roleId),
+      },
       { onSettled: () => setResendingIds(prev => { const s = new Set(prev); s.delete(invite.id); return s; }) }
     );
   };
@@ -156,57 +269,60 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
       </div>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {COLLABORATOR_PRESETS.map((preset) => {
-          const Icon = roleIcons[preset.role] || Calculator;
-          const isSelected = selectedRole === preset.role;
+        {COLLABORATOR_PRESETS.map((preset) => (
+          <RoleChoiceCard
+            key={preset.role}
+            icon={roleIcons[preset.role] || Calculator}
+            title={preset.title}
+            description={preset.description}
+            isSelected={selection?.kind === 'builtin' && selection.preset.role === preset.role}
+            onSelect={() => setSelection({ kind: 'builtin', preset })}
+          />
+        ))}
 
-          return (
-            <button
-              key={preset.role}
-              onClick={() => setSelectedRole(preset.role)}
-              aria-pressed={isSelected}
-              className={`
-                relative p-4 rounded-lg border-2 text-left transition-all
-                hover:border-primary/50 hover:bg-accent/50
-                ${isSelected ? 'border-primary bg-primary/5' : 'border-border'}
-              `}
-            >
-              {isSelected && (
-                <div className="absolute top-2 right-2">
-                  <Check className="h-5 w-5 text-primary" />
-                </div>
-              )}
-              <div className="flex items-start gap-3">
-                <div className={`
-                  p-2 rounded-lg
-                  ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-muted'}
-                `}>
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-sm">{preset.title}</h4>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {preset.description}
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
+        {canOfferCustomRoles && customRoles.map((role) => (
+          <RoleChoiceCard
+            key={role.id}
+            icon={Users}
+            title={role.name}
+            description={role.description}
+            isCustom
+            isSelected={selection?.kind === 'custom' && selection.role.id === role.id}
+            onSelect={() => setSelection({ kind: 'custom', role })}
+          />
+        ))}
+
+        {canOfferCustomRoles && rolesLoading && (
+          <>
+            <Skeleton className="h-[104px] rounded-lg" />
+            <Skeleton className="h-[104px] rounded-lg" />
+          </>
+        )}
       </div>
+
+      {canOfferCustomRoles && rolesError && (
+        <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 text-destructive">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+          <p className="text-sm">
+            Failed to load your custom roles — the four built-in ones above still work.
+          </p>
+        </div>
+      )}
     </div>
   );
 
   const renderEmailInput = () => {
-    const preset = COLLABORATOR_PRESETS.find(p => p.role === selectedRole);
-    if (!preset) return null;
+    if (!selection) return null;
 
-    const Icon = roleIcons[preset.role] || Calculator;
+    const isCustom = selection.kind === 'custom';
+    const title = isCustom ? selection.role.name : selection.preset.title;
+    const description = isCustom ? selection.role.description : selection.preset.description;
+    const Icon = isCustom ? Users : (roleIcons[selection.preset.role] || Calculator);
 
     return (
       <div className="space-y-6">
         <button
-          onClick={() => setSelectedRole(null)}
+          onClick={() => setSelection(null)}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -218,16 +334,38 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             <Icon className="h-5 w-5" />
           </div>
           <div className="flex-1">
-            <h4 className="font-semibold">{preset.title}</h4>
-            <p className="text-sm text-muted-foreground mt-1">{preset.description}</p>
-            <div className="mt-3 space-y-1">
-              {preset.features.map((feature, i) => (
-                <div key={i} className="flex items-center gap-2 text-sm">
-                  <Check className="h-3 w-3 text-primary" />
-                  <span>{feature}</span>
-                </div>
-              ))}
-            </div>
+            <h4 className="font-semibold">{title}</h4>
+            {description && (
+              <p className="text-sm text-muted-foreground mt-1">{description}</p>
+            )}
+            {/*
+              A preset's capabilities are a hand-written feature list; a custom
+              role has no such list, so its granted areas stand in — the same
+              chips and the same can/can't sentence the role editor's preview
+              shows, from the same `buildRolePreview`, so what an owner reads
+              here cannot drift from what they granted there.
+            */}
+            {isCustom ? (
+              <div className="mt-3 space-y-2">
+                <RoleAreaChips areas={selection.role.role_areas} />
+                <p className="text-[13px] text-muted-foreground">
+                  {buildRolePreview(
+                    grantMap(selection.role.role_areas),
+                    selection.role.role_flags.map((f) => f.flag),
+                    selection.role.name
+                  ).summary}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-3 space-y-1">
+                {selection.preset.features.map((feature, i) => (
+                  <div key={i} className="flex items-center gap-2 text-sm">
+                    <Check className="h-3 w-3 text-primary" />
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -244,7 +382,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
               <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5 flex-shrink-0" />
               <p className="text-foreground">
                 <strong>{existingMember.fullName ?? existingMember.email}</strong> is already
-                on your team as {ROLE_METADATA[existingMember.role]?.label ?? existingMember.role}.
+                on your team as {roleLabelFor(existingMember.role, existingMember.roleId)}.
                 Sending another invitation will not change their access — accepting it does
                 nothing. To change what they can see, use the role dropdown in{' '}
                 <strong>Team Members</strong>.
@@ -256,7 +394,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             <AccountlessEmployeeHint
               id={hintPanelId}
               employeeName={accountlessEmployee.name}
-              roleLabel={ROLE_METADATA[preset.role]?.label ?? preset.title}
+              roleLabel={isCustom ? selection.role.name : (ROLE_METADATA[selection.preset.role]?.label ?? selection.preset.title)}
             />
           )}
 
@@ -302,7 +440,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             </div>
           </CardHeader>
           <CardContent>
-            {selectedRole ? renderEmailInput() : renderRoleSelection()}
+            {selection ? renderEmailInput() : renderRoleSelection()}
           </CardContent>
         </Card>
       )}
@@ -339,7 +477,6 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             <div className="space-y-3">
               {collaborators.map((collab) => {
                 const Icon = roleIcons[collab.role] || Calculator;
-                const metadata = ROLE_METADATA[collab.role as Role];
 
                 return (
                   <div
@@ -363,7 +500,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline">
-                        {metadata?.label || collab.role}
+                        {roleLabelFor(collab.role, collab.roleId)}
                       </Badge>
                       {canManage && (
                         <Button

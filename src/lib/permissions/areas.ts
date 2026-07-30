@@ -375,6 +375,25 @@ export const AREA_PRIORITY: readonly AreaKey[] = [
   'integrations',
 ];
 
+/**
+ * A role's area rows collapsed into the level-per-`area_key` map that
+ * `expandAreas`, `rowLevel`, `landingAreaKey` and the chip renderer all take.
+ *
+ * Lives here, beside the keys it produces, rather than next to the query that
+ * fetches the rows: three screens derive chips from a role's grants (the roles
+ * list, the editor, the collaborator invite picker), and their tests mock the
+ * hook module wholesale — a derivation parked there disappears under the mock.
+ */
+export function grantMap(
+  areas: ReadonlyArray<{ area_key: AreaKey; level: AreaLevel }>
+): Partial<Record<AreaKey, AreaLevel>> {
+  const map: Partial<Record<AreaKey, AreaLevel>> = {};
+  for (const grant of areas) {
+    map[grant.area_key] = grant.level;
+  }
+  return map;
+}
+
 /** The first `area_key` in `AREA_PRIORITY` that `grants` holds, or `null` if none are granted. */
 export function landingAreaKey(grants: Partial<Record<AreaKey, AreaLevel>>): AreaKey | null {
   for (const areaKey of AREA_PRIORITY) {

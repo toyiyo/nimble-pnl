@@ -1,8 +1,7 @@
 import { AlertCircle, LayoutGrid, Plus, Users } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRoles, type RoleWithGrants } from '@/hooks/useRoles';
-import { AREA_DEFINITIONS, type AreaKey, type AreaLevel } from '@/lib/permissions/areas';
-import { rowLevel } from '@/lib/permissions/preview';
+import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,15 +36,6 @@ export interface RolesListProps {
   onNewRole: () => void;
 }
 
-/** The grant level per area_key for one role, keyed the way `expandAreas`/`rowLevel` expect. */
-function grantMap(role: RoleWithGrants): Partial<Record<AreaKey, AreaLevel>> {
-  const map: Partial<Record<AreaKey, AreaLevel>> = {};
-  for (const grant of role.role_areas) {
-    map[grant.area_key] = grant.level;
-  }
-  return map;
-}
-
 function memberCountLabel(count: number): string {
   return count === 1 ? '1 person' : `${count} people`;
 }
@@ -73,8 +63,6 @@ function RoleCardSkeleton() {
 }
 
 function RoleCard({ role, onClick }: { role: RoleWithGrants; onClick: () => void }) {
-  const grants = grantMap(role);
-  const grantedRows = AREA_DEFINITIONS.filter((row) => rowLevel(row, grants) !== null);
   const Icon = role.builtin ? LayoutGrid : Users;
 
   return (
@@ -98,28 +86,7 @@ function RoleCard({ role, onClick }: { role: RoleWithGrants; onClick: () => void
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-1.5">
-        {grantedRows.length === 0 ? (
-          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">No areas yet</span>
-        ) : (
-          grantedRows.map((row) => {
-            const level = rowLevel(row, grants);
-            const isManage = level === 'manage';
-            return (
-              <span
-                key={row.key}
-                className={cn(
-                  'text-[11px] px-1.5 py-0.5 rounded-md whitespace-nowrap',
-                  isManage ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'
-                )}
-              >
-                {row.label}
-                {isManage && ' · manage'}
-              </span>
-            );
-          })
-        )}
-      </div>
+      <RoleAreaChips areas={role.role_areas} />
 
       <div className="flex items-center justify-between mt-auto pt-[11px] border-t border-border/40 text-[12px] text-muted-foreground">
         <span>{memberCountLabel(role.memberCount)}</span>

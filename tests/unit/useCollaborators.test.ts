@@ -87,7 +87,17 @@ describe('useCollaborators Hook', () => {
           id: 'ur-1',
           user_id: 'user-1',
           role: 'collaborator_accountant',
+          role_id: null,
           created_at: '2024-01-01T00:00:00Z',
+        },
+        // A custom-role membership: the role column is the bare shared
+        // literal, and role_id is the only thing naming the actual grant.
+        {
+          id: 'ur-2',
+          user_id: 'user-2',
+          role: 'collaborator_custom',
+          role_id: 'role-42',
+          created_at: '2024-01-02T00:00:00Z',
         },
       ];
 
@@ -96,6 +106,11 @@ describe('useCollaborators Hook', () => {
           user_id: 'user-1',
           email: 'accountant@example.com',
           full_name: 'Test Accountant',
+        },
+        {
+          user_id: 'user-2',
+          email: 'weekend@example.com',
+          full_name: 'Weekend Helper',
         },
       ];
 
@@ -132,8 +147,17 @@ describe('useCollaborators Hook', () => {
           id: 'ur-1',
           email: 'accountant@example.com',
           role: 'collaborator_accountant',
+          roleId: null,
           createdAt: '2024-01-01T00:00:00Z',
           profileName: 'Test Accountant',
+        },
+        {
+          id: 'ur-2',
+          email: 'weekend@example.com',
+          role: 'collaborator_custom',
+          roleId: 'role-42',
+          createdAt: '2024-01-02T00:00:00Z',
+          profileName: 'Weekend Helper',
         },
       ]);
     });
@@ -225,6 +249,7 @@ describe('useCollaborators Hook', () => {
           id: 'inv-1',
           email: 'pending@example.com',
           role: 'collaborator_chef',
+          role_id: null,
           status: 'pending',
           created_at: '2024-01-01T00:00:00Z',
           expires_at: '2024-01-08T00:00:00Z',
@@ -271,6 +296,7 @@ describe('useCollaborators Hook', () => {
           id: 'inv-1',
           email: 'pending@example.com',
           role: 'collaborator_chef',
+          roleId: null,
           status: 'pending',
           createdAt: '2024-01-01T00:00:00Z',
           expiresAt: '2024-01-08T00:00:00Z',

@@ -48,6 +48,23 @@ const INVITABLE_ROLES: Record<Role, readonly Role[]> = {
  */
 const CUSTOM_ROLE_INVITERS: readonly Role[] = ['owner', 'manager'];
 
+/**
+ * The single role string every custom-role membership and invitation carries.
+ * MIRRORS `CUSTOM_ROLE` in the `send-team-invitation` edge function.
+ *
+ * Deliberately not a member of `Role` (see above): which areas it grants lives
+ * in the `roles` row named by the accompanying `role_id`, so treating it as a
+ * role would let `ROLE_CAPABILITIES` answer a question it cannot.
+ */
+export const CUSTOM_ROLE = 'collaborator_custom' as const;
+
+/**
+ * What may appear in an invitation's `role` column: a real role, or the
+ * custom-role pointer. Callers that pass `CUSTOM_ROLE` must also pass the
+ * `role_id`; the edge function rejects either one without the other.
+ */
+export type InviteRoleLiteral = Role | typeof CUSTOM_ROLE;
+
 /** Roles that `inviter` is allowed to invite (empty if none). */
 export function getInvitableRoles(inviter: Role): Role[] {
   return [...(INVITABLE_ROLES[inviter] ?? [])];

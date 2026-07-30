@@ -8,6 +8,12 @@ export interface RestaurantMember {
   email: string | null;
   fullName: string | null;
   role: Role;
+  /**
+   * Set only when the membership points at a custom role, whose `role` column
+   * is the bare 'collaborator_custom' literal. Callers that display a role
+   * name resolve this against the `roles` table.
+   */
+  roleId: string | null;
 }
 
 /**
@@ -26,7 +32,7 @@ export function useRestaurantMembers(restaurantId: string | undefined) {
     queryFn: async (): Promise<RestaurantMember[]> => {
       const { data: memberships, error: membershipError } = await supabase
         .from('user_restaurants')
-        .select('user_id, role')
+        .select('user_id, role, role_id')
         .eq('restaurant_id', restaurantId);
 
       if (membershipError) throw membershipError;
@@ -47,6 +53,7 @@ export function useRestaurantMembers(restaurantId: string | undefined) {
           email: profile?.email ?? null,
           fullName: profile?.full_name ?? null,
           role: m.role as Role,
+          roleId: m.role_id ?? null,
         };
       });
     },

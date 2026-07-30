@@ -66,6 +66,19 @@ jobs:
         with:
           fetch-depth: 0  # Full history for SonarQube new-code detection
 
+      # SonarJS resolves imported types through node_modules. The combined job
+      # had them installed when the scan ran, so install them here too — the
+      # split is meant to separate the two signals, not to quietly change what
+      # the analysis can see.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       # `path: coverage/` on the upload stores that directory's *contents* at
       # the artifact root, so this restores `coverage/lcov.info` — the path
       # sonar-project.properties reads. Get it wrong and Sonar reports 0%

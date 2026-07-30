@@ -126,6 +126,14 @@ describe('unit-tests workflow: Unit Tests and SonarCloud are separate jobs', () 
       expect(scalar(inputs(checkout!), 'fetch-depth')).toBe('0');
     });
 
+    it('installs dependencies so type-aware rules see what they saw before', () => {
+      // SonarJS resolves imported types through node_modules, which the
+      // combined job happened to have installed. Losing them here would shift
+      // which issues Sonar reports without any code changing.
+      expect(stepUsing(body, 'actions/setup-node')).toBeDefined();
+      expect(body).toMatch(/^\s+run:\s*npm ci\s*$/m);
+    });
+
     it('downloads coverage to the directory sonar-project.properties reads from', () => {
       const download = stepUsing(body, 'actions/download-artifact');
 

@@ -42,11 +42,15 @@ Split into two jobs in the same workflow file.
 ### `test` — "Unit Tests"
 
 Unchanged except: the Sonar step is removed, and `timeout-minutes` goes
-`10 → 15`. With Sonar gone the job costs ~7m45s (~30s install, ~7m50s
-`test:coverage`, ~10s `test:tz` — minus the ~1m45s Sonar tail), so 15 minutes
-is roughly 2× the measured cost. This supersedes the `20` on
-`ci/unit-tests-timeout-headroom`, which was sized for a job that still
-included Sonar.
+`10 → 15`.
+
+On sizing the cap: the two measurements available disagree slightly. The
+combined job clocked ~9m30s end to end with a ~1m45s Sonar tail, which puts
+the remainder near ~7m45s; summing the per-step figures (~30s install, ~7m50s
+`test:coverage`, ~10s `test:tz`) gives ~8m30s. Both are approximate, so take
+the larger — ~8m30s — and 15 minutes is still comfortably under 2× it. This
+supersedes the `20` on `ci/unit-tests-timeout-headroom`, which was sized for a
+job that still carried Sonar.
 
 `fetch-depth: 0` is **dropped** from this job. Its only stated purpose was
 Sonar (the comment read "Full history for SonarQube"), which now lives
@@ -65,11 +69,12 @@ sonarcloud:
   timeout-minutes: 10
   steps:
     - checkout (fetch-depth: 0)
+    - setup-node + npm ci
     - download-artifact: coverage-report → coverage/
     - SonarSource/sonarcloud-github-action@v5
 ```
 
-Four things this has to get right:
+Five things this has to get right:
 
 1. **Full git history.** Jobs run on separate runners with separate
    checkouts, so the `test` job's `fetch-depth: 0` does not carry over. The
@@ -86,14 +91,25 @@ Four things this has to get right:
    quality gate without any "file not found" error. This is the same failure
    mode as the 2026-05-16 lesson on `sonar.coverage.exclusions` drift.
 
-3. **PR decoration.** `permissions:` is workflow-level
+3. **Analysis parity — `node_modules`.** SonarJS resolves imported types
+   through `node_modules`, and the combined job happened to have them
+   installed (`npm ci` ran before the scan). A fresh runner would not, so the
+   scan could report a different issue set — and move the quality gate — with
+   no code change behind it. The new job therefore repeats `setup-node` +
+   `npm ci` (~30s with the npm cache). Not a theoretical concern in the narrow
+   sense CodeRabbit first raised it — no `tsconfig*.json` here `extends` a
+   package under `node_modules` — but type resolution for third-party imports
+   is reason enough. The split is meant to separate two signals, not to change
+   what the analysis can see.
+
+4. **PR decoration.** `permissions:` is workflow-level
    ([unit-tests.yml:11-13](.github/workflows/unit-tests.yml#L11-L13)), so it
    already applies to every job including the new one. No job-level
    `permissions` block is added — adding one would *replace* the workflow
    default, not merge with it, which is the easy way to silently break
    decoration.
 
-4. **Gating.** Plain `needs: [test]` with no `if:`. When the suite fails,
+5. **Gating.** Plain `needs: [test]` with no `if:`. When the suite fails,
    the Sonar job is skipped, which matches today's behaviour exactly (the
    Sonar *step* already only ran when preceding steps succeeded) and avoids
    publishing a quality gate computed from partial coverage.
@@ -107,7 +123,7 @@ reverted, would restore the coupled-signal bug or break the scan:
 
 - The `test` job declares `timeout-minutes >= 15` and contains **no** Sonar step.
 - A `sonarcloud` job exists, with `needs: [test]` and the Sonar action.
-- That job checks out with `fetch-depth: 0`.
+- That job checks out with `fetch-depth: 0` and installs dependencies.
 - It downloads artifact `coverage-report` into a directory that **matches the
   directory in `sonar.javascript.lcov.reportPaths`** — a cross-file
   consistency check, so the two halves of one config cannot drift apart.
@@ -121,10 +137,15 @@ more churn than a small block-splitting helper.
 
 ## Decided trade-offs
 
-- **Wall-clock is slightly worse, on purpose.** The scan no longer overlaps
-  the test job's teardown, and it re-checks-out and re-downloads (~15s).
-  Sonar's result also arrives ~7m45s after the run starts rather than
-  interleaved. Signal clarity is the point of the change; ~15s is the price.
+- **End-to-end wall-clock is worse, on purpose.** The scan now waits for the
+  whole test job instead of running inside it, and it repeats work that job
+  already did: checkout, `npm ci`, and the artifact download, call it ~45s
+  once the npm cache is warm. So the Sonar verdict lands roughly
+  `test job (~8m30s) + ~45s + scan (~1m45s)` ≈ **~11m** into the run, versus
+  ~9m30s before. The unit-test verdict, which is what a PR author is usually
+  waiting on, arrives *earlier* — it no longer has the Sonar tail bolted to
+  it. Trading ~1m30s of Sonar latency for two signals that mean what they say
+  is the whole point of the change.
 - **Branch protection is a repo setting, not a file.** Splitting the job
   introduces a new check name, `SonarCloud`. If the quality gate is meant to
   block merges, that check has to be added to the required-checks list in

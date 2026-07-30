@@ -36,6 +36,19 @@ import {
   deriveSplhHint,
   hasHourlyWageData,
 } from '@/lib/staffingCalculator';
+import { MAX_BUSINESS_DAY_START_HOUR } from '@/lib/businessDay';
+
+// A Select of the 12 legal hours rather than a number Input: the domain is
+// small and closed, a free-text "2" invites 2 PM, and a Select cannot produce a
+// value the column's CHECK (0..11) would reject. Labels are wall-clock, so the
+// stored integer never has to be read as one.
+const BUSINESS_DAY_HOUR_OPTIONS = Array.from(
+  { length: MAX_BUSINESS_DAY_START_HOUR + 1 },
+  (_, h) => ({
+    value: String(h),
+    label: h === 0 ? '12:00 AM (midnight)' : `${h}:00 AM`,
+  }),
+);
 
 export default function RestaurantSettings() {
   const { user } = useAuth();
@@ -86,6 +99,10 @@ export default function RestaurantSettings() {
   const [otExcludeTips, setOtExcludeTips] = useState(true);
   const [otRulesLoading, setOtRulesLoading] = useState(false);
   const [otSaving, setOtSaving] = useState(false);
+
+  // Business day cutoff (payroll tab)
+  const [businessDayStartHour, setBusinessDayStartHour] = useState('0');
+  const [savingBusinessDay, setSavingBusinessDay] = useState(false);
 
   // Labor planning state (staffing settings)
   const { effectiveSettings: staffDefaults, updateSettings: saveStaffingSettings, isSaving: staffingSaving, isLoading: staffingLoading } = useStaffingSettings(selectedRestaurant?.restaurant_id ?? null);
@@ -153,6 +170,8 @@ export default function RestaurantSettings() {
       setBusinessEmail(r.business_email || '');
       setEin(r.ein || '');
       setEntityType(r.entity_type || '');
+      // `?? 0` not `|| 0`: hour 0 is the legal default, not a missing value.
+      setBusinessDayStartHour(String(r.business_day_start_hour ?? 0));
     }
   }, [selectedRestaurant]);
 
@@ -345,6 +364,43 @@ export default function RestaurantSettings() {
       toast({ title: 'Failed to save overtime rules', description: err instanceof Error ? err.message : 'An error occurred', variant: 'destructive' });
     } finally {
       setOtSaving(false);
+    }
+  };
+
+  const handleSaveBusinessDay = async () => {
+    if (!selectedRestaurant) return;
+
+    const hour = Number(businessDayStartHour);
+    setSavingBusinessDay(true);
+    try {
+      const { error } = await supabase
+        .from('restaurants')
+        .update({ business_day_start_hour: hour })
+        .eq('id', selectedRestaurant.restaurant_id);
+      if (error) throw error;
+
+      // Push the new hour into the restaurant context rather than invalidating
+      // query keys. Every affected hook (payroll, labor costs, monthly metrics)
+      // carries cutoffHour IN its query key and reads it from this context
+      // object, so replacing the object is what actually re-runs them --
+      // invalidating alone would refetch with the stale cutoff still in hand.
+      setSelectedRestaurant({
+        ...selectedRestaurant,
+        restaurant: { ...selectedRestaurant.restaurant, business_day_start_hour: hour },
+      });
+
+      toast({
+        title: 'Business day saved',
+        description: 'Labor cost and payroll reports now use the new start hour.',
+      });
+    } catch (err) {
+      toast({
+        title: 'Failed to save business day',
+        description: err instanceof Error ? err.message : 'An error occurred',
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingBusinessDay(false);
     }
   };
 
@@ -932,7 +988,66 @@ export default function RestaurantSettings() {
 
         {/* Payroll / Overtime Rules Tab */}
         {canEdit && (
-          <TabsContent value="payroll">
+          <TabsContent value="payroll" className="space-y-6">
+            {/* Business Day sits in its OWN card above Overtime Rules: a day
+                boundary is not an overtime rule, and filing it under that
+                heading would misdescribe what it does. */}
+            <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Clock className="h-5 w-5" aria-hidden="true" />
+                  Business Day
+                </CardTitle>
+                <CardDescription>
+                  When your operating day starts, for payroll and labor cost reporting
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
+                  <div className="p-4">
+                    <div className="max-w-xs space-y-2">
+                      <Label
+                        htmlFor="businessDayStartHour"
+                        className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider"
+                      >
+                        Business Day Starts At
+                      </Label>
+                      <Select value={businessDayStartHour} onValueChange={setBusinessDayStartHour}>
+                        <SelectTrigger
+                          id="businessDayStartHour"
+                          aria-describedby="businessDayStartHourHelp"
+                          className="h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                        >
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {BUSINESS_DAY_HOUR_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p id="businessDayStartHourHelp" className="text-[13px] text-muted-foreground">
+                        A shift that starts before this hour counts toward the previous business
+                        day, so an overnight shift stays whole instead of splitting at midnight.
+                        Changing this re-buckets historical labor cost and payroll reports.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end mt-4">
+                  <Button
+                    onClick={handleSaveBusinessDay}
+                    disabled={savingBusinessDay}
+                    className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+                  >
+                    {savingBusinessDay ? 'Saving...' : 'Save Business Day'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
             <Card className="shadow-md hover:shadow-lg transition-shadow duration-200">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">

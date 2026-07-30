@@ -65,6 +65,8 @@ import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
 import { formatLocalDate } from '@/lib/shiftInterval';
+import { safeCutoffHour } from '@/lib/businessDay';
+import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { capacityFloor } from '@/lib/shiftCoverage';
 import { distinctAssignedCount } from '@/lib/shiftFill';
 import type { ShiftTemplate } from '@/types/scheduling';
@@ -346,9 +348,30 @@ const Scheduling = () => {
   });
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-  // Calculate scheduled labor costs with breakdown
+  // Calculate scheduled labor costs with breakdown.
+  //
+  // Costed off a LOOK-AHEAD-buffered fetch, not the grid's raw week. useShifts
+  // windows on raw `start_time`, but the cost is bucketed by BUSINESS day: at a
+  // cutoff of 2, next Monday's 01:00 shift belongs to *this* week's Sunday. The
+  // raw week never fetches it, and next week's fetch hands it to
+  // calculateScheduledLaborCost, which drops it as out-of-range -- so without
+  // the buffer it is costed zero times, in both weeks, silently. The
+  // out-of-range guard does the filtering, so a superset is safe to pass. Pinned
+  // by tests/unit/payroll-business-day-conservation.test.ts.
+  //
+  // At cutoff 0 the two windows are identical, so React Query serves the grid's
+  // own query rather than issuing a second request.
+  const laborCostWeekEnd = useMemo(
+    () =>
+      safeCutoffHour(selectedRestaurant?.restaurant?.business_day_start_hour) === 0
+        ? weekEnd
+        : lookaheadPunchFetchRange(currentWeekStart, weekEnd).fetchEnd,
+    [currentWeekStart, weekEnd, selectedRestaurant?.restaurant?.business_day_start_hour],
+  );
+  const { shifts: shiftsForLaborCost } = useShifts(restaurantId, currentWeekStart, laborCostWeekEnd);
+
   const { breakdown: laborCostBreakdown } = useScheduledLaborCosts(
-    shifts,
+    shiftsForLaborCost,
     currentWeekStart,
     weekEnd,
     restaurantId,

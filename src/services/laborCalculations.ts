@@ -904,8 +904,22 @@ export function calculateActualLaborCostForMonth(
     // parseWorkPeriods can't pair (dropping the shift's hours entirely).
     // Defensively sorted — the clock-in-week state machine requires chronological
     // order and must not rely on the caller's `.order('punch_time')`.
+    //
+    // The week is the week of the clock-in's BUSINESS day, not of the raw
+    // instant. These differ on Monday between midnight and the cutoff, and the
+    // difference is money: calculateEmployeePay re-groups by business day
+    // internally, so an instant-keyed bucket would hand it a Monday-01:00 shift
+    // that belongs to the previous business week, band those hours against an
+    // almost-empty week, and pay OT hours at straight time. Parsed at local noon
+    // for the same reason the weekStart below is — 'YYYY-MM-DD' alone parses as
+    // UTC midnight and lands on the previous day in US zones.
     const weekKeyFor = (t: Date) =>
-      formatDate(startOfWeek(t, { weekStartsOn: WEEK_STARTS_ON }), 'yyyy-MM-dd');
+      formatDate(
+        startOfWeek(new Date(`${toBusinessDayFor(t, businessDay)}T12:00:00`), {
+          weekStartsOn: WEEK_STARTS_ON,
+        }),
+        'yyyy-MM-dd',
+      );
     const sortedPunches = [...employeePunches].sort(
       (a, b) => new Date(a.punch_time).getTime() - new Date(b.punch_time).getTime()
     );

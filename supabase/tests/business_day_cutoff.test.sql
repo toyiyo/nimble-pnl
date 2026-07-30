@@ -10,7 +10,14 @@ VALUES
   ('11111111-1111-1111-1111-111111111111', 'Cutoff 2 Chicago', 'America/Chicago', 2),
   ('22222222-2222-2222-2222-222222222222', 'Cutoff 0 Chicago', 'America/Chicago', 0),
   ('33333333-3333-3333-3333-333333333333', 'Bad TZ',           'Not/AZone',       2),
-  ('44444444-4444-4444-4444-444444444444', 'Empty TZ',         '',                2);
+  ('44444444-4444-4444-4444-444444444444', 'Empty TZ',         '',                2)
+-- The whole file runs inside a transaction that ROLLBACKs, so these rows never
+-- persist -- but a developer running against a database another suite has
+-- already seeded should get the fixture's values, not a duplicate-key abort.
+ON CONFLICT (id) DO UPDATE SET
+  name                    = EXCLUDED.name,
+  timezone                = EXCLUDED.timezone,
+  business_day_start_hour = EXCLUDED.business_day_start_hour;
 
 -- ── Existence ───────────────────────────────────────────────────────────────
 SELECT has_column('public', 'restaurants', 'business_day_start_hour',

@@ -6,6 +6,8 @@ import {
   calculateScheduledLaborCost,
 } from '@/services/laborCalculations';
 import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculations';
+import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { MAX_BUSINESS_DAY_START_HOUR } from '@/lib/businessDay';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 import type { OvertimeRules } from '@/lib/overtimeCalculations';
@@ -253,6 +255,133 @@ describe('scheduled and actual bucket identically', () => {
         ).toBeCloseTo(actualDay?.hours_worked ?? 0, 6);
       }
     }
+  });
+});
+
+describe('monthly OT bands on the BUSINESS week, not the raw-instant week', () => {
+  /**
+   * calculateActualLaborCostForMonth pre-buckets punches into weeks so each
+   * calculateEmployeePay call sees one whole workweek and bands OT against it.
+   * If that bucketing keys off the raw clock-in INSTANT while the hours inside
+   * are attributed to the clock-in BUSINESS day, the two disagree at exactly one
+   * place: Monday between midnight and the cutoff.
+   *
+   * A Monday 01:00 clock-in at cutoff 2 belongs to the preceding Sunday -- the
+   * last day of the previous business week. Bucketed by instant it opens a fresh
+   * week instead, so hours 41-46 of a 46-hour week are banded as hours 1-6 of the
+   * next one and paid straight time. That is an OT UNDERPAYMENT, which is the
+   * failure mode this whole change is required not to have.
+   */
+  const RATE_CENTS = 2000;
+
+  // Mon Jul 6 .. Fri Jul 10, 09:00-17:00 CDT: five 8h days = 40h.
+  const FORTY_HOUR_WEEK = [6, 7, 8, 9, 10].flatMap((d) =>
+    pair('e9', `2026-07-${d < 10 ? `0${d}` : d}T14:00:00.000Z`, `2026-07-${d < 10 ? `0${d}` : d}T22:00:00.000Z`),
+  );
+  // Mon Jul 13, 01:00-07:00 CDT (6h). Business day at cutoff 2: Sun Jul 12,
+  // which closes the Jul 6 week.
+  const MONDAY_1AM = pair('e9', '2026-07-13T06:00:00.000Z', '2026-07-13T12:00:00.000Z');
+
+  function monthWages(cutoffHour: number): number {
+    return calculateActualLaborCostForMonth({
+      employees: [hourly('e9', RATE_CENTS)],
+      timePunches: [...FORTY_HOUR_WEEK, ...MONDAY_1AM],
+      tipsOwedByEmployee: new Map(),
+      monthStart: new Date('2026-07-01T00:00:00.000Z'),
+      monthEnd: new Date('2026-07-31T23:59:59.999Z'),
+      businessDay: { tz: TZ, cutoffHour },
+    }).actualLaborCents;
+  }
+
+  it('pays hours 41-46 of the business week at time and a half', () => {
+    // 40 * $20 + 6 * $30 = $800 + $180 = $980.
+    expect(monthWages(2)).toBe(98000);
+  });
+
+  it('at cutoff 0 the same shift genuinely starts a new week and is straight time', () => {
+    // Not a weaker restatement: at cutoff 0 the Monday 01:00 clock-in really
+    // does belong to Monday, so 40 + 6 straight = $800 + $120 = $920. The two
+    // expectations differ by exactly the OT premium, so neither can pass by
+    // ignoring the cutoff.
+    expect(monthWages(0)).toBe(92000);
+  });
+});
+
+describe('a scheduled shift is counted in exactly one week, never zero', () => {
+  /**
+   * The fetch window and the bucketing frame are different things, and the gap
+   * between them is where a shift disappears.
+   *
+   * `useShifts` windows on RAW `start_time`: [Mon 00:00, Sun 23:59:59]. Bucketing
+   * is by BUSINESS day. At a cutoff of 2, a shift starting Monday 01:00 belongs
+   * to the preceding Sunday -- so the week that fetches it discards it as
+   * out-of-range (`if (!dayData) return`), and the week it actually belongs to
+   * never fetched it. It is counted zero times, in both weeks, silently.
+   *
+   * A look-ahead on the fetch is what closes the gap, exactly as it already does
+   * for time punches in useLaborCostsFromTimeTracking. The out-of-range guard
+   * then does the filtering, so handing the calculation a superset is safe.
+   *
+   * The restaurant runs in the HOST zone deliberately: the week bounds below are
+   * `new Date(y, m, d)` (what usePeriodNavigation/startOfWeek produce) and
+   * generateDateRange reads host-local fields, so any other zone here would test
+   * a fixture artifact instead of the cutoff. Zone behaviour is pinned
+   * separately in businessDay.tz.test.ts under four TZ values.
+   */
+  const HOST_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const CUTOFF = 2;
+  const RATE_CENTS = 2000;
+
+  // Week A: Mon 2026-07-27 .. Sun 2026-08-02. Week B: the following Mon..Sun.
+  const weekAStart = new Date(2026, 6, 27);
+  const weekAEnd = new Date(2026, 7, 2, 23, 59, 59, 999);
+  const weekBStart = new Date(2026, 7, 3);
+  const weekBEnd = new Date(2026, 7, 9, 23, 59, 59, 999);
+
+  // Mon Aug 3, 01:00 -> 07:00 local. Business day at cutoff 2: Sun Aug 2, which
+  // is week A -- but the raw start_time is week B's.
+  const MONDAY_1AM = {
+    id: 's-mon-1am', restaurant_id: 'r1', employee_id: 'e1',
+    start_time: new Date(2026, 7, 3, 1, 0).toISOString(),
+    end_time: new Date(2026, 7, 3, 7, 0).toISOString(),
+    break_duration: 0, status: 'scheduled',
+  } as unknown as Parameters<typeof calculateScheduledLaborCost>[0][number];
+
+  function weekHours(start: Date, end: Date, lookahead: boolean): number {
+    const { fetchStart, fetchEnd } = lookahead
+      ? lookaheadPunchFetchRange(start, end)
+      : { fetchStart: start, fetchEnd: end };
+    // Stands in for useShifts' .gte/.lte on start_time.
+    const fetched = [MONDAY_1AM].filter((s) => {
+      const t = new Date(s.start_time).getTime();
+      return t >= fetchStart.getTime() && t <= fetchEnd.getTime();
+    });
+    return calculateScheduledLaborCost(
+      fetched, [hourly('e1', RATE_CENTS)], start, end, { tz: HOST_TZ, cutoffHour: CUTOFF },
+    ).breakdown.hourly.hours;
+  }
+
+  it('lands the shift in the week its business day belongs to', () => {
+    expect(weekHours(weekAStart, weekAEnd, true)).toBeCloseTo(6, 6);
+  });
+
+  it('does not double-count it in the week its raw start_time belongs to', () => {
+    expect(weekHours(weekBStart, weekBEnd, true)).toBeCloseTo(0, 6);
+  });
+
+  it('vanishes from BOTH weeks without the look-ahead -- the bug this guards', () => {
+    // Stated as an assertion rather than a comment so the guard above cannot be
+    // satisfied by an unbuffered fetch that happens to pass for another reason.
+    expect(weekHours(weekAStart, weekAEnd, false)).toBeCloseTo(0, 6);
+    expect(weekHours(weekBStart, weekBEnd, false)).toBeCloseTo(0, 6);
+  });
+
+  it('the look-ahead is wider than the widest cutoff', () => {
+    // A cutoff of 11 rolls an 10:59 start back a day; the buffer has to reach
+    // past that or the same disappearance returns at the high end of the range.
+    const { fetchEnd } = lookaheadPunchFetchRange(weekAStart, weekAEnd);
+    const bufferHours = (fetchEnd.getTime() - weekAEnd.getTime()) / 3_600_000;
+    expect(bufferHours).toBeGreaterThan(MAX_BUSINESS_DAY_START_HOUR);
   });
 });
 

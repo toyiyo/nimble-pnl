@@ -7,6 +7,7 @@ import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTimePunches } from '@/hooks/useTimePunches';
 import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { RestaurantTzNotice } from '@/components/RestaurantTzNotice';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -158,6 +159,7 @@ const EmployeeTimecard = () => {
         title="My Timecard"
         subtitle={`${currentEmployee.name} • ${currentEmployee.position}`}
       />
+      <RestaurantTzNotice />
 
       {/* Period Selector */}
       <PeriodSelector

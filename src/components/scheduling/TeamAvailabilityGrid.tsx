@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Zap, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { RestaurantTzNotice } from '@/components/RestaurantTzNotice';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -477,6 +478,11 @@ export function TeamAvailabilityGrid({
           </Button>
         )}
       </div>
+
+      {/* Scoped to this grid rather than the Scheduling page header: the page
+          still renders shift times through un-migrated helpers, so a page-wide
+          notice would vouch for values that are still the viewer's. */}
+      <RestaurantTzNotice />
 
       {/* Content */}
       {isLoading ? (

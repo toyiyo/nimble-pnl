@@ -198,7 +198,8 @@ export function useValidatedShiftMutations(
   // ---------------------------------------------------------------------------
   // Create (unchanged shape — host-local ShiftInterval.create, matching the
   // planner's existing convention; the timeline builds ISO inputs upstream via
-  // minutesToIso before calling this).
+  // minutesToIso before calling this). `tz` is passed as the browser's own
+  // zone as a stopgap — see the comment at each call site.
   // ---------------------------------------------------------------------------
 
   const validateAndCreate = useCallback(
@@ -206,7 +207,16 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return { created: false };
 
       try {
-        const interval = ShiftInterval.create(input.date, input.startTime, input.endTime);
+        // `tz` is required as of ShiftInterval.create's timezone-anchored
+        // signature; the browser's own zone preserves this hook's existing
+        // host-local semantics unchanged. Task 4 (see plan) threads the
+        // restaurant's real `tz` through as an options field.
+        const interval = ShiftInterval.create(
+          input.date,
+          input.startTime,
+          input.endTime,
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        );
 
         const { warnings, conflicts } = await collectShiftIssues({
           employeeId: input.employeeId,
@@ -244,7 +254,14 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return false;
 
       try {
-        const interval = ShiftInterval.create(input.date, input.startTime, input.endTime);
+        // See validateAndCreate above: stopgap host-local `tz` until Task 4
+        // threads the restaurant's real timezone through.
+        const interval = ShiftInterval.create(
+          input.date,
+          input.startTime,
+          input.endTime,
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        );
 
         await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
 

@@ -92,8 +92,10 @@ describe('useValidatedShiftMutations — create', () => {
 
   it('validateAndCreate returns pending issues (does not mutate) when warnings exist', async () => {
     // Existing shift built the same way validateAndCreate builds its own interval
-    // (ShiftInterval.create, host-local) so the overlap holds regardless of host TZ.
-    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00');
+    // (ShiftInterval.create with the browser's own zone, the Task 4 stopgap — see
+    // useValidatedShiftMutations.ts) so the overlap holds regardless of host TZ.
+    const hostTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', hostTz);
     const existing = makeShift({
       start_time: existingInterval.startAt.toISOString(),
       end_time: existingInterval.endAt.toISOString(),
@@ -114,7 +116,8 @@ describe('useValidatedShiftMutations — create', () => {
   });
 
   it('forceCreate mutates regardless of pending issues', async () => {
-    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00');
+    const hostTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', hostTz);
     const existing = makeShift({
       start_time: existingInterval.startAt.toISOString(),
       end_time: existingInterval.endAt.toISOString(),

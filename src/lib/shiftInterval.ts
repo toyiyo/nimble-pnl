@@ -31,21 +31,30 @@ export class ShiftInterval {
   // ---------------------------------------------------------------------------
 
   /**
-   * Create from a business date and HH:MM start/end times.
+   * Create from a business date and HH:MM start/end times, resolved against
+   * the restaurant's timezone (`tz`, required and positional — every call
+   * site names its zone explicitly rather than falling back to the host's).
    * Automatically detects midnight crossing (endTime < startTime).
    */
-  static create(businessDate: string, startTime: string, endTime: string): ShiftInterval {
-    const startAt = new Date(`${businessDate}T${startTime}:00`);
+  static create(businessDate: string, startTime: string, endTime: string, tz: string): ShiftInterval {
+    const startAt = wallClockToInstant(businessDate, startTime, tz);
 
     let endAt: Date;
     if (endTime < startTime) {
-      // Midnight crossing — end falls on the next calendar day
-      const nextDay = new Date(`${businessDate}T00:00:00`);
-      nextDay.setDate(nextDay.getDate() + 1);
-      const nextDateStr = formatLocalDate(nextDay);
-      endAt = new Date(`${nextDateStr}T${endTime}:00`);
+      // Midnight crossing — end falls on the next calendar day. Roll the
+      // date with UTC field arithmetic (never `setDate` on a host-local
+      // `Date`, which would drift under a host TZ offset from UTC), then
+      // resolve the rolled date's wall clock in `tz`.
+      const [year, month, day] = businessDate.split('-').map(Number);
+      const rolled = new Date(Date.UTC(year, month - 1, day + 1));
+      const nextDateStr = [
+        rolled.getUTCFullYear(),
+        String(rolled.getUTCMonth() + 1).padStart(2, '0'),
+        String(rolled.getUTCDate()).padStart(2, '0'),
+      ].join('-');
+      endAt = wallClockToInstant(nextDateStr, endTime, tz);
     } else {
-      endAt = new Date(`${businessDate}T${endTime}:00`);
+      endAt = wallClockToInstant(businessDate, endTime, tz);
     }
 
     return ShiftInterval.validateAndConstruct(startAt, endAt, businessDate);
@@ -103,9 +112,14 @@ export class ShiftInterval {
     return this.durationInMinutes / 60;
   }
 
-  /** True when the shift's end time falls on a different calendar day than the business date. */
-  get endsOnNextDay(): boolean {
-    return formatLocalDate(this.endAt) !== this.businessDate;
+  /**
+   * True when the shift's end time falls on a different calendar day than
+   * the business date, evaluated in `tz` (the restaurant's timezone) rather
+   * than the browser's — a method, not a getter, because "which calendar
+   * day" is timezone-dependent and there is no host-local answer.
+   */
+  endsOnNextDay(tz: string): boolean {
+    return formatLocalDateInTz(this.endAt, tz) !== this.businessDate;
   }
 
   // ---------------------------------------------------------------------------

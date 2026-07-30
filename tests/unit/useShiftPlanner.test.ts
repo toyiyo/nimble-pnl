@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildGridData, buildTemplateGridData, buildShiftPayload, getWeekDays, getMondayOfWeek, getWeekEnd, computeTotalHours, formatLocalTime, groupUnmatchedByArea } from '@/hooks/useShiftPlanner';
-import { ShiftInterval } from '@/lib/shiftInterval';
+import { ShiftInterval, wallClockToInstant } from '@/lib/shiftInterval';
 import type { Shift, ShiftTemplate } from '@/types/scheduling';
 
 function mockShift(overrides: Partial<Shift>): Shift {
@@ -207,12 +207,14 @@ describe('useShiftPlanner utilities', () => {
     });
 
     it('should match shifts with UTC timestamps (Z suffix) to local-time templates', () => {
-      // Simulate what Supabase returns: 6am local CST (UTC-6) = noon UTC
-      // ShiftInterval.create('2026-03-02', '06:00', '12:00') in CST →
-      //   new Date('2026-03-02T06:00:00').toISOString() → '2026-03-02T12:00:00.000Z'
+      // Simulate what Supabase returns: 6am local CST (UTC-6) = noon UTC.
+      // Derived via wallClockToInstant('2026-03-02', '06:00', 'America/Chicago')
+      // → '2026-03-02T12:00:00.000Z', independent of the host process's TZ
+      // (a naive `new Date('2026-03-02T06:00:00')` would silently depend on
+      // the host machine's own zone matching Chicago).
       // The grid matching must convert back to local time (06:00:00) to match template
-      const localSixAm = new Date('2026-03-02T06:00:00');
-      const localNoon = new Date('2026-03-02T12:00:00');
+      const localSixAm = wallClockToInstant('2026-03-02', '06:00', 'America/Chicago');
+      const localNoon = wallClockToInstant('2026-03-02', '12:00', 'America/Chicago');
 
       const shifts = [
         mockShift({
@@ -637,7 +639,7 @@ describe('useShiftPlanner utilities', () => {
         breakDuration: 30,
         shiftTemplateId: 'tmpl-123',
       };
-      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30');
+      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30', 'UTC');
       const payload = buildShiftPayload('r1', input, interval);
 
       expect(payload.shift_template_id).toBe('tmpl-123');
@@ -656,7 +658,7 @@ describe('useShiftPlanner utilities', () => {
         endTime: '16:30',
         position: 'Server',
       };
-      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30');
+      const interval = ShiftInterval.create('2026-03-02', '10:00', '16:30', 'UTC');
       const payload = buildShiftPayload('r1', input, interval);
 
       expect(payload.shift_template_id).toBeNull();

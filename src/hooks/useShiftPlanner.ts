@@ -600,7 +600,16 @@ export function useShiftPlanner(
         // Reconstruct the host-local interval the same way the planner always
         // has, then hand its ISO instants to the pipeline (fromTimestamps),
         // preserving this hook's existing host-local create semantics.
-        const interval = ShiftInterval.create(date, startHHMM, endHHMM);
+        // `tz` is required as of ShiftInterval.create's timezone-anchored
+        // signature; the browser's own zone reproduces the prior host-local
+        // behavior unchanged. Threading the restaurant's real `tz` through
+        // here is Task 4's job (see plan), not this mechanical compile fix.
+        const interval = ShiftInterval.create(
+          date,
+          startHHMM,
+          endHHMM,
+          Intl.DateTimeFormat().resolvedOptions().timeZone,
+        );
 
         const { updated } = await pipeline.validateAndUpdateTime({
           shift: input.shift,

@@ -54,6 +54,7 @@
   export function tzAbbrev(tz: string, at?: Date): string
   export function formatInstant(value: string | Date, tz: string, pattern: string): string
   export function toBusinessDay(value: string | Date, tz: string): string
+  export function businessDaysBetween(startInstant: string | Date, endInstant: string | Date, tz: string): string[]
   export function toWallClockInput(value: string | Date, tz: string): string
   export function parseWallClock(wallClock: string, tz: string): string
   ```
@@ -67,6 +68,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_TIMEZONE,
+  businessDaysBetween,
   formatInstant,
   parseWallClock,
   safeTz,
@@ -105,6 +107,37 @@ describe('toBusinessDay', () => {
     // 07:30Z on 2026-03-08 is 01:30 CST; 08:30Z is 03:30 CDT. Same day.
     expect(toBusinessDay('2026-03-08T07:30:00Z', CHI)).toBe('2026-03-08');
     expect(toBusinessDay('2026-03-08T08:30:00Z', CHI)).toBe('2026-03-08');
+  });
+});
+
+describe('businessDaysBetween', () => {
+  it('returns a single day for a shift inside one restaurant day', () => {
+    // 18:00 -> 22:00 Chicago on Jul 22.
+    expect(businessDaysBetween('2026-07-22T23:00:00Z', '2026-07-23T03:00:00Z', CHI)).toEqual([
+      '2026-07-22',
+    ]);
+  });
+
+  it('returns both days for an overnight shift', () => {
+    // 20:00 Jul 22 -> 02:00 Jul 23 Chicago.
+    expect(businessDaysBetween('2026-07-23T01:00:00Z', '2026-07-23T07:00:00Z', CHI)).toEqual([
+      '2026-07-22',
+      '2026-07-23',
+    ]);
+  });
+
+  it('spans a DST transition without dropping or duplicating a day', () => {
+    // Mar 7 22:00 -> Mar 8 12:00 Chicago, across spring forward.
+    expect(businessDaysBetween('2026-03-08T04:00:00Z', '2026-03-08T17:00:00Z', CHI)).toEqual([
+      '2026-03-07',
+      '2026-03-08',
+    ]);
+  });
+
+  it('returns the start day when the range is inverted', () => {
+    expect(businessDaysBetween('2026-07-23T07:00:00Z', '2026-07-23T01:00:00Z', CHI)).toEqual([
+      '2026-07-23',
+    ]);
   });
 });
 
@@ -259,6 +292,39 @@ export function toBusinessDay(value: string | Date, tz: string): string {
   return formatInTimeZone(asInstant(value, 'toBusinessDay'), safeTz(tz), 'yyyy-MM-dd');
 }
 
+/**
+ * Every restaurant-local calendar day an interval touches, inclusive.
+ *
+ * Replaces the `new Date(y, m, d)` cursor loops that derived a day range from
+ * the HOST's calendar fields, which put an overnight shift's second day on
+ * whatever day it was in the viewer's zone. Iterates on calendar-day strings,
+ * so no DST-shifted instant arithmetic is involved.
+ */
+export function businessDaysBetween(
+  startInstant: string | Date,
+  endInstant: string | Date,
+  tz: string
+): string[] {
+  const zone = safeTz(tz);
+  const startDay = toBusinessDay(asInstant(startInstant, 'businessDaysBetween'), zone);
+  const endDay = toBusinessDay(asInstant(endInstant, 'businessDaysBetween'), zone);
+
+  // An inverted range yields just the start day rather than looping forever.
+  if (endDay <= startDay) return [startDay];
+
+  const days: string[] = [];
+  // Step with UTC noon so no DST edge can land the cursor on the wrong date,
+  // and read the day back in UTC -- the cursor is a calendar-day token here,
+  // deliberately not an instant in `zone`.
+  const cursor = new Date(`${startDay}T12:00:00Z`);
+  const last = new Date(`${endDay}T12:00:00Z`);
+  while (cursor <= last) {
+    days.push(formatInTimeZone(cursor, 'UTC', 'yyyy-MM-dd'));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return days;
+}
+
 /** Render an instant for a `<input type="datetime-local">` in the restaurant's zone. */
 export function toWallClockInput(value: string | Date, tz: string): string {
   return formatInTimeZone(asInstant(value, 'toWallClockInput'), safeTz(tz), "yyyy-MM-dd'T'HH:mm");
@@ -284,7 +350,7 @@ export function parseWallClock(wallClock: string, tz: string): string {
 npx vitest run tests/unit/restaurantClock.test.ts
 ```
 
-Expected: PASS, 13 tests.
+Expected: PASS, 17 tests.
 
 - [ ] **Step 5: Verify the guards throw under Vitest but not in a prod build**
 
@@ -667,30 +733,43 @@ git commit -m "feat(clock): useRestaurantClock hook with a documented identity c
 Highest-severity item. `src/pages/TimePunchesManager.tsx:477` reads a punch into a `datetime-local` field in the **browser's** zone and `:492` re-interprets those digits in the browser's zone on save. A manager editing from another zone shifts the punch by the offset difference **even when they only change the notes field**.
 
 **Files:**
+- Create: `src/lib/punchEditForm.ts`
 - Modify: `src/pages/TimePunchesManager.tsx:474-497`
-- Test: `tests/unit/TimePunchesManager.roundTrip.test.ts`
+- Test: `tests/unit/punchEditForm.test.ts`
 
 **Interfaces:**
 - Consumes: `toWallClockInput`, `parseWallClock` from Task 1.
+- Produces:
+  ```ts
+  export interface PunchEditForm { punch_time: string; notes: string }
+  export function punchToEditForm(punch: { punch_time: string; notes?: string | null }, tz: string): PunchEditForm
+  export function editFormToPunchTime(form: PunchEditForm, tz: string): string
+  ```
 
-- [ ] **Step 1: Write the failing regression test**
+The transform is extracted into a module rather than left inline in the page so
+the round trip is directly testable. Testing `restaurantClock` alone would not
+cover this task — those assertions pass before the fix and would keep passing if
+it were reverted.
 
-Create `tests/unit/TimePunchesManager.roundTrip.test.ts`:
+- [ ] **Step 1: Write the failing test**
+
+Create `tests/unit/punchEditForm.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
 
-import { parseWallClock, toWallClockInput } from '@/lib/restaurantClock';
+import { editFormToPunchTime, punchToEditForm } from '@/lib/punchEditForm';
 
 /**
- * Regression for the punch-edit corruption: opening the edit dialog and saving
- * without touching the time must not move the instant. This fails against the
- * old browser-zone `format(new Date(...))` / `new Date(...).toISOString()` pair
- * whenever the viewer's zone differs from the restaurant's.
+ * The corruption this guards: opening the edit dialog and saving without
+ * touching the time must not move the instant. The old code formatted with the
+ * browser's zone on read and re-parsed with the browser's zone on write, so any
+ * manager outside the restaurant's zone shifted every punch they edited --
+ * including edits that only changed `notes`.
  */
-describe('punch edit round trip', () => {
-  const RESTAURANT_TZ = 'America/Chicago';
+const RESTAURANT_TZ = 'America/Chicago';
 
+describe('punch edit round trip', () => {
   const cases = [
     '2026-07-23T01:56:00.000Z', // Jul 22 20:56 Chicago
     '2026-07-22T10:00:00.000Z', // Jul 22 05:00 Chicago
@@ -698,32 +777,89 @@ describe('punch edit round trip', () => {
     '2026-11-01T06:30:00.000Z', // fall back, 01:30 local
   ];
 
-  it.each(cases)('preserves %s exactly', (stored) => {
-    const shown = toWallClockInput(stored, RESTAURANT_TZ);
-    const saved = parseWallClock(shown, RESTAURANT_TZ);
-    expect(saved).toBe(stored);
+  it.each(cases)('preserves %s when only notes change', (stored) => {
+    const form = punchToEditForm({ punch_time: stored, notes: 'before' }, RESTAURANT_TZ);
+    const edited = { ...form, notes: 'after' };
+    expect(editFormToPunchTime(edited, RESTAURANT_TZ)).toBe(stored);
   });
 
   it('shows the restaurant wall clock, not the viewer’s', () => {
-    expect(toWallClockInput('2026-07-23T01:56:00.000Z', RESTAURANT_TZ)).toBe('2026-07-22T20:56');
+    const form = punchToEditForm({ punch_time: '2026-07-23T01:56:00.000Z' }, RESTAURANT_TZ);
+    expect(form.punch_time).toBe('2026-07-22T20:56');
+  });
+
+  it('normalises a null note to an empty string', () => {
+    const form = punchToEditForm({ punch_time: '2026-07-23T01:56:00.000Z', notes: null }, RESTAURANT_TZ);
+    expect(form.notes).toBe('');
+  });
+
+  it('applies an edited wall clock in the restaurant zone', () => {
+    const saved = editFormToPunchTime(
+      { punch_time: '2026-07-22T21:30', notes: '' },
+      RESTAURANT_TZ,
+    );
+    expect(saved).toBe('2026-07-23T02:30:00.000Z');
   });
 });
 ```
 
-- [ ] **Step 2: Run it under a non-restaurant zone to prove it is meaningful**
+- [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-TZ=Pacific/Auckland npx vitest run tests/unit/TimePunchesManager.roundTrip.test.ts
+TZ=Pacific/Auckland npx vitest run tests/unit/punchEditForm.test.ts
 ```
 
-Expected: PASS — the helpers are already zone-independent. This test pins the property; the page change below is what actually adopts it.
+Expected: FAIL — `Failed to resolve import "@/lib/punchEditForm"`.
+
+- [ ] **Step 2b: Write the module**
+
+Create `src/lib/punchEditForm.ts`:
+
+```ts
+import { parseWallClock, toWallClockInput } from '@/lib/restaurantClock';
+
+/** Shape of the punch edit dialog's controlled fields. */
+export interface PunchEditForm {
+  /** Naive wall clock in the restaurant's zone, for `<input type="datetime-local">`. */
+  punch_time: string;
+  notes: string;
+}
+
+/** Load a stored punch into the edit form, in the restaurant's zone. */
+export function punchToEditForm(
+  punch: { punch_time: string; notes?: string | null },
+  tz: string
+): PunchEditForm {
+  return {
+    punch_time: toWallClockInput(punch.punch_time, tz),
+    notes: punch.notes ?? '',
+  };
+}
+
+/**
+ * Convert the form's wall clock back to a UTC instant. Paired with
+ * `punchToEditForm` so a save that changed only `notes` is a no-op on the time.
+ */
+export function editFormToPunchTime(form: PunchEditForm, tz: string): string {
+  return parseWallClock(form.punch_time, tz);
+}
+```
+
+- [ ] **Step 2c: Run test to verify it passes**
+
+```bash
+TZ=Pacific/Auckland npx vitest run tests/unit/punchEditForm.test.ts && TZ=UTC npx vitest run tests/unit/punchEditForm.test.ts
+```
+
+Expected: PASS under both zones, 7 tests each.
 
 - [ ] **Step 3: Apply the fix**
 
-In `src/pages/TimePunchesManager.tsx`, add the hook import alongside the other hook imports:
+In `src/pages/TimePunchesManager.tsx`, add the hook import alongside the other hook imports, and the transform alongside the other lib imports:
 
 ```ts
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { editFormToPunchTime, punchToEditForm } from '@/lib/punchEditForm';
 ```
 
 Inside the component, next to the other hook calls:
@@ -732,24 +868,25 @@ Inside the component, next to the other hook calls:
 const clock = useRestaurantClock();
 ```
 
+Call the two module functions, not the equivalent `clock.*` methods. They are the
+seam Step 1 tests, so routing the page through them is what makes that test guard
+this fix.
+
 Replace `openEditDialog` (currently line 474-480):
 
 ```ts
   const openEditDialog = (punch: TimePunch) => {
     setEditingPunch(punch);
-    setEditFormData({
-      // Restaurant wall clock, NOT the browser's. Paired with parseWallClock
-      // on save so an edit that touches only `notes` cannot move the instant.
-      punch_time: clock.toWallClockInput(punch.punch_time),
-      notes: punch.notes || '',
-    });
+    // Restaurant wall clock, NOT the browser's. Paired with editFormToPunchTime
+    // on save so an edit that touches only `notes` cannot move the instant.
+    setEditFormData(punchToEditForm(punch, clock.tz));
   };
 ```
 
 Replace the `punch_time` line in `handleEditSubmit` (currently line 492):
 
 ```ts
-      punch_time: clock.parseWallClock(editFormData.punch_time),
+      punch_time: editFormToPunchTime(editFormData, clock.tz),
 ```
 
 - [ ] **Step 4: Label the field so the zone is visible**
@@ -765,15 +902,17 @@ Find the `datetime-local` input's `<Label>` in the edit dialog and append the zo
 - [ ] **Step 5: Verify**
 
 ```bash
-npx vitest run tests/unit/TimePunchesManager.roundTrip.test.ts && npm run typecheck
+TZ=UTC npx vitest run tests/unit/punchEditForm.test.ts && npm run typecheck
 ```
 
-Expected: PASS, then typecheck clean.
+Expected: PASS, then typecheck clean. Typecheck is the gate that the page and the
+module agree on the form shape — `editFormData` is already `{ punch_time: string;
+notes: string }`, structurally identical to `PunchEditForm`.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/pages/TimePunchesManager.tsx tests/unit/TimePunchesManager.roundTrip.test.ts
+git add src/lib/punchEditForm.ts tests/unit/punchEditForm.test.ts src/pages/TimePunchesManager.tsx
 git commit -m "fix(punches): stop the edit dialog rewriting the instant in the viewer's timezone
 
 Reading a punch into the datetime-local field with browser-zone format() and
@@ -790,67 +929,145 @@ the restaurant clock."
 `src/services/laborCalculations.ts:40-41` states its bucketing "must match Payroll's day-bucketing (payrollCalculations.ts)". Splitting these makes the Labor and Payroll screens disagree. `src/lib/laborPnlAnalytics.ts:168-174` already records this as a known limitation whose fix "belongs in `calculateActualLaborCost`, app-wide, with its own review" — this is that review.
 
 **Files:**
-- Modify: `src/services/laborCalculations.ts` (`formatDateUTC` at 43-48, call site 945, signatures at 497 and 871)
+- Modify: `src/services/laborCalculations.ts` (delete `formatDateUTC` 37-48; 7 call sites per the table below; signatures at 371, 497, 692, 871)
 - Modify: `src/utils/payrollCalculations.ts` (signature at 439, call sites 492 and 558-559)
 - Modify: `src/hooks/useLaborCostsFromTimeTracking.tsx:134`, `src/hooks/useMonthlyMetrics.tsx:523`, `src/hooks/usePayroll.tsx`
-- Test: `tests/unit/laborPayrollBucketingParity.test.ts`
+- Test: `tests/unit/laborBucketingTz.test.ts`
 
 **Interfaces:**
-- Consumes: `toBusinessDay` from Task 1.
+- Consumes: `toBusinessDay`, `businessDaysBetween` from Task 1; `toDateOnlyString` from `src/lib/dateOnly.ts`.
 - Produces (signature changes — `timezone` is **required**, so `tsc` enumerates every caller):
   ```ts
-  calculateEmployeePay(..., timezone: string)
+  calculateScheduledLaborCost(..., timezone: string)
   calculateActualLaborCost(employees, timePunches, startDate, endDate, timezone: string)
+  calculateHoursPerEmployee(..., timezone: string)
   calculateActualLaborCostForMonth(input: MonthlyLaborInput & { timezone: string })
+  calculateEmployeePay(..., timezone: string)   // payrollCalculations.ts
   ```
 
-- [ ] **Step 1: Write the failing parity test**
+**Per-site classification — read this before touching anything.** `formatDateUTC`
+is byte-identical to `toDateOnlyString`: it reads local *fields*. That makes it
+**correct** for calendar-day tokens and **wrong** for instants. Do NOT blanket-replace
+it with `toBusinessDay`; three of the seven sites would break.
 
-Create `tests/unit/laborPayrollBucketingParity.test.ts`:
+| Line | In | Argument is | Replace with |
+|---|---|---|---|
+| 68 | `generateDateRange` | local-midnight **token** | `toDateOnlyString(current)` — behavior unchanged |
+| 405 | `calculateScheduledLaborCost` | instant (`shift.start_time`) | `toBusinessDay(shift.start_time, timezone)` |
+| 557 | `calculateActualLaborCost` | instant (`period.startTime`) | `toBusinessDay(period.startTime, timezone)` |
+| 576-587 | `calculateActualLaborCost` | local-day **cursor loop** | `businessDaysBetween(...)` — see Step 4b |
+| 726 | `calculateHoursPerEmployee` | instant (`period.startTime`) | `toBusinessDay(period.startTime, timezone)` |
+| 731-737 | `calculateHoursPerEmployee` | local-day **cursor loop** | `businessDaysBetween(...)` — see Step 4b |
+| 945 | `calculateActualLaborCostForMonth` | instant (`period.clockIn`) | `toBusinessDay(period.clockIn ?? period.startTime, timezone)` |
+
+- [ ] **Step 1: Write the failing test against the real engine**
+
+This must exercise `calculateActualLaborCost`, not `toBusinessDay` — a test that
+only re-asserts the Task 1 helper would pass even if this task were reverted.
+
+Create `tests/unit/laborBucketingTz.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
 
-import { toBusinessDay } from '@/lib/restaurantClock';
+import { calculateActualLaborCost } from '@/services/laborCalculations';
+import type { Employee } from '@/types/scheduling';
+import type { TimePunch } from '@/types/timeTracking';
 
 /**
- * The two engines must bucket identically or the Labor and Payroll screens
- * disagree (see the contract comment at laborCalculations.ts:40-41).
+ * The real incident (memory/lessons.md:1403): a clock-in at 2026-07-23T01:56:20Z
+ * is Jul 22 20:56 in Chicago. Bucketed by the HOST calendar on a UTC runner it
+ * lands on Jul 23 and the shift's cost moves to the wrong day.
  *
- * The concrete case is memory/lessons.md:1403: employee 0f5da8cc clocks in at
- * 2026-07-23T01:56:20Z, which is Jul 22 20:56 in Chicago. Bucketed host-local
- * on a UTC runner it lands on Jul 23 and $26.44 moves to the wrong day.
+ * Asserts through the exported engine so the day bucketing is covered where it
+ * actually happens.
  */
-describe('labor and payroll bucket a clock-in identically', () => {
-  const TZ = 'America/Chicago';
-  const CLOCK_IN = '2026-07-23T01:56:20Z';
+const RESTAURANT_TZ = 'America/Chicago';
 
-  it('attributes the overnight clock-in to the clock-in day', () => {
-    expect(toBusinessDay(CLOCK_IN, TZ)).toBe('2026-07-22');
+const employee = {
+  id: 'emp-1',
+  restaurant_id: 'rest-1',
+  status: 'active',
+  compensation_type: 'hourly',
+  hourly_rate: 20,
+  first_name: 'Test',
+  last_name: 'Employee',
+} as unknown as Employee;
+
+function punch(punch_type: TimePunch['punch_type'], punch_time: string): TimePunch {
+  return {
+    id: `${punch_type}-${punch_time}`,
+    restaurant_id: 'rest-1',
+    employee_id: 'emp-1',
+    punch_type,
+    punch_time,
+  } as TimePunch;
+}
+
+describe('calculateActualLaborCost buckets by the restaurant day', () => {
+  // 19:00 -> 21:56 Chicago on Jul 22, i.e. entirely within Jul 22 local.
+  const punches = [
+    punch('clock_in', '2026-07-23T00:00:00Z'),
+    punch('clock_out', '2026-07-23T02:56:20Z'),
+  ];
+
+  it('attributes the hours to the clock-in day in the restaurant zone', () => {
+    const { dailyCosts } = calculateActualLaborCost(
+      [employee],
+      punches,
+      new Date(2026, 6, 20),
+      new Date(2026, 6, 25),
+      RESTAURANT_TZ,
+    );
+
+    const jul22 = dailyCosts.find((d) => d.date === '2026-07-22');
+    const jul23 = dailyCosts.find((d) => d.date === '2026-07-23');
+
+    expect(jul22?.hours_worked).toBeCloseTo(2.94, 1);
+    expect(jul23?.hours_worked ?? 0).toBe(0);
   });
 
-  it('is independent of the host timezone', () => {
-    // Same assertion regardless of TZ= on the runner; the matrix in package.json
-    // runs this file under Chicago, Auckland and UTC.
-    expect(toBusinessDay(CLOCK_IN, TZ)).toBe('2026-07-22');
+  it('produces the same bucketing whatever the host timezone is', () => {
+    // The assertion above is host-independent by construction; test:tz runs this
+    // file under Chicago, Auckland and UTC to prove it.
+    const { breakdown } = calculateActualLaborCost(
+      [employee],
+      punches,
+      new Date(2026, 6, 20),
+      new Date(2026, 6, 25),
+      RESTAURANT_TZ,
+    );
+    expect(breakdown.total_hours).toBeCloseTo(2.94, 1);
   });
 });
 ```
 
-- [ ] **Step 2: Run it**
+- [ ] **Step 2: Run it to verify it fails**
 
 ```bash
-TZ=UTC npx vitest run tests/unit/laborPayrollBucketingParity.test.ts
+TZ=UTC npx vitest run tests/unit/laborBucketingTz.test.ts
 ```
 
-Expected: PASS (it pins the property `toBusinessDay` already has). The production changes below adopt it.
+Expected: FAIL — `calculateActualLaborCost` currently takes 4 arguments, so this
+is a TypeScript/arity error, and on a UTC host the hours land on `2026-07-23`.
+Both are the defect. If this test PASSES before Step 3, stop and re-read the
+per-site table — you are testing the wrong thing.
 
-- [ ] **Step 3: Replace the misnamed helper in `laborCalculations.ts`**
+- [ ] **Step 3: Retire the misnamed helper in `laborCalculations.ts`**
 
-Delete `formatDateUTC` (lines 37-48 including its doc comment) and add the import at the top of the file:
+Delete `formatDateUTC` (lines 37-48, including its doc comment — its claim to
+"match Payroll's day-bucketing" is what this task makes true) and add:
 
 ```ts
-import { toBusinessDay } from '@/lib/restaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { businessDaysBetween, toBusinessDay } from '@/lib/restaurantClock';
+```
+
+Then replace line 68 inside `generateDateRange` — this one is a **calendar-day
+token**, so its behavior must not change:
+
+```ts
+    dates.push(toDateOnlyString(current));
 ```
 
 - [ ] **Step 4: Thread `timezone` into `calculateActualLaborCost`**
@@ -886,7 +1103,51 @@ Replace the bucketing call at line 945:
         const dateKey = toBusinessDay(period.clockIn ?? period.startTime, timezone);
 ```
 
-Then fix every other `formatDateUTC(` call the compiler flags, each becoming `toBusinessDay(<same arg>, timezone)`.
+Then convert the two remaining single-instant sites per the table — line 405 in
+`calculateScheduledLaborCost` and line 557 in `calculateActualLaborCost` — adding
+`timezone: string` as the final required parameter of each enclosing exported
+function.
+
+- [ ] **Step 4b: Replace both local-day cursor loops**
+
+These are the subtle ones. Both derive an overnight shift's day range from
+`getFullYear()/getMonth()/getDate()` on an instant — the **viewer's** calendar —
+so a period spanning local midnight is charged to whichever days the viewer's
+device thinks it touched.
+
+In `calculateActualLaborCost`, replace the block at lines 576-587 (from
+`const startTimestamp` through the closing brace of the `for` loop):
+
+```ts
+      // Every restaurant-local day this period touches. Overnight periods are
+      // charged to both days, matching calculateHoursPerEmployee below.
+      businessDaysBetween(period.startTime, period.endTime, timezone).forEach((dateStr) => {
+        if (!employeesActivePerDay.has(dateStr)) {
+          employeesActivePerDay.set(dateStr, new Set());
+        }
+        const activeSet = employeesActivePerDay.get(dateStr);
+        if (activeSet) {
+          activeSet.add(employeeId);
+        }
+      });
+```
+
+In `calculateHoursPerEmployee`, replace lines 731-737 (from `const start` through
+the closing brace of the `while` loop) with:
+
+```ts
+      const startDay = toBusinessDay(period.startTime, timezone);
+      hoursPerDay[startDay] = (hoursPerDay[startDay] ?? 0) + period.hours;
+      totalHours += period.hours;
+
+      businessDaysBetween(period.startTime, period.endTime, timezone).forEach((day) =>
+        activeDays.add(day)
+      );
+```
+
+The comment at lines 715-717 already promises "parity with
+calculateActualLaborCost's employeesActivePerDay loop" — both now call the same
+helper, so that parity is structural rather than asserted.
 
 - [ ] **Step 5: Thread `timezone` into `payrollCalculations.ts`**
 
@@ -1368,8 +1629,8 @@ npm run typecheck && npm run lint && npm run build && npm run test:db
 - [ ] **Confirm the corruption path is actually fixed**
 
 ```bash
-TZ=Pacific/Auckland npx vitest run tests/unit/TimePunchesManager.roundTrip.test.ts
-TZ=America/New_York npx vitest run tests/unit/TimePunchesManager.roundTrip.test.ts
+TZ=Pacific/Auckland npx vitest run tests/unit/punchEditForm.test.ts
+TZ=America/New_York npx vitest run tests/unit/punchEditForm.test.ts
 ```
 
 Expected: PASS under both — the property that failed before this branch.

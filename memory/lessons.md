@@ -1817,6 +1817,72 @@
 - **Resume has a sharp edge worth knowing:** completed agents replay from cache keyed on `(prompt, opts)`. After fixing a defect that a *review* phase had flagged, a plain resume replays the cached blocking verdict and halts again on stale input. Fork the script to the scratchpad and edit the prompt of the earliest phase that must re-run — everything before it still replays instantly, everything from there runs live against the corrected branch. Fork rather than edit the shared `.claude/workflows/*.js`, which is a tracked repo file unrelated to the task at hand.
 - **Rule:** When a background workflow fails, read `journal.jsonl` and the last agent's transcript **before** forming a theory — the harness records the real error, and infrastructure failures look identical to logic failures from the outside. Then check what the dead run actually committed (`git log`, `git status`) and clean partial state, because a resumed agent inheriting a half-applied edit will not redo it test-first.
 
+## Category: Testing — Mocks
+
+### [2026-07-29] Mocking a PostgREST call as a bare promise made four tests pass for the wrong reason (PR #673)
+- **Mistake:** `supabase.rpc()` returns a PostgREST *builder*, not a promise. The hook chains `.abortSignal(signal)` onto it and awaits the result. The test mocked it with `mockResolvedValue({data, error})` — a bare promise — so `.abortSignal` was `undefined` and the hook threw a `TypeError` *inside* React Query's `queryFn`. Two data tests went red with `expected [] to deeply equal [...]`, which looked like an ordinary assertion failure.
+- **The worse half:** the two red tests were the good news. Four others were **passing for the wrong reason**, including the "RPC failed" case — it asserted that an error surfaced, and an error did surface, just not the one under test. That test would have stayed green if the hook's error handling had been deleted entirely.
+- **Correction:** A `rpcBuilder(promise)` helper that mirrors the real chain, capturing the signal into a module-level `lastAbortSignal`. All five call sites converted. Added a seventh test asserting the signal is actually handed to PostgREST and aborts on unmount.
+- **Sharp edge in that new test:** the first draft asserted `aborted === true` after `unmount()` with an immediately-resolved promise, and failed — a query that has already *settled* has nothing left to cancel. The signal has to be inspected mid-flight, via a deferred gate that holds the promise open.
+- **Rule:** When mocking a fluent/builder API, mock the **chain**, not the terminal value. A green suite is not evidence the mock is faithful: a `TypeError` thrown inside a `queryFn` is indistinguishable from a real query failure, so any test whose assertion is merely "something went wrong" will pass through a broken mock. After changing a call site to add a chained method, re-read the mock before trusting the run.
+
+## Category: React — Context
+
+### [2026-07-29] A hook called in a component's own body reads the *parent's* context, not the provider that component renders
+- **Mistake:** Eight reusable comboboxes resolve Radix's `modal` prop from a `ScrollLockBoundary` context via `useInsideScrollLock()`, which works because each is a *child* rendered inside someone else's `DialogContent`. I applied the same one-line fix to the ninth, `POSSaleDialog` — but that component owns its combobox inside *its own* `DialogContent`. The hook call sits in the body above that provider, so it reads whatever the parent scope has, which is always `false`. The fix compiled, read identically to the eight that worked, and did nothing.
+- **Correction:** Hardcoded `modal` with a comment recording why this one differs. The value is statically known — that combobox is never free-standing — so context buys nothing here.
+- **How it was caught:** a test written *first* against the broken implementation, asserting the behavioural consequence (Radix's `hideOthers` marking siblings `aria-hidden`) rather than the presence of the prop. A source-text assertion would have passed.
+- **Rule:** Before reusing a context-consuming fix, check where the hook sits relative to the provider. "Same component tree" is not the same as "below the provider" — a component is *outside* every provider it renders itself. When a component both provides and consumes, the consumer must be a child, or the value must come from somewhere else.
+
+## Category: Dev workflow / Worktree hygiene (continued)
+
+### [2026-07-29] `npm run test:db` does not reset the database — a migration edited after the last reset is not the one under test
+- **Extends:** "One local Supabase serves every worktree" (2026-07-28). That entry covers a *sibling session* wiping your migration. This is the same class of failure with no second session involved.
+- **Mistake:** Applied a `btrim()` fix to a migration, added a pgTAP assertion for it, ran `npm run test:db`, and got `have: 0, want: 3`. The natural read is "the fix is wrong". The fix was correct on disk; `test:db` runs `supabase/tests/run_tests.sh` and never reapplies migrations, and the last `db:reset` predated the edit by 45 minutes — so the assertion ran against the *old* function body. `have: 0` was precisely the untrimmed pattern's result.
+- **Second failure, same run:** an unrelated `enqueue_weekly_brief_jobs returns 0 enqueued when no restaurants exist` returned `have: 84` — the E2E suite had run one minute earlier and left 84 restaurants behind. Two failures, two environmental causes, zero code defects. `db:reset` cleared both.
+- **Rule:** After editing a migration, `npm run db:reset` before `npm run test:db` — the test runner will not do it for you. And never run pgTAP after E2E on the same local database: any assertion premised on an empty table will fail on any branch. When pgTAP goes red, check *what is loaded in the DB* before reading the diff, and confirm the failing value isn't the signature of the pre-fix code.
+
+## Category: Dev workflow / Worktree hygiene (continued)
+
+### [2026-07-29] A backgrounded `cd` never persists — detect the drift instead of remembering to prefix
+- **Mistake:** Session cwd silently reverted from the worktree to the main repo six times across this task, every time after a `run_in_background` command. Once this meant reading `main`'s copy of a file I was actively editing on the branch and reasoning about the wrong source.
+- **Detection signal worth keeping:** a *branch-only* file reporting "No such file or directory" is the cheapest possible tell. If a file created on this branch is missing, the shell is not on this branch.
+- **Rule:** Prefix every `cd` with the absolute worktree path, or use `git -C <abs>`; never rely on a `cd` from a previous call. When a file you know you created is "missing", check `pwd` before you check your memory.
+
+## Category: CI / Workflows (continued)
+
+### [2026-07-29] Compare a red check against other PRs before treating it as yours
+- **Mistake avoided:** Netlify's `deploy-preview` failed on this PR along with its three downstream checks (Header rules, Pages changed, Redirect rules). Local `npm run build` was clean, so the choice was to either start debugging a deploy I couldn't reproduce, or first establish whether the check has ever been green.
+- **Correction:** Checked the same four checks on the four most recently merged PRs. All four fail identically on all of them. The integration is broken repo-wide and those PRs merged anyway. Vercel — the deploy target that is actually wired up — passed on this branch, independently confirming the build.
+- **Rule:** Before debugging a failing CI check, run it against recent *merged* PRs. A check that fails everywhere is infrastructure, not your diff, and a green sibling deploy is strong corroboration. State the finding explicitly rather than silently ignoring the red — "pre-existing, fails on #666–#669, unrelated" is a reviewable claim; skipping past it is not.
+
+## Category: CI / Workflows (continued)
+
+### [2026-07-29] A job-level `timeout-minutes` reports an all-green test run as a failure — diff the step timings against the last green run
+- **Mistake avoided:** `Unit Tests` was red on this PR. The obvious read is "your tests fail". The job log said `653 passed | 1 skipped`, every test step `success`, and the job `cancelled` — GitHub's `timeout-minutes` kills the whole job and marks it failed, so a passing suite plus one slow trailing step presents identically to a broken one.
+- **Diagnosis that settled it in one pass:** pull the per-step start/end timestamps for the last run where the job was green and diff them against today's. Last green (2026-07-27) was 9m22s against a 10m cap — unit 5m33s, Sonar 3m16s, **38s of headroom**. Today: unit 7m58s (the suite grew), plus a timezone-matrix step added by an unrelated PR, so the job needs ≈11.5 min. SonarCloud was never hanging; it simply never gets the time. Every `unit-tests.yml` run on `main` since 07-27 is `cancelled` for the same reason.
+- **Rule:** When a CI job is red, read the *step* conclusions before the job conclusion — `cancelled` on a trailing step with every test step green means a budget problem, not a code problem. Find the last green run of the same job and compare step durations; a shrinking headroom against a fixed cap is the signature. Fix it on `main` in its own change rather than folding a shared-workflow edit into an unrelated PR, and say in the PR body why the check is red so the claim is reviewable.
+
+## Category: React Query (continued)
+
+### [2026-07-29] `placeholderData: keepPreviousData` spans a *tenant* change when the tenant is in the query key
+- **Mistake:** Added `keepPreviousData` to a debounced search hook so the dropdown wouldn't blink empty between keystrokes. Correct for that purpose — but `restaurantId` is also part of the query key, so the same mechanism kept the **previous restaurant's** POS items on screen while the new tenant's fetch resolved. In a dropdown that writes the chosen name onto a recipe, that is a silently wrong cross-tenant mapping, not a cosmetic flicker.
+- **Correction:** Scope the placeholder to the axis it was meant for, using the second argument: `placeholderData: (previous, previousQuery) => previousQuery?.queryKey[1] === restaurantId ? previous : undefined`.
+- **Rule:** `keepPreviousData` keeps data across *every* key change, not the one you had in mind. Whenever the query key mixes a "pagination-like" axis (search, page, filter) with an "identity" axis (tenant, user, account), gate the placeholder on the identity axis explicitly. Test it by rerendering with a changed identity and asserting the list is empty *before* the new fetch resolves — and prove the test bites by reverting to `(previous) => previous`.
+
+## Category: UI Patterns (continued)
+
+### [2026-07-29] An error state inside cmdk's `CommandEmpty` is invisible on exactly the accounts that have data
+- **Mistake:** Both POS comboboxes rendered their "couldn't load POS items" message inside `<CommandEmpty>`. With `shouldFilter={false}`, cmdk renders `CommandEmpty` only when **zero items are registered** — and these lists register a row per recipe, plus a "Clear selection" entry. So any restaurant with recipes never saw the failure: the dropdown looked like an ordinary list that merely happened to omit POS items, inviting the user to create a duplicate of an item that already exists. The emptier the account, the more visible the error — exactly backwards.
+- **Correction:** Hoist the error block to a direct child of `<CommandList>`, gated on `error && !loading`. Fixed in one component during the build and missed in its sibling, which a reviewer then caught — the same defect twice in one diff.
+- **Rule:** `CommandEmpty` means "no rows registered", not "no results for this query" and never "something failed". Put loading/error/empty states outside it. And when you fix a pattern-level defect in one component, grep for the pattern across siblings in the same diff before calling it done.
+
+## Category: Accessibility (continued)
+
+### [2026-07-29] shadcn's `FormControl` can lose the label association from *both* directions
+- **Mistake — direction 1 (props vanish):** `FormControl` uses Radix `Slot` to inject `id`, `aria-describedby` and `aria-invalid` into its single child. When that child is a *function component* whose root is a `<Popover>` rather than a DOM node, the props arrive as ordinary React props and are dropped unless forwarded by hand. `FormLabel` renders `htmlFor={formItemId}` pointing at an id that exists nowhere, and the field is unlabelled for screen readers. Fixed by widening the props (`id`, `aria-describedby`, `aria-invalid`) and spreading them onto the `role="combobox"` trigger.
+- **Mistake — direction 2 (id overridden):** found while writing the test for direction 1. The adjacent `<Input>` carried a hardcoded `id="pos-item-id"`, which **overrode** the id `FormControl` generates — so that label pointed at nothing either. A pre-existing bug, invisible because the field still looked fine.
+- **Rule:** Inside a `FormField`, never hardcode an `id` on the `FormControl` child, and if the child isn't a plain DOM element, forward `id`/`aria-describedby`/`aria-invalid` explicitly. The cheap test for both directions is the same one line: `expect(screen.getByLabelText('<label text>')).toHaveAttribute('role', 'combobox')` — `getByLabelText` fails on a dangling association, which no snapshot or source-text assertion will catch.
 ## Category: Database Migrations (continued)
 
 ### [2026-07-29] A migration prefix is only unique against the *merged* set — CI builds the merge ref, so `ls` on your branch cannot see the collision

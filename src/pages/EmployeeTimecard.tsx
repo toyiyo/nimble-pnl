@@ -25,6 +25,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { format, eachDayOfInterval, isSameDay } from 'date-fns';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { hoursByClockInDay } from '@/utils/timecardHours';
 import { TimePunch } from '@/types/timeTracking';
@@ -96,7 +97,7 @@ const EmployeeTimecard = () => {
     weekDays.forEach((day) => {
       // weekDays are calendar-day tokens, so local fields are the correct
       // serialization here -- do NOT route these through the clock.
-      const dayKey = format(day, 'yyyy-MM-dd');
+      const dayKey = toDateOnlyString(day);
       grouped.set(dayKey, []);
     });
 
@@ -246,7 +247,7 @@ const EmployeeTimecard = () => {
           ) : (
             <div className="space-y-4">
               {weekDays.map((day) => {
-                const dayKey = format(day, 'yyyy-MM-dd');
+                const dayKey = toDateOnlyString(day);
                 const dayPunches = punchesByDay.get(dayKey) || [];
                 const dayStats = dayHours.get(dayKey) ?? { totalHours: 0, breakHours: 0, netHours: 0 };
                 const isToday = isSameDay(day, new Date());

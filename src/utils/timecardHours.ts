@@ -1,6 +1,6 @@
-import { format } from 'date-fns';
 import { TimePunch } from '@/types/timeTracking';
 import { toBusinessDay } from '@/lib/restaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { processPunchesForPeriod } from '@/utils/timePunchProcessing';
 
 export interface DayHours {
@@ -27,7 +27,7 @@ export function hoursByClockInDay(
   const result = new Map<string, DayHours>();
   for (const day of days) {
     // `days` are calendar-day tokens, so local fields are correct here.
-    result.set(format(day, 'yyyy-MM-dd'), { totalHours: 0, breakHours: 0, netHours: 0 });
+    result.set(toDateOnlyString(day), { totalHours: 0, breakHours: 0, netHours: 0 });
   }
 
   const { sessions } = processPunchesForPeriod(punches);

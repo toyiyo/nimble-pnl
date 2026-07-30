@@ -114,6 +114,7 @@ import {
   CalendarOff,
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -286,7 +287,7 @@ const Scheduling = () => {
 
   // stable 'yyyy-MM-dd' keys for the 7 visualized days
   const weekDayKeys = useMemo(
-    () => weekDays.map((d) => format(d, 'yyyy-MM-dd')),
+    () => weekDays.map((d) => toDateOnlyString(d)),
     [weekDays],
   );
   // per-employee approved-time-off context for the week
@@ -413,7 +414,7 @@ const Scheduling = () => {
     () => filteredEmployeesWithShifts.map((e) => e.id).join(','),
     [filteredEmployeesWithShifts],
   );
-  const weekStartKey = useMemo(() => format(currentWeekStart, 'yyyy-MM-dd'), [currentWeekStart]);
+  const weekStartKey = useMemo(() => toDateOnlyString(currentWeekStart), [currentWeekStart]);
 
   const effectiveAvailabilityByEmployee = useMemo(() => {
     const employeeIds = visibleEmployeeIdsKey ? visibleEmployeeIdsKey.split(',') : [];
@@ -1196,7 +1197,7 @@ const Scheduling = () => {
                           {selectionMode ? (
                             <button
                               type="button"
-                              onClick={() => selectShiftsForDay(format(day, 'yyyy-MM-dd'))}
+                              onClick={() => selectShiftsForDay(toDateOnlyString(day))}
                               className="w-full cursor-pointer text-primary hover:underline transition-colors"
                               aria-label={`Select all shifts for ${format(day, 'EEEE, MMMM d')}`}
                             >
@@ -1365,7 +1366,7 @@ const Scheduling = () => {
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
                               const dayIsToday = isToday(day);
-                              const dayKey = format(day, 'yyyy-MM-dd');
+                              const dayKey = toDateOnlyString(day);
                               const isOff = !!empOff?.offDayKeys.has(dayKey);
                               const hasShift = dayShifts.some(s => s.status !== 'cancelled');
                               return (

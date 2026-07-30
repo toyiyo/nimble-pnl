@@ -877,16 +877,20 @@ export function calculateActualLaborCostForMonth(
 
     if (compType !== 'hourly') {
       // No OT to band — call calculateEmployeePay over the calendar-month window.
-      // TODO(task-10): pass `businessDay` here once calculateEmployeePay's
-      // signature grows the businessDay parameter. Until then this branch
-      // (salary/contractor/daily_rate) still buckets by host-local calendar
-      // day inside calculateEmployeePay itself.
+      // daily_rate counts its days inside that call, so it needs the frame to
+      // agree with the rest of this function's bucketing.
       const pay = calculateEmployeePay(
         employee,
         employeePunches,
         0, // tips intentionally 0; tipsOwed added separately below
         monthStart,
-        monthEnd
+        monthEnd,
+        [],
+        0,
+        undefined,
+        [],
+        false,
+        businessDay
       );
       wagesCents +=
         pay.regularPay + pay.overtimePay + pay.doubleTimePay +
@@ -923,18 +927,24 @@ export function calculateActualLaborCostForMonth(
       const weekStart = new Date(weekKey + 'T12:00:00');
       const weekEnd = endOfWeek(weekStart, { weekStartsOn: WEEK_STARTS_ON });
 
-      // TODO(task-10): pass `businessDay` here once calculateEmployeePay's
-      // signature grows the businessDay parameter. This weekly call is only
-      // used for OT banding (weekWageCents below); per-day attribution for
-      // the [monthStart, monthEnd] clip is handled explicitly by
-      // toBusinessDayFor(...) at the dateKey assignment below, so this
-      // pending TODO does not affect this task's cutoff routing.
+      // Used only for OT banding (weekWageCents below) — per-day attribution
+      // for the [monthStart, monthEnd] clip is done explicitly by
+      // toBusinessDayFor(...) at the dateKey assignment further down. Passing
+      // the frame here keeps the daily OT thresholds inside calculateEmployeePay
+      // on the same day boundaries as that attribution; otherwise an overnight
+      // shift could cross a daily-OT threshold in one framing and not the other.
       const pay = calculateEmployeePay(
         employee,
         weekPunches,
         0,
         weekStart,
-        weekEnd
+        weekEnd,
+        [],
+        0,
+        undefined,
+        [],
+        false,
+        businessDay
       );
       const weekWageCents = pay.regularPay + pay.overtimePay + pay.doubleTimePay;
       if (weekWageCents <= 0) continue;

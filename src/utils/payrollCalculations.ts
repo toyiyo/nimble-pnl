@@ -13,6 +13,11 @@ import {
   type OvertimeAdjustment,
 } from '@/lib/overtimeCalculations';
 import { periodsInWindow, incompleteShiftsInWindow } from '@/utils/punchWindow';
+import {
+  toBusinessDayFor,
+  HOST_CALENDAR_DAY_FRAME,
+  type BusinessDayConfig,
+} from '@/lib/businessDay';
 
 // Maximum shift length in hours (shifts longer than this are flagged as incomplete)
 const MAX_SHIFT_HOURS = 16;
@@ -435,6 +440,10 @@ export function calculateRegularAndOvertimeHours(totalHours: number): {
  * For hourly: partitions punches by calendar week and computes overtime
  * For salary/contractor: calculates prorated pay for the period
  * For daily_rate: counts unique days worked and multiplies by daily rate
+ *
+ * Every day boundary here -- OT banding, weekly grouping, tip proration, and
+ * the daily_rate day count -- is the restaurant's BUSINESS day, taken from the
+ * shift's clock-in instant. See the businessDay parameter.
  */
 export function calculateEmployeePay(
   employee: Employee,
@@ -453,7 +462,15 @@ export function calculateEmployeePay(
   // calculateActualLaborCostForMonth intentionally leaves this false: it
   // pre-buckets by ISO week and passes NOON-anchored bounds this filter would
   // misinterpret.
-  attributeToWindow: boolean = false
+  attributeToWindow: boolean = false,
+  // The restaurant's business-day framing. Defaults to the HOST zone with no
+  // cutoff -- the frame that reproduces this function's pre-cutoff output byte
+  // for byte -- solely because ~60 pre-existing test call sites pass three
+  // arguments and cannot reach an 11th positional parameter. Production call
+  // sites all pass a real restaurant frame; payrollBusinessDayCallSites.test.ts
+  // fails if a new one forgets. See HOST_CALENDAR_DAY_FRAME for why the
+  // fallback is the host zone rather than UTC.
+  businessDay: BusinessDayConfig = HOST_CALENDAR_DAY_FRAME
 ): EmployeePayroll {
   const compensationType = employee.compensation_type || 'hourly';
 
@@ -482,14 +499,14 @@ export function calculateEmployeePay(
 
     for (const period of parsed.periods) {
       if (period.isBreak) continue;
-      // Band OT (and prorate tips) by the shift's clock-in day, not the segment
-      // start. handleBreakEnd advances the clock-in anchor, so a break-after-
+      // Band OT (and prorate tips) by the shift's clock-in BUSINESS day, not the
+      // segment start. handleBreakEnd advances the clock-in anchor, so a break-after-
       // midnight segment's startTime is the next day/week; keying off clockIn
       // keeps the whole shift's hours in its clock-in day/week for daily+weekly
       // OT and tip proration. Same day as startTime for all non-break-crossing
       // shifts, so only the overnight break case changes. clockIn is a required
       // WorkPeriod field (set on every parseWorkPeriods push site).
-      const dateKey = format(new Date(period.clockIn), 'yyyy-MM-dd');
+      const dateKey = toBusinessDayFor(period.clockIn, businessDay);
       hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
     }
 
@@ -551,19 +568,46 @@ export function calculateEmployeePay(
     contractorPay = calculateContractorPayForPeriod(employee, periodStartDate, periodEndDate);
     
   } else if (compensationType === 'daily_rate' && periodStartDate && periodEndDate) {
-    // Daily rate: count unique days with punches
+    // Daily rate: count unique BUSINESS days worked, one per shift.
+    //
+    // Was: iterate raw punches and key each one by its own calendar day. That
+    // counted a 6 PM -> 3 AM shift twice -- the clock_in day and the clock_out
+    // day -- paying two full daily rates for one shift. Pairing punches into
+    // work periods first and keying only the clock-in makes a shift contribute
+    // exactly one day, which is what a "daily rate" means.
     const uniqueDays = new Set<string>();
-    
-    punches.forEach(punch => {
-      const dateKey = format(new Date(punch.punch_time), 'yyyy-MM-dd');
-      const punchDate = new Date(dateKey);
-      
-      // Only count days within the pay period
-      if (punchDate >= periodStartDate && punchDate <= periodEndDate) {
+    const parsed = parseWorkPeriods(punches);
+
+    // Window bounds compared as calendar-day TOKENS, not instants. The business
+    // day is already a YYYY-MM-DD string, and ISO dates sort lexicographically,
+    // so string comparison is exact. Reconstructing a Date from the key would
+    // reintroduce the `new Date('YYYY-MM-DD')`-is-UTC-midnight bug this branch
+    // used to carry.
+    const windowStart = format(periodStartDate, 'yyyy-MM-dd');
+    const windowEnd = format(periodEndDate, 'yyyy-MM-dd');
+
+    for (const period of parsed.periods) {
+      if (period.isBreak) continue;
+      const dateKey = toBusinessDayFor(period.clockIn, businessDay);
+      if (dateKey >= windowStart && dateKey <= windowEnd) {
         uniqueDays.add(dateKey);
       }
-    });
-    
+    }
+
+    // An unpaired punch never becomes a period, but the employee did show up
+    // and is owed the day -- dropping it would UNDERPAY, which is worse than
+    // the double-charge being fixed above. Anchor on the punch we have:
+    // punchTime is the clock-in for missing_clock_out / shift_too_long, and the
+    // clock-out for missing_clock_in. An orphaned 3 AM clock-out still lands on
+    // the prior business day under any cutoff >= 3, which is the intent.
+    // shift_too_long also emits a period, so the Set absorbs the overlap.
+    for (const incomplete of parsed.incompleteShifts) {
+      const dateKey = toBusinessDayFor(incomplete.punchTime, businessDay);
+      if (dateKey >= windowStart && dateKey <= windowEnd) {
+        uniqueDays.add(dateKey);
+      }
+    }
+
     daysWorked = uniqueDays.size;
     dailyRatePay = calculateDailyRatePay(employee, daysWorked);
   }
@@ -667,7 +711,11 @@ export function calculatePayrollPeriod(
   manualPaymentsPerEmployee: Map<string, ManualPayment[]> = new Map(),
   tipPayoutsPerEmployee: Map<string, number> = new Map(),
   overtimeRules?: OTRules,
-  overtimeAdjustments: OvertimeAdjustment[] = []
+  overtimeAdjustments: OvertimeAdjustment[] = [],
+  // Same defaulting rationale as calculateEmployeePay's businessDay: kept
+  // optional only for pre-existing 5-to-9-argument test call sites. usePayroll
+  // passes the restaurant's real frame.
+  businessDay: BusinessDayConfig = HOST_CALENDAR_DAY_FRAME
 ): PayrollPeriod {
   const employeePayrolls = employees.map(employee => {
     const punches = punchesPerEmployee.get(employee.id) || [];
@@ -675,7 +723,7 @@ export function calculatePayrollPeriod(
     const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
     const tipsPaidOut = tipPayoutsPerEmployee.get(employee.id) || 0;
     // Pass period dates for salary/contractor calculations
-    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments, true);
+    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments, true, businessDay);
   });
 
   const totalRegularHours = employeePayrolls.reduce((sum, ep) => sum + ep.regularHours, 0);

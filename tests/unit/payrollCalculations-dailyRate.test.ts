@@ -20,8 +20,14 @@ describe('Payroll Calculations - Daily Rate', () => {
     tip_eligible: true,
   };
 
-  const periodStartDate = new Date('2024-01-01');
-  const periodEndDate = new Date('2024-01-07');
+  // CALENDAR-DAY TOKENS, built from local components. Production bounds come
+  // from usePeriodNavigation's startOfWeek(), which yields LOCAL midnight, and
+  // the punch fixtures below are naive strings parsed in the host zone -- so
+  // bounds and fixtures must live in the same frame. `new Date('2024-01-01')`
+  // parses as UTC midnight, which is Dec 31 west of Greenwich; using it here
+  // would put bounds and fixtures a day apart and pin the wrong behavior.
+  const periodStartDate = new Date(2024, 0, 1);
+  const periodEndDate = new Date(2024, 0, 7);
 
   describe('calculateEmployeePay - daily_rate', () => {
     it('calculates pay based on unique days with punches', () => {

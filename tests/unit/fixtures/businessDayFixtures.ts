@@ -1,3 +1,5 @@
+import { HOST_CALENDAR_DAY_FRAME } from '@/lib/businessDay';
+
 /**
  * Shared fixture corpus for the business-day cutoff.
  *
@@ -111,8 +113,8 @@ export const LEGACY_UTC_FRAME = { tz: 'UTC', cutoffHour: 0 } as const;
  * picking the wrong one is invisible in a default CI runner and shows up only
  * east of Greenwich. Resolving the host zone here keeps fixture and frame
  * moving together in every zone the tz matrix exercises.
+ *
+ * Aliases the production default so the two can never drift: this IS the frame
+ * calculateEmployeePay falls back to when no config is threaded.
  */
-export const HOST_LOCAL_FRAME = {
-  tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  cutoffHour: 0,
-} as const;
+export const HOST_LOCAL_FRAME = HOST_CALENDAR_DAY_FRAME;

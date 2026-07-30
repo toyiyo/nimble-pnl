@@ -5,9 +5,10 @@ import {
   calculateActualLaborCostForMonth,
   calculateScheduledLaborCost,
 } from '@/services/laborCalculations';
-import { parseWorkPeriods } from '@/utils/payrollCalculations';
+import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculations';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
+import type { OvertimeRules } from '@/lib/overtimeCalculations';
 
 /**
  * THE structural guarantee against under/overpayment.
@@ -251,6 +252,171 @@ describe('scheduled and actual bucket identically', () => {
           `cutoff ${cutoffHour}, ${day.date}: scheduled and actual disagree`,
         ).toBeCloseTo(actualDay?.hours_worked ?? 0, 6);
       }
+    }
+  });
+});
+
+/**
+ * The PAYROLL path (task 10). Everything above buckets labor COST for the
+ * dashboard; these pin what an employee is actually PAID.
+ */
+describe('payroll: daily_rate charges one rate per shift', () => {
+  const cutoffs = Array.from({ length: 12 }, (_, h) => h);
+  const DAILY_RATE_CENTS = 15000;
+
+  // Local-component calendar-day tokens: production bounds come from
+  // usePeriodNavigation's startOfWeek(), which is local midnight.
+  const PERIOD_START = new Date(2026, 6, 26);
+  const PERIOD_END = new Date(2026, 7, 1, 23, 59, 59, 999);
+
+  it.each(cutoffs)(
+    'cutoff %i pays 3 daily rates for 3 shifts, never 6 for the days they span',
+    (cutoffHour) => {
+      const result = calculateEmployeePay(
+        dailyRate('e4', DAILY_RATE_CENTS),
+        PUNCHES.map((p) => ({ ...p, employee_id: 'e4' })),
+        0, PERIOD_START, PERIOD_END, [], 0, undefined, [], true,
+        { tz: TZ, cutoffHour },
+      );
+      expect(result.daysWorked).toBe(3);
+      expect(result.dailyRatePay).toBe(3 * DAILY_RATE_CENTS);
+    },
+  );
+
+  it('counts the FIRST day of the pay period -- regression, it used to be dropped', () => {
+    // Jul 27 10:00 CDT, on the period's opening day. The old branch compared
+    // `new Date('2026-07-27')` (UTC midnight) against a local-midnight bound;
+    // west of Greenwich UTC midnight sorts EARLIER, so the day fell outside the
+    // window and the employee was underpaid one full daily rate every period.
+    const result = calculateEmployeePay(
+      dailyRate('e4', 15000),
+      pair('e4', '2026-07-27T15:00:00.000Z', '2026-07-27T23:00:00.000Z'),
+      0, new Date(2026, 6, 27), new Date(2026, 7, 1, 23, 59, 59, 999),
+      [], 0, undefined, [], true,
+      { tz: TZ, cutoffHour: 0 },
+    );
+    expect(result.daysWorked).toBe(1);
+    expect(result.dailyRatePay).toBe(15000);
+  });
+
+  it('rolls a 1 AM start onto the prior business day at cutoff 2', () => {
+    // 01:00 CDT Jul 29 -> Jul 28, plus a 10:00 CDT Jul 28 shift -> Jul 28.
+    // Two shifts, ONE business day, so one daily rate.
+    const punches = [
+      ...pair('e4', '2026-07-28T15:00:00.000Z', '2026-07-28T23:00:00.000Z'),
+      ...pair('e4', '2026-07-29T06:00:00.000Z', '2026-07-29T12:00:00.000Z'),
+    ];
+    const args = [
+      0, new Date(2026, 6, 26), new Date(2026, 7, 1, 23, 59, 59, 999),
+      [], 0, undefined, [], true,
+    ] as const;
+
+    const atCutoff2 = calculateEmployeePay(
+      dailyRate('e4', 15000), punches, ...args, { tz: TZ, cutoffHour: 2 },
+    );
+    expect(atCutoff2.daysWorked).toBe(1);
+
+    // At cutoff 0 the same two shifts are two calendar days -- proving the
+    // cutoff, not the pairing, is what merged them.
+    const atCutoff0 = calculateEmployeePay(
+      dailyRate('e4', 15000), punches, ...args, { tz: TZ, cutoffHour: 0 },
+    );
+    expect(atCutoff0.daysWorked).toBe(2);
+  });
+
+  it('still pays a day when the clock-out is missing -- never underpay', () => {
+    const orphan = [
+      { id: 'o-in', employee_id: 'e4', restaurant_id: 'r1',
+        punch_type: 'clock_in', punch_time: '2026-07-28T23:00:00.000Z' } as TimePunch,
+    ];
+    const result = calculateEmployeePay(
+      dailyRate('e4', 15000), orphan,
+      0, new Date(2026, 6, 26), new Date(2026, 7, 1, 23, 59, 59, 999),
+      [], 0, undefined, [], true,
+      { tz: TZ, cutoffHour: 2 },
+    );
+    expect(result.daysWorked).toBe(1);
+    expect(result.dailyRatePay).toBe(15000);
+  });
+});
+
+describe('payroll: hourly OT bands by business day', () => {
+  const OT_RULES: OvertimeRules = {
+    weeklyThresholdHours: 40,
+    weeklyOtMultiplier: 1.5,
+    dailyThresholdHours: 8,
+    dailyOtMultiplier: 1.5,
+    dailyDoubleThresholdHours: 12,
+    dailyDoubleMultiplier: 2,
+    excludeTipsFromOtRate: false,
+  };
+
+  const PERIOD_START = new Date(2026, 6, 26);
+  const PERIOD_END = new Date(2026, 7, 1, 23, 59, 59, 999);
+
+  // ONE 9-hour overnight shift: 18:00 CDT Jul 28 -> 03:00 CDT Jul 29.
+  const OVERNIGHT = pair('e1', '2026-07-28T23:00:00.000Z', '2026-07-29T08:00:00.000Z');
+
+  it('keeps a 9h overnight shift whole, so it crosses the 8h daily OT threshold', () => {
+    const result = calculateEmployeePay(
+      hourly('e1', 2000), OVERNIGHT,
+      0, PERIOD_START, PERIOD_END, [], 0, OT_RULES, [], true,
+      { tz: TZ, cutoffHour: 2 },
+    );
+    // 9h on one business day = 8 regular + 1 daily OT. Split 6h/3h across two
+    // days it would be 9 regular and 0 OT -- underpaying an hour of premium.
+    expect(result.regularHours).toBeCloseTo(8, 6);
+    expect(result.dailyOvertimeHours).toBeCloseTo(1, 6);
+    expect(result.regularHours + result.overtimeHours).toBeCloseTo(9, 6);
+  });
+
+  it('the CUTOFF, not the pairing, decides whether two shifts share an OT day', () => {
+    // 10:00-18:00 CDT Jul 28 (8h) and 01:00-04:00 CDT Jul 29 (3h). Two separate
+    // shifts, so whole-shift attribution alone cannot merge them -- only the
+    // cutoff can. This is the discriminating case: an overnight shift already
+    // lands on its clock-in day at cutoff 0, so it proves nothing about cutoffs.
+    const punches = [
+      ...pair('e1', '2026-07-28T15:00:00.000Z', '2026-07-28T23:00:00.000Z'),
+      ...pair('e1', '2026-07-29T06:00:00.000Z', '2026-07-29T09:00:00.000Z'),
+    ];
+    const call = (cutoffHour: number) =>
+      calculateEmployeePay(
+        hourly('e1', 2000), punches,
+        0, PERIOD_START, PERIOD_END, [], 0, OT_RULES, [], true,
+        { tz: TZ, cutoffHour },
+      );
+
+    // Cutoff 0: 8h on Jul 28 and 3h on Jul 29, neither over the 8h threshold.
+    const atZero = call(0);
+    expect(atZero.dailyOvertimeHours).toBeCloseTo(0, 6);
+    expect(atZero.regularHours).toBeCloseTo(11, 6);
+
+    // Cutoff 2: the 01:00 start rolls back onto Jul 28, making it an 11h
+    // business day -- 8 regular + 3 at the daily OT premium.
+    const atTwo = call(2);
+    expect(atTwo.dailyOvertimeHours).toBeCloseTo(3, 6);
+    expect(atTwo.regularHours).toBeCloseTo(8, 6);
+
+    // Real money, not just a relabelling: those 3h move to the 1.5x rate.
+    expect(atTwo.overtimePay - atZero.overtimePay).toBe(3 * 2000 * 1.5);
+    expect(atTwo.grossPay).toBeGreaterThan(atZero.grossPay);
+  });
+
+  it('conserves total hours across every cutoff', () => {
+    const expected = parseWorkPeriods(OVERNIGHT).periods
+      .filter((p) => !p.isBreak)
+      .reduce((sum, p) => sum + p.hours, 0);
+
+    for (let cutoffHour = 0; cutoffHour <= 11; cutoffHour++) {
+      const result = calculateEmployeePay(
+        hourly('e1', 2000), OVERNIGHT,
+        0, PERIOD_START, PERIOD_END, [], 0, OT_RULES, [], true,
+        { tz: TZ, cutoffHour },
+      );
+      expect(
+        result.regularHours + result.overtimeHours,
+        `cutoff ${cutoffHour} lost or invented hours`,
+      ).toBeCloseTo(expected, 6);
     }
   });
 });

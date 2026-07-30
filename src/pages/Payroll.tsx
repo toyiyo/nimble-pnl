@@ -172,7 +172,10 @@ const Payroll = () => {
     isAddingPayment,
     adjustOvertime,
     isAdjustingOvertime,
-  } = usePayroll(restaurantId, start, end);
+  } = usePayroll(restaurantId, start, end, {
+    tz: selectedRestaurant?.restaurant?.timezone,
+    cutoffHour: selectedRestaurant?.restaurant?.business_day_start_hour,
+  });
   
   const { employees } = useEmployees(restaurantId);
   

@@ -71,3 +71,27 @@ export function toBusinessDay(
 export function toBusinessDayFor(instant: Date | string, cfg: BusinessDayConfig): string {
   return toBusinessDay(instant, cfg.tz, cfg.cutoffHour);
 }
+
+/**
+ * The frame that reproduces pre-cutoff bucketing byte for byte: the HOST zone,
+ * no cutoff.
+ *
+ * Only two functions default to this -- calculateEmployeePay and
+ * calculatePayrollPeriod -- because ~60 pre-existing test call sites pass three
+ * arguments and cannot reach a trailing positional parameter. Every PRODUCTION
+ * call site passes a real restaurant frame explicitly; a guard test asserts it.
+ *
+ * The host zone, not UTC. The code being replaced formatted with date-fns
+ * `format()`, which reads the host's local fields -- the browser's zone in
+ * production. Defaulting to UTC would therefore be a silent behavior CHANGE for
+ * every non-UTC restaurant if a call site were ever missed, and payroll is the
+ * wrong place to learn that. Defaulting to the host makes a missed call site
+ * degrade to exactly today's numbers instead of to different wrong ones.
+ *
+ * Resolved once at module load: Intl reports the process zone, which a test
+ * runner pins via TZ before any module evaluates.
+ */
+export const HOST_CALENDAR_DAY_FRAME: BusinessDayConfig = {
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  cutoffHour: DEFAULT_BUSINESS_DAY_START_HOUR,
+};

@@ -10,6 +10,7 @@
  * buffer.
  */
 import React, { type ReactNode } from 'react';
+import { HOST_LOCAL_FRAME } from './fixtures/businessDayFixtures';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -80,7 +81,7 @@ describe('usePayroll time_punches fetch range', () => {
     const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
 
     const { result } = renderHook(
-      () => usePayroll('rest-1', startDate, endDate),
+      () => usePayroll('rest-1', startDate, endDate, HOST_LOCAL_FRAME),
       { wrapper: createWrapper() },
     );
 

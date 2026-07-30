@@ -18,6 +18,7 @@ import {
 } from '@/utils/tipAggregation';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import type { BusinessDayConfig } from '@/lib/businessDay';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -103,11 +104,17 @@ interface DBOvertimeAdjustment {
 
 /**
  * Hook to fetch and calculate payroll for a given period
+ *
+ * @param businessDay - The restaurant's business-day framing (timezone + cutoff
+ *   hour). A parameter rather than a RestaurantContext read, for the same
+ *   reason restaurantId is: this hook is rendered in tests without a provider,
+ *   and reading context would make it unrenderable there.
  */
 export function usePayroll(
   restaurantId: string | null,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  businessDay: BusinessDayConfig
 ) {
   // Fetch ALL employees (including inactive) for historical payroll accuracy
   // An employee deactivated today should still show their past work/salary
@@ -115,8 +122,13 @@ export function usePayroll(
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Destructured to primitives so they can go into the query key individually.
+  // The cutoff frames every day boundary in the result, so a restaurant that
+  // changes its cutoff must not be served the old cached payroll.
+  const { tz, cutoffHour } = businessDay;
+
   const { data: payrollPeriod, isLoading, error, refetch } = useQuery({
-    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString()],
+    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), tz, cutoffHour],
     queryFn: async (): Promise<PayrollPeriod | null> => {
       if (!restaurantId) return null;
 
@@ -320,6 +332,7 @@ export function usePayroll(
         tipPayoutsPerEmployee,
         overtimeRules,
         overtimeAdjustments,
+        { tz, cutoffHour },
       );
     },
     enabled: !!restaurantId && !!employees.length,

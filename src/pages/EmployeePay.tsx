@@ -55,7 +55,10 @@ const EmployeePay = () => {
   } = usePeriodNavigation({ includeLast2Weeks: true });
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
-  const { payrollPeriod, loading: payrollLoading, error } = usePayroll(restaurantId, startDate, endDate);
+  const { payrollPeriod, loading: payrollLoading, error } = usePayroll(restaurantId, startDate, endDate, {
+    tz: selectedRestaurant?.restaurant?.timezone,
+    cutoffHour: selectedRestaurant?.restaurant?.business_day_start_hour,
+  });
 
   // Find current employee's payroll data
   const myPayroll = useMemo(() => {

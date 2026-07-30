@@ -19,6 +19,7 @@
  *      error, but a page-cap is a safety signal, not a query failure).
  */
 import React, { type ReactNode } from 'react';
+import { HOST_LOCAL_FRAME } from './fixtures/businessDayFixtures';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -109,7 +110,7 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
     const endDate = new Date('2026-03-08T23:59:59.999Z');
 
     const { result } = renderHook(
-      () => usePayroll('rest-1', startDate, endDate),
+      () => usePayroll('rest-1', startDate, endDate, HOST_LOCAL_FRAME),
       { wrapper: createWrapper() },
     );
 
@@ -167,7 +168,7 @@ describe('usePayroll time_punches pagination (1000-row cap fix)', () => {
     const endDate = new Date('2026-03-08T23:59:59.999Z');
 
     const { result } = renderHook(
-      () => usePayroll('rest-1', startDate, endDate),
+      () => usePayroll('rest-1', startDate, endDate, HOST_LOCAL_FRAME),
       { wrapper: createWrapper() },
     );
 

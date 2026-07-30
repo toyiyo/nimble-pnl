@@ -117,7 +117,14 @@ describe('golden master: calculateEmployeePay', () => {
     ['hourly post-midnight', hourly('e3', 1800), POST_MIDNIGHT],
     ['daily_rate overnight', dailyRate('e4', 15000), DAILY_RATE_OVERNIGHT],
   ])('matches the pre-change snapshot: %s', (_label, employee, punches) => {
-    const result = calculateEmployeePay(employee, punches, 0, FROM, TO, [], 0, undefined, [], true);
+    // Explicit restaurant frame, matching the two calculators above. Without it
+    // this call falls back to HOST_CALENDAR_DAY_FRAME and the snapshot would
+    // encode the runner's zone: the daily_rate overnight case counts 2 days
+    // west of Greenwich and 1 day east of it.
+    const result = calculateEmployeePay(
+      employee, punches, 0, FROM, TO, [], 0, undefined, [], true,
+      { tz: RESTAURANT_TZ, cutoffHour: 0 },
+    );
     expect(result).toMatchSnapshot();
   });
 });
@@ -148,6 +155,18 @@ export const ALLOWED_DIFFS: Array<{ snapshot: string; reason: string; expected: 
     expected:
       'e1 row: days_worked 1 (cost unchanged). ' +
       'e4 row: days_worked 1, total_cost_cents 15000 (not 2 / 30000)',
+  },
+  {
+    snapshot:
+      'golden master: calculateEmployeePay > matches the pre-change snapshot: daily_rate overnight',
+    reason:
+      'Third face of the same daily_rate double-charge, now on the PAYROLL path ' +
+      '(task 10). The branch iterated raw punches and keyed each by its own ' +
+      'calendar day, so e4\'s one 18:00 Jul 28 -> 03:00 Jul 29 shift produced ' +
+      'the keys 2026-07-28 and 2026-07-29 and paid two full daily rates. It now ' +
+      'pairs punches into work periods first and keys only the clock-in ' +
+      'business day, so one shift is one day. Design section 3.3.',
+    expected: 'daysWorked 1, dailyRatePay/grossPay/totalPay 15000 (not 2 / 30000)',
   },
 ];
 

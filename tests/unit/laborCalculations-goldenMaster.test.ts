@@ -98,7 +98,9 @@ describe('golden master: calculateActualLaborCost', () => {
 
 describe('golden master: calculateHoursPerEmployee', () => {
   it('matches the pre-change snapshot', () => {
-    const result = calculateHoursPerEmployee(EMPLOYEES, ALL_PUNCHES, FROM, TO);
+    const result = calculateHoursPerEmployee(
+      EMPLOYEES, ALL_PUNCHES, FROM, TO, { tz: RESTAURANT_TZ, cutoffHour: 0 },
+    );
     expect(result).toMatchSnapshot();
   });
 });
@@ -127,6 +129,20 @@ export const ALLOWED_DIFFS: Array<{ snapshot: string; reason: string; expected: 
       'The old day-spanning loop charged a full daily rate on both Jul 28 and Jul 29. ' +
       'Design section 3.3.',
     expected: 'daily_rate_cost totals $150.00 across the range, not $300.00',
+  },
+  {
+    snapshot: 'golden master: calculateHoursPerEmployee > matches the pre-change snapshot',
+    reason:
+      'Same fix, rerouted the same way (task 6): both e1 (hourly) and e4 ' +
+      '(daily_rate) worked ONE overnight shift each, so activeDays -- previously ' +
+      'every calendar day the period touched -- now holds exactly the clock-in ' +
+      'business day. days_worked drops from 2 to 1 for both. Only e4 (daily_rate) ' +
+      'also loses a cost charge: total_cost_cents 30000 -> 15000, since e1 (hourly) ' +
+      'is costed via hours_per_day, which was already keyed by the start day and ' +
+      'is unaffected. Design section 3.3.',
+    expected:
+      'e1 row: days_worked 1 (cost unchanged). ' +
+      'e4 row: days_worked 1, total_cost_cents 15000 (not 2 / 30000)',
   },
 ];
 

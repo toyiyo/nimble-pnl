@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateActualLaborCost } from '@/services/laborCalculations';
+import { calculateActualLaborCost, calculateHoursPerEmployee } from '@/services/laborCalculations';
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
@@ -100,5 +100,33 @@ describe('the reported symptom: an overnight shift lands on its clock-in day', (
     );
     expect(dailyCosts.find((d) => d.date === '2026-07-29')?.hours_worked).toBeCloseTo(6, 6);
     expect(dailyCosts.find((d) => d.date === '2026-07-30')?.hours_worked ?? 0).toBe(0);
+  });
+});
+
+describe('calculateHoursPerEmployee agrees with calculateActualLaborCost', () => {
+  const cutoffs = Array.from({ length: 12 }, (_, h) => h);
+
+  // NOTE: the plan's illustrative code names these fields `daysWorked` /
+  // `totalHours`; EmployeeHoursSummary's real fields are snake_case
+  // (`days_worked` / `total_hours`, per src/services/laborCalculations.ts:130-144
+  // -- same naming convention already documented in Task 3/5's progress notes).
+  it.each(cutoffs)('cutoff %i: days_worked counts shifts, not spanned days', (cutoffHour) => {
+    const [summary] = calculateHoursPerEmployee(
+      [dailyRate('e4', 15000)],
+      PUNCHES.map((p) => ({ ...p, employee_id: 'e4' })),
+      FROM, TO, { tz: TZ, cutoffHour },
+    );
+    // Three shifts, one of them overnight. Three days worked, never four.
+    expect(summary.days_worked).toBe(3);
+  });
+
+  it.each(cutoffs)('cutoff %i: total hours match parseWorkPeriods', (cutoffHour) => {
+    const expected = parseWorkPeriods(PUNCHES).periods
+      .filter((p) => !p.isBreak)
+      .reduce((sum, p) => sum + p.hours, 0);
+    const [summary] = calculateHoursPerEmployee(
+      [hourly('e1', 2000)], PUNCHES, FROM, TO, { tz: TZ, cutoffHour },
+    );
+    expect(summary.total_hours).toBeCloseTo(expected, 6);
   });
 });

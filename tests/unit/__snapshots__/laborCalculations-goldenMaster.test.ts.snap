@@ -211,7 +211,7 @@ exports[`golden master: calculateHoursPerEmployee > matches the pre-change snaps
 [
   {
     "compensation_type": "hourly",
-    "days_worked": 2,
+    "days_worked": 1,
     "employee_id": "e1",
     "employee_name": "Employee e1",
     "hours_per_day": {
@@ -274,14 +274,14 @@ exports[`golden master: calculateHoursPerEmployee > matches the pre-change snaps
   },
   {
     "compensation_type": "daily_rate",
-    "days_worked": 2,
+    "days_worked": 1,
     "employee_id": "e4",
     "employee_name": "Employee e4",
     "hours_per_day": {
       "2026-07-28": 9,
     },
     "position": null,
-    "total_cost_cents": 30000,
+    "total_cost_cents": 15000,
     "total_hours": 9,
     "work_periods": [
       {

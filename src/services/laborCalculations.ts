@@ -683,6 +683,7 @@ export function calculateHoursPerEmployee(
   timePunches: TimePunch[],
   startDate: Date,
   endDate: Date,
+  businessDay: BusinessDayConfig,
 ): EmployeeHoursSummary[] {
   const punchesByEmployee = new Map<string, TimePunch[]>();
   timePunches.forEach((punch) => {
@@ -699,29 +700,23 @@ export function calculateHoursPerEmployee(
       (p) => p.startTime >= startDate && p.startTime <= endDate,
     );
 
-    // hoursPerDay is keyed by the period's start day (matches
-    // calculateActualLaborCost's hoursPerEmployeePerDay). activeDays tracks
-    // every calendar day a period touches — used for daily_rate cost so an
-    // overnight period (start day → next day) is charged for both days, in
-    // parity with calculateActualLaborCost's employeesActivePerDay loop.
+    // hoursPerDay and activeDays are both keyed by the BUSINESS day of the
+    // period's clock-in, in the restaurant's zone (matches
+    // calculateActualLaborCost's hoursPerEmployeePerDay /
+    // employeesActivePerDay). Previously activeDays spanned every calendar day
+    // a period touched, so an overnight period was charged a daily_rate for
+    // both days it touched -- design section 3.3. A shift is never split, so
+    // it contributes exactly one active day.
     const hoursPerDay: Record<string, number> = {};
     const activeDays = new Set<string>();
     let totalHours = 0;
 
     periods.forEach((period) => {
       if (period.isBreak) return;
-      const start = new Date(period.startTime);
-      const end = new Date(period.endTime);
-      const startDay = formatLocalDate(start);
-      hoursPerDay[startDay] = (hoursPerDay[startDay] ?? 0) + period.hours;
+      const day = toBusinessDayFor(period.clockIn ?? period.startTime, businessDay);
+      hoursPerDay[day] = (hoursPerDay[day] ?? 0) + period.hours;
       totalHours += period.hours;
-
-      const dayCursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-      const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-      while (dayCursor <= lastDay) {
-        activeDays.add(formatLocalDate(dayCursor));
-        dayCursor.setDate(dayCursor.getDate() + 1);
-      }
+      activeDays.add(day);
     });
 
     const daysWorked = activeDays.size;

@@ -92,7 +92,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-16T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const summaries = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const summaries = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
 
       expect(summaries).toHaveLength(1);
       const row = summaries[0];
@@ -124,7 +124,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-14T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
 
       expect(row.total_hours).toBeCloseTo(4 + 8 + 6, 4);
       expect(row.days_worked).toBe(3);
@@ -145,7 +145,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-14T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const summaries = calculateHoursPerEmployee([hourlyEmployee], [], start, end);
+      const summaries = calculateHoursPerEmployee([hourlyEmployee], [], start, end, LEGACY_UTC_FRAME);
 
       expect(summaries).toHaveLength(1);
       const [row] = summaries;
@@ -178,7 +178,7 @@ describe('calculateHoursPerEmployee', () => {
       const end = new Date('2026-05-20T23:59:59');
 
       const employees = [hourlyEmployee, salaryEmployee, contractorEmployee];
-      const summaries = calculateHoursPerEmployee(employees, punches, start, end);
+      const summaries = calculateHoursPerEmployee(employees, punches, start, end, LEGACY_UTC_FRAME);
 
       expect(summaries).toHaveLength(3);
       const byId = new Map(summaries.map((s) => [s.employee_id, s]));
@@ -230,7 +230,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-14T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
       const { dailyCosts } = calculateActualLaborCost([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
 
       const summaryKeys = Object.keys(summary.hours_per_day);
@@ -258,7 +258,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-15T00:00:00');
       const end = new Date('2026-05-15T23:59:59');
 
-      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
 
       expect(summary.work_periods.length).toBeGreaterThan(0);
       const breakPeriods = summary.work_periods.filter((p) => p.isBreak);
@@ -322,7 +322,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-16T00:00:00');
       const end = new Date('2026-05-22T23:59:59'); // 7-day window
 
-      const [row] = calculateHoursPerEmployee([employee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([employee], punches, start, end, LEGACY_UTC_FRAME);
 
       // Hourly portion: (8 + 6) h × $20/h = $280 = 28,000 cents
       const expectedHourlyCents = (8 + 6) * 2000;
@@ -356,7 +356,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-16T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
 
       expect(row.total_hours).toBeCloseTo(8, 4);
       expect(row.days_worked).toBe(1);
@@ -366,12 +366,25 @@ describe('calculateHoursPerEmployee', () => {
   });
 
   describe('overnight daily_rate shift', () => {
-    it('charges daily_rate for every calendar day a period touches, matching the breakdown', () => {
-      // Regression for CodeRabbit's finding: a daily_rate employee with one
-      // overnight period (Mon 10pm → Tue 6am) must be charged 2 × daily_rate,
-      // because calculateActualLaborCost marks both days active. Keying off
-      // hours_per_day (start-day only) would credit just 1 day and break
-      // parity with the breakdown.
+    // Formerly "charges daily_rate for every calendar day a period touches" --
+    // that was the bug (design section 3.3). A daily_rate employee with one
+    // overnight period (10pm -> 6am) is billed exactly ONE daily_rate, on the
+    // business day of the clock-in, never 2x for the two calendar days it
+    // touches. calculateActualLaborCost was fixed in task 5;
+    // calculateHoursPerEmployee is rerouted the same way in task 6, and this
+    // test's parity check confirms the two agree again.
+    //
+    // The punches use explicit UTC instants (not the file's usual naive
+    // host-TZ strings) because this case crosses midnight: naive-string
+    // parsing round-trips correctly through the OLD host-local formatLocalDate,
+    // but a business-day frame with an explicit real zone needs the actual
+    // instant pinned so the test is deterministic on any host TZ, CI's UTC
+    // included. 2026-05-20T03:00:00Z == 22:00 CDT May 19; 11:00Z == 06:00 CDT
+    // May 20.
+    const RESTAURANT_TZ = 'America/Chicago';
+    const businessDay = { tz: RESTAURANT_TZ, cutoffHour: 0 };
+
+    it('charges exactly one daily_rate per shift, attributed to the clock-in business day', () => {
       const dailyRateEmployee: Employee = {
         id: 'emp-daily',
         restaurant_id: 'r1',
@@ -388,38 +401,42 @@ describe('calculateHoursPerEmployee', () => {
       } as Employee;
 
       const punches: TimePunch[] = [
-        punch('emp-daily', '2026-05-19T22:00:00', 'clock_in'),
-        punch('emp-daily', '2026-05-20T06:00:00', 'clock_out'),
+        {
+          id: 'emp-daily-in',
+          employee_id: 'emp-daily',
+          restaurant_id: 'r1',
+          punch_type: 'clock_in',
+          punch_time: '2026-05-20T03:00:00.000Z', // 22:00 CDT May 19
+        } as TimePunch,
+        {
+          id: 'emp-daily-out',
+          employee_id: 'emp-daily',
+          restaurant_id: 'r1',
+          punch_type: 'clock_out',
+          punch_time: '2026-05-20T11:00:00.000Z', // 06:00 CDT May 20
+        } as TimePunch,
       ];
 
-      const start = new Date('2026-05-19T00:00:00');
-      const end = new Date('2026-05-20T23:59:59');
+      const start = new Date('2026-05-19T00:00:00.000Z');
+      const end = new Date('2026-05-20T23:59:59.999Z');
 
-      const [row] = calculateHoursPerEmployee([dailyRateEmployee], punches, start, end);
+      const [row] = calculateHoursPerEmployee([dailyRateEmployee], punches, start, end, businessDay);
 
-      // 2 calendar days touched → 2 × $150 = $300
-      expect(row.total_cost_cents).toBe(2 * 15000);
-      expect(row.days_worked).toBe(2);
-      // hours stay attributed to the start day (matches breakdown)
+      // ONE business day (the clock-in day) -> ONE × $150, never $300.
+      expect(row.total_cost_cents).toBe(15000);
+      expect(row.days_worked).toBe(1);
+      // hours stay attributed to the clock-in business day.
       expect(Object.keys(row.hours_per_day)).toEqual(['2026-05-19']);
       expect(row.total_hours).toBeCloseTo(8, 4);
 
-      // Parity check: per-employee daily_rate cost sums back to breakdown total.
-      //
-      // NOTE: parity is intentionally broken here, temporarily. The
-      // business-day cutoff work (design section 3.3) fixes
-      // calculateActualLaborCost's overnight double-charge -- a shift is now
-      // billed exactly ONE daily_rate, not once per calendar day it spans --
-      // so its breakdown now reports $150, not the $300 asserted above for
-      // calculateHoursPerEmployee. calculateHoursPerEmployee still uses the
-      // old day-spanning rule (that's a separate, later task in the same
-      // plan) and parity is restored once it's rerouted the same way.
+      // Parity check: per-employee daily_rate cost sums back to the breakdown
+      // total, using the same business-day frame.
       const { breakdown } = calculateActualLaborCost(
         [dailyRateEmployee],
         punches,
         start,
         end,
-        LEGACY_UTC_FRAME,
+        businessDay,
       );
       expect(Math.round(breakdown.daily_rate.cost * 100)).toBe(15000);
     });

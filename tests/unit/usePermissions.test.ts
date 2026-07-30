@@ -114,7 +114,7 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
       flavor: 'platform',
       builtin: true,
       role_areas: [{ area_key: 'reports', level: 'manage' }],
-      role_flags: ['view:costs', 'view:pay_rates', 'view:employee_pii'],
+      role_flags: [{ flag: 'view:costs' }, { flag: 'view:pay_rates' }, { flag: 'view:employee_pii' }],
     };
 
     it('reports isResolved as false while the context is loading', () => {

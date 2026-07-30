@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch, useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +26,7 @@ import {
   startOfDay, endOfDay
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { editFormToPunchTime, punchToEditForm } from '@/lib/punchEditForm';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
@@ -74,6 +76,7 @@ type VisualizationMode = 'manual' | 'cards' | 'barcode' | 'stream' | 'receipt';
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const clock = useRestaurantClock();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -473,10 +476,9 @@ const TimePunchesManager = () => {
 
   const openEditDialog = (punch: TimePunch) => {
     setEditingPunch(punch);
-    setEditFormData({
-      punch_time: format(new Date(punch.punch_time), "yyyy-MM-dd'T'HH:mm"),
-      notes: punch.notes || '',
-    });
+    // Restaurant wall clock, NOT the browser's. Paired with editFormToPunchTime
+    // on save so an edit that touches only `notes` cannot move the instant.
+    setEditFormData(punchToEditForm(punch, clock.tz));
   };
 
   const closeEditDialog = () => {
@@ -489,7 +491,7 @@ const TimePunchesManager = () => {
 
     updatePunch.mutate({
       id: editingPunch.id,
-      punch_time: new Date(editFormData.punch_time).toISOString(),
+      punch_time: editFormToPunchTime(editFormData, clock.tz),
       notes: editFormData.notes || undefined,
     });
     closeEditDialog();
@@ -1217,7 +1219,9 @@ const TimePunchesManager = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="punch_time">Punch Time</Label>
+              <Label htmlFor="punch_time" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                Punch Time ({clock.tzAbbrev})
+              </Label>
               <Input
                 id="punch_time"
                 type="datetime-local"

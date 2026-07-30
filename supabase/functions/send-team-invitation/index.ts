@@ -10,6 +10,14 @@ const corsHeaders = {
 };
 
 // MIRRORS src/lib/permissions/invitations.ts — keep in sync (default-deny).
+//
+// 'collaborator_custom' is deliberately NOT a member of these arrays, exactly
+// as it is not a member of the `Role` union client-side. It is not a role, it
+// is a *pointer* to one: the actual grant lives in the roles row named by
+// `roleId`, so admitting it here would say nothing about what is being
+// granted. Whether an inviter may invite one is answered by
+// canInviteCustomRole() below, and *which* role they may name is answered by
+// the ownership check in the handler.
 const INVITABLE_ROLES: Record<string, string[]> = {
   // owner can invite every internal + collaborator role.
   // 'kiosk' is deliberately absent: it is a shared device credential, not a
@@ -31,11 +39,24 @@ function canInviteRole(inviter: string, target: string): boolean {
   return (INVITABLE_ROLES[inviter] ?? []).includes(target);
 }
 
+// Custom roles are administered by whoever holds manage:collaborators, which
+// is owner and manager — the same two roles that may invite the four builtin
+// collaborator roles above.
+const CUSTOM_ROLE_INVITERS = ['owner', 'manager'];
+function canInviteCustomRole(inviter: string): boolean {
+  return CUSTOM_ROLE_INVITERS.includes(inviter);
+}
+
+const CUSTOM_ROLE = 'collaborator_custom';
+
 interface RequestBody {
   restaurantId: string;
   email: string;
   role: string;
   employeeId?: string; // Optional client hint; server re-resolves for any role (see below)
+  // Required when role === 'collaborator_custom', rejected otherwise. Names
+  // the roles row whose areas/flags the invitee will receive.
+  roleId?: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -70,10 +91,28 @@ const handler = async (req: Request): Promise<Response> => {
     // Extract JWT token from Authorization header
     const token = authHeader.replace('Bearer ', '');
 
-    const { restaurantId, email, role, employeeId }: RequestBody = await req.json();
+    const { restaurantId, email, role, employeeId, roleId }: RequestBody = await req.json();
 
     if (!restaurantId || !email || !role) {
       throw new Error('Missing required fields: restaurantId, email, or role');
+    }
+
+    // roleId is meaningful only for a custom-role invite. Reject the mismatch
+    // in both directions rather than ignoring the field: a caller that sends a
+    // role id with role='manager' has misunderstood something, and silently
+    // dropping it would store an invitation that grants a different set of
+    // capabilities than the caller believes it sent.
+    if (role === CUSTOM_ROLE && !roleId) {
+      return new Response(
+        JSON.stringify({ error: 'role_id_required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    if (role !== CUSTOM_ROLE && roleId) {
+      return new Response(
+        JSON.stringify({ error: 'role_id_not_applicable' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
     }
 
     // Canonicalize the email ONCE. Everything downstream — the cancel query, the
@@ -117,11 +156,51 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Default-deny: reject any (inviter, target) pair not in the matrix
     // BEFORE inserting the invitation row (prevents storing escalated-role invites).
-    if (!canInviteRole(userRole.role, role)) {
+    // A custom-role invite is gated on the inviter instead, then on the named
+    // role itself immediately below.
+    if (role === CUSTOM_ROLE ? !canInviteCustomRole(userRole.role) : !canInviteRole(userRole.role, role)) {
       return new Response(
         JSON.stringify({ error: 'role_not_allowed' }),
         { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
+    }
+
+    // For a custom-role invite, the named role must actually be one this
+    // restaurant may grant. `supabase` here is the SERVICE-ROLE client, so
+    // this SELECT bypasses RLS on `roles` entirely — the check below is not
+    // defense in depth, it is the only thing standing between a caller who
+    // administers one restaurant and a role id belonging to another tenant.
+    // Same reasoning as copy_role_to_restaurants' source gate
+    // (20260730160000:66-78).
+    //
+    // builtin rows are rejected too: a builtin is granted by its legacy role
+    // string, not by pointing collaborator_custom at it, and admitting them
+    // here would be a second, unvalidated path to roles the invite matrix
+    // above deliberately withholds (e.g. a manager naming the Owner builtin).
+    let customRoleName: string | null = null;
+    if (role === CUSTOM_ROLE) {
+      const { data: customRole, error: customRoleError } = await supabase
+        .from('roles')
+        .select('id, name, restaurant_id, builtin')
+        .eq('id', roleId)
+        .maybeSingle();
+
+      if (customRoleError) {
+        console.error('Failed to load the invited custom role:', customRoleError);
+        throw new Error('Could not verify the selected role');
+      }
+
+      if (!customRole || customRole.builtin || customRole.restaurant_id !== restaurantId) {
+        // One undifferentiated response for "no such role", "that's a builtin"
+        // and "that role belongs to someone else", so this endpoint cannot be
+        // used to probe which role ids exist in other restaurants.
+        return new Response(
+          JSON.stringify({ error: 'role_not_allowed' }),
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      customRoleName = customRole.name;
     }
 
     // Cancel any existing pending invitations for this email and restaurant
@@ -156,6 +235,7 @@ const handler = async (req: Request): Promise<Response> => {
       status: string;
       expires_at: Date;
       employee_id?: string;
+      role_id?: string;
     } = {
       restaurant_id: restaurantId,
       invited_by: user.id,
@@ -165,6 +245,12 @@ const handler = async (req: Request): Promise<Response> => {
       status: 'pending',
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
     };
+
+    // Only set for a custom-role invite — every builtin invitation leaves
+    // role_id NULL and keeps resolving from the role string exactly as before.
+    if (role === CUSTOM_ROLE) {
+      invitationData.role_id = roleId;
+    }
 
     // Resolve employee_id server-side — for ANY invitable role, not just staff.
     // Restaurant-scoped fetch of accountless active employees (no enumeration
@@ -230,7 +316,10 @@ const handler = async (req: Request): Promise<Response> => {
       'collaborator_chef': 'Recipe Consultant',
       'collaborator_operations_manager': 'Operations Manager (Collaborator)',
     };
-    const friendlyRole = roleLabels[role] || role;
+    // A custom role has no entry in the static map — its label is the name the
+    // owner gave it ("Weekend Supervisor"), which is the only thing that means
+    // anything to the person receiving the email.
+    const friendlyRole = customRoleName ?? roleLabels[role] ?? role;
     const isCollaborator = role.startsWith('collaborator_');
 
     // Send invitation email. A team invite is TRANSACTIONAL — the email carries the

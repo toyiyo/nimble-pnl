@@ -3522,6 +3522,7 @@ export type Database = {
           invited_by: string
           restaurant_id: string
           role: string
+          role_id: string | null
           status: string
           token: string
           updated_at: string
@@ -3538,6 +3539,7 @@ export type Database = {
           invited_by: string
           restaurant_id: string
           role?: string
+          role_id?: string | null
           status?: string
           token: string
           updated_at?: string
@@ -3554,11 +3556,19 @@ export type Database = {
           invited_by?: string
           restaurant_id?: string
           role?: string
+          role_id?: string | null
           status?: string
           token?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "invitations_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
@@ -10349,6 +10359,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      builtin_role_id_for: { Args: { p_role: string }; Returns: string }
       bulk_delete_bank_transactions: {
         Args: { p_restaurant_id: string; p_transaction_ids: string[] }
         Returns: Json

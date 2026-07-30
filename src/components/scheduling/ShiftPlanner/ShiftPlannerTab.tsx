@@ -459,6 +459,9 @@ export function ShiftPlannerTab({
       clearValidation();
       setHighlightCellId(`${template.id}:${day}`);
       setTimeout(() => setHighlightCellId(null), 600);
+      // `day` is a date-only token parsed at local midnight; this reads the
+      // weekday of that calendar day, so local fields are correct here.
+      // eslint-disable-next-line no-restricted-syntax
       const dayLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
       toast({ title: `${employee.name} assigned to ${template.name} — ${dayLabel}` });
     } else if (result.pendingConflicts?.length || result.pendingWarnings?.length) {

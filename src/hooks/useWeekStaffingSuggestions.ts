@@ -12,7 +12,7 @@ import { dayStringToDow } from '@/lib/staffingApply';
 import { supabase } from '@/integrations/supabase/client';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
-import { safeTz } from '@/lib/restaurantClock';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 
 import type { StaffingSuggestionsResult } from '@/hooks/useStaffingSuggestions';
 import type { StaffingSettings } from '@/types/scheduling';
@@ -117,11 +117,15 @@ export function useWeekStaffingSuggestions(
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(endDate.getDate() - activeSettings.lookback_weeks * 7);
+    // Both bounds are compared against sale_date (a date-only column) below,
+    // so they need to be the restaurant's business day, not the UTC day --
+    // UTC days slide the whole lookback window by a day for zones west of
+    // Greenwich in the evening.
     return {
-      startStr: startDate.toISOString().split('T')[0],
-      endStr: endDate.toISOString().split('T')[0],
+      startStr: toBusinessDay(startDate, tz),
+      endStr: toBusinessDay(endDate, tz),
     };
-  }, [activeSettings.lookback_weeks]);
+  }, [activeSettings.lookback_weeks, tz]);
 
   const { data: allSales, isLoading: salesLoading, error: salesError, refetch: refetchSales } = useQuery({
     queryKey: ['hourly-sales-all', restaurantId, activeSettings.lookback_weeks],

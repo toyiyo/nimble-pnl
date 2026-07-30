@@ -507,7 +507,7 @@ export function calculateEmployeePay(
       // Use T12:00:00 to parse as local time -- new Date('YYYY-MM-DD') parses as UTC midnight
       // which shifts to the previous day in US timezones, breaking week grouping
       const weekStart = startOfWeek(new Date(dateStr + 'T12:00:00'), { weekStartsOn: WEEK_STARTS_ON });
-      const weekKey = format(weekStart, 'yyyy-MM-dd');
+      const weekKey = toDateOnlyString(weekStart);
       const weekHours = hoursByWeek.get(weekKey) ?? {};
       weekHours[dateStr] = (weekHours[dateStr] ?? 0) + hours;
       hoursByWeek.set(weekKey, weekHours);

@@ -8,7 +8,6 @@ import {
   ManualPayment,
   shouldIncludeEmployeeInPayroll,
 } from '@/utils/payrollCalculations';
-import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import type { Employee } from '@/types/scheduling';
 import {
@@ -19,6 +18,7 @@ import {
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantClock } from './useRestaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -159,8 +159,8 @@ export function usePayroll(
         .select('id, total_amount')
         .eq('restaurant_id', restaurantId)
         .in('status', ['approved', 'archived'])
-        .gte('split_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('split_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('split_date', toDateOnlyString(startDate))
+        .lte('split_date', toDateOnlyString(endDate));
 
       if (splitsError) throw splitsError;
 
@@ -182,8 +182,8 @@ export function usePayroll(
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('source', 'per-job')
-        .gte('date', format(startDate, 'yyyy-MM-dd'))
-        .lte('date', format(endDate, 'yyyy-MM-dd'));
+        .gte('date', toDateOnlyString(startDate))
+        .lte('date', toDateOnlyString(endDate));
 
       if (manualPaymentsError) throw manualPaymentsError;
 
@@ -208,8 +208,8 @@ export function usePayroll(
         .from('employee_tips')
         .select('employee_id, tip_amount, tip_date')
         .eq('restaurant_id', restaurantId)
-        .gte('tip_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('tip_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('tip_date', toDateOnlyString(startDate))
+        .lte('tip_date', toDateOnlyString(endDate));
 
       if (employeeTipsError) throw employeeTipsError;
 
@@ -218,8 +218,8 @@ export function usePayroll(
         .from('tip_payouts')
         .select('employee_id, amount')
         .eq('restaurant_id', restaurantId)
-        .gte('payout_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('payout_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('payout_date', toDateOnlyString(startDate))
+        .lte('payout_date', toDateOnlyString(endDate));
 
       if (tipPayoutsError) throw tipPayoutsError;
 
@@ -279,8 +279,8 @@ export function usePayroll(
         .from('overtime_adjustments')
         .select('employee_id, punch_date, adjustment_type, hours, reason')
         .eq('restaurant_id', restaurantId)
-        .gte('punch_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('punch_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('punch_date', toDateOnlyString(startDate))
+        .lte('punch_date', toDateOnlyString(endDate));
 
       if (otAdjError) {
         console.error('Error fetching overtime adjustments:', otAdjError);

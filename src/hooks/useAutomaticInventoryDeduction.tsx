@@ -2,7 +2,8 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
-import { safeTz } from '@/lib/restaurantClock';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 
 interface BatchSale {
   pos_item_name: string;
@@ -21,6 +22,7 @@ interface DeductionResponse {
 export const useAutomaticInventoryDeduction = () => {
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
+  const { tz } = useRestaurantClock();
   const [autoDeductionEnabled, setAutoDeductionEnabled] = useState<boolean>(false);
 
   // Check if auto-deduction is enabled for this restaurant
@@ -103,9 +105,12 @@ export const useAutomaticInventoryDeduction = () => {
     if (!selectedRestaurant?.restaurant_id || !autoDeductionEnabled) return;
 
     try {
-      // Get sales from today that haven't been processed
-      const today = new Date().toISOString().split('T')[0];
-      
+      // Get sales from today that haven't been processed. sale_date is a
+      // date-only column keyed to the restaurant's business day; the UTC day
+      // (toISOString) rolls over 5-6 hours early for US zones, which silently
+      // stops auto-deduction during evening service.
+      const today = toBusinessDay(new Date(), tz);
+
       const { data: unprocessedSales } = await supabase
         .from('unified_sales')
         .select('item_name, quantity, sale_date, sale_time, external_order_id')
@@ -145,7 +150,7 @@ export const useAutomaticInventoryDeduction = () => {
     } catch (error: any) {
       console.error('Auto deduction setup error:', error);
     }
-  }, [selectedRestaurant?.restaurant_id, autoDeductionEnabled, processBatchDeductions]);
+  }, [selectedRestaurant?.restaurant_id, autoDeductionEnabled, processBatchDeductions, tz]);
 
   // Set up real-time subscription for new sales - DISABLED
   // The database trigger already handles automatic deductions

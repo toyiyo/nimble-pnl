@@ -38,7 +38,12 @@ function formatWeekRange(weekStart: Date): string {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
 
+  // weekStart/weekEnd are calendar-day Dates (from getMondayOfWeek, a local
+  // calendar computation); the month name of a calendar day is correctly read
+  // from local fields.
+  // eslint-disable-next-line no-restricted-syntax
   const startMonth = weekStart.toLocaleString('default', { month: 'short' });
+  // eslint-disable-next-line no-restricted-syntax
   const endMonth = weekEnd.toLocaleString('default', { month: 'short' });
   const endYear = weekEnd.getFullYear();
 
@@ -196,7 +201,10 @@ const AvailabilityCell = memo(function AvailabilityCell({
   const deleteAriaLabel = resolvedTarget
     ? `Delete ${employeeName}'s ${
         effective.type === 'exception'
-          ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          ? // date is a calendar day (this cell's day column), so local fields
+            // are the correct source for its display date.
+            // eslint-disable-next-line no-restricted-syntax
+            date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
           : WEEKDAY_LABELS[dow]
       } availability`
     : '';

@@ -2,12 +2,12 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEmployees } from './useEmployees';
 import { TimePunch, DBTimePunch } from '@/types/timeTracking';
-import { format } from 'date-fns';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantClock } from './useRestaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 export interface LaborCostData {
   date: string;
@@ -73,7 +73,7 @@ export function useLaborCostsFromTimeTracking(
   const throughNow = options?.throughNow ?? false;
 
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['labor-costs-from-time-tracking', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), throughNow, timezone],
+    queryKey: ['labor-costs-from-time-tracking', restaurantId, toDateOnlyString(dateFrom), toDateOnlyString(dateTo), throughNow, timezone],
     queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; capped: boolean }> => {
       if (!restaurantId) {
         return { dailyCosts: [], totalCost: 0, capped: false };
@@ -111,8 +111,8 @@ export function useLaborCostsFromTimeTracking(
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('source', 'per-job') // Only per-job source records, not auto-generated
-        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(dateTo, 'yyyy-MM-dd'));
+        .gte('date', toDateOnlyString(dateFrom))
+        .lte('date', toDateOnlyString(dateTo));
 
       if (manualPaymentsError) throw manualPaymentsError;
 

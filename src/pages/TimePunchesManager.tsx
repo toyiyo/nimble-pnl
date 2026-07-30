@@ -26,6 +26,7 @@ import {
   startOfDay, endOfDay
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import { editFormToPunchTime, punchToEditForm } from '@/lib/punchEditForm';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -313,6 +314,11 @@ const TimePunchesManager = () => {
   const updatePunch = useUpdateTimePunch();
   const createPunch = useCreateTimePunch();
   const [forceSessionToClose, setForceSessionToClose] = useState<any | null>(null);
+  // datetime-local carve-out: this seeds a <input type="datetime-local">, which is
+  // inherently the viewer's wall clock, and the value is parsed back with
+  // `new Date(forceOutTime)` below -- converting only the seed would desynchronize
+  // seed from parse.
+  // eslint-disable-next-line no-restricted-syntax
   const [forceOutTime, setForceOutTime] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   // Filter punches (buffered) by search term — feeds pairing only.
@@ -559,13 +565,15 @@ const TimePunchesManager = () => {
 
     const headers = ['Employee', 'Position', 'Punch Type', 'Date', 'Time', 'Notes', 'Location'];
     const rows = windowPunches.map((punch) => {
-      const punchDate = new Date(punch.punch_time);
       return [
         punch.employee?.name || 'Unknown',
         punch.employee?.position || '',
         punch.punch_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-        format(punchDate, 'yyyy-MM-dd'),
-        format(punchDate, 'HH:mm:ss'),
+        // punch_time is an instant; render both Date and Time columns in the
+        // restaurant's zone so a punch exported by an operator in another
+        // zone doesn't land on the wrong day next to the wrong hour.
+        clock.toBusinessDay(punch.punch_time),
+        clock.formatInstant(punch.punch_time, 'HH:mm:ss'),
         punch.notes?.replace(/"/g, '""') || '',
         punch.location?.latitude != null && punch.location?.longitude != null
           ? `${punch.location.latitude},${punch.location.longitude}`
@@ -582,7 +590,7 @@ const TimePunchesManager = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `time-punches-${format(dateRange.start, 'yyyy-MM-dd')}-to-${format(dateRange.end, 'yyyy-MM-dd')}.csv`;
+    link.download = `time-punches-${toDateOnlyString(dateRange.start)}-to-${toDateOnlyString(dateRange.end)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1099,6 +1107,9 @@ const TimePunchesManager = () => {
                   notes: 'Force clock out by manager',
                 });
                 setForceSessionToClose(null);
+                // datetime-local carve-out, as above -- resets the seed for the next
+                // force-clock-out dialog open.
+                // eslint-disable-next-line no-restricted-syntax
                 setForceOutTime(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
               }}
               disabled={!!(forceSessionToClose?.clock_in && forceOutTime && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime())}

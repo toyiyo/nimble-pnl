@@ -16,6 +16,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantClock } from './useRestaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -153,12 +154,12 @@ export function useMonthlyMetrics(
   const { tz: timezone } = useRestaurantClock();
 
   return useQuery({
-    queryKey: ['monthly-metrics', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), timezone],
+    queryKey: ['monthly-metrics', restaurantId, toDateOnlyString(dateFrom), toDateOnlyString(dateTo), timezone],
     queryFn: async () => {
       if (!restaurantId) return [];
 
-      const fromStr = format(dateFrom, 'yyyy-MM-dd');
-      const toStr = format(dateTo, 'yyyy-MM-dd');
+      const fromStr = toDateOnlyString(dateFrom);
+      const toStr = toDateOnlyString(dateTo);
 
       // bank_transactions.transaction_date is TIMESTAMPTZ; pending_outflows.issue_date
       // is DATE. Slice to yyyy-MM-dd then take first 7 chars for the month bucket.
@@ -211,8 +212,8 @@ export function useMonthlyMetrics(
         const totals = await fetchMonthRevenueTotals(
           supabase,
           restaurantId,
-          format(clampedStart, 'yyyy-MM-dd'),
-          format(clampedEnd, 'yyyy-MM-dd')
+          toDateOnlyString(clampedStart),
+          toDateOnlyString(clampedEnd)
         );
 
         const month = ensureMonth(monthKey);
@@ -242,8 +243,8 @@ export function useMonthlyMetrics(
           .select('created_at, transaction_date, total_cost')
           .eq('restaurant_id', restaurantId)
           .eq('transaction_type', 'usage')
-          .or(`transaction_date.gte.${format(dateFrom, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.gte.${format(dateFrom, 'yyyy-MM-dd')})`)
-          .or(`transaction_date.lte.${format(dateTo, 'yyyy-MM-dd')},and(transaction_date.is.null,created_at.lte.${format(dateTo, 'yyyy-MM-dd')}T23:59:59.999Z)`)
+          .or(`transaction_date.gte.${toDateOnlyString(dateFrom)},and(transaction_date.is.null,created_at.gte.${toDateOnlyString(dateFrom)})`)
+          .or(`transaction_date.lte.${toDateOnlyString(dateTo)},and(transaction_date.is.null,created_at.lte.${toDateOnlyString(dateTo)}T23:59:59.999Z)`)
           .limit(10000);
         if (foodCostsError) throw foodCostsError;
         foodCostsData = data;
@@ -335,8 +336,8 @@ export function useMonthlyMetrics(
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .gte('transaction_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('transaction_date', format(dateTo, 'yyyy-MM-dd'))
+        .gte('transaction_date', toDateOnlyString(dateFrom))
+        .lte('transaction_date', toDateOnlyString(dateTo))
         .in('status', ['posted', 'pending'])
         .lt('amount', 0) // Only outflows
         .limit(10000); // Override Supabase's default 1000 row limit
@@ -356,8 +357,8 @@ export function useMonthlyMetrics(
           )
         `)
         .eq('restaurant_id', restaurantId)
-        .gte('issue_date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('issue_date', format(dateTo, 'yyyy-MM-dd'))
+        .gte('issue_date', toDateOnlyString(dateFrom))
+        .lte('issue_date', toDateOnlyString(dateTo))
         .in('status', ['pending', 'stale_30', 'stale_60', 'stale_90'])
         .limit(10000); // Override Supabase's default 1000 row limit
 
@@ -417,8 +418,8 @@ export function useMonthlyMetrics(
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('source', 'per-job')
-        .gte('date', format(dateFrom, 'yyyy-MM-dd'))
-        .lte('date', format(dateTo, 'yyyy-MM-dd'));
+        .gte('date', toDateOnlyString(dateFrom))
+        .lte('date', toDateOnlyString(dateTo));
 
       if (manualPaymentsError) {
         console.warn('Failed to fetch manual payments:', manualPaymentsError);

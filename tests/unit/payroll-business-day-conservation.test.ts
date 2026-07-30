@@ -3,6 +3,7 @@ import {
   calculateActualLaborCost,
   calculateHoursPerEmployee,
   calculateActualLaborCostForMonth,
+  calculateScheduledLaborCost,
 } from '@/services/laborCalculations';
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { Employee } from '@/types/scheduling';
@@ -187,5 +188,69 @@ describe('calculateActualLaborCostForMonth: cutoff actually moves a shift across
     // pre-fix behavior) would bucket by the host's local calendar day
     // regardless of cutoffHour and report 0 here too.
     expect(actualLaborCents).toBe(12000);
+  });
+});
+
+describe('scheduled and actual bucket identically', () => {
+  // The Scheduling page shows scheduled-vs-actual variance. If actual buckets by
+  // business day and scheduled by calendar day, the two sides use different
+  // framings and every overnight shift shows a phantom variance.
+  function shift(id: string, startIso: string, endIso: string) {
+    return {
+      id, restaurant_id: 'r1', employee_id: 'e1',
+      start_time: startIso, end_time: endIso,
+      break_duration: 0, status: 'scheduled',
+    } as unknown as Parameters<typeof calculateScheduledLaborCost>[0][number];
+  }
+
+  it('an overnight scheduled shift lands entirely on its start business day', () => {
+    // 18:00 CDT Jul 28 -> 03:00 CDT Jul 29, 9h.
+    const { dailyCosts } = calculateScheduledLaborCost(
+      [shift('s1', '2026-07-28T23:00:00.000Z', '2026-07-29T08:00:00.000Z')],
+      [hourly('e1', 2000)], FROM, TO, { tz: TZ, cutoffHour: 2 },
+    );
+    expect(dailyCosts.find((d) => d.date === '2026-07-28')?.hours_worked).toBeCloseTo(9, 6);
+    expect(dailyCosts.find((d) => d.date === '2026-07-29')?.hours_worked ?? 0).toBe(0);
+  });
+
+  it('a 1 AM scheduled start rolls back onto the prior business day at cutoff 2', () => {
+    // 01:00 CDT Jul 30. At cutoff 0 this is Jul 30; at cutoff 2 it is Jul 29.
+    const shifts = [shift('s2', '2026-07-30T06:00:00.000Z', '2026-07-30T12:00:00.000Z')];
+    const employees = [hourly('e1', 2000)];
+
+    const atZero = calculateScheduledLaborCost(shifts, employees, FROM, TO, { tz: TZ, cutoffHour: 0 });
+    expect(atZero.dailyCosts.find((d) => d.date === '2026-07-30')?.hours_worked).toBeCloseTo(6, 6);
+
+    const atTwo = calculateScheduledLaborCost(shifts, employees, FROM, TO, { tz: TZ, cutoffHour: 2 });
+    expect(atTwo.dailyCosts.find((d) => d.date === '2026-07-29')?.hours_worked).toBeCloseTo(6, 6);
+    expect(atTwo.dailyCosts.find((d) => d.date === '2026-07-30')?.hours_worked ?? 0).toBe(0);
+  });
+
+  it('scheduled hours per business day match actual hours for the same shifts', () => {
+    // The variance guarantee, stated directly: schedule exactly what was worked
+    // and every day's variance must be zero, at every cutoff.
+    const shifts = [
+      shift('s1', '2026-07-28T23:00:00.000Z', '2026-07-29T08:00:00.000Z'),
+      shift('s2', '2026-07-30T06:00:00.000Z', '2026-07-30T12:00:00.000Z'),
+      shift('s3', '2026-07-31T15:00:00.000Z', '2026-07-31T23:00:00.000Z'),
+    ];
+    const employees = [hourly('e1', 2000)];
+
+    for (let cutoffHour = 0; cutoffHour <= 11; cutoffHour++) {
+      const { dailyCosts } = calculateScheduledLaborCost(
+        shifts, employees, FROM, TO, { tz: TZ, cutoffHour },
+      );
+      const actual = calculateActualLaborCost(
+        employees, PUNCHES, FROM, TO, { tz: TZ, cutoffHour },
+      );
+
+      for (const day of dailyCosts) {
+        const actualDay = actual.dailyCosts.find((d) => d.date === day.date);
+        expect(
+          day.hours_worked,
+          `cutoff ${cutoffHour}, ${day.date}: scheduled and actual disagree`,
+        ).toBeCloseTo(actualDay?.hours_worked ?? 0, 6);
+      }
+    }
   });
 });

@@ -351,7 +351,11 @@ const Scheduling = () => {
     shifts,
     currentWeekStart,
     weekEnd,
-    restaurantId
+    restaurantId,
+    {
+      tz: restaurantTimezone,
+      cutoffHour: selectedRestaurant?.restaurant?.business_day_start_hour,
+    }
   );
 
   // Calculate per-employee labor costs with outlier detection

@@ -5,7 +5,7 @@ import {
 } from '@/services/laborCalculations';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
-import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
+import { HOST_LOCAL_FRAME } from './fixtures/businessDayFixtures';
 
 /**
  * Tests for calculateHoursPerEmployee — the per-employee rollup that powers
@@ -92,7 +92,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-16T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const summaries = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
+      const summaries = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, HOST_LOCAL_FRAME);
 
       expect(summaries).toHaveLength(1);
       const row = summaries[0];
@@ -124,7 +124,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-14T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
+      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, HOST_LOCAL_FRAME);
 
       expect(row.total_hours).toBeCloseTo(4 + 8 + 6, 4);
       expect(row.days_worked).toBe(3);
@@ -145,7 +145,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-14T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const summaries = calculateHoursPerEmployee([hourlyEmployee], [], start, end, LEGACY_UTC_FRAME);
+      const summaries = calculateHoursPerEmployee([hourlyEmployee], [], start, end, HOST_LOCAL_FRAME);
 
       expect(summaries).toHaveLength(1);
       const [row] = summaries;
@@ -178,7 +178,7 @@ describe('calculateHoursPerEmployee', () => {
       const end = new Date('2026-05-20T23:59:59');
 
       const employees = [hourlyEmployee, salaryEmployee, contractorEmployee];
-      const summaries = calculateHoursPerEmployee(employees, punches, start, end, LEGACY_UTC_FRAME);
+      const summaries = calculateHoursPerEmployee(employees, punches, start, end, HOST_LOCAL_FRAME);
 
       expect(summaries).toHaveLength(3);
       const byId = new Map(summaries.map((s) => [s.employee_id, s]));
@@ -202,7 +202,7 @@ describe('calculateHoursPerEmployee', () => {
       expect(contractor.total_cost_cents).toBeLessThan(80000);
 
       // Invariant: per-employee totals sum back to the aggregate by comp type.
-      const { breakdown } = calculateActualLaborCost(employees, punches, start, end, LEGACY_UTC_FRAME);
+      const { breakdown } = calculateActualLaborCost(employees, punches, start, end, HOST_LOCAL_FRAME);
       const hourlyTotalCents = summaries
         .filter((s) => s.compensation_type === 'hourly')
         .reduce((sum, s) => sum + s.total_cost_cents, 0);
@@ -230,8 +230,8 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-14T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
-      const { dailyCosts } = calculateActualLaborCost([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
+      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, HOST_LOCAL_FRAME);
+      const { dailyCosts } = calculateActualLaborCost([hourlyEmployee], punches, start, end, HOST_LOCAL_FRAME);
 
       const summaryKeys = Object.keys(summary.hours_per_day);
       const dailyKeys = dailyCosts.map((d) => d.date);
@@ -258,7 +258,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-15T00:00:00');
       const end = new Date('2026-05-15T23:59:59');
 
-      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
+      const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, HOST_LOCAL_FRAME);
 
       expect(summary.work_periods.length).toBeGreaterThan(0);
       const breakPeriods = summary.work_periods.filter((p) => p.isBreak);
@@ -322,7 +322,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-16T00:00:00');
       const end = new Date('2026-05-22T23:59:59'); // 7-day window
 
-      const [row] = calculateHoursPerEmployee([employee], punches, start, end, LEGACY_UTC_FRAME);
+      const [row] = calculateHoursPerEmployee([employee], punches, start, end, HOST_LOCAL_FRAME);
 
       // Hourly portion: (8 + 6) h × $20/h = $280 = 28,000 cents
       const expectedHourlyCents = (8 + 6) * 2000;
@@ -356,7 +356,7 @@ describe('calculateHoursPerEmployee', () => {
       const start = new Date('2026-05-16T00:00:00');
       const end = new Date('2026-05-16T23:59:59');
 
-      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
+      const [row] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end, HOST_LOCAL_FRAME);
 
       expect(row.total_hours).toBeCloseTo(8, 4);
       expect(row.days_worked).toBe(1);

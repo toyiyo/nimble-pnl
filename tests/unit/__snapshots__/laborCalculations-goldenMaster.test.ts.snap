@@ -28,15 +28,6 @@ exports[`golden master: calculateActualLaborCost > matches the pre-change snapsh
     {
       "contractor_cost": 0,
       "daily_rate_cost": 0,
-      "date": "2026-07-26",
-      "hourly_cost": 0,
-      "hours_worked": 0,
-      "salary_cost": 0,
-      "total_cost": 0,
-    },
-    {
-      "contractor_cost": 0,
-      "daily_rate_cost": 0,
       "date": "2026-07-27",
       "hourly_cost": 0,
       "hours_worked": 0,

@@ -9,7 +9,7 @@ import {
 } from '../../src/services/laborCalculations';
 import type { Employee, Shift } from '../../src/types/scheduling';
 import type { TimePunch } from '../../src/types/timeTracking';
-import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
+import { HOST_LOCAL_FRAME, LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 /**
  * Comprehensive tests for centralized labor cost calculations
@@ -254,7 +254,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee],
         weekStart,
-        weekEnd
+        weekEnd,
+        HOST_LOCAL_FRAME
       );
 
       // 2 shifts × 8 hours × $15/hr = $240
@@ -283,7 +284,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [salaryEmployeeMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        HOST_LOCAL_FRAME
       );
 
       // Salary employees get paid regardless of scheduled hours
@@ -298,7 +300,8 @@ describe('LaborCalculationService', () => {
         [], // No shifts
         [salaryEmployeeMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        HOST_LOCAL_FRAME
       );
 
       // 7 days × $164.26/day = $1,149.82 (allow 2 cent tolerance for rounding)
@@ -349,7 +352,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee, salaryEmployeeMonthly, contractorMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        HOST_LOCAL_FRAME
       );
 
       // Hourly: 8hrs × $15 = $120
@@ -618,7 +622,8 @@ describe('LaborCalculationService', () => {
         [], // No shifts
         [salaryEmployeeMonthly],
         weekStart,
-        weekEnd
+        weekEnd,
+        HOST_LOCAL_FRAME
       );
 
       // Period cost is in cents, scheduled is in dollars
@@ -661,7 +666,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee],
         testStart,
-        testEnd
+        testEnd,
+        LEGACY_UTC_FRAME
       );
 
       // 7.5 hours × $15/hr = $112.50
@@ -689,7 +695,8 @@ describe('LaborCalculationService', () => {
         shifts,
         [hourlyEmployee],
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        HOST_LOCAL_FRAME
       );
 
       // 8 hours × $15/hr = $120

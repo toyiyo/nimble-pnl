@@ -91,11 +91,28 @@ export const SQL_PARITY_FIXTURES: SqlParityFixture[] = [
 ];
 
 /**
- * The frame every PRE-EXISTING test call site migrates to.
+ * The migration frame for pre-existing call sites whose fixtures carry an
+ * EXPLICIT offset (`...Z` or `+00:00`).
  *
- * Vitest runs under TZ=UTC in CI, so `tz: 'UTC'` reproduces the browser-local
- * bucketing those tests were written against, byte for byte. Passing this makes
- * the signature migration provably behavior-preserving: no existing expectation
- * changes. NEW tests should name a real restaurant zone instead.
+ * For those, UTC is frame-stable: fixture and frame agree no matter which zone
+ * the test runs in. NEW tests should name a real restaurant zone instead.
+ *
+ * Do NOT use this for fixtures with naive timestamps -- see HOST_LOCAL_FRAME.
  */
 export const LEGACY_UTC_FRAME = { tz: 'UTC', cutoffHour: 0 } as const;
+
+/**
+ * The migration frame for pre-existing call sites whose fixtures use NAIVE
+ * timestamps (`'2025-12-09T22:00:00'`, no offset).
+ *
+ * Those are parsed in the host's zone, so the frame that reproduces the old
+ * formatLocalDate() bucketing byte for byte is the host's zone -- not UTC.
+ * Under TZ=UTC the two frames are indistinguishable, which is precisely why
+ * picking the wrong one is invisible in a default CI runner and shows up only
+ * east of Greenwich. Resolving the host zone here keeps fixture and frame
+ * moving together in every zone the tz matrix exercises.
+ */
+export const HOST_LOCAL_FRAME = {
+  tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  cutoffHour: 0,
+} as const;

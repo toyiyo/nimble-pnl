@@ -84,8 +84,13 @@ const EMPLOYEES = [
 ];
 const ALL_PUNCHES = [...OVERNIGHT, ...SAME_DAY, ...POST_MIDNIGHT, ...DAILY_RATE_OVERNIGHT];
 
-const FROM = new Date('2026-07-27T00:00:00.000Z');
-const TO = new Date('2026-07-31T23:59:59.999Z');
+// Period bounds are CALENDAR-DAY TOKENS, not instants: generateDateRange() and
+// the payroll window read their LOCAL fields. Parsing '...T00:00:00.000Z' here
+// would seed Jul 26 west of Greenwich and Jul 27 on a UTC runner, so the
+// snapshot would encode the runner's zone -- a golden master that moves with
+// the machine pins nothing. Local components give the same token everywhere.
+const FROM = new Date(2026, 6, 27);
+const TO = new Date(2026, 6, 31, 23, 59, 59, 999);
 
 describe('golden master: calculateActualLaborCost', () => {
   it('matches the pre-change snapshot', () => {

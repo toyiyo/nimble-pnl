@@ -370,13 +370,18 @@ function generateLaborBreakdown(
  * @param employees - Array of employees
  * @param startDate - Period start date
  * @param endDate - Period end date
+ * @param businessDay - The restaurant's business-day framing. Required: if
+ *   scheduled bucketed by calendar day while actual buckets by business day,
+ *   the Scheduling variance view would compare two different framings and
+ *   every overnight shift would show a phantom variance.
  * @returns Labor cost breakdown with daily details
  */
 export function calculateScheduledLaborCost(
   shifts: Shift[],
   employees: Employee[],
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  businessDay: BusinessDayConfig
 ): { breakdown: LaborCostBreakdown; dailyCosts: DailyLaborCost[] } {
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
@@ -406,7 +411,12 @@ export function calculateScheduledLaborCost(
     const employee = employeeMap.get(shift.employee_id);
     if (!employee || employee.status !== 'active') return;
 
-    const shiftDate = formatLocalDate(new Date(shift.start_time));
+    // Bucket by the shift's START business day, matching calculateActualLaborCost
+    // (task 5). A scheduled overnight shift belongs entirely to the day it
+    // starts; splitting it, or attributing it to the calendar day it ends on,
+    // would make scheduled disagree with actual for exactly the shifts this
+    // feature exists to fix.
+    const shiftDate = toBusinessDayFor(shift.start_time, businessDay);
     const dayData = dateMap.get(shiftDate);
     if (!dayData) return;
 

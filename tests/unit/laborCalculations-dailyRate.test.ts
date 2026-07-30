@@ -8,7 +8,7 @@ import {
 } from '@/services/laborCalculations';
 import type { Employee, Shift } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
-import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
+import { HOST_LOCAL_FRAME } from './fixtures/businessDayFixtures';
 
 describe('Labor Calculations - Daily Rate', () => {
   const mockDailyRateEmployee: Employee = {
@@ -97,7 +97,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee],
         startDate,
-        endDate
+        endDate,
+        HOST_LOCAL_FRAME
       );
 
       // 3 days × $166.67 = $500.01
@@ -141,7 +142,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee],
         startDate,
-        endDate
+        endDate,
+        HOST_LOCAL_FRAME
       );
 
       // Should be 1 day × $166.67, not 2 × $166.67
@@ -177,7 +179,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee],
         startDate,
-        endDate
+        endDate,
+        HOST_LOCAL_FRAME
       );
 
       // Both days should cost the same: 2 × $166.67 = $333.34
@@ -203,7 +206,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [inactiveEmployee],
         startDate,
-        endDate
+        endDate,
+        HOST_LOCAL_FRAME
       );
 
       expect(breakdown.daily_rate.cost).toBe(0);
@@ -252,7 +256,7 @@ describe('Labor Calculations - Daily Rate', () => {
         punches,
         startDate,
         endDate,
-        LEGACY_UTC_FRAME,
+        HOST_LOCAL_FRAME,
       );
 
       // 2 days × $166.67 = $333.34
@@ -321,7 +325,7 @@ describe('Labor Calculations - Daily Rate', () => {
         punches,
         startDate,
         endDate,
-        LEGACY_UTC_FRAME,
+        HOST_LOCAL_FRAME,
       );
 
       // All three days should cost the same: 3 × $166.67 = $500.01
@@ -366,7 +370,7 @@ describe('Labor Calculations - Daily Rate', () => {
         punches,
         startDate,
         endDate,
-        LEGACY_UTC_FRAME,
+        HOST_LOCAL_FRAME,
       );
 
       // Should be counted as 1 day: $166.67
@@ -380,7 +384,7 @@ describe('Labor Calculations - Daily Rate', () => {
         [],
         startDate,
         endDate,
-        LEGACY_UTC_FRAME,
+        HOST_LOCAL_FRAME,
       );
 
       expect(breakdown.daily_rate.cost).toBe(0);
@@ -427,7 +431,7 @@ describe('Labor Calculations - Daily Rate', () => {
         punches,
         startDate,
         endDate,
-        LEGACY_UTC_FRAME,
+        HOST_LOCAL_FRAME,
       );
 
       // Should only count Jan 1: $166.67
@@ -527,7 +531,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee, hourlyEmployee],
         new Date('2024-01-01'),
-        new Date('2024-01-07')
+        new Date('2024-01-07'),
+        HOST_LOCAL_FRAME
       );
 
       // Daily rate: 2 days × $166.67 = $333.34

@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { useScheduledLaborCosts } from '@/hooks/useScheduledLaborCosts';
 import { useEmployees } from '@/hooks/useEmployees';
 import { Shift } from '@/types/scheduling';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 // Mock the useEmployees hook
 vi.mock('@/hooks/useEmployees', () => ({
@@ -50,7 +51,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // 7.5 hours × $15/hr = $112.50
@@ -94,7 +95,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // 10 hours × $20/hr = $200
@@ -129,7 +130,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // 8 hours × $10/hr = $80
@@ -175,7 +176,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // Salary employees get paid per pay period, not per scheduled day
@@ -215,7 +216,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // Employee scheduled only 1 day (for tracking purposes)
@@ -268,7 +269,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // Hourly: 8hrs × $15 = $120
@@ -289,7 +290,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts([], dateFrom, dateTo, null)
+        useScheduledLaborCosts([], dateFrom, dateTo, null, LEGACY_UTC_FRAME)
       );
 
       expect(result.current.totalCost).toBe(0);
@@ -305,7 +306,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts([], dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts([], dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       expect(result.current.totalCost).toBe(0);
@@ -328,7 +329,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts([], dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts([], dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       expect(result.current.totalCost).toBe(0);
@@ -377,7 +378,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // Only active employee's 8 hours × $15 = $120
@@ -444,7 +445,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, aprDateFrom, aprDateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, aprDateFrom, aprDateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // 6 hours × $10/hr = $60 — not $0 (which was the bug).
@@ -480,7 +481,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // Should ignore shift without employee
@@ -524,7 +525,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts(mockShifts, dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // Check daily costs
@@ -545,7 +546,7 @@ describe('useScheduledLaborCosts', () => {
       } as any);
 
       const { result } = renderHook(() =>
-        useScheduledLaborCosts([], dateFrom, dateTo, mockRestaurantId)
+        useScheduledLaborCosts([], dateFrom, dateTo, mockRestaurantId, LEGACY_UTC_FRAME)
       );
 
       // When no employees exist, returns empty array (optimization)

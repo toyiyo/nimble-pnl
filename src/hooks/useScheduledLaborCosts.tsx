@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useEmployees } from './useEmployees';
 import { Shift } from '@/types/scheduling';
 import { calculateScheduledLaborCost } from '@/services/laborCalculations';
+import type { BusinessDayConfig } from '@/lib/businessDay';
 
 export interface ScheduledLaborCostData {
   date: string;
@@ -51,14 +52,23 @@ export interface ScheduledLaborCostsResult {
  * @param dateFrom - Start date for the period
  * @param dateTo - End date for the period
  * @param restaurantId - Restaurant ID (for employees lookup)
+ * @param businessDay - The restaurant's business-day framing (timezone +
+ *   cutoff hour). A parameter rather than a RestaurantContext read, for the
+ *   same reason restaurantId is: this hook is rendered in tests without a
+ *   provider, and reading context would make it unrenderable there.
  * @returns Estimated labor cost data by date
  */
 export function useScheduledLaborCosts(
   shifts: Shift[],
   dateFrom: Date,
   dateTo: Date,
-  restaurantId: string | null
+  restaurantId: string | null,
+  businessDay: BusinessDayConfig
 ): ScheduledLaborCostsResult {
+  // Destructured to primitives so they can go into the dep array individually.
+  // Depending on `businessDay` itself would break the memo: callers construct
+  // the object inline, so it is a new reference every render.
+  const { tz, cutoffHour } = businessDay;
   // Fetch ALL employees (including inactive) for historical labor cost accuracy
   // Shifts from inactive employees should still be counted in past periods
   const { employees } = useEmployees(restaurantId, { status: 'all' });
@@ -80,7 +90,7 @@ export function useScheduledLaborCosts(
 
     // Use centralized labor calculation service
     const { breakdown: serviceBreakdown, dailyCosts: serviceDailyCosts } = 
-      calculateScheduledLaborCost(shifts, employees, dateFrom, dateTo);
+      calculateScheduledLaborCost(shifts, employees, dateFrom, dateTo, { tz, cutoffHour });
 
     // Transform service output to match hook interface
     const dailyCosts: ScheduledLaborCostData[] = serviceDailyCosts.map(day => ({
@@ -116,7 +126,7 @@ export function useScheduledLaborCosts(
     const totalCost = serviceBreakdown.total;
 
     return { dailyCosts, totalCost, breakdown };
-  }, [shifts, dateFrom, dateTo, restaurantId, employees]);
+  }, [shifts, dateFrom, dateTo, restaurantId, employees, tz, cutoffHour]);
 
   return result;
 }

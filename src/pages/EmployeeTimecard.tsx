@@ -6,6 +6,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { useCurrentEmployee } from '@/hooks/useCurrentEmployee';
 import { useTimePunches } from '@/hooks/useTimePunches';
 import { usePeriodNavigation } from '@/hooks/usePeriodNavigation';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import {
   EmployeePageHeader,
   NoRestaurantState,
@@ -23,12 +24,7 @@ import {
   PlayCircle,
   FileText,
 } from 'lucide-react';
-import {
-  format,
-  eachDayOfInterval,
-  isSameDay,
-  parseISO,
-} from 'date-fns';
+import { format, eachDayOfInterval, isSameDay } from 'date-fns';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { hoursByClockInDay } from '@/utils/timecardHours';
 import { TimePunch } from '@/types/timeTracking';
@@ -69,6 +65,7 @@ const EmployeeTimecard = () => {
   } = usePeriodNavigation();
 
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
+  const clock = useRestaurantClock();
 
   const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
 
@@ -97,20 +94,22 @@ const EmployeeTimecard = () => {
   const punchesByDay = useMemo(() => {
     const grouped = new Map<string, TimePunch[]>();
     weekDays.forEach((day) => {
+      // weekDays are calendar-day tokens, so local fields are the correct
+      // serialization here -- do NOT route these through the clock.
       const dayKey = format(day, 'yyyy-MM-dd');
       grouped.set(dayKey, []);
     });
 
     periodPunches.forEach((punch) => {
-      const punchDate = parseISO(punch.punch_time);
-      const dayKey = format(punchDate, 'yyyy-MM-dd');
+      // punch_time is an instant; bucket it by the restaurant's day.
+      const dayKey = clock.toBusinessDay(punch.punch_time);
       if (grouped.has(dayKey)) {
         grouped.get(dayKey)!.push(punch);
       }
     });
 
     return grouped;
-  }, [periodPunches, weekDays]);
+  }, [periodPunches, weekDays, clock]);
 
   // Hours attributed by clock-in day, computed from the BUFFERED punches so
   // overnight shifts pair whole before being bucketed to their clock-in day.
@@ -292,7 +291,7 @@ const EmployeeTimecard = () => {
                             >
                               {getPunchIcon(punch.punch_type)}
                               <span>
-                                {format(parseISO(punch.punch_time), 'h:mm a')}
+                                {clock.formatInstant(punch.punch_time, 'h:mm a')}
                               </span>
                             </div>
                           ))}

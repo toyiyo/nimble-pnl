@@ -116,4 +116,29 @@ describe('EmployeeTimecard overnight windowing', () => {
     expect(sunCard).not.toBeNull();
     expect(sunCard!.textContent).toContain('0h 0m');
   });
+
+  // The restaurant mock carries no `timezone`, so useRestaurantClock falls back
+  // to the DB default (America/Chicago) regardless of the host's TZ. Both punch
+  // instants land on Wed Jul 8 in Chicago but on Thu Jul 9 in UTC (CI) and in
+  // Pacific/Auckland -- so bucketing by the host's calendar fields fails this.
+  it('buckets punches by the restaurant day, not the viewer local day', () => {
+    const clockIn = new Date('2026-07-08T19:00:00Z'); // Jul 8 2:00 PM CDT
+    const clockOut = new Date('2026-07-09T02:30:00Z'); // Jul 8 9:30 PM CDT
+    useTimePunchesMock.mockReturnValue({
+      punches: [punch('in', 'clock_in', clockIn), punch('out', 'clock_out', clockOut)],
+      loading: false,
+    });
+
+    render(<EmployeeTimecard />);
+
+    const wedCard = screen.getByText('Jul 8').closest('div.p-4');
+    expect(wedCard).not.toBeNull();
+    // Punch chips render in the restaurant's zone too, not the browser's.
+    expect(wedCard!.textContent).toContain('2:00 PM');
+    expect(wedCard!.textContent).toContain('9:30 PM');
+
+    const thuCard = screen.getByText('Jul 9').closest('div.p-4');
+    expect(thuCard).not.toBeNull();
+    expect(thuCard!.textContent).toContain('No punches recorded');
+  });
 });

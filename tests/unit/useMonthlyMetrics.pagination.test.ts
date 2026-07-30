@@ -27,6 +27,7 @@ import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 const RESTAURANT = 'rest-monthly-1';
 
@@ -182,7 +183,7 @@ describe('useMonthlyMetrics time_punches pagination (1000-row cap fix)', () => {
     const dateTo = new Date(2026, 6, 31, 23, 59, 59, 999);
 
     const { result } = renderHook(
-      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
+      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo, LEGACY_UTC_FRAME),
       { wrapper: createWrapper() },
     );
 
@@ -253,7 +254,7 @@ describe('useMonthlyMetrics time_punches pagination (1000-row cap fix)', () => {
     const dateTo = new Date(2026, 6, 31, 23, 59, 59, 999);
 
     const { result } = renderHook(
-      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
+      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo, LEGACY_UTC_FRAME),
       { wrapper: createWrapper() },
     );
 

@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval } from 'date-fns';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
+import type { BusinessDayConfig } from '@/lib/businessDay';
 import { resolveLaborBasis } from '@/lib/combineCosts';
 import {
   aggregateInventoryCOGSByDate,
@@ -147,10 +148,18 @@ export async function fetchMonthRevenueTotals(
 export function useMonthlyMetrics(
   restaurantId: string | null,
   dateFrom: Date,
-  dateTo: Date
+  dateTo: Date,
+  // Required, and a parameter rather than a context read: this hook already
+  // takes restaurantId from its caller rather than from RestaurantContext, so
+  // reading the restaurant's framing from context would both contradict that
+  // convention and make the hook unrenderable outside a RestaurantProvider.
+  businessDay: BusinessDayConfig
 ) {
   return useQuery({
-    queryKey: ['monthly-metrics', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd')],
+    // tz and cutoffHour are part of the key: changing the cutoff re-buckets
+    // every month's labor, and without them React Query would serve the old
+    // bucketing until staleTime expired.
+    queryKey: ['monthly-metrics', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), businessDay.tz, businessDay.cutoffHour],
     queryFn: async () => {
       if (!restaurantId) return [];
 
@@ -526,6 +535,7 @@ export function useMonthlyMetrics(
           tipsOwedByEmployee,
           monthStart: clampedStart,
           monthEnd: clampedEnd,
+          businessDay,
         });
 
         // Per-job manual payments for this month window.

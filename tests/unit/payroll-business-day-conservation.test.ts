@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { calculateActualLaborCost, calculateHoursPerEmployee } from '@/services/laborCalculations';
+import {
+  calculateActualLaborCost,
+  calculateHoursPerEmployee,
+  calculateActualLaborCostForMonth,
+} from '@/services/laborCalculations';
 import { parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
@@ -128,5 +132,60 @@ describe('calculateHoursPerEmployee agrees with calculateActualLaborCost', () =>
       [hourly('e1', 2000)], PUNCHES, FROM, TO, { tz: TZ, cutoffHour },
     );
     expect(summary.total_hours).toBeCloseTo(expected, 6);
+  });
+});
+
+describe('calculateActualLaborCostForMonth conserves wages across cutoffs', () => {
+  const cutoffs = Array.from({ length: 12 }, (_, h) => h);
+
+  it.each(cutoffs)('cutoff %i yields the same monthly wage total', (cutoffHour) => {
+    const { actualLaborCents } = calculateActualLaborCostForMonth({
+      employees: [hourly('e1', 2000)],
+      timePunches: PUNCHES,
+      tipsOwedByEmployee: new Map(),
+      monthStart: new Date('2026-07-01T00:00:00.000Z'),
+      monthEnd: new Date('2026-07-31T23:59:59.999Z'),
+      businessDay: { tz: TZ, cutoffHour },
+    });
+    // All three shifts clock in within July in America/Chicago at every cutoff
+    // in 0..11, so the monthly total is cutoff-invariant. 23h at $20/h.
+    expect(actualLaborCents).toBe(46000);
+  });
+});
+
+describe('calculateActualLaborCostForMonth: cutoff actually moves a shift across the MONTH boundary', () => {
+  // The describe block above is deliberately cutoff-invariant (no shift crosses
+  // a month boundary in ANY of the 0..11 cutoffs), so passing an unused
+  // `businessDay` field there would satisfy it by accident -- it can't tell
+  // "cutoff is applied" from "cutoff is silently ignored". This is the test
+  // that can: a 01:00 CDT Aug-1 clock-in that a >=2 cutoff rolls back onto
+  // Jul 31, which changes which MONTH the shift's wages land in.
+  const AUG1_0100_CDT = pair('e5', '2026-08-01T06:00:00.000Z', '2026-08-01T12:00:00.000Z'); // 6h
+
+  it('at cutoff 0 the shift is Aug 1 local calendar day -- excluded from the July window', () => {
+    const { actualLaborCents } = calculateActualLaborCostForMonth({
+      employees: [hourly('e5', 2000)],
+      timePunches: AUG1_0100_CDT,
+      tipsOwedByEmployee: new Map(),
+      monthStart: new Date('2026-07-01T00:00:00.000Z'),
+      monthEnd: new Date('2026-07-31T23:59:59.999Z'),
+      businessDay: { tz: TZ, cutoffHour: 0 },
+    });
+    expect(actualLaborCents).toBe(0);
+  });
+
+  it('at cutoff 2 the 01:00 clock-in rolls back to Jul 31 -- included in the July window', () => {
+    const { actualLaborCents } = calculateActualLaborCostForMonth({
+      employees: [hourly('e5', 2000)],
+      timePunches: AUG1_0100_CDT,
+      tipsOwedByEmployee: new Map(),
+      monthStart: new Date('2026-07-01T00:00:00.000Z'),
+      monthEnd: new Date('2026-07-31T23:59:59.999Z'),
+      businessDay: { tz: TZ, cutoffHour: 2 },
+    });
+    // 6h * $20/h = 12,000 cents. A cutoffHour that is silently ignored (the
+    // pre-fix behavior) would bucket by the host's local calendar day
+    // regardless of cutoffHour and report 0 here too.
+    expect(actualLaborCents).toBe(12000);
   });
 });

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { calculateActualLaborCostForMonth } from '@/services/laborCalculations';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 const baseEmployee: Employee = {
   id: 'e1',
@@ -49,6 +50,7 @@ describe('calculateActualLaborCostForMonth', () => {
       tipsOwedByEmployee,
       monthStart,
       monthEnd,
+      businessDay: LEGACY_UTC_FRAME,
     });
 
     expect(result.tipsOwedCents).toBe(5000);
@@ -87,6 +89,7 @@ describe('calculateActualLaborCostForMonth', () => {
       tipsOwedByEmployee: new Map(),
       monthStart: new Date('2026-04-01T00:00:00'),
       monthEnd: new Date('2026-04-30T23:59:59'),
+      businessDay: LEGACY_UTC_FRAME,
     });
 
     expect(aprilResult.wagesCents).toBe(49_144);
@@ -97,6 +100,7 @@ describe('calculateActualLaborCostForMonth', () => {
       tipsOwedByEmployee: new Map(),
       monthStart: new Date('2026-05-01T00:00:00'),
       monthEnd: new Date('2026-05-31T23:59:59'),
+      businessDay: LEGACY_UTC_FRAME,
     });
 
     expect(mayResult.wagesCents).toBe(36_856);
@@ -124,6 +128,7 @@ describe('calculateActualLaborCostForMonth', () => {
       tipsOwedByEmployee: new Map(),
       monthStart: new Date('2026-04-01T00:00:00'),
       monthEnd: new Date('2026-04-30T23:59:59'),
+      businessDay: LEGACY_UTC_FRAME,
     });
 
     // 30 days × (100_000 / 7) = 428,571.4 → 428,571
@@ -139,6 +144,7 @@ describe('calculateActualLaborCostForMonth', () => {
       tipsOwedByEmployee: new Map(),
       monthStart: new Date('2026-04-01T00:00:00'),
       monthEnd: new Date('2026-04-30T23:59:59'),
+      businessDay: LEGACY_UTC_FRAME,
     });
     expect(result.wagesCents).toBe(0);
     expect(result.tipsOwedCents).toBe(0);
@@ -156,6 +162,7 @@ describe('calculateActualLaborCostForMonth', () => {
     const result = calculateActualLaborCostForMonth({
       employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
       monthStart: new Date('2026-07-01T00:00:00'), monthEnd: new Date('2026-07-31T23:59:59'),
+      businessDay: LEGACY_UTC_FRAME,
     });
     expect(result.wagesCents).toBe(12_000);
   });
@@ -168,6 +175,7 @@ describe('calculateActualLaborCostForMonth', () => {
     const june = calculateActualLaborCostForMonth({
       employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
       monthStart: new Date('2026-06-01T00:00:00'), monthEnd: new Date('2026-06-30T23:59:59'),
+      businessDay: LEGACY_UTC_FRAME,
     });
     expect(june.wagesCents).toBe(0); // clock-in day (Jul 5) is outside June
   });
@@ -180,6 +188,7 @@ describe('calculateActualLaborCostForMonth', () => {
     const result = calculateActualLaborCostForMonth({
       employees: [baseEmployee], timePunches: punches, tipsOwedByEmployee: new Map(),
       monthStart: new Date('2026-07-01T00:00:00'), monthEnd: new Date('2026-07-31T23:59:59'),
+      businessDay: LEGACY_UTC_FRAME,
     });
     expect(result.wagesCents).toBe(12_000);
   });

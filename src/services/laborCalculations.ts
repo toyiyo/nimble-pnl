@@ -824,6 +824,8 @@ export interface MonthlyLaborInput {
   tipsOwedByEmployee: Map<string, number>;
   monthStart: Date;
   monthEnd: Date;
+  /** The restaurant's business-day framing. Required -- see design section 7. */
+  businessDay: BusinessDayConfig;
 }
 
 export interface MonthlyLaborResult {
@@ -855,7 +857,7 @@ export interface MonthlyLaborResult {
 export function calculateActualLaborCostForMonth(
   input: MonthlyLaborInput
 ): MonthlyLaborResult {
-  const { employees, timePunches, tipsOwedByEmployee, monthStart, monthEnd } = input;
+  const { employees, timePunches, tipsOwedByEmployee, monthStart, monthEnd, businessDay } = input;
 
   let wagesCents = 0;
 
@@ -865,6 +867,10 @@ export function calculateActualLaborCostForMonth(
 
     if (compType !== 'hourly') {
       // No OT to band — call calculateEmployeePay over the calendar-month window.
+      // TODO(task-10): pass `businessDay` here once calculateEmployeePay's
+      // signature grows the businessDay parameter. Until then this branch
+      // (salary/contractor/daily_rate) still buckets by host-local calendar
+      // day inside calculateEmployeePay itself.
       const pay = calculateEmployeePay(
         employee,
         employeePunches,
@@ -907,6 +913,12 @@ export function calculateActualLaborCostForMonth(
       const weekStart = new Date(weekKey + 'T12:00:00');
       const weekEnd = endOfWeek(weekStart, { weekStartsOn: WEEK_STARTS_ON });
 
+      // TODO(task-10): pass `businessDay` here once calculateEmployeePay's
+      // signature grows the businessDay parameter. This weekly call is only
+      // used for OT banding (weekWageCents below); per-day attribution for
+      // the [monthStart, monthEnd] clip is handled explicitly by
+      // toBusinessDayFor(...) at the dateKey assignment below, so this
+      // pending TODO does not affect this task's cutoff routing.
       const pay = calculateEmployeePay(
         employee,
         weekPunches,
@@ -923,10 +935,12 @@ export function calculateActualLaborCostForMonth(
       const hoursByDate = new Map<string, number>();
       for (const period of periods) {
         if (period.isBreak) continue;
-        // Attribute by the shift's clock-in day (not the segment start), so a
-        // break-after-midnight segment's hours land on the clock-in day for both
-        // the proportional split and the [monthStart, monthEnd] clip.
-        const dateKey = formatLocalDate(period.clockIn ?? period.startTime);
+        // Attribute by the shift's clock-in BUSINESS day (not the segment
+        // start), so a break-after-midnight segment's hours land on the
+        // clock-in business day for both the proportional split and the
+        // [monthStart, monthEnd] clip. Matches calculateActualLaborCost /
+        // calculateHoursPerEmployee (Tasks 5-6).
+        const dateKey = toBusinessDayFor(period.clockIn ?? period.startTime, businessDay);
         hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
       }
 

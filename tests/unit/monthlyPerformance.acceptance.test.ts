@@ -14,6 +14,7 @@ import passThroughTotals from '../fixtures/russos-2026-04/pass_through_totals.js
 import tipSplits from '../fixtures/russos-2026-04/tip_splits.json';
 import timePunches from '../fixtures/russos-2026-04/time_punches.json';
 import employees from '../fixtures/russos-2026-04/employees.json';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 // Acceptance fixture: Russo's Pizzeria April 2026.
 // Snapshot of post-Migration-A and post-Migration-B production state. See
@@ -82,6 +83,7 @@ describe("Monthly Performance acceptance — Russo's April 2026", () => {
       tipsOwedByEmployee,
       monthStart: new Date(Date.UTC(2026, 3, 1, 0, 0, 0)),
       monthEnd: new Date(Date.UTC(2026, 3, 30, 23, 59, 59)),
+      businessDay: LEGACY_UTC_FRAME,
     });
 
     expect(labor.tipsOwedCents).toBe(0);

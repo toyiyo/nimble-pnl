@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { resolveLaborBasis } from '@/lib/combineCosts';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 // Contract mirrored by useMonthlyMetrics' final labor_cost emission. Kept as
 // documentation of the intended contract, but note this does NOT exercise the
@@ -148,7 +149,7 @@ describe('useMonthlyMetrics labor_cost emission (real renderHook coverage)', () 
     const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
 
     const { result } = renderHook(
-      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
+      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo, LEGACY_UTC_FRAME),
       { wrapper: createWrapper() },
     );
 
@@ -181,7 +182,7 @@ describe('useMonthlyMetrics labor_cost emission (real renderHook coverage)', () 
     const { useMonthlyMetrics } = await import('@/hooks/useMonthlyMetrics');
 
     const { result } = renderHook(
-      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo),
+      () => useMonthlyMetrics(RESTAURANT, dateFrom, dateTo, LEGACY_UTC_FRAME),
       { wrapper: createWrapper() },
     );
 

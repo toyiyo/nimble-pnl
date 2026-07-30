@@ -178,7 +178,11 @@ const Index = () => {
   const { data: monthlyMetrics, isLoading: monthlyLoading } = useMonthlyMetrics(
     selectedRestaurant?.restaurant_id || null,
     monthlyRangeStart,
-    monthlyRangeEnd
+    monthlyRangeEnd,
+    {
+      tz: selectedRestaurant?.restaurant?.timezone,
+      cutoffHour: selectedRestaurant?.restaurant?.business_day_start_hour,
+    }
   );
 
   // Revenue breakdown is used by periodMetrics internally but we also need it for detailed display

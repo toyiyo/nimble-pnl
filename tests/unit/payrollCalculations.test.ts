@@ -266,6 +266,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         0, // tips
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-31'),
         manualPayments
@@ -295,6 +296,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         punches,
         0, // tips
+        'UTC',
         new Date('2024-01-15'),
         new Date('2024-01-15'),
         manualPayments
@@ -317,6 +319,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         0, // tips
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-31'),
         []
@@ -337,6 +340,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         0, // tips
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-31'),
         undefined
@@ -372,6 +376,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employees,
         punchesPerEmployee,
         tipsPerEmployee,
+        'UTC',
         manualPaymentsPerEmployee
       );
 
@@ -401,6 +406,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employees,
         punchesPerEmployee,
         tipsPerEmployee,
+        'UTC',
         manualPaymentsPerEmployee
       );
 
@@ -417,6 +423,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         50000, // $500 tips in cents
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-07'),
         [],
@@ -434,6 +441,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         50000, // $500 tips in cents
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-07'),
         []
@@ -450,6 +458,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         30000, // $300 tips in cents
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-07'),
         [],
@@ -474,6 +483,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         50000, // $500 tips
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-31'),
         manualPayments,
@@ -491,6 +501,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employee,
         [],
         10000,
+        'UTC',
         new Date('2024-01-01'),
         new Date('2024-01-07'),
         [],
@@ -526,6 +537,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employees,
         punchesPerEmployee,
         tipsPerEmployee,
+        'UTC',
         new Map(),
         tipPayoutsPerEmployee
       );
@@ -563,6 +575,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employees,
         punchesPerEmployee,
         tipsPerEmployee,
+        'UTC',
         new Map(),
         tipPayoutsPerEmployee
       );
@@ -586,7 +599,8 @@ describe('payrollCalculations - Additional Coverage', () => {
         new Date('2024-01-07'),
         employees,
         punchesPerEmployee,
-        tipsPerEmployee
+        tipsPerEmployee,
+        'UTC'
         // tipPayoutsPerEmployee omitted - defaults to empty Map
       );
 
@@ -629,7 +643,8 @@ describe('payrollCalculations - Additional Coverage', () => {
         new Date('2024-01-07'),
         [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' })],
         new Map(),
-        new Map()
+        new Map(),
+        'UTC'
       );
 
       const csv = exportPayrollToCSV(payroll);
@@ -648,7 +663,8 @@ describe('payrollCalculations - Additional Coverage', () => {
         new Date('2024-01-07'),
         [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Front of House' })],
         new Map(),
-        new Map()
+        new Map(),
+        'UTC'
       );
 
       const csv = exportPayrollToCSV(payroll);
@@ -662,7 +678,8 @@ describe('payrollCalculations - Additional Coverage', () => {
         new Date('2024-01-07'),
         [createEmployee({ id: 'emp-1', name: 'Bob' })], // no area
         new Map(),
-        new Map()
+        new Map(),
+        'UTC'
       );
 
       const csv = exportPayrollToCSV(payroll);
@@ -680,7 +697,8 @@ describe('payrollCalculations - Additional Coverage', () => {
         new Date('2024-01-07'),
         [createEmployee({ id: 'emp-1', name: 'Alice', area: 'Bar' })],
         new Map(),
-        new Map()
+        new Map(),
+        'UTC'
       );
 
       const csv = exportPayrollToCSV(payroll);
@@ -713,6 +731,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employees,
         punchesPerEmployee,
         tipsPerEmployee,
+        'UTC',
         new Map(),
         tipPayoutsPerEmployee
       );
@@ -745,6 +764,7 @@ describe('payrollCalculations - Additional Coverage', () => {
         employees,
         punchesPerEmployee,
         tipsPerEmployee,
+        'UTC',
         new Map(),
         tipPayoutsPerEmployee
       );
@@ -763,20 +783,20 @@ describe('payrollCalculations - Additional Coverage', () => {
   describe('area field threading', () => {
     it('threads area from employee onto EmployeePayroll when area is set', () => {
       const employee = createEmployee({ area: 'Front of House' });
-      const result = calculateEmployeePay(employee, [], 0);
+      const result = calculateEmployeePay(employee, [], 0, 'UTC');
       expect(result.area).toBe('Front of House');
     });
 
     it('threads area as null when employee has no area (undefined)', () => {
       // createEmployee does not set area, so it is undefined
       const employee = createEmployee();
-      const result = calculateEmployeePay(employee, [], 0);
+      const result = calculateEmployeePay(employee, [], 0, 'UTC');
       expect(result.area).toBeNull();
     });
 
     it('preserves empty string area when employee area is empty string', () => {
       const employee = createEmployee({ area: '' });
-      const result = calculateEmployeePay(employee, [], 0);
+      const result = calculateEmployeePay(employee, [], 0, 'UTC');
       // Empty string is falsy — coerce to null via ?? null (only catches undefined/null)
       // Design spec says employee.area ?? null, so empty string stays as empty string
       // but null/undefined become null. Use the spec as authority.
@@ -785,7 +805,7 @@ describe('payrollCalculations - Additional Coverage', () => {
 
     it('area field is present in the EmployeePayroll interface (type check via property access)', () => {
       const employee = createEmployee({ area: 'Bar' });
-      const result = calculateEmployeePay(employee, [], 0);
+      const result = calculateEmployeePay(employee, [], 0, 'UTC');
       expect(Object.prototype.hasOwnProperty.call(result, 'area')).toBe(true);
     });
 
@@ -801,7 +821,8 @@ describe('payrollCalculations - Additional Coverage', () => {
         new Date('2024-01-07'),
         employees,
         new Map(),
-        new Map()
+        new Map(),
+        'UTC'
       );
 
       const alice = result.employees.find(e => e.employeeId === 'emp-1')!;
@@ -884,8 +905,8 @@ describe('calculateEmployeePay overnight window attribution', () => {
   } as unknown as Employee;
 
   // Payroll week Mon 2026-07-06 .. Sun 2026-07-12 (WEEK_STARTS_ON = Mon)
-  const weekStart = new Date('2026-07-06T00:00:00');
-  const weekEnd = new Date('2026-07-12T23:59:59.999');
+  const weekStart = new Date('2026-07-06T00:00:00Z');
+  const weekEnd = new Date('2026-07-12T23:59:59.999Z');
 
   const punch = (type: string, iso: string) => ({
     id: `${type}-${iso}`, employee_id: 'e1', restaurant_id: 'r1',
@@ -895,31 +916,31 @@ describe('calculateEmployeePay overnight window attribution', () => {
   it('counts a Sun->Mon overnight shift once, attributed to the Sunday week', () => {
     // Buffered fetch for the Sun-ending week would include Mon 02:00 clock_out.
     const punches = [
-      punch('clock_in', '2026-07-12T20:00:00'),  // Sun 8pm (in window)
-      punch('clock_out', '2026-07-13T02:00:00'),  // Mon 2am (lookahead)
+      punch('clock_in', '2026-07-12T20:00:00Z'),  // Sun 8pm (in window)
+      punch('clock_out', '2026-07-13T02:00:00Z'),  // Mon 2am (lookahead)
     ];
-    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd, [], 0, undefined, [], true);
+    const pay = calculateEmployeePay(employee, punches, 0, 'UTC', weekStart, weekEnd, [], 0, undefined, [], true);
     expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(6, 5);
     expect(pay.incompleteShifts ?? []).toHaveLength(0);
   });
 
   it('does NOT double-count the same shift in the following week, no false orphan', () => {
-    const nextStart = new Date('2026-07-13T00:00:00'); // Mon
-    const nextEnd = new Date('2026-07-19T23:59:59.999');
+    const nextStart = new Date('2026-07-13T00:00:00Z'); // Mon
+    const nextEnd = new Date('2026-07-19T23:59:59.999Z');
     // Buffered fetch for the next week includes the Sun 20:00 clock_in (lookback).
     const punches = [
-      punch('clock_in', '2026-07-12T20:00:00'),  // before nextStart → drop
-      punch('clock_out', '2026-07-13T02:00:00'),  // in next window, but clock-in owns it
+      punch('clock_in', '2026-07-12T20:00:00Z'),  // before nextStart → drop
+      punch('clock_out', '2026-07-13T02:00:00Z'),  // in next window, but clock-in owns it
     ];
-    const pay = calculateEmployeePay(employee, punches, 0, nextStart, nextEnd, [], 0, undefined, [], true);
+    const pay = calculateEmployeePay(employee, punches, 0, 'UTC', nextStart, nextEnd, [], 0, undefined, [], true);
     expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(0, 5);
     // The paired clock-in suppresses the "no matching clock-in" warning:
     expect(pay.incompleteShifts ?? []).toHaveLength(0);
   });
 
   it('still flags a genuine missing clock-out when the clock-in is in-window', () => {
-    const punches = [punch('clock_in', '2026-07-08T09:00:00')]; // Wed, never clocked out
-    const pay = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd, [], 0, undefined, [], true);
+    const punches = [punch('clock_in', '2026-07-08T09:00:00Z')]; // Wed, never clocked out
+    const pay = calculateEmployeePay(employee, punches, 0, 'UTC', weekStart, weekEnd, [], 0, undefined, [], true);
     expect(pay.incompleteShifts?.some((s) => s.type === 'missing_clock_out')).toBe(true);
   });
 
@@ -931,13 +952,13 @@ describe('calculateEmployeePay overnight window attribution', () => {
       ['2026-07-08', '2026-07-09'], ['2026-07-09', '2026-07-10'],
       ['2026-07-10', '2026-07-11'], ['2026-07-11', '2026-07-12'],
     ].flatMap(([d]) => [
-      punch('clock_in', `${d}T08:00:00`), punch('clock_out', `${d}T15:00:00`),
+      punch('clock_in', `${d}T08:00:00Z`), punch('clock_out', `${d}T15:00:00Z`),
     ]);
     const neighbour = [
-      punch('clock_in', '2026-07-05T08:00:00'), // Sun of prior week → drop
-      punch('clock_out', '2026-07-05T15:00:00'),
+      punch('clock_in', '2026-07-05T08:00:00Z'), // Sun of prior week → drop
+      punch('clock_out', '2026-07-05T15:00:00Z'),
     ];
-    const pay = calculateEmployeePay(employee, [...neighbour, ...inWindow], 0, weekStart, weekEnd, [], 0, undefined, [], true);
+    const pay = calculateEmployeePay(employee, [...neighbour, ...inWindow], 0, 'UTC', weekStart, weekEnd, [], 0, undefined, [], true);
     expect(pay.regularHours).toBeCloseTo(40, 5);
     expect(pay.overtimeHours).toBeCloseTo(2, 5);
   });
@@ -948,18 +969,18 @@ describe('calculateEmployeePay overnight window attribution', () => {
     // starts Mon 01:00; without clock-in attribution it would be dropped from the
     // Sunday week and re-counted in the Monday week (split pay/OT).
     const punches = [
-      punch('clock_in', '2026-07-12T20:00:00'),    // Sun (last day of Mon-Sun week)
-      punch('break_start', '2026-07-13T00:30:00'),  // Mon 00:30
-      punch('break_end', '2026-07-13T01:00:00'),    // Mon 01:00
-      punch('clock_out', '2026-07-13T02:00:00'),    // Mon 02:00
+      punch('clock_in', '2026-07-12T20:00:00Z'),    // Sun (last day of Mon-Sun week)
+      punch('break_start', '2026-07-13T00:30:00Z'),  // Mon 00:30
+      punch('break_end', '2026-07-13T01:00:00Z'),    // Mon 01:00
+      punch('clock_out', '2026-07-13T02:00:00Z'),    // Mon 02:00
     ];
     // Whole shift (5.5h) attributed to the Sunday-containing week.
-    const payA = calculateEmployeePay(employee, punches, 0, weekStart, weekEnd, [], 0, undefined, [], true);
+    const payA = calculateEmployeePay(employee, punches, 0, 'UTC', weekStart, weekEnd, [], 0, undefined, [], true);
     expect(payA.regularHours + payA.overtimeHours).toBeCloseTo(5.5, 5);
     // The following week must not re-count any of it (no double-count).
-    const nextStart = new Date('2026-07-13T00:00:00');
-    const nextEnd = new Date('2026-07-19T23:59:59.999');
-    const payB = calculateEmployeePay(employee, punches, 0, nextStart, nextEnd, [], 0, undefined, [], true);
+    const nextStart = new Date('2026-07-13T00:00:00Z');
+    const nextEnd = new Date('2026-07-19T23:59:59.999Z');
+    const payB = calculateEmployeePay(employee, punches, 0, 'UTC', nextStart, nextEnd, [], 0, undefined, [], true);
     expect(payB.regularHours + payB.overtimeHours).toBeCloseTo(0, 5);
   });
 });
@@ -985,14 +1006,14 @@ describe('calculateEmployeePay — OT banding for break-after-midnight overnight
     // Whole shift belongs to the clock-in week → 4h reg + 1.5h OT.
     // Before the fix the post-break 1.5h banded into the NEXT week → 5.5h reg / 0 OT.
     const punches = [
-      p('clock_in', '2026-07-12T20:00:00'),
-      p('break_start', '2026-07-13T00:00:00'),
-      p('break_end', '2026-07-13T00:30:00'),
-      p('clock_out', '2026-07-13T02:00:00'),
+      p('clock_in', '2026-07-12T20:00:00Z'),
+      p('break_start', '2026-07-13T00:00:00Z'),
+      p('break_end', '2026-07-13T00:30:00Z'),
+      p('clock_out', '2026-07-13T02:00:00Z'),
     ];
     const pay = calculateEmployeePay(
-      emp, punches, 0,
-      new Date('2026-07-06T00:00:00'), new Date('2026-07-12T23:59:59.999'),
+      emp, punches, 0, 'UTC',
+      new Date('2026-07-06T00:00:00Z'), new Date('2026-07-12T23:59:59.999Z'),
       [], 0, otRules, []
     );
     expect(pay.regularHours).toBeCloseTo(4, 5);

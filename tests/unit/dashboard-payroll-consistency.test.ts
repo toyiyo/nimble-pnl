@@ -86,7 +86,8 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [testEmployee],
         timePunches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // When: Calculate payroll using Payroll logic (calculateEmployeePay)
@@ -94,6 +95,7 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         testEmployee,
         timePunches,
         0, // tips
+        'UTC',
         startDate,
         endDate
       );
@@ -160,7 +162,8 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [testEmployee],
         timePunches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // Then: Should have cost only on Jan 8
@@ -231,13 +234,15 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [salaryEmployee],
         [],
         baseDates.start,
-        baseDates.end
+        baseDates.end,
+        'UTC'
       );
 
       const payrollResult = calculateEmployeePay(
         salaryEmployee,
         [],
         0,
+        'UTC',
         baseDates.start,
         baseDates.end
       );
@@ -259,13 +264,15 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [contractorEmployee],
         [],
         baseDates.start,
-        baseDates.end
+        baseDates.end,
+        'UTC'
       );
 
       const payrollResult = calculateEmployeePay(
         contractorEmployee,
         [],
         0,
+        'UTC',
         baseDates.start,
         baseDates.end
       );
@@ -293,13 +300,15 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [terminatedSalary],
         [],
         baseDates.start,
-        baseDates.end
+        baseDates.end,
+        'UTC'
       );
 
       const payrollResult = calculateEmployeePay(
         terminatedSalary,
         [],
         0,
+        'UTC',
         baseDates.start,
         baseDates.end
       );
@@ -397,13 +406,15 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [testEmployee],
         timePunches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       const payrollResult = calculateEmployeePay(
         testEmployee,
         timePunches,
         0,
+        'UTC',
         startDate,
         endDate
       );
@@ -456,13 +467,15 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [testEmployee],
         timePunches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       const payrollResult = calculateEmployeePay(
         testEmployee,
         timePunches,
         0,
+        'UTC',
         startDate,
         endDate
       );
@@ -489,13 +502,15 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
         [testEmployee],
         [],
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       const payrollResult = calculateEmployeePay(
         testEmployee,
         [],
         0,
+        'UTC',
         startDate,
         endDate
       );

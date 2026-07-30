@@ -18,6 +18,7 @@ import {
 } from '@/utils/tipAggregation';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import { useRestaurantClock } from './useRestaurantClock';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -114,9 +115,10 @@ export function usePayroll(
   const { employees } = useEmployees(restaurantId, { status: 'all' });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { tz: timezone } = useRestaurantClock();
 
   const { data: payrollPeriod, isLoading, error, refetch } = useQuery({
-    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString()],
+    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), timezone],
     queryFn: async (): Promise<PayrollPeriod | null> => {
       if (!restaurantId) return null;
 
@@ -316,6 +318,7 @@ export function usePayroll(
         eligibleEmployees,
         punchesPerEmployee,
         tipsPerEmployee,
+        timezone,
         manualPaymentsPerEmployee,
         tipPayoutsPerEmployee,
         overtimeRules,

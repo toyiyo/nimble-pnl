@@ -316,7 +316,7 @@ describe('Hourly Employee Edge Cases', () => {
         ...createShift('2024-01-19T09:00:00Z', '2024-01-19T18:00:00Z'), // Fri 9h = 45h
       ];
 
-      const payroll = calculateEmployeePay(employee, punches, 0);
+      const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
 
       expect(payroll.regularHours).toBe(40);
       expect(payroll.overtimeHours).toBe(5);
@@ -347,7 +347,7 @@ describe('Hourly Employee Edge Cases', () => {
         ...createShift('2024-01-23T08:00:00Z', '2024-01-23T18:00:00Z'), // Tue 10h = 30h
       ];
 
-      const payroll = calculateEmployeePay(employee, [...week1Punches, ...week2Punches], 0);
+      const payroll = calculateEmployeePay(employee, [...week1Punches, ...week2Punches], 0, 'UTC');
 
       // Week 1: 40 regular + 10 OT
       // Week 2: 30 regular + 0 OT
@@ -385,7 +385,7 @@ describe('Hourly Employee Edge Cases', () => {
         '2024-01-15T13:15:00Z' // 4.25 hours
       );
 
-      const payroll = calculateEmployeePay(employee, punches, 0);
+      const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
       // 4.25 * 1575 = 6693.75 cents → should round to 6694 cents
       expect(payroll.regularPay).toBe(6694);
     });
@@ -1526,7 +1526,7 @@ describe('Currency and Rounding Edge Cases', () => {
       '2024-01-15T17:00:00Z'
     );
 
-    const payroll = calculateEmployeePay(employee, punches, 0);
+    const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
     expect(payroll.regularPay).toBe(8); // 8 cents
   });
 
@@ -1553,7 +1553,7 @@ describe('Currency and Rounding Edge Cases', () => {
       '2024-01-15T13:20:00Z' // 4h 20m = 4.333h
     );
 
-    const payroll = calculateEmployeePay(employee, punches, 0);
+    const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
     // 4.333... * 1575 = 6824.99... → should round to 6825
     expect(payroll.regularPay).toBe(6825);
   });

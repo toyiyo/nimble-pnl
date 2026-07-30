@@ -15,6 +15,7 @@ import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import { useRestaurantClock } from './useRestaurantClock';
 
 export interface MonthlyMetrics {
   period: string; // 'YYYY-MM'
@@ -149,8 +150,10 @@ export function useMonthlyMetrics(
   dateFrom: Date,
   dateTo: Date
 ) {
+  const { tz: timezone } = useRestaurantClock();
+
   return useQuery({
-    queryKey: ['monthly-metrics', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd')],
+    queryKey: ['monthly-metrics', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), timezone],
     queryFn: async () => {
       if (!restaurantId) return [];
 
@@ -526,6 +529,7 @@ export function useMonthlyMetrics(
           tipsOwedByEmployee,
           monthStart: clampedStart,
           monthEnd: clampedEnd,
+          timezone,
         });
 
         // Per-job manual payments for this month window.

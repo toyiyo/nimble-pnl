@@ -67,8 +67,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-01T09:00:00',
-          end_time: '2024-01-01T17:00:00',
+          start_time: '2024-01-01T09:00:00Z',
+          end_time: '2024-01-01T17:00:00Z',
           break_duration: 30,
           position: 'Kitchen Manager',
         },
@@ -76,8 +76,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-02T09:00:00',
-          end_time: '2024-01-02T17:00:00',
+          start_time: '2024-01-02T09:00:00Z',
+          end_time: '2024-01-02T17:00:00Z',
           break_duration: 30,
           position: 'Kitchen Manager',
         },
@@ -85,8 +85,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-03T09:00:00',
-          end_time: '2024-01-03T17:00:00',
+          start_time: '2024-01-03T09:00:00Z',
+          end_time: '2024-01-03T17:00:00Z',
           break_duration: 30,
           position: 'Kitchen Manager',
         },
@@ -96,7 +96,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee],
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // 3 days × $166.67 = $500.01
@@ -120,8 +121,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-01T06:00:00',
-          end_time: '2024-01-01T10:00:00',
+          start_time: '2024-01-01T06:00:00Z',
+          end_time: '2024-01-01T10:00:00Z',
           break_duration: 0,
           position: 'Kitchen Manager',
         },
@@ -129,8 +130,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-01T14:00:00',
-          end_time: '2024-01-01T18:00:00',
+          start_time: '2024-01-01T14:00:00Z',
+          end_time: '2024-01-01T18:00:00Z',
           break_duration: 0,
           position: 'Kitchen Manager',
         },
@@ -140,7 +141,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee],
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // Should be 1 day × $166.67, not 2 × $166.67
@@ -155,8 +157,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-01T09:00:00',
-          end_time: '2024-01-01T11:00:00',
+          start_time: '2024-01-01T09:00:00Z',
+          end_time: '2024-01-01T11:00:00Z',
           break_duration: 0,
           position: 'Kitchen Manager',
         },
@@ -165,8 +167,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-02T06:00:00',
-          end_time: '2024-01-02T18:00:00',
+          start_time: '2024-01-02T06:00:00Z',
+          end_time: '2024-01-02T18:00:00Z',
           break_duration: 0,
           position: 'Kitchen Manager',
         },
@@ -176,7 +178,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee],
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // Both days should cost the same: 2 × $166.67 = $333.34
@@ -191,8 +194,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-01T09:00:00',
-          end_time: '2024-01-01T17:00:00',
+          start_time: '2024-01-01T09:00:00Z',
+          end_time: '2024-01-01T17:00:00Z',
           break_duration: 30,
           position: 'Kitchen Manager',
         },
@@ -202,7 +205,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [inactiveEmployee],
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       expect(breakdown.daily_rate.cost).toBe(0);
@@ -220,28 +224,28 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T09:00:00',
+          punch_time: '2024-01-02T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T18:30:00',
+          punch_time: '2024-01-02T18:30:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -250,7 +254,8 @@ describe('Labor Calculations - Daily Rate', () => {
         [mockDailyRateEmployee],
         punches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // 2 days × $166.67 = $333.34
@@ -272,14 +277,14 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         // Day 2: Only 1 hour!
@@ -287,14 +292,14 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T09:00:00',
+          punch_time: '2024-01-02T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-02T10:00:00',
+          punch_time: '2024-01-02T10:00:00Z',
           punch_type: 'clock_out',
         },
         // Day 3: 16 hours!
@@ -302,14 +307,14 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-5',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T06:00:00',
+          punch_time: '2024-01-03T06:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-6',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-03T22:00:00',
+          punch_time: '2024-01-03T22:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -318,7 +323,8 @@ describe('Labor Calculations - Daily Rate', () => {
         [mockDailyRateEmployee],
         punches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // All three days should cost the same: 3 × $166.67 = $500.01
@@ -332,28 +338,28 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T06:00:00',
+          punch_time: '2024-01-01T06:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T10:00:00',
+          punch_time: '2024-01-01T10:00:00Z',
           punch_type: 'clock_out',
         },
         {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T14:00:00',
+          punch_time: '2024-01-01T14:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T18:00:00',
+          punch_time: '2024-01-01T18:00:00Z',
           punch_type: 'clock_out',
         },
       ];
@@ -362,7 +368,8 @@ describe('Labor Calculations - Daily Rate', () => {
         [mockDailyRateEmployee],
         punches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // Should be counted as 1 day: $166.67
@@ -375,7 +382,8 @@ describe('Labor Calculations - Daily Rate', () => {
         [mockDailyRateEmployee],
         [],
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       expect(breakdown.daily_rate.cost).toBe(0);
@@ -389,7 +397,7 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2023-12-31T09:00:00',
+          punch_time: '2023-12-31T09:00:00Z',
           punch_type: 'clock_in',
         },
         // Within period
@@ -397,14 +405,14 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T09:00:00',
+          punch_time: '2024-01-01T09:00:00Z',
           punch_type: 'clock_in',
         },
         {
           id: 'punch-3',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-01T17:00:00',
+          punch_time: '2024-01-01T17:00:00Z',
           punch_type: 'clock_out',
         },
         // After period
@@ -412,7 +420,7 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'punch-4',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: '2024-01-08T09:00:00',
+          punch_time: '2024-01-08T09:00:00Z',
           punch_type: 'clock_in',
         },
       ];
@@ -421,7 +429,8 @@ describe('Labor Calculations - Daily Rate', () => {
         [mockDailyRateEmployee],
         punches,
         startDate,
-        endDate
+        endDate,
+        'UTC'
       );
 
       // Should only count Jan 1: $166.67
@@ -491,8 +500,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-1',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-01T09:00:00',
-          end_time: '2024-01-01T17:00:00',
+          start_time: '2024-01-01T09:00:00Z',
+          end_time: '2024-01-01T17:00:00Z',
           break_duration: 30,
           position: 'Kitchen Manager',
         },
@@ -500,8 +509,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-2',
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-02T09:00:00',
-          end_time: '2024-01-02T17:00:00',
+          start_time: '2024-01-02T09:00:00Z',
+          end_time: '2024-01-02T17:00:00Z',
           break_duration: 30,
           position: 'Kitchen Manager',
         },
@@ -510,8 +519,8 @@ describe('Labor Calculations - Daily Rate', () => {
           id: 'shift-3',
           employee_id: 'emp-2',
           restaurant_id: 'rest-1',
-          start_time: '2024-01-01T09:00:00',
-          end_time: '2024-01-01T17:00:00',
+          start_time: '2024-01-01T09:00:00Z',
+          end_time: '2024-01-01T17:00:00Z',
           break_duration: 30,
           position: 'Server',
         },
@@ -521,7 +530,8 @@ describe('Labor Calculations - Daily Rate', () => {
         shifts,
         [mockDailyRateEmployee, hourlyEmployee],
         new Date('2024-01-01'),
-        new Date('2024-01-07')
+        new Date('2024-01-07'),
+        'UTC'
       );
 
       // Daily rate: 2 days × $166.67 = $333.34

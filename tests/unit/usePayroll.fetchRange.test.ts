@@ -58,6 +58,16 @@ vi.mock('@/hooks/useEmployees', () => ({
   useEmployees: () => ({ employees: [{ id: 'emp-1', status: 'active' }], loading: false }),
 }));
 
+// usePayroll now sources the restaurant timezone from useRestaurantClock
+// (via useRestaurantContext) to bucket punches by the restaurant's calendar
+// day. This test only asserts the time_punches fetch *range* bounds, so the
+// specific timezone value is not load-bearing — just needs to be present.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { timezone: 'America/Chicago' } },
+  }),
+}));
+
 const createWrapper = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },

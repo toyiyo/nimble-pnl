@@ -26,6 +26,8 @@ import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculati
 import { startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { businessDaysBetween, toBusinessDay } from '@/lib/restaurantClock';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 
@@ -35,21 +37,12 @@ import type { TimePunch } from '@/types/timeTracking';
 // ============================================================================
 
 /**
- * Format a date as YYYY-MM-DD in the user's local timezone.
- *
- * IMPORTANT: This must match Payroll's day-bucketing (payrollCalculations.ts)
- * so period totals and monthly aggregation stay consistent.
- */
-function formatDateUTC(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-/**
  * Generate an array of date strings in YYYY-MM-DD format for the inclusive range.
  * Uses local day boundaries (matches Payroll + Dashboard UI expectations).
+ *
+ * NOTE: `startDate`/`endDate` here are calendar-day tokens (already local
+ * midnight, e.g. from a date picker), not instants — so `toDateOnlyString`
+ * (local calendar fields) is correct, not `toBusinessDay`.
  */
 function generateDateRange(startDate: Date, endDate: Date): string[] {
   const dates: string[] = [];
@@ -65,7 +58,7 @@ function generateDateRange(startDate: Date, endDate: Date): string[] {
   );
 
   while (current <= end) {
-    dates.push(formatDateUTC(current));
+    dates.push(toDateOnlyString(current));
     current.setDate(current.getDate() + 1);
   }
 
@@ -372,7 +365,8 @@ export function calculateScheduledLaborCost(
   shifts: Shift[],
   employees: Employee[],
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  timezone: string
 ): { breakdown: LaborCostBreakdown; dailyCosts: DailyLaborCost[] } {
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
@@ -402,7 +396,7 @@ export function calculateScheduledLaborCost(
     const employee = employeeMap.get(shift.employee_id);
     if (!employee || employee.status !== 'active') return;
 
-    const shiftDate = formatDateUTC(new Date(shift.start_time));
+    const shiftDate = toBusinessDay(shift.start_time, timezone);
     const dayData = dateMap.get(shiftDate);
     if (!dayData) return;
 
@@ -498,7 +492,8 @@ export function calculateActualLaborCost(
   employees: Employee[],
   timePunches: TimePunch[],
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  timezone: string
 ): { breakdown: LaborCostBreakdown; dailyCosts: DailyLaborCost[] } {
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
@@ -554,31 +549,15 @@ export function calculateActualLaborCost(
         return;
       }
       
-      const workDate = formatDateUTC(new Date(period.startTime));
+      const workDate = toBusinessDay(period.startTime, timezone);
       const hoursWorked = period.hours;
-      
+
       // Accumulate hours for this employee on this date (start date of work period)
       employeeHours.set(workDate, (employeeHours.get(workDate) || 0) + hoursWorked);
-      
-      // Track that this employee was active on ALL dates in the period range
-      // This handles overnight shifts where work spans multiple days
-      const startTimestamp = new Date(period.startTime);
-      const endTimestamp = new Date(period.endTime);
 
-      const periodStart = new Date(
-        startTimestamp.getFullYear(),
-        startTimestamp.getMonth(),
-        startTimestamp.getDate()
-      );
-      const periodEnd = new Date(
-        endTimestamp.getFullYear(),
-        endTimestamp.getMonth(),
-        endTimestamp.getDate()
-      );
-
-      // Add employee to active set for each LOCAL day the period touches
-      for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
-        const dateStr = formatDateUTC(d);
+      // Every restaurant-local day this period touches. Overnight periods are
+      // charged to both days, matching calculateHoursPerEmployee below.
+      businessDaysBetween(period.startTime, period.endTime, timezone).forEach((dateStr) => {
         if (!employeesActivePerDay.has(dateStr)) {
           employeesActivePerDay.set(dateStr, new Set());
         }
@@ -586,7 +565,7 @@ export function calculateActualLaborCost(
         if (activeSet) {
           activeSet.add(employeeId);
         }
-      }
+      });
     });
   });
 
@@ -694,6 +673,7 @@ export function calculateHoursPerEmployee(
   timePunches: TimePunch[],
   startDate: Date,
   endDate: Date,
+  timezone: string,
 ): EmployeeHoursSummary[] {
   const punchesByEmployee = new Map<string, TimePunch[]>();
   timePunches.forEach((punch) => {
@@ -721,18 +701,13 @@ export function calculateHoursPerEmployee(
 
     periods.forEach((period) => {
       if (period.isBreak) return;
-      const start = new Date(period.startTime);
-      const end = new Date(period.endTime);
-      const startDay = formatDateUTC(start);
+      const startDay = toBusinessDay(period.startTime, timezone);
       hoursPerDay[startDay] = (hoursPerDay[startDay] ?? 0) + period.hours;
       totalHours += period.hours;
 
-      const dayCursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-      const lastDay = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-      while (dayCursor <= lastDay) {
-        activeDays.add(formatDateUTC(dayCursor));
-        dayCursor.setDate(dayCursor.getDate() + 1);
-      }
+      businessDaysBetween(period.startTime, period.endTime, timezone).forEach((day) =>
+        activeDays.add(day)
+      );
     });
 
     const daysWorked = activeDays.size;
@@ -840,6 +815,8 @@ export interface MonthlyLaborInput {
   tipsOwedByEmployee: Map<string, number>;
   monthStart: Date;
   monthEnd: Date;
+  /** Restaurant IANA timezone. Day bucketing is restaurant-local, not host-local. */
+  timezone: string;
 }
 
 export interface MonthlyLaborResult {
@@ -871,7 +848,7 @@ export interface MonthlyLaborResult {
 export function calculateActualLaborCostForMonth(
   input: MonthlyLaborInput
 ): MonthlyLaborResult {
-  const { employees, timePunches, tipsOwedByEmployee, monthStart, monthEnd } = input;
+  const { employees, timePunches, tipsOwedByEmployee, monthStart, monthEnd, timezone } = input;
 
   let wagesCents = 0;
 
@@ -885,6 +862,7 @@ export function calculateActualLaborCostForMonth(
         employee,
         employeePunches,
         0, // tips intentionally 0; tipsOwed added separately below
+        timezone,
         monthStart,
         monthEnd
       );
@@ -927,6 +905,7 @@ export function calculateActualLaborCostForMonth(
         employee,
         weekPunches,
         0,
+        timezone,
         weekStart,
         weekEnd
       );
@@ -942,7 +921,7 @@ export function calculateActualLaborCostForMonth(
         // Attribute by the shift's clock-in day (not the segment start), so a
         // break-after-midnight segment's hours land on the clock-in day for both
         // the proportional split and the [monthStart, monthEnd] clip.
-        const dateKey = formatDateUTC(period.clockIn ?? period.startTime);
+        const dateKey = toBusinessDay(period.clockIn ?? period.startTime, timezone);
         hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
       }
 

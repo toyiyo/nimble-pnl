@@ -2,6 +2,8 @@ import { TimePunch } from '@/types/timeTracking';
 import { Employee, CompensationType } from '@/types/scheduling';
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { toBusinessDay } from '@/lib/restaurantClock';
 import {
   calculateSalaryForPeriod,
   calculateContractorPayForPeriod,
@@ -440,6 +442,12 @@ export function calculateEmployeePay(
   employee: Employee,
   punches: TimePunch[],
   tips: number, // In cents
+  // Restaurant IANA timezone. Day bucketing (OT banding, daily_rate unique
+  // days) is restaurant-local, not host-local. Placed right after the last
+  // truly-required parameter (not appended at the end) because TypeScript
+  // forbids a required parameter from following an optional one, and
+  // periodStartDate/periodEndDate/overtimeRules below are declared with `?`.
+  timezone: string,
   periodStartDate?: Date,
   periodEndDate?: Date,
   manualPayments: ManualPayment[] = [],
@@ -489,7 +497,7 @@ export function calculateEmployeePay(
       // OT and tip proration. Same day as startTime for all non-break-crossing
       // shifts, so only the overnight break case changes. clockIn is a required
       // WorkPeriod field (set on every parseWorkPeriods push site).
-      const dateKey = format(new Date(period.clockIn), 'yyyy-MM-dd');
+      const dateKey = toBusinessDay(period.clockIn, timezone);
       hoursByDate.set(dateKey, (hoursByDate.get(dateKey) ?? 0) + period.hours);
     }
 
@@ -553,17 +561,29 @@ export function calculateEmployeePay(
   } else if (compensationType === 'daily_rate' && periodStartDate && periodEndDate) {
     // Daily rate: count unique days with punches
     const uniqueDays = new Set<string>();
-    
+
+    // Compare calendar-day STRINGS, not Date objects. periodStartDate/
+    // periodEndDate are calendar-day tokens, but callers construct them in
+    // different ways (e.g. `new Date('2024-01-01')`, which parses as UTC
+    // midnight, vs `new Date(2024, 0, 1)`, which is local midnight) -- and
+    // dateKey's would-be Date form (via parseDateOnly) is always local
+    // midnight. Mixing those conventions makes the boundary comparison
+    // host-timezone-dependent. toDateOnlyString reads whatever local
+    // calendar day the caller intended, so comparing 'YYYY-MM-DD' strings
+    // (safe: lexicographic order matches calendar order) sidesteps the
+    // mismatch entirely.
+    const periodStartKey = toDateOnlyString(periodStartDate);
+    const periodEndKey = toDateOnlyString(periodEndDate);
+
     punches.forEach(punch => {
-      const dateKey = format(new Date(punch.punch_time), 'yyyy-MM-dd');
-      const punchDate = new Date(dateKey);
-      
+      const dateKey = toBusinessDay(punch.punch_time, timezone);
+
       // Only count days within the pay period
-      if (punchDate >= periodStartDate && punchDate <= periodEndDate) {
+      if (dateKey >= periodStartKey && dateKey <= periodEndKey) {
         uniqueDays.add(dateKey);
       }
     });
-    
+
     daysWorked = uniqueDays.size;
     dailyRatePay = calculateDailyRatePay(employee, daysWorked);
   }
@@ -664,6 +684,12 @@ export function calculatePayrollPeriod(
   employees: Employee[],
   punchesPerEmployee: Map<string, TimePunch[]>,
   tipsPerEmployee: Map<string, number>,
+  // Restaurant IANA timezone. Threaded through to calculateEmployeePay so OT
+  // banding and daily_rate unique-day counting bucket by the restaurant's day.
+  // Placed right after the last truly-required parameter (not appended at
+  // the end) because TypeScript forbids a required parameter from following
+  // an optional one, and overtimeRules below is declared with `?`.
+  timezone: string,
   manualPaymentsPerEmployee: Map<string, ManualPayment[]> = new Map(),
   tipPayoutsPerEmployee: Map<string, number> = new Map(),
   overtimeRules?: OTRules,
@@ -675,7 +701,7 @@ export function calculatePayrollPeriod(
     const manualPayments = manualPaymentsPerEmployee.get(employee.id) || [];
     const tipsPaidOut = tipPayoutsPerEmployee.get(employee.id) || 0;
     // Pass period dates for salary/contractor calculations
-    return calculateEmployeePay(employee, punches, tips, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments, true);
+    return calculateEmployeePay(employee, punches, tips, timezone, startDate, endDate, manualPayments, tipsPaidOut, overtimeRules, overtimeAdjustments, true);
   });
 
   const totalRegularHours = employeePayrolls.reduce((sum, ep) => sum + ep.regularHours, 0);

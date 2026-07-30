@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { ShiftInterval, formatDayLabel, formatLocalDate } from '@/lib/shiftInterval';
+import { describe, it, expect, afterEach } from 'vitest';
+import { ShiftInterval, formatDayLabel, formatLocalDate, wallClockToInstant } from '@/lib/shiftInterval';
 
 // ---------------------------------------------------------------------------
 // ShiftInterval.create
@@ -454,5 +454,122 @@ describe('formatLocalDate', () => {
     // Construct a Date using local constructor to ensure local date
     const d = new Date(2026, 2, 15); // March 15 2026 00:00 local
     expect(formatLocalDate(d)).toBe('2026-03-15');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// wallClockToInstant
+// ---------------------------------------------------------------------------
+describe('wallClockToInstant', () => {
+  it('resolves a plain summer wall clock in Chicago (CDT, UTC-5)', () => {
+    expect(wallClockToInstant('2026-07-30', '06:30', 'America/Chicago')).toEqual(
+      new Date('2026-07-30T11:30:00.000Z'),
+    );
+  });
+
+  it('resolves a plain winter wall clock in Chicago (CST, UTC-6) — DST read from the date, not hardcoded', () => {
+    expect(wallClockToInstant('2026-01-15', '06:30', 'America/Chicago')).toEqual(
+      new Date('2026-01-15T12:30:00.000Z'),
+    );
+  });
+
+  it('resolves a UTC wall clock unchanged', () => {
+    expect(wallClockToInstant('2026-07-30', '06:30', 'UTC')).toEqual(
+      new Date('2026-07-30T06:30:00.000Z'),
+    );
+  });
+
+  it('returns a Date, not a string', () => {
+    expect(wallClockToInstant('2026-07-30', '06:30', 'UTC')).toBeInstanceOf(Date);
+  });
+
+  describe('validation — throws before delegating', () => {
+    it('throws INVALID_DATE for a malformed date', () => {
+      expect(() => wallClockToInstant('not-a-date', '06:30', 'America/Chicago')).toThrow('INVALID_DATE');
+    });
+
+    it('throws INVALID_DATE for a malformed time', () => {
+      expect(() => wallClockToInstant('2026-07-30', 'abc', 'America/Chicago')).toThrow('INVALID_DATE');
+    });
+
+    it('throws INVALID_DATE for a malformed non-empty timezone', () => {
+      expect(() => wallClockToInstant('2026-07-30', '06:30', 'Not/AZone')).toThrow('INVALID_DATE');
+    });
+
+    it('throws INVALID_DATE for an empty-string timezone — the case that otherwise fails open to a host-local instant', () => {
+      expect(() => wallClockToInstant('2026-07-30', '06:30', '')).toThrow('INVALID_DATE');
+    });
+  });
+
+  describe('DST edges — pinned to Postgres, asserted under all three host TZs', () => {
+    // Each expected value is what production Postgres returns for
+    // `(wall)::timestamp AT TIME ZONE zone`, not a value derived from this
+    // implementation. A `fromZonedTime`-based implementation returns a
+    // DIFFERENT instant for the fall-back case depending on the host's TZ, so
+    // running this table under one host TZ alone would pass by luck.
+    const cases: Array<{ label: string; date: string; time: string; tz: string; expected: string }> = [
+      {
+        label: 'Chicago spring-forward (nonexistent 02:30 CST/CDT)',
+        date: '2026-03-08',
+        time: '02:30',
+        tz: 'America/Chicago',
+        expected: '2026-03-08T08:30:00.000Z',
+      },
+      {
+        label: 'Chicago fall-back (repeated 01:30 CDT/CST)',
+        date: '2026-11-01',
+        time: '01:30',
+        tz: 'America/Chicago',
+        expected: '2026-11-01T07:30:00.000Z',
+      },
+      {
+        label: 'Dublin spring-forward (nonexistent 01:30) — negative-DST zone, the case that pins the rule',
+        date: '2026-03-29',
+        time: '01:30',
+        tz: 'Europe/Dublin',
+        expected: '2026-03-29T01:30:00.000Z',
+      },
+      {
+        label: 'Dublin fall-back (repeated 01:30) — negative-DST zone, the case that pins the rule',
+        date: '2026-10-25',
+        time: '01:30',
+        tz: 'Europe/Dublin',
+        expected: '2026-10-25T01:30:00.000Z',
+      },
+      {
+        label: 'Lord Howe spring-forward (nonexistent 02:15, 30-minute DST shift)',
+        date: '2026-10-04',
+        time: '02:15',
+        tz: 'Australia/Lord_Howe',
+        expected: '2026-10-03T15:45:00.000Z',
+      },
+      {
+        label: 'Lord Howe fall-back (repeated 01:45, 30-minute DST shift)',
+        date: '2026-04-05',
+        time: '01:45',
+        tz: 'Australia/Lord_Howe',
+        expected: '2026-04-04T15:15:00.000Z',
+      },
+    ];
+
+    const hostTimezones = ['UTC', 'America/Chicago', 'Asia/Tokyo'];
+
+    for (const hostTz of hostTimezones) {
+      describe(`host TZ=${hostTz}`, () => {
+        const originalTz = process.env.TZ;
+
+        afterEach(() => {
+          if (originalTz === undefined) delete process.env.TZ;
+          else process.env.TZ = originalTz;
+        });
+
+        for (const { label, date, time, tz, expected } of cases) {
+          it(label, () => {
+            process.env.TZ = hostTz;
+            expect(wallClockToInstant(date, time, tz)).toEqual(new Date(expected));
+          });
+        }
+      });
+    }
   });
 });

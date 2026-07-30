@@ -6,6 +6,8 @@
  */
 import { toZonedTime } from 'date-fns-tz';
 
+import { parseWallClock } from '@/lib/restaurantClock';
+
 export interface DurationWarning {
   code: 'TOO_SHORT' | 'MAX_ENDURANCE';
   message: string;
@@ -171,4 +173,52 @@ export function formatLocalTimeInTz(isoString: string, tz: string): string {
   const d = toZonedTime(new Date(isoString), tz);
   const pad = (n: number) => n.toString().padStart(2, '0');
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const HHMM_RE = /^\d{2}:\d{2}$/;
+
+/** True when `tz` is non-empty and accepted by `Intl.DateTimeFormat`. */
+function isValidTz(tz: string): boolean {
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a restaurant-local wall clock (a calendar date + HH:MM, as entered
+ * in a shift form) to the UTC instant it names, with Postgres-identical DST
+ * semantics. The inverse of `formatLocalDateInTz` + `formatLocalTimeInTz`.
+ *
+ * A thin adapter over `restaurantClock.ts::parseWallClock`, which owns the
+ * actual DST-resolution algorithm (see its doc comment). This wrapper's own
+ * validation is load-bearing, not decorative: `parseWallClock` cannot be
+ * relied on for either check it performs here.
+ *
+ * - `tz`: `parseWallClock` opens with `safeTz()`, which maps an empty or
+ *   invalid zone to `America/Chicago` *silently*. Delegating without this
+ *   check would relocate the timezone bug rather than fix it, so an
+ *   empty/invalid `tz` throws here before `parseWallClock` ever runs.
+ * - `dateStr` / `timeHHMM`: `parseWallClock` routes malformed input through a
+ *   `reject()` helper that throws in DEV/test but, in production, logs and
+ *   returns a fallback instant. `ShiftInterval`'s existing contract is a
+ *   throw in every environment (see `shiftInterval.test.ts`'s
+ *   `ShiftInterval.create` validation cases), so this adapter regex-gates
+ *   its own inputs to preserve that contract regardless of environment.
+ *
+ * Returns a `Date` (unlike `parseWallClock`, which returns an ISO string).
+ */
+export function wallClockToInstant(dateStr: string, timeHHMM: string, tz: string): Date {
+  if (!DATE_ONLY_RE.test(dateStr) || !HHMM_RE.test(timeHHMM)) {
+    throw new TypeError('INVALID_DATE');
+  }
+  if (!isValidTz(tz)) {
+    throw new TypeError('INVALID_DATE');
+  }
+
+  return new Date(parseWallClock(`${dateStr}T${timeHHMM}`, tz));
 }

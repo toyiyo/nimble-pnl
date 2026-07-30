@@ -37,9 +37,16 @@ INSERT INTO public.user_restaurants (user_id, restaurant_id, role) VALUES
   ('a0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-0000000000a1', 'staff');
 
 -- A builtin ("global") role, seeded as postgres, with children in both
--- role_areas and role_flags — used to test builtin/child immutability.
+-- role_areas and role_flags — used to test builtin/child immutability. Named
+-- distinctly from any of the ten real builtins seeded by
+-- 20260730110000_seed_builtin_roles.sql (Owner, Manager, Operations Manager,
+-- Chef, Employee (self-service), Kiosk, Accountant, Inventory Helper, Recipe
+-- Consultant, Operations Manager (Collaborator)) so this fixture doesn't
+-- collide with uq_roles_global_name_ci against the now-seeded rows. Test 10
+-- below (the collision-guard test) deliberately targets the real "Owner"
+-- builtin instead, which is a more faithful test now that it exists.
 INSERT INTO public.roles (id, restaurant_id, name, flavor, builtin) VALUES
-  ('a0000000-0000-0000-0000-0000000000b1', NULL, 'Owner', 'platform', true);
+  ('a0000000-0000-0000-0000-0000000000b1', NULL, 'QA Fixture Role', 'platform', true);
 
 INSERT INTO public.role_areas (role_id, area_key, level) VALUES
   ('a0000000-0000-0000-0000-0000000000b1', 'team', 'manage');
@@ -348,7 +355,7 @@ SELECT throws_ok(
 
 SELECT ok(
   (SELECT true FROM public.role_areas WHERE role_id = 'a0000000-0000-0000-0000-0000000000b1' AND area_key = 'team' AND level = 'manage'),
-  'sanity check: the builtin owner role legitimately holds team=manage (builtin exempt from the cap)'
+  'sanity check: the builtin fixture role legitimately holds team=manage (builtin exempt from the cap)'
 );
 
 -- ============================================================================

@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { suggestRateCorrections } from '@/hooks/useEmployeeLaborCosts';
 import { computeAge, isMinor } from '@/lib/employeeUtils';
+import { safeTz } from '@/lib/restaurantClock';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -136,7 +137,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const updateEmployee = useUpdateEmployee();
   const { toast } = useToast();
   const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
 
   // --------------------------------------------------------------------------
   // Default availability (create mode only)

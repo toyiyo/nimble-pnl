@@ -216,7 +216,7 @@ export default function InventoryAudit() {
 
     setIsExporting(true);
     try {
-      const tz = selectedRestaurant?.restaurant.timezone || 'UTC';
+      const tz = safeTz(selectedRestaurant?.restaurant.timezone);
       const columns = ['Date', 'Product', 'Type', 'Quantity', 'Unit Cost', 'Total Cost', 'Reason'];
       const rows = filteredTransactions.map((txn) => [
         formatDateInTimezone(txn.transaction_date || txn.created_at, tz, 'MMM dd, yyyy'),

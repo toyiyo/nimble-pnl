@@ -31,6 +31,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 import { computeCellFill } from '@/lib/shiftFill';
 import { computeLoanedOut, assignLoanedOutCell } from '@/lib/loanedOut';
 import { formatLocalDateInTz } from '@/lib/shiftInterval';
+import { safeTz } from '@/lib/restaurantClock';
 
 import { cn } from '@/lib/utils';
 import { getTemplateAreas } from '@/lib/templateAreaGrouping';
@@ -114,7 +115,7 @@ export function ShiftPlannerTab({
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const isMobile = useIsMobile();
 
   const {

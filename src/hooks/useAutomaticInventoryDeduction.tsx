@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { safeTz } from '@/lib/restaurantClock';
 
 interface BatchSale {
   pos_item_name: string;
@@ -51,7 +52,7 @@ export const useAutomaticInventoryDeduction = () => {
         .eq('id', selectedRestaurant.restaurant_id)
         .single();
 
-      const restaurantTimezone = restaurantData?.timezone || 'America/Chicago';
+      const restaurantTimezone = safeTz(restaurantData?.timezone);
 
       const results = [];
       for (const sale of sales) {

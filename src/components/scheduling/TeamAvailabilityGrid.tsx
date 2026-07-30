@@ -8,6 +8,7 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { computeEffectiveAvailability, EffectiveAvailability, availabilityColorClasses } from '@/lib/effectiveAvailability';
 import { EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { safeTz } from '@/lib/restaurantClock';
 import { WEEKDAY_LABELS, type AvailabilityDeletionTarget } from './DeleteAvailabilityDialog';
 
 // ─── Day column definitions (Mon–Sun order) ───────────────────────────────────
@@ -369,7 +370,7 @@ export function TeamAvailabilityGrid({
   onRequestDelete,
 }: TeamAvailabilityGridProps) {
   const { selectedRestaurant } = useRestaurantContext();
-  const timezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const timezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const today = new Date();
   const [weekStart, setWeekStart] = useState<Date>(() => getMondayOfWeek(today));
 

@@ -491,7 +491,7 @@ const TimePunchesManager = () => {
 
     updatePunch.mutate({
       id: editingPunch.id,
-      punch_time: editFormToPunchTime(editFormData, clock.tz),
+      punch_time: editFormToPunchTime(editFormData, editingPunch, clock.tz),
       notes: editFormData.notes || undefined,
     });
     closeEditDialog();

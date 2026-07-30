@@ -280,10 +280,13 @@ separate table was right there because overtime has ~7 correlated fields. One in
 does not justify a table.
 
 **Generated types:** `src/integrations/supabase/types.ts` must be regenerated; the
-`restaurants` Row/Insert/Update at
-[`types.ts:5689`](../../../src/integrations/supabase/types.ts) gains
-`business_day_start_hour: number`. Note `timezone` is typed `string | null` there
-despite prod having zero nulls, so TS consumers must still handle null — see §7.
+`restaurants` Row/Insert/Update (table declared at
+[`types.ts:5689`](../../../src/integrations/supabase/types.ts)) gains
+`business_day_start_hour: number`. Note `timezone` is typed `string | null` in all three
+— [`:5720`](../../../src/integrations/supabase/types.ts) (Row),
+[`:5755`](../../../src/integrations/supabase/types.ts) (Insert),
+[`:5790`](../../../src/integrations/supabase/types.ts) (Update) — despite prod having
+zero nulls, so TS consumers must still handle null; see §7.
 
 ## 6. SQL helper
 
@@ -409,14 +412,25 @@ return makes that mistake unrepresentable at this boundary. Note this is a delib
 divergence from the brief's sketched `toBusinessDay()` shape.
 
 **Sourcing tz and cutoff in the client.** Both live on `restaurants`, already loaded
-via `useRestaurantContext()`. `laborCalculations.ts` and `payrollCalculations.ts` are
-pure modules with no context access, so the values are threaded as parameters from the
-hooks that call them —
-[`useLaborCostsFromTimeTracking.tsx:134`](../../../src/hooks/useLaborCostsFromTimeTracking.tsx),
-[`usePayroll.tsx:139`](../../../src/hooks/usePayroll.tsx),
-[`useMonthlyMetrics.tsx:385`](../../../src/hooks/useMonthlyMetrics.tsx). Both must join
-the React Query keys, or a cutoff change will serve a stale bucketing for up to the
-30s `staleTime`.
+via `useRestaurantContext()`. `laborCalculations.ts`, `payrollCalculations.ts`, and
+`timecardHours.ts` are pure modules with no context access, so the values are threaded
+as parameters from the four call sites:
+
+| caller | memoization | invalidation requirement |
+|---|---|---|
+| [`useLaborCostsFromTimeTracking.tsx:134`](../../../src/hooks/useLaborCostsFromTimeTracking.tsx) | React Query, `staleTime: 30000` | tz + cutoff join the query key |
+| [`usePayroll.tsx:313`](../../../src/hooks/usePayroll.tsx) | React Query | tz + cutoff join the query key |
+| [`useMonthlyMetrics.tsx:523`](../../../src/hooks/useMonthlyMetrics.tsx) | React Query | tz + cutoff join the query key |
+| [`useScheduledLaborCosts.tsx:83`](../../../src/hooks/useScheduledLaborCosts.tsx) | **`useMemo`, not React Query** | tz + cutoff join the dep array at [`:119`](../../../src/hooks/useScheduledLaborCosts.tsx) |
+| [`EmployeeTimecard.tsx:117`](../../../src/pages/EmployeeTimecard.tsx) | **`useMemo`, not React Query** | tz + cutoff join the dep array |
+
+Without either the key or the dep, a cutoff change serves stale bucketing — for up to
+the 30s `staleTime` in the React Query cases, and **indefinitely** in the two `useMemo`
+cases, which is the worse failure. `useScheduledLaborCosts` additionally takes only
+`(shifts, dateFrom, dateTo, restaurantId)` today
+([`:56-61`](../../../src/hooks/useScheduledLaborCosts.tsx)) and so cannot reach the
+restaurant's tz or cutoff at all without a signature change; §8.1's reroute of
+`calculateScheduledLaborCost` is not implementable until that happens.
 
 ## 8. Consumer changes
 
@@ -432,6 +446,26 @@ the React Query keys, or a cutoff change will serve a stale bucketing for up to 
 | [`laborCalculations.ts:405`](../../../src/services/laborCalculations.ts) | `calculateScheduledLaborCost` | `formatDateUTC(shift.start_time)` → `toBusinessDay(...)`. Scheduled cost must bucket the same way as actual or the variance view compares two frames. |
 | [`payrollCalculations.ts:492`](../../../src/utils/payrollCalculations.ts) | hourly OT banding | `format(period.clockIn, 'yyyy-MM-dd')` → `toBusinessDay(...)`. Anchor already right; frame is not. Moves daily **and** weekly OT bands. |
 | [`payrollCalculations.ts:558`](../../../src/utils/payrollCalculations.ts) | `daily_rate` | Stop counting raw punch dates. Count distinct business days of **work-period clock-ins**, via `parseWorkPeriods`. This is the §3.3 payroll-side fix. |
+| [`timecardHours.ts:26`](../../../src/utils/timecardHours.ts) | `hoursByClockInDay` | `format(new Date(session.clock_in), 'yyyy-MM-dd')` → `toBusinessDay(...)`. Anchor already right; frame is not, and there is no cutoff concept. See below — this is the employee-facing surface. |
+
+**`hoursByClockInDay` is the ninth site and the one with the sharpest failure mode.**
+It buckets each complete session's hours by clock-in day
+([`timecardHours.ts:17-34`](../../../src/utils/timecardHours.ts)) and drives both the
+per-day hours and the "Weekly Totals" on the employee's own timecard
+([`EmployeeTimecard.tsx:117`](../../../src/pages/EmployeeTimecard.tsx),
+[`:119-129`](../../../src/pages/EmployeeTimecard.tsx)). Its anchor is already correct;
+its frame is browser-local and it has no cutoff. If Payroll and Dashboard move to
+business days and this does not, an employee's own timecard will disagree with their
+paycheck for exactly the overnight shifts this feature exists to handle — the "my
+timecard says Monday but payroll says Sunday" dispute, on the page an employee would
+open to check. Also note the `days` keys it seeds at
+[`:20`](../../../src/utils/timecardHours.ts) are `format(day, 'yyyy-MM-dd')` over the
+displayed week, so the seeding and the bucketing must be reframed together or every
+lookup misses.
+
+`tests/unit/timecardHours.test.ts` already exists and must be extended, not replaced;
+`tests/unit/EmployeeTimecard.test.tsx` asserts the Net Hours summary sourced from this
+function.
 
 `formatDateUTC` is then either deleted or renamed. It is misnamed today
 ([`:43`](../../../src/services/laborCalculations.ts)) and every remaining caller is a
@@ -451,8 +485,12 @@ name asserts the opposite of what it does.
   `usePayroll`/`useLaborCostsFromTimeTracking`/`useMonthlyMetrics`). Instant ranges,
   already generous. §10 flags one interaction to verify.
 - Display-only formatting of individual punch times (`TimePunchesManager`,
-  `EmployeeTimecard`, `PunchStreamView`, `EmployeeClock`). Showing a punch at its
-  wall-clock time is a separate concern and belongs to the parallel timezone effort.
+  `PunchStreamView`, `EmployeeClock`, and `EmployeeTimecard`'s `punchesByDay` map at
+  [`:96-113`](../../../src/pages/EmployeeTimecard.tsx), which feeds only the visual
+  per-punch timeline). Showing a punch at its wall-clock time is a separate concern and
+  belongs to the parallel timezone effort. **`EmployeeTimecard`'s `dayHours` and
+  `weeklyTotals` are *not* in this category** — they are computed hours, and they move.
+  See the `hoursByClockInDay` row in §8.1.
 - `daily_labor_costs` / `daily_pnl` / `unified_sales`. Fed from POS service dates
   (§2.2), not punches.
 - `unified_sales.sold_at` bucketing, named in the brief. No punch-derived business day
@@ -504,8 +542,15 @@ via `aria-describedby`.
 3. `unified_sales.sold_at` business-day bucketing (§8.2). Named in the brief, out of
    scope here.
 4. `restaurants.timezone` is `NOT NULL`-clean in prod but nullable in schema and types
-   ([`types.ts:5689`](../../../src/integrations/supabase/types.ts)). Tightening it is a
+   ([`types.ts:5720`](../../../src/integrations/supabase/types.ts)). Tightening it is a
    separate migration with its own backfill argument; `safeTz` covers us meanwhile.
+6. Neither existing `Select` in `RestaurantSettings.tsx` wraps its items in a
+   `SelectGroup` ([`:759-766`](../../../src/pages/RestaurantSettings.tsx),
+   [`:1276-1281`](../../../src/pages/RestaurantSettings.tsx)), and the file does not
+   import it ([`:24-26`](../../../src/pages/RestaurantSettings.tsx)). The shadcn idiom
+   is `SelectItem` inside `SelectGroup`. The new control will match the file's local
+   convention rather than introduce a lone deviation; noted so a later shadcn-idiom
+   sweep does not attribute the gap to this PR.
 5. The 5 overnight shifts >24h (§3.1), incl. one of 843h. Real data-quality defects
    surfaced by this investigation, already flagged as `incomplete_shifts` by
    `parseWorkPeriods` but evidently not acted on. Not this PR's job to clean, but
@@ -519,7 +564,8 @@ via `aria-describedby`.
 | Weekly OT band shifts. Moving a business day can move a shift between ISO weeks and cross the 40h band — the 2026-05-03 lessons entry records a $2,246 PT-vs-UTC swing from exactly this. 2 of the 54 overnight shifts clock in on Sunday (`WEEK_STARTS_ON = 1`, [`dateConfig.ts:8`](../../../src/lib/dateConfig.ts)). | §11.4 asserts **dollars**, not just hours, across four pinned zones. |
 | Daily OT band shifts. Zero of the 2 `overtime_rules` rows set `daily_threshold_hours` today, so intra-week reassignment is currently dollar-neutral for hourly — but one settings change flips that. | §11.4 runs the suite with daily OT **enabled**, not just at the current prod config. |
 | Cutoff changes silently re-bucket history. | §8.3 copy states it. Not versioning the cutoff is a conscious choice: an effective-dated cutoff is a much larger feature, and no restaurant has one to change yet. Called out here so it is a decision, not an oversight. |
-| Stale bucketing after a cutoff change. | tz + cutoff join every affected React Query key (§7). |
+| Stale bucketing after a cutoff change. | tz + cutoff join every affected React Query key **and** the two `useMemo` dep arrays (§7). The `useMemo` cases are the dangerous ones — no `staleTime` eventually rescues them. |
+| `useScheduledLaborCosts` cannot see tz or cutoff at all with its current signature, so §8.1's `calculateScheduledLaborCost` reroute is blocked on a signature change. | Sequenced explicitly in the plan: widen the hook signature before rerouting the calculator, or the Scheduling page's variance view compares a business-day actual against a calendar-day scheduled. |
 | A worktree `db reset` from a sibling session drops the migration mid-test (2026-07-28 lessons). | Confirm the migration is still applied before believing a red local DB test. |
 | `lookaheadPunchFetchRange` is look-ahead only, by design, so a prior-period shift is not pulled into the window. A nonzero cutoff moves the business-day boundary *later*, which is the same direction the look-ahead already covers. | Verify explicitly rather than assume; a cutoff at the window edge is a §11 case. |
 
@@ -588,13 +634,22 @@ agreeing on a wrong answer is the failure mode a mutual-comparison test cannot s
 pgTAP also covers null instant, null/empty tz, invalid tz string, missing restaurant,
 and CHECK-constraint rejection at -1 and 12.
 
-### 11.7 Dashboard == Payroll
+### 11.7 Dashboard == Payroll == Timecard
 
 Extend [`tests/unit/dashboard-payroll-consistency.test.ts`](../../../tests/unit/dashboard-payroll-consistency.test.ts)
 to run its cross-check at every cutoff, in every pinned zone, and — specifically —
 over a fixture with a `break_end` that crosses midnight. That is the §3.4 latent
 divergence; after this change the two paths share an anchor, and this test is what
 keeps them sharing it.
+
+Extend the same three-way equality to the **timecard**: for a given employee, week,
+zone, and cutoff, `hoursByClockInDay`'s per-day net hours must equal the hours the
+payroll path bands into the same business day. Home for this is
+[`tests/unit/timecardHours.test.ts`](../../../tests/unit/timecardHours.test.ts) plus the
+Net Hours assertion in
+[`tests/unit/EmployeeTimecard.test.tsx`](../../../tests/unit/EmployeeTimecard.test.tsx).
+Without this, the employee-facing number and the paycheck number are free to drift, and
+that drift is what generates disputes.
 
 ### 11.8 E2E
 
@@ -607,7 +662,10 @@ restaurant zone:
    the next day shows zero — the reported symptom, end to end through real RLS.
 3. Assert Dashboard and Payroll show the same total for that shift, in a browser zone
    that differs from the restaurant's.
-4. Assert the CHECK rejection surfaces as a toast, not an unhandled error.
+4. Assert the employee's own **timecard** shows that shift's hours on the same business
+   day, with the same weekly total — the §8.1 `hoursByClockInDay` surface, checked
+   through the UI an employee would actually open.
+5. Assert the CHECK rejection surfaces as a toast, not an unhandled error.
 
 Existing specs to extend rather than duplicate: the labor/payroll specs under
 `tests/e2e/`. Helpers from `'../helpers/e2e-supabase'`, `generateTestUser()`, and

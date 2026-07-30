@@ -16,7 +16,10 @@ jobs:
   test:
     name: Unit Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # The suite plus coverage and the Sonar upload cost ~9m30s on a warm
+    # runner, so a 10-minute cap left no room for runner variance and kept
+    # cancelling the job with every test green. Keep headroom for growth.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code

@@ -1,0 +1,1086 @@
+<title>Roles &amp; Areas — EasyShiftHQ permissions</title>
+
+<style>
+  :root {
+    --paper:    #FBF8F3;
+    --surface:  #FFFFFF;
+    --sunken:   #F3EDE5;
+    --ink:      #17120E;
+    --ink-soft: #7A6B5F;
+    --ink-faint:#A79789;
+    --rule:     #E6DCD0;
+    --rule-soft:#F0E8DE;
+    --accent:   #BE4E27;
+    --accent-ink:#FFFFFF;
+    --accent-wash:#F7E6DD;
+    --caution:  #8C6412;
+    --caution-wash:#F6EDD6;
+    --shadow:   0 1px 2px rgba(40,24,10,.05), 0 8px 24px -16px rgba(40,24,10,.28);
+
+    --font-ui: "Avenir Next", "Avenir", "Segoe UI Variable Text", "Segoe UI", "Optima", system-ui, sans-serif;
+    --font-data: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, "Cascadia Mono", monospace;
+
+    --step: 4px;
+    --radius: 12px;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:    #141110;
+      --surface:  #1D1917;
+      --sunken:   #100D0C;
+      --ink:      #F4EFE9;
+      --ink-soft: #A2958A;
+      --ink-faint:#7C7067;
+      --rule:     #322B27;
+      --rule-soft:#262120;
+      --accent:   #E0714A;
+      --accent-ink:#1A0F09;
+      --accent-wash:#3A2118;
+      --caution:  #D3A44E;
+      --caution-wash:#332714;
+      --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:    #141110;
+    --surface:  #1D1917;
+    --sunken:   #100D0C;
+    --ink:      #F4EFE9;
+    --ink-soft: #A2958A;
+    --ink-faint:#7C7067;
+    --rule:     #322B27;
+    --rule-soft:#262120;
+    --accent:   #E0714A;
+    --accent-ink:#1A0F09;
+    --accent-wash:#3A2118;
+    --caution:  #D3A44E;
+    --caution-wash:#332714;
+    --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+    color-scheme: dark;
+  }
+
+  :root[data-theme="light"] {
+    --paper:    #FBF8F3;
+    --surface:  #FFFFFF;
+    --sunken:   #F3EDE5;
+    --ink:      #17120E;
+    --ink-soft: #7A6B5F;
+    --ink-faint:#A79789;
+    --rule:     #E6DCD0;
+    --rule-soft:#F0E8DE;
+    --accent:   #BE4E27;
+    --accent-ink:#FFFFFF;
+    --accent-wash:#F7E6DD;
+    --caution:  #8C6412;
+    --caution-wash:#F6EDD6;
+    --shadow:   0 1px 2px rgba(40,24,10,.05), 0 8px 24px -16px rgba(40,24,10,.28);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 96px; }
+
+  /* ---------- chrome ---------- */
+  .chrome { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .eyebrow {
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  h1 {
+    font-size: 27px;
+    font-weight: 600;
+    letter-spacing: -.022em;
+    margin: 4px 0 6px;
+    text-wrap: balance;
+  }
+  .lede { color: var(--ink-soft); max-width: 62ch; margin: 0 0 22px; }
+
+  .tabs {
+    display: flex;
+    gap: 26px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 26px;
+  }
+  .tab {
+    appearance: none; background: none; border: 0; padding: 0 0 11px;
+    font: inherit; font-weight: 500; color: var(--ink-soft);
+    cursor: pointer; position: relative; letter-spacing: -.005em;
+  }
+  .tab[aria-selected="true"] { color: var(--ink); }
+  .tab[aria-selected="true"]::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 2px; background: var(--accent);
+  }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+  /* ---------- generic ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+  .stack { display: flex; flex-direction: column; }
+  .row { display: flex; align-items: center; }
+
+  button.btn {
+    appearance: none; font: inherit; font-weight: 500; font-size: 13px;
+    border-radius: 9px; padding: 8px 14px; cursor: pointer;
+    border: 1px solid transparent; transition: background .14s, border-color .14s, color .14s;
+  }
+  .btn--primary { background: var(--accent); color: var(--accent-ink); }
+  .btn--primary:hover { filter: brightness(1.07); }
+  .btn--ghost { background: transparent; color: var(--ink-soft); border-color: var(--rule); }
+  .btn--ghost:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 500;
+    padding: 3px 8px; border-radius: 6px;
+    background: var(--sunken); color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .chip--manage { background: var(--accent-wash); color: var(--accent); }
+  .chip--builtin {
+    font-family: var(--font-data); font-size: 10px; letter-spacing: .09em;
+    text-transform: uppercase; background: transparent;
+    border: 1px solid var(--rule); color: var(--ink-faint);
+  }
+
+  /* ---------- roles list ---------- */
+  .grid-roles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(292px, 1fr));
+    gap: 14px;
+  }
+  .rolecard {
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 18px; text-align: left; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: var(--radius); font: inherit; color: inherit;
+    transition: border-color .15s, transform .15s;
+    animation: rise .38s cubic-bezier(.2,.7,.3,1) backwards;
+  }
+  .rolecard:hover { border-color: var(--ink-faint); }
+  .rolecard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @keyframes rise { from { opacity: 0; transform: translateY(7px); } }
+
+  .rolecard__top { display: flex; align-items: flex-start; gap: 11px; }
+  .glyph {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px;
+    background: var(--sunken); color: var(--ink-soft);
+    display: grid; place-items: center;
+  }
+  .rolecard__name { font-weight: 600; letter-spacing: -.012em; }
+  .rolecard__desc { font-size: 12.5px; color: var(--ink-soft); margin-top: 1px; }
+  .rolecard__chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .rolecard__foot {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: auto; padding-top: 11px; border-top: 1px solid var(--rule-soft);
+    font-size: 12px; color: var(--ink-faint);
+  }
+  .rolecard--new {
+    border-style: dashed; align-items: center; justify-content: center;
+    color: var(--ink-soft); min-height: 148px; gap: 7px;
+  }
+  .rolecard--new:hover { color: var(--accent); border-color: var(--accent); }
+
+  .section-label {
+    display: flex; align-items: baseline; gap: 10px;
+    margin: 30px 0 12px;
+  }
+  .section-label h2 {
+    font-size: 12px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0;
+  }
+  .section-label p { margin: 0; font-size: 12.5px; color: var(--ink-faint); }
+
+  /* ---------- editor ---------- */
+  .workbench {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 306px;
+    gap: 22px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .workbench { grid-template-columns: minmax(0,1fr); } }
+
+  .identity { padding: 18px 20px; display: grid; gap: 14px; }
+  .field { display: grid; gap: 5px; }
+  .field label {
+    font-family: var(--font-data); font-size: 10.5px; letter-spacing: .11em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .field input {
+    font: inherit; color: var(--ink);
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 9px; padding: 9px 11px; width: 100%;
+  }
+  .field input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+  .field--name input { font-size: 16px; font-weight: 600; letter-spacing: -.015em; }
+  .id-grid { display: grid; grid-template-columns: 1fr 1.35fr; gap: 14px; }
+  @media (max-width: 620px) { .id-grid { grid-template-columns: 1fr; } }
+
+  .notice {
+    display: flex; gap: 9px; align-items: flex-start;
+    padding: 10px 12px; border-radius: 9px; font-size: 12.5px;
+    background: var(--caution-wash); color: var(--caution);
+    border: 1px solid color-mix(in srgb, var(--caution) 25%, transparent);
+  }
+  .notice svg { flex: 0 0 auto; margin-top: 2px; }
+
+  /* matrix */
+  .matrix { margin-top: 18px; overflow: hidden; }
+  .band {
+    display: grid; grid-template-columns: minmax(0,1fr) 228px;
+    gap: 16px; align-items: baseline;
+    padding: 13px 20px 11px;
+    background: var(--sunken);
+    border-bottom: 1px solid var(--rule);
+    border-top: 1px solid var(--rule);
+  }
+  .matrix > .band:first-child { border-top: 0; }
+  .band h3 {
+    margin: 0; font-family: var(--font-data);
+    font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .band .legend {
+    visibility: hidden; text-align: center;
+    font-family: var(--font-data); font-size: 10px;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint);
+  }
+  .band--first .legend, .band--sensitive .legend { visibility: visible; }
+  @media (max-width: 620px) {
+    .band { grid-template-columns: minmax(0,1fr); }
+    .band .legend { display: none; }
+  }
+
+  .arearow {
+    display: grid;
+    grid-template-columns: minmax(0,1fr) 228px;
+    gap: 16px; align-items: center;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .arearow:last-child { border-bottom: 0; }
+  @media (max-width: 620px) {
+    .arearow { grid-template-columns: minmax(0,1fr); gap: 10px; }
+  }
+  .arearow__label { min-width: 0; }
+  .arearow__name { font-weight: 500; letter-spacing: -.008em; display: flex; align-items: center; gap: 7px; }
+  .arearow__hint { font-size: 12px; color: var(--ink-faint); margin-top: 1px; }
+  .arearow[data-locked="true"] .arearow__name { color: var(--ink-faint); }
+
+  /* segmented control */
+  .seg {
+    position: relative; display: grid; grid-template-columns: repeat(3, 1fr);
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 9px; padding: 2px; isolation: isolate;
+  }
+  .seg__thumb {
+    position: absolute; z-index: 0; top: 2px; bottom: 2px; left: 2px;
+    width: calc((100% - 4px) / 3);
+    border-radius: 7px; background: var(--surface);
+    border: 1px solid var(--rule);
+    transition: transform .18s cubic-bezier(.3,.8,.3,1), background .18s, border-color .18s;
+  }
+  .seg[data-level="view"]   .seg__thumb { transform: translateX(100%); }
+  .seg[data-level="manage"] .seg__thumb { transform: translateX(200%); background: var(--accent); border-color: var(--accent); }
+  .seg[data-locked="true"] { opacity: .55; }
+
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label {
+    position: relative; z-index: 1; text-align: center; cursor: pointer;
+    font-size: 12px; font-weight: 500; padding: 5px 4px; border-radius: 7px;
+    color: var(--ink-faint); transition: color .18s;
+    display: flex; align-items: center; justify-content: center; gap: 4px;
+  }
+  .seg label:hover { color: var(--ink-soft); }
+  .seg[data-level="none"]   label[data-v="none"],
+  .seg[data-level="view"]   label[data-v="view"]   { color: var(--ink); }
+  .seg[data-level="manage"] label[data-v="manage"] { color: var(--accent-ink); }
+  .seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .seg input:disabled + label { cursor: not-allowed; }
+
+  /* sensitive sub-switches */
+  .sensitive { padding: 4px 20px 14px; display: grid; gap: 8px; }
+  .switchrow {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 9px 12px; border-radius: 9px;
+    background: var(--surface); border: 1px solid var(--rule);
+    transition: background .16s, border-color .16s;
+  }
+  /* The amber wash means "this role can see sensitive data" — so it appears
+     only when the switch is actually on, never merely because it's available. */
+  .switchrow[data-on="true"] {
+    background: var(--caution-wash);
+    border-color: color-mix(in srgb, var(--caution) 30%, transparent);
+  }
+  .switchrow[data-available="false"] { background: var(--sunken); border-color: var(--rule); opacity: .7; }
+  .switchrow__text { min-width: 0; }
+  .switchrow__name { font-weight: 500; font-size: 13px; }
+  .switchrow__hint { font-size: 11.5px; color: var(--ink-soft); }
+  .switch {
+    position: relative; flex: 0 0 auto; width: 38px; height: 22px;
+    border-radius: 999px; background: var(--rule); border: 0; cursor: pointer;
+    transition: background .16s;
+  }
+  .switch::after {
+    content: ""; position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--surface); box-shadow: 0 1px 2px rgba(0,0,0,.25);
+    transition: transform .16s cubic-bezier(.3,.8,.3,1);
+  }
+  .switch[aria-checked="true"] { background: var(--caution); }
+  .switch[aria-checked="true"]::after { transform: translateX(16px); }
+  .switch:disabled { cursor: not-allowed; }
+  .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- preview rail ---------- */
+  .rail { position: sticky; top: 20px; display: grid; gap: 14px; }
+  .rail__head { padding: 15px 16px 12px; border-bottom: 1px solid var(--rule); }
+  .rail__title {
+    font-family: var(--font-data); font-size: 10.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .rail__summary { margin: 7px 0 0; font-size: 13px; line-height: 1.45; }
+  .rail__summary strong { font-weight: 600; }
+  .rail__deny { color: var(--ink-soft); }
+
+  .navpreview { padding: 10px 8px 12px; }
+  .navgroup__label {
+    font-family: var(--font-data); font-size: 9.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-faint);
+    padding: 10px 10px 4px;
+  }
+  .navitem {
+    display: flex; align-items: center; gap: 9px;
+    padding: 5.5px 10px; border-radius: 7px; font-size: 13px;
+    transition: opacity .18s, background .18s, color .18s;
+  }
+  .navitem .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex: 0 0 5px; }
+  .navitem[data-on="true"] { color: var(--ink); }
+  .navitem[data-on="true"][data-landing="true"] { background: var(--accent-wash); color: var(--accent); font-weight: 600; }
+  .navitem[data-on="false"] { color: var(--ink-faint); opacity: .34; }
+  .navitem[data-on="false"] .name { text-decoration: line-through; text-decoration-thickness: 1px; }
+  .navitem .badge {
+    margin-left: auto; font-family: var(--font-data); font-size: 9px;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint);
+  }
+
+  details.caps { border-top: 1px solid var(--rule); }
+  details.caps summary {
+    padding: 11px 16px; cursor: pointer; font-size: 12.5px; color: var(--ink-soft);
+    list-style: none; display: flex; justify-content: space-between; align-items: center;
+  }
+  details.caps summary::-webkit-details-marker { display: none; }
+  details.caps summary:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .capslist {
+    padding: 0 16px 14px; margin: 0; display: grid; gap: 2px;
+    max-height: 220px; overflow: auto;
+    font-family: var(--font-data); font-size: 11px; color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+  .capslist li { list-style: none; }
+  .capslist li span { color: var(--accent); }
+
+  .editor-actions {
+    display: flex; gap: 9px; justify-content: flex-end; align-items: center;
+    margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--rule);
+  }
+  .editor-actions .spacer { margin-right: auto; font-size: 12.5px; color: var(--ink-faint); }
+
+  /* ---------- invite ---------- */
+  .invite-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px;
+  }
+  .invitecard {
+    text-align: left; padding: 15px; cursor: pointer; font: inherit; color: inherit;
+    background: var(--surface); border: 1px solid var(--rule); border-radius: var(--radius);
+    display: grid; gap: 8px; transition: border-color .15s, background .15s;
+  }
+  .invitecard:hover { border-color: var(--ink-faint); }
+  .invitecard[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-wash); }
+  .invitecard:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .invitecard__name { font-weight: 600; letter-spacing: -.01em; }
+  .invitecard__desc { font-size: 12.5px; color: var(--ink-soft); }
+
+  .invite-form { display: flex; gap: 9px; flex-wrap: wrap; margin-top: 18px; align-items: flex-end; }
+  .invite-form .field { flex: 1 1 260px; }
+
+  .hidden { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <div class="chrome">
+    <span class="eyebrow">Team management</span>
+    <span class="eyebrow" style="color:var(--accent)">Wetzel's — Cold Stone, Alamo Ranch</span>
+  </div>
+  <h1>Roles &amp; Areas</h1>
+  <p class="lede">
+    A role is a name plus the areas of EasyShiftHQ it can reach. Name the job the way you say it out loud —
+    &ldquo;Weekend Supervisor&rdquo;, &ldquo;Food Cost Analyst&rdquo; — then hand it the areas that job needs.
+    Everyone you invite gets a role, and the role is what decides what they see.
+  </p>
+
+  <div class="tabs" role="tablist" aria-label="Team management sections">
+    <button class="tab" role="tab" id="tab-members" aria-selected="false" aria-controls="view-members">Team members</button>
+    <button class="tab" role="tab" id="tab-roles" aria-selected="true" aria-controls="view-roles">Roles &amp; areas</button>
+    <button class="tab" role="tab" id="tab-invite" aria-selected="false" aria-controls="view-invite">Invite</button>
+  </div>
+
+  <!-- ============ ROLES LIST ============ -->
+  <section id="view-roles" role="tabpanel" aria-labelledby="tab-roles">
+    <div class="section-label">
+      <h2>Your roles</h2>
+      <p>Click a role to change the areas it can reach.</p>
+    </div>
+    <div class="grid-roles" id="roles-grid"></div>
+  </section>
+
+  <!-- ============ ROLE EDITOR ============ -->
+  <section id="view-editor" class="hidden" aria-label="Edit role">
+    <button class="btn btn--ghost" id="back-to-roles" style="margin-bottom:16px">&larr; All roles</button>
+
+    <div class="workbench">
+      <div>
+        <div class="card identity">
+          <div class="id-grid">
+            <div class="field field--name">
+              <label for="role-name">Role name</label>
+              <input id="role-name" type="text" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="role-desc">What this person does</label>
+              <input id="role-desc" type="text" autocomplete="off" />
+            </div>
+          </div>
+          <div id="role-notice"></div>
+        </div>
+
+        <div class="card matrix" id="matrix"></div>
+
+        <div class="editor-actions">
+          <span class="spacer" id="save-hint"></span>
+          <button class="btn btn--ghost" id="cancel-role">Cancel</button>
+          <button class="btn btn--primary" id="save-role">Save role</button>
+        </div>
+      </div>
+
+      <aside class="rail">
+        <div class="card">
+          <div class="rail__head">
+            <div class="rail__title">What they'll see</div>
+            <p class="rail__summary" id="summary"></p>
+          </div>
+          <div class="navpreview" id="navpreview"></div>
+          <details class="caps">
+            <summary><span>Permissions this grants</span><span class="eyebrow" id="cap-count"></span></summary>
+            <ul class="capslist" id="capslist"></ul>
+          </details>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ============ INVITE ============ -->
+  <section id="view-invite" class="hidden" role="tabpanel" aria-labelledby="tab-invite">
+    <div class="section-label">
+      <h2>Who is this collaborator?</h2>
+      <p>Every role you've defined shows up here — built-in and your own.</p>
+    </div>
+    <div class="invite-grid" id="invite-grid"></div>
+    <div class="invite-form">
+      <div class="field">
+        <label for="invite-email">Email address</label>
+        <input id="invite-email" type="email" placeholder="name@example.com" />
+      </div>
+      <button class="btn btn--primary" id="send-invite">Send invitation</button>
+    </div>
+    <p id="invite-echo" style="color:var(--ink-soft);font-size:13px;margin-top:12px"></p>
+  </section>
+
+  <!-- ============ MEMBERS (context only) ============ -->
+  <section id="view-members" class="hidden" role="tabpanel" aria-labelledby="tab-members">
+    <div class="section-label">
+      <h2>Team members</h2>
+      <p>Each person carries exactly one role. Change the role, and their access changes with it.</p>
+    </div>
+    <div class="card" id="members-list"></div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     AREAS — the vocabulary owners actually think in.
+     Each area bundles the view/edit capability pairs that already exist
+     in src/lib/permissions/types.ts.
+  ------------------------------------------------------------------ */
+  var AREAS = [
+    { key:"reports",    band:"Operations", name:"Dashboard & Reports",
+      hint:"Daily numbers, saved reports, AI assistant",
+      view:["dashboard","reports","ai_assistant"], edit:[] },
+    { key:"sales",      band:"Operations", name:"Sales",
+      hint:"Ticket-level sales from your POS", viewOnlyReason:"Sales come from your POS — nobody edits them here.",
+      view:["pos_sales"], edit:[] },
+    { key:"inventory",  band:"Operations", name:"Inventory & Purchasing",
+      hint:"Counts, audits, purchase orders, receipts",
+      view:["inventory","inventory_audit","purchase_orders","receipt_import","inventory_transactions"],
+      edit:["inventory","inventory_audit","purchase_orders","receipt_import","inventory_transactions"] },
+    { key:"recipes",    band:"Operations", name:"Recipes & Prep",
+      hint:"Recipes, prep recipes, production batches",
+      view:["recipes","prep_recipes","batches"], edit:["recipes","prep_recipes","batches"] },
+    { key:"scheduling", band:"Operations", name:"Scheduling & Labor",
+      hint:"Schedules, time punches, tip pools",
+      view:["scheduling","time_punches","tips"], edit:["scheduling","time_punches","tips"] },
+
+    { key:"books",      band:"Money", name:"Money & Books",
+      hint:"Transactions, banking, expenses, invoices, statements",
+      view:["transactions","banking","expenses","financial_statements","chart_of_accounts","invoices","customers","financial_intelligence","pending_outflows"],
+      edit:["transactions","banking","expenses","chart_of_accounts","invoices","customers","pending_outflows"] },
+    { key:"payroll",    band:"Money", name:"Payroll",
+      hint:"Pay runs and payroll history",
+      view:["payroll"], edit:["payroll"], manageOwnerOnly:true },
+
+    { key:"employees",  band:"People & admin", name:"Employee Records",
+      hint:"Roster, jobs, wage assignments",
+      view:["employees"], edit:["employees"], editVerb:"manage" },
+    { key:"team",       band:"People & admin", name:"Team & Access",
+      hint:"Invite people, assign roles, edit these roles",
+      view:["team","collaborators"], edit:["team","collaborators"], ownerOnly:true },
+    { key:"settings",   band:"People & admin", name:"Settings & Integrations",
+      hint:"Restaurant settings, POS and bank connections",
+      view:["settings","integrations"], edit:["settings","integrations"], manageOwnerOnly:true }
+  ];
+
+  /* Cross-cutting data switches. These close a real gap: today the copy
+     promises "no cost visibility" but nothing enforces it. */
+  var SENSITIVE = [
+    { key:"costs", name:"Item costs & margins",
+      hint:"Unit costs, recipe cost, plate margin",
+      requires:["inventory","recipes","reports"], cap:"view:costs" },
+    { key:"payrates", name:"Employee pay rates",
+      hint:"Hourly and salary amounts on the roster and schedule",
+      requires:["employees","scheduling"], cap:"view:pay_rates" },
+    { key:"pii", name:"Contact details & tax IDs",
+      hint:"Phone, address, last 4 of SSN",
+      requires:["employees"], cap:"view:employee_pii" }
+  ];
+
+  var BANDS = ["Operations", "Money", "People & admin"];
+
+  /* Sidebar mirror — one entry per real nav item, tagged with its area.
+     Today this list is hand-written per role in AppSidebar.nav.ts; here it
+     is derived, which is the point. */
+  var NAV = [
+    { g:"Main", items:[
+      { n:"Dashboard", a:"reports" }, { n:"Sales", a:"sales" },
+      { n:"Inventory", a:"inventory" }, { n:"Audit", a:"inventory" },
+      { n:"Purchase Orders", a:"inventory" }, { n:"Recipes", a:"recipes" },
+      { n:"Prep Recipes", a:"recipes" }, { n:"Reports", a:"reports" }
+    ]},
+    { g:"Labor", items:[
+      { n:"Scheduling", a:"scheduling" }, { n:"Time Punches", a:"scheduling" },
+      { n:"Tips", a:"scheduling" }, { n:"Payroll", a:"payroll" }
+    ]},
+    { g:"Accounting", items:[
+      { n:"Transactions", a:"books" }, { n:"Banks", a:"books" },
+      { n:"Expenses", a:"books" }, { n:"Invoices", a:"books" },
+      { n:"Customers", a:"books" }, { n:"Chart of Accounts", a:"books" },
+      { n:"Statements", a:"books" }
+    ]},
+    { g:"Admin", items:[
+      { n:"Employees", a:"employees" }, { n:"Team", a:"team" },
+      { n:"Settings", a:"settings" }
+    ]}
+  ];
+
+  /* Landing page: first granted area in this order. Replaces the
+     hardcoded landingPath on every role. */
+  var LANDING_ORDER = ["reports","scheduling","inventory","recipes","books","payroll","sales","employees","team","settings"];
+  var LANDING_LABEL = {
+    reports:"Dashboard", scheduling:"Scheduling", inventory:"Inventory", recipes:"Recipes",
+    books:"Transactions", payroll:"Payroll", sales:"Sales", employees:"Employees",
+    team:"Team", settings:"Settings"
+  };
+
+  function lv(areas) { return function (k) { return areas[k] || "none"; }; }
+
+  /* ---------------- seed roles ---------------- */
+  var roles = [
+    { id:"collaborator_accountant", name:"Accountant", desc:"Keeps the books and closes the month",
+      builtin:true, people:1,
+      areas:{ books:"manage", payroll:"view", employees:"view", reports:"view" },
+      sens:{ costs:false, payrates:true, pii:false } },
+
+    { id:"collaborator_inventory", name:"Inventory Helper", desc:"Counts, scans, and receives stock",
+      builtin:true, people:0,
+      areas:{ inventory:"manage" },
+      sens:{ costs:false, payrates:false, pii:false } },
+
+    { id:"collaborator_chef", name:"Recipe Consultant", desc:"Builds and tunes recipes",
+      builtin:true, people:0,
+      areas:{ recipes:"manage", inventory:"view" },
+      sens:{ costs:false, payrates:false, pii:false } },
+
+    { id:"collaborator_operations_manager", name:"Operations Manager", desc:"Runs scheduling, labor, tips, and inventory",
+      builtin:true, people:1,
+      areas:{ reports:"view", sales:"view", inventory:"manage", recipes:"manage",
+              scheduling:"manage", payroll:"view", employees:"view" },
+      sens:{ costs:true, payrates:true, pii:false } },
+
+    { id:"custom_weekend_supervisor", name:"Weekend Supervisor", desc:"Covers Fri–Sun: schedule, punches, and tips",
+      builtin:false, people:2,
+      areas:{ reports:"view", sales:"view", scheduling:"manage", employees:"view" },
+      sens:{ costs:false, payrates:false, pii:false } },
+
+    { id:"custom_food_cost", name:"Food Cost Analyst", desc:"Watches plate cost and vendor pricing",
+      builtin:false, people:1,
+      areas:{ reports:"view", sales:"view", inventory:"view", recipes:"view" },
+      sens:{ costs:true, payrates:false, pii:false } }
+  ];
+
+  var members = [
+    { name:"Jose Delgado", email:"josema@hotmail.com", role:"collaborator_operations_manager" },
+    { name:"Rita Alvarez", email:"rita@bookskeeper.co", role:"collaborator_accountant" },
+    { name:"Danny Poole", email:"danny.p@gmail.com", role:"custom_weekend_supervisor" },
+    { name:"Sam Okafor", email:"sam.okafor@gmail.com", role:"custom_weekend_supervisor" },
+    { name:"Priya Raman", email:"priya@costlab.io", role:"custom_food_cost" }
+  ];
+
+  /* ---------------- state ---------------- */
+  var draft = null;      // role being edited (a copy)
+  var draftIsNew = false;
+  var inviteRole = "custom_weekend_supervisor";
+
+  var $ = function (s) { return document.querySelector(s); };
+  var esc = function (s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c];
+    });
+  };
+  var area = function (k) { for (var i=0;i<AREAS.length;i++) if (AREAS[i].key===k) return AREAS[i]; return null; };
+
+  function icon(name) {
+    var p = {
+      lock:'<path d="M5 7V5a3 3 0 0 1 6 0v2M3.5 7h9v6.5h-9z"/>',
+      plus:'<path d="M8 3.5v9M3.5 8h9"/>',
+      warn:'<path d="M8 2.8 14 13H2z"/><path d="M8 6.6v3M8 11.2v.4"/>',
+      users:'<circle cx="6" cy="6" r="2.4"/><path d="M2 13c0-2.2 1.8-3.6 4-3.6s4 1.4 4 3.6"/>',
+      grid:'<path d="M2.5 2.5h4.4v4.4H2.5zM9.1 2.5h4.4v4.4H9.1zM2.5 9.1h4.4v4.4H2.5zM9.1 9.1h4.4v4.4H9.1z"/>'
+    }[name];
+    return '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" ' +
+           'stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + '</svg>';
+  }
+
+  /* ---------------- derivations ---------------- */
+  function grantedAreas(r) {
+    return AREAS.filter(function (a) { return (r.areas[a.key] || "none") !== "none"; });
+  }
+
+  function landingFor(r) {
+    for (var i=0;i<LANDING_ORDER.length;i++) {
+      if ((r.areas[LANDING_ORDER[i]] || "none") !== "none") return LANDING_ORDER[i];
+    }
+    return null;
+  }
+
+  function capabilities(r) {
+    var out = [];
+    AREAS.forEach(function (a) {
+      var l = r.areas[a.key] || "none";
+      if (l === "none") return;
+      a.view.forEach(function (c) { out.push("view:" + c); });
+      if (l === "manage") a.edit.forEach(function (c) { out.push("edit:" + c); });
+    });
+    SENSITIVE.forEach(function (s) {
+      if (r.sens[s.key] && sensAvailable(r, s)) out.push(s.cap);
+    });
+    return out.sort();
+  }
+
+  function sensAvailable(r, s) {
+    return s.requires.some(function (k) { return (r.areas[k] || "none") !== "none"; });
+  }
+
+  var PHRASE = {
+    reports:{ view:"read the dashboard and reports", manage:"read the dashboard and reports" },
+    sales:{ view:"see POS sales", manage:"see POS sales" },
+    inventory:{ view:"look at inventory", manage:"count and receive inventory" },
+    recipes:{ view:"read recipes", manage:"build and edit recipes" },
+    scheduling:{ view:"view the schedule", manage:"build schedules, fix punches, and run tips" },
+    books:{ view:"read the books", manage:"keep the books" },
+    payroll:{ view:"see payroll", manage:"run payroll" },
+    employees:{ view:"see the roster", manage:"manage employee records" },
+    team:{ view:"see the team list", manage:"invite people and set roles" },
+    settings:{ view:"view settings", manage:"change settings and integrations" }
+  };
+
+  /* Phrases can themselves contain commas ("build schedules, fix punches,
+     and run tips"), so switch the separator to a semicolon when any do —
+     otherwise the list reads as one run-on clause. */
+  function joinList(items, conj) {
+    if (items.length === 1) return items[0];
+    var sep = items.some(function (s) { return s.indexOf(",") > -1; }) ? "; " : ", ";
+    return items.slice(0, -1).join(sep) + sep + conj + " " + items[items.length - 1];
+  }
+
+  function summarize(r) {
+    var g = grantedAreas(r);
+    if (!g.length) return "<span class=\"rail__deny\">No areas yet. This role can sign in and see nothing.</span>";
+    var can = g.map(function (a) { return PHRASE[a.key][r.areas[a.key]]; });
+    var uniq = can.filter(function (v, i) { return can.indexOf(v) === i; });
+    var canStr = joinList(uniq, "and");
+
+    var blocked = [];
+    if ((r.areas.books || "none") === "none") blocked.push("the books");
+    if ((r.areas.payroll || "none") === "none") blocked.push("payroll");
+    if ((r.areas.team || "none") === "none") blocked.push("team settings");
+    if (!r.sens.costs) blocked.push("costs and margins");
+
+    var name = esc(r.name || "This role");
+    var s = "<strong>" + name + "</strong> can " + canStr + ".";
+    if (blocked.length) {
+      s += " <span class=\"rail__deny\">Can't touch " + joinList(blocked, "or") + ".</span>";
+    }
+    return s;
+  }
+
+  /* ---------------- roles list ---------------- */
+  function renderRoles() {
+    var grid = $("#roles-grid");
+    var html = roles.map(function (r, i) {
+      var chips = grantedAreas(r).map(function (a) {
+        var m = r.areas[a.key] === "manage";
+        return '<span class="chip' + (m ? " chip--manage" : "") + '">' + esc(a.name) +
+               (m ? " · manage" : "") + "</span>";
+      }).join("");
+      if (!chips) chips = '<span class="chip">No areas yet</span>';
+
+      return '<button class="rolecard" data-role="' + r.id + '" style="animation-delay:' + (i * 34) + 'ms">' +
+        '<div class="rolecard__top">' +
+          '<span class="glyph">' + icon(r.builtin ? "grid" : "users") + "</span>" +
+          '<span style="min-width:0">' +
+            '<span class="rolecard__name">' + esc(r.name) + "</span>" +
+            '<div class="rolecard__desc">' + esc(r.desc) + "</div>" +
+          "</span>" +
+        "</div>" +
+        '<div class="rolecard__chips">' + chips + "</div>" +
+        '<div class="rolecard__foot">' +
+          "<span>" + (r.people === 1 ? "1 person" : r.people + " people") + "</span>" +
+          (r.builtin ? '<span class="chip chip--builtin">Built-in</span>'
+                     : '<span class="chip chip--builtin">Custom</span>') +
+        "</div>" +
+      "</button>";
+    }).join("");
+
+    html += '<button class="rolecard rolecard--new" data-role="__new__">' +
+            icon("plus") + "<span>New role</span>" +
+            '<span style="font-size:12px;color:var(--ink-faint)">Name it, then pick its areas</span></button>';
+
+    grid.innerHTML = html;
+  }
+
+  /* ---------------- matrix ---------------- */
+  function renderMatrix() {
+    var r = draft, out = "";
+
+    BANDS.forEach(function (band, bi) {
+      out += '<div class="band' + (bi === 0 ? " band--first" : "") + '"><h3>' + esc(band) + "</h3>" +
+             '<span class="legend">No access &nbsp;·&nbsp; View &nbsp;·&nbsp; Manage</span></div>';
+
+      AREAS.filter(function (a) { return a.band === band; }).forEach(function (a) {
+        var level = r.areas[a.key] || "none";
+        var lockedAll = !!a.ownerOnly;
+        var lockManage = lockedAll || !!a.manageOwnerOnly || a.edit.length === 0;
+
+        var lockNote = a.ownerOnly ? "Owners and Managers only — a collaborator can never grant access."
+          : a.manageOwnerOnly ? "Owners and Managers only."
+          : a.viewOnlyReason || "";
+
+        out += '<div class="arearow" data-locked="' + lockedAll + '">' +
+          '<div class="arearow__label">' +
+            '<div class="arearow__name">' + esc(a.name) +
+              (lockedAll ? ' <span style="color:var(--ink-faint)">' + icon("lock") + "</span>" : "") +
+            "</div>" +
+            '<div class="arearow__hint">' + esc(a.hint) +
+              (lockManage && lockNote ? ' <span style="color:var(--caution)">· ' + esc(lockNote) + "</span>" : "") +
+            "</div>" +
+          "</div>" +
+          '<div class="seg" data-level="' + level + '" data-locked="' + lockedAll + '" role="radiogroup" aria-label="' + esc(a.name) + ' access">' +
+            '<span class="seg__thumb" aria-hidden="true"></span>' +
+            seg(a.key, "none",   "No access", level, lockedAll) +
+            seg(a.key, "view",   "View",      level, lockedAll) +
+            seg(a.key, "manage", "Manage",    level, lockManage) +
+          "</div>" +
+        "</div>";
+      });
+    });
+
+    /* sensitive band */
+    out += '<div class="band band--sensitive"><h3>Sensitive data</h3>' +
+           '<span class="legend">Off &nbsp;·&nbsp; On</span></div>' +
+           '<div class="sensitive">';
+    SENSITIVE.forEach(function (s) {
+      var ok = sensAvailable(draft, s);
+      var on = ok && !!draft.sens[s.key];
+      var reqNames = s.requires.map(function (k) { return area(k).name; }).join(", ");
+      out += '<div class="switchrow" data-available="' + ok + '" data-on="' + on + '">' +
+        '<div class="switchrow__text">' +
+          '<div class="switchrow__name">' + esc(s.name) + "</div>" +
+          '<div class="switchrow__hint">' +
+            (ok ? esc(s.hint) : "Needs access to " + esc(reqNames)) +
+          "</div>" +
+        "</div>" +
+        '<button class="switch" role="switch" aria-checked="' + on + '" data-sens="' + s.key + '"' +
+          (ok ? "" : " disabled") + ' aria-label="' + esc(s.name) + '"></button>' +
+      "</div>";
+    });
+    out += "</div>";
+
+    $("#matrix").innerHTML = out;
+  }
+
+  function seg(areaKey, value, label, level, locked) {
+    var id = "seg-" + areaKey + "-" + value;
+    var dis = locked && value !== level;
+    return '<input type="radio" name="seg-' + areaKey + '" id="' + id + '" value="' + value +
+           '" data-area="' + areaKey + '"' + (level === value ? " checked" : "") + (dis ? " disabled" : "") + ">" +
+           '<label for="' + id + '" data-v="' + value + '">' +
+             (dis && value === "manage" ? icon("lock") : "") + label +
+           "</label>";
+  }
+
+  /* ---------------- preview rail ---------------- */
+  function renderRail() {
+    var r = draft;
+    $("#summary").innerHTML = summarize(r);
+
+    var landing = landingFor(r);
+    var nav = NAV.map(function (grp) {
+      var items = grp.items.map(function (it) {
+        var lvl = r.areas[it.a] || "none";
+        var on = lvl !== "none";
+        var isLanding = on && it.a === landing && LANDING_LABEL[landing] === it.n;
+        return '<div class="navitem" data-on="' + on + '" data-landing="' + isLanding + '">' +
+          '<span class="dot"></span><span class="name">' + esc(it.n) + "</span>" +
+          (on && lvl === "view" ? '<span class="badge">read only</span>' : "") +
+          (isLanding ? '<span class="badge" style="color:var(--accent)">opens here</span>' : "") +
+        "</div>";
+      }).join("");
+      return '<div class="navgroup"><div class="navgroup__label">' + esc(grp.g) + "</div>" + items + "</div>";
+    }).join("");
+    $("#navpreview").innerHTML = nav;
+
+    var caps = capabilities(r);
+    $("#cap-count").textContent = caps.length + " granted";
+    $("#capslist").innerHTML = caps.map(function (c) {
+      var parts = c.split(":");
+      return "<li><span>" + esc(parts[0]) + "</span>:" + esc(parts[1]) + "</li>";
+    }).join("") || '<li style="color:var(--ink-faint)">none</li>';
+  }
+
+  function renderNotice() {
+    var r = draft, html = "";
+    if (r.builtin) {
+      html = '<div class="notice">' + icon("warn") +
+        "<div><strong>Built-in role.</strong> Built-in roles keep getting new areas as we ship features, " +
+        "so they stay locked. Duplicate it to make a version you control.</div></div>";
+    } else if (r.people > 0 && !draftIsNew) {
+      html = '<div class="notice">' + icon("warn") +
+        "<div><strong>" + r.people + (r.people === 1 ? " person has" : " people have") +
+        " this role.</strong> Saving changes what they can reach the next time they load a page.</div></div>";
+    }
+    $("#role-notice").innerHTML = html;
+    $("#save-hint").textContent = r.builtin
+      ? "Built-in roles are read-only."
+      : (draftIsNew ? "New role — nobody is assigned yet." : "");
+    $("#save-role").disabled = !!r.builtin;
+    $("#save-role").style.opacity = r.builtin ? ".45" : "1";
+  }
+
+  function renderEditor() { renderMatrix(); renderRail(); renderNotice(); }
+
+  /* ---------------- invite ---------------- */
+  function renderInvite() {
+    $("#invite-grid").innerHTML = roles.map(function (r) {
+      var g = grantedAreas(r).slice(0, 3).map(function (a) { return a.name; }).join(" · ");
+      var extra = grantedAreas(r).length - 3;
+      return '<button class="invitecard" data-invite="' + r.id + '" aria-pressed="' + (inviteRole === r.id) + '">' +
+        '<span class="glyph">' + icon(r.builtin ? "grid" : "users") + "</span>" +
+        '<span class="invitecard__name">' + esc(r.name) + "</span>" +
+        '<span class="invitecard__desc">' + esc(r.desc) + "</span>" +
+        '<span class="invitecard__desc" style="color:var(--ink-faint)">' +
+          esc(g || "No areas") + (extra > 0 ? " +" + extra : "") + "</span>" +
+      "</button>";
+    }).join("");
+  }
+
+  function renderMembers() {
+    $("#members-list").innerHTML = members.map(function (m, i) {
+      var r = roles.filter(function (x) { return x.id === m.role; })[0];
+      return '<div class="arearow" style="grid-template-columns:minmax(0,1fr) auto' +
+        (i === members.length - 1 ? ";border-bottom:0" : "") + '">' +
+        '<div class="arearow__label"><div class="arearow__name">' + esc(m.name) + "</div>" +
+        '<div class="arearow__hint">' + esc(m.email) + "</div></div>" +
+        '<span class="chip' + (r.builtin ? "" : " chip--manage") + '">' + esc(r.name) + "</span></div>";
+    }).join("");
+  }
+
+  /* ---------------- navigation ---------------- */
+  function show(id) {
+    ["view-roles","view-editor","view-invite","view-members"].forEach(function (v) {
+      $("#" + v).classList.toggle("hidden", v !== id);
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function selectTab(which) {
+    ["members","roles","invite"].forEach(function (t) {
+      $("#tab-" + t).setAttribute("aria-selected", String(t === which));
+    });
+    show("view-" + which);
+  }
+
+  function openRole(id) {
+    if (id === "__new__") {
+      draft = { id:"custom_" + Date.now(), name:"", desc:"", builtin:false, people:0,
+                areas:{}, sens:{ costs:false, payrates:false, pii:false } };
+      draftIsNew = true;
+    } else {
+      var r = roles.filter(function (x) { return x.id === id; })[0];
+      draft = JSON.parse(JSON.stringify(r));
+      draftIsNew = false;
+    }
+    $("#role-name").value = draft.name;
+    $("#role-name").placeholder = "e.g. Weekend Supervisor";
+    $("#role-desc").value = draft.desc;
+    $("#role-desc").placeholder = "e.g. Covers Fri–Sun: schedule, punches, and tips";
+    $("#role-name").disabled = !!draft.builtin;
+    $("#role-desc").disabled = !!draft.builtin;
+    renderEditor();
+    show("view-editor");
+    if (draftIsNew) $("#role-name").focus();
+  }
+
+  /* ---------------- events ---------------- */
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+
+    var tab = t.closest && t.closest(".tab");
+    if (tab) { selectTab(tab.id.replace("tab-", "")); return; }
+
+    var rc = t.closest && t.closest("[data-role]");
+    if (rc) { openRole(rc.getAttribute("data-role")); return; }
+
+    if (t.closest && t.closest("#back-to-roles, #cancel-role")) { selectTab("roles"); return; }
+
+    var sw = t.closest && t.closest("[data-sens]");
+    if (sw && !sw.disabled) {
+      var k = sw.getAttribute("data-sens");
+      draft.sens[k] = !draft.sens[k];
+      renderEditor();
+      var again = document.querySelector('[data-sens="' + k + '"]');
+      if (again) again.focus();
+      return;
+    }
+
+    var ic = t.closest && t.closest("[data-invite]");
+    if (ic) {
+      inviteRole = ic.getAttribute("data-invite");
+      renderInvite();
+      $("#invite-echo").textContent = "";
+      return;
+    }
+
+    if (t.id === "send-invite") {
+      var email = $("#invite-email").value.trim();
+      var r = roles.filter(function (x) { return x.id === inviteRole; })[0];
+      $("#invite-echo").textContent = email
+        ? "Invitation queued for " + email + " as " + r.name + ". They'll land on " +
+          (LANDING_LABEL[landingFor(r)] || "nothing") + " when they accept."
+        : "Add an email address first.";
+      return;
+    }
+
+    if (t.id === "save-role" && !draft.builtin) {
+      draft.name = $("#role-name").value.trim() || "Untitled role";
+      draft.desc = $("#role-desc").value.trim();
+      var idx = -1;
+      roles.forEach(function (x, i) { if (x.id === draft.id) idx = i; });
+      if (idx >= 0) roles[idx] = draft; else roles.push(draft);
+      renderRoles(); renderInvite(); renderMembers();
+      selectTab("roles");
+      return;
+    }
+  });
+
+  document.addEventListener("change", function (e) {
+    var input = e.target;
+    if (input.name && input.name.indexOf("seg-") === 0) {
+      var k = input.getAttribute("data-area");
+      draft.areas[k] = input.value;
+      if (input.value === "none") delete draft.areas[k];
+      var segEl = input.closest(".seg");
+      segEl.setAttribute("data-level", input.value);
+      /* Re-render only the parts that depend on the whole picture. */
+      renderRail();
+      refreshSensitive();
+    }
+  });
+
+  function refreshSensitive() {
+    SENSITIVE.forEach(function (s) {
+      var btn = document.querySelector('[data-sens="' + s.key + '"]');
+      if (!btn) return;
+      var row = btn.closest(".switchrow");
+      var ok = sensAvailable(draft, s);
+      btn.disabled = !ok;
+      row.setAttribute("data-available", String(ok));
+      var on = ok && !!draft.sens[s.key];
+      btn.setAttribute("aria-checked", String(on));
+      row.setAttribute("data-on", String(on));
+      row.querySelector(".switchrow__hint").textContent =
+        ok ? s.hint : "Needs access to " + s.requires.map(function (k) { return area(k).name; }).join(", ");
+    });
+  }
+
+  ["role-name","role-desc"].forEach(function (id) {
+    document.getElementById(id).addEventListener("input", function () {
+      draft[id === "role-name" ? "name" : "desc"] = this.value;
+      $("#summary").innerHTML = summarize(draft);
+    });
+  });
+
+  renderRoles(); renderInvite(); renderMembers();
+})();
+</script>

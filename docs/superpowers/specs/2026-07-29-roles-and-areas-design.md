@@ -381,18 +381,47 @@ One thing that is *not* a problem: `roleIcons` already falls back to
 sane icon with no change. Confirmed explicitly because an earlier draft listed
 it as work.
 
+### The roles list
+
+A third tab beside Team members and Invite, using the existing Apple-style
+underline tab pattern from CLAUDE.md. A responsive grid of role cards, each
+showing: icon box, name, description, the granted areas as chips — accent-
+tinted with a `· manage` suffix at manage level, muted at view level, absent
+when ungranted — a member count (`1 person` / `0 people`), and a `BUILT-IN`
+or `CUSTOM` badge. A dashed-border "New role" card closes the grid.
+
+The chips are the list's whole point: today's four preset cards show a
+hardcoded feature list, so two roles that differ subtly look identical. Chips
+derived from actual grants mean the difference between two roles is visible
+without opening either.
+
+Built-in cards open the editor read-only rather than not opening — seeing how
+Accountant is composed is how an owner learns what to put in a custom role.
+
 ### The role editor
 
-The editor is a dialog following the project's Apple/Notion conventions from
-CLAUDE.md: `max-w-2xl`, `p-0 gap-0 border-border/40`, a header with the
-`h-10 w-10 rounded-xl bg-muted/50` icon box, a `DialogTitle` at
-`text-[17px] font-semibold` and a real `DialogDescription` (not a bare `<p>`,
-so Radix wires `aria-describedby`).
+**Corrected against the approved prototype.** An earlier draft of this section
+described the editor as a `max-w-2xl` dialog. The prototype the user approved
+is a **full-page, two-column editor**, and three of its features are load
+bearing rather than decorative. Building the dialog version would have shipped
+something materially different from what was signed off.
 
-Body: name and description inputs at `h-10 text-[14px] bg-muted/30`, then the
-ten areas grouped into their three bands, each band a
-`rounded-xl border-border/40` section with a `text-[13px] font-semibold`
-header. Each area row is a label plus a three-state control.
+**Layout.** A full page reached from the roles list, with a `← All roles`
+back link. Left column (roughly 2/3): an identity card (role name, "what this
+person does"), then the ten areas grouped into their three bands. Right column
+(1/3, sticky): the live preview described below. Below `lg`, the preview drops
+beneath the form in normal flow rather than being hidden — it is the thing
+that tells the user what they just built, so it must survive mobile.
+
+The identity card carries a warning banner when the role has members —
+*"2 people have this role. Saving changes what they can reach the next time
+they load a page."* — with the count from the role's membership query. This is
+the only place the blast radius of an edit is visible.
+
+Each band is a section with an uppercase `text-[12px] tracking-wider` header
+row, and the Operations header additionally carries the column legend
+(`NO ACCESS · VIEW · MANAGE`). Each area row is a name, a
+`text-[13px] text-muted-foreground` description, and the three-state control.
 
 **That control is a `RadioGroup`, not a `ToggleGroup`.** No access / View /
 Manage are mutually exclusive values of one setting, which is radio semantics;
@@ -404,6 +433,33 @@ rendered as a segmented control visually — `RadioGroup` with
 within the group and tab-stops *between* groups for free, which is what makes
 ten of these usable by keyboard rather than a 30-stop gauntlet.
 
+**Per-area level caps — a model requirement the prototype revealed.** The
+prototype disables specific levels with a lock icon, and this is not cosmetic:
+
+| Area | Cap for a collaborator role | Why |
+|---|---|---|
+| Dashboard & Reports | view | nothing there is editable |
+| Sales | view | *"Sales come from your POS — nobody edits them here."* |
+| Payroll | view | Owners and Managers only |
+| Settings & Integrations | view | Owners and Managers only |
+| **Team & Access** | **none — no level grantable** | see below |
+
+Team & Access being ungrantable is a **privilege-escalation guard**, and the
+prototype states the reason in the UI: *"Owners and Managers only — a
+collaborator can never grant access."* Without it, a collaborator role could
+be granted `manage:collaborators`, and its holder could then mint themselves a
+new role with every area — trivially escalating to owner. Any collaborator
+role that could edit roles defeats the entire model.
+
+Therefore the cap is **enforced in SQL, not in the UI**. A greyed-out control
+is a hint; the guard is a `BEFORE INSERT OR UPDATE` trigger on `role_areas`
+that rejects a grant exceeding the area's cap for the parent role's `flavor`.
+The area catalog carries `max_level_collaborator` alongside its capability
+mapping, and the same table drives both the trigger and the disabled state, so
+the two cannot drift. Builtin roles are seeded before the trigger applies and
+are exempt by `builtin = true` — `owner` legitimately holds Team & Access at
+manage.
+
 The three sensitive flags are `Switch`es
 (`data-[state=checked]:bg-foreground`), each with a visible label and a
 `text-[13px] text-muted-foreground` explanation of what it exposes — these are
@@ -412,10 +468,35 @@ just a name. They sit in their own section below the areas, since they cut
 across all of them rather than belonging to any one.
 
 Accessibility beyond the above: every switch has an `id` with a matching
-`<Label htmlFor>`; the dialog's save button is disabled with an
-`aria-describedby` pointing at the validation message when the name is empty
-or collides; and the "copy to other restaurants" multi-select is a labelled
-listbox, not a bare div of checkboxes.
+`<Label htmlFor>`; the save button is disabled with an `aria-describedby`
+pointing at the validation message when the name is empty or collides; capped
+levels use `disabled` + `aria-disabled` with the reason text as their
+accessible description, so a screen-reader user learns *why* Manage is
+unavailable rather than just finding it inert; and the "copy to other
+restaurants" multi-select is a labelled listbox, not a bare div of checkboxes.
+
+### The live preview
+
+The right column answers the question the old preset cards answered with a
+hardcoded bullet list — *what does this role actually get?* — except computed
+from the grants as they are toggled. Three parts:
+
+1. **A prose summary.** *"Weekend Supervisor can read the dashboard and
+   reports; see POS sales; build schedules, fix punches, and run tips; and see
+   the roster. Can't touch the books, payroll, team settings, or costs and
+   margins."* Generated from granted areas and, importantly, from the
+   *ungranted* ones — the "can't" half is what makes an over-grant obvious.
+2. **The rendered sidebar.** The actual nav groups, with reachable items
+   normal, unreachable items struck through and dimmed, a `READ ONLY` marker
+   on view-level items, and `OPENS HERE` on the landing path. This is the
+   single most valuable element in the prototype: it makes the abstract
+   area→nav derivation concrete before saving, and it is why the nav
+   derivation logic must be a pure function usable outside the sidebar.
+3. **A grant counter** — `Permissions this grants · 11 GRANTED`.
+
+The preview is pure: `(grants, flags) → summary | navPreview | count`, with no
+queries of its own, so it is straightforward to unit test and cannot drift
+from what the sidebar renders because both call the same derivation.
 
 ## Migration sequence
 

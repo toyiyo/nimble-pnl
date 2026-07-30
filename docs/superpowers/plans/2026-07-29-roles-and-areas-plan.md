@@ -60,6 +60,13 @@ principals (an owner, a manager, a non-member). Assert:
     builtin-shadowing trigger.
 11. Two custom roles with the same name in one restaurant collide; the same
     name in two different restaurants does not.
+12. **Per-area level caps are enforced server-side.** `throws_ok` on granting
+    a collaborator-flavored role `manage` on Dashboard & Reports, Sales,
+    Payroll, or Settings & Integrations; `throws_ok` on granting it *any*
+    level of Team & Access. Then assert the builtin `owner` row legitimately
+    holds Team & Access at manage, so the guard is not simply blanket-denying.
+13. The cap guard survives `SET LOCAL row_security = off`, like the
+    immutability guard — it is an escalation boundary, not a policy.
 
 **Then** `supabase/migrations/20260730100000_roles_and_areas_tables.sql`:
 
@@ -78,9 +85,17 @@ principals (an owner, a manager, a non-member). Assert:
   the design. Plus `roles(restaurant_id)` for the list query.
 - Unique: partial unique on `(restaurant_id, lower(name)) WHERE restaurant_id
   IS NOT NULL`, and `(lower(name)) WHERE restaurant_id IS NULL`.
+- `area_catalog(area_key pk, band text, sort_order int, max_level_collaborator
+  text null)` — `null` meaning ungrantable to collaborators (Team & Access).
+  A table rather than a CHECK constraint so the trigger and the UI read the
+  same source and cannot drift.
 - Triggers: `BEFORE UPDATE OR DELETE ON roles` raising when `OLD.builtin`;
   equivalents on the two child tables checking the parent; `BEFORE INSERT OR
-  UPDATE ON roles` rejecting a name that case-insensitively matches a builtin.
+  UPDATE ON roles` rejecting a name that case-insensitively matches a builtin;
+  and `BEFORE INSERT OR UPDATE ON role_areas` rejecting a level above the
+  area's `max_level_collaborator` when the parent role is
+  `flavor='collaborator' AND builtin = false`. That last one is the
+  privilege-escalation boundary — see the design's per-area caps table.
 - RLS enabled on all three, policies per design (read: members + globals;
   write: `manage:collaborators`; children join through `roles`).
 
@@ -217,14 +232,39 @@ Management, creates a collaborator role, grants two areas, saves, invites a
 fictional user to it, and that user signs in and sees exactly those areas.
 Selectors are `getByRole('radiogroup' | 'radio' | 'switch')` — which doubles
 as the accessibility assertion, since a `ToggleGroup` implementation would not
-be findable.
+be findable. The spec also asserts the capped levels are disabled and that the
+preview's grant counter moves when an area is toggled.
 
-**Then:**
-- `src/components/roles/RoleEditorDialog.tsx` (new) — per the design's UI
-  section: Apple/Notion dialog shell, `DialogDescription` not a bare `<p>`,
-  ten areas in three bands each a `RadioGroup` styled as a segmented control
-  with an `aria-label`, three `Switch`es with prose explanations, and the
-  copy-to-restaurants multi-select.
+**Visual verification.** After the UI is built, run the app and screenshot the
+roles list and the editor at desktop and mobile, light and dark, and compare
+against `list.png` / `editor.png` / `editor-dark.png` / `mobile.png`.
+Discrepancies in layout, chip treatment, band grouping, or the preview panel
+get fixed before the PR — the user's instruction was that the shipped
+experience match the approved design as closely as possible.
+
+**Then**, matching the approved prototype
+(`scratchpad/roles-and-areas.html`, screenshots `list.png` / `editor.png` /
+`editor-dark.png` / `mobile.png`) — these are the visual reference and the
+build is checked against them, not just against prose:
+
+- `src/lib/permissions/preview.ts` (new) — the pure derivation
+  `(grants, flags) → { summary, navPreview, grantCount }`. Written first
+  because both the editor preview and the sidebar consume it, which is what
+  keeps them from drifting. Unit tested directly.
+- `src/components/roles/RolesList.tsx` (new) — the card grid: area chips
+  (accent + `· manage` at manage level, muted at view), member counts,
+  `BUILT-IN`/`CUSTOM` badges, dashed "New role" card. Built-in cards open the
+  editor read-only.
+- `src/components/roles/RoleEditor.tsx` (new) — **a full page, not a dialog.**
+  Two columns at `lg`, single column below with the preview in normal flow
+  beneath the form. Identity card with the member-count warning banner, then
+  ten areas in three bands, each a `RadioGroup` styled as a segmented control
+  with an `aria-label`; capped levels `disabled` + `aria-disabled` with the
+  reason as accessible description; three `Switch`es with prose explanations;
+  the copy-to-restaurants multi-select.
+- `src/components/roles/RolePreviewPanel.tsx` (new) — sticky preview: prose
+  summary including the "can't" half, the rendered sidebar with struck-through
+  unreachable items / `READ ONLY` / `OPENS HERE`, and the grant counter.
 - `CollaboratorInvitations.tsx` — replace all four static bindings: the preset
   grid ([:159-196](src/components/CollaboratorInvitations.tsx:159)), the
   `Role | null` selection state ([:38](src/components/CollaboratorInvitations.tsx:38)),

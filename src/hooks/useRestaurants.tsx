@@ -12,6 +12,8 @@ export interface Restaurant {
   phone?: string;
   cuisine_type?: string;
   timezone?: string;
+  /** Hour (0-11, restaurant-local) at which the business day starts. 0 == calendar day. */
+  business_day_start_hour?: number;
   created_at: string;
   updated_at: string;
   // Business info fields

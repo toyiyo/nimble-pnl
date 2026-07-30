@@ -62,6 +62,12 @@ export type Capability =
   | 'view:customers'
   | 'edit:customers'
   | 'view:financial_intelligence'
+  // view:assets/edit:assets: existed in the SQL user_has_capability CASE
+  // (accountant-only branch) but not here — see the roles-and-areas design
+  // doc's "defect 1". Added to close that drift; both resolve through the
+  // 'books' area (view/manage respectively) in src/lib/permissions/areas.ts.
+  | 'view:assets'
+  | 'edit:assets'
 
   // Inventory capabilities (inventory surface)
   | 'view:inventory'
@@ -107,7 +113,15 @@ export type Capability =
   | 'view:integrations'
   | 'manage:integrations'
   | 'view:collaborators'
-  | 'manage:collaborators';
+  | 'manage:collaborators'
+
+  // Sensitive-data flags (roles-and-areas design). Cross-cutting switches
+  // that apply *inside* whatever areas a role already holds, resolved from
+  // `role_flags` rather than from an area+level grant — see
+  // src/lib/permissions/areas.ts's `expandAreas`.
+  | 'view:costs'
+  | 'view:pay_rates'
+  | 'view:employee_pii';
 
 /**
  * Role category for grouping in UI and determining behavior

@@ -270,6 +270,27 @@ Host-TZ-independent: it never reads a local-time getter and never depends on
    instant, i.e. the smaller minutes-east offset. Matches Postgres on all ten
    cases above.
 
+#### The adapter must validate *before* delegating
+
+`wallClockToInstant` wraps `parseWallClock`, and the wrapper's two validation
+bullets are load-bearing — `parseWallClock` cannot be relied on for either:
+
+- **Timezone.** `parseWallClock` opens with `safeTz(tz)`, which maps an empty or
+  malformed zone to `America/Chicago` *silently*. Delegating without a prior check
+  would convert a restaurant with a missing timezone to Central time and write a
+  confidently wrong instant — the failure mode of §5.1's empty-string case, merely
+  relocated. `wallClockToInstant` therefore validates `tz` itself and throws.
+- **Malformed date/time.** `parseWallClock` routes bad input through `reject()`,
+  which throws only in DEV and test; **in production it logs and returns a
+  fallback** (that module has no error boundary above it, so a throw in render
+  blanks the route — a deliberate and correct choice *there*). `ShiftInterval`'s
+  existing contract is the opposite: `TypeError('INVALID_DATE')`, pinned by tests
+  ([`shiftInterval.test.ts:64,68,72`](../../../tests/unit/shiftInterval.test.ts#L64)).
+  The adapter's own regex gate preserves that contract in all environments.
+
+Also note `parseWallClock` returns an **ISO string**; `wallClockToInstant` returns
+a `Date`, per the signature above.
+
 **Why explicit validation instead of leaning on `Date`'s parser:** today
 `new Date('2026-03-01Tabc:00')` yields `Invalid Date`, and `validateAndConstruct`
 turns that into `TypeError('INVALID_DATE')`

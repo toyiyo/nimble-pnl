@@ -105,6 +105,47 @@ describe('shape guards', () => {
   });
 });
 
+describe('parseWallClock at DST edges (Postgres parity)', () => {
+  // Expected values are fixed literals, verified against local Postgres via
+  // `('...'::timestamp AT TIME ZONE tz)::text`, NOT derived from `new Date()`
+  // -- an assertion correct in July and wrong in November would be a defect.
+  // Postgres resolves both the repeated (ambiguous) and nonexistent wall
+  // clock using the zone's STANDARD (non-DST) offset, confirmed in both
+  // hemispheres (America/Chicago DST is Mar-Nov; Australia/Sydney DST is
+  // Oct-Apr, opposite direction) so it is not a northern-hemisphere fluke.
+  const SYD = 'Australia/Sydney';
+
+  it('resolves the repeated hour (fall-back) in Chicago with the standard (CST) offset', () => {
+    expect(parseWallClock('2026-11-01T01:30', CHI)).toBe('2026-11-01T07:30:00.000Z');
+  });
+
+  it('resolves the nonexistent hour (spring-forward) in Chicago with the standard (CST) offset', () => {
+    expect(parseWallClock('2026-03-08T02:30', CHI)).toBe('2026-03-08T08:30:00.000Z');
+  });
+
+  it('resolves the repeated hour (fall-back) in Sydney with the standard (AEST) offset', () => {
+    // Sydney DST ends 2026-04-05; 02:30 is the repeated hour. The AFTER
+    // offset (AEST) happens to be the valid, standard one here.
+    expect(parseWallClock('2026-04-05T02:30', SYD)).toBe('2026-04-04T16:30:00.000Z');
+  });
+
+  it('resolves the nonexistent hour (spring-forward) in Sydney with the standard (AEST) offset', () => {
+    // Sydney DST starts 2026-10-04; 02:30 does not exist. The BEFORE offset
+    // (AEST) happens to be the valid, standard one here -- opposite of the
+    // fall-back case above, which is why "standard" (not "before"/"after")
+    // is the only rule that describes both.
+    expect(parseWallClock('2026-10-04T02:30', SYD)).toBe('2026-10-03T16:30:00.000Z');
+  });
+
+  it('resolves an unambiguous Chicago wall clock without touching the standard-offset fallback', () => {
+    expect(parseWallClock('2026-07-22T20:56', CHI)).toBe('2026-07-23T01:56:00.000Z');
+  });
+
+  it('resolves an unambiguous Sydney wall clock without touching the standard-offset fallback', () => {
+    expect(parseWallClock('2026-06-15T10:00', SYD)).toBe('2026-06-15T00:00:00.000Z');
+  });
+});
+
 describe('offset and abbreviation', () => {
   it('reports the CDT offset in July', () => {
     expect(tzOffsetMinutes(CHI, new Date('2026-07-15T12:00:00Z'))).toBe(-300);

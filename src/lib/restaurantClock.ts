@@ -1,4 +1,4 @@
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 
 /**
  * The restaurant timezone is the default frame for every user-visible date.
@@ -129,9 +129,33 @@ export function toWallClockInput(value: string | Date, tz: string): string {
   return formatInTimeZone(asInstant(value, 'toWallClockInput'), safeTz(tz), "yyyy-MM-dd'T'HH:mm");
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * Interpret a naive wall-clock string as restaurant-local and return the UTC
  * instant. The inverse of `toWallClockInput`.
+ *
+ * Deliberately does NOT delegate to `date-fns-tz`'s `fromZonedTime`, whose
+ * handling of DST edges reads the HOST's local-time getters and disagrees
+ * with Postgres (`timestamp AT TIME ZONE tz`) on both the repeated hour
+ * (fall-back) and the nonexistent hour (spring-forward). Postgres resolves
+ * both using the zone's STANDARD (non-DST) UTC offset -- verified empirically
+ * against both `America/Chicago` and `Australia/Sydney` (opposite-hemisphere
+ * DST direction), so "standard offset" and not "before" or "after" is the
+ * rule. See `tests/unit/restaurantClock.test.ts` and
+ * `supabase/tests/wall_clock_parity.sql` for the pinned values.
+ *
+ * Algorithm (host-TZ-independent -- never reads a local-time getter or
+ * depends on `process.env.TZ`):
+ *   1. Parse the wall clock's literal fields as if they were UTC ("naive").
+ *   2. Collect the (at most two) distinct UTC offsets the zone could be
+ *      observing around that moment, probed 24h to either side.
+ *   3. A candidate offset is "valid" if applying it and formatting the
+ *      result back in `tz` reproduces the input wall clock exactly.
+ *   4. Exactly one valid candidate -> unambiguous, return it.
+ *   5. Zero (nonexistent hour) or two (repeated hour) valid candidates ->
+ *      resolve with the smaller (less-east) of the two offsets, i.e. the
+ *      standard offset, since DST always moves a clock forward.
  */
 export function parseWallClock(wallClock: string, tz: string): string {
   if (!WALL_CLOCK_RE.test(wallClock)) {
@@ -139,5 +163,33 @@ export function parseWallClock(wallClock: string, tz: string): string {
     const fallback = new Date(wallClock);
     return Number.isNaN(fallback.getTime()) ? new Date(0).toISOString() : fallback.toISOString();
   }
-  return fromZonedTime(wallClock, safeTz(tz)).toISOString();
+
+  const zone = safeTz(tz);
+  // What toWallClockInput's pattern produces; the input may carry seconds
+  // (per WALL_CLOCK_RE) but the datetime-local field never does, and the
+  // ambiguity check only needs minute precision.
+  const wallClockMinutes = wallClock.slice(0, 16);
+
+  const [datePart, timePart] = wallClock.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hour, minute, second = '0'] = timePart.split(':');
+  const naive = Date.UTC(year, month - 1, day, Number(hour), Number(minute), Number(second));
+
+  const offsetBefore = tzOffsetMinutes(zone, new Date(naive - DAY_MS));
+  const offsetAfter = tzOffsetMinutes(zone, new Date(naive + DAY_MS));
+  const candidateOffsets = [...new Set([offsetBefore, offsetAfter])];
+
+  const isValidOffset = (offsetMinutes: number): boolean => {
+    const candidate = naive - offsetMinutes * 60000;
+    return formatInTimeZone(new Date(candidate), zone, "yyyy-MM-dd'T'HH:mm") === wallClockMinutes;
+  };
+
+  const validOffsets = candidateOffsets.filter(isValidOffset);
+  if (validOffsets.length === 1) {
+    return new Date(naive - validOffsets[0] * 60000).toISOString();
+  }
+
+  // Zero valid (nonexistent) or two valid (repeated): standard offset wins.
+  const standardOffset = Math.min(offsetBefore, offsetAfter);
+  return new Date(naive - standardOffset * 60000).toISOString();
 }

@@ -139,10 +139,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * handling of DST edges reads the HOST's local-time getters and disagrees
  * with Postgres (`timestamp AT TIME ZONE tz`) on both the repeated hour
  * (fall-back) and the nonexistent hour (spring-forward). Postgres resolves
- * both using the zone's STANDARD (non-DST) UTC offset -- verified empirically
- * against both `America/Chicago` and `Australia/Sydney` (opposite-hemisphere
- * DST direction), so "standard offset" and not "before" or "after" is the
- * rule. See `tests/unit/restaurantClock.test.ts` and
+ * both using the zone's SMALLER NUMERIC UTC OFFSET -- not "before", not
+ * "after", and deliberately not tzdb's `isdst` designation. Verified
+ * empirically against `America/Chicago` and `Australia/Sydney` (opposite
+ * hemispheres), `Australia/Lord_Howe` (a 30-minute DST shift), and
+ * `Europe/Dublin`, which is decisive: tzdb designates Irish summer (+1) as
+ * *standard* and winter as a negative DST offset, so "smaller numeric offset"
+ * and "the non-DST offset" pick opposite answers there -- and Postgres
+ * follows the former. See `tests/unit/restaurantClock.test.ts` and
  * `supabase/tests/wall_clock_parity.sql` for the pinned values.
  *
  * Algorithm (host-TZ-independent -- never reads a local-time getter or
@@ -154,8 +158,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  *      result back in `tz` reproduces the input wall clock exactly.
  *   4. Exactly one valid candidate -> unambiguous, return it.
  *   5. Zero (nonexistent hour) or two (repeated hour) valid candidates ->
- *      resolve with the smaller (less-east) of the two offsets, i.e. the
- *      standard offset, since DST always moves a clock forward.
+ *      resolve with the smaller (less-east) of the two offsets, matching
+ *      Postgres.
  */
 export function parseWallClock(wallClock: string, tz: string): string {
   if (!WALL_CLOCK_RE.test(wallClock)) {
@@ -189,7 +193,9 @@ export function parseWallClock(wallClock: string, tz: string): string {
     return new Date(naive - validOffsets[0] * 60000).toISOString();
   }
 
-  // Zero valid (nonexistent) or two valid (repeated): standard offset wins.
-  const standardOffset = Math.min(offsetBefore, offsetAfter);
-  return new Date(naive - standardOffset * 60000).toISOString();
+  // Zero valid (nonexistent) or two valid (repeated): the smaller numeric
+  // offset wins, which is what Postgres does. See the doc comment -- this is
+  // NOT the same as tzdb's "standard" offset in negative-DST zones.
+  const smallerOffset = Math.min(offsetBefore, offsetAfter);
+  return new Date(naive - smallerOffset * 60000).toISOString();
 }

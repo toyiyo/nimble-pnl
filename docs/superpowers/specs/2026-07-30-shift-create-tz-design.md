@@ -99,14 +99,55 @@ the loop rather than opening a new mismatch.
 
 ---
 
-## 3. The three shift-write surfaces
+## 3. The shift-write surfaces
 
-| # | Surface | Site | Status |
+Revised after Phase 2.5 design review. The original inventory listed three broken
+surfaces; review found **three more on the client and two already-correct ones on
+the server**. The count matters: shipping a fix for three of six leaves a manager
+who uses "Copy Week" or "Repeat" still looking at wrong hours, which reads to the
+customer as *"they said they fixed it and didn't."*
+
+**Broken — client, all the same root cause (host-local `Date` field access):**
+
+| # | Surface | Site | How it breaks |
 |---|---|---|---|
-| 1 | Planner — assign employee to template | [`shiftInterval.ts:36,41,44,46`](../../../src/lib/shiftInterval.ts#L36) via [`useValidatedShiftMutations.ts:209,247`](../../../src/hooks/useValidatedShiftMutations.ts#L209) | **Broken** — host-local |
-| 2 | Planner — drag a shift to a new time | [`useShiftPlanner.ts:603`](../../../src/hooks/useShiftPlanner.ts#L603) | **Broken** — host-local, same `ShiftInterval.create` |
-| 3 | "Add / Edit Shift" dialog | [`ShiftDialog.tsx:83-84`](../../../src/components/ShiftDialog.tsx#L83) (conflict pre-check) and [`:160-161`](../../../src/components/ShiftDialog.tsx#L160) (the insert) | **Broken** — host-local |
-| 4 | Timeline drag / resize / create | [`shiftTimeMath.ts:37`](../../../src/lib/shiftTimeMath.ts#L37) | ✅ correct — `fromZonedTime(…, tz)` |
+| 1 | Planner — assign employee to template | [`shiftInterval.ts:36,41,44,46`](../../../src/lib/shiftInterval.ts#L36) via [`useValidatedShiftMutations.ts:209,247`](../../../src/hooks/useValidatedShiftMutations.ts#L209) | naive parse |
+| 2 | Planner — drag a shift to a new time | [`useShiftPlanner.ts:603`](../../../src/hooks/useShiftPlanner.ts#L603) | same `ShiftInterval.create` |
+| 3 | "Add / Edit Shift" dialog | [`ShiftDialog.tsx:83-84`](../../../src/components/ShiftDialog.tsx#L83) (conflict pre-check), [`:160-161`](../../../src/components/ShiftDialog.tsx#L160) (the insert) | naive parse |
+| 4 | **Recurring shifts ("Repeat")** | [`useShifts.tsx:172`](../../../src/hooks/useShifts.tsx#L172) — `childStartTime.setHours(startDate.getHours(), …)` | host-local getters; every child after the first |
+| 5 | **Copy Week** | [`copyWeekShifts.ts:20-51`](../../../src/lib/copyWeekShifts.ts#L20) — `offsetPreservingLocalTime` | host-local getters **and** host-local midnight boundaries |
+| 6 | **Drag-copy a shift card** | [`useShiftCopyDnd.ts:57-65`](../../../src/components/scheduling/useShiftCopyDnd.ts#L57) — `new Date(y, m, d, srcStart.getHours(), …)` | host-local getters |
+
+Surface 5 is the most severe of the three new ones and is **not merely an hour
+error**. `dayOffset` is derived by comparing host-local midnights
+([`copyWeekShifts.ts:30-37`](../../../src/lib/copyWeekShifts.ts#L30)), so a
+restaurant-local near-midnight shift can be copied onto the **wrong day of the
+week**. Its doc comment claims the reconstruction is "DST-safe"; it is host-local-safe,
+which is a different and much weaker property.
+
+**Already correct — leave alone, and use as reference patterns:**
+
+| Surface | Site | Why it is right |
+|---|---|---|
+| Timeline drag / resize / create | [`shiftTimeMath.ts:37`](../../../src/lib/shiftTimeMath.ts#L37) | `fromZonedTime(…, tz)` |
+| AI schedule generation | [`useGenerateSchedule.ts:128-135`](../../../src/hooks/useGenerateSchedule.ts#L128) | `fromZonedTime(…, restaurantTimezone)` |
+| `claim_open_shift` (RPC, `SECURITY DEFINER`) | [`20260721140000_open_shift_claim_authz_guard.sql:284-285`](../../../supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql#L284) | `(date \|\| ' ' \|\| start_time)::timestamp AT TIME ZONE v_tz` |
+| `approve_open_shift_claim` (RPC, `SECURITY DEFINER`) | [`…:434-435`](../../../supabase/migrations/20260721140000_open_shift_claim_authz_guard.sql#L434) | same |
+
+**The two RPCs are why §5.1's Postgres parity is mandatory, not stylistic.** They
+create `shifts` rows from the *same* `shift_templates` wall clock as Surface 1,
+already using the database's `AT TIME ZONE` semantics, and they are live — called
+from [`useOpenShiftClaims.ts`](../../../src/hooks/useOpenShiftClaims.ts). Had the
+client shipped the original `fromZonedTime` design, then on the two DST-transition
+days a shift created by *assigning* a template and one created by *claiming* the
+same template on the same date would have landed **an hour apart** — a brand-new
+inconsistency introduced by the fix itself, between two paths that at least agree
+today. With §5.1's converter both paths produce the same instant on every date.
+
+**Confirmed not a write surface:** `generate-schedule` reads `shifts`/`shift_templates`
+for solver input and never inserts; `sync_sling_to_shifts_and_punches` copies
+existing `timestamptz` values verbatim; `useApplySuggestedShifts` writes to
+`shift_templates`, which is `time without time zone` by design.
 
 Surface 2 is doubly ironic: the file that performs it carries a header comment
 warning against precisely this construct
@@ -186,6 +227,19 @@ tiebreak drifting apart in a file neither branch's author is looking at.
 
 ⚠️ **This is a cross-session coordination point and is flagged for the user**, since
 it changes what the other in-flight branch has to resolve at rebase time.
+
+**For completeness on the "one converter" argument:** a *fourth* wall-clock→instant
+implementation already exists —
+[`timezoneUtils.ts::localToUTC`](../../../src/utils/timezoneUtils.ts), used by the
+CSV import path
+([`ShiftImportSheet.tsx:78-98`](../../../src/components/scheduling/ShiftImportSheet.tsx#L78)).
+It is **correct in production today** because its sole render site
+([`Scheduling.tsx:1791`](../../../src/pages/Scheduling.tsx#L1791)) always passes a
+real timezone — but its signature takes `timezone?: string` and falls back to naive
+host-local parsing when absent, which is exactly the optional-parameter footgun
+§5.2 argues against. Out of scope here (not broken, no customer impact), recorded
+so the consolidation argument is honest about how many converters exist: four, not
+two.
 
 ---
 
@@ -304,7 +358,7 @@ minutes-arithmetic route through `NaN` would produce a `RangeError` from
 **Timezone-validity policy:** `wallClockToInstant` does **not** substitute a
 fallback timezone. Choosing a default is the caller's policy — on `main` every
 caller already spells it `|| 'UTC'`
-([`ShiftPlannerTab.tsx:118`](../../../src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx#L118),
+([`ShiftPlannerTab.tsx:117`](../../../src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx#L117),
 [`Scheduling.tsx:221`](../../../src/pages/Scheduling.tsx#L221)), and
 `fix/restaurant-tz-display` will upgrade those same expressions to `safeTz(...)`
 with an `America/Chicago` default. Hard-coding a third default here would fight
@@ -376,8 +430,26 @@ value object we just made timezone-correct is not an option.
 |---|---|
 | `useValidatedShiftMutations` | new `tz` field on its existing `options` object ([`:184-186`](../../../src/hooks/useValidatedShiftMutations.ts#L184)) |
 | `useShiftPlanner` | new `tz` option, forwarded to the pipeline at [`:542`](../../../src/hooks/useShiftPlanner.ts#L542) and read by `validateAndUpdateTime` at [`:603`](../../../src/hooks/useShiftPlanner.ts#L603) |
-| `ShiftPlannerTab` | already computes `restaurantTimezone` at [`:118`](../../../src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx#L118) — passes it into the `useShiftPlanner(...)` call at [`:137`](../../../src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx#L137) |
+| `ShiftPlannerTab` | already computes `restaurantTimezone` at [`:117`](../../../src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx#L117) — passes it into the `useShiftPlanner(...)` call at [`:137`](../../../src/components/scheduling/ShiftPlanner/ShiftPlannerTab.tsx#L137) |
 | `ShiftDialog` | already receives a `timezone` prop, wired from `Scheduling.tsx` at [`:1602`](../../../src/pages/Scheduling.tsx#L1602) |
+| `ShiftTimelineTab` | **nothing to thread** — see below |
+
+**The second consumer of `useValidatedShiftMutations`.**
+[`ShiftTimelineTab.tsx:392`](../../../src/components/scheduling/ShiftTimeline/ShiftTimelineTab.tsx#L392)
+also calls the hook, destructuring only the `*AtTime` / `*Shift` members — all
+`fromTimestamps`-based, none of which touch `ShiftInterval.create`. So `tz` on
+`UseValidatedShiftMutationsOptions` stays **optional**, and the two `create`-based
+members (`validateAndCreate` / `forceCreate`) throw `TypeError('INVALID_DATE')` at
+call time if it is absent.
+
+This looks like it contradicts §5.2's "required, not optional" argument. It does
+not, because the two parameters guard different things. `ShiftInterval.create`'s 4th
+positional parameter stays **required** — that is the one the compiler uses to
+enumerate every construction site. The hook *option* is a different question: making
+it required would break a Timeline call site that provably cannot hit the bug,
+which trades a real compile error for no safety. The invariant that actually matters
+— "no `create` without a `tz`" — is enforced at the primitive, where it is total,
+rather than at one of its two consumers.
 
 The timezone belongs on the **hook**, not on `ShiftCreateInput`: it is a property of
 the restaurant, constant for every input in a batch, and putting it on the input
@@ -387,7 +459,7 @@ restate it seven times.
 
 **TDZ check** (lesson `memory/lessons.md:1298` — passing a value into an earlier
 `useMemo` once caused `ReferenceError: Cannot access 'restaurantTimezone' before
-initialization`): in `ShiftPlannerTab` the declaration at `:118` sits *above* the
+initialization`): in `ShiftPlannerTab` the declaration at `:117` sits *above* the
 `useShiftPlanner` call at `:137`, so no hoist is needed. Verified rather than
 assumed.
 
@@ -433,10 +505,85 @@ the write would make every *edit* of an existing shift shift its own times.
 
 ## 6. Test plan
 
+### 6.0 Reproduce first — red before green, deterministically
+
+**Scheduling is operationally critical; a fix we cannot prove is a fix we cannot
+ship.** So the first commit of the build phase adds failing tests only, and the
+build is not considered started until they fail *for the right reason and by the
+right amount*.
+
+The bug fires only when the **browser's** timezone differs from the
+**restaurant's**. That is a property we control, not one we wait for: Playwright
+sets `timezoneId` per test context, so the Rush Bowls incident becomes a fixed
+scenario independent of the CI machine's clock. The repo already relies on exactly
+this — [`schedule-publish-week-range.spec.ts:6-10`](../../../tests/e2e/schedule-publish-week-range.spec.ts#L6)
+pins `America/New_York` with the note that CI's UTC is "the one zone where this bug
+is invisible."
+
+**The headline reproduction — replays the actual incident:**
+
+```ts
+// The manager's Chrome OS clock. The restaurant is in Chicago.
+test.use({ timezoneId: 'America/Los_Angeles' });
+```
+
+- Restaurant timezone set **explicitly** to `America/Chicago` after signup
+  (`signUpAndCreateRestaurant` does not set one; relying on the column default
+  would leave the test's premise implicit — `memory/lessons.md:1009`).
+- Template `06:30`–`12:30`, assign an employee, read the persisted row back.
+- Assert `shifts.start_time === '<date>T11:30:00.000Z'`.
+
+| | value | delta |
+|---|---|---|
+| Expected | `11:30:00Z` | — |
+| **Today (bug)** | `13:30:00Z` | **+120 min** |
+
++120 minutes is not an arbitrary failure — it is 420 − 300, the exact offset gap
+from the PostHog session, and the exact delta on all six wrong production rows.
+**A red run that reports any other number means the test is reproducing something
+else and must be fixed before proceeding.**
+
+**The control, which must be green both before and after:** the same scenario with
+`timezoneId: 'America/Chicago'` still yields `11:30:00Z`. This is what proves the
+fix re-anchors rather than merely shifting everything by two hours, and it mirrors
+the observation from the diagnosis that shifts this manager created later from an
+iOS device set to Chicago time landed correctly.
+
+**One E2E per broken surface (§3), each red first**, since each has an independent
+failure mode and a shared unit-level fix does not prove the wiring:
+
+| Surface | Spec | Assertion |
+|---|---|---|
+| 1 — assign to template | new `shift-create-timezone.spec.ts` | the headline case above |
+| 3 — Add/Edit dialog | same spec | open an existing shift, save **without editing** → `start_time` byte-identical (catches a write-only fix) |
+| 4 — Repeat | same spec | every recurring child has the same restaurant-local wall clock as its parent |
+| 5 — Copy Week | extend [`copy-week-shifts.spec.ts`](../../../tests/e2e/copy-week-shifts.spec.ts) with a pinned `timezoneId` | a 00:30 restaurant-local shift copies to the **same day of week**, not the previous one |
+| 6 — drag-copy | new case | dropped shift keeps its restaurant-local wall clock |
+
+Surface 5's case needs a host zone *west* of the restaurant to expose the
+day-boundary error (e.g. restaurant `Asia/Tokyo`, browser `America/Los_Angeles`),
+because an hour-only error and a day error are different bugs and only the latter
+is caught here.
+
+**Cross-surface agreement (the §3 risk, made executable):** create a shift by
+assigning a template *and* by `claim_open_shift` for the same template and date,
+on `2026-03-08` and `2026-11-01`, and assert the two `start_time` values are
+**equal**. This is the test that would have caught the original `fromZonedTime`
+design, which passed every single-surface test while silently putting the two
+paths an hour apart.
+
+### 6.1 Unit and DB tests
+
 Every new test must produce identical results under `TZ=UTC`, `TZ=America/Chicago`
 and `TZ=Asia/Tokyo`. Per `memory/lessons.md:1297`, the whole suite gets one run
 under `TZ=UTC` before pushing — that single command reproduces the CI-vs-dev-tz
 divergence that a green local run hides.
+
+Add a pgTAP case pinning `claim_open_shift`/`approve_open_shift_claim` to the 2026
+DST transition dates and asserting the exact UTC instant, so the server side of the
+parity contract is locked down too. Today
+[`open_shift_claim_timezone.test.sql`](../../../supabase/tests/open_shift_claim_timezone.test.sql)
+explicitly punts on DST ("UTC equivalent depends on DST at target date").
 
 **`wallClockToInstant`**
 - `('2026-07-30','06:30','America/Chicago')` → `2026-07-30T11:30:00.000Z` (CDT, UTC-5).
@@ -492,12 +639,16 @@ timezones** — the fall-back row is the one that catches host-dependence, since
   stored value. This is the assertion that would have caught a write-only fix.
 
 **Existing call sites**
-- ~60 `ShiftInterval.create(...)` uses across `shiftInterval.test.ts`,
-  `shiftValidator.test.ts`, `useShiftPlanner.test.ts`,
-  `useValidatedShiftMutations.test.tsx` and `useShiftPlanner.delegation.test.tsx`
-  take an explicit `'UTC'`. Mechanical, and it converts each from
-  *implicitly host-TZ-dependent* to *explicitly deterministic* — exactly the
-  remediation `memory/lessons.md:1297` prescribes.
+- ~60 `ShiftInterval.create(...)` uses across **four** files —
+  `shiftInterval.test.ts`, `shiftValidator.test.ts`, `useShiftPlanner.test.ts`,
+  `useValidatedShiftMutations.test.tsx` — take an explicit `'UTC'`. Mechanical, and
+  it converts each from *implicitly host-TZ-dependent* to *explicitly
+  deterministic* — exactly the remediation `memory/lessons.md:1297` prescribes.
+- `useShiftPlanner.delegation.test.tsx` is **not** in that list (an earlier draft
+  counted it). Its only two `ShiftInterval` mentions are a test name and a comment
+  — it mocks the pipeline rather than calling `create` directly. It still exercises
+  the path *indirectly* through `validateAndUpdateTime`, so it needs the hook's
+  `tz` wired into its fixture even though no `create(...)` call there changes.
 - [`useShiftPlanner.test.ts:211`](../../../tests/unit/useShiftPlanner.test.ts#L211)
   carries a comment reasoning about `create(...)` "in CST", so it takes
   `'America/Chicago'` and its pinned instant is re-derived rather than
@@ -518,8 +669,9 @@ timezones** — the fall-back row is the one that catches host-dependence, since
 
 | Risk | Mitigation |
 |---|---|
-| A required 4th parameter is a breaking change to a shared value object | It is the point — the compiler enumerates every call site. All are in this repo; `grep` confirms 5 test files + 3 source files. |
-| Two wall-clock converters exist until the display branch merges | Documented in §4 with a named follow-up to delegate to `parseWallClock`. |
+| A required 4th parameter is a breaking change to a shared value object | It is the point — the compiler enumerates every call site. All are in this repo; `grep` confirms 4 test files + 3 source files. |
+| Copying `restaurantClock.ts` onto `main` conflicts with the display branch's own add | Mechanical resolution — keep that branch's superset; the shared functions are byte-identical (§4). Flagged to the user as a cross-session coordination point. |
+| `restaurants.timezone` is **nullable** — the guarantee is convention, not schema | `DEFAULT 'America/Chicago'` with no `NOT NULL` ([migration `20251001022351`](../../../supabase/migrations/20251001022351_2147ffdb-edc4-4d22-8812-8120871aaf6f.sql#L1)); `information_schema` confirms `is_nullable = YES`. Prod is clean today (35 rows, 0 null/empty), and §5.1 rejects empty/invalid rather than silently defaulting — so a future null surfaces as a caught `INVALID_DATE`, not a wrong instant. |
 | Existing tests pinned to host-local instants start failing | Expected and desired — each becomes explicit. Re-derive every changed pin from first principles rather than re-pinning the observed value (`memory/lessons.md:1182`). |
 | Fixing the write while some display surface still renders host-local would look like a *new* bug to the customer | The Planner grid is already restaurant-tz-aware (§2), so the loop closes. Other surfaces are the display branch's scope and are no worse than today. |
 | Malformed `restaurants.timezone` throwing at render | Prod has 35 rows, 0 null/empty, 5 valid IANA zones. `ShiftDialog`'s memo and submit both gain `try/catch`; the Planner's create path already catches ([`useValidatedShiftMutations.ts:234-236`](../../../src/hooks/useValidatedShiftMutations.ts#L234)). |

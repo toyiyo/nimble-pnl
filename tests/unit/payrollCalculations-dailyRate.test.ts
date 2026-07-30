@@ -20,8 +20,14 @@ describe('Payroll Calculations - Daily Rate', () => {
     tip_eligible: true,
   };
 
-  const periodStartDate = new Date('2024-01-01');
-  const periodEndDate = new Date('2024-01-07');
+  // Local-midnight calendar-day tokens, matching what every production caller
+  // passes: usePayroll serializes these same Dates with `format(d,'yyyy-MM-dd')`
+  // (local fields), and laborCalculations anchors its window at local noon.
+  // `new Date('2024-01-01')` would instead parse to UTC midnight, whose local
+  // calendar day is Dec 31 anywhere west of Greenwich -- so the period window
+  // silently slid a day earlier and the boundary tests only passed in UTC.
+  const periodStartDate = new Date(2024, 0, 1);
+  const periodEndDate = new Date(2024, 0, 7);
 
   describe('calculateEmployeePay - daily_rate', () => {
     it('calculates pay based on unique days with punches', () => {

@@ -26,9 +26,31 @@ const { useTimePunchesMock, useCurrentEmployeeMock, usePeriodNavigationMock } = 
   usePeriodNavigationMock: vi.fn(),
 }));
 
+/**
+ * The restaurant runs in the HOST zone, deliberately.
+ *
+ * Both sides of this test are host-framed: the punch fixtures below are built
+ * with `new Date(y, m, d, h)`, and the timecard's row labels come from
+ * `eachDayOfInterval` over a host-local week. Hours are now bucketed in the
+ * RESTAURANT's zone, so declaring any other zone here would compare a
+ * restaurant-framed session key against a host-framed row label and shift the
+ * shift by a day in every zone but UTC -- an artifact of the fixture, not of
+ * the component. Zone and cutoff behaviour is pinned against explicit UTC
+ * instants in businessDay.tz.test.ts, under four TZ values.
+ *
+ * Resolved inline: `vi.mock` factories are hoisted above any const they might
+ * otherwise close over.
+ */
 vi.mock('@/contexts/RestaurantContext', () => ({
   useRestaurantContext: () => ({
-    selectedRestaurant: { restaurant_id: 'r1', restaurant: { name: 'Test Cafe' } },
+    selectedRestaurant: {
+      restaurant_id: 'r1',
+      restaurant: {
+        name: 'Test Cafe',
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        business_day_start_hour: 0,
+      },
+    },
   }),
 }));
 

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { RolePreviewPanel } from '@/components/roles/RolePreviewPanel';
 import { useRoles, type RoleAreaGrant, type RoleWithGrants } from '@/hooks/useRoles';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import {
@@ -15,7 +16,6 @@ import {
   type Band,
   type SensitiveFlag,
 } from '@/lib/permissions/areas';
-import { buildRolePreview } from '@/lib/permissions/preview';
 import { cn } from '@/lib/utils';
 
 /**
@@ -28,11 +28,10 @@ import { cn } from '@/lib/utils';
  * draft of the design doc described a `max-w-2xl` dialog, which the design
  * doc's own "The role editor" section calls out as an explicitly corrected
  * mistake. Left column: identity card, then the ten areas grouped into three
- * bands. Right column (sticky at `lg`): the live preview, built inline here
- * from `buildRolePreview` (preview.ts, task 9b) rather than re-derived, since
- * `RolePreviewPanel.tsx` — named separately in the design doc's file list —
- * is a later plan task; extracting this column into that file is that task's
- * job, not a reason to duplicate the derivation here in the meantime.
+ * bands. Right column (sticky at `lg`): `RolePreviewPanel` (task 9e), which
+ * renders `buildRolePreview`'s (preview.ts, task 9b) output — this file only
+ * owns the `grants`/`flags`/`name` state and passes it down, it does not
+ * render the preview column itself.
  *
  * The three-state area control is a real `RadioGroup` (Radix's
  * `react-radio-group` primitives, used directly rather than through
@@ -309,10 +308,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
   const [copyTargetIds, setCopyTargetIds] = useState<string[]>([]);
   const [copyReport, setCopyReport] = useState<{ copied: string[]; nameCollisions: string[] } | null>(null);
 
-  const preview = useMemo(
-    () => buildRolePreview(grants, Array.from(flags), name.trim() || 'This role'),
-    [grants, flags, name]
-  );
+  const previewFlags = useMemo(() => Array.from(flags), [flags]);
 
   const rowsByBand = useMemo(() => {
     const groups = new Map<Band, AreaDefinition[]>();
@@ -603,55 +599,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
         </div>
 
         {/* Live preview */}
-        <aside className="lg:sticky lg:top-5 h-fit space-y-3">
-          <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
-            <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
-              <h3 className="text-[13px] font-semibold text-foreground">What they'll see</h3>
-            </div>
-            <div className="p-4 space-y-4">
-              <p className="text-[13px] text-foreground leading-relaxed">{preview.summary}</p>
-
-              <div className="space-y-3">
-                {preview.navPreview.map((group) => (
-                  <div key={group.label}>
-                    <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                      {group.label}
-                    </div>
-                    <div className="space-y-0.5">
-                      {group.items.map((item, itemIndex) => (
-                        <div
-                          key={`${item.path}-${itemIndex}`}
-                          className={cn(
-                            'flex items-center justify-between gap-2 px-2 py-1 rounded-md text-[13px]',
-                            item.reachable ? 'text-foreground' : 'text-muted-foreground/50',
-                            item.isLanding && 'bg-primary/10 text-primary font-medium'
-                          )}
-                        >
-                          <span className={cn(!item.reachable && 'line-through')}>{item.label}</span>
-                          {item.readOnly && (
-                            <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                              Read only
-                            </span>
-                          )}
-                          {item.isLanding && (
-                            <span className="text-[10px] uppercase tracking-wider text-primary">Opens here</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between pt-3 border-t border-border/40 text-[12px] text-muted-foreground">
-                <span>Permissions this grants</span>
-                <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted font-medium text-foreground">
-                  {preview.grantCount} granted
-                </span>
-              </div>
-            </div>
-          </div>
-        </aside>
+        <RolePreviewPanel grants={grants} flags={previewFlags} roleName={name.trim() || 'This role'} />
       </div>
     </div>
   );

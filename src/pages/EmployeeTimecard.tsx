@@ -113,7 +113,10 @@ const EmployeeTimecard = () => {
 
   // Hours attributed by clock-in day, computed from the BUFFERED punches so
   // overnight shifts pair whole before being bucketed to their clock-in day.
-  const dayHours = useMemo(() => hoursByClockInDay(punches, weekDays), [punches, weekDays]);
+  const dayHours = useMemo(
+    () => hoursByClockInDay(punches, weekDays, clock.tz),
+    [punches, weekDays, clock.tz]
+  );
 
   // Calculate weekly totals
   const weeklyTotals = useMemo(() => {

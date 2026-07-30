@@ -113,4 +113,23 @@ describe(`frame independence (process TZ = ${PROCESS_TZ})`, () => {
     expect(dailyCosts.find((d) => d.date === '2026-07-28')?.hours_worked).toBeCloseTo(9, 6);
     expect(dailyCosts.find((d) => d.date === '2026-07-29')?.hours_worked ?? 0).toBe(0);
   });
+
+  // A post-midnight clock-in under a cutoff rolls the business day BACKWARDS,
+  // and a backwards roll off the 1st of a month has to resolve against the
+  // real year's calendar. Every case below sits one hour after midnight
+  // Chicago time, expressed as the corresponding UTC instant (CST = UTC-6,
+  // CDT = UTC-5), with cutoff 2 -- so each must land on the last day of the
+  // PREVIOUS month or year.
+  it.each([
+    // 2026 is not a leap year: February ends on the 28th.
+    { name: 'March 1 in a non-leap year', instant: '2026-03-01T07:00:00.000Z', expected: '2026-02-28' },
+    // 2024 is: the same roll must find the 29th.
+    { name: 'March 1 in a leap year', instant: '2024-03-01T07:00:00.000Z', expected: '2024-02-29' },
+    // 2100 is divisible by 4 but is NOT a leap year (the century rule).
+    { name: 'March 1 in a non-leap century', instant: '2100-03-01T07:00:00.000Z', expected: '2100-02-28' },
+    { name: 'January 1 (year rollback)', instant: '2026-01-01T07:00:00.000Z', expected: '2025-12-31' },
+    { name: 'the 1st of a 30-day month', instant: '2026-05-01T06:00:00.000Z', expected: '2026-04-30' },
+  ])('rolls back across a month boundary onto the right calendar: $name', ({ instant, expected }) => {
+    expect(toBusinessDay(instant, TZ, 2)).toBe(expected);
+  });
 });

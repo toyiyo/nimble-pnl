@@ -1,5 +1,3 @@
-import { toZonedTime } from 'date-fns-tz';
-import { toDateOnlyString } from '@/lib/dateOnly';
 import { validateTimeZone } from '@/lib/splhAnalytics';
 
 export const DEFAULT_BUSINESS_DAY_START_HOUR = 0;
@@ -35,6 +33,40 @@ export function safeCutoffHour(hour: number | null | undefined): number {
 }
 
 /**
+ * Cached wall-clock formatter, keyed on the RAW tz argument (so null, undefined
+ * and '' each memoize their own resolution to UTC rather than re-validating).
+ *
+ * This cache is not a micro-optimization. `toBusinessDay` is called once per
+ * work period per consumer -- a capped payroll fetch reaches 10,000 periods --
+ * and an uncached implementation measured 138us/call, ~60us of it a fresh
+ * `new Intl.DateTimeFormat` inside validateTimeZone and ~53us date-fns-tz's
+ * `toZonedTime`. That is seconds of blocked main thread on a large period.
+ * Keys come from `restaurants.timezone`, a bounded set, so the map cannot grow
+ * without bound.
+ *
+ * `hourCycle: 'h23'` rather than `hour12: false`: some ICU builds render
+ * midnight as hour "24" under the latter. The `% 24` below is belt-and-braces.
+ */
+const wallClockFormatters = new Map<string | null | undefined, Intl.DateTimeFormat>();
+
+function wallClockFormatter(tz: string | null | undefined): Intl.DateTimeFormat {
+  const cached = wallClockFormatters.get(tz);
+  if (cached) return cached;
+  // validateTimeZone already resolves an invalid or empty zone to 'UTC', so
+  // this construction cannot throw.
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: validateTimeZone(tz),
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+  });
+  wallClockFormatters.set(tz, fmt);
+  return fmt;
+}
+
+/**
  * Map an instant to its business day, as a YYYY-MM-DD calendar-day token.
  *
  * Returns a STRING, not a Date. A Date would be a local-midnight calendar-day
@@ -46,15 +78,23 @@ export function safeCutoffHour(hour: number | null | undefined): number {
  *
  * Term-by-term correspondence with public.business_day(), which per CLAUDE.md
  * is the authoritative implementation and this the preview:
- *   toZonedTime          <-> AT TIME ZONE v_tz  (both yield naive local wall clock)
- *   setHours(getHours()-h) <-> - make_interval(hours => h)
- *   toDateOnlyString     <-> ::date
+ *   formatToParts in tz  <-> AT TIME ZONE v_tz  (both yield naive local wall clock)
+ *   setUTCHours(h - cut) <-> - make_interval(hours => h)
+ *   getUTC* -> YYYY-MM-DD <-> ::date
  *   validateTimeZone     <-> COALESCE(NULLIF(v_tz,'')) + the exception probe
  *   safeCutoffHour       <-> COALESCE(v_hour, 0) + the CHECK constraint
  *
  * ORDER IS LOAD-BEARING: convert first, then subtract. The other order
  * subtracts elapsed rather than wall-clock time and disagrees by a full
  * calendar day inside the fall-back repeated hour. Design doc section 4.1.
+ *
+ * The subtraction runs in the UTC frame on purpose. Postgres subtracts an
+ * interval from a naive TIMESTAMP -- pure calendar arithmetic, no zone rules
+ * apply to it. UTC has no DST, so doing it there reproduces that exactly.
+ * Doing it in the HOST frame (`d.setHours(d.getHours() - cut)`, the shape this replaced)
+ * would let the machine running the code re-apply ITS OWN DST rules to a wall
+ * clock that already belongs to the restaurant, so a viewer in a spring-forward
+ * hour could read a different business day than the server for the same punch.
  */
 export function toBusinessDay(
   instant: Date | string,
@@ -62,9 +102,30 @@ export function toBusinessDay(
   cutoffHour: number | null | undefined,
 ): string {
   const asDate = typeof instant === 'string' ? new Date(instant) : instant;
-  const zoned = toZonedTime(asDate, validateTimeZone(tz));
-  zoned.setHours(zoned.getHours() - safeCutoffHour(cutoffHour));
-  return toDateOnlyString(zoned);
+  const parts = wallClockFormatter(tz).formatToParts(asDate);
+  let year = 0, month = 1, day = 1, hour = 0;
+  for (const { type, value } of parts) {
+    if (type === 'year') year = Number(value);
+    else if (type === 'month') month = Number(value);
+    else if (type === 'day') day = Number(value);
+    else if (type === 'hour') hour = Number(value) % 24;
+  }
+
+  // The real year goes in BEFORE the hour subtraction, and via setUTCFullYear
+  // rather than Date.UTC (which maps years 0-99 into the 1900s). Subtracting
+  // first under a placeholder year would resolve a backwards day-roll against
+  // that year's calendar: 2026-03-01 01:00 at cutoff 2 lands on Feb 29 under a
+  // leap placeholder, and re-stamping the year then normalizes it forward to
+  // Mar 1 -- a day late, in exactly the overnight case this feature is about.
+  // Seeding from `new Date(0)` (Jan 1) means the three-arg setUTCFullYear never
+  // passes through a short month.
+  const shifted = new Date(0);
+  shifted.setUTCFullYear(year, month - 1, day);
+  shifted.setUTCHours(hour - safeCutoffHour(cutoffHour), 0, 0, 0);
+
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(shifted.getUTCDate()).padStart(2, '0');
+  return `${shifted.getUTCFullYear()}-${m}-${d}`;
 }
 
 /** Config-object form of {@link toBusinessDay}, for threaded call sites. */

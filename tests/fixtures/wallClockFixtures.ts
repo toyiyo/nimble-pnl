@@ -34,4 +34,26 @@ export const WALL_CLOCK_FIXTURES = [
   // Unambiguous controls, away from any transition.
   { wallClock: '2026-07-22T20:56', tz: 'America/Chicago', expectedInstant: '2026-07-23T01:56:00.000Z' },
   { wallClock: '2026-06-15T10:00', tz: 'Australia/Sydney', expectedInstant: '2026-06-15T00:00:00.000Z' },
+  // Mutation-killers: unambiguous wall clocks that nonetheless fall inside the
+  // +/-24h bracket window of a DST transition and resolve to the DST (larger,
+  // more-east) offset. A mutation that skips the round-trip validity filter
+  // and always takes Math.min(offsetBefore, offsetAfter) would silently pick
+  // the standard offset here instead and shift the result by an hour -- these
+  // are the rows that catch that regression. Both hemispheres.
+  { wallClock: '2026-03-08T03:30', tz: 'America/Chicago', expectedInstant: '2026-03-08T08:30:00.000Z' },
+  { wallClock: '2026-11-01T00:30', tz: 'America/Chicago', expectedInstant: '2026-11-01T05:30:00.000Z' },
+  { wallClock: '2026-10-04T03:30', tz: 'Australia/Sydney', expectedInstant: '2026-10-03T16:30:00.000Z' },
+  { wallClock: '2026-04-05T01:30', tz: 'Australia/Sydney', expectedInstant: '2026-04-04T14:30:00.000Z' },
+  // Europe/Dublin: a negative-DST zone -- tzdb designates Ireland's summer
+  // (+1) as *standard* and represents winter as a negative DST offset, so
+  // "smaller numeric offset" and "the tzdb isdst flag" pick opposite answers
+  // here. Postgres was confirmed (local Postgres, see task-4-report.md) to
+  // follow the smaller numeric offset, and these rows pin that
+  // parseWallClock matches Postgres rather than the tzdb designation.
+  { wallClock: '2026-10-25T01:30', tz: 'Europe/Dublin', expectedInstant: '2026-10-25T01:30:00.000Z' },
+  { wallClock: '2026-03-29T01:30', tz: 'Europe/Dublin', expectedInstant: '2026-03-29T01:30:00.000Z' },
+  // Australia/Lord_Howe: a 30-minute DST shift, pinning that nothing assumes
+  // a 1-hour transition delta.
+  { wallClock: '2026-04-05T01:45', tz: 'Australia/Lord_Howe', expectedInstant: '2026-04-04T15:15:00.000Z' },
+  { wallClock: '2026-10-04T02:15', tz: 'Australia/Lord_Howe', expectedInstant: '2026-10-03T15:45:00.000Z' },
 ] as const;

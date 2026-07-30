@@ -26,6 +26,7 @@ import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculati
 import { startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
+import { toBusinessDayFor, type BusinessDayConfig } from '@/lib/businessDay';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 
@@ -501,7 +502,8 @@ export function calculateActualLaborCost(
   employees: Employee[],
   timePunches: TimePunch[],
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  businessDay: BusinessDayConfig,
 ): { breakdown: LaborCostBreakdown; dailyCosts: DailyLaborCost[] } {
   const employeeMap = new Map(employees.map(e => [e.id, e]));
   const dateMap = new Map<string, DailyLaborCost>();
@@ -556,40 +558,24 @@ export function calculateActualLaborCost(
       if (period.isBreak) {
         return;
       }
-      
-      const workDate = formatLocalDate(new Date(period.startTime));
+
+      // Attribute the whole period to the business day of its clock-in, in the
+      // RESTAURANT's zone. period.clockIn (not startTime) is the shift's first
+      // clock_in -- handleBreakEnd advances startTime past a break end, which
+      // for a break-after-midnight shift is the next day.
+      const workDate = toBusinessDayFor(period.clockIn ?? period.startTime, businessDay);
       const hoursWorked = period.hours;
-      
-      // Accumulate hours for this employee on this date (start date of work period)
+
       employeeHours.set(workDate, (employeeHours.get(workDate) || 0) + hoursWorked);
-      
-      // Track that this employee was active on ALL dates in the period range
-      // This handles overnight shifts where work spans multiple days
-      const startTimestamp = new Date(period.startTime);
-      const endTimestamp = new Date(period.endTime);
 
-      const periodStart = new Date(
-        startTimestamp.getFullYear(),
-        startTimestamp.getMonth(),
-        startTimestamp.getDate()
-      );
-      const periodEnd = new Date(
-        endTimestamp.getFullYear(),
-        endTimestamp.getMonth(),
-        endTimestamp.getDate()
-      );
-
-      // Add employee to active set for each LOCAL day the period touches
-      for (let d = new Date(periodStart); d <= periodEnd; d.setDate(d.getDate() + 1)) {
-        const dateStr = formatLocalDate(d);
-        if (!employeesActivePerDay.has(dateStr)) {
-          employeesActivePerDay.set(dateStr, new Set());
-        }
-        const activeSet = employeesActivePerDay.get(dateStr);
-        if (activeSet) {
-          activeSet.add(employeeId);
-        }
+      // ONE business day per period, not every calendar day the period spans.
+      // The old day-spanning loop is what charged a daily_rate employee two
+      // full rates for one overnight shift (design section 3.3). A shift is
+      // never split, so it is active on exactly one business day.
+      if (!employeesActivePerDay.has(workDate)) {
+        employeesActivePerDay.set(workDate, new Set());
       }
+      employeesActivePerDay.get(workDate)?.add(employeeId);
     });
   });
 

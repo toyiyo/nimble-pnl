@@ -59,6 +59,14 @@ vi.mock('@/hooks/useEmployees', () => ({
   useEmployees: () => ({ employees: [{ id: 'emp-1', status: 'active' }], loading: false }),
 }));
 
+// The hook now sources its business-day framing from RestaurantContext. This
+// test is only about the time_punches fetch window, not bucketing, so stub a
+// restaurant-less context (the hook falls back to UTC/cutoff-0 via
+// businessDay.tz/cutoffHour being undefined).
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({ selectedRestaurant: null }),
+}));
+
 const createWrapper = () => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0, staleTime: 0 } },

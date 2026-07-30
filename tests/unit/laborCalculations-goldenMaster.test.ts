@@ -89,7 +89,9 @@ const TO = new Date('2026-07-31T23:59:59.999Z');
 
 describe('golden master: calculateActualLaborCost', () => {
   it('matches the pre-change snapshot', () => {
-    const result = calculateActualLaborCost(EMPLOYEES, ALL_PUNCHES, FROM, TO);
+    const result = calculateActualLaborCost(
+      EMPLOYEES, ALL_PUNCHES, FROM, TO, { tz: RESTAURANT_TZ, cutoffHour: 0 },
+    );
     expect(result).toMatchSnapshot();
   });
 });
@@ -117,7 +119,16 @@ describe('golden master: calculateEmployeePay', () => {
  * Deliberately-changed cases. EMPTY at capture time; each later task that
  * legitimately moves a number adds one entry here with a hand-computed value.
  */
-export const ALLOWED_DIFFS: Array<{ snapshot: string; reason: string; expected: string }> = [];
+export const ALLOWED_DIFFS: Array<{ snapshot: string; reason: string; expected: string }> = [
+  {
+    snapshot: 'golden master: calculateActualLaborCost > matches the pre-change snapshot',
+    reason:
+      'daily_rate employee e4 worked ONE overnight shift (18:00 Jul 28 -> 03:00 Jul 29). ' +
+      'The old day-spanning loop charged a full daily rate on both Jul 28 and Jul 29. ' +
+      'Design section 3.3.',
+    expected: 'daily_rate_cost totals $150.00 across the range, not $300.00',
+  },
+];
 
 describe('golden master allowlist', () => {
   it('stays short -- a long allowlist means the change is not understood', () => {

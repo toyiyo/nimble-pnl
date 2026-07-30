@@ -94,12 +94,21 @@ function buildBacklog(count: number): TimePunch[] {
   return rows;
 }
 
+// This file pins process.env.TZ to America/Chicago (below) and relied on
+// calculateActualLaborCost reading the HOST-local day before this change.
+// Passing the restaurant's real zone explicitly (rather than LEGACY_UTC_FRAME)
+// is what reproduces that same Chicago bucketing now that the frame is
+// explicit rather than implicit in the host clock.
+const CHICAGO_FRAME = { tz: 'America/Chicago', cutoffHour: 0 };
+
 function jul22Labor(punches: TimePunch[]): number {
   // Constructed at call time (inside the pinned-TZ tests) so the local
   // window bounds resolve under America/Chicago, matching laborCostWindow.
   const windowStart = new Date(2026, 2, 19); // host-local, matches laborCostWindow
   const windowEnd = new Date(2026, 6, 23, 23, 59, 59, 999);
-  const { dailyCosts } = calculateActualLaborCost(employees, punches, windowStart, windowEnd);
+  const { dailyCosts } = calculateActualLaborCost(
+    employees, punches, windowStart, windowEnd, CHICAGO_FRAME,
+  );
   return dailyCosts.find((d) => d.date === '2026-07-22')?.total_cost ?? 0;
 }
 

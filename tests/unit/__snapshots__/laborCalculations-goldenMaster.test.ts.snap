@@ -9,8 +9,8 @@ exports[`golden master: calculateActualLaborCost > matches the pre-change snapsh
       "employees": 0,
     },
     "daily_rate": {
-      "cost": 300,
-      "daysScheduled": 2,
+      "cost": 150,
+      "daysScheduled": 1,
       "employees": 1,
     },
     "hourly": {
@@ -22,7 +22,7 @@ exports[`golden master: calculateActualLaborCost > matches the pre-change snapsh
       "daysScheduled": 0,
       "employees": 0,
     },
-    "total": 788,
+    "total": 638,
   },
   "dailyCosts": [
     {
@@ -54,12 +54,12 @@ exports[`golden master: calculateActualLaborCost > matches the pre-change snapsh
     },
     {
       "contractor_cost": 0,
-      "daily_rate_cost": 150,
+      "daily_rate_cost": 0,
       "date": "2026-07-29",
       "hourly_cost": 308,
       "hours_worked": 14,
       "salary_cost": 0,
-      "total_cost": 458,
+      "total_cost": 308,
     },
     {
       "contractor_cost": 0,

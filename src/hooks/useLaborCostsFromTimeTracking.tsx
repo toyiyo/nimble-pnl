@@ -7,6 +7,8 @@ import { calculateActualLaborCost } from '@/services/laborCalculations';
 import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import type { BusinessDayConfig } from '@/lib/businessDay';
 
 export interface LaborCostData {
   date: string;
@@ -70,8 +72,14 @@ export function useLaborCostsFromTimeTracking(
   // the clock. `throughNow` is in the query key so the two variants don't collide.
   const throughNow = options?.throughNow ?? false;
 
+  const { selectedRestaurant } = useRestaurantContext();
+  const businessDay: BusinessDayConfig = {
+    tz: selectedRestaurant?.restaurant?.timezone,
+    cutoffHour: selectedRestaurant?.restaurant?.business_day_start_hour,
+  };
+
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['labor-costs-from-time-tracking', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), throughNow],
+    queryKey: ['labor-costs-from-time-tracking', restaurantId, format(dateFrom, 'yyyy-MM-dd'), format(dateTo, 'yyyy-MM-dd'), throughNow, businessDay.tz, businessDay.cutoffHour],
     queryFn: async (): Promise<{ dailyCosts: LaborCostData[]; totalCost: number; capped: boolean }> => {
       if (!restaurantId) {
         return { dailyCosts: [], totalCost: 0, capped: false };
@@ -135,7 +143,8 @@ export function useLaborCostsFromTimeTracking(
         employees,
         punchesForCost,
         dateFrom,
-        dateTo
+        dateTo,
+        businessDay,
       );
 
       // 5. Add per-job contractor payments to the daily costs

@@ -42,6 +42,16 @@ vi.mock('@/hooks/useEmployees', () => ({
   useEmployees: () => ({ employees, loading: false }),
 }));
 
+// The hook now sources its business-day framing from RestaurantContext instead
+// of the host clock. Stub the restaurant's real zone (America/Chicago, cutoff
+// 0) so bucketing reproduces the same $586.72 this test pinned before the
+// reroute -- see the process.env.TZ comment below for why Chicago matters.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { timezone: 'America/Chicago', business_day_start_hour: 0 } },
+  }),
+}));
+
 // Real prod punches for the newest day (Jul 22, UTC) — every shift closed.
 const newestDayPunches: Array<[string, string, string]> = [
   ['0a385d92-df60-4c6e-9dfc-78f15bb8c31b', '2026-07-22T22:29:33.134+00:00', 'clock_in'],

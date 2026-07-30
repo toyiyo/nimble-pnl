@@ -5,6 +5,7 @@ import {
 } from '@/services/laborCalculations';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 /**
  * Tests for calculateHoursPerEmployee — the per-employee rollup that powers
@@ -201,7 +202,7 @@ describe('calculateHoursPerEmployee', () => {
       expect(contractor.total_cost_cents).toBeLessThan(80000);
 
       // Invariant: per-employee totals sum back to the aggregate by comp type.
-      const { breakdown } = calculateActualLaborCost(employees, punches, start, end);
+      const { breakdown } = calculateActualLaborCost(employees, punches, start, end, LEGACY_UTC_FRAME);
       const hourlyTotalCents = summaries
         .filter((s) => s.compensation_type === 'hourly')
         .reduce((sum, s) => sum + s.total_cost_cents, 0);
@@ -230,7 +231,7 @@ describe('calculateHoursPerEmployee', () => {
       const end = new Date('2026-05-16T23:59:59');
 
       const [summary] = calculateHoursPerEmployee([hourlyEmployee], punches, start, end);
-      const { dailyCosts } = calculateActualLaborCost([hourlyEmployee], punches, start, end);
+      const { dailyCosts } = calculateActualLaborCost([hourlyEmployee], punches, start, end, LEGACY_UTC_FRAME);
 
       const summaryKeys = Object.keys(summary.hours_per_day);
       const dailyKeys = dailyCosts.map((d) => d.date);
@@ -404,13 +405,23 @@ describe('calculateHoursPerEmployee', () => {
       expect(row.total_hours).toBeCloseTo(8, 4);
 
       // Parity check: per-employee daily_rate cost sums back to breakdown total.
+      //
+      // NOTE: parity is intentionally broken here, temporarily. The
+      // business-day cutoff work (design section 3.3) fixes
+      // calculateActualLaborCost's overnight double-charge -- a shift is now
+      // billed exactly ONE daily_rate, not once per calendar day it spans --
+      // so its breakdown now reports $150, not the $300 asserted above for
+      // calculateHoursPerEmployee. calculateHoursPerEmployee still uses the
+      // old day-spanning rule (that's a separate, later task in the same
+      // plan) and parity is restored once it's rerouted the same way.
       const { breakdown } = calculateActualLaborCost(
         [dailyRateEmployee],
         punches,
         start,
         end,
+        LEGACY_UTC_FRAME,
       );
-      expect(row.total_cost_cents).toBe(Math.round(breakdown.daily_rate.cost * 100));
+      expect(Math.round(breakdown.daily_rate.cost * 100)).toBe(15000);
     });
   });
 });

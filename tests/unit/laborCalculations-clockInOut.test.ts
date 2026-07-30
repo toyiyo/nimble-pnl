@@ -3,6 +3,7 @@ import { calculateActualLaborCost } from '@/services/laborCalculations';
 import { calculateWorkedHours, parseWorkPeriods } from '@/utils/payrollCalculations';
 import type { TimePunch } from '@/types/timeTracking';
 import type { Employee } from '@/types/scheduling';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 /**
  * Cross-validation tests: Ensure laborCalculations.ts uses the same
@@ -71,7 +72,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        LEGACY_UTC_FRAME,
       );
 
       // Both should report 8 hours
@@ -93,7 +95,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(8);
@@ -112,7 +115,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(12);
@@ -136,7 +140,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(7.5);
@@ -162,7 +167,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(8);
@@ -184,7 +190,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(11);
@@ -205,7 +212,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(8);
@@ -225,7 +233,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-11T23:59:59Z')
+        new Date('2025-12-11T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       // Total hours match
@@ -247,7 +256,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(8.75);
@@ -266,7 +276,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(0.5);
@@ -287,7 +298,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        LEGACY_UTC_FRAME,
       );
 
       expect(payrollHours).toBe(8);
@@ -313,7 +325,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       // All three methods should match
@@ -355,7 +368,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [employee1, employee2],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        LEGACY_UTC_FRAME,
       );
 
       // Verify individual employee hours match

@@ -9,6 +9,7 @@ import {
 } from '../../src/services/laborCalculations';
 import type { Employee, Shift } from '../../src/types/scheduling';
 import type { TimePunch } from '../../src/types/timeTracking';
+import { LEGACY_UTC_FRAME } from './fixtures/businessDayFixtures';
 
 /**
  * Comprehensive tests for centralized labor cost calculations
@@ -416,7 +417,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee],
         punches,
         weekStart,
-        weekEnd
+        weekEnd,
+        LEGACY_UTC_FRAME,
       );
 
       // 16 hours × $15/hr = $240
@@ -438,7 +440,8 @@ describe('LaborCalculationService', () => {
         [salaryEmployeeMonthly],
         [], // No punches
         weekStart,
-        weekEnd
+        weekEnd,
+        LEGACY_UTC_FRAME,
       );
 
       // 7 days × $164.24/day = $1149.68 (approx)
@@ -469,7 +472,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date('2025-12-10'),
+        LEGACY_UTC_FRAME,
       );
 
       // 8 hours × $15/hr = $120
@@ -509,7 +513,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee, salaryEmployeeMonthly, contractorMonthly],
         punches,
         weekStart,
-        weekEnd
+        weekEnd,
+        LEGACY_UTC_FRAME,
       );
 
       // Hourly: 8hrs × $15 = $120
@@ -559,7 +564,8 @@ describe('LaborCalculationService', () => {
         [hourlyEmployee],
         punches,
         weekStart,
-        weekEnd
+        weekEnd,
+        LEGACY_UTC_FRAME,
       );
 
       // 8.5 hours elapsed - 0.5 hour break = 8.0 hours worked

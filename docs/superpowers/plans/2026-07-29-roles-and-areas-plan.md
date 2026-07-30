@@ -85,10 +85,16 @@ principals (an owner, a manager, a non-member). Assert:
   the design. Plus `roles(restaurant_id)` for the list query.
 - Unique: partial unique on `(restaurant_id, lower(name)) WHERE restaurant_id
   IS NOT NULL`, and `(lower(name)) WHERE restaurant_id IS NULL`.
-- `area_catalog(area_key pk, band text, sort_order int, max_level_collaborator
-  text null)` — `null` meaning ungrantable to collaborators (Team & Access).
-  A table rather than a CHECK constraint so the trigger and the UI read the
-  same source and cannot drift.
+- `area_catalog(area_key pk, ui_group text, band text, sort_order int,
+  max_level_collaborator text null)` — `null` meaning ungrantable to
+  collaborators (Team & Access). A table rather than a CHECK constraint so the
+  trigger and the UI read the same source and cannot drift.
+  **Fourteen rows, ten `ui_group`s.** `inventory`/`purchasing`,
+  `books`/`chart_of_accounts`, `team`/`collaborators`, and
+  `settings`/`integrations` each pair into one editor row. Without the split
+  the six builtins do not derive byte-identically from `ROLE_CAPABILITIES`
+  (12 mismatches across 11 role/area pairs); with it, zero. See "Ten rows in
+  the editor, fourteen areas underneath" in the design.
 - Triggers: `BEFORE UPDATE OR DELETE ON roles` raising when `OLD.builtin`;
   equivalents on the two child tables checking the parent; `BEFORE INSERT OR
   UPDATE ON roles` rejecting a name that case-insensitively matches a builtin;
@@ -258,10 +264,14 @@ build is checked against them, not just against prose:
 - `src/components/roles/RoleEditor.tsx` (new) — **a full page, not a dialog.**
   Two columns at `lg`, single column below with the preview in normal flow
   beneath the form. Identity card with the member-count warning banner, then
-  ten areas in three bands, each a `RadioGroup` styled as a segmented control
-  with an `aria-label`; capped levels `disabled` + `aria-disabled` with the
-  reason as accessible description; three `Switch`es with prose explanations;
-  the copy-to-restaurants multi-select.
+  ten rows in three bands — one row per `ui_group`, ordered by `sort_order` —
+  each a `RadioGroup` styled as a segmented control with an `aria-label`.
+  Setting a row writes every `area_key` in that group. Capped levels
+  `disabled` + `aria-disabled` with the reason as accessible description;
+  three `Switch`es with prose explanations; the copy-to-restaurants
+  multi-select. Read-only builtin rows whose areas disagree within a group
+  (e.g. `operations_manager`: `settings=view`, `integrations=none`) show the
+  higher level with a "partial" marker instead of a level control.
 - `src/components/roles/RolePreviewPanel.tsx` (new) — sticky preview: prose
   summary including the "can't" half, the rendered sidebar with struck-through
   unreachable items / `READ ONLY` / `OPENS HERE`, and the grant counter.

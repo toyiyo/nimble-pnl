@@ -12,7 +12,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(33);
+SELECT plan(37);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: two fictional restaurants (A, B, both owned by the same owner —
@@ -373,6 +373,54 @@ SELECT throws_ok(
 );
 
 RESET row_security;
+
+-- ============================================================================
+-- 14. area_catalog shape: fourteen areas collapsing onto the ten ui_groups of
+--     the approved design. The four splits (purchasing, chart_of_accounts,
+--     collaborators, integrations) exist so the builtin roles derive
+--     byte-identically from ROLE_CAPABILITIES; see the migration's column
+--     comment.
+-- ============================================================================
+SELECT is(
+  (SELECT count(*)::int FROM public.area_catalog),
+  14,
+  'area_catalog holds fourteen areas'
+);
+
+SELECT is(
+  (SELECT count(DISTINCT ui_group)::int FROM public.area_catalog),
+  10,
+  'the fourteen areas collapse onto the ten ui_groups of the approved design'
+);
+
+-- The editor renders one level control per ui_group and writes every area_key
+-- in that group. If two areas in a group disagreed on max_level_collaborator,
+-- that single control would offer a level the cap trigger then rejects for
+-- half the group — a write that half-applies. Keep the caps aligned.
+SELECT is(
+  (SELECT count(*)::int FROM (
+     SELECT ui_group
+     FROM public.area_catalog
+     GROUP BY ui_group
+     HAVING count(DISTINCT max_level_collaborator) > 1
+        OR (count(*) FILTER (WHERE max_level_collaborator IS NULL) NOT IN (0, count(*)))
+   ) AS mixed),
+  0,
+  'every ui_group has one max_level_collaborator across all its areas'
+);
+
+-- Same argument for band and sort_order: the group is one row in one band at
+-- one position, so its members cannot disagree about where it renders.
+SELECT is(
+  (SELECT count(*)::int FROM (
+     SELECT ui_group
+     FROM public.area_catalog
+     GROUP BY ui_group
+     HAVING count(DISTINCT band) > 1 OR count(DISTINCT sort_order) > 1
+   ) AS mixed),
+  0,
+  'every ui_group renders in one band at one sort_order'
+);
 
 SELECT * FROM finish();
 

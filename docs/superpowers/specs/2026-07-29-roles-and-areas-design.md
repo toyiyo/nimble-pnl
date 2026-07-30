@@ -155,6 +155,44 @@ role_areas(role_id, area_key, level)        -- level: 'view' | 'manage'
 role_flags(role_id, flag)                   -- the sensitive switches
 ```
 
+#### Ten rows in the editor, fourteen areas underneath
+
+The ten areas above are what the **editor renders**. The `area_catalog` stores
+**fourteen**, with a `ui_group` column collapsing them onto those ten rows.
+Four areas are split:
+
+| UI row | area_keys underneath |
+|---|---|
+| Inventory & Purchasing | `inventory`, `purchasing` |
+| Money & Books | `books`, `chart_of_accounts` |
+| Team & Access | `team`, `collaborators` |
+| Settings & Integrations | `settings`, `integrations` |
+
+The split is forced by the byte-identical promise below. Derived at ten coarse
+areas, the six builtins do **not** round-trip: 12 capability mismatches across
+11 role/area pairs. Seven are the same one — every non-owner role holds
+`view:settings` but not `view:integrations`, so a single "Settings &
+Integrations = view" grant hands each of them `view:integrations` they do not
+have today. The rest are the same shape: `collaborator_chef` holds
+`view:inventory` without `view:purchase_orders`; `manager` holds
+`view:chart_of_accounts` without `edit:chart_of_accounts`;
+`operations_manager` holds `view:team` without `view:collaborators`.
+
+At fourteen areas the mismatch count is **zero** — every builtin derives
+exactly from its current `ROLE_CAPABILITIES` entry. The alternatives
+considered and rejected were: granting `manager` the missing capabilities
+(a silent production privilege change, which this design promises not to
+make), and special-casing the affected roles inside `user_has_capability`
+(re-introduces exactly the hardcoding this work removes).
+
+The cost is that a builtin can be **mixed** within one UI row —
+`operations_manager` is `settings=view` but `integrations=none`. Builtins
+render read-only, so the row shows the higher level with a "partial" marker
+rather than a level control. Custom roles cannot be mixed: the editor's single
+control per row writes every `area_key` in the group, which is why the schema
+test asserts all members of a `ui_group` share one `max_level_collaborator`,
+`band`, and `sort_order`.
+
 `restaurant_id IS NULL` means a **global builtin**: one set of 10 seeded rows
 shared by every restaurant, rather than 350 per-restaurant copies plus a
 trigger for new signups. Custom roles carry a real `restaurant_id`.

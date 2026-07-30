@@ -18,13 +18,19 @@
 --   Children of roles. Neither carries its own restaurant_id, so RLS on both
 --   joins back through roles for tenant scope.
 --
--- area_catalog(area_key, band, sort_order, max_level_collaborator)
---   The ten areas' vocabulary, band grouping, and the level a collaborator-
+-- area_catalog(area_key, ui_group, band, sort_order, max_level_collaborator)
+--   The areas' vocabulary, band grouping, and the level a collaborator-
 --   flavored role can be capped to. A table rather than a CHECK constraint so
 --   the enforcement trigger below and the eventual UI read the same source
 --   and cannot drift. max_level_collaborator IS NULL means the area is
 --   ungrantable to a collaborator role at any level (Team & Access — see the
 --   privilege-escalation note on the cap trigger).
+--
+--   Fourteen areas, ten ui_groups. The extra four (purchasing,
+--   chart_of_accounts, collaborators, integrations) exist so the six builtin
+--   roles derive byte-identically from their current ROLE_CAPABILITIES
+--   entries; see the column comment. The editor still renders the ten rows of
+--   the approved design, keyed by ui_group.
 --
 -- Invariants enforced here, and why each needs a trigger rather than RLS:
 --   - Builtin rows (roles.builtin = true, and role_areas/role_flags whose
@@ -60,30 +66,47 @@
 -- ============================================================================
 CREATE TABLE public.area_catalog (
   area_key TEXT PRIMARY KEY,
+  ui_group TEXT NOT NULL,
   band TEXT NOT NULL,
   sort_order INT NOT NULL,
   max_level_collaborator TEXT NULL CHECK (max_level_collaborator IN ('view', 'manage'))
 );
 
 COMMENT ON TABLE public.area_catalog IS
-  'The ten areas a role can be granted, their band grouping for the editor UI, '
+  'The areas a role can be granted, their band grouping for the editor UI, '
   'and the level a collaborator-flavored custom role can be capped to. '
   'NULL max_level_collaborator means the area cannot be granted to a '
   'collaborator role at any level (Team & Access). Drives both the '
   'role_areas_enforce_collaborator_cap trigger and the role editor UI from '
   'the same source so the two cannot drift.';
 
-INSERT INTO public.area_catalog (area_key, band, sort_order, max_level_collaborator) VALUES
-  ('reports',    'Operations',      1, 'view'),
-  ('sales',      'Operations',      2, 'view'),
-  ('inventory',  'Operations',      3, 'manage'),
-  ('recipes',    'Operations',      4, 'manage'),
-  ('scheduling', 'Operations',      5, 'manage'),
-  ('books',      'Money',           6, 'manage'),
-  ('payroll',    'Money',           7, 'view'),
-  ('employees',  'People & admin',  8, 'manage'),
-  ('team',       'People & admin',  9, NULL),
-  ('settings',   'People & admin', 10, 'view');
+COMMENT ON COLUMN public.area_catalog.ui_group IS
+  'The row this area renders as in the role editor. Fourteen areas collapse '
+  'onto the ten rows of the approved design: inventory+purchasing, '
+  'books+chart_of_accounts, team+collaborators, and settings+integrations '
+  'each share a group. The finer split exists because the six builtin roles '
+  'do not partition cleanly along the ten coarse rows — collaborator_chef '
+  'holds view:inventory without view:purchase_orders, and every non-owner '
+  'role holds view:settings without view:integrations. Splitting the four '
+  'areas lets all six builtins derive byte-identically from their current '
+  'ROLE_CAPABILITIES entries instead of silently gaining or losing '
+  'capabilities. Toggling a group in the editor writes every area_key in it.';
+
+INSERT INTO public.area_catalog (area_key, ui_group, band, sort_order, max_level_collaborator) VALUES
+  ('reports',           'reports',    'Operations',      1, 'view'),
+  ('sales',             'sales',      'Operations',      2, 'view'),
+  ('inventory',         'inventory',  'Operations',      3, 'manage'),
+  ('purchasing',        'inventory',  'Operations',      3, 'manage'),
+  ('recipes',           'recipes',    'Operations',      4, 'manage'),
+  ('scheduling',        'scheduling', 'Operations',      5, 'manage'),
+  ('books',             'books',      'Money',           6, 'manage'),
+  ('chart_of_accounts', 'books',      'Money',           6, 'manage'),
+  ('payroll',           'payroll',    'Money',           7, 'view'),
+  ('employees',         'employees',  'People & admin',  8, 'manage'),
+  ('team',              'team',       'People & admin',  9, NULL),
+  ('collaborators',     'team',       'People & admin',  9, NULL),
+  ('settings',          'settings',   'People & admin', 10, 'view'),
+  ('integrations',      'settings',   'People & admin', 10, 'view');
 
 ALTER TABLE public.area_catalog ENABLE ROW LEVEL SECURITY;
 

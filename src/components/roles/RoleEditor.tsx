@@ -6,10 +6,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { RolePreviewPanel } from '@/components/roles/RolePreviewPanel';
-import { useRoles, type RoleAreaGrant, type RoleWithGrants } from '@/hooks/useRoles';
+import { useRoles, type RoleWithGrants } from '@/hooks/useRoles';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import {
   AREA_DEFINITIONS,
+  grantMap,
   type AreaDefinition,
   type AreaKey,
   type AreaLevel,
@@ -129,12 +130,6 @@ const SENSITIVE_FLAGS: ReadonlyArray<{
 ];
 
 const BAND_ORDER: readonly Band[] = ['Operations', 'Money', 'People & admin'];
-
-function grantMapFrom(areas: RoleAreaGrant[]): Grants {
-  const map: Grants = {};
-  for (const grant of areas) map[grant.area_key] = grant.level;
-  return map;
-}
 
 /** A row is "partial" when its underlying area_keys disagree — only possible for a builtin. */
 function rowIsPartial(row: AreaDefinition, grants: Grants): boolean {
@@ -373,7 +368,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
 
   const [name, setName] = useState(role?.name ?? '');
   const [description, setDescription] = useState(role?.description ?? '');
-  const [grants, setGrants] = useState<Grants>(() => grantMapFrom(role?.role_areas ?? []));
+  const [grants, setGrants] = useState<Grants>(() => grantMap(role?.role_areas ?? []));
   const [flags, setFlags] = useState<Set<SensitiveFlag>>(
     () => new Set((role?.role_flags ?? []).map((f) => f.flag))
   );

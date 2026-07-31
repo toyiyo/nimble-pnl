@@ -37,7 +37,7 @@ import {
   ROLE_METADATA,
   isCollaboratorRole,
 } from '@/lib/permissions/definitions';
-import { expandAreas, resolveLandingPath, AreaKey, AreaLevel } from '@/lib/permissions/areas';
+import { expandAreas, grantMap, resolveLandingPath } from '@/lib/permissions/areas';
 import { customCollaboratorRoutes } from '@/lib/permissions/routeAreas';
 
 export interface PermissionContext {
@@ -134,10 +134,7 @@ export function usePermissions(): PermissionContext {
       // grants rather than the legacy ROLE_CAPABILITIES lookup, so a
       // user-named custom role (which has no ROLE_CAPABILITIES entry at
       // all) resolves correctly too.
-      const grants: Partial<Record<AreaKey, AreaLevel>> = {};
-      for (const grant of roleRecord.role_areas) {
-        grants[grant.area_key] = grant.level;
-      }
+      const grants = grantMap(roleRecord.role_areas);
       // Sensitive flags are gated behind isResolved regardless of what the
       // role would otherwise grant.
       const flags = isResolved ? roleRecord.role_flags.map((f) => f.flag) : [];

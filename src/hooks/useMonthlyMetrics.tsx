@@ -14,7 +14,7 @@ import {
 } from '@/services/cogsCalculations';
 import type { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 
 export interface MonthlyMetrics {
@@ -373,9 +373,17 @@ export function useMonthlyMetrics(
 
       // Fetch time punches and employees to calculate labor costs using the same logic as Payroll
       // This ensures Dashboard and Payroll show consistent labor numbers (DRY principle)
-      // Look-ahead buffer so an overnight shift clocking out just after the range
-      // end (e.g. the 1st of the next month) is fetched whole; the per-month
-      // clock-in-day clip drops shifts whose clock-in belongs outside the window.
+      //
+      // Anchored on the BUSINESS-day boundary instants, buffered both ways.
+      // This was a look-ahead off `dateFrom`'s raw instant, which cannot reach
+      // the first business day of the range: dateFrom is a day token in the
+      // BROWSER's zone, the business day resolves in the RESTAURANT's zone, and
+      // the spread between the two runs to 26 hours. Browser LA / restaurant
+      // Auckland at cutoff 2, `Mar 1 02:00 Auckland` is `Feb 28 05:00 LA` --
+      // 19 hours before the old lower bound, so that shift was never fetched
+      // at all. calculateActualLaborCostForMonth clips per day inside
+      // [monthStart, monthEnd], so the over-fetch cannot overstate anything;
+      // it only lets the first week's OT band on the hours it actually has.
       //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // PostgREST caps an unpaginated response at 1,000 rows, which would
@@ -384,6 +392,8 @@ export function useMonthlyMetrics(
       // tiebreaker makes each page boundary deterministic when multiple
       // punches share a `punch_time`. Errors stay non-fatal (console.warn)
       // to match this hook's existing behavior for the labor calculation.
+      const { fetchStart: punchFetchStart, fetchEnd: punchFetchEnd } =
+        businessDayPunchFetchRange(dateFrom, dateTo, businessDay);
       let timePunchesData: DBTimePunch[] | null = null;
       try {
         const { rows, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
@@ -391,8 +401,8 @@ export function useMonthlyMetrics(
             .from('time_punches')
             .select('*')
             .eq('restaurant_id', restaurantId)
-            .gte('punch_time', dateFrom.toISOString())
-            .lte('punch_time', lookaheadPunchFetchRange(dateFrom, dateTo).fetchEnd.toISOString())
+            .gte('punch_time', punchFetchStart.toISOString())
+            .lte('punch_time', punchFetchEnd.toISOString())
             .order('punch_time', { ascending: true })
             .order('id')
             .range(from, to),

@@ -123,7 +123,7 @@ const WAIT_DISCIPLINE = [
   'WAIT DISCIPLINE (a poll loop with an impossible exit condition once spun 4h before a human killed it):',
   '- Before ANY wait loop, evaluate the condition ONCE and print the raw value. If it already sits on the wrong side of the exit test, do not loop — looping cannot move it.',
   '- Never test process state with `ps aux | grep -c <name>`. Every Claude Code process carries the MCP config on its command line, so grepping a tool name ("playwright", "vitest", "supabase") matches dozens of unrelated processes and the count never drops. Wait on a PID you started (`cmd & pid=$!; wait $pid`) or use the tool\'s own blocking mode (`gh pr checks --watch`, a foreground test run).',
-  '- Every wait needs a bound: prefix `timeout <seconds>`, or cap the iterations and exit non-zero printing the last observed value. An unbounded wait is indistinguishable from a hang.',
+  "- Every wait needs a bound, but `timeout` and `gtimeout` do NOT exist on this BSD/bash-3.2 machine (nor does `tail --pid`) — do not reach for them. Run the command in the FOREGROUND and let the Bash tool's own timeout parameter bound it (default 120s, max 600s). If you must iterate, cap the count and exit non-zero printing the last observed value. An unbounded wait is indistinguishable from a hang.",
   "- Kill every background process you start before you return, on the failure path too (`trap 'kill $pid 2>/dev/null' EXIT`). Orphans outlive the agent that spawned them.",
 ].join('\n')
 
@@ -167,6 +167,15 @@ function spent() {
 // Agents that died rather than returned. Carried into every stop payload so the
 // operator sees the stall signature without digging through transcripts.
 const stalls = []
+
+// True when this label already died inside the runtime's retry loop. A null
+// from a THROWN stall is not the same as a null from an agent that simply
+// returned nothing: the runtime has already spent six byte-identical attempts
+// on that prompt, so any script-level retry buys six more of exactly the burn
+// this file exists to contain.
+function didCrash(label) {
+  return stalls.some((s) => s.label === label)
+}
 
 function stop(phase, extra = {}) {
   return { stopped: true, phase, tokensSpent: spent(), ...(stalls.length ? { stalls } : {}), ...extra }
@@ -459,10 +468,19 @@ async function runReviewer(d) {
   // reviewer exists to catch. Use a faithful general-purpose reviewer for it;
   // the judgment-based dimensions keep the bug-hunting reviewer.
   const agentType = d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer'
-  // nullOnCrash: this path already treats null as "reviewer produced nothing"
-  // and retries exactly once, which is the bounded script-level retry the build
-  // loop cannot have. Don't retry into a blown budget.
-  let r = await runAgent(reviewerPrompt(d), { label: `review:${d.key}`, phase: 'Review', agentType, schema: FINDINGS }, { nullOnCrash: true })
+  // nullOnCrash: this path treats null as "reviewer produced nothing" and
+  // retries exactly once, which is the bounded script-level retry the build
+  // loop cannot have. But a null that came from a THROWN stall must NOT be
+  // retried — the runtime already burned six identical attempts on that
+  // prompt, and re-dispatching it buys six more, roughly doubling the very
+  // runaway this file contains. Retry only a reviewer that came back empty
+  // without dying, and never into a blown budget.
+  const label = `review:${d.key}`
+  let r = await runAgent(reviewerPrompt(d), { label, phase: 'Review', agentType, schema: FINDINGS }, { nullOnCrash: true })
+  if (!r && didCrash(label)) {
+    log(`⚠️ Phase 7a reviewer "${d.key}" stalled out — NOT retrying (the prompt would be byte-identical); its findings are absent this run`)
+    return null
+  }
   if (!r && spent() < TOKEN_CEILING) {
     r = await runAgent(reviewerPrompt(d), { label: `review:${d.key}:retry`, phase: 'Review', agentType, schema: FINDINGS }, { nullOnCrash: true })
   }

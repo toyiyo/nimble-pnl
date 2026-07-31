@@ -309,6 +309,12 @@ describe('unsatisfiable waits', () => {
         expect(call.prompt, `${script} / ${call.label}`).toContain('ps aux | grep -c')
         expect(call.prompt, `${script} / ${call.label}`).toContain('evaluate the condition ONCE')
         expect(call.prompt, `${script} / ${call.label}`).toContain('trap')
+        // The bound must point at a mechanism that exists here. `timeout` and
+        // `gtimeout` are absent on this BSD/bash-3.2 box, so telling agents to
+        // prefix with them produces "command not found" instead of a bound —
+        // the first cut of this block did exactly that (caught in review).
+        expect(call.prompt, `${script} / ${call.label}`).toContain("Bash tool's own timeout parameter")
+        expect(call.prompt, `${script} / ${call.label}`).not.toMatch(/prefix `timeout/)
       }
     }
   })
@@ -340,5 +346,47 @@ describe('unsatisfiable waits', () => {
     expect(run.logs.join('\n')).toContain('2 actionable findings remain in useShifts.tsx')
     // Best-effort phase: it escalates into the PR body rather than halting.
     expect(labelsOf(run)).toContain('ship')
+  })
+})
+
+/**
+ * Phase 7a retries a reviewer that came back empty, because a silently missing
+ * review is unsafe. That retry must distinguish its two nulls: an agent that
+ * returned nothing (retry it) from an agent that THREW after the runtime's six
+ * identical attempts (retrying buys six more, roughly doubling the runaway this
+ * file exists to contain). Caught in review on #681 — the first cut treated
+ * both nulls the same.
+ */
+describe('the Phase 7a reviewer retry knows which null it got', () => {
+  it('retries a reviewer that returned nothing, but never one that stalled out', async () => {
+    const run = await runWorkflow(BUILD_SCRIPT, {
+      args: BASE_ARGS,
+      onAgent: responder({
+        'review:security': { error: STALL_ERROR, tokens: 1_100_000 },
+        'review:performance': { tokens: 1000 }, // no result -> null, without dying
+      }),
+    })
+
+    const labels = labelsOf(run)
+    // Came back empty on its own: one bounded script-level retry is correct.
+    expect(labels).toContain('review:performance')
+    expect(labels).toContain('review:performance:retry')
+    // Stalled out: the prompt would be byte-identical, so it must not re-run.
+    expect(labels).toContain('review:security')
+    expect(labels).not.toContain('review:security:retry')
+
+    expect(run.logs.join('\n')).toContain('stalled out — NOT retrying')
+    // The stall is still surfaced rather than silently dropped.
+    expect(run.logs.join('\n')).toContain('findings are absent this run')
+  })
+
+  it('does not let a stalled reviewer double the burn', async () => {
+    const run = await runWorkflow(BUILD_SCRIPT, {
+      args: BASE_ARGS,
+      onAgent: responder({ 'review:security': { error: STALL_ERROR, tokens: 1_100_000 } }),
+    })
+
+    // Exactly one dispatch of the doomed prompt, not two rounds of six.
+    expect(labelsOf(run).filter((l) => l?.startsWith('review:security'))).toEqual(['review:security'])
   })
 })

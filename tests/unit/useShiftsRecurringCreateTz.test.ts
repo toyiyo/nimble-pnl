@@ -70,6 +70,30 @@ function setupSupabaseMock(insertCalls: unknown[]) {
   }));
 }
 
+/**
+ * Pin the HOST zone to Phoenix and prove the pin took effect.
+ *
+ * Every test here is a differential one: it distinguishes a correct
+ * restaurant-anchored implementation from a host-anchored one purely by the
+ * two zones disagreeing. Assigning `process.env.TZ` is the only lever we
+ * have, and it is not guaranteed to be honoured — Node caches the zone on
+ * first use, so an earlier `Date` in the same worker can freeze it, and a
+ * runner that pre-sets TZ differently would leave the assignment inert. In
+ * every one of those cases the assignment fails SILENTLY: if the host then
+ * happens to be America/Chicago, a host-local implementation and a
+ * restaurant-local one produce identical output and the test passes while
+ * proving nothing.
+ *
+ * So assert the offset rather than trusting the assignment. Phoenix is a
+ * fixed UTC-7 (never observes DST), and 2026-03-09 is inside Chicago's DST
+ * window — so a Chicago host would report 300, not 420, and this throws
+ * instead of quietly going vacuous.
+ */
+function pinHostTzToPhoenix(): void {
+  process.env.TZ = 'America/Phoenix';
+  expect(new Date('2026-03-09T12:00:00Z').getTimezoneOffset()).toBe(420);
+}
+
 describe('useCreateShift — recurring children anchor to the restaurant timezone', () => {
   const originalTz = process.env.TZ;
   afterEach(() => {
@@ -78,7 +102,7 @@ describe('useCreateShift — recurring children anchor to the restaurant timezon
   });
 
   it('a daily 09:00 Chicago recurrence stays at 09:00 Chicago across the 2026-03-08 spring-forward, from a Phoenix (no-DST) host', async () => {
-    process.env.TZ = 'America/Phoenix';
+    pinHostTzToPhoenix();
 
     const insertCalls: unknown[] = [];
     setupSupabaseMock(insertCalls);
@@ -139,7 +163,7 @@ describe('useCreateShift — recurring children anchor to the restaurant timezon
     // occurrence crosses a transition -- both children here land a full week
     // after the transition and should read exactly 22:00->06:00 Chicago, not
     // 22:00->05:00.
-    process.env.TZ = 'America/Phoenix';
+    pinHostTzToPhoenix();
 
     const insertCalls: unknown[] = [];
     setupSupabaseMock(insertCalls);
@@ -205,7 +229,7 @@ describe('useCreateShift — recurring children anchor to the restaurant timezon
     // `endTime < startTime` is the only multi-day signal that reconstruction
     // has and 17:00 vs 09:00 does not trip it. Each child must instead carry
     // the parent's restaurant-local end-day offset.
-    process.env.TZ = 'America/Phoenix';
+    pinHostTzToPhoenix();
 
     const insertCalls: unknown[] = [];
     setupSupabaseMock(insertCalls);
@@ -260,7 +284,7 @@ describe('useCreateShift — recurring children anchor to the restaurant timezon
     // while the database keeps an orphan parent — the series is half-written
     // and the UI reports nothing was created. Building every child payload
     // before touching the database makes the whole create all-or-nothing.
-    process.env.TZ = 'America/Phoenix';
+    pinHostTzToPhoenix();
 
     const insertCalls: unknown[] = [];
     setupSupabaseMock(insertCalls);

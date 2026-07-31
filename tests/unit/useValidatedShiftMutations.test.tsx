@@ -191,9 +191,15 @@ describe('useValidatedShiftMutations — options.tz (Task 4)', () => {
   });
 
   it('validateAndCreate anchors the interval in the given tz, not the browser zone', async () => {
-    // Restaurant in Chicago, `tz` explicitly Chicago — the pipeline must use it
-    // regardless of whatever zone the test process happens to run in.
-    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'America/Chicago');
+    // Deliberately Asia/Tokyo rather than the file's Chicago default: this
+    // test's only evidence that the pipeline used `tz` instead of the host
+    // zone is the two disagreeing, and this file sets no host TZ of its own.
+    // A Chicago fixture on a Chicago host (which is what CI and most of the
+    // team's machines are) makes both implementations agree and the
+    // assertion vacuous. Tokyo is a fixed UTC+9 that no runner here uses, so
+    // the assertion stays differential wherever it runs — and, being
+    // DST-free, it stays a stable constant rather than a date-dependent one.
+    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'Asia/Tokyo');
 
     await result.current.validateAndCreate({
       employeeId: 'emp-2',
@@ -205,8 +211,8 @@ describe('useValidatedShiftMutations — options.tz (Task 4)', () => {
 
     expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1);
     const payload = mockCreateMutateAsync.mock.calls[0][0];
-    // 06:30 Chicago (CDT, UTC-5) on 2026-08-12 is 11:30 UTC.
-    expect(payload.start_time).toBe('2026-08-12T11:30:00.000Z');
+    // 06:30 Tokyo (UTC+9) on 2026-08-12 is 21:30 UTC the PREVIOUS day.
+    expect(payload.start_time).toBe('2026-08-11T21:30:00.000Z');
   });
 });
 

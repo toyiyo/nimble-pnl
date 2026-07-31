@@ -213,8 +213,9 @@ describe('useShiftPlanner utilities', () => {
       // (a naive `new Date('2026-03-02T06:00:00')` would silently depend on
       // the host machine's own zone matching Chicago).
       // The grid matching must convert back to local time (06:00:00) to match template
-      const localSixAm = wallClockToInstant('2026-03-02', '06:00', 'America/Chicago');
-      const localNoon = wallClockToInstant('2026-03-02', '12:00', 'America/Chicago');
+      const CHICAGO = 'America/Chicago';
+      const localSixAm = wallClockToInstant('2026-03-02', '06:00', CHICAGO);
+      const localNoon = wallClockToInstant('2026-03-02', '12:00', CHICAGO);
 
       const shifts = [
         mockShift({
@@ -227,7 +228,12 @@ describe('useShiftPlanner utilities', () => {
         }),
       ];
 
-      const grid = buildTemplateGridData(shifts, templates, weekDays);
+      // Pass the same zone the instants were built in. `tz` is optional and
+      // falls back to host-local, so omitting it here would only match on a
+      // host that happens to sit at UTC-6 — the instants above are pinned to
+      // Chicago, so the reader has to be too. Supplying it also makes this
+      // the test that actually exercises the tz-aware matching path.
+      const grid = buildTemplateGridData(shifts, templates, weekDays, CHICAGO);
       const t1Days = grid.get('t1');
       expect(t1Days?.get('2026-03-02')).toHaveLength(1);
     });

@@ -72,7 +72,13 @@ describe('buildCopyPayload', () => {
     expect(payload.employee_id).toBe('emp-1');
   });
 
-  it('handles overnight shifts (end time next day), duration-preserving', () => {
+  // Named for the contract this actually asserts. It used to say
+  // "duration-preserving", which is the contract `buildCopyPayload`
+  // deliberately does NOT have: reusing the source's elapsed duration is the
+  // bug that skews a copy dropped either side of a DST transition. What is
+  // preserved is the pair of restaurant-local wall clocks plus the end-day
+  // offset; the duration is whatever those imply on the target dates.
+  it('handles overnight shifts (end time next day), wall-clock-preserving', () => {
     const overnight = {
       ...baseShift,
       start_time: '2026-03-24T22:00:00.000Z',

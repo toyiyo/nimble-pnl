@@ -4,7 +4,7 @@ import { useEmployees } from './useEmployees';
 import { TimePunch, DBTimePunch } from '@/types/timeTracking';
 import { format } from 'date-fns';
 import { calculateActualLaborCost } from '@/services/laborCalculations';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -85,12 +85,23 @@ export function useLaborCostsFromTimeTracking(
         return { dailyCosts: [], totalCost: 0, capped: false };
       }
 
-      // 1. Fetch time punches for the period.
-      // Look-AHEAD only (not symmetric): calculateActualLaborCost attributes
-      // hours/active-days to every day a shift touches and does NOT drop shifts
-      // whose clock-in precedes dateFrom. A look-back would pull a prior-period
-      // Sunday-night shift into Monday and overstate labor; the look-ahead still
-      // completes an in-range shift whose clock_out lands just after dateTo.
+      // 1. Fetch time punches spanning the BUSINESS days [dateFrom, dateTo]
+      // name, plus ±18h so a shift straddling a boundary is paired whole.
+      //
+      // Symmetric now, where this used to be look-AHEAD only. That asymmetry
+      // existed because calculateActualLaborCost attributed a shift to every
+      // calendar day it touched, so a look-back would have pulled a
+      // prior-period Sunday-night shift into Monday and overstated labor. It
+      // now attributes each shift to exactly one business day and reads only
+      // the day keys inside [dateFrom, dateTo], so an over-fetch is dropped
+      // rather than double-counted -- and a look-back is *required*: at any
+      // cutoff, a viewer west of the restaurant sees the first business day
+      // begin well before dateFrom's instant.
+      //
+      // Anchored on the business-day boundary instants rather than a fixed
+      // buffer, because the bounds are day tokens in the VIEWER's zone while
+      // the business day resolves in the RESTAURANT's -- up to 26 hours apart,
+      // more than any fixed buffer covers. See businessDayPunchFetchRange.
       //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // this window can span 18 weeks, and PostgREST caps an unpaginated
@@ -98,7 +109,7 @@ export function useLaborCostsFromTimeTracking(
       // query orders `punch_time asc`) once a restaurant crosses that
       // threshold. The `.order('id')` tiebreaker makes each page boundary
       // deterministic when multiple punches share a `punch_time`.
-      const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
+      const { fetchStart, fetchEnd } = businessDayPunchFetchRange(dateFrom, dateTo, businessDay);
       const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
         supabase
           .from('time_punches')

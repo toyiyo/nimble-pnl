@@ -1,11 +1,17 @@
 /**
- * Regression: useLaborCostsFromTimeTracking's time_punches fetch must be
- * widened by a LOOK-AHEAD ONLY (via lookaheadPunchFetchRange) so a shift
- * whose clock_out lands just after dateTo is fetched whole, WITHOUT a
- * look-back. calculateActualLaborCost attributes hours/active-days to every
- * day a shift touches and does NOT drop shifts whose clock-in precedes the
- * window, so a symmetric look-back would pull a prior-period Sunday-night
- * shift into the first in-range day and overstate labor (Codex P2).
+ * Regression: useLaborCostsFromTimeTracking's time_punches fetch must span the
+ * BUSINESS days [dateFrom, dateTo] name, widened by the overnight buffer (via
+ * businessDayPunchFetchRange), so every shift calculateActualLaborCost can
+ * attribute into the displayed range is actually fetched.
+ *
+ * This used to be a look-AHEAD only, because calculateActualLaborCost then
+ * attributed a shift to every calendar day it touched and a look-back would
+ * have pulled a prior-period Sunday-night shift into the first in-range day.
+ * It now attributes each shift to exactly ONE business day and reads only the
+ * day keys inside [dateFrom, dateTo] (`dateMap.get(...)`, no entry -> dropped),
+ * so an over-fetch cannot overstate labor -- and a look-back became REQUIRED:
+ * a viewer west of the restaurant sees the first business day begin before
+ * dateFrom's instant, at every cutoff including 0.
  *
  * The React Query cache key must stay keyed on the *logical* dateFrom/
  * dateTo (not the buffered range) so cache identity is unaffected.
@@ -14,7 +20,9 @@ import React, { type ReactNode } from 'react';
 import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
+import { toBusinessDayFor } from '@/lib/businessDay';
+import { formatLocalDate } from '@/lib/shiftInterval';
 
 // Generic chainable Supabase query-builder mock: every method returns
 // `this` so any chain shape resolves, and the builder is thenable so
@@ -81,12 +89,17 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
     vi.clearAllMocks();
   });
 
-  it('fetches time_punches with a look-ahead only (start unchanged, end +18h)', async () => {
+  it('fetches the business days [dateFrom, dateTo] name, buffered on both ends', async () => {
     const { useLaborCostsFromTimeTracking } = await import('@/hooks/useLaborCostsFromTimeTracking');
 
-    const dateFrom = new Date('2026-03-02T00:00:00.000Z');
-    const dateTo = new Date('2026-03-08T23:59:59.999Z');
-    const { fetchStart, fetchEnd } = lookaheadPunchFetchRange(dateFrom, dateTo);
+    // Local-midnight calendar-day tokens, the shape usePeriodNavigation and
+    // eachDayOfInterval build -- the fetch range reads their local fields.
+    const dateFrom = new Date(2026, 2, 2);
+    const dateTo = new Date(2026, 2, 8, 23, 59, 59, 999);
+    // The context stub above is restaurant-less, so the hook resolves to
+    // UTC / cutoff 0 and this must be the frame the assertion uses too.
+    const frame = { tz: undefined, cutoffHour: undefined };
+    const { fetchStart, fetchEnd } = businessDayPunchFetchRange(dateFrom, dateTo, frame);
 
     const { result } = renderHook(
       () => useLaborCostsFromTimeTracking('rest-1', dateFrom, dateTo),
@@ -98,8 +111,16 @@ describe('useLaborCostsFromTimeTracking time_punches fetch range', () => {
     expect(fromMock).toHaveBeenCalledWith('time_punches');
     expect(timePunchesChain.gte).toHaveBeenCalledWith('punch_time', fetchStart.toISOString());
     expect(timePunchesChain.lte).toHaveBeenCalledWith('punch_time', fetchEnd.toISOString());
-    // Look-ahead only: start is the raw dateFrom (NO look-back), end is +18h.
-    expect(fetchStart.toISOString()).toBe(dateFrom.toISOString());
-    expect(fetchEnd.getTime() - dateTo.getTime()).toBe(18 * 3600 * 1000);
+
+    // Both ends land strictly OUTSIDE the range's business days -- the property
+    // that matters, and the one a fixed-hour buffer cannot promise across zones.
+    expect(toBusinessDayFor(fetchStart, frame) < formatLocalDate(dateFrom)).toBe(true);
+    expect(toBusinessDayFor(fetchEnd, frame) > formatLocalDate(dateTo)).toBe(true);
+    // And there is now a look-BACK, which the previous implementation refused.
+    // Only its existence is asserted, not its size: the gap to `dateFrom`'s
+    // instant includes the host-zone offset, so it is not a fixed number of
+    // hours. The buffer itself is measured off the boundary instant, which is
+    // what businessDayPunchFetchRange's own matrix test pins.
+    expect(fetchStart.getTime()).toBeLessThan(dateFrom.getTime());
   });
 });

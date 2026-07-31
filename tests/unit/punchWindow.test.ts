@@ -111,9 +111,17 @@ describe('business-day windowing', () => {
 
     expect(periodsInBusinessDayWindow(periods, weekStart, weekEnd, { tz: TZ, cutoffHour: 2 })).toHaveLength(1);
     // At cutoff 0 it really is the next week's, and the raw-instant filter
-    // agrees with both -- which is why this only shows up above cutoff 0.
+    // agrees -- which is why this only shows up above cutoff 0.
     expect(periodsInBusinessDayWindow(periods, weekStart, weekEnd, { tz: TZ, cutoffHour: 0 })).toHaveLength(0);
-    expect(periodsInWindow(periods, weekStart, weekEnd)).toHaveLength(0);
+    // The raw-instant filter is compared against the HOST's business day, not
+    // an absolute count: it tests the instant against bounds built from
+    // host-local fields, so what it answers here is a fact about the zone this
+    // suite runs in. That the two frames coincide at cutoff 0 is the whole
+    // reason the bug is invisible until the cutoff moves.
+    const host = { tz: Intl.DateTimeFormat().resolvedOptions().timeZone, cutoffHour: 0 };
+    expect(periodsInWindow(periods, weekStart, weekEnd)).toHaveLength(
+      periodsInBusinessDayWindow(periods, weekStart, weekEnd, host).length,
+    );
   });
 
   it('drops a 23:00 Sunday-before shift the raw-instant filter would also drop', () => {

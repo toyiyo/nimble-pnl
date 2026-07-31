@@ -6,8 +6,13 @@ import {
   calculateScheduledLaborCost,
 } from '@/services/laborCalculations';
 import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculations';
-import { lookaheadPunchFetchRange } from '@/utils/punchWindow';
-import { MAX_BUSINESS_DAY_START_HOUR } from '@/lib/businessDay';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
+import {
+  MAX_BUSINESS_DAY_START_HOUR,
+  businessDayStartInstant,
+  toBusinessDayFor,
+} from '@/lib/businessDay';
+import { formatLocalDate } from '@/lib/shiftInterval';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 import type { OvertimeRules } from '@/lib/overtimeCalculations';
@@ -318,9 +323,14 @@ describe('a scheduled shift is counted in exactly one week, never zero', () => {
    * out-of-range (`if (!dayData) return`), and the week it actually belongs to
    * never fetched it. It is counted zero times, in both weeks, silently.
    *
-   * A look-ahead on the fetch is what closes the gap, exactly as it already does
-   * for time punches in useLaborCostsFromTimeTracking. The out-of-range guard
-   * then does the filtering, so handing the calculation a superset is safe.
+   * Widening the fetch is what closes the gap, exactly as it already does for
+   * time punches in useLaborCostsFromTimeTracking. The out-of-range guard then
+   * does the filtering, so handing the calculation a superset is safe.
+   *
+   * The widening is anchored on the business-day boundary INSTANTS, not a fixed
+   * number of hours around the bounds: the bounds are day tokens in the
+   * VIEWER's zone while the business day resolves in the RESTAURANT's, and the
+   * two can be 26 hours apart. The cross-zone block below pins that end.
    *
    * The restaurant runs in the HOST zone deliberately: the week bounds below are
    * `new Date(y, m, d)` (what usePeriodNavigation/startOfWeek produce) and
@@ -347,17 +357,31 @@ describe('a scheduled shift is counted in exactly one week, never zero', () => {
     break_duration: 0, status: 'scheduled',
   } as unknown as Parameters<typeof calculateScheduledLaborCost>[0][number];
 
-  function weekHours(start: Date, end: Date, lookahead: boolean): number {
-    const { fetchStart, fetchEnd } = lookahead
-      ? lookaheadPunchFetchRange(start, end)
+  type Sched = Parameters<typeof calculateScheduledLaborCost>[0][number];
+
+  /**
+   * Models Scheduling.tsx end to end: widen the window, let useShifts' raw
+   * `start_time` filter decide what comes back, then cost it.
+   *
+   * `widen: false` is the pre-fix behaviour -- the grid's own unwidened week.
+   */
+  function weekHours(
+    start: Date,
+    end: Date,
+    widen: boolean,
+    cfg = { tz: HOST_TZ, cutoffHour: CUTOFF },
+    shifts: readonly Sched[] = [MONDAY_1AM],
+  ): number {
+    const { fetchStart, fetchEnd } = widen
+      ? businessDayPunchFetchRange(start, end, cfg)
       : { fetchStart: start, fetchEnd: end };
     // Stands in for useShifts' .gte/.lte on start_time.
-    const fetched = [MONDAY_1AM].filter((s) => {
+    const fetched = shifts.filter((s) => {
       const t = new Date(s.start_time).getTime();
       return t >= fetchStart.getTime() && t <= fetchEnd.getTime();
     });
     return calculateScheduledLaborCost(
-      fetched, [hourly('e1', RATE_CENTS)], start, end, { tz: HOST_TZ, cutoffHour: CUTOFF },
+      [...fetched], [hourly('e1', RATE_CENTS)], start, end, cfg,
     ).breakdown.hourly.hours;
   }
 
@@ -369,19 +393,75 @@ describe('a scheduled shift is counted in exactly one week, never zero', () => {
     expect(weekHours(weekBStart, weekBEnd, true)).toBeCloseTo(0, 6);
   });
 
-  it('vanishes from BOTH weeks without the look-ahead -- the bug this guards', () => {
+  it('vanishes from BOTH weeks without the widening -- the bug this guards', () => {
     // Stated as an assertion rather than a comment so the guard above cannot be
     // satisfied by an unbuffered fetch that happens to pass for another reason.
     expect(weekHours(weekAStart, weekAEnd, false)).toBeCloseTo(0, 6);
     expect(weekHours(weekBStart, weekBEnd, false)).toBeCloseTo(0, 6);
   });
 
-  it('the look-ahead is wider than the widest cutoff', () => {
-    // A cutoff of 11 rolls an 10:59 start back a day; the buffer has to reach
-    // past that or the same disappearance returns at the high end of the range.
-    const { fetchEnd } = lookaheadPunchFetchRange(weekAStart, weekAEnd);
-    const bufferHours = (fetchEnd.getTime() - weekAEnd.getTime()) / 3_600_000;
-    expect(bufferHours).toBeGreaterThan(MAX_BUSINESS_DAY_START_HOUR);
+  it('the widened fetch clears BOTH business-day edges, at every cutoff', () => {
+    // A cutoff of 11 rolls a 10:59 start back a day; the widening has to reach
+    // past that at the top of the range, and past the first day's start at the
+    // bottom, or the same disappearance returns at one edge or the other.
+    // Stated on day TOKENS, not hours, so it holds in any host zone.
+    for (let cutoffHour = 0; cutoffHour <= MAX_BUSINESS_DAY_START_HOUR; cutoffHour++) {
+      const cfg = { tz: HOST_TZ, cutoffHour };
+      const { fetchStart, fetchEnd } = businessDayPunchFetchRange(weekAStart, weekAEnd, cfg);
+      expect(toBusinessDayFor(fetchStart, cfg) < formatLocalDate(weekAStart), `cutoff ${cutoffHour}`).toBe(true);
+      expect(toBusinessDayFor(fetchEnd, cfg) > formatLocalDate(weekAEnd), `cutoff ${cutoffHour}`).toBe(true);
+    }
+  });
+
+  /**
+   * The same disappearance, reached the other way: not by a late cutoff, but by
+   * a viewer in a different zone from the restaurant.
+   *
+   * A shift in the FIRST minute of the week's first business day is one the
+   * costing selects, so it must be one the fetch returns. Its instant is fixed
+   * by the RESTAURANT's zone; `weekAStart` is a day token in the VIEWER's. For a
+   * viewer far enough west that instant precedes `weekAStart`, at EVERY cutoff
+   * including 0 -- so an unwidened fetch, and equally a look-AHEAD-only one,
+   * costs it zero times in both weeks.
+   *
+   * Built off the boundary instant rather than a hardcoded time so the case
+   * holds in whatever zone this suite runs in.
+   */
+  it('costs the first minute of the first business day, in any restaurant zone', () => {
+    for (const tz of ['Pacific/Auckland', 'Asia/Kolkata', 'America/Los_Angeles', 'UTC']) {
+      for (const cutoffHour of [0, 2, 11]) {
+        const cfg = { tz, cutoffHour };
+        const where = `${tz} @ cutoff ${cutoffHour}`;
+        const firstMinute = new Date(
+          businessDayStartInstant(formatLocalDate(weekAStart), cfg).getTime() + 60_000,
+        );
+        // Fixture check: the shift really does land on the week's first day.
+        expect(toBusinessDayFor(firstMinute, cfg), where).toBe(formatLocalDate(weekAStart));
+
+        const shift = {
+          ...MONDAY_1AM,
+          start_time: firstMinute.toISOString(),
+          end_time: new Date(firstMinute.getTime() + 6 * 3_600_000).toISOString(),
+        } as Sched;
+        expect(weekHours(weekAStart, weekAEnd, true, cfg, [shift]), where).toBeCloseTo(6, 6);
+        // ...and exactly once: the preceding week must not also pay for it.
+        expect(
+          weekHours(
+            new Date(2026, 6, 20), new Date(2026, 6, 26, 23, 59, 59, 999), true, cfg, [shift],
+          ),
+          where,
+        ).toBeCloseTo(0, 6);
+
+        // Non-vacuity, asserted rather than assumed: wherever the boundary
+        // instant really does precede the viewer's week bound -- which is the
+        // whole cross-zone case -- an unwidened fetch loses the shift outright.
+        // Guarded rather than unconditional because whether it precedes depends
+        // on the zone THIS suite runs in, and the guard is the same inequality.
+        if (firstMinute.getTime() < weekAStart.getTime()) {
+          expect(weekHours(weekAStart, weekAEnd, false, cfg, [shift]), where).toBeCloseTo(0, 6);
+        }
+      }
+    }
   });
 });
 

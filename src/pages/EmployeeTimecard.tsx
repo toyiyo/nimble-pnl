@@ -29,7 +29,7 @@ import {
   isSameDay,
   parseISO,
 } from 'date-fns';
-import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
 import { hoursByClockInDay, punchesByBusinessDay } from '@/utils/timecardHours';
 
 const formatHoursMinutes = (hours: number) => {
@@ -71,21 +71,31 @@ const EmployeeTimecard = () => {
 
   const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
 
-  // Fetch punches widened by ±18h so overnight shifts that straddle the
-  // period boundary are paired whole. hoursByClockInDay then attributes
-  // each shift back to [startDate, endDate] by clock-in day.
-  const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+  // Destructured to primitives so they can go into the dep arrays individually;
+  // the config object is constructed inline and is a new reference every render.
+  const tz = selectedRestaurant?.restaurant?.timezone;
+  const cutoffHour = selectedRestaurant?.restaurant?.business_day_start_hour;
+
+  // Fetch punches spanning the BUSINESS days [startDate, endDate] name, plus
+  // ±18h so overnight shifts that straddle a boundary are paired whole.
+  // hoursByClockInDay and punchesByBusinessDay then attribute each shift back
+  // to a displayed day by clock-in business day.
+  //
+  // Anchored on the business-day boundary instants, not a fixed buffer around
+  // the bounds: the bounds are day tokens in the VIEWER's zone while the
+  // business day resolves in the RESTAURANT's, and the two can be 26 hours
+  // apart. An 18h buffer stops short of the first or last business day for a
+  // far-apart viewer, and the shift it misses does not reappear on the
+  // neighbouring week either -- it just vanishes from the timecard.
+  const { fetchStart, fetchEnd } = businessDayPunchFetchRange(
+    startDate, endDate, { tz, cutoffHour },
+  );
   const { punches, loading: punchesLoading } = useTimePunches(
     restaurantId,
     currentEmployee?.id,
     fetchStart,
     fetchEnd
   );
-
-  // Destructured to primitives so they can go into the dep arrays individually;
-  // the config object is constructed inline and is a new reference every render.
-  const tz = selectedRestaurant?.restaurant?.timezone;
-  const cutoffHour = selectedRestaurant?.restaurant?.business_day_start_hour;
 
   // Group punches by the business day of the SHIFT they belong to, computed
   // from the BUFFERED punches. Both the window clip and the per-day bucketing

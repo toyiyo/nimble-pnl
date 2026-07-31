@@ -5,8 +5,14 @@
  * Plan: docs/superpowers/plans/2026-07-09-overnight-shift-punch-windowing.md (Task 4, Step 5)
  *
  * Pins the overnight-shift windowing fix at the component level:
- *   - `useTimePunches` is called with a BUFFERED range (bufferPunchFetchRange),
- *     not the raw startDate/endDate, and now includes an endDate bound.
+ *   - `useTimePunches` is called with a range spanning the BUSINESS days the
+ *     displayed period names (businessDayPunchFetchRange), not the raw
+ *     startDate/endDate, and now includes an endDate bound. Anchored on the
+ *     business-day boundary instants rather than a fixed ±18h around the
+ *     bounds: the bounds are day tokens in the VIEWER's zone while the business
+ *     day resolves in the RESTAURANT's, so a fixed buffer stops short of the
+ *     first or last business day for a far-apart viewer and the shift it misses
+ *     just vanishes from the timecard.
  *   - The "Net Hours" summary (weeklyTotals, sourced from hoursByClockInDay)
  *     attributes an overnight shift's hours ENTIRELY to its clock-in day, even
  *     though the clock-out punch is only present because of the buffer.
@@ -17,7 +23,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 import EmployeeTimecard from '@/pages/EmployeeTimecard';
-import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayStartInstant } from '@/lib/businessDay';
+import { formatLocalDate } from '@/lib/shiftInterval';
 import type { TimePunch } from '@/types/timeTracking';
 
 const { useTimePunchesMock, useCurrentEmployeeMock, usePeriodNavigationMock } = vi.hoisted(() => ({
@@ -97,19 +105,31 @@ describe('EmployeeTimecard overnight windowing', () => {
     });
   });
 
-  it('fetches time punches with the ±18h buffered range, not the raw period', () => {
+  it('fetches the business days the period names, buffered, not the raw period', () => {
     useTimePunchesMock.mockReturnValue({ punches: [], loading: false });
 
     render(<EmployeeTimecard />);
 
     expect(useTimePunchesMock).toHaveBeenCalledTimes(1);
     const [restaurantId, employeeId, fetchStartArg, fetchEndArg] = useTimePunchesMock.mock.calls[0];
-    const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+    const cfg = {
+      tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      cutoffHour: 0,
+    };
+    const { fetchStart, fetchEnd } = businessDayPunchFetchRange(startDate, endDate, cfg);
 
     expect(restaurantId).toBe('r1');
     expect(employeeId).toBe('e1');
     expect((fetchStartArg as Date).getTime()).toBe(fetchStart.getTime());
     expect((fetchEndArg as Date).getTime()).toBe(fetchEnd.getTime());
+
+    // Independently of how the range is built: it must straddle both business-day
+    // boundaries, so a shift clocking in at the very first minute of the first
+    // business day -- or at the very last of the seventh -- is fetched whole.
+    const firstDayStart = businessDayStartInstant(formatLocalDate(startDate), cfg);
+    const lastDayEnd = businessDayStartInstant('2026-07-13', cfg);
+    expect(fetchStart.getTime()).toBeLessThan(firstDayStart.getTime());
+    expect(fetchEnd.getTime()).toBeGreaterThan(lastDayEnd.getTime());
   });
 
   it('attributes an overnight shift entirely to the clock-in day (no drop, no split)', () => {

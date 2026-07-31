@@ -118,9 +118,12 @@ const EmployeeTimecard = () => {
   // Membership is by RESTAURANT business-day key, matching how
   // punchesByDay/dayHours bucket below -- comparing punch_time instants
   // directly to startDate/endDate (viewer/host-local day boundaries) would
-  // disagree with that bucketing for a viewer outside the restaurant's zone
-  // (a restaurant-evening punch could fall outside the viewer's day window
-  // and vanish from this list while still appearing in punchesByDay).
+  // disagree with that bucketing for a viewer outside the restaurant's zone.
+  // A restaurant-evening punch could fall outside the viewer's day window and
+  // drop out of this list (and so out of punchesByDay, which is derived from
+  // it) while `dayHours` -- computed from the unfiltered buffered `punches` --
+  // still counted its hours, so the visible punches and the day's total
+  // disagreed.
   const periodPunches = useMemo(() => {
     return punches.filter((punch) => weekDayKeys.has(clock.toBusinessDay(punch.punch_time)));
   }, [punches, weekDayKeys, clock]);

@@ -487,10 +487,14 @@ export function calculateEmployeePay(
       // toDateOnlyString comment below), not instants. Deriving the window
       // instants from the VIEWER's browser day boundaries here -- as this
       // block previously did by comparing punches to periodStartDate/
-      // periodEndDate directly -- discards restaurant-evening punches for a
-      // viewer west of the restaurant and wrongly admits restaurant-morning
-      // punches from the prior day for a viewer east of it. Route through
-      // the restaurant's own zone instead.
+      // periodEndDate directly -- slides the whole window by the offset
+      // difference. A viewer AHEAD of the restaurant (UTC viewer, Chicago
+      // restaurant) gets a window that starts too early: it drops the last
+      // day's restaurant-evening punches and admits the evening before the
+      // period started. A viewer BEHIND it (UTC viewer, Auckland restaurant)
+      // gets the mirror image: the first day's restaurant-morning punches
+      // drop out and the morning after the period ends creeps in. Route
+      // through the restaurant's own zone instead.
       const { start: windowStart, end: windowEnd } = businessDayRangeToInstants(
         toDateOnlyString(periodStartDate),
         toDateOnlyString(periodEndDate),

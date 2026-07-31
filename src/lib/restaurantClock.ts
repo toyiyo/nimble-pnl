@@ -171,6 +171,14 @@ export function businessDaysBetween(
  * boundaries is the bug this exists to prevent: for a UTC viewer and a Chicago
  * restaurant the two windows are six hours apart, so the restaurant's evening
  * punches fall outside the viewer's day and vanish.
+ *
+ * A malformed day string is rejected rather than coerced. In dev and test that
+ * throws; in production `reject` only logs, so `fromZonedTime` returns an
+ * Invalid Date and the window filters every row away. That is the intended
+ * trade: the obvious salvage -- slicing the first ten characters off whatever
+ * was passed -- is how a `toISOString().split('T')[0]` day (off by one east of
+ * UTC) gets laundered into a valid-looking window, which is exactly the bug
+ * this module exists to eliminate. Callers must hand over a real calendar day.
  */
 export function businessDayRangeToInstants(
   startDay: string,

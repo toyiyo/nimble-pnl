@@ -156,7 +156,7 @@ describe('EmployeeTimecard overnight windowing', () => {
   // Regression: `periodPunches` (the display list feeding punchesByDay) must
   // filter by RESTAURANT business-day membership, not by comparing punch_time
   // instants to startDate/endDate directly. startDate/endDate here are
-  // host-local instants (see the fixture comment above); on a host west of
+  // host-local instants (see the fixture comment above); on a host AHEAD of
   // America/Chicago (UTC, Pacific/Auckland -- both in this suite's TZ
   // matrix), endDate's instant lands hours BEFORE the restaurant's actual
   // Jul-12 day boundary. A punch late in the restaurant's Jul 12 evening

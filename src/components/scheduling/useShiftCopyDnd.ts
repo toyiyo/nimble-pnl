@@ -4,8 +4,7 @@ import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 
 import { useCreateShift } from '@/hooks/useShifts';
 import { checkConflictsImperative } from '@/hooks/useConflictDetection';
-import { formatLocalDateInTz, formatLocalHHMMInTz, wallClockToInstant } from '@/lib/shiftInterval';
-import { addDaysToDateStr } from '@/lib/restaurantClock';
+import { ShiftInterval, formatLocalDateInTz, formatLocalHHMMInTz } from '@/lib/shiftInterval';
 import type { Shift } from '@/types/scheduling';
 import type { ConflictDialogData } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 
@@ -44,11 +43,12 @@ type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
  * correctly, mirrors `copyWeekShifts.ts::reprojectOntoTargetWeek`):
  *   1. Read the source shift's RESTAURANT-LOCAL wall-clock start and end
  *      times.
- *   2. Resolve the new start from targetDay + the wall-clock start time,
- *      using the same Postgres-parity DST logic the server uses
- *      (`wallClockToInstant`).
- *   3. Resolve the new end the same way, on targetDay (or the day after, if
- *      the source shift's wall clock crosses midnight).
+ *   2. Resolve the new start/end from targetDay + those wall-clock times via
+ *      `ShiftInterval.create`, the same primitive every other creation path
+ *      in this codebase uses — it already detects the overnight crossing
+ *      (`endTime < startTime`) and applies the same Postgres-parity DST
+ *      logic the server uses, so this call site doesn't re-derive that
+ *      logic independently.
  *
  * An earlier version derived the new end as `newStart + durationMs`, reusing
  * the source shift's raw elapsed-instant duration. That is wrong whenever
@@ -72,15 +72,13 @@ export function buildCopyPayload(shift: Shift, targetDay: string, tz: string, ta
   const wallClockStart = formatLocalHHMMInTz(shift.start_time, tz);
   const wallClockEnd = formatLocalHHMMInTz(shift.end_time, tz);
 
-  const newStart = wallClockToInstant(targetDay, wallClockStart, tz);
-  const targetEndDay = wallClockEnd < wallClockStart ? addDaysToDateStr(targetDay, 1) : targetDay;
-  const newEnd = wallClockToInstant(targetEndDay, wallClockEnd, tz);
+  const interval = ShiftInterval.create(targetDay, wallClockStart, wallClockEnd, tz);
 
   return {
     restaurant_id: shift.restaurant_id,
     employee_id: targetEmployeeId ?? shift.employee_id,
-    start_time: newStart.toISOString(),
-    end_time: newEnd.toISOString(),
+    start_time: interval.startAt.toISOString(),
+    end_time: interval.endAt.toISOString(),
     break_duration: shift.break_duration,
     position: shift.position,
     notes: shift.notes,

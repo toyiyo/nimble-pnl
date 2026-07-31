@@ -6,8 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
-import { formatLocalDate, formatLocalDateInTz, formatLocalHHMMInTz, requireTz, wallClockToInstant } from '@/lib/shiftInterval';
-import { addDaysToDateStr } from '@/lib/restaurantClock';
+import { ShiftInterval, formatLocalDate, formatLocalDateInTz, formatLocalHHMMInTz, requireTz } from '@/lib/shiftInterval';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
@@ -180,21 +179,19 @@ async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shi
   // this exact wall clock, so a series spanning a DST transition stays at
   // the same local time instead of drifting by the transition's offset.
   const wallClockTime = formatLocalHHMMInTz(shift.start_time, tz);
-  // The parent's restaurant-local end wall clock, and whether it falls on the
-  // calendar day *after* its start (an overnight shift) — both resolved
-  // independently per child below, the same way `ShiftInterval.create`
-  // detects an overnight shift (`endTime < startTime`), rather than reusing
-  // the parent's raw millisecond duration. Reusing a captured `durationMs`
-  // (end instant − start instant) would be wrong whenever the *parent's own*
-  // start–end interval crosses a DST transition: its elapsed instant
-  // duration then differs from its wall-clock duration, and every child —
-  // even one whose own occurrence never crosses a transition — would
-  // inherit that skew (e.g. a nightly 22:00–06:00 Chicago shift created on a
-  // spring-forward night has a 7h elapsed duration but an 8h wall-clock
-  // duration; naively applying 7h to later children lands them at 05:00,
-  // not the intended 06:00).
+  // The parent's restaurant-local end wall clock. Each child resolves its own
+  // start/end via `ShiftInterval.create`, which detects the overnight
+  // crossing (`endTime < startTime`) and rolls the end onto the next calendar
+  // day itself — rather than reusing the parent's raw millisecond duration.
+  // Reusing a captured `durationMs` (end instant − start instant) would be
+  // wrong whenever the *parent's own* start–end interval crosses a DST
+  // transition: its elapsed instant duration then differs from its
+  // wall-clock duration, and every child — even one whose own occurrence
+  // never crosses a transition — would inherit that skew (e.g. a nightly
+  // 22:00–06:00 Chicago shift created on a spring-forward night has a 7h
+  // elapsed duration but an 8h wall-clock duration; naively applying 7h to
+  // later children lands them at 05:00, not the intended 06:00).
   const endWallClockTime = formatLocalHHMMInTz(shift.end_time, tz);
-  const endsNextDay = endWallClockTime < wallClockTime;
 
   const { data: parentShift, error: parentError } = await supabase
     .from('shifts')
@@ -211,15 +208,13 @@ async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shi
   if (recurringDates.length > 1) {
     const childShifts = recurringDates.slice(1).map((date) => {
       const childDateStr = formatLocalDate(date);
-      const childStartTime = wallClockToInstant(childDateStr, wallClockTime, tz);
-      const childEndDateStr = endsNextDay ? addDaysToDateStr(childDateStr, 1) : childDateStr;
-      const childEndTime = wallClockToInstant(childEndDateStr, endWallClockTime, tz);
+      const childInterval = ShiftInterval.create(childDateStr, wallClockTime, endWallClockTime, tz);
 
       return {
         restaurant_id: shift.restaurant_id,
         employee_id: shift.employee_id,
-        start_time: childStartTime.toISOString(),
-        end_time: childEndTime.toISOString(),
+        start_time: childInterval.startAt.toISOString(),
+        end_time: childInterval.endAt.toISOString(),
         break_duration: shift.break_duration,
         position: shift.position,
         status: shift.status,

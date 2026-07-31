@@ -649,7 +649,7 @@ describe('Salaried Employee Edge Cases', () => {
         hire_date: '2024-01-03', // Hired on Wednesday
       });
 
-      // Calculate pay for full week (Sunday-Saturday).
+      // Calculate pay for full week (Monday–Sunday).
       // parseDateOnly anchors at LOCAL midnight (unlike bare `new Date(str)`,
       // which parses date-only strings as UTC midnight and would shift the
       // loop's local calendar day for viewers behind UTC).

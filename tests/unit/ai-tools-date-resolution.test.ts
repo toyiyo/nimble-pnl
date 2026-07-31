@@ -301,8 +301,13 @@ describe('get_break_even_progress month param parsing', () => {
     const monthStart = new Date(yearStr, monthStr - 1, 1);
     const monthEnd = new Date(yearStr, monthStr, 0);
 
-    expect(monthStart.toISOString().split('T')[0]).toBe('2026-02-01');
-    expect(monthEnd.toISOString().split('T')[0]).toBe('2026-02-28');
+    // monthStart/monthEnd are month boundaries built from local y/m/d fields
+    // parsed out of the 'YYYY-MM' token - calendar days, not instants. Read
+    // them back with local fields (formatLocalDate), never toISOString(),
+    // which serializes UTC fields and drifts to the previous day for any
+    // viewer/server east of UTC (e.g. Pacific/Auckland).
+    expect(formatLocalDate(monthStart)).toBe('2026-02-01');
+    expect(formatLocalDate(monthEnd)).toBe('2026-02-28');
     expect(monthEnd.getDate()).toBe(28);
   });
 
@@ -319,8 +324,8 @@ describe('get_break_even_progress month param parsing', () => {
     const monthStart = new Date(yearStr, monthStr - 1, 1);
     const monthEnd = new Date(yearStr, monthStr, 0);
 
-    expect(monthStart.toISOString().split('T')[0]).toBe('2026-12-01');
-    expect(monthEnd.toISOString().split('T')[0]).toBe('2026-12-31');
+    expect(formatLocalDate(monthStart)).toBe('2026-12-01');
+    expect(formatLocalDate(monthEnd)).toBe('2026-12-31');
   });
 
   it('handles January correctly (month index 0)', () => {
@@ -329,7 +334,7 @@ describe('get_break_even_progress month param parsing', () => {
     const monthStart = new Date(yearStr, monthStr - 1, 1);
     const monthEnd = new Date(yearStr, monthStr, 0);
 
-    expect(monthStart.toISOString().split('T')[0]).toBe('2026-01-01');
-    expect(monthEnd.toISOString().split('T')[0]).toBe('2026-01-31');
+    expect(formatLocalDate(monthStart)).toBe('2026-01-01');
+    expect(formatLocalDate(monthEnd)).toBe('2026-01-31');
   });
 });

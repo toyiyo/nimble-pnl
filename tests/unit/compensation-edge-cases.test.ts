@@ -39,6 +39,7 @@ import type {
   DailyLaborAllocation,
 } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 // ============================================================================
 // Test Helpers
@@ -648,11 +649,14 @@ describe('Salaried Employee Edge Cases', () => {
         hire_date: '2024-01-03', // Hired on Wednesday
       });
 
-      // Calculate pay for full week (Sunday-Saturday)
+      // Calculate pay for full week (Sunday-Saturday).
+      // parseDateOnly anchors at LOCAL midnight (unlike bare `new Date(str)`,
+      // which parses date-only strings as UTC midnight and would shift the
+      // loop's local calendar day for viewers behind UTC).
       const fullWeekPay = calculateSalaryForPeriod(
         employee,
-        new Date('2024-01-01'), // Sunday (before hire)
-        new Date('2024-01-07')  // Saturday
+        parseDateOnly('2024-01-01'), // Sunday (before hire)
+        parseDateOnly('2024-01-07')  // Saturday
       );
 
       // Should only pay for 5 days (Wed-Sun)
@@ -1248,10 +1252,11 @@ describe('Validation Edge Cases', () => {
         ],
       });
 
+      // See note above: parseDateOnly avoids the UTC-midnight parse trap.
       const total = calculateSalaryForPeriod(
         employee,
-        new Date('2024-01-10'),
-        new Date('2024-01-20')
+        parseDateOnly('2024-01-10'),
+        parseDateOnly('2024-01-20')
       );
 
       // Jan 10-14 at $4,000/month ≈ 65,703 cents

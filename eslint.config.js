@@ -219,7 +219,6 @@ export default tseslint.config(
       "src/services/recipeAnalytics.service.ts",
       "src/types/assetImport.ts",
       "src/utils/checkPrinting.ts",
-      "src/utils/compensationCalculations.ts",
       "src/utils/employeeFilters.ts",
       "src/utils/payrollExportFormats.ts",
       "src/utils/pdfExport.ts",

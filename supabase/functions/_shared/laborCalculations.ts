@@ -12,6 +12,8 @@
  * - supabase/functions/_shared/recipeAnalytics.ts
  */
 
+import { toDateOnlyString } from "./dateOnly.ts";
+
 /**
  * Hours past endDate to widen a time_punches fetch so a shift whose clock_out
  * lands just after the window end still pairs into a complete period.
@@ -145,11 +147,12 @@ const MAX_SHIFT_GAP_HOURS = 18;
 // Helper Functions
 // ============================================================================
 
+// Kept as `formatDateLocal` (rather than renamed to `toDateOnlyString`) because
+// it's imported by name elsewhere, including a dynamic import in
+// ai-execute-tool/index.ts. Delegates to the shared Deno-side implementation
+// so this module and process-receipt/process-expense-invoice don't drift.
 export function formatDateLocal(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return toDateOnlyString(date);
 }
 
 function generateDateRange(startDate: Date, endDate: Date): string[] {

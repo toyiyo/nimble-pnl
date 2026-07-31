@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { normalizePrices, hasValidPriceData, normalizeConfidenceScore } from "../_shared/priceNormalization.ts";
+import { toDateOnlyString } from "../_shared/dateOnly.ts";
 
 interface ReceiptProcessRequest {
   receiptId: string;
@@ -52,19 +53,6 @@ function parsePurchaseDate(dateString: string | undefined): string | null {
   }
 }
 
-// y/m/d here are parsed out of a FILENAME, not a moment in time - they are a
-// calendar day (case a). Serialize the Date's LOCAL fields, not
-// `.toISOString()` (which reads UTC fields and rolls the day back for any
-// viewer/server TZ east of UTC, e.g. Pacific/Auckland). Edge functions are
-// Deno and cannot import `@/lib/dateOnly`, so this is a self-contained
-// version of `toDateOnlyString()` - keep the two in agreement.
-function toDateOnlyLocal(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 // Helper function to extract date from filename
 function extractDateFromFilename(filename: string | null): string | null {
   if (!filename) return null;
@@ -79,7 +67,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const [, year, month, day] = isoMatch;
     const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     if (!isNaN(date.getTime())) {
-      return toDateOnlyLocal(date);
+      return toDateOnlyString(date);
     }
   }
 
@@ -90,7 +78,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const [, month, day, year] = usMatch;
     const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     if (!isNaN(date.getTime())) {
-      return toDateOnlyLocal(date);
+      return toDateOnlyString(date);
     }
   }
 

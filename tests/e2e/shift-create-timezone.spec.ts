@@ -553,14 +553,7 @@ test.describe('Drag-copying a shift card preserves the restaurant-local wall clo
   const SOURCE_END_UTC = '2026-03-02T19:00:00+00:00'; // 13:00 Chicago
   const EXPECTED_TARGET_START_UTC = '2026-03-08T14:00:00+00:00'; // 09:00 Chicago (CDT, UTC-5), Sunday
 
-  // SKIPPED — lands with its fix in Task 8 (surface 6, drag-copy).
-  // This test does not currently reproduce the timezone defect: it dies in its
-  // own harness (`drag never registered isOver on the target cell after 3
-  // attempts`), so the +60 assertion never executes. Driving dnd-kit's
-  // PointerSensor reliably here is its own problem, and solving it is not
-  // Task 1's job — a test that fails in its scaffolding proves nothing about
-  // the product.
-  test.skip('a Monday 09:00 Chicago shift dragged to Sunday keeps 09:00 Chicago, not 10:00', async ({ page }) => {
+  test('a Monday 09:00 Chicago shift dragged to Sunday keeps 09:00 Chicago, not 10:00', async ({ page }) => {
     const testUser = generateTestUser('tzdrag');
     await signUpAndCreateRestaurant(page, testUser);
     await exposeSupabaseHelpers(page);

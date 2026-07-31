@@ -319,7 +319,7 @@ const Scheduling = () => {
     handleDragStart,
     handleDragEnd,
     handleDragCancel,
-  } = useShiftCopyDnd();
+  } = useShiftCopyDnd({ tz: restaurantTimezone });
 
   const { toast } = useToast();
   const pendingTradeCount = pendingTrades.length;

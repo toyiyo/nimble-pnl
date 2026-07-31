@@ -3,6 +3,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { ReactNode } from 'react';
 import { usePOSTips } from '@/hooks/usePOSTips';
+import { businessDayRangeToInstants } from '@/lib/restaurantClock';
 
 const mockSupabase = vi.hoisted(() => ({
   from: vi.fn(),
@@ -46,6 +47,7 @@ function mockEmployeeQuery(data: unknown[] | null, error: { message: string } | 
     order: vi.fn().mockResolvedValue({ data, error }),
   };
   mockSupabase.from.mockReturnValue({ select: vi.fn().mockReturnValue(chain) });
+  return chain;
 }
 
 function mockPosRpc(data: unknown[] | null, error: { message: string } | null = null) {
@@ -207,5 +209,29 @@ describe('usePOSTips', () => {
 
     const jan16 = result.current.data?.find(d => d.date === '2024-01-16');
     expect(jan16?.source).toBe('square');
+  });
+
+  it('fetches the employee_tips window as restaurant-zone instants, not bare UTC-parsed day tokens', async () => {
+    // Pacific/Auckland is guaranteed to differ from the test host's TZ and
+    // from the restaurant-timezone default (America/Chicago) used elsewhere
+    // in this file. Bare 'YYYY-MM-DD' bounds parse against UTC in Postgres,
+    // which would disagree with the toBusinessDay bucketing done in this same
+    // zone and drop or leak tips at the edges of the range.
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: { restaurant: { timezone: 'Pacific/Auckland' } },
+    });
+    const chain = mockEmployeeQuery([]);
+    mockPosRpc([]);
+
+    const { result } = renderHook(
+      () => usePOSTips('test-restaurant-id', '2024-01-15', '2024-01-16'),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    const { start, end } = businessDayRangeToInstants('2024-01-15', '2024-01-16', 'Pacific/Auckland');
+    expect(chain.gte).toHaveBeenCalledWith('recorded_at', start.toISOString());
+    expect(chain.lte).toHaveBeenCalledWith('recorded_at', end.toISOString());
   });
 });

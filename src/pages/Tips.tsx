@@ -35,7 +35,8 @@ import { LockPeriodDialog } from '@/components/tips/LockPeriodDialog';
 import { TipPoolSettingsDialog } from '@/components/tips/TipPoolSettingsDialog';
 import { TipDistribution } from '@/components/tips/TipDistribution';
 import { calculateWorkedHoursForClockInDay } from '@/utils/payrollCalculations';
-import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayPunchFetchRange } from '@/utils/punchWindow';
+import type { BusinessDayConfig } from '@/lib/businessDay';
 import { Info, Settings, RefreshCw, Clock, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -105,12 +106,25 @@ export function Tips() {
     deletePool,
     totalContributionPercentage,
   } = useTipContributionPools(restaurantId, settings?.id ?? null);
-  // Fetch punches for the selected service day, widened by the overnight buffer
-  // so a shift that clocks out after midnight is paired whole. Hours are then
-  // attributed to the clock-in day via calculateWorkedHoursForClockInDay.
+  // The restaurant's business-day frame, so the hours behind a tip share agree
+  // with the same employee's timecard and paycheck. Destructured to primitives
+  // so they can go into the dep arrays individually.
+  const tz = selectedRestaurant?.restaurant?.timezone;
+  const cutoffHour = selectedRestaurant?.restaurant?.business_day_start_hour;
+  const businessDay: BusinessDayConfig = useMemo(() => ({ tz, cutoffHour }), [tz, cutoffHour]);
+
+  // Fetch punches for the selected service day, widened so a shift that clocks
+  // out after the business-day boundary is paired whole. Hours are then
+  // attributed to the clock-in business day via
+  // calculateWorkedHoursForClockInDay.
+  //
+  // Anchored on the business-day boundary instants, not a fixed buffer around
+  // the day bounds: the bounds are a day token in the VIEWER's zone while the
+  // business day resolves in the RESTAURANT's, and the two can be 26 hours
+  // apart. See businessDayPunchFetchRange.
   const { fetchStart: punchFetchStart, fetchEnd: punchFetchEnd } = useMemo(
-    () => bufferPunchFetchRange(todayStart, todayEnd),
-    [todayStart, todayEnd],
+    () => businessDayPunchFetchRange(todayStart, todayEnd, businessDay),
+    [todayStart, todayEnd, businessDay],
   );
   const { punches } = useTimePunches(restaurantId, undefined, punchFetchStart, punchFetchEnd);
 
@@ -287,7 +301,7 @@ export function Tips() {
       const employeePunches = punches.filter(p => p.employee_id === emp.id);
       
       if (employeePunches.length > 0) {
-        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
+        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd, businessDay);
         const roundedHours = Math.round(hours * 10) / 10; // Round to 1 decimal
         
         calculatedHours[emp.id] = roundedHours.toString();
@@ -318,7 +332,7 @@ export function Tips() {
         setAutoCalculatedHours(prev => ({ ...prev, ...writtenFlags }));
       }
     }
-  }, [punches, shareMethod, selectedDate, eligibleEmployees]);
+  }, [punches, shareMethod, selectedDate, eligibleEmployees, todayStart, todayEnd, businessDay]);
 
   useEffect(() => {
     if (eligibleEmployees.length && !settings?.enabled_employee_ids?.length) {
@@ -665,7 +679,7 @@ export function Tips() {
                     participants.forEach(emp => {
                       const employeePunches = punches?.filter(p => p.employee_id === emp.id) || [];
                       if (employeePunches.length > 0) {
-                        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd);
+                        const hours = calculateWorkedHoursForClockInDay(employeePunches, todayStart, todayEnd, businessDay);
                         const roundedHours = Math.round(hours * 10) / 10;
                         calculatedHours[emp.id] = roundedHours.toString();
                         autoFlags[emp.id] = true;

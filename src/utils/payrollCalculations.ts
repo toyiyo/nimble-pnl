@@ -394,12 +394,18 @@ export function calculateWorkedHoursWithAnomalies(punches: TimePunch[]): {
 }
 
 /**
- * Worked hours (excluding breaks) for shifts whose CLOCK-IN falls within
- * [dayStart, dayEnd] — i.e. attributed to the clock-in day, not split at
- * midnight. Callers pass a ±overnight-buffered punch set (so a shift that
- * crosses midnight is paired whole) and the day's local bounds; a shift that
- * started the night before or the next morning is dropped by clock-in
- * attribution, so it is counted exactly once, on the night it began.
+ * Worked hours (excluding breaks) for shifts whose CLOCK-IN falls on the
+ * BUSINESS day [dayStart, dayEnd] names — i.e. attributed to the clock-in day,
+ * not split at midnight. Callers pass a business-day-anchored punch set (so a
+ * shift crossing a boundary is paired whole) and the day's local bounds; a
+ * shift that started the night before or the next morning is dropped by
+ * clock-in attribution, so it is counted exactly once, on the night it began.
+ *
+ * Framed on the business day rather than the raw instant so the hours behind a
+ * tip share agree with the hours on the same employee's timecard and paycheck.
+ * At a cutoff of 2 a 01:00 clock-in is the previous service day's — which is
+ * the whole point of the setting, and a tip pool that split it at midnight
+ * would hand the late crew a share of the wrong night's tips.
  *
  * Used by the Tips "calculate from hours" flow, which is scoped to a single
  * service day. Mirrors calculateWorkedHours but with clock-in-day windowing.
@@ -408,9 +414,10 @@ export function calculateWorkedHoursForClockInDay(
   punches: TimePunch[],
   dayStart: Date,
   dayEnd: Date,
+  businessDay: BusinessDayConfig,
 ): number {
   const { periods } = parseWorkPeriods(punches);
-  return periodsInWindow(periods, dayStart, dayEnd)
+  return periodsInBusinessDayWindow(periods, dayStart, dayEnd, businessDay)
     .filter(p => !p.isBreak)
     .reduce((sum, p) => sum + p.hours, 0);
 }

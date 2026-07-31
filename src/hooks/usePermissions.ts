@@ -38,6 +38,7 @@ import {
   isCollaboratorRole,
 } from '@/lib/permissions/definitions';
 import { expandAreas, resolveLandingPath, AreaKey, AreaLevel } from '@/lib/permissions/areas';
+import { customCollaboratorRoutes } from '@/lib/permissions/routeAreas';
 
 export interface PermissionContext {
   /** Current user's role, or null if not loaded */
@@ -143,7 +144,23 @@ export function usePermissions(): PermissionContext {
       capabilities = expandAreas(grants, flags);
 
       isCollaborator = roleRecord.flavor === 'collaborator';
-      landingPath = resolveLandingPath(grants) ?? ROLE_METADATA[role]?.landingPath ?? '/';
+
+      if (roleRecord.builtin) {
+        // The six builtins keep their hand-written landing paths. Deriving
+        // theirs from areas would move them: collaborator_chef holds
+        // inventory:view alongside recipes:manage, and inventory outranks
+        // recipes in AREA_PRIORITY, so a pure derivation lands the Recipe
+        // Consultant on /inventory.
+        landingPath = ROLE_METADATA[role]?.landingPath ?? '/';
+      } else if (isCollaborator) {
+        // Derived from the *route-eligible* areas, so the landing is never a
+        // page StaffRoleChecker would bounce this role straight off — the
+        // P&L surfaces being the case that bites (`reports` is the
+        // highest-priority area and reaches neither of its pages).
+        landingPath = customCollaboratorRoutes(grants).landing;
+      } else {
+        landingPath = resolveLandingPath(grants) ?? ROLE_METADATA[role]?.landingPath ?? '/';
+      }
       roleLabel = roleRecord.name;
       roleColor = ROLE_METADATA[role]?.color ?? 'outline';
     } else {

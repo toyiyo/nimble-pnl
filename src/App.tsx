@@ -16,6 +16,8 @@ import { InstallBanner } from "@/components/InstallBanner";
 import { PersonalViewBanner } from "@/components/PersonalViewBanner";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileLayout } from '@/components/employee/MobileLayout';
+import { grantMap } from '@/lib/permissions/areas';
+import { customCollaboratorRoutes } from '@/lib/permissions/routeAreas';
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -244,16 +246,20 @@ function StaffRoleChecker({
     return <Navigate to="/kiosk" replace />;
   }
 
-  // Collaborator routing - redirect to their landing page if not on allowed path
+  // Collaborator routing - redirect to their landing page if not on allowed path.
+  // A custom collaborator role has no COLLABORATOR_ROUTES entry, and "no entry"
+  // used to mean "no restriction" — it would have reached /team and /banking by
+  // URL. Its allow-list is derived from its areas instead, and a collaborator
+  // whose role record hasn't arrived derives an empty one, so this fails closed.
   if (isCollaborator && role) {
-    const config = COLLABORATOR_ROUTES[role];
-    if (config) {
-      const isAllowedPath = config.allowed.some(path =>
-        currentPath === path || currentPath.startsWith(path + '/')
-      );
-      if (!isAllowedPath) {
-        return <Navigate to={config.landing} replace />;
-      }
+    const config =
+      COLLABORATOR_ROUTES[role] ??
+      customCollaboratorRoutes(grantMap(selectedRestaurant?.roleRecord?.role_areas ?? []));
+    const isAllowedPath = config.allowed.some(path =>
+      currentPath === path || currentPath.startsWith(path + '/')
+    );
+    if (!isAllowedPath) {
+      return <Navigate to={config.landing} replace />;
     }
   }
 

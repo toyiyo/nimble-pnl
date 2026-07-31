@@ -372,4 +372,128 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
       expect(result.current.landingPath).not.toBe('/');
     });
   });
+
+  // ============================================================
+  // 6. landingPath must not regress for the builtin roles
+  // ============================================================
+  describe('landingPath for builtin roles stays what ROLE_METADATA says', () => {
+    // Deriving the landing from areas is right for a custom role and wrong
+    // for a builtin: `collaborator_chef` holds inventory:view alongside
+    // recipes:manage, and inventory outranks recipes in AREA_PRIORITY, so a
+    // pure derivation moves this role's landing from /recipes to /inventory.
+    // The design's regression statement is that the six builtins' nav and
+    // landing paths are unchanged, so `builtin` short-circuits the derivation.
+    const BUILTIN_LANDINGS: Array<{
+      role: string;
+      name: string;
+      flavor: 'platform' | 'collaborator';
+      areas: Array<{ area_key: AreaKey; level: AreaLevel }>;
+      expected: string;
+    }> = [
+      {
+        role: 'collaborator_chef',
+        name: 'Recipe Consultant',
+        flavor: 'collaborator',
+        areas: [
+          { area_key: 'inventory', level: 'view' },
+          { area_key: 'recipes', level: 'manage' },
+          { area_key: 'settings', level: 'view' },
+        ],
+        expected: '/recipes',
+      },
+      {
+        role: 'collaborator_operations_manager',
+        name: 'Ops Manager (Collaborator)',
+        flavor: 'collaborator',
+        areas: [
+          { area_key: 'reports', level: 'manage' },
+          { area_key: 'inventory', level: 'manage' },
+          { area_key: 'scheduling', level: 'manage' },
+          { area_key: 'settings', level: 'view' },
+        ],
+        expected: '/scheduling',
+      },
+      {
+        role: 'collaborator_accountant',
+        name: 'Accountant',
+        flavor: 'collaborator',
+        areas: [
+          { area_key: 'books', level: 'manage' },
+          { area_key: 'payroll', level: 'view' },
+          { area_key: 'settings', level: 'view' },
+        ],
+        expected: '/transactions',
+      },
+      {
+        role: 'collaborator_inventory',
+        name: 'Inventory Helper',
+        flavor: 'collaborator',
+        areas: [
+          { area_key: 'inventory', level: 'manage' },
+          { area_key: 'purchasing', level: 'manage' },
+          { area_key: 'settings', level: 'view' },
+        ],
+        expected: '/inventory',
+      },
+    ];
+
+    for (const builtin of BUILTIN_LANDINGS) {
+      it(`keeps ${builtin.role} landing on ${builtin.expected}`, () => {
+        setupMockContext({
+          role: builtin.role,
+          loading: false,
+          roleRecord: {
+            id: `builtin-${builtin.role}`,
+            name: builtin.name,
+            flavor: builtin.flavor,
+            builtin: true,
+            role_areas: builtin.areas,
+            role_flags: [],
+          },
+        });
+        const { result } = renderHook(() => usePermissions());
+        expect(result.current.landingPath).toBe(builtin.expected);
+      });
+    }
+
+    it('keeps owner landing on the dashboard its areas would also pick', () => {
+      setupMockContext({
+        role: 'owner',
+        loading: false,
+        roleRecord: {
+          id: 'builtin-owner',
+          name: 'Owner',
+          flavor: 'platform',
+          builtin: true,
+          role_areas: [
+            { area_key: 'reports', level: 'manage' },
+            { area_key: 'team', level: 'manage' },
+          ],
+          role_flags: [],
+        },
+      });
+      const { result } = renderHook(() => usePermissions());
+      expect(result.current.landingPath).toBe('/');
+    });
+
+    it('does not land a custom collaborator role on a page it cannot open', () => {
+      // `reports` is the highest-priority area, but `/` and `/reports` are
+      // excluded from every collaborator's routes — landing there would bounce
+      // the user straight back off it.
+      setupMockContext({
+        role: 'collaborator_custom',
+        loading: false,
+        roleRecord: {
+          id: 'custom-role-reports-only',
+          name: 'Report Reader',
+          flavor: 'collaborator',
+          builtin: false,
+          role_areas: [{ area_key: 'reports', level: 'manage' }],
+          role_flags: [],
+        },
+      });
+      const { result } = renderHook(() => usePermissions());
+      expect(result.current.landingPath).toBe('/help');
+    });
+  });
 });

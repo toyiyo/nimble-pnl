@@ -698,6 +698,14 @@
   // innerHTML sink downstream flagged as "DOM text reinterpreted as HTML".
   // The ampersand must be replaced first or it would double-escape the
   // entities the later replaces introduce.
+  //
+  // Every dynamic value interpolated into markup goes through this, attribute
+  // values and booleans included. That is not defensive padding: writing an
+  // area level straight into `data-level="…"` was a genuine round trip, since
+  // the level is read back out of the radio input's `.value` — DOM text — and
+  // re-rendered. The rest are escaped for the same reason a lint rule is
+  // uniform: an unescaped interpolation next to escaped ones reads as
+  // deliberate, and the next person has to re-derive which is which.
   var esc = function (s) {
     return String(s)
       .replace(/&/g, "&amp;")
@@ -817,7 +825,7 @@
       }).join("");
       if (!chips) chips = '<span class="chip">No areas yet</span>';
 
-      return '<button class="rolecard" data-role="' + r.id + '" style="animation-delay:' + (i * 34) + 'ms">' +
+      return '<button class="rolecard" data-role="' + esc(r.id) + '" style="animation-delay:' + (i * 34) + 'ms">' +
         '<div class="rolecard__top">' +
           '<span class="glyph">' + icon(r.builtin ? "grid" : "users") + "</span>" +
           '<span style="min-width:0">' +
@@ -827,7 +835,7 @@
         "</div>" +
         '<div class="rolecard__chips">' + chips + "</div>" +
         '<div class="rolecard__foot">' +
-          "<span>" + (r.people === 1 ? "1 person" : r.people + " people") + "</span>" +
+          "<span>" + (r.people === 1 ? "1 person" : esc(r.people) + " people") + "</span>" +
           (r.builtin ? '<span class="chip chip--builtin">Built-in</span>'
                      : '<span class="chip chip--builtin">Custom</span>') +
         "</div>" +
@@ -858,7 +866,7 @@
           : a.manageOwnerOnly ? "Owners and Managers only."
           : a.viewOnlyReason || "";
 
-        out += '<div class="arearow" data-locked="' + lockedAll + '">' +
+        out += '<div class="arearow" data-locked="' + esc(lockedAll) + '">' +
           '<div class="arearow__label">' +
             '<div class="arearow__name">' + esc(a.name) +
               (lockedAll ? ' <span style="color:var(--ink-faint)">' + icon("lock") + "</span>" : "") +
@@ -867,7 +875,7 @@
               (lockManage && lockNote ? ' <span style="color:var(--caution)">· ' + esc(lockNote) + "</span>" : "") +
             "</div>" +
           "</div>" +
-          '<div class="seg" data-level="' + level + '" data-locked="' + lockedAll + '" role="radiogroup" aria-label="' + esc(a.name) + ' access">' +
+          '<div class="seg" data-level="' + esc(level) + '" data-locked="' + esc(lockedAll) + '" role="radiogroup" aria-label="' + esc(a.name) + ' access">' +
             '<span class="seg__thumb" aria-hidden="true"></span>' +
             seg(a.key, "none",   "No access", level, lockedAll) +
             seg(a.key, "view",   "View",      level, lockedAll) +
@@ -885,14 +893,14 @@
       var ok = sensAvailable(draft, s);
       var on = ok && !!draft.sens[s.key];
       var reqNames = s.requires.map(function (k) { return area(k).name; }).join(", ");
-      out += '<div class="switchrow" data-available="' + ok + '" data-on="' + on + '">' +
+      out += '<div class="switchrow" data-available="' + esc(ok) + '" data-on="' + esc(on) + '">' +
         '<div class="switchrow__text">' +
           '<div class="switchrow__name">' + esc(s.name) + "</div>" +
           '<div class="switchrow__hint">' +
             (ok ? esc(s.hint) : "Needs access to " + esc(reqNames)) +
           "</div>" +
         "</div>" +
-        '<button class="switch" role="switch" aria-checked="' + on + '" data-sens="' + s.key + '"' +
+        '<button class="switch" role="switch" aria-checked="' + esc(on) + '" data-sens="' + esc(s.key) + '"' +
           (ok ? "" : " disabled") + ' aria-label="' + esc(s.name) + '"></button>' +
       "</div>";
     });
@@ -902,11 +910,11 @@
   }
 
   function seg(areaKey, value, label, level, locked) {
-    var id = "seg-" + areaKey + "-" + value;
+    var id = esc("seg-" + areaKey + "-" + value);
     var dis = locked && value !== level;
-    return '<input type="radio" name="seg-' + areaKey + '" id="' + id + '" value="' + value +
-           '" data-area="' + areaKey + '"' + (level === value ? " checked" : "") + (dis ? " disabled" : "") + ">" +
-           '<label for="' + id + '" data-v="' + value + '">' +
+    return '<input type="radio" name="seg-' + esc(areaKey) + '" id="' + id + '" value="' + esc(value) +
+           '" data-area="' + esc(areaKey) + '"' + (level === value ? " checked" : "") + (dis ? " disabled" : "") + ">" +
+           '<label for="' + id + '" data-v="' + esc(value) + '">' +
              (dis && value === "manage" ? icon("lock") : "") + label +
            "</label>";
   }
@@ -922,7 +930,7 @@
         var lvl = r.areas[it.a] || "none";
         var on = lvl !== "none";
         var isLanding = on && it.a === landing && LANDING_LABEL[landing] === it.n;
-        return '<div class="navitem" data-on="' + on + '" data-landing="' + isLanding + '">' +
+        return '<div class="navitem" data-on="' + esc(on) + '" data-landing="' + esc(isLanding) + '">' +
           '<span class="dot"></span><span class="name">' + esc(it.n) + "</span>" +
           (on && lvl === "view" ? '<span class="badge">read only</span>' : "") +
           (isLanding ? '<span class="badge" style="color:var(--accent)">opens here</span>' : "") +
@@ -948,7 +956,7 @@
         "so they stay locked. Duplicate it to make a version you control.</div></div>";
     } else if (r.people > 0 && !draftIsNew) {
       html = '<div class="notice">' + icon("warn") +
-        "<div><strong>" + r.people + (r.people === 1 ? " person has" : " people have") +
+        "<div><strong>" + esc(r.people) + (r.people === 1 ? " person has" : " people have") +
         " this role.</strong> Saving changes what they can reach the next time they load a page.</div></div>";
     }
     $("#role-notice").innerHTML = html;
@@ -966,12 +974,12 @@
     $("#invite-grid").innerHTML = roles.map(function (r) {
       var g = grantedAreas(r).slice(0, 3).map(function (a) { return a.name; }).join(" · ");
       var extra = grantedAreas(r).length - 3;
-      return '<button class="invitecard" data-invite="' + r.id + '" aria-pressed="' + (inviteRole === r.id) + '">' +
+      return '<button class="invitecard" data-invite="' + esc(r.id) + '" aria-pressed="' + esc(inviteRole === r.id) + '">' +
         '<span class="glyph">' + icon(r.builtin ? "grid" : "users") + "</span>" +
         '<span class="invitecard__name">' + esc(r.name) + "</span>" +
         '<span class="invitecard__desc">' + esc(r.desc) + "</span>" +
         '<span class="invitecard__desc" style="color:var(--ink-faint)">' +
-          esc(g || "No areas") + (extra > 0 ? " +" + extra : "") + "</span>" +
+          esc(g || "No areas") + (extra > 0 ? " +" + esc(extra) : "") + "</span>" +
       "</button>";
     }).join("");
   }

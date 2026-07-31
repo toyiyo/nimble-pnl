@@ -216,13 +216,52 @@ function driftMinutes(actualIso: string, expectedIso: string) {
  * hoping a single release lands mid-render.
  */
 async function dragCardToCell(page: Page, card: Locator, targetCell: Locator) {
+  let lastBlocker = 'never measured';
+
   for (let attempt = 0; attempt < 3; attempt++) {
     await expect(card).toBeVisible({ timeout: 10000 });
-    const cardBox = await card.boundingBox();
-    if (!cardBox) throw new Error('draggable shift card has no bounding box');
-    // Upper-left of the card: clear of the top-right Edit/Delete hover icons.
-    const srcX = cardBox.x + cardBox.width * 0.35;
-    const srcY = cardBox.y + cardBox.height * 0.2;
+
+    // Scroll BOTH ends into view before measuring. Raw page.mouse events address viewport
+    // coordinates, so unlike locator.click() they get no actionability auto-scroll: a row or
+    // column sitting outside a 1280x720 CI viewport yields coordinates the pointer can never
+    // reach, and dnd-kit then reports isOver on nothing at all. Scroll the target first and
+    // the source second, so the source — the element we are about to hit-test — is the one
+    // whose position is settled last.
+    await targetCell.evaluate((el: Element) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+    const press = await card.evaluate((el: Element) => {
+      el.scrollIntoView({ block: 'center', inline: 'center' });
+      const rect = el.getBoundingClientRect();
+      if (!rect.width || !rect.height) {
+        return { point: null, blockedBy: 'nothing (card has no layout box yet)' };
+      }
+      // Upper-left candidates first: clear of the top-right Edit/Delete hover icons and of
+      // the corner-anchored FAB. Require the hit to be this card (or a descendant) — a
+      // looser check would happily accept a neighbouring card showing through and drag the
+      // wrong shift, which fails later as a confusing wrong-instant assertion.
+      const candidates = [
+        [0.35, 0.2], [0.5, 0.18], [0.3, 0.35], [0.2, 0.5], [0.5, 0.5],
+      ].map(([fx, fy]) => ({ x: rect.x + rect.width * fx, y: rect.y + rect.height * fy }));
+      for (const p of candidates) {
+        const hit = document.elementFromPoint(p.x, p.y);
+        if (hit && (el === hit || el.contains(hit))) return { point: p, blockedBy: null };
+      }
+      const top = document.elementFromPoint(candidates[0].x, candidates[0].y);
+      // Name WHAT is on top when this fails, so a blocked pointer is distinguishable from a
+      // slow one — that ambiguity is what makes these failures expensive to diagnose.
+      return {
+        point: null,
+        blockedBy: top
+          ? `<${top.tagName.toLowerCase()} class="${top.getAttribute('class') ?? ''}">`
+          : 'nothing (point is outside the viewport)',
+      };
+    });
+
+    if (!press.point) {
+      lastBlocker = press.blockedBy ?? 'unknown';
+      if (attempt < 2) await page.waitForTimeout(500);
+      continue;
+    }
+    const { x: srcX, y: srcY } = press.point;
 
     const targetBox = await targetCell.boundingBox();
     if (!targetBox) throw new Error('target cell has no bounding box');
@@ -253,7 +292,10 @@ async function dragCardToCell(page: Page, card: Locator, targetCell: Locator) {
     await page.mouse.up();
     if (attempt < 2) await page.waitForTimeout(500);
   }
-  throw new Error('drag never registered isOver on the target cell after 3 attempts');
+  throw new Error(
+    'drag never registered isOver on the target cell after 3 attempts. Last press-point ' +
+      `hit-test: ${lastBlocker}.`,
+  );
 }
 
 // ---------------------------------------------------------------------------

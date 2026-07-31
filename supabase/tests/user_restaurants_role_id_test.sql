@@ -32,7 +32,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(20);
+SELECT plan(23);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: one restaurant, one user per legacy role, one membership row per
@@ -220,6 +220,54 @@ SELECT has_index(
   'public', 'user_restaurants', 'idx_user_restaurants_user_restaurant_role_id',
   ARRAY['user_id', 'restaurant_id', 'role_id'],
   'composite index on (user_id, restaurant_id, role_id) exists'
+);
+
+-- ============================================================================
+-- 8. role_id is covered by the self-escalation guard, not just `role`.
+--
+--    user_has_capability() prefers role_id over the legacy role column, so a
+--    guard that constrains only `role` leaves role_id as a silent parallel
+--    channel to exactly the privileges it exists to deny: a staff member could
+--    set role_id to the Owner builtin, leave role = 'staff' (which satisfies
+--    the old allowlist), and the sync trigger would not intervene because
+--    `role` never changed. Closed by
+--    20260730180000_close_role_id_self_escalation.sql.
+--
+--    Run as the real `authenticated` role with JWT claims so RLS is actually
+--    enforced — as superuser these policies do not apply at all.
+-- ============================================================================
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"c0000000-0000-0000-0000-000000000005","role":"authenticated"}';
+
+SELECT throws_ok(
+  $$ UPDATE public.user_restaurants
+     SET role_id = 'b0000000-0000-0000-0000-000000000001'
+     WHERE user_id = 'c0000000-0000-0000-0000-000000000005'
+       AND restaurant_id = 'c0000000-0000-0000-0000-0000000000f1' $$,
+  '42501',
+  NULL,
+  'a staff member cannot escalate by writing role_id alone (leaving role = staff)'
+);
+
+-- Positive control: the guard is not a blanket denial — the staff member may
+-- still land on the role_id that agrees with the role they already hold.
+SELECT lives_ok(
+  $$ UPDATE public.user_restaurants
+     SET role_id = 'b0000000-0000-0000-0000-000000000005'
+     WHERE user_id = 'c0000000-0000-0000-0000-000000000005'
+       AND restaurant_id = 'c0000000-0000-0000-0000-0000000000f1' $$,
+  'a staff member may set role_id to the staff builtin (guard is not a blanket denial)'
+);
+
+RESET ROLE;
+RESET request.jwt.claims;
+
+SELECT is(
+  (SELECT role_id FROM public.user_restaurants
+   WHERE user_id = 'c0000000-0000-0000-0000-000000000005'
+     AND restaurant_id = 'c0000000-0000-0000-0000-0000000000f1'),
+  'b0000000-0000-0000-0000-000000000005'::uuid,
+  'the rejected escalation left no trace — role_id is the staff builtin, not owner'
 );
 
 SELECT * FROM finish();

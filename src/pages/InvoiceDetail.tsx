@@ -38,8 +38,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { formatCurrency } from "@/lib/utils";
 import { formatDateOnly } from "@/lib/dateOnly";
+import { useRestaurantClock } from "@/hooks/useRestaurantClock";
 import { useToast } from "@/hooks/use-toast";
-import { format } from "date-fns";
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 
@@ -58,6 +58,7 @@ export default function InvoiceDetail() {
   const { sendInvoiceAsync, syncInvoiceStatusAsync, isSending, isSyncingStatus } = useInvoices(selectedRestaurant?.restaurant_id || null);
   const { data: invoice, isLoading, error } = useInvoice(id || null);
   const { isReadyForInvoicing } = useStripeConnect(selectedRestaurant?.restaurant_id || null);
+  const { formatInstant } = useRestaurantClock();
   const { toast } = useToast();
   const [showPreview, setShowPreview] = useState(false);
 
@@ -224,7 +225,7 @@ export default function InvoiceDetail() {
                 {statusInfo.label}
               </Badge>
               <span className="text-sm text-muted-foreground">
-                Created {format(new Date(invoice.created_at), 'MMM d, yyyy')}
+                Created {formatInstant(invoice.created_at, 'MMM d, yyyy')}
               </span>
               {process.env.NODE_ENV === 'development' && (
                 <span className="text-xs text-muted-foreground">
@@ -522,7 +523,7 @@ export default function InvoiceDetail() {
               {invoice.paid_at && (
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Paid Date</span>
-                  <span>{format(new Date(invoice.paid_at), 'MMM d, yyyy')}</span>
+                  <span>{formatInstant(invoice.paid_at, 'MMM d, yyyy')}</span>
                 </div>
               )}
             </CardContent>

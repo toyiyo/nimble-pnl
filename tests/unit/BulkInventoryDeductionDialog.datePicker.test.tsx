@@ -38,6 +38,23 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     vi.clearAllMocks();
   });
 
+  /**
+   * Look up a day cell by its number within the displayed month.
+   *
+   * react-day-picker pads the first and last week of the grid with days from
+   * the neighbouring months, so a bare day number can match twice — in an
+   * August grid, "5" matches both Aug 5 and the trailing Sep 5. Those filler
+   * cells carry shadcn's `day-outside` class; skipping them keeps these
+   * queries unambiguous whatever month the suite happens to run in.
+   */
+  function getDayCell(grid: HTMLElement, day: string): HTMLElement {
+    const cells = within(grid)
+      .getAllByRole('gridcell', { name: day })
+      .filter((cell) => !cell.classList.contains('day-outside'));
+    expect(cells).toHaveLength(1);
+    return cells[0];
+  }
+
   /** Open the outer Dialog by clicking the trigger button. */
   async function openDialog(user: ReturnType<typeof userEvent.setup>) {
     // The outer dialog trigger shows "Bulk Process Sales" (hidden sm:inline)
@@ -76,7 +93,7 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     const startTrigger = screen.getByRole('button', { name: /select start date/i });
     await user.click(startTrigger);
     const grid = await screen.findByRole('grid');
-    await user.click(within(grid).getByRole('gridcell', { name: '10' }));
+    await user.click(getDayCell(grid, '10'));
 
     // After migration: controlled DatePicker closes on a real pick.
     expect(startTrigger).toHaveAttribute('aria-expanded', 'false');
@@ -90,7 +107,7 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     const endTrigger = screen.getByRole('button', { name: /select end date/i });
     await user.click(endTrigger);
     const grid = await screen.findByRole('grid');
-    await user.click(within(grid).getByRole('gridcell', { name: '20' }));
+    await user.click(getDayCell(grid, '20'));
 
     // After migration: controlled DatePicker closes on a real pick.
     expect(endTrigger).toHaveAttribute('aria-expanded', 'false');
@@ -105,7 +122,7 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     const startTrigger = screen.getByRole('button', { name: /select start date/i });
     await user.click(startTrigger);
     let grid = await screen.findByRole('grid');
-    await user.click(within(grid).getByRole('gridcell', { name: '15' }));
+    await user.click(getDayCell(grid, '15'));
     // Start picker closes after selection.
     expect(startTrigger).toHaveAttribute('aria-expanded', 'false');
 
@@ -117,11 +134,11 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     // Day 5 is before the start (day 15) → it must be disabled.
     // react-day-picker renders each day as a <button role="gridcell">;
     // disabled days carry the HTML `disabled` attribute directly on the button.
-    const day5Cell = within(grid).getByRole('gridcell', { name: '5' });
+    const day5Cell = getDayCell(grid, '5');
     expect(day5Cell).toBeDisabled();
 
     // Day 20 is after the start (day 15) → it must NOT be disabled.
-    const day20Cell = within(grid).getByRole('gridcell', { name: '20' });
+    const day20Cell = getDayCell(grid, '20');
     expect(day20Cell).not.toBeDisabled();
   });
 });

@@ -6,7 +6,7 @@
  */
 import { toZonedTime } from 'date-fns-tz';
 
-import { addDaysToDateStr, isValidTimezone, parseWallClock } from '@/lib/restaurantClock';
+import { addDaysToDateStr, daysBetweenDateStrs, isValidTimezone, parseWallClock } from '@/lib/restaurantClock';
 
 export interface DurationWarning {
   code: 'TOO_SHORT' | 'MAX_ENDURANCE';
@@ -37,19 +37,59 @@ export class ShiftInterval {
    * Automatically detects midnight crossing (endTime < startTime).
    */
   static create(businessDate: string, startTime: string, endTime: string, tz: string): ShiftInterval {
-    const startAt = wallClockToInstant(businessDate, startTime, tz);
+    // `endTime < startTime` is an INFERENCE, and it can only ever infer an
+    // offset of 0 or 1 — it is the right default for a form that collects a
+    // single date plus two clocks, and wrong for any caller that already
+    // knows the real offset. Those callers use `createSpanning` instead.
+    return ShiftInterval.createSpanning(
+      businessDate,
+      startTime,
+      endTime,
+      endTime < startTime ? 1 : 0,
+      tz,
+    );
+  }
 
-    let endAt: Date;
-    if (endTime < startTime) {
-      // Midnight crossing — end falls on the next calendar day. Roll the
-      // date with UTC field arithmetic (never `setDate` on a host-local
-      // `Date`, which would drift under a host TZ offset from UTC), then
-      // resolve the rolled date's wall clock in `tz`.
-      const nextDateStr = addDaysToDateStr(businessDate, 1);
-      endAt = wallClockToInstant(nextDateStr, endTime, tz);
-    } else {
-      endAt = wallClockToInstant(businessDate, endTime, tz);
+  /**
+   * Create from a business date, HH:MM start/end times, and an EXPLICIT
+   * end-day offset in whole calendar days, all resolved against `tz`.
+   *
+   * `create`'s `endTime < startTime` heuristic can only distinguish
+   * "same day" from "next day", so it silently collapses any shift whose end
+   * lands two or more days out, and — worse — collapses a shift ending on a
+   * later day at an equal-or-later wall clock (Mon 09:00 -> Tue 17:00 reads
+   * as 09:00 -> 17:00, 8h instead of 32h; Mon 09:00 -> Tue 09:00 reads as a
+   * zero-length interval and throws). Those shifts are creatable: ShiftDialog
+   * collects the start date and end date independently and only rejects
+   * `end <= start`, and a >16h duration is a warning here, never a rejection.
+   *
+   * So every caller that REPROJECTS an existing shift onto a new date — drag
+   * copy, copy week, recurring children — must pass the offset it read off
+   * the source instead of letting it be re-inferred from the clocks. Derive
+   * it with `localDayOffsetInTz`.
+   *
+   * Both endpoints are still resolved independently through
+   * `wallClockToInstant`, so the DST behaviour is unchanged: a reprojected
+   * shift keeps its wall clocks and its calendar span, and its elapsed
+   * duration is whatever those imply on the target dates.
+   */
+  static createSpanning(
+    businessDate: string,
+    startTime: string,
+    endTime: string,
+    endDayOffset: number,
+    tz: string,
+  ): ShiftInterval {
+    if (!Number.isInteger(endDayOffset) || endDayOffset < 0) {
+      throw new TypeError('INVALID_DATE');
     }
+
+    const startAt = wallClockToInstant(businessDate, startTime, tz);
+    // Roll the end date with UTC field arithmetic (never `setDate` on a
+    // host-local `Date`, which would drift under a host TZ offset from UTC),
+    // then resolve the rolled date's wall clock in `tz`.
+    const endDateStr = endDayOffset === 0 ? businessDate : addDaysToDateStr(businessDate, endDayOffset);
+    const endAt = wallClockToInstant(endDateStr, endTime, tz);
 
     return ShiftInterval.validateAndConstruct(startAt, endAt, businessDate);
   }
@@ -193,6 +233,22 @@ export function formatLocalTimeInTz(isoString: string, tz: string): string {
  */
 export function formatLocalHHMMInTz(isoString: string, tz: string): string {
   return formatLocalTimeInTz(isoString, tz).slice(0, 5);
+}
+
+/**
+ * Whole calendar days between two instants, measured on the RESTAURANT's
+ * calendar (`tz`), not the viewer's. The third thing a reprojection must
+ * carry, alongside the two wall clocks: `formatLocalHHMMInTz` throws away
+ * which day each endpoint falls on, and for any shift longer than an
+ * overnight that information is not recoverable from the clocks alone.
+ *
+ * Feed the result to `ShiftInterval.createSpanning` as `endDayOffset`.
+ */
+export function localDayOffsetInTz(startIso: string, endIso: string, tz: string): number {
+  return daysBetweenDateStrs(
+    formatLocalDateInTz(new Date(startIso), tz),
+    formatLocalDateInTz(new Date(endIso), tz),
+  );
 }
 
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;

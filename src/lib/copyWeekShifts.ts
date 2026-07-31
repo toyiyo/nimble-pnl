@@ -1,4 +1,4 @@
-import { addDaysToDateStr } from '@/lib/restaurantClock';
+import { addDaysToDateStr, daysBetweenDateStrs } from '@/lib/restaurantClock';
 import {
   formatLocalDate,
   formatLocalDateInTz,
@@ -19,13 +19,6 @@ export interface BulkShiftInsert {
   status: 'scheduled';
   is_published: boolean;
   locked: boolean;
-}
-
-/** Whole calendar days from `fromStr` to `toStr` (both `YYYY-MM-DD`), via UTC field math. */
-function daysBetweenDateStrs(fromStr: string, toStr: string): number {
-  const [fy, fm, fd] = fromStr.split('-').map(Number);
-  const [ty, tm, td] = toStr.split('-').map(Number);
-  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / (24 * 60 * 60 * 1000));
 }
 
 /**

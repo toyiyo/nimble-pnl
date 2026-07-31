@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 
 import {
   DEFAULT_TIMEZONE,
+  addDaysToDateStr,
   businessDaysBetween,
+  daysBetweenDateStrs,
   formatInstant,
   parseWallClock,
   safeTz,
@@ -179,6 +181,30 @@ describe('parseWallClock at DST edges (Postgres parity)', () => {
 
   it('resolves an unambiguous Sydney wall clock without touching the standard-offset fallback', () => {
     expect(parseWallClock('2026-06-15T10:00', SYD)).toBe('2026-06-15T00:00:00.000Z');
+  });
+});
+
+describe('daysBetweenDateStrs', () => {
+  it('is the inverse of addDaysToDateStr', () => {
+    expect(daysBetweenDateStrs('2026-03-01', addDaysToDateStr('2026-03-01', 5))).toBe(5);
+    expect(daysBetweenDateStrs('2026-03-01', addDaysToDateStr('2026-03-01', 0))).toBe(0);
+  });
+
+  it('counts calendar days across a DST transition, not 24h blocks', () => {
+    // 2026-03-07 -> 2026-03-09 spans Chicago's spring-forward, so the elapsed
+    // time is 47h. This is calendar arithmetic on date strings, though — no
+    // instants, no zone — so the answer is 2, not 1.
+    expect(daysBetweenDateStrs('2026-03-07', '2026-03-09')).toBe(2);
+  });
+
+  it('counts across a month and a year boundary', () => {
+    expect(daysBetweenDateStrs('2026-01-31', '2026-02-01')).toBe(1);
+    expect(daysBetweenDateStrs('2026-12-31', '2027-01-01')).toBe(1);
+    expect(daysBetweenDateStrs('2024-02-28', '2024-03-01')).toBe(2); // leap year
+  });
+
+  it('returns a negative count when the range is inverted', () => {
+    expect(daysBetweenDateStrs('2026-03-05', '2026-03-01')).toBe(-4);
   });
 });
 

@@ -127,6 +127,59 @@ describe('buildCopyPayload', () => {
     expect(payload.end_time).toBe('2026-04-07T11:00:00.000Z');
   });
 
+  it('preserves a multi-day span — a Mon 09:00 -> Tue 17:00 source keeps its extra calendar day', () => {
+    // ShiftDialog exposes INDEPENDENT start-date and end-date fields and only
+    // rejects `end <= start`, so a shift whose end lands on a later calendar
+    // day while its end clock is >= its start clock is representable and
+    // creatable (>16h is a duration *warning*, never a rejection). Rebuilding
+    // the copy from the two `HH:MM` values alone silently collapses it to a
+    // single day, because the only multi-day signal `ShiftInterval.create`
+    // has is the `endTime < startTime` overnight heuristic — which 17:00 vs
+    // 09:00 does not trip.
+    const source = {
+      ...baseShift,
+      start_time: '2026-03-23T09:00:00.000Z', // Mon 09:00 UTC
+      end_time: '2026-03-24T17:00:00.000Z', // Tue 17:00 UTC — 32h
+    };
+    const payload = buildCopyPayload(source, '2026-03-25', UTC); // drop on Wed
+    expect(payload.start_time).toBe('2026-03-25T09:00:00.000Z'); // Wed 09:00
+    // Thu 17:00, not Wed 17:00. A HH:MM-only reconstruction yields
+    // 2026-03-25T17:00:00.000Z and turns a 32h shift into an 8h one.
+    expect(payload.end_time).toBe('2026-03-26T17:00:00.000Z');
+  });
+
+  it('preserves an exact 24h span rather than throwing INVALID_DURATION', () => {
+    // Equal start/end wall clocks are not an overnight crossing by the
+    // `endTime < startTime` test, so a HH:MM-only reconstruction resolves
+    // both onto the same day, computes a zero duration, and throws.
+    const source = {
+      ...baseShift,
+      start_time: '2026-03-23T09:00:00.000Z', // Mon 09:00 UTC
+      end_time: '2026-03-24T09:00:00.000Z', // Tue 09:00 UTC — exactly 24h
+    };
+    const payload = buildCopyPayload(source, '2026-03-25', UTC);
+    expect(payload.start_time).toBe('2026-03-25T09:00:00.000Z');
+    expect(payload.end_time).toBe('2026-03-26T09:00:00.000Z');
+  });
+
+  it('carries a multi-day span across a DST transition using each endpoint\'s own wall clock', () => {
+    // Chicago source: Fri 22:00 -> Sun 06:00 (a 2-day offset), copied onto a
+    // target Friday whose span straddles the 2026-11-01 fall-back. The span
+    // must stay 2 calendar days at the same wall clocks; the elapsed
+    // duration legitimately grows by an hour because the target span gains
+    // the repeated hour.
+    const chicagoTz = 'America/Chicago';
+    const source = {
+      ...baseShift,
+      start_time: '2026-07-11T03:00:00.000Z', // Fri 2026-07-10 22:00 CDT
+      end_time: '2026-07-12T11:00:00.000Z', // Sun 2026-07-12 06:00 CDT
+    };
+    const payload = buildCopyPayload(source, '2026-10-30', chicagoTz);
+    expect(payload.start_time).toBe('2026-10-31T03:00:00.000Z'); // Fri 22:00 CDT
+    // Sun 2026-11-01 06:00 is CST (UTC-6), after the 02:00 fall-back.
+    expect(payload.end_time).toBe('2026-11-01T12:00:00.000Z');
+  });
+
   it('throws on an invalid/empty timezone rather than silently falling back', () => {
     expect(() => buildCopyPayload(baseShift, '2026-03-26', '')).toThrow();
     expect(() => buildCopyPayload(baseShift, '2026-03-26', 'Not/AZone')).toThrow();

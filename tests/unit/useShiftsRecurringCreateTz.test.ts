@@ -196,6 +196,112 @@ describe('useCreateShift — recurring children anchor to the restaurant timezon
     });
   });
 
+  it('preserves a parent whose end lands on a later calendar day at an equal-or-later wall clock', async () => {
+    // ShiftDialog's independent start-date/end-date fields make a
+    // Mon 09:00 -> Tue 17:00 parent (32h) representable — it is only
+    // rejected when `end <= start`, and >16h is a duration *warning*, not a
+    // rejection. Rebuilding each child from the two `HH:MM` values alone
+    // collapses every child to a same-day 09:00->17:00 8h shift, because
+    // `endTime < startTime` is the only multi-day signal that reconstruction
+    // has and 17:00 vs 09:00 does not trip it. Each child must instead carry
+    // the parent's restaurant-local end-day offset.
+    process.env.TZ = 'America/Phoenix';
+
+    const insertCalls: unknown[] = [];
+    setupSupabaseMock(insertCalls);
+
+    const { result } = renderHook(() => useCreateShift({ tz: 'America/Chicago' }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      result.current.mutate({
+        restaurant_id: 'rest-1',
+        employee_id: 'emp-1',
+        // 09:00 CDT Mon 2026-06-01 -> 14:00Z.
+        start_time: '2026-06-01T14:00:00.000Z',
+        // 17:00 CDT Tue 2026-06-02 -> 22:00Z. End day offset is +1.
+        end_time: '2026-06-02T22:00:00.000Z',
+        break_duration: 30,
+        position: 'Server',
+        status: 'scheduled',
+        notes: null,
+        is_recurring: true,
+        is_published: false,
+        locked: false,
+        recurrence_pattern: { type: 'daily', interval: 1, endType: 'after', occurrences: 3 },
+        recurrence_parent_id: null,
+      } as never);
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const childInsertCall = insertCalls.find((c) => Array.isArray(c)) as
+      | Array<{ start_time: string; end_time: string }>
+      | undefined;
+    expect(childInsertCall, 'expected a children insert() call').toBeTruthy();
+    expect(childInsertCall).toHaveLength(2);
+
+    const expectedStarts = ['2026-06-02T14:00:00.000Z', '2026-06-03T14:00:00.000Z']; // 09:00 CDT
+    // 17:00 CDT the FOLLOWING day. A HH:MM-only reconstruction would produce
+    // 2026-06-02T22:00:00.000Z / 2026-06-03T22:00:00.000Z — same-day 17:00,
+    // an 8h shift instead of a 32h one.
+    const expectedEnds = ['2026-06-03T22:00:00.000Z', '2026-06-04T22:00:00.000Z'];
+    childInsertCall!.forEach((child, i) => {
+      expect(new Date(child.start_time).toISOString(), `child ${i} start_time`).toBe(expectedStarts[i]);
+      expect(new Date(child.end_time).toISOString(), `child ${i} end_time`).toBe(expectedEnds[i]);
+    });
+  });
+
+  it('does not insert the parent when a child interval is unbuildable — no partial series', async () => {
+    // Children are derived from the parent's own wall clock, so a
+    // reconstruction defect surfaces as a throw. If that throw happens after
+    // the parent INSERT has already landed, the caller sees a failed mutation
+    // while the database keeps an orphan parent — the series is half-written
+    // and the UI reports nothing was created. Building every child payload
+    // before touching the database makes the whole create all-or-nothing.
+    process.env.TZ = 'America/Phoenix';
+
+    const insertCalls: unknown[] = [];
+    setupSupabaseMock(insertCalls);
+
+    const { result } = renderHook(() => useCreateShift({ tz: 'America/Chicago' }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      result.current.mutate({
+        restaurant_id: 'rest-1',
+        employee_id: 'emp-1',
+        // Exactly 24h: 09:00 CDT Mon -> 09:00 CDT Tue. Equal wall clocks are
+        // not an overnight crossing by the `endTime < startTime` test, so a
+        // HH:MM-only reconstruction resolves both onto the same day and
+        // throws INVALID_DURATION on a zero-length interval.
+        start_time: '2026-06-01T14:00:00.000Z',
+        end_time: '2026-06-02T14:00:00.000Z',
+        break_duration: 30,
+        position: 'Server',
+        status: 'scheduled',
+        notes: null,
+        is_recurring: true,
+        is_published: false,
+        locked: false,
+        recurrence_pattern: { type: 'daily', interval: 1, endType: 'after', occurrences: 3 },
+        recurrence_parent_id: null,
+      } as never);
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    // The 24h span is legitimate and must round-trip, not throw.
+    const childInsertCall = insertCalls.find((c) => Array.isArray(c)) as
+      | Array<{ start_time: string; end_time: string }>
+      | undefined;
+    expect(childInsertCall, 'expected a children insert() call').toBeTruthy();
+    expect(new Date(childInsertCall![0].start_time).toISOString()).toBe('2026-06-02T14:00:00.000Z');
+    expect(new Date(childInsertCall![0].end_time).toISOString()).toBe('2026-06-03T14:00:00.000Z');
+  });
+
   it('throws INVALID_DATE synchronously up front when tz is missing for a recurring create', async () => {
     const insertCalls: unknown[] = [];
     setupSupabaseMock(insertCalls);

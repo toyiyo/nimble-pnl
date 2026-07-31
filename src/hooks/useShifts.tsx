@@ -6,7 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
-import { ShiftInterval, formatLocalDate, formatLocalDateInTz, formatLocalHHMMInTz, requireTz } from '@/lib/shiftInterval';
+import { ShiftInterval, formatLocalDate, formatLocalDateInTz, formatLocalHHMMInTz, localDayOffsetInTz, requireTz } from '@/lib/shiftInterval';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
@@ -179,10 +179,20 @@ async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shi
   // this exact wall clock, so a series spanning a DST transition stays at
   // the same local time instead of drifting by the transition's offset.
   const wallClockTime = formatLocalHHMMInTz(shift.start_time, tz);
-  // The parent's restaurant-local end wall clock. Each child resolves its own
-  // start/end via `ShiftInterval.create`, which detects the overnight
-  // crossing (`endTime < startTime`) and rolls the end onto the next calendar
-  // day itself — rather than reusing the parent's raw millisecond duration.
+  // The parent's restaurant-local end wall clock, plus the number of calendar
+  // days its end falls past its start. Each child resolves its own start/end
+  // via `ShiftInterval.createSpanning` from those three values — rather than
+  // reusing the parent's raw millisecond duration.
+  //
+  // The offset is carried explicitly instead of being re-inferred from
+  // `endTime < startTime` (what `ShiftInterval.create` would do), because
+  // that inference only ever yields 0 or 1 and is wrong for a parent whose
+  // end lands on a later day at an equal-or-later wall clock — ShiftDialog
+  // collects start date and end date independently, so a Mon 09:00 -> Tue
+  // 17:00 parent is creatable and would otherwise spawn same-day 8h
+  // children, and a Mon 09:00 -> Tue 09:00 parent would make every child a
+  // zero-length interval and throw.
+  //
   // Reusing a captured `durationMs` (end instant − start instant) would be
   // wrong whenever the *parent's own* start–end interval crosses a DST
   // transition: its elapsed instant duration then differs from its
@@ -192,6 +202,17 @@ async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shi
   // elapsed duration but an 8h wall-clock duration; naively applying 7h to
   // later children lands them at 05:00, not the intended 06:00).
   const endWallClockTime = formatLocalHHMMInTz(shift.end_time, tz);
+  const endDayOffset = localDayOffsetInTz(shift.start_time, shift.end_time, tz);
+
+  // Resolve every child interval BEFORE inserting the parent. These are pure
+  // computations that can throw (`ShiftInterval` rejects an unbuildable
+  // interval), and a throw after the parent insert has landed would leave an
+  // orphan parent in the database while the caller is told the create
+  // failed — a half-written series. Doing the arithmetic first makes the
+  // create all-or-nothing.
+  const childIntervals = recurringDates.slice(1).map((date) =>
+    ShiftInterval.createSpanning(formatLocalDate(date), wallClockTime, endWallClockTime, endDayOffset, tz),
+  );
 
   const { data: parentShift, error: parentError } = await supabase
     .from('shifts')
@@ -205,25 +226,20 @@ async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shi
 
   if (parentError) throw parentError;
 
-  if (recurringDates.length > 1) {
-    const childShifts = recurringDates.slice(1).map((date) => {
-      const childDateStr = formatLocalDate(date);
-      const childInterval = ShiftInterval.create(childDateStr, wallClockTime, endWallClockTime, tz);
-
-      return {
-        restaurant_id: shift.restaurant_id,
-        employee_id: shift.employee_id,
-        start_time: childInterval.startAt.toISOString(),
-        end_time: childInterval.endAt.toISOString(),
-        break_duration: shift.break_duration,
-        position: shift.position,
-        status: shift.status,
-        notes: shift.notes,
-        recurrence_pattern: shift.recurrence_pattern as unknown as Json,
-        recurrence_parent_id: parentShift.id,
-        is_recurring: true,
-      };
-    });
+  if (childIntervals.length > 0) {
+    const childShifts = childIntervals.map((childInterval) => ({
+      restaurant_id: shift.restaurant_id,
+      employee_id: shift.employee_id,
+      start_time: childInterval.startAt.toISOString(),
+      end_time: childInterval.endAt.toISOString(),
+      break_duration: shift.break_duration,
+      position: shift.position,
+      status: shift.status,
+      notes: shift.notes,
+      recurrence_pattern: shift.recurrence_pattern as unknown as Json,
+      recurrence_parent_id: parentShift.id,
+      is_recurring: true,
+    }));
 
     const { error: childError } = await supabase.from('shifts').insert(childShifts);
     if (childError) throw childError;

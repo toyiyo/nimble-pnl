@@ -4,7 +4,7 @@ import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 
 import { useCreateShift } from '@/hooks/useShifts';
 import { checkConflictsImperative } from '@/hooks/useConflictDetection';
-import { ShiftInterval, formatLocalDateInTz, formatLocalHHMMInTz } from '@/lib/shiftInterval';
+import { ShiftInterval, formatLocalDateInTz, formatLocalHHMMInTz, localDayOffsetInTz } from '@/lib/shiftInterval';
 import type { Shift } from '@/types/scheduling';
 import type { ConflictDialogData } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 
@@ -43,12 +43,15 @@ type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
  * correctly, mirrors `copyWeekShifts.ts::reprojectOntoTargetWeek`):
  *   1. Read the source shift's RESTAURANT-LOCAL wall-clock start and end
  *      times.
- *   2. Resolve the new start/end from targetDay + those wall-clock times via
- *      `ShiftInterval.create`, the same primitive every other creation path
- *      in this codebase uses — it already detects the overnight crossing
- *      (`endTime < startTime`) and applies the same Postgres-parity DST
- *      logic the server uses, so this call site doesn't re-derive that
- *      logic independently.
+ *   2. Read the source's restaurant-local end-day OFFSET — the number of
+ *      calendar days its end falls past its start. The two wall clocks alone
+ *      cannot express this: `ShiftInterval.create` would re-infer it from
+ *      `endTime < startTime`, which only ever yields 0 or 1 and reads a
+ *      Mon 09:00 -> Tue 17:00 shift as a same-day 8h one.
+ *   3. Resolve the new start/end from targetDay + those wall clocks + that
+ *      offset via `ShiftInterval.createSpanning`, which applies the same
+ *      Postgres-parity DST logic the server uses, so this call site doesn't
+ *      re-derive that logic independently.
  *
  * An earlier version derived the new end as `newStart + durationMs`, reusing
  * the source shift's raw elapsed-instant duration. That is wrong whenever
@@ -71,8 +74,9 @@ type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
 export function buildCopyPayload(shift: Shift, targetDay: string, tz: string, targetEmployeeId?: string): ShiftInput {
   const wallClockStart = formatLocalHHMMInTz(shift.start_time, tz);
   const wallClockEnd = formatLocalHHMMInTz(shift.end_time, tz);
+  const endDayOffset = localDayOffsetInTz(shift.start_time, shift.end_time, tz);
 
-  const interval = ShiftInterval.create(targetDay, wallClockStart, wallClockEnd, tz);
+  const interval = ShiftInterval.createSpanning(targetDay, wallClockStart, wallClockEnd, endDayOffset, tz);
 
   return {
     restaurant_id: shift.restaurant_id,

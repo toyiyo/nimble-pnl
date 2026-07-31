@@ -165,6 +165,23 @@ export function addDaysToDateStr(dateStr: string, days: number): string {
   return formatInTimeZone(rolled, 'UTC', 'yyyy-MM-dd');
 }
 
+/**
+ * Whole calendar days from `fromStr` to `toStr` (both `YYYY-MM-DD`). The
+ * inverse of `addDaysToDateStr`, and zone-independent for the same reason:
+ * both operands are calendar dates, not instants, so no DST is crossed.
+ *
+ * Pairs with `addDaysToDateStr` to move a *day offset* between two calendar
+ * dates -- the signal that survives reconstructing a shift from wall clocks
+ * alone. Callers that reproject a shift onto a new date (drag-copy, copy
+ * week, recurring children) must carry this offset explicitly; without it a
+ * span longer than one calendar day silently collapses.
+ */
+export function daysBetweenDateStrs(fromStr: string, toStr: string): number {
+  const [fy, fm, fd] = fromStr.split('-').map(Number);
+  const [ty, tm, td] = toStr.split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / (24 * 60 * 60 * 1000));
+}
+
 /** Render an instant for a `<input type="datetime-local">` in the restaurant's zone. */
 export function toWallClockInput(value: string | Date, tz: string): string {
   return formatInTimeZone(asInstant(value, 'toWallClockInput'), safeTz(tz), "yyyy-MM-dd'T'HH:mm");

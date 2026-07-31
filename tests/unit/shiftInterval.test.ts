@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { ShiftInterval, formatDayLabel, formatLocalDate, wallClockToInstant } from '@/lib/shiftInterval';
+import { ShiftInterval, formatDayLabel, formatLocalDate, localDayOffsetInTz, wallClockToInstant } from '@/lib/shiftInterval';
 
 // ---------------------------------------------------------------------------
 // ShiftInterval.create
@@ -53,6 +53,108 @@ describe('ShiftInterval.create', () => {
       expect(si.endAt).toEqual(new Date('2027-01-01T03:00:00Z'));
       expect(si.durationInHours).toBe(7);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ShiftInterval.createSpanning — explicit end-day offset
+// ---------------------------------------------------------------------------
+describe('ShiftInterval.createSpanning', () => {
+  it('matches create() for the two offsets create() can infer', () => {
+    // Offset 0 is a plain same-day shift; offset 1 with `endTime < startTime`
+    // is the overnight crossing. These are exactly the cases `create`'s
+    // heuristic gets right, so the two factories must agree on them.
+    expect(ShiftInterval.createSpanning('2026-03-01', '09:00', '17:00', 0, 'UTC')).toEqual(
+      ShiftInterval.create('2026-03-01', '09:00', '17:00', 'UTC'),
+    );
+    expect(ShiftInterval.createSpanning('2026-03-01', '22:00', '02:00', 1, 'UTC')).toEqual(
+      ShiftInterval.create('2026-03-01', '22:00', '02:00', 'UTC'),
+    );
+  });
+
+  it('expresses a next-day end at a LATER wall clock, which create() cannot', () => {
+    // 09:00 -> 17:00 the following day: 32h. `create` reads the same two
+    // clocks as a same-day 8h shift because 17:00 is not < 09:00.
+    const si = ShiftInterval.createSpanning('2026-03-01', '09:00', '17:00', 1, 'UTC');
+    expect(si.startAt.toISOString()).toBe('2026-03-01T09:00:00.000Z');
+    expect(si.endAt.toISOString()).toBe('2026-03-02T17:00:00.000Z');
+    expect(si.durationInHours).toBe(32);
+  });
+
+  it('expresses an exact 24h span, which create() rejects as zero-length', () => {
+    expect(() => ShiftInterval.create('2026-03-01', '09:00', '09:00', 'UTC')).toThrow('INVALID_DURATION');
+    const si = ShiftInterval.createSpanning('2026-03-01', '09:00', '09:00', 1, 'UTC');
+    expect(si.durationInHours).toBe(24);
+  });
+
+  it('spans more than one calendar day', () => {
+    const si = ShiftInterval.createSpanning('2026-03-01', '22:00', '06:00', 3, 'UTC');
+    expect(si.endAt.toISOString()).toBe('2026-03-04T06:00:00.000Z');
+  });
+
+  it('rolls the end date across a month boundary', () => {
+    const si = ShiftInterval.createSpanning('2026-01-31', '20:00', '04:00', 1, 'UTC');
+    expect(si.endAt.toISOString()).toBe('2026-02-01T04:00:00.000Z');
+  });
+
+  it('resolves both endpoints independently across a DST transition', () => {
+    // 22:00 Chicago on 2026-11-01 is CST (UTC-6, after the 02:00 fall-back);
+    // 22:00 on 2026-10-31 is CDT (UTC-5). Each endpoint takes the offset in
+    // force on its own date, so the elapsed duration is 25h for a 24h span.
+    const si = ShiftInterval.createSpanning('2026-10-31', '22:00', '22:00', 1, 'America/Chicago');
+    expect(si.startAt.toISOString()).toBe('2026-11-01T03:00:00.000Z'); // 22:00 CDT
+    expect(si.endAt.toISOString()).toBe('2026-11-02T04:00:00.000Z'); // 22:00 CST
+    expect(si.durationInHours).toBe(25);
+  });
+
+  it('rejects a negative or non-integer offset rather than silently rounding', () => {
+    expect(() => ShiftInterval.createSpanning('2026-03-01', '09:00', '17:00', -1, 'UTC')).toThrow('INVALID_DATE');
+    expect(() => ShiftInterval.createSpanning('2026-03-01', '09:00', '17:00', 1.5, 'UTC')).toThrow('INVALID_DATE');
+    expect(() => ShiftInterval.createSpanning('2026-03-01', '09:00', '17:00', NaN, 'UTC')).toThrow('INVALID_DATE');
+  });
+
+  it('still enforces the shared validation contract', () => {
+    expect(() => ShiftInterval.createSpanning('not-a-date', '09:00', '17:00', 0, 'UTC')).toThrow('INVALID_DATE');
+    expect(() => ShiftInterval.createSpanning('2026-03-01', '09:00', '17:00', 0, '')).toThrow('INVALID_DATE');
+    // Offset 0 with an end clock before the start clock is a backwards
+    // interval — the caller asserted same-day, so this is not an overnight.
+    expect(() => ShiftInterval.createSpanning('2026-03-01', '17:00', '09:00', 0, 'UTC')).toThrow('INVALID_DURATION');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// localDayOffsetInTz
+// ---------------------------------------------------------------------------
+describe('localDayOffsetInTz', () => {
+  it('returns 0 for a same-day shift and 1 for an overnight', () => {
+    expect(localDayOffsetInTz('2026-03-01T09:00:00Z', '2026-03-01T17:00:00Z', 'UTC')).toBe(0);
+    expect(localDayOffsetInTz('2026-03-01T22:00:00Z', '2026-03-02T02:00:00Z', 'UTC')).toBe(1);
+  });
+
+  it('measures on the RESTAURANT calendar, not UTC', () => {
+    // 2026-03-02T02:00Z is still 20:00 on 03-01 in Chicago, so a shift from
+    // 18:00 to 20:00 Chicago spans zero local days even though its two
+    // instants fall on different UTC dates.
+    expect(localDayOffsetInTz('2026-03-02T00:00:00Z', '2026-03-02T02:00:00Z', 'America/Chicago')).toBe(0);
+  });
+
+  it('reports a multi-day offset', () => {
+    expect(localDayOffsetInTz('2026-03-01T09:00:00Z', '2026-03-04T09:00:00Z', 'UTC')).toBe(3);
+  });
+
+  it('round-trips through createSpanning to preserve an arbitrary span', () => {
+    const startIso = '2026-06-01T14:00:00.000Z'; // 09:00 CDT Mon
+    const endIso = '2026-06-02T22:00:00.000Z'; // 17:00 CDT Tue
+    const tz = 'America/Chicago';
+    const si = ShiftInterval.createSpanning(
+      '2026-06-08',
+      '09:00',
+      '17:00',
+      localDayOffsetInTz(startIso, endIso, tz),
+      tz,
+    );
+    expect(si.startAt.toISOString()).toBe('2026-06-08T14:00:00.000Z');
+    expect(si.endAt.toISOString()).toBe('2026-06-09T22:00:00.000Z');
   });
 });
 

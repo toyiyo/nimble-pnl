@@ -203,12 +203,18 @@ test.describe('Roles & Areas', () => {
     const roleCard = page.getByRole('button', { name: new RegExp(roleName) });
     await expect(roleCard).toBeVisible();
     await expect(roleCard).toContainText(/inventory & purchasing/i);
-    await expect(roleCard).toContainText(/\· manage/i); // manage-level chip suffix
+    await expect(roleCard).toContainText(/· manage/i); // manage-level chip suffix
     await expect(roleCard).toContainText(/scheduling/i);
     await expect(roleCard).toContainText(/custom/i); // CUSTOM badge, vs. built-ins' BUILT-IN
 
-    // ---- Invite tab: the new custom role is a selectable option ----
-    await page.getByRole('tab', { name: /^invite$/i }).click();
+    // ---- Collaborator invite tab: the new custom role is a selectable option ----
+    // The prototype sketched three tabs (Team members / Roles & areas /
+    // Invite) because it only modelled the invite step. The real page has a
+    // fourth concern the prototype never saw — internal-team invitations —
+    // so its collaborator tab stays "Collaborators" (invite + active + pending
+    // collaborators) rather than being renamed "Invite", which would sit
+    // confusingly beside "Invitations" and understate what the tab holds.
+    await page.getByRole('tab', { name: /view collaborators/i }).click();
     await page.getByRole('button', { name: new RegExp(roleName) }).click();
 
     const invitedEmail = `weekend-supervisor-invite-${Date.now()}@example.com`;

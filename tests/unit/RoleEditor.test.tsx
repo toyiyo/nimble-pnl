@@ -82,7 +82,6 @@ function mockUseRoles(partial: Partial<ReturnType<typeof useRoles>> = {}) {
     error: null,
     createRole: vi.fn().mockResolvedValue('new-role-id'),
     updateRole: vi.fn().mockResolvedValue('role-1'),
-    deleteRole: vi.fn(),
     copyRole: vi.fn().mockResolvedValue({ copied: [], name_collisions: [] }),
     isMutating: false,
     ...partial,

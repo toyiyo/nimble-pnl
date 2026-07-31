@@ -51,7 +51,6 @@ function mockUseRoles(partial: Partial<ReturnType<typeof useRoles>>) {
     error: null,
     createRole: vi.fn(),
     updateRole: vi.fn(),
-    deleteRole: vi.fn(),
     copyRole: vi.fn(),
     isMutating: false,
     ...partial,

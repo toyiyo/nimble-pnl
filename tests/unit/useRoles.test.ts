@@ -286,7 +286,7 @@ describe('useRoles — mutations', () => {
     ]);
   });
 
-  it('refuses to update or delete a builtin role without calling the database', async () => {
+  it('refuses to update a builtin role without calling the database', async () => {
     const { result } = await renderReady();
 
     await expect(
@@ -299,12 +299,9 @@ describe('useRoles — mutations', () => {
       }),
     ).rejects.toThrow(/built-?in/i);
 
-    await expect(result.current.deleteRole('builtin-owner')).rejects.toThrow(/built-?in/i);
-
     // The SQL trigger from task 1 is the actual guard; this only checks the
     // client fails fast with a readable message instead of round-tripping.
     expect(chains.roles.update).not.toHaveBeenCalled();
-    expect(chains.roles.delete).not.toHaveBeenCalled();
   });
 
   it('copyRole calls the copy_role_to_restaurants RPC and returns its report', async () => {
@@ -330,7 +327,6 @@ describe('useRoles — mutations', () => {
       r.createRole({ name: 'X', description: '', areas: [], flags: [] })],
     ['updateRole', (r: ReturnType<typeof useRoles>) =>
       r.updateRole({ id: 'custom-weekend', name: 'X', description: '', areas: [], flags: [] })],
-    ['deleteRole', (r: ReturnType<typeof useRoles>) => r.deleteRole('custom-weekend')],
     ['copyRole', (r: ReturnType<typeof useRoles>) =>
       r.copyRole({ roleId: 'custom-weekend', targetRestaurantIds: ['rest-456'] })],
   ])('%s invalidates both ["roles", restaurantId] and ["restaurants"]', async (_name, run) => {

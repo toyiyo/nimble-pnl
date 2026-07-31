@@ -206,18 +206,6 @@ export function useRoles(restaurantId: string | undefined) {
     onSuccess: invalidate,
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (roleId: string) => {
-      assertNotBuiltin(roleId);
-
-      // role_areas / role_flags cascade from the roles FK.
-      const { error } = await supabase.from('roles').delete().eq('id', roleId);
-      if (error) throw error;
-      return roleId;
-    },
-    onSuccess: invalidate,
-  });
-
   const copyMutation = useMutation({
     mutationFn: async ({
       roleId,
@@ -244,12 +232,10 @@ export function useRoles(restaurantId: string | undefined) {
     error: query.error,
     createRole: createMutation.mutateAsync,
     updateRole: updateMutation.mutateAsync,
-    deleteRole: deleteMutation.mutateAsync,
     copyRole: copyMutation.mutateAsync,
     isMutating:
       createMutation.isPending ||
       updateMutation.isPending ||
-      deleteMutation.isPending ||
       copyMutation.isPending,
   };
 }

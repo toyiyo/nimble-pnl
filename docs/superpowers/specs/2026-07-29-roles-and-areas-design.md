@@ -229,6 +229,17 @@ three bands (Operations, Money, People & admin). Three cross-cutting
 apply *inside* granted areas — these are the new capabilities that make defect
 (2) expressible.
 
+> **Shipped state of the three flags (amended after the Phase 7a security
+> review).** This branch makes them *expressible*, not *enforced*. They are
+> stored on `role_flags`, seeded onto the builtins, editable in the role
+> editor, and `user_has_capability()` resolves them correctly — but no RLS
+> policy and no React render path asks for them, so switching one off hides
+> nothing today. Gating the actual cost / pay-rate / PII fields is follow-on
+> work across the inventory, recipe, payroll and employee surfaces, well
+> beyond this refactor's scope. Until then the editor says so in as many
+> words, because a switch that advertises protection it does not provide is
+> worse than an honest gap.
+
 Schema:
 
 ```

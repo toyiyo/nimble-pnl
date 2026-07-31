@@ -6,12 +6,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { RolePreviewPanel } from '@/components/roles/RolePreviewPanel';
+import { useToast } from '@/hooks/use-toast';
 import { useRoles, type RoleWithGrants } from '@/hooks/useRoles';
 import { useRestaurants } from '@/hooks/useRestaurants';
 import {
   AREA_DEFINITIONS,
   grantMap,
   type AreaDefinition,
+  type AreaGroupKey,
   type AreaKey,
   type AreaLevel,
   type Band,
@@ -76,7 +78,7 @@ export interface RoleEditorProps {
 type Grants = Partial<Record<AreaKey, AreaLevel>>;
 
 /** Per-row hint text, transcribed verbatim from the prototype's `AREAS[].hint`. */
-const AREA_HINT: Record<string, string> = {
+const AREA_HINT: Record<AreaGroupKey, string> = {
   reports: 'Daily numbers, saved reports, AI assistant',
   sales: 'Ticket-level sales from your POS',
   inventory: 'Counts, audits, purchase orders, receipts',
@@ -95,7 +97,7 @@ const AREA_HINT: Record<string, string> = {
  * `ownerOnly`. Only rows with a non-'manage' `maxLevelForCollaborator` need
  * one — every other row is uncapped.
  */
-const AREA_LOCK_REASON: Record<string, string> = {
+const AREA_LOCK_REASON: Partial<Record<AreaGroupKey, string>> = {
   reports: 'Nothing there is editable.',
   sales: 'Sales come from your POS — nobody edits them here.',
   payroll: 'Owners and Managers only.',
@@ -128,6 +130,20 @@ const SENSITIVE_FLAGS: ReadonlyArray<{
     requires: ['employees'],
   },
 ];
+
+/**
+ * Whether a sensitive-data flag is meaningful for the current grants: at least
+ * one of the areas it reads must still be granted. A builtin is exempt — its
+ * flags are seeded, its editor is read-only, and its rows render as they were
+ * saved rather than as this editor would re-derive them.
+ */
+function flagAvailable(
+  flag: (typeof SENSITIVE_FLAGS)[number],
+  grants: Grants,
+  builtinReadOnly: boolean
+): boolean {
+  return builtinReadOnly || flag.requires.some((key) => !!grants[key]);
+}
 
 const BAND_ORDER: readonly Band[] = ['Operations', 'Money', 'People & admin'];
 
@@ -365,6 +381,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
 
   const isNewDraft = role === null;
   const builtinReadOnly = role?.builtin ?? false;
+  const { toast } = useToast();
 
   const [name, setName] = useState(role?.name ?? '');
   const [description, setDescription] = useState(role?.description ?? '');
@@ -375,7 +392,25 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
   const [copyTargetIds, setCopyTargetIds] = useState<string[]>([]);
   const [copyReport, setCopyReport] = useState<{ copied: string[]; nameCollisions: string[] } | null>(null);
 
-  const previewFlags = useMemo(() => Array.from(flags), [flags]);
+  /**
+   * A sensitive flag only means anything while one of the areas it reads is
+   * still granted — `SENSITIVE_FLAGS[].requires`. Revoking those areas after
+   * turning a flag on leaves the switch rendered off and disabled, so keeping
+   * the raw `flags` entry would save a grant the owner was just told is off.
+   *
+   * Rather than mutate `flags` on every grant change (which would silently
+   * forget the toggle if the owner re-granted the area in the same session),
+   * the reconciliation lives here, at the one place every consumer reads:
+   * the switch's checked state, the preview, and the save payload.
+   */
+  const effectiveFlags = useMemo(
+    () =>
+      SENSITIVE_FLAGS.filter(
+        (s) => flags.has(s.flag) && flagAvailable(s, grants, builtinReadOnly)
+      ).map((s) => s.flag),
+    [flags, grants, builtinReadOnly]
+  );
+  const effectiveFlagSet = useMemo(() => new Set(effectiveFlags), [effectiveFlags]);
 
   const rowsByBand = useMemo(() => {
     const groups = new Map<Band, AreaDefinition[]>();
@@ -416,14 +451,15 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
   }
 
   const nameEmpty = name.trim().length === 0;
-  const saveHint = builtinReadOnly
-    ? 'This is read-only.'
-    : nameEmpty
-      ? 'Role name is required.'
-      : isNewDraft
-        ? 'New role — nobody is assigned yet.'
-        : '';
   const saveDisabled = builtinReadOnly || nameEmpty || isMutating;
+
+  function resolveSaveHint(): string {
+    if (builtinReadOnly) return 'This is read-only.';
+    if (nameEmpty) return 'Role name is required.';
+    if (isNewDraft) return 'New role — nobody is assigned yet.';
+    return '';
+  }
+  const saveHint = resolveSaveHint();
 
   async function handleSave() {
     if (saveDisabled) return;
@@ -431,21 +467,44 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
       name: name.trim(),
       description: description.trim(),
       areas: (Object.keys(grants) as AreaKey[]).map((area_key) => ({ area_key, level: grants[area_key]! })),
-      flags: Array.from(flags),
+      // effectiveFlags, not the raw `flags` set: a flag whose areas were
+      // revoked after it was switched on renders off and disabled, and must
+      // save that way too.
+      flags: effectiveFlags,
     };
-    if (role) {
-      await updateRole({ ...draft, id: role.id });
-    } else {
-      await createRole(draft);
+    try {
+      if (role) {
+        await updateRole({ ...draft, id: role.id });
+      } else {
+        await createRole(draft);
+      }
+    } catch (err) {
+      // useRoles' mutations deliberately carry no onError — the calling
+      // component owns the message. Without this the editor would just sit
+      // there on an RLS denial or a network failure.
+      toast({
+        title: role ? "Couldn't save this role" : "Couldn't create this role",
+        description: err instanceof Error ? err.message : 'Please try again.',
+        variant: 'destructive',
+      });
+      return;
     }
     onBack();
   }
 
   async function handleCopy() {
     if (!role || copyTargetIds.length === 0) return;
-    const report = await copyRole({ roleId: role.id, targetRestaurantIds: copyTargetIds });
-    setCopyReport({ copied: report.copied, nameCollisions: report.name_collisions.map((c) => c.name) });
-    setCopyTargetIds([]);
+    try {
+      const report = await copyRole({ roleId: role.id, targetRestaurantIds: copyTargetIds });
+      setCopyReport({ copied: report.copied, nameCollisions: report.name_collisions.map((c) => c.name) });
+      setCopyTargetIds([]);
+    } catch (err) {
+      toast({
+        title: "Couldn't copy this role",
+        description: err instanceof Error ? err.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    }
   }
 
   return (
@@ -542,9 +601,20 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
                 either can or cannot see. */}
             <BandHeader label="Sensitive data" legend="Off · On" />
             <div className="p-5 pt-4 space-y-1">
+              {/* Say plainly what these switches do today. They are stored on
+                  the role and resolvable through user_has_capability(), but no
+                  screen and no RLS policy reads them yet, so leaving one off
+                  hides nothing. Advertising them as protection they don't yet
+                  provide is worse than admitting the gap (Phase 7a security
+                  review); the copy comes out when the fields are gated. */}
+              <p className="text-[12px] text-muted-foreground pb-2">
+                Recorded on the role, but not enforced yet — these fields still follow area access
+                everywhere in the app. Set them for the role you want; they take effect when
+                per-field gating ships.
+              </p>
               {SENSITIVE_FLAGS.map((s) => {
-                const available = builtinReadOnly || s.requires.some((key) => !!grants[key]);
-                const checked = available && flags.has(s.flag);
+                const available = flagAvailable(s, grants, builtinReadOnly);
+                const checked = effectiveFlagSet.has(s.flag);
                 const requiredLabels = s.requires.map(areaKeyLabel).join(', ');
                 return (
                   <div
@@ -676,7 +746,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
         </div>
 
         {/* Live preview */}
-        <RolePreviewPanel grants={grants} flags={previewFlags} roleName={name.trim() || 'This role'} />
+        <RolePreviewPanel grants={grants} flags={effectiveFlags} roleName={name.trim() || 'This role'} />
       </div>
     </div>
   );

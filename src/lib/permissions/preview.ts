@@ -37,6 +37,7 @@ import {
   expandAreas,
   landingAreaKey,
   type AreaDefinition,
+  type AreaGroupKey,
   type AreaKey,
   type AreaLevel,
   type SensitiveFlag,
@@ -102,7 +103,7 @@ export function rowLevel(row: AreaDefinition, grants: Partial<Record<AreaKey, Ar
  * approved prototype's `PHRASE` map (docs/design-reference/roles-and-areas.html).
  * Keyed by `AreaDefinition.key` (the same ten keys the prototype uses).
  */
-const PHRASE: Record<string, { view: string; manage: string }> = {
+const PHRASE: Record<AreaGroupKey, { view: string; manage: string }> = {
   reports: { view: 'read the dashboard and reports', manage: 'read the dashboard and reports' },
   sales: { view: 'see POS sales', manage: 'see POS sales' },
   inventory: { view: 'look at inventory', manage: 'count and receive inventory' },

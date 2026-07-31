@@ -64,9 +64,29 @@ export type Band = 'Operations' | 'Money' | 'People & admin';
  * this row writes when its control is toggled — more than one for the four
  * split rows.
  */
+/**
+ * The ten `ui_group` keys from area_catalog, as a closed union.
+ *
+ * Deliberately a union rather than `string`: three maps elsewhere are keyed by
+ * it (`AREA_HINT` and `AREA_LOCK_REASON` in `RoleEditor.tsx`, `PHRASE` in
+ * `./preview.ts`), and with `string` a renamed or added row here would resolve
+ * to `undefined` at runtime instead of failing the build.
+ */
+export type AreaGroupKey =
+  | 'reports'
+  | 'sales'
+  | 'inventory'
+  | 'recipes'
+  | 'scheduling'
+  | 'books'
+  | 'payroll'
+  | 'employees'
+  | 'team'
+  | 'settings';
+
 export interface AreaDefinition {
   /** The ui_group key from area_catalog. */
-  key: string;
+  key: AreaGroupKey;
   label: string;
   band: Band;
   /** area_catalog.sort_order, shared by every area_key in the group. */

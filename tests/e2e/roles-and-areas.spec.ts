@@ -1,5 +1,17 @@
 import { test, expect, Page } from '@playwright/test';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { generateTestUser, signUpAndCreateRestaurant, exposeSupabaseHelpers } from '../helpers/e2e-supabase';
+
+/**
+ * The handles `exposeSupabaseHelpers` hangs off `window`. Typed rather than
+ * cast to `any` at each use — same convention as tip-sharing.spec.ts. Types
+ * are erased before the callback is serialized into the page.
+ */
+interface WindowHelpers {
+  __getAuthUser: () => Promise<{ id: string } | null>;
+  __getRestaurantId: (userId?: string) => Promise<string | null>;
+  __supabase: SupabaseClient;
+}
 
 /**
  * E2E coverage for the roles-and-areas custom role editor and invite flow.
@@ -54,7 +66,9 @@ import { generateTestUser, signUpAndCreateRestaurant, exposeSupabaseHelpers } fr
  */
 
 async function getRestaurantId(page: Page): Promise<string> {
-  const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+  const restaurantId = await page.evaluate(() =>
+    (window as unknown as WindowHelpers).__getRestaurantId()
+  );
   if (!restaurantId) throw new Error('No restaurant id available on window.__getRestaurantId()');
   return restaurantId;
 }
@@ -63,7 +77,7 @@ async function getRestaurantId(page: Page): Promise<string> {
 async function getRoleIdByName(page: Page, restaurantId: string, name: string): Promise<string> {
   const roleId = await page.evaluate(
     async ({ restaurantId, name }) => {
-      const { data, error } = await (window as any).__supabase
+      const { data, error } = await (window as unknown as WindowHelpers).__supabase
         .from('roles')
         .select('id')
         .eq('restaurant_id', restaurantId)
@@ -91,10 +105,11 @@ async function simulateAcceptedCustomRole(page: Page, restaurantId: string, role
   await exposeSupabaseHelpers(page);
   await page.evaluate(
     async ({ restaurantId, roleId }) => {
-      const user = await (window as any).__getAuthUser();
+      const win = window as unknown as WindowHelpers;
+      const user = await win.__getAuthUser();
       if (!user?.id) throw new Error('No user session');
 
-      const { error } = await (window as any).__supabase
+      const { error } = await win.__supabase
         .from('user_restaurants')
         .update({ role: 'collaborator_custom', role_id: roleId })
         .eq('user_id', user.id)

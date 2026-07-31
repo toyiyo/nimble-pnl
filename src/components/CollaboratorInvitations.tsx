@@ -1,19 +1,22 @@
+// 1. React & ecosystem
 import { useMemo, useState } from 'react';
+
+// 2. UI components
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
-import { Calculator, Package, ChefHat, Briefcase, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
-import { canInviteCustomRole, COLLABORATOR_PRESETS, CUSTOM_ROLE, ROLE_METADATA } from '@/lib/permissions';
-import type { CollaboratorPreset, InviteRoleLiteral, Role } from '@/lib/permissions';
-import { formatExpiresIn } from '@/lib/invitationUtils';
-import { grantMap } from '@/lib/permissions/areas';
-import { useRoles, type RoleWithGrants } from '@/hooks/useRoles';
 import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
-import { buildRolePreview } from '@/lib/permissions/preview';
+import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
+
+// 3. Icons
+import { Calculator, Package, ChefHat, Briefcase, Clock, CheckCircle, XCircle, Trash2, Check, ArrowLeft, UserPlus, Users, AlertCircle, AlertTriangle, RefreshCw } from 'lucide-react';
+
+// 4. Custom hooks & contexts
+import { useToast } from '@/hooks/use-toast';
+import { useRoles } from '@/hooks/useRoles';
 import {
   useCollaboratorsQuery,
   useCollaboratorInvitesQuery,
@@ -24,7 +27,16 @@ import {
 } from '@/hooks/useCollaborators';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
 import { useAccountlessEmployees, resolveAccountlessEmployeeHint, resolveDescribedById } from '@/hooks/useAccountlessEmployees';
-import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
+
+// 5. Types
+import type { RoleWithGrants } from '@/hooks/useRoles';
+import type { CollaboratorPreset, InviteRoleLiteral, Role } from '@/lib/permissions';
+
+// 6. Utils
+import { canInviteCustomRole, COLLABORATOR_PRESETS, CUSTOM_ROLE, ROLE_METADATA } from '@/lib/permissions';
+import { grantMap } from '@/lib/permissions/areas';
+import { buildRolePreview } from '@/lib/permissions/preview';
+import { formatExpiresIn } from '@/lib/invitationUtils';
 
 interface CollaboratorInvitationsProps {
   restaurantId: string;
@@ -133,6 +145,21 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
     () => new Map(roles.map((role) => [role.id, role.name])),
     [roles]
   );
+
+  /**
+   * The selected custom role's can/can't sentence — the same derivation
+   * `RolePreviewPanel` renders in the role editor, memoized here the same way
+   * so the two consumers of this pure function stay consistent. Null unless a
+   * custom role is currently selected.
+   */
+  const customRoleSummary = useMemo(() => {
+    if (selection?.kind !== 'custom') return null;
+    return buildRolePreview(
+      grantMap(selection.role.role_areas),
+      selection.role.role_flags.map((f) => f.flag),
+      selection.role.name
+    ).summary;
+  }, [selection]);
 
   /**
    * The label to show for a membership or invitation. A custom role's name
@@ -348,13 +375,7 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
             {isCustom ? (
               <div className="mt-3 space-y-2">
                 <RoleAreaChips areas={selection.role.role_areas} />
-                <p className="text-[13px] text-muted-foreground">
-                  {buildRolePreview(
-                    grantMap(selection.role.role_areas),
-                    selection.role.role_flags.map((f) => f.flag),
-                    selection.role.name
-                  ).summary}
-                </p>
+                <p className="text-[13px] text-muted-foreground">{customRoleSummary}</p>
               </div>
             ) : (
               <div className="mt-3 space-y-1">

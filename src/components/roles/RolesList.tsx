@@ -36,6 +36,13 @@ export interface RolesListProps {
   onNewRole: () => void;
 }
 
+/**
+ * The card grid, shared by the loading skeleton and the loaded list so the two
+ * cannot drift. 292px is the prototype's card width; auto-fill keeps the grid
+ * responsive without a breakpoint ladder.
+ */
+const ROLE_GRID_CLASS = 'grid gap-3.5 grid-cols-[repeat(auto-fill,minmax(292px,1fr))]';
+
 function memberCountLabel(count: number): string {
   return count === 1 ? '1 person' : `${count} people`;
 }
@@ -124,8 +131,7 @@ export function RolesList({ restaurantId, onSelectRole, onNewRole }: RolesListPr
     return (
       <div
         data-testid="roles-list-loading"
-        className="grid gap-3.5"
-        style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(292px, 1fr))' }}
+        className={ROLE_GRID_CLASS}
       >
         {[1, 2, 3].map((i) => (
           <RoleCardSkeleton key={i} />
@@ -147,7 +153,7 @@ export function RolesList({ restaurantId, onSelectRole, onNewRole }: RolesListPr
   // the grid, so a restaurant with zero custom roles (builtins are always
   // present from useRoles) still has an actionable, non-empty grid.
   return (
-    <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(292px, 1fr))' }}>
+    <div className={ROLE_GRID_CLASS}>
       {roles.map((role) => (
         <RoleCard key={role.id} role={role} onClick={() => onSelectRole(role)} />
       ))}

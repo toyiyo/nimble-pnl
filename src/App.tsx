@@ -119,6 +119,18 @@ function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.Reac
   );
 }
 
+// Shared by ProtectedRoute (waiting on auth) and StaffRoleChecker (waiting on
+// the membership row that carries the role) so the two gates look identical.
+function RouteLoadingScreen() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="text-center">
+        <p className="text-xl text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
 // Protected Route Component with staff restrictions
 function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { children: React.ReactNode; allowStaff?: boolean; noChrome?: boolean }) {
   const { user, loading } = useAuth();
@@ -126,13 +138,7 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
   const isMobile = useIsMobile();
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <p className="text-xl text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <RouteLoadingScreen />;
   }
 
   if (!user) {
@@ -233,7 +239,16 @@ function StaffRoleChecker({
   allowStaff: boolean;
   currentPath: string;
 }) {
-  const { selectedRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, loading } = useRestaurantContext();
+
+  // Every check below reads `selectedRestaurant?.role`, which is undefined
+  // while the membership rows are still in flight — so without this the gate
+  // falls through to `<>{children}</>` and a kiosk or staff user briefly
+  // renders the very page these redirects exist to keep them out of (and
+  // fires its queries). Hold until the role is actually known.
+  if (loading) {
+    return <RouteLoadingScreen />;
+  }
 
   const role = selectedRestaurant?.role;
   const isStaff = role === 'staff';

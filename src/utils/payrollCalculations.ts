@@ -13,7 +13,6 @@ import {
   type OvertimeAdjustment,
 } from '@/lib/overtimeCalculations';
 import {
-  periodsInWindow,
   periodsInBusinessDayWindow,
   incompleteShiftsInBusinessDayWindow,
 } from '@/utils/punchWindow';

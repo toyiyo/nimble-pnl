@@ -56,6 +56,11 @@
 --     and do not call user_has_capability, so a later "cleanup" cannot
 --     quietly convert them and widen access without revisiting that
 --     decision.
+--  8. The residual-policy guard: no policy on any table Task 6 rewrote still
+--     names a collaborator_* role. A DROP POLICY IF EXISTS whose name has
+--     drifted is a silent no-op, and the CREATE that follows it succeeds
+--     anyway, leaving the old literal policy permissively OR'd beside the new
+--     capability one — a failure every other assertion here would pass.
 --
 -- All fixture rows (restaurants, auth.users, user_restaurants, roles,
 -- role_areas, employees, and data rows) exist only for the duration of this
@@ -64,7 +69,7 @@
 
 BEGIN;
 
-SELECT plan(26);
+SELECT plan(27);
 
 -- ----------------------------------------------------------------------------
 -- Fixture: two restaurants (R1 primary, R2 for cross-tenant isolation).
@@ -84,7 +89,11 @@ VALUES (
   '6a000000-0000-0000-0000-000000000001',
   'Task 6 Custom Role A (inventory)',
   'pgTAP fixture — view/manage split + fail-closed sample',
-  'platform',
+  -- Collaborator-flavored, like every real custom role. A platform-flavored
+  -- fixture would slip past role_areas_enforce_collaborator_cap, which only
+  -- inspects collaborator rows, so a later edit granting a capped area would
+  -- pass here and be unreachable in production.
+  'collaborator',
   false
 )
 ON CONFLICT (id) DO NOTHING;
@@ -111,7 +120,7 @@ VALUES (
   '6a000000-0000-0000-0000-000000000001',
   'Task 6 Custom Role B (scheduling)',
   'pgTAP fixture — scheduling capability-funnel RED/GREEN pair',
-  'platform',
+  'collaborator',
   false
 )
 ON CONFLICT (id) DO NOTHING;
@@ -242,22 +251,16 @@ SELECT is(
   'custom role {inventory: view}: cannot UPDATE products (view is not manage)'
 );
 
--- Upgrade to {inventory: manage}. Deliberately DELETE + INSERT rather than
--- `ON CONFLICT ... DO UPDATE`: public.block_builtin_role_child_mutation()
--- (20260730100000_roles_and_areas_tables.sql) is a BEFORE UPDATE OR DELETE
--- trigger on role_areas/role_flags that `RETURN OLD` unconditionally once the
--- builtin check clears — correct for DELETE (Postgres requires OLD there),
--- but for UPDATE that silently rewrites the incoming row back to its old
--- values, so an UPDATE on a non-builtin role's row is a confirmed no-op
--- today (verified directly: `UPDATE ... SET level = 'manage'` reports
--- "UPDATE 1" but leaves the row at 'view'). That is a real bug in already-
--- shipped code, out of scope for this task and flagged separately — this
--- fixture just avoids the affected code path so the RED test for Task 6
--- itself isn't confounded by it.
-DELETE FROM public.role_areas
-WHERE role_id = '6a000000-0000-0000-0000-0000000000a1' AND area_key = 'inventory';
+-- Upgrade to {inventory: manage}. An earlier revision of this file did this as
+-- DELETE + INSERT, on the belief that block_builtin_role_child_mutation()
+-- returned OLD unconditionally and so made any UPDATE on a non-builtin role's
+-- role_areas row a silent no-op. That is not what the trigger does: it returns
+-- `CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END`
+-- (20260730100000_roles_and_areas_tables.sql:451), and roles_schema_test.sql
+-- asserts the UPDATE persists. A plain upsert is correct.
 INSERT INTO public.role_areas (role_id, area_key, level)
-VALUES ('6a000000-0000-0000-0000-0000000000a1', 'inventory', 'manage');
+VALUES ('6a000000-0000-0000-0000-0000000000a1', 'inventory', 'manage')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
 
 SELECT is(
   pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000101'::uuid,
@@ -490,6 +493,48 @@ SELECT is(
   ),
   3,
   'all three receipt_imports policies still match against a role literal array'
+);
+
+-- ============================================================================
+-- No residual collaborator-literal policy survives on a rewritten table.
+--
+-- 20260730150000 rewrites each policy as DROP POLICY IF EXISTS "<name>" then
+-- CREATE POLICY "<name>". If the name in the DROP does not match the name the
+-- policy actually has -- a typo, or a rename in a migration that landed
+-- between the audit and this one -- the DROP is a silent no-op and the CREATE
+-- succeeds anyway, because it uses the same name the DROP failed to find. The
+-- result is the new capability policy sitting BESIDE the old literal one.
+--
+-- That failure is invisible to every other assertion in this file. Permissive
+-- policies OR together, so the stale policy keeps granting exactly what it
+-- always granted: the custom-role cases below still pass, the legacy roles
+-- still work, and nothing looks wrong until someone edits a role's areas and
+-- finds the revocation has no effect for a collaborator_* member.
+--
+-- So this scans the rewritten tables directly. receipt_imports is excluded by
+-- name because its literals are deliberate (see the block above); time_punches
+-- is included because its kept literal is `role = 'kiosk'`, not a
+-- collaborator_* one. The failure message names the offending policies rather
+-- than just counting them, since "which one drifted" is the whole question.
+-- ============================================================================
+SELECT is(
+  (
+    SELECT coalesce(string_agg(tablename || '.' || policyname, ', ' ORDER BY tablename, policyname), '')
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = ANY (ARRAY[
+        'asset_depreciation_schedule', 'asset_photos', 'assets',
+        'open_shift_claims', 'schedule_change_logs', 'schedule_publications',
+        'shift_templates', 'shifts', 'staffing_settings', 'time_off_requests',
+        'time_punches', 'tip_contribution_pools', 'tip_disputes', 'tip_payouts',
+        'tip_pool_allocations', 'tip_pool_settings', 'tip_server_earnings',
+        'tip_split_items', 'tip_splits'
+      ])
+      AND (coalesce(qual, '') || ' ' || coalesce(with_check, ''))
+          ~ 'collaborator_(accountant|inventory|chef|operations_manager)'
+  ),
+  '',
+  'no policy on a rewritten table still names a collaborator_* role — a drifted DROP would leave the old policy beside the new one'
 );
 
 SELECT * FROM finish();

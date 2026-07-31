@@ -57,12 +57,18 @@ export function RolesTab({ restaurantId }: RolesTabProps) {
       </div>
 
       <div>
-        <h3 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider mb-3">
-          Your roles
-          <span className="ml-2 normal-case tracking-normal font-normal">
+        {/* Sibling elements rather than the hint nested inside the heading:
+            nested, the heading's accessible name became "Your roles Click a
+            role to change the areas it can reach." A baseline-aligned flex row
+            keeps the design's single-line look. */}
+        <div className="flex flex-wrap items-baseline gap-x-2 mb-3">
+          <h3 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+            Your roles
+          </h3>
+          <p className="text-[12px] text-muted-foreground">
             Click a role to change the areas it can reach.
-          </span>
-        </h3>
+          </p>
+        </div>
         <RolesList
           restaurantId={restaurantId}
           onSelectRole={(role) => {

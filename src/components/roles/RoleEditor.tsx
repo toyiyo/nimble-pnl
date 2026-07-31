@@ -24,6 +24,37 @@ import type { Role } from '@/lib/permissions/types';
 import { cn } from '@/lib/utils';
 
 /**
+ * Turns a rejected role write into a sentence an owner can act on.
+ *
+ * Postgres rejections arrive from PostgREST as `{ code, message, ... }`
+ * objects, not `Error` instances, so an unmapped one falls past
+ * `err instanceof Error` and shows "Please try again." — which tells the user
+ * nothing about a name they can change or an assignment they can move.
+ *
+ * Only the two constraint classes this editor's own statements can raise are
+ * named. Everything else keeps its own message: the triggers on `roles` raise
+ * 42501 with text that already explains the specific refusal (a builtin's
+ * name, a builtin's grants), and replacing that with a generic "no permission"
+ * would be a downgrade.
+ */
+function describeRoleWriteError(err: unknown): string {
+  const shape = typeof err === 'object' && err !== null ? (err as Record<string, unknown>) : null;
+  const code = typeof shape?.code === 'string' ? shape.code : undefined;
+
+  if (code === '23505') {
+    return 'A role with that name already exists here. Choose a different name.';
+  }
+  // user_restaurants.role_id and invitations.role_id are NO ACTION FKs, so a
+  // role that is still someone's role cannot be removed out from under them.
+  if (code === '23503') {
+    return 'This role is still assigned to a member or a pending invitation. Move them to another role first.';
+  }
+
+  if (err instanceof Error) return err.message;
+  return typeof shape?.message === 'string' && shape.message ? shape.message : 'Please try again.';
+}
+
+/**
  * RoleEditor — the full-page, two-column custom role editor (roles-and-areas
  * design, Phase 4 task 9d).
  *
@@ -498,7 +529,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
       // there on an RLS denial or a network failure.
       toast({
         title: role ? "Couldn't save this role" : "Couldn't create this role",
-        description: err instanceof Error ? err.message : 'Please try again.',
+        description: describeRoleWriteError(err),
         variant: 'destructive',
       });
       return;
@@ -515,7 +546,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
     } catch (err) {
       toast({
         title: "Couldn't copy this role",
-        description: err instanceof Error ? err.message : 'Please try again.',
+        description: describeRoleWriteError(err),
         variant: 'destructive',
       });
     }

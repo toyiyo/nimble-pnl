@@ -50,6 +50,11 @@
 --     in this file is therefore a member of the source restaurant, so that
 --     A-E fail for the reason each of them names and not incidentally on
 --     the source gate.
+--  G. A collision the EXISTS pre-check cannot see -- one that lands between
+--     the pre-check and the INSERT -- is still reported per-target rather
+--     than aborting the whole call
+--     (20260730220000_copy_role_collision_is_per_target.sql). Simulated with
+--     a trigger, since a real race needs a second session.
 --
 -- All fixture rows exist only for the duration of this transaction
 -- (ROLLBACK).
@@ -57,7 +62,7 @@
 
 BEGIN;
 
-SELECT plan(30);
+SELECT plan(36);
 
 -- ----------------------------------------------------------------------------
 -- Fixture: restaurants. S is the source (owns the custom role being
@@ -434,6 +439,116 @@ SELECT is(
   (SELECT count(*)::int FROM public.roles WHERE restaurant_id = '9c000000-0000-0000-0000-000000000007'),
   0,
   'F: post-count — T7 still has zero roles, no foreign role was cloned in'
+);
+
+-- ============================================================================
+-- G. A name collision the pre-check cannot see stays per-target
+--    (20260730220000_copy_role_collision_is_per_target.sql).
+--
+--    The EXISTS pre-check and the INSERT are two statements, and
+--    uq_roles_restaurant_name_ci is what actually enforces the rule. A
+--    concurrent insert of the same name into the same target lands between
+--    them and the INSERT raises unique_violation. Before 20260730220000 there
+--    was no handler, so that error propagated out of the function and aborted
+--    the whole call -- every target already copied rolled back, and the caller
+--    got a raw Postgres message instead of the name_collisions array the
+--    contract promises.
+--
+--    A real race needs two sessions, which a single-transaction pgTAP file
+--    cannot have. The trigger below stands in for the racing session: it makes
+--    an INSERT into T8 raise exactly the error the racer's row would, at
+--    exactly the point the racer's row would raise it, while the pre-check
+--    (a SELECT) sees nothing -- which is the whole shape of the bug. T8 is
+--    listed FIRST in the call so a failure that aborted the call would take
+--    T9 down with it.
+-- ============================================================================
+INSERT INTO public.restaurants (id, name) VALUES
+  ('9c000000-0000-0000-0000-000000000008', 'Task 9h Target T8 (simulated concurrent collision)'),
+  ('9c000000-0000-0000-0000-000000000009', 'Task 9h Target T9 (clean target behind the collision)')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO auth.users (id, email) VALUES
+  ('9c000000-0000-0000-0000-0000000000b6', 'task9h-userf@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role) VALUES
+  ('9c000000-0000-0000-0000-0000000000b6', '9c000000-0000-0000-0000-00000000005a', 'owner'),
+  ('9c000000-0000-0000-0000-0000000000b6', '9c000000-0000-0000-0000-000000000008', 'owner'),
+  ('9c000000-0000-0000-0000-0000000000b6', '9c000000-0000-0000-0000-000000000009', 'owner')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role;
+
+CREATE OR REPLACE FUNCTION pg_temp.simulate_racing_insert()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.restaurant_id = '9c000000-0000-0000-0000-000000000008' THEN
+    RAISE EXCEPTION 'duplicate key value violates unique constraint "uq_roles_restaurant_name_ci"'
+      USING ERRCODE = 'unique_violation';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER zz_simulate_racing_insert
+  BEFORE INSERT ON public.roles
+  FOR EACH ROW EXECUTE FUNCTION pg_temp.simulate_racing_insert();
+
+CREATE TEMP TABLE g_copy_result (payload TEXT);
+INSERT INTO g_copy_result
+SELECT pg_temp.as_user_copy(
+  '9c000000-0000-0000-0000-0000000000b6'::uuid,
+  '9c000000-0000-0000-0000-0000000000aa'::uuid,
+  ARRAY[
+    '9c000000-0000-0000-0000-000000000008'::uuid,
+    '9c000000-0000-0000-0000-000000000009'::uuid
+  ]
+);
+
+DROP TRIGGER zz_simulate_racing_insert ON public.roles;
+
+SELECT isnt(
+  (SELECT payload FROM g_copy_result),
+  'raised',
+  'G: a unique_violation on one target does not abort the call'
+);
+
+SELECT is(
+  (SELECT (payload::jsonb -> 'name_collisions') @> jsonb_build_array(
+     jsonb_build_object(
+       'restaurant_id', '9c000000-0000-0000-0000-000000000008',
+       'name', 'Task 9h Source Role'
+     ))
+   FROM g_copy_result),
+  true,
+  'G: the raced target is reported in name_collisions, same as a pre-checked one'
+);
+
+SELECT is(
+  (SELECT (payload::jsonb -> 'copied') @> jsonb_build_array('9c000000-0000-0000-0000-000000000009')
+   FROM g_copy_result),
+  true,
+  'G: the target behind the collision is still reported as copied'
+);
+
+SELECT is(
+  (SELECT count(*)::int FROM public.roles WHERE restaurant_id = '9c000000-0000-0000-0000-000000000008'),
+  0,
+  'G: the raced target got no role row -- its subtransaction rolled back'
+);
+
+SELECT is(
+  (SELECT count(*)::int FROM public.roles WHERE restaurant_id = '9c000000-0000-0000-0000-000000000009'),
+  1,
+  'G: the target behind the collision got its clone'
+);
+
+SELECT is(
+  (
+    SELECT count(*)::int FROM public.role_areas ra
+    JOIN public.roles r ON r.id = ra.role_id
+    WHERE r.restaurant_id = '9c000000-0000-0000-0000-000000000009'
+  ),
+  2,
+  'G: and the clone carries both of the source role''s areas -- the collision rolled back only T8'
 );
 
 SELECT * FROM finish();

@@ -329,15 +329,21 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
 
         {canOfferCustomRoles && rolesLoading && (
           <>
-            <Skeleton className="h-[104px] rounded-lg" />
-            <Skeleton className="h-[104px] rounded-lg" />
+            {/* The status lives beside the skeletons rather than wrapping them:
+                a wrapper would become one grid cell and collapse the two
+                placeholder cards into a single column. */}
+            <span role="status" aria-live="polite" className="sr-only">
+              Loading your custom roles
+            </span>
+            <Skeleton className="h-[104px] rounded-lg" aria-hidden="true" />
+            <Skeleton className="h-[104px] rounded-lg" aria-hidden="true" />
           </>
         )}
       </div>
 
       {canOfferCustomRoles && rolesError && (
-        <div className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 text-destructive">
-          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+        <div role="alert" className="flex items-center gap-3 p-4 rounded-lg bg-destructive/10 text-destructive">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
           <p className="text-sm">
             Failed to load your custom roles — the four built-in ones above still work.
           </p>

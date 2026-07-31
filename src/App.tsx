@@ -123,7 +123,11 @@ function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.Reac
 // the membership row that carries the role) so the two gates look identical.
 function RouteLoadingScreen() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div
+      className="flex min-h-screen items-center justify-center bg-background"
+      role="status"
+      aria-live="polite"
+    >
       <div className="text-center">
         <p className="text-xl text-muted-foreground">Loading...</p>
       </div>

@@ -17,10 +17,9 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { supabase } from '@/integrations/supabase/client';
 import { CheckCircle, AlertCircle, Edit2, Save, X, Upload, Calendar, Info } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
 import { cn } from '@/lib/utils';
 import { DatePicker } from '@/components/ui/date-picker';
-import { safeTz } from '@/lib/restaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 
 interface ParsedSale {
   itemName: string;
@@ -153,11 +152,11 @@ export const POSSalesImportReview: React.FC<POSSalesImportReviewProps> = ({
     if (!date) return;
     
     setSelectedDate(date);
-    // Restaurant timezone, never the viewer's -- an importer in another zone
-    // would otherwise stamp sales with their own calendar day.
-    const timezone = safeTz(selectedRestaurant?.restaurant?.timezone);
-    // Format the date in the restaurant's timezone to ensure it stays as the selected date
-    const dateString = formatInTimeZone(date, timezone, 'yyyy-MM-dd');
+    // `date` is a calendar-day token from the DatePicker (local midnight), not
+    // an instant -- serialize its LOCAL fields. Running it through the
+    // restaurant's timezone would re-derive the day from an instant that was
+    // never one, shifting it by a day for a viewer east of the restaurant.
+    const dateString = toDateOnlyString(date);
     
     // Apply the date to all sales
     setEditableSales(prev =>

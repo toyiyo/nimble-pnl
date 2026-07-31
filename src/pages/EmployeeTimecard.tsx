@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { format, eachDayOfInterval, isSameDay } from 'date-fns';
 import { toDateOnlyString } from '@/lib/dateOnly';
+import { businessDayRangeToInstants } from '@/lib/restaurantClock';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { hoursByClockInDay } from '@/utils/timecardHours';
 import { TimePunch } from '@/types/timeTracking';
@@ -69,12 +70,40 @@ const EmployeeTimecard = () => {
   const { currentEmployee, loading: employeeLoading } = useCurrentEmployee(restaurantId);
   const clock = useRestaurantClock();
 
-  const weekDays = eachDayOfInterval({ start: startDate, end: endDate });
+  // weekDays are calendar-day tokens (host-local Date objects), so local
+  // fields are the correct serialization for their keys -- do NOT route
+  // these through the clock. Memoized: eachDayOfInterval returns a fresh
+  // array each render, and this array is a dep of punchesByDay/dayHours
+  // below, so an unmemoized weekDays defeats those memos every render.
+  const weekDays = useMemo(
+    () => eachDayOfInterval({ start: startDate, end: endDate }),
+    [startDate, endDate]
+  );
+
+  // The set of restaurant business days this period covers, used below to
+  // filter punches by day membership instead of by comparing instants to
+  // startDate/endDate (which are viewer/host-local day boundaries, not the
+  // restaurant's).
+  const weekDayKeys = useMemo(
+    () => new Set(weekDays.map((day) => toDateOnlyString(day))),
+    [weekDays]
+  );
 
   // Fetch punches widened by ±18h so overnight shifts that straddle the
   // period boundary are paired whole. hoursByClockInDay then attributes
-  // each shift back to [startDate, endDate] by clock-in day.
-  const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+  // each shift back to [startDate, endDate] by clock-in day. The buffer is
+  // applied to the RESTAURANT's day bounds, not to startDate/endDate
+  // directly -- those are viewer/host-local instants, and buffering them
+  // as-is buffers the viewer's day boundary instead of the restaurant's.
+  const { fetchStart, fetchEnd } = useMemo(() => {
+    const { start: dayStart, end: dayEnd } = businessDayRangeToInstants(
+      toDateOnlyString(startDate),
+      toDateOnlyString(endDate),
+      clock.tz
+    );
+    return bufferPunchFetchRange(dayStart, dayEnd);
+  }, [startDate, endDate, clock.tz]);
+
   const { punches, loading: punchesLoading } = useTimePunches(
     restaurantId,
     currentEmployee?.id,
@@ -85,12 +114,16 @@ const EmployeeTimecard = () => {
   // Filter punches to the current period (display list only — visual
   // per-punch timeline). Hours are computed separately from the buffered
   // `punches` via `dayHours` below so overnight shifts aren't split.
+  //
+  // Membership is by RESTAURANT business-day key, matching how
+  // punchesByDay/dayHours bucket below -- comparing punch_time instants
+  // directly to startDate/endDate (viewer/host-local day boundaries) would
+  // disagree with that bucketing for a viewer outside the restaurant's zone
+  // (a restaurant-evening punch could fall outside the viewer's day window
+  // and vanish from this list while still appearing in punchesByDay).
   const periodPunches = useMemo(() => {
-    return punches.filter((punch) => {
-      const punchDate = new Date(punch.punch_time);
-      return punchDate >= startDate && punchDate <= endDate;
-    });
-  }, [punches, startDate, endDate]);
+    return punches.filter((punch) => weekDayKeys.has(clock.toBusinessDay(punch.punch_time)));
+  }, [punches, weekDayKeys, clock]);
 
   // Group punches by day
   const punchesByDay = useMemo(() => {

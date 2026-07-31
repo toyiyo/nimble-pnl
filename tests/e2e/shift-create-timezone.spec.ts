@@ -221,15 +221,16 @@ async function dragCardToCell(page: Page, card: Locator, targetCell: Locator) {
   for (let attempt = 0; attempt < 3; attempt++) {
     await expect(card).toBeVisible({ timeout: 10000 });
 
-    // Scroll BOTH ends into view before measuring. Raw page.mouse events address viewport
-    // coordinates, so unlike locator.click() they get no actionability auto-scroll: a row or
-    // column sitting outside a 1280x720 CI viewport yields coordinates the pointer can never
-    // reach, and dnd-kit then reports isOver on nothing at all. Scroll the target first and
-    // the source second, so the source — the element we are about to hit-test — is the one
-    // whose position is settled last.
-    await targetCell.evaluate((el: Element) => el.scrollIntoView({ block: 'center', inline: 'center' }));
+    // Raw page.mouse events address viewport coordinates, so unlike locator.click() they get
+    // no actionability auto-scroll: an off-viewport cell yields a coordinate the pointer can
+    // never reach, page.mouse clamps the move to the viewport edge, and dnd-kit then reports
+    // isOver on whatever sits at that edge instead. Scrolling the source and target in turn
+    // cannot fix that — the two ends of a week are far enough apart that centring one scrolls
+    // the other out, so whichever is scrolled last simply wins. The describe block pins a
+    // viewport wide enough to hold a whole week instead; scroll the row vertically only, and
+    // verify below that both ends really are reachable before pressing.
+    await targetCell.evaluate((el: Element) => el.scrollIntoView({ block: 'center', inline: 'nearest' }));
     const press = await card.evaluate((el: Element) => {
-      el.scrollIntoView({ block: 'center', inline: 'center' });
       const rect = el.getBoundingClientRect();
       if (!rect.width || !rect.height) {
         return { point: null, blockedBy: 'nothing (card has no layout box yet)' };
@@ -267,6 +268,18 @@ async function dragCardToCell(page: Page, card: Locator, targetCell: Locator) {
     if (!targetBox) throw new Error('target cell has no bounding box');
     const tgtX = targetBox.x + targetBox.width / 2;
     const tgtY = targetBox.y + targetBox.height / 2;
+
+    // A clamped move is indistinguishable from a move that simply missed, so refuse to press
+    // at all rather than spend three attempts producing "isOver never appeared" — the failure
+    // that cost the most time here said nothing about the target being off-screen.
+    const viewport = page.viewportSize();
+    if (viewport && (tgtX < 0 || tgtY < 0 || tgtX > viewport.width || tgtY > viewport.height)) {
+      throw new Error(
+        `target cell centre (${Math.round(tgtX)}, ${Math.round(tgtY)}) is outside the ` +
+          `${viewport.width}x${viewport.height} viewport, so page.mouse would clamp the drag to the ` +
+          'edge and drop on the wrong cell. Widen the viewport for this test.',
+      );
+    }
 
     await page.mouse.move(srcX, srcY);
     await page.mouse.down();
@@ -544,7 +557,10 @@ test.describe('Recurring shifts anchor every occurrence to the restaurant timezo
 // landing on 10:00 Chicago: a drift of exactly +60 minutes.
 // ---------------------------------------------------------------------------
 test.describe('Drag-copying a shift card preserves the restaurant-local wall clock', () => {
-  test.use({ timezoneId: 'America/Phoenix' });
+  // A whole week must be on screen at once: the drag runs from Monday to Sunday, and raw mouse
+  // events cannot reach a column the viewport is not showing. The default 1280x720 fits only six
+  // of the seven columns beside the sidebar and the sticky team-member column.
+  test.use({ timezoneId: 'America/Phoenix', viewport: { width: 1600, height: 900 } });
 
   const SOURCE_START_UTC = '2026-03-02T15:00:00+00:00'; // 09:00 Chicago (CST, UTC-6), Monday
   const SOURCE_END_UTC = '2026-03-02T19:00:00+00:00'; // 13:00 Chicago

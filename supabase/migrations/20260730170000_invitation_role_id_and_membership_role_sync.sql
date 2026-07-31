@@ -172,3 +172,70 @@ CREATE TRIGGER user_restaurants_sync_role_id
   BEFORE UPDATE ON public.user_restaurants
   FOR EACH ROW
   EXECUTE FUNCTION public.user_restaurants_sync_role_id();
+
+-- ----------------------------------------------------------------------------
+-- Database-level guard for invitations.role_id.
+--
+-- The column comment above says send-team-invitation is what authorizes the
+-- role_id, and it does -- but it is not the only writer. "Restaurant owners
+-- and managers can manage invitations" is a FOR ALL policy with no WITH CHECK
+-- (20260702170000_add_operations_manager_role.sql), so its USING expression is
+-- reused for INSERT: an owner or manager can write an invitation row straight
+-- from the client with any role_id they can name, including one belonging to a
+-- restaurant they have nothing to do with. accept-invitation then copies it
+-- onto the new user_restaurants row verbatim.
+--
+-- The blast radius is bounded -- every tenant role is collaborator-flavored
+-- and capped by area_catalog, so a foreign role grants no more than a local
+-- one could -- but it cross-links two tenants through a FK that nothing
+-- cascades, so restaurant B can end up unable to delete a role because
+-- restaurant A's membership points at it. Same shape as the check
+-- send-team-invitation already performs; enforced here so it holds for every
+-- writer.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.invitations_validate_role_id()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_role_restaurant_id UUID;
+  v_found BOOLEAN;
+BEGIN
+  IF NEW.role_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT restaurant_id INTO v_role_restaurant_id
+  FROM public.roles
+  WHERE id = NEW.role_id;
+  v_found := FOUND;
+
+  -- A missing role is the FK's problem, not ours -- it rejects the same
+  -- statement. Returning here keeps the error the client sees as the accurate
+  -- one rather than masking it with an authorization message.
+  IF NOT v_found THEN
+    RETURN NEW;
+  END IF;
+
+  -- A global builtin (restaurant_id IS NULL) is invitable by anyone; a
+  -- per-restaurant role only by the restaurant that owns it.
+  IF v_role_restaurant_id IS NOT NULL
+     AND v_role_restaurant_id IS DISTINCT FROM NEW.restaurant_id THEN
+    RAISE EXCEPTION
+      'invitation role_id % belongs to another restaurant', NEW.role_id
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+COMMENT ON FUNCTION public.invitations_validate_role_id IS
+'Rejects an invitation whose role_id is a per-restaurant role belonging to a different restaurant than the invitation. Global builtins (restaurant_id IS NULL) are always allowed. Mirrors the check send-team-invitation performs, at a level no client writer can skip.';
+
+CREATE TRIGGER invitations_validate_role_id
+  BEFORE INSERT OR UPDATE ON public.invitations
+  FOR EACH ROW
+  EXECUTE FUNCTION public.invitations_validate_role_id();

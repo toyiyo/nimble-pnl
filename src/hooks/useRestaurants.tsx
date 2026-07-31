@@ -98,7 +98,23 @@ async function fetchUserRestaurants(userId: string): Promise<UserRestaurant[]> {
     .eq('user_id', userId);
 
   if (error) throw error;
-  return (data || []) as unknown as UserRestaurant[];
+  // The embedded to-many arrays are normalized here, at the one place the
+  // rows enter the app. `RoleRecord` types them as always-present arrays and
+  // usePermissions reads them without a guard, but the row is a raw cast — a
+  // null from either embed would take down every consumer of the hook with a
+  // "cannot read properties of null" during render.
+  return ((data || []) as unknown as UserRestaurant[]).map((row) =>
+    row.roleRecord
+      ? {
+          ...row,
+          roleRecord: {
+            ...row.roleRecord,
+            role_areas: row.roleRecord.role_areas ?? [],
+            role_flags: row.roleRecord.role_flags ?? [],
+          },
+        }
+      : row
+  );
 }
 
 export function useRestaurants() {
@@ -205,7 +221,11 @@ export function useRestaurants() {
 
   return {
     restaurants: query.data ?? [],
-    loading: query.isPending,
+    // isLoading, not isPending: the query is `enabled: !!user`, and a disabled
+    // query stays `isPending` forever. Callers now gate rendering on this
+    // (StaffRoleChecker holds the route until the role is known), so a `true`
+    // that never clears is a permanent spinner rather than a brief one.
+    loading: query.isLoading,
     createRestaurant,
     updateRestaurant,
     refetch: invalidate,

@@ -11402,6 +11402,10 @@ export type Database = {
         }
         Returns: Json
       }
+      replace_role_grants: {
+        Args: { p_areas: Json; p_flags: string[]; p_role_id: string }
+        Returns: undefined
+      }
       restore_deleted_transaction: {
         Args: { p_restaurant_id: string; p_tombstone_id: string }
         Returns: Json

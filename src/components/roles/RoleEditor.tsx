@@ -672,7 +672,6 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
               <select
                 id="copy-targets"
                 multiple
-                aria-label="Other restaurants"
                 value={copyTargetIds}
                 onChange={(e) =>
                   setCopyTargetIds(Array.from(e.target.selectedOptions).map((option) => option.value))

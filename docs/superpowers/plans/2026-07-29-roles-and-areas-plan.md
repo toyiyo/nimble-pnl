@@ -182,20 +182,42 @@ holds — never to wherever a sibling role happened to appear in the old policy.
 Each rewritten policy gets a one-line comment naming the capability it now
 requires, so the mapping is reviewable in the diff rather than inferred.
 
+> **As built:** three of the fifty policies are deliberately *not* rewritten —
+> the `receipt_imports` trio, left on role literals. The capability named for
+> that feature, `edit:receipt_import`, resolves through `inventory:manage` and
+> so also covers chef and collaborator_inventory; mapping to it would reverse
+> the deliberate 2025-10-06 security fix that restricted receipt imports to
+> owners and managers, and would widen every Chef's access the moment Task 3's
+> backfill gave them a `role_id`. Substituting a capability whose legacy role
+> list merely happens to match is what the [2026-07-09] lesson above forbids,
+> so no substitution was made. Only the other 47 are rewritten, and
+> `collaborator_custom_rls_test.sql` asserts that `receipt_imports` still
+> carries exactly its three original policies, that none of them calls
+> `user_has_capability`, and that all three still match a role-literal array.
+
 ## Task 7 — the TypeScript area model
 
-**Test first.** `tests/unit/areas.test.ts`: the ten area definitions expand to
+**Test first.** `tests/unit/areas.test.ts`: the area definitions expand to
 capability sets; expanding all areas at `manage` plus all three flags yields
 exactly the owner capability set; `view:assets`/`edit:assets` are present in
 the union.
+
+> **As built:** "ten" here was wrong, and stayed wrong through several
+> revisions of this plan. `area_catalog` seeds **fourteen** `area_key`s; what
+> there are ten of is `ui_group`s — the rows the editor draws, each bundling
+> one or more area keys (`team` + `collaborators` under one row, `books` +
+> `chart_of_accounts` under another, and so on). `areas.ts` therefore defines
+> fourteen `AreaDefinition`s grouped into ten UI rows, and `areas.test.ts`
+> asserts against fourteen. Read every "ten areas" below as "ten editor
+> rows".
 
 **Then:**
 - `src/lib/permissions/types.ts` — add `view:assets`/`edit:assets` to
   `Capability` (closing the drift), add `view:costs`/`view:pay_rates`/
   `view:employee_pii`, widen `Role` with a custom-role branch.
-- `src/lib/permissions/areas.ts` (new) — the ten `AreaDefinition`s, their band
-  grouping, and `expandAreas(grants, flags): Capability[]`. Single source of
-  truth mirroring the SQL seed.
+- `src/lib/permissions/areas.ts` (new) — the fourteen `AreaDefinition`s, their
+  `ui_group`/band grouping, and `expandAreas(grants, flags): Capability[]`.
+  Single source of truth mirroring the SQL seed.
 - `definitions.ts` — `ROLE_CAPABILITIES` unchanged in this task; it stays as
   the fallback until task 8.
 

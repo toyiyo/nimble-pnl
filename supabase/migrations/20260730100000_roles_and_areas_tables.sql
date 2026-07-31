@@ -180,10 +180,20 @@ CREATE POLICY "Members can view roles"
 -- entirely (they are written by migrations under the service role / postgres,
 -- which bypasses RLS; the trigger below is the actual invariant, not this
 -- clause — see the migration header).
+-- `builtin` and `flavor` are pinned in every WITH CHECK, not just validated on
+-- read. Both are escalation levers: the collaborator cap in section 7 is the
+-- privilege-escalation guard for tenant-authored roles, and it exempts
+-- builtin = true and skips anything not flavored 'collaborator'. Without these
+-- two clauses a manage:collaborators holder could insert a role with
+-- flavor = 'platform' (or builtin = true) into their own restaurant, grant it
+-- Team & Access at manage — an area with a NULL collaborator cap, i.e. one no
+-- collaborator role may hold at any level — and assign someone to it.
 CREATE POLICY "manage:collaborators holders can insert roles"
   ON public.roles FOR INSERT
   WITH CHECK (
     restaurant_id IS NOT NULL
+    AND builtin = false
+    AND flavor = 'collaborator'
     AND public.user_has_capability(restaurant_id, 'manage:collaborators')
   );
 
@@ -191,10 +201,13 @@ CREATE POLICY "manage:collaborators holders can update roles"
   ON public.roles FOR UPDATE
   USING (
     restaurant_id IS NOT NULL
+    AND builtin = false
     AND public.user_has_capability(restaurant_id, 'manage:collaborators')
   )
   WITH CHECK (
     restaurant_id IS NOT NULL
+    AND builtin = false
+    AND flavor = 'collaborator'
     AND public.user_has_capability(restaurant_id, 'manage:collaborators')
   );
 
@@ -472,6 +485,12 @@ BEGIN
   IF NOT NEW.builtin AND EXISTS (
     SELECT 1 FROM public.roles b
     WHERE b.builtin = true
+      -- Only the ten global seeds reserve a name. Scoping this to
+      -- restaurant_id IS NULL keeps the reserved list from ever depending on
+      -- another tenant's rows: a per-restaurant builtin row is not something
+      -- the write policies allow, and if one ever appeared it must not be
+      -- able to reserve a name in someone else's restaurant.
+      AND b.restaurant_id IS NULL
       AND lower(b.name) = lower(NEW.name)
   ) THEN
     RAISE EXCEPTION

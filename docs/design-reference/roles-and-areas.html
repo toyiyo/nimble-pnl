@@ -1,3 +1,8 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Roles &amp; Areas — EasyShiftHQ permissions</title>
 
 <style>
@@ -434,12 +439,14 @@
     *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; }
   }
 </style>
+</head>
+<body>
 
 <div class="wrap">
 
   <div class="chrome">
     <span class="eyebrow">Team management</span>
-    <span class="eyebrow" style="color:var(--accent)">Wetzel's — Cold Stone, Alamo Ranch</span>
+    <span class="eyebrow" style="color:var(--accent)">Bluebird Diner — Riverbend</span>
   </div>
   <h1>Roles &amp; Areas</h1>
   <p class="lede">
@@ -669,12 +676,16 @@
       sens:{ costs:true, payrates:false, pii:false } }
   ];
 
+  /* Invented people on RFC 2606's reserved example.test domain. The earlier
+     draft mixed a real-looking personal address in with the fixtures; a design
+     reference that gets screenshotted and pasted into tickets should not carry
+     anything that reads as a live account. */
   var members = [
-    { name:"Jose Delgado", email:"josema@hotmail.com", role:"collaborator_operations_manager" },
-    { name:"Rita Alvarez", email:"rita@bookskeeper.co", role:"collaborator_accountant" },
-    { name:"Danny Poole", email:"danny.p@gmail.com", role:"custom_weekend_supervisor" },
-    { name:"Sam Okafor", email:"sam.okafor@gmail.com", role:"custom_weekend_supervisor" },
-    { name:"Priya Raman", email:"priya@costlab.io", role:"custom_food_cost" }
+    { name:"Avery Lindqvist", email:"avery.l@example.test", role:"collaborator_operations_manager" },
+    { name:"Rita Alvarez",    email:"rita.a@example.test",  role:"collaborator_accountant" },
+    { name:"Danny Poole",     email:"danny.p@example.test", role:"custom_weekend_supervisor" },
+    { name:"Sam Okafor",      email:"sam.o@example.test",   role:"custom_weekend_supervisor" },
+    { name:"Priya Raman",     email:"priya.r@example.test", role:"custom_food_cost" }
   ];
 
   /* ---------------- state ---------------- */
@@ -723,13 +734,23 @@
       if (l === "manage") a.edit.forEach(function (c) { out.push("edit:" + c); });
     });
     SENSITIVE.forEach(function (s) {
-      if (r.sens[s.key] && sensAvailable(r, s)) out.push(s.cap);
+      if (sensEffective(r, s.key)) out.push(s.cap);
     });
     return out.sort();
   }
 
   function sensAvailable(r, s) {
     return s.requires.some(function (k) { return (r.areas[k] || "none") !== "none"; });
+  }
+
+  /* A switch that is on but has lost every backing area grants nothing. Every
+     reader of the flags goes through here so the summary rail and the emitted
+     capability list can never disagree. */
+  function sensEffective(r, key) {
+    for (var i = 0; i < SENSITIVE.length; i++) {
+      if (SENSITIVE[i].key === key) return !!r.sens[key] && sensAvailable(r, SENSITIVE[i]);
+    }
+    return false;
   }
 
   var PHRASE = {
@@ -765,7 +786,10 @@
     if ((r.areas.books || "none") === "none") blocked.push("the books");
     if ((r.areas.payroll || "none") === "none") blocked.push("payroll");
     if ((r.areas.team || "none") === "none") blocked.push("team settings");
-    if (!r.sens.costs) blocked.push("costs and margins");
+    // Same predicate capabilities() uses, not the raw switch: a costs flag
+    // with none of its backing areas granted emits no view:costs capability,
+    // so the summary must read it as blocked rather than as allowed.
+    if (!sensEffective(r, "costs")) blocked.push("costs and margins");
 
     var name = esc(r.name || "This role");
     var s = "<strong>" + name + "</strong> can " + canStr + ".";
@@ -1084,3 +1108,5 @@
   renderRoles(); renderInvite(); renderMembers();
 })();
 </script>
+</body>
+</html>

@@ -12,7 +12,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(42);
+SELECT plan(47);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: two fictional restaurants (A, B, both owned by the same owner —
@@ -498,6 +498,62 @@ SELECT throws_ok(
 );
 
 RESET row_security;
+
+-- ============================================================================
+-- 16. The write policies pin `builtin` and `flavor`. Both are escalation
+--     levers: role_areas_enforce_collaborator_cap exempts builtin rows and
+--     only inspects flavor = 'collaborator', so a tenant-authored role that
+--     sets either one escapes the cap that keeps Team & Access ungrantable.
+--     Owner of restaurant A throughout — the most privileged tenant principal
+--     there is, so a denial here is not "this caller lacked the capability".
+-- ============================================================================
+SET LOCAL ROLE authenticated;
+SET LOCAL request.jwt.claims = '{"sub":"a0000000-0000-0000-0000-000000000001","role":"authenticated"}';
+
+-- Positive control first: the shape the app actually writes is accepted, so
+-- the three denials below are about builtin/flavor and nothing else.
+SELECT lives_ok(
+  $$ INSERT INTO public.roles (id, restaurant_id, name, flavor, builtin)
+     VALUES ('a0000000-0000-0000-0000-0000000000c9', 'a0000000-0000-0000-0000-0000000000a1', 'Pinned Columns Control', 'collaborator', false) $$,
+  'owner can insert a collaborator-flavored, non-builtin role (positive control)'
+);
+
+SELECT throws_ok(
+  $$ INSERT INTO public.roles (restaurant_id, name, flavor, builtin)
+     VALUES ('a0000000-0000-0000-0000-0000000000a1', 'Smuggled Builtin', 'collaborator', true) $$,
+  '42501',
+  NULL,
+  'owner cannot insert a role with builtin = true (it would be exempt from the collaborator cap)'
+);
+
+SELECT throws_ok(
+  $$ INSERT INTO public.roles (restaurant_id, name, flavor, builtin)
+     VALUES ('a0000000-0000-0000-0000-0000000000a1', 'Smuggled Platform', 'platform', false) $$,
+  '42501',
+  NULL,
+  'owner cannot insert a platform-flavored role (the cap only inspects collaborator ones)'
+);
+
+SELECT throws_ok(
+  $$ UPDATE public.roles SET flavor = 'platform'
+     WHERE id = 'a0000000-0000-0000-0000-0000000000c9' $$,
+  '42501',
+  NULL,
+  'owner cannot flip an existing custom role to platform flavor after the fact'
+);
+
+-- And the cap the two pins protect is still doing its job on the row that was
+-- allowed through: Team & Access has a NULL collaborator cap.
+SELECT throws_ok(
+  $$ INSERT INTO public.role_areas (role_id, area_key, level)
+     VALUES ('a0000000-0000-0000-0000-0000000000c9', 'team', 'manage') $$,
+  '42501',
+  NULL,
+  'the collaborator cap still rejects Team & Access on the role that was allowed through'
+);
+
+RESET ROLE;
+RESET request.jwt.claims;
 
 SELECT * FROM finish();
 

@@ -55,11 +55,24 @@ const RESTAURANT_ID = 'rest-123';
 // call and returns the same object, and the object itself is awaitable so a
 // chain can be resolved at any depth without the test having to know which
 // call is terminal.
-function makeChain(result: { data: unknown; error: unknown }) {
+function makeChain(
+  result: { data: unknown; error: unknown },
+  // What the chain resolves to once `.single()`/`.maybeSingle()` has been
+  // called. Without this a test that needs the insert's returned row had to
+  // swap the whole `roles` chain out, which also swapped out the list query's
+  // fixture — leaving `roles` holding a single insert result instead of
+  // ROLE_ROWS for the rest of that test.
+  singleResult?: { data: unknown; error: unknown },
+) {
   const calls: Array<[string, unknown[]]> = [];
   const chain: Record<string, unknown> = {
     __calls: calls,
-    then: (resolve: (v: unknown) => unknown) => Promise.resolve(result).then(resolve),
+    then: (resolve: (v: unknown) => unknown) =>
+      Promise.resolve(
+        singleResult && calls.some(([m]) => m === 'single' || m === 'maybeSingle')
+          ? singleResult
+          : result,
+      ).then(resolve),
   };
   for (const method of [
     'select',
@@ -137,7 +150,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 
   chains = {
-    roles: makeChain({ data: ROLE_ROWS, error: null }),
+    roles: makeChain({ data: ROLE_ROWS, error: null }, { data: { id: 'new-role' }, error: null }),
     user_restaurants: makeChain({ data: MEMBERSHIP_ROWS, error: null }),
     role_areas: makeChain({ data: null, error: null }),
     role_flags: makeChain({ data: null, error: null }),
@@ -235,8 +248,7 @@ describe('useRoles — listing', () => {
 });
 
 describe('useRoles — mutations', () => {
-  it('createRole inserts the role, then its areas and flags', async () => {
-    chains.roles = makeChain({ data: { id: 'new-role' }, error: null });
+  it('createRole inserts the role, then writes its areas and flags in one RPC', async () => {
     const { result } = await renderReady();
 
     await act(async () => {
@@ -255,15 +267,14 @@ describe('useRoles — mutations', () => {
     expect(payload.name).toBe('Weekend Supervisor');
     expect(payload.builtin, 'the client never mints a builtin').toBe(false);
 
-    expect(chains.role_areas.insert).toHaveBeenCalledWith([
-      { role_id: 'new-role', area_key: 'scheduling', level: 'manage' },
-    ]);
-    expect(chains.role_flags.insert).toHaveBeenCalledWith([
-      { role_id: 'new-role', flag: 'view:costs' },
-    ]);
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('replace_role_grants', {
+      p_role_id: 'new-role',
+      p_areas: [{ area_key: 'scheduling', level: 'manage' }],
+      p_flags: ['view:costs'],
+    });
   });
 
-  it('updateRole replaces the grants rather than merging them', async () => {
+  it('updateRole replaces the grants rather than merging them, in one transaction', async () => {
     const { result } = await renderReady();
 
     await act(async () => {
@@ -276,14 +287,21 @@ describe('useRoles — mutations', () => {
       });
     });
 
+    // The whole replacement goes through one RPC, which is what makes it
+    // atomic: the previous shape issued the two deletes and the two inserts
+    // as four separate transactions, so a rejected insert left the role with
+    // no grants at all. `inventory: view` is the only area sent, so the
+    // scheduling grant the fixture role had is gone — replaced, not merged.
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('replace_role_grants', {
+      p_role_id: 'custom-weekend',
+      p_areas: [{ area_key: 'inventory', level: 'view' }],
+      p_flags: [],
+    });
     expect(
       chains.role_areas.delete,
-      'ungranting an area has to remove its row — an upsert-only update would leave it granted',
-    ).toHaveBeenCalled();
-    expect(chains.role_flags.delete).toHaveBeenCalled();
-    expect(chains.role_areas.insert).toHaveBeenCalledWith([
-      { role_id: 'custom-weekend', area_key: 'inventory', level: 'view' },
-    ]);
+      'a client-side delete outside the RPC is exactly the non-atomic step this replaced',
+    ).not.toHaveBeenCalled();
+    expect(chains.role_flags.delete).not.toHaveBeenCalled();
   });
 
   it('refuses to update a builtin role without calling the database', async () => {
@@ -330,7 +348,6 @@ describe('useRoles — mutations', () => {
     ['copyRole', (r: ReturnType<typeof useRoles>) =>
       r.copyRole({ roleId: 'custom-weekend', targetRestaurantIds: ['rest-456'] })],
   ])('%s invalidates both ["roles", restaurantId] and ["restaurants"]', async (_name, run) => {
-    chains.roles = makeChain({ data: { id: 'new-role' }, error: null });
     const { Wrapper, queryClient } = createWrapper();
     const { result } = renderHook(() => useRoles(RESTAURANT_ID), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.isLoading).toBe(false));

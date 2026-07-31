@@ -700,8 +700,22 @@ lesson has now fired twice.
   policies across 17 tables and the rewrite adds two joins to it; a regression
   here is a site-wide slowdown, and it should be caught by a test rather than
   in production.
-- **Unit:** nav and landing path derived from areas match the current
-  hardcoded output for all 10 builtins.
+- **Unit:** the builtin roles' nav and landing paths are unchanged, and a
+  custom role's nav and landing derive from its areas.
+
+  > **As built:** this bullet originally read "nav and landing path derived
+  > from areas match the current hardcoded output for all 10 builtins", which
+  > overstated what was built and what is safe to build. Derivation is applied
+  > only to custom collaborator roles. The builtins keep their hand-written
+  > `navigationGroups`/`ROLE_METADATA.landingPath` — a pure derivation is not
+  > equivalent for them (Recipe Consultant, for one, would move from
+  > `/recipes` to `/inventory` on area priority alone), so asserting
+  > equivalence would have forced either a wrong assertion or a behaviour
+  > change nobody asked for. The tests assert the two halves separately:
+  > `AppSidebar.nav.test.ts` pins the six retained nav arrays, and
+  > `usePermissions.test.ts` pins each builtin's landing against
+  > `ROLE_METADATA` while checking that a custom role's landing derives from
+  > its areas instead of falling through to `'/'`.
 - **Unit:** custom-role name uniqueness per restaurant (the [2026-07-09]
   label-collision lesson).
 - **Unit:** `usePermissions` reports `isResolved: false` while the context is

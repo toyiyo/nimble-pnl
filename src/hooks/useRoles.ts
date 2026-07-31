@@ -133,19 +133,20 @@ export function useRoles(restaurantId: string | undefined) {
     ]);
   };
 
-  const writeGrants = async (roleId: string, areas: RoleAreaGrant[], flags: SensitiveFlag[]) => {
-    if (areas.length > 0) {
-      const { error } = await supabase
-        .from('role_areas')
-        .insert(areas.map((a) => ({ role_id: roleId, area_key: a.area_key, level: a.level })));
-      if (error) throw error;
-    }
-    if (flags.length > 0) {
-      const { error } = await supabase
-        .from('role_flags')
-        .insert(flags.map((flag) => ({ role_id: roleId, flag })));
-      if (error) throw error;
-    }
+  // One RPC rather than four round-trips (delete areas, delete flags, insert
+  // areas, insert flags). Each of those was its own transaction, so a failure
+  // partway through — a rejected area, a dropped connection — left the role
+  // with no grants at all and everyone holding it locked out until someone
+  // saved again. replace_role_grants runs the same four statements in one
+  // transaction under the caller's own privileges: same RLS policies, same
+  // builtin block, same collaborator area cap.
+  const replaceGrants = async (roleId: string, areas: RoleAreaGrant[], flags: SensitiveFlag[]) => {
+    const { error } = await supabase.rpc('replace_role_grants', {
+      p_role_id: roleId,
+      p_areas: areas.map((a) => ({ area_key: a.area_key, level: a.level })),
+      p_flags: flags,
+    });
+    if (error) throw error;
   };
 
   const createMutation = useMutation({
@@ -169,7 +170,7 @@ export function useRoles(restaurantId: string | undefined) {
       if (error) throw error;
 
       const roleId = (data as { id: string }).id;
-      await writeGrants(roleId, draft.areas, draft.flags);
+      await replaceGrants(roleId, draft.areas, draft.flags);
       return roleId;
     },
     onSuccess: invalidate,
@@ -185,22 +186,7 @@ export function useRoles(restaurantId: string | undefined) {
         .eq('id', draft.id);
       if (error) throw error;
 
-      // Delete-then-insert rather than upsert: ungranting an area has to
-      // remove its row, and an upsert-only update would silently leave the
-      // old grant in place.
-      const { error: areaError } = await supabase
-        .from('role_areas')
-        .delete()
-        .eq('role_id', draft.id);
-      if (areaError) throw areaError;
-
-      const { error: flagError } = await supabase
-        .from('role_flags')
-        .delete()
-        .eq('role_id', draft.id);
-      if (flagError) throw flagError;
-
-      await writeGrants(draft.id, draft.areas, draft.flags);
+      await replaceGrants(draft.id, draft.areas, draft.flags);
       return draft.id;
     },
     onSuccess: invalidate,

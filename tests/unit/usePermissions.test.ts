@@ -1,20 +1,17 @@
 /**
  * usePermissions — data-driven roles built from areas (Phase 4, task 8)
  *
- * RED test for the client resolution step described in
+ * Covers the client resolution step described in
  * docs/superpowers/plans/2026-07-29-roles-and-areas-plan.md ("Task 8 — client
  * resolution") and docs/superpowers/specs/2026-07-29-roles-and-areas-design.md.
  *
- * This file targets the *next* shape of `usePermissions`, which does not
- * exist yet — every test here is expected to fail against today's
- * `src/hooks/usePermissions.ts` (it only reads `selectedRestaurant.role` as a
- * legacy string and has no concept of `isResolved`, embedded areas, or
- * `flavor`). `tests/unit/usePermissions.test.tsx` (note the `.tsx`) covers
- * today's behavior and is left untouched; it must keep passing throughout
- * this migration since the legacy fallback path is required to behave
- * identically.
+ * Written RED first, against a `usePermissions` that did not yet know about
+ * `isResolved`, embedded areas, or `flavor`; it is GREEN now and is the
+ * regression guard for that shape. `tests/unit/usePermissions.test.tsx` (note
+ * the `.tsx`) covers the legacy string-role path and is left untouched — it
+ * must keep passing, since the fallback is required to behave identically.
  *
- * The contract this test pins, for whoever implements the GREEN step:
+ * The contract this file pins:
  *
  * - `useRestaurantContext()` keeps returning `selectedRestaurant` and
  *   `loading` exactly as today, but once `useRestaurants` embeds the joined

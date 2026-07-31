@@ -47,7 +47,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(18);
+SELECT plan(22);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: one restaurant, one custom role scoped to it, one custom role
@@ -67,7 +67,12 @@ INSERT INTO public.restaurants (id, name) VALUES
 
 INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin) VALUES
   ('d0000000-0000-0000-0000-0000000000e1', 'd0000000-0000-0000-0000-0000000000f1',
-   'Weekend Supervisor', 'Custom role for the invite path', 'collaborator', false);
+   'Weekend Supervisor', 'Custom role for the invite path', 'collaborator', false),
+  -- Lives in the *other* restaurant. Section 4 invites it into f1 and expects
+  -- to be stopped: the FK only proves the role exists, not that it belongs to
+  -- the restaurant doing the inviting.
+  ('d0000000-0000-0000-0000-0000000000e2', 'd0000000-0000-0000-0000-0000000000f2',
+   'Other Tenant Role', 'Custom role owned by a different restaurant', 'collaborator', false);
 
 INSERT INTO public.role_areas (role_id, area_key, level) VALUES
   ('d0000000-0000-0000-0000-0000000000e1', 'scheduling', 'manage');
@@ -248,6 +253,64 @@ SELECT is(
   NULL::uuid,
   'INSERT with role_id omitted still leaves it NULL -- the trigger is UPDATE-only'
 );
+
+-- ============================================================================
+-- 4. invitations_validate_role_id(): role_id must belong to the inviting
+--    restaurant.
+--
+--    The FK on role_id proves only that the role *exists*. Tenancy is a
+--    separate question, and nothing else asks it: the invitations write policy
+--    is FOR ALL with no WITH CHECK of its own, so Postgres reuses the USING
+--    expression for INSERT -- and that expression tests the caller's rights
+--    over `restaurant_id`, saying nothing about `role_id`. Any owner or
+--    manager could therefore invite someone onto another tenant's role. This
+--    runs with row_security off because the trigger, not RLS, is the thing
+--    under test -- and because service-role writers (accept-invitation, the
+--    send-team-invitation edge function) bypass RLS entirely and still need
+--    to be held.
+-- ============================================================================
+SET LOCAL row_security = off;
+
+SELECT throws_ok(
+  $$ INSERT INTO public.invitations (restaurant_id, invited_by, email, role, token, role_id)
+     VALUES ('d0000000-0000-0000-0000-0000000000f1', 'd0000000-0000-0000-0000-000000000001',
+             'cross-tenant@example.test', 'collaborator_custom', 'tok-cross',
+             'd0000000-0000-0000-0000-0000000000e2') $$,
+  '42501',
+  NULL,
+  'an invitation cannot carry a role_id owned by a different restaurant'
+);
+
+SELECT throws_ok(
+  $$ UPDATE public.invitations SET role_id = 'd0000000-0000-0000-0000-0000000000e2'
+     WHERE token = 'tok-custom' $$,
+  '42501',
+  NULL,
+  'an existing invitation cannot be repointed at another restaurant''s role'
+);
+
+-- A global builtin (restaurant_id IS NULL) belongs to no tenant, so every
+-- restaurant may invite into it. Without this branch the trigger would break
+-- the ordinary builtin invite the moment role_id starts being populated.
+SELECT lives_ok(
+  $$ INSERT INTO public.invitations (restaurant_id, invited_by, email, role, token, role_id)
+     VALUES ('d0000000-0000-0000-0000-0000000000f1', 'd0000000-0000-0000-0000-000000000001',
+             'builtin-with-id@example.test', 'manager', 'tok-builtin-id',
+             'b0000000-0000-0000-0000-000000000002') $$,
+  'an invitation may carry a global builtin role_id, which belongs to no restaurant'
+);
+
+-- And the same-restaurant custom role is still invitable -- the trigger
+-- rejects on tenancy, not on "role_id is set at all".
+SELECT lives_ok(
+  $$ INSERT INTO public.invitations (restaurant_id, invited_by, email, role, token, role_id)
+     VALUES ('d0000000-0000-0000-0000-0000000000f1', 'd0000000-0000-0000-0000-000000000001',
+             'same-tenant@example.test', 'collaborator_custom', 'tok-same-tenant',
+             'd0000000-0000-0000-0000-0000000000e1') $$,
+  'an invitation may still carry a custom role_id owned by the inviting restaurant'
+);
+
+RESET row_security;
 
 SELECT * FROM finish();
 ROLLBACK;

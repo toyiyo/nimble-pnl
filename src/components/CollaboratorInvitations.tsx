@@ -166,9 +166,17 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
    * comes from its `roles` row; anything else falls back to the static
    * metadata, and finally to the raw literal so an unknown role still renders
    * something rather than blank.
+   *
+   * `collaborator_custom` is the one literal that must never reach the raw
+   * fallback: it has no ROLE_METADATA entry by design (the name lives on the
+   * roles row), so a row whose role_id is missing — deleted role, or the
+   * roles query not back yet — would print the snake_case literal at a
+   * customer.
    */
   const roleLabelFor = (role: string, roleId: string | null) =>
-    (roleId ? roleNamesById.get(roleId) : undefined) ?? ROLE_METADATA[role as Role]?.label ?? role;
+    (roleId ? roleNamesById.get(roleId) : undefined) ??
+    ROLE_METADATA[role as Role]?.label ??
+    (role === 'collaborator_custom' ? 'Custom role' : role);
 
   const { data: collaborators, isLoading: collaboratorsLoading, error: collaboratorsError } = useCollaboratorsQuery(restaurantId);
   const { data: pendingInvites, isLoading: invitesLoading, error: invitesError } = useCollaboratorInvitesQuery(restaurantId);

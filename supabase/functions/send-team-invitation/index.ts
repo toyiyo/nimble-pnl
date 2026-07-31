@@ -181,7 +181,7 @@ const handler = async (req: Request): Promise<Response> => {
     if (role === CUSTOM_ROLE) {
       const { data: customRole, error: customRoleError } = await supabase
         .from('roles')
-        .select('id, name, restaurant_id, builtin')
+        .select('id, name, restaurant_id, builtin, flavor')
         .eq('id', roleId)
         .maybeSingle();
 
@@ -190,7 +190,17 @@ const handler = async (req: Request): Promise<Response> => {
         throw new Error('Could not verify the selected role');
       }
 
-      if (!customRole || customRole.builtin || customRole.restaurant_id !== restaurantId) {
+      // flavor is checked for the same reason the RLS write policies pin it:
+      // area_catalog's per-area cap — the guard that stops a custom role from
+      // holding Team & Access — only applies to collaborator-flavored roles.
+      // A platform-flavored row is not something the write policies admit, so
+      // this is the belt to that suspenders, not a second gate.
+      if (
+        !customRole ||
+        customRole.builtin ||
+        customRole.flavor !== 'collaborator' ||
+        customRole.restaurant_id !== restaurantId
+      ) {
         // One undifferentiated response for "no such role", "that's a builtin"
         // and "that role belongs to someone else", so this endpoint cannot be
         // used to probe which role ids exist in other restaurants.

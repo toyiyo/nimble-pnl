@@ -72,7 +72,18 @@ BEGIN
   WHERE ur.restaurant_id = p_restaurant_id
     AND ur.user_id = auth.uid();
 
-  IF v_role IS NULL THEN
+  -- Membership is decided by whether a row was found, not by whether `role`
+  -- is populated: `user_restaurants.role` is nullable (it has always been
+  -- `role TEXT ... DEFAULT 'staff'`, never NOT NULL), so a row carrying only
+  -- a role_id — the shape this migration is moving toward — would otherwise
+  -- be read as "not a member" and lose every capability its areas grant.
+  IF NOT FOUND THEN
+    RETURN FALSE;
+  END IF;
+
+  -- Nothing to resolve from: no role_id to read areas off, and no legacy role
+  -- string for the fallback CASE below to match. Fail closed.
+  IF v_role_id IS NULL AND v_role IS NULL THEN
     RETURN FALSE;
   END IF;
 

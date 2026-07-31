@@ -233,7 +233,10 @@ test.describe('Roles & Areas', () => {
     await page.getByRole('button', { name: new RegExp(roleName) }).click();
 
     const invitedEmail = `weekend-supervisor-invite-${Date.now()}@example.com`;
-    await page.getByLabel(/email/i).fill(invitedEmail);
+    // /email address/i, the exact visible label — /email/i also matches the
+    // per-row "Cancel invitation for {address}" / "Remove collaborator
+    // {address}" aria-labels whenever an address happens to contain "email".
+    await page.getByLabel(/email address/i).fill(invitedEmail);
     await page.getByRole('button', { name: /send/i }).click();
 
     // ---- Simulate acceptance and verify the invited user sees exactly those two areas ----

@@ -50,7 +50,12 @@ INSERT INTO auth.users (id, email) VALUES
   ('c0000000-0000-0000-0000-000000000009', 'urrid-collab-chef@example.test'),
   ('c0000000-0000-0000-0000-00000000000a', 'urrid-collab-opsmgr@example.test'),
   ('c0000000-0000-0000-0000-00000000000b', 'urrid-manual-owner@example.test'),
-  ('c0000000-0000-0000-0000-00000000000c', 'urrid-nullable-role-id@example.test');
+  ('c0000000-0000-0000-0000-00000000000c', 'urrid-nullable-role-id@example.test'),
+  -- Two users with no membership row of their own, so the constraint tests
+  -- below reach the constraint they are aiming at instead of tripping
+  -- UNIQUE(user_id, restaurant_id) first.
+  ('c0000000-0000-0000-0000-00000000000d', 'urrid-custom-role-literal@example.test'),
+  ('c0000000-0000-0000-0000-00000000000e', 'urrid-dangling-role-id@example.test');
 
 INSERT INTO public.restaurants (id, name) VALUES
   ('c0000000-0000-0000-0000-0000000000f1', 'Role Id Backfill Test Restaurant');
@@ -80,11 +85,17 @@ SELECT col_type_is(
   'user_restaurants.role_id is uuid'
 );
 
-SELECT throws_ok(
-  $$ INSERT INTO public.user_restaurants (user_id, restaurant_id, role)
-     VALUES ('c0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-0000000000f1', 'collaborator_custom') $$,
-  NULL, NULL,
-  'the legacy role CHECK constraint still rejects collaborator_custom -- widening it is Task 4, not this one'
+-- This assertion used to read "the CHECK still rejects collaborator_custom --
+-- widening it is Task 4, not this one". Task ordering is a property of the
+-- branch, not of the database: pgTAP runs against a fully migrated schema, so
+-- 20260730130000_allow_collaborator_custom_role.sql is always in force by the
+-- time this file executes. The old form only passed because it reused user
+-- 001, whose membership already exists, and UNIQUE(user_id, restaurant_id)
+-- raised before the CHECK was ever consulted.
+SELECT lives_ok(
+  $$ INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role)
+     VALUES ('c0000000-0000-0000-0000-0000000001ab', 'c0000000-0000-0000-0000-00000000000d', 'c0000000-0000-0000-0000-0000000000f1', 'collaborator_custom') $$,
+  'the widened role CHECK accepts collaborator_custom, the literal a custom-role membership carries'
 );
 
 -- ============================================================================
@@ -190,7 +201,7 @@ SELECT is(
 -- ============================================================================
 SELECT throws_ok(
   $$ INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role, role_id)
-     VALUES ('c0000000-0000-0000-0000-0000000001ff', 'c0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-0000000000f1', 'staff', 'ffffffff-ffff-ffff-ffff-ffffffffffff') $$,
+     VALUES ('c0000000-0000-0000-0000-0000000001ff', 'c0000000-0000-0000-0000-00000000000e', 'c0000000-0000-0000-0000-0000000000f1', 'staff', 'ffffffff-ffff-ffff-ffff-ffffffffffff') $$,
   NULL, NULL,
   'inserting a role_id that does not exist in roles is rejected by the FK'
 );

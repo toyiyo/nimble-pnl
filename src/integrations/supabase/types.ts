@@ -11438,6 +11438,13 @@ export type Database = {
         Returns: number
       }
       revel_valid_tz: { Args: { p_tz: string }; Returns: string }
+      role_member_counts: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          member_count: number
+          role_id: string
+        }[]
+      }
       runtests:
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }

@@ -154,7 +154,10 @@ test.describe('Roles & Areas', () => {
     await expect(page.getByRole('button', { name: /all roles/i })).toBeVisible();
 
     await page.getByLabel(/role name/i).fill(roleName);
-    await page.getByLabel(/what this person does/i).fill('Covers weekend shifts: scheduling and inventory');
+    // Deliberately names neither granted area: the role card renders this
+    // description, so wording it "…scheduling and inventory" would let the
+    // area-chip assertions further down pass on the description text alone.
+    await page.getByLabel(/what this person does/i).fill('Covers weekend shifts on the floor');
 
     // ---- Grant counter starts at zero with nothing granted yet ----
     const grantCounter = page.getByText(/^\d+\s+granted$/i);
@@ -250,16 +253,33 @@ test.describe('Roles & Areas', () => {
     const sidebar = page.locator('aside[role="navigation"], [data-sidebar]').first();
     await expect(sidebar).toBeVisible();
 
-    // Granted areas' nav items are visible…
+    // Each nav group is a Collapsible whose content Radix *unmounts* while
+    // closed, and only the group holding the current path opens by default.
+    // Landing on /inventory therefore opens Inventory and leaves Operations
+    // closed. Two consequences this block is written around: a granted item
+    // in a closed group has to be revealed before it can be asserted visible,
+    // and every negative below must be a DOM-absence check — `not.toBeVisible`
+    // would pass for any collapsed group whether or not the role was granted
+    // it, which is exactly the assertion that cannot be allowed to be vacuous
+    // here.
     await expect(sidebar.getByRole('button', { name: 'Inventory', exact: true })).toBeVisible();
+
+    await sidebar.getByText('Operations', { exact: true }).first().click();
     await expect(sidebar.getByRole('button', { name: 'Scheduling', exact: true })).toBeVisible();
 
-    // …and nothing from ungranted areas is — in particular Team, which this
-    // role could never have been granted in the first place.
-    await expect(sidebar.getByRole('button', { name: 'Transactions' })).not.toBeVisible();
-    await expect(sidebar.getByRole('button', { name: 'Payroll' })).not.toBeVisible();
-    await expect(sidebar.getByRole('button', { name: 'Team' })).not.toBeVisible();
-    await expect(sidebar.getByRole('button', { name: 'Employees' })).not.toBeVisible();
-    await expect(sidebar.getByRole('button', { name: 'Settings' })).not.toBeVisible();
+    // Scheduling was granted at *view*, and /time-punches and /tips are gated
+    // at manage (routeAreas.ts), so the rest of the now-open Operations group
+    // is absent from the DOM rather than merely hidden.
+    await expect(sidebar.getByRole('button', { name: 'Time Clock', exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole('button', { name: 'Tip Pooling', exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole('button', { name: 'Payroll', exact: true })).toHaveCount(0);
+
+    // Ungranted areas produce no group at all — in particular Team, which
+    // this role could never have been granted in the first place.
+    await expect(sidebar.getByText('Accounting', { exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole('button', { name: 'Transactions', exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole('button', { name: 'Team', exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole('button', { name: 'Employees', exact: true })).toHaveCount(0);
+    await expect(sidebar.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
   });
 });

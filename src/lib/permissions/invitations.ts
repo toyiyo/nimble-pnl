@@ -65,6 +65,16 @@ export const CUSTOM_ROLE = 'collaborator_custom' as const;
  */
 export type InviteRoleLiteral = Role | typeof CUSTOM_ROLE;
 
+/**
+ * The same domain, for the `role` column of an *accepted* membership
+ * (`user_restaurants`) rather than a pending invitation. Aliased rather than
+ * reused under the invitation name so a reader of a membership row does not
+ * have to reason about invitations to know what the column can hold — and so
+ * that typing such a column `Role` stays visibly wrong: a custom-role
+ * membership carries `'collaborator_custom'`, which is not a `Role`.
+ */
+export type MembershipRoleLiteral = InviteRoleLiteral;
+
 /** Roles that `inviter` is allowed to invite (empty if none). */
 export function getInvitableRoles(inviter: Role): Role[] {
   return [...(INVITABLE_ROLES[inviter] ?? [])];

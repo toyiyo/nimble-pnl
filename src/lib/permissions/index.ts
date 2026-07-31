@@ -32,4 +32,4 @@ export {
 
 // Invitations
 export { canInviteRole, canInviteCustomRole, getInvitableRoles, CUSTOM_ROLE } from './invitations';
-export type { InviteRoleLiteral } from './invitations';
+export type { InviteRoleLiteral, MembershipRoleLiteral } from './invitations';

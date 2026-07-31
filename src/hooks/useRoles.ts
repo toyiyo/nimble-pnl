@@ -97,21 +97,25 @@ export function useRoles(restaurantId: string | undefined) {
 
       if (error) throw error;
 
-      // Counted from this restaurant's memberships, not by role_id alone: a
-      // builtin `roles` row is global, so an unscoped count would report
-      // every Owner on the platform on this restaurant's Owner card.
-      const { data: memberRows, error: memberError } = await supabase
-        .from('user_restaurants')
-        .select('role_id')
-        .eq('restaurant_id', restaurantId!);
+      // Counted server-side, and scoped to this restaurant's memberships: a
+      // builtin `roles` row is global, so an unscoped count would report every
+      // Owner on the platform on this restaurant's Owner card.
+      //
+      // The RPC exists because counting `role_id` alone undercounts —
+      // `user_restaurants.role_id` is legitimately NULL on memberships written
+      // by code paths that set only the legacy `role` string, and resolving
+      // those needs `builtin_role_id_for`, the mapping the migrations call the
+      // single source. A copy of it here would be the copy that drifts.
+      const { data: countRows, error: memberError } = await supabase
+        .rpc('role_member_counts', { p_restaurant_id: restaurantId! });
 
       if (memberError) throw memberError;
 
-      const counts = new Map<string, number>();
-      for (const row of (memberRows ?? []) as Array<{ role_id: string | null }>) {
-        if (!row.role_id) continue;
-        counts.set(row.role_id, (counts.get(row.role_id) ?? 0) + 1);
-      }
+      const counts = new Map<string, number>(
+        ((countRows ?? []) as Array<{ role_id: string; member_count: number }>).map(
+          (row) => [row.role_id, Number(row.member_count)]
+        )
+      );
 
       const rows = Array.isArray(roleRows) ? roleRows : [];
       return (rows as unknown as Omit<RoleWithGrants, 'memberCount'>[]).map((role) => ({

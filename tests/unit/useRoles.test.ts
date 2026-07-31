@@ -129,10 +129,14 @@ const ROLE_ROWS = [
   },
 ];
 
-const MEMBERSHIP_ROWS = [
-  { role_id: 'builtin-owner' },
-  { role_id: 'custom-weekend' },
-  { role_id: 'custom-weekend' },
+// What `role_member_counts` returns: already grouped, and already resolved —
+// a membership whose `user_restaurants.role_id` is NULL has been mapped
+// through `builtin_role_id_for(role)` server-side. That resolution is why the
+// count is an RPC at all and is asserted in
+// supabase/tests/role_member_counts_test.sql; nothing here can observe it.
+const MEMBER_COUNT_ROWS = [
+  { role_id: 'builtin-owner', member_count: 1 },
+  { role_id: 'custom-weekend', member_count: 2 },
 ];
 
 let chains: Record<string, ReturnType<typeof makeChain>>;
@@ -154,7 +158,6 @@ beforeEach(() => {
 
   chains = {
     roles: makeChain({ data: ROLE_ROWS, error: null }, { data: { id: 'new-role' }, error: null }),
-    user_restaurants: makeChain({ data: MEMBERSHIP_ROWS, error: null }),
     role_areas: makeChain({ data: null, error: null }),
     role_flags: makeChain({ data: null, error: null }),
   };
@@ -163,10 +166,14 @@ beforeEach(() => {
     if (!chains[table]) chains[table] = makeChain({ data: null, error: null });
     return chains[table];
   });
-  mockSupabase.rpc.mockResolvedValue({
-    data: { copied: ['rest-456'], name_collisions: [] },
-    error: null,
-  });
+  // Dispatched by name rather than a single blanket resolution: the list query
+  // and the copy mutation both go through `rpc`, and they return differently
+  // shaped payloads.
+  mockSupabase.rpc.mockImplementation(async (fn: string) =>
+    fn === 'role_member_counts'
+      ? { data: MEMBER_COUNT_ROWS, error: null }
+      : { data: { copied: ['rest-456'], name_collisions: [] }, error: null },
+  );
 });
 
 async function renderReady(restaurantId: string | undefined = RESTAURANT_ID) {
@@ -218,17 +225,32 @@ describe('useRoles — listing', () => {
   it('counts members per role, scoped to this restaurant', async () => {
     const { result } = await renderReady();
 
-    const eqCall = chains.user_restaurants.__calls.find(
-      ([m, args]) => m === 'eq' && args[0] === 'restaurant_id',
-    );
+    // Counting is server-side. Reading `user_restaurants` directly here would
+    // mean counting `role_id` alone, which silently drops every membership
+    // written with only the legacy `role` string — see
+    // supabase/migrations/20260730200000_role_member_counts.sql.
     expect(
-      eqCall,
-      'a builtin role row is global — the count must be filtered by restaurant_id or every Owner on the platform is counted here',
-    ).toBeDefined();
-    expect(eqCall![1][1]).toBe(RESTAURANT_ID);
+      mockSupabase.from,
+      'the headcount must not be recomputed client-side from user_restaurants',
+    ).not.toHaveBeenCalledWith('user_restaurants');
+    expect(mockSupabase.rpc).toHaveBeenCalledWith('role_member_counts', {
+      // A builtin role row is global, so the restaurant scope is what keeps
+      // every Owner on the platform off this restaurant's Owner card.
+      p_restaurant_id: RESTAURANT_ID,
+    });
 
     expect(result.current.roles.find((r) => r.id === 'custom-weekend')?.memberCount).toBe(2);
     expect(result.current.roles.find((r) => r.id === 'builtin-owner')?.memberCount).toBe(1);
+  });
+
+  it('shows a zero count for a role nobody holds, rather than dropping the card', async () => {
+    mockSupabase.rpc.mockImplementation(async (fn: string) =>
+      fn === 'role_member_counts' ? { data: [], error: null } : { data: null, error: null },
+    );
+    const { result } = await renderReady();
+
+    expect(result.current.roles).toHaveLength(2);
+    expect(result.current.roles.every((r) => r.memberCount === 0)).toBe(true);
   });
 
   it('does not query at all without a restaurantId', async () => {

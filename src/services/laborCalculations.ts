@@ -26,7 +26,7 @@ import { parseWorkPeriods, calculateEmployeePay } from '@/utils/payrollCalculati
 import { startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
-import { toDateOnlyString } from '@/lib/dateOnly';
+import { toDateOnlyString, parseDateOnly } from '@/lib/dateOnly';
 import { businessDaysBetween, toBusinessDay } from '@/lib/restaurantClock';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
@@ -683,6 +683,12 @@ export function calculateHoursPerEmployee(
     punchesByEmployee.get(punch.employee_id)!.push(punch);
   });
 
+  // See the comment at the calculateSalaryForPeriod/calculateContractorPayForPeriod
+  // call sites below for why this conversion is needed. Hoisted out of the
+  // per-employee loop since startDate/endDate/timezone don't vary per employee.
+  const businessDayStart = parseDateOnly(toBusinessDay(startDate, timezone));
+  const businessDayEnd = parseDateOnly(toBusinessDay(endDate, timezone));
+
   return employees.map((employee) => {
     const punches = punchesByEmployee.get(employee.id) ?? [];
     const { periods: rawPeriods } = parseWorkPeriods(punches);
@@ -712,9 +718,20 @@ export function calculateHoursPerEmployee(
 
     const daysWorked = activeDays.size;
 
+    // calculateSalaryForPeriod/calculateContractorPayForPeriod iterate whole
+    // calendar days anchored at local midnight (case a) -- they are not
+    // instant-aware. startDate/endDate here ARE instants (case b, compared
+    // directly against punch timestamps above), so bucket the window's
+    // boundaries into the restaurant's business days first via toBusinessDay,
+    // then hand the two functions an already-anchored calendar-day Date via
+    // parseDateOnly. Bucketing once at the boundary (rather than per
+    // iterated day) is equivalent here: salary/contractor pay is prorated
+    // per whole day, so only the first/last business day the window touches
+    // matters, matching the inclusive-range semantics businessDaysBetween
+    // uses elsewhere in this file.
     let totalCostCents = 0;
-    totalCostCents += calculateSalaryForPeriod(employee, startDate, endDate);
-    totalCostCents += calculateContractorPayForPeriod(employee, startDate, endDate);
+    totalCostCents += calculateSalaryForPeriod(employee, businessDayStart, businessDayEnd);
+    totalCostCents += calculateContractorPayForPeriod(employee, businessDayStart, businessDayEnd);
 
     for (const [day, hours] of Object.entries(hoursPerDay)) {
       if (hours <= 0) continue;

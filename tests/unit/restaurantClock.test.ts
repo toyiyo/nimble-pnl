@@ -110,31 +110,67 @@ describe('parseWallClock at DST edges (Postgres parity)', () => {
   // `('...'::timestamp AT TIME ZONE tz)::text`, NOT derived from `new Date()`
   // -- an assertion correct in July and wrong in November would be a defect.
   // Postgres resolves both the repeated (ambiguous) and nonexistent wall
-  // clock using the zone's STANDARD (non-DST) offset, confirmed in both
-  // hemispheres (America/Chicago DST is Mar-Nov; Australia/Sydney DST is
-  // Oct-Apr, opposite direction) so it is not a northern-hemisphere fluke.
+  // clock using the numerically SMALLER of the two candidate UTC offsets --
+  // equivalently, of the two candidate instants it always takes the LATER
+  // one. Confirmed in both hemispheres (America/Chicago DST is Mar-Nov;
+  // Australia/Sydney DST is Oct-Apr, opposite direction) so it is not a
+  // northern-hemisphere fluke.
+  //
+  // The rule is PURELY NUMERIC, not designation-based. In Chicago and Sydney
+  // the smaller offset happens to be the zone's standard (non-DST) one, so
+  // those four cases alone cannot distinguish "smaller offset" from
+  // "standard offset" -- an implementation that looked up tzdb's standard
+  // offset would pass all of them and still be wrong. Europe/Dublin is the
+  // decisive case: tzdb models it with NEGATIVE DST (standard is IST +1:00,
+  // and winter GMT +0:00 is the DST offset), so there "standard" is the
+  // LARGER offset and the two rules give different answers. The Dublin
+  // expectations below are what production Postgres actually returns, and
+  // they match the numeric rule, not the designation one.
   const SYD = 'Australia/Sydney';
+  const DUB = 'Europe/Dublin';
 
-  it('resolves the repeated hour (fall-back) in Chicago with the standard (CST) offset', () => {
+  it('resolves the repeated hour (fall-back) in Chicago with the smaller (CST) offset', () => {
     expect(parseWallClock('2026-11-01T01:30', CHI)).toBe('2026-11-01T07:30:00.000Z');
   });
 
-  it('resolves the nonexistent hour (spring-forward) in Chicago with the standard (CST) offset', () => {
+  it('resolves the nonexistent hour (spring-forward) in Chicago with the smaller (CST) offset', () => {
     expect(parseWallClock('2026-03-08T02:30', CHI)).toBe('2026-03-08T08:30:00.000Z');
   });
 
-  it('resolves the repeated hour (fall-back) in Sydney with the standard (AEST) offset', () => {
+  it('resolves the repeated hour (fall-back) in Sydney with the smaller (AEST) offset', () => {
     // Sydney DST ends 2026-04-05; 02:30 is the repeated hour. The AFTER
-    // offset (AEST) happens to be the valid, standard one here.
+    // offset (AEST, +10:00) is the smaller of the two candidates here.
     expect(parseWallClock('2026-04-05T02:30', SYD)).toBe('2026-04-04T16:30:00.000Z');
   });
 
-  it('resolves the nonexistent hour (spring-forward) in Sydney with the standard (AEST) offset', () => {
+  it('resolves the nonexistent hour (spring-forward) in Sydney with the smaller (AEST) offset', () => {
     // Sydney DST starts 2026-10-04; 02:30 does not exist. The BEFORE offset
-    // (AEST) happens to be the valid, standard one here -- opposite of the
-    // fall-back case above, which is why "standard" (not "before"/"after")
-    // is the only rule that describes both.
+    // (AEST, +10:00) is the smaller one here -- the opposite side from the
+    // fall-back case above, which is why "smaller offset" (not
+    // "before"/"after") is the rule that describes both.
     expect(parseWallClock('2026-10-04T02:30', SYD)).toBe('2026-10-03T16:30:00.000Z');
+  });
+
+  // The two cases below are the reason this whole block exists. If someone
+  // "simplifies" parseWallClock's `Math.min(offsetBefore, offsetAfter)` into
+  // a tzdb standard-offset lookup, every other test here still passes and
+  // only these two go red.
+  it('resolves the repeated hour (fall-back) in Dublin with the SMALLER offset, not the standard one', () => {
+    // Dublin DST ends 2026-10-25; 01:30 is the repeated hour. Candidates are
+    // 00:30Z (at IST +1:00) and 01:30Z (at GMT +0:00). Postgres returns the
+    // later instant -- i.e. the smaller offset -- even though +1:00 is the
+    // zone's *standard* offset. Verified against production Postgres:
+    // ('2026-10-25T01:30:00'::timestamp AT TIME ZONE 'Europe/Dublin')
+    //   => 2026-10-25 01:30:00+00
+    expect(parseWallClock('2026-10-25T01:30', DUB)).toBe('2026-10-25T01:30:00.000Z');
+  });
+
+  it('resolves the nonexistent hour (spring-forward) in Dublin with the SMALLER offset, not the standard one', () => {
+    // Dublin DST starts 2026-03-29; 01:30 does not exist (01:00 -> 02:00).
+    // Verified against production Postgres:
+    // ('2026-03-29T01:30:00'::timestamp AT TIME ZONE 'Europe/Dublin')
+    //   => 2026-03-29 01:30:00+00
+    expect(parseWallClock('2026-03-29T01:30', DUB)).toBe('2026-03-29T01:30:00.000Z');
   });
 
   it('resolves an unambiguous Chicago wall clock without touching the standard-offset fallback', () => {

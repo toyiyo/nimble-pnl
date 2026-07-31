@@ -164,8 +164,16 @@ function buildSummary(
   return summary;
 }
 
+/** The more permissive of two levels, treating `null` as "not granted". */
+function higherLevel(a: AreaLevel | null, b: AreaLevel | null): AreaLevel | null {
+  if (a === 'manage' || b === 'manage') return 'manage';
+  if (a === 'view' || b === 'view') return 'view';
+  return null;
+}
+
 function buildNavPreview(grants: Partial<Record<AreaKey, AreaLevel>>): NavPreviewGroup[] {
   const landingKey = landingAreaKey(grants);
+  const levelByPath = new Map<string, AreaLevel | null>();
 
   return AREA_DEFINITIONS.reduce<NavPreviewGroup[]>((groups, row) => {
     let group = groups.find((g) => g.label === row.band);
@@ -176,14 +184,24 @@ function buildNavPreview(grants: Partial<Record<AreaKey, AreaLevel>>): NavPrevie
 
     for (const areaKey of row.areaKeys) {
       const path = AREA_LANDING_PATHS[areaKey];
-      const level = grants[areaKey] ?? null;
-      group.items.push({
+      // Two area keys can share one nav item — `team` and `collaborators`
+      // both land on /team — and the sidebar renders that item once, so the
+      // preview must too, at the highest level either area grants.
+      const level = higherLevel(levelByPath.get(path) ?? null, grants[areaKey] ?? null);
+      levelByPath.set(path, level);
+
+      const existing = group.items.find((item) => item.path === path);
+      const item = existing ?? {
         path,
         label: findNavLabel(path) ?? path,
-        reachable: level !== null,
-        readOnly: level === 'view',
-        isLanding: areaKey === landingKey,
-      });
+        reachable: false,
+        readOnly: false,
+        isLanding: false,
+      };
+      item.reachable = level !== null;
+      item.readOnly = level === 'view';
+      item.isLanding = item.isLanding || areaKey === landingKey;
+      if (!existing) group.items.push(item);
     }
 
     return groups;

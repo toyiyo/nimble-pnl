@@ -42,7 +42,7 @@ function memberCountLabel(count: number): string {
 
 function RoleCardSkeleton() {
   return (
-    <div className="flex flex-col gap-3 p-[18px] rounded-xl border border-border/40 bg-background">
+    <div className="flex flex-col gap-3 p-[18px] rounded-xl border border-border/40 bg-card shadow-sm">
       <div className="flex items-start gap-[11px]">
         <Skeleton className="h-[34px] w-[34px] rounded-lg flex-shrink-0" />
         <div className="min-w-0 flex-1 space-y-2">
@@ -70,7 +70,7 @@ function RoleCard({ role, onClick }: { role: RoleWithGrants; onClick: () => void
       type="button"
       onClick={onClick}
       className={cn(
-        'group flex flex-col gap-3 p-[18px] text-left rounded-xl border border-border/40 bg-background',
+        'group flex flex-col gap-3 p-[18px] text-left rounded-xl border border-border/40 bg-card shadow-sm',
         'hover:border-border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
       )}
     >

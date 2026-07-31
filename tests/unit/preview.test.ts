@@ -131,6 +131,22 @@ describe('buildRolePreview — navPreview', () => {
     expect(landingItems[0].path).toBe('/inventory');
   });
 
+  it('renders one row per nav item when two areas share a path, at the higher level', () => {
+    // `team` and `collaborators` both land on /team (AREA_LANDING_PATHS), and
+    // the sidebar shows that item once — so the preview must not list "Team"
+    // twice, and the row reflects whichever area grants more.
+    const { navPreview } = buildRolePreview({ team: 'view', collaborators: 'manage' }, []);
+    const teamItems = navPreview.flatMap((g) => g.items).filter((i) => i.path === '/team');
+    expect(teamItems).toHaveLength(1);
+    expect(teamItems[0].reachable).toBe(true);
+    expect(teamItems[0].readOnly).toBe(false);
+
+    const viewOnly = buildRolePreview({ team: 'view' }, []);
+    const viewTeam = viewOnly.navPreview.flatMap((g) => g.items).filter((i) => i.path === '/team');
+    expect(viewTeam).toHaveLength(1);
+    expect(viewTeam[0].readOnly).toBe(true);
+  });
+
   it('real labels are read from the actual sidebar nav data, not re-typed here', () => {
     const { navPreview } = buildRolePreview({}, []);
     const items = navPreview.flatMap((g) => g.items);

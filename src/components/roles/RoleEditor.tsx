@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import * as RadioGroupPrimitive from '@radix-ui/react-radio-group';
-import { AlertTriangle, ArrowLeft } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -153,17 +153,65 @@ function memberNoticeText(count: number): string {
     : `${count} people have this role. Saving changes what they can reach the next time they load a page.`;
 }
 
-/** One segment ("No access" / "View" / "Manage") of the segmented RadioGroup. */
+/**
+ * A band's tinted full-bleed header strip, with the column legend on the right.
+ *
+ * Full-bleed (no horizontal padding on the parent) is what separates one band
+ * from the next in the approved design — the rows below it are the ones that
+ * get the padding.
+ */
+function BandHeader({ label, legend, first }: { label: string; legend?: string; first?: boolean }) {
+  return (
+    <div
+      className={cn(
+        'flex items-baseline justify-between gap-3 px-5 py-2.5 bg-muted border-b border-border/40',
+        !first && 'border-t'
+      )}
+    >
+      {/* Mono, small, wide-tracked — the prototype's `.band h3` / `.band .legend`. */}
+      <h3 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">{label}</h3>
+      {legend && (
+        // Hidden on narrow screens: the rows below stack there, so the legend
+        // no longer sits above the columns it names — the prototype drops it
+        // at the same breakpoint (`@media (max-width: 620px)`).
+        <span className="hidden sm:inline font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground/70 whitespace-nowrap">
+          {legend}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * One segment ("No access" / "View" / "Manage") of the segmented RadioGroup.
+ *
+ * A capped segment carries a padlock, per the approved prototype — the
+ * `disabled` opacity alone reads as "not selected yet" rather than "you can
+ * never pick this". The glyph is `aria-hidden` so it stays out of the radio's
+ * accessible name (which the E2E spec matches exactly, `/^manage$/i`); the
+ * *reason* is already exposed through `aria-describedby`, which is where a
+ * screen reader should get it from.
+ *
+ * `accent` makes the checked state solid-primary instead of the plain
+ * background pill. Only Manage passes it: the prototype uses the accent fill
+ * to make "this role can change things" legible at a glance down the column,
+ * which a uniformly-white pill does not.
+ */
 function Segment({
   value,
   label,
   disabled,
+  locked,
   describedBy,
+  accent,
 }: {
   value: string;
   label: string;
   disabled?: boolean;
+  /** Draws the padlock. Separate from `disabled` so a wholly read-only builtin row doesn't sprout three of them. */
+  locked?: boolean;
   describedBy?: string;
+  accent?: boolean;
 }) {
   return (
     <RadioGroupPrimitive.Item
@@ -172,12 +220,14 @@ function Segment({
       aria-disabled={disabled ? true : undefined}
       aria-describedby={describedBy}
       className={cn(
-        'relative z-10 flex-1 rounded-md px-3 py-1.5 text-[12.5px] font-medium text-muted-foreground transition-colors',
-        'data-[state=checked]:text-foreground',
+        'relative z-10 flex flex-1 items-center justify-center gap-1 rounded-md px-2 py-1.5',
+        'text-[12.5px] font-medium text-muted-foreground transition-colors whitespace-nowrap',
+        accent ? 'data-[state=checked]:text-primary-foreground' : 'data-[state=checked]:text-foreground',
         'disabled:cursor-not-allowed disabled:opacity-50',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
       )}
     >
+      {locked && <Lock className="h-3 w-3 flex-shrink-0" aria-hidden="true" />}
       {label}
     </RadioGroupPrimitive.Item>
   );
@@ -201,24 +251,35 @@ function LevelControl({
 
   return (
     <RadioGroupPrimitive.Root
-      className="relative grid w-full max-w-[240px] grid-cols-3 gap-0.5 rounded-lg bg-muted/50 p-0.5"
+      className="relative grid w-full grid-cols-3 sm:max-w-[268px] gap-0.5 rounded-lg bg-muted/50 p-0.5"
       aria-label={`${row.label} access`}
       value={dataLevel}
       onValueChange={(value) => onChange(value === 'none' ? null : (value as AreaLevel))}
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(33.333%-2px)] rounded-md bg-background shadow-sm transition-transform duration-150"
+        className={cn(
+          'pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(33.333%-2px)] rounded-md border shadow-sm transition-transform duration-150',
+          dataLevel === 'manage' ? 'bg-primary border-primary' : 'bg-card border-border/40'
+        )}
         style={{
           transform: `translateX(${dataLevel === 'none' ? 0 : dataLevel === 'view' ? 100 : 200}%)`,
         }}
       />
       <Segment value="none" label="No access" />
-      <Segment value="view" label="View" disabled={viewLocked} describedBy={viewLocked ? reasonId : undefined} />
+      <Segment
+        value="view"
+        label="View"
+        disabled={viewLocked}
+        locked={viewLocked}
+        describedBy={viewLocked ? reasonId : undefined}
+      />
       <Segment
         value="manage"
         label="Manage"
+        accent
         disabled={manageLocked}
+        locked={manageLocked}
         describedBy={manageLocked ? reasonId : undefined}
       />
     </RadioGroupPrimitive.Root>
@@ -230,21 +291,29 @@ function ReadOnlyLevelControl({ row, level }: { row: AreaDefinition; level: Area
   const dataLevel = level ?? 'none';
   return (
     <RadioGroupPrimitive.Root
-      className="relative grid w-full max-w-[240px] grid-cols-3 gap-0.5 rounded-lg bg-muted/50 p-0.5 opacity-70"
+      className="relative grid w-full grid-cols-3 sm:max-w-[268px] gap-0.5 rounded-lg bg-muted/50 p-0.5 opacity-70"
       aria-label={`${row.label} access`}
       value={dataLevel}
       disabled
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(33.333%-2px)] rounded-md bg-background shadow-sm"
+        className={cn(
+          'pointer-events-none absolute inset-y-0.5 left-0.5 w-[calc(33.333%-2px)] rounded-md border shadow-sm',
+          dataLevel === 'manage' ? 'bg-primary border-primary' : 'bg-card border-border/40'
+        )}
         style={{
           transform: `translateX(${dataLevel === 'none' ? 0 : dataLevel === 'view' ? 100 : 200}%)`,
         }}
       />
+      {/*
+        No padlocks here: on a read-only builtin every segment is disabled, so
+        a lock on all three would say "capped" where the truth is "this whole
+        role is not editable" — which the identity card's banner already says.
+      */}
       <Segment value="none" label="No access" disabled />
       <Segment value="view" label="View" disabled />
-      <Segment value="manage" label="Manage" disabled />
+      <Segment value="manage" label="Manage" accent disabled />
     </RadioGroupPrimitive.Root>
   );
 }
@@ -271,7 +340,10 @@ function AreaRow({
   const showReason = !builtinReadOnly && row.maxLevelForCollaborator !== 'manage';
 
   return (
-    <div className="flex items-center justify-between gap-4 border-b border-border/40 py-3 last:border-b-0">
+    // Stacked below `sm`, side-by-side above it — the prototype collapses this
+    // row to a single column at 620px, and without that the segmented control
+    // and the area hint fight over the same line on a phone.
+    <div className="flex flex-col items-stretch gap-2.5 border-b border-border/40 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="min-w-0">
         <div className="text-[14px] font-medium text-foreground">{row.label}</div>
         <p id={`${row.key}-cap-reason`} className="mt-0.5 text-[13px] text-muted-foreground">
@@ -280,7 +352,7 @@ function AreaRow({
         </p>
       </div>
       {partial ? (
-        <span className="text-[11px] px-1.5 py-0.5 rounded-md border border-border/40 font-mono uppercase tracking-wider text-muted-foreground">
+        <span className="self-start sm:self-auto text-[11px] px-1.5 py-0.5 rounded-md border border-border/40 font-mono uppercase tracking-wider text-muted-foreground">
           Partial
         </span>
       ) : builtinReadOnly ? (
@@ -395,22 +467,7 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-5 min-w-0">
           {/* Identity card */}
-          <div className="rounded-xl border border-border/40 bg-background p-5 space-y-4">
-            {builtinReadOnly ? (
-              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
-                <p className="text-[13px] text-foreground">
-                  Built-in role. Read-only — keeps getting new areas as we ship features. Duplicate it to make a
-                  version you control.
-                </p>
-              </div>
-            ) : role && role.memberCount > 0 ? (
-              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
-                <p className="text-[13px] text-foreground">{memberNoticeText(role.memberCount)}</p>
-              </div>
-            ) : null}
-
+          <div className="rounded-xl border border-border/40 bg-card p-5 space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <Label
@@ -443,21 +500,35 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
                 />
               </div>
             </div>
+
+            {/* Banner sits under the two fields, as in the approved design — the
+                name is what identifies the card, so it reads first. */}
+            {builtinReadOnly ? (
+              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
+                <p className="text-[13px] text-foreground">
+                  Built-in role. Read-only — keeps getting new areas as we ship features. Duplicate it to make a
+                  version you control.
+                </p>
+              </div>
+            ) : role && role.memberCount > 0 ? (
+              <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
+                <p className="text-[13px] text-foreground">{memberNoticeText(role.memberCount)}</p>
+              </div>
+            ) : null}
           </div>
 
           {/* Area bands */}
-          <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
-            <div className="px-5 divide-y divide-border/40">
-              {BAND_ORDER.map((band, bandIndex) => (
-                <div key={band} className="py-4 first:pt-5">
-                  <div className="flex items-baseline justify-between pb-1">
-                    <h3 className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider">
-                      {band}
-                    </h3>
-                    {bandIndex === 0 && (
-                      <span className="text-[11px] text-muted-foreground">No access &nbsp;·&nbsp; View &nbsp;·&nbsp; Manage</span>
-                    )}
-                  </div>
+          <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
+            {BAND_ORDER.map((band, bandIndex) => (
+              <div key={band}>
+                <BandHeader
+                  label={band}
+                  legend={bandIndex === 0 ? 'No access · View · Manage' : undefined}
+                  first={bandIndex === 0}
+                />
+                <div className="px-5">
                   {(rowsByBand.get(band) ?? []).map((row) => (
                     <AreaRow
                       key={row.key}
@@ -468,52 +539,60 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
                     />
                   ))}
                 </div>
-              ))}
+              </div>
+            ))}
+
+            {/* Sensitive data closes the same card, as its own band — the flags
+                are cross-cutting, but they are read as one more thing this role
+                either can or cannot see. */}
+            <BandHeader label="Sensitive data" legend="Off · On" />
+            <div className="p-5 pt-4 space-y-1">
+              {SENSITIVE_FLAGS.map((s) => {
+                const available = builtinReadOnly || s.requires.some((key) => !!grants[key]);
+                const checked = available && flags.has(s.flag);
+                const requiredLabels = s.requires.map(areaKeyLabel).join(', ');
+                return (
+                  <div
+                    key={s.flag}
+                    data-testid={`flag-row-${s.flag}`}
+                    className={cn(
+                      'flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border/40',
+                      // The amber wash means "this role can see sensitive data",
+                      // so it appears only when the switch is actually on —
+                      // never merely because the flag is available.
+                      checked && 'bg-amber-500/10 border-amber-500/20',
+                      !available && 'bg-muted/40 opacity-70'
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <Label htmlFor={`flag-${s.flag}`} className="text-[13px] font-medium text-foreground">
+                        {s.name}
+                      </Label>
+                      <p className="text-[12px] text-muted-foreground">
+                        {available ? s.hint : `Needs access to ${requiredLabels}`}
+                      </p>
+                    </div>
+                    <Switch
+                      id={`flag-${s.flag}`}
+                      aria-label={s.name}
+                      checked={checked}
+                      disabled={builtinReadOnly || !available}
+                      onCheckedChange={(v) => toggleFlag(s.flag, v)}
+                      // Amber when on, matching the row's caution wash — these
+                      // switches grant sensitive data, not an ordinary setting.
+                      className="data-[state=checked]:bg-amber-600 dark:data-[state=checked]:bg-amber-500"
+                    />
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Sensitive data */}
-          <div className="rounded-xl border border-border/40 bg-background p-5 space-y-1">
-            <h3 className="text-[12px] font-semibold text-muted-foreground uppercase tracking-wider pb-2">
-              Sensitive data
-            </h3>
-            {SENSITIVE_FLAGS.map((s) => {
-              const available = builtinReadOnly || s.requires.some((key) => !!grants[key]);
-              const checked = available && flags.has(s.flag);
-              const requiredLabels = s.requires.map(areaKeyLabel).join(', ');
-              return (
-                <div
-                  key={s.flag}
-                  data-testid={`flag-row-${s.flag}`}
-                  className={cn(
-                    'flex items-center justify-between gap-3 p-2.5 rounded-lg border border-border/40',
-                    checked && 'bg-amber-500/10 border-amber-500/20'
-                  )}
-                >
-                  <div className="min-w-0">
-                    <Label htmlFor={`flag-${s.flag}`} className="text-[13px] font-medium text-foreground">
-                      {s.name}
-                    </Label>
-                    <p className="text-[12px] text-muted-foreground">
-                      {available ? s.hint : `Needs access to ${requiredLabels}`}
-                    </p>
-                  </div>
-                  <Switch
-                    id={`flag-${s.flag}`}
-                    aria-label={s.name}
-                    checked={checked}
-                    disabled={builtinReadOnly || !available}
-                    onCheckedChange={(v) => toggleFlag(s.flag, v)}
-                    className="data-[state=checked]:bg-foreground"
-                  />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Copy to other restaurants — only meaningful for an already-saved custom role */}
-          {role && !role.builtin && (
-            <div className="rounded-xl border border-border/40 bg-background p-5 space-y-3">
+          {/* Copy to other restaurants — only meaningful for an already-saved
+              custom role, and only when there is somewhere to copy it to: a
+              single-restaurant operator would otherwise get an empty picker. */}
+          {role && !role.builtin && otherRestaurants.length > 0 && (
+            <div className="rounded-xl border border-border/40 bg-card p-5 space-y-3">
               <div>
                 <Label
                   htmlFor="copy-targets"
@@ -590,7 +669,10 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
                 disabled={saveDisabled}
                 aria-describedby={saveHint ? 'save-hint' : undefined}
                 onClick={handleSave}
-                className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium disabled:opacity-45"
+                // Accent-filled, not the usual near-black primary: the approved
+                // design ties the save action to the same accent the selected
+                // "Manage" segment uses.
+                className="h-9 px-4 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 text-[13px] font-medium disabled:opacity-45"
               >
                 Save role
               </Button>

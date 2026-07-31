@@ -41,51 +41,57 @@ export function RolePreviewPanel({ grants, flags, roleName }: RolePreviewPanelPr
 
   return (
     <aside className="lg:sticky lg:top-5 h-fit space-y-3">
-      <div className="rounded-xl border border-border/40 bg-background overflow-hidden">
-        <div className="px-4 py-3 border-b border-border/40 bg-muted/50">
-          <h3 className="text-[13px] font-semibold text-foreground">What they'll see</h3>
+      <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
+        {/* Head: eyebrow + prose summary, then a rule — the prototype's `.rail__head`. */}
+        <div className="px-4 pt-4 pb-3 border-b border-border/40">
+          <h3 className="font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground">
+            What they'll see
+          </h3>
+          <p className="mt-1.5 text-[13px] text-foreground leading-relaxed">{preview.summary}</p>
         </div>
-        <div className="p-4 space-y-4">
-          <p className="text-[13px] text-foreground leading-relaxed">{preview.summary}</p>
 
-          <div className="space-y-3">
-            {preview.navPreview.map((group) => (
-              <div key={group.label}>
-                <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
-                  {group.label}
-                </div>
-                <div className="space-y-0.5">
-                  {group.items.map((item, itemIndex) => (
-                    <div
-                      key={`${item.path}-${itemIndex}`}
-                      className={cn(
-                        'flex items-center justify-between gap-2 px-2 py-1 rounded-md text-[13px]',
-                        item.reachable ? 'text-foreground' : 'text-muted-foreground/50',
-                        item.isLanding && 'bg-primary/10 text-primary font-medium'
-                      )}
-                    >
-                      <span className={cn(!item.reachable && 'line-through')}>{item.label}</span>
-                      {item.readOnly && (
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Read only
-                        </span>
-                      )}
-                      {item.isLanding && (
-                        <span className="text-[10px] uppercase tracking-wider text-primary">Opens here</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+        <div className="px-2 pt-1 pb-3">
+          {preview.navPreview.map((group) => (
+            <div key={group.label}>
+              <div className="font-mono text-[9.5px] uppercase tracking-[0.12em] text-muted-foreground px-2.5 pt-2.5 pb-1">
+                {group.label}
               </div>
-            ))}
-          </div>
+              {group.items.map((item) => (
+                <div
+                  key={item.path}
+                  className={cn(
+                    'flex items-center gap-2.5 px-2.5 py-1 rounded-md text-[13px]',
+                    item.reachable ? 'text-foreground' : 'text-muted-foreground/50',
+                    item.isLanding && 'bg-primary/10 text-primary font-semibold'
+                  )}
+                >
+                  {/* currentColor dot: the row's own state colours it, per the prototype. */}
+                  <span
+                    aria-hidden="true"
+                    className="h-[5px] w-[5px] flex-none rounded-full bg-current"
+                  />
+                  <span className={cn(!item.reachable && 'line-through')}>{item.label}</span>
+                  {item.readOnly && (
+                    <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
+                      Read only
+                    </span>
+                  )}
+                  {item.isLanding && (
+                    <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.08em] text-primary">
+                      Opens here
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
 
-          <div className="flex items-center justify-between pt-3 border-t border-border/40 text-[12px] text-muted-foreground">
-            <span>Permissions this grants</span>
-            <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted font-medium text-foreground">
-              {preview.grantCount} granted
-            </span>
-          </div>
+        <div className="flex items-center justify-between px-4 py-3 border-t border-border/40 text-[12.5px] text-muted-foreground">
+          <span>Permissions this grants</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-muted-foreground">
+            {preview.grantCount} granted
+          </span>
         </div>
       </div>
     </aside>

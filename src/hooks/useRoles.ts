@@ -68,6 +68,8 @@ const ROLES_SELECT = `
   role_flags(flag)
 `;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function useRoles(restaurantId: string | undefined) {
   const queryClient = useQueryClient();
 
@@ -77,6 +79,15 @@ export function useRoles(restaurantId: string | undefined) {
     staleTime: 30000,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<RoleWithGrants[]> => {
+      // `.or()` takes a raw PostgREST filter string, so restaurantId is
+      // interpolated into it rather than bound. It comes from the restaurant
+      // context and is always a UUID today, but a value carrying a comma
+      // would widen the filter to other restaurants' roles rather than
+      // error, so the shape is checked instead of assumed.
+      if (!UUID_PATTERN.test(restaurantId ?? '')) {
+        throw new Error('useRoles: restaurantId must be a UUID');
+      }
+
       const { data: roleRows, error } = await supabase
         .from('roles')
         .select(ROLES_SELECT)
@@ -170,7 +181,22 @@ export function useRoles(restaurantId: string | undefined) {
       if (error) throw error;
 
       const roleId = (data as { id: string }).id;
-      await replaceGrants(roleId, draft.areas, draft.flags);
+
+      try {
+        await replaceGrants(roleId, draft.areas, draft.flags);
+      } catch (grantError) {
+        // The roles row is already committed; the grants are a second
+        // statement. Leaving the empty role behind is worse than it sounds —
+        // it keeps its name, so the retry the user immediately attempts
+        // fails on the name-collision guard instead of on the real problem.
+        try {
+          await supabase.from('roles').delete().eq('id', roleId);
+        } catch {
+          // Ignored on purpose: the grant failure is the error worth showing.
+        }
+        throw grantError;
+      }
+
       return roleId;
     },
     onSuccess: invalidate,

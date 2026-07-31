@@ -49,7 +49,10 @@ vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
 }));
 
-const RESTAURANT_ID = 'rest-123';
+// A real UUID, not a readable stub: the list query interpolates this id into
+// a PostgREST `.or()` filter string and rejects anything that is not
+// UUID-shaped, so a stub here would fail every test in the file.
+const RESTAURANT_ID = '11111111-1111-4111-8111-111111111111';
 
 // A chainable stand-in for the PostgREST builder: every method records its
 // call and returns the same object, and the object itself is awaitable so a
@@ -272,6 +275,40 @@ describe('useRoles — mutations', () => {
       p_areas: [{ area_key: 'scheduling', level: 'manage' }],
       p_flags: ['view:costs'],
     });
+  });
+
+  it('createRole deletes the half-made role when the grants are rejected', async () => {
+    const { result } = await renderReady();
+    mockSupabase.rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'area "team" cannot be granted to a collaborator role' },
+    });
+
+    await expect(
+      result.current.createRole({
+        name: 'Weekend Supervisor',
+        description: '',
+        areas: [{ area_key: 'team', level: 'manage' }],
+        flags: [],
+      }),
+    ).rejects.toBeTruthy();
+
+    // The roles row is committed before the grants are written, so without
+    // this cleanup the name stays taken and the user's immediate retry fails
+    // on the collision guard rather than on the area they actually chose.
+    expect(chains.roles.delete).toHaveBeenCalled();
+    expect(chains.roles.eq).toHaveBeenCalledWith('id', 'new-role');
+  });
+
+  it('refuses to run the list query when the restaurant id is not UUID-shaped', async () => {
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useRoles('rest-123; drop'), { wrapper: Wrapper });
+
+    // The id is interpolated into a PostgREST `.or()` filter string, where a
+    // comma would widen the filter to other restaurants' roles instead of
+    // erroring. Shape-checked rather than assumed.
+    await waitFor(() => expect(result.current.error).toBeTruthy());
+    expect(result.current.roles).toEqual([]);
   });
 
   it('updateRole replaces the grants rather than merging them, in one transaction', async () => {

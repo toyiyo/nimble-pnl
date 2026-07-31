@@ -499,7 +499,10 @@ SELECT is(
   'membership with role NULL but role_id set still resolves its areas — role is nullable, so IS NULL is not a membership test'
 );
 
-SELECT set_config('request.jwt.claims', 'null', true);
+-- Empty object rather than the JSON scalar `null`: both make auth.uid()
+-- resolve to NULL for the inserts below, but `{}` is the shape every other
+-- caller of set_config in these tests uses.
+SELECT set_config('request.jwt.claims', '{}', true);
 
 -- ============================================================================
 -- 5. Performance gate.

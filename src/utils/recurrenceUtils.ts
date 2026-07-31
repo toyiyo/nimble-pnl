@@ -42,7 +42,15 @@ export function generateRecurringDates(
       return isBefore(date, parseISO(pattern.endDate)) || 
              format(date, 'yyyy-MM-dd') === format(parseISO(pattern.endDate), 'yyyy-MM-dd');
     } else if (pattern.endType === 'after' && pattern.occurrences) {
-      return currentCount < pattern.occurrences;
+      // `currentCount` does double duty here: it gates both "should the while
+      // loop attempt another occurrence?" (currentCount = occurrences already
+      // collected) AND "should the just-computed nextDate be pushed?"
+      // (currentCount = the tentative length if it is). `<` satisfies the
+      // first but silently drops the final occurrence for the second —
+      // occurrences: 3 produced 2 dates. `<=` is correct for the push case
+      // and merely costs one extra (discarded) loop iteration for the
+      // while-loop case, which the maxOccurrences safety cap already bounds.
+      return currentCount <= pattern.occurrences;
     }
     return false;
   };

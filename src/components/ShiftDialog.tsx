@@ -12,6 +12,7 @@ import { RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { format, getDay } from 'date-fns';
+import { formatLocalDateInTz, formatLocalHHMMInTz, wallClockToInstant } from '@/lib/shiftInterval';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
 import { AlertTriangle, Repeat } from 'lucide-react';
@@ -66,7 +67,7 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
   const [customRecurrenceOpen, setCustomRecurrenceOpen] = useState(false);
 
   const { employees } = useEmployees(restaurantId);
-  const createShift = useCreateShift();
+  const createShift = useCreateShift({ tz: timezone });
   const updateShift = useUpdateShift();
   const updateShiftSeries = useUpdateShiftSeries();
 
@@ -79,21 +80,27 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
     if (!employeeId || !startDate || !startTime || !endDate || !endTime) {
       return null;
     }
-    
-    const startDateTime = new Date(`${startDate}T${startTime}`);
-    const endDateTime = new Date(`${endDate}T${endTime}`);
-    
-    if (endDateTime <= startDateTime) {
+
+    try {
+      const startDateTime = wallClockToInstant(startDate, startTime, timezone);
+      const endDateTime = wallClockToInstant(endDate, endTime, timezone);
+
+      if (endDateTime <= startDateTime) {
+        return null;
+      }
+
+      return {
+        employeeId,
+        restaurantId,
+        startTime: startDateTime.toISOString(),
+        endTime: endDateTime.toISOString(),
+      };
+    } catch {
+      // Malformed date/time/timezone input (e.g. mid-typing in the date fields) —
+      // no conflict check rather than a render crash. See design §5.5.
       return null;
     }
-
-    return {
-      employeeId,
-      restaurantId,
-      startTime: startDateTime.toISOString(),
-      endTime: endDateTime.toISOString(),
-    };
-  }, [employeeId, restaurantId, startDate, startTime, endDate, endTime]);
+  }, [employeeId, restaurantId, startDate, startTime, endDate, endTime, timezone]);
 
   const { conflicts, hasConflicts } = useCheckConflicts(conflictParams);
 
@@ -101,12 +108,12 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
     if (shift) {
       const start = new Date(shift.start_time);
       const end = new Date(shift.end_time);
-      
+
       setEmployeeId(shift.employee_id);
-      setStartDate(format(start, 'yyyy-MM-dd'));
-      setStartTime(format(start, 'HH:mm'));
-      setEndDate(format(end, 'yyyy-MM-dd'));
-      setEndTime(format(end, 'HH:mm'));
+      setStartDate(formatLocalDateInTz(start, timezone));
+      setStartTime(formatLocalHHMMInTz(shift.start_time, timezone));
+      setEndDate(formatLocalDateInTz(end, timezone));
+      setEndTime(formatLocalHHMMInTz(shift.end_time, timezone));
       setBreakDuration(shift.break_duration.toString());
       setPosition(shift.position);
       setStatus(shift.status);
@@ -125,7 +132,7 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
         }
       }
     }
-  }, [shift, defaultDate, defaultEmployee, open]);
+  }, [shift, defaultDate, defaultEmployee, open, timezone]);
 
   const resetForm = () => {
     setEmployeeId('');
@@ -157,8 +164,15 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
       return;
     }
 
-    const startDateTime = new Date(`${startDate}T${startTime}`);
-    const endDateTime = new Date(`${endDate}T${endTime}`);
+    let startDateTime: Date;
+    let endDateTime: Date;
+    try {
+      startDateTime = wallClockToInstant(startDate, startTime, timezone);
+      endDateTime = wallClockToInstant(endDate, endTime, timezone);
+    } catch {
+      alert('Please enter a valid date, time, and restaurant timezone');
+      return;
+    }
 
     if (endDateTime <= startDateTime) {
       alert('End time must be after start time');

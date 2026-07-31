@@ -1,4 +1,4 @@
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 
 /**
  * The restaurant timezone is the default frame for every user-visible date.
@@ -46,12 +46,19 @@ export function safeTz(tz: string | null | undefined): string {
   }
 }
 
-/** Coerce an instant, complaining if it looks like a calendar day. */
-function asInstant(value: string | Date, fn: string): Date {
+/**
+ * Coerce an instant, complaining if it looks like a calendar day.
+ *
+ * `zone` must already be a validated IANA zone (i.e. run through `safeTz`) --
+ * every caller below does this before reaching here.
+ */
+function asInstant(value: string | Date, fn: string, zone: string): Date {
   if (typeof value === 'string' && DATE_ONLY_RE.test(value)) {
     reject(fn, 'received a calendar day where a moment in time was expected', value);
-    // Production fallback: read it as the calendar day it plainly is.
-    return new Date(`${value}T00:00:00Z`);
+    // Production fallback: read it as midnight IN THE RESTAURANT'S ZONE, so
+    // the calendar day round-trips back to itself. Midnight UTC would format
+    // as the previous day in every zone behind UTC (i.e. every America/* zone).
+    return fromZonedTime(`${value}T00:00:00`, zone);
   }
   const d = typeof value === 'string' ? new Date(value) : value;
   if (Number.isNaN(d.getTime())) {
@@ -83,12 +90,14 @@ export function tzAbbrev(tz: string, at: Date = new Date()): string {
 
 /** Format a moment in time in the restaurant's zone. */
 export function formatInstant(value: string | Date, tz: string, pattern: string): string {
-  return formatInTimeZone(asInstant(value, 'formatInstant'), safeTz(tz), pattern);
+  const zone = safeTz(tz);
+  return formatInTimeZone(asInstant(value, 'formatInstant', zone), zone, pattern);
 }
 
 /** The restaurant-local calendar day an instant belongs to. */
 export function toBusinessDay(value: string | Date, tz: string): string {
-  return formatInTimeZone(asInstant(value, 'toBusinessDay'), safeTz(tz), 'yyyy-MM-dd');
+  const zone = safeTz(tz);
+  return formatInTimeZone(asInstant(value, 'toBusinessDay', zone), zone, 'yyyy-MM-dd');
 }
 
 /**
@@ -105,8 +114,8 @@ export function businessDaysBetween(
   tz: string
 ): string[] {
   const zone = safeTz(tz);
-  const startDay = toBusinessDay(asInstant(startInstant, 'businessDaysBetween'), zone);
-  const endDay = toBusinessDay(asInstant(endInstant, 'businessDaysBetween'), zone);
+  const startDay = toBusinessDay(asInstant(startInstant, 'businessDaysBetween', zone), zone);
+  const endDay = toBusinessDay(asInstant(endInstant, 'businessDaysBetween', zone), zone);
 
   // An inverted range yields just the start day rather than looping forever.
   if (endDay <= startDay) return [startDay];
@@ -126,7 +135,8 @@ export function businessDaysBetween(
 
 /** Render an instant for a `<input type="datetime-local">` in the restaurant's zone. */
 export function toWallClockInput(value: string | Date, tz: string): string {
-  return formatInTimeZone(asInstant(value, 'toWallClockInput'), safeTz(tz), "yyyy-MM-dd'T'HH:mm");
+  const zone = safeTz(tz);
+  return formatInTimeZone(asInstant(value, 'toWallClockInput', zone), zone, "yyyy-MM-dd'T'HH:mm");
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

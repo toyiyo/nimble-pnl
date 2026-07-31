@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_TIMEZONE,
@@ -102,6 +102,72 @@ describe('shape guards', () => {
 
   it('parseWallClock rejects an instant', () => {
     expect(() => parseWallClock('2026-07-28T18:00:00Z', CHI)).toThrow(/wall clock/i);
+  });
+});
+
+describe('production fallback for a calendar day (no error boundary in prod)', () => {
+  // `reject()` throws in DEV/Vitest but only logs in production, where
+  // `asInstant` falls through to a fallback instant. Force that branch by
+  // stubbing `import.meta.env` to look like a production build, and assert
+  // `console.error` fired so we have positive evidence the fallback --
+  // not the throw -- actually ran.
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function stubProdEnv(): void {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('MODE', 'production');
+  }
+
+  it('formatInstant reads a date-only string as midnight in a zone behind UTC (Chicago)', () => {
+    stubProdEnv();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(formatInstant('2026-07-15', CHI, 'yyyy-MM-dd')).toBe('2026-07-15');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  it('formatInstant reads a date-only string as midnight in a zone ahead of UTC (Auckland)', () => {
+    stubProdEnv();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(formatInstant('2026-07-15', 'Pacific/Auckland', 'yyyy-MM-dd')).toBe('2026-07-15');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  it('formatInstant reads a date-only string as midnight in UTC itself', () => {
+    stubProdEnv();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(formatInstant('2026-07-15', 'UTC', 'yyyy-MM-dd')).toBe('2026-07-15');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  it('toBusinessDay round-trips a date-only string back to the same day (Chicago)', () => {
+    stubProdEnv();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(toBusinessDay('2026-07-15', CHI)).toBe('2026-07-15');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
+  });
+
+  it('businessDaysBetween round-trips a date-only start/end back to the same day (Auckland)', () => {
+    stubProdEnv();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(businessDaysBetween('2026-07-15', '2026-07-15', 'Pacific/Auckland')).toEqual([
+      '2026-07-15',
+    ]);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('toWallClockInput anchors a date-only string to local midnight (UTC)', () => {
+    stubProdEnv();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect(toWallClockInput('2026-07-15', 'UTC')).toBe('2026-07-15T00:00');
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    errorSpy.mockRestore();
   });
 });
 

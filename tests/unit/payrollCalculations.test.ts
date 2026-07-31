@@ -904,9 +904,17 @@ describe('calculateEmployeePay overnight window attribution', () => {
     compensation_type: 'hourly', hourly_rate: 1500, is_active: true,
   } as unknown as Employee;
 
-  // Payroll week Mon 2026-07-06 .. Sun 2026-07-12 (WEEK_STARTS_ON = Mon)
-  const weekStart = new Date('2026-07-06T00:00:00Z');
-  const weekEnd = new Date('2026-07-12T23:59:59.999Z');
+  // Payroll week Mon 2026-07-06 .. Sun 2026-07-12 (WEEK_STARTS_ON = Mon).
+  // Constructed via local-field `new Date(y, m, d)`, NOT a UTC ISO string:
+  // periodStartDate/periodEndDate are calendar-day tokens read back via
+  // toDateOnlyString's LOCAL getters (matching real callers, e.g.
+  // `startOfWeek(new Date())` in Payroll.tsx). A UTC-anchored literal like
+  // `new Date('2026-07-06T00:00:00Z')` only round-trips to '2026-07-06' when
+  // the host TZ happens to be UTC, and silently reads back as '2026-07-05'
+  // under TZ=America/Chicago -- exactly the two-serialization bug this suite
+  // exists to catch.
+  const weekStart = new Date(2026, 6, 6);
+  const weekEnd = new Date(2026, 6, 12);
 
   const punch = (type: string, iso: string) => ({
     id: `${type}-${iso}`, employee_id: 'e1', restaurant_id: 'r1',
@@ -925,8 +933,8 @@ describe('calculateEmployeePay overnight window attribution', () => {
   });
 
   it('does NOT double-count the same shift in the following week, no false orphan', () => {
-    const nextStart = new Date('2026-07-13T00:00:00Z'); // Mon
-    const nextEnd = new Date('2026-07-19T23:59:59.999Z');
+    const nextStart = new Date(2026, 6, 13); // Mon, local-field construction -- see weekStart above
+    const nextEnd = new Date(2026, 6, 19);
     // Buffered fetch for the next week includes the Sun 20:00 clock_in (lookback).
     const punches = [
       punch('clock_in', '2026-07-12T20:00:00Z'),  // before nextStart → drop
@@ -978,10 +986,62 @@ describe('calculateEmployeePay overnight window attribution', () => {
     const payA = calculateEmployeePay(employee, punches, 0, 'UTC', weekStart, weekEnd, [], 0, undefined, [], true);
     expect(payA.regularHours + payA.overtimeHours).toBeCloseTo(5.5, 5);
     // The following week must not re-count any of it (no double-count).
-    const nextStart = new Date('2026-07-13T00:00:00Z');
-    const nextEnd = new Date('2026-07-19T23:59:59.999Z');
+    const nextStart = new Date(2026, 6, 13); // local-field construction -- see weekStart above
+    const nextEnd = new Date(2026, 6, 19);
     const payB = calculateEmployeePay(employee, punches, 0, 'UTC', nextStart, nextEnd, [], 0, undefined, [], true);
     expect(payB.regularHours + payB.overtimeHours).toBeCloseTo(0, 5);
+  });
+});
+
+describe('calculateEmployeePay window attribution uses the RESTAURANT zone, not the viewer/host one', () => {
+  // Codex P1: attributeToWindow used to compare punches directly against
+  // periodStartDate/periodEndDate, which are calendar-day tokens, as if they
+  // were instants -- effectively filtering by the viewer's/host's day
+  // boundaries instead of the restaurant's. For a Chicago (CDT, UTC-5)
+  // restaurant that discards the restaurant's evening punches and admits the
+  // wrong day's. Punch instants below are literal UTC Z strings (not
+  // host-local construction) so this is correct under every TZ the suite
+  // runs in (America/Chicago, Pacific/Auckland, UTC).
+  const employee = {
+    id: 'e1', name: 'Night Owl', position: 'Cook', area: null,
+    compensation_type: 'hourly', hourly_rate: 1500, is_active: true,
+  } as unknown as Employee;
+
+  const punch = (type: string, iso: string) => ({
+    id: `${type}-${iso}`, employee_id: 'e1', restaurant_id: 'r1',
+    punch_type: type, punch_time: iso,
+  }) as unknown as TimePunch;
+
+  const CHI = 'America/Chicago';
+  // Period Mon 2026-07-06 .. Sun 2026-07-12, as calendar-day tokens
+  // (local-field construction -- only Y/M/D is read, see the comment on
+  // `weekStart` above).
+  const periodStart = new Date(2026, 6, 6);
+  const periodEnd = new Date(2026, 6, 12);
+
+  it("includes a punch at the restaurant's 20:00 on the period's LAST day", () => {
+    // Restaurant 20:00-22:00 CDT on Jul 12 (the period's last day) is
+    // 2026-07-13T01:00-03:00Z -- past the viewer's/UTC's Jul 12 cutoff, but
+    // still Jul 12 in the restaurant's own zone.
+    const punches = [
+      punch('clock_in', '2026-07-13T01:00:00Z'),
+      punch('clock_out', '2026-07-13T03:00:00Z'),
+    ];
+    const pay = calculateEmployeePay(employee, punches, 0, CHI, periodStart, periodEnd, [], 0, undefined, [], true);
+    expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(2, 5);
+    expect(pay.incompleteShifts ?? []).toHaveLength(0);
+  });
+
+  it("excludes a punch at the restaurant's 20:00 on the day BEFORE the period start", () => {
+    // Restaurant 20:00-22:00 CDT on Jul 5 (the day before the period starts
+    // Jul 6) is 2026-07-06T01:00-03:00Z -- inside the viewer's/UTC's Jul 6,
+    // but still Jul 5 (out of window) in the restaurant's own zone.
+    const punches = [
+      punch('clock_in', '2026-07-06T01:00:00Z'),
+      punch('clock_out', '2026-07-06T03:00:00Z'),
+    ];
+    const pay = calculateEmployeePay(employee, punches, 0, CHI, periodStart, periodEnd, [], 0, undefined, [], true);
+    expect(pay.regularHours + pay.overtimeHours).toBeCloseTo(0, 5);
   });
 });
 

@@ -3,7 +3,7 @@ import { Employee, CompensationType } from '@/types/scheduling';
 import { startOfWeek, endOfWeek, format, parseISO } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { toDateOnlyString } from '@/lib/dateOnly';
-import { toBusinessDay } from '@/lib/restaurantClock';
+import { businessDayRangeToInstants, toBusinessDay } from '@/lib/restaurantClock';
 import {
   calculateSalaryForPeriod,
   calculateContractorPayForPeriod,
@@ -483,8 +483,21 @@ export function calculateEmployeePay(
   if (compensationType === 'hourly') {
     const parsed = parseWorkPeriods(punches);
     if (attributeToWindow && periodStartDate && periodEndDate) {
-      parsed.periods = periodsInWindow(parsed.periods, periodStartDate, periodEndDate);
-      parsed.incompleteShifts = incompleteShiftsInWindow(parsed.incompleteShifts, periodStartDate, periodEndDate);
+      // periodStartDate/periodEndDate are calendar-day tokens (see the
+      // toDateOnlyString comment below), not instants. Deriving the window
+      // instants from the VIEWER's browser day boundaries here -- as this
+      // block previously did by comparing punches to periodStartDate/
+      // periodEndDate directly -- discards restaurant-evening punches for a
+      // viewer west of the restaurant and wrongly admits restaurant-morning
+      // punches from the prior day for a viewer east of it. Route through
+      // the restaurant's own zone instead.
+      const { start: windowStart, end: windowEnd } = businessDayRangeToInstants(
+        toDateOnlyString(periodStartDate),
+        toDateOnlyString(periodEndDate),
+        timezone,
+      );
+      parsed.periods = periodsInWindow(parsed.periods, windowStart, windowEnd);
+      parsed.incompleteShifts = incompleteShiftsInWindow(parsed.incompleteShifts, windowStart, windowEnd);
     }
     const hoursByDate = new Map<string, number>();
 

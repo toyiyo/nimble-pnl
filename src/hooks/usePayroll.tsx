@@ -19,6 +19,7 @@ import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 import { useRestaurantClock } from './useRestaurantClock';
 import { toDateOnlyString } from '@/lib/dateOnly';
+import { businessDayRangeToInstants } from '@/lib/restaurantClock';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -126,13 +127,26 @@ export function usePayroll(
       // that straddle the period boundary are paired whole. calculateEmployeePay
       // then filters periods back to [startDate, endDate] by clock-in day.
       //
+      // Buffer the RESTAURANT-zone day bounds, not startDate/endDate directly:
+      // startDate/endDate are calendar-day tokens (host-local Date objects),
+      // and buffering those raw instants buffers the VIEWER's day boundary.
+      // When the viewer is far from the restaurant's zone that ±18h buffer is
+      // partly (or, at the extremes, entirely) eaten by the offset
+      // difference, so a boundary-crossing shift is never fetched and the
+      // pairing engine can't pair it.
+      //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // PostgREST caps an unpaginated response at 1,000 rows, which would
       // silently drop the newest punches (the query orders `punch_time asc`)
       // once a pay period crosses that threshold. The `.order('id')`
       // tiebreaker makes each page boundary deterministic when multiple
       // punches share a `punch_time`.
-      const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+      const { start: dayStart, end: dayEnd } = businessDayRangeToInstants(
+        toDateOnlyString(startDate),
+        toDateOnlyString(endDate),
+        timezone,
+      );
+      const { fetchStart, fetchEnd } = bufferPunchFetchRange(dayStart, dayEnd);
       const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
         supabase
           .from('time_punches')

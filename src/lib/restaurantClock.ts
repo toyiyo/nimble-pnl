@@ -164,6 +164,33 @@ export function businessDaysBetween(
 }
 
 /**
+ * Instant bounds of an inclusive calendar-day range, in the restaurant's zone.
+ *
+ * Callers hold calendar days (`yyyy-MM-dd`) but need instants to filter
+ * timestamped rows. Deriving those instants from the viewer's browser day
+ * boundaries is the bug this exists to prevent: for a UTC viewer and a Chicago
+ * restaurant the two windows are six hours apart, so the restaurant's evening
+ * punches fall outside the viewer's day and vanish.
+ */
+export function businessDayRangeToInstants(
+  startDay: string,
+  endDay: string,
+  tz: string
+): { start: Date; end: Date } {
+  const zone = safeTz(tz);
+  if (!DATE_ONLY_RE.test(startDay)) {
+    reject('businessDayRangeToInstants', 'expected a calendar day (YYYY-MM-DD) for startDay', startDay);
+  }
+  if (!DATE_ONLY_RE.test(endDay)) {
+    reject('businessDayRangeToInstants', 'expected a calendar day (YYYY-MM-DD) for endDay', endDay);
+  }
+  return {
+    start: fromZonedTime(`${startDay}T00:00:00.000`, zone),
+    end: fromZonedTime(`${endDay}T23:59:59.999`, zone),
+  };
+}
+
+/**
  * Add `days` (may be negative) to an ISO `YYYY-MM-DD` string via UTC field
  * math. A calendar-date operation, deliberately zone-independent -- there is
  * no DST to cross when nothing here is an instant.

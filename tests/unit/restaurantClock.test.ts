@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_TIMEZONE,
   addDaysToDateStr,
+  businessDayRangeToInstants,
   businessDaysBetween,
   daysBetweenDateStrs,
   formatInstant,
@@ -74,6 +75,40 @@ describe('businessDaysBetween', () => {
     expect(businessDaysBetween('2026-07-23T07:00:00Z', '2026-07-23T01:00:00Z', CHI)).toEqual([
       '2026-07-23',
     ]);
+  });
+});
+
+describe('businessDayRangeToInstants', () => {
+  it('returns the restaurant-zone midnight-to-midnight bounds for a single day', () => {
+    const { start, end } = businessDayRangeToInstants('2026-07-22', '2026-07-22', CHI);
+    expect(start.toISOString()).toBe('2026-07-22T05:00:00.000Z'); // 00:00:00.000 CDT
+    expect(end.toISOString()).toBe('2026-07-23T04:59:59.999Z'); // 23:59:59.999 CDT
+  });
+
+  it('spans an inclusive multi-day range', () => {
+    const { start, end } = businessDayRangeToInstants('2026-07-06', '2026-07-12', CHI);
+    expect(start.toISOString()).toBe('2026-07-06T05:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-07-13T04:59:59.999Z');
+  });
+
+  it('handles a zone ahead of UTC', () => {
+    const { start, end } = businessDayRangeToInstants('2026-07-23', '2026-07-23', 'Pacific/Auckland');
+    // Auckland is UTC+12 in July (winter, no DST there).
+    expect(start.toISOString()).toBe('2026-07-22T12:00:00.000Z');
+    expect(end.toISOString()).toBe('2026-07-23T11:59:59.999Z');
+  });
+
+  it('is DST-aware at the spring-forward boundary: the end-of-day bound follows the new offset', () => {
+    // 2026-03-08 is Chicago's spring-forward day (02:00 CST -> 03:00 CDT).
+    // Midnight is still CST (-6:00); 23:59:59.999 is already CDT (-5:00).
+    const { start, end } = businessDayRangeToInstants('2026-03-08', '2026-03-08', CHI);
+    expect(start.toISOString()).toBe('2026-03-08T06:00:00.000Z'); // 00:00:00.000 CST
+    expect(end.toISOString()).toBe('2026-03-09T04:59:59.999Z'); // 23:59:59.999 CDT
+  });
+
+  it('rejects a startDay/endDay that is not a calendar-day string', () => {
+    expect(() => businessDayRangeToInstants('2026-07-28T00:00:00Z', '2026-07-28', CHI)).toThrow(/calendar day/i);
+    expect(() => businessDayRangeToInstants('2026-07-28', '2026-07-28T00:00:00Z', CHI)).toThrow(/calendar day/i);
   });
 });
 

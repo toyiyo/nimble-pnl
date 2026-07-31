@@ -268,6 +268,13 @@ SELECT is(
 --    under test -- and because service-role writers (accept-invitation, the
 --    send-team-invitation edge function) bypass RLS entirely and still need
 --    to be held.
+--
+--    Tenancy is no longer the whole rule. 20260730210000 found that checking
+--    it alone let role='staff' carry the Owner builtin's id -- global, so it
+--    passed here -- and rewrote the trigger to require that role and role_id
+--    name the same role. The assertions below still hold under that rule and
+--    are left as they were; the agreement cases live in
+--    invitation_role_id_agreement_test.sql.
 -- ============================================================================
 SET LOCAL row_security = off;
 

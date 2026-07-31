@@ -106,6 +106,27 @@ describe('buildCopyPayload', () => {
     expect(payload.end_time).toBe('2026-03-08T18:00:00.000Z'); // 13:00 CDT
   });
 
+  it('resolves the copy\'s end time from its own wall clock, not the source\'s elapsed-instant duration, when the SOURCE shift itself crosses the spring-forward transition', () => {
+    // Source is a 22:00->06:00 Chicago overnight shift straddling the
+    // 2026-03-08 02:00->03:00 spring-forward: 22:00 CST 03-07 to 06:00 CDT
+    // 03-08 is 8h of wall-clock time but only 7h of elapsed instant time. A
+    // `newStart + sourceDurationMs` strategy would carry that 7h onto the
+    // copy even though the copy's target day (well after the transition)
+    // never crosses one itself, landing the copy at 05:00 instead of 06:00.
+    const chicagoTz = 'America/Chicago';
+    const source = {
+      ...baseShift,
+      start_time: '2026-03-08T04:00:00.000Z', // 22:00 CST 2026-03-07
+      end_time: '2026-03-08T11:00:00.000Z', // 06:00 CDT 2026-03-08
+    };
+    const payload = buildCopyPayload(source, '2026-04-06', chicagoTz);
+    // 22:00 CDT 2026-04-06 -> 03:00Z 2026-04-07.
+    expect(payload.start_time).toBe('2026-04-07T03:00:00.000Z');
+    // 06:00 CDT 2026-04-07 -> 11:00Z 2026-04-07. A durationMs-based
+    // implementation would instead produce 2026-04-07T10:00:00.000Z (05:00 CDT).
+    expect(payload.end_time).toBe('2026-04-07T11:00:00.000Z');
+  });
+
   it('throws on an invalid/empty timezone rather than silently falling back', () => {
     expect(() => buildCopyPayload(baseShift, '2026-03-26', '')).toThrow();
     expect(() => buildCopyPayload(baseShift, '2026-03-26', 'Not/AZone')).toThrow();

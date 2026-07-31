@@ -130,6 +130,72 @@ describe('useCreateShift — recurring children anchor to the restaurant timezon
     });
   });
 
+  it('resolves each child end time from its own wall clock, not the parent\'s elapsed-instant duration, when the PARENT shift itself crosses the spring-forward transition', async () => {
+    // The parent is a 22:00->06:00 Chicago overnight shift that straddles the
+    // 2026-03-08 02:00->03:00 spring-forward itself: 22:00 CST 03-07 to
+    // 06:00 CDT 03-08 is 8h of wall-clock time but only 7h of elapsed instant
+    // time (the skipped hour). A `newStart + parentDurationMs` strategy
+    // reuses that 7h for every child regardless of whether the *child's own*
+    // occurrence crosses a transition -- both children here land a full week
+    // after the transition and should read exactly 22:00->06:00 Chicago, not
+    // 22:00->05:00.
+    process.env.TZ = 'America/Phoenix';
+
+    const insertCalls: unknown[] = [];
+    setupSupabaseMock(insertCalls);
+
+    const { result } = renderHook(() => useCreateShift({ tz: 'America/Chicago' }), {
+      wrapper: createWrapper(),
+    });
+
+    await act(async () => {
+      result.current.mutate({
+        restaurant_id: 'rest-1',
+        employee_id: 'emp-1',
+        // 22:00 America/Chicago on 2026-03-07 is CST (UTC-6) -> 04:00Z 03-08.
+        start_time: '2026-03-08T04:00:00.000Z',
+        // 06:00 America/Chicago on 2026-03-08 is already CDT (UTC-5, the
+        // transition happens at 02:00 local) -> 11:00Z 03-08. Elapsed
+        // duration is 7h; wall-clock duration is 8h.
+        end_time: '2026-03-08T11:00:00.000Z',
+        break_duration: 30,
+        position: 'Server',
+        status: 'scheduled',
+        notes: null,
+        is_recurring: true,
+        is_published: false,
+        locked: false,
+        recurrence_pattern: {
+          type: 'daily',
+          interval: 1,
+          endType: 'after',
+          occurrences: 3,
+        },
+        recurrence_parent_id: null,
+      } as never);
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    const childInsertCall = insertCalls.find((c) => Array.isArray(c)) as
+      | Array<{ start_time: string; end_time: string }>
+      | undefined;
+    expect(childInsertCall, 'expected a children insert() call').toBeTruthy();
+    expect(childInsertCall).toHaveLength(2);
+
+    // Both children start 22:00 CDT and end 06:00 CDT the following day --
+    // neither child occurrence itself crosses a transition, so both should
+    // show the full 8h wall-clock span. A durationMs-based implementation
+    // would instead produce 2026-03-09T10:00:00.000Z / 2026-03-10T10:00:00.000Z
+    // (05:00 CDT, one hour short).
+    const expectedStarts = ['2026-03-09T03:00:00.000Z', '2026-03-10T03:00:00.000Z']; // 22:00 CDT
+    const expectedEnds = ['2026-03-09T11:00:00.000Z', '2026-03-10T11:00:00.000Z']; // 06:00 CDT
+    childInsertCall!.forEach((child, i) => {
+      expect(new Date(child.start_time).toISOString(), `child ${i} start_time`).toBe(expectedStarts[i]);
+      expect(new Date(child.end_time).toISOString(), `child ${i} end_time`).toBe(expectedEnds[i]);
+    });
+  });
+
   it('throws INVALID_DATE synchronously up front when tz is missing for a recurring create', async () => {
     const insertCalls: unknown[] = [];
     setupSupabaseMock(insertCalls);

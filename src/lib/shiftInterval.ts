@@ -6,7 +6,7 @@
  */
 import { toZonedTime } from 'date-fns-tz';
 
-import { addDaysToDateStr, parseWallClock } from '@/lib/restaurantClock';
+import { addDaysToDateStr, isValidTimezone, parseWallClock } from '@/lib/restaurantClock';
 
 export interface DurationWarning {
   code: 'TOO_SHORT' | 'MAX_ENDURANCE';
@@ -183,17 +183,32 @@ export function formatLocalTimeInTz(isoString: string, tz: string): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+/**
+ * Extract wall-clock `HH:MM` (no seconds) from a UTC ISO string in an
+ * explicit IANA timezone -- the truncated form every `wallClockToInstant`
+ * caller needs. Factors out the `formatLocalTimeInTz(iso, tz).slice(0, 5)`
+ * idiom that was duplicated across `ShiftDialog.tsx`, `useShiftCopyDnd.ts`,
+ * `copyWeekShifts.ts` and `useShifts.tsx` -- each re-deriving the same
+ * assumption about `formatLocalTimeInTz`'s `HH:MM:SS` output shape.
+ */
+export function formatLocalHHMMInTz(isoString: string, tz: string): string {
+  return formatLocalTimeInTz(isoString, tz).slice(0, 5);
+}
+
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM_RE = /^\d{2}:\d{2}$/;
 
-/** True when `tz` is non-empty and accepted by `Intl.DateTimeFormat`. */
-function isValidTz(tz: string): boolean {
-  if (!tz) return false;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return true;
-  } catch {
-    return false;
+/**
+ * Guard for every `tz`-dependent create/update path: throws
+ * `TypeError('INVALID_DATE')` when `tz` is absent, rather than letting a
+ * call site silently fall back to the browser's own zone -- the exact class
+ * of bug this file's converters exist to fix. Shared by
+ * `useValidatedShiftMutations.ts`, `useShiftPlanner.ts` and `useShifts.tsx`,
+ * which previously each inlined the identical 3-line check.
+ */
+export function requireTz(tz: string | null | undefined): asserts tz is string {
+  if (!tz) {
+    throw new TypeError('INVALID_DATE');
   }
 }
 
@@ -210,7 +225,12 @@ function isValidTz(tz: string): boolean {
  * - `tz`: `parseWallClock` opens with `safeTz()`, which maps an empty or
  *   invalid zone to `America/Chicago` *silently*. Delegating without this
  *   check would relocate the timezone bug rather than fix it, so an
- *   empty/invalid `tz` throws here before `parseWallClock` ever runs.
+ *   empty/invalid `tz` throws here before `parseWallClock` ever runs. The
+ *   check itself (`isValidTimezone`) shares `restaurantClock.ts`'s cached
+ *   `Intl.DateTimeFormat` construction rather than building a throwaway
+ *   formatter of its own -- it still returns a boolean with no fallback, so
+ *   the "no silent default" invariant is unchanged, only the underlying
+ *   validity check's cost is.
  * - `dateStr` / `timeHHMM`: `parseWallClock` routes malformed input through a
  *   `reject()` helper that throws in DEV/test but, in production, logs and
  *   returns a fallback instant. `ShiftInterval`'s existing contract is a
@@ -224,7 +244,7 @@ export function wallClockToInstant(dateStr: string, timeHHMM: string, tz: string
   if (!DATE_ONLY_RE.test(dateStr) || !HHMM_RE.test(timeHHMM)) {
     throw new TypeError('INVALID_DATE');
   }
-  if (!isValidTz(tz)) {
+  if (!isValidTimezone(tz)) {
     throw new TypeError('INVALID_DATE');
   }
 

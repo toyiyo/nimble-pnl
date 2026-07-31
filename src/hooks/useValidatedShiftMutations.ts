@@ -16,7 +16,7 @@
 import { useCallback, useState } from 'react';
 
 import { useCreateShift, useUpdateShift, useDeleteShift } from '@/hooks/useShifts';
-import { ShiftInterval } from '@/lib/shiftInterval';
+import { ShiftInterval, requireTz } from '@/lib/shiftInterval';
 import { ValidationResult } from '@/lib/shiftValidator';
 import {
   collectShiftIssues,
@@ -221,9 +221,7 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return { created: false };
 
       try {
-        if (!tz) {
-          throw new TypeError('INVALID_DATE');
-        }
+        requireTz(tz);
 
         const interval = ShiftInterval.create(input.date, input.startTime, input.endTime, tz);
 
@@ -266,9 +264,7 @@ export function useValidatedShiftMutations(
         // See validateAndCreate above: options.tz is required at call time —
         // throws TypeError('INVALID_DATE') rather than falling back to the
         // browser's zone.
-        if (!tz) {
-          throw new TypeError('INVALID_DATE');
-        }
+        requireTz(tz);
 
         const interval = ShiftInterval.create(input.date, input.startTime, input.endTime, tz);
 

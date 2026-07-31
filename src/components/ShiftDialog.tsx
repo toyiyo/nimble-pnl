@@ -12,7 +12,7 @@ import { RecurringActionScope } from '@/utils/recurringShiftHelpers';
 import { useEmployees } from '@/hooks/useEmployees';
 import { useCheckConflicts } from '@/hooks/useConflictDetection';
 import { format, getDay } from 'date-fns';
-import { formatLocalDateInTz, formatLocalTimeInTz, wallClockToInstant } from '@/lib/shiftInterval';
+import { formatLocalDateInTz, formatLocalHHMMInTz, wallClockToInstant } from '@/lib/shiftInterval';
 import { CustomRecurrenceDialog } from '@/components/CustomRecurrenceDialog';
 import { getRecurrencePresetsForDate, getRecurrenceDescription } from '@/utils/recurrenceUtils';
 import { AlertTriangle, Repeat } from 'lucide-react';
@@ -111,9 +111,9 @@ export function ShiftDialog({ open, onOpenChange, shift, restaurantId, timezone 
 
       setEmployeeId(shift.employee_id);
       setStartDate(formatLocalDateInTz(start, timezone));
-      setStartTime(formatLocalTimeInTz(shift.start_time, timezone).slice(0, 5));
+      setStartTime(formatLocalHHMMInTz(shift.start_time, timezone));
       setEndDate(formatLocalDateInTz(end, timezone));
-      setEndTime(formatLocalTimeInTz(shift.end_time, timezone).slice(0, 5));
+      setEndTime(formatLocalHHMMInTz(shift.end_time, timezone));
       setBreakDuration(shift.break_duration.toString());
       setPosition(shift.position);
       setStatus(shift.status);

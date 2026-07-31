@@ -2,7 +2,7 @@ import { addDaysToDateStr } from '@/lib/restaurantClock';
 import {
   formatLocalDate,
   formatLocalDateInTz,
-  formatLocalTimeInTz,
+  formatLocalHHMMInTz,
   wallClockToInstant,
 } from '@/lib/shiftInterval';
 
@@ -56,7 +56,7 @@ function reprojectOntoTargetWeek(
   tz: string,
 ): Date {
   const shiftDateStr = formatLocalDateInTz(new Date(isoString), tz);
-  const wallClockTime = formatLocalTimeInTz(isoString, tz).slice(0, 5);
+  const wallClockTime = formatLocalHHMMInTz(isoString, tz);
 
   const dayOffset = daysBetweenDateStrs(formatLocalDate(sourceMonday), shiftDateStr);
   const targetDateStr = addDaysToDateStr(formatLocalDate(targetMonday), dayOffset);

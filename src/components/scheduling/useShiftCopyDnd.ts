@@ -4,7 +4,8 @@ import type { DragStartEvent, DragEndEvent } from '@dnd-kit/core';
 
 import { useCreateShift } from '@/hooks/useShifts';
 import { checkConflictsImperative } from '@/hooks/useConflictDetection';
-import { formatLocalDateInTz, formatLocalTimeInTz, wallClockToInstant } from '@/lib/shiftInterval';
+import { formatLocalDateInTz, formatLocalHHMMInTz, wallClockToInstant } from '@/lib/shiftInterval';
+import { addDaysToDateStr } from '@/lib/restaurantClock';
 import type { Shift } from '@/types/scheduling';
 import type { ConflictDialogData } from '@/components/scheduling/ShiftPlanner/AvailabilityConflictDialog';
 
@@ -39,16 +40,26 @@ type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
 /**
  * Build the ShiftInput payload for a copy operation.
  *
- * Strategy (duration-based, handles overnight shifts correctly):
- *   1. Compute shift duration in ms from the source times (a UTC-instant
- *      difference, so it is timezone-independent).
- *   2. Build a new start by combining targetDay + the source shift's
- *      RESTAURANT-LOCAL wall-clock start time, resolved with the same
- *      Postgres-parity DST logic the server uses (`wallClockToInstant`).
- *   3. Derive new end = new start + duration.
+ * Strategy (resolves start and end independently, handles overnight shifts
+ * correctly, mirrors `copyWeekShifts.ts::reprojectOntoTargetWeek`):
+ *   1. Read the source shift's RESTAURANT-LOCAL wall-clock start and end
+ *      times.
+ *   2. Resolve the new start from targetDay + the wall-clock start time,
+ *      using the same Postgres-parity DST logic the server uses
+ *      (`wallClockToInstant`).
+ *   3. Resolve the new end the same way, on targetDay (or the day after, if
+ *      the source shift's wall clock crosses midnight).
  *
- * The previous implementation read `srcStart.getHours()`/`getMinutes()` —
- * the HOST's local wall clock — and rebuilt the target instant with the
+ * An earlier version derived the new end as `newStart + durationMs`, reusing
+ * the source shift's raw elapsed-instant duration. That is wrong whenever
+ * the *source* shift's own start–end interval crosses a DST transition: its
+ * elapsed instant duration then differs from its wall-clock duration, and
+ * the copy — even dropped on a day that itself doesn't cross a transition —
+ * would inherit that skew. Resolving the end wall clock independently avoids
+ * it, the same fix applied to `useShifts.tsx`'s recurring-shift generation.
+ *
+ * The version before that read `srcStart.getHours()`/`getMinutes()` — the
+ * HOST's local wall clock — and rebuilt the target instant with the
  * host-local `Date` constructor. That self-corrects only when the host's
  * and restaurant's UTC offset happen to agree on both the source and target
  * days; it drifts by the offset gap otherwise, and specifically drifts
@@ -58,13 +69,12 @@ type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;
  * Always strips recurrence, resets status/locked/published.
  */
 export function buildCopyPayload(shift: Shift, targetDay: string, tz: string, targetEmployeeId?: string): ShiftInput {
-  const srcStart = new Date(shift.start_time);
-  const srcEnd = new Date(shift.end_time);
-  const durationMs = srcEnd.getTime() - srcStart.getTime();
+  const wallClockStart = formatLocalHHMMInTz(shift.start_time, tz);
+  const wallClockEnd = formatLocalHHMMInTz(shift.end_time, tz);
 
-  const wallClockTime = formatLocalTimeInTz(shift.start_time, tz).slice(0, 5);
-  const newStart = wallClockToInstant(targetDay, wallClockTime, tz);
-  const newEnd = new Date(newStart.getTime() + durationMs);
+  const newStart = wallClockToInstant(targetDay, wallClockStart, tz);
+  const targetEndDay = wallClockEnd < wallClockStart ? addDaysToDateStr(targetDay, 1) : targetDay;
+  const newEnd = wallClockToInstant(targetEndDay, wallClockEnd, tz);
 
   return {
     restaurant_id: shift.restaurant_id,

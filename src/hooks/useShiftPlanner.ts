@@ -13,7 +13,7 @@ import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
 
 import { toZonedTime } from 'date-fns-tz';
 
-import { ShiftInterval, formatLocalDate, formatLocalTimeInTz } from '@/lib/shiftInterval';
+import { ShiftInterval, formatLocalDate, formatLocalTimeInTz, requireTz } from '@/lib/shiftInterval';
 import { ValidationResult } from '@/lib/shiftValidator';
 
 import { templateAppliesToDay } from '@/hooks/useShiftTemplates';
@@ -609,9 +609,7 @@ export function useShiftPlanner(
         // pipeline (fromTimestamps). `tz` is required as of ShiftInterval.create's
         // timezone-anchored signature — no more falling back to the browser's own
         // zone, which was the exact bug this plan exists to fix.
-        if (!tz) {
-          throw new TypeError('INVALID_DATE');
-        }
+        requireTz(tz);
 
         const interval = ShiftInterval.create(date, startHHMM, endHHMM, tz);
 

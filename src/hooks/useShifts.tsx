@@ -6,7 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
-import { formatLocalDate, formatLocalDateInTz, formatLocalTimeInTz, wallClockToInstant } from '@/lib/shiftInterval';
+import { formatLocalDate, formatLocalDateInTz, formatLocalHHMMInTz, requireTz, wallClockToInstant } from '@/lib/shiftInterval';
+import { addDaysToDateStr } from '@/lib/restaurantClock';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
@@ -118,9 +119,7 @@ export function useCreateShift(options: UseCreateShiftOptions = {}) {
   return useMutation({
     mutationFn: async (shift: ShiftInput) => {
       if (shift.recurrence_pattern && shift.is_recurring) {
-        if (!tz) {
-          throw new TypeError('INVALID_DATE');
-        }
+        requireTz(tz);
         return createRecurringShifts(shift, tz);
       }
       return createSingleShift(shift);
@@ -164,8 +163,6 @@ async function createSingleShift(shift: ShiftInput): Promise<Shift> {
 
 async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shift> {
   const startDate = parseISO(shift.start_time);
-  const endDate = parseISO(shift.end_time);
-  const durationMs = endDate.getTime() - startDate.getTime();
 
   // Seed the recurrence generator with a calendar-only Date built from the
   // restaurant-local calendar date (noon, clear of any host-local DST edge),
@@ -182,7 +179,22 @@ async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shi
   // The parent's restaurant-local wall clock (HH:MM) — every child keeps
   // this exact wall clock, so a series spanning a DST transition stays at
   // the same local time instead of drifting by the transition's offset.
-  const wallClockTime = formatLocalTimeInTz(shift.start_time, tz).slice(0, 5);
+  const wallClockTime = formatLocalHHMMInTz(shift.start_time, tz);
+  // The parent's restaurant-local end wall clock, and whether it falls on the
+  // calendar day *after* its start (an overnight shift) — both resolved
+  // independently per child below, the same way `ShiftInterval.create`
+  // detects an overnight shift (`endTime < startTime`), rather than reusing
+  // the parent's raw millisecond duration. Reusing a captured `durationMs`
+  // (end instant − start instant) would be wrong whenever the *parent's own*
+  // start–end interval crosses a DST transition: its elapsed instant
+  // duration then differs from its wall-clock duration, and every child —
+  // even one whose own occurrence never crosses a transition — would
+  // inherit that skew (e.g. a nightly 22:00–06:00 Chicago shift created on a
+  // spring-forward night has a 7h elapsed duration but an 8h wall-clock
+  // duration; naively applying 7h to later children lands them at 05:00,
+  // not the intended 06:00).
+  const endWallClockTime = formatLocalHHMMInTz(shift.end_time, tz);
+  const endsNextDay = endWallClockTime < wallClockTime;
 
   const { data: parentShift, error: parentError } = await supabase
     .from('shifts')
@@ -200,7 +212,8 @@ async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shi
     const childShifts = recurringDates.slice(1).map((date) => {
       const childDateStr = formatLocalDate(date);
       const childStartTime = wallClockToInstant(childDateStr, wallClockTime, tz);
-      const childEndTime = new Date(childStartTime.getTime() + durationMs);
+      const childEndDateStr = endsNextDay ? addDaysToDateStr(childDateStr, 1) : childDateStr;
+      const childEndTime = wallClockToInstant(childEndDateStr, endWallClockTime, tz);
 
       return {
         restaurant_id: shift.restaurant_id,

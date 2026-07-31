@@ -1,4 +1,4 @@
-import { formatInstant, toBusinessDay } from '@/lib/restaurantClock';
+import { addDaysToDateStr, parseWallClock } from '@/lib/restaurantClock';
 
 /**
  * Format a HH:MM[:SS] time string into a compact 12-hour label.
@@ -12,11 +12,6 @@ export function formatCompactTime(time: string): string {
   return `${hour12}:${String(m).padStart(2, '0')}${suffix}`;
 }
 
-function toMinutesOfDay(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-}
-
 export interface ConflictCandidateShift {
   start_time: string;
   end_time: string;
@@ -28,11 +23,15 @@ export interface ConflictCandidateShift {
  * start/end, both case (a)/wall-clock values already local to the restaurant) overlaps
  * any of an employee's existing shifts.
  *
- * `employeeShifts[].start_time`/`end_time` are instants (case (b) — e.g. Toast/DB
- * timestamps) and must be bucketed to a calendar day and a wall-clock time-of-day via
- * the restaurant's timezone (`toBusinessDay` / `formatInstant`), never the viewer's —
- * `new Date(iso).getHours()` reads the browser's local timezone and silently drops or
- * adds a conflict for any operator whose device isn't in the restaurant's zone.
+ * Compares INSTANT intervals, not minutes-of-day — a minutes-of-day comparison
+ * collapses an overnight interval (e.g. 22:00→06:00) to `start > end`, making the
+ * overlap test nonsense, and a same-day pre-filter on `openShiftDate` silently drops
+ * a shift that starts the previous day and runs into it. The open shift's instants are
+ * built from its restaurant-local wall clock via `parseWallClock`; `employeeShifts[].
+ * start_time`/`end_time` are already instants (case (b) — e.g. Toast/DB timestamps)
+ * and are used directly, with no viewer-local reads (`new Date(iso).getHours()` would
+ * silently drop or add a conflict for any operator whose device isn't in the
+ * restaurant's zone).
  */
 export function hasScheduleConflict(
   openShiftDate: string,
@@ -41,15 +40,20 @@ export function hasScheduleConflict(
   employeeShifts: ConflictCandidateShift[],
   tz: string,
 ): boolean {
-  const osStart = toMinutesOfDay(openStartTime);
-  const osEnd = toMinutesOfDay(openEndTime);
+  const openStartHHMM = openStartTime.slice(0, 5);
+  const openEndHHMM = openEndTime.slice(0, 5);
+  // An open shift whose end doesn't come after its start (HH:MM string compare
+  // is safe here — both are zero-padded) runs past midnight into the next day.
+  const openEndDate =
+    openEndHHMM > openStartHHMM ? openShiftDate : addDaysToDateStr(openShiftDate, 1);
+
+  const oStart = new Date(parseWallClock(`${openShiftDate}T${openStartHHMM}`, tz)).getTime();
+  const oEnd = new Date(parseWallClock(`${openEndDate}T${openEndHHMM}`, tz)).getTime();
 
   return employeeShifts.some((s) => {
     if (s.status === 'cancelled') return false;
-    const sDate = toBusinessDay(s.start_time, tz);
-    if (sDate !== openShiftDate) return false;
-    const sStartMin = toMinutesOfDay(formatInstant(s.start_time, tz, 'HH:mm'));
-    const sEndMin = toMinutesOfDay(formatInstant(s.end_time, tz, 'HH:mm'));
-    return sStartMin < osEnd && sEndMin > osStart;
+    const sStart = new Date(s.start_time).getTime();
+    const sEnd = new Date(s.end_time).getTime();
+    return sStart < oEnd && sEnd > oStart;
   });
 }

@@ -4,7 +4,8 @@
 // the pattern already used by `_shared/shiftDeletedNotification.ts` and
 // `_shared/openShiftClaimNotify.ts`.
 
-import { generateEmailTemplate, formatDate, type EmailTemplateData } from './emailTemplates.ts';
+import { generateEmailTemplate, type EmailTemplateData } from './emailTemplates.ts';
+import { safeTz } from './timezone.ts';
 import type { NoticeStage } from './bankReauthStages.ts';
 
 export interface BankReauthNoticeInput {
@@ -15,6 +16,31 @@ export interface BankReauthNoticeInput {
   elapsedDays?: number; // whole UTC days elapsed; unused for 'recovered'
   dataCurrentThrough?: string | null; // 'recovered' only — how far the backfill reaches
   appUrl: string; // caller-supplied (env-backed) app origin — no hardcoded domain here
+  // The restaurant's IANA timezone, used to render deactivatedAt /
+  // dataCurrentThrough below. Optional/nullable because not every caller
+  // (older tests, a cohort row with a null restaurants.timezone) has it —
+  // formatNoticeDate falls back to safeTz()'s restaurant default rather than
+  // the server's zone either way.
+  restaurantTimezone?: string | null;
+}
+
+// deactivatedAt/dataCurrentThrough are `timestamptz` columns — genuine
+// moments in time (case b per .superpowers/sdd/tz-sweep-common.md), not
+// stored calendar days. This email goes to a restaurant operator, so "what
+// day did this happen" must be answered in the RESTAURANT's timezone, not
+// this edge function's runtime zone (Deno can't import
+// `src/lib/restaurantClock.ts`, but this mirrors its `formatInstant()`
+// exactly: `Intl.DateTimeFormat` with an explicit `timeZone`, long-month
+// pattern). `emailTemplates.ts`'s `formatDate()` has no timeZone override —
+// it renders in whichever zone the process happens to be running in, which
+// is the bug this replaces.
+function formatNoticeDate(value: string, tz: string | null | undefined): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: safeTz(tz),
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date(value));
 }
 
 export interface BankReauthNoticePushPayload {
@@ -48,7 +74,7 @@ interface StageCopy {
 
 function copyForStage(input: BankReauthNoticeInput): StageCopy {
   const bankLabel = `${input.institutionName}${maskedParenthetical(input.accountMask)}`;
-  const stoppedDate = formatDate(input.deactivatedAt);
+  const stoppedDate = formatNoticeDate(input.deactivatedAt, input.restaurantTimezone);
 
   switch (input.stage) {
     case 'day_1':
@@ -94,7 +120,9 @@ function copyForStage(input: BankReauthNoticeInput): StageCopy {
     case 'recovered': {
       // Email-only receipt — design §4.6's recipients table has no push row
       // for 'recovered'.
-      const through = input.dataCurrentThrough ? formatDate(input.dataCurrentThrough) : 'today';
+      const through = input.dataCurrentThrough
+        ? formatNoticeDate(input.dataCurrentThrough, input.restaurantTimezone)
+        : 'today';
       return {
         subject: `${input.institutionName} reconnected`,
         heading: 'Your bank connection is back',

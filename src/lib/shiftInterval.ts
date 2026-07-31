@@ -255,6 +255,39 @@ const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HHMM_RE = /^\d{2}:\d{2}$/;
 
 /**
+ * True when `YYYY-MM-DD` + `HH:MM` name a wall clock that actually exists on
+ * the calendar. The regexes above only check SHAPE: `2026-02-31` and `25:99`
+ * both match, and every downstream date constructor -- `Date.UTC`,
+ * `new Date(...)`, Postgres' `::timestamp` -- would rather normalise them
+ * (to March 3rd, to the next day at 02:39) than complain.
+ *
+ * Normalising is the dangerous outcome here, not the noisy one. A silently
+ * rolled-forward date produces a shift on a day nobody asked for, and it is
+ * indistinguishable downstream from a shift that was scheduled there on
+ * purpose -- so it survives review, sync and payroll as if it were intended.
+ * A throw stops at the call site.
+ *
+ * Implemented as a `Date.UTC` round trip rather than per-field range tables
+ * so leap years stay correct by construction: 2024-02-29 survives the trip,
+ * 2025-02-29 becomes March 1st and is caught. Comparing the full year (not
+ * its last two digits) also catches `Date.UTC`'s 0-99 => 1900+n remapping.
+ */
+function isRealWallClock(dateStr: string, timeHHMM: string): boolean {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const [hour, minute] = timeHHMM.split(':').map(Number);
+
+  const probe = new Date(Date.UTC(year, month - 1, day, hour, minute));
+
+  return (
+    probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() === month - 1 &&
+    probe.getUTCDate() === day &&
+    probe.getUTCHours() === hour &&
+    probe.getUTCMinutes() === minute
+  );
+}
+
+/**
  * Guard for every `tz`-dependent create/update path: throws
  * `TypeError('INVALID_DATE')` when `tz` is absent, rather than letting a
  * call site silently fall back to the browser's own zone -- the exact class
@@ -291,13 +324,20 @@ export function requireTz(tz: string | null | undefined): asserts tz is string {
  *   `reject()` helper that throws in DEV/test but, in production, logs and
  *   returns a fallback instant. `ShiftInterval`'s existing contract is a
  *   throw in every environment (see `shiftInterval.test.ts`'s
- *   `ShiftInterval.create` validation cases), so this adapter regex-gates
- *   its own inputs to preserve that contract regardless of environment.
+ *   `ShiftInterval.create` validation cases), so this adapter gates its own
+ *   inputs to preserve that contract regardless of environment. The gate is
+ *   two-part on purpose: the regexes reject the wrong SHAPE, and
+ *   `isRealWallClock` rejects the right shape naming a nonexistent day or
+ *   time (`2026-02-31`, `25:99`), which would otherwise be normalised into a
+ *   plausible-looking instant on a date nobody asked for.
  *
  * Returns a `Date` (unlike `parseWallClock`, which returns an ISO string).
  */
 export function wallClockToInstant(dateStr: string, timeHHMM: string, tz: string): Date {
   if (!DATE_ONLY_RE.test(dateStr) || !HHMM_RE.test(timeHHMM)) {
+    throw new TypeError('INVALID_DATE');
+  }
+  if (!isRealWallClock(dateStr, timeHHMM)) {
     throw new TypeError('INVALID_DATE');
   }
   if (!isValidTimezone(tz)) {

@@ -605,6 +605,52 @@ describe('wallClockToInstant', () => {
     it('throws INVALID_DATE for an empty-string timezone — the case that otherwise fails open to a host-local instant', () => {
       expect(() => wallClockToInstant('2026-07-30', '06:30', '')).toThrow('INVALID_DATE');
     });
+
+    // The shape regexes (`\d{4}-\d{2}-\d{2}`, `\d{2}:\d{2}`) accept plenty of
+    // strings that name no real instant. Silently normalising them is worse
+    // than rejecting: a caller that asks for Feb 31st gets a shift quietly
+    // scheduled in March, and nothing downstream can tell that apart from a
+    // shift the user actually meant to put there.
+    describe('out-of-range components — well-shaped but not real', () => {
+      it.each([
+        ['2026-02-31', 'a day past the end of the month'],
+        ['2026-13-01', 'a 13th month'],
+        ['2026-00-10', 'a zeroth month'],
+        ['2026-04-00', 'a zeroth day'],
+        ['2025-02-29', 'Feb 29th of a non-leap year'],
+      ])('throws INVALID_DATE for %s (%s) rather than rolling forward', (dateStr) => {
+        expect(() => wallClockToInstant(dateStr, '09:00', 'UTC')).toThrow('INVALID_DATE');
+      });
+
+      it.each([
+        ['25:99', 'both fields out of range'],
+        ['24:00', 'the midnight that belongs to the next date'],
+        ['23:60', 'a 60th minute'],
+      ])('throws INVALID_DATE for %s (%s) rather than rolling forward', (timeHHMM) => {
+        expect(() => wallClockToInstant('2026-07-30', timeHHMM, 'UTC')).toThrow('INVALID_DATE');
+      });
+
+      it('accepts 2024-02-29 — a real leap day, not swept up by the range check', () => {
+        expect(wallClockToInstant('2024-02-29', '09:00', 'UTC')).toEqual(
+          new Date('2024-02-29T09:00:00.000Z'),
+        );
+      });
+
+      it('accepts 00:00 and 23:59, the true ends of the clock', () => {
+        expect(wallClockToInstant('2026-07-30', '00:00', 'UTC')).toEqual(
+          new Date('2026-07-30T00:00:00.000Z'),
+        );
+        expect(wallClockToInstant('2026-07-30', '23:59', 'UTC')).toEqual(
+          new Date('2026-07-30T23:59:00.000Z'),
+        );
+      });
+
+      it('throws INVALID_DATE for a two-digit year rather than silently meaning 19xx', () => {
+        // `Date.UTC(99, ...)` means 1999, so a round-trip probe that compared
+        // anything less than the full year would let this through.
+        expect(() => wallClockToInstant('0099-07-30', '09:00', 'UTC')).toThrow('INVALID_DATE');
+      });
+    });
   });
 
   describe('DST edges — pinned to Postgres, asserted under all three host TZs', () => {

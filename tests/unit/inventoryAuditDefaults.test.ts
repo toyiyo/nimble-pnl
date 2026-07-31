@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getDefaultStartDate, getDefaultEndDate, isDefaultDateRange } from '@/lib/inventoryAuditUtils';
 
-const FIXED_DATE = new Date('2026-02-21T12:00:00Z');
+// Pinned at 09:00 UTC so the local calendar day is 2026-02-21 in every zone
+// the tz sweep runs under (Chicago UTC-6, UTC, Auckland UTC+13 in February) —
+// the wall-clock window where all three agree is 06:00-11:00 UTC.
+const FIXED_DATE = new Date('2026-02-21T09:00:00Z');
 
 describe('inventoryAuditDefaults', () => {
   beforeEach(() => {
@@ -19,7 +22,9 @@ describe('inventoryAuditDefaults', () => {
     });
 
     it('handles month boundary correctly', () => {
-      vi.setSystemTime(new Date('2026-03-03T12:00:00Z'));
+      // Same reasoning: 09:00 UTC keeps the local date at 2026-03-03 in
+      // Chicago, UTC, and Auckland alike.
+      vi.setSystemTime(new Date('2026-03-03T09:00:00Z'));
       expect(getDefaultStartDate()).toBe('2026-02-24');
     });
   });

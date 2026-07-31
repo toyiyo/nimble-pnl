@@ -143,6 +143,19 @@ function cleanJsonContent(content: string): string {
   return jsonContent;
 }
 
+// y/m/d here are parsed out of a FILENAME, not a moment in time - they are a
+// calendar day (case a). Serialize the Date's LOCAL fields, not
+// `.toISOString()` (which reads UTC fields and rolls the day back for any
+// viewer/server TZ east of UTC, e.g. Pacific/Auckland). Edge functions are
+// Deno and cannot import `@/lib/dateOnly`, so this is a self-contained
+// version of `toDateOnlyString()` - keep the two in agreement.
+function toDateOnlyLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function extractDateFromFilename(filename: string | null): string | null {
   if (!filename) return null;
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
@@ -160,7 +173,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const m = parseInt(month, 10) - 1;
     const d = parseInt(day, 10);
     if (isValidParts(y, m, d)) {
-      return new Date(y, m, d).toISOString().split("T")[0];
+      return toDateOnlyLocal(new Date(y, m, d));
     }
   }
 
@@ -172,7 +185,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const m = parseInt(month, 10) - 1;
     const d = parseInt(day, 10);
     if (isValidParts(y, m, d)) {
-      return new Date(y, m, d).toISOString().split("T")[0];
+      return toDateOnlyLocal(new Date(y, m, d));
     }
   }
 

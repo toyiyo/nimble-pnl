@@ -19,6 +19,8 @@ import {
   type Band,
   type SensitiveFlag,
 } from '@/lib/permissions/areas';
+import { membershipCapabilities } from '@/lib/permissions/membershipCapabilities';
+import type { Role } from '@/lib/permissions/types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -422,10 +424,22 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
     return groups;
   }, []);
 
+  // Offering a restaurant the caller cannot administer is not a
+  // near-miss: copy_role_to_restaurants authorizes every target before it
+  // inserts anywhere and raises on the first failure, so one unauthorized
+  // target aborts the copy into the authorized ones too. Owning several
+  // restaurants while merely working at another is the ordinary case for the
+  // multi-unit operators this feature exists for, so the picker filters
+  // rather than letting the RPC teach the lesson.
   const otherRestaurants = useMemo(
     () =>
       restaurants
         .filter((r) => r.restaurant_id !== restaurantId)
+        .filter((r) =>
+          membershipCapabilities(r.role as Role, r.roleRecord).includes(
+            'manage:collaborators'
+          )
+        )
         .map((r) => ({ id: r.restaurant_id, name: r.restaurant.name })),
     [restaurants, restaurantId]
   );

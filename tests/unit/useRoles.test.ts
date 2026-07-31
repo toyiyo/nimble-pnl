@@ -68,14 +68,24 @@ function makeChain(
   singleResult?: { data: unknown; error: unknown },
 ) {
   const calls: Array<[string, unknown[]]> = [];
+  // The real PostgREST client hands out a *fresh* builder per `from()`, so
+  // `.single()` on one statement says nothing about the next. This mock reuses
+  // one object per table, so each await only considers the methods chained
+  // since the previous await — otherwise an insert's `.single()` would keep
+  // steering every later statement on the same table (the create-then-delete
+  // path being exactly that: insert…single, then delete…eq).
+  let consumed = 0;
   const chain: Record<string, unknown> = {
     __calls: calls,
-    then: (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(
-        singleResult && calls.some(([m]) => m === 'single' || m === 'maybeSingle')
+    then: (resolve: (v: unknown) => unknown) => {
+      const statement = calls.slice(consumed);
+      consumed = calls.length;
+      return Promise.resolve(
+        singleResult && statement.some(([m]) => m === 'single' || m === 'maybeSingle')
           ? singleResult
           : result,
-      ).then(resolve),
+      ).then(resolve);
+    },
   };
   for (const method of [
     'select',
@@ -320,6 +330,43 @@ describe('useRoles — mutations', () => {
     // on the collision guard rather than on the area they actually chose.
     expect(chains.roles.delete).toHaveBeenCalled();
     expect(chains.roles.eq).toHaveBeenCalledWith('id', 'new-role');
+  });
+
+  it('says the orphan survived when the compensating delete is itself rejected', async () => {
+    const { result } = await renderReady();
+
+    // PostgREST resolves a rejected delete with `{ error }` instead of
+    // throwing, so a cleanup blocked by RLS is indistinguishable from a
+    // successful one unless the result is inspected. Swapped in after the
+    // list query has already resolved, so only the delete sees the error.
+    chains.roles = makeChain(
+      { data: null, error: { message: 'permission denied for table roles' } },
+      { data: { id: 'new-role' }, error: null },
+    );
+    mockSupabase.rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'area "team" cannot be granted to a collaborator role' },
+    });
+
+    await expect(
+      result.current.createRole({
+        name: 'Weekend Supervisor',
+        description: '',
+        areas: [{ area_key: 'team', level: 'manage' }],
+        flags: [],
+      }),
+    ).rejects.toThrow(/could not be removed/);
+
+    // The name is what the user collides with on their immediate retry, so
+    // the message has to carry it rather than only the grant failure.
+    await expect(
+      result.current.createRole({
+        name: 'Weekend Supervisor',
+        description: '',
+        areas: [{ area_key: 'team', level: 'manage' }],
+        flags: [],
+      }),
+    ).rejects.toThrow(/Weekend Supervisor/);
   });
 
   it('refuses to run the list query when the restaurant id is not UUID-shaped', async () => {

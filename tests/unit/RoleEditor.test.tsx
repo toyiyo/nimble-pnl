@@ -370,6 +370,42 @@ describe('RoleEditor', () => {
     expect(within(listbox).queryByRole('option', { name: /this one/i })).not.toBeInTheDocument();
   });
 
+  it('offers only restaurants where the caller can manage collaborators', () => {
+    mockUseRestaurants({
+      restaurants: [
+        makeUserRestaurant({ restaurant_id: 'rest-2', role: 'owner', restaurant: { id: 'rest-2', name: 'Owned', created_at: '', updated_at: '' } }),
+        // Works there, does not administer it. copy_role_to_restaurants
+        // authorizes every target before inserting anywhere and raises on the
+        // first failure, so offering this one would fail the copy into
+        // "Owned" as well — the picker filters instead of letting the RPC
+        // teach that.
+        makeUserRestaurant({ restaurant_id: 'rest-3', role: 'staff', restaurant: { id: 'rest-3', name: 'Just Works There', created_at: '', updated_at: '' } }),
+        // Custom role with no ROLE_CAPABILITIES entry at all: resolved from
+        // its embedded area grants, which do not include team management.
+        makeUserRestaurant({
+          restaurant_id: 'rest-4',
+          role: 'collaborator_custom',
+          roleRecord: {
+            id: 'role-x',
+            name: 'Weekend Floor Lead',
+            flavor: 'collaborator',
+            builtin: false,
+            role_areas: [{ area_key: 'scheduling', level: 'manage' }],
+            role_flags: [],
+          },
+          restaurant: { id: 'rest-4', name: 'Custom Role There', created_at: '', updated_at: '' },
+        }),
+      ],
+    });
+
+    render(<RoleEditor restaurantId="rest-1" role={makeRole({ builtin: false })} onBack={vi.fn()} />, { wrapper });
+
+    const listbox = screen.getByRole('listbox', { name: /other restaurants/i });
+    expect(within(listbox).getByRole('option', { name: /owned/i })).toBeInTheDocument();
+    expect(within(listbox).queryByRole('option', { name: /just works there/i })).not.toBeInTheDocument();
+    expect(within(listbox).queryByRole('option', { name: /custom role there/i })).not.toBeInTheDocument();
+  });
+
   it('calls copyRole with the selected restaurant ids and reports name collisions', async () => {
     const user = userEvent.setup();
     const copyRole = vi.fn().mockResolvedValue({ copied: ['rest-2'], name_collisions: [{ restaurant_id: 'rest-3', name: 'Weekend Supervisor' }] });

@@ -33,11 +33,11 @@ import { useMemo } from 'react';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { Role, Capability } from '@/lib/permissions/types';
 import {
-  ROLE_CAPABILITIES,
   ROLE_METADATA,
   isCollaboratorRole,
 } from '@/lib/permissions/definitions';
-import { expandAreas, grantMap, resolveLandingPath } from '@/lib/permissions/areas';
+import { grantMap, resolveLandingPath } from '@/lib/permissions/areas';
+import { membershipCapabilities } from '@/lib/permissions/membershipCapabilities';
 import { customCollaboratorRoutes } from '@/lib/permissions/routeAreas';
 
 export interface PermissionContext {
@@ -137,8 +137,9 @@ export function usePermissions(): PermissionContext {
       const grants = grantMap(roleRecord.role_areas);
       // Sensitive flags are gated behind isResolved regardless of what the
       // role would otherwise grant.
-      const flags = isResolved ? roleRecord.role_flags.map((f) => f.flag) : [];
-      capabilities = expandAreas(grants, flags);
+      capabilities = membershipCapabilities(role, roleRecord, {
+        includeSensitiveFlags: isResolved,
+      });
 
       isCollaborator = roleRecord.flavor === 'collaborator';
 
@@ -163,7 +164,7 @@ export function usePermissions(): PermissionContext {
     } else {
       // Legacy path: unmigrated membership, no roleRecord yet. Unchanged
       // from before this task.
-      capabilities = [...(ROLE_CAPABILITIES[role] ?? [])];
+      capabilities = membershipCapabilities(role, null);
       isCollaborator = isCollaboratorRole(role);
       landingPath = ROLE_METADATA[role]?.landingPath ?? '/';
       roleLabel = ROLE_METADATA[role]?.label ?? role;

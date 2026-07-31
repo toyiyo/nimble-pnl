@@ -193,10 +193,32 @@ export function useRoles(restaurantId: string | undefined) {
         // statement. Leaving the empty role behind is worse than it sounds —
         // it keeps its name, so the retry the user immediately attempts
         // fails on the name-collision guard instead of on the real problem.
+        //
+        // PostgREST resolves a rejected delete with an `{ error }` result
+        // rather than throwing, so the surrounding catch never saw one: a
+        // cleanup blocked by RLS looked exactly like a successful one, and the
+        // orphan the compensation exists to prevent survived silently. Both
+        // outcomes are reported now, because "the role was created but has no
+        // permissions, and its name is taken" is the only message that
+        // explains the collision the user is about to hit.
+        let cleanupFailed = false;
         try {
-          await supabase.from('roles').delete().eq('id', roleId);
+          const { error: cleanupError } = await supabase
+            .from('roles')
+            .delete()
+            .eq('id', roleId);
+          cleanupFailed = !!cleanupError;
         } catch {
-          // Ignored on purpose: the grant failure is the error worth showing.
+          cleanupFailed = true;
+        }
+
+        if (cleanupFailed) {
+          throw new Error(
+            `The role "${draft.name}" was created but its permissions could not be saved, ` +
+              'and the empty role could not be removed. Open it and set its access, or ' +
+              `delete it, before creating another role named "${draft.name}". ` +
+              `(${grantError instanceof Error ? grantError.message : String(grantError)})`
+          );
         }
         throw grantError;
       }

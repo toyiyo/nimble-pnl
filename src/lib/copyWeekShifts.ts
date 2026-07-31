@@ -1,3 +1,11 @@
+import { addDaysToDateStr, daysBetweenDateStrs } from '@/lib/restaurantClock';
+import {
+  formatLocalDate,
+  formatLocalDateInTz,
+  formatLocalHHMMInTz,
+  wallClockToInstant,
+} from '@/lib/shiftInterval';
+
 import type { Shift } from '@/types/scheduling';
 
 export interface BulkShiftInsert {
@@ -14,59 +22,60 @@ export interface BulkShiftInsert {
 }
 
 /**
- * Offset a timestamp to a target week while preserving local wall-clock time.
- * Computes the calendar-day offset from sourceMonday, then reconstructs the
- * date using local Date constructor so hours/minutes/seconds are preserved
- * even across DST boundaries.
+ * Reproject a shift instant onto the target week, preserving the
+ * restaurant-local calendar day-of-week and wall-clock time.
+ *
+ * The day offset from `sourceMonday` is computed from the restaurant-local
+ * calendar-day string of the instant (`formatLocalDateInTz`), never a
+ * host-local `Date` getter — a manager whose device timezone differs from
+ * the restaurant's would otherwise see the shift's day-of-week computed
+ * against the wrong midnight and land the copy on the wrong calendar day
+ * (see design doc, surface 5). The target instant is then rebuilt with
+ * `wallClockToInstant`, which resolves DST identically to Postgres — that's
+ * what makes this actually DST-safe, not the host-local reconstruction the
+ * previous implementation used despite its "DST-safe" doc comment.
+ *
+ * `sourceMonday`/`targetMonday` are plain calendar dates picked from the UI
+ * (host-local midnight `Date`s with no meaningful time component), so
+ * extracting their `YYYY-MM-DD` via the host-local `formatLocalDate` is
+ * correct — the ambiguity this function guards against is specific to
+ * `isoString`, which is a real UTC instant that must be bucketed by the
+ * restaurant's calendar, not the viewer's.
  */
-function offsetPreservingLocalTime(
+function reprojectOntoTargetWeek(
   isoString: string,
   sourceMonday: Date,
   targetMonday: Date,
+  tz: string,
 ): Date {
-  const src = new Date(isoString);
+  const shiftDateStr = formatLocalDateInTz(new Date(isoString), tz);
+  const wallClockTime = formatLocalHHMMInTz(isoString, tz);
 
-  // Calendar-day offset from source Monday (0 = Monday, 1 = Tuesday, etc.)
-  const srcMidnight = new Date(src.getFullYear(), src.getMonth(), src.getDate());
-  const srcMondayMidnight = new Date(
-    sourceMonday.getFullYear(), sourceMonday.getMonth(), sourceMonday.getDate(),
-  );
-  const dayOffset = Math.round(
-    (srcMidnight.getTime() - srcMondayMidnight.getTime()) / (24 * 60 * 60 * 1000),
-  );
+  const dayOffset = daysBetweenDateStrs(formatLocalDate(sourceMonday), shiftDateStr);
+  const targetDateStr = addDaysToDateStr(formatLocalDate(targetMonday), dayOffset);
 
-  // Reconstruct in local time on the target week's equivalent day
-  const targetDate = new Date(targetMonday);
-  targetDate.setDate(targetMonday.getDate() + dayOffset);
-
-  return new Date(
-    targetDate.getFullYear(),
-    targetDate.getMonth(),
-    targetDate.getDate(),
-    src.getHours(),
-    src.getMinutes(),
-    src.getSeconds(),
-    src.getMilliseconds(),
-  );
+  return wallClockToInstant(targetDateStr, wallClockTime, tz);
 }
 
 /**
  * Transform source week shifts into insert payloads for a target week.
- * Preserves local wall-clock time per shift (DST-safe), strips metadata
- * (IDs, timestamps, recurrence), resets publish/lock state.
- * Excludes cancelled shifts.
+ * Preserves the restaurant-local calendar day-of-week and wall-clock time
+ * per shift, resolving DST the same way the server does. Strips metadata
+ * (IDs, timestamps, recurrence), resets publish/lock state. Excludes
+ * cancelled shifts.
  */
 export function buildCopyPayload(
   sourceShifts: Shift[],
   sourceMonday: Date,
   targetMonday: Date,
   restaurantId: string,
+  tz: string,
 ): BulkShiftInsert[] {
   return sourceShifts
     .filter((s) => s.status !== 'cancelled')
     .map((shift) => {
-      const newStart = offsetPreservingLocalTime(shift.start_time, sourceMonday, targetMonday);
-      const newEnd = offsetPreservingLocalTime(shift.end_time, sourceMonday, targetMonday);
+      const newStart = reprojectOntoTargetWeek(shift.start_time, sourceMonday, targetMonday, tz);
+      const newEnd = reprojectOntoTargetWeek(shift.end_time, sourceMonday, targetMonday, tz);
 
       return {
         restaurant_id: restaurantId,

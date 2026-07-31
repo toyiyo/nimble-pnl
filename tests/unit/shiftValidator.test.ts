@@ -7,6 +7,11 @@ import type { Shift } from '@/types/scheduling';
 // Helper
 // ---------------------------------------------------------------------------
 
+// `start_time`/`end_time` overrides use explicit `Z` (UTC) suffixes so they
+// share a basis with `ShiftInterval.create(..., 'UTC')` fixtures throughout
+// this file — `shiftValidator.ts` parses these via `fromTimestamps`, which
+// parses host-locally for a naive (no-offset) string, and this suite runs
+// under whatever TZ the host process has.
 function mockShift(
   overrides: Partial<Shift> & {
     start_time: string;
@@ -37,11 +42,11 @@ describe('validateShift', () => {
   describe('no overlap', () => {
     it('returns valid with no errors or warnings when there are no conflicts', () => {
       // 8+ hour gap: proposed ends 12:00, existing starts 22:00 — 10h rest
-      const proposed = ShiftInterval.create('2026-03-10', '06:00', '12:00');
+      const proposed = ShiftInterval.create('2026-03-10', '06:00', '12:00', 'UTC');
       const existing = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T22:00:00',
-        end_time: '2026-03-11T04:00:00',
+        start_time: '2026-03-10T22:00:00Z',
+        end_time: '2026-03-11T04:00:00Z',
       });
 
       const result = validateShift(
@@ -58,11 +63,11 @@ describe('validateShift', () => {
   // 2. Overlap — overlapping shifts produce OVERLAP warning (non-blocking)
   describe('overlap detection', () => {
     it('returns OVERLAP warning when proposed shift overlaps an existing shift', () => {
-      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00');
+      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00', 'UTC');
       const existing = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T14:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T14:00:00Z',
       });
 
       const result = validateShift(
@@ -81,10 +86,10 @@ describe('validateShift', () => {
       // Closing shift ends at 02:00 on March 11; opening starts at 08:00 — 6h gap
       const closingShift = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T18:00:00',
-        end_time: '2026-03-11T02:00:00',
+        start_time: '2026-03-10T18:00:00Z',
+        end_time: '2026-03-11T02:00:00Z',
       });
-      const opening = ShiftInterval.create('2026-03-11', '08:00', '14:00');
+      const opening = ShiftInterval.create('2026-03-11', '08:00', '14:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: opening },
@@ -108,10 +113,10 @@ describe('validateShift', () => {
       // Closing shift ends at 02:00 on March 11; opening starts at 10:00 — exactly 8h
       const closingShift = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T18:00:00',
-        end_time: '2026-03-11T02:00:00',
+        start_time: '2026-03-10T18:00:00Z',
+        end_time: '2026-03-11T02:00:00Z',
       });
-      const opening = ShiftInterval.create('2026-03-11', '10:00', '16:00');
+      const opening = ShiftInterval.create('2026-03-11', '10:00', '16:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: opening },
@@ -124,11 +129,11 @@ describe('validateShift', () => {
     it('does not warn when rest gap is well above 8 hours', () => {
       const morningShift = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T08:00:00',
-        end_time: '2026-03-10T14:00:00',
+        start_time: '2026-03-10T08:00:00Z',
+        end_time: '2026-03-10T14:00:00Z',
       });
       // Next shift is the following day — 18h gap
-      const nextDay = ShiftInterval.create('2026-03-11', '08:00', '14:00');
+      const nextDay = ShiftInterval.create('2026-03-11', '08:00', '14:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: nextDay },
@@ -146,11 +151,11 @@ describe('validateShift', () => {
       const existing = mockShift({
         id: shiftId,
         employee_id: 'e1',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T16:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T16:00:00Z',
       });
       // Proposed interval overlaps the existing shift (same time slot, slight adjustment)
-      const proposed = ShiftInterval.create('2026-03-10', '11:00', '17:00');
+      const proposed = ShiftInterval.create('2026-03-10', '11:00', '17:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -166,16 +171,16 @@ describe('validateShift', () => {
       const editedShift = mockShift({
         id: 'shift-being-edited',
         employee_id: 'e1',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T16:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T16:00:00Z',
       });
       const otherShift = mockShift({
         id: 'other-shift',
         employee_id: 'e1',
-        start_time: '2026-03-10T15:00:00',
-        end_time: '2026-03-10T21:00:00',
+        start_time: '2026-03-10T15:00:00Z',
+        end_time: '2026-03-10T21:00:00Z',
       });
-      const proposed = ShiftInterval.create('2026-03-10', '14:00', '20:00');
+      const proposed = ShiftInterval.create('2026-03-10', '14:00', '20:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -193,12 +198,12 @@ describe('validateShift', () => {
     it('ignores cancelled shifts when checking for overlaps', () => {
       const cancelledShift = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T16:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T16:00:00Z',
         status: 'cancelled',
       });
       // Proposed directly overlaps the cancelled shift
-      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00');
+      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -212,17 +217,17 @@ describe('validateShift', () => {
     it('still detects overlap with non-cancelled shifts among mixed statuses', () => {
       const cancelledShift = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T16:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T16:00:00Z',
         status: 'cancelled',
       });
       const confirmedShift = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T14:00:00',
-        end_time: '2026-03-10T20:00:00',
+        start_time: '2026-03-10T14:00:00Z',
+        end_time: '2026-03-10T20:00:00Z',
         status: 'confirmed',
       });
-      const proposed = ShiftInterval.create('2026-03-10', '13:00', '19:00');
+      const proposed = ShiftInterval.create('2026-03-10', '13:00', '19:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -240,10 +245,10 @@ describe('validateShift', () => {
     it('does not flag overlap when shifts belong to different employees', () => {
       const otherEmployeeShift = mockShift({
         employee_id: 'e2',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T16:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T16:00:00Z',
       });
-      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00');
+      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -261,16 +266,16 @@ describe('validateShift', () => {
     it('returns multiple OVERLAP warnings when proposed conflicts with several existing shifts', () => {
       const shift1 = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T09:00:00',
-        end_time: '2026-03-10T13:00:00',
+        start_time: '2026-03-10T09:00:00Z',
+        end_time: '2026-03-10T13:00:00Z',
       });
       const shift2 = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T14:00:00',
-        end_time: '2026-03-10T18:00:00',
+        start_time: '2026-03-10T14:00:00Z',
+        end_time: '2026-03-10T18:00:00Z',
       });
       // Proposed spans 10:00-17:00, overlapping both shifts
-      const proposed = ShiftInterval.create('2026-03-10', '10:00', '17:00');
+      const proposed = ShiftInterval.create('2026-03-10', '10:00', '17:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -286,7 +291,7 @@ describe('validateShift', () => {
   // 9. Empty existing shifts — always valid
   describe('empty existing shifts', () => {
     it('returns valid when there are no existing shifts', () => {
-      const proposed = ShiftInterval.create('2026-03-10', '09:00', '17:00');
+      const proposed = ShiftInterval.create('2026-03-10', '09:00', '17:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -299,7 +304,7 @@ describe('validateShift', () => {
     });
 
     it('returns valid with no options provided', () => {
-      const proposed = ShiftInterval.create('2026-03-10', '09:00', '17:00');
+      const proposed = ShiftInterval.create('2026-03-10', '09:00', '17:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -323,10 +328,10 @@ describe('validateShift', () => {
       // restHoursUntil returns 0 for abutting, and checkRestGap skips when gap <= 0
       const existing = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T16:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T16:00:00Z',
       });
-      const proposed = ShiftInterval.create('2026-03-10', '16:00', '22:00');
+      const proposed = ShiftInterval.create('2026-03-10', '16:00', '22:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -342,10 +347,10 @@ describe('validateShift', () => {
       // Proposed ends at 14:00, existing starts at 19:00 — 5h gap
       const existing = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T19:00:00',
-        end_time: '2026-03-11T01:00:00',
+        start_time: '2026-03-10T19:00:00Z',
+        end_time: '2026-03-11T01:00:00Z',
       });
-      const proposed = ShiftInterval.create('2026-03-10', '08:00', '14:00');
+      const proposed = ShiftInterval.create('2026-03-10', '08:00', '14:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -363,11 +368,11 @@ describe('validateShift', () => {
       // Existing shift: 22:00 to 06:00 next day
       const existing = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T22:00:00',
-        end_time: '2026-03-11T06:00:00',
+        start_time: '2026-03-10T22:00:00Z',
+        end_time: '2026-03-11T06:00:00Z',
       });
       // Proposed shift: 04:00 to 10:00 on March 11 — overlaps the tail end
-      const proposed = ShiftInterval.create('2026-03-11', '04:00', '10:00');
+      const proposed = ShiftInterval.create('2026-03-11', '04:00', '10:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -379,7 +384,7 @@ describe('validateShift', () => {
     });
 
     it('is valid when options are supplied but no shift matches excludeShiftId', () => {
-      const proposed = ShiftInterval.create('2026-03-15', '09:00', '17:00');
+      const proposed = ShiftInterval.create('2026-03-15', '09:00', '17:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },
@@ -394,11 +399,11 @@ describe('validateShift', () => {
     it('handles completed shift status (non-cancelled) as a valid conflict source', () => {
       const completedShift = mockShift({
         employee_id: 'e1',
-        start_time: '2026-03-10T10:00:00',
-        end_time: '2026-03-10T16:00:00',
+        start_time: '2026-03-10T10:00:00Z',
+        end_time: '2026-03-10T16:00:00Z',
         status: 'completed',
       });
-      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00');
+      const proposed = ShiftInterval.create('2026-03-10', '12:00', '18:00', 'UTC');
 
       const result = validateShift(
         { employeeId: 'e1', interval: proposed },

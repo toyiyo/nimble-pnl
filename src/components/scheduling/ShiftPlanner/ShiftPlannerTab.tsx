@@ -30,6 +30,7 @@ import type { ValidationIssue } from '@/lib/shiftValidator';
 
 import { computeCellFill } from '@/lib/shiftFill';
 import { computeLoanedOut, assignLoanedOutCell } from '@/lib/loanedOut';
+import { safeTz } from '@/lib/restaurantClock';
 import { formatLocalDateInTz } from '@/lib/shiftInterval';
 
 import { cn } from '@/lib/utils';
@@ -114,7 +115,15 @@ export function ShiftPlannerTab({
 }: Readonly<ShiftPlannerTabProps>) {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantName = selectedRestaurant?.restaurant?.name;
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  // `safeTz`, not `|| 'UTC'` — this value now feeds WRITE paths (drag-copy,
+  // copy-week, planner create/update) where it decides the UTC instant that
+  // gets stored, not just how a cell is labelled. `restaurants.timezone` is
+  // nullable, and every server-side scheduling function COALESCEs a null to
+  // 'America/Chicago'; anchoring the client to UTC for those rows would
+  // write instants the server then reads back on a different calendar day —
+  // the exact drift this PR exists to remove. `safeTz` maps null, empty and
+  // invalid zones to that same 'America/Chicago' default.
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const isMobile = useIsMobile();
 
   const {

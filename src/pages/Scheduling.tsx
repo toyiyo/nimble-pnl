@@ -64,6 +64,7 @@ import { getMondayOfWeek, computeHoursPerEmployee, buildTemplateGridData } from 
 import { useSharedWeek } from '@/hooks/useSharedWeek';
 import { useShiftTemplates, templateAppliesToDay } from '@/hooks/useShiftTemplates';
 import { useStaffingSettings } from '@/hooks/useStaffingSettings';
+import { safeTz } from '@/lib/restaurantClock';
 import { formatLocalDate } from '@/lib/shiftInterval';
 import { capacityFloor } from '@/lib/shiftCoverage';
 import { distinctAssignedCount } from '@/lib/shiftFill';
@@ -218,7 +219,15 @@ const Scheduling = () => {
   const navigate = useNavigate();
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  // `safeTz`, not `|| 'UTC'` — this value now feeds WRITE paths (drag-copy,
+  // copy-week, planner create/update) where it decides the UTC instant that
+  // gets stored, not just how a cell is labelled. `restaurants.timezone` is
+  // nullable, and every server-side scheduling function COALESCEs a null to
+  // 'America/Chicago'; anchoring the client to UTC for those rows would
+  // write instants the server then reads back on a different calendar day —
+  // the exact drift this PR exists to remove. `safeTz` maps null, empty and
+  // invalid zones to that same 'America/Chicago' default.
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();

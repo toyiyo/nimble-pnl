@@ -870,8 +870,8 @@ const TimePunchesManager = () => {
                           <div className="text-xs text-muted-foreground truncate">{punch.employee?.position}</div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-medium">{format(new Date(punch.punch_time), 'MMM d')}</div>
-                          <div className="text-xs text-muted-foreground">{format(new Date(punch.punch_time), 'h:mm a')}</div>
+                          <div className="text-sm font-medium">{clock.formatInstant(punch.punch_time, 'MMM d')}</div>
+                          <div className="text-xs text-muted-foreground">{clock.formatInstant(punch.punch_time, 'h:mm a')}</div>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {punch.photo_path && (
@@ -953,7 +953,7 @@ const TimePunchesManager = () => {
                   <div>
                     <div className="font-medium">{session.employee_name}</div>
                     <div className="text-xs text-muted-foreground">
-                      In: {format(new Date(session.clock_in), 'h:mm a')} • 
+                      In: {clock.formatInstant(session.clock_in, 'h:mm a')} •
                       Open for {Math.max(0, Math.floor(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m
                     </div>
                   </div>
@@ -1086,7 +1086,7 @@ const TimePunchesManager = () => {
             {forceSessionToClose?.clock_in && forceOutTime && 
               new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime() && (
               <p className="text-xs text-destructive mt-2">
-                Time must be after {format(new Date(forceSessionToClose.clock_in), 'h:mm a')}.
+                Time must be after {clock.formatInstant(forceSessionToClose.clock_in, 'h:mm a')}.
               </p>
             )}
           </div>
@@ -1139,11 +1139,11 @@ const TimePunchesManager = () => {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Date:</span>
-                  <div className="font-medium">{format(new Date(viewingPunch.punch_time), 'MMM d, yyyy')}</div>
+                  <div className="font-medium">{clock.formatInstant(viewingPunch.punch_time, 'MMM d, yyyy')}</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Time:</span>
-                  <div className="font-medium">{format(new Date(viewingPunch.punch_time), 'h:mm:ss a')}</div>
+                  <div className="font-medium">{clock.formatInstant(viewingPunch.punch_time, 'h:mm:ss a')}</div>
                 </div>
               </div>
 

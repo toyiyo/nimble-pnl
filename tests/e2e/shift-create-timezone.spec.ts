@@ -167,51 +167,6 @@ async function readAllShiftsForEmployee(page: Page, restaurantId: string, employ
   return shifts as Array<{ start_time: string; end_time: string }>;
 }
 
-function localDateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
-/**
- * TEST-ONLY oracle: the correct UTC instant for a wall-clock time in a given
- * IANA zone. Used solely to compute expected values for assertions — never a
- * stand-in for the production converter (`restaurantClock.ts`/`wallClockToInstant`),
- * which this reproduction is deliberately not implementing yet. Accurate as
- * long as the instant is not inside a DST transition window, which ordinary
- * "today" test dates satisfy.
- */
-function restaurantWallClockToUtcIso(dateStr: string, timeStr: string, tz: string): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const [hh, mm] = timeStr.split(':').map(Number);
-  const naiveUtcMs = Date.UTC(y, m - 1, d, hh, mm, 0);
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-  const parts = dtf.formatToParts(new Date(naiveUtcMs)).reduce<Record<string, string>>((acc, p) => {
-    if (p.type !== 'literal') acc[p.type] = p.value;
-    return acc;
-  }, {});
-  const asIfUtcMs = Date.UTC(
-    Number(parts.year),
-    Number(parts.month) - 1,
-    Number(parts.day),
-    Number(parts.hour),
-    Number(parts.minute),
-    Number(parts.second),
-  );
-  const offsetMs = asIfUtcMs - naiveUtcMs;
-  return new Date(naiveUtcMs - offsetMs).toISOString();
-}
-
 /** Inserts a shift directly, bypassing every client write surface — used to seed a known-correct row. */
 async function seedShift(
   page: Page,

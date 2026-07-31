@@ -97,4 +97,36 @@ describe('useRestaurantClock', () => {
     expect(result.current.viewerTzDiffers).toBe(true);
     vi.restoreAllMocks();
   });
+
+  // Guards the abbrev/offset entries in the useMemo deps array: `tz` and
+  // `today` are BOTH held fixed across this test (the restaurant's midnight
+  // rollover already happened; `today` doesn't move again until the next
+  // one), so a memo keyed only on `[tz, today]` would keep serving the
+  // pre-transition tzAbbrev/viewerTzDiffers straight through a DST change
+  // that lands mid-day at 02:00 local. Recomputing at render time (per the
+  // hook's comment) means a re-render after the transition sees the update
+  // without needing `today` to change.
+  it('reflects a DST transition within a render, without waiting for today to roll over', () => {
+    vi.useFakeTimers();
+    // Viewer pinned at a fixed UTC-6 offset (getTimezoneOffset returns
+    // minutes WEST of UTC), independent of the restaurant's own transition.
+    vi.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(360);
+
+    // Before the US spring-forward: 2026-03-08T07:00:00Z = 01:00 CST (UTC-6)
+    // in America/Chicago -- same offset as the pinned viewer.
+    vi.setSystemTime(new Date('2026-03-08T07:00:00Z'));
+    const { result, rerender } = renderHook(() => useRestaurantClock());
+    expect(result.current.tzAbbrev).toBe('CST');
+    expect(result.current.viewerTzDiffers).toBe(false);
+
+    // After: 2026-03-08T08:30:00Z = 03:30 CDT (UTC-5). `tz` and `today` are
+    // unchanged; only the wall-clock offset moved.
+    vi.setSystemTime(new Date('2026-03-08T08:30:00Z'));
+    rerender();
+    expect(result.current.tzAbbrev).toBe('CDT');
+    expect(result.current.viewerTzDiffers).toBe(true);
+
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 });

@@ -27,8 +27,9 @@ export interface RestaurantClock {
  * The selected restaurant's clock — the default frame for user-visible dates.
  *
  * Identity contract: the returned object is stable across re-renders and
- * changes at most once per day (when `today` rolls over) plus whenever the
- * selected restaurant changes. Consumers may safely list its functions in
+ * changes only when something it derives from actually changes — the
+ * selected restaurant, `today` rolling over, or (see below) the viewer's or
+ * restaurant's current UTC offset. Consumers may safely list its functions in
  * `useEffect`/`useCallback` dependency arrays.
  */
 export function useRestaurantClock(): RestaurantClock {
@@ -41,25 +42,37 @@ export function useRestaurantClock(): RestaurantClock {
 
   const today = useTodayInTimezone(tz);
 
+  // Computed at render time, OUTSIDE the memo, and threaded into its deps
+  // below (not just captured in the closure) -- see the deps comment.
+  const now = new Date();
+  // Compare current UTC offsets, not IANA strings: America/Chicago and
+  // US/Central name the same zone and must not trigger a cue.
+  const viewerOffsetMinutes = -now.getTimezoneOffset();
+  const restaurantOffsetMinutes = tzOffsetMinutes(tz, now);
+  const abbrev = tzAbbrevOf(tz, now);
+
   // `today` MUST be in the deps. Without it the closures capture the mount-day
   // value and a long-lived page stops rolling over at midnight — the exact
   // behaviour useTodayInTimezone exists to provide.
-  return useMemo<RestaurantClock>(() => {
-    const now = new Date();
-    // Compare current UTC offsets, not IANA strings: America/Chicago and
-    // US/Central name the same zone and must not trigger a cue.
-    const viewerOffset = -now.getTimezoneOffset();
-    const viewerTzDiffers = viewerOffset !== tzOffsetMinutes(tz, now);
-
-    return {
-      tz,
-      tzAbbrev: tzAbbrevOf(tz, now),
-      viewerTzDiffers,
-      today,
-      formatInstant: (value, pattern) => formatInstantIn(value, tz, pattern),
-      toBusinessDay: (value) => toBusinessDayIn(value, tz),
-      toWallClockInput: (value) => toWallClockInputIn(value, tz),
-      parseWallClock: (wallClock) => parseWallClockIn(wallClock, tz),
-    };
-  }, [tz, today]);
+  //
+  // abbrev/viewerOffsetMinutes/restaurantOffsetMinutes MUST also be in the
+  // deps, computed above (not inside the memo callback): US DST transitions
+  // land at 02:00 local, which is AFTER the restaurant's midnight rollover
+  // that changes `today`. Between 02:00 and the next midnight, `tz` and
+  // `today` are both unchanged, so a memo keyed only on `[tz, today]` would
+  // keep serving the pre-transition tzAbbrev/viewerTzDiffers for up to ~22h.
+  // Recomputing these every render narrows that staleness window from "until
+  // tomorrow" to "until the next render" -- there is no re-render triggered
+  // by the transition itself absent a timer/interval, which is a known,
+  // accepted gap (do not add one here).
+  return useMemo<RestaurantClock>(() => ({
+    tz,
+    tzAbbrev: abbrev,
+    viewerTzDiffers: viewerOffsetMinutes !== restaurantOffsetMinutes,
+    today,
+    formatInstant: (value, pattern) => formatInstantIn(value, tz, pattern),
+    toBusinessDay: (value) => toBusinessDayIn(value, tz),
+    toWallClockInput: (value) => toWallClockInputIn(value, tz),
+    parseWallClock: (wallClock) => parseWallClockIn(wallClock, tz),
+  }), [tz, today, abbrev, viewerOffsetMinutes, restaurantOffsetMinutes]);
 }

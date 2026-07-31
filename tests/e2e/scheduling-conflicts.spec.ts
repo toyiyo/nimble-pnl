@@ -42,6 +42,64 @@ function localTimeToUTCOnDate(localTime: string, date: Date): string {
   return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:00`;
 }
 
+/** Milliseconds `tz` is ahead of UTC at `instant`. */
+function zoneOffsetMs(instant: Date, tz: string): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).formatToParts(instant);
+  const at = (type: string) => Number(parts.find((p) => p.type === type)!.value);
+  // `hour` is reported as 24 rather than 0 at midnight by some ICU builds under hour12:false.
+  return Date.UTC(
+    at('year'), at('month') - 1, at('day'), at('hour') % 24, at('minute'), at('second'),
+  ) - instant.getTime();
+}
+
+/**
+ * A wall clock in a named zone -> the UTC instant, matching what the app now stores.
+ *
+ * Deliberately NOT a copy of the production converter (`src/lib/restaurantClock.ts`): that
+ * one also defines a tie-break for the ambiguous and nonexistent wall clocks at a DST
+ * boundary, and restating that rule here would just be a second, unverified implementation
+ * of it. Every call below uses an ordinary clock time that exists exactly once in the zone,
+ * where any correct converter agrees. DST-boundary behaviour is covered by that module's
+ * own unit tests and by `supabase/tests/wall_clock_parity.sql`.
+ */
+function zonedWallClockToInstant(dateStr: string, timeHHMM: string, tz: string): Date {
+  const naiveUtc = Date.parse(`${dateStr}T${timeHHMM}:00Z`);
+  // Two passes: the first samples the offset at the wrong instant whenever the zone differs
+  // from UTC, the second samples it at (to within one offset change) the right one.
+  let instant = naiveUtc;
+  for (let i = 0; i < 2; i++) instant = naiveUtc - zoneOffsetMs(new Date(instant), tz);
+  return new Date(instant);
+}
+
+/** A restaurant-local time-of-day, as the UTC "HH:MM:00" an availability row stores. */
+function zonedTimeToUTCTimeOfDay(dateStr: string, timeHHMM: string, tz: string): string {
+  const d = zonedWallClockToInstant(dateStr, timeHHMM, tz);
+  return `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}:00`;
+}
+
+/** Pins `restaurants.timezone` so the zone under test is a fixed quantity, not a DB default. */
+async function setRestaurantTimezone(page: Page, restaurantId: string, timezone: string) {
+  const result: { ok: boolean; message?: string; stored?: string } = await page.evaluate(
+    async ({ restId, tz }: { restId: string; tz: string }) => {
+      // `__supabase` is a test-only global installed by exposeSupabaseHelpers; it has no
+      // type declarations, hence the cast — the same convention the rest of this spec uses.
+      const supabase = (window as any).__supabase;
+      const { error } = await supabase.from('restaurants').update({ timezone: tz }).eq('id', restId);
+      if (error) return { ok: false, message: error.message };
+      const { data } = await supabase.from('restaurants').select('timezone').eq('id', restId).single();
+      return { ok: true, stored: data?.timezone };
+    },
+    { restId: restaurantId, tz: timezone },
+  );
+  expect(result.ok, `failed to set restaurant timezone: ${result.message}`).toBe(true);
+  expect(result.stored).toBe(timezone);
+}
+
 /** Shared setup: sign up, create restaurant, seed 2 employees, expose helpers. */
 async function setupTestEnvironment(page: Page, prefix: string) {
   const testUser = generateTestUser(prefix);
@@ -543,15 +601,24 @@ test.describe('Scheduling Conflict Enhancements', () => {
     const monStr = formatDate(monday);
     const dow = monday.getDay();
 
-    // Alice available 8 AM - 11 PM local (may be overnight in UTC depending on timezone)
+    // Pin the zone rather than leaning on the `restaurants.timezone` default. This test's
+    // whole premise is that the availability window wraps midnight *in UTC*, and seeding it
+    // from the host clock made that true only by accident: on a UTC runner 08:00-23:00 does
+    // not wrap at all, so the "overnight" case went untested in exactly the environment CI
+    // runs. Chicago is 8+ hours off UTC at both ends of the year, so the wrap is now a fixed
+    // property on every machine and in every season.
+    const RESTAURANT_TZ = 'America/Chicago';
+    await setRestaurantTimezone(page, restaurantId, RESTAURANT_TZ);
+
+    // Alice available 8 AM - 11 PM *restaurant-local*, which is 13:00 -> 04:00 next-day UTC.
     await page.evaluate(
       ({ rows, restId }: any) => (window as any).__insertAvailability(rows, restId),
       {
         rows: [{
           employee_id: alice.id,
           day_of_week: dow,
-          start_time: localTimeToUTCOnDate('08:00', monday),
-          end_time: localTimeToUTCOnDate('23:00', monday),
+          start_time: zonedTimeToUTCTimeOfDay(monStr, '08:00', RESTAURANT_TZ),
+          end_time: zonedTimeToUTCTimeOfDay(monStr, '23:00', RESTAURANT_TZ),
           is_available: true,
         }],
         restId: restaurantId,
@@ -562,13 +629,15 @@ test.describe('Scheduling Conflict Enhancements', () => {
 
     // This test asserts the ABSENCE of a conflict, so it is only meaningful once the
     // availability check for the *final* form state has actually come back — otherwise it
-    // passes vacuously against a check that never ran. ShiftDialog sends
-    // `new Date(`${date}T${time}`).toISOString()` as p_start_time/p_end_time, so the test can
-    // name the exact request it is waiting for. Match on BOTH bounds: filling the form fires
-    // the query on intermediate states too (start time lands before end time), and a
-    // start-only match would resolve on that earlier, half-filled request.
-    const expectedStart = new Date(`${monStr}T10:00`).toISOString();
-    const expectedEnd = new Date(`${monStr}T18:00`).toISOString();
+    // passes vacuously against a check that never ran. ShiftDialog anchors p_start_time /
+    // p_end_time to the RESTAURANT's zone, so the test can name the exact request it is
+    // waiting for by doing the same conversion. (It previously used `new Date(`${date}T
+    // ${time}`)`, which parses in the *host* zone — the defect this branch fixes — and so
+    // named a request the app no longer sends once the two zones differ.) Match on BOTH
+    // bounds: filling the form fires the query on intermediate states too (start time lands
+    // before end time), and a start-only match would resolve on that half-filled request.
+    const expectedStart = zonedWallClockToInstant(monStr, '10:00', RESTAURANT_TZ).toISOString();
+    const expectedEnd = zonedWallClockToInstant(monStr, '18:00', RESTAURANT_TZ).toISOString();
     const conflictChecked = page.waitForResponse(
       (resp: Response) => {
         if (!resp.url().includes('check_availability_conflict')) return false;

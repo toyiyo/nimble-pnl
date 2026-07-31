@@ -9,8 +9,20 @@ const mockSupabase = vi.hoisted(() => ({
   rpc: vi.fn(),
 }));
 
+const mockUseRestaurantContext = vi.hoisted(() => vi.fn());
+
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: mockSupabase,
+}));
+
+// usePOSTips buckets employee-tip instants by the RESTAURANT's business day
+// via useRestaurantClock() -> useRestaurantContext(), not the viewer's local
+// clock. No timezone override needed here: an unset restaurant timezone
+// falls back to safeTz()'s DEFAULT_TIMEZONE (America/Chicago), which keeps
+// every fixture's UTC morning/afternoon timestamps on the same calendar day
+// regardless of the host's own TZ.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: mockUseRestaurantContext,
 }));
 
 function createWrapper() {
@@ -43,6 +55,7 @@ function mockPosRpc(data: unknown[] | null, error: { message: string } | null = 
 describe('usePOSTips', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseRestaurantContext.mockReturnValue({ selectedRestaurant: null });
   });
 
   it('should merge employee tips and POS tips by date', async () => {

@@ -179,7 +179,6 @@ export default tseslint.config(
       "src/hooks/useLiquidityMetrics.tsx",
       "src/hooks/useMonthlyExpenses.tsx",
       "src/hooks/useOutflowByCategory.tsx",
-      "src/hooks/usePOSTips.tsx",
       "src/hooks/usePnLAnalytics.tsx",
       "src/hooks/usePredictableExpenses.tsx",
       "src/hooks/usePredictiveMetrics.tsx",

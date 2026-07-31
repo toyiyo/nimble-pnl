@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 
 export interface POSTipData {
   date: string;
@@ -35,8 +35,14 @@ function mergeTip(
 }
 
 export function usePOSTips(restaurantId: string | null, startDate: string, endDate: string) {
+  // employee_tips.recorded_at is a moment in time (case b) -- it must bucket
+  // by the RESTAURANT's business day, the same day the pos-tips RPC already
+  // uses, or the two sides of the merge below disagree on which day a tip
+  // belongs to for any viewer/host ahead of the restaurant's timezone.
+  const { tz, toBusinessDay } = useRestaurantClock();
+
   return useQuery({
-    queryKey: ['pos-tips', restaurantId, startDate, endDate],
+    queryKey: ['pos-tips', restaurantId, startDate, endDate, tz],
     queryFn: async (): Promise<POSTipData[]> => {
       if (!restaurantId) return [];
 
@@ -65,7 +71,7 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
       const tipsByDate = new Map<string, TipBucket>();
 
       for (const tip of employeeResult.data ?? []) {
-        const date = format(new Date(tip.recorded_at), 'yyyy-MM-dd');
+        const date = toBusinessDay(tip.recorded_at);
         const source = (tip.tip_source || 'employee_tips') as POSTipData['source'];
         mergeTip(tipsByDate, date, tip.tip_amount || 0, 1, source);
       }

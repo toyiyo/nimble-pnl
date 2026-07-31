@@ -502,19 +502,26 @@ describe('Payroll Calculations - Daily Rate', () => {
     });
 
     it('CRITICAL: handles 7 days worked (exceeds reference)', () => {
+      // Fixed UTC instants (not local-field `new Date(y, m, d, h, min)`): the
+      // calc buckets each punch's day via toBusinessDay(punch_time, 'UTC'),
+      // so the fixture's instants must be host-timezone-independent, or the
+      // clock_in/clock_out pair for a given shift can land on different UTC
+      // calendar days depending on the test host's TZ (this suite runs under
+      // a UTC / America/Chicago / Pacific/Auckland matrix in CI) -- see
+      // memory/lessons.md on local-field-constructor fixtures.
       const punches: TimePunch[] = Array.from({ length: 7 }, (_, i) => [
         {
           id: `punch-in-${i}`,
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: new Date(2024, 0, i + 1, 9, 0).toISOString(),
+          punch_time: new Date(Date.UTC(2024, 0, i + 1, 9, 0)).toISOString(),
           punch_type: 'clock_in' as const,
         },
         {
           id: `punch-out-${i}`,
           employee_id: 'emp-1',
           restaurant_id: 'rest-1',
-          punch_time: new Date(2024, 0, i + 1, 17, 0).toISOString(),
+          punch_time: new Date(Date.UTC(2024, 0, i + 1, 17, 0)).toISOString(),
           punch_type: 'clock_out' as const,
         },
       ]).flat();

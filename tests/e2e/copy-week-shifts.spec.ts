@@ -298,38 +298,45 @@ test.describe('Copy Week Shifts', () => {
 
     // WHY THIS WEEK PAIR
     // -------------------
-    // Los Angeles springs forward on 2026-03-08 (02:00 PST -> 03:00 PDT).
-    // Source Monday 2026-03-02 and target Monday 2026-03-09 straddle that
+    // Los Angeles springs forward on 2027-03-14 (02:00 PST -> 03:00 PDT) — the
+    // next spring-forward transition after this suite's original 2026-03-08
+    // pair, which has since become a past week relative to the real clock
+    // (`checkIsPastWeek` in `CopyWeekDialog.tsx` disables the confirm button
+    // for any target week whose end is before *today*, and the calendar dates
+    // here are absolute, not relative — see the same problem class documented
+    // in `shift-create-timezone.spec.ts`'s Aug-2026 dates).
+    // Source Monday 2027-03-08 and target Monday 2027-03-15 straddle the
     // transition, so LA's UTC offset differs by exactly 60 minutes between
     // the two weeks while Tokyo's offset (UTC+9, no DST) never changes.
     //
-    // Source shift: 00:30-02:30 on Wednesday 2026-03-04, Tokyo time.
+    // Source shift: 00:30-02:30 on Wednesday 2027-03-10, Tokyo time.
     // Re-derived (not copied from any UI/app output) via Intl.DateTimeFormat,
     // never trusting the buggy converter:
-    const SOURCE_START_UTC = '2026-03-03T15:30:00.000Z'; // 00:30 Wed Mar 4, Asia/Tokyo
-    const SOURCE_END_UTC = '2026-03-03T17:30:00.000Z'; // 02:30 Wed Mar 4, Asia/Tokyo
-    // Source week Monday is 2026-03-02 (used directly in the ?week= URL below).
-    const TARGET_MONDAY_DAY = 9; // 2026-03-09
-    const TARGET_MONTH_YEAR = { year: 2026, monthIndex: 2 }; // March (0-indexed)
+    const SOURCE_START_UTC = '2027-03-09T15:30:00.000Z'; // 00:30 Wed Mar 10, Asia/Tokyo
+    const SOURCE_END_UTC = '2027-03-09T17:30:00.000Z'; // 02:30 Wed Mar 10, Asia/Tokyo
+    // Source week Monday is 2027-03-08 (used directly in the ?week= URL below).
+    const TARGET_MONDAY_DAY = 15; // 2027-03-15
+    const TARGET_MONTH_YEAR = { year: 2027, monthIndex: 2 }; // March (0-indexed)
 
     /**
      * Correct answer: the same restaurant-local wall clock (00:30-02:30) one
-     * week later, i.e. Wednesday 2026-03-11 in Asia/Tokyo. Re-derived
+     * week later, i.e. Wednesday 2027-03-17 in Asia/Tokyo. Re-derived
      * independently from the source, not by adding "7 days" to the source
      * UTC instant (which would also happen to be correct here only because
      * Tokyo has no DST — the point is this value comes from the wall clock,
      * not from arithmetic on the buggy function's own output).
      */
-    const EXPECTED_TARGET_START_UTC = '2026-03-10T15:30:00.000Z'; // 00:30 Wed Mar 11, Asia/Tokyo
-    const EXPECTED_TARGET_END_UTC = '2026-03-10T17:30:00.000Z'; // 02:30 Wed Mar 11, Asia/Tokyo
+    const EXPECTED_TARGET_START_UTC = '2027-03-16T15:30:00.000Z'; // 00:30 Wed Mar 17, Asia/Tokyo
+    const EXPECTED_TARGET_END_UTC = '2027-03-16T17:30:00.000Z'; // 02:30 Wed Mar 17, Asia/Tokyo
 
     /**
-     * What the current buggy `offsetPreservingLocalTime` actually produces,
-     * confirmed by directly executing the production function against these
-     * inputs (Node script, TZ=America/Los_Angeles): 2026-03-10T14:30:00.000Z,
-     * i.e. 23:30 on TUESDAY 2026-03-10 in Tokyo — a full calendar day early,
+     * What the pre-fix buggy `offsetPreservingLocalTime` actually produced,
+     * confirmed by directly executing the pre-fix production function against
+     * these inputs (Node script, TZ=America/Los_Angeles): 2027-03-16T14:30:00.000Z,
+     * i.e. 23:30 on TUESDAY 2027-03-16 in Tokyo — a full calendar day early,
      * *and* 60 minutes off within that wrong day. Kept here only as a
-     * documented expectation of the failure, never as the assertion target.
+     * documented expectation of the pre-fix failure, never as the assertion
+     * target.
      */
 
     async function setRestaurantTimezone(page: Page, restaurantId: string, timezone: string) {
@@ -389,15 +396,7 @@ test.describe('Copy Week Shifts', () => {
       throw new Error(`calendar navigation to ${targetMonthName} ${targetYear} did not converge after 36 clicks`);
     }
 
-    // SKIPPED — lands with its fix in Task 7 (surface 5, Copy Week).
-    // This test does not currently reproduce the timezone defect: it dies in its
-    // own harness before reaching any assertion about the copied instant. The
-    // calendar-caption parse above is fixed, but the copy dialog's confirmation
-    // text then never appears, so `copy_week_shifts` is never invoked. Peeling
-    // that second layer is Task 7's job — surface 5 is the case where a shift
-    // lands on the wrong *day of week*, and it deserves a test that actually
-    // exercises the RPC rather than one that is red for scaffolding reasons.
-    test.skip('surface 5: a 00:30 shift copies to the same restaurant-local day of week', async ({ page }) => {
+    test('surface 5: a 00:30 shift copies to the same restaurant-local day of week', async ({ page }) => {
       const testUser = generateTestUser('copy-week-dst');
       await signUpAndCreateRestaurant(page, testUser);
       await exposeSupabaseHelpers(page);
@@ -451,7 +450,7 @@ test.describe('Copy Week Shifts', () => {
 
       // Navigate directly to the source week via the ?week= URL param
       // (see useSharedWeek.ts) instead of clicking Previous/Next Week.
-      await page.goto('/scheduling?week=2026-03-02');
+      await page.goto('/scheduling?week=2027-03-08');
       await page.waitForURL(/\/scheduling/, { timeout: 8000 });
       await expect(page.getByText('Alice Johnson').first()).toBeVisible({ timeout: 10000 });
 
@@ -520,9 +519,15 @@ test.describe('Copy Week Shifts', () => {
       ).toBe('Wednesday');
 
       // Exact instant, for the full picture (day AND wall-clock time are
-      // both wrong under the current bug).
-      expect(actual.start_time, `drift ${driftMinutes} min from expected`).toBe(EXPECTED_TARGET_START_UTC);
-      expect(actual.end_time).toBe(EXPECTED_TARGET_END_UTC);
+      // both wrong under the current bug). Compare as instants, not strings —
+      // Postgres/PostgREST round-trips timestamps as "+00:00", not the "Z"
+      // suffix `toISOString()` produces, so a string-equality check would
+      // fail on formatting alone even when the instant is exactly right.
+      expect(
+        new Date(actual.start_time).getTime(),
+        `drift ${driftMinutes} min from expected`,
+      ).toBe(new Date(EXPECTED_TARGET_START_UTC).getTime());
+      expect(new Date(actual.end_time).getTime()).toBe(new Date(EXPECTED_TARGET_END_UTC).getTime());
     });
   });
 });

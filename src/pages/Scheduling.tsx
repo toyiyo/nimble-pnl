@@ -380,13 +380,14 @@ const Scheduling = () => {
         sourceMonday: currentWeekStart,
         targetMonday,
         restaurantId,
+        tz: restaurantTimezone,
       });
       setCopyDialogOpen(false);
       setCurrentWeekStart(getMondayOfWeek(targetMonday));
     } catch {
       // onError in useCopyWeekShifts already shows a toast
     }
-  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId]);
+  }, [copyWeekMutation, shifts, currentWeekStart, restaurantId, restaurantTimezone]);
 
   // Apply position and area filters to active employees for new shift creation
   const filteredActiveEmployees = useMemo(() => {

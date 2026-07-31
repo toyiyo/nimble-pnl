@@ -12,7 +12,7 @@
 -- ============================================================================
 BEGIN;
 
-SELECT plan(37);
+SELECT plan(42);
 
 -- ----------------------------------------------------------------------------
 -- Fixtures: two fictional restaurants (A, B, both owned by the same owner —
@@ -428,6 +428,76 @@ SELECT is(
   0,
   'every ui_group renders in one band at one sort_order'
 );
+
+-- ============================================================================
+-- 15. The immutability triggers must not swallow a LEGITIMATE update.
+--
+--     Items 8 and 9 only prove a builtin's UPDATE is rejected. They say
+--     nothing about what happens to a custom role's UPDATE, and a BEFORE
+--     UPDATE trigger that returns OLD does not reject the write — it lets it
+--     "succeed" while writing the old tuple back. The client sees no error and
+--     the edit silently vanishes. So these assertions check the VALUE after
+--     the update, not merely that it lived.
+--
+--     Run as superuser with RLS off, matching items 8 and 13: the trigger, not
+--     RLS, is what is under test here.
+-- ============================================================================
+SET LOCAL row_security = off;
+
+UPDATE public.roles
+SET name = 'Weekend Lead', description = 'Runs the floor Fri-Sun'
+WHERE id = 'a0000000-0000-0000-0000-0000000000c1';
+
+SELECT is(
+  (SELECT name FROM public.roles WHERE id = 'a0000000-0000-0000-0000-0000000000c1'),
+  'Weekend Lead',
+  'a custom role UPDATE actually persists the new name (trigger returns NEW, not OLD)'
+);
+
+SELECT is(
+  (SELECT description FROM public.roles WHERE id = 'a0000000-0000-0000-0000-0000000000c1'),
+  'Runs the floor Fri-Sun',
+  'a custom role UPDATE actually persists the new description'
+);
+
+-- inventory is uncapped for collaborators, so view -> manage is a legal edit.
+INSERT INTO public.role_areas (role_id, area_key, level)
+VALUES ('a0000000-0000-0000-0000-0000000000c1', 'inventory', 'view');
+
+UPDATE public.role_areas
+SET level = 'manage'
+WHERE role_id = 'a0000000-0000-0000-0000-0000000000c1' AND area_key = 'inventory';
+
+SELECT is(
+  (SELECT level FROM public.role_areas
+   WHERE role_id = 'a0000000-0000-0000-0000-0000000000c1' AND area_key = 'inventory'),
+  'manage',
+  'a custom role''s role_areas UPDATE actually persists the new level'
+);
+
+UPDATE public.role_flags
+SET flag = 'view:pay_rates'
+WHERE role_id = 'a0000000-0000-0000-0000-0000000000c1' AND flag = 'view:costs';
+
+SELECT is(
+  (SELECT flag FROM public.role_flags WHERE role_id = 'a0000000-0000-0000-0000-0000000000c1'),
+  'view:pay_rates',
+  'a custom role''s role_flags UPDATE actually persists the new flag'
+);
+
+-- The OLD-side check cannot see a re-parent, so the trigger checks NEW too.
+-- (RLS blocks this for `authenticated`; the trigger is what holds for
+-- service_role, which is why this runs with row_security off.)
+SELECT throws_ok(
+  $$UPDATE public.role_areas
+    SET role_id = 'a0000000-0000-0000-0000-0000000000b1'
+    WHERE role_id = 'a0000000-0000-0000-0000-0000000000c1' AND area_key = 'inventory'$$,
+  '42501',
+  NULL,
+  'a role_areas row cannot be re-parented onto a builtin role'
+);
+
+RESET row_security;
 
 SELECT * FROM finish();
 

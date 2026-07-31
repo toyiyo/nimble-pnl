@@ -383,7 +383,11 @@ BEGIN
     RAISE EXCEPTION 'builtin roles cannot be updated or deleted (role_id=%)', OLD.id
       USING ERRCODE = '42501';
   END IF;
-  RETURN OLD;
+  -- One trigger covers UPDATE and DELETE, so the return value has to differ by
+  -- op. A BEFORE UPDATE trigger returning OLD does NOT reject the write — it
+  -- writes the old tuple back and reports success, so a legitimate rename of a
+  -- custom role would silently vanish with no error for the client to catch.
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
 END;
 $$;
 
@@ -416,14 +420,31 @@ BEGIN
       USING ERRCODE = '42501';
   END IF;
 
-  RETURN OLD;
+  -- An UPDATE can also re-parent the row onto a builtin, which the OLD check
+  -- above cannot see. RLS blocks that for `authenticated` (its WITH CHECK
+  -- requires restaurant_id IS NOT NULL, and builtins are global), but this
+  -- trigger is the guard that is supposed to hold for service_role too.
+  IF TG_OP = 'UPDATE' AND NEW.role_id <> OLD.role_id THEN
+    SELECT builtin INTO v_builtin FROM public.roles WHERE id = NEW.role_id;
+
+    IF v_builtin THEN
+      RAISE EXCEPTION '% rows cannot be re-parented onto a builtin role (role_id=%)',
+        TG_TABLE_NAME, NEW.role_id
+        USING ERRCODE = '42501';
+    END IF;
+  END IF;
+
+  -- Same op-dependent return as roles_block_builtin_mutation: returning OLD on
+  -- a BEFORE UPDATE silently writes the old tuple back instead of rejecting.
+  RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
 END;
 $$;
 
 COMMENT ON FUNCTION public.block_builtin_role_child_mutation IS
   'Rejects UPDATE/DELETE of a role_areas or role_flags row whose parent role '
-  'is builtin. Looks up the parent as SECURITY DEFINER so the check is '
-  'authoritative regardless of the caller''s own RLS visibility into roles.';
+  'is builtin, and rejects re-parenting a row onto a builtin. Looks up the '
+  'parent as SECURITY DEFINER so the check is authoritative regardless of the '
+  'caller''s own RLS visibility into roles.';
 
 CREATE TRIGGER role_areas_block_builtin_mutation
   BEFORE UPDATE OR DELETE ON public.role_areas

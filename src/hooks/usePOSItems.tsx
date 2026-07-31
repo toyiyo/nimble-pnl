@@ -1,116 +1,62 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './useAuth';
-import { useToast } from '@/hooks/use-toast';
 
 export interface POSItem {
   item_name: string;
-  item_id?: string;
+  // Nullable, not merely optional: search_pos_items returns NULL here when
+  // every contributing sale row for an item has a NULL id, which the
+  // migration's FILTER clause preserves rather than inventing a value.
+  item_id?: string | null;
   source: 'pos_sales' | 'unified_sales';
   sales_count: number;
-  last_sold?: string;
+  last_sold?: string | null;
 }
 
-export const usePOSItems = (restaurantId: string | null) => {
-  const [posItems, setPosItems] = useState<POSItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const { user } = useAuth();
-  const { toast } = useToast();
+export const usePOSItems = (
+  restaurantId: string | null,
+  opts?: { search?: string; limit?: number }
+) => {
+  const search = opts?.search;
+  const limit = opts?.limit;
 
-  const fetchPOSItems = useCallback(async () => {
-    if (!restaurantId || !user) {
-      setLoading(false);
-      return;
-    }
+  const {
+    data,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['pos-items', restaurantId, search, limit],
+    // Typing is debounced, so superseded keystrokes would otherwise leave
+    // their RPC running server-side for results nobody reads. Hand React
+    // Query's signal to PostgREST so the aborted fetch takes the query with it.
+    queryFn: async ({ signal }) => {
+      const { data, error } = await supabase
+        .rpc('search_pos_items', {
+          p_restaurant_id: restaurantId,
+          p_search: search,
+          p_limit: limit,
+        })
+        .abortSignal(signal);
 
-    try {
-      setLoading(true);
-      
-      // Fetch from pos_sales table
-      const { data: posData, error: posError } = await supabase
-        .from('pos_sales')
-        .select('pos_item_name, pos_item_id, sale_date')
-        .eq('restaurant_id', restaurantId)
-        .not('pos_item_name', 'is', null);
-
-      // Fetch from unified_sales table
-      const { data: unifiedData, error: unifiedError } = await supabase
-        .from('unified_sales')
-        .select('item_name, external_item_id, sale_date')
-        .eq('restaurant_id', restaurantId)
-        .not('item_name', 'is', null);
-
-      if (posError) throw posError;
-      if (unifiedError) throw unifiedError;
-
-      // Combine and deduplicate POS items
-      const itemMap = new Map<string, POSItem>();
-
-      // Process pos_sales data
-      posData?.forEach(item => {
-        const key = item.pos_item_name.toLowerCase();
-        if (itemMap.has(key)) {
-          const existing = itemMap.get(key)!;
-          existing.sales_count += 1;
-          if (!existing.last_sold || item.sale_date > existing.last_sold) {
-            existing.last_sold = item.sale_date;
-            existing.item_id = item.pos_item_id || existing.item_id;
-          }
-        } else {
-          itemMap.set(key, {
-            item_name: item.pos_item_name,
-            item_id: item.pos_item_id || undefined,
-            source: 'pos_sales',
-            sales_count: 1,
-            last_sold: item.sale_date,
-          });
-        }
-      });
-
-      // Process unified_sales data
-      unifiedData?.forEach(item => {
-        const key = item.item_name.toLowerCase();
-        if (itemMap.has(key)) {
-          const existing = itemMap.get(key)!;
-          existing.sales_count += 1;
-          if (!existing.last_sold || item.sale_date > existing.last_sold) {
-            existing.last_sold = item.sale_date;
-            existing.item_id = item.external_item_id || existing.item_id;
-          }
-        } else {
-          itemMap.set(key, {
-            item_name: item.item_name,
-            item_id: item.external_item_id || undefined,
-            source: 'unified_sales',
-            sales_count: 1,
-            last_sold: item.sale_date,
-          });
-        }
-      });
-
-      // Convert to array and sort by sales count (most popular first)
-      const items = Array.from(itemMap.values()).sort((a, b) => b.sales_count - a.sales_count);
-      
-      setPosItems(items);
-    } catch (error: any) {
-      console.error('Error fetching POS items:', error);
-      toast({
-        title: "Error fetching POS items",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [restaurantId, user, toast]);
-
-  useEffect(() => {
-    fetchPOSItems();
-  }, [fetchPOSItems]);
+      if (error) throw error;
+      return (data ?? []) as POSItem[];
+    },
+    enabled: !!restaurantId,
+    staleTime: 30000,
+    // `keepPreviousData` exists to stop the list flickering empty between
+    // debounced keystrokes. Applied unconditionally it also spans a
+    // *restaurant* change, because restaurantId is part of the query key --
+    // so switching restaurants would render the previous tenant's POS items
+    // until the new fetch resolved. Keep the previous page only while the
+    // same tenant is being searched.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === restaurantId ? previous : undefined,
+  });
 
   return {
-    posItems,
-    loading,
-    refetch: fetchPOSItems,
+    posItems: data ?? [],
+    loading: isLoading && !!restaurantId,
+    error,
+    refetch,
   };
 };

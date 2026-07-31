@@ -15,6 +15,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useShiftPlanner } from '@/hooks/useShiftPlanner';
+import { useValidatedShiftMutations } from '@/hooks/useValidatedShiftMutations';
+import { wallClockToInstant } from '@/lib/shiftInterval';
 import type { Shift } from '@/types/scheduling';
 
 const mockValidateAndCreate = vi.hoisted(() => vi.fn());
@@ -90,9 +92,9 @@ beforeEach(() => {
   mockEmployees.mockReturnValue({ employees: [], loading: false, error: null });
 });
 
-function renderPlanner() {
+function renderPlanner(options?: { tz?: string }) {
   const Wrapper = createWrapper();
-  return renderHook(() => useShiftPlanner('rest-1'), { wrapper: Wrapper });
+  return renderHook(() => useShiftPlanner('rest-1', options), { wrapper: Wrapper });
 }
 
 describe('useShiftPlanner — delegates to useValidatedShiftMutations (A4)', () => {
@@ -140,7 +142,9 @@ describe('useShiftPlanner — delegates to useValidatedShiftMutations (A4)', () 
 
   it('validateAndUpdateTime delegates with a translated {shift, startIso, endIso, businessDate} shape and unwraps `updated` to a boolean', async () => {
     mockValidateAndUpdateTime.mockResolvedValue({ updated: true });
-    const { result } = renderPlanner();
+    // `tz` is required to reach ShiftInterval.create as of Task 4; this test only
+    // asserts the translated shape, so any valid IANA zone works.
+    const { result } = renderPlanner({ tz: 'UTC' });
     const shift = makeShift({ id: 'shift-9' });
 
     let outcome: boolean | undefined;
@@ -168,7 +172,10 @@ describe('useShiftPlanner — delegates to useValidatedShiftMutations (A4)', () 
       updated: false,
       pendingWarnings: [{ code: 'OVERLAP', message: 'Overlaps another shift' }],
     });
-    const { result } = renderPlanner();
+    // `tz` required to actually reach the pipeline (see Task 4) — without it this
+    // would return false by throwing INVALID_DATE before ever calling the mock,
+    // which would make the test pass for the wrong reason.
+    const { result } = renderPlanner({ tz: 'UTC' });
     const shift = makeShift({ id: 'shift-9' });
 
     let outcome: boolean | undefined;
@@ -180,6 +187,7 @@ describe('useShiftPlanner — delegates to useValidatedShiftMutations (A4)', () 
       });
     });
 
+    expect(mockValidateAndUpdateTime).toHaveBeenCalledTimes(1);
     expect(outcome).toBe(false);
   });
 
@@ -201,7 +209,9 @@ describe('useShiftPlanner — delegates to useValidatedShiftMutations (A4)', () 
   });
 
   it('validateAndUpdateTime returns false (never throws) when ShiftInterval.create rejects the interval (e.g. zero duration)', async () => {
-    const { result } = renderPlanner();
+    // `tz` supplied so the failure genuinely comes from ShiftInterval.create's
+    // duration check, not from the (also-caught) missing-tz INVALID_DATE path.
+    const { result } = renderPlanner({ tz: 'UTC' });
     const shift = makeShift({ id: 'shift-9' });
 
     let outcome: boolean | undefined;
@@ -255,5 +265,48 @@ describe('useShiftPlanner — delegates to useValidatedShiftMutations (A4)', () 
     });
 
     expect(mockClearValidation).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useShiftPlanner — tz option threaded to the pipeline and validateAndUpdateTime (Task 4)', () => {
+  it('forwards options.tz to useValidatedShiftMutations', () => {
+    renderPlanner({ tz: 'America/Chicago' });
+
+    expect(useValidatedShiftMutations).toHaveBeenCalledWith(
+      'rest-1',
+      [],
+      expect.objectContaining({ tz: 'America/Chicago' }),
+    );
+  });
+
+  it('validateAndUpdateTime anchors the reconstructed interval in options.tz, not the browser zone', async () => {
+    // Tokyo (UTC+9) rather than Chicago: this test's host process itself runs on
+    // America/Chicago (CDT, UTC-5), so a Chicago fixture would pass whether or not
+    // the hook actually threads `tz` through — a false-positive coincidence this
+    // plan's own progress notes warn about. A 14-hour-offset zone makes a fallback
+    // to the browser/host zone impossible to mistake for a pass.
+    mockValidateAndUpdateTime.mockResolvedValue({ updated: true });
+    const { result } = renderPlanner({ tz: 'Asia/Tokyo' });
+    const shift = makeShift({ id: 'shift-9' });
+
+    await act(async () => {
+      await result.current.validateAndUpdateTime({
+        shift,
+        newStartTime: '2026-08-12T06:30',
+        newEndTime: '2026-08-12T12:30',
+      });
+    });
+
+    const expectedStartIso = wallClockToInstant('2026-08-12', '06:30', 'Asia/Tokyo').toISOString();
+    const expectedEndIso = wallClockToInstant('2026-08-12', '12:30', 'Asia/Tokyo').toISOString();
+
+    expect(mockValidateAndUpdateTime).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shift,
+        startIso: expectedStartIso,
+        endIso: expectedEndIso,
+        businessDate: '2026-08-12',
+      }),
+    );
   });
 });

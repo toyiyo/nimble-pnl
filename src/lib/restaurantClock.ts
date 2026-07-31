@@ -29,6 +29,44 @@ function reject(fn: string, reason: string, value: unknown): void {
   console.error(`[restaurantClock] ${message}`);
 }
 
+// Constructing an `Intl.DateTimeFormat` parses the IANA zone's full DST rule
+// table -- expensive enough to show up on hot loops (recurring-shift
+// generation with a long/no end date can run ~365 iterations; Copy Week and
+// drag-copy each resolve a shift's start *and* end independently). A zone's
+// validity and offset behavior never change for a given IANA string within a
+// process, so caching the formatter itself (not the offset, which is
+// date-dependent -- callers still pass their own `at`) is safe indefinitely,
+// bounded by the number of distinct zones actually used: a handful of
+// restaurant timezones per process, not user input growing without bound.
+const offsetFormatterCache = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * Get (or build+cache) a `timeZoneName: 'longOffset'` formatter for `tz`.
+ * Throws the same `RangeError` `Intl.DateTimeFormat` always throws on an
+ * invalid/unknown zone -- constructing it performs `timeZone` validation
+ * regardless of the other options, so validity checks can share this cache
+ * too instead of building their own throwaway formatter.
+ */
+function getOffsetFormatter(tz: string): Intl.DateTimeFormat {
+  let dtf = offsetFormatterCache.get(tz);
+  if (!dtf) {
+    dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' });
+    offsetFormatterCache.set(tz, dtf);
+  }
+  return dtf;
+}
+
+/** True when `tz` is a non-empty string accepted by `Intl.DateTimeFormat`. */
+export function isValidTimezone(tz: string | null | undefined): boolean {
+  if (!tz) return false;
+  try {
+    getOffsetFormatter(tz);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validate an IANA zone, falling back to the restaurant default.
  *
@@ -38,12 +76,7 @@ function reject(fn: string, reason: string, value: unknown): void {
  */
 export function safeTz(tz: string | null | undefined): string {
   if (!tz) return DEFAULT_TIMEZONE;
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone: tz });
-    return tz;
-  } catch {
-    return DEFAULT_TIMEZONE;
-  }
+  return isValidTimezone(tz) ? tz : DEFAULT_TIMEZONE;
 }
 
 /**
@@ -71,10 +104,7 @@ function asInstant(value: string | Date, fn: string, zone: string): Date {
 /** Minutes east of UTC for `tz` at `at`. America/Chicago in CDT is -300. */
 export function tzOffsetMinutes(tz: string, at: Date = new Date()): number {
   const zone = safeTz(tz);
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: zone,
-    timeZoneName: 'longOffset',
-  }).formatToParts(at);
+  const parts = getOffsetFormatter(zone).formatToParts(at);
   const raw = parts.find((p) => p.type === 'timeZoneName')?.value ?? 'GMT';
   // "GMT-05:00", or bare "GMT" at exactly UTC.
   const m = /GMT([+-])(\d{2}):(\d{2})/.exec(raw);
@@ -131,6 +161,34 @@ export function businessDaysBetween(
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return days;
+}
+
+/**
+ * Add `days` (may be negative) to an ISO `YYYY-MM-DD` string via UTC field
+ * math. A calendar-date operation, deliberately zone-independent -- there is
+ * no DST to cross when nothing here is an instant.
+ */
+export function addDaysToDateStr(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const rolled = new Date(Date.UTC(year, month - 1, day + days));
+  return formatInTimeZone(rolled, 'UTC', 'yyyy-MM-dd');
+}
+
+/**
+ * Whole calendar days from `fromStr` to `toStr` (both `YYYY-MM-DD`). The
+ * inverse of `addDaysToDateStr`, and zone-independent for the same reason:
+ * both operands are calendar dates, not instants, so no DST is crossed.
+ *
+ * Pairs with `addDaysToDateStr` to move a *day offset* between two calendar
+ * dates -- the signal that survives reconstructing a shift from wall clocks
+ * alone. Callers that reproject a shift onto a new date (drag-copy, copy
+ * week, recurring children) must carry this offset explicitly; without it a
+ * span longer than one calendar day silently collapses.
+ */
+export function daysBetweenDateStrs(fromStr: string, toStr: string): number {
+  const [fy, fm, fd] = fromStr.split('-').map(Number);
+  const [ty, tm, td] = toStr.split('-').map(Number);
+  return Math.round((Date.UTC(ty, tm - 1, td) - Date.UTC(fy, fm - 1, fd)) / (24 * 60 * 60 * 1000));
 }
 
 /** Render an instant for a `<input type="datetime-local">` in the restaurant's zone. */

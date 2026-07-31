@@ -61,6 +61,7 @@ function mockShift(overrides: Partial<Shift> = {}): Shift {
 const sourceMonday = new Date(2026, 2, 2);
 const targetMonday = new Date(2026, 2, 9);
 const restaurantId = 'r1';
+const tz = 'UTC';
 
 // ---- Import after mocks ----
 
@@ -89,6 +90,7 @@ describe('useCopyWeekShifts', () => {
         sourceMonday,
         targetMonday,
         restaurantId,
+        tz,
       });
     });
 
@@ -125,6 +127,7 @@ describe('useCopyWeekShifts', () => {
         sourceMonday,
         targetMonday,
         restaurantId,
+        tz,
       });
     });
 
@@ -146,6 +149,7 @@ describe('useCopyWeekShifts', () => {
         sourceMonday,
         targetMonday,
         restaurantId,
+        tz,
       });
     });
 
@@ -168,6 +172,7 @@ describe('useCopyWeekShifts', () => {
         sourceMonday,
         targetMonday,
         restaurantId,
+        tz,
       });
     });
 
@@ -193,6 +198,7 @@ describe('useCopyWeekShifts', () => {
           sourceMonday,
           targetMonday,
           restaurantId,
+          tz,
         }),
       ),
     ).rejects.toThrow('No shifts to copy');
@@ -216,6 +222,7 @@ describe('useCopyWeekShifts', () => {
           sourceMonday,
           targetMonday,
           restaurantId,
+          tz,
         }),
       ),
     ).rejects.toBeTruthy();
@@ -250,6 +257,7 @@ describe('useCopyWeekShifts', () => {
         sourceMonday,
         targetMonday,
         restaurantId,
+        tz,
       });
     });
 

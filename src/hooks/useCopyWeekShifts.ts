@@ -12,6 +12,7 @@ interface CopyWeekParams {
   sourceMonday: Date;
   targetMonday: Date;
   restaurantId: string;
+  tz: string;
 }
 
 interface CopyWeekResult {
@@ -29,8 +30,9 @@ export function useCopyWeekShifts() {
       sourceMonday,
       targetMonday,
       restaurantId,
+      tz,
     }: CopyWeekParams): Promise<CopyWeekResult> => {
-      const inserts = buildCopyPayload(sourceShifts, sourceMonday, targetMonday, restaurantId);
+      const inserts = buildCopyPayload(sourceShifts, sourceMonday, targetMonday, restaurantId, tz);
 
       if (inserts.length === 0) {
         throw new Error('No shifts to copy. The source week has no active shifts.');

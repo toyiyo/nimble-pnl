@@ -1,8 +1,12 @@
 -- Asserts Postgres agrees with src/lib/restaurantClock.ts::parseWallClock,
 -- including at the DST fall-back (repeated hour) and spring-forward
 -- (nonexistent hour) edges.
--- Rows MUST match tests/fixtures/wallClockFixtures.ts exactly;
--- tests/unit/wallClockParity.test.ts enforces that.
+--
+-- The rows below MUST match tests/fixtures/wallClockFixtures.ts exactly, in
+-- the same order, and plan(N) MUST equal the row count.
+-- tests/unit/wallClockParity.test.ts parses this file and enforces both, so
+-- adding a case to one side without the other fails rather than silently
+-- narrowing coverage. Edit the fixture and this table together.
 BEGIN;
 SELECT plan(14);
 

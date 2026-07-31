@@ -71,9 +71,33 @@ interface RecipeDialogProps {
 
 export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], recipe, onRecipeUpdated, initialPosItemName, prefill, basedOn, onCreateFromBase, onEditProduct }: RecipeDialogProps) {
   const { createRecipe, updateRecipe, updateRecipeIngredients, fetchRecipeIngredients, calculateRecipeCost } = useRecipes(restaurantId);
-  const { posItems, loading: posItemsLoading } = usePOSItems(restaurantId);
+
+  // Debounced search term: the input stays instant (bound to posItemSearch),
+  // but usePOSItems keys off this instead — undebounced, every keystroke
+  // would fire a fresh RPC call against search_pos_items.
+  const [posItemSearch, setPosItemSearch] = useState('');
+  const [debouncedPosItemSearch, setDebouncedPosItemSearch] = useState('');
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedPosItemSearch(posItemSearch), 250);
+    return () => clearTimeout(timeout);
+  }, [posItemSearch]);
+
+  // This dialog is rendered unconditionally by Recipes.tsx and driven by
+  // `isOpen`, so it never unmounts and the search term would otherwise
+  // outlive the session that typed it -- reopening would silently show the
+  // previous query's narrowed item list. The selector clears itself whenever
+  // its popover closes; this covers the case where the dialog is dismissed
+  // while that popover is still open, so no close event ever arrives.
+  useEffect(() => {
+    if (isOpen) {
+      setPosItemSearch('');
+      setDebouncedPosItemSearch('');
+    }
+  }, [isOpen]);
+
+  const { posItems, loading: posItemsLoading, error: posItemsError, refetch: refetchPosItems } = usePOSItems(restaurantId, { search: debouncedPosItemSearch });
   const navigate = useNavigate();
-  
+
   const [loading, setLoading] = useState(false);
   const [estimatedCost, setEstimatedCost] = useState(0);
   const [expandedIngredients, setExpandedIngredients] = useState<Record<number, boolean>>({});
@@ -465,12 +489,20 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                             value={field.value}
                             onValueChange={(itemName, itemId) => {
                               field.onChange(itemName);
-                              if (itemId) {
-                                form.setValue('pos_item_id', itemId);
-                              }
+                              // Always write the id alongside the name, never
+                              // only when it is truthy. Clearing the selection
+                              // sends ('', ''), and an item can legitimately
+                              // carry no id at all -- in both cases a
+                              // conditional write leaves the *previous*
+                              // item's id attached to the new name, so the
+                              // recipe submits a mismatched name/id pair.
+                              form.setValue('pos_item_id', itemId ?? '');
                             }}
                             posItems={posItems}
                             loading={posItemsLoading}
+                            onSearchChange={setPosItemSearch}
+                            error={posItemsError}
+                            onRetry={refetchPosItems}
                           />
                         </FormControl>
                         <FormMessage />
@@ -485,10 +517,13 @@ export function RecipeDialog({ isOpen, onClose, restaurantId, products = [], rec
                       <FormItem>
                         <FormLabel>POS Item ID</FormLabel>
                         <FormControl>
-                          <Input 
-                            placeholder="Internal POS system ID" 
-                            id="pos-item-id"
-                            {...field} 
+                          {/* No hardcoded `id`: this FormLabel carries no
+                              `htmlFor`, so it points at the id `FormControl`
+                              generates. Overriding that id here left the
+                              label associated with nothing. */}
+                          <Input
+                            placeholder="Internal POS system ID"
+                            {...field}
                           />
                         </FormControl>
                         <FormMessage />

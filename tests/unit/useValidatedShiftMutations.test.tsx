@@ -57,10 +57,24 @@ const createWrapper = () => {
   return Wrapper;
 };
 
-function renderPipeline(shifts: Shift[] = [], checkConflicts = vi.fn().mockResolvedValue(NO_CONFLICTS)) {
+/** Fixed, host-TZ-independent zone used by default so fixtures never depend on the test host's clock. */
+const DEFAULT_TZ = 'America/Chicago';
+
+/**
+ * `tz` takes a 3-state sentinel — `'omit'` leaves it out of the options object
+ * entirely — rather than a plain optional param, because a plain default
+ * parameter treats an explicit `undefined` argument as "not passed" (JS
+ * spec), which would make it impossible to write a test that truly omits `tz`.
+ */
+function renderPipeline(
+  shifts: Shift[] = [],
+  checkConflicts = vi.fn().mockResolvedValue(NO_CONFLICTS),
+  tz: string | 'omit' = DEFAULT_TZ,
+) {
   const Wrapper = createWrapper();
+  const options = tz === 'omit' ? { checkConflicts } : { checkConflicts, tz };
   return renderHook(
-    () => useValidatedShiftMutations('rest-1', shifts, { checkConflicts }),
+    () => useValidatedShiftMutations('rest-1', shifts, options),
     { wrapper: Wrapper },
   );
 }
@@ -92,8 +106,9 @@ describe('useValidatedShiftMutations — create', () => {
 
   it('validateAndCreate returns pending issues (does not mutate) when warnings exist', async () => {
     // Existing shift built the same way validateAndCreate builds its own interval
-    // (ShiftInterval.create, host-local) so the overlap holds regardless of host TZ.
-    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00');
+    // (ShiftInterval.create with the options.tz threaded through as of Task 4 —
+    // see useValidatedShiftMutations.ts) so the overlap holds regardless of host TZ.
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', DEFAULT_TZ);
     const existing = makeShift({
       start_time: existingInterval.startAt.toISOString(),
       end_time: existingInterval.endAt.toISOString(),
@@ -114,7 +129,7 @@ describe('useValidatedShiftMutations — create', () => {
   });
 
   it('forceCreate mutates regardless of pending issues', async () => {
-    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00');
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', DEFAULT_TZ);
     const existing = makeShift({
       start_time: existingInterval.startAt.toISOString(),
       end_time: existingInterval.endAt.toISOString(),
@@ -131,6 +146,73 @@ describe('useValidatedShiftMutations — create', () => {
 
     expect(created).toBe(true);
     expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('useValidatedShiftMutations — options.tz (Task 4)', () => {
+  // `tz` is optional on UseValidatedShiftMutationsOptions (ShiftTimelineTab's
+  // fromTimestamps-only usage never needs it), but validateAndCreate/forceCreate
+  // route through the host-local ShiftInterval.create and must not silently fall
+  // back to the browser's zone — that's the exact bug this whole plan exists to fix.
+  it('validateAndCreate throws INVALID_DATE and surfaces it as the validation result when tz is not provided', async () => {
+    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'omit');
+
+    const outcome = await result.current.validateAndCreate({
+      employeeId: 'emp-2',
+      date: '2026-02-01',
+      startTime: '09:00',
+      endTime: '17:00',
+      position: 'server',
+    });
+
+    expect(outcome.created).toBe(false);
+    expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.validationResult?.errors[0]?.message).toBe('INVALID_DATE'),
+    );
+  });
+
+  it('forceCreate throws INVALID_DATE and does not mutate when tz is not provided', async () => {
+    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'omit');
+
+    const created = await result.current.forceCreate({
+      employeeId: 'emp-2',
+      date: '2026-02-01',
+      startTime: '09:00',
+      endTime: '17:00',
+      position: 'server',
+    });
+
+    expect(created).toBe(false);
+    expect(mockCreateMutateAsync).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(result.current.validationResult?.errors[0]?.message).toBe('INVALID_DATE'),
+    );
+  });
+
+  it('validateAndCreate anchors the interval in the given tz, not the browser zone', async () => {
+    // Deliberately Asia/Tokyo rather than the file's Chicago default: this
+    // test's only evidence that the pipeline used `tz` instead of the host
+    // zone is the two disagreeing, and this file sets no host TZ of its own.
+    // A Chicago fixture on a Chicago host (which is what CI and most of the
+    // team's machines are) makes both implementations agree and the
+    // assertion vacuous. Tokyo is a fixed UTC+9 that no runner here uses, so
+    // the assertion stays differential wherever it runs — and, being
+    // DST-free, it stays a stable constant rather than a date-dependent one.
+    const { result } = renderPipeline([], vi.fn().mockResolvedValue(NO_CONFLICTS), 'Asia/Tokyo');
+
+    await result.current.validateAndCreate({
+      employeeId: 'emp-2',
+      date: '2026-08-12',
+      startTime: '06:30',
+      endTime: '12:30',
+      position: 'server',
+    });
+
+    expect(mockCreateMutateAsync).toHaveBeenCalledTimes(1);
+    const payload = mockCreateMutateAsync.mock.calls[0][0];
+    // 06:30 Tokyo (UTC+9) on 2026-08-12 is 21:30 UTC the PREVIOUS day.
+    expect(payload.start_time).toBe('2026-08-11T21:30:00.000Z');
   });
 });
 
@@ -654,14 +736,14 @@ describe('useValidatedShiftMutations — deleteShiftAsync (awaitable, lock-guard
 describe('useValidatedShiftMutations — validationResult / clearValidation', () => {
   it('clearValidation resets validationResult to null', async () => {
     // Built the same way validateAndCreate builds its own interval
-    // (ShiftInterval.create, host-local) rather than a hardcoded UTC
-    // timestamp — a fixed UTC instant lands on a different host-local
-    // calendar day/clock time depending on TZ, so the CLOPEN rest-gap
-    // warning below (existing ends 17:00, new starts 18:00, < MIN_REST_HOURS)
-    // wouldn't reliably fire under every host timezone. See the sibling
+    // (ShiftInterval.create with the options.tz threaded through) rather than
+    // a hardcoded UTC timestamp — a fixed UTC instant lands on a different
+    // restaurant-local calendar day/clock time depending on the zone, so the
+    // CLOPEN rest-gap warning below (existing ends 17:00, new starts 18:00,
+    // < MIN_REST_HOURS) wouldn't reliably fire. See the sibling
     // 'validateAndCreate returns pending issues' test above for the same
     // pattern.
-    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00');
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00', DEFAULT_TZ);
     const existing = makeShift({
       start_time: existingInterval.startAt.toISOString(),
       end_time: existingInterval.endAt.toISOString(),

@@ -27,6 +27,7 @@ import { startOfWeek, endOfWeek, format as formatDate } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
 import { toBusinessDayFor, type BusinessDayConfig } from '@/lib/businessDay';
+import { incompleteShiftsInBusinessDayWindow } from '@/utils/punchWindow';
 import type { Employee, Shift, CompensationType } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
 
@@ -555,8 +556,8 @@ export function calculateActualLaborCost(
       return;
     }
 
-    const { periods } = parseWorkPeriods(punches);
-    
+    const { periods, incompleteShifts } = parseWorkPeriods(punches);
+
     if (!hoursPerEmployeePerDay.has(employeeId)) {
       hoursPerEmployeePerDay.set(employeeId, new Map<string, number>());
     }
@@ -582,6 +583,25 @@ export function calculateActualLaborCost(
       // The old day-spanning loop is what charged a daily_rate employee two
       // full rates for one overnight shift (design section 3.3). A shift is
       // never split, so it is active on exactly one business day.
+      if (!employeesActivePerDay.has(workDate)) {
+        employeesActivePerDay.set(workDate, new Set());
+      }
+      employeesActivePerDay.get(workDate)?.add(employeeId);
+    });
+
+    // An unpaired punch never becomes a period, so it carries no hours -- but
+    // the employee did show up, and calculateEmployeePay counts it as a worked
+    // day for a daily_rate employee (payrollCalculations.ts, "never underpay").
+    // Skipping it here would cost the dashboard $0 for a day payroll pays in
+    // full. Anchor on the punch we have, in the same business-day frame as the
+    // periods above; a day a period already marked is absorbed by the Set
+    // (shift_too_long emits both). Hours are deliberately left untouched -- an
+    // unpaired punch has no measurable duration, and the hourly branch below is
+    // gated on hoursWorked > 0, so this moves only the daily_rate bucket.
+    // No window filter is needed: the dateStrings loop below reads only the
+    // day keys inside [startDate, endDate].
+    incompleteShifts.forEach(incomplete => {
+      const workDate = toBusinessDayFor(incomplete.punchTime, businessDay);
       if (!employeesActivePerDay.has(workDate)) {
         employeesActivePerDay.set(workDate, new Set());
       }
@@ -705,9 +725,15 @@ export function calculateHoursPerEmployee(
 
   return employees.map((employee) => {
     const punches = punchesByEmployee.get(employee.id) ?? [];
-    const { periods: rawPeriods } = parseWorkPeriods(punches);
+    const { periods: rawPeriods, incompleteShifts: rawIncomplete } = parseWorkPeriods(punches);
     const periods = rawPeriods.filter(
       (p) => p.startTime >= startDate && p.startTime <= endDate,
+    );
+    // Same "never underpay" rule as calculateActualLaborCost / calculateEmployeePay:
+    // an unpaired punch is a worked day even though it yields no period. Selected
+    // on the business-day token, the frame these days are then keyed in.
+    const incompleteShifts = incompleteShiftsInBusinessDayWindow(
+      rawIncomplete, startDate, endDate, businessDay,
     );
 
     // hoursPerDay and activeDays are both keyed by the BUSINESS day of the
@@ -727,6 +753,13 @@ export function calculateHoursPerEmployee(
       hoursPerDay[day] = (hoursPerDay[day] ?? 0) + period.hours;
       totalHours += period.hours;
       activeDays.add(day);
+    });
+
+    // Active day, no hours -- see calculateActualLaborCost above. Only the
+    // daily_rate loop below reads activeDays for cost, so the two functions
+    // still sum to the same per-type total.
+    incompleteShifts.forEach((incomplete) => {
+      activeDays.add(toBusinessDayFor(incomplete.punchTime, businessDay));
     });
 
     const daysWorked = activeDays.size;

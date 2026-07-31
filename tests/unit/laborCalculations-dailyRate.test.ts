@@ -216,8 +216,12 @@ describe('Labor Calculations - Daily Rate', () => {
   });
 
   describe('calculateActualLaborCost', () => {
-    const startDate = new Date('2024-01-01');
-    const endDate = new Date('2024-01-07');
+    // Local-field constructors, not `new Date('2024-01-01')`. The latter is UTC
+    // midnight, which in a host zone west of UTC reads back as Dec 31 -- and
+    // calculateActualLaborCost reads these bounds' LOCAL fields to build its day
+    // range, so the "before the period" punch below would land inside it.
+    const startDate = new Date(2024, 0, 1);
+    const endDate = new Date(2024, 0, 7, 23, 59, 59, 999);
 
     it('calculates cost based on days with punches', () => {
       const punches: TimePunch[] = [

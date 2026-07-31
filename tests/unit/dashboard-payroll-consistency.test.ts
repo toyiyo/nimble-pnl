@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateActualLaborCost } from '@/services/laborCalculations';
+import { calculateActualLaborCost, calculateHoursPerEmployee } from '@/services/laborCalculations';
 import { calculateEmployeePay } from '@/utils/payrollCalculations';
 import type { Employee } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
@@ -433,6 +433,15 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
   });
 
   describe('Edge cases', () => {
+    const dailyRateEmployee: Employee = {
+      ...testEmployee,
+      id: 'emp-daily-1',
+      name: 'Daily Rate No Clock Out',
+      compensation_type: 'daily_rate',
+      hourly_rate: 0,
+      daily_rate_amount: 12000, // $120/day in cents
+    };
+
     it('should handle incomplete time punches consistently', () => {
       // Given: Missing clock-out (same as problem statement)
       const timePunches: TimePunch[] = [
@@ -486,6 +495,71 @@ describe('Dashboard and Payroll Labor Cost Consistency', () => {
       // Payroll should flag the incomplete shift
       expect(payrollResult.incompleteShifts).toBeDefined();
       expect(payrollResult.incompleteShifts?.length).toBeGreaterThan(0);
+    });
+
+    it('CRITICAL: charges a daily_rate employee for a day whose clock_out is missing', () => {
+      // An hourly employee with an unpaired punch costs $0 on both sides (above):
+      // there are no hours to pay for. A daily_rate employee is different -- the
+      // day itself is the unit of pay, and calculateEmployeePay counts an
+      // unpaired punch as a worked day rather than underpay someone who showed
+      // up. The dashboard has to charge the same day, or the labor line
+      // understates a cost that is definitely going out the door.
+      const timePunches: TimePunch[] = [
+        {
+          id: 'punch-1',
+          employee_id: 'emp-daily-1',
+          restaurant_id: 'rest-1',
+          punch_time: '2026-01-08T12:00:00Z',
+          punch_type: 'clock_in',
+          created_at: '2026-01-08T12:00:00Z',
+          updated_at: '2026-01-08T12:00:00Z',
+          shift_id: null,
+          notes: null,
+          photo_path: null,
+          device_info: null,
+          location: undefined,
+          created_by: null,
+          modified_by: null,
+        },
+        // No clock_out -- parseWorkPeriods emits an incompleteShift, no period.
+      ];
+
+      // Bounds carry no time-of-day meaning here: generateDateRange and the
+      // payroll window both read their LOCAL fields as day tokens. Mid-day UTC
+      // keeps the punch on Jan 8 in the UTC frame and in every host zone.
+      const startDate = new Date(Date.UTC(2026, 0, 4));
+      const endDate = new Date(Date.UTC(2026, 0, 10, 23, 59, 59));
+
+      const dashboardResult = calculateActualLaborCost(
+        [dailyRateEmployee], timePunches, startDate, endDate, LEGACY_UTC_FRAME,
+      );
+      const payrollResult = calculateEmployeePay(
+        dailyRateEmployee, timePunches, 0, startDate, endDate,
+        [], 0, undefined, [], false, LEGACY_UTC_FRAME,
+      );
+
+      // Payroll pays exactly one day...
+      expect(payrollResult.daysWorked).toBe(1);
+      expect(payrollResult.dailyRatePay).toBe(12000);
+
+      // ...and the dashboard charges the same one day, on the same date.
+      expect(dashboardResult.breakdown.daily_rate.cost).toBeCloseTo(120, 2);
+      expect(dashboardResult.breakdown.total).toBeCloseTo(120, 2);
+      const jan8 = dashboardResult.dailyCosts.find(d => d.date === '2026-01-08');
+      expect(jan8?.daily_rate_cost).toBeCloseTo(120, 2);
+      // Still no hours -- an unpaired punch has no measurable duration.
+      expect(jan8?.hours_worked).toBe(0);
+      expect(dashboardResult.dailyCosts.filter(d => d.date !== '2026-01-08')
+        .every(d => d.total_cost === 0)).toBe(true);
+
+      // The per-employee rollup (AI chat, timecards) has to agree too -- it is
+      // the same defect on the same file, second call site.
+      const [rollup] = calculateHoursPerEmployee(
+        [dailyRateEmployee], timePunches, startDate, endDate, LEGACY_UTC_FRAME,
+      );
+      expect(rollup.days_worked).toBe(1);
+      expect(rollup.total_cost_cents).toBe(12000);
+      expect(rollup.total_hours).toBe(0);
     });
 
     it('should handle no time punches', () => {

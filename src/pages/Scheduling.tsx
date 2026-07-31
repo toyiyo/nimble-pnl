@@ -31,7 +31,7 @@ import { useEmployeeAreas } from '@/hooks/useEmployeeAreas';
 import { useEmployeeAvailability, useAvailabilityExceptions } from '@/hooks/useAvailability';
 import { groupEmployees, type GroupByMode } from '@/lib/scheduleGrouping';
 import { calculateShiftHours } from '@/lib/scheduleRoster';
-import { safeTz } from '@/lib/restaurantClock';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 import {
   buildActiveShiftEmployeeIds,
   filterEmployeesForScheduleView,
@@ -114,7 +114,7 @@ import {
   Volume2,
   CalendarOff,
 } from 'lucide-react';
-import { format, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
+import { format, endOfWeek, addWeeks, subWeeks, eachDayOfInterval } from 'date-fns';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
@@ -509,9 +509,14 @@ const Scheduling = () => {
   }, [shifts, toggleShiftGroup]);
 
   const selectShiftsForDay = useCallback((dayStr: string) => {
-    const targetDay = parseISO(dayStr);
-    toggleShiftGroup(shifts.filter(s => isSameDay(parseISO(s.start_time), targetDay)).map(s => s.id));
-  }, [shifts, toggleShiftGroup]);
+    // dayStr is already a restaurant-local calendar-day token
+    // (toDateOnlyString(day)); bucket each shift's instant the same way, not
+    // by the viewer's local day, so this agrees with the `dayIsToday`
+    // highlight which now uses the restaurant's day too.
+    toggleShiftGroup(
+      shifts.filter(s => toBusinessDay(s.start_time, restaurantTimezone) === dayStr).map(s => s.id),
+    );
+  }, [shifts, toggleShiftGroup, restaurantTimezone]);
 
   const clearSelection = useCallback(() => {
     setSelectedShiftIds(new Set());
@@ -776,8 +781,10 @@ const Scheduling = () => {
   const scheduledEmployeeCount = scheduledEmployeeIds.size;
 
   const getShiftsForEmployee = (employeeId: string, day: Date) => {
+    const dayKey = toDateOnlyString(day);
     return shifts.filter(
-      shift => shift.employee_id === employeeId && isSameDay(parseISO(shift.start_time), day)
+      shift => shift.employee_id === employeeId &&
+        toBusinessDay(shift.start_time, restaurantTimezone) === dayKey
     );
   };
 

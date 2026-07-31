@@ -653,7 +653,19 @@ describe('useValidatedShiftMutations — deleteShiftAsync (awaitable, lock-guard
 
 describe('useValidatedShiftMutations — validationResult / clearValidation', () => {
   it('clearValidation resets validationResult to null', async () => {
-    const existing = makeShift();
+    // Built the same way validateAndCreate builds its own interval
+    // (ShiftInterval.create, host-local) rather than a hardcoded UTC
+    // timestamp — a fixed UTC instant lands on a different host-local
+    // calendar day/clock time depending on TZ, so the CLOPEN rest-gap
+    // warning below (existing ends 17:00, new starts 18:00, < MIN_REST_HOURS)
+    // wouldn't reliably fire under every host timezone. See the sibling
+    // 'validateAndCreate returns pending issues' test above for the same
+    // pattern.
+    const existingInterval = ShiftInterval.create('2026-01-15', '09:00', '17:00');
+    const existing = makeShift({
+      start_time: existingInterval.startAt.toISOString(),
+      end_time: existingInterval.endAt.toISOString(),
+    });
     const { result } = renderPipeline([existing]);
 
     await result.current.validateAndCreate({

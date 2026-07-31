@@ -3,19 +3,20 @@
  *
  * Tests pure functions from openShiftHelpers.ts:
  * - formatCompactTime: compact 12-hour time labels
+ * - hasScheduleConflict: overlap detection between an open shift and an
+ *   employee's existing shifts, used by AvailableShiftsPage's conflict map.
  *
  * Note (T11): computeOpenSpots and classifyCapacity have been removed — they were
  * the exact-match path replaced by the coverage engine (computeSlotCoverage).
  * Their removal is guarded by: tests/unit/openShiftHelpersCleanup.test.ts
- *
- * Also tests conflict detection logic from AvailableShiftsPage
- * (extracted into pure helper for testability).
  */
 
 import { describe, it, expect } from 'vitest';
 import {
   formatCompactTime,
+  hasScheduleConflict,
 } from '@/lib/openShiftHelpers';
+import { DEFAULT_TIMEZONE } from '@/lib/restaurantClock';
 
 // ---- formatCompactTime ----
 
@@ -60,64 +61,41 @@ describe('formatCompactTime', () => {
   });
 });
 
-// ---- Conflict detection logic (mirroring AvailableShiftsPage) ----
-
-/**
- * Pure function extracted from AvailableShiftsPage's conflict detection.
- * Returns true if the open shift time overlaps with any of the employee's shifts.
- */
-function hasScheduleConflict(
-  openShiftDate: string,
-  openStartTime: string, // HH:MM:SS
-  openEndTime: string,   // HH:MM:SS
-  employeeShifts: Array<{ start_time: string; end_time: string; status: string }>,
-): boolean {
-  const [startH, startM] = openStartTime.split(':').map(Number);
-  const [endH, endM] = openEndTime.split(':').map(Number);
-  const osStart = startH * 60 + startM;
-  const osEnd = endH * 60 + endM;
-
-  return employeeShifts.some((s) => {
-    if (s.status === 'cancelled') return false;
-    const sDate = s.start_time.split('T')[0];
-    if (sDate !== openShiftDate) return false;
-    const sStart = new Date(s.start_time);
-    const sEnd = new Date(s.end_time);
-    const sStartMin = sStart.getHours() * 60 + sStart.getMinutes();
-    const sEndMin = sEnd.getHours() * 60 + sEnd.getMinutes();
-    return sStartMin < osEnd && sEndMin > osStart;
-  });
-}
+// ---- Conflict detection logic (AvailableShiftsPage's conflict map) ----
 
 describe('hasScheduleConflict', () => {
   const date = '2026-04-18';
+  // Employee shifts are instants (case (b)); pin them at the restaurant's
+  // default timezone so overlap is decided by restaurant-local wall clock,
+  // not the machine running the test.
+  const tz = DEFAULT_TIMEZONE;
 
   it('returns false when employee has no shifts', () => {
-    expect(hasScheduleConflict(date, '14:00:00', '20:00:00', [])).toBe(false);
+    expect(hasScheduleConflict(date, '14:00:00', '20:00:00', [], tz)).toBe(false);
   });
 
   it('returns false when shift is on a different date', () => {
     const shifts = [{ start_time: '2026-04-19T14:00:00Z', end_time: '2026-04-19T20:00:00Z', status: 'scheduled' }];
-    expect(hasScheduleConflict(date, '14:00:00', '20:00:00', shifts)).toBe(false);
+    expect(hasScheduleConflict(date, '14:00:00', '20:00:00', shifts, tz)).toBe(false);
   });
 
   it('detects overlap when shifts share the same date and times', () => {
     const shifts = [{ start_time: '2026-04-18T14:00:00Z', end_time: '2026-04-18T20:00:00Z', status: 'scheduled' }];
-    expect(hasScheduleConflict(date, '14:00:00', '20:00:00', shifts)).toBe(true);
+    expect(hasScheduleConflict(date, '09:00:00', '15:00:00', shifts, tz)).toBe(true);
   });
 
   it('detects partial overlap (open shift starts before employee shift ends)', () => {
     const shifts = [{ start_time: '2026-04-18T16:00:00Z', end_time: '2026-04-18T22:00:00Z', status: 'scheduled' }];
-    expect(hasScheduleConflict(date, '14:00:00', '18:00:00', shifts)).toBe(true);
+    expect(hasScheduleConflict(date, '09:00:00', '11:30:00', shifts, tz)).toBe(true);
   });
 
   it('returns false for adjacent shifts (no overlap)', () => {
     const shifts = [{ start_time: '2026-04-18T08:00:00Z', end_time: '2026-04-18T14:00:00Z', status: 'scheduled' }];
-    expect(hasScheduleConflict(date, '14:00:00', '20:00:00', shifts)).toBe(false);
+    expect(hasScheduleConflict(date, '09:00:00', '20:00:00', shifts, tz)).toBe(false);
   });
 
   it('ignores cancelled shifts', () => {
     const shifts = [{ start_time: '2026-04-18T14:00:00Z', end_time: '2026-04-18T20:00:00Z', status: 'cancelled' }];
-    expect(hasScheduleConflict(date, '14:00:00', '20:00:00', shifts)).toBe(false);
+    expect(hasScheduleConflict(date, '09:00:00', '15:00:00', shifts, tz)).toBe(false);
   });
 });

@@ -8,6 +8,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useEmployees } from '@/hooks/useEmployees';
 import { FeatureGate } from '@/components/subscription';
 import { useShifts, useDeleteShift, useDeleteShiftSeries, useUpdateShiftSeries, useSeriesInfo } from '@/hooks/useShifts';
@@ -113,7 +114,7 @@ import {
   Volume2,
   CalendarOff,
 } from 'lucide-react';
-import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO, isToday } from 'date-fns';
+import { format, startOfWeek, endOfWeek, addWeeks, subWeeks, eachDayOfInterval, isSameDay, parseISO } from 'date-fns';
 import { toDateOnlyString } from '@/lib/dateOnly';
 import { Employee, Shift, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
@@ -221,6 +222,12 @@ const Scheduling = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
   const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
+  // Restaurant's current business day, for "is this day today" decisions on the
+  // grid header/cells — never the viewer's `new Date()` (date-fns `isToday`),
+  // which highlights the wrong column for any operator outside the restaurant's
+  // zone. `today` is stable across re-renders and only changes at rollover, so
+  // this is safe to read on every render without extra memoization.
+  const { today: restaurantToday } = useRestaurantClock();
   const { effectiveSettings: staffingSettings } = useStaffingSettings(restaurantId);
 
   const { weekStart: currentWeekStart, setWeekStart: setCurrentWeekStart } = useSharedWeek();
@@ -1185,7 +1192,7 @@ const Scheduling = () => {
                       <span className="text-xs uppercase tracking-wider text-muted-foreground">Team Member</span>
                     </th>
                     {weekDays.map((day) => {
-                      const dayIsToday = isToday(day);
+                      const dayIsToday = toDateOnlyString(day) === restaurantToday;
                       return (
                         <th
                           key={day.toISOString()}
@@ -1365,8 +1372,8 @@ const Scheduling = () => {
                             </td>
                             {weekDays.map((day) => {
                               const dayShifts = getShiftsForEmployee(employee.id, day);
-                              const dayIsToday = isToday(day);
                               const dayKey = toDateOnlyString(day);
+                              const dayIsToday = dayKey === restaurantToday;
                               const isOff = !!empOff?.offDayKeys.has(dayKey);
                               const hasShift = dayShifts.some(s => s.status !== 'cancelled');
                               return (

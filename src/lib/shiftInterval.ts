@@ -6,7 +6,7 @@
  */
 import { toZonedTime } from 'date-fns-tz';
 
-import { parseWallClock } from '@/lib/restaurantClock';
+import { addDaysToDateStr, parseWallClock } from '@/lib/restaurantClock';
 
 export interface DurationWarning {
   code: 'TOO_SHORT' | 'MAX_ENDURANCE';
@@ -45,13 +45,7 @@ export class ShiftInterval {
       // date with UTC field arithmetic (never `setDate` on a host-local
       // `Date`, which would drift under a host TZ offset from UTC), then
       // resolve the rolled date's wall clock in `tz`.
-      const [year, month, day] = businessDate.split('-').map(Number);
-      const rolled = new Date(Date.UTC(year, month - 1, day + 1));
-      const nextDateStr = [
-        rolled.getUTCFullYear(),
-        String(rolled.getUTCMonth() + 1).padStart(2, '0'),
-        String(rolled.getUTCDate()).padStart(2, '0'),
-      ].join('-');
+      const nextDateStr = addDaysToDateStr(businessDate, 1);
       endAt = wallClockToInstant(nextDateStr, endTime, tz);
     } else {
       endAt = wallClockToInstant(businessDate, endTime, tz);

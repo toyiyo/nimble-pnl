@@ -124,6 +124,17 @@ export function businessDaysBetween(
   return days;
 }
 
+/**
+ * Add `days` (may be negative) to an ISO `YYYY-MM-DD` string via UTC field
+ * math. A calendar-date operation, deliberately zone-independent -- there is
+ * no DST to cross when nothing here is an instant.
+ */
+export function addDaysToDateStr(dateStr: string, days: number): string {
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const rolled = new Date(Date.UTC(year, month - 1, day + days));
+  return formatInTimeZone(rolled, 'UTC', 'yyyy-MM-dd');
+}
+
 /** Render an instant for a `<input type="datetime-local">` in the restaurant's zone. */
 export function toWallClockInput(value: string | Date, tz: string): string {
   return formatInTimeZone(asInstant(value, 'toWallClockInput'), safeTz(tz), "yyyy-MM-dd'T'HH:mm");

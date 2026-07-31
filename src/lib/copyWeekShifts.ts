@@ -1,3 +1,4 @@
+import { addDaysToDateStr } from '@/lib/restaurantClock';
 import {
   formatLocalDate,
   formatLocalDateInTz,
@@ -18,16 +19,6 @@ export interface BulkShiftInsert {
   status: 'scheduled';
   is_published: boolean;
   locked: boolean;
-}
-
-/** Add `days` (may be negative) to an ISO `YYYY-MM-DD` string via UTC field math. */
-function addDaysToDateStr(dateStr: string, days: number): string {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const rolled = new Date(Date.UTC(y, m - 1, d + days));
-  const yy = rolled.getUTCFullYear();
-  const mm = String(rolled.getUTCMonth() + 1).padStart(2, '0');
-  const dd = String(rolled.getUTCDate()).padStart(2, '0');
-  return `${yy}-${mm}-${dd}`;
 }
 
 /** Whole calendar days from `fromStr` to `toStr` (both `YYYY-MM-DD`), via UTC field math. */

@@ -34,6 +34,9 @@ import type { UserRestaurant } from '../../src/hooks/useRestaurants';
 vi.mock('../../src/hooks/useRoles');
 vi.mock('../../src/hooks/useRestaurants');
 
+const toastMock = vi.hoisted(() => vi.fn());
+vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: toastMock }) }));
+
 import { useRoles } from '../../src/hooks/useRoles';
 import { useRestaurants } from '../../src/hooks/useRestaurants';
 
@@ -386,5 +389,85 @@ describe('RoleEditor', () => {
 
     expect(copyRole).toHaveBeenCalledWith({ roleId: 'role-1', targetRestaurantIds: ['rest-2'] });
     expect(await screen.findByText(/already exists/i)).toBeInTheDocument();
+  });
+
+  /**
+   * Regression guards for two Phase 7a fixes that the Phase 7d re-review found
+   * untested: the save payload is `effectiveFlags` (a flag whose backing areas
+   * were revoked after it was switched on must not persist as granted), and a
+   * rejected mutation surfaces a toast instead of leaving the editor sitting
+   * there. Both would pass every other test in this file if reverted.
+   */
+  it('drops a sensitive flag from the save payload once its backing area is revoked', async () => {
+    const user = userEvent.setup();
+    const createRole = vi.fn().mockResolvedValue('new-role-id');
+    mockUseRoles({ createRole });
+    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+
+    await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
+
+    // `view:employee_pii` requires only the Employees area, so revoking that
+    // one area is enough to make the flag unavailable.
+    const employeesGroup = screen.getByRole('radiogroup', { name: /^employees access$/i });
+    await user.click(within(employeesGroup).getByRole('radio', { name: /^manage$/i }));
+
+    const piiSwitch = screen.getByRole('switch', { name: /contact details/i });
+    await user.click(piiSwitch);
+    expect(piiSwitch).toBeChecked();
+
+    await user.click(within(employeesGroup).getByRole('radio', { name: /^no access$/i }));
+    // The switch renders off and disabled, so the payload must agree with it.
+    const afterRevoke = screen.getByRole('switch', { name: /contact details/i });
+    expect(afterRevoke).not.toBeChecked();
+    expect(afterRevoke).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: /^save role$/i }));
+
+    expect(createRole).toHaveBeenCalledTimes(1);
+    expect(createRole.mock.calls[0][0].flags).not.toContain('view:employee_pii');
+  });
+
+  it('keeps a sensitive flag when its backing area is re-granted in the same session', async () => {
+    const user = userEvent.setup();
+    const createRole = vi.fn().mockResolvedValue('new-role-id');
+    mockUseRoles({ createRole });
+    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+
+    await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
+    const employeesGroup = screen.getByRole('radiogroup', { name: /^employees access$/i });
+    await user.click(within(employeesGroup).getByRole('radio', { name: /^manage$/i }));
+    await user.click(screen.getByRole('switch', { name: /contact details/i }));
+
+    // Off and back on: the raw toggle is remembered rather than pruned, which
+    // is the whole reason the reconciliation is a derivation and not a
+    // mutation of the flag set.
+    await user.click(within(employeesGroup).getByRole('radio', { name: /^no access$/i }));
+    await user.click(within(employeesGroup).getByRole('radio', { name: /^view$/i }));
+    expect(screen.getByRole('switch', { name: /contact details/i })).toBeChecked();
+
+    await user.click(screen.getByRole('button', { name: /^save role$/i }));
+    expect(createRole.mock.calls[0][0].flags).toContain('view:employee_pii');
+  });
+
+  it('toasts and stays on the editor when the save mutation rejects', async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    const createRole = vi.fn().mockRejectedValue(new Error('new row violates row-level security policy'));
+    mockUseRoles({ createRole });
+    render(<RoleEditor restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
+
+    await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
+    await user.click(screen.getByRole('button', { name: /^save role$/i }));
+
+    expect(createRole).toHaveBeenCalledTimes(1);
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: expect.stringMatching(/couldn't create this role/i),
+        description: 'new row violates row-level security policy',
+        variant: 'destructive',
+      })
+    );
+    // Navigating back would discard the draft the owner just lost.
+    expect(onBack).not.toHaveBeenCalled();
   });
 });

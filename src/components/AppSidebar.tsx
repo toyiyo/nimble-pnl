@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Sidebar,
@@ -22,6 +23,7 @@ import {
   getNavigationForRole,
 } from '@/components/AppSidebar.nav';
 import type { NavGroup } from '@/components/AppSidebar.nav';
+import { grantMap } from '@/lib/permissions/areas';
 
 import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
@@ -62,9 +64,16 @@ export function AppSidebar() {
   const { hasFeature } = useSubscription();
   const { viewMode } = useViewMode();
 
-  // Get navigation based on user role (collapses to staffNav in work mode)
+  // Get navigation based on user role (collapses to staffNav in work mode).
+  // A custom collaborator role has no hand-written nav array, so its sidebar
+  // is derived from the areas its role record carries.
   const role = selectedRestaurant?.role;
-  const filteredNavigationGroups = getNavigationForRole(role, viewMode);
+  const roleAreas = selectedRestaurant?.roleRecord?.role_areas;
+  const grants = useMemo(
+    () => (roleAreas ? grantMap(roleAreas) : undefined),
+    [roleAreas]
+  );
+  const filteredNavigationGroups = getNavigationForRole(role, viewMode, grants);
 
   const handleNavigate = (path: string) => {
     navigate(path);

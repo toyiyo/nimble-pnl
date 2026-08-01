@@ -35,6 +35,8 @@ import {
   Banknote,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { allowedPathsForAreas } from '@/lib/permissions/routeAreas';
+import type { AreaKey, AreaLevel } from '@/lib/permissions/areas';
 
 export interface NavItem {
   path: string;
@@ -245,12 +247,59 @@ export const collaboratorOperationsManagerNav: NavGroup[] = navigationGroups
     return group;
   });
 
+// Nav items that exist for a collaborator but have no row in
+// navigationGroups: an owner reaches Receipt Import from inside Inventory, so
+// it was never a top-level entry for them. collaboratorInventoryNav declares
+// it, and a custom inventory role is routed to it — without this the derived
+// sidebar would omit a page the role can open.
+const SUPPLEMENTAL_NAV_ITEMS: Record<string, NavItem[]> = {
+  Inventory: [{ path: '/receipt-import', label: 'Receipt Import', icon: Receipt }],
+};
+
+// Every collaborator nav renames the Admin group, since a collaborator sees
+// only its Settings/Help tail.
+const DERIVED_GROUP_LABELS: Record<string, string> = {
+  Admin: 'Settings',
+};
+
+// Route-reachable but never a sidebar entry for an external role. /employees
+// is scheduling and payroll *context* — collaboratorOperationsManagerNav and
+// collaboratorAccountantNav differ on it precisely because the allow-list and
+// the sidebar are two separate artifacts, which an areas -> nav filter alone
+// cannot express.
+const NAV_HIDDEN_PATHS: readonly string[] = ['/employees'];
+
+/**
+ * Derives a sidebar from a role's area grants, for roles that have no
+ * hand-written nav array — i.e. custom collaborator roles.
+ *
+ * Filtered against `allowedPathsForAreas`, so the sidebar can never offer a
+ * page StaffRoleChecker would bounce the user off.
+ */
+export function getNavigationForAreas(
+  grants: Partial<Record<AreaKey, AreaLevel>>
+): NavGroup[] {
+  const allowed = new Set(allowedPathsForAreas(grants));
+  const hidden = new Set(NAV_HIDDEN_PATHS);
+
+  return navigationGroups
+    .map((group) => {
+      const items = [...group.items, ...(SUPPLEMENTAL_NAV_ITEMS[group.label] ?? [])].filter(
+        (item) => allowed.has(item.path) && !hidden.has(item.path)
+      );
+      return { label: DERIVED_GROUP_LABELS[group.label] ?? group.label, items };
+    })
+    .filter((group) => group.items.length > 0);
+}
+
 // Get navigation groups based on role. Optional `viewMode`: when 'work',
 // the nav collapses to staffNav regardless of role (personal "My Work" lens).
-// Omitted/'admin' preserves existing role-based behavior.
+// Omitted/'admin' preserves existing role-based behavior. Optional `grants`:
+// the role's area levels, used only by roles with no hand-written nav array.
 export function getNavigationForRole(
   role: string | undefined,
-  viewMode?: 'admin' | 'work'
+  viewMode?: 'admin' | 'work',
+  grants?: Partial<Record<AreaKey, AreaLevel>>
 ): NavGroup[] {
   // Work mode wins over an undefined role: during the remount-timing window
   // right after enterWorkMode()'s navigate(), role can be briefly undefined
@@ -278,6 +327,13 @@ export function getNavigationForRole(
     case 'operations_manager':
       return operationsManagerNav;
     default:
+      // A `collaborator_*` string that matched no case above is a custom
+      // role ('collaborator_custom'): derive its sidebar from its areas, and
+      // fail closed to an empty sidebar if those grants haven't arrived —
+      // never fall through to the full internal nav below.
+      if (role.startsWith('collaborator_')) {
+        return grants ? getNavigationForAreas(grants) : [];
+      }
       // owner, manager, chef get full navigation
       return navigationGroups;
   }

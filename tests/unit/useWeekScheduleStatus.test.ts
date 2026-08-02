@@ -115,14 +115,16 @@ describe('useWeekScheduleStatus', () => {
     expect(result.current.publication?.notification_sent).toBe(true);
   });
 
-  it('reports retracted even when the retracted week has no shifts left at all', async () => {
+  it('does not cry retraction at an employee who simply has no shifts this week', async () => {
     const { result } = renderStatus({ data: publicationRow(), error: null }, []);
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    // Otherwise this renders as a published week off, which is the single most
-    // dangerous misreading available here.
-    expect(result.current.state).toBe('retracted');
+    // Unpublishing flips shifts to draft, it never deletes them, so zero shifts
+    // of any kind is "not on the roster", not "pulled back". Reading it as a
+    // retraction would tell every part-timer their schedule was withdrawn on
+    // every week they have off.
+    expect(result.current.state).toBe('published');
   });
 
   it('withholds a state rather than guessing when the lookup fails', async () => {

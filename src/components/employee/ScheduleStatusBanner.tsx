@@ -2,20 +2,10 @@ import { ReactNode } from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { AlertTriangle, Clock } from 'lucide-react';
-import { SchedulePublication } from '@/types/scheduling';
 import { WeekScheduleState } from '@/hooks/useSchedulePublish';
+import { SchedulePublication } from '@/types/scheduling';
+import { pluralize } from '@/lib/scheduling/deletionCopy';
 import { formatDayLabel, formatLocalDateInTz, formatLocalHHMMInTz } from '@/lib/shiftInterval';
-
-/**
- * The RPC writes this itself when a manager unpublishes without giving a
- * reason. Showing it back to an employee as "Reason: …" would present machine
- * boilerplate as if a person had written it.
- */
-const AUTO_REASON_PREFIX = 'Schedule unpublished for date range';
-
-function plural(n: number, one: string, many: string): string {
-  return n === 1 ? one : many;
-}
 
 /** The fixed-height slot every state renders into; see the banner's own doc comment. */
 function slot(children: ReactNode): JSX.Element {
@@ -29,7 +19,7 @@ interface ScheduleStatusBannerProps {
   draftCount: number;
   weekRange: string;
   timezone: string;
-  /** `schedule_change_logs.reason` from the retraction, when a manager wrote one. */
+  /** `schedule_retractions.reason`, set only when a manager wrote one. */
   retractionReason?: string | null;
 }
 
@@ -83,8 +73,8 @@ export function ScheduleStatusBanner({
           Your manager hasn't finalized the week of {weekRange}.{' '}
           {draftCount > 0 && (
             <>
-              The {draftCount} {plural(draftCount, 'shift', 'shifts')} below{' '}
-              {plural(draftCount, 'is', 'are')} still {plural(draftCount, 'a draft', 'drafts')} —
+              The {draftCount} {pluralize(draftCount, 'shift', 'shifts')} below{' '}
+              {pluralize(draftCount, 'is', 'are')} still {pluralize(draftCount, 'a draft', 'drafts')} —
               nothing is confirmed yet.{' '}
             </>
           )}
@@ -102,11 +92,11 @@ export function ScheduleStatusBanner({
           Some shifts are still being finalized
         </AlertTitle>
         <AlertDescription className="text-[13px] text-muted-foreground">
-          {publishedCount} of your {plural(publishedCount, 'shift', 'shifts')} this week{' '}
-          {plural(publishedCount, 'is', 'are')} confirmed. {draftCount} more{' '}
-          {plural(draftCount, 'is a draft', 'are drafts')} your manager hasn't published yet —
-          treat {plural(draftCount, 'it', 'them')} as tentative until{' '}
-          {plural(draftCount, 'it shows', 'they show')} a "Confirmed" badge.
+          {publishedCount} of your {pluralize(publishedCount, 'shift', 'shifts')} this week{' '}
+          {pluralize(publishedCount, 'is', 'are')} confirmed. {draftCount} more{' '}
+          {pluralize(draftCount, 'is a draft', 'are drafts')} your manager hasn't published yet —
+          treat {pluralize(draftCount, 'it', 'them')} as tentative until{' '}
+          {pluralize(draftCount, 'it shows', 'they show')} a "Confirmed" badge.
         </AlertDescription>
       </Alert>
     );
@@ -116,8 +106,11 @@ export function ScheduleStatusBanner({
   // is actively correcting a belief the employee may already hold from a "New
   // Schedule Published" email sitting in their inbox. Keeps the primitive's
   // assertive role.
-  const showReason =
-    !!retractionReason?.trim() && !retractionReason.startsWith(AUTO_REASON_PREFIX);
+  // No boilerplate filter needed: `schedule_retractions.reason` stores the
+  // manager's `p_reason` verbatim and stays NULL when they gave none. The RPC's
+  // "Schedule unpublished for date range…" default is written only to
+  // `schedule_change_logs`, which this never reads.
+  const showReason = !!retractionReason?.trim();
 
   return slot(
     <Alert className="bg-destructive/10 border-destructive/30 text-foreground">

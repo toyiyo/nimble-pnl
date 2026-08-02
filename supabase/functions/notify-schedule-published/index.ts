@@ -153,12 +153,17 @@ serve(async (req) => {
     // unsure whether the email they just got supersedes the shifts they wrote
     // on the fridge. Excluding the current row matters: publish_schedule has
     // already inserted it, and this function is about to mark it notified.
+    //
+    // Keyed on week_start_date alone, deliberately: week_end_date is not a
+    // stable key, because older rows in production carry an 8-day Sunday-Sunday
+    // span while current ones carry a 7-day Monday-start span. Matching on it
+    // would classify a genuine republish of such a week as a first publish.
+    // unpublish_schedule()'s own lookup keys the same way.
     const { data: priorPublication } = await serviceClient
       .from("schedule_publications")
       .select("id")
       .eq("restaurant_id", restaurantId)
       .eq("week_start_date", weekStart)
-      .eq("week_end_date", weekEnd)
       .eq("notification_sent", true)
       .neq("id", publicationId)
       .limit(1)

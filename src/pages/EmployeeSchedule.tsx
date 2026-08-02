@@ -83,11 +83,13 @@ const EmployeeSchedule = () => {
   // What this week actually IS, as opposed to what the rows look like: a week
   // that was announced and then pulled back is otherwise indistinguishable
   // from one nobody ever published.
-  const { state, publication, publishedCount, draftCount } = useWeekScheduleStatus(
-    restaurantId,
-    currentWeekStart,
-    myShifts
-  );
+  const {
+    state,
+    publication,
+    publishedCount,
+    draftCount,
+    loading: statusLoading,
+  } = useWeekScheduleStatus(restaurantId, currentWeekStart, myShifts);
   const retractionReason = useWeekRetractionReason(
     restaurantId,
     currentWeekStart,
@@ -113,11 +115,18 @@ const EmployeeSchedule = () => {
   // Read on arrival, then immediately record the visit. Reading into state
   // first is what keeps the pill on screen for the whole visit -- writing
   // without it would mark the week seen and erase the pill in the same commit.
+  //
+  // Both loading flags gate this, not just `shiftsLoading`. The fingerprint
+  // covers `published_at`, which arrives from a *different* query: writing
+  // while that one is still in flight stores a fingerprint with a null
+  // published_at, and the moment it resolves the effect re-fires, reads its own
+  // stale write back, and shows "Updated since you last checked" on a week
+  // where nothing changed.
   useEffect(() => {
-    if (!restaurantId || !employeeId || shiftsLoading) return;
+    if (!restaurantId || !employeeId || shiftsLoading || statusLoading) return;
     setSeenFingerprint(readSeenFingerprint(restaurantId, employeeId, weekStartStr));
     writeSeenFingerprint(restaurantId, employeeId, weekStartStr, fingerprint);
-  }, [restaurantId, employeeId, weekStartStr, fingerprint, shiftsLoading]);
+  }, [restaurantId, employeeId, weekStartStr, fingerprint, shiftsLoading, statusLoading]);
 
   const scheduleChangedSinceSeen = hasScheduleChangedSinceSeen(seenFingerprint, fingerprint);
 

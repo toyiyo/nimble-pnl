@@ -306,6 +306,12 @@ function deriveWeekScheduleState(
 ): WeekScheduleState | null {
   if (isLoading || error) return null;
   if (!publication) return 'not_published';
+  // No shifts of any kind means this employee simply isn't on the roster this
+  // week — not that anything was pulled back. Unpublishing flips shifts to
+  // draft, it never deletes them, so a real retraction always leaves drafts
+  // behind. Without this, every unscheduled employee at a published restaurant
+  // would be told their schedule was withdrawn, every week they have off.
+  if (publishedCount === 0 && draftCount === 0) return 'published';
   if (publishedCount === 0) return 'retracted';
   if (draftCount > 0) return 'published_revising';
   return 'published';

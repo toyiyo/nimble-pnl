@@ -205,28 +205,29 @@ serve(async (req) => {
     };
 
     try {
-      const { data: restaurant, error: restError } = await serviceClient
-        .from("restaurants")
-        .select("name")
-        .eq("id", restaurantId)
-        .maybeSingle();
-
-      if (restError || !restaurant) {
-        throw new Error("Restaurant not found");
-      }
-
       const employeeIds: string[] = retraction.employee_ids ?? [];
       if (employeeIds.length === 0) {
         await release();
         return noop(`retraction ${retraction.id} has an empty audience`);
       }
 
-      const { data: employees, error: empError } = await serviceClient
-        .from("employees")
-        .select("id, name, email, user_id")
-        .in("id", employeeIds)
-        .eq("status", "active");
+      // Independent lookups — the audience comes from the retraction row, not
+      // from the restaurant — so they overlap rather than queue up.
+      const [
+        { data: restaurant, error: restError },
+        { data: employees, error: empError },
+      ] = await Promise.all([
+        serviceClient.from("restaurants").select("name").eq("id", restaurantId).maybeSingle(),
+        serviceClient
+          .from("employees")
+          .select("id, name, email, user_id")
+          .in("id", employeeIds)
+          .eq("status", "active"),
+      ]);
 
+      if (restError || !restaurant) {
+        throw new Error("Restaurant not found");
+      }
       if (empError) {
         throw new Error(`Failed to fetch employees: ${empError.message}`);
       }
@@ -276,21 +277,27 @@ serve(async (req) => {
         .map((emp) => emp.user_id)
         .filter((id): id is string => !!id);
 
+      // Counted, not fire-and-forget: push is the *only* channel for a
+      // restaurant with email turned off, so if it silently reaches nobody the
+      // release below has to see that.
+      let pushSuccessCount = 0;
+
       if (ch.push && pushUserIds.length > 0) {
         // A distinct tag from "schedule-published" so a retraction never
         // silently replaces the publish notice still sitting in the tray.
-        await sendWebPushToUsers(serviceClient, pushUserIds, restaurantId, {
+        const webPush = await sendWebPushToUsers(serviceClient, pushUserIds, restaurantId, {
           title: pushTitle,
           body: pushBody,
           url: "/employee/schedule",
           tag: "schedule-unpublished",
         });
+        pushSuccessCount += webPush.sent;
 
         const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
         const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
         await runBounded(pushUserIds, async (userId) => {
           try {
-            await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
+            const res = await fetch(`${supabaseUrl}/functions/v1/send-push-notification`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
@@ -303,32 +310,42 @@ serve(async (req) => {
                 data: { route: "/employee/schedule" },
               }),
             });
+            if (res.ok) pushSuccessCount += 1;
+            else console.error(`Native push for ${userId} returned ${res.status}`);
           } catch (e) {
             console.error(`Native push failed for ${userId}:`, e);
           }
         });
       }
 
-      // Nobody was reached, so the announcement did not happen. Release the
-      // latch rather than leaving the retraction permanently marked notified.
-      if (emailResults.length > 0 && successCount === 0) {
+      // Nobody was reached through any channel, so the announcement did not
+      // happen. Release the latch rather than leaving the retraction
+      // permanently marked notified — the claim is what makes a retry possible,
+      // and an un-retryable false success is the worst outcome here.
+      const reachedNobody = successCount === 0 && pushSuccessCount === 0;
+      if (reachedNobody) {
         await release();
       }
 
       console.log(
-        `Sent ${successCount} retraction notifications, ${failureCount} failed for retraction ${retraction.id}`,
+        `Sent ${successCount} retraction emails and ${pushSuccessCount} pushes, ${failureCount} emails failed for retraction ${retraction.id}`,
       );
+
+      // Reaching nobody is a failure even with an empty email list, otherwise a
+      // push-only restaurant whose pushes all bounced reports a clean 200.
+      const failed = reachedNobody || failureCount > 0;
 
       return new Response(
         JSON.stringify({
-          success: failureCount === 0,
+          success: !failed,
           sent: successCount,
           failed: failureCount,
+          pushSent: pushSuccessCount,
           totalEmployees: audience.length,
         }),
         {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-          status: failureCount > 0 ? 502 : 200,
+          status: failed ? 502 : 200,
         },
       );
     } catch (error) {

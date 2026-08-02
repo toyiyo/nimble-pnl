@@ -32,6 +32,13 @@ CREATE INDEX IF NOT EXISTS idx_schedule_retractions_lookup
   ON public.schedule_retractions (restaurant_id, week_start_date, retracted_at DESC)
   WHERE notified_at IS NULL;
 
+-- schedule_publications only carries single-column indexes on restaurant_id and
+-- week_start_date, but every lookup added here -- useWeekScheduleStatus, the
+-- isRepublish probe, and unpublish_schedule's own -- filters on the pair and
+-- takes the newest row. One composite serves all three.
+CREATE INDEX IF NOT EXISTS idx_schedule_publications_week_lookup
+  ON public.schedule_publications (restaurant_id, week_start_date, published_at DESC);
+
 ALTER TABLE public.schedule_retractions ENABLE ROW LEVEL SECURITY;
 
 -- SELECT only, mirroring schedule_publications. Every write comes from the

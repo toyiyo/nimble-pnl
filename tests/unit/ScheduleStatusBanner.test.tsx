@@ -115,15 +115,18 @@ describe('ScheduleStatusBanner', () => {
     );
   });
 
-  it('does not present the RPC’s own boilerplate as a manager’s reason', () => {
+  it('omits the reason line when the manager gave none', () => {
+    // `schedule_retractions.reason` is NULL in that case — the RPC's
+    // "Schedule unpublished for date range…" default goes to
+    // schedule_change_logs, which the banner never reads. Whitespace stands in
+    // for a manager who opened the box and typed nothing.
     renderBanner({
       state: 'retracted',
       publishedCount: 0,
       draftCount: 5,
-      retractionReason: 'Schedule unpublished for date range: 2026-08-03 to 2026-08-09',
+      retractionReason: '   ',
     });
 
-    // Machine text quoted back as if a person wrote it reads as an evasion.
     expect(screen.getByRole('alert')).not.toHaveTextContent('Reason:');
   });
 

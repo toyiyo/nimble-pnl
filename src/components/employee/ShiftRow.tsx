@@ -1,3 +1,4 @@
+import { format, parseISO, isToday, isFuture, isPast, differenceInMinutes } from 'date-fns';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -11,7 +12,6 @@ import {
   PencilLine,
   XCircle,
 } from 'lucide-react';
-import { format, parseISO, isToday, isFuture, isPast, differenceInMinutes } from 'date-fns';
 import { Shift } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
 

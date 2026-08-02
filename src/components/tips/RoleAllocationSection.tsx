@@ -1,3 +1,4 @@
+import { useId } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
@@ -28,6 +29,11 @@ const MODE_LABELS: Record<ModeValue, { label: string; description: string }> = {
  * 10% role commit 20% of the pool — so the footer never reports a pool fraction.
  */
 export function RoleAllocationSection({ roles, rules, onChange }: RoleAllocationSectionProps) {
+  // Role names are free text ("Assistant Manager", "Bar-back"), so they cannot be
+  // interpolated into a DOM id. Index off a generated base instead, which is both
+  // valid and unique even when two roles differ only by punctuation.
+  const idBase = useId();
+
   const handleModeChange = (role: string, next: string) => {
     if (!next || next === 'hours') {
       const { [role]: _removed, ...rest } = rules;
@@ -65,9 +71,10 @@ export function RoleAllocationSection({ roles, rules, onChange }: RoleAllocation
         </p>
       </div>
       <div className="p-4 space-y-3">
-        {roles.map(role => {
+        {roles.map((role, index) => {
           const rule = rules[role];
           const value: ModeValue = rule?.mode ?? 'hours';
+          const percentageInputId = `${idBase}-role-pct-${index}`;
 
           return (
             <div key={role} className="flex items-center gap-3">
@@ -94,11 +101,11 @@ export function RoleAllocationSection({ roles, rules, onChange }: RoleAllocation
               </ToggleGroup>
               {rule ? (
                 <div className="flex items-center gap-1.5">
-                  <Label htmlFor={`role-pct-${role}`} className="sr-only">
+                  <Label htmlFor={percentageInputId} className="sr-only">
                     {`${role} percentage`}
                   </Label>
                   <Input
-                    id={`role-pct-${role}`}
+                    id={percentageInputId}
                     type="number"
                     min={0}
                     max={100}
@@ -120,14 +127,16 @@ export function RoleAllocationSection({ roles, rules, onChange }: RoleAllocation
 
         {configured.length > 0 && (
           <div
+            role="status"
+            aria-live="polite"
             className={
               isOver
-                ? 'flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20'
+                ? 'flex items-center gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20'
                 : 'pt-1'
             }
           >
-            {isOver && <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />}
-            <span className={isOver ? 'text-[13px] text-amber-600' : 'text-[13px] text-muted-foreground'}>
+            {isOver && <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />}
+            <span className={isOver ? 'text-[13px] text-warning' : 'text-[13px] text-muted-foreground'}>
               {isOver
                 ? "Over 100% — guarantees will be scaled down proportionally on days they don't fit."
                 : `${configured.map(role => `${rules[role].percentage}%`).join(' + ')} per person on these roles`}

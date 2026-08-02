@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
-import { formatCurrencyFromCents, formatAppliedRuleLabel, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, calculateTipSplitWithGuarantees, type PercentageAllocationResult, type GuaranteedParticipant, type RoleAllocationRule, type TipShare } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, formatAppliedRuleLabel, isRuleActive, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, calculateTipSplitWithGuarantees, type PercentageAllocationResult, type GuaranteedParticipant, type RoleAllocationRule, type TipShare } from '@/utils/tipPooling';
 import { mergeManualHours } from '@/utils/tipHours';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
@@ -412,19 +412,37 @@ export function Tips() {
     [shareMethod, roleWeights],
   );
 
+  // One predicate for "is this rule in force for this person right now", shared
+  // by the allocator and the badge in the hours grid so the UI can never
+  // advertise a guarantee the split does not honour.
+  //
   // Guarantees are a Full Pool concept — percentage-contribution pools allocate
-  // per sub-pool and are out of scope.
+  // per sub-pool and are out of scope. And the guarantee is for "the days they
+  // worked", so it only attaches to someone who actually worked. Hours are the
+  // participation signal for the hours method only; role and even splits never
+  // collect hours, so being selected for the pool is the signal instead.
+  const appliesRule = useCallback(
+    (rule: RoleAllocationRule | undefined, hours: number): boolean =>
+      poolingModel === 'full_pool' &&
+      isRuleActive(rule) &&
+      (shareMethod !== 'hours' || hours > 0),
+    [poolingModel, shareMethod],
+  );
+
   const guaranteedParticipants = useMemo<GuaranteedParticipant[]>(
     () =>
-      participants.map(p => ({
-        id: p.id,
-        name: p.name,
-        hours: Number.parseFloat(hoursByEmployee[p.id] || '0') || 0,
-        role: p.position,
-        rule:
-          poolingModel === 'full_pool' && p.position ? rolePercentages[p.position] : undefined,
-      })),
-    [participants, hoursByEmployee, rolePercentages, poolingModel],
+      participants.map(p => {
+        const hours = Number.parseFloat(hoursByEmployee[p.id] || '0') || 0;
+        const rule = p.position ? rolePercentages[p.position] : undefined;
+        return {
+          id: p.id,
+          name: p.name,
+          hours,
+          role: p.position,
+          rule: appliesRule(rule, hours) ? rule : undefined,
+        };
+      }),
+    [participants, hoursByEmployee, rolePercentages, appliesRule],
   );
 
   const guaranteedResult = useMemo(
@@ -746,7 +764,8 @@ export function Tips() {
                           )}
                           {(() => {
                             const rule = emp.position ? rolePercentages[emp.position] : undefined;
-                            if (!rule || poolingModel !== 'full_pool') return null;
+                            const hours = Number.parseFloat(hoursByEmployee[emp.id] || '0') || 0;
+                            if (!rule || !appliesRule(rule, hours)) return null;
                             return (
                               <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
                                 {formatAppliedRuleLabel(rule)}

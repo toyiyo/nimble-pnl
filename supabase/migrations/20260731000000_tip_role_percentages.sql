@@ -15,68 +15,70 @@ ALTER TABLE tip_pool_settings
 -- Shape constraint. RLS gates rows, not column shape: without this, any client
 -- with write access could store a negative percentage or an unknown mode and
 -- the allocation algorithm's non-negativity assumption would rest entirely on
--- an HTML min/max attribute. Use a DO block so re-running is safe.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint
-    WHERE conname = 'tip_pool_settings_role_percentages_check'
-  ) THEN
-    ALTER TABLE tip_pool_settings
-      ADD CONSTRAINT tip_pool_settings_role_percentages_check
-      CHECK (
-        jsonb_typeof(role_percentages) = 'object'
-        -- jsonpath's lax mode auto-unwraps arrays on member access, so without this
-        -- predicate a role value of e.g. [{"mode":"at_least","percentage":10}] would
-        -- pass every check below (each is applied to the unwrapped element) while
-        -- still being stored as an array. The TypeScript side reads role rules as
-        -- Record<string, RoleAllocationRule> and would silently treat that array as
-        -- "no rule" (indexing a non-existent `.mode`/`.percentage`), dropping the
-        -- guarantee the row claims to encode.
-        --
-        -- `strict` (not lax) is required here specifically: lax mode's auto-unwrap
-        -- also applies to the `.type()` item method itself, so `$.* ? (@.type() !=
-        -- "object")` in lax mode silently unwraps a one-element array to its inner
-        -- object *before* checking its type — making the array invisible to this
-        -- exact check. `strict` keeps `@` bound to the un-unwrapped value so
-        -- `.type()` reports "array" as expected. The other predicates below stay in
-        -- lax mode on purpose: their member accessors (`.mode`, `.percentage`)
-        -- already unwrap correctly and still catch a malformed *inner* object, so
-        -- lax mode there is not itself a gap once this array check exists.
-        AND NOT jsonb_path_exists(
-          role_percentages,
-          'strict $.* ? (@.type() != "object")'
-        )
-        AND NOT jsonb_path_exists(
-          role_percentages,
-          '$.* ? (@.mode != "at_least" && @.mode != "exactly")'
-        )
-        AND NOT jsonb_path_exists(
-          role_percentages,
-          '$.* ? (@.percentage < 0 || @.percentage > 100)'
-        )
-        AND NOT jsonb_path_exists(
-          role_percentages,
-          '$.* ? (!exists(@.mode) || !exists(@.percentage))'
-        )
-        -- A non-numeric percentage (e.g. "abc") silently fails to match the
-        -- range predicate above under jsonpath's lax-mode type coercion, so
-        -- it would otherwise slip through and produce NaN downstream in
-        -- calculateTipSplitWithGuarantees. Require the numeric type explicitly.
-        AND NOT jsonb_path_exists(
-          role_percentages,
-          '$.* ? (exists(@.percentage) && @.percentage.type() != "number")'
-        )
-        -- Same lax-mode coercion risk for `mode`: a numeric or boolean mode value
-        -- would fail the string-comparison predicate above by never matching either
-        -- literal, so it would pass unnoticed instead of being rejected.
-        AND NOT jsonb_path_exists(
-          role_percentages,
-          '$.* ? (exists(@.mode) && @.mode.type() != "string")'
-        )
-      );
-  END IF;
-END $$;
+-- an HTML min/max attribute. Drop-then-add rather than add-if-absent, so a
+-- re-run replaces an older definition instead of leaving a stale one in place.
+ALTER TABLE tip_pool_settings
+  DROP CONSTRAINT IF EXISTS tip_pool_settings_role_percentages_check;
+
+ALTER TABLE tip_pool_settings
+  ADD CONSTRAINT tip_pool_settings_role_percentages_check
+  CHECK (
+    jsonb_typeof(role_percentages) = 'object'
+    -- jsonpath's lax mode auto-unwraps arrays on member access, so without this
+    -- predicate a role value of e.g. [{"mode":"at_least","percentage":10}] would
+    -- pass every check below (each is applied to the unwrapped element) while
+    -- still being stored as an array. The TypeScript side reads role rules as
+    -- Record<string, RoleAllocationRule> and would silently treat that array as
+    -- "no rule" (indexing a non-existent `.mode`/`.percentage`), dropping the
+    -- guarantee the row claims to encode.
+    --
+    -- `strict` (not lax) is required here specifically: lax mode's auto-unwrap
+    -- also applies to the `.type()` item method itself, so `$.* ? (@.type() !=
+    -- "object")` in lax mode silently unwraps a one-element array to its inner
+    -- object *before* checking its type — making the array invisible to this
+    -- exact check. `strict` keeps `@` bound to the un-unwrapped value so
+    -- `.type()` reports "array" as expected. Every other `.type()` predicate
+    -- below needs the same treatment for the same reason; the comparison and
+    -- existence predicates stay in lax mode, where auto-unwrap is harmless.
+    AND NOT jsonb_path_exists(
+      role_percentages,
+      'strict $.* ? (@.type() != "object")'
+    )
+    AND NOT jsonb_path_exists(
+      role_percentages,
+      '$.* ? (@.mode != "at_least" && @.mode != "exactly")'
+    )
+    AND NOT jsonb_path_exists(
+      role_percentages,
+      '$.* ? (@.percentage < 0 || @.percentage > 100)'
+    )
+    AND NOT jsonb_path_exists(
+      role_percentages,
+      '$.* ? (!exists(@.mode) || !exists(@.percentage))'
+    )
+    -- A non-numeric percentage (e.g. "abc") silently fails to match the
+    -- range predicate above under jsonpath's lax-mode type coercion, so
+    -- it would otherwise slip through and produce NaN downstream in
+    -- calculateTipSplitWithGuarantees. Require the numeric type explicitly.
+    --
+    -- `strict` for the same reason as the object check above: in lax mode
+    -- `@.percentage.type()` unwraps `[10]` to `10` and reports "number", so
+    -- an array-valued percentage would pass. Strict mode reports "array".
+    -- A role value missing `percentage` entirely does not match either way
+    -- (the preceding `!exists` predicate is what rejects that case).
+    AND NOT jsonb_path_exists(
+      role_percentages,
+      'strict $.* ? (@.percentage.type() != "number")'
+    )
+    -- Same lax-mode coercion risk for `mode`: a numeric or boolean mode value
+    -- would fail the string-comparison predicate above by never matching either
+    -- literal, so it would pass unnoticed instead of being rejected. Strict for
+    -- the array case, as above.
+    AND NOT jsonb_path_exists(
+      role_percentages,
+      'strict $.* ? (@.mode.type() != "string")'
+    )
+  );
 
 COMMENT ON COLUMN tip_pool_settings.role_percentages IS
   'Per-role allocation rules: {"<role>": {"mode": "at_least" | "exactly", "percentage": 0-100}}. Evaluated per person, so two people in a 10% role commit 20% of the pool. Full Pool model only.';

@@ -58,11 +58,13 @@ describe('TipReviewScreen guarantees', () => {
     expect(screen.getByText('Fixed 15%')).toBeInTheDocument();
   });
 
-  it('warns when guarantees were scaled down', () => {
+  it('warns when guarantees were scaled down, naming the factor applied', () => {
     render(<TipReviewScreen {...baseProps} scaledDownFactor={0.8} />);
 
     expect(
-      screen.getByText('Guarantees totalled more than the pool and were reduced proportionally.'),
+      screen.getByText(
+        'Guarantees totalled more than the pool, so each was reduced to 80.0% of what was configured.',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -79,7 +81,7 @@ describe('TipReviewScreen guarantees', () => {
   it('shows no advisory when neither branch fired', () => {
     render(<TipReviewScreen {...baseProps} scaledDownFactor={null} redistributedLeftoverCents={0} />);
 
-    expect(screen.queryByText(/reduced proportionally/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reduced to/)).not.toBeInTheDocument();
     expect(screen.queryByText(/split across the fixed percentages/)).not.toBeInTheDocument();
   });
 });

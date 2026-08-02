@@ -21,6 +21,21 @@ type Params = {
 };
 
 /**
+ * `JSON.stringify` with object keys emitted in sorted order.
+ *
+ * Postgres `jsonb` does not preserve key insertion order — it stores keys sorted
+ * by length then bytewise — so a map that round-trips through the database comes
+ * back reordered. Comparing raw `JSON.stringify` output would read that
+ * reordering as a change and schedule a pointless save every time settings load.
+ */
+const stableStringify = (value: unknown): string =>
+  JSON.stringify(value, (_key, val) => {
+    if (!val || typeof val !== 'object' || Array.isArray(val)) return val;
+    const source = val as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(source).sort().map(key => [key, source[key]]));
+  });
+
+/**
  * Debounced auto-save for tip pooling settings.
  * Triggers a save when local state diverges from persisted settings.
  */
@@ -43,8 +58,8 @@ export function useAutoSaveTipSettings({
         shareMethod !== settings.share_method ||
         splitCadence !== settings.split_cadence ||
         (poolingModel !== undefined && poolingModel !== settings.pooling_model) ||
-        JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
-        JSON.stringify(rolePercentages) !== JSON.stringify(settings.role_percentages ?? {}) ||
+        stableStringify(roleWeights) !== stableStringify(settings.role_weights) ||
+        stableStringify(rolePercentages) !== stableStringify(settings.role_percentages ?? {}) ||
         sortedIds(selectedEmployees) !== sortedIds(settings.enabled_employee_ids ?? [])
       : selectedEmployees.size > 0 ||
         tipSource !== 'manual' ||

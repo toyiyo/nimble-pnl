@@ -10,6 +10,20 @@ export type RoleAllocationRule = {
 };
 
 /**
+ * Whether a rule actually changes an employee's share.
+ *
+ * `at_least 0%` is a floor nobody can fall below, so it is indistinguishable
+ * from "by hours" and is treated as no rule at all. `exactly 0%` is a real
+ * instruction — pay this person nothing out of the pool — so it survives.
+ *
+ * The allocator and every badge that advertises a rule must agree on this
+ * predicate, or the UI promises a guarantee the split does not honour.
+ */
+export function isRuleActive(rule: RoleAllocationRule | undefined | null): rule is RoleAllocationRule {
+  return !!rule && (rule.mode === 'exactly' || rule.percentage > 0);
+}
+
+/**
  * User-facing badge label for a rule, e.g. "Guaranteed 10%" / "Fixed 15%".
  * Shared between the hours-entry grid and the review screen's allocation
  * table so the two never drift in wording.
@@ -33,24 +47,38 @@ export type TipShare = {
 };
 
 /**
- * Distribute totalCents among items by ratio, assigning rounding remainder to last item.
+ * Distribute totalCents among items by ratio using the largest-remainder method.
  * Returns an array of allocated amounts in the same order as `ratios`.
+ *
+ * Every share is floored and the leftover cents go to the largest fractional
+ * parts, so the amounts always sum to `totalCents` and none can overshoot. The
+ * earlier "round each, give the remainder to the last item" approach could hand
+ * the last item a *negative* share whenever rounding overshot — 2 cents across
+ * four equal ratios produced `[1, 1, 1, -1]`.
  */
 function distributeByRatio(totalCents: number, ratios: number[]): number[] {
-  const totalRatio = ratios.reduce((sum, r) => sum + r, 0);
-  const amounts: number[] = [];
-  let allocated = 0;
+  const count = ratios.length;
+  if (count === 0) return [];
 
-  for (let i = 0; i < ratios.length; i++) {
-    if (i === ratios.length - 1) {
-      amounts.push(totalCents - allocated);
-    } else {
-      const amount = totalRatio > 0
-        ? Math.round(totalCents * (ratios[i] / totalRatio))
-        : Math.floor(totalCents / ratios.length);
-      amounts.push(amount);
-      allocated += amount;
-    }
+  const totalRatio = ratios.reduce((sum, r) => sum + r, 0);
+  // No ratios at all (everyone at zero hours/weight) splits the pool evenly.
+  const weights = totalRatio > 0 ? ratios : ratios.map(() => 1);
+  const weightTotal = totalRatio > 0 ? totalRatio : count;
+
+  const exact = weights.map(w => (totalCents * w) / weightTotal);
+  const amounts = exact.map(Math.floor);
+  let remainder = totalCents - amounts.reduce((sum, a) => sum + a, 0);
+
+  // Ties break toward the *last* item, preserving the long-standing "the last
+  // person absorbs the rounding remainder" behaviour for the common case of
+  // equal shares — this only changes who gets the odd cent when the fractions
+  // genuinely differ, and it can no longer take a share below zero.
+  const byLargestFraction = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || b.index - a.index);
+
+  for (let k = 0; remainder > 0; k++, remainder--) {
+    amounts[byLargestFraction[k % count].index] += 1;
   }
 
   return amounts;
@@ -180,7 +208,7 @@ export function calculateTipSplitWithGuarantees(
   }
 
   const ruleOf = (p: GuaranteedParticipant): RoleAllocationRule | undefined =>
-    p.rule && p.rule.percentage > 0 ? p.rule : undefined;
+    isRuleActive(p.rule) ? p.rule : undefined;
 
   const toShare = (p: GuaranteedParticipant, amountCents: number): TipShare => {
     const share: TipShare = { employeeId: p.id, name: p.name, amountCents };

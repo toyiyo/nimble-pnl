@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
@@ -17,21 +17,13 @@ import { useTimePunches } from '@/hooks/useTimePunches';
 // memo/effect keyed on `punches` only re-runs when the data actually
 // changes.
 
-const chainable = () => {
-  const handler: ProxyHandler<object> = {
-    get(_target, prop) {
-      if (prop === 'then') return undefined; // not thenable itself
-      return () => new Promise(() => {}); // any terminal call never resolves
-    },
-  };
-  return new Proxy({}, handler);
-};
-
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: {
-    from: () => chainable(),
-  },
-}));
+// `useTimePunches` chains `.select().eq().gte().lte().order().order().range()`,
+// so the mock has to be chainable all the way down; only awaiting it hangs,
+// which is what pins the query in its loading state.
+vi.mock('@/integrations/supabase/client', async () => {
+  const { neverResolvingBuilder } = await import('../helpers/supabaseBuilderMock');
+  return { supabase: { from: () => neverResolvingBuilder() } };
+});
 
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),
@@ -42,6 +34,12 @@ describe('useTimePunches — referential stability while loading', () => {
 
   beforeEach(() => {
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  });
+
+  // The mocked query never resolves, so tear the cache down between tests to
+  // avoid leaking a pending observer into the next one.
+  afterEach(() => {
+    queryClient.clear();
   });
 
   const wrapper = ({ children }: { children: React.ReactNode }) => (

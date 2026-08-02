@@ -146,17 +146,25 @@ export function TipReviewScreen({
         )}
 
         {scaledDownFactor !== null && (
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-            <span className="text-[13px] text-amber-600">
-              Guarantees totalled more than the pool and were reduced proportionally.
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20"
+          >
+            <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+            <span className="text-[13px] text-warning">
+              {`Guarantees totalled more than the pool, so each was reduced to ${(scaledDownFactor * 100).toFixed(1)}% of what was configured.`}
             </span>
           </div>
         )}
         {redistributedLeftoverCents > 0 && (
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-            <AlertTriangle className="h-4 w-4 text-amber-600 flex-shrink-0" />
-            <span className="text-[13px] text-amber-600">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20"
+          >
+            <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+            <span className="text-[13px] text-warning">
               {`No hourly staff worked; the remaining ${formatCurrencyFromCents(redistributedLeftoverCents)} was split across the fixed percentages.`}
             </span>
           </div>

@@ -297,32 +297,75 @@ describe('calculateTipSplitWithGuarantees', () => {
         [7, 0, 3],
       ];
 
+      // Every participant carries a rule slot, including the third. Leaving one
+      // person permanently rule-free would never exercise the "everybody is
+      // locked" leftover branch, which is exactly where the old
+      // round-then-dump-on-the-last-item distribution emitted negative cents.
       for (const pool of pools) {
         for (const hours of hourSets) {
           for (const ruleA of rules) {
             for (const ruleB of rules) {
-              const participants = [
-                person('a', hours[0], ruleA),
-                person('b', hours[1], ruleB),
-                person('c', hours[2]),
-              ];
-              for (const splitter of [byHours, evenly]) {
-                const result = calculateTipSplitWithGuarantees(pool, participants, splitter);
-                const context = `pool=${pool} hours=${hours} a=${ruleA?.mode ?? 'none'}:${
-                  ruleA?.percentage ?? '-'
-                } b=${ruleB?.mode ?? 'none'}:${ruleB?.percentage ?? '-'}`;
+              for (const ruleC of rules) {
+                const participants = [
+                  person('a', hours[0], ruleA),
+                  person('b', hours[1], ruleB),
+                  person('c', hours[2], ruleC),
+                ];
+                for (const splitter of [byHours, evenly]) {
+                  const result = calculateTipSplitWithGuarantees(pool, participants, splitter);
+                  const describeRule = (r?: RoleAllocationRule) =>
+                    r ? `${r.mode}:${r.percentage}` : 'none';
+                  const context = `pool=${pool} hours=${hours} a=${describeRule(
+                    ruleA,
+                  )} b=${describeRule(ruleB)} c=${describeRule(ruleC)}`;
 
-                expect(sumOf(result), context).toBe(pool);
-                expect(
-                  result.shares.every(s => s.amountCents >= 0),
-                  `${context} produced a negative share`,
-                ).toBe(true);
-                expect(result.shares).toHaveLength(3);
+                  expect(sumOf(result), context).toBe(pool);
+                  expect(
+                    result.shares.every(s => s.amountCents >= 0),
+                    `${context} produced a negative share`,
+                  ).toBe(true);
+                  expect(result.shares).toHaveLength(3);
+                }
               }
             }
           }
         }
       }
+    });
+
+    // The old distributeByRatio rounded each share and handed the accumulated
+    // difference to the last item, which could push it below zero: 2 cents over
+    // four equal ratios produced [1, 1, 1, -1]. Largest-remainder cannot.
+    it('splits an awkward pool across equal shares without a negative last item', () => {
+      const shares = calculateTipSplitByHours(2, [
+        { id: 'a', name: 'A', hours: 1 },
+        { id: 'b', name: 'B', hours: 1 },
+        { id: 'c', name: 'C', hours: 1 },
+        { id: 'd', name: 'D', hours: 1 },
+      ]);
+
+      expect(shares.map(s => s.amountCents)).toEqual([0, 0, 1, 1]);
+      expect(shares.reduce((sum, s) => sum + s.amountCents, 0)).toBe(2);
+    });
+  });
+
+  describe('zero-percentage rules', () => {
+    it('honours `exactly 0%` as "pay this person nothing from the pool"', () => {
+      const participants = [person('a', 5, exactly(0)), person('b', 5)];
+      const result = calculateTipSplitWithGuarantees(10000, participants, byHours);
+
+      expect(amountOf(result, 'a')).toBe(0);
+      expect(amountOf(result, 'b')).toBe(10000);
+      expect(result.shares.find(s => s.employeeId === 'a')?.appliedRule).toEqual(exactly(0));
+    });
+
+    it('treats `at_least 0%` as no rule at all — a floor of zero cannot lift anyone', () => {
+      const participants = [person('a', 5, atLeast(0)), person('b', 5)];
+      const result = calculateTipSplitWithGuarantees(10000, participants, byHours);
+
+      expect(amountOf(result, 'a')).toBe(5000);
+      expect(amountOf(result, 'b')).toBe(5000);
+      expect(result.shares.find(s => s.employeeId === 'a')?.appliedRule).toBeUndefined();
     });
   });
 });

@@ -117,6 +117,31 @@ describe('RoleAllocationSection', () => {
     ).toBeInTheDocument();
   });
 
+  // Role names are free text. Interpolating one straight into a DOM id produced
+  // `id="role-pct-Assistant Manager"` — invalid, and the label stopped pointing
+  // at anything, so the input lost its accessible name entirely.
+  it('keeps label and input associated for role names with spaces and punctuation', () => {
+    render(
+      <RoleAllocationSection
+        roles={['Assistant Manager', 'Bar-back']}
+        rules={{
+          'Assistant Manager': { mode: 'at_least', percentage: 10 },
+          'Bar-back': { mode: 'exactly', percentage: 5 },
+        }}
+        onChange={vi.fn()}
+      />,
+    );
+
+    const assistant = screen.getByLabelText('Assistant Manager percentage');
+    const barback = screen.getByLabelText('Bar-back percentage');
+
+    expect(assistant).toHaveValue(10);
+    expect(barback).toHaveValue(5);
+    // Distinct ids, and both valid to use in an `id` attribute.
+    expect(assistant.id).not.toBe(barback.id);
+    expect(assistant.id).not.toMatch(/\s/);
+  });
+
   it('shows nothing in the footer when no rules are configured', () => {
     render(<RoleAllocationSection roles={roles} rules={{}} onChange={vi.fn()} />);
 

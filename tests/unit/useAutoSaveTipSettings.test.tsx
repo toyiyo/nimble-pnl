@@ -191,4 +191,42 @@ describe('useAutoSaveTipSettings', () => {
     });
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  // Postgres `jsonb` sorts keys rather than preserving insertion order, so a map
+  // written as {Manager, Bartender} reads back as {Manager, Bartender} reordered
+  // by length/bytes. A naive JSON.stringify comparison sees that as a change and
+  // fires a save on every settings load.
+  it('does not save when the persisted maps differ only in key order', async () => {
+    const onSave = vi.fn();
+    const settings = {
+      ...baseSettings,
+      role_weights: { Bartender: 2, Server: 1 },
+      role_percentages: {
+        Bartender: { percentage: 5, mode: 'exactly' },
+        Manager: { percentage: 10, mode: 'at_least' },
+      },
+    } as never as TipPoolSettings;
+
+    renderHook(() =>
+      useAutoSaveTipSettings({
+        settings,
+        tipSource: 'manual',
+        shareMethod: 'hours',
+        splitCadence: 'daily',
+        // Same content, opposite key order at both levels.
+        roleWeights: { Server: 1, Bartender: 2 },
+        rolePercentages: {
+          Manager: { mode: 'at_least', percentage: 10 },
+          Bartender: { mode: 'exactly', percentage: 5 },
+        },
+        selectedEmployees: new Set<string>(),
+        onSave,
+      }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(onSave).not.toHaveBeenCalled();
+  });
 });

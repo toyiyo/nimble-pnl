@@ -18,10 +18,13 @@
 --  11. role_percentages rejects a non-numeric percentage
 --  12. role_percentages rejects a role value wrapped in an array
 --  13. role_percentages rejects a non-string mode
+--  14. role_percentages rejects an array-valued percentage
+--  15. role_percentages rejects an array-valued mode
+--  16. role_percentages accepts a well-formed multi-role map
 -- ============================================================================
 
 BEGIN;
-SELECT plan(13);
+SELECT plan(16);
 
 SET LOCAL role TO postgres;
 
@@ -209,6 +212,54 @@ SELECT throws_ok(
   '23514',
   NULL,
   'role_percentages should reject a non-string mode'
+);
+
+-- ============================================================================
+-- Test 14/15: role_percentages rejects array-valued rule properties
+-- ============================================================================
+
+-- Same lax-mode trap as Test 12, one level down. `$.* ? (@.percentage.type() !=
+-- "number")` in lax mode unwraps [10] to 10 before `.type()` runs, so it reports
+-- "number" and the row passes — while TypeScript reading `rule.percentage` gets
+-- an array and produces NaN. `strict` keeps the array visible to `.type()`.
+SELECT throws_ok(
+  $$
+    INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
+    VALUES ('c0000000-0000-0000-0000-000000000001', '{"Manager": {"mode": "at_least", "percentage": [10]}}'::jsonb, false)
+  $$,
+  '23514',
+  NULL,
+  'role_percentages should reject an array-valued percentage'
+);
+
+SELECT throws_ok(
+  $$
+    INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
+    VALUES ('c0000000-0000-0000-0000-000000000001', '{"Manager": {"mode": ["at_least"], "percentage": 10}}'::jsonb, false)
+  $$,
+  '23514',
+  NULL,
+  'role_percentages should reject an array-valued mode'
+);
+
+-- ============================================================================
+-- Test 16: a well-formed multi-role map still inserts
+-- ============================================================================
+
+-- The strict-mode predicates above must not reject legitimate rows. Without
+-- this, tightening the constraint further could pass by rejecting everything.
+-- A second restaurant, because unique_active_settings already has both the
+-- active and inactive slots for restaurant …0001 taken by tests 2 and 10.
+INSERT INTO restaurants (id, name) VALUES
+  ('c0000000-0000-0000-0000-000000000002', 'Role Percentage Test Restaurant 2')
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+
+SELECT lives_ok(
+  $$
+    INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
+    VALUES ('c0000000-0000-0000-0000-000000000002', '{"Manager": {"mode": "at_least", "percentage": 10}, "Bartender": {"mode": "exactly", "percentage": 0}}'::jsonb, false)
+  $$,
+  'role_percentages should accept a well-formed multi-role map'
 );
 
 SELECT * FROM finish();

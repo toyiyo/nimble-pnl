@@ -17,15 +17,13 @@ import { useEmployees } from '@/hooks/useEmployees';
 // memo/effect keyed on `employees` only re-runs when the data actually
 // changes.
 
-vi.mock('@/integrations/supabase/client', () => ({
-  supabase: {
-    from: () => ({
-      select: () => ({
-        eq: () => new Promise(() => {}), // never resolves — stays "loading" forever
-      }),
-    }),
-  },
-}));
+// `useEmployees` chains `.select().eq().eq().order()`, so the mock has to be
+// chainable all the way down; only awaiting it hangs, which is what pins the
+// query in its loading state.
+vi.mock('@/integrations/supabase/client', async () => {
+  const { neverResolvingBuilder } = await import('../helpers/supabaseBuilderMock');
+  return { supabase: { from: () => neverResolvingBuilder() } };
+});
 
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: vi.fn() }),

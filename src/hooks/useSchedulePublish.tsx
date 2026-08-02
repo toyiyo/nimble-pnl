@@ -48,7 +48,48 @@ interface InvokeError {
  * that (which is what the old fire-and-forget `.then()` did) is what let a
  * publish where every email bounced still toast "Employees will be notified".
  */
+/**
+ * How long the dialog will sit with both its buttons disabled before giving up
+ * on the fan-out.
+ *
+ * Generous on purpose: the fan-out is paced to stay under Resend's 2 req/s
+ * limit, so it grows with headcount — a 60-person roster is legitimately ~30s
+ * of sending, and cutting that short would report a failure that never
+ * happened. But it is not unbounded: an edge function that hangs used to leave
+ * Publish and Cancel disabled with no way out but a page reload.
+ */
+const NOTIFICATION_TIMEOUT_MS = 90_000;
+
 export async function invokeScheduleNotification(
+  functionName: string,
+  body: Record<string, unknown>,
+  timeoutMs: number = NOTIFICATION_TIMEOUT_MS,
+): Promise<NotificationOutcome> {
+  // A race, not an AbortSignal: this repo's `FunctionInvokeOptions` has only
+  // `headers | method | region | body`, so there is nothing to pass a signal
+  // to. The request carries on in the background after we stop waiting —
+  // acceptable, because the send may well be succeeding and the alternative is
+  // a stuck dialog. The outcome is 'unknown', which is exactly true.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<NotificationOutcome>((resolve) => {
+    timer = setTimeout(
+      () =>
+        resolve({
+          status: 'unknown',
+          message: `Notifications did not confirm within ${Math.round(timeoutMs / 1000)}s. They may still be sending.`,
+        }),
+      timeoutMs,
+    );
+  });
+
+  try {
+    return await Promise.race([invokeAndInterpret(functionName, body), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function invokeAndInterpret(
   functionName: string,
   body: Record<string, unknown>,
 ): Promise<NotificationOutcome> {
@@ -337,7 +378,16 @@ function deriveWeekScheduleState(
 export const useWeekScheduleStatus = (
   restaurantId: string | null,
   weekStart: Date,
-  shifts: Pick<Shift, 'is_published'>[]
+  shifts: Pick<Shift, 'is_published'>[],
+  /**
+   * Whether `shifts` is still loading. Load-bearing, not cosmetic: an empty
+   * array reads identically whether the employee has no shifts or the query
+   * hasn't answered yet, and those map to opposite banners. With the
+   * publication row already in the React Query cache, `isLoading` below is
+   * false, so a retracted week would render the quiet "Published …" line and
+   * then flip to the red banner once the shifts arrived.
+   */
+  shiftsLoading = false
 ): WeekScheduleStatus => {
   const weekStartStr = formatLocalDate(weekStart);
 
@@ -370,14 +420,15 @@ export const useWeekScheduleStatus = (
 
   const publishedCount = shifts.filter((s) => s.is_published).length;
   const draftCount = shifts.length - publishedCount;
-  const state = deriveWeekScheduleState(isLoading, error, data ?? null, publishedCount, draftCount);
+  const loading = isLoading || shiftsLoading;
+  const state = deriveWeekScheduleState(loading, error, data ?? null, publishedCount, draftCount);
 
   return {
     state,
     publication: data ?? null,
     publishedCount,
     draftCount,
-    loading: isLoading,
+    loading,
     error,
   };
 };

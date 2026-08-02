@@ -89,7 +89,15 @@ const EmployeeSchedule = () => {
     publishedCount,
     draftCount,
     loading: statusLoading,
-  } = useWeekScheduleStatus(restaurantId, currentWeekStart, myShifts);
+    // `employeeLoading` too, not just `shiftsLoading`: myShifts is filtered by
+    // `currentEmployee`, so it is empty until that resolves regardless of
+    // whether the shifts themselves have landed.
+  } = useWeekScheduleStatus(
+    restaurantId,
+    currentWeekStart,
+    myShifts,
+    shiftsLoading || employeeLoading
+  );
   const retractionReason = useWeekRetractionReason(
     restaurantId,
     currentWeekStart,

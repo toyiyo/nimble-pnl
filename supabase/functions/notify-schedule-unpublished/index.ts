@@ -345,7 +345,11 @@ serve(async (req) => {
       // happen. Release the latch rather than leaving the retraction
       // permanently marked notified — the claim is what makes a retry possible,
       // and an un-retryable false success is the worst outcome here.
-      const reachedNobody = successCount === 0 && pushSuccessCount === 0;
+      // Guarded on a nonempty audience: every employee in the snapshot having
+      // since been deactivated leaves nobody to tell, and answering 502 there
+      // would send the manager chasing a delivery that was never owed.
+      const reachedNobody =
+        audience.length > 0 && successCount === 0 && pushSuccessCount === 0;
       if (reachedNobody) {
         await release();
       }
@@ -356,13 +360,18 @@ serve(async (req) => {
 
       // Reaching nobody is a failure even with an empty email list, otherwise a
       // push-only restaurant whose pushes all bounced reports a clean 200.
+      //
+      // And when nobody was reached, `failed` has to name the whole audience.
+      // The client keys its toast off `failed > 0`, so a 502 carrying
+      // `failed: 0` degrades to "notifications unconfirmed" when the truth is
+      // the far more actionable "nobody was notified -- tell your team".
       const failed = reachedNobody || failureCount > 0;
 
       return new Response(
         JSON.stringify({
           success: !failed,
           sent: successCount,
-          failed: failureCount,
+          failed: reachedNobody ? audience.length : failureCount,
           pushSent: pushSuccessCount,
           totalEmployees: audience.length,
         }),

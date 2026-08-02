@@ -84,13 +84,13 @@ function getShiftStatusBadge(shift: Shift): JSX.Element | null {
  * Deliberately NOT variant="outline". The pre-existing "Upcoming" badge is an
  * outline pill in this exact slot, so an outline draft badge would be a second
  * identical grey pill and read as just another status — the precise failure the
- * tentative treatment exists to avoid. The amber matches the "being revised"
- * banner so "amber = not final" is one language across the page. The icon is
- * supplementary; the text carries the meaning.
+ * tentative treatment exists to avoid. The `warning` token matches the "being
+ * revised" banner so "amber = not final" is one language across the page. The
+ * icon is supplementary; the text carries the meaning.
  */
 function DraftBadge(): JSX.Element {
   return (
-    <Badge className="flex items-center gap-1 bg-amber-500/15 text-foreground border-amber-500/30 hover:bg-amber-500/15">
+    <Badge className="flex items-center gap-1 bg-warning/15 text-foreground border-warning/30 hover:bg-warning/15">
       <PencilLine className="h-3 w-3" />
       Draft — not confirmed
     </Badge>
@@ -146,7 +146,13 @@ export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JS
 
   // "Is this real" outranks "when is this", so the draft badge takes the slot
   // the status badge would otherwise occupy rather than sitting beside it.
-  const statusBadge = isDraft ? <DraftBadge /> : getShiftStatusBadge(shift);
+  //
+  // Cancelled still outranks draft, matching getSurfaceClass. An unpublished
+  // cancelled shift is reachable — unpublishing flips is_published on every
+  // shift in the week, cancelled ones included — and it would otherwise wear a
+  // struck-through destructive row under a badge reading "Draft — not
+  // confirmed". "It's cancelled" is the fact the employee has to leave with.
+  const statusBadge = isDraft && !isCancelled ? <DraftBadge /> : getShiftStatusBadge(shift);
 
   if (variant === 'upcoming') {
     return (

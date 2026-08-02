@@ -25,6 +25,7 @@ export interface FingerprintShift {
   end_time: string;
   position: string;
   status: string;
+  is_published: boolean;
 }
 
 export interface FingerprintInput {
@@ -49,10 +50,18 @@ function hash(input: string): string {
  * Sorted by shift id so a reordered query result is not mistaken for a change.
  * The fields are the ones an employee would act on — a shift moving, changing
  * position, or being cancelled all have to register.
+ *
+ * `is_published` is in there because a retraction is otherwise invisible to
+ * this: unpublishing changes only `is_published`, `locked` and the shift's
+ * `published_at`, while the historical publication row's `published_at` — the
+ * one this hashes — stays exactly as it was. Without it, an employee who read
+ * the published week gets a byte-identical fingerprint after it is pulled back
+ * and never sees the "Updated since you last checked" pill on the one
+ * transition that most needs it.
  */
 export function computeScheduleFingerprint({ publishedAt, shifts }: FingerprintInput): string {
   const rows = shifts
-    .map((s) => [s.id, s.start_time, s.end_time, s.position, s.status])
+    .map((s) => [s.id, s.start_time, s.end_time, s.position, s.status, String(s.is_published)])
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   return hash(JSON.stringify({ publishedAt, rows }));
 }

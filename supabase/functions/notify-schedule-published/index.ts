@@ -316,10 +316,20 @@ serve(async (req) => {
       // is not an error. Every publication row in production still reads
       // notification_sent = false as a result, including ones that demonstrably
       // delivered. The .select() is what makes the row count observable.
+      //
+      // Scoped to the restaurant and week the caller was authorized for, not to
+      // publicationId alone. The permission check upstream validates
+      // restaurantId; publicationId arrives beside it as an independent value,
+      // and this is a service-role write, so RLS is not standing behind it.
+      // Filtering on the id by itself would let a manager of one restaurant
+      // mark another's publication announced -- and that flag is the gate the
+      // retraction notifier reads before mailing anyone.
       const { data: marked, error: markError } = await serviceClient
         .from("schedule_publications")
         .update({ notification_sent: true })
         .eq("id", publicationId)
+        .eq("restaurant_id", restaurantId)
+        .eq("week_start_date", weekStart)
         .select("id");
 
       if (markError) {
@@ -329,7 +339,7 @@ serve(async (req) => {
         );
       } else if (!marked?.length) {
         console.error(
-          `Marked 0 rows notified for publication ${publicationId} -- the id does not exist.`
+          `Marked 0 rows notified for publication ${publicationId} -- no such row for restaurant ${restaurantId}, week ${weekStart}.`
         );
       }
     }
@@ -340,19 +350,34 @@ serve(async (req) => {
     );
 
     // A 200 here is what hid defect B: the caller could not tell a clean
-    // fan-out from one where every recipient bounced. The body is unchanged so
-    // the client can still report exactly how many got through.
+    // fan-out from one where every recipient bounced.
+    //
+    // `reachedNobody` is the same rule notify-schedule-unpublished applies, and
+    // it is not covered by failureCount: with email disabled, or nobody on the
+    // roster holding an email address, emailResults is empty, failureCount is 0
+    // and a push fan-out that reached zero subscribers still answered 200. That
+    // is a manager being told their team knows about a schedule nobody
+    // received. `announced` above already refuses to latch notification_sent in
+    // that case; only the response was still claiming success.
+    //
+    // When nobody was reached, `failed` reports the whole audience rather than
+    // the email failure count. The client keys its toast off `failed > 0`, so a
+    // 502 carrying `failed: 0` degrades to "notifications unconfirmed" when the
+    // truth is the far more actionable "nobody was notified".
+    const reachedNobody = !announced && scheduledEmployees.length > 0;
+    const failed = reachedNobody || failureCount > 0;
+
     return new Response(
       JSON.stringify({
-        success: failureCount === 0,
+        success: !failed,
         sent: successCount,
-        failed: failureCount,
+        failed: reachedNobody ? scheduledEmployees.length : failureCount,
         pushSent: pushSentCount,
         totalEmployees: scheduledEmployees.length,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: failureCount > 0 ? 502 : 200,
+        status: failed ? 502 : 200,
       }
     );
   } catch (error: unknown) {

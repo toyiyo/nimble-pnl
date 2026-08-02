@@ -15,7 +15,11 @@ vi.mock('@/integrations/supabase/client', () => ({ supabase: mockSupabase }));
 const mockToast = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }));
 
-import { usePublishSchedule, useUnpublishSchedule } from '@/hooks/useSchedulePublish';
+import {
+  invokeScheduleNotification,
+  usePublishSchedule,
+  useUnpublishSchedule,
+} from '@/hooks/useSchedulePublish';
 
 function makeWeek() {
   const weekStart = new Date(2026, 6, 27);
@@ -193,5 +197,33 @@ describe('unpublish notification outcomes', () => {
     const toasted = lastToast();
     expect(toasted.variant).toBe('destructive');
     expect(toasted.title).toContain('nobody was notified');
+  });
+});
+
+describe('notification timeout', () => {
+  beforeEach(() => {
+    mockSupabase.functions.invoke.mockReset();
+  });
+
+  it('gives up on a fan-out that never answers instead of waiting forever', async () => {
+    // A hung edge function used to leave the publish dialog with both Publish
+    // and Cancel disabled, recoverable only by reloading the page.
+    mockSupabase.functions.invoke.mockReturnValue(new Promise(() => {}));
+
+    const outcome = await invokeScheduleNotification('notify-schedule-published', {}, 20);
+
+    expect(outcome.status).toBe('unknown');
+    // 'unknown', not 'failed': the request is still in flight and may well be
+    // succeeding, so the manager is told we could not confirm -- not that it
+    // went wrong.
+    expect(outcome).toMatchObject({ message: expect.stringContaining('may still be sending') });
+  });
+
+  it('does not time out a fan-out that answers in time', async () => {
+    mockSupabase.functions.invoke.mockResolvedValue({ data: { sent: 4 }, error: null });
+
+    await expect(invokeScheduleNotification('notify-schedule-published', {}, 5000)).resolves.toEqual(
+      { status: 'sent', sent: 4 }
+    );
   });
 });

@@ -52,12 +52,17 @@ function createWrapper() {
   };
 }
 
-function renderStatus(result: { data?: unknown; error?: unknown }, weekShifts: { is_published: boolean }[]) {
+function renderStatus(
+  result: { data?: unknown; error?: unknown },
+  weekShifts: { is_published: boolean }[],
+  shiftsLoading = false
+) {
   const builder = makeBuilder(result);
   mockSupabase.from.mockReturnValue(builder);
-  const rendered = renderHook(() => useWeekScheduleStatus('r1', WEEK_START, weekShifts), {
-    wrapper: createWrapper(),
-  });
+  const rendered = renderHook(
+    () => useWeekScheduleStatus('r1', WEEK_START, weekShifts, shiftsLoading),
+    { wrapper: createWrapper() }
+  );
   return { ...rendered, builder };
 }
 
@@ -143,6 +148,20 @@ describe('useWeekScheduleStatus', () => {
 
   it('withholds a state while the lookup is still in flight', () => {
     const { result } = renderStatus({ data: publicationRow(), error: null }, shifts(2, 0));
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.state).toBeNull();
+  });
+
+  it('withholds a state while the shifts themselves are still loading', async () => {
+    // An empty shifts array reads the same whether the employee has no shifts
+    // or the query has not answered, and those map to opposite banners. With
+    // the publication row already cached this hook's own isLoading is false, so
+    // without the flag a retracted week would render the quiet "Published ..."
+    // line and then flip to the red banner a beat later.
+    const { result } = renderStatus({ data: publicationRow(), error: null }, [], true);
+
+    await waitFor(() => expect(result.current.publication).not.toBeNull());
 
     expect(result.current.loading).toBe(true);
     expect(result.current.state).toBeNull();

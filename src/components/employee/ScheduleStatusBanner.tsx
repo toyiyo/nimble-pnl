@@ -86,8 +86,8 @@ export function ScheduleStatusBanner({
 
   if (state === 'published_revising') {
     return slot(
-      <Alert role="status" className="bg-amber-500/10 border-amber-500/20 text-foreground">
-        <AlertTriangle className="h-4 w-4" />
+      <Alert role="status" className="bg-warning/10 border-warning/20 text-foreground">
+        <AlertTriangle className="h-4 w-4 text-warning" />
         <AlertTitle className="text-[14px] font-semibold text-foreground">
           Some shifts are still being finalized
         </AlertTitle>

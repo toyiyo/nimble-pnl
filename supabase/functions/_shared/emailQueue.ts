@@ -148,7 +148,11 @@ export const sendPaced = async <T>(
 
   for (const recipient of recipients) {
     let attempts = 0;
-    let outcome: EmailSendResult = { ok: false, status: 0, error: 'not attempted' };
+    // No initializer: the only way out of the loop below is the `break`, and
+    // both paths into it assign. A placeholder here would be dead on every
+    // path, and would quietly become the reported result if a future edit ever
+    // did break out early.
+    let outcome: EmailSendResult;
 
     for (;;) {
       const waitMs = nextSendAt - now();

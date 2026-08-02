@@ -14,6 +14,7 @@ const shift = (overrides: Partial<FingerprintShift> = {}): FingerprintShift => (
   end_time: '2026-08-04T22:00:00Z',
   position: 'Server',
   status: 'scheduled',
+  is_published: true,
   ...overrides,
 });
 
@@ -39,6 +40,9 @@ describe('computeScheduleFingerprint', () => {
     ['a shift ending later', { shifts: [shift({ end_time: '2026-08-04T23:30:00Z' })] }],
     ['a position change', { shifts: [shift({ position: 'Cook' })] }],
     ['a cancellation', { shifts: [shift({ status: 'cancelled' })] }],
+    // The retraction case, and the reason is_published is hashed at all: an
+    // unpublish leaves publishedAt and every other field here untouched.
+    ['the week being retracted', { shifts: [shift({ is_published: false })] }],
     ['a shift being removed', { shifts: [] }],
     ['a shift being added', { shifts: [shift(), shift({ id: 's2' })] }],
   ])('changes on %s', (_label, overrides) => {

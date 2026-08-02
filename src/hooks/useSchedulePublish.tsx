@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { SchedulePublication, Shift } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { formatLocalDate } from '@/lib/shiftInterval';
+import { safeTz } from '@/lib/restaurantClock';
 
 interface PublishScheduleParams {
   restaurantId: string;
@@ -257,7 +258,13 @@ export const useUnpublishSchedule = () => {
       toast(
         notificationToast(notification, {
           title: 'Schedule Unpublished',
-          successDescription: `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} have been unlocked for editing. Affected employees have been told the week is being revised.`,
+          // Nothing was retracted means nothing was sent -- the mutation skips
+          // the invoke entirely on that path. Promising a notification anyway
+          // is how a manager ends up believing their team was told.
+          successDescription:
+            shiftCount > 0
+              ? `${shiftCount} shift${shiftCount !== 1 ? 's' : ''} have been unlocked for editing. Affected employees have been told the week is being revised.`
+              : 'Nothing was published for this week, so no shifts changed and nobody was notified.',
         }),
       );
     },
@@ -421,13 +428,21 @@ export const useWeekPublicationStatus = (
   weekEnd: Date,
   timezone: string
 ) => {
+  // `restaurants.timezone` is nullable and free-text, and callers may hand this
+  // through before the restaurant has loaded. `fromZonedTime` answers an invalid
+  // zone with an Invalid Date, whose `.toISOString()` throws — so the whole
+  // badge would disappear behind a query error rather than fall back to UTC the
+  // way publish_schedule itself does. Resolved once, before the key, so a
+  // '' -> 'UTC' correction doesn't split the cache across two entries.
+  const tz = safeTz(timezone);
+
   const { data, isLoading } = useQuery({
     queryKey: [
       'week_publication_status',
       restaurantId,
       weekStart.toISOString(),
       weekEnd.toISOString(),
-      timezone,
+      tz,
     ],
     queryFn: async () => {
       if (!restaurantId) return null;
@@ -441,8 +456,8 @@ export const useWeekPublicationStatus = (
       // zone from the restaurant — or anyone looking at a Sunday-evening shift,
       // which is already Monday in UTC — could see "Published" disagree with
       // what publish actually did at the week edges.
-      const weekStartInstant = fromZonedTime(`${weekStartStr}T00:00:00`, timezone).toISOString();
-      const weekEndInstant = fromZonedTime(`${weekEndStr}T23:59:59.999`, timezone).toISOString();
+      const weekStartInstant = fromZonedTime(`${weekStartStr}T00:00:00`, tz).toISOString();
+      const weekEndInstant = fromZonedTime(`${weekEndStr}T23:59:59.999`, tz).toISOString();
 
       const { count: publishedShiftCount, error: shiftError } = await supabase
         .from('shifts')

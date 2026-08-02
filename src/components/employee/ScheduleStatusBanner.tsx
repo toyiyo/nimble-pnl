@@ -92,7 +92,8 @@ export function ScheduleStatusBanner({
           Some shifts are still being finalized
         </AlertTitle>
         <AlertDescription className="text-[13px] text-muted-foreground">
-          {publishedCount} of your {pluralize(publishedCount, 'shift', 'shifts')} this week{' '}
+          {publishedCount} of your {publishedCount + draftCount}{' '}
+          {pluralize(publishedCount + draftCount, 'shift', 'shifts')} this week{' '}
           {pluralize(publishedCount, 'is', 'are')} confirmed. {draftCount} more{' '}
           {pluralize(draftCount, 'is a draft', 'are drafts')} your manager hasn't published yet —
           treat {pluralize(draftCount, 'it', 'them')} as tentative until{' '}

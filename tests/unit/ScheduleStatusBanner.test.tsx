@@ -87,7 +87,10 @@ describe('ScheduleStatusBanner', () => {
 
     const banner = screen.getByRole('status');
     expect(banner).toHaveTextContent('Some shifts are still being finalized');
-    expect(banner).toHaveTextContent('3 of your shifts this week are confirmed');
+    // "3 of your shifts" leaves the denominator to the reader, and the number
+    // they reach for is the one they can see -- five rows on the page. Naming
+    // the total is what makes the sentence answer "how many are left?".
+    expect(banner).toHaveTextContent('3 of your 5 shifts this week are confirmed');
     expect(banner).toHaveTextContent('2 more are drafts');
   });
 

@@ -962,10 +962,13 @@ divergence is listed here rather than edited into the sections above.
    latch still claims, so a retry does not re-mail the recipients who succeeded. Accepted
    limitation, not an oversight.
 
-7. **Only the newest unnotified retraction for a week is announced.** Older unnotified rows for
-   the same week are left as an audit trail rather than mailed. They describe versions that were
-   superseded before anyone was told about them, and sending one message per revision is the
-   confusion this change set exists to remove.
+7. **Only the newest retraction for a week can ever be announced.** The notifier selects the
+   latest row for the week outright — `notified_at` is checked *after* the ordering, not folded
+   into it — so older rows are permanently audit-only whether or not they were ever mailed. The
+   ordering matters: filtering on `notified_at IS NULL` first picks the newest *unnotified* row,
+   which is a different row. Retract twice in quick succession and a retry would find the older,
+   still-unlatched row and announce a version that was superseded before anyone heard of it.
+   Sending one message per revision is the confusion this change set exists to remove.
 
 8. **The fingerprint keys on `published_at` plus shift fields (§3b), not `is_published`.** A
    retraction changes the banner, which is far louder than the pill; the pill's job is to catch
@@ -974,3 +977,32 @@ divergence is listed here rather than edited into the sections above.
 9. **Open question 4 (native push) is resolved.** `notify-schedule-unpublished` calls
    `send-push-notification` server-side with the service-role key, matching the existing
    web-push fan-out. No client-triggered path.
+
+10. **The notifier authenticates before it claims (§7a's flow sketch omits this).** The sketch
+    goes straight from request to row lookup. The shipped function runs `authenticateRequest`
+    and then `verifyRestaurantPermission` for the caller against `restaurantId` *before* it
+    touches `schedule_retractions`, so an unauthenticated or non-manager request cannot burn the
+    `notified_at` latch and silence a real retraction. It follows the repo's standard edge
+    ordering: CORS → auth → permission → business logic.
+
+11. **`employee_ids` is readable by restaurant members, and that is not new exposure.** The
+    SELECT policy scopes rows to `user_restaurants` membership, the same boundary `shifts`
+    already uses — any member can already read every shift in the restaurant, employee ids
+    included, so the snapshot column reveals nothing the roster didn't. The protections that
+    matter are the ones on writes: no INSERT/UPDATE/DELETE grant and no UPDATE policy, both
+    pinned by `supabase/tests/schedule_retractions.test.sql`, so a client cannot rewrite the
+    audience or pre-claim `notified_at`. Narrowing reads to a self-scoped function would be
+    real work with no attacker benefit until `shifts` is narrowed first.
+
+12. **`notified_at` doubles as claim and completion; the reclaim is `release()`, not a token.**
+    A crash between the claim and the send would strand the row latched. The function nulls
+    `notified_at` back on every early return it controls, which covers the paths that actually
+    occur; a hard kill mid-send still strands it. Claim tokens with expiry would fix the
+    remaining window and are deliberately out of scope — the failure mode is one missed
+    retraction notice on a function crash, and the next republish writes a fresh row.
+
+13. **Delivery is client-invoked, not a durable outbox.** `useUnpublishSchedule` invokes the
+    function after the RPC commits, so a browser closed in that beat means the retraction is
+    never announced. A transactional outbox drained by cron is the correct shape and is out of
+    scope here; the persisted `schedule_retractions` row means the work is recoverable when
+    that lands, rather than lost. The publish path has the same shape today.

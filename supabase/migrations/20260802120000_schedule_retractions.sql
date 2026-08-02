@@ -26,11 +26,16 @@ CREATE TABLE IF NOT EXISTS public.schedule_retractions (
   notified_at     TIMESTAMPTZ
 );
 
--- Matches the notifier's lookup exactly: unnotified rows for a week, newest
--- first. Retractions accumulate per week across publish/retract cycles.
+-- Matches the notifier's lookup exactly: rows for a week, newest first.
+-- Retractions accumulate per week across publish/retract cycles.
+--
+-- Deliberately not partial on `notified_at IS NULL`. The notifier takes the
+-- newest row outright and *then* checks the latch, because filtering unnotified
+-- rows first selects a different row -- retract twice quickly and a retry would
+-- find the older, still-unlatched row and announce a superseded version. A
+-- partial index could not serve that query.
 CREATE INDEX IF NOT EXISTS idx_schedule_retractions_lookup
-  ON public.schedule_retractions (restaurant_id, week_start_date, retracted_at DESC)
-  WHERE notified_at IS NULL;
+  ON public.schedule_retractions (restaurant_id, week_start_date, retracted_at DESC);
 
 -- schedule_publications only carries single-column indexes on restaurant_id and
 -- week_start_date, but every lookup added here -- useWeekScheduleStatus, the

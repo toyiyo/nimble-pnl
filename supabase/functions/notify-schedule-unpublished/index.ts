@@ -137,15 +137,22 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     );
 
-    // Newest unnotified retraction for the week. A week can be published and
-    // retracted several times, and only the most recent retraction describes
-    // the version employees are currently holding.
+    // The newest retraction for the week, whatever its notified_at. A week can
+    // be published and retracted several times, and only the most recent
+    // retraction describes the version employees are currently holding.
+    //
+    // Ordering has to happen before the notified_at test, not after. Filtering
+    // on `notified_at IS NULL` first picks the newest *unnotified* row, which
+    // is a different row: retract twice in quick succession and the first call
+    // latches the newer one, then a retry finds the older one still unlatched
+    // and mails everyone about a version that was superseded before anyone
+    // heard of it. Selecting the newest row outright makes older ones
+    // permanently audit-only, which is what they are.
     const { data: retraction, error: retractionError } = await serviceClient
       .from("schedule_retractions")
-      .select("id, publication_id, week_start_date, week_end_date, employee_ids")
+      .select("id, publication_id, week_start_date, week_end_date, employee_ids, notified_at")
       .eq("restaurant_id", restaurantId)
       .eq("week_start_date", weekStart)
-      .is("notified_at", null)
       .order("retracted_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -154,7 +161,10 @@ serve(async (req) => {
       throw new Error(`Failed to read retraction: ${retractionError.message}`);
     }
     if (!retraction) {
-      return noop(`no unnotified retraction for ${restaurantId} week ${weekStart}`);
+      return noop(`no retraction for ${restaurantId} week ${weekStart}`);
+    }
+    if (retraction.notified_at) {
+      return noop(`retraction ${retraction.id} was already announced`);
     }
 
     // Decision 2: don't announce the withdrawal of something nobody was told

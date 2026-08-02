@@ -100,8 +100,15 @@ export const sendEmailResult = async (
       signal: controller.signal,
     });
 
+    // Headers are in, so the deadline has done its job. Leaving it armed would
+    // let a slow body abort mid-read and turn a retryable 429 into a terminal
+    // status 0 — the exact distinction this module exists to preserve.
+    clearTimeout(timer);
+
     if (!response.ok) {
-      const body = await response.text();
+      // The status is what decides retryability; the body is only for the log.
+      // A truncated or unreadable body must not downgrade a 429 to a 0.
+      const body = await response.text().catch(errorMessage);
       return { ok: false, status: response.status, error: body };
     }
 

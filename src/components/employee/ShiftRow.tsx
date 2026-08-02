@@ -15,20 +15,16 @@ import { format, parseISO, isToday, isFuture, isPast, differenceInMinutes } from
 import { Shift } from '@/types/scheduling';
 import { cn } from '@/lib/utils';
 
-const formatShiftDuration = (
-  startTime: string,
-  endTime: string,
-  breakMinutes: number
-) => {
+function formatShiftDuration(startTime: string, endTime: string, breakMinutes: number): string {
   const start = new Date(startTime);
   const end = new Date(endTime);
   const netMinutes = differenceInMinutes(end, start) - breakMinutes;
   const hours = Math.floor(netMinutes / 60);
   const minutes = netMinutes % 60;
   return `${hours}h ${minutes}m`;
-};
+}
 
-const getShiftStatusBadge = (shift: Shift) => {
+function getShiftStatusBadge(shift: Shift): JSX.Element | null {
   const startTime = new Date(shift.start_time);
   const endTime = new Date(shift.end_time);
   const now = new Date();
@@ -79,7 +75,7 @@ const getShiftStatusBadge = (shift: Shift) => {
   }
 
   return null;
-};
+}
 
 /**
  * Deliberately NOT variant="outline". The pre-existing "Upcoming" badge is an
@@ -89,12 +85,16 @@ const getShiftStatusBadge = (shift: Shift) => {
  * banner so "amber = not final" is one language across the page. The icon is
  * supplementary; the text carries the meaning.
  */
-const DraftBadge = () => (
-  <Badge className="flex items-center gap-1 bg-amber-500/15 text-foreground border-amber-500/30 hover:bg-amber-500/15">
-    <PencilLine className="h-3 w-3" />
-    Draft — not confirmed
-  </Badge>
-);
+function DraftBadge(): JSX.Element {
+  return (
+    <Badge className="flex items-center gap-1 bg-amber-500/15 text-foreground border-amber-500/30 hover:bg-amber-500/15">
+      <PencilLine className="h-3 w-3" />
+      Draft — not confirmed
+    </Badge>
+  );
+}
+
+type ShiftRowVariant = 'day' | 'upcoming';
 
 interface ShiftRowProps {
   shift: Shift;
@@ -103,26 +103,27 @@ interface ShiftRowProps {
    * which leads with a date block. Both take the identical draft branch — that
    * shared branch is the reason this is one component and not two.
    */
-  variant?: 'day' | 'upcoming';
+  variant?: ShiftRowVariant;
   onTrade?: (shift: Shift) => void;
 }
 
-export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps) {
+/** Cancelled outranks draft, which outranks the per-variant default. */
+function getSurfaceClass(isCancelled: boolean, isDraft: boolean, variant: ShiftRowVariant): string {
+  if (isCancelled) return 'bg-destructive/10 line-through';
+  if (isDraft) return 'bg-muted/20 border border-dashed border-border/60';
+  if (variant === 'upcoming') return 'bg-background border';
+  return 'bg-muted/50';
+}
+
+export function ShiftRow({ shift, variant = 'day', onTrade }: ShiftRowProps): JSX.Element {
   const isDraft = !shift.is_published;
   const isCancelled = shift.status === 'cancelled';
 
-  // Every one of these signals is load-bearing and redundant on purpose: the
-  // dashed border, the badge copy, the muted type and the missing Trade button
-  // each say "not final" on their own, because the banner above may go unread
-  // on a fast mobile glance.
-  const surface = isCancelled
-    ? 'bg-destructive/10 line-through'
-    : isDraft
-      ? 'bg-muted/20 border border-dashed border-border/60'
-      : variant === 'upcoming'
-        ? 'bg-background border'
-        : 'bg-muted/50';
-
+  // Every draft signal below is load-bearing and redundant on purpose: the
+  // dashed surface, the badge copy, the muted type and the missing Trade
+  // button each say "not final" on their own, because the banner above may go
+  // unread on a fast mobile glance.
+  const surface = getSurfaceClass(isCancelled, isDraft, variant);
   const timeText = isDraft ? 'font-normal text-muted-foreground' : 'font-medium';
 
   const canTrade =

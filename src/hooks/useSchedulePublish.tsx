@@ -47,10 +47,10 @@ interface InvokeError {
  * that (which is what the old fire-and-forget `.then()` did) is what let a
  * publish where every email bounced still toast "Employees will be notified".
  */
-export const invokeScheduleNotification = async (
+export async function invokeScheduleNotification(
   functionName: string,
   body: Record<string, unknown>,
-): Promise<NotificationOutcome> => {
+): Promise<NotificationOutcome> {
   try {
     const { data, error } = await supabase.functions.invoke(functionName, { body });
 
@@ -79,7 +79,18 @@ export const invokeScheduleNotification = async (
       message: error instanceof Error ? error.message : 'Unknown error',
     };
   }
-};
+}
+
+interface NotificationToastCopy {
+  title: string;
+  successDescription: string;
+}
+
+interface ToastPayload {
+  title: string;
+  description: string;
+  variant?: 'destructive';
+}
 
 /**
  * The mutation itself has already committed by the time notifications run, so
@@ -87,33 +98,33 @@ export const invokeScheduleNotification = async (
  * varies — and a manager who knows three people weren't emailed can go tell
  * them, which is the entire point.
  */
-const notificationToast = (
+function notificationToast(
   outcome: NotificationOutcome,
-  { title, successDescription }: { title: string; successDescription: string },
-) => {
+  { title, successDescription }: NotificationToastCopy,
+): ToastPayload {
   switch (outcome.status) {
     case 'sent':
-      return { title, description: successDescription } as const;
+      return { title, description: successDescription };
     case 'partial':
       return {
         title: `${title} — some employees not notified`,
         description: `${outcome.sent} notified, ${outcome.failed} could not be reached. Please contact them directly.`,
         variant: 'destructive',
-      } as const;
+      };
     case 'failed':
       return {
         title: `${title} — nobody was notified`,
         description: `All ${outcome.failed} notification${outcome.failed !== 1 ? 's' : ''} failed to send. Please tell your team directly.`,
         variant: 'destructive',
-      } as const;
+      };
     case 'unknown':
       return {
         title: `${title} — notifications unconfirmed`,
         description: `We could not confirm that employees were notified: ${outcome.message}`,
         variant: 'destructive',
-      } as const;
+      };
   }
-};
+}
 
 export const useSchedulePublications = (restaurantId: string | null) => {
   const { data, isLoading, error } = useQuery({
@@ -283,6 +294,24 @@ interface WeekScheduleStatus {
 }
 
 /**
+ * A wrong banner is worse than no banner, so an errored or in-flight lookup
+ * reports no state at all rather than guessing "not published".
+ */
+function deriveWeekScheduleState(
+  isLoading: boolean,
+  error: unknown,
+  publication: SchedulePublication | null,
+  publishedCount: number,
+  draftCount: number
+): WeekScheduleState | null {
+  if (isLoading || error) return null;
+  if (!publication) return 'not_published';
+  if (publishedCount === 0) return 'retracted';
+  if (draftCount > 0) return 'published_revising';
+  return 'published';
+}
+
+/**
  * Counts come from shifts the caller already has — `EmployeeSchedule` filters
  * the week down to `myShifts`, and the state model is defined over that
  * employee's own shifts, not the restaurant's. Passing them in also keeps this
@@ -325,19 +354,7 @@ export const useWeekScheduleStatus = (
 
   const publishedCount = shifts.filter((s) => s.is_published).length;
   const draftCount = shifts.length - publishedCount;
-
-  // A wrong banner is worse than no banner, so an errored or in-flight lookup
-  // reports no state at all rather than guessing "not published".
-  const state: WeekScheduleState | null =
-    isLoading || error
-      ? null
-      : !data
-        ? 'not_published'
-        : publishedCount === 0
-          ? 'retracted'
-          : draftCount > 0
-            ? 'published_revising'
-            : 'published';
+  const state = deriveWeekScheduleState(isLoading, error, data ?? null, publishedCount, draftCount);
 
   return {
     state,

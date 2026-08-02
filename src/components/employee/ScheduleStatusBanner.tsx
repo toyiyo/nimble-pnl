@@ -13,7 +13,14 @@ import { formatDayLabel, formatLocalDateInTz, formatLocalHHMMInTz } from '@/lib/
  */
 const AUTO_REASON_PREFIX = 'Schedule unpublished for date range';
 
-const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+function plural(n: number, one: string, many: string): string {
+  return n === 1 ? one : many;
+}
+
+/** The fixed-height slot every state renders into; see the banner's own doc comment. */
+function slot(children: ReactNode): JSX.Element {
+  return <div className="min-h-[76px]">{children}</div>;
+}
 
 interface ScheduleStatusBannerProps {
   state: WeekScheduleState | null;
@@ -44,9 +51,7 @@ export function ScheduleStatusBanner({
   weekRange,
   timezone,
   retractionReason,
-}: ScheduleStatusBannerProps) {
-  const slot = (children: ReactNode) => <div className="min-h-[76px]">{children}</div>;
-
+}: ScheduleStatusBannerProps): JSX.Element {
   // Loading, or the lookup failed. A wrong banner is worse than no banner:
   // telling someone their week is "not published yet" when it is would have
   // them ignore real shifts.
@@ -130,8 +135,8 @@ export function ScheduleStatusBanner({
   );
 }
 
-/** "Updated since you last checked" pill, shown beside the published-on line. */
-export function ScheduleUpdatedPill() {
+/** "Updated since you last checked" pill, shown beside the Weekly Schedule heading. */
+export function ScheduleUpdatedPill(): JSX.Element {
   return (
     <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 text-[11px]">
       Updated since you last checked

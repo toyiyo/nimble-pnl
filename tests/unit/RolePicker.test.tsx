@@ -1,3 +1,4 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -36,7 +37,7 @@ describe('RolePicker', () => {
     mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: null });
     render(<RolePicker {...base} />, { wrapper });
 
-    const trigger = screen.getByRole('button', { name: /Dana Reyes/i });
+    const trigger = screen.getByRole('combobox', { name: /Dana Reyes/i });
     const visible = trigger.textContent ?? '';
     expect(visible.trim().length).toBeGreaterThan(0);
     expect(trigger.getAttribute('aria-label')).toContain(visible.trim());
@@ -46,29 +47,35 @@ describe('RolePicker', () => {
   it('shows a loading state while roles resolve', async () => {
     mockUseRoles.mockReturnValue({ roles: [], isLoading: true, error: null });
     render(<RolePicker {...base} />, { wrapper });
-    await userEvent.click(screen.getByRole('button', { name: /Dana Reyes/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
     expect(screen.getByText(/loading roles/i)).toBeInTheDocument();
   });
 
   it('shows an error state distinctly from an empty one', async () => {
     mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: new Error('boom') });
     render(<RolePicker {...base} />, { wrapper });
-    await userEvent.click(screen.getByRole('button', { name: /Dana Reyes/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
     // Not "no roles found" — a load failure must never read as emptiness.
     expect(screen.getByText(/couldn't load roles/i)).toBeInTheDocument();
     expect(screen.queryByText(/no roles found/i)).not.toBeInTheDocument();
   });
 
   it('hides owner from a manager and shows it to an owner', async () => {
-    mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: null });
+    // A builtin Owner row, as useRoles would actually return it (global,
+    // restaurant_id null) — needed so the assertion has something to find
+    // when callerRole is 'owner' and getInvitableRoles includes 'owner'.
+    mockUseRoles.mockReturnValue({
+      roles: [roleRow({ id: 'owner-role', name: 'Owner', legacy_role: 'owner', builtin: true, restaurant_id: null })],
+      isLoading: false, error: null,
+    });
 
     const { unmount } = render(<RolePicker {...base} callerRole="manager" />, { wrapper });
-    await userEvent.click(screen.getByRole('button', { name: /Dana Reyes/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
     expect(screen.queryByRole('option', { name: /^Owner/ })).not.toBeInTheDocument();
     unmount();
 
     render(<RolePicker {...base} callerRole="owner" />, { wrapper });
-    await userEvent.click(screen.getByRole('button', { name: /Dana Reyes/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
     await waitFor(() => expect(screen.getByRole('option', { name: /Owner/ })).toBeInTheDocument());
   });
 
@@ -78,7 +85,7 @@ describe('RolePicker', () => {
       isLoading: false, error: null,
     });
     render(<RolePicker {...base} />, { wrapper });
-    await userEvent.click(screen.getByRole('button', { name: /Dana Reyes/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
     await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/ }));
     await userEvent.click(screen.getByRole('button', { name: /change role to/i }));
 
@@ -97,7 +104,7 @@ describe('RolePicker', () => {
       isLoading: false, error: null,
     });
     render(<RolePicker {...base} currentRole="collaborator_custom" currentRoleId="c1" />, { wrapper });
-    await userEvent.click(screen.getByRole('button', { name: /Dana Reyes/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
     await userEvent.click(await screen.findByRole('option', { name: /Twin B/ }));
     expect(screen.getByText(/same access/i)).toBeInTheDocument();
   });

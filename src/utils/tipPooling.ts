@@ -131,6 +131,172 @@ export function calculateTipSplitByRole(
   }));
 }
 
+export type GuaranteedParticipant = {
+  id: string;
+  name: string;
+  hours?: number;
+  role?: string;
+  rule?: RoleAllocationRule;
+};
+
+export type GuaranteedSplitResult = {
+  shares: TipShare[];
+  /** Set when guarantees exceeded the pool and every rule was scaled down. */
+  scaledDownFactor: number | null;
+  /** Cents redistributed because only `exactly` participants worked. */
+  redistributedLeftoverCents: number;
+};
+
+const amountsById = (shares: TipShare[]): Map<string, number> =>
+  new Map(shares.map(s => [s.employeeId, s.amountCents]));
+
+/**
+ * Overlay per-role guarantees on top of any base share method.
+ *
+ * `exactly` participants are reserved off the top. Everyone else is water-filled
+ * through `distributeRemainder`: anyone landing below their `at_least` floor is
+ * locked at the floor and the pass repeats, so a floor only ever raises someone
+ * and never caps them. Shares come back in the input order and always sum to
+ * `totalTipsCents` exactly.
+ */
+export function calculateTipSplitWithGuarantees(
+  totalTipsCents: number,
+  participants: GuaranteedParticipant[],
+  distributeRemainder: (poolCents: number, subset: GuaranteedParticipant[]) => TipShare[],
+): GuaranteedSplitResult {
+  if (participants.length === 0) {
+    return { shares: [], scaledDownFactor: null, redistributedLeftoverCents: 0 };
+  }
+
+  const ruleOf = (p: GuaranteedParticipant): RoleAllocationRule | undefined =>
+    p.rule && p.rule.percentage > 0 ? p.rule : undefined;
+
+  const toShare = (p: GuaranteedParticipant, amountCents: number): TipShare => {
+    const share: TipShare = { employeeId: p.id, name: p.name, amountCents };
+    if (p.hours !== undefined) share.hours = p.hours;
+    if (p.role !== undefined) share.role = p.role;
+    const rule = ruleOf(p);
+    if (rule) share.appliedRule = rule;
+    return share;
+  };
+
+  if (totalTipsCents <= 0) {
+    return {
+      shares: participants.map(p => toShare(p, 0)),
+      scaledDownFactor: null,
+      redistributedLeftoverCents: 0,
+    };
+  }
+
+  // 1. Convert rules to cents.
+  const guarantees = new Map<string, number>();
+  let guaranteedTotal = 0;
+  for (const p of participants) {
+    const rule = ruleOf(p);
+    if (!rule) continue;
+    const cents = Math.round(totalTipsCents * (rule.percentage / 100));
+    guarantees.set(p.id, cents);
+    guaranteedTotal += cents;
+  }
+
+  if (guarantees.size === 0) {
+    const amounts = amountsById(distributeRemainder(totalTipsCents, participants));
+    return {
+      shares: participants.map(p => toShare(p, amounts.get(p.id) ?? 0)),
+      scaledDownFactor: null,
+      redistributedLeftoverCents: 0,
+    };
+  }
+
+  // 2. Feasibility — guarantees are per person, so several people in one role
+  //    can overshoot even when each individual percentage is legal.
+  let scaledDownFactor: number | null = null;
+  if (guaranteedTotal > totalTipsCents) {
+    scaledDownFactor = totalTipsCents / guaranteedTotal;
+    for (const [id, cents] of guarantees) {
+      guarantees.set(id, Math.floor(cents * scaledDownFactor));
+    }
+  }
+
+  // 3. Reserve the `exactly` participants off the top.
+  const locked = new Map<string, number>();
+  let pool = totalTipsCents;
+  for (const p of participants) {
+    if (ruleOf(p)?.mode === 'exactly') {
+      const cents = guarantees.get(p.id) ?? 0;
+      locked.set(p.id, cents);
+      pool -= cents;
+    }
+  }
+  if (pool < 0) pool = 0;
+
+  // 4. Water-fill: run the base method, lock anyone below their floor, repeat.
+  const lifted = new Set<string>();
+  let candidates = participants.filter(p => !locked.has(p.id));
+  while (candidates.length > 0) {
+    const amounts = amountsById(distributeRemainder(pool, candidates));
+    const belowFloor = candidates.filter(p => {
+      if (ruleOf(p)?.mode !== 'at_least') return false;
+      return (amounts.get(p.id) ?? 0) < (guarantees.get(p.id) ?? 0);
+    });
+
+    if (belowFloor.length === 0) {
+      for (const p of candidates) locked.set(p.id, amounts.get(p.id) ?? 0);
+      break;
+    }
+
+    for (const p of belowFloor) {
+      const floor = guarantees.get(p.id) ?? 0;
+      locked.set(p.id, floor);
+      lifted.add(p.id);
+      pool -= floor;
+    }
+    if (pool < 0) pool = 0;
+    candidates = candidates.filter(p => !locked.has(p.id));
+  }
+
+  // 5. Leftover — only reachable when every participant is locked, i.e. every
+  //    rule is `exactly` and they total under 100%. Split it in proportion to
+  //    the configured percentages.
+  let redistributedLeftoverCents = 0;
+  const allocated = participants.reduce((sum, p) => sum + (locked.get(p.id) ?? 0), 0);
+  const leftover = totalTipsCents - allocated;
+  if (leftover > 0) {
+    // Don't report a leftover that is only the rounding dust from scaling down —
+    // the scale-down advisory already explains that case, and "no hourly staff
+    // worked" would be wrong.
+    redistributedLeftoverCents = scaledDownFactor === null ? leftover : 0;
+    const extra = distributeByRatio(
+      leftover,
+      participants.map(p => ruleOf(p)?.percentage ?? 0),
+    );
+    participants.forEach((p, i) => {
+      locked.set(p.id, (locked.get(p.id) ?? 0) + extra[i]);
+    });
+  }
+
+  // 6. Reconcile so the shares sum to the pool exactly — Approve is gated on it.
+  const shares = participants.map(p => toShare(p, locked.get(p.id) ?? 0));
+  const residual = totalTipsCents - shares.reduce((sum, s) => sum + s.amountCents, 0);
+  if (residual !== 0) {
+    const nonExact: number[] = [];
+    const all: number[] = [];
+    participants.forEach((p, i) => {
+      all.push(i);
+      if (ruleOf(p)?.mode !== 'exactly') nonExact.push(i);
+    });
+    const target =
+      [...nonExact, ...all].find(i => shares[i].amountCents + residual >= 0) ?? all.length - 1;
+    shares[target].amountCents += residual;
+  }
+
+  for (const share of shares) {
+    if (lifted.has(share.employeeId)) share.lifted = true;
+  }
+
+  return { shares, scaledDownFactor, redistributedLeftoverCents };
+}
+
 /**
  * Rebalance allocations after manually overriding one share.
  * Keeps total constant and distributes the delta proportionally to others.

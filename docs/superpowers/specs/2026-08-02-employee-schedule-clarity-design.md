@@ -569,6 +569,36 @@ will not, and the resulting 429s are invisible because of defect B.
 shape so defect B's reporting still works. This is a shared helper — both this function and the
 new one in §D need it — so it belongs in `supabase/functions/_shared/`.
 
+### Build on the existing notification toolkit, don't clone the hand-rolled one
+
+`supabase/functions/_shared/notificationHelpers.ts` (308 lines) already provides
+`sendEmail` (:159), `getEmployeeEmails` (:66), `getAllActiveEmployeeEmails` (:90),
+`shouldSendNotification` (:135), `verifyRestaurantPermission` (:208), `NOTIFICATION_FROM` (:197),
+`APP_URL` (:202), `corsHeaders` (:229), `handleCorsPreflightRequest` (:237),
+`createAuthenticatedClient` (:244), `authenticateRequest` (:266), `errorResponse` (:287) and
+`successResponse` (:300).
+
+`notify-schedule-published` uses **none of them** — it hand-rolls its own client construction
+(index.ts:33-41), permission check (index.ts:57-66), Resend `fetch` (index.ts:219-226) and
+response shaping (index.ts:269-291). The first draft of this document said to model the new
+`notify-schedule-unpublished` "directly on `notify-schedule-published`'s structure," which would
+propagate that duplication. **Superseded:** the new function is built on the shared helpers.
+Refactoring the existing publish function onto them is *not* in scope — it is noted as a
+follow-up so this change stays reviewable.
+
+**One blocker for reuse.** `sendEmail` returns a bare `boolean` (:159-192) — it catches the error
+text and the HTTP status and discards both (:181-185). A 429 is therefore indistinguishable from
+a hard bounce, which is exactly the distinction §C's backoff needs, and §B needs the error detail
+to report partial failure meaningfully.
+
+It has **6 call sites outside its own module** (`bank-reauth-notices`, `broadcast-open-shifts`,
+`notify-availability-reminder`, `notify-open-shift-claim`, `_shared/availabilityReminderHandler`,
+`_shared/bankReauthNoticesHandler`), so changing its return type is a breaking change well beyond
+this task's scope. **Approach: add a sibling `sendEmailResult()` returning
+`{ ok: boolean; status: number; error?: string }`, and reimplement the existing `sendEmail` as a
+one-line wrapper (`(await sendEmailResult(...)).ok`).** Existing callers are untouched and their
+behavior is provably identical; the rate limiter consumes the structured version.
+
 ## D. Retraction notifies nobody — and the audience must be persisted
 
 There is no `notify-schedule-unpublished` function; `useUnpublishSchedule`
@@ -661,9 +691,10 @@ path rather than the write path.
 | File | Change |
 |---|---|
 | `supabase/migrations/20260802120000_schedule_retractions.sql` (new) | `schedule_retractions` table + RLS (SELECT for restaurant members; no INSERT/UPDATE policy — writes come only from the `SECURITY DEFINER` RPC and service role); `CREATE OR REPLACE unpublish_schedule` re-declared **in full** carrying forward `SECURITY DEFINER`, `SET search_path = public, pg_temp`, and the existing `user_has_restaurant_access` guard, plus the audience-capturing CTE. Signature unchanged. |
-| `supabase/functions/_shared/rateLimitedSend.ts` (new) | Paced, concurrency-limited sender with 429 backoff (§C). Shared by both notify functions. |
-| `supabase/functions/notify-schedule-published/index.ts` | §A `serviceClient` + error check; §B non-2xx on partial failure; §C route sends through the limiter. |
-| `supabase/functions/notify-schedule-unpublished/index.ts` (new) | §D. Derives audience and gate entirely from `schedule_retractions` + `schedule_publications`; idempotent via `notified_at`. |
+| `supabase/functions/_shared/rateLimitedSend.ts` (new) | Paced, concurrency-limited sender with 429 backoff (§C). Consumes `sendEmailResult`. Shared by both notify functions. |
+| `supabase/functions/_shared/notificationHelpers.ts` | Add `sendEmailResult()` returning `{ ok, status, error? }`; reimplement existing `sendEmail` as a wrapper over it. Purely additive — the 6 existing call sites keep identical behavior. |
+| `supabase/functions/notify-schedule-published/index.ts` | §A `serviceClient` + error check; §B non-2xx on partial failure; §C route sends through the limiter. (Not refactored onto the shared helpers — out of scope, noted as follow-up.) |
+| `supabase/functions/notify-schedule-unpublished/index.ts` (new) | §D. Built on `notificationHelpers`, not cloned from the publish function. Derives audience and gate entirely from `schedule_retractions` + `schedule_publications`; idempotent via `notified_at`. |
 | `src/hooks/useSchedulePublish.tsx` | §B await the invoke and surface partial/total failure; §D invoke the new function from `useUnpublishSchedule`; §F timezone-correct published-shift count. |
 | `supabase/tests/schedule_retractions.test.sql` (new) | pgTAP: audience snapshot captured correctly; `notified_at` latch; `authenticated` cannot UPDATE `schedule_publications` (§A) or write `schedule_retractions`; cross-tenant access denied. |
 | `tests/unit/rateLimitedSend.test.ts` (new) | Pacing, 429 retry/backoff, per-recipient result shape preserved. |

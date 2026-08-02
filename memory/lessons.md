@@ -144,6 +144,7 @@
 - **Mistake:** Test used `INSERT ... ON CONFLICT (id) DO NOTHING` for fixture rows with fixed UUIDs. A stale row from a prior failed run could survive and make the test pass/fail based on prior state rather than the current transaction's inserts.
 - **Correction:** Delete-before-insert in FK order inside the same `BEGIN ... ROLLBACK` transaction. Also `ALTER TABLE ... DISABLE ROW LEVEL SECURITY` so fixture inserts don't depend on the caller's role. Keep `ON CONFLICT DO UPDATE` (not `DO NOTHING`) on tables that have auto-create triggers (e.g., `profiles` auto-created from `auth.users`), so the fixture deterministically lands its values regardless of trigger timing.
 - **Rule:** Deterministic pgTAP fixtures: (1) RLS off inside the txn, (2) delete-before-insert in FK-safe order, (3) use `ON CONFLICT DO UPDATE` not `DO NOTHING` when a trigger may have pre-created the row.
+- **Confirmed and refined [2026-07-31]:** A reviewer asked for `ON CONFLICT` on fixture inserts to guard against an id collision with a *different* test file. Declined, correctly: `supabase/tests/run_tests.sh` gives every file its own `psql` invocation and every file is `BEGIN … ROLLBACK`, so cross-file collision is impossible and the only duplicate `ON CONFLICT` could ever absorb is one **inside a single file** — which is a bug worth failing on, not one worth swallowing. Fixed by moving the file to a distinct id prefix and recording the prefix-per-file allocation in the header. **Rule:** before adding `ON CONFLICT` to a fixture, check the runner's transaction model. If each file is its own transaction, `ON CONFLICT` buys nothing and costs you a real failure signal; separate the id spaces instead.
 
 ---
 
@@ -1987,3 +1988,58 @@
 ### [2026-07-30] Check a git predicate the way git will evaluate it — `check-ignore` on an absent directory reports nothing
 - **Mistake:** Claimed `supabase/.temp` was not gitignored because `git check-ignore -v supabase/.temp` printed nothing, and said so out loud after a subagent had correctly reported the opposite. The rule exists at `.gitignore:31` as `supabase/.temp/`; the pattern is directory-only, and the directory had just been deleted, so git had no way to know the path was a directory and declined to match. Recreating it and testing a path *inside* it matched immediately.
 - **Rule:** A negative result from a path-predicate tool on a path that doesn't exist is not evidence of absence. Test with the artefact present, and prefer a concrete child path (`supabase/.temp/probe`) over the bare directory name. More generally: when a subagent's factual claim conflicts with a one-command check, re-run the check more carefully before contradicting it — the subagent was right here and the correction was noise.
+
+---
+
+## Category: Database (Postgres functions)
+
+### [2026-07-31] Check-then-insert in a loop needs a per-iteration subtransaction when the loop promises per-item outcomes
+- **Mistake:** `copy_role_to_restaurants` documented in three places — file header, inline comment, and the function's own `COMMENT` — that a name collision is "a reported outcome, not an authorization failure, so it does not roll back the targets that succeeded." It implemented that with an `IF EXISTS (...) THEN ... CONTINUE;` pre-check followed by an `INSERT`. But the unique index is what actually enforces the rule, and the two statements are not atomic: a concurrent insert of the same name landing between them raises an unhandled `unique_violation` that aborts the *entire* transaction. Every target already copied is rolled back and the caller gets a raw Postgres message instead of the documented `name_collisions` array. The function's own prose was the specification it violated.
+- **Correction:** Wrapped each target's inserts in `BEGIN ... EXCEPTION WHEN unique_violation THEN <record collision> END`, which gives that target its own subtransaction. Kept the pre-check: it is the common path by a wide margin (the collision that matters is a role the target already has, not one created microseconds ago) and a subtransaction per iteration is not free. The handler is the backstop for the race a pre-check of that shape can never close.
+- **Rule:** When a set-processing function promises **per-item** outcomes, a bare `EXISTS`-then-`INSERT` does not deliver them — only a per-item `BEGIN ... EXCEPTION` does, because in PL/pgSQL an unhandled exception unwinds the whole call. Read a function's own documented contract as a test oracle: if the prose says "does not roll back the others," go find the statement that guarantees it. Keeping the pre-check alongside the handler is the right trade (cheap common path, correct rare path), not redundancy. See also the "Perf corollary (validating a tz string)" bullet under [2026-07-23] `DATE(ts AT TIME ZONE 'UTC')` … THIRD time, which reaches for the same `BEGIN ... EXCEPTION` construct for *speed* rather than correctness — same tool, opposite motivation.
+- **Testing note:** the race is reproducible in pgTAP without concurrency — install a temp `BEFORE INSERT` trigger that raises `unique_violation` for one specific target id, then assert the *other* target still lands. That turns "unlikely timing" into a deterministic assertion.
+
+---
+
+## Category: Database (RLS)
+
+### [2026-07-31] A drop-then-create policy migration needs a residual-policy assertion, because `DROP POLICY IF EXISTS` on a wrong name is a silent no-op
+- **Mistake:** A migration rewrote the collaborator policies on 19 tables as `DROP POLICY IF EXISTS <old name>` + `CREATE POLICY <new name>`. Nothing verified the DROP matched anything. If a name drifts — a rename upstream, a typo, a policy created under a different name in an older migration — the `IF EXISTS` swallows it and the old literal-role policy survives, permissively OR'd beside the new capability-based one.
+- **Correction:** Added a pgTAP assertion that scans `pg_policies` across all 19 tables and fails if any surviving `qual`/`with_check` still names a `collaborator_*` role.
+- **Rule:** Postgres policies are **permissive by default — they OR together.** So a failed DROP is not a no-op in effect; it silently keeps granting the access the migration was written to remove. No access test can see it: every "can this role reach X" assertion keeps passing, because the stale policy grants *more*, not less. The failure only surfaces the first time someone revokes an area and nothing happens. Any drop-then-create policy migration needs a residual scan over `pg_policies` asserting the old predicate is gone — assert on **absence of the old**, not just presence of the new.
+
+---
+
+## Category: Database (PostgREST / Supabase) (continued)
+
+### [2026-07-31] PostgREST rejections are plain objects, not `Error` instances — `err instanceof Error` silently drops every Postgres code
+- **Mistake:** Two variants of the same misunderstanding in one branch. (1) A `catch` block ended `err instanceof Error ? err.message : 'Please try again.'`, so every PostgREST rejection — which arrives as a plain `{ code, message, details, hint }` object — fell through to the useless generic string, discarding the `23505`/`23503` codes that say exactly what the user must do. (2) A *rejected* `DELETE` doesn't throw at all: PostgREST resolves it with an `{ error }` result, so a `try/catch` around a compensating delete never fired, and a delete blocked by RLS looked identical to a successful one. The orphan row the compensation exists to prevent survived silently.
+- **Correction:** Read `code` off the error shape before any `instanceof` check, and map the codes that have a user action attached. For the delete, check the returned `error` property rather than relying on a throw, and report both outcomes.
+- **Rule:** In Supabase client code, `instanceof Error` is the *last* branch, never the first, and `try/catch` alone is not error handling — **always destructure and check `{ error }` on the result.** A `catch` that never fires and a generic fallback that swallows a `23505` look the same from the outside: the code compiles, the tests pass, and the user gets "Please try again" for a problem with a one-sentence fix. This refines the earlier [2026-04-22] `catch (err: unknown)` entry, whose `instanceof Error` guard is correct for thrown JS errors but insufficient for anything that crosses PostgREST.
+
+---
+
+## Category: Static Analysis (CodeQL)
+
+### [2026-07-31] CodeQL "DOM text reinterpreted as HTML": recognizing the sanitizer is not the same as applying it in the right place
+- **Mistake:** Four `js/xss-through-dom` alerts on an HTML prototype. Round one assumed a *sanitizer-recognition* problem and rewrote `esc` from one `String(s).replace(/[&<>"']/g, cb)` into five chained single-character `.replace()` calls (ampersand first, or later passes double-escape what earlier ones emit). CodeQL re-analysed and still reported all four. The real defect was **where** the sanitizer was applied: the interpolations into *attributes* were unescaped. The genuine round trip was `data-level="' + level + '"` — read back out of an input's `.value` on click and re-rendered into `innerHTML`. CodeQL propagates taint through the whole enclosing object, which is why three unrelated-looking sinks were flagged alongside the one real one.
+- **Correction:** Escaped all remaining interpolations — attributes, booleans and counts included — and verified in the browser rather than by inspection: `<img src=x onerror=alert(1)>` typed into the name field renders as text with zero injected nodes.
+- **Rule:** When a taint alert survives a sanitizer fix, stop improving the sanitizer and go find the sink it isn't covering. **Attribute interpolation is a sink**, and it is the one that gets skipped because `"` looks harmless next to `<`. When several sinks are flagged at once, look for the single shared object taint flows through instead of fixing them independently — and re-run the analyzer rather than reasoning about whether the fix "should" satisfy it.
+
+---
+
+## Category: Development Workflow (continued)
+
+### [2026-07-31] Don't write a code comment asserting another function's behaviour without opening it
+- **Mistake:** I wrote a pgTAP workaround (DELETE + INSERT instead of an upsert) plus a comment claiming a trigger returned `OLD` unconditionally and that this was "a real bug in already-shipped code." The trigger ends `RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END` — it returns NEW on UPDATE. The premise was false, the workaround was unnecessary, and the comment contradicted an assertion in a sibling test file that was correct. CodeRabbit caught the contradiction and identified which of the two was wrong.
+- **Correction:** Plain `ON CONFLICT ... DO UPDATE`, with the comment replaced by what the trigger actually does plus a `file:line` citation.
+- **Rule:** The existing "cite the line number" rule in this workflow applies to **comments and commit messages**, not just design docs — and it applies hardest when you are about to write "this is a bug in existing code." That claim is the one most worth being wrong about. Two files disagreeing about the same trigger is a signal one of them was written from memory; go read the `RETURN`.
+
+---
+
+## Category: Testing (React) (continued)
+
+### [2026-07-31] A Supabase test double that returns one payload per table makes later assertions vacuous
+- **Mistake:** The `makeChain` double returned the insert's `.single()` payload for every subsequent statement against the same table, so an assertion about a *later* delete had been passing without exercising anything.
+- **Correction:** The real client hands out a fresh builder per `from()`; the double now scopes each await to the methods chained since the previous one.
+- **Rule:** A test double for a fluent client must model **call identity**, not just the table name. When a fix "exposes" that an existing assertion was vacuous, that is the double's shape being wrong — check the sibling assertions written against the same double.

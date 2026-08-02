@@ -481,25 +481,27 @@ review*. Most issues should have been caught by 7a.
 **Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
 comments on the PR are handled separately in Phase 9d.
 
-**Command:** `coderabbit review --plain --type committed`
+**Command:** `coderabbit review --committed`
 
 Review loop (max 3 iterations):
 
 ```
-Iteration 1: Run coderabbit review --plain --type committed
+Iteration 1: Run coderabbit review --committed
   |-- No actionable findings --> Proceed to Phase 8
   +-- Has findings --> Fix them, commit fixes
        |
-       Iteration 2: Run coderabbit review --plain --type committed
+       Iteration 2: Run coderabbit review --committed
          |-- No actionable findings --> Proceed to Phase 8
          +-- Has findings --> Fix them, commit fixes
               |
-              Iteration 3: Run coderabbit review --plain --type committed
+              Iteration 3: Run coderabbit review --committed
                 |-- No actionable findings --> Proceed to Phase 8
                 +-- Still has findings --> Report to user for manual decision
 ```
 
-Use `--type committed` to review all committed changes on the branch.
+Use `--committed` to review all committed changes on the branch. Plain text
+is the CLI's default review mode, so there is no flag to ask for it; `--agent`
+is the opt-in for structured findings.
 Parse the output for actionable suggestions vs informational notes. Only
 fix actionable items.
 
@@ -871,7 +873,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |
 | 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic`, `ocr-rules` (all NON-SKIPPABLE, parallel) + `dev-tools/codex-adversarial-review.sh` (best-effort) | Workflow/doc-only changes (no code diff) |
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
-| 7c CodeRabbit | `coderabbit review --plain --type committed` | Never |
+| 7c CodeRabbit | `coderabbit review --committed` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |

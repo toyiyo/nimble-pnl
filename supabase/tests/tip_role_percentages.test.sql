@@ -146,13 +146,15 @@ SELECT throws_ok(
 -- Test 10: role_percentages accepts a well-formed rule map
 -- ============================================================================
 
+-- active: true here (not false) because test 2 already occupies the
+-- (restaurant_id, active=false) slot protected by unique_active_settings.
 SELECT lives_ok(
   $$
     INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
     VALUES (
       'c0000000-0000-0000-0000-000000000001',
       '{"Manager": {"mode": "at_least", "percentage": 10}, "Chef": {"mode": "exactly", "percentage": 15.5}}'::jsonb,
-      false
+      true
     )
   $$,
   'role_percentages should accept a well-formed rule map'

@@ -129,6 +129,12 @@ state B.
 
 ## 1. Draft vs Published Week States
 
+Typography is the same in every state and is stated explicitly rather than left to the primitive's
+defaults (`AlertTitle` is `font-medium leading-none tracking-tight`, `AlertDescription` is
+`text-sm` — `src/components/ui/alert.tsx:29-41`, close to but not on the project scale):
+`AlertTitle` → `text-[14px] font-semibold text-foreground`, `AlertDescription` →
+`text-[13px] text-muted-foreground`. Icons are `h-4 w-4`.
+
 ### State A — Not Yet Published
 
 The employee has no confirmed schedule for the viewed week. Per **Decision 1**, draft shifts *are*
@@ -144,17 +150,31 @@ that way.
 └─────────────────────────────────────────────────────────┘
 ```
 
-Copy: **"Schedule not published yet"** / **"Your manager hasn't finalized the week of {weekStart}
-– {weekEnd}. Check back soon."**
+Copy depends on whether anything is actually rendered below, because under Decision 1 the two
+cases look completely different to the employee:
+
+- `draftCount === 0` — **"Schedule not published yet"** / **"Your manager hasn't finalized the
+  week of {weekStart} – {weekEnd}. Check back soon."**
+- `draftCount > 0` — **"Schedule not published yet"** / **"Your manager hasn't finalized the week
+  of {weekStart} – {weekEnd}. The {M} shift{s} below {is/are} still {a draft/drafts} — nothing is
+  confirmed yet. Check back soon."**
+
+The second variant is not optional polish. With drafts visible, the first variant's "check back
+soon" sits directly above a full week of shift cards and reads as "there's nothing to see yet"
+while the employee is looking straight at what appears to be their schedule. State C already
+quantifies confirmed-vs-draft; state A must too, and for the same reason.
 
 Component: `shadcn` `Alert` with `variant="default"`, icon `Clock` (lucide), classes
 `bg-muted/30 border-border/40` (neutral — this is not an error, it's an expected pending state).
 
 ### State B — Published (Clean)
 
-No new banner. A small, persistent "Published" affordance sits in the `Weekly Schedule` card
-header next to the date range badge — see §3 for exact treatment. This is the default, quiet
-state; the redesign should not add ceremony to the common case.
+No banner. The banner slot instead holds a single quiet line — **"Published {date} at {time}"**,
+`text-[13px] text-muted-foreground` — which keeps the slot's height constant across all four
+states (§4, layout-shift note) and answers "is this final?" at the top of the page. The same
+information also appears in the `Weekly Schedule` card header next to the date-range badge, per
+§3a, which is where it belongs when the employee is looking at a specific week. This is the
+default, quiet state; the redesign should not add ceremony to the common case.
 
 ### State C — Published, Being Revised
 
@@ -244,11 +264,22 @@ Treatment:
 - Card background changes from `bg-muted/50` (current, for all shifts) to
   `bg-muted/20 border border-dashed border-border/60` — dashed border reads as "not solid/not
   final" independent of color, satisfying the accessibility no-color-alone rule in §5.
-- A `Badge variant="outline"` reading **"Draft — not confirmed"** (not just "Draft"; the copy
-  should imply "you cannot rely on this" without requiring an explicit legend) sits where
-  `getShiftStatusBadge()` normally renders its status badge — draft state takes priority over
-  the existing Completed/In Progress/Today/Upcoming badges, since "is it real" outranks "when is
-  it."
+  **The `/20` and `/60` are a deliberate departure** from CLAUDE.md's `bg-muted/30` /
+  `border-border/40` house values (which the §1 banners *do* follow): the draft row must sit
+  *below* the ambient surface level while its border sits *above* it, so the contrast between a
+  draft and a confirmed row is legible at a glance. Recorded here so a future
+  convention-cleanup pass doesn't silently normalize it back to `/30` and `/40`.
+- A badge reading **"Draft — not confirmed"** (not just "Draft"; the copy should imply "you cannot
+  rely on this" without requiring an explicit legend) sits where `getShiftStatusBadge()` normally
+  renders its status badge — draft state takes priority over the existing Completed/In
+  Progress/Today/Upcoming badges, since "is it real" outranks "when is it."
+  **It must not be `variant="outline"`.** The pre-existing "Upcoming" badge
+  (`EmployeeSchedule.tsx:99-105`) is already `variant="outline"`, so an outline draft badge would
+  be a second identical grey pill in the same slot — precisely the "just another status pill"
+  failure §2 is written to avoid. Give it a filled, warmer treatment plus a leading icon:
+  `bg-amber-500/15 text-foreground border-amber-500/30` with a `FileEdit`/`PencilLine` (lucide)
+  icon at `h-3 w-3`, matching the state-C banner's amber so "amber = not final" is one consistent
+  language across the page. The icon is supplementary, not the signal — the text carries it (§5).
 - Times and position text drop from `font-medium text-foreground` to
   `font-normal text-muted-foreground` — visually recedes relative to confirmed shifts on the same
   day.
@@ -259,6 +290,45 @@ Treatment:
 `myShifts` keeps its current, unfiltered definition (employee match only) — no `is_published`
 filter is added. `publishedCount` / `draftCount` are derived alongside it to drive the §1 banner,
 and each rendered row branches on `shift.is_published` for the treatment above.
+
+### The "Upcoming Shifts" card must get the same treatment — it is the worst offender
+
+The first draft of this section only covered the day-grid rows in the `Weekly Schedule` card, and
+that is an outright gap. `src/pages/EmployeeSchedule.tsx:241-294` renders a **second, separate
+list** — the "Upcoming Shifts" card — from `upcomingShifts`, computed at `:170-179` by filtering
+the same unfiltered `myShifts` on `startTime >= now && status !== 'cancelled'` with **no
+`is_published` check**. It sits between the proposed banner (top of page) and the day grid
+(below), and it renders each shift in a *solid* `bg-background border` card inside a green-tinted
+`Card` (`from-green-500/5 to-green-600/5 border-green-500/20`) with `getShiftStatusBadge(shift)`
+(`:287`) showing "Today"/"Upcoming".
+
+Left untouched, state D produces this: a banner saying "Nothing below is final," and two sections
+later the exact same draft shifts rendered solid, green-framed and badged "Upcoming" — reading as
+*more* confirmed than the correctly-dashed rows further down. That inverts the whole point of
+Decision 1. Two changes, both required:
+
+1. **Rows branch identically.** Each row in this card takes the same `is_published` branch as the
+   day grid — dashed border, muted type, "Draft — not confirmed" badge replacing the
+   `getShiftStatusBadge()` output. This falls out for free once the row is a shared component (see
+   the note on `ShiftRow` below).
+2. **The card's own chrome must stop asserting confidence when nothing in it is confirmed.** When
+   `upcomingShifts.every(s => !s.is_published)`, drop the green gradient and border for neutral
+   `bg-muted/20 border-border/40`, and title the card **"Upcoming (tentative)"**. Green framing is
+   itself a confirmation signal, and it is read before any badge is.
+
+The card is **not** suppressed in states A/D. Suppressing it would contradict Decision 1 in the
+same way hiding rows would, and it would make the page silently restructure itself between states.
+
+### One `ShiftRow`, not a separate `DraftShiftRow`
+
+An earlier version of this document proposed a new `DraftShiftRow.tsx` rendering only
+`is_published === false` rows, leaving confirmed rows as inline JSX in the page's day-grid `.map()`
+(`EmployeeSchedule.tsx:368-416`). That forks one conceptual row into two independently-maintained
+render paths — duration/break formatting, Trade-button gating, badge placement — that then have to
+be kept in sync by hand. **Superseded:** build a single `ShiftRow` parameterized on
+`{ shift, isPublished, onTrade? }` that branches internally, and use it in *both* the day grid and
+the Upcoming Shifts card. That is also what makes requirement 1 above a one-line change rather than
+a second copy of the treatment.
 
 ### Rejected alternative: hide unpublished shifts
 
@@ -303,21 +373,30 @@ bookkeeping, not the "manual caching of server data" CLAUDE.md prohibits, since 
 substitutes for or delays a React Query fetch; it only decides whether to show a "New" pill on
 top of data that was fetched normally.
 
-- Key: `schedule_seen_${restaurantId}_${employeeId}_${weekStartISO}` → value = a hash of
+- Key: `schedule_seen_${restaurantId}_${employeeId}_${weekStartISO}` → value = a hash of the
+  fingerprint input below. Keys accumulate one per week ever viewed, unbounded over an employee's
+  tenure, so the helper prunes on write: drop any `schedule_seen_*` key whose `weekStartISO`
+  segment is more than 8 weeks in the past. Cheap, synchronous, and keeps the namespace bounded
+  without needing a migration or a scheduled job.
+- Value: a hash of
   `{publication.published_at, myShifts.map(s => [s.id, s.start_time, s.end_time, s.position,
   s.status]).sort()}` (cheap `JSON.stringify` + a non-cryptographic hash is sufficient; this is
   a change-detection fingerprint, not a security boundary).
 - On mount/data-load, compare current fingerprint to stored value for the viewed week. Mismatch
   (or no stored value but a fingerprint now exists) → render a small **"Updated since you last
   checked"** `Badge` next to the "Published …" line, `bg-primary/10 text-primary
-  border-primary/20`. On the user dismissing it (any interaction with the week, or an explicit
-  "Got it" tap) or after N seconds of the page being visible, write the new fingerprint and clear
-  the pill.
+  border-primary/20`. The pill clears **only on interaction** — any interaction with the week, or
+  an explicit "Got it" tap — at which point the new fingerprint is written.
+- **No time-based auto-dismiss.** An earlier draft also cleared the pill after N visible seconds.
+  That is a WCAG 2.2.1 (Timing Adjustable) failure and a practical one: the pill would vanish
+  *and* permanently clear its underlying signal before a slow-reading, low-vision, or
+  motor-impaired user had processed it, with no way to bring it back. Interaction-based dismissal
+  already covers the "they've seen it" case, so the timer buys nothing.
 - This only ever adds a *pill*, never hides or alters what's rendered — it degrades to "no pill"
   silently if `localStorage` is unavailable (Capacitor native webview, private browsing), which
   is an acceptable v1 limitation, not a broken state.
 
-This is flagged as an explicit open product decision in §8 — a server-tracked "last viewed"
+This is flagged as an explicit open product decision in "Open Questions" — a server-tracked "last viewed"
 column would be more robust (works across devices, survives cache clears, and could feed manager
 analytics like "did the team see the update") but is a larger scope than this design's core fix.
 
@@ -327,7 +406,7 @@ CLAUDE.md requires all three be handled explicitly; auditing what exists today:
 
 | State | Current | Proposed |
 |---|---|---|
-| Loading | `EmployeePageSkeleton` (page-level, on `employeeLoading`) + inline `Skeleton` rows in the `Weekly Schedule` card (on `shiftsLoading`) — already present. | Unchanged, but the new publication-status query (§"State Model") must not block the shift skeleton — render the week's day grid skeleton immediately; let the publication banner pop in a beat later once its own (fast, single-row) query resolves, rather than gating the whole page on it. |
+| Loading | `EmployeePageSkeleton` (page-level, on `employeeLoading`) + inline `Skeleton` rows in the `Weekly Schedule` card (on `shiftsLoading`) — already present. | Unchanged, but the new publication-status query (§"State Model") must not block the shift skeleton — render the week's day grid skeleton immediately; let the publication banner resolve a beat later from its own (fast, single-row) query, rather than gating the whole page on it. **The banner slot must reserve its space while that query is in flight** — a fixed `min-h-[76px]` placeholder (roughly one `Alert` with a two-line description) at the top of the page. Without it the banner's arrival pushes `MyShiftTradesCard` and everything below it down on an already-painted page: a CLS regression, and on mobile a live mis-tap hazard for anyone who started interacting during that beat. Reserving space only during the fetch would just defer the jump to resolve-time (the placeholder collapsing is a shift too), so state B — the state with no banner — fills the slot with a single-line confirmation chip of the same height: **"Published {date} at {time}"**, `text-[13px] text-muted-foreground`. That makes the slot height constant across every state, and gives the common case a top-of-page answer to "is this final?" instead of nothing. |
 | Empty (genuinely zero shifts, any state) | Per-day **"No shifts scheduled"** text only — indistinguishable from "you have the week off" on a published week. | Day-level text unchanged (still correct for a genuinely published week off), but now sits underneath the state A/D banner from §1, which supplies the missing "why." Note that under Decision 1 this row is now *rare* in states A and D — a week with draft shifts renders those shifts as tentative rows rather than as an empty grid, so "empty" here means the manager truly scheduled nobody. |
 | Empty (state B/C, employee genuinely has no shifts some days) | Same "No shifts scheduled" | Unchanged — this is a legitimately different case (published week, this employee just isn't on Wednesday) and should not be confused with "not published yet." |
 | Error (`useShifts` `error`) | **Not handled at all** — `EmployeeSchedule.tsx` destructures `shifts, loading` from `useShifts` but never reads `error`; a query failure silently renders an empty week, which is actively dangerous here (looks identical to "day off"). | Add an explicit error branch: if `shiftsError`, render an `Alert variant="destructive"` — **"Couldn't load your schedule"** / **"Something went wrong loading shifts. Pull to refresh or try again in a moment."** — in place of the day grid, with a `Button` "Retry" that calls `queryClient.invalidateQueries(['shifts', ...])`. This must not silently fall through to the empty-week UI. |
@@ -346,9 +425,19 @@ CLAUDE.md requires all three be handled explicitly; auditing what exists today:
   true` / `refetchOnWindowFocus: true` on `useShifts` pulls the change in — is announced to
   screen reader users without requiring them to re-navigate. The "Updated since you last checked"
   pill from §3 is announced the same way, once, when it first appears.
+- **The `Alert` itself must carry `role="status"`, or "polite" is a lie.**
+  `src/components/ui/alert.tsx:25` hardcodes `role="alert"` on the primitive — an implicit
+  **assertive** live region. Nesting that inside the polite wrapper above does not soften it; the
+  inner assertive region is what governs AT behavior, so every banner state would interrupt the
+  user mid-sentence. Because `{...props}` is spread *after* the hardcoded attribute on that line,
+  passing `role="status"` straight to `<Alert>` overrides it cleanly. **Do that** — override on
+  the `Alert`, and drop the redundant outer wrapper for the banner (the wrapper is still the right
+  mechanism for the §3 "Updated" pill, which is not an `Alert`). The one deliberate exception is
+  state D: a retraction *is* worth interrupting for, so state D keeps the primitive's default
+  `role="alert"`.
 - **Keyboard reachability.** The banners are static content (no interactive controls beyond the
-  optional "Retry" button in the error state and a "Got it" dismiss on the "Updated" pill if that
-  affordance is interactive rather than auto-clearing) — both existing patterns in the file
+  "Retry" button in the error state and the "Got it" dismiss on the "Updated" pill, which per §3b
+  is always interactive — there is no timed auto-clear) — both existing patterns in the file
   already use `min-h-[44px]` touch/click targets and visible `aria-label`s (`Previous week`,
   `Next week`); any new interactive element in this design must match that convention.
 - **Draft status must be announced per row, not just styled.** Under Decision 1 the dashed border
@@ -466,20 +555,21 @@ the same week already had `notification_sent = true`:
 
 | File | Change |
 |---|---|
-| `src/pages/EmployeeSchedule.tsx` | Keep `myShifts` unfiltered (Decision 1); derive `publishedCount`/`draftCount` for banner copy; render each row in the tentative treatment when `!shift.is_published` (§2); suppress the Trade button on drafts; add error branch on `useShifts().error` (§4); render new `ScheduleStatusBanner` above `MyShiftTradesCard`; add "Published on …" line + "Updated" pill to the `Weekly Schedule` card header; add `role="status" aria-live="polite"` wrapper (§5). |
+| `src/pages/EmployeeSchedule.tsx` | Keep `myShifts` unfiltered (Decision 1); derive `publishedCount`/`draftCount` for banner copy; replace the inline day-grid row JSX (`:368-416`) **and** the Upcoming Shifts card's row JSX (`:252-290`) with the shared `ShiftRow`; neutralize the Upcoming card's green chrome and retitle it "Upcoming (tentative)" when every row in it is a draft (§2); suppress the Trade button on drafts; add error branch on `useShifts().error` (§4); render new `ScheduleStatusBanner` above `MyShiftTradesCard` in a fixed-height slot (§4 layout-shift note); add "Published on …" line + "Updated" pill to the `Weekly Schedule` card header. |
 | `src/hooks/useShifts.tsx` | No change — it already fetches all shifts regardless of `is_published`, which Decision 1 requires. (Note: this hook is shared with manager surfaces; adding a publish filter here would have broken them, which is a further reason the filtering lives in the page.) |
 | `src/hooks/useSchedulePublish.tsx` | New hook `useWeekScheduleStatus(restaurantId, weekStart, weekEnd)` — wraps a query for the latest `schedule_publications` row matching the week regardless of current shift state (`historicalPublication`), combined with the existing published-shift-count logic, to return the 4-state model from "State Model" above: `{ state: 'not_published' \| 'published' \| 'published_revising' \| 'retracted', publication: SchedulePublication \| null, publishedCount: number, draftCount: number, loading }`. Distinct from the existing `useWeekPublicationStatus`, which stays as-is for the manager side (its `null`-collapsing behavior may be intentional there — manager UI has other cues for "was this ever published"). |
-| `src/components/employee/ScheduleStatusBanner.tsx` (new) | Renders the 4 banner variants from §1 given the `useWeekScheduleStatus` result. Pure presentational, no data fetching. |
-| `src/components/employee/DraftShiftRow.tsx` (new) | The dashed-border / "Draft — not confirmed" badge treatment for shift rows where `is_published === false` (§2). Now the primary path, not a conditional fallback. Badge text must be real in-tree text (§5). |
+| `src/components/employee/ScheduleStatusBanner.tsx` (new) | Renders the 4 banner variants from §1 given the `useWeekScheduleStatus` result, plus state B's one-line "Published …" chip. Pure presentational, no data fetching. Passes `role="status"` to `Alert` in states A/B/C to override the primitive's hardcoded `role="alert"`; state D keeps the assertive default (§5). Owns the fixed-height slot so the height is constant while loading. |
+| `src/components/employee/ShiftRow.tsx` (new) | One row component for both the day grid and the Upcoming Shifts card, parameterized on `{ shift, isPublished, onTrade? }`. Branches internally for the §2 tentative treatment — dashed border, muted type, filled amber "Draft — not confirmed" badge, no Trade button. Badge text must be real in-tree text (§5). Replaces the earlier `DraftShiftRow` proposal, which would have forked confirmed and draft rows into two hand-synced render paths. |
 | `src/lib/scheduleSeenFingerprint.ts` (new) | Pure fingerprint + localStorage read/write helpers for the "Updated since you last checked" pill (§3b). Small, unit-testable, no React dependency. |
-| `supabase/functions/notify-schedule-unpublished/index.ts` (new) | Sends the retraction email + web push + native push from §7(a). Modeled directly on `notify-schedule-published/index.ts`'s structure (auth → permission check → restaurant lookup → employee lookup → send). |
+| `supabase/functions/notify-schedule-unpublished/index.ts` (new) | Sends the retraction email + web push + native push from §7(a). Built on `_shared/notificationHelpers.ts` — **not** modeled on `notify-schedule-published`, which hand-rolls all of it (§C). Takes `{restaurantId, weekStart}` only and derives audience and gate from `schedule_retractions` per §D; claims the `notified_at` latch before sending. |
 | `supabase/functions/notify-schedule-published/index.ts` | Add the `isRepublish` branch from §7(b) — check for a prior `notification_sent = true` publication row for the same week before composing subject/body. |
 | `supabase/functions/_shared/schedulePublishedPush.ts` | Extend or sibling with a `notifyScheduleUnpublishedPush` helper mirroring `notifySchedulePublishedPush`, for the retraction push payload. |
-| `src/hooks/useSchedulePublish.tsx` (`useUnpublishSchedule`) | Fire-and-forget invoke of `notify-schedule-unpublished` on success, mirroring how `usePublishSchedule` invokes `notify-schedule-published` today — but gated on the unpublished week's publication row having `notification_sent = true` (don't notify about retracting a schedule nobody was told about). |
+| `src/hooks/useSchedulePublish.tsx` (`useUnpublishSchedule`) | Invoke `notify-schedule-unpublished` with `{restaurantId, weekStart}` on success, **awaited** and surfaced per §B rather than fire-and-forget. The `notification_sent = true` gate lives in the edge function against persisted state (§D), not here — a client-side gate would be advisory only. Also fix the browser-local week bucketing at `:169-175` to match the RPC's restaurant-timezone bucketing (§F). |
 | `tests/unit/scheduleSeenFingerprint.test.ts` (new) | Fingerprint stability (same input → same hash), change detection (any of published_at/shift fields differing → different hash), localStorage-unavailable fallback. |
 | `tests/unit/useWeekScheduleStatus.test.ts` (new) | All 4 states derived correctly from mocked `schedule_publications` + shift rows; the specific incident scenario (row exists, `notification_sent: true`, `publishedCount: 0`) resolves to `'retracted'`. |
-| `tests/unit/ScheduleStatusBanner.test.tsx` (new) | Correct copy/component per state; retracted-state reason line shown only for a non-boilerplate manager reason. |
-| `tests/e2e/employee-schedule-retraction.spec.ts` (new) | Publish a week as a manager test user, verify employee view shows clean published state; unpublish; verify employee view (same session, on refetch) shows the retracted banner and zero visible shift rows for that employee. |
+| `tests/unit/ScheduleStatusBanner.test.tsx` (new) | Correct copy/component per state; state A's two copy variants (`draftCount === 0` vs `> 0`); retracted-state reason line shown only for a non-boilerplate manager reason; `role="status"` in A/B/C and `role="alert"` in D. |
+| `tests/unit/ShiftRow.test.tsx` (new) | Draft rows render the badge text and omit the Trade button; published rows render `getShiftStatusBadge` output and keep it. Guards the single-path invariant that replaced `DraftShiftRow`. |
+| `tests/e2e/employee-schedule-retraction.spec.ts` (new) | Publish a week as a manager test user, verify employee view shows clean published state; unpublish; verify employee view (same session, on refetch) shows the retracted banner **and** that every shift row is now in the tentative treatment — rows still present per Decision 1, each carrying the "Draft — not confirmed" badge and no Trade button. Asserting zero rows here would encode the rejected hide-drafts alternative. |
 
 ---
 
@@ -487,10 +577,16 @@ the same week already had `notification_sent = true`:
 
 Five defects found while debugging the original report ("not all my users get notifications").
 All are confirmed against production. **The originally-reported symptom was a false alarm**: the
-11 delivered emails for Jul 27 – Aug 2 were exactly the 11 distinct employees with published
-shifts that week. Nobody was missed. The employees working Aug 3–9 received nothing because that
-week *was not published* at the time — it had 0 published shifts and 8–14 drafts per day. The
-real defects are the five below, which the investigation surfaced.
+11 delivered emails the user pasted for Jul 27 – Aug 2 match, one for one, the count of distinct
+employees with published shifts for that week at
+`restaurant_id = 7c0c76e3-e770-401b-a2a9-c1edd407efed` — a production `SELECT count(DISTINCT
+employee_id)` over `shifts` for the week, bucketed in `America/Chicago`, returns 11. Nobody was
+missed. (The addresses themselves were not cross-checked against the roster row by row; the claim
+is a count match plus the absence of any failure signal, which is sufficient to rule out "some
+employees were skipped" but not to prove each specific address was the right one.) The employees
+working Aug 3–9 received nothing because that week *was not published* at the time — it had 0
+published shifts and 8–14 drafts per day. The real defects are the five below, which the
+investigation surfaced.
 
 ## A. `notification_sent` is never recorded
 
@@ -534,6 +630,21 @@ RLS by design. In place of the policy, add a pgTAP test that *asserts the absenc
 fails loudly if someone later adds a permissive policy. This satisfies the "pgTAP for the RLS
 change" testing requirement by pinning the invariant rather than by widening access.
 
+**The test must assert zero affected rows, not an exception.** RLS with no matching policy does
+not raise — it silently filters, which is the entire mechanism behind this defect. A `throws_ok`
+assertion would fail against correct behavior and pass only if someone later added a policy that
+errors. Assert the row count instead:
+
+```sql
+SET LOCAL ROLE authenticated;
+WITH attempted AS (
+  UPDATE public.schedule_publications SET notification_sent = true
+   WHERE id = <fixture id> RETURNING 1
+)
+SELECT is((SELECT count(*)::int FROM attempted), 0,
+          'authenticated role cannot UPDATE schedule_publications');
+```
+
 Flagged for the user at plan approval; if a policy is wanted anyway, the narrow form is
 `FOR UPDATE USING (false) WITH CHECK (false)`, which documents intent without granting anything.
 
@@ -568,6 +679,25 @@ will not, and the resulting 429s are invisible because of defect B.
 429 as retryable with backoff rather than as a terminal failure. Keep the per-recipient result
 shape so defect B's reporting still works. This is a shared helper — both this function and the
 new one in §D need it — so it belongs in `supabase/functions/_shared/`.
+
+**The pacing fits inside the edge-function budget; here is the actual ceiling.** CLAUDE.md warns
+that edge functions have a strict CPU limit (~10s), which at first glance looks incompatible with
+deliberately slowing a fan-out down. It isn't, for two reasons, and both were checked rather than
+assumed:
+
+- **Size.** Queried against production: the largest active roster with an email address is **25**
+  employees (p95 = 25, median = 2, across 10 restaurants; exactly one is above 20). So the worst
+  real case today is 25 emails, and 25 at 2/s is ~12.5 s of wall time.
+- **Kind of time.** That 12.5 s is `await`ed idle wall time — the isolate is parked on a timer and
+  a `fetch`, consuming no CPU. The ~10 s ceiling that CLAUDE.md's Toast notes are about is a
+  **CPU** budget, exhausted by per-row work in a tight loop, not by waiting. The relevant limit
+  for waiting is the request wall-clock timeout, which is far larger.
+
+The design is therefore safe at present scale, but the bound is worth stating because it is not
+open-ended: at ~2/s, any roster beyond roughly a few hundred would start pressing the wall-clock
+timeout, and the answer then is a queue/cron drain rather than a faster loop. The rate limiter
+should log the recipient count and total elapsed time so that ceiling is observable before it is
+hit, rather than discovered as a timeout.
 
 ### Build on the existing notification toolkit, don't clone the hand-rolled one
 
@@ -627,26 +757,89 @@ CREATE TABLE public.schedule_retractions (
   retracted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   notified_at     TIMESTAMPTZ                      -- idempotency latch
 );
+
+CREATE INDEX idx_schedule_retractions_lookup
+  ON public.schedule_retractions (restaurant_id, week_start_date, retracted_at DESC)
+  WHERE notified_at IS NULL;
 ```
+
+The partial index matches the §D step-1 lookup exactly (unnotified rows for a week, newest first).
 
 A separate table rather than columns on `schedule_publications`, because a week can cycle
 publish → retract → publish → retract, and each retraction needs its own audience snapshot and
 its own `notified_at` latch.
 
-`unpublish_schedule` gains, inside its existing transaction, a CTE that captures the affected
-rows' distinct `employee_id`s from the `UPDATE ... RETURNING` **before** the flip is observable,
-plus an INSERT into `schedule_retractions` linking to the latest publication row for
-`(restaurant_id, week_start_date)`. **Its `RETURNS INTEGER` signature is unchanged** — deliberately,
-since `CREATE OR REPLACE` cannot alter a return type and a `DROP`/recreate would risk the known
-hazard of a later-merged migration silently reverting it. The client therefore keeps calling it
-exactly as today.
+`unpublish_schedule` gains, inside its existing transaction, a data-modifying CTE that captures
+the affected rows' distinct `employee_id`s from the `UPDATE ... RETURNING` **before** the flip is
+externally observable. **Its `RETURNS INTEGER` signature is unchanged** — deliberately, since
+`CREATE OR REPLACE` cannot alter a return type and a `DROP`/recreate would risk the known hazard
+of a later-merged migration silently reverting it. The client therefore keeps calling it exactly
+as today.
+
+Two implementation hazards, both of which break *existing* behavior if handled naively:
+
+**(i) `GET DIAGNOSTICS` must be removed, not kept.** The current function derives `v_shift_count`
+via `GET DIAGNOSTICS v_shift_count = ROW_COUNT` immediately after the plain UPDATE
+(`20260729120000_publish_schedule_tz_bucketing.sql:182`). Once the UPDATE is wrapped in a CTE
+feeding an INSERT, `GET DIAGNOSTICS` reports the **INSERT's** row count (1), not the number of
+shifts unpublished. That value is returned to the caller and rendered directly in the manager's
+toast at `src/hooks/useSchedulePublish.tsx:141` — a 63-shift unpublish would silently report
+"1 shift". Derive both values from the CTE instead:
+
+```sql
+WITH updated_shifts AS (
+  UPDATE public.shifts s
+     SET is_published = false, locked = false, published_at = NULL, published_by = NULL
+   WHERE s.restaurant_id = p_restaurant_id
+     AND (s.start_time AT TIME ZONE v_tz)::date >= p_week_start
+     AND (s.start_time AT TIME ZONE v_tz)::date <= p_week_end
+     AND s.is_published = true
+  RETURNING s.employee_id
+)
+SELECT count(*), COALESCE(array_agg(DISTINCT employee_id) FILTER (WHERE employee_id IS NOT NULL), '{}')
+  INTO v_shift_count, v_employee_ids
+  FROM updated_shifts;
+```
+
+Note `array_agg` over zero rows yields `NULL`, not `'{}'` — hence the `COALESCE`. The
+`FILTER` guards against open shifts, whose `employee_id` is nullable.
+
+**(ii) The retraction INSERT must be guarded on `v_shift_count > 0`.** Unpublishing a week that
+has no currently-published shifts is routine — a double-click, or unpublishing an
+already-retracted week. Inserting an empty retraction row would (a) violate `NOT NULL` if the
+`COALESCE` above were omitted, aborting the entire unpublish transaction, and (b) even with the
+`COALESCE`, create a meaningless retraction with an empty audience that the edge function would
+then have to special-case. Wrap the INSERT in `IF v_shift_count > 0 THEN ... END IF;`.
+
+The publication link resolves to the latest row for `(restaurant_id, week_start_date)` —
+`ORDER BY published_at DESC LIMIT 1`, never `.single()`, per the production facts recorded in
+Part I.
 
 The edge function is invoked with `{restaurantId, weekStart}` only, and derives everything else:
 
-1. Load the latest `schedule_retractions` row for the week where `notified_at IS NULL`.
-2. Join its `publication_id`; **abort unless `notification_sent = true`** (Decision 2).
-3. Send to `employee_ids` (Decision 3), through the §C rate limiter.
-4. Stamp `notified_at` via the service client — which makes a duplicate invoke a no-op.
+1. Load the latest unnotified `schedule_retractions` row for the week —
+   `WHERE notified_at IS NULL ORDER BY retracted_at DESC LIMIT 1`. Retractions accumulate per
+   week across publish→retract cycles, so this must be ordered and limited, never `.single()`.
+2. `LEFT JOIN` its `publication_id` and **abort unless `notification_sent = true`** (Decision 2).
+   The join must be null-safe: `publication_id` is `ON DELETE SET NULL`, so a NULL publication is
+   a legitimate state and must be treated as "abort", not allowed to throw.
+3. **Atomically claim the row before sending** (see below).
+4. Send to `employee_ids` (Decision 3), through the §C rate limiter.
+
+**The latch must be claimed before the send, not stamped after it.** Load-check-send-then-stamp
+is not race-safe: two concurrent invokes (a retry after a network hiccup, a double-tap) can both
+pass the gate before either stamps, and every employee gets the retraction twice. Claim it with a
+conditional update and only proceed if a row comes back:
+
+```sql
+UPDATE public.schedule_retractions
+   SET notified_at = now()
+ WHERE id = $1 AND notified_at IS NULL
+RETURNING *;
+```
+
+Zero rows returned means another invocation already owns this retraction — exit quietly. If the
+send subsequently fails outright, reset `notified_at` back to `NULL` so a retry can still fire.
 
 **Known limitation, stated plainly:** because defect A means *every* production publication row
 currently reads `notification_sent = false`, the Decision 2 gate will suppress **all** retraction

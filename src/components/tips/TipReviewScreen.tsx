@@ -215,17 +215,18 @@ function AllocationTable({
   onBlur: () => void;
 }>) {
   return (
-    <div className="rounded-xl border border-border/40 overflow-hidden">
+    <div className="rounded-xl border border-border/40 overflow-hidden overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="bg-muted/50 border-b border-border/40">
             <th className="px-4 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Employee</th>
             {shareMethod === 'hours' && (
-              <th className="px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Hours</th>
+              <th className="hidden sm:table-cell px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Hours</th>
             )}
             {shareMethod === 'role' && (
               <th className="px-4 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Role</th>
             )}
+            <th className="px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">% of pool</th>
             <th className="px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Tip</th>
           </tr>
         </thead>
@@ -236,10 +237,19 @@ function AllocationTable({
               className="border-b border-border/40 last:border-b-0 hover:bg-muted/30 transition-colors"
             >
               <td className="px-4 py-3">
-                <span className="text-[14px] font-medium text-foreground">{share.name}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[14px] font-medium text-foreground truncate max-w-[12rem]">{share.name}</span>
+                  {share.appliedRule && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+                      {share.appliedRule.mode === 'at_least'
+                        ? `Guaranteed ${share.appliedRule.percentage}%`
+                        : `Fixed ${share.appliedRule.percentage}%`}
+                    </span>
+                  )}
+                </div>
               </td>
               {shareMethod === 'hours' && (
-                <td className="px-4 py-3 text-right text-[13px] text-muted-foreground">
+                <td className="hidden sm:table-cell px-4 py-3 text-right text-[13px] text-muted-foreground">
                   {share.hours?.toFixed(1) || '\u2014'}
                 </td>
               )}
@@ -248,6 +258,11 @@ function AllocationTable({
                   {share.role || '\u2014'}
                 </td>
               )}
+              <td className="px-4 py-3 text-right text-[13px] text-muted-foreground tabular-nums">
+                {totalTipsCents > 0
+                  ? `${((share.amountCents / totalTipsCents) * 100).toFixed(1)}%`
+                  : '\u2014'}
+              </td>
               <td className="px-4 py-3 text-right">
                 {editingEmployeeId === share.employeeId ? (
                   <Input
@@ -267,7 +282,7 @@ function AllocationTable({
                       }
                     }}
                     autoFocus
-                    className="text-right w-32 ml-auto h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                    className="text-right w-24 sm:w-32 ml-auto h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg"
                   />
                 ) : (
                   <button

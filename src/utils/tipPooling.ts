@@ -1,11 +1,24 @@
 import type { Employee } from '@/types/scheduling';
 
+export type RoleAllocationMode = 'at_least' | 'exactly';
+
+/** A per-role allocation rule. Evaluated per person, not per role. */
+export type RoleAllocationRule = {
+  mode: RoleAllocationMode;
+  /** 0-100. Enforced by tip_pool_settings_role_percentages_check in the database. */
+  percentage: number;
+};
+
 export type TipShare = {
   employeeId: string;
   name: string;
   hours?: number;
   role?: string;
   amountCents: number;
+  /** The rule in force for this employee, when one applied. */
+  appliedRule?: RoleAllocationRule;
+  /** True when an `at_least` floor raised this share above its base-method value. */
+  lifted?: boolean;
 };
 
 /**

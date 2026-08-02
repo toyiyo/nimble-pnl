@@ -2,7 +2,8 @@
 
 **Date:** 2026-08-02
 **Branch:** `claude/elastic-jang-ef80f3`
-**Status:** Design — awaiting review
+**Status:** Design — revised after Phase 2.5 review (supabase-design-reviewer: 0 critical, 0 major,
+3 minor — all folded in; frontend-design-reviewer: 1 critical, 3 major — all folded in, see §3.4)
 
 ---
 
@@ -41,6 +42,15 @@ END IF;
 
 Any **custom** role granted `books` at `manage` hits the same wall, and unlike the Accountant that
 combination is user-constructed, so the number of affected principals is unbounded.
+
+**Why the gap exists.** PR #683's policy sweep
+([20260730150000_rewrite_collaborator_policies.sql](../../../supabase/migrations/20260730150000_rewrite_collaborator_policies.sql))
+converted 19 tables — assets, shifts, tips, time punches — and **none of the three check tables**;
+`grep -c "check_settings\|check_audit_log\|check_bank_accounts"` against that migration returns `0`,
+and the strings appear nowhere in `docs/superpowers/specs/2026-07-29-roles-and-areas-design.md`
+either. So this is not a deliberate exclusion being overridden — the check feature was never
+enumerated in that sweep's table inventory, which is precisely how the route list and the RPC drifted
+apart. This design closes that gap.
 
 ### 1.2 Full audit of the legacy-role surface in this feature
 
@@ -224,8 +234,21 @@ The exception message is unchanged so existing assertions and the UI toast keep 
 from inside another `SECURITY DEFINER` function whose own `search_path` is `public, pg_temp`.
 
 For RPCs 2–5 the `AND ur.role IN ('owner','manager')` join predicate is replaced by a
-`user_has_capability(cba.restaurant_id, 'edit:banking')` predicate; where that removes the only
-reason the `user_restaurants` join existed, the join is dropped rather than left dangling.
+`public.user_has_capability(cba.restaurant_id, 'edit:banking')` predicate; where that removes the
+only reason the `user_restaurants` join existed, the join is dropped rather than left dangling.
+The call is **schema-qualified in all five RPCs**, not just RPC 1 — `public` is already first in each
+function's `search_path` so an unqualified call resolves correctly today, but qualifying is the
+safer default inside a `SECURITY DEFINER` body against any future schema change.
+
+Dropping that join is multiplicity-safe, and the migration comment records **why** rather than
+leaving a future reader to rediscover it: `user_restaurants` carries `UNIQUE(user_id,
+restaurant_id)` ([20250915210020:19](../../../supabase/migrations/)), and the driving table is
+filtered on its primary key (`cba.id = p_id`), so the join could never have fanned out a row in the
+first place. Change either of those and the reasoning stops holding.
+
+The rewrite also **preserves the anti-enumeration property** that `20260426120000` was written for:
+existence and authorization stay in one combined query with one NULL-collapsing outcome, so
+"account doesn't exist" and "exists but you're not allowed" remain indistinguishable to the caller.
 
 ### 3.3 Migration
 
@@ -244,12 +267,50 @@ Each RPC is re-emitted with its **full newest body** copied from its newest defi
 
 ### 3.4 UI: gate `PrintCheckButton` (§1.3)
 
-Wrap the render site at
-[PendingOutflowCard.tsx:177](../../../src/components/pending-outflows/PendingOutflowCard.tsx) in the
-codebase's existing capability check for `edit:pending_outflows`, so a `books@view` role no longer
-sees a control that must fail. This closes the second dead end and keeps the UI honest about the
-`manage` bar the route derivation and the RPC now both enforce. (Exact hook/component to match
-whatever `PendingOutflowCard` and its siblings already use — no new gating primitive.)
+> **Revised after review.** The first draft said to "match whatever `PendingOutflowCard` and its
+> siblings already use — no new gating primitive." That was **false**, and the review caught it:
+> `grep -rn "hasCapability" src/` returns **zero** call sites outside its own definition
+> ([usePermissions.ts:180](../../../src/hooks/usePermissions.ts)) and the barrel re-export. This app
+> enforces authorization **only at the route layer** today. There is no component-level pattern to
+> match, so the corrected design states plainly: this introduces the codebase's **first
+> component-level capability gate**, and scopes that decision here rather than leaving an
+> implementer to invent it silently.
+
+**Primitive:** `usePermissions().hasCapability('edit:pending_outflows')`
+([usePermissions.ts:180](../../../src/hooks/usePermissions.ts)) — already shaped exactly for this;
+no new abstraction.
+
+**Placement:** the gate wraps the whole `<PrintCheckButton …/>` element at the render site,
+[PendingOutflowCard.tsx:177](../../../src/components/pending-outflows/PendingOutflowCard.tsx) — not
+an early return inside the component. Hooks must run before any early return, so gating inside would
+still mount `useCheckSettings` + `useCheckBankAccounts` + `useCheckAuditLog` and a `<Dialog>` per
+row. Gating at the render site skips all of it.
+
+**Hidden, not disabled — decided, not assumed.** The review rightly noted the first draft asserted
+this. Weighing it properly: a disabled button with a tooltip is more discoverable, and `Tooltip` is
+already installed. Hiding still wins, for four reasons. (1) `PrintCheckButton` **already** self-hides
+on `!settings` ([PrintCheckButton.tsx:74](../../../src/components/pending-outflows/PrintCheckButton.tsx)),
+so absence is the established behaviour of this exact control — a disabled variant would make the
+control's two invisible-vs-inert states inconsistent with each other. (2) Absence is the app-wide
+idiom: the sidebar and routes already hide what you cannot reach. (3) A disabled button still mounts
+the dialog and three hooks per row (see Placement). (4) A `books@view` custom role is *deliberately*
+restricted by whoever built it; a permanently-inert money-moving control invites "why can't I print"
+tickets rather than preventing them. Since the control is removed rather than inert, no
+`aria-label`/tooltip work follows — there is nothing to describe.
+
+**Loading window:** the gate is `isResolved && hasCapability('edit:pending_outflows')`.
+`hasCapability` returns `false` for *every* capability until the role context resolves
+([usePermissions.ts:107-110](../../../src/hooks/usePermissions.ts)), so omitting `isResolved` is not
+merely untidy — it is the difference between "denied" and "not known yet". No skeleton or
+height-reserving placeholder: the control already appears asynchronously today, gated on a React
+Query fetch of `settings`, so `isResolved` introduces no new class of behaviour and a placeholder
+would be inconsistent with the `!settings` path right next to it. Recorded here as accepted, not
+overlooked.
+
+**Not in scope:** `PrintCheckButton` mounts one `<Dialog>` and three data hooks *per row* in a
+non-virtualized list ([PendingOutflowsList.tsx:121](../../../src/components/pending-outflows/PendingOutflowsList.tsx)),
+against CLAUDE.md's Single Dialog Pattern. Pre-existing and orthogonal; **flagged as a separate
+follow-up task**, partially mitigated by the render-site placement above.
 
 ---
 
@@ -257,12 +318,33 @@ whatever `PendingOutflowCard` and its siblings already use — no new gating pri
 
 **Included, though technically beyond "legacy-role gating":** the three SELECT policies (§1.4). The
 audit was asked for; leaving a `kiosk` able to read `routing_number` and the whole check register
-after a PR titled "capability gating for check printing" would be worse than the narrowing. All
-consumers are books surfaces — `grep -rln "useCheckSettings\|useCheckBankAccounts\|useCheckAuditLog"
-src/` returns exactly `CheckSettingsDialog.tsx`, `PrintCheckButton.tsx`, `PrintChecks.tsx` and the
-three hooks themselves, and no edge function or other module touches the tables directly — so
-`books@view` is sufficient for every real reader. This is a **narrowing**; it is called out here so
-review can veto it independently of the rest.
+after a PR titled "capability gating for check printing" would be worse than the narrowing.
+
+**Evidence, by the grep that actually proves the claim.** The first draft cited
+`grep -rln "useCheckSettings\|useCheckBankAccounts\|useCheckAuditLog" src/`, which only shows that no
+other *frontend file uses those three hook names* — it cannot support the adjacent claim that no edge
+function touches the tables. Review caught the gap. The claim is instead established by grepping the
+**raw table-name literals across `src/` and `supabase/functions/`**: outside the three hooks, the
+only hits are the two generated type files (`src/integrations/supabase/types.ts`,
+`src/types/supabase.ts`). No edge function, view, trigger, or other module reads these tables. This
+is the grep the migration header cites.
+
+**The narrowing cannot strand a reachable user — and that is an invariant, not a coincidence.**
+Every new SELECT tier is `books@**view**`, while every route that renders these components requires
+**at least** `books@view` (`/expenses` = `books@view`,
+[routeAreas.ts:64](../../../src/lib/permissions/routeAreas.ts); `/print-checks` = `books@manage`,
+[routeAreas.ts:71](../../../src/lib/permissions/routeAreas.ts), and `manage` satisfies `view`). So
+**SELECT tier ≤ route tier** for every surface, and no route-reachable user can be RLS-denied a read.
+
+This matters because the three hooks **cannot distinguish RLS-denied from genuinely-empty**:
+`useCheckSettings` uses `.maybeSingle()` and yields `null` either way
+([useCheckSettings.ts:42-45](../../../src/hooks/useCheckSettings.ts)); the other two yield `[]`
+either way. Were the invariant ever violated, a user would land on `PrintChecks`' "Configure Check
+Settings" empty state ([PrintChecks.tsx:339-366](../../../src/pages/PrintChecks.tsx)) telling them to
+set up business info that already exists — a *misleading* state, not merely a missing one. Rather
+than paper over that in the hooks, §5.5 asserts the tier ordering directly so it cannot drift.
+
+This is a **narrowing**; it is called out here so review can veto it independently of the rest.
 
 **Excluded:** any change to `user_has_capability`, the area catalog, the builtin seeds, the
 `Capability` union, or `ROLE_CAPABILITIES`. §2.2 is chosen precisely so none is needed.
@@ -276,7 +358,11 @@ It is a column-write guard, not a role gate, and is orthogonal.
 
 ## 5. Testing (task item 3)
 
-New file `supabase/tests/25_check_printing_capabilities.sql`, pgTAP, `SELECT plan(N)`.
+New file `supabase/tests/25_check_printing_capabilities.sql`, pgTAP, `SELECT plan(N)`, modelled on
+[collaborator_custom_rls_test.sql](../../../supabase/tests/collaborator_custom_rls_test.sql) — the
+RED test for PR #683's policy sweep, which already does denied-baseline-first against custom roles
+built from area grants, with `set_config('role','authenticated',true)` + JWT-claim impersonation.
+Same shape, same idioms; no new testing pattern invented here.
 
 ### 5.1 Denied baseline first
 
@@ -319,13 +405,19 @@ runs `grep -rln` for every touched object name across `supabase/tests/` and re-r
 treating every negative assertion as suspect — the audit-log CHECK-constraint block in file 24
 disables RLS temporarily and must be re-verified against the new policies.
 
-### 5.5 Task item 4 — route/RPC agreement
+### 5.5 Task item 4 — route/RPC agreement, plus the tier-ordering invariant
 
 A TypeScript unit test asserting the invariant directly rather than by inspection: for each of the
 ten builtins plus a synthetic custom role granted `books@manage` and one granted `books@view`,
 `/print-checks ∈ allowedPathsForAreas(areas)` **iff** the role satisfies `books@manage`. Paired with
 a SQL assertion that `user_has_capability(..., 'edit:pending_outflows')` is true for exactly the same
 set — the two ends of the same invariant, checked independently.
+
+Plus the §4 tier-ordering invariant, asserted rather than trusted: for a custom role granted
+`books@**view**` — the weakest role that can render any check UI — all three tables `SELECT`
+successfully while all three write paths are denied. That single fixture pins "SELECT tier ≤ route
+tier" in place; if a later change lifts a SELECT policy to `manage`, this goes red instead of
+silently producing the misleading empty state described in §4.
 
 ---
 
@@ -340,11 +432,36 @@ set — the two ends of the same invariant, checked independently.
 
 ---
 
-## 7. Open questions for review
+## 7. Review outcome and remaining question
 
-1. **SELECT narrowing (§4)** — in or out? It is the only part of this change that removes access
-   from anyone.
-2. **`get_check_bank_account_secrets` at `edit:banking` rather than `view:banking` (§2.4)** —
-   deliberate asymmetry; confirm it reads as principled rather than inconsistent.
-3. **`edit:banking` vs `edit:pending_outflows` split (§2.2)** — is two capabilities across eleven
-   objects clearer than one, given both resolve identically today?
+**supabase-design-reviewer — 0 critical, 0 major, 3 minor.** Every citation was re-opened and
+verified, including the RPC-provenance claim (RPCs 2–5's newest bodies really are in `20260426120000`,
+not `20260425120100`) and the "no `user_has_capability` change needed" claim. It independently
+confirmed: no surviving permissive policy can defeat the §4 narrowing; `user_restaurants` has
+`UNIQUE(user_id, restaurant_id)` so the join-removal is multiplicity-safe; the `SET LOCAL role TO
+authenticated` idiom matches this repo; and prefix `20260802120000` is unique. All three minors —
+the §4 grep methodology, schema-qualification across RPCs 2–5, and recording *why* join-removal is
+safe — are folded into §3.2 and §4.
+
+**frontend-design-reviewer — 1 critical, 3 major, all folded in.** The critical was a **false premise
+in my own §3.4**: there is no existing component-level capability gate to "match". §3.4 is rewritten
+to name the primitive, own that this is the first such gate, decide hide-vs-disable on stated
+grounds, and handle the `isResolved` window. The RLS-denied-vs-empty major is answered in §4 by the
+tier-ordering invariant and pinned by a test in §5.5. The per-row `Dialog` major is pre-existing and
+orthogonal — spun out as a separate task.
+
+**Remaining question for the user — the only one the reviews could not settle, because it is a
+product call rather than a correctness call:**
+
+**Is the §4 SELECT narrowing in or out?** It is the one part of this change that *removes* access
+from anyone (`kiosk`/`staff` lose the ability to read `routing_number` and the check register).
+Both reviewers judged it safe and correct; whether it belongs in a PR scoped to "convert legacy-role
+gating" is a scope judgement, not a technical one. Default is **in**. Dropping it is a clean
+subtraction — the three SELECT policies are independent of everything else here.
+
+Settled by review, recorded for the reader:
+
+- **`get_check_bank_account_secrets` at `edit:banking` rather than `view:banking` (§2.4)** — reads as
+  principled; it is also a hard dependency of the print path, not merely a tightening.
+- **The `edit:banking` / `edit:pending_outflows` split (§2.2)** — no objection from either reviewer;
+  both capabilities verified to already resolve to `books@manage` in both dispatch branches.

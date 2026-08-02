@@ -19,6 +19,7 @@ import { useTipPayouts, type CreatePayoutsInput } from '@/hooks/useTipPayouts';
 import { usePOSTipsForDate } from '@/hooks/usePOSTips';
 import { useAutoSaveTipSettings } from '@/hooks/useAutoSaveTipSettings';
 import { useTipServerEarnings } from '@/hooks/useTipServerEarnings';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
 import { TipServerEntrySheet } from '@/components/tips/TipServerEntrySheet';
@@ -433,6 +434,16 @@ export function Tips() {
 
   const previewShares = guaranteedResult.shares;
 
+  // Debounce the *display* only. The underlying hours state stays immediate so
+  // typing, manual-edit flags, and autosave are unaffected; without this a
+  // keystroke in one row visibly re-renders every other row's percentage.
+  const displayShares = useDebouncedValue(guaranteedResult.shares, 200);
+
+  const displayByEmployee = useMemo(
+    () => new Map(displayShares.map(s => [s.employeeId, s])),
+    [displayShares],
+  );
+
   const handleContinueToReview = (amountCents: number) => {
     setTipAmount(amountCents);
     setShowReview(true);
@@ -716,6 +727,9 @@ export function Tips() {
               </div>
             </CardHeader>
             <CardContent>
+              <p className="text-[13px] text-muted-foreground mb-3">
+                {`Pool ${formatCurrencyFromCents(totalTipsCents)} · ${participants.length} ${participants.length === 1 ? 'person' : 'people'}`}
+              </p>
               <div className="grid md:grid-cols-2 gap-3">
                 {participants.map(emp => {
                   const isAutoCalculated = autoCalculatedHours[emp.id];
@@ -724,16 +738,44 @@ export function Tips() {
 
                   return (
                     <div key={emp.id} className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor={`hours-${emp.id}`} className="flex items-center gap-1">
-                          {emp.name}
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor={`hours-${emp.id}`} className="flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{emp.name}</span>
                           {isAutoCalculated && hasPunches && (
-                            <Clock className="h-3 w-3 text-muted-foreground" aria-label="Auto-calculated from time punches" />
+                            <Clock className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Auto-calculated from time punches" />
                           )}
+                          {(() => {
+                            const rule = emp.position ? rolePercentages[emp.position] : undefined;
+                            if (!rule || poolingModel !== 'full_pool') return null;
+                            return (
+                              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+                                {rule.mode === 'at_least'
+                                  ? `Guaranteed ${rule.percentage}%`
+                                  : `Fixed ${rule.percentage}%`}
+                              </span>
+                            );
+                          })()}
                         </Label>
-                        {!hasPunches && (
-                          <span className="text-xs text-muted-foreground">No punches</span>
-                        )}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {!hasPunches && (
+                            <span className="text-xs text-muted-foreground">No punches</span>
+                          )}
+                          {(() => {
+                            const share = displayByEmployee.get(emp.id);
+                            if (!share || totalTipsCents <= 0) return null;
+                            const pct = (share.amountCents / totalTipsCents) * 100;
+                            return (
+                              <span className="text-[13px] text-muted-foreground tabular-nums">
+                                {pct.toFixed(1)}% · {formatCurrencyFromCents(share.amountCents)}
+                                {share.lifted && (
+                                  <span className="ml-1" aria-label="Guaranteed minimum applied">
+                                    ↑
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
                       <Input
                         id={`hours-${emp.id}`}

@@ -349,6 +349,46 @@ export const useWeekScheduleStatus = (
   };
 };
 
+/**
+ * The reason a manager gave when pulling a week back, if they gave one.
+ *
+ * Gated on `enabled` so the overwhelmingly common case — a published week —
+ * costs nothing. `schedule_retractions` is the right source rather than
+ * `schedule_change_logs`: it is scoped to the week, carries the SELECT policy
+ * and grant employees actually have, and stores the reason verbatim instead of
+ * the RPC's `COALESCE(...)` boilerplate.
+ */
+export const useWeekRetractionReason = (
+  restaurantId: string | null,
+  weekStart: Date,
+  enabled: boolean
+): string | null => {
+  const weekStartStr = formatLocalDate(weekStart);
+
+  const { data } = useQuery({
+    queryKey: ['week_retraction_reason', restaurantId, weekStartStr],
+    queryFn: async () => {
+      if (!restaurantId) return null;
+
+      const { data, error } = await supabase
+        .from('schedule_retractions')
+        .select('reason')
+        .eq('restaurant_id', restaurantId)
+        .eq('week_start_date', weekStartStr)
+        .order('retracted_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return data?.reason ?? null;
+    },
+    enabled: !!restaurantId && enabled,
+    staleTime: 30000,
+  });
+
+  return data ?? null;
+};
+
 export const useWeekPublicationStatus = (
   restaurantId: string | null,
   weekStart: Date,

@@ -330,8 +330,8 @@ through it would report the error as "no roles found".
 
 This is a **new** convention in this codebase, not an existing one. Both current
 comboboxes route their loading state through `CommandEmpty`
-(`src/components/positions/PositionCombobox.tsx:114-117`,
-`src/components/roles/AreaCombobox.tsx:120-123`). The divergence is deliberate —
+(`src/components/PositionCombobox.tsx:114-117`,
+`src/components/AreaCombobox.tsx:120-123`). The divergence is deliberate —
 neither of those has an error state to confuse with emptiness, and this picker
 does — but it is named here so a reviewer reads it as a considered departure
 rather than an oversight, and so the two older components are not later

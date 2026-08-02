@@ -69,6 +69,25 @@ different hat.
 may change someone to any role they could already have invited them to, custom
 roles included. Owners keep full reach.
 
+One consequence of that equivalence is worth naming rather than leaving to be
+discovered. `user_has_capability()` grants `edit:chart_of_accounts` to `owner`
+and `collaborator_accountant` only, not to `manager`
+(`supabase/migrations/20260730140000_user_has_capability_from_areas.sql:84`).
+But a manager may create a custom role granting `chart_of_accounts` at
+`manage`, and after this change may move an existing member into it — handing
+out a capability the assigning manager does not hold. This is **not new**:
+`send-team-invitation` already permits the identical grant to a brand-new
+invitee (`supabase/functions/send-team-invitation/index.ts:153-214`), and it is
+bounded per area by `area_catalog.max_level_collaborator`. Matching the invite
+matrix carries this forward deliberately; the silence is not an oversight.
+
+The escalation that would matter most is structurally impossible regardless.
+`team` and `collaborators` carry `max_level_collaborator = NULL` in
+`area_catalog`, enforced by `role_areas_enforce_collaborator_cap`, so no
+collaborator-flavored custom role can grant `manage:team` — a manager cannot
+mint a deputy who then promotes the manager. `assign_membership_role` inherits
+that protection without adding anything.
+
 ## Architecture
 
 ### Where the privilege decision lives
@@ -104,7 +123,11 @@ Rules, in order:
 2. **Never self-target.** If the membership's `user_id = auth.uid()`, refuse.
    Self-escalation is what the restrictive policy protects against, and the UI
    has no need for it — you do not change your own role from this surface.
-3. **Resolve the caller's role** in that restaurant from `user_restaurants`.
+3. **Resolve the caller's role** in that restaurant from `user_restaurants`. A
+   caller with no membership row there is refused with `42501` — its own
+   named path, distinct from a matrix miss. This is the case an unauthenticated
+   or cross-tenant caller lands on, so it must deny explicitly rather than fall
+   through a matrix lookup that happens to return NULL.
 4. **Matrix check.** `p_role` must appear in the caller's row of the SQL invite
    matrix. `kiosk` is absent from every row by design — a kiosk is a shared
    device credential, not a person
@@ -116,6 +139,14 @@ Rules, in order:
    *current* role is `owner`; otherwise a manager could demote the owner, since
    `staff` is in the manager's matrix row. And the last remaining owner cannot
    be changed at all, or a restaurant orphans itself.
+
+   The last-owner check must **lock before counting**:
+   `SELECT … FROM user_restaurants WHERE restaurant_id = v_restaurant_id AND
+   role = 'owner' FOR UPDATE`. Counted without the lock it is a check-then-act
+   race — with two owners, two concurrent demotions each read `count = 2`,
+   each pass, and both commit, leaving zero owners. That is precisely the
+   orphaning the rule exists to prevent, so the rule is only real with the
+   lock.
 6. **Custom role.** When `p_role = 'collaborator_custom'`, `p_role_id` is
    required, the caller's role must be in `CUSTOM_ROLE_INVITERS`, and the named
    `roles` row must have `restaurant_id` equal to the membership's — never a
@@ -134,6 +165,22 @@ Rules, in order:
 Moving someone out of a custom role is the ordinary case of rule 7: the caller
 picks `staff`, and the row lands on `staff` + the `staff` builtin id. Never
 NULL.
+
+**Execute privileges are set explicitly:**
+
+```sql
+REVOKE EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) FROM PUBLIC;
+GRANT  EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) TO authenticated;
+```
+
+The REVOKE is not boilerplate. `copy_role_to_restaurants` — the function this
+one is modelled on — grants EXECUTE to `authenticated` but never revokes the
+default PUBLIC grant, and `information_schema.routine_privileges` in production
+confirms `PUBLIC` still holds EXECUTE on it today. It fails closed only
+incidentally, because its internal check keys off `auth.uid()`, which is NULL
+for `anon`. A role-administration RPC that raises rather than filters should not
+rely on incidental safety, so this one closes the grant explicitly and a pgTAP
+case asserts `has_function_privilege('anon', …, 'EXECUTE')` is false.
 
 ### The builtin-role ↔ `roles`-row mapping
 
@@ -159,6 +206,20 @@ builtin rows and NULL for custom roles. `useRoles` selects it, and the client
 gets an exact, data-driven mapping with no hardcoded UUIDs and no name
 matching.
 
+The column carries its own invariants rather than leaning on a test alone:
+
+```sql
+CREATE UNIQUE INDEX roles_legacy_role_key ON public.roles (legacy_role)
+  WHERE legacy_role IS NOT NULL;
+ALTER TABLE public.roles ADD CONSTRAINT roles_legacy_role_builtin_only
+  CHECK (legacy_role IS NULL OR builtin);
+```
+
+A pgTAP agreement test only catches drift if CI runs and the test was not itself
+edited to match the mistake; the index catches a duplicated string
+unconditionally, in production. The CHECK pins the column to builtin rows, which
+is the only place it is meaningful.
+
 `builtin_role_id_for` is deliberately **not** rewritten to read the column.
 It is `IMMUTABLE` and referenced inside a RESTRICTIVE policy's `WITH CHECK`;
 reading a table would force it to `STABLE`, which is a change to a
@@ -179,10 +240,76 @@ Options are built from the invite matrix for the *caller's* role, so a manager
 and an owner see different lists — and the list is what the RPC will actually
 accept, rather than a superset the server rejects.
 
-On selection, before committing, the popover shows the permission delta: run
-`buildRolePreview` on the current role and the candidate, diff the resulting
-capability sets, and render GAINS / LOSES lines. When the two roles grant the
-same areas, say so plainly rather than showing two empty lists.
+**The chip trigger's accessible name** is pinned here because turning a passive
+`Badge` into a button creates one where there was none. The formula is the
+prototype's (`docs/design-reference/role-assignment.html:781`):
+
+```
+aria-label={`${person.name}: role is ${roleLabel}. Change role`}
+```
+
+The visible text (`roleLabel`) is a substring of the accessible name, which is
+what WCAG 2.5.3 Label in Name requires — a voice-control user saying "click
+Manager" must hit the control. `src/pages/Team.tsx:129-135` already carries this
+precedent in-app, so this matches rather than invents.
+
+**Mobile.** `TeamMembers.tsx:220-228` stacks the row below the avatar at 375px
+via `pl-[3.25rem] sm:pl-0`, with a comment explaining it. That hack exists
+because today's `Badge` has no truncation, so a long role name pushes the row
+wide. The replacement keeps the stacking wrapper — it governs the whole action
+cluster, not just the chip — **and** adds the prototype's `max-width` +
+`text-ellipsis` on the chip trigger itself (`role-assignment.html:211-227`), so
+a 40-character custom role name cannot reintroduce the overflow the wrapper is
+working around. Verified at 375×667 during the UI review phase, with a
+deliberately long custom role name present.
+
+On selection, before committing, the popover shows the permission delta as
+GAINS / LOSES lines. When the two roles grant the same areas, say so plainly
+rather than showing two empty lists.
+
+**The delta is computed from `rowLevel`, not from `buildRolePreview`.**
+`RolePreview` is `{summary, navPreview, grantCount}`
+(`src/lib/permissions/preview.ts:64-68`) — there is no capability set on it to
+diff. Approximating one by diffing the two `summary` strings or the
+`navPreview` booleans would be silently wrong for sensitive flags:
+`buildSummary`'s blocked-list checks only `view:costs` of the three
+`SensitiveFlag`s (`preview.ts:159`; the union is `view:costs | view:pay_rates |
+view:employee_pii`, `areas.ts:57`), and `navPreview` does not represent flags at
+all. A move that flips only `view:pay_rates` or `view:employee_pii` would render
+"same areas" — actively telling the admin nothing changed at the exact moment
+pay-rate visibility changed hands.
+
+The delta is therefore two explicit comparisons:
+
+1. **Areas** — for each row in `AREA_DEFINITIONS`, compare
+   `rowLevel(row, grantMap(currentAreas))` against
+   `rowLevel(row, grantMap(candidateAreas))`. `rowLevel` is already exported
+   (`preview.ts:91`) and already reused by `RoleAreaChips.tsx` for exactly this
+   per-row derivation, and each row carries a human `label`
+   (`AreaDefinition.label`, `areas.ts:90`) — so the line text needs no second
+   label map. `null → view/manage` is a gain, the reverse a loss, and
+   `view → manage` is a gain worth naming rather than collapsing.
+2. **Sensitive flags** — a separate three-way comparison over the full
+   `SensitiveFlag` union, driven by the union itself so a fourth flag added
+   later cannot be silently omitted.
+
+This lives in its own pure function (`roleDelta(current, candidate)`) beside
+`preview.ts`, unit-tested directly. It is deliberately **not** folded into
+`buildRolePreview`'s return shape: that function feeds the role editor's live
+preview, and widening it to serve a two-role diff would couple two unrelated
+screens through one growing struct.
+
+The area chips on each option row reuse `RoleAreaChips`
+(`src/components/roles/RoleAreaChips.tsx`) rather than redrawing chips — it
+already takes `ReadonlyArray<{area_key, level}>`, exactly the shape `useRoles`
+returns, and the design's argument for chips only holds if every screen draws
+them identically.
+
+GAINS and LOSES use the existing `--success` / `--success-foreground` and
+`--destructive` semantic tokens (`src/index.css:32-33`, `tailwind.config.ts:43-45`)
+— both are already defined for light and dark. The prototype's `--positive` /
+`--negative` names are not ported; adding a parallel token pair for colors the
+system already has would leave two vocabularies for one meaning.
 
 Visual language extends the approved warm-paper/terracotta system already
 implemented in `src/components/roles/*`, mapped onto semantic tokens
@@ -200,6 +327,21 @@ The list lives inside a `CommandList`, and loading/error/empty render as direct
 children of it rather than through `CommandEmpty` — cmdk's `CommandEmpty` means
 "no rows registered", never "something failed", so routing a load failure
 through it would report the error as "no roles found".
+
+This is a **new** convention in this codebase, not an existing one. Both current
+comboboxes route their loading state through `CommandEmpty`
+(`src/components/positions/PositionCombobox.tsx:114-117`,
+`src/components/roles/AreaCombobox.tsx:120-123`). The divergence is deliberate —
+neither of those has an error state to confuse with emptiness, and this picker
+does — but it is named here so a reviewer reads it as a considered departure
+rather than an oversight, and so the two older components are not later
+"fixed" to match without the same reasoning.
+
+One cmdk detail that silently breaks search if missed: `CommandItem` filters on
+its `value` prop, defaulting to the item's text content only in simple cases.
+Each option sets `value={role.name}` explicitly — otherwise a row whose children
+are chips and description elements filters against the wrong string, and typing
+"Manager" quietly matches nothing.
 
 ### Client mutation
 
@@ -236,12 +378,30 @@ replacement is not written to preserve them.
 | pgTAP | same file | `roles.legacy_role` agrees with `builtin_role_id_for` for all ten builtins |
 | Unit | `tests/unit/inviteMatrixMirror.test.ts` | extended with a third parser so the SQL matrix is pinned to the TS and Deno copies |
 | Unit | `tests/unit/useAssignRole.test.ts` | mutation shape, invalidation keys, `42501` message mapping, non-`Error` rejection objects |
-| Unit | `tests/unit/RolePicker.test.tsx` | option list differs by caller role, delta lines, loading/error/empty inside `CommandList`, current-role checkmark |
+| Unit | `tests/unit/roleDelta.test.ts` | per-row area gains/losses, `view → manage` reported as a gain, and — the case that motivated the function — a pair of roles with identical areas differing only in `view:pay_rates` reports a delta rather than "same areas". One case per `SensitiveFlag`. |
+| Unit | `tests/unit/RolePicker.test.tsx` | option list differs by caller role, delta lines, loading/error/empty inside `CommandList`, current-role checkmark, chip trigger's accessible name contains its visible text |
 | E2E | `tests/e2e/role-assignment.spec.ts` | an owner moves a member into a custom role and the chip reflects it after reload |
 
 The pgTAP suite is where the privilege rules are actually proven. Every denial
 path gets a `throws_ok` with the expected errcode, because a rule that silently
-permits is the failure mode this whole change exists to eliminate.
+permits is the failure mode this whole change exists to eliminate. The denial
+cases are enumerated: self-target, caller with no membership row in the
+restaurant, matrix miss per caller role, non-owner touching an owner, last
+owner, `kiosk` as target, `kiosk` as source, cross-tenant `role_id`, custom
+role without `p_role_id`, builtin role *with* a `p_role_id`, and `anon` lacking
+EXECUTE.
+
+**Two things pgTAP structurally cannot cover here, named rather than left
+silent.** The concurrent last-owner race needs two connections, and the pgTAP
+harness runs a single connection inside `BEGIN … ROLLBACK`; the `FOR UPDATE`
+lock is therefore reviewed rather than tested, and the test file says so in a
+comment pointing at this section. And nothing in pgTAP exercises the PostgREST
+layer, so the `anon` case asserts the catalog grant rather than a rejected HTTP
+call.
+
+New migrations take a `20260802…` prefix. The predecessor PR's block ends at
+`20260730220000_copy_role_collision_is_per_target.sql`; extending that sequence
+by habit would back-date this work into #683.
 
 ## Out of scope
 

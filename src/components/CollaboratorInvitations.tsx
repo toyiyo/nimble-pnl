@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
+import { RolePicker } from '@/components/roles/RolePicker';
 import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 // 3. Icons
@@ -534,9 +535,15 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        {roleLabelFor(collab.role, collab.roleId)}
-                      </Badge>
+                      <RolePicker
+                        membershipId={collab.id}
+                        restaurantId={restaurantId}
+                        personName={collab.profileName || collab.email}
+                        currentRole={collab.role}
+                        currentRoleId={collab.roleId}
+                        callerRole={userRole}
+                        disabled={!canManage}
+                      />
                       {canManage && (
                         <Button
                           variant="ghost"

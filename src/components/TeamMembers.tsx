@@ -1,23 +1,21 @@
 import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { MoreHorizontal, Crown, Shield, User, ChefHat, Trash2, TabletSmartphone, Briefcase } from 'lucide-react';
+import { MoreHorizontal, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { ROLE_METADATA } from '@/lib/permissions/definitions';
-import { getInvitableRoles } from '@/lib/permissions/invitations';
+import { RolePicker } from '@/components/roles/RolePicker';
 import type { Role } from '@/lib/permissions/types';
 
 interface TeamMember {
   id: string;
   user_id: string;
   role: string;
+  role_id: string | null;
   created_at: string;
   profiles: {
     full_name: string | null;
@@ -30,24 +28,6 @@ interface TeamMembersProps {
   userRole: Role;
 }
 
-const roleIcons = {
-  owner: Crown,
-  manager: Shield,
-  operations_manager: Briefcase,
-  chef: ChefHat,
-  staff: User,
-  kiosk: TabletSmartphone,
-};
-
-const roleColors = {
-  owner: "default",
-  manager: "secondary",
-  operations_manager: "secondary",
-  chef: "outline",
-  staff: "outline",
-  kiosk: "outline",
-} as const;
-
 export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,13 +35,6 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
 
   // Derive from capability system — consistent with ROLE_CAPABILITIES['manage:team']
   const canManageMembers = userRole === 'owner' || userRole === 'manager' || userRole === 'operations_manager';
-
-  // Assignable roles for the role-change dropdown — mirrors the invite matrix
-  // so operations_manager cannot promote members beyond their own invite boundary.
-  // Owners additionally retain the ability to re-assign to 'owner'.
-  const assignableRoles: Role[] = userRole === 'owner'
-    ? [...getInvitableRoles(userRole), 'owner' as Role]
-    : getInvitableRoles(userRole);
 
   useEffect(() => {
     fetchTeamMembers();
@@ -75,6 +48,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
           id,
           user_id,
           role,
+          role_id,
           created_at
         `)
         .eq('restaurant_id', restaurantId)
@@ -106,30 +80,6 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
       });
     } finally {
       setLoading(false);
-    }
-  };
-
-  const updateMemberRole = async (memberId: string, newRole: string) => {
-    try {
-      const { error } = await supabase
-        .from('user_restaurants')
-        .update({ role: newRole })
-        .eq('id', memberId);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: "Member role updated successfully",
-      });
-
-      fetchTeamMembers();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: "Failed to update member role",
-        variant: "destructive",
-      });
     }
   };
 
@@ -193,7 +143,6 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
       <CardContent>
         <div className="space-y-4">
           {members.map((member) => {
-            const RoleIcon = roleIcons[member.role as keyof typeof roleIcons] || User;
             const isOwner = member.role === 'owner';
             
             return (
@@ -226,11 +175,16 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                   again and this side stays shrink-0.
                 */}
                 <div className="flex items-center gap-3 shrink-0 pl-[3.25rem] sm:pl-0">
-                  <Badge variant={roleColors[member.role as keyof typeof roleColors] ?? 'outline'} className="flex items-center gap-1">
-                    <RoleIcon className="h-3 w-3" />
-                    {ROLE_METADATA[member.role as Role]?.label ?? member.role}
-                  </Badge>
-                  
+                  <RolePicker
+                    membershipId={member.id}
+                    restaurantId={restaurantId}
+                    personName={member.profiles?.full_name || member.profiles?.email || 'this member'}
+                    currentRole={member.role}
+                    currentRoleId={member.role_id ?? null}
+                    callerRole={userRole}
+                    disabled={!canManageMembers || isOwner || member.role === 'kiosk'}
+                  />
+
                   {canManageMembers && !isOwner && member.role !== 'kiosk' && (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -239,30 +193,6 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <div className="px-2 py-1">
-                          <p className="text-[13px] font-medium text-foreground">Change Role</p>
-                          <Select
-                            value={member.role}
-                            onValueChange={(newRole) => updateMemberRole(member.id, newRole)}
-                          >
-                            <SelectTrigger className="w-full mt-1 h-9 text-[13px] bg-muted/30 border-border/40 rounded-lg">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {assignableRoles.map((role) => (
-                                <SelectItem key={role} value={role}>
-                                  {ROLE_METADATA[role]?.label ?? role}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          {member.role === 'kiosk' && (
-                            <p className="text-xs text-muted-foreground mt-2">
-                              Kiosk service accounts can only access the kiosk time clock and cannot be changed to other roles.
-                            </p>
-                          )}
-                        </div>
-                        
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
                             <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="text-destructive">
@@ -274,7 +204,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                             <AlertDialogHeader>
                               <AlertDialogTitle>Remove Team Member</AlertDialogTitle>
                               <AlertDialogDescription>
-                                Are you sure you want to remove {member.profiles?.full_name || member.profiles?.email} from the team? 
+                                Are you sure you want to remove {member.profiles?.full_name || member.profiles?.email} from the team?
                                 This action cannot be undone.
                               </AlertDialogDescription>
                             </AlertDialogHeader>

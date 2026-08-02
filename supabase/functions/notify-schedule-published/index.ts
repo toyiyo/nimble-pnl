@@ -148,6 +148,24 @@ serve(async (req) => {
     const weekStartFormatted = formatDate(weekStart);
     const weekEndFormatted = formatDate(weekEnd);
 
+    // Is this the first announcement for the week, or a revision of one people
+    // have already read? Identical copy for both is what leaves an employee
+    // unsure whether the email they just got supersedes the shifts they wrote
+    // on the fridge. Excluding the current row matters: publish_schedule has
+    // already inserted it, and this function is about to mark it notified.
+    const { data: priorPublication } = await serviceClient
+      .from("schedule_publications")
+      .select("id")
+      .eq("restaurant_id", restaurantId)
+      .eq("week_start_date", weekStart)
+      .eq("week_end_date", weekEnd)
+      .eq("notification_sent", true)
+      .neq("id", publicationId)
+      .limit(1)
+      .maybeSingle();
+
+    const isRepublish = !!priorPublication;
+
     // App URL for the button
     const appUrl = "https://app.easyshifthq.com/employee/schedule";
 
@@ -162,16 +180,23 @@ serve(async (req) => {
               
               <!-- Content -->
               <div style="padding: 40px 32px; background-color: #ffffff;">
-                <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">New Schedule Published</h1>
-                
+                <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">${isRepublish ? "Updated Schedule" : "New Schedule Published"}</h1>
+
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
                   Hi <strong style="color: #1f2937;">${employeeName}</strong>,
                 </p>
-                
+
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
                   Your schedule for <strong style="color: #1f2937;">${weekStartFormatted} - ${weekEndFormatted}</strong> has been published at <strong style="color: #1f2937;">${restaurant.name}</strong>.
                 </p>
-                
+                ${
+                  isRepublish
+                    ? `<p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
+                  This is an updated version — some shifts changed since your manager's earlier schedule for this week. Please review your shifts below before your next scheduled shift.
+                </p>`
+                    : ""
+                }
+
                 <div style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); padding: 24px; border-radius: 12px; margin: 24px 0; border-left: 4px solid #10b981;">
                   <table style="width: 100%; border-collapse: collapse;">
                     <tr>
@@ -223,7 +248,9 @@ serve(async (req) => {
           RESEND_API_KEY ?? "",
           "EasyShiftHQ <notifications@easyshifthq.com>",
           employee.email,
-          `New Schedule Published: ${weekStartFormatted} - ${weekEndFormatted}`,
+          isRepublish
+            ? `Updated Schedule: ${weekStartFormatted} - ${weekEndFormatted} at ${restaurant.name} — changes made`
+            : `New Schedule Published: ${weekStartFormatted} - ${weekEndFormatted}`,
           buildEmailHtml(employee.name)
         ),
       { label: `schedule-published ${publicationId}` }
@@ -245,9 +272,14 @@ serve(async (req) => {
     if (ch.push) {
       await notifySchedulePublishedPush(scheduledEmployees, (userId) =>
         sendWebPushToUser(serviceClient, userId, restaurantId, {
-          title: "Schedule Updated",
-          body: "A new schedule has been published",
+          title: isRepublish ? "Schedule Updated Again" : "Schedule Updated",
+          body: isRepublish
+            ? `${weekStartFormatted}–${weekEndFormatted} was revised and republished — check what changed.`
+            : "A new schedule has been published",
           url: "/employee/schedule",
+          // Deliberately the same tag as a first publish, so a republish
+          // replaces an earlier notification still sitting in the tray instead
+          // of stacking a second one next to copy it contradicts.
           tag: "schedule-published",
         })
       );

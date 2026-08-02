@@ -44,4 +44,13 @@ describe('buildSplitItemRows', () => {
     expect(row.hours_worked).toBeNull();
     expect(row.role).toBeNull();
   });
+
+  it('preserves an explicit zero hours value instead of normalising it to null', () => {
+    const shares: TipShare[] = [
+      { employeeId: 'e4', name: 'Zero Zack', hours: 0, role: 'Server', amountCents: 500 },
+    ];
+    const row = buildSplitItemRows('split-1', shares)[0];
+
+    expect(row.hours_worked).toBe(0);
+  });
 });

@@ -12,6 +12,9 @@ interface WindowHelpers {
   __insertEmployees: (rows: unknown[], restaurantId: string) => Promise<Array<{ id: string }>>;
   __getApprovedTipAmounts: (restaurantId?: string) => Promise<number[]>;
   __checkApprovedSplits: (restaurantId: string) => Promise<boolean>;
+  __getTipPoolSettings: (
+    restaurantId: string
+  ) => Promise<Record<string, { mode: string; percentage: number }> | null>;
 }
 
 async function createEmployees(
@@ -154,9 +157,27 @@ test.describe('Tip sharing', () => {
     await page.getByLabel('Manager percentage').fill('30');
     await page.getByRole('button', { name: /close|done/i }).first().click();
 
+    // Confirm the autosave actually landed in the database before trusting the UI's
+    // in-memory state for the rest of the test — a debounce that silently failed to
+    // persist would still show the right value on screen right now.
+    await exposeSupabaseHelpers(page);
+    await expect(async () => {
+      const settings = await page.evaluate(async () => {
+        const win = window as unknown as WindowHelpers;
+        const authUser = await win.__getAuthUser();
+        if (!authUser?.id) return null;
+        const restaurantId = await win.__getRestaurantId(authUser.id);
+        if (!restaurantId) return null;
+        return await win.__getTipPoolSettings(restaurantId);
+      });
+      expect(settings?.Manager).toEqual({ mode: 'at_least', percentage: 30 });
+    }).toPass({ timeout: 10000 });
+
     // Switch to Daily Entry without reloading the page — a fresh navigation here would
     // unmount the app mid-debounce and lose the role percentage we just set (it autosaves
-    // 1s after the last edit; a `goto` cancels that pending save on unmount).
+    // 1s after the last edit; a `goto` cancels that pending save on unmount). The check
+    // above already proved the save completed, so this is purely about not re-triggering
+    // another debounce cycle.
     const dailyEntryButton = page.getByRole('button', { name: /daily entry/i });
     await expect(dailyEntryButton).toBeVisible({ timeout: 5000 });
     await dailyEntryButton.click();

@@ -16,10 +16,12 @@
 --   9. role_percentages rejects an entry missing a required key
 --  10. role_percentages accepts a well-formed rule map
 --  11. role_percentages rejects a non-numeric percentage
+--  12. role_percentages rejects a role value wrapped in an array
+--  13. role_percentages rejects a non-string mode
 -- ============================================================================
 
 BEGIN;
-SELECT plan(11);
+SELECT plan(13);
 
 SET LOCAL role TO postgres;
 
@@ -173,6 +175,38 @@ SELECT throws_ok(
   '23514',
   NULL,
   'role_percentages should reject a non-numeric percentage'
+);
+
+-- ============================================================================
+-- Test 12: role_percentages rejects a role value wrapped in an array
+-- ============================================================================
+
+-- jsonpath's lax mode auto-unwraps arrays on member access, so an
+-- otherwise-valid rule wrapped in a one-element array would slip past every
+-- other predicate above (each is evaluated against the unwrapped element)
+-- without this explicit object-type check.
+SELECT throws_ok(
+  $$
+    INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
+    VALUES ('c0000000-0000-0000-0000-000000000001', '{"Manager": [{"mode": "at_least", "percentage": 10}]}'::jsonb, false)
+  $$,
+  '23514',
+  NULL,
+  'role_percentages should reject a role value wrapped in an array'
+);
+
+-- ============================================================================
+-- Test 13: role_percentages rejects a non-string mode
+-- ============================================================================
+
+SELECT throws_ok(
+  $$
+    INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
+    VALUES ('c0000000-0000-0000-0000-000000000001', '{"Manager": {"mode": 1, "percentage": 10}}'::jsonb, false)
+  $$,
+  '23514',
+  NULL,
+  'role_percentages should reject a non-string mode'
 );
 
 SELECT * FROM finish();

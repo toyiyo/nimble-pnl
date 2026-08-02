@@ -106,6 +106,24 @@ export async function exposeSupabaseHelpers(page: Page) {
       return (count || 0) > 0;
     };
 
+    (window as any).__getTipPoolSettings = async (
+      restaurantId: string
+    ): Promise<Record<string, { mode: string; percentage: number }> | null> => {
+      const { data, error } = await supabase
+        .from('tip_pool_settings')
+        .select('role_percentages')
+        .eq('restaurant_id', restaurantId)
+        .eq('active', true)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching tip_pool_settings', error);
+        return null;
+      }
+
+      return (data?.role_percentages as Record<string, { mode: string; percentage: number }>) ?? null;
+    };
+
     (window as any).__insertAvailability = async (rows: any[], restaurantId: string) => {
       const { data, error } = await supabase
         .from('employee_availability')

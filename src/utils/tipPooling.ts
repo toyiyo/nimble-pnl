@@ -290,14 +290,23 @@ export function calculateTipSplitWithGuarantees(
   const shares = participants.map(p => toShare(p, locked.get(p.id) ?? 0));
   const residual = totalTipsCents - shares.reduce((sum, s) => sum + s.amountCents, 0);
   if (residual !== 0) {
-    const nonExact: number[] = [];
+    // Prefer a rule-free participant for the residual cent so an `at_least` floor is
+    // only ever touched as a last resort — matching the "a floor only ever raises
+    // someone and never caps them" guarantee. `exactly` participants are excluded
+    // entirely (via `all` as the final fallback) since their share is a fixed
+    // promise, not a base-method result the residual is meant to nudge.
+    const free: number[] = [];
+    const atLeastOnly: number[] = [];
     const all: number[] = [];
     participants.forEach((p, i) => {
       all.push(i);
-      if (ruleOf(p)?.mode !== 'exactly') nonExact.push(i);
+      const mode = ruleOf(p)?.mode;
+      if (!mode) free.push(i);
+      else if (mode === 'at_least') atLeastOnly.push(i);
     });
     const target =
-      [...nonExact, ...all].find(i => shares[i].amountCents + residual >= 0) ?? all.length - 1;
+      [...free, ...atLeastOnly, ...all].find(i => shares[i].amountCents + residual >= 0) ??
+      all.length - 1;
     shares[target].amountCents += residual;
   }
 

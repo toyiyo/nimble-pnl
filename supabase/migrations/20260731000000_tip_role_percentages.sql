@@ -26,6 +26,27 @@ BEGIN
       ADD CONSTRAINT tip_pool_settings_role_percentages_check
       CHECK (
         jsonb_typeof(role_percentages) = 'object'
+        -- jsonpath's lax mode auto-unwraps arrays on member access, so without this
+        -- predicate a role value of e.g. [{"mode":"at_least","percentage":10}] would
+        -- pass every check below (each is applied to the unwrapped element) while
+        -- still being stored as an array. The TypeScript side reads role rules as
+        -- Record<string, RoleAllocationRule> and would silently treat that array as
+        -- "no rule" (indexing a non-existent `.mode`/`.percentage`), dropping the
+        -- guarantee the row claims to encode.
+        --
+        -- `strict` (not lax) is required here specifically: lax mode's auto-unwrap
+        -- also applies to the `.type()` item method itself, so `$.* ? (@.type() !=
+        -- "object")` in lax mode silently unwraps a one-element array to its inner
+        -- object *before* checking its type — making the array invisible to this
+        -- exact check. `strict` keeps `@` bound to the un-unwrapped value so
+        -- `.type()` reports "array" as expected. The other predicates below stay in
+        -- lax mode on purpose: their member accessors (`.mode`, `.percentage`)
+        -- already unwrap correctly and still catch a malformed *inner* object, so
+        -- lax mode there is not itself a gap once this array check exists.
+        AND NOT jsonb_path_exists(
+          role_percentages,
+          'strict $.* ? (@.type() != "object")'
+        )
         AND NOT jsonb_path_exists(
           role_percentages,
           '$.* ? (@.mode != "at_least" && @.mode != "exactly")'
@@ -45,6 +66,13 @@ BEGIN
         AND NOT jsonb_path_exists(
           role_percentages,
           '$.* ? (exists(@.percentage) && @.percentage.type() != "number")'
+        )
+        -- Same lax-mode coercion risk for `mode`: a numeric or boolean mode value
+        -- would fail the string-comparison predicate above by never matching either
+        -- literal, so it would pass unnoticed instead of being rejected.
+        AND NOT jsonb_path_exists(
+          role_percentages,
+          '$.* ? (exists(@.mode) && @.mode.type() != "string")'
         )
       );
   END IF;

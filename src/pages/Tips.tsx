@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
-import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, type PercentageAllocationResult } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, calculateTipSplitWithGuarantees, type PercentageAllocationResult, type GuaranteedParticipant, type RoleAllocationRule, type TipShare } from '@/utils/tipPooling';
 import { mergeManualHours } from '@/utils/tipHours';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
@@ -255,6 +255,9 @@ export function Tips() {
   const autoCalculatedHoursRef = useRef(autoCalculatedHours);
   autoCalculatedHoursRef.current = autoCalculatedHours;
   const [roleWeights, setRoleWeights] = useState<Record<string, number>>(settings?.role_weights || defaultWeights);
+  const [rolePercentages, setRolePercentages] = useState<Record<string, RoleAllocationRule>>(
+    settings?.role_percentages || {},
+  );
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [showReview, setShowReview] = useState(false);
   const [serverEntryOpen, setServerEntryOpen] = useState(false);
@@ -268,6 +271,7 @@ export function Tips() {
       setShareMethod(settings.share_method || 'hours');
       setSplitCadence(settings.split_cadence || 'daily');
       setRoleWeights(settings.role_weights || defaultWeights);
+      setRolePercentages(settings.role_percentages || {});
       setPoolingModel(settings.pooling_model || 'full_pool');
       if (settings.enabled_employee_ids?.length) {
         setSelectedEmployees(new Set(settings.enabled_employee_ids));
@@ -383,30 +387,51 @@ export function Tips() {
 
   const totalTipsCents = tipAmount || 0;
 
-  const hoursAllocations = useMemo(() => {
-    return participants.map(e => ({
-      id: e.id,
-      name: e.name,
-      hours: Number.parseFloat(hoursByEmployee[e.id] || '0') || 0,
-    }));
-  }, [participants, hoursByEmployee]);
+  const distributeRemainder = useCallback(
+    (poolCents: number, subset: GuaranteedParticipant[]): TipShare[] => {
+      if (shareMethod === 'hours') {
+        return calculateTipSplitByHours(
+          poolCents,
+          subset.map(p => ({ id: p.id, name: p.name, hours: p.hours ?? 0 })),
+        );
+      }
+      if (shareMethod === 'role') {
+        return calculateTipSplitByRole(
+          poolCents,
+          subset.map(p => ({
+            id: p.id,
+            name: p.name,
+            role: p.role ?? '',
+            weight: roleWeights[p.role ?? ''] || 1,
+          })),
+        );
+      }
+      return calculateTipSplitEven(poolCents, subset.map(p => ({ id: p.id, name: p.name })));
+    },
+    [shareMethod, roleWeights],
+  );
 
-  const previewShares = useMemo(() => {
-    if (shareMethod === 'hours') {
-      return calculateTipSplitByHours(totalTipsCents, hoursAllocations);
-    }
-    if (shareMethod === 'role') {
-      // Map participants to include role and weight
-      const participantsWithRoles = participants.map(p => ({
+  // Guarantees are a Full Pool concept — percentage-contribution pools allocate
+  // per sub-pool and are out of scope.
+  const guaranteedParticipants = useMemo<GuaranteedParticipant[]>(
+    () =>
+      participants.map(p => ({
         id: p.id,
         name: p.name,
+        hours: Number.parseFloat(hoursByEmployee[p.id] || '0') || 0,
         role: p.position,
-        weight: roleWeights[p.position] || 1,
-      }));
-      return calculateTipSplitByRole(totalTipsCents, participantsWithRoles);
-    }
-    return calculateTipSplitEven(totalTipsCents, participants);
-  }, [totalTipsCents, shareMethod, hoursAllocations, participants, roleWeights]);
+        rule:
+          poolingModel === 'full_pool' && p.position ? rolePercentages[p.position] : undefined,
+      })),
+    [participants, hoursByEmployee, rolePercentages, poolingModel],
+  );
+
+  const guaranteedResult = useMemo(
+    () => calculateTipSplitWithGuarantees(totalTipsCents, guaranteedParticipants, distributeRemainder),
+    [totalTipsCents, guaranteedParticipants, distributeRemainder],
+  );
+
+  const previewShares = guaranteedResult.shares;
 
   const handleContinueToReview = (amountCents: number) => {
     setTipAmount(amountCents);
@@ -583,10 +608,11 @@ export function Tips() {
       share_method: shareMethod,
       split_cadence: splitCadence,
       role_weights: roleWeights,
+      role_percentages: rolePercentages,
       enabled_employee_ids: Array.from(selectedEmployees),
       pooling_model: poolingModel,
     });
-  }, [restaurantId, selectedEmployees, shareMethod, splitCadence, tipSource, roleWeights, poolingModel, updateSettings]);
+  }, [restaurantId, selectedEmployees, shareMethod, splitCadence, tipSource, roleWeights, rolePercentages, poolingModel, updateSettings]);
 
   useAutoSaveTipSettings({
     settings,
@@ -594,9 +620,7 @@ export function Tips() {
     shareMethod,
     splitCadence,
     roleWeights,
-    // TODO(Task 5): replace with real `rolePercentages` state once the role
-    // allocation settings section is wired into this page.
-    rolePercentages: {},
+    rolePercentages,
     selectedEmployees,
     poolingModel,
     onSave: handleSaveSettings,
@@ -808,6 +832,7 @@ export function Tips() {
         shareMethod={shareMethod}
         splitCadence={splitCadence}
         roleWeights={roleWeights}
+        rolePercentages={rolePercentages}
         selectedEmployees={selectedEmployees}
         eligibleEmployees={eligibleEmployees}
         isLoading={settingsLoading}
@@ -815,6 +840,7 @@ export function Tips() {
         onShareMethodChange={setShareMethod}
         onSplitCadenceChange={setSplitCadence}
         onRoleWeightsChange={setRoleWeights}
+        onRolePercentagesChange={setRolePercentages}
         onSelectedEmployeesChange={setSelectedEmployees}
         contributionPools={contributionPools}
         onCreatePool={createPool}

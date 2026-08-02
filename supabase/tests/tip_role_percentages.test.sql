@@ -27,7 +27,7 @@ SET LOCAL role TO postgres;
 
 INSERT INTO restaurants (id, name) VALUES
   ('c0000000-0000-0000-0000-000000000001', 'Role Percentage Test Restaurant')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
 
 -- ============================================================================
 -- Test 1: role_percentages column exists
@@ -48,7 +48,9 @@ INSERT INTO tip_pool_settings (id, restaurant_id, active) VALUES
   ('c0000000-0000-0000-0000-000000000010', 'c0000000-0000-0000-0000-000000000001', false);
 
 SELECT is(
-  (SELECT role_percentages FROM tip_pool_settings WHERE id = 'c0000000-0000-0000-0000-000000000010'),
+  (SELECT role_percentages FROM tip_pool_settings
+    WHERE id = 'c0000000-0000-0000-0000-000000000010'
+      AND restaurant_id = 'c0000000-0000-0000-0000-000000000001'),
   '{}'::jsonb,
   'role_percentages should default to an empty object'
 );

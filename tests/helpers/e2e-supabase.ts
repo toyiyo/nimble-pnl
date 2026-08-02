@@ -6,6 +6,12 @@
 import { expect, type Page } from '@playwright/test';
 
 /**
+ * Shape of `tip_pool_settings.role_percentages`, keyed by role name.
+ * Exported so specs and the `__getTipPoolSettings` helper cannot drift apart.
+ */
+export type RolePercentagesMap = Record<string, { mode: string; percentage: number }>;
+
+/**
  * Expose Supabase helper functions to browser context
  * This avoids dynamic imports from /src/ which Vite doesn't serve
  */
@@ -108,7 +114,7 @@ export async function exposeSupabaseHelpers(page: Page) {
 
     (window as any).__getTipPoolSettings = async (
       restaurantId: string
-    ): Promise<Record<string, { mode: string; percentage: number }> | null> => {
+    ): Promise<RolePercentagesMap | null> => {
       const { data, error } = await supabase
         .from('tip_pool_settings')
         .select('role_percentages')
@@ -121,7 +127,7 @@ export async function exposeSupabaseHelpers(page: Page) {
         return null;
       }
 
-      return (data?.role_percentages as Record<string, { mode: string; percentage: number }>) ?? null;
+      return (data?.role_percentages as RolePercentagesMap) ?? null;
     };
 
     (window as any).__insertAvailability = async (rows: any[], restaurantId: string) => {

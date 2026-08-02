@@ -4,6 +4,7 @@ import {
   generateTestUser,
   exposeSupabaseHelpers,
   fillHours,
+  type RolePercentagesMap,
 } from '../helpers/e2e-supabase';
 
 interface WindowHelpers {
@@ -12,9 +13,7 @@ interface WindowHelpers {
   __insertEmployees: (rows: unknown[], restaurantId: string) => Promise<Array<{ id: string }>>;
   __getApprovedTipAmounts: (restaurantId?: string) => Promise<number[]>;
   __checkApprovedSplits: (restaurantId: string) => Promise<boolean>;
-  __getTipPoolSettings: (
-    restaurantId: string
-  ) => Promise<Record<string, { mode: string; percentage: number }> | null>;
+  __getTipPoolSettings: (restaurantId: string) => Promise<RolePercentagesMap | null>;
 }
 
 async function createEmployees(

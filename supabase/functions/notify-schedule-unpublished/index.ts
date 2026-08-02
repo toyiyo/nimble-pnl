@@ -231,9 +231,16 @@ serve(async (req) => {
         { data: employees, error: empError },
       ] = await Promise.all([
         serviceClient.from("restaurants").select("name").eq("id", restaurantId).maybeSingle(),
+        // restaurant_id is redundant against a correctly-written retraction row
+        // and deliberately kept anyway: this client is service-role, so RLS is
+        // not standing behind it, and `employeeIds` is the one input that
+        // reaches here as data rather than as a checked parameter. A tenant
+        // filter turns "the audience column was wrong" into zero recipients
+        // instead of somebody else's roster receiving mail.
         serviceClient
           .from("employees")
           .select("id, name, email, user_id")
+          .eq("restaurant_id", restaurantId)
           .in("id", employeeIds)
           .eq("status", "active"),
       ]);

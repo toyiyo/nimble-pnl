@@ -32,7 +32,7 @@
 
 BEGIN;
 
-SELECT plan(20);
+SELECT plan(21);
 
 -- ============================================
 -- Setup
@@ -308,7 +308,9 @@ SELECT ok(
 -- Test 14 -- the prior-week shift is untouched, so test 10 is a real exclusion
 -- rather than an employee who simply had nothing published anywhere.
 SELECT is(
-  (SELECT is_published FROM shifts WHERE id = 'c0000000-0000-0000-0000-00000000f006'),
+  (SELECT is_published FROM shifts
+    WHERE id = 'c0000000-0000-0000-0000-00000000f006'
+      AND restaurant_id = 'c0000000-0000-0000-0000-00000000a001'),
   true,
   'the prior-week Sun 22:00 shift is left published'
 );
@@ -380,6 +382,7 @@ WITH attempted AS (
   UPDATE schedule_publications
   SET notification_sent = true
   WHERE id = 'c0000000-0000-0000-0000-00000000b001'
+    AND restaurant_id = 'c0000000-0000-0000-0000-00000000a001'
   RETURNING 1
 )
 SELECT is(
@@ -399,7 +402,31 @@ SELECT is(
   'a member of the restaurant can read its retraction'
 );
 
--- Test 20
+-- Test 20 -- the other half of test 19, and the half that actually matters.
+-- "A member can read it" passes just as happily under a policy of USING (true);
+-- only a non-member coming back empty proves the tenant scope is real. The
+-- audience snapshot is a roster of employee ids, so a leak here is a leak of
+-- who works at somebody else's restaurant.
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"c0117000-0000-0000-0000-000000000002","role":"authenticated"}',
+  true
+);
+
+SELECT is(
+  (SELECT count(*)::int FROM schedule_retractions
+    WHERE restaurant_id = 'c0000000-0000-0000-0000-00000000a001'),
+  0,
+  'a user with no user_restaurants row cannot read the restaurant''s retractions'
+);
+
+SELECT set_config(
+  'request.jwt.claims',
+  '{"sub":"c0117000-0000-0000-0000-000000000001","role":"authenticated"}',
+  true
+);
+
+-- Test 21
 SELECT throws_ok(
   $$ UPDATE schedule_retractions SET notified_at = now()
        WHERE restaurant_id = 'c0000000-0000-0000-0000-00000000a001' $$,

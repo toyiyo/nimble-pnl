@@ -27,10 +27,10 @@ Design: `docs/superpowers/specs/2026-08-02-datepicker-test-outside-days-design.m
       add `vi.useFakeTimers({ shouldAdvanceTime: true })` +
       `vi.setSystemTime(new Date('2027-02-10T12:00:00'))` to a scratch copy of
       the file and run it. Feb 2027 starts on a Monday, so its grid runs
-      Feb 1 – Mar 14 and the trailing outside days cover 1–14 — both `'5'` and
-      `'10'` collide. If the suite passes there too, the fix is month-independent
-      rather than month-lucky. Revert the scratch edit afterwards; the committed
-      file keeps no fake timers (`memory/lessons.md:42`).
+      Jan 31 – Mar 6 and the outside Mar 5 collides with Feb 5. If the suite
+      passes there too, the fix is month-independent rather than month-lucky.
+      Revert the scratch edit afterwards; the committed file keeps no fake
+      timers (`memory/lessons.md:42`).
 
 - [ ] **T6 — Commit.** `fix(tests): scope date-picker day lookups to in-month
       cells`.

@@ -37,10 +37,16 @@ name.
   month** — whatever the host clock says.
 
 In August 2026 the last grid row is Aug 30 – Sep 5, so `5` matches both Aug 5
-and the outside Sep 5. The same hazard applies to the `'10'` lookup at
-`:79`; trailing outside days can reach into the low teens (a 28-day February
-starting on a Monday pads out to Mar 13). `'15'` and `'20'` happen to be safe
-today, but only by arithmetic accident.
+and the outside Sep 5.
+
+Enumerating every month from 2020–2040 bounds the exposure: leading outside days
+always fall in **23–31** and trailing outside days in **1–6** (react-day-picker
+v8 does not pad to a fixed six weeks unless asked, so a trailing run never
+exceeds 6). Days **7–22** are therefore unambiguous in every month. That makes
+`'10'`, `'15'` and `'20'` safe as written, and `'5'` the only lookup in this
+file that can collide — but the safety is a property of those particular
+numbers, not of the query. Any future assertion on a day ≤ 6 or ≥ 23 walks into
+the same failure.
 
 ## Options considered
 
@@ -113,8 +119,7 @@ Call sites replaced: `:79` (`'10'`), `:93` (`'20'`), `:120` (`'5'`),
 - `npx vitest run tests/unit/BulkInventoryDeductionDialog.datePicker.test.tsx`
   passes with the host clock untouched (currently August 2026 — the month that
   reproduces the bug).
-- The same run under a simulated February-starting-Monday month (via `TZ`- and
-  `--` free re-run with a temporarily faked system date) confirms the query no
-  longer depends on the displayed month. Documented in the plan as a manual
-  cross-check, not committed as a permanent test.
+- A throwaway re-run with the clock faked to February 2027 (grid Jan 31 – Mar 6,
+  so the outside Mar 5 collides with Feb 5) confirms the query holds in a month
+  other than today's. Manual cross-check only — no fake timers are committed.
 - Full unit suite, typecheck, lint, build.

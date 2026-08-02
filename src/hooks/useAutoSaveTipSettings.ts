@@ -6,6 +6,7 @@ import type {
   TipPoolSettings,
   TipSource,
 } from '@/hooks/useTipPoolSettings';
+import type { RoleAllocationRule } from '@/utils/tipPooling';
 
 type Params = {
   settings: TipPoolSettings | null;
@@ -13,6 +14,7 @@ type Params = {
   shareMethod: ShareMethod;
   splitCadence: SplitCadence;
   roleWeights: Record<string, number>;
+  rolePercentages: Record<string, RoleAllocationRule>;
   selectedEmployees: Set<string>;
   poolingModel?: PoolingModel;
   onSave: () => void;
@@ -28,6 +30,7 @@ export function useAutoSaveTipSettings({
   shareMethod,
   splitCadence,
   roleWeights,
+  rolePercentages,
   selectedEmployees,
   poolingModel,
   onSave,
@@ -41,12 +44,14 @@ export function useAutoSaveTipSettings({
         splitCadence !== settings.split_cadence ||
         (poolingModel !== undefined && poolingModel !== settings.pooling_model) ||
         JSON.stringify(roleWeights) !== JSON.stringify(settings.role_weights) ||
+        JSON.stringify(rolePercentages) !== JSON.stringify(settings.role_percentages ?? {}) ||
         sortedIds(selectedEmployees) !== sortedIds(settings.enabled_employee_ids ?? [])
       : selectedEmployees.size > 0 ||
         tipSource !== 'manual' ||
         shareMethod !== 'hours' ||
         splitCadence !== 'daily' ||
-        (poolingModel !== undefined && poolingModel !== 'full_pool');
+        (poolingModel !== undefined && poolingModel !== 'full_pool') ||
+        Object.keys(rolePercentages).length > 0;
 
     if (!hasChanges) return;
 
@@ -55,5 +60,5 @@ export function useAutoSaveTipSettings({
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [settings, tipSource, shareMethod, splitCadence, roleWeights, selectedEmployees, poolingModel, onSave]);
+  }, [settings, tipSource, shareMethod, splitCadence, roleWeights, rolePercentages, selectedEmployees, poolingModel, onSave]);
 }

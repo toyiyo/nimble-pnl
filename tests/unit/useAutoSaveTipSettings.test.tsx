@@ -2,6 +2,7 @@ import { renderHook, act } from '@testing-library/react';
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
 import { useAutoSaveTipSettings } from '@/hooks/useAutoSaveTipSettings';
 import type { TipPoolSettings, ShareMethod, TipSource, SplitCadence } from '@/hooks/useTipPoolSettings';
+import type { RoleAllocationRule } from '@/utils/tipPooling';
 
 const baseSettings: TipPoolSettings = {
   id: 'settings-1',
@@ -10,6 +11,7 @@ const baseSettings: TipPoolSettings = {
   share_method: 'hours',
   split_cadence: 'daily',
   role_weights: { Server: 1 },
+  role_percentages: {},
   enabled_employee_ids: [],
   active: true,
   created_at: '2024-01-01T00:00:00Z',
@@ -22,6 +24,7 @@ type HookProps = {
   shareMethod: ShareMethod;
   splitCadence: SplitCadence;
   roleWeights: Record<string, number>;
+  rolePercentages: Record<string, RoleAllocationRule>;
   selectedEmployees: Set<string>;
   onSave: () => void;
 };
@@ -44,6 +47,7 @@ describe('useAutoSaveTipSettings', () => {
       shareMethod: 'hours',
       splitCadence: 'daily',
       roleWeights: baseSettings.role_weights,
+      rolePercentages: baseSettings.role_percentages,
       selectedEmployees: new Set(),
       onSave,
     };
@@ -72,6 +76,7 @@ describe('useAutoSaveTipSettings', () => {
       shareMethod: 'hours',
       splitCadence: 'daily',
       roleWeights: baseSettings.role_weights,
+      rolePercentages: baseSettings.role_percentages,
       selectedEmployees: new Set(),
       onSave,
     };
@@ -95,6 +100,7 @@ describe('useAutoSaveTipSettings', () => {
       shareMethod: 'hours',
       splitCadence: 'daily',
       roleWeights: baseSettings.role_weights,
+      rolePercentages: baseSettings.role_percentages,
       selectedEmployees: new Set(),
       onSave,
     };

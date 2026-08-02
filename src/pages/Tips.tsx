@@ -594,6 +594,9 @@ export function Tips() {
     shareMethod,
     splitCadence,
     roleWeights,
+    // TODO(Task 5): replace with real `rolePercentages` state once the role
+    // allocation settings section is wired into this page.
+    rolePercentages: {},
     selectedEmployees,
     poolingModel,
     onSave: handleSaveSettings,

@@ -109,4 +109,80 @@ describe('useAutoSaveTipSettings', () => {
 
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it('saves when role percentages diverge from persisted settings', async () => {
+    const onSave = vi.fn();
+    const settings = {
+      id: 's1',
+      restaurant_id: 'r1',
+      tip_source: 'manual',
+      share_method: 'hours',
+      split_cadence: 'daily',
+      role_weights: {},
+      role_percentages: {},
+      enabled_employee_ids: [],
+      pooling_model: 'full_pool',
+      active: true,
+      created_at: '',
+      updated_at: '',
+    } as never;
+
+    renderHook(() =>
+      useAutoSaveTipSettings({
+        settings,
+        tipSource: 'manual',
+        shareMethod: 'hours',
+        splitCadence: 'daily',
+        roleWeights: {},
+        rolePercentages: { Manager: { mode: 'at_least', percentage: 10 } },
+        selectedEmployees: new Set<string>(),
+        poolingModel: 'full_pool',
+        onSave,
+      }),
+    );
+
+    expect(onSave).not.toHaveBeenCalled();
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not save when role percentages are unchanged', async () => {
+    const onSave = vi.fn();
+    const rules = { Manager: { mode: 'at_least' as const, percentage: 10 } };
+    const settings = {
+      id: 's1',
+      restaurant_id: 'r1',
+      tip_source: 'manual',
+      share_method: 'hours',
+      split_cadence: 'daily',
+      role_weights: {},
+      role_percentages: rules,
+      enabled_employee_ids: [],
+      pooling_model: 'full_pool',
+      active: true,
+      created_at: '',
+      updated_at: '',
+    } as never;
+
+    renderHook(() =>
+      useAutoSaveTipSettings({
+        settings,
+        tipSource: 'manual',
+        shareMethod: 'hours',
+        splitCadence: 'daily',
+        roleWeights: {},
+        rolePercentages: { Manager: { mode: 'at_least', percentage: 10 } },
+        selectedEmployees: new Set<string>(),
+        poolingModel: 'full_pool',
+        onSave,
+      }),
+    );
+
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(onSave).not.toHaveBeenCalled();
+  });
 });

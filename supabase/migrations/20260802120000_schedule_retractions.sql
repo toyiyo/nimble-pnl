@@ -63,12 +63,22 @@ CREATE POLICY "Users can view schedule retractions for their restaurants"
     )
   );
 
--- Default privileges in this database grant no DML on new public tables, so the
--- SELECT policy above is inert without this grant. The omissions are the point:
--- no INSERT/UPDATE/DELETE for authenticated, so a client cannot rewrite the
--- audience or pre-claim notified_at even if a policy is later added by mistake.
--- The RPC writes as the function owner and does not need a grant; the notifier
--- reads and claims rows with the service-role key and does.
+-- Grants, stated outright rather than inherited.
+--
+-- Default privileges on new public tables are not the same everywhere: a stock
+-- Supabase project grants ALL to anon/authenticated, while some local stacks
+-- grant nothing. Either way the SELECT policy above is only live because of an
+-- explicit grant, and either way a table's write posture must not depend on
+-- which of those a given database happens to be. So revoke first, then grant
+-- exactly what each role needs.
+--
+-- The omissions are the point: no INSERT/UPDATE/DELETE for authenticated, so a
+-- client cannot rewrite the audience or pre-claim notified_at even if an UPDATE
+-- policy is later added by mistake -- which is precisely how schedule_publications
+-- ended up with a write that silently affected zero rows for months. The RPC
+-- writes as the function owner and needs no grant; the notifier reads and claims
+-- rows with the service-role key and does.
+REVOKE ALL ON public.schedule_retractions FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON public.schedule_retractions TO authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.schedule_retractions TO service_role;
 

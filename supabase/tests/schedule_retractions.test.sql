@@ -14,12 +14,17 @@
 --   * the routine double-unpublish aborts the transaction, because array_agg
 --     over zero rows is NULL rather than '{}' and the column is NOT NULL.
 --
--- The last three assertions are a different subject: neither this table nor
--- schedule_publications may be written by a client. A table with no UPDATE
--- policy does not RAISE on UPDATE — RLS silently filters it to zero rows, which
--- is exactly the mechanism that let notify-schedule-published believe it had
--- recorded notification_sent for a year. So they assert an affected-row count of
--- zero, not throws_ok.
+-- The closing assertions are a different subject: neither this table nor
+-- schedule_publications may be written by a client, and the two are blocked by
+-- different mechanisms. schedule_publications holds the table-level UPDATE grant
+-- and relies on the absent policy — and a table with no UPDATE policy does not
+-- RAISE, RLS silently filters it to zero rows, which is exactly the mechanism
+-- that let notify-schedule-published believe it had recorded notification_sent
+-- for a year. So that one asserts an affected-row count of zero, not throws_ok.
+-- schedule_retractions revokes the grant outright, so it raises 42501, and a
+-- separate assertion pins the revoke itself: default privileges on new public
+-- tables differ between a stock Supabase project and a bare local stack, and a
+-- write posture that depends on the host is not a posture.
 --
 -- Auth context follows publish_schedule_tz_bucketing.test.sql: the suite stays
 -- as postgres and drives auth.uid() through request.jwt.claims, which is
@@ -32,7 +37,7 @@
 
 BEGIN;
 
-SELECT plan(21);
+SELECT plan(22);
 
 -- ============================================
 -- Setup
@@ -426,7 +431,17 @@ SELECT set_config(
   true
 );
 
--- Test 21
+-- Test 21 -- the REVOKE the migration issues before its grants, pinned
+-- directly. Without it this table's write posture would depend on the host:
+-- a stock Supabase project grants ALL on new public tables to authenticated,
+-- a bare local stack grants nothing, and the difference is invisible until
+-- test 22 catches a client write in one environment and not the other.
+SELECT ok(
+  NOT has_table_privilege('authenticated', 'public.schedule_retractions', 'UPDATE'),
+  'authenticated holds no UPDATE grant on schedule_retractions, whatever the default privileges were'
+);
+
+-- Test 22
 SELECT throws_ok(
   $$ UPDATE schedule_retractions SET notified_at = now()
        WHERE restaurant_id = 'c0000000-0000-0000-0000-00000000a001' $$,

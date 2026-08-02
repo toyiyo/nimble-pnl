@@ -15,10 +15,11 @@
 --   8. role_percentages rejects a negative percentage
 --   9. role_percentages rejects an entry missing a required key
 --  10. role_percentages accepts a well-formed rule map
+--  11. role_percentages rejects a non-numeric percentage
 -- ============================================================================
 
 BEGIN;
-SELECT plan(10);
+SELECT plan(11);
 
 SET LOCAL role TO postgres;
 
@@ -158,6 +159,20 @@ SELECT lives_ok(
     )
   $$,
   'role_percentages should accept a well-formed rule map'
+);
+
+-- ============================================================================
+-- Test 11: role_percentages rejects a non-numeric percentage
+-- ============================================================================
+
+SELECT throws_ok(
+  $$
+    INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
+    VALUES ('c0000000-0000-0000-0000-000000000001', '{"Manager": {"mode": "at_least", "percentage": "abc"}}'::jsonb, false)
+  $$,
+  '23514',
+  NULL,
+  'role_percentages should reject a non-numeric percentage'
 );
 
 SELECT * FROM finish();

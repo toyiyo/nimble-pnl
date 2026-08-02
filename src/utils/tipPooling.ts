@@ -9,6 +9,17 @@ export type RoleAllocationRule = {
   percentage: number;
 };
 
+/**
+ * User-facing badge label for a rule, e.g. "Guaranteed 10%" / "Fixed 15%".
+ * Shared between the hours-entry grid and the review screen's allocation
+ * table so the two never drift in wording.
+ */
+export function formatAppliedRuleLabel(rule: RoleAllocationRule): string {
+  return rule.mode === 'at_least'
+    ? `Guaranteed ${rule.percentage}%`
+    : `Fixed ${rule.percentage}%`;
+}
+
 export type TipShare = {
   employeeId: string;
   name: string;

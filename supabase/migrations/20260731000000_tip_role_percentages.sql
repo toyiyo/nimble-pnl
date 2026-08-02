@@ -38,6 +38,14 @@ BEGIN
           role_percentages,
           '$.* ? (!exists(@.mode) || !exists(@.percentage))'
         )
+        -- A non-numeric percentage (e.g. "abc") silently fails to match the
+        -- range predicate above under jsonpath's lax-mode type coercion, so
+        -- it would otherwise slip through and produce NaN downstream in
+        -- calculateTipSplitWithGuarantees. Require the numeric type explicitly.
+        AND NOT jsonb_path_exists(
+          role_percentages,
+          '$.* ? (exists(@.percentage) && @.percentage.type() != "number")'
+        )
       );
   END IF;
 END $$;

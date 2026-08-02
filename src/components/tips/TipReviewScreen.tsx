@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { formatCurrencyFromCents, rebalanceAllocations, type TipShare, type ServerResult, type PoolResult } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, formatAppliedRuleLabel, rebalanceAllocations, type TipShare, type ServerResult, type PoolResult } from '@/utils/tipPooling';
 import { Info, DollarSign, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ShareMethod, PoolingModel } from '@/hooks/useTipPoolSettings';
@@ -258,9 +258,7 @@ function AllocationTable({
                   <span className="text-[14px] font-medium text-foreground truncate max-w-[12rem]">{share.name}</span>
                   {share.appliedRule && (
                     <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
-                      {share.appliedRule.mode === 'at_least'
-                        ? `Guaranteed ${share.appliedRule.percentage}%`
-                        : `Fixed ${share.appliedRule.percentage}%`}
+                      {formatAppliedRuleLabel(share.appliedRule)}
                     </span>
                   )}
                 </div>

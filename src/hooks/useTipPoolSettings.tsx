@@ -56,6 +56,10 @@ export function useTipPoolSettings(restaurantId: string | null) {
         .maybeSingle();
 
       if (error) throw error;
+      // The generated `role_percentages: Json` column type doesn't structurally
+      // match `Record<string, RoleAllocationRule>`, so a direct cast is rejected
+      // by TS — go through `unknown`. Shape is enforced at the DB layer by
+      // tip_pool_settings_role_percentages_check (see the migration).
       return data as unknown as TipPoolSettings | null;
     },
     enabled: !!restaurantId,

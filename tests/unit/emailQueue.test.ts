@@ -65,6 +65,33 @@ describe('sendEmailResult', () => {
     expect(result).toEqual({ ok: false, status: 0, error: 'connection reset' });
   });
 
+  it('aborts a request Resend accepts but never answers', async () => {
+    vi.useFakeTimers();
+
+    // A connection that is opened and then goes silent. `fetch` has no timeout
+    // of its own, so without the AbortController this promise -- and the
+    // manager's publish dialog awaiting it -- never settles.
+    vi.mocked(fetch).mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          (init?.signal as AbortSignal | undefined)?.addEventListener('abort', () =>
+            reject(new DOMException('The signal has been aborted', 'AbortError')),
+          );
+        }),
+    );
+
+    const pending = sendEmailResult('key', 'from@x.com', 'to@x.com', 'Subj', '<p>hi</p>');
+    await vi.advanceTimersByTimeAsync(15_000);
+    const result = await pending;
+
+    expect(result.ok).toBe(false);
+    // Status 0 is the same channel a transport failure uses, so the pacer needs
+    // no new case: it is not a 429, so it is not retried.
+    expect(result.status).toBe(0);
+
+    vi.useRealTimers();
+  });
+
   it('normalizes a single recipient into an array for the Resend payload', async () => {
     vi.mocked(fetch).mockResolvedValue(new Response('{}', { status: 200 }));
 

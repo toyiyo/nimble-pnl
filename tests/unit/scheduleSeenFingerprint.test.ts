@@ -108,7 +108,14 @@ describe('storage unavailable', () => {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
 
   afterEach(() => {
-    if (original) Object.defineProperty(globalThis, 'localStorage', original);
+    if (original) {
+      Object.defineProperty(globalThis, 'localStorage', original);
+    } else {
+      // No descriptor to put back means the environment had no localStorage at
+      // all. Restoring nothing would leave this suite's throwing stub installed
+      // for every test file that runs after it in the same worker.
+      delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
   });
 
   it('degrades to no pill instead of throwing', () => {

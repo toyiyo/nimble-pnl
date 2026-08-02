@@ -186,8 +186,10 @@ export const PublishScheduleDialog = ({
             */}
             {isPublishing ? (
               <>
-                <Clock className="h-4 w-4 mr-2 animate-spin" />
-                {employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
+                <Clock className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                <span aria-live="polite">
+                  {employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
+                </span>
               </>
             ) : (
               <>

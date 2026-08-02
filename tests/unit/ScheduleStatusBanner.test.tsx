@@ -135,6 +135,9 @@ describe('ScheduleStatusBanner', () => {
 
     const banner = screen.getByRole('alert');
     expect(banner).toHaveTextContent('This schedule was pulled back for changes');
-    expect(banner).not.toHaveTextContent(' on ,');
+    // With no publication row there is no published_at to format, so the
+    // " on {day} at {time}" clause must be absent entirely -- not rendered
+    // empty, which would read as "published  on , then unpublished it".
+    expect(banner).not.toHaveTextContent(/ on \w/);
   });
 });

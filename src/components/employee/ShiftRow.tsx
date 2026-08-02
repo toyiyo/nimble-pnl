@@ -18,7 +18,10 @@ import { cn } from '@/lib/utils';
 function formatShiftDuration(startTime: string, endTime: string, breakMinutes: number): string {
   const start = new Date(startTime);
   const end = new Date(endTime);
-  const netMinutes = differenceInMinutes(end, start) - breakMinutes;
+  // Clamped: a break longer than the shift is a data-entry slip, and "-1h 30m"
+  // on an employee's own schedule reads as a bug in the app rather than one in
+  // the shift.
+  const netMinutes = Math.max(0, differenceInMinutes(end, start) - breakMinutes);
   const hours = Math.floor(netMinutes / 60);
   const minutes = netMinutes % 60;
   return `${hours}h ${minutes}m`;

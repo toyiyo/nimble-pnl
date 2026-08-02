@@ -920,3 +920,57 @@ The remainder stay open and are explicitly *not* being built in this pass:
    fan-out) or requires a separate client-triggered call, matching whatever pattern the existing
    native shift-created/time-off notifications already use (not audited in this pass — worth a
    quick check before implementation).
+
+---
+
+## As Built — where the shipped code departs from this document
+
+This design was written before implementation and is kept as the record of what was intended.
+Where the build learned something the design got wrong, the code is authoritative and the
+divergence is listed here rather than edited into the sections above.
+
+1. **State D no longer fires on zero shifts (§1, §2).** The design's condition — a historical
+   publication plus zero live published shifts — classifies an employee with *no shifts at all*
+   as "retracted". Unpublishing flips shifts to draft, it never deletes them, so a real retraction
+   always leaves drafts behind. `deriveWeekScheduleState` therefore returns `published` when both
+   counts are zero: that employee simply isn't on the roster this week. Without it, every
+   part-timer would be told their schedule was withdrawn on every week they have off.
+   Pinned by a test in `tests/unit/useWeekScheduleStatus.test.ts`.
+
+2. **A failed publication query renders no banner (§4).** The design maps the error case onto
+   `not_published`, which asserts something false. `deriveWeekScheduleState` returns `null` while
+   loading or on error, and the banner's fixed-height slot stays empty. Shift rendering is
+   unaffected.
+
+3. **Paths.** The paced sender shipped as `supabase/functions/_shared/emailQueue.ts` (tests in
+   `tests/unit/emailQueue.test.ts`), not `rateLimitedSend.ts`. The pgTAP file is
+   `supabase/tests/schedule_retractions.test.sql`.
+
+4. **Retry bound (§ paced sender).** Retries are 429-only, capped at 3 after the initial attempt,
+   with 1s/2s/3s backoff; anything else — including a request aborted at the 15s per-request
+   timeout — fails terminally at status 0 rather than retrying. Covered by "gives up after
+   maxRetries and reports the last 429" and "aborts a request Resend accepts but never answers".
+
+5. **`notification_sent` means "reached somebody", not "reached everybody".** The design left this
+   ambiguous. A partial failure still marks the week announced, because the retraction gate's job
+   is to avoid announcing the withdrawal of something *nobody* heard about; the manager's failure
+   toast is what prompts a republish, and republishing writes a fresh row. Reaching nobody on
+   either channel leaves the flag false.
+
+6. **`notified_at` is a whole-retraction latch, not per-recipient.** Recipient-level delivery
+   state would need its own table. Partial failure is logged and returned in the response; the
+   latch still claims, so a retry does not re-mail the recipients who succeeded. Accepted
+   limitation, not an oversight.
+
+7. **Only the newest unnotified retraction for a week is announced.** Older unnotified rows for
+   the same week are left as an audit trail rather than mailed. They describe versions that were
+   superseded before anyone was told about them, and sending one message per revision is the
+   confusion this change set exists to remove.
+
+8. **The fingerprint keys on `published_at` plus shift fields (§3b), not `is_published`.** A
+   retraction changes the banner, which is far louder than the pill; the pill's job is to catch
+   *silent* edits inside an already-published week.
+
+9. **Open question 4 (native push) is resolved.** `notify-schedule-unpublished` calls
+   `send-push-notification` server-side with the service-role key, matching the existing
+   web-push fan-out. No client-triggered path.

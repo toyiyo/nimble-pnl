@@ -264,8 +264,11 @@ serve(async (req) => {
 
       for (const result of emailResults) {
         if (!result.ok) {
+          // Employee id, not address: function logs are readable well outside
+          // the tenant, and a bounce log is not a reason to spill a roster's
+          // email addresses into them. The id joins back to the row anyway.
           console.error(
-            `Failed to send retraction email to ${result.recipient.email} after ${result.attempts} attempt(s) [${result.status}]:`,
+            `Failed to send retraction email to employee ${result.recipient.id} after ${result.attempts} attempt(s) [${result.status}]:`,
             result.error,
           );
         }

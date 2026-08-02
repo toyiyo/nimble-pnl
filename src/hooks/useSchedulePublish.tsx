@@ -231,7 +231,10 @@ export const useUnpublishSchedule = () => {
 
       if (error) throw error;
 
-      const shiftCount = data as number;
+      // PostgREST types the RPC return as nullable. A null here would make
+      // `shiftCount > 0` false and quietly skip the notification, so it is
+      // pinned to 0 rather than asserted away.
+      const shiftCount = (data as number | null) ?? 0;
 
       // Nothing was actually retracted, so there is nobody to tell. Skipping
       // the invoke keeps a double-tap on Unpublish off the error path.

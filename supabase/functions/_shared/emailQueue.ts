@@ -28,6 +28,17 @@ export const RESEND_DEFAULT_INTERVAL_MS = 500;
 const DEFAULT_MAX_RETRIES = 3;
 const BASE_BACKOFF_MS = 1000;
 
+/**
+ * Per-request ceiling on the Resend call.
+ *
+ * `fetch` has no timeout of its own, so a connection Resend accepts and then
+ * stops answering hangs until the whole edge invocation is killed. That used to
+ * be somebody else's problem; now that the publish dialog awaits this fan-out,
+ * it is a manager staring at a spinner that never resolves. Aborting turns the
+ * hang into a status-0 result the pacer already knows how to record.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export interface EmailSendResult {
   ok: boolean;
   status: number;
@@ -70,6 +81,9 @@ export const sendEmailResult = async (
   subject: string,
   html: string,
 ): Promise<EmailSendResult> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -83,6 +97,7 @@ export const sendEmailResult = async (
         subject,
         html,
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -93,8 +108,12 @@ export const sendEmailResult = async (
     return { ok: true, status: response.status };
   } catch (error) {
     // status 0 means "never reached Resend" — a transport failure, not a
-    // rejection from the API.
+    // rejection from the API. An abort lands here too, and is deliberately not
+    // retried: 429 is the only retryable status, and a stalled connection is
+    // not evidence the next one will answer any faster.
     return { ok: false, status: 0, error: errorMessage(error) };
+  } finally {
+    clearTimeout(timer);
   }
 };
 

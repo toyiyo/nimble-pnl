@@ -114,3 +114,10 @@ Every production publication row currently reads `notification_sent = false` —
 — so the Decision 2 gate suppresses all retraction notifications until a week is published after
 this ships. Correct-conservative and self-healing within one publish cycle. No backfill: it would
 assert deliveries we can't verify, and it's a prod write needing separate approval.
+
+---
+
+**Divergences between this plan and the shipped code are recorded in the design doc's
+"As Built" section** (`docs/superpowers/specs/2026-08-02-employee-schedule-clarity-design.md`) —
+retry bounds, the `notification_sent` and `notified_at` semantics, and the
+newest-retraction-only rule in particular.

@@ -133,4 +133,47 @@ test.describe('Tip sharing', () => {
     // Wait for the split data to load and display the approved amount
     await expect(page.getByText(/\$300\.00/).first()).toBeVisible({ timeout: 15000 });
   });
+
+  test('a guaranteed role receives at least its configured percentage', async ({ page }) => {
+    // Setup: sign up, create restaurant, add employees
+    const user = generateTestUser();
+    await signUpAndCreateRestaurant(page, user);
+
+    await createEmployees(page, [
+      { name: 'Manager Mo', email: 'mo@test.com', position: 'Manager' },
+      { name: 'Server Sam', email: 'sam@test.com', position: 'Server' },
+    ]);
+
+    await page.goto('/tips');
+    await page.getByRole('heading', { name: /^tips$/i }).first().waitFor({ state: 'visible', timeout: 25000 });
+
+    // Configure Manager at "at least 30%".
+    await page.getByRole('button', { name: 'Setup' }).click();
+    const managerMode = page.getByLabel('Manager allocation mode');
+    await managerMode.getByRole('radio', { name: 'Manager: at least a set percentage' }).click();
+    await page.getByLabel('Manager percentage').fill('30');
+    await page.getByRole('button', { name: /close|done/i }).first().click();
+
+    // Switch to Daily Entry without reloading the page — a fresh navigation here would
+    // unmount the app mid-debounce and lose the role percentage we just set (it autosaves
+    // 1s after the last edit; a `goto` cancels that pending save on unmount).
+    const dailyEntryButton = page.getByRole('button', { name: /daily entry/i });
+    await expect(dailyEntryButton).toBeVisible({ timeout: 5000 });
+    await dailyEntryButton.click();
+    await expect(page.getByRole('button', { name: /enter.*tips/i }).first()).toBeVisible({ timeout: 5000 });
+
+    // Enter a tip amount and hours that would otherwise put the manager well below 30%.
+    await enterTipAmount(page, '100');
+    await fillHours(page, 'manager mo', '1');
+    await fillHours(page, 'server sam', '9');
+
+    // The entry screen shows the guarantee and the resulting percentage. (The same
+    // "Guaranteed 30%" badge also appears in the review table below, so scope to .first().)
+    await expect(page.getByText('Guaranteed 30%').first()).toBeVisible();
+    await expect(page.getByText('30.0% · $30.00')).toBeVisible();
+
+    // Review carries the same figure through.
+    await expect(page.getByRole('cell', { name: '30.0%' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Edit tip amount for .*Manager/ })).toContainText('$30.00');
+  });
 });

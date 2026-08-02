@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import type { RoleAllocationRule } from '@/utils/tipPooling';
 
 export type TipSource = 'manual' | 'pos';
 export type ShareMethod = 'hours' | 'role' | 'manual';
@@ -14,6 +15,8 @@ export interface TipPoolSettings {
   share_method: ShareMethod | null;
   split_cadence: SplitCadence | null;
   role_weights: Record<string, number>;
+  /** Per-role guarantees, Full Pool only. Empty object means no rules. */
+  role_percentages: Record<string, RoleAllocationRule>;
   enabled_employee_ids: string[];
   pooling_model: PoolingModel;
   active: boolean;
@@ -26,6 +29,7 @@ export interface TipPoolSettingsUpdate {
   share_method?: ShareMethod;
   split_cadence?: SplitCadence;
   role_weights?: Record<string, number>;
+  role_percentages?: Record<string, RoleAllocationRule>;
   enabled_employee_ids?: string[];
   pooling_model?: PoolingModel;
 }
@@ -52,7 +56,7 @@ export function useTipPoolSettings(restaurantId: string | null) {
         .maybeSingle();
 
       if (error) throw error;
-      return data as TipPoolSettings | null;
+      return data as unknown as TipPoolSettings | null;
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds

@@ -1,13 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
-import type { Role } from '@/lib/permissions/types';
+import type { MembershipRoleLiteral } from '@/lib/permissions';
 
 export interface RestaurantMember {
   userId: string;
   email: string | null;
   fullName: string | null;
-  role: Role;
+  /**
+   * Not `Role`: a custom-role membership carries the bare
+   * `'collaborator_custom'` literal, which is deliberately not a member of
+   * that union (see `invitations.ts`).
+   */
+  role: MembershipRoleLiteral;
+  /**
+   * Set only when the membership points at a custom role, whose `role` column
+   * is the bare 'collaborator_custom' literal. Callers that display a role
+   * name resolve this against the `roles` table.
+   */
+  roleId: string | null;
 }
 
 /**
@@ -26,7 +37,7 @@ export function useRestaurantMembers(restaurantId: string | undefined) {
     queryFn: async (): Promise<RestaurantMember[]> => {
       const { data: memberships, error: membershipError } = await supabase
         .from('user_restaurants')
-        .select('user_id, role')
+        .select('user_id, role, role_id')
         .eq('restaurant_id', restaurantId);
 
       if (membershipError) throw membershipError;
@@ -46,7 +57,8 @@ export function useRestaurantMembers(restaurantId: string | undefined) {
           userId: m.user_id,
           email: profile?.email ?? null,
           fullName: profile?.full_name ?? null,
-          role: m.role as Role,
+          role: m.role as MembershipRoleLiteral,
+          roleId: m.role_id ?? null,
         };
       });
     },

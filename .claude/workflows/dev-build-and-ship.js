@@ -37,6 +37,34 @@ export const meta = {
 //      (the runtime has no sleep primitive for script-level polling).
 //   3. Phase 9e "done" is verified via on-disk ARTIFACTS, not transcript
 //      visibility (which does not exist across fresh-context agents).
+//
+// RUNAWAY-BURN HARDENING (post-mortem of run wf_da8ba6ba-5bb: 1.10M subagent
+// tokens, 59 min, zero commits — 97% of it ONE build task re-run six times).
+// What the runtime does, verified against the 2.1.218 binary and that run's
+// journal.jsonl, because it constrains what this layer can and cannot fix:
+//   * The stall watchdog and its retry loop live INSIDE the runtime's agent()
+//     implementation, not here. A stalled agent is retried with a BYTE-IDENTICAL
+//     prompt up to a hardcoded 5 times (6 attempts total); the retry count and
+//     the 180000ms interval are compile-time constants with no opts passthrough.
+//     The journal proves it: six agentIds share one prompt cache key.
+//     => "cap retries at 2" and "append the prior failure to the retry prompt"
+//        are NOT implementable at the script layer. They need a runtime change.
+//   * After the last attempt agent() THROWS. That is why the run died with a
+//     raw Error instead of a structured stop. A throw IS catchable here, so the
+//     three levers this script actually owns are:
+//       (a) catch the throw and halt with a structured, actionable needs_human
+//           (runAgent below) — one dead call can no longer kill the run blind;
+//       (b) guarantee nothing further is spent after a stall, and refuse to
+//           re-run a task already known to stall unless its prompt changed;
+//       (c) cap total spend with budget.spent(), which works whether or not the
+//           operator passed a "+Nk" directive (budget.total is usually null).
+//   * The stalls did NOT follow a silent no-tool_use turn. In every transcript
+//     the 180s gap follows a tool_result: the model was generating its NEXT turn
+//     and never emitted it, in a context grown to 0.4-1.0 MB. Stall probability
+//     therefore rises with context size, which makes prompt/context slimming
+//     (inlining each task's own plan section instead of pointing nine agents at
+//     the plan + design doc + a 42 KB skill file) a stall fix, not just a token
+//     saving.
 // ---------------------------------------------------------------------------
 
 // ---- Inputs (passed via args by the /dev skill after Phase 3) ----
@@ -79,8 +107,52 @@ const statusSchema = (extraProps = {}, extraRequired = []) => ({
   required: ['status', ...extraRequired],
 })
 
+// Second runaway mode, distinct from the stall retries: a wait whose exit
+// condition is unsatisfiable by construction. Observed for real — an agent left
+// a shell spinning `until [ "$(ps aux | grep -c '[p]laywright')" -lt 2 ]`. The
+// [p] trick stops grep matching itself but not the ~30 Claude Code processes
+// that carry "playwright" inside the MCP config on their own command lines, so
+// the count sat at 31 and could never fall. It ran 4h07m, orphaned from an
+// agent that had already died, until a human noticed and killed it.
+//
+// Nothing at the script layer can see a shell an agent spawned, let alone reap
+// one that outlives it. The only lever is the prompt, so this ships in the
+// envelope every agent gets — including phases that do not obviously wait,
+// because the next phase that starts a server should inherit it for free.
+const WAIT_DISCIPLINE = [
+  'WAIT DISCIPLINE (a poll loop with an impossible exit condition once spun 4h before a human killed it):',
+  '- Before ANY wait loop, evaluate the condition ONCE and print the raw value. If it already sits on the wrong side of the exit test, do not loop — looping cannot move it.',
+  '- Never test process state with `ps aux | grep -c <name>`. Every Claude Code process carries the MCP config on its command line, so grepping a tool name ("playwright", "vitest", "supabase") matches dozens of unrelated processes and the count never drops. Wait on a PID you started (`cmd & pid=$!; wait $pid`) or use the tool\'s own blocking mode (`gh pr checks --watch`, a foreground test run).',
+  "- Every wait needs a bound, but `timeout` and `gtimeout` do NOT exist on this BSD/bash-3.2 machine (nor does `tail --pid`) — do not reach for them. Run the command in the FOREGROUND and let the Bash tool's own timeout parameter bound it (default 120s, max 600s). If you must iterate, cap the count and exit non-zero printing the last observed value. An unbounded wait is indistinguishable from a hang.",
+  "- Kill every background process you start before you return, on the failure path too (`trap 'kill $pid 2>/dev/null' EXIT`). Orphans outlive the agent that spawned them.",
+].join('\n')
+
+// Third failure mode, and the only one that reaches the PR: staging. The phase
+// prompts say "fix it and commit" and leave HOW to stage to each agent, so they
+// reach for `git add -A`. One worktree is shared by every phase, so that sweeps
+// in per-run scratch and whatever an earlier phase left dirty — it has produced
+// PR diffs carrying ~8k lines of workflow noise, and merge conflicts located
+// entirely inside regenerated artifacts (memory/lessons.md:386, :693, :1454,
+// :1770 — four incidents, one pattern).
+//
+// Gitignoring the scratch is a backstop, not the fix: a broad add still picks up
+// unrelated TRACKED files. Explicit paths are what actually bound a commit, and
+// like WAIT_DISCIPLINE the only lever is the prompt — the script layer cannot
+// see, let alone veto, an agent's git invocation.
+const STAGING_DISCIPLINE = [
+  'STAGING DISCIPLINE (applies to every commit you make, in every phase):',
+  `- Stage EXPLICIT paths, always with -C so the command cannot act on the wrong checkout: git -C ${ctx.worktreePath} add <path> [<path>...]`,
+  '- NEVER `git add -A`, `git add .`, or `git commit -a`. This worktree is shared across phases and accumulates per-run scratch (dev-tools/*.patch, dev-tools/*-output.md, dev-tools/9d-triage-*) plus whatever an earlier phase left dirty; a broad add sweeps all of it into your commit, where it becomes PR noise and conflicts with other branches regenerating the same files.',
+  '- `progress.md` is gitignored and must NEVER be staged — not even with `git add -f`.',
+  `- Before each commit, confirm the index holds only what you intended: git -C ${ctx.worktreePath} diff --cached --name-only`,
+].join('\n')
+
 // Orientation block injected into EVERY agent prompt (fresh context).
-function envelope(body) {
+// The development-workflow.md pointer is OPT-IN (skillRef), not default: it is a
+// 42 KB file and every phase prompt below already states what that phase must do.
+// Nine build agents each reading it from scratch was pure context bloat, and
+// context size is what drives the 180s stall (see the runtime notes above).
+function envelope(body, { skillRef = false } = {}) {
   return [
     'WORKING CONTEXT (you have fresh context — this block is all you start with):',
     `- Worktree (cd here for every command): ${ctx.worktreePath}`,
@@ -88,33 +160,105 @@ function envelope(body) {
     `- Design doc (the approved design — do NOT deviate from it): ${ctx.designDocPath}`,
     `- Plan file: ${ctx.planPath}`,
     `- progress.md: ${ctx.worktreePath}/progress.md — read it for prior-phase state; update it when you finish your phase.`,
-    '- STAGING (applies to every commit you make, in every phase): stage EXPLICIT paths only —',
-    `    git -C ${ctx.worktreePath} add <path> [<path>...]`,
-    '  NEVER `git add -A`, `git add .`, or `git commit -a`. This worktree is shared across phases and accumulates per-run scratch',
-    '  (dev-tools/*.patch, dev-tools/*-output.md, dev-tools/9d-triage-*, progress.md) plus whatever an earlier phase left dirty. A broad',
-    '  add sweeps that into your feature commit, where it becomes PR noise and conflicts with other branches regenerating the same files.',
-    '  progress.md is gitignored and must NEVER be staged — not even with `git add -f`.',
-    `  Before each commit, confirm the index holds only what you intended: git -C ${ctx.worktreePath} diff --cached --name-only`,
-    `- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`,
+    ...(skillRef
+      ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
+      : []),
+    '',
+    STAGING_DISCIPLINE,
+    '',
+    WAIT_DISCIPLINE,
     '',
     body,
   ].join('\n')
 }
 
+// ---- Spend accounting -----------------------------------------------------
+// budget.total is null unless the operator passed a "+Nk" directive, so
+// budget.remaining() is usually Infinity and cannot backstop anything. spent()
+// always works, so the ceiling here is script-owned and measured against it.
+const TOKEN_CEILING = Number(ctx.tokenCeiling) > 0 ? Number(ctx.tokenCeiling) : 2000000
+const TASK_TOKEN_CEILING = Number(ctx.taskTokenCeiling) > 0 ? Number(ctx.taskTokenCeiling) : 350000
+function spent() {
+  try {
+    return typeof budget !== 'undefined' && budget && typeof budget.spent === 'function' ? budget.spent() || 0 : 0
+  } catch {
+    return 0
+  }
+}
+
+// Agents that died rather than returned. Carried into every stop payload so the
+// operator sees the stall signature without digging through transcripts.
+const stalls = []
+
+// True when this label already died inside the runtime's retry loop. A null
+// from a THROWN stall is not the same as a null from an agent that simply
+// returned nothing: the runtime has already spent six byte-identical attempts
+// on that prompt, so any script-level retry buys six more of exactly the burn
+// this file exists to contain.
+function didCrash(label) {
+  return stalls.some((s) => s.label === label)
+}
+
+function stop(phase, extra = {}) {
+  return { stopped: true, phase, tokensSpent: spent(), ...(stalls.length ? { stalls } : {}), ...extra }
+}
+
 // Halt helper: stop the workflow cleanly when an agent needs a human or fails.
-function gate(result, phase) {
-  if (!result) return { halt: true, out: { stopped: true, phase, reason: 'agent returned null (user skipped or it errored)' } }
+function gate(result, phase, extra = {}) {
+  if (!result) return { halt: true, out: stop(phase, { reason: 'agent returned null (user skipped or it errored)', ...extra }) }
   if (result.status !== 'completed') {
-    return { halt: true, out: { stopped: true, phase, status: result.status, reason: result.reason || `agent returned status=${result.status}` } }
+    return { halt: true, out: stop(phase, { status: result.status, reason: result.reason || `agent returned status=${result.status}`, ...extra }) }
   }
   return { halt: false }
+}
+
+// Every agent() call goes through here. A stalled-out agent THROWS (see the
+// runtime notes at the top) and that throw would otherwise kill the run with a
+// bare Error and no structured stop. Converting it to a needs_human envelope
+// lets the normal gate() path halt cleanly with the stall signature attached.
+async function runAgent(prompt, opts, { nullOnCrash = false } = {}) {
+  const before = spent()
+  try {
+    return await agent(prompt, opts)
+  } catch (e) {
+    const message = String((e && e.message) || e)
+    const cost = spent() - before
+    stalls.push({ label: (opts && opts.label) || 'unlabelled', message, tokens: cost })
+    log(`✖ agent "${(opts && opts.label) || 'unlabelled'}" produced no result after ~${cost} tokens: ${message}`)
+    if (nullOnCrash) return null
+    return {
+      status: 'needs_human',
+      crashed: true,
+      reason:
+        `Agent "${(opts && opts.label) || 'unlabelled'}" never produced a result (${message}). ` +
+        `It burned ~${cost} tokens across the runtime's internal attempts, all with the same prompt. ` +
+        'Resuming as-is will reproduce it identically — change the prompt first (fix the task in the plan, ' +
+        'or pass args.resolutionNotes for this task), and pass the task id in args.stalledTasks so this ' +
+        'script refuses to re-run it blind.',
+    }
+  }
+}
+
+// Global spend ceiling, checked between agent() calls (the only point at which
+// this layer regains control). Returns a stop payload, or null to continue.
+function budgetHalt(phaseName, extra = {}) {
+  const s = spent()
+  if (s < TOKEN_CEILING) return null
+  return stop(phaseName, {
+    status: 'needs_human',
+    reason:
+      `Token ceiling reached: ~${s} output tokens spent against a ceiling of ${TOKEN_CEILING}. ` +
+      'Halting before spending more. If this run legitimately needs a bigger budget, relaunch with ' +
+      'args.tokenCeiling raised; if it does not, this is the runaway you wanted caught.',
+    ...extra,
+  })
 }
 
 // ===========================================================================
 // PHASE: Preflight — verify the environment before any expensive work.
 // ===========================================================================
 phase('Preflight')
-const pre = await agent(
+const pre = await runAgent(
   envelope(
     'PHASE: Preflight. Verify the environment is ready for autonomous build + ship. In the worktree, check and report:\n' +
       '- gh auth status; presence of jq, node, coderabbit (run coderabbit --version); presence of codex (best-effort).\n' +
@@ -133,13 +277,25 @@ const codexAvailable = !!pre.codexAvailable
 // PHASE 4: Build (TDD). Read plan -> one sequential agent per task.
 // ===========================================================================
 phase('Build')
-const planRead = await agent(
-  envelope('PHASE 4 setup. Read the plan file at ' + ctx.planPath + '. Extract the ordered list of implementation tasks (each a 2-5 min unit). Return them in dependency order — a task may only depend on earlier ones. Do not implement anything yet.'),
+// This agent is the ONLY one that reads the whole plan. It returns each task's
+// own section verbatim so the per-task prompts can inline just that slice —
+// nine fresh agents re-parsing the full plan is the context bloat that makes
+// build agents stall.
+const planRead = await runAgent(
+  envelope(
+    'PHASE 4 setup. Read the plan file at ' + ctx.planPath + '. Extract the ordered list of implementation tasks (each a 2-5 min unit). ' +
+      'Return them in dependency order — a task may only depend on earlier ones. Do not implement anything yet.\n' +
+      'For EACH task also return `body`: that task\'s own section of the plan, VERBATIM — its steps, the files it names, and its ' +
+      'completion/acceptance criterion (including any criterion that deliberately differs from a normal red-green-refactor cycle, ' +
+      'e.g. "complete when these tests fail"). Copy the text; do not summarise or rewrite it, because the build agent will see your ' +
+      'copy INSTEAD of the plan. If a section exceeds ~4000 characters, include the first 4000 and end with ' +
+      '"…[truncated — open the plan file for the rest]".',
+  ),
   {
     label: 'plan-read',
     phase: 'Build',
     schema: statusSchema(
-      { tasks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, title: { type: 'string' } }, required: ['id', 'title'] } } },
+      { tasks: { type: 'array', items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, title: { type: 'string' }, body: { type: 'string' } }, required: ['id', 'title'] } } },
       ['tasks'],
     ),
   },
@@ -149,26 +305,110 @@ const planRead = await agent(
 // Sequential TDD — each task commits before the next starts (shared worktree, safe).
 // FUTURE: group tasks into dependency levels and parallel() the file-disjoint ones
 // with isolation:'worktree' + a merge-back agent. Out of scope for v1.
+// Tasks a previous run already burned six identical attempts on. The runtime
+// will do exactly the same thing again — same prompt, same stall, same cost —
+// so refuse to spend on one unless its prompt has actually changed (which, for
+// this loop, means a resolutionNotes entry).
+const knownStalled = new Set(Array.isArray(ctx.stalledTasks) ? ctx.stalledTasks : [])
+
 for (let i = 0; i < planRead.tasks.length; i++) {
   const t = planRead.tasks[i]
-  const r = await agent(
+  // A prior run may have halted this task with status=needs_human. The human's
+  // decision comes back in via ctx.resolutionNotes, keyed by task id or by
+  // 1-based position. Appending it changes the prompt, which is also what makes
+  // resumeFromRunId re-run this task instead of replaying its cached halt —
+  // tasks without a note keep their cache and return instantly.
+  const note = (ctx.resolutionNotes || {})[t.id] ?? (ctx.resolutionNotes || {})[String(i + 1)]
+
+  if (knownStalled.has(t.id) && !note) {
+    return stop('Build', {
+      status: 'needs_human',
+      task: t.id,
+      taskIndex: i + 1,
+      reason:
+        `Task ${t.id} ("${t.title}") is listed in args.stalledTasks and has no args.resolutionNotes entry. ` +
+        'Its prompt would be byte-identical to the run that already stalled on it, and the runtime retries a stalled ' +
+        'agent with the same prompt six times before giving up — so re-running it now buys nothing and costs the same. ' +
+        'Fix the task in the plan, or pass a resolutionNotes entry for it, then relaunch.',
+    })
+  }
+
+  const overall = budgetHalt('Build', { task: t.id, taskIndex: i + 1, completedTasks: i })
+  if (overall) return overall
+
+  const before = spent()
+  const r = await runAgent(
     envelope(
       `PHASE 4 (Build, strict TDD) — task ${i + 1}/${planRead.tasks.length}: "${t.title}" (id ${t.id}).\n` +
-        'Cycle: RED (write a failing test) -> GREEN (minimal code to pass) -> REFACTOR (tests stay green) -> COMMIT (descriptive message). ' +
+        (t.body
+          ? 'THIS TASK\'S SECTION OF THE PLAN IS INLINED BELOW — it is authoritative. Where its completion criterion ' +
+            'differs from the generic cycle, the plan wins. Some tasks deliberately end RED (a reproduction task lands ' +
+            'failing tests and NO source change; it is complete when the tests fail, and "fixing" them defeats its ' +
+            'purpose). Do not force such a task to green. Only open the plan file itself if the section below is ' +
+            'truncated or genuinely ambiguous — do not re-read the whole plan or the design doc for context you already have.\n' +
+            '=== plan section for ' + t.id + ' ===\n' + t.body + '\n=== end plan section ===\n'
+          : 'FIRST: open the plan file and read THIS task\'s own section (the plan-read step could not extract it). The plan is ' +
+            'authoritative — where its completion criterion differs from the generic cycle below, the plan wins. Some tasks ' +
+            'deliberately end RED (a reproduction task lands failing tests and NO source change; it is complete when the tests ' +
+            'fail, and "fixing" them defeats its purpose). Do not force such a task to green.\n') +
+        'ALSO FIRST: check whether this task is already done — `git log --oneline origin/main..HEAD` plus the ' +
+        'plan/progress.md. If its commit already exists, verify it briefly and return status=completed without redoing it.\n' +
+        'Otherwise the cycle is: RED (write a failing test) -> GREEN (minimal code to pass) -> REFACTOR (tests stay green) -> COMMIT (descriptive message). ' +
         'Use the repo test stack (vitest / pgTAP / playwright as appropriate). After committing, update progress.md with the task and its commit SHA. ' +
-        'If implementing this task correctly would require changing the approved design, do NOT improvise — return status=needs_human with specifics.',
+        'If implementing this task correctly would require changing the approved design, do NOT improvise — return status=needs_human with specifics.\n' +
+        'PACING: a watchdog kills you if you go 180s without emitting a tool call, and it gets easier to trip the longer ' +
+        'your context grows — so keep the context small. Read narrow (ranged reads and targeted greps, not whole files or ' +
+        'whole directories), act, commit. Do not plan the entire task in one long silent reasoning block, and do not ' +
+        're-derive the design from source when the section above already tells you what to change.\n' +
+        'SALVAGE (the kill gives you no warning and leaves nothing behind unless you wrote it down): commit early and ' +
+        'often — every green step is a commit. Before any long-running command (the full test suite, a broad search), ' +
+        'first record where you are: either commit what you have as `wip(' + t.id + '): <state>`, or append a short ' +
+        '"### ' + t.id + ' in progress — <what is done, what is next>" note to progress.md and commit that. A kill then ' +
+        'leaves a resumable branch instead of zero. Leave those small commits in place; make the LAST commit of the task ' +
+        'the descriptive one and do NOT rewrite history to tidy them up.' +
+        (note
+          ? `\n\nRESOLUTION FROM A PRIOR HALT ON THIS TASK — this is a decision already made by the human operator; treat it as binding and do not re-litigate it:\n${note}`
+          : ''),
     ),
     { label: `build:${t.id}`, phase: 'Build', schema: statusSchema() },
   )
-  const g = gate(r, 'Build'); if (g.halt) return g.out
-  log(`Build ${i + 1}/${planRead.tasks.length}: ${t.title}`)
+
+  const used = spent() - before
+  const g = gate(r, 'Build', { task: t.id, taskIndex: i + 1, completedTasks: i, taskTokens: used })
+  if (g.halt) return g.out
+
+  log(`Build ${i + 1}/${planRead.tasks.length}: ${t.title} — ~${used} tokens (run total ~${spent()})`)
+
+  // A task that completes but costs far more than budgeted is the shape of the
+  // wf_da8ba6ba-5bb runaway. Warn always; halt only when carrying that cost
+  // across the remaining tasks would blow the ceiling anyway.
+  if (used > TASK_TOKEN_CEILING) {
+    const remaining = planRead.tasks.length - (i + 1)
+    const projected = spent() + used * remaining
+    log(`⚠️ Build task ${t.id} used ~${used} tokens (per-task ceiling ${TASK_TOKEN_CEILING}); projected run total ~${projected}`)
+    if (projected > TOKEN_CEILING) {
+      return stop('Build', {
+        status: 'needs_human',
+        task: t.id,
+        taskIndex: i + 1,
+        completedTasks: i + 1,
+        taskTokens: used,
+        reason:
+          `Task ${t.id} completed but cost ~${used} tokens (per-task ceiling ${TASK_TOKEN_CEILING}). At that rate the ` +
+          `${remaining} remaining task(s) would take the run to ~${projected}, past the ${TOKEN_CEILING} ceiling. ` +
+          'Work committed so far is on the branch. Split the oversized tasks in the plan, or relaunch with a raised ' +
+          'args.tokenCeiling if this cost is genuinely expected.',
+      })
+    }
+  }
 }
 
 // ===========================================================================
 // PHASE 5: UI Review (conditional — agent decides skip via git diff).
 // ===========================================================================
 phase('UI Review')
-const ui = await agent(
+{ const b = budgetHalt('UI Review'); if (b) return b }
+const ui = await runAgent(
   envelope(
     'PHASE 5 (UI Review). Run: git diff origin/main...HEAD --name-only. ' +
       'If NO UI/component files changed (src/components, src/pages, *.tsx UI), return status=completed, reason="skipped: no UI changes". ' +
@@ -182,7 +422,8 @@ const ui = await agent(
 // PHASE 6: Simplify.
 // ===========================================================================
 phase('Simplify')
-const simp = await agent(
+{ const b = budgetHalt('Simplify'); if (b) return b }
+const simp = await runAgent(
   envelope('PHASE 6 (Simplify). Run: git diff origin/main...HEAD --name-only to scope recently-changed files. Use the code-simplifier skill to improve clarity/consistency/maintainability WITHOUT changing behavior. Commit any simplifications.'),
   { label: 'simplify', phase: 'Simplify', schema: statusSchema() },
 )
@@ -192,10 +433,14 @@ const simp = await agent(
 // PHASE 7: Multi-model review. snapshot -> parallel reviewers -> fold -> CR loop
 // ===========================================================================
 phase('Review')
+// Last hard budget gate before the six-way fan-out — the single most expensive
+// step in the script.
+{ const b = budgetHalt('Review'); if (b) return b }
+log(`Entering Phase 7 review fan-out at ~${spent()} tokens (ceiling ${TOKEN_CEILING})`)
 
 // 7a-prep: snapshot diff/log/design as STRINGS before fan-out (fresh-context agents
 // can't reliably re-derive them).
-const snap = await agent(
+const snap = await runAgent(
   envelope(
     'PHASE 7 setup. In the worktree, capture and RETURN as strings: (1) git diff origin/main...HEAD ; (2) git log origin/main..HEAD --oneline ; (3) the full contents of the design doc at ' + ctx.designDocPath + ' ; (4) headSha = `git rev-parse HEAD` (used later to re-review anything committed after this snapshot). ' +
       'If the diff exceeds ~60000 chars, set diffTruncated=true, return it truncated, and ALSO write the full patch to dev-tools/phase7-diff.patch in the worktree.',
@@ -245,17 +490,32 @@ async function runReviewer(d) {
   // reviewer exists to catch. Use a faithful general-purpose reviewer for it;
   // the judgment-based dimensions keep the bug-hunting reviewer.
   const agentType = d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer'
-  let r = await agent(reviewerPrompt(d), { label: `review:${d.key}`, phase: 'Review', agentType, schema: FINDINGS })
-  if (!r) r = await agent(reviewerPrompt(d), { label: `review:${d.key}:retry`, phase: 'Review', agentType, schema: FINDINGS })
+  // nullOnCrash: this path treats null as "reviewer produced nothing" and
+  // retries exactly once, which is the bounded script-level retry the build
+  // loop cannot have. But a null that came from a THROWN stall must NOT be
+  // retried — the runtime already burned six identical attempts on that
+  // prompt, and re-dispatching it buys six more, roughly doubling the very
+  // runaway this file contains. Retry only a reviewer that came back empty
+  // without dying, and never into a blown budget.
+  const label = `review:${d.key}`
+  let r = await runAgent(reviewerPrompt(d), { label, phase: 'Review', agentType, schema: FINDINGS }, { nullOnCrash: true })
+  if (!r && didCrash(label)) {
+    log(`⚠️ Phase 7a reviewer "${d.key}" stalled out — NOT retrying (the prompt would be byte-identical); its findings are absent this run`)
+    return null
+  }
+  if (!r && spent() < TOKEN_CEILING) {
+    r = await runAgent(reviewerPrompt(d), { label: `review:${d.key}:retry`, phase: 'Review', agentType, schema: FINDINGS }, { nullOnCrash: true })
+  }
   return r
 }
 const reviewResults = await parallel([
   ...REVIEWERS.map((d) => () => runReviewer(d)),
   () =>
     codexAvailable
-      ? agent(
+      ? runAgent(
           envelope('PHASE 7a — Codex adversarial review. Run: bash dev-tools/codex-adversarial-review.sh main (it writes dev-tools/codex-review-output.md). If the output contains ::skip:: return status=completed with findings=[] (Codex unavailable). Otherwise parse dev-tools/codex-review-output.md into findings with severity.'),
           { label: 'review:codex', phase: 'Review', schema: FINDINGS },
+          { nullOnCrash: true },
         )
       : Promise.resolve({ status: 'completed', findings: [] }),
 ])
@@ -292,7 +552,7 @@ const foldInput = JSON.stringify(
     .map((r, i) => (r ? { reviewer: reviewerNames[i] || `#${i}`, status: r.status, findings: r.findings || [] } : null))
     .filter(Boolean),
 )
-const fold = await agent(
+const fold = await runAgent(
   envelope(
     'PHASE 7b (Fold findings). Below is JSON with findings from all reviewers (5 Claude — security, performance, maintainability, sound-logic, ocr-rules — plus Codex). Deduplicate by file:line (keep highest severity, merge messages). For each critical/major finding that is an actionable bug/security/correctness issue: FIX it and commit ("fix(review): <area> — addresses <reviewer>"). ' +
       'MINOR/INFO findings: fix any that are trivially safe (one-line, mechanical, no behaviour change) in the same commit. For every minor/info finding you do NOT fix, you MUST return it in `deferred[]` with file, line, severity, message and a one-line reason. ' +
@@ -312,7 +572,7 @@ if (deferredFindings.length) log(`Phase 7b deferred ${deferredFindings.length} m
 // 7c: CodeRabbit loop (script-level counter, max 3).
 let crClean = false
 for (let it = 1; it <= 3 && !crClean; it++) {
-  const cr = await agent(
+  const cr = await runAgent(
     envelope(
       `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --plain --type committed (in the worktree). Fix ONLY actionable findings and commit them. ` +
         'Return clean=true if there were NO actionable findings this run; clean=false if you fixed some (we re-run). On iteration 3 with findings still remaining, return clean=false and list the remaining items in reason — the script will escalate. ' +
@@ -323,12 +583,20 @@ for (let it = 1; it <= 3 && !crClean; it++) {
   const g = gate(cr, 'Review'); if (g.halt) return g.out
   crClean = cr.clean
   log(`CodeRabbit ${it}/3: ${crClean ? 'clean' : 'fixed findings, re-running'}`)
+  // The 7c prompt promises "the script will escalate" on a still-dirty round 3.
+  // It used to just fall through, so the last observed state vanished. A capped
+  // loop must report what it saw when the cap is what ended it.
+  if (!crClean && it === 3) {
+    const remaining = cr.reason || 'CodeRabbit still reported actionable findings on iteration 3 (no detail returned)'
+    log(`⚠️ CodeRabbit still dirty after 3 iterations — carrying forward as deferred: ${remaining}`)
+    deferredFindings.push(`CodeRabbit (unresolved after 3 iterations): ${remaining}`)
+  }
 }
 
 // 7d: bounded re-review of code committed AFTER the 7a snapshot.
 // The 7a diff is frozen, so 7b/7c fixes — and any late edits — otherwise ship
 // completely unreviewed. Exactly one extra pass; skipped when nothing changed.
-const postSnap = await agent(
+const postSnap = await runAgent(
   envelope(
     'PHASE 7d setup. In the worktree, return as strings: (1) newCommits = output of `git log ' + snap.headSha + '..HEAD --oneline` (empty string if there are none); ' +
       '(2) diff = output of `git diff ' + snap.headSha + '..HEAD -- . ":(exclude)dev-tools" ":(exclude)progress.md"` (empty string if empty). Truncate diff to ~60000 chars if larger. Do NOT modify anything.',
@@ -341,19 +609,20 @@ if (postSnap.diff && postSnap.diff.trim()) {
   log('Phase 7d: re-reviewing code committed after the 7a snapshot')
   const reResults = await parallel(
     REVIEWERS.map((d) => () =>
-      agent(
+      runAgent(
         envelope(
           `PHASE 7d — ${d.key} re-review. Read your reviewer instructions at ${ctx.worktreePath}/${d.promptFile} and load the skills it names. ` +
             'The changes below were committed AFTER the main review pass (Phase 7b/7c fixes and any late edits) and have NEVER been reviewed. Review ONLY this diff. Report findings with severity. DO NOT fix anything.\n\n' +
             '=== new commits ===\n' + postSnap.newCommits + '\n\n=== diff ===\n' + postSnap.diff,
         ),
         { label: `re-review:${d.key}`, phase: 'Review', agentType: d.key === 'ocr-rules' ? 'general-purpose' : 'feature-dev:code-reviewer', schema: FINDINGS },
+        { nullOnCrash: true },
       ),
     ),
   )
   const reFindings = reResults.map((r, i) => (r ? { reviewer: REVIEWERS[i].key, findings: r.findings || [] } : null)).filter(Boolean)
   if (reFindings.some((r) => r.findings.length)) {
-    const reFold = await agent(
+    const reFold = await runAgent(
       envelope(
         'PHASE 7d (fold re-review). The findings below come from re-reviewing code committed AFTER the main review pass. Deduplicate by file:line. FIX actionable critical/major findings and commit ("fix(review): <area> — addresses <reviewer> re-review"). ' +
           'Fix trivially-safe minors too; return EVERY unfixed minor/info in `deferred[]` with a reason. Never discard a finding silently. ' +
@@ -375,7 +644,11 @@ if (postSnap.diff && postSnap.diff.trim()) {
 // PHASE 8: Verify (single agent, internal 5-iteration fix loop).
 // ===========================================================================
 phase('Verify')
-const verify = await agent(
+// Final hard budget gate. From Ship onward the ceiling is advisory only: a PR
+// exists (or is one push away) and abandoning mid-CI strands finished work in a
+// worse state than finishing it, so those phases log spend instead of halting.
+{ const b = budgetHalt('Verify'); if (b) return b }
+const verify = await runAgent(
   envelope(
     'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build. ' +
       'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.',
@@ -383,13 +656,13 @@ const verify = await agent(
   { label: 'verify', phase: 'Verify', schema: statusSchema({ allPass: { type: 'boolean' } }, ['allPass']) },
 )
 { const g = gate(verify, 'Verify'); if (g.halt) return g.out }
-if (!verify.allPass) return { stopped: true, phase: 'Verify', reason: 'local verification did not pass after 5 iterations' }
+if (!verify.allPass) return stop('Verify', { reason: 'local verification did not pass after 5 iterations' })
 
 // ===========================================================================
 // PHASE 9a: Ship — push + open PR, return the PR number (load-bearing state).
 // ===========================================================================
 phase('Ship')
-const ship = await agent(
+const ship = await runAgent(
   envelope(
     'PHASE 9a (Ship). Push the branch: git push -u origin ' + ctx.branch + '. Open a PR with gh pr create: concise title (<70 chars), body with ## Summary (bullets from the plan), ## Test plan, and a link to the design doc. ' +
       (deferredFindings.length
@@ -409,7 +682,7 @@ const PR = ship.prNumber
 phase('CI Loop')
 let ciGreen = false
 for (let it = 1; it <= 5 && !ciGreen; it++) {
-  const ci = await agent(
+  const ci = await runAgent(
     envelope(
       `PHASE 9b (CI) iteration ${it}/5 for PR #${PR}. Run: gh pr checks ${PR} --watch (blocks until checks finish). Then run dev-tools/refresh-queue.sh --pr ${PR} --skip-tests and check the SonarCloud quality gate (poll up to 3x with 60s gaps if Sonar lags CI).\n` +
         '- If all checks pass AND the Sonar gate passes (or Sonar is unconfigured — note it), return ciGreen=true.\n' +
@@ -420,15 +693,15 @@ for (let it = 1; it <= 5 && !ciGreen; it++) {
   )
   const g = gate(ci, 'CI Loop'); if (g.halt) return g.out
   ciGreen = ci.ciGreen
-  log(`CI ${it}/5: ${ciGreen ? 'green' : 'fixed + pushed, re-watching'}`)
+  log(`CI ${it}/5: ${ciGreen ? 'green' : 'fixed + pushed, re-watching'} (run total ~${spent()} tokens)`)
 }
-if (!ciGreen) return { stopped: true, phase: 'CI Loop', reason: 'CI not green after 5 iterations — escalating to human' }
+if (!ciGreen) return stop('CI Loop', { reason: 'CI not green after 5 iterations — escalating to human' })
 
 // ===========================================================================
 // PHASE 9d: Review-comment triage (NON-SKIPPABLE). Writes a disk artifact.
 // ===========================================================================
 phase('Triage')
-const triage = await agent(
+const triage = await runAgent(
   envelope(
     `PHASE 9d (Review-comment triage) for PR #${PR} — NON-SKIPPABLE. CI green is NOT done.\n` +
       '1. Capture the latest commit: git rev-parse HEAD.\n' +
@@ -456,19 +729,19 @@ const triage = await agent(
 
 // If triage pushed a fix, CI must re-run before the done gate.
 if (triage.pushedFix) {
-  const reCi = await agent(
+  const reCi = await runAgent(
     envelope(`A triage fix was pushed to PR #${PR}. Run: gh pr checks ${PR} --watch, confirm all green + Sonar gate. Return ciGreen.`),
     { label: 'ci:post-triage', phase: 'Triage', schema: statusSchema({ ciGreen: { type: 'boolean' } }, ['ciGreen']) },
   )
   const g = gate(reCi, 'Triage'); if (g.halt) return g.out
-  if (!reCi.ciGreen) return { stopped: true, phase: 'Triage', reason: 'CI not green after triage fix push' }
+  if (!reCi.ciGreen) return stop('Triage', { reason: 'CI not green after triage fix push' })
 }
 
 // ===========================================================================
 // PHASE 9e: Done gate — verified against ON-DISK ARTIFACTS, not transcript.
 // ===========================================================================
 phase('Done Gate')
-const done = await agent(
+const done = await runAgent(
   envelope(
     `PHASE 9e (Done gate) for PR #${PR}. Verify against the LATEST commit (git rev-parse HEAD):\n` +
       `- node dev-tools/pr-triage.js audit --pr ${PR} exits 0 (every finding has a verdict reply on the PR).\n` +
@@ -487,6 +760,8 @@ return {
   prNumber: PR,
   done: done.donePassed,
   buildTasks: planRead.tasks.length,
+  tokensSpent: spent(),
+  ...(stalls.length ? { stalls } : {}),
   triage: {
     fixesCommitted: triage.fixesCommitted || 0,
     declinedWithReply: triage.declinedWithReply || 0,

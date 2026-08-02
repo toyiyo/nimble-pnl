@@ -1,11 +1,17 @@
 /**
  * Permission Definitions
  *
- * SINGLE SOURCE OF TRUTH for role-to-capability mapping.
- * When adding new roles or capabilities, only modify this file.
+ * Source of truth for the LEGACY role-to-capability mapping — the fallback
+ * path only. Since the roles-and-areas migration, a membership that carries a
+ * `roleRecord` (every row backfilled by `20260730120000_add_user_restaurants_
+ * role_id.sql`, and every role created since) derives its capabilities from
+ * that role's granted areas via `AREA_CAPABILITIES` / `expandAreas()` in
+ * `./areas.ts`. `usePermissions` only falls back to `ROLE_CAPABILITIES` below
+ * when `roleRecord` is null — an un-migrated membership.
  *
- * The SQL function `user_has_capability()` in the database must
- * stay in sync with these definitions.
+ * So: adding a capability to an AREA belongs in `./areas.ts`. This file is for
+ * the legacy fallback mapping, and the SQL function `user_has_capability()` in
+ * the database must stay in sync with both.
  */
 
 import { Role, Capability, RoleMetadata, CollaboratorPreset, AccessGroup } from './types';

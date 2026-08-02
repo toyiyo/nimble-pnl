@@ -37,6 +37,21 @@ function parseMatrix(source: string, file: string): Record<string, string[]> {
   return matrix;
 }
 
+/** Extract the string members of `const CUSTOM_ROLE_INVITERS ... = [ ... ];`. */
+function parseCustomRoleInviters(source: string, file: string): string[] {
+  const match = /const CUSTOM_ROLE_INVITERS[^=]*=\s*\[([^\]]*)\]/.exec(source);
+  expect(match, `CUSTOM_ROLE_INVITERS not found in ${file}`).not.toBeNull();
+  return [...match![1].matchAll(/(['"])([^'"]+)\1/g)].map((r) => r[2]);
+}
+
+/** Extract the string literal assigned to `const CUSTOM_ROLE`. */
+function parseCustomRoleLiteral(source: string, file: string): string {
+  // `[^_]` after the name so this cannot match CUSTOM_ROLE_INVITERS.
+  const match = /const CUSTOM_ROLE[^_A-Za-z0-9]*=\s*(['"])([^'"]+)\1/.exec(source);
+  expect(match, `CUSTOM_ROLE literal not found in ${file}`).not.toBeNull();
+  return match![2];
+}
+
 const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8');
 
 const TS_PATH = 'src/lib/permissions/invitations.ts';
@@ -55,6 +70,42 @@ describe('invite matrix mirror', () => {
     for (const inviter of Object.keys(deno)) {
       expect(deno[inviter], `row "${inviter}" drifted between TS and Deno`)
         .toEqual(ts[inviter]);
+    }
+  });
+
+  it('the custom-role inviter list is identical between TS and Deno', () => {
+    // A second duplicated list, and a more dangerous one than the matrix: it
+    // gates who may hand out an arbitrary bundle of areas rather than one of
+    // ten fixed roles. Drift here means the client hides the control while the
+    // endpoint still honours the call, or the reverse.
+    expect(parseCustomRoleInviters(read(DENO_PATH), DENO_PATH))
+      .toEqual(parseCustomRoleInviters(read(TS_PATH), TS_PATH));
+  });
+
+  it('the custom-role literal is identical between TS and Deno', () => {
+    // The client puts this string in the request body and the endpoint
+    // compares against its own copy. Drift means every custom-role invite is
+    // rejected as an unknown role — or, worse, accepted as a builtin one.
+    expect(parseCustomRoleLiteral(read(DENO_PATH), DENO_PATH))
+      .toEqual(parseCustomRoleLiteral(read(TS_PATH), TS_PATH));
+  });
+
+  it('custom roles cannot be invited by anyone who cannot invite builtin collaborators', () => {
+    // The custom-role gate must not be a way around the matrix: every inviter
+    // admitted to custom roles must already be trusted with the builtin
+    // collaborator roles, which are the weakest thing a custom role can be.
+    for (const inviter of parseCustomRoleInviters(read(TS_PATH), TS_PATH)) {
+      expect(ts[inviter], `${inviter} may invite custom roles but no builtin collaborator role`)
+        .toContain('collaborator_accountant');
+    }
+  });
+
+  it('collaborator_custom is not a target in either matrix — it is a pointer, not a role', () => {
+    // Admitting the literal to the matrix would grant "any custom role" in one
+    // step, bypassing the per-role ownership check the endpoint performs.
+    for (const [inviter, targets] of [...Object.entries(ts), ...Object.entries(deno)]) {
+      expect(targets, `${inviter} lists collaborator_custom as a matrix target`)
+        .not.toContain('collaborator_custom');
     }
   });
 

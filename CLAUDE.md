@@ -133,6 +133,30 @@ return <div>{data.map(...)}</div>;
 - Form inputs need associated labels
 - Interactive elements must be keyboard accessible
 
+### No Unbounded Waits
+A poll loop whose exit condition is unsatisfiable by construction once spun for 4h07m, orphaned from the agent that started it, until a human killed it.
+
+```bash
+# ❌ NEVER — every Claude Code process carries the MCP config on its command line,
+# so this matches ~30 unrelated processes and the count never drops below 2.
+until [ "$(ps aux | grep -c '[p]laywright')" -lt 2 ]; do sleep 5; done
+
+# ✅ Run the thing in the FOREGROUND and let the Bash tool's own `timeout`
+# parameter bound it (default 120s, max 600s). No poll loop to get wrong.
+npx playwright test --reporter=line
+
+# ✅ When you genuinely need a server alive underneath, trap it and keep the
+# work in the foreground — the server dies with the shell, on failure too.
+npm run dev & pid=$!
+trap 'kill $pid 2>/dev/null' EXIT
+npx playwright test --reporter=line
+```
+
+- Evaluate any wait condition **once** and print the raw value before looping. If it already sits on the wrong side of the exit test, looping cannot move it.
+- Never infer process state from `ps aux | grep -c <name>` — grepping a tool name (`playwright`, `vitest`, `supabase`) hits unrelated Claude Code processes. Prefer a PID you own (`wait $pid`), or the tool's own blocking mode (`gh pr checks --watch`, a foreground test run).
+- Bound every wait with the Bash tool's `timeout` parameter, not a hand-rolled loop. This is a BSD/bash-3.2 machine: `timeout`, `gtimeout` and `tail --pid` do **not** exist, so the usual Linux idioms silently fail here. If you must iterate, cap the count and exit non-zero printing the last observed value.
+- Kill every background process you start before returning, on the failure path too. Orphans outlive the agent that spawned them.
+
 ## Testing Requirements
 
 All new code must have tests:

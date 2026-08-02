@@ -16,6 +16,8 @@ import { InstallBanner } from "@/components/InstallBanner";
 import { PersonalViewBanner } from "@/components/PersonalViewBanner";
 import { useIsMobile } from '@/hooks/use-mobile';
 import { MobileLayout } from '@/components/employee/MobileLayout';
+import { grantMap } from '@/lib/permissions/areas';
+import { customCollaboratorRoutes } from '@/lib/permissions/routeAreas';
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import Team from "./pages/Team";
@@ -117,6 +119,22 @@ function LayoutSwitcher({ children, noChrome, isMobile }: { children: React.Reac
   );
 }
 
+// Shared by ProtectedRoute (waiting on auth) and StaffRoleChecker (waiting on
+// the membership row that carries the role) so the two gates look identical.
+function RouteLoadingScreen() {
+  return (
+    <div
+      className="flex min-h-screen items-center justify-center bg-background"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="text-center">
+        <p className="text-xl text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
 // Protected Route Component with staff restrictions
 function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { children: React.ReactNode; allowStaff?: boolean; noChrome?: boolean }) {
   const { user, loading } = useAuth();
@@ -124,13 +142,7 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
   const isMobile = useIsMobile();
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <p className="text-xl text-muted-foreground">Loading...</p>
-        </div>
-      </div>
-    );
+    return <RouteLoadingScreen />;
   }
 
   if (!user) {
@@ -231,7 +243,16 @@ function StaffRoleChecker({
   allowStaff: boolean;
   currentPath: string;
 }) {
-  const { selectedRestaurant } = useRestaurantContext();
+  const { selectedRestaurant, loading } = useRestaurantContext();
+
+  // Every check below reads `selectedRestaurant?.role`, which is undefined
+  // while the membership rows are still in flight — so without this the gate
+  // falls through to `<>{children}</>` and a kiosk or staff user briefly
+  // renders the very page these redirects exist to keep them out of (and
+  // fires its queries). Hold until the role is actually known.
+  if (loading) {
+    return <RouteLoadingScreen />;
+  }
 
   const role = selectedRestaurant?.role;
   const isStaff = role === 'staff';
@@ -244,16 +265,20 @@ function StaffRoleChecker({
     return <Navigate to="/kiosk" replace />;
   }
 
-  // Collaborator routing - redirect to their landing page if not on allowed path
+  // Collaborator routing - redirect to their landing page if not on allowed path.
+  // A custom collaborator role has no COLLABORATOR_ROUTES entry, and "no entry"
+  // used to mean "no restriction" — it would have reached /team and /banking by
+  // URL. Its allow-list is derived from its areas instead, and a collaborator
+  // whose role record hasn't arrived derives an empty one, so this fails closed.
   if (isCollaborator && role) {
-    const config = COLLABORATOR_ROUTES[role];
-    if (config) {
-      const isAllowedPath = config.allowed.some(path =>
-        currentPath === path || currentPath.startsWith(path + '/')
-      );
-      if (!isAllowedPath) {
-        return <Navigate to={config.landing} replace />;
-      }
+    const config =
+      COLLABORATOR_ROUTES[role] ??
+      customCollaboratorRoutes(grantMap(selectedRestaurant?.roleRecord?.role_areas ?? []));
+    const isAllowedPath = config.allowed.some(path =>
+      currentPath === path || currentPath.startsWith(path + '/')
+    );
+    if (!isAllowedPath) {
+      return <Navigate to={config.landing} replace />;
     }
   }
 

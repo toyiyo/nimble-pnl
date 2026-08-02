@@ -55,6 +55,15 @@ vi.mock('@/hooks/useAccountlessEmployees', async () => {
   };
 });
 
+// The picker offers the restaurant's custom roles alongside the four builtin
+// presets, so it now calls useRoles. These tests render without a
+// QueryClientProvider, so the real hook cannot run; an empty roles list keeps
+// this file's subject (the hint/block precedence) unchanged.
+const mockUseRoles = vi.fn(() => ({ roles: [], isLoading: false, error: null }));
+vi.mock('@/hooks/useRoles', () => ({
+  useRoles: (...args: unknown[]) => mockUseRoles(...args),
+}));
+
 import { CollaboratorInvitations } from '@/components/CollaboratorInvitations';
 
 const RESTAURANT_ID = 'rest-123';
@@ -72,6 +81,7 @@ describe('CollaboratorInvitations – accountless-employee inform hint', () => {
     vi.clearAllMocks();
     mockUseRestaurantMembers.mockReturnValue({ data: [], isLoading: false, isError: false });
     mockUseAccountlessEmployees.mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: null });
   });
 
   it('shows the member block, not the hint, when the email matches both an existing member and an accountless employee', async () => {

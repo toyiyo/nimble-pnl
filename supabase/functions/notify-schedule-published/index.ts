@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { fromZonedTime } from "https://esm.sh/date-fns-tz@3.2.0";
 import { corsHeaders } from "../_shared/cors.ts";
+import { sendEmailResult, sendPaced } from "../_shared/emailQueue.ts";
 import { sendWebPushToUser } from "../_shared/webPushHelper.ts";
 import { notifySchedulePublishedPush } from "../_shared/schedulePublishedPush.ts";
 import { resolveChannels, type SupabaseLike } from "../_shared/resolveChannels.ts";
@@ -151,14 +152,11 @@ serve(async (req) => {
     const appUrl = "https://app.easyshifthq.com/employee/schedule";
 
     // Send email notifications using Resend
-    const emailPromises = (ch.email ? scheduledEmployees : [])
-      .filter((emp) => emp.email) // Only send to employees with email
-      .map(async (employee) => {
-        const emailPayload = {
-          from: "EasyShiftHQ <notifications@easyshifthq.com>",
-          to: employee.email,
-          subject: `New Schedule Published: ${weekStartFormatted} - ${weekEndFormatted}`,
-          html: `
+    const emailRecipients = (ch.email ? scheduledEmployees : []).filter(
+      (emp) => emp.email
+    );
+
+    const buildEmailHtml = (employeeName: string) => `
             <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff;">
               ${generateHeader()}
               
@@ -167,7 +165,7 @@ serve(async (req) => {
                 <h1 style="color: #1f2937; font-size: 24px; font-weight: 600; margin: 0 0 16px 0; line-height: 1.3;">New Schedule Published</h1>
                 
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
-                  Hi <strong style="color: #1f2937;">${employee.name}</strong>,
+                  Hi <strong style="color: #1f2937;">${employeeName}</strong>,
                 </p>
                 
                 <p style="color: #4b5563; line-height: 1.6; font-size: 16px; margin: 0 0 24px 0;">
@@ -213,35 +211,35 @@ serve(async (req) => {
                 </p>
               </div>
             </div>
-          `,
-        };
+          `;
 
-        const response = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-          },
-          body: JSON.stringify(emailPayload),
-        });
+    // Paced rather than fanned out. Resend allows 2 requests/second and this
+    // used to fire every recipient at once through Promise.allSettled, so any
+    // roster past a handful started collecting 429s that nothing looked at.
+    const emailResults = await sendPaced(
+      emailRecipients,
+      (employee) =>
+        sendEmailResult(
+          RESEND_API_KEY ?? "",
+          "EasyShiftHQ <notifications@easyshifthq.com>",
+          employee.email,
+          `New Schedule Published: ${weekStartFormatted} - ${weekEndFormatted}`,
+          buildEmailHtml(employee.name)
+        ),
+      { label: `schedule-published ${publicationId}` }
+    );
 
-        if (!response.ok) {
-          const error = await response.text();
-          console.error(`Failed to send email to ${employee.email}:`, error);
-          return { success: false, email: employee.email, error };
-        }
+    for (const result of emailResults) {
+      if (!result.ok) {
+        console.error(
+          `Failed to send email to ${result.recipient.email} after ${result.attempts} attempt(s) [${result.status}]:`,
+          result.error
+        );
+      }
+    }
 
-        return { success: true, email: employee.email };
-      });
-
-    // Wait for all emails to be sent
-    const results = await Promise.allSettled(emailPromises);
-
-    // Count successes and failures
-    const successCount = results.filter(
-      (r) => r.status === "fulfilled" && r.value.success
-    ).length;
-    const failureCount = results.length - successCount;
+    const successCount = emailResults.filter((r) => r.ok).length;
+    const failureCount = emailResults.length - successCount;
 
     // Send web push notifications to all scheduled employees
     if (ch.push) {
@@ -255,27 +253,55 @@ serve(async (req) => {
       );
     }
 
-    // Update the publication record to mark notifications as sent
-    await supabase
-      .from("schedule_publications")
-      .update({ notification_sent: true })
-      .eq("id", publicationId);
+    // Every attempted email failed, so nobody was actually told. Leaving the row
+    // unmarked keeps the retraction notifier from later announcing the
+    // withdrawal of a schedule its audience never heard about, and the manager's
+    // failure toast prompts a republish that writes a fresh row anyway.
+    const announced = successCount > 0 || (failureCount === 0 && ch.push);
+
+    if (announced) {
+      // serviceClient, not `supabase`. This write used to go through the
+      // user-scoped client, and schedule_publications has no UPDATE policy, so
+      // RLS filtered it to zero rows -- silently, because a filtered-out UPDATE
+      // is not an error. Every publication row in production still reads
+      // notification_sent = false as a result, including ones that demonstrably
+      // delivered. The .select() is what makes the row count observable.
+      const { data: marked, error: markError } = await serviceClient
+        .from("schedule_publications")
+        .update({ notification_sent: true })
+        .eq("id", publicationId)
+        .select("id");
+
+      if (markError) {
+        console.error(
+          `Failed to mark publication ${publicationId} as notified:`,
+          markError
+        );
+      } else if (!marked?.length) {
+        console.error(
+          `Marked 0 rows notified for publication ${publicationId} -- the id does not exist.`
+        );
+      }
+    }
 
     // Log notification activity
     console.log(
       `Sent ${successCount} notifications, ${failureCount} failed for publication ${publicationId}`
     );
 
+    // A 200 here is what hid defect B: the caller could not tell a clean
+    // fan-out from one where every recipient bounced. The body is unchanged so
+    // the client can still report exactly how many got through.
     return new Response(
       JSON.stringify({
-        success: true,
+        success: failureCount === 0,
         sent: successCount,
         failed: failureCount,
         totalEmployees: scheduledEmployees.length,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
+        status: failureCount > 0 ? 502 : 200,
       }
     );
   } catch (error: unknown) {

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
-import { formatCurrencyFromCents, formatAppliedRuleLabel, isRuleActive, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, calculateTipSplitWithGuarantees, type PercentageAllocationResult, type GuaranteedParticipant, type RoleAllocationRule, type TipShare } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, formatAppliedRuleLabel, ruleAppliesTo, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, calculateTipSplitWithGuarantees, type PercentageAllocationResult, type GuaranteedParticipant, type RoleAllocationRule, type TipShare } from '@/utils/tipPooling';
 import { mergeManualHours } from '@/utils/tipHours';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
@@ -412,20 +412,12 @@ export function Tips() {
     [shareMethod, roleWeights],
   );
 
-  // One predicate for "is this rule in force for this person right now", shared
-  // by the allocator and the badge in the hours grid so the UI can never
-  // advertise a guarantee the split does not honour.
-  //
-  // Guarantees are a Full Pool concept — percentage-contribution pools allocate
-  // per sub-pool and are out of scope. And the guarantee is for "the days they
-  // worked", so it only attaches to someone who actually worked. Hours are the
-  // participation signal for the hours method only; role and even splits never
-  // collect hours, so being selected for the pool is the signal instead.
+  // Bind today's pool configuration to the shared eligibility predicate. The
+  // allocator and the badge in the hours grid both go through this, so the UI
+  // can never advertise a guarantee the split does not honour.
   const appliesRule = useCallback(
     (rule: RoleAllocationRule | undefined, hours: number): boolean =>
-      poolingModel === 'full_pool' &&
-      isRuleActive(rule) &&
-      (shareMethod !== 'hours' || hours > 0),
+      ruleAppliesTo(rule, { poolingModel, shareMethod, hours }),
     [poolingModel, shareMethod],
   );
 

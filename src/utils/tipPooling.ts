@@ -2,6 +2,12 @@ import type { Employee } from '@/types/scheduling';
 
 export type RoleAllocationMode = 'at_least' | 'exactly';
 
+/** How a Full Pool is divided between the people in it. */
+export type ShareMethod = 'hours' | 'role' | 'manual';
+
+/** Whether the restaurant pools everything or has servers contribute a cut. */
+export type PoolingModel = 'full_pool' | 'percentage_contribution';
+
 /** A per-role allocation rule. Evaluated per person, not per role. */
 export type RoleAllocationRule = {
   mode: RoleAllocationMode;
@@ -21,6 +27,43 @@ export type RoleAllocationRule = {
  */
 export function isRuleActive(rule: RoleAllocationRule | undefined | null): rule is RoleAllocationRule {
   return !!rule && (rule.mode === 'exactly' || rule.percentage > 0);
+}
+
+/** Everything needed to decide whether a rule is in force for one person today. */
+export type RuleEligibility = {
+  poolingModel: PoolingModel;
+  shareMethod: ShareMethod;
+  /** Hours logged for the day. Only consulted when `shareMethod` is `hours`. */
+  hours: number;
+};
+
+/**
+ * Whether a role's rule is in force for this person, on this day, in this pool.
+ *
+ * Three conditions, each load-bearing:
+ *
+ * 1. **Full Pool only.** Percentage-contribution pools allocate per sub-pool,
+ *    where "a percentage of the pool" has no single meaning. Rules are ignored.
+ * 2. **The rule has to do something** — see `isRuleActive`.
+ * 3. **The person has to have worked.** The guarantee is for "the days they
+ *    worked", so an off-shift manager draws nothing. Hours are the
+ *    participation signal for the hours method *only*: the role and manual
+ *    methods never collect hours, so everyone would read as zero and every
+ *    guarantee would silently vanish. There, being selected for the pool is
+ *    the signal instead.
+ *
+ * The allocator and the badge in the hours grid both call this, so the UI
+ * cannot advertise a guarantee the split does not honour.
+ */
+export function ruleAppliesTo(
+  rule: RoleAllocationRule | undefined | null,
+  { poolingModel, shareMethod, hours }: RuleEligibility,
+): rule is RoleAllocationRule {
+  return (
+    poolingModel === 'full_pool' &&
+    isRuleActive(rule) &&
+    (shareMethod !== 'hours' || hours > 0)
+  );
 }
 
 /**

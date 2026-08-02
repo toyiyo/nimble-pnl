@@ -4,6 +4,8 @@ import {
   calculateTipSplitByHours,
   calculateTipSplitEven,
   rebalanceAllocations,
+  ruleAppliesTo,
+  type RuleEligibility,
   type GuaranteedParticipant,
   type RoleAllocationRule,
   type TipShare,
@@ -367,5 +369,105 @@ describe('calculateTipSplitWithGuarantees', () => {
       expect(amountOf(result, 'b')).toBe(5000);
       expect(result.shares.find(s => s.employeeId === 'a')?.appliedRule).toBeUndefined();
     });
+  });
+});
+
+describe('ruleAppliesTo', () => {
+  const context = (overrides: Partial<RuleEligibility> = {}): RuleEligibility => ({
+    poolingModel: 'full_pool',
+    shareMethod: 'hours',
+    hours: 8,
+    ...overrides,
+  });
+
+  describe('the person has to have worked', () => {
+    // The guarantee is for "the days they worked". Applying it to everyone
+    // selected for the pool meant an off-shift manager still drew their 10%,
+    // taking it straight out of the pockets of the people who were there.
+    it('drops the rule for someone with no hours on the hours method', () => {
+      expect(ruleAppliesTo(atLeast(10), context({ hours: 0 }))).toBe(false);
+    });
+
+    it('keeps the rule for someone who worked', () => {
+      expect(ruleAppliesTo(atLeast(10), context({ hours: 0.25 }))).toBe(true);
+    });
+
+    // Hours come from a text input via `Number.parseFloat`, which yields NaN
+    // for an empty or half-typed value. NaN > 0 is false, so this reads as
+    // "has not worked" rather than throwing or silently applying the rule.
+    it('treats unparseable hours as not worked', () => {
+      expect(ruleAppliesTo(atLeast(10), context({ hours: Number.NaN }))).toBe(false);
+    });
+
+    it('treats negative hours as not worked', () => {
+      expect(ruleAppliesTo(atLeast(10), context({ hours: -3 }))).toBe(false);
+    });
+
+    // The role and manual methods never collect hours, so every participant
+    // sits at zero. Gating on hours there would silently void every guarantee.
+    it.each(['role', 'manual'] as const)(
+      'ignores hours entirely on the %s method',
+      shareMethod => {
+        expect(ruleAppliesTo(atLeast(10), context({ shareMethod, hours: 0 }))).toBe(true);
+      },
+    );
+  });
+
+  describe('Full Pool only', () => {
+    it('ignores rules in a percentage-contribution pool', () => {
+      expect(
+        ruleAppliesTo(atLeast(10), context({ poolingModel: 'percentage_contribution' })),
+      ).toBe(false);
+    });
+
+    it('ignores them there even for a fixed share on a full day', () => {
+      expect(
+        ruleAppliesTo(exactly(25), context({ poolingModel: 'percentage_contribution', hours: 8 })),
+      ).toBe(false);
+    });
+  });
+
+  describe('the rule has to do something', () => {
+    it('rejects a missing rule', () => {
+      expect(ruleAppliesTo(undefined, context())).toBe(false);
+      expect(ruleAppliesTo(null, context())).toBe(false);
+    });
+
+    it('rejects `at_least 0%` — a floor of zero cannot lift anyone', () => {
+      expect(ruleAppliesTo(atLeast(0), context())).toBe(false);
+    });
+
+    it('accepts `exactly 0%` — paying nothing is a real instruction', () => {
+      expect(ruleAppliesTo(exactly(0), context())).toBe(true);
+    });
+  });
+
+  // The badge in the hours grid and the participant list handed to the
+  // allocator both call this predicate. If it ever answered differently for
+  // the same inputs, the UI would promise a guarantee the split ignores.
+  it('agrees with what the allocator actually pays out', () => {
+    const cases: Array<{ rule: RoleAllocationRule; eligibility: RuleEligibility }> = [
+      { rule: atLeast(40), eligibility: context({ hours: 1 }) },
+      { rule: atLeast(40), eligibility: context({ hours: 0 }) },
+      { rule: exactly(40), eligibility: context({ hours: 1 }) },
+      { rule: exactly(0), eligibility: context({ hours: 2 }) },
+      { rule: atLeast(0), eligibility: context({ hours: 2 }) },
+      { rule: atLeast(40), eligibility: context({ poolingModel: 'percentage_contribution' }) },
+    ];
+
+    for (const { rule, eligibility } of cases) {
+      const applies = ruleAppliesTo(rule, eligibility);
+      const result = calculateTipSplitWithGuarantees(
+        10000,
+        [
+          { id: 'a', name: 'A', hours: eligibility.hours, role: 'Manager', rule: applies ? rule : undefined },
+          person('b', 5),
+        ],
+        byHours,
+      );
+
+      const badged = result.shares.find(s => s.employeeId === 'a')?.appliedRule !== undefined;
+      expect(badged, `${rule.mode}:${rule.percentage} @ ${JSON.stringify(eligibility)}`).toBe(applies);
+    }
   });
 });

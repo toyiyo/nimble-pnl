@@ -3,10 +3,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import type { RoleAllocationRule } from '@/utils/tipPooling';
 
+// `ShareMethod` and `PoolingModel` live in tipPooling because the allocation
+// rules there branch on them, and that module cannot import from this hook
+// without a cycle. Re-exported here so the many existing `from
+// '@/hooks/useTipPoolSettings'` import sites keep working.
+export type { ShareMethod, PoolingModel } from '@/utils/tipPooling';
+import type { ShareMethod, PoolingModel } from '@/utils/tipPooling';
+
 export type TipSource = 'manual' | 'pos';
-export type ShareMethod = 'hours' | 'role' | 'manual';
 export type SplitCadence = 'daily' | 'weekly' | 'shift';
-export type PoolingModel = 'full_pool' | 'percentage_contribution';
 
 export interface TipPoolSettings {
   id: string;

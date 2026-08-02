@@ -18,6 +18,8 @@ interface TipReviewScreenProps {
   readonly poolingModel?: PoolingModel;
   readonly serverResults?: ServerResult[];
   readonly poolResults?: PoolResult[];
+  readonly scaledDownFactor?: number | null;
+  readonly redistributedLeftoverCents?: number;
 }
 
 /**
@@ -40,6 +42,8 @@ export function TipReviewScreen({
   poolingModel,
   serverResults,
   poolResults,
+  scaledDownFactor = null,
+  redistributedLeftoverCents = 0,
 }: TipReviewScreenProps) {
   const [shares, setShares] = useState<TipShare[]>(initialShares);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);

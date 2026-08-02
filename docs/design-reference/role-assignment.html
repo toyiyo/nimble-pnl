@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Assigning a role — EasyShiftHQ permissions</title>
+
+<style>
+  /* ==========================================================================
+     Tokens transcribed verbatim from roles-and-areas.html so the two
+     prototypes cannot drift. Nothing new is introduced here except
+     --positive / --negative, which the change-delta needs and which the
+     original had no use for.
+     ========================================================================== */
+  :root {
+    --paper:    #FBF8F3;
+    --surface:  #FFFFFF;
+    --sunken:   #F3EDE5;
+    --ink:      #17120E;
+    --ink-soft: #7A6B5F;
+    --ink-faint:#A79789;
+    --rule:     #E6DCD0;
+    --rule-soft:#F0E8DE;
+    --accent:   #BE4E27;
+    --accent-ink:#FFFFFF;
+    --accent-wash:#F7E6DD;
+    --caution:  #8C6412;
+    --caution-wash:#F6EDD6;
+    --positive: #4A6B34;
+    --positive-wash:#EAF0E2;
+    --negative: #96412F;
+    --negative-wash:#F7E4E0;
+    --shadow:   0 1px 2px rgba(40,24,10,.05), 0 8px 24px -16px rgba(40,24,10,.28);
+    --shadow-pop: 0 2px 6px rgba(40,24,10,.07), 0 18px 46px -18px rgba(40,24,10,.42);
+
+    --font-ui: "Avenir Next", "Avenir", "Segoe UI Variable Text", "Segoe UI", "Optima", system-ui, sans-serif;
+    --font-data: ui-monospace, "SF Mono", "SFMono-Regular", Menlo, "Cascadia Mono", monospace;
+
+    --radius: 12px;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:    #141110;
+      --surface:  #1D1917;
+      --sunken:   #100D0C;
+      --ink:      #F4EFE9;
+      --ink-soft: #A2958A;
+      --ink-faint:#7C7067;
+      --rule:     #322B27;
+      --rule-soft:#262120;
+      --accent:   #E0714A;
+      --accent-ink:#1A0F09;
+      --accent-wash:#3A2118;
+      --caution:  #D3A44E;
+      --caution-wash:#332714;
+      --positive: #9CBF7E;
+      --positive-wash:#20291A;
+      --negative: #E08A74;
+      --negative-wash:#33201B;
+      --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+      --shadow-pop: 0 2px 6px rgba(0,0,0,.5), 0 18px 46px -18px rgba(0,0,0,.9);
+      color-scheme: dark;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:    #141110;
+    --surface:  #1D1917;
+    --sunken:   #100D0C;
+    --ink:      #F4EFE9;
+    --ink-soft: #A2958A;
+    --ink-faint:#7C7067;
+    --rule:     #322B27;
+    --rule-soft:#262120;
+    --accent:   #E0714A;
+    --accent-ink:#1A0F09;
+    --accent-wash:#3A2118;
+    --caution:  #D3A44E;
+    --caution-wash:#332714;
+    --positive: #9CBF7E;
+    --positive-wash:#20291A;
+    --negative: #E08A74;
+    --negative-wash:#33201B;
+    --shadow:   0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+    --shadow-pop: 0 2px 6px rgba(0,0,0,.5), 0 18px 46px -18px rgba(0,0,0,.9);
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 28px 24px 120px; }
+
+  /* ---------- chrome ---------- */
+  .chrome { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 6px; }
+  .eyebrow {
+    font-family: var(--font-data);
+    font-size: 10.5px;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .eyebrow--accent { color: var(--accent); }
+  h1 {
+    font-size: 27px;
+    font-weight: 600;
+    letter-spacing: -.022em;
+    margin: 4px 0 6px;
+    text-wrap: balance;
+  }
+  .lede { color: var(--ink-soft); max-width: 62ch; margin: 0 0 22px; }
+
+  .tabs { display: flex; gap: 26px; border-bottom: 1px solid var(--rule); margin-bottom: 26px; flex-wrap: wrap; }
+  .tab {
+    appearance: none; background: none; border: 0; padding: 0 0 11px;
+    font: inherit; font-weight: 500; color: var(--ink-soft);
+    cursor: pointer; position: relative; letter-spacing: -.005em;
+  }
+  .tab[aria-selected="true"] { color: var(--ink); }
+  .tab[aria-selected="true"]::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 2px; background: var(--accent);
+  }
+  .tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+
+  /* ---------- generic ---------- */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+  }
+
+  button.btn {
+    appearance: none; font: inherit; font-weight: 500; font-size: 13px;
+    border-radius: 9px; padding: 8px 14px; cursor: pointer;
+    border: 1px solid transparent; transition: background .14s, border-color .14s, color .14s, filter .14s;
+  }
+  .btn--primary { background: var(--accent); color: var(--accent-ink); }
+  .btn--primary:hover { filter: brightness(1.07); }
+  .btn--ghost { background: transparent; color: var(--ink-soft); border-color: var(--rule); }
+  .btn--ghost:hover { color: var(--ink); border-color: var(--ink-faint); }
+  .btn--quiet { background: transparent; color: var(--ink-soft); border-color: transparent; }
+  .btn--quiet:hover { color: var(--ink); background: var(--sunken); }
+  .btn:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+  .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: 11.5px; font-weight: 500;
+    padding: 3px 8px; border-radius: 6px;
+    background: var(--sunken); color: var(--ink-soft);
+    white-space: nowrap;
+  }
+  .chip--manage { background: var(--accent-wash); color: var(--accent); }
+  .chip--stamp {
+    font-family: var(--font-data); font-size: 10px; letter-spacing: .09em;
+    text-transform: uppercase; background: transparent;
+    border: 1px solid var(--rule); color: var(--ink-faint);
+  }
+
+  .section-label { display: flex; align-items: baseline; gap: 10px; margin: 30px 0 12px; flex-wrap: wrap; }
+  .section-label h2 {
+    font-size: 12px; font-weight: 600; letter-spacing: .06em;
+    text-transform: uppercase; color: var(--ink-soft); margin: 0;
+  }
+  .section-label p { margin: 0; font-size: 12.5px; color: var(--ink-faint); }
+
+  .avatar {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%;
+    background: var(--sunken); color: var(--ink-soft);
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 600; letter-spacing: .01em;
+  }
+  .avatar--sm { width: 26px; height: 26px; flex-basis: 26px; font-size: 10px; }
+  .glyph {
+    width: 34px; height: 34px; flex: 0 0 34px; border-radius: 9px;
+    background: var(--sunken); color: var(--ink-soft);
+    display: grid; place-items: center;
+  }
+  .glyph--sm { width: 28px; height: 28px; flex-basis: 28px; border-radius: 8px; }
+
+  /* ==========================================================================
+     MOVE 1 — the role chip is the control
+     ========================================================================== */
+  .roster { padding: 6px 0; }
+  .personrow {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--rule-soft);
+  }
+  .personrow:last-child { border-bottom: 0; }
+  .personrow__id { display: flex; align-items: center; gap: 11px; min-width: 0; flex: 1; }
+  .personrow__name { font-weight: 500; letter-spacing: -.008em; }
+  .personrow__mail { font-size: 12.5px; color: var(--ink-faint); }
+  .personrow__act { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+
+  /* The role chip, promoted from label to button. Reads as a chip at rest;
+     grows a border and a caret on hover so it announces itself as pressable. */
+  .rolebtn {
+    appearance: none; font: inherit; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 500;
+    padding: 4px 8px 4px 9px; border-radius: 7px;
+    background: var(--sunken); color: var(--ink-soft);
+    border: 1px solid transparent;
+    transition: border-color .14s, background .14s, color .14s;
+    max-width: 220px;
+  }
+  .rolebtn:hover, .rolebtn[aria-expanded="true"] {
+    border-color: var(--rule); background: var(--surface); color: var(--ink);
+  }
+  .rolebtn[aria-expanded="true"] { border-color: var(--accent); }
+  .rolebtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .rolebtn__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rolebtn__caret { flex: 0 0 auto; opacity: .55; transition: transform .16s, opacity .14s; }
+  .rolebtn:hover .rolebtn__caret { opacity: 1; }
+  .rolebtn[aria-expanded="true"] .rolebtn__caret { transform: rotate(180deg); opacity: 1; }
+  .rolebtn--custom { color: var(--accent); background: var(--accent-wash); }
+  .rolebtn[data-locked="true"] { cursor: default; border-color: transparent !important; background: var(--sunken); color: var(--ink-faint); }
+
+  /* ---------- the picker ---------- */
+  .pickerhost { position: relative; }
+  .picker {
+    position: absolute; right: 0; top: calc(100% + 7px); z-index: 40;
+    width: 372px; max-width: calc(100vw - 40px);
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: var(--radius); box-shadow: var(--shadow-pop);
+    overflow: hidden;
+    animation: pop .17s cubic-bezier(.2,.8,.3,1) backwards;
+  }
+  @keyframes pop { from { opacity: 0; transform: translateY(-5px) scale(.985); } }
+  @media (prefers-reduced-motion: reduce) {
+    .picker, .rolecard, .deltastrip { animation: none !important; }
+    .seg__thumb, .rolebtn__caret { transition: none !important; }
+  }
+
+  .picker__search { position: relative; padding: 11px 12px; border-bottom: 1px solid var(--rule-soft); }
+  .picker__search input {
+    font: inherit; font-size: 13px; width: 100%;
+    padding: 7px 10px 7px 30px; border-radius: 8px;
+    background: var(--sunken); border: 1px solid var(--rule); color: var(--ink);
+  }
+  .picker__search input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+  .picker__search svg { position: absolute; left: 22px; top: 50%; transform: translateY(-50%); color: var(--ink-faint); }
+
+  .picker__scroll { max-height: 316px; overflow-y: auto; padding: 5px 6px 7px; scrollbar-width: thin; }
+  .picker__group {
+    font-family: var(--font-data); font-size: 9.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-faint);
+    padding: 9px 8px 4px;
+  }
+
+  .opt {
+    display: grid; grid-template-columns: 28px minmax(0,1fr) 16px;
+    gap: 10px; align-items: start;
+    width: 100%; text-align: left; cursor: pointer;
+    padding: 8px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; font: inherit; color: inherit;
+    transition: background .12s, border-color .12s;
+  }
+  .opt:hover { background: var(--sunken); }
+  .opt[aria-checked="true"] { background: var(--accent-wash); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .opt[aria-disabled="true"] { cursor: not-allowed; opacity: .75; }
+  .opt[aria-disabled="true"]:hover { background: transparent; }
+  .opt__name { font-weight: 500; font-size: 13px; letter-spacing: -.008em; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .opt__desc { font-size: 11.5px; color: var(--ink-faint); margin-top: 1px; }
+  .opt__chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .opt__chips .chip { font-size: 10.5px; padding: 2px 6px; }
+  .opt__tick { color: var(--accent); margin-top: 5px; }
+  .opt__gate {
+    font-size: 11.5px; color: var(--caution); margin-top: 3px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .opt__current {
+    font-family: var(--font-data); font-size: 9px; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--accent);
+  }
+
+  /* the delta — the reason this popover is not just a <select> */
+  .deltastrip {
+    border-top: 1px solid var(--rule); background: var(--sunken);
+    padding: 12px 14px 13px;
+    animation: slidein .2s cubic-bezier(.2,.8,.3,1) backwards;
+  }
+  @keyframes slidein { from { opacity: 0; transform: translateY(6px); } }
+  .deltastrip__head {
+    font-family: var(--font-data); font-size: 9.5px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 7px;
+  }
+  .deltastrip__move { font-size: 13px; line-height: 1.45; }
+  .deltastrip__move b { font-weight: 600; }
+  .deltaline { display: flex; gap: 7px; align-items: flex-start; margin-top: 7px; font-size: 12.5px; }
+  .deltaline__mark {
+    font-family: var(--font-data); font-size: 10px; font-weight: 600;
+    padding: 1px 5px; border-radius: 5px; flex: 0 0 auto; margin-top: 1px;
+  }
+  .deltaline--gain .deltaline__mark { background: var(--positive-wash); color: var(--positive); }
+  .deltaline--lose .deltaline__mark { background: var(--negative-wash); color: var(--negative); }
+  .deltaline__body { color: var(--ink-soft); min-width: 0; }
+  .deltastrip__none { font-size: 12.5px; color: var(--ink-faint); margin-top: 6px; }
+  .deltastrip__foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 13px; }
+
+  /* ==========================================================================
+     MOVE 2 — the member count is a door
+     ========================================================================== */
+  .grid-roles { display: grid; grid-template-columns: repeat(auto-fill, minmax(292px, 1fr)); gap: 14px; }
+  .rolecard {
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 18px; text-align: left;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    animation: rise .38s cubic-bezier(.2,.7,.3,1) backwards;
+  }
+  @keyframes rise { from { opacity: 0; transform: translateY(7px); } }
+  .rolecard__top { display: flex; align-items: flex-start; gap: 11px; }
+  .rolecard__hit {
+    appearance: none; background: none; border: 0; padding: 0; margin: 0;
+    font: inherit; color: inherit; text-align: left; cursor: pointer;
+    display: flex; align-items: flex-start; gap: 11px; width: 100%;
+  }
+  .rolecard__hit:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 8px; }
+  .rolecard__name { font-weight: 600; letter-spacing: -.012em; }
+  .rolecard__desc { font-size: 12.5px; color: var(--ink-soft); margin-top: 1px; }
+  .rolecard__chips { display: flex; flex-wrap: wrap; gap: 5px; }
+  .rolecard__foot {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    margin-top: auto; padding-top: 11px; border-top: 1px solid var(--rule-soft);
+    font-size: 12px; color: var(--ink-faint);
+  }
+
+  /* The whole point of Move 2: this was dead text. */
+  .peoplelink {
+    appearance: none; border: 0; background: none; font: inherit; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12px; color: var(--ink-soft);
+    padding: 3px 7px 3px 4px; margin: -3px -7px -3px -4px; border-radius: 7px;
+    transition: background .13s, color .13s;
+  }
+  .peoplelink:hover { background: var(--sunken); color: var(--ink); }
+  .peoplelink:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .peoplelink__stack { display: flex; }
+  .peoplelink__stack .avatar {
+    width: 21px; height: 21px; flex-basis: 21px; font-size: 8.5px;
+    border: 1.5px solid var(--surface); margin-right: -6px;
+  }
+  .peoplelink__stack .avatar:last-child { margin-right: 0; }
+  .peoplelink__arrow { opacity: 0; transition: opacity .13s, transform .13s; transform: translateX(-2px); }
+  .peoplelink:hover .peoplelink__arrow { opacity: .7; transform: translateX(0); }
+  /* Zero-member roles are the case the user actually hit — make the empty
+     state the loudest thing on the card, not the quietest. */
+  .peoplelink--empty { color: var(--accent); font-weight: 500; }
+  .peoplelink--empty:hover { background: var(--accent-wash); color: var(--accent); }
+
+  /* ---------- role detail: Areas | People ---------- */
+  .backlink {
+    appearance: none; background: none; border: 0; font: inherit; cursor: pointer;
+    color: var(--ink-soft); font-size: 13px; padding: 4px 8px 4px 4px; border-radius: 7px;
+    display: inline-flex; align-items: center; gap: 6px; margin-bottom: 14px;
+  }
+  .backlink:hover { color: var(--ink); background: var(--sunken); }
+  .backlink:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .subtabs { display: flex; gap: 4px; padding: 4px; background: var(--sunken); border: 1px solid var(--rule); border-radius: 10px; width: fit-content; margin-bottom: 18px; }
+  .subtab {
+    appearance: none; border: 1px solid transparent; background: transparent; font: inherit;
+    font-size: 13px; font-weight: 500; color: var(--ink-soft);
+    padding: 6px 14px; border-radius: 7px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 7px;
+    transition: background .14s, color .14s, border-color .14s;
+  }
+  .subtab:hover { color: var(--ink); }
+  .subtab[aria-selected="true"] { background: var(--surface); border-color: var(--rule); color: var(--ink); box-shadow: 0 1px 2px rgba(40,24,10,.05); }
+  .subtab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .subtab__count {
+    font-family: var(--font-data); font-size: 10px; padding: 1px 5px; border-radius: 5px;
+    background: var(--sunken); color: var(--ink-faint);
+  }
+  .subtab[aria-selected="true"] .subtab__count { background: var(--accent-wash); color: var(--accent); }
+
+  .panelhead { padding: 16px 18px 14px; border-bottom: 1px solid var(--rule-soft); display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .panelhead h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.014em; }
+  .panelhead p { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-faint); max-width: 52ch; }
+
+  .emptyroster { padding: 40px 24px 44px; text-align: center; }
+  .emptyroster .glyph { margin: 0 auto 12px; width: 42px; height: 42px; flex-basis: 42px; border-radius: 11px; }
+  .emptyroster h4 { margin: 0 0 5px; font-size: 14.5px; font-weight: 600; letter-spacing: -.012em; }
+  .emptyroster p { margin: 0 auto 16px; font-size: 13px; color: var(--ink-soft); max-width: 44ch; }
+
+  .notice {
+    display: flex; gap: 9px; align-items: flex-start;
+    padding: 10px 12px; border-radius: 9px; font-size: 12.5px;
+    background: var(--caution-wash); color: var(--caution);
+    border: 1px solid color-mix(in srgb, var(--caution) 25%, transparent);
+  }
+  .notice svg { flex: 0 0 auto; margin-top: 2px; }
+
+  /* ---------- assign sheet ---------- */
+  .scrim {
+    position: fixed; inset: 0; z-index: 60;
+    background: color-mix(in srgb, var(--ink) 34%, transparent);
+    backdrop-filter: blur(2px);
+    display: grid; place-items: center; padding: 24px;
+    animation: fade .16s ease backwards;
+  }
+  @keyframes fade { from { opacity: 0; } }
+  .sheet {
+    width: 100%; max-width: 468px; max-height: min(640px, 88vh);
+    display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--rule);
+    border-radius: 14px; box-shadow: var(--shadow-pop); overflow: hidden;
+    animation: lift .2s cubic-bezier(.2,.8,.3,1) backwards;
+  }
+  @keyframes lift { from { opacity: 0; transform: translateY(10px) scale(.985); } }
+  .sheet__head { padding: 18px 20px 14px; border-bottom: 1px solid var(--rule-soft); display: flex; gap: 12px; align-items: flex-start; }
+  .sheet__head h3 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -.016em; }
+  .sheet__head p { margin: 2px 0 0; font-size: 12.5px; color: var(--ink-faint); }
+  .sheet__body { overflow-y: auto; padding: 6px 8px 10px; flex: 1; }
+  .sheet__foot { padding: 13px 18px; border-top: 1px solid var(--rule); display: flex; justify-content: space-between; align-items: center; gap: 12px; background: var(--sunken); }
+  .sheet__count { font-size: 12.5px; color: var(--ink-soft); }
+
+  .picklet {
+    display: grid; grid-template-columns: 18px 26px minmax(0,1fr) auto;
+    gap: 10px; align-items: center;
+    width: 100%; text-align: left; cursor: pointer;
+    padding: 8px 10px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; font: inherit; color: inherit;
+    transition: background .12s;
+  }
+  .picklet:hover { background: var(--sunken); }
+  .picklet:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .picklet__box {
+    width: 17px; height: 17px; border-radius: 5px;
+    border: 1.5px solid var(--rule); display: grid; place-items: center;
+    color: transparent; transition: background .13s, border-color .13s, color .13s;
+  }
+  .picklet[aria-checked="true"] .picklet__box { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .picklet__name { font-size: 13px; font-weight: 500; }
+  .picklet__mail { font-size: 11.5px; color: var(--ink-faint); }
+  .picklet__from { font-size: 11.5px; color: var(--ink-faint); font-family: var(--font-data); letter-spacing: .02em; }
+
+  /* ---------- employee-dialog inset (Move 3) ---------- */
+  .inset { max-width: 560px; }
+  .inset__bar { padding: 14px 18px; border-bottom: 1px solid var(--rule-soft); display: flex; align-items: center; gap: 11px; }
+  .inset__bar h3 { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -.014em; }
+  .inset__bar p { margin: 1px 0 0; font-size: 12.5px; color: var(--ink-faint); }
+  .fieldpair { padding: 15px 18px; border-bottom: 1px solid var(--rule-soft); }
+  .fieldpair:last-child { border-bottom: 0; }
+  .fieldpair__label {
+    font-family: var(--font-data); font-size: 10.5px; letter-spacing: .11em;
+    text-transform: uppercase; color: var(--ink-faint); margin-bottom: 7px;
+  }
+  .accessrow { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .accessrow__l { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .accessrow__note { font-size: 12.5px; color: var(--ink-soft); }
+  .xlink { color: var(--accent); text-decoration: none; font-weight: 500; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+  .xlink:hover { border-bottom-color: var(--accent); }
+
+  .view[hidden] { display: none; }
+  .sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+
+  .themetoggle { position: fixed; right: 18px; bottom: 18px; z-index: 80; }
+
+  /* annotation frames — this is a design doc, so it labels itself */
+  .annot { margin: 34px 0 12px; padding-left: 13px; border-left: 2px solid var(--accent); }
+  .annot h2 { margin: 0 0 3px; font-size: 15px; font-weight: 600; letter-spacing: -.014em; }
+  .annot p { margin: 0; font-size: 13px; color: var(--ink-soft); max-width: 68ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="chrome">
+    <span class="eyebrow">Team management</span>
+    <span class="eyebrow eyebrow--accent">Wetzel's — Cold Stone, Alamo Ranch</span>
+  </div>
+  <h1>Putting people in a role</h1>
+  <p class="lede">
+    A role is a room. You should be able to walk in from either door — from the person
+    (<em>what is José?</em>) or from the role (<em>who is in Operations lead?</em>). Today both
+    doors are painted on: the role picker only offers built-ins, and the member count on a
+    role card is dead text. These three moves open them.
+  </p>
+
+  <div class="tabs" role="tablist" aria-label="Team management sections">
+    <button class="tab" role="tab" aria-selected="false" data-goto="v-members">Team members</button>
+    <button class="tab" role="tab" aria-selected="true"  data-goto="v-roles">Roles &amp; areas</button>
+    <button class="tab" role="tab" aria-selected="false" data-goto="v-employee">Employee record</button>
+  </div>
+
+  <!-- ====================================================================
+       MOVE 1 — Team members: the role chip is the control
+       ==================================================================== -->
+  <section class="view" id="v-members" hidden>
+    <div class="annot">
+      <h2>Move 1 — the chip is the control</h2>
+      <p>
+        Today the role is decoration sitting beside a <code>⋯</code> that hides a dropdown menu
+        that contains a select. Three layers of chrome to reach a picker, and the picker only
+        ever lists the closed <code>Role</code> union. Here the chip itself is the button, and
+        the list is every role this restaurant actually has.
+      </p>
+    </div>
+
+    <div class="section-label">
+      <h2>Team members</h2>
+      <p>Click anyone's role to move them.</p>
+    </div>
+
+    <div class="card" id="member-roster"><div class="roster"></div></div>
+  </section>
+
+  <!-- ====================================================================
+       MOVE 2 — Roles: the member count is a door
+       ==================================================================== -->
+  <section class="view" id="v-roles">
+    <div class="annot">
+      <h2>Move 2 — the member count is a door</h2>
+      <p>
+        <b>“0 people”</b> is exactly where you looked when you wanted to apply the role you had
+        just built, and it did nothing. It becomes the primary action on an unused role: a face
+        pile when the role has members, a terracotta <b>Assign people</b> when it doesn't.
+      </p>
+    </div>
+
+    <div class="section-label">
+      <h2>Your roles</h2>
+      <p>Click a role's name to change its areas — or its people count to change who's in it.</p>
+    </div>
+
+    <div class="grid-roles" id="role-grid"></div>
+  </section>
+
+  <!-- role detail: Areas | People -->
+  <section class="view" id="v-roledetail" hidden>
+    <button class="backlink" data-goto="v-roles">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      All roles
+    </button>
+
+    <div class="chrome" style="margin-bottom:2px">
+      <span class="eyebrow" id="rd-stamp">Custom role</span>
+    </div>
+    <h1 style="font-size:22px" id="rd-name">Operations lead</h1>
+    <p class="lede" style="margin-bottom:18px" id="rd-desc"></p>
+
+    <div class="subtabs" role="tablist" aria-label="Role sections">
+      <button class="subtab" role="tab" aria-selected="false" data-sub="areas">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        Areas
+      </button>
+      <button class="subtab" role="tab" aria-selected="true" data-sub="people">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg>
+        People
+        <span class="subtab__count" id="rd-count">0</span>
+      </button>
+    </div>
+
+    <div class="card" id="rd-people">
+      <div class="panelhead">
+        <div>
+          <h3>Who's in this role</h3>
+          <p>Everyone here reaches the same areas. Changing the areas changes it for all of them the next time they load a page.</p>
+        </div>
+        <button class="btn btn--primary" id="assign-open">
+          <span aria-hidden="true" style="margin-right:5px">+</span>Assign people
+        </button>
+      </div>
+      <div id="rd-roster"></div>
+    </div>
+
+    <div class="card" id="rd-areas" hidden style="padding:20px">
+      <p style="margin:0;color:var(--ink-soft);font-size:13px">
+        The areas matrix — unchanged from the approved
+        <span style="font-family:var(--font-data);font-size:12px">roles-and-areas.html</span> prototype.
+        This tab is only reframed as a sibling of <b>People</b>, so a role reads as
+        “areas + people” rather than “areas, and nowhere to put anyone.”
+      </p>
+    </div>
+  </section>
+
+  <!-- ====================================================================
+       MOVE 3 — Employee record: stop pretending the employee holds a role
+       ==================================================================== -->
+  <section class="view" id="v-employee" hidden>
+    <div class="annot">
+      <h2>Move 3 — the employee record stops lying</h2>
+      <p>
+        A role lives on the <em>account</em>, not on the employee row — which is why looking for
+        it on an employee found nothing. Rather than bolt a fake role field onto the employee
+        dialog, the dialog names the real thing: an <b>App access</b> row that shows the linked
+        account's role and links to it. And the invite it sends stops hard-coding
+        <code>staff</code>.
+      </p>
+    </div>
+
+    <div class="section-label"><h2>Employee · with an account</h2></div>
+    <div class="card inset">
+      <div class="inset__bar">
+        <span class="avatar">JD</span>
+        <div><h3>José Delgado</h3><p>Shift lead · Front of house</p></div>
+      </div>
+      <div class="fieldpair">
+        <div class="fieldpair__label">App access</div>
+        <div class="accessrow">
+          <div class="accessrow__l">
+            <span class="accessrow__note">Signed in as <b>josema92@hotmail.com</b></span>
+          </div>
+          <div class="pickerhost">
+            <button class="rolebtn rolebtn--custom" type="button" aria-expanded="false" data-person="p-jose" aria-haspopup="dialog">
+              <span class="rolebtn__name">Operations lead</span>
+              <svg class="rolebtn__caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:12.5px;color:var(--ink-faint)">
+          Roles belong to the EasyShiftHQ account, not the employee record — the same control
+          appears on <a class="xlink" href="#" data-goto="v-members">Team members</a>.
+        </p>
+      </div>
+    </div>
+
+    <div class="section-label"><h2>Employee · no account yet</h2></div>
+    <div class="card inset">
+      <div class="inset__bar">
+        <span class="avatar">AH</span>
+        <div><h3>Aleah Holderread</h3><p>Server · Front of house</p></div>
+      </div>
+      <div class="fieldpair">
+        <div class="fieldpair__label">App access</div>
+        <div class="accessrow">
+          <span class="accessrow__note">No access — they can't sign in yet.</span>
+          <button class="btn btn--ghost" type="button">Invite to the app…</button>
+        </div>
+        <p style="margin:9px 0 0;font-size:12.5px;color:var(--ink-faint)">
+          The invite asks which role, using the same picker. It no longer assumes
+          <span style="font-family:var(--font-data);font-size:12px">staff</span>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<button class="btn btn--ghost themetoggle" id="theme" type="button" aria-label="Toggle light and dark theme">◐ Theme</button>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------------------------------------------------------------------
+     Model. Area labels are AREA_DEFINITIONS' (src/lib/permissions/areas.ts);
+     the built-in grants mirror the seeded roles.
+     --------------------------------------------------------------------- */
+  const AREAS = {
+    reports:    'Dashboard & Reports',
+    sales:      'Sales',
+    inventory:  'Inventory & Purchasing',
+    recipes:    'Recipes',
+    scheduling: 'Scheduling',
+    books:      'Money & Books',
+    payroll:    'Payroll',
+    employees:  'Employees',
+    team:       'Team & Access',
+    settings:   'Settings & Integrations',
+  };
+  const ORDER = Object.keys(AREAS);
+
+  const ROLES = [
+    { id:'b1', name:'Owner',           builtin:true,  desc:'Runs the business',                 assignable:false,
+      areas:{reports:'manage',sales:'manage',inventory:'manage',recipes:'manage',scheduling:'manage',books:'manage',payroll:'manage',employees:'manage',team:'manage',settings:'manage'} },
+    { id:'b2', name:'Manager',         builtin:true,  desc:'Runs the store day to day',
+      areas:{reports:'manage',sales:'view',inventory:'manage',recipes:'manage',scheduling:'manage',books:'manage',payroll:'view',employees:'manage',team:'manage',settings:'view'} },
+    { id:'b3', name:'Operations Manager', builtin:true, desc:'Scheduling, labor, tips, inventory',
+      areas:{reports:'view',sales:'view',inventory:'manage',recipes:'manage',scheduling:'manage',payroll:'view',employees:'view'} },
+    { id:'b4', name:'Chef',            builtin:true,  desc:'Recipes, prep, and stock',
+      areas:{inventory:'manage',recipes:'manage'} },
+    { id:'b5', name:'Employee',        builtin:true,  desc:'Self-service: own shifts and punches',
+      areas:{scheduling:'view'} },
+    { id:'b7', name:'Accountant',      builtin:true,  desc:'Keeps the books and closes the month',
+      areas:{reports:'view',books:'manage',payroll:'view',employees:'view'} },
+    { id:'b8', name:'Inventory Helper',builtin:true,  desc:'Counts, scans, and receives stock',
+      areas:{inventory:'manage'} },
+    { id:'b9', name:'Recipe Consultant',builtin:true, desc:'Builds and tunes recipes',
+      areas:{inventory:'view',recipes:'manage'} },
+    { id:'ba', name:'Collaborator Ops Manager', builtin:true, desc:'Outside operations help',
+      areas:{reports:'view',sales:'view',inventory:'manage',recipes:'manage',scheduling:'manage',employees:'view'} },
+    { id:'c1', name:'Operations lead', builtin:false, desc:'Covers the floor: schedule, stock, and the roster',
+      areas:{reports:'view',sales:'view',inventory:'manage',scheduling:'manage',employees:'view'} },
+    { id:'c2', name:'Weekend Supervisor', builtin:false, desc:'Covers Fri–Sun: schedule, punches, and tips',
+      areas:{reports:'view',sales:'view',scheduling:'manage',employees:'view'} },
+  ];
+  const roleById = id => ROLES.find(r => r.id === id);
+
+  const PEOPLE = [
+    { id:'p-liz',   name:'Liz Trevino',      mail:'liz@tbsgroupllc.com',      roleId:'b2', locked:false },
+    { id:'p-jose',  name:'José Delgado',     mail:'josema92@hotmail.com',     roleId:'ba', locked:false },
+    { id:'p-aleah', name:'Aleah Holderread', mail:'aleah444@gmail.com',       roleId:'b5', locked:false },
+    { id:'p-oscar', name:'Oscar Vela',       mail:'oscar061405@gmail.com',    roleId:'b5', locked:false },
+    { id:'p-nat',   name:'Natalie Garza',    mail:'nataliee.garza02@gmail.com', roleId:'b5', locked:false },
+    { id:'p-kiosk', name:'Front counter iPad', mail:'kiosk+7c0c76e3@easyshifthq.com', roleId:null, locked:true, lockLabel:'Kiosk device' },
+  ];
+
+  /* The signed-in viewer. Managers cannot assign a custom role — the
+     RESTRICTIVE policy on user_restaurants is owner-only for anything whose
+     builtin_role_id_for() is NULL. The picker states that rather than
+     silently failing on save. Flip to 'manager' to see the gated state. */
+  const VIEWER = 'owner';
+
+  const initials = n => n.split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+  const areaChips = (areas, max) => {
+    const keys = ORDER.filter(k => areas[k]);
+    const shown = max ? keys.slice(0, max) : keys;
+    const rest = keys.length - shown.length;
+    return shown.map(k =>
+      `<span class="chip${areas[k] === 'manage' ? ' chip--manage' : ''}">${esc(AREAS[k])}${areas[k] === 'manage' ? ' · manage' : ''}</span>`
+    ).join('') + (rest > 0 ? `<span class="chip">+${rest}</span>` : '');
+  };
+
+  /* The delta. This is the reason the picker is a popover and not a <select>:
+     a role change is a permissions event, so it previews like one. */
+  function diff(fromRole, toRole) {
+    const a = fromRole ? fromRole.areas : {}, b = toRole.areas;
+    const gains = [], loses = [];
+    for (const k of ORDER) {
+      const x = a[k] || 'none', y = b[k] || 'none';
+      if (x === y) continue;
+      const rank = { none:0, view:1, manage:2 };
+      const label = AREAS[k] + (y === 'manage' ? ' · manage' : '');
+      (rank[y] > rank[x] ? gains : loses).push(rank[y] > rank[x] ? label : AREAS[k] + (x === 'manage' ? ' · manage' : ''));
+    }
+    return { gains, loses };
+  }
+
+  /* ---------------------------------------------------------------------
+     View switching
+     --------------------------------------------------------------------- */
+  const views = ['v-members','v-roles','v-roledetail','v-employee'];
+  function show(id) {
+    closePicker();
+    views.forEach(v => { const el = document.getElementById(v); if (el) el.hidden = v !== id; });
+    document.querySelectorAll('.tab').forEach(t => {
+      const target = t.dataset.goto;
+      t.setAttribute('aria-selected', String(target === id || (id === 'v-roledetail' && target === 'v-roles')));
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  document.addEventListener('click', e => {
+    const g = e.target.closest('[data-goto]');
+    if (g) { e.preventDefault(); show(g.dataset.goto); }
+  });
+
+  /* ---------------------------------------------------------------------
+     MOVE 1 — member roster with the chip-as-control
+     --------------------------------------------------------------------- */
+  function renderMembers() {
+    const host = document.querySelector('#member-roster .roster');
+    host.innerHTML = PEOPLE.map(p => {
+      const role = p.roleId ? roleById(p.roleId) : null;
+      const label = role ? role.name : (p.lockLabel || '—');
+      const btn = p.locked
+        ? `<span class="rolebtn" data-locked="true" title="Kiosk service accounts can't hold a role">
+             <span class="rolebtn__name">${esc(label)}</span>
+           </span>`
+        : `<button class="rolebtn${role && !role.builtin ? ' rolebtn--custom' : ''}" type="button"
+                   aria-expanded="false" aria-haspopup="dialog" data-person="${p.id}"
+                   aria-label="${esc(p.name)}: role is ${esc(label)}. Change role">
+             <span class="rolebtn__name">${esc(label)}</span>
+             <svg class="rolebtn__caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+           </button>`;
+      return `<div class="personrow">
+        <div class="personrow__id">
+          <span class="avatar" aria-hidden="true">${esc(initials(p.name))}</span>
+          <div style="min-width:0">
+            <div class="personrow__name">${esc(p.name)}</div>
+            <div class="personrow__mail">${esc(p.mail)}</div>
+          </div>
+        </div>
+        <div class="personrow__act"><div class="pickerhost">${btn}</div></div>
+      </div>`;
+    }).join('');
+  }
+
+  /* ---------------------------------------------------------------------
+     The picker
+     --------------------------------------------------------------------- */
+  let openHost = null, pending = null, activePerson = null;
+
+  function closePicker() {
+    if (!openHost) return;
+    const pop = openHost.querySelector('.picker');
+    if (pop) pop.remove();
+    const btn = openHost.querySelector('.rolebtn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    openHost = null; pending = null; activePerson = null;
+  }
+
+  function optionMarkup(role, currentId) {
+    const isCurrent = role.id === currentId;
+    const isPending = pending === role.id;
+    const gated = !role.builtin && VIEWER !== 'owner';
+    return `<div class="opt" role="radio" tabindex="${isPending || (pending === null && isCurrent) ? 0 : -1}"
+                 aria-checked="${isPending ? 'true' : 'false'}"
+                 ${gated ? 'aria-disabled="true"' : ''} data-role="${role.id}">
+      <span class="glyph glyph--sm" aria-hidden="true">
+        ${role.builtin
+          ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>'
+          : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'}
+      </span>
+      <span style="min-width:0">
+        <span class="opt__name">${esc(role.name)}
+          ${isCurrent ? '<span class="opt__current">Current</span>' : ''}
+        </span>
+        <span class="opt__desc">${esc(role.desc)}</span>
+        <span class="opt__chips">${areaChips(role.areas, 3)}</span>
+        ${gated ? `<span class="opt__gate">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            Only an owner can assign a custom role
+          </span>` : ''}
+      </span>
+      <span class="opt__tick" aria-hidden="true">${isPending
+        ? '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>'
+        : ''}</span>
+    </div>`;
+  }
+
+  function deltaMarkup(person, currentRole) {
+    if (!pending || pending === (currentRole && currentRole.id)) return '';
+    const target = roleById(pending);
+    const { gains, loses } = diff(currentRole, target);
+    const first = person.name.split(/\s+/)[0];
+    return `<div class="deltastrip">
+      <div class="deltastrip__head">What changes</div>
+      <div class="deltastrip__move">
+        <b>${esc(first)}</b> moves from ${esc(currentRole ? currentRole.name : 'no role')}
+        to <b>${esc(target.name)}</b>.
+      </div>
+      ${gains.length ? `<div class="deltaline deltaline--gain">
+        <span class="deltaline__mark">GAINS</span>
+        <span class="deltaline__body">${gains.map(esc).join(', ')}</span></div>` : ''}
+      ${loses.length ? `<div class="deltaline deltaline--lose">
+        <span class="deltaline__mark">LOSES</span>
+        <span class="deltaline__body">${loses.map(esc).join(', ')}</span></div>` : ''}
+      ${!gains.length && !loses.length
+        ? '<div class="deltastrip__none">Same areas — only the label on their badge changes.</div>' : ''}
+      <div class="deltastrip__foot">
+        <button class="btn btn--quiet" type="button" data-act="cancel">Cancel</button>
+        <button class="btn btn--primary" type="button" data-act="apply">Move to ${esc(target.name)}</button>
+      </div>
+    </div>`;
+  }
+
+  function paintPicker() {
+    const pop = openHost.querySelector('.picker');
+    const person = PEOPLE.find(p => p.id === activePerson);
+    const currentRole = person.roleId ? roleById(person.roleId) : null;
+    const q = (pop.querySelector('input').value || '').trim().toLowerCase();
+    const match = r => !q || r.name.toLowerCase().includes(q) || r.desc.toLowerCase().includes(q);
+
+    const custom = ROLES.filter(r => !r.builtin && match(r));
+    const builtin = ROLES.filter(r => r.builtin && r.assignable !== false && match(r));
+
+    const list = pop.querySelector('.picker__scroll');
+    list.innerHTML =
+      (custom.length ? `<div class="picker__group">Your custom roles</div>` +
+        custom.map(r => optionMarkup(r, currentRole && currentRole.id)).join('') : '') +
+      (builtin.length ? `<div class="picker__group">Built-in</div>` +
+        builtin.map(r => optionMarkup(r, currentRole && currentRole.id)).join('') : '') +
+      (!custom.length && !builtin.length
+        ? `<p style="padding:18px 10px;text-align:center;color:var(--ink-faint);font-size:12.5px">No role matches “${esc(q)}”.</p>` : '');
+
+    const old = pop.querySelector('.deltastrip');
+    if (old) old.remove();
+    pop.insertAdjacentHTML('beforeend', deltaMarkup(person, currentRole));
+  }
+
+  function openPicker(btn) {
+    const host = btn.closest('.pickerhost');
+    if (openHost === host) { closePicker(); return; }
+    closePicker();
+    openHost = host; activePerson = btn.dataset.person; pending = null;
+    btn.setAttribute('aria-expanded', 'true');
+
+    host.insertAdjacentHTML('beforeend', `
+      <div class="picker" role="dialog" aria-label="Choose a role">
+        <div class="picker__search">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+          <input type="text" placeholder="Find a role…" aria-label="Find a role" />
+        </div>
+        <div class="picker__scroll" role="radiogroup" aria-label="Roles"></div>
+      </div>`);
+
+    paintPicker();
+    host.querySelector('.picker input').focus();
+  }
+
+  document.addEventListener('click', e => {
+    const trigger = e.target.closest('.rolebtn[data-person]');
+    if (trigger) { e.stopPropagation(); openPicker(trigger); return; }
+
+    if (openHost && openHost.contains(e.target)) {
+      const opt = e.target.closest('.opt');
+      if (opt && opt.getAttribute('aria-disabled') !== 'true') {
+        pending = opt.dataset.role; paintPicker();
+        const strip = openHost.querySelector('.deltastrip');
+        if (strip) strip.querySelector('[data-act="apply"]').focus();
+        return;
+      }
+      const act = e.target.closest('[data-act]');
+      if (act && act.dataset.act === 'cancel') { closePicker(); return; }
+      if (act && act.dataset.act === 'apply') {
+        const person = PEOPLE.find(p => p.id === activePerson);
+        person.roleId = pending;
+        closePicker();
+        renderMembers(); renderRoles();
+        return;
+      }
+      return;
+    }
+    closePicker();
+  });
+
+  document.addEventListener('input', e => {
+    if (openHost && openHost.contains(e.target) && e.target.matches('.picker input')) paintPicker();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { closePicker(); closeSheet(); }
+    if (!openHost) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      const opts = [...openHost.querySelectorAll('.opt:not([aria-disabled="true"])')];
+      if (!opts.length) return;
+      e.preventDefault();
+      const i = opts.indexOf(document.activeElement.closest('.opt'));
+      const next = opts[(i + (e.key === 'ArrowDown' ? 1 : -1) + opts.length) % (opts.length || 1)] || opts[0];
+      next.focus();
+    }
+    if ((e.key === 'Enter' || e.key === ' ') && document.activeElement.closest('.opt')) {
+      e.preventDefault();
+      document.activeElement.closest('.opt').click();
+    }
+  });
+
+  /* ---------------------------------------------------------------------
+     MOVE 2 — role grid with a live people count
+     --------------------------------------------------------------------- */
+  const membersOf = roleId => PEOPLE.filter(p => p.roleId === roleId);
+
+  function renderRoles() {
+    const grid = document.getElementById('role-grid');
+    const shown = ROLES.filter(r => !r.builtin || ['b2','b5','ba'].includes(r.id));
+    grid.innerHTML = shown.map((r, i) => {
+      const people = membersOf(r.id);
+      const pile = people.slice(0, 3)
+        .map(p => `<span class="avatar" aria-hidden="true">${esc(initials(p.name))}</span>`).join('');
+      const count = people.length === 1 ? '1 person' : `${people.length} people`;
+      return `<article class="rolecard" style="animation-delay:${i * 45}ms">
+        <button class="rolecard__hit" type="button" data-role-open="${r.id}">
+          <span class="glyph" aria-hidden="true">
+            ${r.builtin
+              ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>'
+              : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'}
+          </span>
+          <span style="min-width:0">
+            <span class="rolecard__name" style="display:block">${esc(r.name)}</span>
+            <span class="rolecard__desc" style="display:block">${esc(r.desc)}</span>
+          </span>
+        </button>
+        <div class="rolecard__chips">${areaChips(r.areas)}</div>
+        <div class="rolecard__foot">
+          ${people.length
+            ? `<button class="peoplelink" type="button" data-people="${r.id}" aria-label="${esc(count)} in ${esc(r.name)}. Manage who's in this role">
+                 <span class="peoplelink__stack" aria-hidden="true">${pile}</span>
+                 <span>${count}</span>
+                 <svg class="peoplelink__arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+               </button>`
+            : `<button class="peoplelink peoplelink--empty" type="button" data-people="${r.id}" aria-label="Nobody is in ${esc(r.name)} yet. Assign people">
+                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+                 <span>Assign people</span>
+               </button>`}
+          <span class="chip chip--stamp">${r.builtin ? 'Built-in' : 'Custom'}</span>
+        </div>
+      </article>`;
+    }).join('');
+  }
+
+  let detailRoleId = 'c1';
+
+  function renderDetail() {
+    const r = roleById(detailRoleId);
+    const people = membersOf(r.id);
+    document.getElementById('rd-stamp').textContent = r.builtin ? 'Built-in role' : 'Custom role';
+    document.getElementById('rd-name').textContent = r.name;
+    document.getElementById('rd-desc').textContent = r.desc;
+    document.getElementById('rd-count').textContent = String(people.length);
+
+    const host = document.getElementById('rd-roster');
+    host.innerHTML = people.length
+      ? `<div class="roster">` + people.map(p => `
+          <div class="personrow">
+            <div class="personrow__id">
+              <span class="avatar" aria-hidden="true">${esc(initials(p.name))}</span>
+              <div style="min-width:0">
+                <div class="personrow__name">${esc(p.name)}</div>
+                <div class="personrow__mail">${esc(p.mail)}</div>
+              </div>
+            </div>
+            <div class="personrow__act">
+              <button class="btn btn--quiet" type="button" data-remove="${p.id}"
+                      aria-label="Move ${esc(p.name)} out of ${esc(r.name)}">Move out</button>
+            </div>
+          </div>`).join('') + `</div>`
+      : `<div class="emptyroster">
+          <span class="glyph" aria-hidden="true">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+          </span>
+          <h4>Nobody is in ${esc(r.name)} yet</h4>
+          <p>A role does nothing until someone holds it. Assign the people who do this job — they'll see the areas above the next time they load a page.</p>
+          <button class="btn btn--primary" type="button" id="assign-open-empty">Assign people</button>
+        </div>`;
+  }
+
+  document.addEventListener('click', e => {
+    const open = e.target.closest('[data-role-open]');
+    if (open) { detailRoleId = open.dataset.roleOpen; setSub('areas'); renderDetail(); show('v-roledetail'); return; }
+
+    const people = e.target.closest('[data-people]');
+    if (people) { detailRoleId = people.dataset.people; setSub('people'); renderDetail(); show('v-roledetail'); return; }
+
+    const rm = e.target.closest('[data-remove]');
+    if (rm) {
+      const p = PEOPLE.find(x => x.id === rm.dataset.remove);
+      p.roleId = 'b5';                    // falls back to Employee, never to nothing
+      renderDetail(); renderRoles(); renderMembers();
+      return;
+    }
+
+    if (e.target.closest('#assign-open') || e.target.closest('#assign-open-empty')) openSheet();
+  });
+
+  function setSub(which) {
+    document.querySelectorAll('.subtab').forEach(t => t.setAttribute('aria-selected', String(t.dataset.sub === which)));
+    document.getElementById('rd-people').hidden = which !== 'people';
+    document.getElementById('rd-areas').hidden = which !== 'areas';
+  }
+  document.querySelectorAll('.subtab').forEach(t => t.addEventListener('click', () => setSub(t.dataset.sub)));
+
+  /* ---------------------------------------------------------------------
+     Assign sheet — the same act, from the role's side
+     --------------------------------------------------------------------- */
+  let sheetSel = new Set();
+
+  function openSheet() {
+    const r = roleById(detailRoleId);
+    sheetSel = new Set();
+    const candidates = PEOPLE.filter(p => !p.locked && p.roleId !== r.id);
+    document.body.insertAdjacentHTML('beforeend', `
+      <div class="scrim" id="scrim">
+        <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+          <div class="sheet__head">
+            <span class="glyph" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>
+            </span>
+            <div>
+              <h3 id="sheet-title">Assign to ${esc(r.name)}</h3>
+              <p>Everyone you pick leaves the role they're in now.</p>
+            </div>
+          </div>
+          <div class="sheet__body">
+            ${candidates.map(p => {
+              const from = p.roleId ? roleById(p.roleId).name : '—';
+              return `<div class="picklet" role="checkbox" tabindex="0" aria-checked="false" data-pick="${p.id}">
+                <span class="picklet__box" aria-hidden="true">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+                <span class="avatar avatar--sm" aria-hidden="true">${esc(initials(p.name))}</span>
+                <span style="min-width:0">
+                  <span class="picklet__name" style="display:block">${esc(p.name)}</span>
+                  <span class="picklet__mail" style="display:block">${esc(p.mail)}</span>
+                </span>
+                <span class="picklet__from">${esc(from)} →</span>
+              </div>`;
+            }).join('') || `<p style="padding:26px 14px;text-align:center;color:var(--ink-faint);font-size:13px">Everyone already holds this role.</p>`}
+          </div>
+          <div class="sheet__foot">
+            <span class="sheet__count" id="sheet-count">Nobody selected</span>
+            <span style="display:flex;gap:8px">
+              <button class="btn btn--quiet" type="button" data-sheet="close">Cancel</button>
+              <button class="btn btn--primary" type="button" data-sheet="apply" disabled>Assign</button>
+            </span>
+          </div>
+        </div>
+      </div>`);
+    document.querySelector('#scrim .picklet')?.focus();
+  }
+
+  function closeSheet() { document.getElementById('scrim')?.remove(); }
+
+  function paintSheet() {
+    const n = sheetSel.size;
+    document.getElementById('sheet-count').textContent =
+      n === 0 ? 'Nobody selected' : n === 1 ? '1 person selected' : `${n} people selected`;
+    const apply = document.querySelector('[data-sheet="apply"]');
+    apply.disabled = n === 0;
+    apply.textContent = n ? `Assign ${n}` : 'Assign';
+  }
+
+  document.addEventListener('click', e => {
+    const scrim = document.getElementById('scrim');
+    if (!scrim) return;
+    if (e.target === scrim) { closeSheet(); return; }
+    const pick = e.target.closest('[data-pick]');
+    if (pick) {
+      const id = pick.dataset.pick;
+      sheetSel.has(id) ? sheetSel.delete(id) : sheetSel.add(id);
+      pick.setAttribute('aria-checked', String(sheetSel.has(id)));
+      paintSheet();
+      return;
+    }
+    const s = e.target.closest('[data-sheet]');
+    if (s && s.dataset.sheet === 'close') closeSheet();
+    if (s && s.dataset.sheet === 'apply') {
+      sheetSel.forEach(id => { PEOPLE.find(p => p.id === id).roleId = detailRoleId; });
+      closeSheet(); renderDetail(); renderRoles(); renderMembers();
+    }
+  });
+
+  document.addEventListener('keydown', e => {
+    if ((e.key === 'Enter' || e.key === ' ') && document.activeElement?.matches('[data-pick]')) {
+      e.preventDefault(); document.activeElement.click();
+    }
+  });
+
+  /* theme */
+  document.getElementById('theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme');
+    const next = cur === 'dark' ? 'light' : cur === 'light' ? 'dark'
+      : (matchMedia('(prefers-color-scheme: dark)').matches ? 'light' : 'dark');
+    document.documentElement.setAttribute('data-theme', next);
+  });
+
+  renderMembers(); renderRoles(); renderDetail();
+})();
+</script>
+</body>
+</html>

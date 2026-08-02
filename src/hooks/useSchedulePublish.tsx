@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fromZonedTime } from 'date-fns-tz';
 import { supabase } from '@/integrations/supabase/client';
-import { SchedulePublication } from '@/types/scheduling';
+import { SchedulePublication, Shift } from '@/types/scheduling';
 import { useToast } from '@/hooks/use-toast';
 import { formatLocalDate } from '@/lib/shiftInterval';
 
@@ -255,6 +255,98 @@ export const useUnpublishSchedule = () => {
       });
     },
   });
+};
+
+/**
+ * What an employee's week actually is, as opposed to what it looks like.
+ *
+ * `useWeekPublicationStatus` collapses "was published, now fully retracted" into
+ * the same `null` it returns for "never published" — fine for the manager, who
+ * has the Publish button's own state to go by, but it is exactly the distinction
+ * an employee needs. That is the incident: a week was announced, then pulled back
+ * for edits, and the employee's view was indistinguishable from a week that had
+ * simply never been published.
+ */
+export type WeekScheduleState =
+  | 'not_published'
+  | 'published'
+  | 'published_revising'
+  | 'retracted';
+
+interface WeekScheduleStatus {
+  state: WeekScheduleState | null;
+  publication: SchedulePublication | null;
+  publishedCount: number;
+  draftCount: number;
+  loading: boolean;
+  error: unknown;
+}
+
+/**
+ * Counts come from shifts the caller already has — `EmployeeSchedule` filters
+ * the week down to `myShifts`, and the state model is defined over that
+ * employee's own shifts, not the restaurant's. Passing them in also keeps this
+ * query off the critical path: the day grid renders from `useShifts` while the
+ * banner resolves a beat later from its own single-row lookup.
+ */
+export const useWeekScheduleStatus = (
+  restaurantId: string | null,
+  weekStart: Date,
+  shifts: Pick<Shift, 'is_published'>[]
+): WeekScheduleStatus => {
+  const weekStartStr = formatLocalDate(weekStart);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['week_schedule_status', restaurantId, weekStartStr],
+    queryFn: async () => {
+      if (!restaurantId) return null;
+
+      // Keyed on week_start_date alone and ordered newest-first on purpose. A
+      // week can carry several publication rows (every republish inserts one),
+      // and unlike useWeekPublicationStatus this lookup is NOT gated on shifts
+      // still being published — a retracted week has to stay findable, or state
+      // D collapses back into state A and the whole distinction is lost.
+      const { data, error } = await supabase
+        .from('schedule_publications')
+        .select('*')
+        .eq('restaurant_id', restaurantId)
+        .eq('week_start_date', weekStartStr)
+        .order('published_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) throw error;
+      return (data as SchedulePublication | null) ?? null;
+    },
+    enabled: !!restaurantId,
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+  });
+
+  const publishedCount = shifts.filter((s) => s.is_published).length;
+  const draftCount = shifts.length - publishedCount;
+
+  // A wrong banner is worse than no banner, so an errored or in-flight lookup
+  // reports no state at all rather than guessing "not published".
+  const state: WeekScheduleState | null =
+    isLoading || error
+      ? null
+      : !data
+        ? 'not_published'
+        : publishedCount === 0
+          ? 'retracted'
+          : draftCount > 0
+            ? 'published_revising'
+            : 'published';
+
+  return {
+    state,
+    publication: data ?? null,
+    publishedCount,
+    draftCount,
+    loading: isLoading,
+    error,
+  };
 };
 
 export const useWeekPublicationStatus = (

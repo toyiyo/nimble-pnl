@@ -273,10 +273,15 @@ serve(async (req) => {
     const successCount = emailResults.filter((r) => r.ok).length;
     const failureCount = emailResults.length - successCount;
 
-    // Send web push notifications to all scheduled employees
+    // Send web push notifications to all scheduled employees. Deliveries are
+    // counted, not just attempted: push is the only channel for a restaurant
+    // with email off, and it reaches nobody when VAPID keys are unset or no one
+    // has subscribed.
+    let pushSentCount = 0;
+
     if (ch.push) {
-      await notifySchedulePublishedPush(scheduledEmployees, (userId) =>
-        sendWebPushToUser(serviceClient, userId, restaurantId, {
+      await notifySchedulePublishedPush(scheduledEmployees, async (userId) => {
+        const result = await sendWebPushToUser(serviceClient, userId, restaurantId, {
           title: isRepublish ? "Schedule Updated Again" : "Schedule Updated",
           body: isRepublish
             ? `${weekStartFormatted}–${weekEndFormatted} was revised and republished — check what changed.`
@@ -286,15 +291,20 @@ serve(async (req) => {
           // replaces an earlier notification still sitting in the tray instead
           // of stacking a second one next to copy it contradicts.
           tag: "schedule-published",
-        })
-      );
+        });
+        pushSentCount += result.sent;
+        return result;
+      });
     }
 
-    // Every attempted email failed, so nobody was actually told. Leaving the row
-    // unmarked keeps the retraction notifier from later announcing the
-    // withdrawal of a schedule its audience never heard about, and the manager's
-    // failure toast prompts a republish that writes a fresh row anyway.
-    const announced = successCount > 0 || (failureCount === 0 && ch.push);
+    // Marked notified only if somebody was actually reached, on either channel.
+    // `ch.push` on its own is not proof of delivery — an email-disabled
+    // restaurant with no push subscriptions would otherwise record a schedule
+    // as announced to an audience that heard nothing, and the retraction
+    // notifier's gate would later mail them about withdrawing it. Leaving the
+    // row unmarked also lets the manager's failure toast prompt a republish,
+    // which writes a fresh row anyway.
+    const announced = successCount > 0 || pushSentCount > 0;
 
     if (announced) {
       // serviceClient, not `supabase`. This write used to go through the
@@ -323,7 +333,7 @@ serve(async (req) => {
 
     // Log notification activity
     console.log(
-      `Sent ${successCount} notifications, ${failureCount} failed for publication ${publicationId}`
+      `Sent ${successCount} emails and ${pushSentCount} pushes, ${failureCount} emails failed for publication ${publicationId}`
     );
 
     // A 200 here is what hid defect B: the caller could not tell a clean

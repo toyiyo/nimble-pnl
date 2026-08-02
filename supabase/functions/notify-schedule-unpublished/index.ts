@@ -33,6 +33,9 @@ import { runBounded } from "../_shared/webPushFanout.ts";
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
+/** Where all three channels — email link, web push, native push — point. */
+const SCHEDULE_PATH = "/employee/schedule";
+
 interface UnpublishNotificationPayload {
   restaurantId: string;
   weekStart: string;
@@ -243,7 +246,7 @@ serve(async (req) => {
       );
 
       const weekRange = `${formatDate(retraction.week_start_date)} - ${formatDate(retraction.week_end_date)}`;
-      const scheduleUrl = `${APP_URL}/employee/schedule`;
+      const scheduleUrl = `${APP_URL}${SCHEDULE_PATH}`;
 
       const emailRecipients = (ch.email ? audience : []).filter((emp) => emp.email);
       const emailResults = await sendPaced(
@@ -288,7 +291,7 @@ serve(async (req) => {
         const webPush = await sendWebPushToUsers(serviceClient, pushUserIds, restaurantId, {
           title: pushTitle,
           body: pushBody,
-          url: "/employee/schedule",
+          url: SCHEDULE_PATH,
           tag: "schedule-unpublished",
         });
         pushSuccessCount += webPush.sent;
@@ -307,7 +310,7 @@ serve(async (req) => {
                 user_id: userId,
                 title: pushTitle,
                 body: pushBody,
-                data: { route: "/employee/schedule" },
+                data: { route: SCHEDULE_PATH },
               }),
             });
             if (res.ok) pushSuccessCount += 1;

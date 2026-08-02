@@ -178,10 +178,16 @@ export const PublishScheduleDialog = ({
             disabled={isPublishing}
             className="bg-gradient-to-r from-primary to-accent"
           >
+            {/*
+              The shifts publish in about a second; the rest of this wait is the
+              notification fan-out, paced to stay under Resend's rate limit, so
+              it scales with headcount. Naming that is what keeps a legitimate
+              ten-second wait from reading as a hung button.
+            */}
             {isPublishing ? (
               <>
                 <Clock className="h-4 w-4 mr-2 animate-spin" />
-                Publishing...
+                {employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
               </>
             ) : (
               <>

@@ -820,6 +820,8 @@ export function Tips() {
           poolingModel={poolingModel}
           serverResults={percentageResult?.serverResults}
           poolResults={percentageResult?.poolResults}
+          scaledDownFactor={isPercentageContribution ? null : guaranteedResult.scaledDownFactor}
+          redistributedLeftoverCents={isPercentageContribution ? 0 : guaranteedResult.redistributedLeftoverCents}
           onApprove={handleApprove}
           onSaveDraft={handleSaveDraft}
           isLoading={isSaving}

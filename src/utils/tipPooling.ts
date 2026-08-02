@@ -304,10 +304,20 @@ export function calculateTipSplitWithGuarantees(
       if (!mode) free.push(i);
       else if (mode === 'at_least') atLeastOnly.push(i);
     });
-    const target =
-      [...free, ...atLeastOnly, ...all].find(i => shares[i].amountCents + residual >= 0) ??
-      all.length - 1;
-    shares[target].amountCents += residual;
+    // Walk the candidates in priority order, giving each as much of the residual
+    // as it can absorb without going negative. A positive residual is always
+    // taken whole by the first candidate; a negative one only spills onward when
+    // the preferred candidate cannot cover it. Spilling — rather than clamping
+    // at zero — is what keeps `sum(shares) === totalTipsCents` true, and Approve
+    // is gated on exactly that.
+    const order = [...free, ...atLeastOnly, ...all].filter((v, i, a) => a.indexOf(v) === i);
+    let unassigned = residual;
+    for (const i of order) {
+      if (unassigned === 0) break;
+      const delta = unassigned > 0 ? unassigned : Math.max(unassigned, -shares[i].amountCents);
+      shares[i].amountCents += delta;
+      unassigned -= delta;
+    }
   }
 
   for (const share of shares) {

@@ -274,5 +274,55 @@ describe('calculateTipSplitWithGuarantees', () => {
 
       expect(sumOf(result)).toBe(10001);
     });
+
+    // The residual reconciliation spills a negative residual across candidates
+    // rather than clamping it at zero, so both invariants have to survive every
+    // shape at once: shares sum to the pool exactly (Approve is gated on it) and
+    // nobody is shown a negative payout.
+    it('never produces a negative share and always sums exactly, across awkward pools and rule mixes', () => {
+      const rules: Array<RoleAllocationRule | undefined> = [
+        undefined,
+        atLeast(0),
+        atLeast(1),
+        atLeast(60),
+        exactly(0),
+        exactly(1),
+        exactly(99),
+      ];
+      const pools = [0, 1, 2, 3, 7, 99, 101, 10001];
+      const hourSets = [
+        [0, 0, 0],
+        [0, 1, 0],
+        [1, 1, 1],
+        [7, 0, 3],
+      ];
+
+      for (const pool of pools) {
+        for (const hours of hourSets) {
+          for (const ruleA of rules) {
+            for (const ruleB of rules) {
+              const participants = [
+                person('a', hours[0], ruleA),
+                person('b', hours[1], ruleB),
+                person('c', hours[2]),
+              ];
+              for (const splitter of [byHours, evenly]) {
+                const result = calculateTipSplitWithGuarantees(pool, participants, splitter);
+                const context = `pool=${pool} hours=${hours} a=${ruleA?.mode ?? 'none'}:${
+                  ruleA?.percentage ?? '-'
+                } b=${ruleB?.mode ?? 'none'}:${ruleB?.percentage ?? '-'}`;
+
+                expect(sumOf(result), context).toBe(pool);
+                expect(
+                  result.shares.every(s => s.amountCents >= 0),
+                  `${context} produced a negative share`,
+                ).toBe(true);
+                expect(result.shares).toHaveLength(3);
+              }
+            }
+          }
+        }
+      }
+    });
   });
 });

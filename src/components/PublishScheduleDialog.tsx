@@ -164,6 +164,20 @@ export const PublishScheduleDialog = ({
         </div>
 
         <DialogFooter>
+          {/*
+            Mounted unconditionally, unlike the button label below. A live
+            region has to be in the accessibility tree *before* its content
+            changes or most screen readers drop the first update — and the
+            button that carries the visible label is disabled the moment
+            publishing starts, so focus isn't sitting on it either.
+          */}
+          <span role="status" aria-live="polite" className="sr-only">
+            {isPublishing
+              ? employeeCount > 0
+                ? `Publishing. Notifying ${employeeCount} ${employeeCount === 1 ? 'employee' : 'employees'}.`
+                : 'Publishing.'
+              : ''}
+          </span>
           <Button
             type="button"
             variant="outline"
@@ -178,10 +192,19 @@ export const PublishScheduleDialog = ({
             disabled={isPublishing}
             className="bg-gradient-to-r from-primary to-accent"
           >
+            {/*
+              The shifts publish in about a second; the rest of this wait is the
+              notification fan-out, paced to stay under Resend's rate limit, so
+              it scales with headcount. Naming that is what keeps a legitimate
+              ten-second wait from reading as a hung button.
+            */}
             {isPublishing ? (
               <>
-                <Clock className="h-4 w-4 mr-2 animate-spin" />
-                Publishing...
+                <Clock className="h-4 w-4 mr-2 animate-spin" aria-hidden="true" />
+                {/* Not a live region: the sr-only one above owns the announcement. */}
+                <span>
+                  {employeeCount > 0 ? `Notifying ${employeeCount}...` : 'Publishing...'}
+                </span>
               </>
             ) : (
               <>

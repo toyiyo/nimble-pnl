@@ -276,7 +276,15 @@ export function calculateTipSplitWithGuarantees(
   for (const p of participants) {
     const rule = ruleOf(p);
     if (!rule) continue;
-    const cents = Math.round(totalTipsCents * (rule.percentage / 100));
+    // A floor rounds UP, a fixed share rounds to nearest. `Math.round` on an
+    // `at_least` floor pays less than the percentage the manager configured
+    // whenever the product lands below .5 — a 10% floor on a 101¢ pool would
+    // compute 10¢, which is 9.9%. Rounding up can never overshoot the pool:
+    // `percentage` is capped at 100 and `totalTipsCents` is an integer, so
+    // `ceil(total × pct/100) <= total`. Multiple people over 100% in aggregate
+    // is a different case, and step 2 below scales that back down.
+    const exact = totalTipsCents * (rule.percentage / 100);
+    const cents = rule.mode === 'at_least' ? Math.ceil(exact) : Math.round(exact);
     guarantees.set(p.id, cents);
     guaranteedTotal += cents;
   }

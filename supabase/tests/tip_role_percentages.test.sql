@@ -21,10 +21,11 @@
 --  14. role_percentages rejects an array-valued percentage
 --  15. role_percentages rejects an array-valued mode
 --  16. role_percentages accepts a well-formed multi-role map
+--  17. role_percentages rejects a JSON scalar as a check violation
 -- ============================================================================
 
 BEGIN;
-SELECT plan(16);
+SELECT plan(17);
 
 SET LOCAL role TO postgres;
 
@@ -260,6 +261,26 @@ SELECT lives_ok(
     VALUES ('c0000000-0000-0000-0000-000000000002', '{"Manager": {"mode": "at_least", "percentage": 10}, "Bartender": {"mode": "exactly", "percentage": 0}}'::jsonb, false)
   $$,
   'role_percentages should accept a well-formed multi-role map'
+);
+
+-- ============================================================================
+-- Test 17: a non-object value fails as a check violation, not a jsonpath error
+-- ============================================================================
+
+-- Companion to test 5, and the reason the strict predicates pass `silent =>
+-- true`. `strict $.*` raises 22033 on anything that is not an object, and only
+-- the `jsonb_typeof` conjunct stops that path from being taken — a conjunct
+-- Postgres is free to evaluate second. Asserting the *code* is 23514 (not
+-- merely that the insert failed) is what pins the constraint to a check
+-- violation regardless of the plan's evaluation order.
+SELECT throws_ok(
+  $$
+    INSERT INTO tip_pool_settings (restaurant_id, role_percentages, active)
+    VALUES ('c0000000-0000-0000-0000-000000000002', '"not an object"'::jsonb, true)
+  $$,
+  '23514',
+  NULL,
+  'role_percentages should reject a JSON scalar as a check violation'
 );
 
 SELECT * FROM finish();

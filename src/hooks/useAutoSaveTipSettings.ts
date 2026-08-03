@@ -32,7 +32,11 @@ const stableStringify = (value: unknown): string =>
   JSON.stringify(value, (_key, val) => {
     if (!val || typeof val !== 'object' || Array.isArray(val)) return val;
     const source = val as Record<string, unknown>;
-    return Object.fromEntries(Object.keys(source).sort().map(key => [key, source[key]]));
+    return Object.fromEntries(
+      Object.keys(source)
+        .sort((a, b) => a.localeCompare(b))
+        .map(key => [key, source[key]]),
+    );
   });
 
 /**

@@ -116,6 +116,27 @@ describe('calculateTipSplitWithGuarantees', () => {
       expect(amountOf(result, 'mgr')).toBe(10000);
     });
 
+    it('rounds a floor up so the payout is never below the configured percentage', () => {
+      // 10% of 101¢ is 10.1¢. Rounding to nearest pays 10¢ — 9.9%, under the
+      // guarantee the manager configured. The floor has to round up.
+      const participants = [person('mgr', 1, atLeast(10)), person('a', 99)];
+      const result = calculateTipSplitWithGuarantees(101, participants, byHours);
+
+      expect(amountOf(result, 'mgr')).toBe(11);
+      expect(amountOf(result, 'a')).toBe(90);
+      expect(sumOf(result)).toBe(101);
+    });
+
+    it('leaves an exactly share rounding to nearest', () => {
+      // Same 10.1¢ arithmetic, but a fixed share is not a promise of a minimum,
+      // so it keeps round-to-nearest and pays 10¢.
+      const participants = [person('mgr', 1, exactly(10)), person('a', 99)];
+      const result = calculateTipSplitWithGuarantees(101, participants, byHours);
+
+      expect(amountOf(result, 'mgr')).toBe(10);
+      expect(sumOf(result)).toBe(101);
+    });
+
     it('applies the floor per person, not per role', () => {
       // Two managers at 10% each commit 20% of the pool.
       const participants = [

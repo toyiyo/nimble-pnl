@@ -40,9 +40,23 @@ ALTER TABLE tip_pool_settings
     -- `.type()` reports "array" as expected. Every other `.type()` predicate
     -- below needs the same treatment for the same reason; the comparison and
     -- existence predicates stay in lax mode, where auto-unwrap is harmless.
+    --
+    -- The `'{}'::jsonb, true` tail is jsonb_path_exists's `vars` and `silent`
+    -- arguments. Strict `$.*` raises 22033 ("wildcard member accessor can only
+    -- be applied to an object") when `role_percentages` is an array or a
+    -- scalar. The `jsonb_typeof` conjunct above is what rejects those rows, but
+    -- Postgres does not promise to evaluate AND left to right — a reordered
+    -- plan would surface a raw 22033 instead of the 23514 check violation
+    -- callers (and the pgTAP suite) expect. `silent` turns that structural
+    -- error into NULL, and `false AND NULL` is still false, so the row is
+    -- rejected as a check violation either way. It does not weaken the
+    -- predicates: errors *inside* a filter expression were already suppressed
+    -- by the path engine, so every array/type case below still matches.
     AND NOT jsonb_path_exists(
       role_percentages,
-      'strict $.* ? (@.type() != "object")'
+      'strict $.* ? (@.type() != "object")',
+      '{}'::jsonb,
+      true
     )
     AND NOT jsonb_path_exists(
       role_percentages,
@@ -68,7 +82,9 @@ ALTER TABLE tip_pool_settings
     -- (the preceding `!exists` predicate is what rejects that case).
     AND NOT jsonb_path_exists(
       role_percentages,
-      'strict $.* ? (@.percentage.type() != "number")'
+      'strict $.* ? (@.percentage.type() != "number")',
+      '{}'::jsonb,
+      true
     )
     -- Same lax-mode coercion risk for `mode`: a numeric or boolean mode value
     -- would fail the string-comparison predicate above by never matching either
@@ -76,7 +92,9 @@ ALTER TABLE tip_pool_settings
     -- the array case, as above.
     AND NOT jsonb_path_exists(
       role_percentages,
-      'strict $.* ? (@.mode.type() != "string")'
+      'strict $.* ? (@.mode.type() != "string")',
+      '{}'::jsonb,
+      true
     )
   );
 

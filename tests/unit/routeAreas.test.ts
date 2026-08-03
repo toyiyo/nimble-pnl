@@ -107,6 +107,95 @@ describe('routeAreas – the exclusions that areas cannot express', () => {
   });
 });
 
+/**
+ * The ten builtins' `role_areas` rows, transcribed from
+ * supabase/migrations/20260730110000_seed_builtin_roles.sql. Includes the
+ * four collaborator grants above (SEEDED_COLLABORATOR_AREAS) plus the six
+ * platform roles.
+ */
+const SEEDED_BUILTIN_AREAS: Record<string, Grants> = {
+  owner: {
+    reports: 'manage',
+    sales: 'view',
+    inventory: 'manage',
+    purchasing: 'manage',
+    recipes: 'manage',
+    scheduling: 'manage',
+    books: 'manage',
+    chart_of_accounts: 'manage',
+    payroll: 'manage',
+    employees: 'manage',
+    team: 'manage',
+    collaborators: 'manage',
+    settings: 'manage',
+    integrations: 'manage',
+  },
+  manager: {
+    reports: 'manage',
+    sales: 'view',
+    inventory: 'manage',
+    purchasing: 'manage',
+    recipes: 'manage',
+    scheduling: 'manage',
+    books: 'manage',
+    chart_of_accounts: 'view',
+    payroll: 'manage',
+    employees: 'manage',
+    team: 'manage',
+    collaborators: 'manage',
+    settings: 'view',
+    integrations: 'view',
+  },
+  operations_manager: {
+    reports: 'manage',
+    sales: 'view',
+    inventory: 'manage',
+    purchasing: 'manage',
+    recipes: 'manage',
+    scheduling: 'manage',
+    payroll: 'manage',
+    employees: 'manage',
+    team: 'manage',
+    settings: 'view',
+  },
+  chef: {
+    reports: 'view',
+    sales: 'view',
+    inventory: 'manage',
+    purchasing: 'view',
+    recipes: 'manage',
+    scheduling: 'view',
+    settings: 'view',
+  },
+  employee_self_service: {
+    settings: 'view',
+  },
+  kiosk: {},
+  ...SEEDED_COLLABORATOR_AREAS,
+};
+
+describe('routeAreas – /print-checks is gated on books@manage across every builtin', () => {
+  for (const [role, grants] of Object.entries(SEEDED_BUILTIN_AREAS)) {
+    const satisfiesBooksManage = grants.books === 'manage';
+    it(`${satisfiesBooksManage ? 'admits' : 'excludes'} /print-checks for ${role}`, () => {
+      const derived = allowedPathsForAreas(grants);
+      if (satisfiesBooksManage) {
+        expect(derived).toContain('/print-checks');
+      } else {
+        expect(derived).not.toContain('/print-checks');
+      }
+    });
+  }
+
+  it('admits /print-checks for a synthetic books@manage role', () => {
+    expect(allowedPathsForAreas({ books: 'manage' })).toContain('/print-checks');
+  });
+
+  it('excludes /print-checks for a synthetic books@view role', () => {
+    expect(allowedPathsForAreas({ books: 'view' })).not.toContain('/print-checks');
+  });
+});
+
 describe('routeAreas – customCollaboratorRoutes', () => {
   it('lands on a page the role can actually open', () => {
     // A landing path outside `allowed` is a redirect loop: StaffRoleChecker

@@ -6637,6 +6637,63 @@ export type Database = {
           },
         ]
       }
+      schedule_retractions: {
+        Row: {
+          employee_ids: string[]
+          id: string
+          notified_at: string | null
+          publication_id: string | null
+          reason: string | null
+          restaurant_id: string
+          retracted_at: string
+          retracted_by: string | null
+          shift_count: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Insert: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Update: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id?: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date?: string
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_retractions_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_retractions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scim_group_members: {
         Row: {
           created_at: string

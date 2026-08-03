@@ -245,6 +245,12 @@ export interface SchedulePublication {
   shift_count: number;
   open_shifts_broadcast_at: string | null;
   open_shifts_broadcast_by: string | null;
+  /**
+   * Whether notify-schedule-published actually reached anyone for this row.
+   * Gates the retraction notification: pulling back a week nobody was told
+   * about should not generate the first message they ever receive about it.
+   */
+  notification_sent: boolean;
 }
 
 // Daily labor allocation for salaried/contractor employees

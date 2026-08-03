@@ -88,8 +88,19 @@ export function RolePicker({
   const searchQuery = search.trim().toLowerCase();
   const matches = (name: string) => name.toLowerCase().includes(searchQuery);
 
+  // Mirrors what `assign_membership_role` will actually accept for
+  // `collaborator_custom`: restaurant-scoped, non-builtin, collaborator-flavored.
+  // `restaurant_id` alone is not enough — `copy_role_to_restaurants`
+  // (20260730160000:114-115) copies the source row's `flavor` verbatim, so a
+  // restaurant can own a non-builtin *platform*-flavored role. Offering one here
+  // would fail at commit time with a 42501 that reads as a permissions problem
+  // rather than "this role was never assignable".
   const customRoles = roles.filter(
-    (r) => r.restaurant_id === restaurantId && matches(r.name)
+    (r) =>
+      r.restaurant_id === restaurantId &&
+      !r.builtin &&
+      r.flavor === 'collaborator' &&
+      matches(r.name)
   );
   const builtinRoles = roles.filter(
     (r) =>
@@ -123,7 +134,11 @@ export function RolePicker({
     assign.mutate(
       {
         membershipId,
-        role: isCustom ? CUSTOM_ROLE : candidateRow.legacy_role!,
+        // `legacy_role` is typed `string | null` because that is the column's
+        // shape, but 20260802100000 constrains it to the builtin role names
+        // via `builtin_role_id_for` plus a builtin-only CHECK — so on the
+        // non-custom branch it is a `Role`.
+        role: isCustom ? CUSTOM_ROLE : (candidateRow.legacy_role as Role),
         roleId: isCustom ? candidateRow.id : undefined,
       },
       {

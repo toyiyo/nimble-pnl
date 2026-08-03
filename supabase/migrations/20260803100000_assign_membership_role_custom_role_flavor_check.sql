@@ -49,10 +49,19 @@ DECLARE
 BEGIN
   -- Rule 1: the membership must exist, and ITS restaurant_id is authoritative.
   -- Restaurant scope is never taken from client input.
+  --
+  -- FOR UPDATE, because every rule below authorizes against v_current_role and
+  -- the write lands much later in the same transaction. Read unlocked, that is
+  -- a check-then-act race: a manager reads the target as 'staff', an owner
+  -- concurrently promotes that target to 'owner', and the manager's UPDATE then
+  -- demotes a fresh owner because Rule 5a was evaluated against the stale role.
+  -- Holding the row makes the authorization valid through the write. Mirrors
+  -- the lock the last-owner count already takes below.
   SELECT restaurant_id, user_id, role
     INTO v_restaurant_id, v_target_user_id, v_current_role
   FROM public.user_restaurants
-  WHERE id = p_membership_id;
+  WHERE id = p_membership_id
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Membership not found'

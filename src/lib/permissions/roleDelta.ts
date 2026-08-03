@@ -24,6 +24,23 @@ import {
 } from './areas';
 import { rowLevel } from './preview';
 
+/**
+ * Why this file does NOT diff on `rowLevel` alone.
+ *
+ * `rowLevel` returns the *highest* level among a row's underlying `areaKeys`
+ * (preview.ts:91-99), and four rows group two keys each (areas.ts:21-28).
+ * Diffing the collapsed value therefore hides a real capability change whenever
+ * the max is unmoved: `{inventory: manage, purchasing: view}` and
+ * `{inventory: manage, purchasing: manage}` both collapse to `manage`, so the
+ * picker would report "Same access" at the moment purchase-order editing
+ * changed hands. The split exists precisely because the builtins do not
+ * partition along the ten coarse rows.
+ *
+ * So the comparison runs per `AreaKey` and only the *labels* are grouped. A row
+ * whose keys move in both directions is honest about it and appears in both
+ * `gains` and `loses`.
+ */
+
 export interface RoleGrantSet {
   areas: ReadonlyArray<{ area_key: AreaKey; level: AreaLevel }>;
   flags: readonly SensitiveFlag[];
@@ -64,14 +81,25 @@ export function roleDelta(current: RoleGrantSet, candidate: RoleGrantSet): RoleD
   const gains: AreaDeltaLine[] = [];
   const loses: AreaDeltaLine[] = [];
 
-  // Per UI row, not per area_key: `rowLevel` collapses the fourteen area keys
-  // onto the ten rows the editor and RoleAreaChips already render, so the
-  // delta names areas the way every other screen names them.
+  // Compare every underlying area key; group only the label. `from`/`to` stay
+  // the row-level summary so the rendered line still reads the way the editor
+  // and RoleAreaChips name things, but whether a line is emitted at all is
+  // decided by the individual keys — see the note above this function.
   for (const row of AREA_DEFINITIONS) {
     const from = rowLevel(row, currentGrants);
     const to = rowLevel(row, candidateGrants);
-    if (rank(to) > rank(from)) gains.push({ label: row.label, from, to });
-    else if (rank(to) < rank(from)) loses.push({ label: row.label, from, to });
+
+    let anyRose = false;
+    let anyFell = false;
+    for (const areaKey of row.areaKeys) {
+      const keyFrom = rank(currentGrants[areaKey] ?? null);
+      const keyTo = rank(candidateGrants[areaKey] ?? null);
+      if (keyTo > keyFrom) anyRose = true;
+      else if (keyTo < keyFrom) anyFell = true;
+    }
+
+    if (anyRose) gains.push({ label: row.label, from, to });
+    if (anyFell) loses.push({ label: row.label, from, to });
   }
 
   // Driven by SENSITIVE_FLAGS rather than a literal list, so a fourth flag

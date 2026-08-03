@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 import { MoreHorizontal, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { RolePicker } from '@/components/roles/RolePicker';
@@ -32,6 +33,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // Derive from capability system — consistent with ROLE_CAPABILITIES['manage:team']
   const canManageMembers = userRole === 'owner' || userRole === 'manager' || userRole === 'operations_manager';
@@ -144,6 +146,10 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
         <div className="space-y-4">
           {members.map((member) => {
             const isOwner = member.role === 'owner';
+            // `assign_membership_role` rejects self-targeting outright (Rule 2),
+            // so a manager viewing their own row would otherwise get a picker
+            // where every choice ends in a permission error.
+            const isSelf = !!user && member.user_id === user.id;
             
             return (
               <div key={member.id} className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 border border-border/40 rounded-xl hover:border-border transition-colors">
@@ -182,7 +188,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                     currentRole={member.role}
                     currentRoleId={member.role_id ?? null}
                     callerRole={userRole}
-                    disabled={!canManageMembers || isOwner || member.role === 'kiosk'}
+                    disabled={!canManageMembers || isOwner || isSelf || member.role === 'kiosk'}
                     onAssigned={fetchTeamMembers}
                   />
 

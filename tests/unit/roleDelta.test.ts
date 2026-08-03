@@ -77,4 +77,48 @@ describe('roleDelta', () => {
     const d = roleDelta(set(areas, []), set(areas, ['view:pay_rates']));
     expect(d.flagGains[0].label).toBe('Employee pay rates');
   });
+
+  // The 'inventory' UI row groups the `inventory` and `purchasing` area keys
+  // (areas.ts:168), and `rowLevel` returns the max of the two. Diffing that
+  // collapsed value would call these two roles identical even though the
+  // candidate can edit purchase orders and the current one cannot.
+  it('sees a change inside a grouped row when the row-level max is unmoved', () => {
+    const d = roleDelta(
+      set([
+        { area_key: 'inventory', level: 'manage' },
+        { area_key: 'purchasing', level: 'view' },
+      ]),
+      set([
+        { area_key: 'inventory', level: 'manage' },
+        { area_key: 'purchasing', level: 'manage' },
+      ])
+    );
+    expect(d.isSame).toBe(false);
+    expect(d.gains.map((g) => g.label)).toContain('Inventory & Purchasing');
+    expect(d.loses).toHaveLength(0);
+  });
+
+  it('reports a row whose keys move in both directions as both a gain and a loss', () => {
+    const d = roleDelta(
+      set([
+        { area_key: 'inventory', level: 'manage' },
+        { area_key: 'purchasing', level: 'view' },
+      ]),
+      set([
+        { area_key: 'inventory', level: 'view' },
+        { area_key: 'purchasing', level: 'manage' },
+      ])
+    );
+    expect(d.isSame).toBe(false);
+    expect(d.gains.map((g) => g.label)).toContain('Inventory & Purchasing');
+    expect(d.loses.map((l) => l.label)).toContain('Inventory & Purchasing');
+  });
+
+  it('still reports identical grant sets as the same', () => {
+    const areas = [
+      { area_key: 'inventory' as const, level: 'manage' as const },
+      { area_key: 'purchasing' as const, level: 'view' as const },
+    ];
+    expect(roleDelta(set(areas), set(areas)).isSame).toBe(true);
+  });
 });

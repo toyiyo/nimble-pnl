@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { MembershipRoleLiteral } from '@/lib/permissions/invitations';
 
 /**
  * useAssignRole — change an existing member's role.
@@ -12,8 +13,12 @@ import { supabase } from '@/integrations/supabase/client';
  */
 export interface AssignRoleParams {
   membershipId: string;
-  /** A builtin role string, or the 'collaborator_custom' literal. */
-  role: string;
+  /**
+   * A builtin role, or the `collaborator_custom` literal. Typed as the shared
+   * `MembershipRoleLiteral` rather than `string` so an invalid literal fails at
+   * compile time instead of arriving as a runtime 42501 from the RPC.
+   */
+  role: MembershipRoleLiteral;
   /** Required when `role` is 'collaborator_custom', forbidden otherwise. */
   roleId?: string;
 }

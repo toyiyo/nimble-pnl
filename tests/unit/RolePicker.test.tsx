@@ -147,4 +147,24 @@ describe('RolePicker', () => {
     await userEvent.click(await screen.findByRole('option', { name: /Twin B/ }));
     expect(screen.getByText(/same access/i)).toBeInTheDocument();
   });
+
+  // `copy_role_to_restaurants` copies the source row's flavor, so a restaurant
+  // can own a non-builtin platform-flavored role. The RPC always rejects it for
+  // `collaborator_custom`, so offering it would be a guaranteed 42501.
+  it('never offers a restaurant-scoped role the RPC cannot accept', async () => {
+    mockUseRoles.mockReturnValue({
+      roles: [
+        roleRow({ id: 'ok', name: 'Operations lead' }),
+        roleRow({ id: 'platform', name: 'Copied platform role', flavor: 'platform' }),
+        roleRow({ id: 'builtin-scoped', name: 'Scoped builtin', builtin: true }),
+      ],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+
+    expect(await screen.findByRole('option', { name: /Operations lead/ })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Copied platform role/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Scoped builtin/ })).not.toBeInTheDocument();
+  });
 });

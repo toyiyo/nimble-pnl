@@ -212,5 +212,13 @@ COMMENT ON FUNCTION public.assign_membership_role IS
 -- default PUBLIC grant, and fails closed only because its internal check keys
 -- off auth.uid(), which is NULL for anon. A role-administration RPC that
 -- raises rather than filters should not rely on that.
+--
+-- anon is revoked by name as well as via PUBLIC, and the two are not
+-- redundant. Some Supabase images carry `ALTER DEFAULT PRIVILEGES ... GRANT
+-- EXECUTE ON FUNCTIONS TO anon` for the migrating role, which lands a DIRECT
+-- anon grant at CREATE time -- one that REVOKE ... FROM PUBLIC cannot touch.
+-- Whether that default ACL is present varies by CLI version, so relying on
+-- the PUBLIC revoke alone makes the grant environment-dependent.
 REVOKE EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) FROM anon;
 GRANT  EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) TO authenticated;

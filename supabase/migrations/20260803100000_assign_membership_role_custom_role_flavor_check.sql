@@ -190,6 +190,8 @@ COMMENT ON FUNCTION public.assign_membership_role IS
 'Changes an existing member''s role, enforcing the invite matrix for the caller''s role in that restaurant. Raises 42501 on every denial rather than filtering: a SECURITY DEFINER function returning zero rows would reproduce the silent no-op this replaces (a manager''s bare UPDATE on user_restaurants matches no PERMISSIVE policy branch, affects zero rows, and raises nothing). Writes role and role_id together so a custom-role membership can never land with a NULL role_id. The collaborator_custom branch requires role_id to be a non-builtin, collaborator-flavored row owned by the caller''s restaurant, mirroring 20260730210000_invitation_role_id_must_agree_with_role.sql.';
 
 -- CREATE OR REPLACE preserves existing grants, but restated for the same
--- reason the original migration states it: explicit, not incidental.
+-- reason the original migration states it: explicit, not incidental. The anon
+-- revoke is not redundant with the PUBLIC one -- see 20260802110000.
 REVOKE EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) FROM anon;
 GRANT  EXECUTE ON FUNCTION public.assign_membership_role(uuid, text, uuid) TO authenticated;

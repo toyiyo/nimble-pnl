@@ -118,6 +118,22 @@ describe('RolePicker', () => {
     await waitFor(() => expect(onAssigned).toHaveBeenCalledTimes(1));
   });
 
+  // A membership can carry role='collaborator_custom' with role_id NULL (or
+  // a role_id that doesn't resolve to any row useRoles returns) — the
+  // "zero-capability state" the design doc calls out as a pre-existing
+  // production risk. The chip must never print the raw enum literal.
+  it("never renders the raw 'collaborator_custom' literal as the chip label", () => {
+    mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: null });
+    render(
+      <RolePicker {...base} currentRole="collaborator_custom" currentRoleId={null} />,
+      { wrapper }
+    );
+    const trigger = screen.getByRole('combobox');
+    expect(trigger.textContent).not.toMatch(/collaborator_custom/);
+    expect(trigger.getAttribute('aria-label')).not.toMatch(/collaborator_custom/);
+    expect(trigger.textContent).toMatch(/custom role/i);
+  });
+
   it('says so plainly when two roles grant the same thing', async () => {
     mockUseRoles.mockReturnValue({
       roles: [

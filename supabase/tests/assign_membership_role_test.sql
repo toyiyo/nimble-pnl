@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(25);
+SELECT plan(26);
 
 SELECT is(
   public.invitable_roles('owner'),
@@ -59,11 +59,17 @@ INSERT INTO public.user_restaurants (id, user_id, restaurant_id, role, role_id) 
    'c0000000-0000-0000-0000-000000000001', 'kiosk',   public.builtin_role_id_for('kiosk'));
 
 -- A custom role in restaurant 1, and one in restaurant 2 for the cross-tenant case.
+-- Also a restaurant-1-scoped, platform-flavored role: unreachable through the
+-- normal UI today (RLS pins flavor = 'collaborator' on client inserts) but
+-- inserted directly here, the way a service-role write or a future
+-- platform-custom-roles phase could produce one.
 INSERT INTO public.roles (id, restaurant_id, name, flavor, builtin) VALUES
   ('e0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000001',
    'Operations Lead', 'collaborator', false),
   ('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000002',
-   'Other Tenant Role', 'collaborator', false);
+   'Other Tenant Role', 'collaborator', false),
+  ('e0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000001',
+   'Platform Role Same Restaurant', 'platform', false);
 
 -- ---------------------------------------------------------------- helper
 -- Same shape as pg_temp.as_user_copy in copy_role_to_restaurants_test.sql:
@@ -202,6 +208,17 @@ SELECT is(
     'd0000000-0000-0000-0000-000000000004'::uuid, 'collaborator_custom',
     public.builtin_role_id_for('staff')),
   '42501', 'a global builtin role_id is refused as a custom role');
+
+-- Same-restaurant match alone is not enough: builtin = false AND
+-- flavor = 'collaborator' must also hold, or a platform-flavored role_id
+-- would land on the membership and skip the collaborator cap that
+-- role_areas_enforce_collaborator_cap explicitly exempts platform roles from.
+SELECT is(
+  pg_temp.as_user_assign(
+    'a0000000-0000-0000-0000-000000000003'::uuid,
+    'd0000000-0000-0000-0000-000000000004'::uuid, 'collaborator_custom',
+    'e0000000-0000-0000-0000-000000000003'::uuid),
+  '42501', 'a same-restaurant, platform-flavored role_id is refused as a custom role');
 
 SELECT is(
   pg_temp.as_user_assign(

@@ -17,12 +17,16 @@ test('an owner moves a member into a custom role and it survives a reload', asyn
   await page.waitForURL('/', { timeout: 15000 });
 
   const memberUserId = await page.evaluate(async () => {
+    // `any`: test-only global attached by exposeSupabaseHelpers, no typed surface.
     const user = await (window as any).__getAuthUser();
     return user?.id as string;
   });
   expect(memberUserId).toBeTruthy();
 
-  await page.evaluate(async () => { await (window as any).__supabase.auth.signOut(); });
+  await page.evaluate(async () => {
+    // `any`: test-only global attached by exposeSupabaseHelpers, no typed surface.
+    await (window as any).__supabase.auth.signOut();
+  });
 
   // 2. Owner signs up and creates the restaurant.
   await signUpAndCreateRestaurant(page, owner);
@@ -33,6 +37,7 @@ test('an owner moves a member into a custom role and it survives a reload', asyn
   const roleName = `Ops Lead ${Date.now()}`;
   await page.evaluate(
     async ({ memberUserId, roleName }) => {
+      // `any`: both are test-only globals attached by exposeSupabaseHelpers, no typed surface.
       const supabase = (window as any).__supabase;
       const restaurantId = await (window as any).__getRestaurantId();
 

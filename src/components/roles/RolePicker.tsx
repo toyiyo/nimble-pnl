@@ -107,8 +107,15 @@ export function RolePicker({
     ? roleDelta(grantSetOf(currentRow), grantSetOf(candidateRow))
     : null;
 
+  // `collaborator_custom` is not a `Role` (see CUSTOM_ROLE in invitations.ts)
+  // and never has a `legacy_role` row to match when `currentRoleId` is null
+  // or points at a role `useRoles` hasn't resolved — so it must never fall
+  // through to the raw literal. Mirrors `roleLabelFor` in
+  // CollaboratorInvitations.tsx.
   const currentLabel =
-    currentRow?.name ?? ROLE_METADATA[currentRole as Role]?.label ?? currentRole;
+    currentRow?.name ??
+    ROLE_METADATA[currentRole as Role]?.label ??
+    (currentRole === CUSTOM_ROLE ? 'Custom role' : currentRole);
 
   const commit = () => {
     if (!candidateRow) return;

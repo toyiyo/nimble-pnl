@@ -298,12 +298,12 @@ CREATE POLICY "Users can view check settings for their restaurants"
   FOR SELECT
   USING (user_has_capability(restaurant_id, 'view:banking'));
 
-CREATE POLICY "Owners/managers can insert check settings"
+CREATE POLICY "edit:banking capability can insert check settings"
   ON public.check_settings
   FOR INSERT
   WITH CHECK (user_has_capability(restaurant_id, 'edit:banking'));
 
-CREATE POLICY "Owners/managers can update check settings"
+CREATE POLICY "edit:banking capability can update check settings"
   ON public.check_settings
   FOR UPDATE
   USING (user_has_capability(restaurant_id, 'edit:banking'))
@@ -322,18 +322,18 @@ CREATE POLICY "Users can view check bank accounts for their restaurants"
   FOR SELECT
   USING (user_has_capability(restaurant_id, 'view:banking'));
 
-CREATE POLICY "Owners/managers can insert check bank accounts"
+CREATE POLICY "edit:banking capability can insert check bank accounts"
   ON public.check_bank_accounts
   FOR INSERT
   WITH CHECK (user_has_capability(restaurant_id, 'edit:banking'));
 
-CREATE POLICY "Owners/managers can update check bank accounts"
+CREATE POLICY "edit:banking capability can update check bank accounts"
   ON public.check_bank_accounts
   FOR UPDATE
   USING (user_has_capability(restaurant_id, 'edit:banking'))
   WITH CHECK (user_has_capability(restaurant_id, 'edit:banking'));
 
-CREATE POLICY "Owners/managers can delete check bank accounts"
+CREATE POLICY "edit:banking capability can delete check bank accounts"
   ON public.check_bank_accounts
   FOR DELETE
   USING (user_has_capability(restaurant_id, 'edit:banking'));
@@ -350,7 +350,7 @@ CREATE POLICY "Users can view check audit log for their restaurants"
   FOR SELECT
   USING (user_has_capability(restaurant_id, 'view:pending_outflows'));
 
-CREATE POLICY "Owners/managers can insert audit records"
+CREATE POLICY "edit:pending_outflows capability can insert audit records"
   ON public.check_audit_log
   FOR INSERT
   WITH CHECK (user_has_capability(restaurant_id, 'edit:pending_outflows'));

@@ -34,6 +34,13 @@ export interface RolePickerProps {
   /** The signed-in user's role in this restaurant — gates the option list. */
   callerRole: Role;
   disabled?: boolean;
+  /**
+   * Called after the assignment lands. Only needed by hosts that keep their
+   * member list outside React Query — `useAssignRole` invalidates
+   * `['roles'|'collaborators'|'restaurants']`, which cannot reach a list held
+   * in `useState`. TeamMembers is such a host; Collaborators is not.
+   */
+  onAssigned?: () => void;
 }
 
 const grantSetOf = (role: RoleWithGrants | undefined): RoleGrantSet => ({
@@ -49,6 +56,7 @@ export function RolePicker({
   currentRoleId,
   callerRole,
   disabled = false,
+  onAssigned,
 }: RolePickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -104,6 +112,7 @@ export function RolePicker({
           setOpen(false);
           setCandidateId(null);
           setSearch('');
+          onAssigned?.();
         },
         onError: (err) =>
           toast({

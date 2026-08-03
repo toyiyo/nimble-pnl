@@ -183,6 +183,7 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
                     currentRoleId={member.role_id ?? null}
                     callerRole={userRole}
                     disabled={!canManageMembers || isOwner || member.role === 'kiosk'}
+                    onAssigned={fetchTeamMembers}
                   />
 
                   {canManageMembers && !isOwner && member.role !== 'kiosk' && (

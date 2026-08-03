@@ -95,6 +95,29 @@ describe('RolePicker', () => {
     );
   });
 
+  // The e2e run caught this: the RPC wrote the row, useAssignRole invalidated
+  // its query keys, and the chip on /team still read "Employee (self-service)"
+  // ten seconds later. TeamMembers holds its list in useState + useEffect, so
+  // no amount of React Query invalidation reaches it — the picker has to say
+  // when it landed. Hosts that DO use React Query (Collaborators) omit the prop.
+  it('tells its host when the assignment landed', async () => {
+    const onAssigned = vi.fn();
+    mockUseRoles.mockReturnValue({
+      roles: [roleRow({ id: 'c1', name: 'Operations Lead' })],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} onAssigned={onAssigned} />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/ }));
+    await userEvent.click(screen.getByRole('button', { name: /change role to/i }));
+
+    // mutate is mocked, so drive its success callback the way React Query would.
+    expect(onAssigned).not.toHaveBeenCalled();
+    const [, handlers] = mutate.mock.calls[0];
+    handlers.onSuccess();
+    await waitFor(() => expect(onAssigned).toHaveBeenCalledTimes(1));
+  });
+
   it('says so plainly when two roles grant the same thing', async () => {
     mockUseRoles.mockReturnValue({
       roles: [

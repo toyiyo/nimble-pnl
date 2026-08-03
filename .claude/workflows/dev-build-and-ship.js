@@ -127,6 +127,26 @@ const WAIT_DISCIPLINE = [
   "- Kill every background process you start before you return, on the failure path too (`trap 'kill $pid 2>/dev/null' EXIT`). Orphans outlive the agent that spawned them.",
 ].join('\n')
 
+// Third failure mode, and the only one that reaches the PR: staging. The phase
+// prompts say "fix it and commit" and leave HOW to stage to each agent, so they
+// reach for `git add -A`. One worktree is shared by every phase, so that sweeps
+// in per-run scratch and whatever an earlier phase left dirty — it has produced
+// PR diffs carrying ~8k lines of workflow noise, and merge conflicts located
+// entirely inside regenerated artifacts (memory/lessons.md:386, :693, :1454,
+// :1770 — four incidents, one pattern).
+//
+// Gitignoring the scratch is a backstop, not the fix: a broad add still picks up
+// unrelated TRACKED files. Explicit paths are what actually bound a commit, and
+// like WAIT_DISCIPLINE the only lever is the prompt — the script layer cannot
+// see, let alone veto, an agent's git invocation.
+const STAGING_DISCIPLINE = [
+  'STAGING DISCIPLINE (applies to every commit you make, in every phase):',
+  `- Stage EXPLICIT paths, always with -C so the command cannot act on the wrong checkout: git -C ${ctx.worktreePath} add <path> [<path>...]`,
+  '- NEVER `git add -A`, `git add .`, or `git commit -a`. This worktree is shared across phases and accumulates per-run scratch (dev-tools/*.patch, dev-tools/*-output.md, dev-tools/9d-triage-*) plus whatever an earlier phase left dirty; a broad add sweeps all of it into your commit, where it becomes PR noise and conflicts with other branches regenerating the same files.',
+  '- `progress.md` is gitignored and must NEVER be staged — not even with `git add -f`.',
+  `- Before each commit, confirm the index holds only what you intended: git -C ${ctx.worktreePath} diff --cached --name-only`,
+].join('\n')
+
 // Orientation block injected into EVERY agent prompt (fresh context).
 // The development-workflow.md pointer is OPT-IN (skillRef), not default: it is a
 // 42 KB file and every phase prompt below already states what that phase must do.
@@ -143,6 +163,8 @@ function envelope(body, { skillRef = false } = {}) {
     ...(skillRef
       ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
       : []),
+    '',
+    STAGING_DISCIPLINE,
     '',
     WAIT_DISCIPLINE,
     '',

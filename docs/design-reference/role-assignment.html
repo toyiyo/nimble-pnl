@@ -618,12 +618,7 @@
           <div class="accessrow__l">
             <span class="accessrow__note">Signed in as <b>josema92@hotmail.com</b></span>
           </div>
-          <div class="pickerhost">
-            <button class="rolebtn rolebtn--custom" type="button" aria-expanded="false" data-person="p-jose" aria-haspopup="dialog">
-              <span class="rolebtn__name">Operations lead</span>
-              <svg class="rolebtn__caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-            </button>
-          </div>
+          <div class="pickerhost" id="employee-access-chip"></div>
         </div>
         <p style="margin:9px 0 0;font-size:12.5px;color:var(--ink-faint)">
           Roles belong to the EasyShiftHQ account, not the employee record — the same control
@@ -713,11 +708,15 @@
     { id:'p-kiosk', name:'Front counter iPad', mail:'kiosk+7c0c76e3@easyshifthq.com', roleId:null, locked:true, lockLabel:'Kiosk device' },
   ];
 
-  /* The signed-in viewer. Managers cannot assign a custom role — the
-     RESTRICTIVE policy on user_restaurants is owner-only for anything whose
-     builtin_role_id_for() is NULL. The picker states that rather than
-     silently failing on save. Flip to 'manager' to see the gated state. */
+  /* The signed-in viewer. Custom-role assignment follows the invite matrix:
+     owners and managers may grant one, nobody else. That is
+     can_invite_custom_role() in SQL and canInviteCustomRole() in TS, and it is
+     what assign_membership_role enforces — the RESTRICTIVE policy that made
+     this owner-only is bypassed by the SECURITY DEFINER RPC. The picker states
+     the rule rather than silently failing on save. Flip to 'chef' to see the
+     gated state. */
   const VIEWER = 'owner';
+  const VIEWER_MAY_ASSIGN_CUSTOM = VIEWER === 'owner' || VIEWER === 'manager';
 
   const initials = n => n.split(/\s+/).slice(0,2).map(w => w[0]).join('').toUpperCase();
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -767,21 +766,29 @@
   /* ---------------------------------------------------------------------
      MOVE 1 — member roster with the chip-as-control
      --------------------------------------------------------------------- */
+  // The one place chip markup is built. Move 3's employee-record chip renders
+  // through it too, so the two surfaces cannot drift apart — which is exactly
+  // the point being demonstrated: the role lives on the account, and every
+  // surface showing it reads the same source.
+  function chipFor(p) {
+    const role = p.roleId ? roleById(p.roleId) : null;
+    const label = role ? role.name : (p.lockLabel || '—');
+    return p.locked
+      ? `<span class="rolebtn" data-locked="true" title="Kiosk service accounts can't hold a role">
+           <span class="rolebtn__name">${esc(label)}</span>
+         </span>`
+      : `<button class="rolebtn${role && !role.builtin ? ' rolebtn--custom' : ''}" type="button"
+                 aria-expanded="false" aria-haspopup="dialog" data-person="${p.id}"
+                 aria-label="${esc(p.name)}: role is ${esc(label)}. Change role">
+           <span class="rolebtn__name">${esc(label)}</span>
+           <svg class="rolebtn__caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+         </button>`;
+  }
+
   function renderMembers() {
     const host = document.querySelector('#member-roster .roster');
     host.innerHTML = PEOPLE.map(p => {
-      const role = p.roleId ? roleById(p.roleId) : null;
-      const label = role ? role.name : (p.lockLabel || '—');
-      const btn = p.locked
-        ? `<span class="rolebtn" data-locked="true" title="Kiosk service accounts can't hold a role">
-             <span class="rolebtn__name">${esc(label)}</span>
-           </span>`
-        : `<button class="rolebtn${role && !role.builtin ? ' rolebtn--custom' : ''}" type="button"
-                   aria-expanded="false" aria-haspopup="dialog" data-person="${p.id}"
-                   aria-label="${esc(p.name)}: role is ${esc(label)}. Change role">
-             <span class="rolebtn__name">${esc(label)}</span>
-             <svg class="rolebtn__caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-           </button>`;
+      const btn = chipFor(p);
       return `<div class="personrow">
         <div class="personrow__id">
           <span class="avatar" aria-hidden="true">${esc(initials(p.name))}</span>
@@ -793,6 +800,16 @@
         <div class="personrow__act"><div class="pickerhost">${btn}</div></div>
       </div>`;
     }).join('');
+  }
+
+  // Move 3's employee-record chip. Repainted alongside the roster: assigning a
+  // role on Team members must move this label too, or the reference would
+  // demonstrate the opposite of what it argues.
+  function renderEmployeeAccess() {
+    const host = document.querySelector('#employee-access-chip');
+    if (!host) return;
+    const p = PEOPLE.find(x => x.id === 'p-jose');
+    host.innerHTML = p ? chipFor(p) : '';
   }
 
   /* ---------------------------------------------------------------------
@@ -812,7 +829,7 @@
   function optionMarkup(role, currentId) {
     const isCurrent = role.id === currentId;
     const isPending = pending === role.id;
-    const gated = !role.builtin && VIEWER !== 'owner';
+    const gated = !role.builtin && !VIEWER_MAY_ASSIGN_CUSTOM;
     return `<div class="opt" role="radio" tabindex="${isPending || (pending === null && isCurrent) ? 0 : -1}"
                  aria-checked="${isPending ? 'true' : 'false'}"
                  ${gated ? 'aria-disabled="true"' : ''} data-role="${role.id}">
@@ -829,7 +846,7 @@
         <span class="opt__chips">${areaChips(role.areas, 3)}</span>
         ${gated ? `<span class="opt__gate">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-            Only an owner can assign a custom role
+            Only an owner or manager can assign a custom role
           </span>` : ''}
       </span>
       <span class="opt__tick" aria-hidden="true">${isPending
@@ -926,7 +943,7 @@
         const person = PEOPLE.find(p => p.id === activePerson);
         person.roleId = pending;
         closePicker();
-        renderMembers(); renderRoles();
+        renderMembers(); renderEmployeeAccess(); renderRoles();
         return;
       }
       return;
@@ -1045,7 +1062,7 @@
     if (rm) {
       const p = PEOPLE.find(x => x.id === rm.dataset.remove);
       p.roleId = 'b5';                    // falls back to Employee, never to nothing
-      renderDetail(); renderRoles(); renderMembers();
+      renderDetail(); renderRoles(); renderMembers(); renderEmployeeAccess();
       return;
     }
 
@@ -1135,7 +1152,7 @@
     if (s && s.dataset.sheet === 'close') closeSheet();
     if (s && s.dataset.sheet === 'apply') {
       sheetSel.forEach(id => { PEOPLE.find(p => p.id === id).roleId = detailRoleId; });
-      closeSheet(); renderDetail(); renderRoles(); renderMembers();
+      closeSheet(); renderDetail(); renderRoles(); renderMembers(); renderEmployeeAccess();
     }
   });
 
@@ -1153,7 +1170,7 @@
     document.documentElement.setAttribute('data-theme', next);
   });
 
-  renderMembers(); renderRoles(); renderDetail();
+  renderMembers(); renderEmployeeAccess(); renderRoles(); renderDetail();
 })();
 </script>
 </body>

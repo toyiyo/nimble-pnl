@@ -236,12 +236,16 @@ export function RolePicker({
               isLoading === false.
             */}
             {(!restaurantId || isLoading) && (
-              <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
+              <p
+                role="status"
+                aria-live="polite"
+                className="px-3 py-6 text-center text-[13px] text-muted-foreground"
+              >
                 Loading roles…
               </p>
             )}
             {error && (
-              <p className="px-3 py-6 text-center text-[13px] text-destructive">
+              <p role="alert" className="px-3 py-6 text-center text-[13px] text-destructive">
                 Couldn't load roles. Please try again.
               </p>
             )}

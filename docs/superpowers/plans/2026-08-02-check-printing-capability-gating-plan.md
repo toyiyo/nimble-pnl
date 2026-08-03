@@ -40,7 +40,7 @@ run in this plan is preceded by `db:reset`.
 
 ## Task 2 — the migration
 
-**File:** `supabase/migrations/20260802120000_check_printing_capability_gating.sql` (new)
+**File:** `supabase/migrations/20260803120000_check_printing_capability_gating.sql` (new)
 
 Re-verify prefix uniqueness against `origin/main` immediately before writing (`git ls-tree -r
 --name-only origin/main -- supabase/migrations/ | grep -c '202608'`).

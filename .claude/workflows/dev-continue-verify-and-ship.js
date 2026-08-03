@@ -54,6 +54,18 @@ const WAIT_DISCIPLINE = [
   "- Kill every background process you start before you return, on the failure path too (`trap 'kill $pid 2>/dev/null' EXIT`). Orphans outlive the agent that spawned them.",
 ].join('\n')
 
+// Broad-staging guard — see the STAGING_DISCIPLINE comment in
+// dev-build-and-ship.js for the incidents. This script needs it just as much:
+// it resumes mid-task, so the worktree it inherits is already carrying another
+// phase's scratch and dirty files when its first agent goes to commit.
+const STAGING_DISCIPLINE = [
+  'STAGING DISCIPLINE (applies to every commit you make, in every phase):',
+  `- Stage EXPLICIT paths, always with -C so the command cannot act on the wrong checkout: git -C ${ctx.worktreePath} add <path> [<path>...]`,
+  '- NEVER `git add -A`, `git add .`, or `git commit -a`. This worktree is shared across phases and accumulates per-run scratch (dev-tools/*.patch, dev-tools/*-output.md, dev-tools/9d-triage-*) plus whatever an earlier phase left dirty; a broad add sweeps all of it into your commit, where it becomes PR noise and conflicts with other branches regenerating the same files.',
+  '- `progress.md` is gitignored and must NEVER be staged — not even with `git add -f`.',
+  `- Before each commit, confirm the index holds only what you intended: git -C ${ctx.worktreePath} diff --cached --name-only`,
+].join('\n')
+
 function envelope(body, { skillRef = false } = {}) {
   return [
     'WORKING CONTEXT (you have fresh context — this block is all you start with):',
@@ -65,6 +77,8 @@ function envelope(body, { skillRef = false } = {}) {
     ...(skillRef
       ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
       : []),
+    '',
+    STAGING_DISCIPLINE,
     '',
     WAIT_DISCIPLINE,
     '',

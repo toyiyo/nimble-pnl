@@ -49,8 +49,8 @@ export function useShifts(
   restaurantId: string | null,
   startDate?: Date,
   endDate?: Date
-): { shifts: Shift[]; loading: boolean; error: Error | null } {
-  const { data, isLoading, error } = useQuery({
+): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['shifts', restaurantId, startDate?.toISOString(), endDate?.toISOString()],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -83,6 +83,9 @@ export function useShifts(
     shifts: data || [],
     loading: isLoading,
     error,
+    // Exposed so a failed load can offer Retry rather than an empty grid that
+    // reads as "you are not working this week".
+    refetch,
   };
 }
 

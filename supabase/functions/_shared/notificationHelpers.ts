@@ -5,6 +5,10 @@
  */
 
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { sendEmailResult } from "./emailQueue.ts";
+
+export { sendEmailResult, sendPaced } from "./emailQueue.ts";
+export type { EmailSendResult, PacedResult } from "./emailQueue.ts";
 
 /**
  * Get all managers for a restaurant
@@ -155,6 +159,11 @@ export const shouldSendNotification = async (
 /**
  * Send email using Resend
  * Returns true if successful
+ *
+ * Thin wrapper over `sendEmailResult` in `./emailQueue.ts`. Prefer that one for
+ * new code — it keeps the HTTP status, so a retryable 429 is distinguishable
+ * from a hard bounce. This signature is preserved because several functions
+ * call it and only care whether it worked.
  */
 export const sendEmail = async (
   resendApiKey: string,
@@ -163,32 +172,11 @@ export const sendEmail = async (
   subject: string,
   html: string
 ): Promise<boolean> => {
-  try {
-    const response = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${resendApiKey}`,
-      },
-      body: JSON.stringify({
-        from,
-        to: Array.isArray(to) ? to : [to],
-        subject,
-        html,
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.text();
-      console.error('Failed to send email:', error);
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    console.error('Error sending email:', error);
-    return false;
+  const result = await sendEmailResult(resendApiKey, from, to, subject, html);
+  if (!result.ok) {
+    console.error('Failed to send email:', result.error);
   }
+  return result.ok;
 };
 
 /**

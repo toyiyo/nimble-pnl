@@ -252,7 +252,7 @@ existence and authorization stay in one combined query with one NULL-collapsing 
 
 ### 3.3 Migration
 
-`supabase/migrations/20260802120000_check_printing_capability_gating.sql` — prefix verified unique
+`supabase/migrations/20260803120000_check_printing_capability_gating.sql` — prefix verified unique
 against both the worktree and `origin/main` (`git ls-tree --name-only origin/main
 supabase/migrations/ | grep -c 202608` → `0`), per the repeated lessons on colliding version
 prefixes.
@@ -439,7 +439,10 @@ verified, including the RPC-provenance claim (RPCs 2–5's newest bodies really 
 not `20260425120100`) and the "no `user_has_capability` change needed" claim. It independently
 confirmed: no surviving permissive policy can defeat the §4 narrowing; `user_restaurants` has
 `UNIQUE(user_id, restaurant_id)` so the join-removal is multiplicity-safe; the `SET LOCAL role TO
-authenticated` idiom matches this repo; and prefix `20260802120000` is unique. All three minors —
+authenticated` idiom matches this repo; and prefix `20260802120000` was unique *at review time* —
+it later collided with `20260802120000_schedule_retractions.sql`, landed on `main` by #685 while this
+branch was in flight, so the migration was renamed to `20260803120000` when `main` was merged in.
+All three minors —
 the §4 grep methodology, schema-qualification across RPCs 2–5, and recording *why* join-removal is
 safe — are folded into §3.2 and §4.
 

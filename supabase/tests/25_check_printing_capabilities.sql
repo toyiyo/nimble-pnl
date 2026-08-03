@@ -316,6 +316,13 @@ INSERT INTO public.check_audit_log (id, restaurant_id, check_number, payee_name,
 VALUES ('25000000-0000-0000-0000-000000000d01', '25000000-0000-0000-0000-000000000001', 9001, 'Task 1 Fixture Payee', 100.00, CURRENT_DATE, 'printed')
 ON CONFLICT (id) DO NOTHING;
 
+-- Section 1 above escalated the shared custom role all the way to
+-- {books: manage} (principal C). Re-run the same three-stage escalation
+-- here so the RLS assertions below observe the same grant transitions their
+-- labels (A/B/C) describe, rather than inheriting section 1's end state.
+DELETE FROM public.role_areas
+  WHERE role_id = '25000000-0000-0000-0000-0000000000a1' AND area_key = 'books';
+
 -- A. custom role, {inventory: manage} only (no books) -> cannot SELECT any
 -- of the three tables.
 SELECT is(
@@ -336,6 +343,11 @@ SELECT is(
   0::bigint,
   'principal A: cannot SELECT check_audit_log'
 );
+
+-- Grant {books: view} to the custom role. Principal B's baseline.
+INSERT INTO public.role_areas (role_id, area_key, level)
+VALUES ('25000000-0000-0000-0000-0000000000a1', 'books', 'view')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
 
 -- B. custom role, {books: view} -> can SELECT all three, but every write is
 -- denied (books view is not books manage).
@@ -383,6 +395,11 @@ SELECT is(
   'denied',
   'principal B (books view): cannot INSERT check_audit_log'
 );
+
+-- Upgrade to {books: manage}. Principal C's baseline.
+INSERT INTO public.role_areas (role_id, area_key, level)
+VALUES ('25000000-0000-0000-0000-0000000000a1', 'books', 'manage')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
 
 -- C. custom role, {books: manage} -> writes succeed on all three.
 SELECT is(

@@ -199,7 +199,7 @@ SELECT is(
   (SELECT err FROM pg_temp.as_user_claim(
     '25000000-0000-0000-0000-000000000101'::uuid,
     '25000000-0000-0000-0000-000000000b01'::uuid, 1)),
-  'Unauthorized: insufficient permissions for this restaurant',
+  'Check bank account not found or unauthorized',
   'principal A (custom role, inventory manage only): claim_check_numbers_for_account denied'
 );
 
@@ -214,7 +214,7 @@ SELECT is(
   (SELECT err FROM pg_temp.as_user_claim(
     '25000000-0000-0000-0000-000000000101'::uuid,
     '25000000-0000-0000-0000-000000000b01'::uuid, 1)),
-  'Unauthorized: insufficient permissions for this restaurant',
+  'Check bank account not found or unauthorized',
   'principal B (custom role, books view): claim_check_numbers_for_account denied'
 );
 
@@ -280,7 +280,7 @@ SELECT is(
   (SELECT err FROM pg_temp.as_user_claim(
     '25000000-0000-0000-0000-000000000104'::uuid,
     '25000000-0000-0000-0000-000000000b01'::uuid, 1)),
-  'Unauthorized: insufficient permissions for this restaurant',
+  'Check bank account not found or unauthorized',
   'principal E (legacy staff): claim_check_numbers_for_account denied'
 );
 

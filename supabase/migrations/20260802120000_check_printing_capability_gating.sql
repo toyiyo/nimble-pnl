@@ -92,19 +92,17 @@ BEGIN
     RAISE EXCEPTION 'Check count must be between 1 and 100';
   END IF;
 
-  -- Look up restaurant_id from the account (must be active)
+  -- Combined existence + authorization check: one generic error prevents
+  -- callers from probing whether a UUID belongs to another restaurant
+  -- (matches RPCs 2-5's pattern below).
   SELECT restaurant_id INTO v_restaurant_id
   FROM public.check_bank_accounts
   WHERE id = p_account_id
-    AND is_active = true;
+    AND is_active = true
+    AND public.user_has_capability(restaurant_id, 'edit:pending_outflows');
 
   IF v_restaurant_id IS NULL THEN
-    RAISE EXCEPTION 'Check bank account not found: %', p_account_id;
-  END IF;
-
-  -- Authorization: capability-gated, not role-gated. See migration header.
-  IF NOT public.user_has_capability(v_restaurant_id, 'edit:pending_outflows') THEN
-    RAISE EXCEPTION 'Unauthorized: insufficient permissions for this restaurant';
+    RAISE EXCEPTION 'Check bank account not found or unauthorized';
   END IF;
 
   -- Atomically claim the numbers

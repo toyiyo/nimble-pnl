@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -73,6 +73,11 @@ const renderCard = (outflow: PendingOutflow = baseOutflow) => {
 };
 
 describe('PendingOutflowCard — PrintCheckButton capability gate (design §3.4)', () => {
+  beforeEach(() => {
+    hasCapabilityMock.mockReset();
+    isResolvedMock = true;
+  });
+
   it('hides PrintCheckButton when the capability context has not resolved yet, even if capability would be granted', () => {
     isResolvedMock = false;
     hasCapabilityMock.mockReturnValue(true);

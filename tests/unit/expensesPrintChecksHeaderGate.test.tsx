@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // Phase 7a finding (codex adversarial review): the Expenses page header
@@ -72,6 +72,11 @@ vi.mock('@/components/subscription', () => ({
 import Expenses from '@/pages/Expenses';
 
 describe('Expenses page – /print-checks header button capability gate', () => {
+  beforeEach(() => {
+    hasCapabilityMock.mockReset();
+    isResolvedMock = true;
+  });
+
   it('hides the "Print Checks" header button without edit:pending_outflows', () => {
     isResolvedMock = true;
     hasCapabilityMock.mockImplementation((cap: string) => cap !== 'edit:pending_outflows');

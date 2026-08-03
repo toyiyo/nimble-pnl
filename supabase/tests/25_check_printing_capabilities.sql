@@ -146,6 +146,27 @@ BEGIN
 END;
 $$;
 
+-- Runs p_sql (an UPDATE statement) as p_user_id and returns the number of
+-- rows actually updated. A USING clause that excludes the target row
+-- filters it out silently (0 rows, no error) -- the right helper for
+-- check_settings, which has UNIQUE(restaurant_id) so a denial-as-INSERT
+-- probe would collide with the fixture row instead of testing RLS.
+CREATE OR REPLACE FUNCTION pg_temp.as_user_update_count(p_user_id UUID, p_sql TEXT)
+RETURNS BIGINT LANGUAGE plpgsql AS $$
+DECLARE
+  v_count BIGINT;
+BEGIN
+  PERFORM set_config('role', 'authenticated', true);
+  PERFORM set_config('request.jwt.claims',
+    json_build_object('sub', p_user_id::text, 'role', 'authenticated')::text,
+    true);
+  EXECUTE p_sql;
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  PERFORM set_config('role', 'postgres', true);
+  RETURN v_count;
+END;
+$$;
+
 -- Runs p_sql (an INSERT whose denial is enforced via WITH CHECK, which
 -- raises 42501/insufficient_privilege) as p_user_id and returns 'allowed'
 -- or 'denied'.
@@ -344,12 +365,16 @@ SELECT is(
   'denied',
   'principal B (books view): cannot INSERT check_bank_accounts'
 );
+-- check_settings has UNIQUE(restaurant_id) -- a second row for this
+-- restaurant would collide with the fixture row regardless of RLS, so this
+-- probes denial via UPDATE + row count instead of INSERT (see
+-- as_user_update_count's comment).
 SELECT is(
-  pg_temp.as_user_try('25000000-0000-0000-0000-000000000101'::uuid,
-    $$INSERT INTO public.check_settings (restaurant_id, business_name)
-      VALUES ('25000000-0000-0000-0000-000000000001', 'Task 1 Denied Write B')$$),
-  'denied',
-  'principal B (books view): cannot INSERT check_settings'
+  pg_temp.as_user_update_count('25000000-0000-0000-0000-000000000101'::uuid,
+    $$UPDATE public.check_settings SET business_name = 'Task 1 Denied Write B'
+      WHERE id = '25000000-0000-0000-0000-000000000c01'$$),
+  0::bigint,
+  'principal B (books view): cannot UPDATE check_settings'
 );
 SELECT is(
   pg_temp.as_user_try('25000000-0000-0000-0000-000000000101'::uuid,
@@ -367,11 +392,13 @@ SELECT is(
   'allowed',
   'principal C (books manage): can INSERT check_bank_accounts'
 );
+-- check_settings has UNIQUE(restaurant_id); use UPDATE + row count rather
+-- than a second INSERT (see as_user_update_count's comment).
 SELECT is(
-  pg_temp.as_user_try('25000000-0000-0000-0000-000000000101'::uuid,
+  pg_temp.as_user_update_count('25000000-0000-0000-0000-000000000101'::uuid,
     $$UPDATE public.check_settings SET business_name = 'Task 1 Updated Business'
       WHERE id = '25000000-0000-0000-0000-000000000c01'$$),
-  'allowed',
+  1::bigint,
   'principal C (books manage): can UPDATE check_settings'
 );
 SELECT is(

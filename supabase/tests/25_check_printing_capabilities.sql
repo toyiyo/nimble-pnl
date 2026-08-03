@@ -308,9 +308,13 @@ SELECT is(
 --    writes succeed.
 -- ============================================================================
 
+-- check_settings.restaurant_id is UNIQUE (not id) -- ON CONFLICT (id) DO
+-- NOTHING would not protect against that constraint, so conflict on
+-- restaurant_id instead (CodeRabbit finding, Phase 7c).
 INSERT INTO public.check_settings (id, restaurant_id, business_name)
 VALUES ('25000000-0000-0000-0000-000000000c01', '25000000-0000-0000-0000-000000000001', 'Task 1 Fixture Business')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (restaurant_id) DO UPDATE
+  SET id = EXCLUDED.id, business_name = EXCLUDED.business_name;
 
 INSERT INTO public.check_audit_log (id, restaurant_id, check_number, payee_name, amount, issue_date, action)
 VALUES ('25000000-0000-0000-0000-000000000d01', '25000000-0000-0000-0000-000000000001', 9001, 'Task 1 Fixture Payee', 100.00, CURRENT_DATE, 'printed')

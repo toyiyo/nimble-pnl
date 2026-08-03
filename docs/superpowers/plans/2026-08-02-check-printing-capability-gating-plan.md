@@ -14,7 +14,7 @@ Modelled on [collaborator_custom_rls_test.sql](../../../supabase/tests/collabora
 denied-baseline-first throughout, custom roles built from `roles` + `role_areas`, impersonation via
 `set_config('role','authenticated',true)` + `request.jwt.claims`, `RESET ROLE` before `finish()`.
 
-Fixtures — one restaurant, one `check_bank_accounts` row, and five principals:
+Fixtures — one restaurant, one `check_bank_accounts` row, and six principals:
 
 | # | Principal | Expectation on `claim_check_numbers_for_account` |
 |---|-----------|--------------------------------------------------|
@@ -42,8 +42,8 @@ run in this plan is preceded by `db:reset`.
 
 **File:** `supabase/migrations/20260802120000_check_printing_capability_gating.sql` (new)
 
-Re-verify prefix uniqueness against `origin/main` immediately before writing (`git ls-tree
---name-only origin/main supabase/migrations/ | grep -c 202608`).
+Re-verify prefix uniqueness against `origin/main` immediately before writing (`git ls-tree -r
+--name-only origin/main -- supabase/migrations/ | grep -c '202608'`).
 
 **Header** records, per the task's explicit requirement: the capability choice and why
 (`edit:pending_outflows` for issuing, `edit:banking` for configuring); why a dedicated `edit:checks`

@@ -429,11 +429,14 @@ SELECT is(
 -- ============================================================================
 -- 3. Immutability: check_audit_log still has no UPDATE/DELETE policy.
 -- ============================================================================
+-- cmd IN (..., 'ALL') too: a FOR ALL policy would permit UPDATE/DELETE
+-- without ever showing up as a literal 'UPDATE'/'DELETE' row otherwise
+-- (CodeRabbit finding, Phase 7c).
 SELECT is(
   (SELECT count(*)::int FROM pg_policies
-   WHERE schemaname = 'public' AND tablename = 'check_audit_log' AND cmd IN ('UPDATE', 'DELETE')),
+   WHERE schemaname = 'public' AND tablename = 'check_audit_log' AND cmd IN ('UPDATE', 'DELETE', 'ALL')),
   0,
-  'check_audit_log still has no UPDATE/DELETE policy (immutability preserved)'
+  'check_audit_log still has no UPDATE/DELETE/ALL policy (immutability preserved)'
 );
 
 -- ----------------------------------------------------------------------------

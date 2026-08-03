@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePendingOutflowMutations } from "@/hooks/usePendingOutflows";
 import { usePendingOutflowMatches } from "@/hooks/usePendingOutflows";
+import { usePermissions } from "@/hooks/usePermissions";
 import { MatchSuggestionCard } from "./MatchSuggestionCard";
 import { ManualMatchDialog } from "./ManualMatchDialog";
 import type { PendingOutflow } from "@/types/pending-outflows";
@@ -40,6 +41,7 @@ export const PendingOutflowCard = ({ outflow, onEdit }: PendingOutflowCardProps)
   const { selectedRestaurant } = useRestaurantContext();
   const { voidPendingOutflow, deletePendingOutflow } = usePendingOutflowMutations();
   const { data: matches } = usePendingOutflowMatches(outflow.id);
+  const { hasCapability, isResolved } = usePermissions();
 
   const statusConfig = {
     pending: { 
@@ -174,7 +176,9 @@ export const PendingOutflowCard = ({ outflow, onEdit }: PendingOutflowCardProps)
 
               {outflow.status === 'pending' || outflow.status.startsWith('stale_') ? (
                 <div className="flex gap-1">
-                  <PrintCheckButton expense={outflow} />
+                  {isResolved && hasCapability('edit:pending_outflows') && (
+                    <PrintCheckButton expense={outflow} />
+                  )}
                   {matches && matches.length > 0 && (
                     <Button
                       size="sm"

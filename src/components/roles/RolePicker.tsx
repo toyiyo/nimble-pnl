@@ -48,6 +48,19 @@ const grantSetOf = (role: RoleWithGrants | undefined): RoleGrantSet => ({
   flags: (role?.role_flags ?? []).map((f) => f.flag),
 });
 
+/** One "Gains X" / "Loses X" line per label, styled and iconed by `kind`. */
+function renderDeltaLines(labels: string[], kind: 'gain' | 'lose') {
+  const Icon = kind === 'gain' ? ArrowUp : ArrowDown;
+  const colorClass = kind === 'gain' ? 'text-success' : 'text-destructive';
+  const verb = kind === 'gain' ? 'Gains' : 'Loses';
+  return labels.map((label) => (
+    <p key={`${kind}-${label}`} className={`flex items-center gap-1.5 text-[13px] ${colorClass}`}>
+      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {verb} {label}
+    </p>
+  ));
+}
+
 export function RolePicker({
   membershipId,
   restaurantId,
@@ -72,8 +85,8 @@ export function RolePicker({
   const invitable = useMemo(() => getInvitableRoles(callerRole), [callerRole]);
   const mayAssignCustom = canInviteCustomRole(callerRole);
 
-  const matches = (name: string) =>
-    name.toLowerCase().includes(search.trim().toLowerCase());
+  const searchQuery = search.trim().toLowerCase();
+  const matches = (name: string) => name.toLowerCase().includes(searchQuery);
 
   const customRoles = roles.filter(
     (r) => r.restaurant_id === restaurantId && matches(r.name)
@@ -246,21 +259,13 @@ export function RolePicker({
                 </p>
               ) : (
                 <div className="space-y-1">
-                  {[...delta.gains.map((g) => g.label), ...delta.flagGains.map((f) => f.label)].map(
-                    (label) => (
-                      <p key={`gain-${label}`} className="flex items-center gap-1.5 text-[13px] text-success">
-                        <ArrowUp className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        Gains {label}
-                      </p>
-                    )
+                  {renderDeltaLines(
+                    [...delta.gains.map((g) => g.label), ...delta.flagGains.map((f) => f.label)],
+                    'gain'
                   )}
-                  {[...delta.loses.map((l) => l.label), ...delta.flagLoses.map((f) => f.label)].map(
-                    (label) => (
-                      <p key={`lose-${label}`} className="flex items-center gap-1.5 text-[13px] text-destructive">
-                        <ArrowDown className="h-3 w-3 shrink-0" aria-hidden="true" />
-                        Loses {label}
-                      </p>
-                    )
+                  {renderDeltaLines(
+                    [...delta.loses.map((l) => l.label), ...delta.flagLoses.map((f) => f.label)],
+                    'lose'
                   )}
                 </div>
               )}

@@ -1,6 +1,6 @@
 -- Tests for check printing tables and functions (multi-bank-account schema)
 BEGIN;
-SELECT plan(55);
+SELECT plan(56);
 
 -- ==========================================
 -- 1. check_bank_accounts table structure

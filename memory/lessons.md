@@ -2022,3 +2022,29 @@
 - **Context:** `ruleAppliesTo` in `src/utils/tipPooling.ts` needed `ShareMethod` and `PoolingModel`, which lived in `src/hooks/useTipPoolSettings.tsx` — a hook that already imports `RoleAllocationRule` *from* tipPooling. Importing back would have made a cycle; duplicating the string unions would have made two definitions to drift apart.
 - **Fix:** move the canonical definitions into the leaf module (`tipPooling.ts` imports nothing from the app), then `export type { ShareMethod, PoolingModel } from '@/utils/tipPooling';` in the hook. All 12 existing `from '@/hooks/useTipPoolSettings'` import sites kept working; the diff was one line in the hook plus the moved declarations.
 - **Rule:** types belong with the code that branches on them, which is usually further down the dependency graph than where they were first written. A re-export at the old location makes the move free at the call sites — reach for it before you either duplicate a union or restructure a dozen imports.
+## Category: Supabase / RLS & SECURITY DEFINER (continued)
+
+### [2026-08-02] A table with no UPDATE policy does not raise — RLS filters the write to zero rows, silently
+- **Mistake:** Assumed `notify-schedule-published`'s `notification_sent = true` write was working because nothing errored. It had been affecting zero rows for a year: the update ran on the user-scoped client, and `schedule_publications` has SELECT and INSERT policies but no UPDATE policy.
+- **Correction:** Postgres RLS treats a missing UPDATE policy as "no rows are updatable", not as a permission error. supabase-js reports `error: null` and an empty `data`. The only way to notice is `.select()` on the update and checking the returned row count.
+- **Rule:** Every RLS-governed write must assert its own row count. `if (!error)` proves nothing about whether anything changed. And when the write is a service-role one that RLS is *not* standing behind, spell out every scoping filter — `.eq('id', x)` alone is a cross-tenant hole the policies would otherwise have closed.
+
+### [2026-08-02] Postgres default privileges are per-grantor-role — the same migration yields different grants locally and in CI
+- **Mistake:** Wrote a pgTAP test asserting `throws_ok(..., '42501')` for an `authenticated` UPDATE on a new table. Green locally, red in CI: "caught: no exception".
+- **Correction:** The stock Supabase `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO anon, authenticated, service_role` entry is owned by `supabase_admin`. Default-privilege entries only apply to objects created *by their grantor role*. Locally, migrations run as `postgres`, so the entry never fired and the table had no grants; wherever migrations run under a role the entry covers, `authenticated` silently holds UPDATE.
+- **Rule:** Never let a table's write posture depend on inherited default privileges. State it: `REVOKE ALL ON <table> FROM PUBLIC, anon, authenticated;` then grant exactly what each role needs — and pin it with a `has_table_privilege` assertion, not only a `throws_ok`, so the test fails on the grant rather than on whatever the grant happened to cause.
+- **Reproducing a CI-only privilege failure locally:** set the stock default-privilege entry by hand, re-apply the migration, run the test, then revert. The revert needs a matching `ALTER DEFAULT PRIVILEGES ... REVOKE` for *each grantor role* you touched — a plain re-grant leaves a residual `pg_default_acl` row behind.
+
+## Category: Testing / Reproducing Bugs (continued)
+
+### [2026-08-02] A calendar test that addresses days by number is a time bomb — react-day-picker renders outside days
+- **Mistake:** Saw `Found multiple elements with the role "gridcell" and name "5"` on a branch that never touched the date picker, and assumed the branch broke it.
+- **Correction:** Pre-existing trunk breakage, confirmed by finding the same failure on two `main` runs. The August 2026 grid pads with September 1–5, so `getByRole('gridcell', {name: '5'})` matched twice. It had passed every previous month.
+- **Rule:** Any test that clicks a calendar day by its number must pin the clock. `vi.useFakeTimers({ toFake: ['Date'] })` — faking *all* timers hangs userEvent, which drives its own. Pick a month whose grid padding cannot collide with the numbers the test reaches for. And check whether a red test is red on `main` before diagnosing it as yours; the first hypothesis for a calendar failure ("future dates are disabled") was wrong and reading the actual CI error was what settled it.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-02] A review suggestion can be right about the defect and wrong about the fix — check the API before implementing it verbatim
+- **Mistake:** Nearly implemented CodeRabbit's suggested `AbortSignal.timeout(...)` on a `supabase.functions.invoke` call.
+- **Correction:** This repo's `@supabase/functions-js` `FunctionInvokeOptions` is `headers | method | region | body` — there is no `signal` to pass. The underlying defect (an unbounded await leaving a dialog with every button disabled) was real; the remedy had to be a `Promise.race` against a timer instead.
+- **Rule:** Reply `agreed` to the finding, not to the patch. State in the triage reply *why* the implementation diverged — a reviewer who sees their suggestion apparently ignored will re-raise it next round.

@@ -93,8 +93,8 @@ describe('useRestaurantMembers query', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual([
-      { userId: 'u1', email: 'alexis@rushbowls.com', fullName: 'Alexis Sanchez', role: 'manager' },
-      { userId: 'u2', email: null, fullName: null, role: 'staff' },
+      { userId: 'u1', email: 'alexis@rushbowls.com', fullName: 'Alexis Sanchez', role: 'manager', roleId: null },
+      { userId: 'u2', email: null, fullName: null, role: 'staff', roleId: null },
     ]);
     expect(mockSupabase.from).toHaveBeenCalledWith('user_restaurants');
     expect(mockSupabase.from).toHaveBeenCalledWith('profiles');

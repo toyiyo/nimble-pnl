@@ -161,14 +161,14 @@ SELECT ok(
   'a tick with a backlog waiting does not retire the drain job'
 );
 
--- Test 10: the previous tick stamped every candidate, so nothing claimable is
--- left and the next tick converges. Guards against a leftover check so wide
--- that unmatched rows keep the job scheduled forever.
+-- Test 10: the previous tick stamped every candidate, so this one converges —
+-- and the job still survives. Together with test 9 this pins job survival
+-- across both outcomes, which is what makes the sweep permanent.
 SELECT public.drain_categorization_backlog();
 
 SELECT ok(
-  NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain'),
-  'once every candidate is evaluated the drain still retires itself'
+  EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain'),
+  'a tick that exhausts the backlog still leaves the job scheduled'
 );
 
 SELECT * FROM finish();

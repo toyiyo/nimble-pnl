@@ -1,11 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import type { RoleAllocationRule } from '@/utils/tipPooling';
+
+// `ShareMethod` and `PoolingModel` live in tipPooling because the allocation
+// rules there branch on them, and that module cannot import from this hook
+// without a cycle. Re-exported here so the many existing `from
+// '@/hooks/useTipPoolSettings'` import sites keep working.
+export type { ShareMethod, PoolingModel } from '@/utils/tipPooling';
+import type { ShareMethod, PoolingModel } from '@/utils/tipPooling';
 
 export type TipSource = 'manual' | 'pos';
-export type ShareMethod = 'hours' | 'role' | 'manual';
 export type SplitCadence = 'daily' | 'weekly' | 'shift';
-export type PoolingModel = 'full_pool' | 'percentage_contribution';
 
 export interface TipPoolSettings {
   id: string;
@@ -14,6 +20,8 @@ export interface TipPoolSettings {
   share_method: ShareMethod | null;
   split_cadence: SplitCadence | null;
   role_weights: Record<string, number>;
+  /** Per-role guarantees, Full Pool only. Empty object means no rules. */
+  role_percentages: Record<string, RoleAllocationRule>;
   enabled_employee_ids: string[];
   pooling_model: PoolingModel;
   active: boolean;
@@ -26,6 +34,7 @@ export interface TipPoolSettingsUpdate {
   share_method?: ShareMethod;
   split_cadence?: SplitCadence;
   role_weights?: Record<string, number>;
+  role_percentages?: Record<string, RoleAllocationRule>;
   enabled_employee_ids?: string[];
   pooling_model?: PoolingModel;
 }
@@ -52,7 +61,11 @@ export function useTipPoolSettings(restaurantId: string | null) {
         .maybeSingle();
 
       if (error) throw error;
-      return data as TipPoolSettings | null;
+      // The generated `role_percentages: Json` column type doesn't structurally
+      // match `Record<string, RoleAllocationRule>`, so a direct cast is rejected
+      // by TS — go through `unknown`. Shape is enforced at the DB layer by
+      // tip_pool_settings_role_percentages_check (see the migration).
+      return data as unknown as TipPoolSettings | null;
     },
     enabled: !!restaurantId,
     staleTime: 30000, // 30 seconds

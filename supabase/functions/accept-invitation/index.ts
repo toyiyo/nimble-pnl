@@ -121,6 +121,14 @@ const handler = async (req: Request): Promise<Response> => {
           user_id: user.id,
           restaurant_id: invitation.restaurant_id,
           role: invitation.role,
+          // NULL for every builtin-role invitation, which keeps resolving
+          // through the legacy role string. Set only for an invitation to a
+          // custom role, where it is the entire grant — role alone is the
+          // literal 'collaborator_custom', which user_has_capability()
+          // matches in no IN-list. send-team-invitation is what authorized
+          // this id (the role must be non-builtin and belong to this
+          // restaurant); nothing is re-derived from client input here.
+          role_id: invitation.role_id ?? null,
         });
 
       if (memberError) {

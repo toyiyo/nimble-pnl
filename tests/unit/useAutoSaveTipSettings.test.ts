@@ -22,6 +22,7 @@ describe('useAutoSaveTipSettings', () => {
     share_method: 'hours',
     split_cadence: 'daily',
     role_weights: { Server: 1, Bartender: 1 },
+    role_percentages: {},
     enabled_employee_ids: ['emp1', 'emp2'],
     created_at: '2026-01-01',
     updated_at: '2026-01-01',
@@ -35,6 +36,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: {},
+        rolePercentages: {},
         selectedEmployees: new Set(),
         onSave,
       })
@@ -52,6 +54,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: {},
+        rolePercentages: {},
         selectedEmployees: new Set(),
         onSave,
       })
@@ -69,6 +72,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -86,6 +90,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -111,6 +116,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'even', // Changed from 'hours'
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -128,6 +134,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'weekly', // Changed from 'daily'
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -145,6 +152,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 2, Bartender: 1 }, // Changed Server weight
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -162,6 +170,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1, Runner: 1 }, // Added Runner
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -179,6 +188,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2', 'emp3']), // Added emp3
         onSave,
       })
@@ -196,6 +206,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1']), // Removed emp2
         onSave,
       })
@@ -214,6 +225,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp2', 'emp1']), // Different order, same IDs
         onSave,
       })
@@ -237,6 +249,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1']),
         onSave,
       })
@@ -257,6 +270,7 @@ describe('useAutoSaveTipSettings', () => {
           shareMethod: 'hours' as const,
           splitCadence: 'daily' as const,
           roleWeights: { Server: 1, Bartender: 1 },
+          rolePercentages: {},
           selectedEmployees: new Set(['emp1', 'emp2']),
           onSave,
         },
@@ -270,6 +284,7 @@ describe('useAutoSaveTipSettings', () => {
       shareMethod: 'hours',
       splitCadence: 'daily',
       roleWeights: { Server: 1, Bartender: 1 },
+      rolePercentages: {},
       selectedEmployees: new Set(['emp1', 'emp2']),
       onSave,
     });
@@ -283,6 +298,7 @@ describe('useAutoSaveTipSettings', () => {
       shareMethod: 'even',
       splitCadence: 'daily',
       roleWeights: { Server: 1, Bartender: 1 },
+      rolePercentages: {},
       selectedEmployees: new Set(['emp1', 'emp2']),
       onSave,
     });
@@ -307,6 +323,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -328,6 +345,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: {}, // Empty object
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1', 'emp2']),
         onSave,
       })
@@ -345,6 +363,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'hours',
         splitCadence: 'daily',
         roleWeights: { Server: 1, Bartender: 1 },
+        rolePercentages: {},
         selectedEmployees: new Set(), // Empty set
         onSave,
       })
@@ -362,6 +381,7 @@ describe('useAutoSaveTipSettings', () => {
         shareMethod: 'even', // Changed
         splitCadence: 'weekly', // Changed
         roleWeights: { Server: 2 }, // Changed
+        rolePercentages: {},
         selectedEmployees: new Set(['emp1']), // Changed
         onSave,
       })

@@ -2001,3 +2001,86 @@
 - **Context:** `E2E Tests (Shard 2/4)` failed on `permissions-roles.spec.ts:99` (a forbidden-route redirect assertion) on a branch that had just rewritten date handling app-wide. "It's flaky" is the cheapest possible claim and the easiest to be wrong about.
 - **The argument that actually settles it,** three independent legs: (1) `git diff --stat <last-green-sha>..<head>` returned **one file changed — a spec in a different shard**, so the application code shard 2 exercised was byte-identical to a run where it passed; (2) the three retries landed on three *different* wrong URLs (`/`, `/recipes`, `/banking`) where `/transactions` was expected — a fixed bug produces the same wrong answer, a race does not; (3) nothing in the branch touches routing or role resolution, and a sibling test in the same file flaked in the same run. `gh run rerun <id> --failed` then went green.
 - **Rule:** Before spending a CI cycle on a suspicious red, run `git diff --stat` between the last green run's SHA and the current one. If the delta cannot reach the failing code, the diff is exonerated and the question changes from "what did I break" to "what is this test racing against". Then **file the underlying race as a follow-up instead of shrugging** — a rerun that goes green is evidence about your branch, not a fix for the test.
+
+## Category: Testing / Reproducing Bugs (continued)
+
+### [2026-08-02] For a *new* feature there is no "before" to revert to — mutate the predicate instead to prove the tests aren't vacuous
+- **Context:** The existing technique for proving tests bite (`git checkout origin/main -- src/`, 2026-07-30) assumes the branch fixes a bug that exists on the base. A greenfield feature has no such baseline: reverting `src/` deletes the feature the tests import, so every spec errors on a missing symbol — which proves nothing, because an import error looks the same whether the assertions were sharp or trivially true.
+- **Technique:** back up the one file to scratchpad, flip the single load-bearing comparison (`hours > 0` → `hours >= 0` in `ruleAppliesTo`), re-run, restore from backup, re-run to confirm you're back to green. The mutation has to be the *decision* the test claims to pin, not a nearby line.
+- **What it bought:** both layers went red on their own assertions — the unit test on "drops the rule for someone with no hours", the e2e at the `30.0% · $30.00` wait. Two independent layers failing on the mutation is stronger evidence than either alone, and it specifically ruled out the failure mode where an e2e test passes because it never actually reached the screen it was asserting about.
+- **Gotcha:** delete `test-results/` between mutation runs. A stale failure artifact from the red run makes the restored green run look ambiguous when you glance at the directory rather than the exit code.
+
+## Category: Testing — Test Design (continued)
+
+### [2026-08-02] The allocator had 34 tests; the rule deciding *who it applies to* had zero, because it lived inline in a page component
+- **Mistake:** The tip-guarantee engine in `src/utils/tipPooling.ts` was thoroughly tested. The P1 review finding — an off-shift manager still drawing their guaranteed 10%, straight out of the pockets of people who worked — was not in that engine at all. It was a `useCallback` in the middle of a 1200-line `src/pages/Tips.tsx`, feeding both the participant list handed to the allocator and the "Fixed 30%" badge in the hours grid. Untestable where it sat, and *duplicated in effect* across two consumers that could silently disagree.
+- **Correction:** extracted it to `ruleAppliesTo(rule, {poolingModel, shareMethod, hours})` next to the engine it gates. The page now binds today's config and delegates. The extraction is what made the edge cases expressible at all: NaN hours from a half-typed input, `exactly 0%` (a real instruction) versus `at_least 0%` (a floor that can't lift anyone), and the fact that the role and manual share methods never collect hours so gating on `hours > 0` there would void every guarantee.
+- **The test worth copying:** a sweep that runs the predicate and the allocator over the same inputs and asserts they agree — `ruleAppliesTo(...) === (result.shares.find(...).appliedRule !== undefined)`. That encodes the actual invariant (the UI cannot advertise a guarantee the split ignores) rather than re-asserting the predicate's own truth table a second time.
+- **Rule:** when a review finding lands on logic that lives inside a component, the fix is not complete until the logic moves somewhere it can be called without rendering. Ask where the decision lives before writing the patch — a coverage number on the engine says nothing about the gate in front of it.
+
+### [2026-08-02] `toHaveCount(2)` to prove a badge is absent is a trap — scope the assertion to the row that owns it
+- **Mistake (caught before running, not after):** to assert that a same-role teammate who didn't work is *not* badged, I first wrote `expect(page.getByText('Fixed 30%')).toHaveCount(2)` — counting global matches and inferring which rows they belong to. It passes for the wrong reasons and fails unreadably: any layout change that adds or removes an unrelated instance breaks it with a message that says nothing about the person it's actually about.
+- **Correction:** read the component first, found the badge sits inside `<Label htmlFor={`hours-${emp.id}`}>` alongside the name, and asserted `page.locator('label', {hasText:'Manager Mo'})` contains it while the same locator for `Manager Mia` does not. Same coverage, and a failure names the person.
+- **Rule:** a negative UI assertion needs a container that scopes it to the subject. Counting occurrences page-wide is a proxy for the thing you mean, and proxies drift. Two minutes reading the JSX to find the enclosing element is cheaper than the confusing CI failure six weeks from now.
+
+## Category: Database — Constraints & Triggers (continued)
+
+### [2026-08-02] `jsonb_path_exists` defaults to lax mode, which auto-unwraps arrays — a shape CHECK meant to reject them silently accepts them
+- **Mistake:** A CHECK constraint on `tip_pool_settings.role_percentages` used `'$.* ? (@.type() != "object")'` to reject any value that isn't an object. In **lax** mode (the default) the path engine auto-unwraps arrays before evaluating `.type()`, so `{"Manager": [{"mode":"exactly"}]}` gets unwrapped to the inner object, reports `"object"`, and passes the constraint that exists to reject it. Every `.type()` predicate in the constraint had the same hole.
+- **Correction:** prefix every one of them with `strict`, which keeps `@` bound to the un-unwrapped value. Since a CHECK can't be modified in place, that's drop-then-add in the migration. pgTAP coverage went from 12 to 16 assertions specifically to pin the array case per predicate.
+- **Rule:** `strict` is not a performance or pedantry flag — in any jsonb path predicate that asks *what type is this*, lax mode answers about a different value than the one you wrote. Whenever a jsonb CHECK is supposed to reject a shape, write the test that feeds it that exact shape; the constraint's existence is not evidence it discriminates. (Related: 2026-07-30, "tests that pin an example rather than a specification".)
+
+## Category: TypeScript / Module Structure
+
+### [2026-08-02] Break a type cycle by moving the type down to the leaf and re-exporting from where it used to live
+- **Context:** `ruleAppliesTo` in `src/utils/tipPooling.ts` needed `ShareMethod` and `PoolingModel`, which lived in `src/hooks/useTipPoolSettings.tsx` — a hook that already imports `RoleAllocationRule` *from* tipPooling. Importing back would have made a cycle; duplicating the string unions would have made two definitions to drift apart.
+- **Fix:** move the canonical definitions into the leaf module (`tipPooling.ts` imports nothing from the app), then `export type { ShareMethod, PoolingModel } from '@/utils/tipPooling';` in the hook. All 12 existing `from '@/hooks/useTipPoolSettings'` import sites kept working; the diff was one line in the hook plus the moved declarations.
+- **Rule:** types belong with the code that branches on them, which is usually further down the dependency graph than where they were first written. A re-export at the old location makes the move free at the call sites — reach for it before you either duplicate a union or restructure a dozen imports.
+## Category: Supabase / RLS & SECURITY DEFINER (continued)
+
+### [2026-08-02] A table with no UPDATE policy does not raise — RLS filters the write to zero rows, silently
+- **Mistake:** Assumed `notify-schedule-published`'s `notification_sent = true` write was working because nothing errored. It had been affecting zero rows for a year: the update ran on the user-scoped client, and `schedule_publications` has SELECT and INSERT policies but no UPDATE policy.
+- **Correction:** Postgres RLS treats a missing UPDATE policy as "no rows are updatable", not as a permission error. supabase-js reports `error: null` and an empty `data`. The only way to notice is `.select()` on the update and checking the returned row count.
+- **Rule:** Every RLS-governed write must assert its own row count. `if (!error)` proves nothing about whether anything changed. And when the write is a service-role one that RLS is *not* standing behind, spell out every scoping filter — `.eq('id', x)` alone is a cross-tenant hole the policies would otherwise have closed.
+
+### [2026-08-02] Postgres default privileges are per-grantor-role — the same migration yields different grants locally and in CI
+- **Mistake:** Wrote a pgTAP test asserting `throws_ok(..., '42501')` for an `authenticated` UPDATE on a new table. Green locally, red in CI: "caught: no exception".
+- **Correction:** The stock Supabase `ALTER DEFAULT PRIVILEGES ... GRANT ALL ON TABLES TO anon, authenticated, service_role` entry is owned by `supabase_admin`. Default-privilege entries only apply to objects created *by their grantor role*. Locally, migrations run as `postgres`, so the entry never fired and the table had no grants; wherever migrations run under a role the entry covers, `authenticated` silently holds UPDATE.
+- **Rule:** Never let a table's write posture depend on inherited default privileges. State it: `REVOKE ALL ON <table> FROM PUBLIC, anon, authenticated;` then grant exactly what each role needs — and pin it with a `has_table_privilege` assertion, not only a `throws_ok`, so the test fails on the grant rather than on whatever the grant happened to cause.
+- **Reproducing a CI-only privilege failure locally:** set the stock default-privilege entry by hand, re-apply the migration, run the test, then revert. The revert needs a matching `ALTER DEFAULT PRIVILEGES ... REVOKE` for *each grantor role* you touched — a plain re-grant leaves a residual `pg_default_acl` row behind.
+
+## Category: Testing / Reproducing Bugs (continued)
+
+### [2026-08-02] A calendar test that addresses days by number is a time bomb — react-day-picker renders outside days
+- **Mistake:** Saw `Found multiple elements with the role "gridcell" and name "5"` on a branch that never touched the date picker, and assumed the branch broke it.
+- **Correction:** Pre-existing trunk breakage, confirmed by finding the same failure on two `main` runs. The August 2026 grid pads with September 1–5, so `getByRole('gridcell', {name: '5'})` matched twice. It had passed every previous month.
+- **Rule:** Any test that clicks a calendar day by its number must pin the clock. `vi.useFakeTimers({ toFake: ['Date'] })` — faking *all* timers hangs userEvent, which drives its own. Pick a month whose grid padding cannot collide with the numbers the test reaches for. And check whether a red test is red on `main` before diagnosing it as yours; the first hypothesis for a calendar failure ("future dates are disabled") was wrong and reading the actual CI error was what settled it.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-02] A review suggestion can be right about the defect and wrong about the fix — check the API before implementing it verbatim
+- **Mistake:** Nearly implemented CodeRabbit's suggested `AbortSignal.timeout(...)` on a `supabase.functions.invoke` call.
+- **Correction:** This repo's `@supabase/functions-js` `FunctionInvokeOptions` is `headers | method | region | body` — there is no `signal` to pass. The underlying defect (an unbounded await leaving a dialog with every button disabled) was real; the remedy had to be a `Promise.race` against a timer instead.
+- **Rule:** Reply `agreed` to the finding, not to the patch. State in the triage reply *why* the implementation diverged — a reviewer who sees their suggestion apparently ignored will re-raise it next round.
+
+## Category: Supabase / RLS & SECURITY DEFINER (continued)
+
+### [2026-08-03] The default-privileges rule applies to FUNCTIONS too — and `REVOKE ... FROM PUBLIC` cannot undo a direct `anon` grant
+- **Mistake:** `assign_membership_role` is a `SECURITY DEFINER` role-administration RPC, so its migration deliberately wrote `REVOKE EXECUTE ... FROM PUBLIC; GRANT EXECUTE ... TO authenticated;` with a comment explaining that this was "explicit, not incidental". The pgTAP assertion `NOT has_function_privilege('anon', ...)` passed locally and failed in CI — `not ok 25 - anon cannot execute the RPC` — costing a full CI round-trip plus a log excavation.
+- **Correction:** The revoke was aimed at the wrong grantee. Where the image carries `ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE ON FUNCTIONS TO anon` for the migrating role, the function is created with `anon=X` **directly in `proacl`**. Revoking `PUBLIC` does not touch a direct grant to a named role. Fixed by revoking `anon` by name alongside `PUBLIC`, in both the creating migration and the `CREATE OR REPLACE` that follows it.
+- **This lesson was already in this file and I didn't apply it.** The [2026-08-02] entry directly above says *"Never let a table's write posture depend on inherited default privileges... `REVOKE ALL ON <table> FROM PUBLIC, anon, authenticated`"*. I wrote a revoke for a **function** and generalized only the `PUBLIC` half. **Rule:** the entry covers `ON TABLES`, `ON FUNCTIONS`, and `ON SEQUENCES` separately — when a lesson names one object class, check whether the mechanism is class-specific or just where you happened to hit it. Here it was the latter.
+- **Reproducing it locally is four lines and does not need a reset.** Compare `pg_default_acl` first (`SELECT defaclrole::regrole, defaclnamespace::regnamespace, defaclacl FROM pg_default_acl WHERE defaclobjtype='f'`) — local CLI 2.72.7 has `postgres|public|{postgres=X/postgres}`, CI's pinned 2.65.5 includes `anon=X`. Then simulate the CI ACL and step through it:
+  ```sql
+  GRANT   EXECUTE ON FUNCTION public.f(...) TO anon;    -- has_function_privilege → true
+  REVOKE  EXECUTE ON FUNCTION public.f(...) FROM PUBLIC; -- still true  ← the CI failure
+  REVOKE  EXECUTE ON FUNCTION public.f(...) FROM anon;   -- false
+  ```
+  Unlike the table case, no `ALTER DEFAULT PRIVILEGES` revert is needed — nothing is left in `pg_default_acl`.
+- **Corollary worth chasing separately:** `copy_role_to_restaurants`, the function this RPC was modelled on, grants to `authenticated` and never revokes at all. On a CI-style image it is `anon`-executable, failing closed only because its body keys off `auth.uid()`. Copying a function forward carries its grant posture forward too.
+
+## Category: CI / Workflows (continued)
+
+### [2026-08-03] `gh run view --log-failed` refuses while a run is in progress, and `grep '^not ok'` never matches pgTAP output
+- **Mistake:** Spent several tool calls trying to read a failing pgTAP job. `gh run view --log-failed` answered "run is still in progress; logs will be available when it is complete" (other jobs in the same run were still going). Falling back to `gh api .../logs` returned 14 MB across ~40 enormous lines, and anchored greps for the failure found nothing.
+- **Correction:** Two independent gotchas. (1) psql prints pgTAP results as query output, so every TAP line is **indented by one space** and padded — `grep '^not ok'` and `grep -c '^not ok'` silently match zero. Use unanchored `grep -aoE "not ok [0-9]+ - .{0,120}"` plus `grep -aoE "# Looks like you failed [0-9]+ test"`. (2) The job log is fetchable per-job even mid-run via `gh api repos/OWNER/REPO/actions/jobs/<job_id>/logs`; `--log-failed` is the part that blocks.
+- **Rule:** For a CI-only test failure, go straight for the assertion text, not the step. `gh api .../jobs/<id>/logs > /tmp/log.txt`, then `grep -a` for the framework's failure token — and use `-a` because these logs contain bytes that make grep treat them as binary and print nothing but "Binary file matches". To read context around a hit in a file with pathological line lengths, `python3 -c "d=open(f).read(); i=d.find(tok); print(repr(d[i-3000:i+1500]))"` beats any line-oriented tool.

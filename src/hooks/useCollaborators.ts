@@ -2,12 +2,18 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ROLE_METADATA } from '@/lib/permissions';
-import type { Role } from '@/lib/permissions';
+import type { InviteRoleLiteral, Role } from '@/lib/permissions';
 
 export interface Collaborator {
   id: string;
   email: string;
   role: string;
+  /**
+   * Set only for a custom role, where `role` is the bare
+   * 'collaborator_custom' literal and this is what names the actual grant.
+   * Callers resolve it against the `roles` table for a display label.
+   */
+  roleId: string | null;
   createdAt: string;
   profileName?: string;
 }
@@ -16,6 +22,8 @@ export interface PendingInvite {
   id: string;
   email: string;
   role: string;
+  /** As `Collaborator.roleId` — set only for an invitation to a custom role. */
+  roleId: string | null;
   status: 'pending' | 'accepted' | 'expired' | 'cancelled';
   createdAt: string;
   expiresAt?: string;
@@ -35,6 +43,7 @@ export const useCollaboratorsQuery = (restaurantId: string | null) => {
           id,
           user_id,
           role,
+          role_id,
           created_at
         `)
         .eq('restaurant_id', restaurantId)
@@ -63,6 +72,7 @@ export const useCollaboratorsQuery = (restaurantId: string | null) => {
         id: ur.id,
         email: profilesMap.get(ur.user_id)?.email || 'Unknown',
         role: ur.role,
+        roleId: ur.role_id ?? null,
         createdAt: ur.created_at,
         profileName: profilesMap.get(ur.user_id)?.full_name,
       }));
@@ -110,6 +120,7 @@ export const useCollaboratorInvitesQuery = (restaurantId: string | null) => {
         id: inv.id,
         email: inv.email,
         role: inv.role,
+        roleId: inv.role_id ?? null,
         status: inv.status as 'pending' | 'accepted' | 'expired' | 'cancelled',
         createdAt: inv.created_at,
         expiresAt: inv.expires_at,
@@ -126,7 +137,20 @@ export const useCollaboratorInvitesQuery = (restaurantId: string | null) => {
 interface SendInvitationParams {
   restaurantId: string;
   email: string;
-  role: Role;
+  role: InviteRoleLiteral;
+  /**
+   * Required when `role` is the 'collaborator_custom' literal, forbidden
+   * otherwise — `send-team-invitation` rejects either half on its own, and
+   * re-authorizes this id against the inviting restaurant regardless of what
+   * the client sends.
+   */
+  roleId?: string;
+  /**
+   * The role's display name, for the success toast. Custom roles have no
+   * `ROLE_METADATA` entry — without this the toast would read
+   * "invited as collaborator_custom".
+   */
+  roleLabel?: string;
   // Set when the invite email matches an accountless employee record
   // (`employees.user_id IS NULL`) detected client-side — passed through as
   // explicit intent. `send-team-invitation` re-derives/validates it
@@ -134,13 +158,23 @@ interface SendInvitationParams {
   employeeId?: string;
 }
 
+/**
+ * Display name for a toast: the caller's label when it has one (custom
+ * roles), the role metadata otherwise. Never the raw literal unless both are
+ * missing.
+ */
+function roleLabelOf(role: InviteRoleLiteral, roleLabel?: string): string {
+  return roleLabel ?? ROLE_METADATA[role as Role]?.label ?? role;
+}
+
 export const useSendCollaboratorInvitation = () => {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, email, role, employeeId }: SendInvitationParams) => {
+    mutationFn: async ({ restaurantId, email, role, roleId, employeeId }: SendInvitationParams) => {
       const body: Record<string, unknown> = { restaurantId, email, role };
+      if (roleId) body.roleId = roleId;
       if (employeeId) body.employeeId = employeeId;
 
       const { error } = await supabase.functions.invoke('send-team-invitation', {
@@ -154,7 +188,7 @@ export const useSendCollaboratorInvitation = () => {
       queryClient.invalidateQueries({ queryKey: ['collaborator-invites', variables.restaurantId] });
       toast({
         title: 'Invitation sent',
-        description: `${data.email} has been invited as ${ROLE_METADATA[data.role]?.label || data.role}`,
+        description: `${data.email} has been invited as ${roleLabelOf(data.role, variables.roleLabel)}`,
       });
     },
     onError: (error: Error) => {
@@ -248,9 +282,11 @@ export const useResendCollaboratorInvitation = () => {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ restaurantId, email, role }: SendInvitationParams) => {
+    mutationFn: async ({ restaurantId, email, role, roleId }: SendInvitationParams) => {
       const { error } = await supabase.functions.invoke('send-team-invitation', {
-        body: { restaurantId, email, role },
+        // A resend of a custom-role invitation has to carry the same role_id
+        // the original did, or the endpoint rejects it as a bare literal.
+        body: { restaurantId, email, role, ...(roleId ? { roleId } : {}) },
       });
       if (error) throw error;
       return { email, role };

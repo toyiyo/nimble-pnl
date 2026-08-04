@@ -6,6 +6,14 @@ import { useToast } from '@/hooks/use-toast';
 import { TimePunchInsert, EmployeeTipInsert } from '@/utils/timePunchImport';
 import { fetchAllRows } from '@/utils/fetchAllRows';
 
+// Stable reference for the "no data yet" case. `data || []` would otherwise
+// allocate a fresh empty array on every render while the query is loading,
+// which breaks referential equality for any useMemo/useEffect keyed on the
+// returned `punches` array — capable of driving an infinite render loop in a
+// consumer that both derives from it and writes state back on every change
+// (see src/pages/Tips.tsx).
+const EMPTY_PUNCHES: TimePunch[] = [];
+
 export const useTimePunches = (restaurantId: string | null, employeeId?: string, startDate?: Date, endDate?: Date) => {
   const { toast } = useToast();
 
@@ -74,7 +82,7 @@ export const useTimePunches = (restaurantId: string | null, employeeId?: string,
   });
 
   return {
-    punches: data || [],
+    punches: data ?? EMPTY_PUNCHES,
     loading: isLoading,
     error,
   };

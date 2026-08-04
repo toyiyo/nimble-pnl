@@ -1,32 +1,127 @@
 import type { Employee } from '@/types/scheduling';
 
+export type RoleAllocationMode = 'at_least' | 'exactly';
+
+/** How a Full Pool is divided between the people in it. */
+export type ShareMethod = 'hours' | 'role' | 'manual';
+
+/** Whether the restaurant pools everything or has servers contribute a cut. */
+export type PoolingModel = 'full_pool' | 'percentage_contribution';
+
+/** A per-role allocation rule. Evaluated per person, not per role. */
+export type RoleAllocationRule = {
+  mode: RoleAllocationMode;
+  /** 0-100. Enforced by tip_pool_settings_role_percentages_check in the database. */
+  percentage: number;
+};
+
+/**
+ * Whether a rule actually changes an employee's share.
+ *
+ * `at_least 0%` is a floor nobody can fall below, so it is indistinguishable
+ * from "by hours" and is treated as no rule at all. `exactly 0%` is a real
+ * instruction — pay this person nothing out of the pool — so it survives.
+ *
+ * The allocator and every badge that advertises a rule must agree on this
+ * predicate, or the UI promises a guarantee the split does not honour.
+ */
+export function isRuleActive(rule: RoleAllocationRule | undefined | null): rule is RoleAllocationRule {
+  return !!rule && (rule.mode === 'exactly' || rule.percentage > 0);
+}
+
+/** Everything needed to decide whether a rule is in force for one person today. */
+export type RuleEligibility = {
+  poolingModel: PoolingModel;
+  shareMethod: ShareMethod;
+  /** Hours logged for the day. Only consulted when `shareMethod` is `hours`. */
+  hours: number;
+};
+
+/**
+ * Whether a role's rule is in force for this person, on this day, in this pool.
+ *
+ * Three conditions, each load-bearing:
+ *
+ * 1. **Full Pool only.** Percentage-contribution pools allocate per sub-pool,
+ *    where "a percentage of the pool" has no single meaning. Rules are ignored.
+ * 2. **The rule has to do something** — see `isRuleActive`.
+ * 3. **The person has to have worked.** The guarantee is for "the days they
+ *    worked", so an off-shift manager draws nothing. Hours are the
+ *    participation signal for the hours method *only*: the role and manual
+ *    methods never collect hours, so everyone would read as zero and every
+ *    guarantee would silently vanish. There, being selected for the pool is
+ *    the signal instead.
+ *
+ * The allocator and the badge in the hours grid both call this, so the UI
+ * cannot advertise a guarantee the split does not honour.
+ */
+export function ruleAppliesTo(
+  rule: RoleAllocationRule | undefined | null,
+  { poolingModel, shareMethod, hours }: RuleEligibility,
+): rule is RoleAllocationRule {
+  return (
+    poolingModel === 'full_pool' &&
+    isRuleActive(rule) &&
+    (shareMethod !== 'hours' || hours > 0)
+  );
+}
+
+/**
+ * User-facing badge label for a rule, e.g. "Guaranteed 10%" / "Fixed 15%".
+ * Shared between the hours-entry grid and the review screen's allocation
+ * table so the two never drift in wording.
+ */
+export function formatAppliedRuleLabel(rule: RoleAllocationRule): string {
+  return rule.mode === 'at_least'
+    ? `Guaranteed ${rule.percentage}%`
+    : `Fixed ${rule.percentage}%`;
+}
+
 export type TipShare = {
   employeeId: string;
   name: string;
   hours?: number;
   role?: string;
   amountCents: number;
+  /** The rule in force for this employee, when one applied. */
+  appliedRule?: RoleAllocationRule;
+  /** True when an `at_least` floor raised this share above its base-method value. */
+  lifted?: boolean;
 };
 
 /**
- * Distribute totalCents among items by ratio, assigning rounding remainder to last item.
+ * Distribute totalCents among items by ratio using the largest-remainder method.
  * Returns an array of allocated amounts in the same order as `ratios`.
+ *
+ * Every share is floored and the leftover cents go to the largest fractional
+ * parts, so the amounts always sum to `totalCents` and none can overshoot. The
+ * earlier "round each, give the remainder to the last item" approach could hand
+ * the last item a *negative* share whenever rounding overshot — 2 cents across
+ * four equal ratios produced `[1, 1, 1, -1]`.
  */
 function distributeByRatio(totalCents: number, ratios: number[]): number[] {
-  const totalRatio = ratios.reduce((sum, r) => sum + r, 0);
-  const amounts: number[] = [];
-  let allocated = 0;
+  const count = ratios.length;
+  if (count === 0) return [];
 
-  for (let i = 0; i < ratios.length; i++) {
-    if (i === ratios.length - 1) {
-      amounts.push(totalCents - allocated);
-    } else {
-      const amount = totalRatio > 0
-        ? Math.round(totalCents * (ratios[i] / totalRatio))
-        : Math.floor(totalCents / ratios.length);
-      amounts.push(amount);
-      allocated += amount;
-    }
+  const totalRatio = ratios.reduce((sum, r) => sum + r, 0);
+  // No ratios at all (everyone at zero hours/weight) splits the pool evenly.
+  const weights = totalRatio > 0 ? ratios : ratios.map(() => 1);
+  const weightTotal = totalRatio > 0 ? totalRatio : count;
+
+  const exact = weights.map(w => (totalCents * w) / weightTotal);
+  const amounts = exact.map(Math.floor);
+  let remainder = totalCents - amounts.reduce((sum, a) => sum + a, 0);
+
+  // Ties break toward the *last* item, preserving the long-standing "the last
+  // person absorbs the rounding remainder" behaviour for the common case of
+  // equal shares — this only changes who gets the odd cent when the fractions
+  // genuinely differ, and it can no longer take a share below zero.
+  const byLargestFraction = exact
+    .map((value, index) => ({ index, fraction: value - Math.floor(value) }))
+    .sort((a, b) => b.fraction - a.fraction || b.index - a.index);
+
+  for (let k = 0; remainder > 0; k++, remainder--) {
+    amounts[byLargestFraction[k % count].index] += 1;
   }
 
   return amounts;
@@ -116,6 +211,199 @@ export function calculateTipSplitByRole(
     role: p.role,
     amountCents: amounts[i],
   }));
+}
+
+export type GuaranteedParticipant = {
+  id: string;
+  name: string;
+  hours?: number;
+  role?: string;
+  rule?: RoleAllocationRule;
+};
+
+export type GuaranteedSplitResult = {
+  shares: TipShare[];
+  /** Set when guarantees exceeded the pool and every rule was scaled down. */
+  scaledDownFactor: number | null;
+  /** Cents redistributed because only `exactly` participants worked. */
+  redistributedLeftoverCents: number;
+};
+
+const amountsById = (shares: TipShare[]): Map<string, number> =>
+  new Map(shares.map(s => [s.employeeId, s.amountCents]));
+
+/**
+ * Overlay per-role guarantees on top of any base share method.
+ *
+ * `exactly` participants are reserved off the top. Everyone else is water-filled
+ * through `distributeRemainder`: anyone landing below their `at_least` floor is
+ * locked at the floor and the pass repeats, so a floor only ever raises someone
+ * and never caps them. Shares come back in the input order and always sum to
+ * `totalTipsCents` exactly.
+ */
+export function calculateTipSplitWithGuarantees(
+  totalTipsCents: number,
+  participants: GuaranteedParticipant[],
+  distributeRemainder: (poolCents: number, subset: GuaranteedParticipant[]) => TipShare[],
+): GuaranteedSplitResult {
+  if (participants.length === 0) {
+    return { shares: [], scaledDownFactor: null, redistributedLeftoverCents: 0 };
+  }
+
+  const ruleOf = (p: GuaranteedParticipant): RoleAllocationRule | undefined =>
+    isRuleActive(p.rule) ? p.rule : undefined;
+
+  const toShare = (p: GuaranteedParticipant, amountCents: number): TipShare => {
+    const share: TipShare = { employeeId: p.id, name: p.name, amountCents };
+    if (p.hours !== undefined) share.hours = p.hours;
+    if (p.role !== undefined) share.role = p.role;
+    const rule = ruleOf(p);
+    if (rule) share.appliedRule = rule;
+    return share;
+  };
+
+  if (totalTipsCents <= 0) {
+    return {
+      shares: participants.map(p => toShare(p, 0)),
+      scaledDownFactor: null,
+      redistributedLeftoverCents: 0,
+    };
+  }
+
+  // 1. Convert rules to cents.
+  const guarantees = new Map<string, number>();
+  let guaranteedTotal = 0;
+  for (const p of participants) {
+    const rule = ruleOf(p);
+    if (!rule) continue;
+    // A floor rounds UP, a fixed share rounds to nearest. `Math.round` on an
+    // `at_least` floor pays less than the percentage the manager configured
+    // whenever the product lands below .5 — a 10% floor on a 101¢ pool would
+    // compute 10¢, which is 9.9%. Rounding up can never overshoot the pool:
+    // `percentage` is capped at 100 and `totalTipsCents` is an integer, so
+    // `ceil(total × pct/100) <= total`. Multiple people over 100% in aggregate
+    // is a different case, and step 2 below scales that back down.
+    const exact = totalTipsCents * (rule.percentage / 100);
+    const cents = rule.mode === 'at_least' ? Math.ceil(exact) : Math.round(exact);
+    guarantees.set(p.id, cents);
+    guaranteedTotal += cents;
+  }
+
+  if (guarantees.size === 0) {
+    const amounts = amountsById(distributeRemainder(totalTipsCents, participants));
+    return {
+      shares: participants.map(p => toShare(p, amounts.get(p.id) ?? 0)),
+      scaledDownFactor: null,
+      redistributedLeftoverCents: 0,
+    };
+  }
+
+  // 2. Feasibility — guarantees are per person, so several people in one role
+  //    can overshoot even when each individual percentage is legal.
+  let scaledDownFactor: number | null = null;
+  if (guaranteedTotal > totalTipsCents) {
+    scaledDownFactor = totalTipsCents / guaranteedTotal;
+    for (const [id, cents] of guarantees) {
+      guarantees.set(id, Math.floor(cents * scaledDownFactor));
+    }
+  }
+
+  // 3. Reserve the `exactly` participants off the top.
+  const locked = new Map<string, number>();
+  let pool = totalTipsCents;
+  for (const p of participants) {
+    if (ruleOf(p)?.mode === 'exactly') {
+      const cents = guarantees.get(p.id) ?? 0;
+      locked.set(p.id, cents);
+      pool -= cents;
+    }
+  }
+  if (pool < 0) pool = 0;
+
+  // 4. Water-fill: run the base method, lock anyone below their floor, repeat.
+  const lifted = new Set<string>();
+  let candidates = participants.filter(p => !locked.has(p.id));
+  while (candidates.length > 0) {
+    const amounts = amountsById(distributeRemainder(pool, candidates));
+    const belowFloor = candidates.filter(p => {
+      if (ruleOf(p)?.mode !== 'at_least') return false;
+      return (amounts.get(p.id) ?? 0) < (guarantees.get(p.id) ?? 0);
+    });
+
+    if (belowFloor.length === 0) {
+      for (const p of candidates) locked.set(p.id, amounts.get(p.id) ?? 0);
+      break;
+    }
+
+    for (const p of belowFloor) {
+      const floor = guarantees.get(p.id) ?? 0;
+      locked.set(p.id, floor);
+      lifted.add(p.id);
+      pool -= floor;
+    }
+    if (pool < 0) pool = 0;
+    candidates = candidates.filter(p => !locked.has(p.id));
+  }
+
+  // 5. Leftover — only reachable when every participant is locked, i.e. every
+  //    rule is `exactly` and they total under 100%. Split it in proportion to
+  //    the configured percentages.
+  let redistributedLeftoverCents = 0;
+  const allocated = participants.reduce((sum, p) => sum + (locked.get(p.id) ?? 0), 0);
+  const leftover = totalTipsCents - allocated;
+  if (leftover > 0) {
+    // Don't report a leftover that is only the rounding dust from scaling down —
+    // the scale-down advisory already explains that case, and "no hourly staff
+    // worked" would be wrong.
+    redistributedLeftoverCents = scaledDownFactor === null ? leftover : 0;
+    const extra = distributeByRatio(
+      leftover,
+      participants.map(p => ruleOf(p)?.percentage ?? 0),
+    );
+    participants.forEach((p, i) => {
+      locked.set(p.id, (locked.get(p.id) ?? 0) + extra[i]);
+    });
+  }
+
+  // 6. Reconcile so the shares sum to the pool exactly — Approve is gated on it.
+  const shares = participants.map(p => toShare(p, locked.get(p.id) ?? 0));
+  const residual = totalTipsCents - shares.reduce((sum, s) => sum + s.amountCents, 0);
+  if (residual !== 0) {
+    // Prefer a rule-free participant for the residual cent so an `at_least` floor is
+    // only ever touched as a last resort — matching the "a floor only ever raises
+    // someone and never caps them" guarantee. `exactly` participants are excluded
+    // entirely (via `all` as the final fallback) since their share is a fixed
+    // promise, not a base-method result the residual is meant to nudge.
+    const free: number[] = [];
+    const atLeastOnly: number[] = [];
+    const all: number[] = [];
+    participants.forEach((p, i) => {
+      all.push(i);
+      const mode = ruleOf(p)?.mode;
+      if (!mode) free.push(i);
+      else if (mode === 'at_least') atLeastOnly.push(i);
+    });
+    // Walk the candidates in priority order, giving each as much of the residual
+    // as it can absorb without going negative. A positive residual is always
+    // taken whole by the first candidate; a negative one only spills onward when
+    // the preferred candidate cannot cover it. Spilling — rather than clamping
+    // at zero — is what keeps `sum(shares) === totalTipsCents` true, and Approve
+    // is gated on exactly that.
+    const order = [...free, ...atLeastOnly, ...all].filter((v, i, a) => a.indexOf(v) === i);
+    let unassigned = residual;
+    for (const i of order) {
+      if (unassigned === 0) break;
+      const delta = unassigned > 0 ? unassigned : Math.max(unassigned, -shares[i].amountCents);
+      shares[i].amountCents += delta;
+      unassigned -= delta;
+    }
+  }
+
+  for (const share of shares) {
+    if (lifted.has(share.employeeId)) share.lifted = true;
+  }
+
+  return { shares, scaledDownFactor, redistributedLeftoverCents };
 }
 
 /**

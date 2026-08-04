@@ -138,6 +138,24 @@ git stash pop   # only if step 1 actually stashed something
 If `git stash push` reports "No local changes to save," skip step 3's `git stash pop`. If step 2's `git branch` fails because `HEAD` is already at `origin/main` (no accidental commits), skip it — the stashed edits alone are what need to move.
 </HARD-GATE>
 
+### Commit staging discipline (applies to every phase)
+
+Stage **explicit paths**, always with `-C` so the command cannot act on the wrong checkout:
+
+```bash
+git -C .claude/worktrees/<feature> add src/foo.ts tests/unit/foo.test.ts
+git -C .claude/worktrees/<feature> diff --cached --name-only   # confirm before committing
+```
+
+**Never `git add -A`, `git add .`, or `git commit -a`.** One worktree is shared by every phase, and it
+accumulates regenerated scratch — `dev-tools/*.patch`, `dev-tools/*-output.md`, `dev-tools/9d-triage-*`,
+`progress.md` — alongside whatever an earlier phase left dirty. A broad add sweeps all of it into a
+feature commit, where it becomes PR noise and merge conflicts against other branches regenerating the
+same files. `progress.md` is gitignored and must never be staged, not even with `git add -f`.
+
+Gitignoring the scratch is a backstop, not the fix: a broad add still picks up unrelated **tracked**
+files an earlier phase left modified. Explicit paths are what actually bound a commit.
+
 ## Phase 2: Brainstorm
 
 **Invoke:** `superpowers:brainstorming`
@@ -481,20 +499,20 @@ review*. Most issues should have been caught by 7a.
 **Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
 comments on the PR are handled separately in Phase 9d.
 
-**Command:** `coderabbit review --plain --type committed`
+**Command:** `coderabbit review --agent --committed`
 
 Review loop (max 3 iterations):
 
 ```
-Iteration 1: Run coderabbit review --plain --type committed
+Iteration 1: Run coderabbit review --agent --committed
   |-- No actionable findings --> Proceed to Phase 8
   +-- Has findings --> Fix them, commit fixes
        |
-       Iteration 2: Run coderabbit review --plain --type committed
+       Iteration 2: Run coderabbit review --agent --committed
          |-- No actionable findings --> Proceed to Phase 8
          +-- Has findings --> Fix them, commit fixes
               |
-              Iteration 3: Run coderabbit review --plain --type committed
+              Iteration 3: Run coderabbit review --agent --committed
                 |-- No actionable findings --> Proceed to Phase 8
                 +-- Still has findings --> Report to user for manual decision
 ```
@@ -871,7 +889,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |
 | 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic`, `ocr-rules` (all NON-SKIPPABLE, parallel) + `dev-tools/codex-adversarial-review.sh` (best-effort) | Workflow/doc-only changes (no code diff) |
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
-| 7c CodeRabbit | `coderabbit review --plain --type committed` | Never |
+| 7c CodeRabbit | `coderabbit review --agent --committed` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |

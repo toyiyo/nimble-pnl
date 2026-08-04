@@ -320,7 +320,8 @@ const Scheduling = () => {
   const { publication, isPublished, loading: publicationLoading } = useWeekPublicationStatus(
     restaurantId,
     currentWeekStart,
-    weekEnd
+    weekEnd,
+    restaurantTimezone
   );
   const { changeLogs, loading: changeLogsLoading } = useScheduleChangeLogs(
     restaurantId,

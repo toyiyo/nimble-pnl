@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$TOOL_INPUT\" | grep -q 'git commit'; then echo '--- CodeRabbit Pre-Commit Check ---'; cr_out=$(coderabbit review --agent --uncommitted 2>&1); printf '%s\\n' \"$cr_out\" | head -200; echo '--- End CodeRabbit Check ---'; fi"
+            "command": "if printf '%s\\n' \"$TOOL_INPUT\" | grep -q 'git commit'; then echo '--- CodeRabbit Pre-Commit Check ---'; cr_out=$(coderabbit review --agent --uncommitted 2>&1); printf '%s\\n' \"$cr_out\" | head -200; echo '--- End CodeRabbit Check ---'; fi"
           }
         ]
       }

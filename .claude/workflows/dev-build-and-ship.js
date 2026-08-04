@@ -574,8 +574,9 @@ let crClean = false
 for (let it = 1; it <= 3 && !crClean; it++) {
   const cr = await runAgent(
     envelope(
-      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --agent --committed --base main (in the worktree). ` +
-        '--agent emits structured findings for agent workflows; --committed limits the review to committed changes; --base main pins the comparison to trunk so 7c sees the whole branch. ' +
+      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --agent --committed --base origin/main (in the worktree). ` +
+        '--agent emits structured findings for agent workflows; --committed limits the review to committed changes; --base origin/main pins the comparison to trunk so 7c sees the whole branch. ' +
+        "Use origin/main, NOT main — a worktree's local main is frequently stale, and a stale base silently changes which commits get reviewed. " +
         'Do NOT narrow this to the Phase 7a snapshot SHA with --base-commit — reviewing only the post-snapshot fixes is Phase 7d\'s job, and 7c exists to re-examine the whole branch as one coherent change. ' +
         "There is no --plain/--type flag on the current CLI (plain text is the default output mode) — if you hit \"unknown option\", run `coderabbit review --help` and report the drift rather than guessing. " +
         'Fix ONLY actionable findings and commit them. ' +

@@ -11,7 +11,9 @@ description: Run CodeRabbit review on committed changes
 ## Instructions
 
 1. If there are uncommitted changes, warn the user — CodeRabbit only reviews committed code
-2. Run: `coderabbit review --agent --committed --base main`
+2. Run: `coderabbit review --agent --committed --base origin/main`
+   (`origin/main`, not `main` — a worktree's local `main` is often stale, and a
+   stale base silently changes which commits get reviewed.)
    (`--agent` gives structured findings; plain text is the CLI's default output
    mode — there is no `--plain`/`--type` flag. Use `coderabbit review findings`
    to re-read the previous local review without spending a new one.)

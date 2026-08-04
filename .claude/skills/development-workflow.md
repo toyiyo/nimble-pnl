@@ -518,8 +518,14 @@ Iteration 1: Run coderabbit review --agent --committed --base main
 ```
 
 `--committed` reviews all committed changes on the branch; `--base main`
-pins the comparison to the same base the Phase 7a reviewers used
-(`git diff origin/main...HEAD`) instead of letting the CLI infer one.
+pins the comparison to trunk instead of letting the CLI infer a base, so
+7c sees the same whole-branch surface the Phase 7a reviewers did. (7a
+diffs `origin/main...HEAD`; if local `main` has drifted behind the remote,
+`git fetch origin main:main` first, or pass `--base origin/main`.)
+
+Do **not** narrow 7c to the Phase 7a snapshot SHA via `--base-commit` —
+that would leave 7c reviewing only the 7b fixes, which is Phase 7d's job.
+7c's value is that it re-examines the whole branch as one coherent change.
 `--agent` emits **structured findings** intended for agent workflows —
 use it, because this phase parses the output programmatically to separate
 actionable suggestions from informational notes. Only fix actionable items.

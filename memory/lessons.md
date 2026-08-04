@@ -1641,10 +1641,11 @@
 
 ## Category: Development Workflow (continued)
 
-### [2026-07-27] The `coderabbit review` CLI flags changed; the skill's command was stale
+### [2026-07-27] The `coderabbit review` CLI flags changed; the skill's command was stale — RESOLVED 2026-08-04
 - **Mistake:** `.claude/skills/development-workflow.md` Phase 7c documents `coderabbit review --plain --type committed`. On CLI v0.7.0 that fails with `error: unknown option '--plain'` — the flags are now `--committed` / `--uncommitted`, and plain text is the default output mode.
-- **Correction:** Ran `coderabbit review --committed --base main` instead. Worth updating the skill text when next editing it.
+- **Correction:** Ran `coderabbit review --committed --base main` instead. **Confirmed 3× (2026-07-27, 2026-07-28, 2026-07-29)** — see the near-identical entries later in this file. Finally fixed 2026-08-04 across all four places that carried the dead command: the skill's Phase 7c + Quick Reference, `.claude/workflows/dev-build-and-ship.js`, `.claude/commands/review.md`, and the pre-commit hook in `.claude/settings.json`. Canonical form is now `coderabbit review --agent --committed --base origin/main` (`--agent` emits structured findings, which is what these callers parse; `origin/main` rather than `main` because a worktree's local trunk is routinely stale).
 - **Rule:** When a documented third-party CLI invocation fails on an unknown option, read `--help` and adapt rather than treating the tool as unavailable and skipping the phase. A skipped review phase is a silent quality loss; a flag rename is a 30-second fix.
+- **Meta-rule (the expensive part):** This entry originally ended "worth updating the skill text when next editing it." That deferral is why it was re-discovered twice more and cost three sessions instead of one. **A lesson whose correction is a file edit must be edited in that same session, not logged as a to-do** — writing it down feels like resolving it and is not. Corollary: when you do fix a documented command, `grep` the whole repo for it; this one had rotted in four files while every lesson entry named only the skill.
 
 ### [2026-07-27] Dogfooding a review tool on its own PR is the strongest verification available
 - **Observation:** PR #662 added a gate requiring a verdict reply on every review finding. Rather than only unit-testing it, I used the tool to answer all 20 findings on its own PR. That exercised the real GraphQL fetch, the reply POST, thread resolution, and the audit — and surfaced three defects that fixtures never would have: a shell-quoting failure in my own invocation, `list` advertising a flag that cannot work for review-level findings, and the concurrency/`action_required` behaviour of the workflow itself.
@@ -1772,8 +1773,7 @@
 ## Category: CI / Tooling Config (continued)
 
 ### [2026-07-28] The CodeRabbit CLI flags documented in `development-workflow.md` no longer exist
-- **Mistake:** Phase 7c documents `coderabbit review --plain --type committed`. That fails with `error: unknown option '--plain'`, so the mandatory review gate cannot be run as written.
-- **Correction:** The current syntax is `coderabbit review --committed --base main` — plain output is now the default, and `--type committed` became the `--committed` flag. (CLI 0.7.1 also suggests `--agent` for structured agent-friendly output.)
+- **Duplicate — see the [2026-07-27] "`coderabbit review` CLI flags changed" entry above,** which is now the canonical record and is marked RESOLVED (fixed 2026-08-04). Kept for its distinct rule:
 - **Rule:** When a documented tool invocation errors on an *option* rather than on its input, suspect the doc before suspecting your usage, and fix the doc in the same PR — a stale command in a mandatory workflow phase silently converts a required gate into a skipped one for whoever hits it next.
 
 ## Category: Development Workflow (continued)
@@ -1930,8 +1930,8 @@
 - **Rule:** Any task statement that asserts prior work exists is a claim to check, not a given — `git log origin/main --oneline | grep`, or `git merge-base --is-ancestor <sha> origin/main`. This is the third lesson in this file about a stale base producing confident nonsense (see also 2026-07-29 "A review finding can be correct about code that no longer exists"). When the premise turns out false and the fix depends on intent, ask — but keep working on everything that doesn't depend on the answer.
 
 ### [2026-07-29] A CLI invocation hardcoded in a skill file rots — read the tool's own `--help` when it errors, don't retry the documented form
-- **Mistake:** `.claude/skills/development-workflow.md` Phase 7c specifies `coderabbit review --plain --type committed`. That now exits with `error: unknown option '--plain'`; both flags were removed upstream. The current form is `coderabbit review --committed --base main`. (Separately, `timeout 900 <cmd>` fails on macOS — there is no GNU `timeout` on the default path.)
-- **Correction:** Ran `--help`, used the current flags, and recorded the drift in `progress.md` so it survived to the retrospective instead of being re-discovered next session.
+- **Duplicate of the CodeRabbit-flag drift — see the [2026-07-27] entry above,** now canonical and marked RESOLVED (fixed 2026-08-04). Two distinct things worth keeping:
+- **Separate finding:** `timeout 900 <cmd>` fails on macOS — there is no GNU `timeout` on the default path. (Reinforces the CLAUDE.md "No Unbounded Waits" rule: bound waits with the Bash tool's own `timeout` parameter, not the shell utility.)
 - **Rule:** When a command documented in a skill or runbook fails on argument parsing, that's tool drift, not user error — check `--help` and fix the skill file, rather than working around it in-session and leaving the next run to hit the same wall. Instructions that pin a third-party CLI's flags are a maintenance liability; prefer the smallest invocation that does the job.
 
 ## Category: Design Docs / Brainstorming (continued)

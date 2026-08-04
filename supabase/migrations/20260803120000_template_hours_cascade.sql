@@ -265,7 +265,7 @@ BEGIN
 
   -- LOAD-BEARING. Every predicate below scopes with plain `cascade_batch_id =
   -- p_batch_id`, not IS NOT DISTINCT FROM -- equality is what lets the
-  -- planner use idx_schedule_change_logs_cascade_batch_id, a partial index
+  -- planner use idx_schedule_change_logs_cascade_batch, a partial index
   -- WHERE cascade_batch_id IS NOT NULL that an IS NOT DISTINCT FROM probe
   -- cannot use (confirmed via EXPLAIN: that operator forced a full scan of
   -- schedule_change_logs). Untagged rows -- including the ones

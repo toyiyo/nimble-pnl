@@ -273,7 +273,7 @@ Instead the rows come straight off the `driftedShifts` bucket returned by
 ```ts
 interface DriftRow {
   shiftId: string;
-  employeeName: string | null;   // null → "Unassigned"
+  employeeName: string | null;   // null → "Unknown employee"
   localDate: string;             // restaurant-local YYYY-MM-DD
   currentStart: string;          // restaurant-local HH:MM
   currentEnd: string;

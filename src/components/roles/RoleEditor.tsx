@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { RolePreviewPanel } from '@/components/roles/RolePreviewPanel';
+import { RoleRoster } from '@/components/roles/RoleRoster';
 import { useToast } from '@/hooks/use-toast';
 import { useRoles, type RoleWithGrants } from '@/hooks/useRoles';
 import { useRestaurants } from '@/hooks/useRestaurants';
@@ -102,11 +104,22 @@ function describeRoleWriteError(err: unknown): string {
  * without inventing bespoke listbox keyboard handling.
  */
 
+/** The two things a role has: what it can reach, and who holds it. */
+export type RoleEditorTab = 'areas' | 'people';
+
 export interface RoleEditorProps {
   restaurantId: string;
   /** `null` means a brand-new, unsaved draft. */
   role: RoleWithGrants | null;
   onBack: () => void;
+  /** The signed-in user's role in this restaurant — gates the People tab. */
+  callerRole: Role;
+  /**
+   * Controlled: a card's face pile opens straight to People, its name to
+   * Areas, so the caller that knows which door was used owns this.
+   */
+  activeTab: RoleEditorTab;
+  onTabChange: (tab: RoleEditorTab) => void;
 }
 
 type Grants = Partial<Record<AreaKey, AreaLevel>>;
@@ -383,7 +396,14 @@ function AreaRow({
   );
 }
 
-export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
+export function RoleEditor({
+  restaurantId,
+  role,
+  onBack,
+  callerRole,
+  activeTab,
+  onTabChange,
+}: RoleEditorProps) {
   const { createRole, updateRole, copyRole, isMutating } = useRoles(restaurantId);
   const { restaurants } = useRestaurants();
 
@@ -538,6 +558,31 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
         All roles
       </button>
 
+      {/* A saved role has two things to look at; an unsaved draft has one, so
+          it gets the Areas body with no tablist above it — an unsaved role has
+          no id to build a roster from and nobody in it either way. */}
+      <Tabs
+        value={isNewDraft ? 'areas' : activeTab}
+        onValueChange={(value) => onTabChange(value as RoleEditorTab)}
+      >
+        {!isNewDraft && (
+          <TabsList className="h-auto p-0 mb-5 bg-transparent border-b border-border/40 rounded-none w-full justify-start gap-6">
+            <TabsTrigger
+              value="areas"
+              className="relative px-0 py-3 rounded-none bg-transparent shadow-none text-[14px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:after:absolute data-[state=active]:after:bottom-[-1px] data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-[2px] data-[state=active]:after:bg-foreground"
+            >
+              Areas
+            </TabsTrigger>
+            <TabsTrigger
+              value="people"
+              className="relative px-0 py-3 rounded-none bg-transparent shadow-none text-[14px] font-medium text-muted-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-foreground data-[state=active]:after:absolute data-[state=active]:after:bottom-[-1px] data-[state=active]:after:left-0 data-[state=active]:after:right-0 data-[state=active]:after:h-[2px] data-[state=active]:after:bg-foreground"
+            >
+              People
+            </TabsTrigger>
+          </TabsList>
+        )}
+
+        <TabsContent value="areas" className="mt-0">
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-5 min-w-0">
           {/* Identity card */}
@@ -767,6 +812,14 @@ export function RoleEditor({ restaurantId, role, onBack }: RoleEditorProps) {
         {/* Live preview */}
         <RolePreviewPanel grants={grants} flags={effectiveFlags} roleName={name.trim() || 'This role'} />
       </div>
+        </TabsContent>
+
+        {role && (
+          <TabsContent value="people" className="mt-0">
+            <RoleRoster role={role} restaurantId={restaurantId} callerRole={callerRole} />
+          </TabsContent>
+        )}
+      </Tabs>
     </div>
   );
 }

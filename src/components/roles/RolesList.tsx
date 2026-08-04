@@ -107,6 +107,10 @@ function RoleCard({
 
   return (
     <article
+      // Named so the card is one addressable unit: it now holds two controls
+      // plus a badge, and a screen reader jumping between articles should hear
+      // which role it landed on.
+      aria-label={role.name}
       className={cn(
         'group flex flex-col gap-3 p-[18px] rounded-xl border border-border/40 bg-card shadow-sm',
         'hover:border-border transition-colors'

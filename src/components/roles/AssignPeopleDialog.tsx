@@ -12,12 +12,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { UserPlus } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import {
-  assignMembershipRole,
-  assignRoleErrorMessage,
-  useRefreshAfterAssign,
-} from '@/hooks/useAssignRole';
-import { useRestaurantMembers, type RestaurantMember } from '@/hooks/useRestaurantMembers';
+import { useAssignPeopleToRole } from '@/hooks/useAssignRole';
+import { useRestaurantMembers } from '@/hooks/useRestaurantMembers';
 import { useToast } from '@/hooks/use-toast';
 import { MemberIdentity } from '@/components/roles/MemberIdentity';
 import { memberDisplayName } from '@/components/roles/memberDisplay';
@@ -76,9 +72,8 @@ export function AssignPeopleDialog({
   const { user } = useAuth();
   const { toast } = useToast();
   const { data: members, isLoading, error } = useRestaurantMembers(restaurantId);
-  const refresh = useRefreshAfterAssign(restaurantId);
+  const { mutateAsync: assignPeople, isPending: submitting } = useAssignPeopleToRole(restaurantId);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [submitting, setSubmitting] = useState(false);
 
   const candidates = useMemo(() => {
     if (!members) return [];
@@ -139,37 +134,12 @@ export function AssignPeopleDialog({
       ? { role: role.legacy_role as Role, roleId: undefined }
       : { role: CUSTOM_ROLE, roleId: role.id };
 
-    setSubmitting(true);
-    const failures: { member: RestaurantMember; message: string }[] = [];
-    // Sequential, not Promise.all: rule 5b takes FOR UPDATE on the restaurant's
-    // owner rows before counting them, so concurrent calls contend on the same
-    // lock. One at a time also keeps every failure attributable to a person.
-    //
-    // The bare RPC rather than `useAssignRole`, so the four query invalidations
-    // fire once below instead of once per person — the queries behind this
-    // dialog are all mounted and would refetch on every iteration.
-    //
-    // try/finally, not a bare loop: `close()` refuses every dismissal path
-    // while `submitting` is true, so a throw that skipped `setSubmitting(false)`
-    // would seal the dialog shut. Nothing in the loop throws today; the finally
-    // is what keeps that from being a future edit's problem.
-    try {
-      for (const member of chosen) {
-        try {
-          await assignMembershipRole({ membershipId: member.membershipId, ...payload });
-        } catch (err) {
-          failures.push({ member, message: assignRoleErrorMessage(err) });
-        }
-      }
-    } finally {
-      setSubmitting(false);
-    }
-    // Even a fully failed run refreshes: rule 5b's owner count and the invite
-    // matrix are both read from data this dialog is showing, so a denial can
-    // mean the screen is stale.
-    refresh();
+    // The mutation owns the sequential loop, the per-person failure capture and
+    // the single batch invalidation; it resolves rather than throwing, because a
+    // partial failure is a result to report, not an exception. See
+    // useAssignRole.ts for why none of that is optimistic.
+    const { landed, failures } = await assignPeople({ members: chosen, ...payload });
 
-    const landed = chosen.length - failures.length;
     if (failures.length === 0) {
       toast({
         title:

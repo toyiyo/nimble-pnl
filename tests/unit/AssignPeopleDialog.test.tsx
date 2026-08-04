@@ -11,15 +11,15 @@ vi.mock('@/hooks/useRestaurantMembers', () => ({
   useRestaurantMembers: (...a: unknown[]) => mockUseRestaurantMembers(...a),
 }));
 
-const assignMembershipRole = vi.fn();
-const refresh = vi.fn();
+// The batch mutation is mocked at the hook boundary; useAssignRole.test.ts
+// covers the loop, the failure capture and the single onSettled refresh.
+const assignPeople = vi.fn();
 vi.mock('@/hooks/useAssignRole', async () => {
   const actual =
     await vi.importActual<typeof import('@/hooks/useAssignRole')>('@/hooks/useAssignRole');
   return {
     ...actual,
-    assignMembershipRole: (...a: unknown[]) => assignMembershipRole(...a),
-    useRefreshAfterAssign: () => refresh,
+    useAssignPeopleToRole: () => ({ mutateAsync: assignPeople, isPending: false }),
   };
 });
 
@@ -65,11 +65,10 @@ const loaded = (members: RestaurantMember[]) => ({ data: members, isLoading: fal
 describe('AssignPeopleDialog', () => {
   beforeEach(() => {
     mockUseRestaurantMembers.mockReset();
-    assignMembershipRole.mockReset();
-    refresh.mockReset();
+    assignPeople.mockReset();
     toast.mockReset();
     props.onOpenChange.mockReset();
-    assignMembershipRole.mockResolvedValue(undefined);
+    assignPeople.mockResolvedValue({ landed: 0, failures: [] });
   });
 
   // The row is a <label> wrapping a Radix Checkbox, which renders a <button
@@ -89,29 +88,53 @@ describe('AssignPeopleDialog', () => {
     expect(screen.getByRole('button', { name: 'Assign 1' })).toBeEnabled();
   });
 
-  it('assigns the ticked people, refreshes once, and closes', async () => {
-    mockUseRestaurantMembers.mockReturnValue(
-      loaded([member({}), member({ membershipId: 'm2', userId: 'u2', fullName: 'Sam Ortiz' })])
-    );
+  it('hands the whole selection to the batch mutation in one call, and closes', async () => {
+    const dana = member({});
+    const sam = member({ membershipId: 'm2', userId: 'u2', fullName: 'Sam Ortiz' });
+    mockUseRestaurantMembers.mockReturnValue(loaded([dana, sam]));
+    assignPeople.mockResolvedValue({ landed: 2, failures: [] });
     render(<AssignPeopleDialog {...props} />);
 
     await userEvent.click(screen.getByText('Dana Reyes'));
     await userEvent.click(screen.getByText('Sam Ortiz'));
     await userEvent.click(screen.getByRole('button', { name: 'Assign 2' }));
 
-    await waitFor(() => expect(assignMembershipRole).toHaveBeenCalledTimes(2));
+    // One call for the batch, not one per person — the invalidation storm this
+    // dialog would otherwise cause is the reason the mutation takes a list.
+    await waitFor(() => expect(assignPeople).toHaveBeenCalledTimes(1));
     // A custom role sends the bare literal plus its id, never its own name.
-    expect(assignMembershipRole).toHaveBeenCalledWith({
-      membershipId: 'm1',
+    expect(assignPeople).toHaveBeenCalledWith({
+      members: [dana, sam],
       role: 'collaborator_custom',
       roleId: 'role-weekend',
     });
-    // Once for the batch, not once per person.
-    expect(refresh).toHaveBeenCalledTimes(1);
     expect(toast).toHaveBeenCalledWith(
       expect.objectContaining({ title: '2 people are now Weekend Lead' })
     );
     expect(props.onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it('sends a builtin role by name with no role id', async () => {
+    const dana = member({});
+    mockUseRestaurantMembers.mockReturnValue(loaded([dana]));
+    assignPeople.mockResolvedValue({ landed: 1, failures: [] });
+    render(
+      <AssignPeopleDialog
+        {...props}
+        role={{ ...role, id: 'role-manager', name: 'Manager', legacy_role: 'manager' }}
+      />
+    );
+
+    await userEvent.click(screen.getByText('Dana Reyes'));
+    await userEvent.click(screen.getByRole('button', { name: 'Assign 1' }));
+
+    await waitFor(() =>
+      expect(assignPeople).toHaveBeenCalledWith({
+        members: [dana],
+        role: 'manager',
+        roleId: undefined,
+      })
+    );
   });
 
   // The boundary the batch path gets wrong if the drop check sits after the
@@ -134,7 +157,7 @@ describe('AssignPeopleDialog', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Assign 1' }));
 
-    expect(assignMembershipRole).not.toHaveBeenCalled();
+    expect(assignPeople).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledWith({
       title: 'Nothing left to assign',
       description: 'One person was already handled elsewhere and was skipped.',
@@ -147,12 +170,12 @@ describe('AssignPeopleDialog', () => {
   });
 
   it('keeps the failed rows ticked and the dialog open on a partial failure', async () => {
-    mockUseRestaurantMembers.mockReturnValue(
-      loaded([member({}), member({ membershipId: 'm2', userId: 'u2', fullName: 'Sam Ortiz' })])
-    );
-    assignMembershipRole.mockImplementation(({ membershipId }: { membershipId: string }) =>
-      membershipId === 'm2' ? Promise.reject(new Error('nope')) : Promise.resolve(undefined)
-    );
+    const sam = member({ membershipId: 'm2', userId: 'u2', fullName: 'Sam Ortiz' });
+    mockUseRestaurantMembers.mockReturnValue(loaded([member({}), sam]));
+    assignPeople.mockResolvedValue({
+      landed: 1,
+      failures: [{ member: sam, message: 'Only an owner can change an owner.' }],
+    });
     render(<AssignPeopleDialog {...props} />);
 
     await userEvent.click(screen.getByText('Dana Reyes'));

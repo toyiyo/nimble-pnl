@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import type { RestaurantMember } from '@/hooks/useRestaurantMembers';
 import type { MembershipRoleLiteral } from '@/lib/permissions/invitations';
 
 /**
@@ -94,5 +95,59 @@ export function useAssignRole(restaurantId: string | undefined) {
   return useMutation({
     mutationFn: assignMembershipRole,
     onSuccess: refresh,
+  });
+}
+
+export interface AssignPeopleParams extends Omit<AssignRoleParams, 'membershipId'> {
+  /** Everyone to move into the role, in the order they should be attempted. */
+  members: readonly RestaurantMember[];
+}
+
+export interface AssignPeopleResult {
+  /** How many the RPC accepted. */
+  landed: number;
+  /** The rest, each paired with the sentence the RPC wrote for it. */
+  failures: { member: RestaurantMember; message: string }[];
+}
+
+/**
+ * Move several people into one role.
+ *
+ * A partial failure is the normal case, not an exception: `assign_membership_role`
+ * decides person by person, so one 42501 among five must not discard the four
+ * that landed. So the loop swallows each rejection into `failures` and the
+ * mutation itself resolves — the caller reads the result rather than catching.
+ *
+ * Sequential, not `Promise.all`: rule 5b of
+ * 20260802110000_assign_membership_role.sql takes FOR UPDATE on the restaurant's
+ * owner rows before counting them, so concurrent calls contend on one lock. One
+ * at a time also keeps every failure attributable to a person.
+ *
+ * `onSettled`, not `onSuccess`: even a run where every call was denied refreshes,
+ * because rule 5b's owner count and the invite matrix are both read from data the
+ * caller is showing — a denial can mean the screen is stale. It fires once for
+ * the batch, not once per person, which is the whole reason `assignMembershipRole`
+ * is separate from `useAssignRole`.
+ *
+ * No optimistic update: the write is a *reassignment*, so rolling one back means
+ * restoring each person's previous role individually, and the failures arrive
+ * interleaved with successes. The honest cache here is the server's.
+ */
+export function useAssignPeopleToRole(restaurantId: string | undefined) {
+  const refresh = useRefreshAfterAssign(restaurantId);
+
+  return useMutation({
+    mutationFn: async ({ members, role, roleId }: AssignPeopleParams): Promise<AssignPeopleResult> => {
+      const failures: AssignPeopleResult['failures'] = [];
+      for (const member of members) {
+        try {
+          await assignMembershipRole({ membershipId: member.membershipId, role, roleId });
+        } catch (err) {
+          failures.push({ member, message: assignRoleErrorMessage(err) });
+        }
+      }
+      return { landed: members.length - failures.length, failures };
+    },
+    onSettled: refresh,
   });
 }

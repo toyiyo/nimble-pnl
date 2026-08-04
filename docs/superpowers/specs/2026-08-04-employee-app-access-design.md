@@ -124,6 +124,19 @@ export interface RoleSelectProps {
 }
 ```
 
+`open`/`onOpenChange` are optional so the invite branch can let `RoleSelect`
+manage its own popover, but **`RolePicker` must pass them controlled.** Its
+`commit()` success path closes the popover and clears `candidateId` and `search`
+(`RolePicker.tsx:138-144`), and its `onOpenChange` clears the same two on any
+close (`:189-194`). Both live in `RolePicker`, so it has to own `open` to keep
+them. Uncontrolled here would ship a picker that stays open after "Change role"
+succeeds and carries a stale candidate into the next open.
+
+`footer` renders as a **sibling of `<CommandList>`, inside `<Command>`** — the
+exact DOM position the delta panel occupies today (`RolePicker.tsx:271-300`,
+after `</CommandList>`). Nested inside `CommandList` instead, the commit button
+would register as a filterable cmdk item and the arrow keys would land on it.
+
 It keeps, unchanged, the filters that Move 1 established:
 `isAssignableCustomRole(r, restaurantId)` and
 `getInvitableRoles(callerRole)` (`RolePicker.tsx:97-103`), the "Only an owner or
@@ -157,9 +170,22 @@ two hosts word it differently, so it is a prop:
 
 Both embed the visible chip text.
 
+### Narrow viewports
+
+`TeamMembers.tsx:178-186` records what this costs on a 375px row: the role label
+plus the picker chip is wider than the content box, and keeping it on the name's
+line collapsed the name column to zero. The fix there was stacking with
+`pl-[3.25rem] sm:pl-0`.
+
+State 1 is tighter still — `EmployeeDialog`'s `DialogContent` is capped at
+`sm:max-w-[500px]` (`EmployeeDialog.tsx:647`), and "Signed in as {email}" is an
+arbitrary-length string next to a `max-w-[220px]` chip (`RolePicker.tsx:205`). So
+state 1 stacks unconditionally: the label and email on one line, the chip on its
+own line below, with the email `truncate`d. No horizontal competition to lose.
+
 ### Copy that stops lying
 
-The existing hint (`EmployeeDialog.tsx:1146-1149`) hardcodes staff's access:
+The existing hint (`EmployeeDialog.tsx:1146-1150`) hardcodes staff's access:
 
 > Lets them clock in, view their own schedule, and request time off from their
 > phone. They will not see sales, costs, payroll, or other employees.
@@ -194,10 +220,15 @@ to, custom roles included; owners keep full reach. No new matrix.
 
 - No migration. `assign_membership_role` is Move 1's and is reused as-is.
 - No edge-function change. `send-team-invitation` already accepts `roleId`.
-- The `existingMember` / `linkToExisting` branch (`EmployeeDialog.tsx:1111-1141`,
+- The `existingMember` / `linkToExisting` branch (`EmployeeDialog.tsx:1111-1139`,
   `link_employee_to_user` RPC at `:401`) is untouched. Linking an already-registered account is a
   different action from inviting a new one, and it already lands the person on a
   membership whose role state 1 then governs.
+- The invite switch itself moves into `EmployeeAppAccessRow` **verbatim**:
+  `aria-disabled` rather than `disabled` when the email is empty, because a
+  disabled Switch leaves the tab order and a keyboard user never hears why it is
+  off (`EmployeeDialog.tsx:1152-1162`), plus the `onCheckedChange` early return
+  on an empty email. Only the description it points at changes.
 
 ## Error handling
 
@@ -207,7 +238,7 @@ to, custom roles included; owners keep full reach. No new matrix.
 | `useRestaurantMembers` errors | Same skeleton replaced by "Couldn't load access details." No control. Consistent with the fail-closed hint in `resolveAccountlessEmployeeHint`. |
 | `useRoles` loading / errors | `RoleSelect` renders its existing `:231-244` states inside the popover. |
 | Assignment rejected (42501) | `RolePicker`'s existing toast via `assignRoleErrorMessage`. Unchanged. |
-| Invite rejected | Existing `EmployeeDialog.tsx:432-440` toast path, unchanged. The employee is still created — the invite is fire-and-forget by design. |
+| Invite rejected | Existing `EmployeeDialog.tsx:432-446` toast path, unchanged. The employee is still created — the invite is fire-and-forget by design. |
 
 ## Testing
 
@@ -223,7 +254,10 @@ to, custom roles included; owners keep full reach. No new matrix.
 
 **Unit — `tests/unit/RolePicker.test.tsx`: must pass untouched.** That file is the
 regression gate on the split; if the extraction changed observable behaviour it
-fails here.
+fails here. If it does not already assert that a successful commit closes the
+popover and clears the candidate, add that case first — it is the behaviour the
+controlled-`open` requirement above exists to protect, and an untested
+requirement is one an implementer can quietly drop.
 
 **Unit — `tests/unit/RoleSelect.test.tsx` (new):** the option-list filters —
 custom roles gated by `isAssignableCustomRole`, built-ins by

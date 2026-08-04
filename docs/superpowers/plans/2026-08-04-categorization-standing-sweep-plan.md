@@ -770,6 +770,21 @@ Baseline to beat (production, 2026-08-04): bank 3,351; lighthouse 7,967; manual_
 
 Also confirm ticks settle to sub-second once drained, and that no restaurant is starved — if one `pos_system` stops falling while others clear, the `ORDER BY random()` rotation is not keeping up and the budget needs raising.
 
+```sql
+-- 4. churn: the stamp on rules_evaluated_at can never be a HOT update, because
+-- that column is a leading key of both candidate indexes. Not new — but the
+-- standing job extends it permanently to bank_transactions and to the POS
+-- systems that previously only saw the one-shot insert trigger.
+SELECT relname, n_live_tup, n_dead_tup,
+       round(100.0*n_dead_tup/GREATEST(n_live_tup,1),2) AS dead_pct,
+       round(100.0*n_tup_hot_upd/GREATEST(n_tup_upd,1),1) AS hot_pct,
+       last_autovacuum
+FROM pg_stat_user_tables
+WHERE relname IN ('unified_sales','bank_transactions','categorization_rules');
+```
+
+Baseline (production, 2026-08-04): `unified_sales` 190,727 live / 8,745 dead (4.59%) / 72.2% HOT; `bank_transactions` 7,532 live / 561 dead (7.45%) / 2.0% HOT; `categorization_rules` 956 live / 159 dead (16.63%) / 89.6% HOT. Expect dead-tuple counts to spike while the backlog drains and then settle. If `dead_pct` on either table climbs past ~20% and stays there once the backlog is clear, lower `autovacuum_vacuum_scale_factor` on that table rather than slowing the job.
+
 ## Self-Review
 
 **Spec coverage.** Every design section maps to a task: §1 (drain replacement) and §2 (schedule) → Task 1; §3 (conformance test) → Task 3; §4 (invert tests) → Task 2; "What this does not change" → verified by Task 4 finding no `src/` or edge-function work. The review-response items are all carried: comment-stripped regex in Task 3 Step 1, `ORDER BY random()` with the DISTINCT-wrapper syntax fix in Task 1 Step 1, the overlap note in the migration's own comments.

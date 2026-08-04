@@ -152,12 +152,27 @@ so the planner's row order decides who gets swept first. That is harmless for a
 job that retires; for a permanent job it is structural starvation — if the
 40-second budget is ever exhausted mid-tick, the restaurants the planner
 happens to return last are skipped on *every* tick, forever. Both loops gain
-`ORDER BY random()`, which costs nothing on a set this small (one row per
-restaurant with an active auto-apply rule) and gives every restaurant equal
-expected coverage per tick. A deterministic round-robin would need a
-last-swept column, i.e. a schema change, for no additional guarantee. Loop
-order is not observable by any assertion, so this does not make the pgTAP tests
-non-deterministic.
+`ORDER BY random()`, and both remain index-backed with the sort added —
+measured on production, 2026-08-04:
+
+| Loop | Plan | Rows | Time |
+|---|---|---|---|
+| POS | `Index Only Scan using idx_cr_pos_active_auto` → `Unique` → `Sort` | 660 scanned → 7 | 0.896 ms |
+| Bank | `Index Scan using idx_categorization_rules_applies_to` → `Unique` → `Sort` | 274 scanned → 7 | 0.853 ms |
+
+`idx_cr_pos_active_auto`'s partial predicate (`is_active AND auto_apply AND
+applies_to IN ('pos_sales','both')`) is exactly the POS loop's `WHERE`, which is
+why that side gets an index-*only* scan. The sort is over 7 rows —
+`quicksort Memory: 25kB` in both plans — so the anti-starvation ordering is
+free. A deterministic round-robin would need a last-swept column, i.e. a schema
+change, for no additional guarantee. Loop order is not observable by any
+assertion, so this does not make the pgTAP tests non-deterministic.
+
+There is no partial-index twin of `idx_cr_pos_active_auto` on the bank side, so
+the bank loop scans `applies_to` as a non-leading column and filters
+`is_active AND auto_apply`. At 956 rules that costs 150 buffers and 0.85 ms, so
+adding one now would be premature. The trigger to revisit is rule count in the
+tens of thousands, or this query surfacing in `pg_stat_statements`.
 
 The function keeps its name. Renaming would mean `DROP FUNCTION` + recreate,
 plus edits to the cron command, the pgTAP fixtures, and the generated
@@ -296,14 +311,57 @@ both loops, so a tick cannot overlap the next one badly. Post-deploy
 verification (below) confirms ticks settle back to sub-second once the backlog
 clears.
 
-**Overlapping ticks are survivable.** pg_cron does not serialize runs of the
-same job, so a 120s-timeout tick on a 300s cadence could in principle overlap a
-successor. Nothing corrupts if it does: the sweeps claim candidates with
+**Overlapping ticks cannot happen from duration alone, and are survivable if
+they ever do.** pg_cron does not serialize runs of the same job, so the question
+is whether a tick can outlive the 300-second cadence. It cannot: the budget is
+checked between statements, and the longest a tick can run is the 40-second soft
+budget plus one in-flight batch, which the function's own
+`SET statement_timeout = '120s'` caps — a worst case of ~160s, comfortably under
+300s. Overlap therefore requires pg_cron scheduling drift (a delayed or missed
+invocation), not steady-state timing.
+
+If it does happen, nothing corrupts: the sweeps claim candidates with
 `FOR UPDATE SKIP LOCKED`, so two ticks partition the backlog rather than
 duplicating work, and `rebuild_account_balances` is an idempotent recompute
 (`current_balance = compute_account_balance(id)`, not an increment —
 [20251019021231_942cf575-c06d-491f-9f5f-77c57b85d1a2.sql:61-84](../../../supabase/migrations/20251019021231_942cf575-c06d-491f-9f5f-77c57b85d1a2.sql:61)).
 The cost of overlap is redundant work and brief row-lock waits.
+
+**No advisory lock.** `pg_try_advisory_lock` is the textbook guard for "skip
+this run if the previous one is still going", and it is deliberately not used
+here. `SKIP LOCKED` already makes concurrency safe, so a lock would buy nothing
+correctness-wise while introducing a new failure mode: a session-level advisory
+lock leaked by a crashed backend would silently disable the sweep, which is
+precisely the class of failure — an automated driver that quietly stops — this
+design exists to remove. It would also serialize the standing job against the
+inline `apply_rules_to_pos_sales_internal` calls that toast, focus,
+focus_transactions and revel still make, turning a safe concurrent path into a
+blocking one.
+
+**Cost profile, measured on production 2026-08-04.** With 934 active auto-apply
+rules across 7 restaurants per scope, a converged tick does: 2 restaurant-
+selection queries (0.9 ms each), then per restaurant one watermark lookup
+(0.44 ms, `Index Scan using idx_categorization_rules_applies_to`) and one
+candidate probe that returns nothing — the probe matches
+`idx_unified_sales_rule_candidates_v2` /
+`idx_bank_transactions_rule_candidates_v2` exactly, including the
+`rules_evaluated_at` range condition. Residual cost scales with restaurant
+count, not row count, which is what makes a permanent 288-ticks-per-day job
+affordable. `rebuild_account_balances` is the largest single item at ~82 ms for
+the widest restaurant (148 active accounts over 6,565 `journal_entry_lines`),
+and it is correctly gated on `v_r_applied > 0`, so a tick that applied nothing
+never pays it.
+
+**Stamping cannot be a HOT update, and that is accepted.**
+`rules_evaluated_at` is a leading key of both candidate indexes, so every stamp
+writes a new heap tuple plus index tuples. This is pre-existing behaviour from
+the negative cache, not introduced here, but the standing job extends it
+permanently to `bank_transactions` and to the POS systems that previously only
+saw the one-shot insert trigger. Production today: `unified_sales` 72.2% HOT
+with 4.59% dead tuples and autovacuum keeping up; `bank_transactions` 2.0% HOT
+but only 12,850 lifetime updates on 7,532 rows. Once the 3,351-row bank backlog
+drains, the steady-state stamp rate is the rate of genuinely new rows and rule
+edits. Dead-tuple growth on both tables is on the post-deploy checklist.
 
 **The watermark ⊇ matcher invariant still governs correctness.** The drain's
 restaurant selection filters on `is_active AND auto_apply`, while

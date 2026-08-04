@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(25);
+SELECT plan(27);
 
 SET LOCAL role TO postgres;
 
@@ -396,6 +396,19 @@ SELECT is(
      '00000000-0000-0000-0000-0000000009a1', 100)),
   0,
   'second bank sweep re-evaluates nothing'
+);
+
+-- ---------------------------------------------------------------- TEST 26-27
+-- The v1 indexes are strict prefixes of the v2 ones with identical partial
+-- predicates, so keeping both costs write amplification for nothing.
+SELECT hasnt_index(
+  'public', 'unified_sales', 'idx_unified_sales_rule_candidates',
+  'superseded unified_sales candidate index is gone'
+);
+
+SELECT hasnt_index(
+  'public', 'bank_transactions', 'idx_bank_transactions_rule_candidates',
+  'superseded bank_transactions candidate index is gone'
 );
 
 SELECT * FROM finish();

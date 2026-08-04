@@ -7,6 +7,8 @@ import { ToastAction } from '@/components/ui/toast';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
+import { pluralize } from '@/lib/scheduling/deletionCopy';
+
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
@@ -108,6 +110,23 @@ export function useShiftTemplates(
     queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
   };
 
+  // Shared by every mutation whose cascade RPC touches shift rows alongside
+  // the template row (currently undo and update-with-cascade), so a
+  // successful cascade always refreshes templates, shifts, and the
+  // linked-shifts ledger together.
+  const invalidateCascadeQueries = () => {
+    invalidateAllStatuses();
+    queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+    queryClient.invalidateQueries({ queryKey: ['template-linked-shifts', restaurantId] });
+  };
+
+  // Shared by every mutation below that has no special-cased error copy
+  // (update-with-cascade is the one exception, since it maps a unique-index
+  // violation to a friendlier message).
+  const showErrorToast = (error: Error) => {
+    toast({ title: 'Error', description: error.message, variant: 'destructive' });
+  };
+
   const createMutation = useMutation({
     mutationFn: async (input: TemplateInput) => {
       const { data, error } = await (supabase
@@ -122,9 +141,7 @@ export function useShiftTemplates(
       invalidateAllStatuses();
       toast({ title: 'Template created', description: 'Shift template has been added.' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   const undoMutation = useMutation({
@@ -138,21 +155,18 @@ export function useShiftTemplates(
       return data as { restored_count: number; changed_since_count: number; deleted_count: number };
     },
     onSuccess: (result) => {
-      invalidateAllStatuses();
-      queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
-      queryClient.invalidateQueries({ queryKey: ['template-linked-shifts', restaurantId] });
+      invalidateCascadeQueries();
 
+      const shiftsWord = pluralize(result.restored_count, 'shift', 'shifts');
       const skipped = result.changed_since_count + result.deleted_count;
       toast({
         title: 'Cascade undone',
         description: skipped > 0
-          ? `Restored ${result.restored_count} ${result.restored_count === 1 ? 'shift' : 'shifts'} · ${skipped} skipped (changed since)`
-          : `Restored ${result.restored_count} ${result.restored_count === 1 ? 'shift' : 'shifts'}.`,
+          ? `Restored ${result.restored_count} ${shiftsWord} · ${skipped} skipped (changed since)`
+          : `Restored ${result.restored_count} ${shiftsWord}.`,
       });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   const updateMutation = useMutation({
@@ -199,9 +213,7 @@ export function useShiftTemplates(
       return { ...result, notify };
     },
     onSuccess: (result) => {
-      invalidateAllStatuses();
-      queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
-      queryClient.invalidateQueries({ queryKey: ['template-linked-shifts', restaurantId] });
+      invalidateCascadeQueries();
 
       // Fire-and-forget, one invoke per moved published shift. `invoke`
       // RESOLVES with { data, error } on HTTP failure rather than rejecting,
@@ -228,7 +240,7 @@ export function useShiftTemplates(
       const batchId = result.batch_id;
       toast({
         title: 'Template updated',
-        description: `${result.updated_count} ${result.updated_count === 1 ? 'shift' : 'shifts'} moved to the new hours.`,
+        description: `${result.updated_count} ${pluralize(result.updated_count, 'shift', 'shifts')} moved to the new hours.`,
         action: (
           <ToastAction
             altText="Undo the shift hour changes"
@@ -267,9 +279,7 @@ export function useShiftTemplates(
       invalidateAllStatuses();
       toast({ title: 'Template restored' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   const hideMutation = useMutation({
@@ -301,9 +311,7 @@ export function useShiftTemplates(
         ),
       });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   // Hard delete — irreversible cascade (open_shift_claims). No Undo action;
@@ -340,9 +348,7 @@ export function useShiftTemplates(
         description: pendingClaimsWithdrawnDescription(pendingClaimsCount),
       });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   return {

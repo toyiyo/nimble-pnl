@@ -1,0 +1,93 @@
+import { useMemo } from 'react';
+
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useTemplateLinkedShifts } from '@/hooks/useTemplateLinkedShifts';
+
+import type { ShiftTemplate } from '@/types/scheduling';
+
+import { buildHoursChangeLedger, type HoursChangeLedger } from '@/lib/scheduling/hoursChangeCopy';
+import { bucketTemplateShifts, type TemplateHoursBuckets } from '@/lib/scheduling/templateHoursBuckets';
+
+interface UseTemplateHoursLedgerResult {
+  impact: ReturnType<typeof useTemplateLinkedShifts>;
+  buckets: TemplateHoursBuckets | null;
+  ledger: HoursChangeLedger | null;
+  /** Settled preview of `startTime`/`endTime` — see the hook body for why. */
+  debouncedStart: string;
+  debouncedEnd: string;
+  affectedCount: number;
+  hoursChanged: boolean;
+  showCascadeChoice: boolean;
+}
+
+/**
+ * Derives the hours-change ledger a manager sees while editing a template's
+ * time range: fetches the shifts linked to the template, settles the typed
+ * times into a debounced preview, buckets those shifts against old vs. new
+ * hours, and turns the buckets into display-ready ledger copy.
+ *
+ * `template` undefined means "creating a new template" — every derived value
+ * degenerates to its empty/false form in that case.
+ */
+export function useTemplateHoursLedger(
+  restaurantId: string | null,
+  template: ShiftTemplate | undefined,
+  startTime: string,
+  endTime: string,
+  restaurantTimezone: string,
+  selectedDriftIds: Set<string>,
+): UseTemplateHoursLedgerResult {
+  const impact = useTemplateLinkedShifts(restaurantId, template?.id ?? null);
+
+  // Debounce the DERIVED state, never the controlled input — the field itself
+  // must stay instant or it feels broken. <input type="time"> fires change per
+  // component (hour, then minute), so an undebounced ledger would announce two
+  // or three incoherent intermediate states per edit.
+  const debouncedStart = useDebouncedValue(startTime, 300);
+  const debouncedEnd = useDebouncedValue(endTime, 300);
+
+  const buckets = useMemo(() => {
+    if (!template) return null;
+    return bucketTemplateShifts({
+      shifts: impact.shifts,
+      oldStart: template.start_time.substring(0, 5),
+      oldEnd: template.end_time.substring(0, 5),
+      newStart: debouncedStart,
+      newEnd: debouncedEnd,
+      tz: restaurantTimezone,
+      now: new Date(),
+    });
+  }, [template, impact.shifts, debouncedStart, debouncedEnd, restaurantTimezone]);
+
+  const ledger = useMemo(() => {
+    if (!template || !buckets) return null;
+    const selectedDrift = buckets.drifted.filter((d) => selectedDriftIds.has(d.shiftId));
+    return buildHoursChangeLedger({
+      oldStart: template.start_time.substring(0, 5),
+      oldEnd: template.end_time.substring(0, 5),
+      newStart: debouncedStart,
+      newEnd: debouncedEnd,
+      movingCount: buckets.moving.length,
+      publishedCount: buckets.publishedMovingIds.length,
+      // Sum, not double-count: impact.pastCount is shifts excluded up front
+      // by the hook's server-side cutoff (never fetched as rows), while
+      // buckets.past is shifts that were fetched as future but crossed `now`
+      // before this memo recomputed. The two cutoffs share the same instant
+      // per fetch, so a given shift can only ever land in one of the two.
+      pastCount: buckets.past.length + impact.pastCount,
+      lockedCount: buckets.locked.length,
+      driftedCount: buckets.drifted.length,
+      selectedDriftCount: selectedDrift.length,
+      hoursDelta:
+        buckets.movingHoursDelta + selectedDrift.reduce((sum, d) => sum + d.hoursDelta, 0),
+    });
+  }, [template, buckets, selectedDriftIds, debouncedStart, debouncedEnd, impact.pastCount]);
+
+  const affectedCount = ledger?.totalAffected ?? 0;
+  const hoursChanged = !!template &&
+    (startTime !== template.start_time.substring(0, 5) || endTime !== template.end_time.substring(0, 5));
+  // `hoursChanged` already implies `template` is set, so no separate isEdit check is needed here.
+  const showCascadeChoice = hoursChanged && affectedCount > 0 && !impact.isLoading && !impact.error;
+
+  return { impact, buckets, ledger, debouncedStart, debouncedEnd, affectedCount, hoursChanged, showCascadeChoice };
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 import {
   Dialog,
@@ -14,15 +14,12 @@ import { Label } from '@/components/ui/label';
 
 import { Clock } from 'lucide-react';
 
-import { useTemplateLinkedShifts } from '@/hooks/useTemplateLinkedShifts';
-import { useDebouncedValue } from '@/hooks/useDebouncedValue';
+import { useTemplateHoursLedger } from '@/hooks/useTemplateHoursLedger';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
 import { AreaCombobox } from '@/components/AreaCombobox';
 import { TemplateHoursImpact } from '@/components/scheduling/ShiftPlanner/TemplateHoursImpact';
-import { buildHoursChangeLedger } from '@/lib/scheduling/hoursChangeCopy';
-import { bucketTemplateShifts } from '@/lib/scheduling/templateHoursBuckets';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
@@ -108,56 +105,16 @@ export function TemplateFormDialog({
   const [selectedDriftIds, setSelectedDriftIds] = useState<Set<string>>(new Set());
   const [notify, setNotify] = useState(true);
 
-  const impact = useTemplateLinkedShifts(restaurantId, template?.id ?? null);
-
-  // Debounce the DERIVED state, never the controlled input — the field itself
-  // must stay instant or it feels broken. <input type="time"> fires change per
-  // component (hour, then minute), so an undebounced ledger would announce two
-  // or three incoherent intermediate states per edit.
-  const debouncedStart = useDebouncedValue(startTime, 300);
-  const debouncedEnd = useDebouncedValue(endTime, 300);
-
-  const buckets = useMemo(() => {
-    if (!template) return null;
-    return bucketTemplateShifts({
-      shifts: impact.shifts,
-      oldStart: template.start_time.substring(0, 5),
-      oldEnd: template.end_time.substring(0, 5),
-      newStart: debouncedStart,
-      newEnd: debouncedEnd,
-      tz: restaurantTimezone,
-      now: new Date(),
-    });
-  }, [template, impact.shifts, debouncedStart, debouncedEnd, restaurantTimezone]);
-
-  const ledger = useMemo(() => {
-    if (!template || !buckets) return null;
-    const selectedDrift = buckets.drifted.filter((d) => selectedDriftIds.has(d.shiftId));
-    return buildHoursChangeLedger({
-      oldStart: template.start_time.substring(0, 5),
-      oldEnd: template.end_time.substring(0, 5),
-      newStart: debouncedStart,
-      newEnd: debouncedEnd,
-      movingCount: buckets.moving.length,
-      publishedCount: buckets.publishedMovingIds.length,
-      // Sum, not double-count: impact.pastCount is shifts excluded up front
-      // by the hook's server-side cutoff (never fetched as rows), while
-      // buckets.past is shifts that were fetched as future but crossed `now`
-      // before this memo recomputed. The two cutoffs share the same instant
-      // per fetch, so a given shift can only ever land in one of the two.
-      pastCount: buckets.past.length + impact.pastCount,
-      lockedCount: buckets.locked.length,
-      driftedCount: buckets.drifted.length,
-      selectedDriftCount: selectedDrift.length,
-      hoursDelta:
-        buckets.movingHoursDelta + selectedDrift.reduce((sum, d) => sum + d.hoursDelta, 0),
-    });
-  }, [template, buckets, selectedDriftIds, debouncedStart, debouncedEnd, impact.pastCount]);
-
-  const affectedCount = ledger?.totalAffected ?? 0;
-  const hoursChanged = !!template &&
-    (startTime !== template.start_time.substring(0, 5) || endTime !== template.end_time.substring(0, 5));
-  const showCascadeChoice = isEdit && hoursChanged && affectedCount > 0 && !impact.isLoading && !impact.error;
+  const {
+    impact,
+    buckets,
+    ledger,
+    debouncedStart,
+    debouncedEnd,
+    affectedCount,
+    hoursChanged,
+    showCascadeChoice,
+  } = useTemplateHoursLedger(restaurantId, template, startTime, endTime, restaurantTimezone, selectedDriftIds);
 
   const toggleDrift = useCallback((shiftId: string) => {
     setSelectedDriftIds((prev) => {

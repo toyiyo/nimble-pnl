@@ -697,7 +697,7 @@ describe('useShiftTemplates', () => {
       const selectBuilder = makeSelectBuilder([]);
       vi.mocked(supabase.from).mockReturnValue(selectBuilder as any);
       vi.mocked(supabase.rpc).mockResolvedValue({
-        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        data: { batch_id: null, updated_count: 0, published_shifts: [], skipped_count: 0 },
         error: null,
       } as any);
 
@@ -724,7 +724,7 @@ describe('useShiftTemplates', () => {
 
     it('calls update_shift_template_with_cascade with the template fields, cascade flag, and drifted ids', async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
-        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        data: { batch_id: null, updated_count: 0, published_shifts: [], skipped_count: 0 },
         error: null,
       } as any);
 
@@ -765,7 +765,7 @@ describe('useShiftTemplates', () => {
 
     it('defaults p_area to null, p_cascade to false, and p_drifted_shift_ids to [] when omitted', async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
-        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        data: { batch_id: null, updated_count: 0, published_shifts: [], skipped_count: 0 },
         error: null,
       } as any);
 
@@ -788,7 +788,7 @@ describe('useShiftTemplates', () => {
 
     it('shows a plain "Template updated" toast (no Undo action) when updated_count is 0', async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
-        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        data: { batch_id: null, updated_count: 0, published_shifts: [], skipped_count: 0 },
         error: null,
       } as any);
 
@@ -807,7 +807,7 @@ describe('useShiftTemplates', () => {
         data: {
           batch_id: 'batch-1',
           updated_count: 3,
-          published_shift_ids: [],
+          published_shifts: [],
           skipped_count: 0,
         },
         error: null,
@@ -835,7 +835,7 @@ describe('useShiftTemplates', () => {
         data: {
           batch_id: 'batch-1',
           updated_count: 2,
-          published_shift_ids: [],
+          published_shifts: [],
           skipped_count: 1,
         },
         error: null,
@@ -866,7 +866,7 @@ describe('useShiftTemplates', () => {
         data: {
           batch_id: 'batch-1',
           updated_count: 3,
-          published_shift_ids: [],
+          published_shifts: [],
           skipped_count: 0,
         },
         error: null,
@@ -937,12 +937,15 @@ describe('useShiftTemplates', () => {
       );
     });
 
-    it('invokes send-shift-notification with action "modified" for each published shift when notify is true', async () => {
+    it('invokes send-shift-notification with action "modified" and the previous hours for each published shift when notify is true', async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: {
           batch_id: 'batch-1',
           updated_count: 2,
-          published_shift_ids: ['s1', 's2'],
+          published_shifts: [
+            { id: 's1', previous_start_time: '2026-03-10T14:00:00+00:00', previous_end_time: '2026-03-10T22:00:00+00:00', previous_position: 'Server' },
+            { id: 's2', previous_start_time: '2026-03-11T14:00:00+00:00', previous_end_time: '2026-03-11T22:00:00+00:00', previous_position: 'Server' },
+          ],
           skipped_count: 0,
         },
         error: null,
@@ -962,10 +965,26 @@ describe('useShiftTemplates', () => {
       });
 
       expect(supabase.functions.invoke).toHaveBeenCalledWith('send-shift-notification', {
-        body: { shiftId: 's1', action: 'modified' },
+        body: {
+          shiftId: 's1',
+          action: 'modified',
+          previousShift: {
+            start_time: '2026-03-10T14:00:00+00:00',
+            end_time: '2026-03-10T22:00:00+00:00',
+            position: 'Server',
+          },
+        },
       });
       expect(supabase.functions.invoke).toHaveBeenCalledWith('send-shift-notification', {
-        body: { shiftId: 's2', action: 'modified' },
+        body: {
+          shiftId: 's2',
+          action: 'modified',
+          previousShift: {
+            start_time: '2026-03-11T14:00:00+00:00',
+            end_time: '2026-03-11T22:00:00+00:00',
+            position: 'Server',
+          },
+        },
       });
     });
 
@@ -974,7 +993,9 @@ describe('useShiftTemplates', () => {
         data: {
           batch_id: 'batch-1',
           updated_count: 1,
-          published_shift_ids: ['s1'],
+          published_shifts: [
+            { id: 's1', previous_start_time: '2026-03-10T14:00:00+00:00', previous_end_time: '2026-03-10T22:00:00+00:00', previous_position: 'Server' },
+          ],
           skipped_count: 0,
         },
         error: null,
@@ -995,7 +1016,9 @@ describe('useShiftTemplates', () => {
         data: {
           batch_id: 'batch-1',
           updated_count: 1,
-          published_shift_ids: ['s1'],
+          published_shifts: [
+            { id: 's1', previous_start_time: '2026-03-10T14:00:00+00:00', previous_end_time: '2026-03-10T22:00:00+00:00', previous_position: 'Server' },
+          ],
           skipped_count: 0,
         },
         error: null,
@@ -1037,7 +1060,7 @@ describe('useShiftTemplates', () => {
         data: {
           batch_id: 'batch-1',
           updated_count: 2,
-          published_shift_ids: [],
+          published_shifts: [],
           skipped_count: 0,
         },
         error: null,

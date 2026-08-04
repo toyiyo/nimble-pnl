@@ -212,7 +212,12 @@ export function useShiftTemplates(
       const result = data as {
         batch_id: string | null;
         updated_count: number;
-        published_shift_ids: string[];
+        published_shifts: Array<{
+          id: string;
+          previous_start_time: string;
+          previous_end_time: string;
+          previous_position: string;
+        }>;
         skipped_count: number;
       };
       return { ...result, notify, promisedCount };
@@ -225,14 +230,24 @@ export function useShiftTemplates(
       // so both branches are handled and neither surfaces: the cascade already
       // succeeded, and a failed email must not read as a failed save.
       if (result.notify) {
-        for (const shiftId of result.published_shift_ids ?? []) {
+        for (const s of result.published_shifts ?? []) {
           supabase.functions
-            .invoke('send-shift-notification', { body: { shiftId, action: 'modified' } })
+            .invoke('send-shift-notification', {
+              body: {
+                shiftId: s.id,
+                action: 'modified',
+                previousShift: {
+                  start_time: s.previous_start_time,
+                  end_time: s.previous_end_time,
+                  position: s.previous_position,
+                },
+              },
+            })
             .then(({ error }) => {
-              if (error) console.warn('template-cascade notify failed', { shiftId, error });
+              if (error) console.warn('template-cascade notify failed', { shiftId: s.id, error });
             })
             .catch((error) => {
-              console.warn('template-cascade notify failed', { shiftId, error });
+              console.warn('template-cascade notify failed', { shiftId: s.id, error });
             });
         }
       }

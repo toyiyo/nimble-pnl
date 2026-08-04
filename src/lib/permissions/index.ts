@@ -31,5 +31,17 @@ export {
 } from './definitions';
 
 // Invitations
-export { canInviteRole, canInviteCustomRole, getInvitableRoles, CUSTOM_ROLE } from './invitations';
-export type { InviteRoleLiteral, MembershipRoleLiteral } from './invitations';
+export {
+  canAssignAnyRole,
+  canAssignTargetRole,
+  canInviteRole,
+  canInviteCustomRole,
+  getInvitableRoles,
+  isAssignableCustomRole,
+  CUSTOM_ROLE,
+} from './invitations';
+export type {
+  AssignableRoleRow,
+  InviteRoleLiteral,
+  MembershipRoleLiteral,
+} from './invitations';

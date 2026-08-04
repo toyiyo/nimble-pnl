@@ -138,6 +138,24 @@ git stash pop   # only if step 1 actually stashed something
 If `git stash push` reports "No local changes to save," skip step 3's `git stash pop`. If step 2's `git branch` fails because `HEAD` is already at `origin/main` (no accidental commits), skip it — the stashed edits alone are what need to move.
 </HARD-GATE>
 
+### Commit staging discipline (applies to every phase)
+
+Stage **explicit paths**, always with `-C` so the command cannot act on the wrong checkout:
+
+```bash
+git -C .claude/worktrees/<feature> add src/foo.ts tests/unit/foo.test.ts
+git -C .claude/worktrees/<feature> diff --cached --name-only   # confirm before committing
+```
+
+**Never `git add -A`, `git add .`, or `git commit -a`.** One worktree is shared by every phase, and it
+accumulates regenerated scratch — `dev-tools/*.patch`, `dev-tools/*-output.md`, `dev-tools/9d-triage-*`,
+`progress.md` — alongside whatever an earlier phase left dirty. A broad add sweeps all of it into a
+feature commit, where it becomes PR noise and merge conflicts against other branches regenerating the
+same files. `progress.md` is gitignored and must never be staged, not even with `git add -f`.
+
+Gitignoring the scratch is a backstop, not the fix: a broad add still picks up unrelated **tracked**
+files an earlier phase left modified. Explicit paths are what actually bound a commit.
+
 ## Phase 2: Brainstorm
 
 **Invoke:** `superpowers:brainstorming`

@@ -140,14 +140,19 @@ export function TemplateFormDialog({
       newEnd: debouncedEnd,
       movingCount: buckets.moving.length,
       publishedCount: buckets.publishedMovingIds.length,
-      pastCount: buckets.past.length,
+      // Sum, not double-count: impact.pastCount is shifts excluded up front
+      // by the hook's server-side cutoff (never fetched as rows), while
+      // buckets.past is shifts that were fetched as future but crossed `now`
+      // before this memo recomputed. The two cutoffs share the same instant
+      // per fetch, so a given shift can only ever land in one of the two.
+      pastCount: buckets.past.length + impact.pastCount,
       lockedCount: buckets.locked.length,
       driftedCount: buckets.drifted.length,
       selectedDriftCount: selectedDrift.length,
       hoursDelta:
         buckets.movingHoursDelta + selectedDrift.reduce((sum, d) => sum + d.hoursDelta, 0),
     });
-  }, [template, buckets, selectedDriftIds, debouncedStart, debouncedEnd]);
+  }, [template, buckets, selectedDriftIds, debouncedStart, debouncedEnd, impact.pastCount]);
 
   const affectedCount = ledger?.totalAffected ?? 0;
   const hoursChanged = !!template &&

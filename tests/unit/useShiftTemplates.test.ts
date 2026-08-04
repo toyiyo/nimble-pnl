@@ -830,6 +830,51 @@ describe('useShiftTemplates', () => {
       );
     });
 
+    it('maps a 23505 (unique_violation) rejection to a friendly slot-collision message', async () => {
+      const conflictError = Object.assign(new Error(
+        'duplicate key value violates unique constraint "uq_shift_templates_active_slot"',
+      ), { code: '23505' });
+      vi.mocked(supabase.rpc).mockRejectedValueOnce(conflictError);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await expect(
+          result.current.updateTemplate({ id: 't1', name: 'Morning' }),
+        ).rejects.toThrow();
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'Another active template already uses these hours for this position. Pick a different time or position, or update that template instead.',
+          variant: 'destructive',
+        }),
+      );
+    });
+
+    it('surfaces error.message unchanged for a non-23505 rejection', async () => {
+      vi.mocked(supabase.rpc).mockRejectedValueOnce(new Error('network down'));
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await expect(
+          result.current.updateTemplate({ id: 't1', name: 'Morning' }),
+        ).rejects.toThrow('network down');
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Error',
+          description: 'network down',
+          variant: 'destructive',
+        }),
+      );
+    });
+
     it('invokes send-shift-notification with action "modified" for each published shift when notify is true', async () => {
       vi.mocked(supabase.rpc).mockResolvedValue({
         data: {

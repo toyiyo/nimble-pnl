@@ -240,8 +240,14 @@ export function useShiftTemplates(
         duration: 8000,
       });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    // Widened (not `as any`) so the Postgres error code Supabase attaches to
+    // the thrown error is visible here — `tsconfig.app.json` has
+    // `strict: false`, so this narrow structural type is enough.
+    onError: (error: Error & { code?: string }) => {
+      const description = error.code === '23505'
+        ? 'Another active template already uses these hours for this position. Pick a different time or position, or update that template instead.'
+        : error.message;
+      toast({ title: 'Error', description, variant: 'destructive' });
     },
   });
 

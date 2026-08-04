@@ -1141,7 +1141,29 @@ describe('useShiftTemplates', () => {
       expect(toastSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Cascade undone',
-          description: 'Restored 1 shift · 2 skipped (changed since)',
+          description: 'Restored 1 shift · skipped 1 changed since, 1 deleted',
+        }),
+      );
+    });
+
+    it('names only the skip reason that actually occurred', async () => {
+      const { undoAction } = await triggerCascadeAndClickUndo();
+
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: { restored_count: 3, changed_since_count: 0, deleted_count: 2 },
+        error: null,
+      } as any);
+
+      await act(async () => {
+        undoAction.props.onClick();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Cascade undone',
+          description: 'Restored 3 shifts · skipped 2 deleted',
         }),
       );
     });

@@ -59,6 +59,32 @@ interface UseShiftTemplatesOptions {
 
 type TemplateInput = Omit<ShiftTemplate, 'id' | 'created_at' | 'updated_at'>;
 
+/**
+ * Every editable column, all required — deliberately NOT `Partial<ShiftTemplate>`.
+ * `update_shift_template_with_cascade` takes the whole row positionally and has
+ * no parameter defaults, so a partial payload does not update a subset: the
+ * omitted keys drop out of the JSON body and PostgREST fails to resolve the
+ * overload at all. A `Partial` signature would advertise a subset update that
+ * cannot work.
+ */
+type UpdateTemplateInput = {
+  id: string;
+  name: string;
+  position: string;
+  area?: string | null;
+  days: number[];
+  break_duration: number;
+  capacity: number;
+  start_time: string;
+  end_time: string;
+  cascade?: boolean;
+  driftedShiftIds?: string[];
+  notify?: boolean;
+  /** Ledger's totalAffected at the moment Save was clicked — used only to
+   * detect a save-time shortfall, never sent to the RPC. */
+  promisedCount?: number;
+};
+
 interface HideTemplateInput {
   id: string;
   name: string;
@@ -159,11 +185,18 @@ export function useShiftTemplates(
       invalidateCascadeQueries();
 
       const shiftsWord = pluralize(result.restored_count, 'shift', 'shifts');
-      const skipped = result.changed_since_count + result.deleted_count;
+      // The two skip reasons are not interchangeable: "changed since" tells a
+      // manager someone re-edited the shift and their edit was respected,
+      // while "deleted" tells them there is no shift left to restore. Summing
+      // them under one label reported deletions as edits.
+      const skippedReasons = [
+        result.changed_since_count > 0 ? `${result.changed_since_count} changed since` : null,
+        result.deleted_count > 0 ? `${result.deleted_count} deleted` : null,
+      ].filter(Boolean);
       toast({
         title: 'Cascade undone',
-        description: skipped > 0
-          ? `Restored ${result.restored_count} ${shiftsWord} · ${skipped} skipped (changed since)`
+        description: skippedReasons.length > 0
+          ? `Restored ${result.restored_count} ${shiftsWord} · skipped ${skippedReasons.join(', ')}`
           : `Restored ${result.restored_count} ${shiftsWord}.`,
       });
     },
@@ -178,15 +211,7 @@ export function useShiftTemplates(
       notify = false,
       promisedCount = 0,
       ...updates
-    }: Partial<ShiftTemplate> & {
-      id: string;
-      cascade?: boolean;
-      driftedShiftIds?: string[];
-      notify?: boolean;
-      /** Ledger's totalAffected at the moment Save was clicked — used only to
-       * detect a save-time shortfall, never sent to the RPC. */
-      promisedCount?: number;
-    }) => {
+    }: UpdateTemplateInput) => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
       // One RPC, not a client-side loop: the template row and the shift rows

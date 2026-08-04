@@ -18,7 +18,7 @@ import type { DriftRow } from '@/lib/scheduling/templateHoursBuckets';
 // outcome a deletion reports, so `success` reads as muted rather than green.
 const CHIP_TONE_CLASSES: Record<LedgerTone, string> = {
   destructive: 'bg-destructive/10 text-destructive',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-500',
+  warning: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
   success: 'bg-muted text-muted-foreground',
 };
 

@@ -269,7 +269,7 @@ toast_payments       → Payment records (unique: restaurant_id, toast_payment_g
    - **Idempotent**: Uses upserts on all tables
    - **Skips unified_sales sync**: Sets `skipUnifiedSalesSync: true` during bulk import (cron handles it)
 
-3. **`toast-bulk-sync`** — Scheduled sync (cron, every 2 hours (pg_cron jobid 7, `0 0,2,4,...,22 * * *`))
+3. **`toast-bulk-sync`** — Scheduled sync (cron, every 2 hours — pg_cron jobid 7, `0 0,2,4,...,22 * * *`)
    - **Round-robin**: Processes max 5 restaurants per run, ordered by `last_sync_time`
    - **Per-restaurant limit**: 200 orders max
    - **Rate limiting**: 2-second delay between restaurants

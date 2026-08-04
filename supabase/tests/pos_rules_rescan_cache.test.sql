@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
 SET LOCAL role TO postgres;
 
@@ -117,6 +117,12 @@ SELECT is(
 SELECT has_index(
   'public', 'unified_sales', 'idx_unified_sales_rule_candidates_v2',
   'partial candidate index on unified_sales exists'
+);
+
+-- ---------------------------------------------------------------- TEST 8
+SELECT has_index(
+  'public', 'bank_transactions', 'idx_bank_transactions_rule_candidates_v2',
+  'partial candidate index on bank_transactions exists'
 );
 
 SELECT * FROM finish();

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(22);
+SELECT plan(25);
 
 SET LOCAL role TO postgres;
 
@@ -357,6 +357,45 @@ SELECT is(
     WHERE id = '00000000-0000-0000-0000-0000000009d9'),
   true,
   'split-rule branch still routes through split_pos_sale'
+);
+
+-- ================================================================ BANK SWEEP
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, description_pattern,
+   description_match_type, is_active, auto_apply, priority)
+VALUES
+  ('00000000-0000-0000-0000-0000000009fb', '00000000-0000-0000-0000-0000000009a1',
+   'Never matches bank', 'bank_transactions', '00000000-0000-0000-0000-0000000009c1',
+   'zzz-no-such-description', 'exact', true, true, 10)
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE bank_transactions
+   SET description = 'SYSCO FOOD SERVICE', amount = -250.00,
+       category_id = NULL, is_categorized = false, is_split = false,
+       excluded_reason = NULL
+ WHERE id = '00000000-0000-0000-0000-0000000009e1';
+
+-- ---------------------------------------------------------------- TEST 23
+SELECT lives_ok(
+  $$SELECT * FROM apply_rules_to_bank_transactions_internal(
+      '00000000-0000-0000-0000-0000000009a1', 100)$$,
+  'bank sweep runs against a restaurant with one non-matching rule'
+);
+
+-- ---------------------------------------------------------------- TEST 24
+SELECT isnt(
+  (SELECT rules_evaluated_at FROM bank_transactions
+    WHERE id = '00000000-0000-0000-0000-0000000009e1'),
+  '-infinity'::timestamptz,
+  'a bank row that matched no rule is stamped as evaluated'
+);
+
+-- ---------------------------------------------------------------- TEST 25
+SELECT is(
+  (SELECT total_count FROM apply_rules_to_bank_transactions_internal(
+     '00000000-0000-0000-0000-0000000009a1', 100)),
+  0,
+  'second bank sweep re-evaluates nothing'
 );
 
 SELECT * FROM finish();

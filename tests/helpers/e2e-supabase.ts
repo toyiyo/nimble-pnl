@@ -726,12 +726,35 @@ export interface SeedTemplateWithShiftsOptions {
   end_time: string;
   /** Number of "moving" shifts to seed at exactly the template's hours. */
   shiftCount: number;
-  /** One further linked shift whose hours have already drifted from the template. */
+  /**
+   * One further linked shift whose hours have already drifted from the
+   * template. Kept singular for backward compatibility with existing specs —
+   * equivalent to `driftedShifts: [driftedShift]`. If both are supplied,
+   * `driftedShift` is treated as the first entry of `driftedShifts`.
+   */
   driftedShift?: {
     start_time: string;
     end_time: string;
     employeeName: string;
   };
+  /** Any number of further linked shifts whose hours have already drifted from the template, each under its own employee/date. */
+  driftedShifts?: {
+    start_time: string;
+    end_time: string;
+    employeeName: string;
+  }[];
+  /**
+   * One further linked shift dated yesterday (restaurant-local calendar day),
+   * at the TEMPLATE'S OWN hours — so the only reason it is excluded from the
+   * cascade is that it is in the past, not that its hours differ.
+   */
+  pastShift?: { employeeName: string };
+  /**
+   * One further linked shift, future and `locked = true`, at the TEMPLATE'S
+   * OWN hours — so the only reason it is excluded from the cascade is the
+   * lock, not that its hours differ.
+   */
+  lockedShift?: { employeeName: string };
   /** IANA timezone the seeded dates/times are anchored in. Defaults to `America/Chicago`. */
   timezone?: string;
   templateName?: string;
@@ -753,11 +776,31 @@ export interface SeededDriftedShift {
    *  disclosure row's accessible label exactly, so a spec can build the same
    *  regex the UI renders. */
   localDate: string;
+  /** Exact `start_time`/`end_time` as stored, straight off the insert's
+   *  `.select()` — for asserting a shift was left byte-identical later. */
+  startTime: string;
+  endTime: string;
+}
+
+export interface SeededLinkedShift {
+  shiftId: string;
+  employeeName: string;
+  /** Exact `start_time`/`end_time` as stored, straight off the insert's
+   *  `.select()` — for asserting a shift was left byte-identical later. */
+  startTime: string;
+  endTime: string;
 }
 
 export interface SeedTemplateWithShiftsResult {
   template: SeededTemplate;
+  /** First entry of `driftedShifts`, or null — kept for backward compatibility. */
   drifted: SeededDriftedShift | null;
+  /** Every drifted shift seeded, in the order requested. */
+  driftedShifts: SeededDriftedShift[];
+  /** The "moving" shifts seeded via `shiftCount`, in insertion order. */
+  moving: SeededLinkedShift[];
+  past: SeededLinkedShift | null;
+  locked: SeededLinkedShift | null;
 }
 
 /**
@@ -767,9 +810,18 @@ export interface SeedTemplateWithShiftsResult {
  * `timezone`. Anchoring to a future weekday — computed on a pure Y/M/D
  * calendar via `Date.UTC`, never the runner's local `Date` — keeps every
  * seeded shift unambiguously in the future relative to "now" regardless of
- * which machine or timezone runs the suite. An optional `driftedShift` seeds
- * one further linked shift at different hours, under its own named employee,
- * landing in the `drifted` bucket instead.
+ * which machine or timezone runs the suite.
+ *
+ * Optional buckets, each under its own named employee so every seeded shift
+ * can be matched back unambiguously after insert:
+ *  - `driftedShift`/`driftedShifts` seed shifts at different hours, landing
+ *    in the `drifted` bucket.
+ *  - `pastShift` seeds a shift dated yesterday (restaurant-local calendar
+ *    day) at the TEMPLATE'S OWN hours, so it is excluded from the cascade
+ *    only because it is in the past.
+ *  - `lockedShift` seeds a future shift at the TEMPLATE'S OWN hours with
+ *    `locked = true`, so it is excluded from the cascade only because of the
+ *    lock.
  *
  * The actual inserts run through the browser's authenticated Supabase client
  * (`window.__supabase`, wired up by `exposeSupabaseHelpers`) rather than a
@@ -805,8 +857,16 @@ export async function seedTemplateWithShifts(
   if (daysUntilMonday === 0) daysUntilMonday = 7; // today IS Monday — use next week's for a safety margin
   const mondayUtcMs = todayUtcMs + daysUntilMonday * 86_400_000;
 
+  // Future dates anchor off next-Monday (see above); the past shift anchors
+  // off TODAY directly so it lands yesterday regardless of how many days
+  // away "next Monday" happens to be.
   const dateStrAtOffset = (dayOffset: number): string => {
     const d = new Date(mondayUtcMs + dayOffset * 86_400_000);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  };
+  const dateStrFromToday = (dayOffset: number): string => {
+    const d = new Date(todayUtcMs + dayOffset * 86_400_000);
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
   };
@@ -816,14 +876,37 @@ export async function seedTemplateWithShifts(
     endIso: wallClockToInstant(dateStrAtOffset(i), opts.end_time, tz).toISOString(),
   }));
 
-  // The drifted shift gets its own date (right after the last moving shift)
-  // so it never collides with a moving shift's date.
-  const driftedDate = dateStrAtOffset(opts.shiftCount);
-  const drifted = opts.driftedShift
+  // Every drifted shift gets its own date, right after the last moving
+  // shift's date, so none of them ever collides with a moving shift's date
+  // or each other's.
+  const driftedInputs = opts.driftedShifts ?? (opts.driftedShift ? [opts.driftedShift] : []);
+  const driftedList = driftedInputs.map((d, i) => {
+    const dateStr = dateStrAtOffset(opts.shiftCount + i);
+    return {
+      startIso: wallClockToInstant(dateStr, d.start_time, tz).toISOString(),
+      endIso: wallClockToInstant(dateStr, d.end_time, tz).toISOString(),
+      employeeName: d.employeeName,
+    };
+  });
+
+  // Yesterday, restaurant-local calendar day — the whole day is before "now"
+  // no matter what time within today "now" actually is.
+  const pastDate = dateStrFromToday(-1);
+  const past = opts.pastShift
     ? {
-        startIso: wallClockToInstant(driftedDate, opts.driftedShift.start_time, tz).toISOString(),
-        endIso: wallClockToInstant(driftedDate, opts.driftedShift.end_time, tz).toISOString(),
-        employeeName: opts.driftedShift.employeeName,
+        startIso: wallClockToInstant(pastDate, opts.start_time, tz).toISOString(),
+        endIso: wallClockToInstant(pastDate, opts.end_time, tz).toISOString(),
+        employeeName: opts.pastShift.employeeName,
+      }
+    : null;
+
+  // Own date, after every moving/drifted date, so it never collides.
+  const lockedDate = dateStrAtOffset(opts.shiftCount + driftedList.length);
+  const locked = opts.lockedShift
+    ? {
+        startIso: wallClockToInstant(lockedDate, opts.start_time, tz).toISOString(),
+        endIso: wallClockToInstant(lockedDate, opts.end_time, tz).toISOString(),
+        employeeName: opts.lockedShift.employeeName,
       }
     : null;
 
@@ -836,7 +919,9 @@ export async function seedTemplateWithShifts(
       endTime: string;
       movingEmployeeName: string;
       movingShifts: { startIso: string; endIso: string }[];
-      drifted: { startIso: string; endIso: string; employeeName: string } | null;
+      driftedList: { startIso: string; endIso: string; employeeName: string }[];
+      past: { startIso: string; endIso: string; employeeName: string } | null;
+      locked: { startIso: string; endIso: string; employeeName: string } | null;
     }) => {
       const supabase = (window as any).__supabase;
 
@@ -859,7 +944,12 @@ export async function seedTemplateWithShifts(
       if (!user?.id) throw new Error('No authenticated user found');
 
       const employeeNames = Array.from(
-        new Set([args.movingEmployeeName, ...(args.drifted ? [args.drifted.employeeName] : [])])
+        new Set([
+          args.movingEmployeeName,
+          ...args.driftedList.map((d) => d.employeeName),
+          ...(args.past ? [args.past.employeeName] : []),
+          ...(args.locked ? [args.locked.employeeName] : []),
+        ])
       );
       const { data: employees, error: empError } = await supabase
         .from('employees')
@@ -894,19 +984,51 @@ export async function seedTemplateWithShifts(
         locked: false,
       }));
 
-      if (args.drifted) {
-        const driftedEmployeeId = employeeIdByName.get(args.drifted.employeeName);
-        if (!driftedEmployeeId) throw new Error('drifted employee not found after insert');
+      for (const d of args.driftedList) {
+        const driftedEmployeeId = employeeIdByName.get(d.employeeName);
+        if (!driftedEmployeeId) throw new Error(`drifted employee "${d.employeeName}" not found after insert`);
         rowsToInsert.push({
           restaurant_id: args.restId,
           shift_template_id: template.id,
           employee_id: driftedEmployeeId,
-          start_time: args.drifted.startIso,
-          end_time: args.drifted.endIso,
+          start_time: d.startIso,
+          end_time: d.endIso,
           position: args.position,
           status: 'scheduled',
           is_published: false,
           locked: false,
+        });
+      }
+
+      if (args.past) {
+        const pastEmployeeId = employeeIdByName.get(args.past.employeeName);
+        if (!pastEmployeeId) throw new Error('past employee not found after insert');
+        rowsToInsert.push({
+          restaurant_id: args.restId,
+          shift_template_id: template.id,
+          employee_id: pastEmployeeId,
+          start_time: args.past.startIso,
+          end_time: args.past.endIso,
+          position: args.position,
+          status: 'scheduled',
+          is_published: false,
+          locked: false,
+        });
+      }
+
+      if (args.locked) {
+        const lockedEmployeeId = employeeIdByName.get(args.locked.employeeName);
+        if (!lockedEmployeeId) throw new Error('locked employee not found after insert');
+        rowsToInsert.push({
+          restaurant_id: args.restId,
+          shift_template_id: template.id,
+          employee_id: lockedEmployeeId,
+          start_time: args.locked.startIso,
+          end_time: args.locked.endIso,
+          position: args.position,
+          status: 'scheduled',
+          is_published: false,
+          locked: true,
         });
       }
 
@@ -916,23 +1038,52 @@ export async function seedTemplateWithShifts(
         .select();
       if (shiftsError) throw new Error(`shifts insert failed: ${shiftsError.message}`);
 
-      let driftedShiftId: string | null = null;
-      if (args.drifted) {
-        // Match on employee_id alone: the moving and drifted employees are
-        // always distinct names, so this is a unique key across the batch.
-        // (Matching on start_time is unreliable — Postgres normalizes the
-        // returned timestamptz string and it need not equal the JS-side
-        // `toISOString()` we sent byte-for-byte.)
-        const driftedEmployeeId = employeeIdByName.get(args.drifted.employeeName);
-        const match = (insertedShifts ?? []).find((r: any) => r.employee_id === driftedEmployeeId);
-        if (!match) throw new Error('drifted shift not found among inserted rows');
-        driftedShiftId = match.id;
+      const rows = (insertedShifts ?? []) as any[];
+
+      const movingRows = rows
+        .filter((r) => r.employee_id === movingEmployeeId)
+        .map((r) => ({ shiftId: r.id as string, startTime: r.start_time as string, endTime: r.end_time as string }));
+
+      // Match on employee_id alone: every non-moving bucket here gets its own
+      // uniquely-named employee, so this is a stable key across the batch.
+      // (Matching on start_time is unreliable — Postgres normalizes the
+      // returned timestamptz string and it need not equal the JS-side
+      // `toISOString()` we sent byte-for-byte.)
+      const driftedResults = args.driftedList.map((d) => {
+        const employeeId = employeeIdByName.get(d.employeeName);
+        const match = rows.find((r) => r.employee_id === employeeId);
+        if (!match) throw new Error(`drifted shift for "${d.employeeName}" not found among inserted rows`);
+        return {
+          shiftId: match.id as string,
+          employeeName: d.employeeName,
+          startTime: match.start_time as string,
+          endTime: match.end_time as string,
+        };
+      });
+
+      let pastResult: { shiftId: string; startTime: string; endTime: string } | null = null;
+      if (args.past) {
+        const employeeId = employeeIdByName.get(args.past.employeeName);
+        const match = rows.find((r) => r.employee_id === employeeId);
+        if (!match) throw new Error('past shift not found among inserted rows');
+        pastResult = { shiftId: match.id as string, startTime: match.start_time as string, endTime: match.end_time as string };
+      }
+
+      let lockedResult: { shiftId: string; startTime: string; endTime: string } | null = null;
+      if (args.locked) {
+        const employeeId = employeeIdByName.get(args.locked.employeeName);
+        const match = rows.find((r) => r.employee_id === employeeId);
+        if (!match) throw new Error('locked shift not found among inserted rows');
+        lockedResult = { shiftId: match.id as string, startTime: match.start_time as string, endTime: match.end_time as string };
       }
 
       return {
         templateId: template.id as string,
         templateName: template.name as string,
-        driftedShiftId,
+        moving: movingRows,
+        drifted: driftedResults,
+        past: pastResult,
+        locked: lockedResult,
       };
     },
     {
@@ -943,9 +1094,19 @@ export async function seedTemplateWithShifts(
       endTime: opts.end_time,
       movingEmployeeName,
       movingShifts,
-      drifted,
+      driftedList,
+      past,
+      locked,
     }
   );
+
+  const driftedShifts: SeededDriftedShift[] = seeded.drifted.map((d, i) => ({
+    shiftId: d.shiftId,
+    employeeName: d.employeeName,
+    localDate: formatLocalDateInTz(new Date(driftedList[i].startIso), tz),
+    startTime: d.startTime,
+    endTime: d.endTime,
+  }));
 
   return {
     template: {
@@ -954,14 +1115,15 @@ export async function seedTemplateWithShifts(
       start_time: opts.start_time,
       end_time: opts.end_time,
     },
-    drifted:
-      opts.driftedShift && seeded.driftedShiftId
-        ? {
-            shiftId: seeded.driftedShiftId,
-            employeeName: opts.driftedShift.employeeName,
-            localDate: formatLocalDateInTz(new Date(drifted!.startIso), tz),
-          }
-        : null,
+    drifted: driftedShifts[0] ?? null,
+    driftedShifts,
+    moving: seeded.moving,
+    past: seeded.past && opts.pastShift
+      ? { shiftId: seeded.past.shiftId, employeeName: opts.pastShift.employeeName, startTime: seeded.past.startTime, endTime: seeded.past.endTime }
+      : null,
+    locked: seeded.locked && opts.lockedShift
+      ? { shiftId: seeded.locked.shiftId, employeeName: opts.lockedShift.employeeName, startTime: seeded.locked.startTime, endTime: seeded.locked.endTime }
+      : null,
   };
 }
 

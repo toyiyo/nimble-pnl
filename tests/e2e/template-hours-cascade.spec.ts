@@ -184,4 +184,266 @@ test.describe('template hours cascade', () => {
 
     await expect(dialog.getByRole('button', { name: 'Save & update 2 shifts' })).toBeVisible({ timeout: 5000 });
   });
+
+  test('ticking one drifted shift saves it and leaves the other drifted shift byte-identical', async ({ page }) => {
+    const user = generateTestUser('cascade-drift-optin');
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+    await setRestaurantTimezone(page, restaurantId as string);
+
+    const { template, driftedShifts } = await seedTemplateWithShifts(page, restaurantId as string, {
+      start_time: '09:00',
+      end_time: '17:00',
+      shiftCount: 1,
+      driftedShifts: [
+        { start_time: '11:00', end_time: '19:00', employeeName: 'Casey Chicago' },
+        { start_time: '12:00', end_time: '20:00', employeeName: 'Drew Dallas' },
+      ],
+      timezone: TIMEZONE,
+    });
+    expect(driftedShifts).toHaveLength(2);
+    const [pickedDrift, untouchedDrift] = driftedShifts;
+
+    await page.goto('/scheduling');
+    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await page.getByRole('tab', { name: /planner/i }).click();
+
+    await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
+
+    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
+    await templateRow.hover();
+    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
+    await expect(actionsButton).toBeVisible({ timeout: 5000 });
+    await actionsButton.click();
+    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByLabel('Start Time').fill('10:00');
+    await dialog.getByLabel('End Time').fill('18:00');
+
+    // Only the one exact-hours ("moving") shift is counted before any drift pick.
+    await expect(dialog.getByRole('button', { name: 'Save & update 1 shift' })).toBeVisible({ timeout: 5000 });
+
+    // Ledger's outer disclosure starts closed — open it, then open the nested
+    // drift disclosure inside it, before either drift checkbox is reachable.
+    await dialog.getByRole('button', { name: /shift moves|shifts move/i }).click();
+    await dialog.getByRole('button', { name: /hand-edited/i }).click();
+
+    // Tick only the picked employee's checkbox, via its real <label> — the
+    // unticked one is left strictly alone.
+    await dialog.getByLabel(new RegExp(`${pickedDrift.employeeName} — ${pickedDrift.localDate}`, 'i')).check();
+
+    const cascadeButton = dialog.getByRole('button', { name: 'Save & update 2 shifts' });
+    await expect(cascadeButton).toBeVisible({ timeout: 5000 });
+    await cascadeButton.click();
+
+    await expect(page.getByText('2 shifts moved to the new hours.').first()).toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    const [pickedRow, untouchedRow] = await Promise.all([
+      page.evaluate(
+        async (shiftId: string) => {
+          const supabase = (window as any).__supabase;
+          const { data, error } = await supabase
+            .from('shifts')
+            .select('start_time, end_time')
+            .eq('id', shiftId)
+            .single();
+          if (error) throw new Error(error.message);
+          return data as { start_time: string; end_time: string };
+        },
+        pickedDrift.shiftId
+      ),
+      page.evaluate(
+        async (shiftId: string) => {
+          const supabase = (window as any).__supabase;
+          const { data, error } = await supabase
+            .from('shifts')
+            .select('start_time, end_time')
+            .eq('id', shiftId)
+            .single();
+          if (error) throw new Error(error.message);
+          return data as { start_time: string; end_time: string };
+        },
+        untouchedDrift.shiftId
+      ),
+    ]);
+
+    // The picked drifted shift moved to the new template hours.
+    expect(localHHMM(pickedRow.start_time)).toBe('10:00');
+    expect(localHHMM(pickedRow.end_time)).toBe('18:00');
+
+    // The unpicked drifted shift is byte-identical to how it was seeded — not
+    // merely "still shows 12:00-20:00 locally", but the exact same stored
+    // string, proving the write never touched this row at all.
+    expect(untouchedRow.start_time).toBe(untouchedDrift.startTime);
+    expect(untouchedRow.end_time).toBe(untouchedDrift.endTime);
+  });
+
+  test('past and locked shifts are never touched, while a normal moving shift in the same cascade does move', async ({ page }) => {
+    const user = generateTestUser('cascade-past-locked');
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+    await setRestaurantTimezone(page, restaurantId as string);
+
+    // Past and locked shifts are seeded at the TEMPLATE'S OWN hours, so the
+    // only reason either is excluded from the cascade is its bucket (past /
+    // locked) — not a coincidental hours mismatch that would exclude it anyway.
+    const { template, moving, past, locked } = await seedTemplateWithShifts(page, restaurantId as string, {
+      start_time: '09:00',
+      end_time: '17:00',
+      shiftCount: 1,
+      pastShift: { employeeName: 'Riley Past' },
+      lockedShift: { employeeName: 'Sam Locked' },
+      timezone: TIMEZONE,
+    });
+    expect(moving).toHaveLength(1);
+    expect(past).not.toBeNull();
+    expect(locked).not.toBeNull();
+
+    await page.goto('/scheduling');
+    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await page.getByRole('tab', { name: /planner/i }).click();
+
+    await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
+
+    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
+    await templateRow.hover();
+    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
+    await expect(actionsButton).toBeVisible({ timeout: 5000 });
+    await actionsButton.click();
+    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByLabel('Start Time').fill('10:00');
+    await dialog.getByLabel('End Time').fill('18:00');
+
+    // Only the moving shift is counted — past and locked never enter the count,
+    // even though both share the template's exact old hours.
+    const cascadeButton = dialog.getByRole('button', { name: 'Save & update 1 shift' });
+    await expect(cascadeButton).toBeVisible({ timeout: 5000 });
+    await cascadeButton.click();
+
+    await expect(page.getByText('1 shift moved to the new hours.').first()).toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    const [movingRow, pastRow, lockedRow] = await Promise.all(
+      [moving[0].shiftId, past!.shiftId, locked!.shiftId].map((shiftId) =>
+        page.evaluate(
+          async (id: string) => {
+            const supabase = (window as any).__supabase;
+            const { data, error } = await supabase
+              .from('shifts')
+              .select('start_time, end_time')
+              .eq('id', id)
+              .single();
+            if (error) throw new Error(error.message);
+            return data as { start_time: string; end_time: string };
+          },
+          shiftId
+        )
+      )
+    );
+
+    // The positive assertion: the cascade actually ran and moved the
+    // eligible shift — this is what rules out "the cascade silently did
+    // nothing at all" as an explanation for the untouched rows below.
+    expect(localHHMM(movingRow.start_time)).toBe('10:00');
+    expect(localHHMM(movingRow.end_time)).toBe('18:00');
+
+    // The negative assertions: past and locked are byte-identical to how
+    // they were seeded.
+    expect(pastRow.start_time).toBe(past!.startTime);
+    expect(pastRow.end_time).toBe(past!.endTime);
+    expect(lockedRow.start_time).toBe(locked!.startTime);
+    expect(lockedRow.end_time).toBe(locked!.endTime);
+  });
+
+  test('clicking Undo on the cascade toast restores the shifts to their pre-cascade times', async ({ page }) => {
+    const user = generateTestUser('cascade-undo');
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+    await setRestaurantTimezone(page, restaurantId as string);
+
+    const { template } = await seedTemplateWithShifts(page, restaurantId as string, {
+      start_time: '09:00',
+      end_time: '17:00',
+      shiftCount: 2,
+      timezone: TIMEZONE,
+    });
+
+    await page.goto('/scheduling');
+    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await page.getByRole('tab', { name: /planner/i }).click();
+
+    await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
+
+    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
+    await templateRow.hover();
+    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
+    await expect(actionsButton).toBeVisible({ timeout: 5000 });
+    await actionsButton.click();
+    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByLabel('Start Time').fill('10:00');
+    await dialog.getByLabel('End Time').fill('18:00');
+
+    const cascadeButton = dialog.getByRole('button', { name: 'Save & update 2 shifts' });
+    await expect(cascadeButton).toBeVisible({ timeout: 5000 });
+    await cascadeButton.click();
+
+    await expect(page.getByText('2 shifts moved to the new hours.').first()).toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    // exact: true — the generated test-user name embeds this test's own title
+    // ("cascade-undo-<timestamp>"), which is itself a substring match for
+    // "Undo" against the account-menu button in the header. Without `exact`,
+    // Playwright's default substring/case-insensitive name matching resolves
+    // both buttons and throws a strict-mode violation.
+    const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
+    await expect(undoButton).toBeVisible();
+    await undoButton.click();
+
+    // The undo toast's description text confirms the RPC has already resolved
+    // (onSuccess fires only after the awaited RPC settles), so the DB read
+    // below is guaranteed to observe the reverted rows, not a race.
+    await expect(page.getByText('Restored 2 shifts.').first()).toBeVisible({ timeout: 10000 });
+
+    const revertedShifts = await page.evaluate(
+      async (args: { restId: string; templateId: string }) => {
+        const supabase = (window as any).__supabase;
+        const { data, error } = await supabase
+          .from('shifts')
+          .select('start_time, end_time')
+          .eq('restaurant_id', args.restId)
+          .eq('shift_template_id', args.templateId)
+          .order('start_time');
+        if (error) throw new Error(error.message);
+        return data as { start_time: string; end_time: string }[];
+      },
+      { restId: restaurantId as string, templateId: template.id }
+    );
+
+    expect(revertedShifts).toHaveLength(2);
+    for (const shift of revertedShifts) {
+      expect(localHHMM(shift.start_time)).toBe('09:00');
+      expect(localHHMM(shift.end_time)).toBe('17:00');
+    }
+  });
 });

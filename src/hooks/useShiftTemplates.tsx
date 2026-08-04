@@ -127,22 +127,118 @@ export function useShiftTemplates(
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<ShiftTemplate> & { id: string }) => {
-      let query = (supabase
-        .from('shift_templates') as any)
-        .update(updates)
-        .eq('id', id);
-      if (restaurantId) {
-        query = query.eq('restaurant_id', restaurantId);
-      }
-      const { data, error } = await query.select().single();
+  const undoMutation = useMutation({
+    mutationFn: async (batchId: string) => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+      const { data, error } = await supabase.rpc('undo_template_hours_cascade', {
+        p_batch_id: batchId,
+        p_restaurant_id: restaurantId,
+      });
       if (error) throw error;
-      return data;
+      return data as { restored_count: number; changed_since_count: number; deleted_count: number };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidateAllStatuses();
-      toast({ title: 'Template updated' });
+      queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['template-linked-shifts', restaurantId] });
+
+      const skipped = result.changed_since_count + result.deleted_count;
+      toast({
+        title: 'Cascade undone',
+        description: skipped > 0
+          ? `Restored ${result.restored_count} ${result.restored_count === 1 ? 'shift' : 'shifts'} · ${skipped} skipped (changed since)`
+          : `Restored ${result.restored_count} ${result.restored_count === 1 ? 'shift' : 'shifts'}.`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({
+      id,
+      cascade = false,
+      driftedShiftIds = [],
+      notify = false,
+      ...updates
+    }: Partial<ShiftTemplate> & {
+      id: string;
+      cascade?: boolean;
+      driftedShiftIds?: string[];
+      notify?: boolean;
+    }) => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      // One RPC, not a client-side loop: the template row and the shift rows
+      // land in the same transaction, so there is no window where one has
+      // applied and the other has not — which is the whole complaint being
+      // fixed here, under a different trigger.
+      const { data, error } = await supabase.rpc('update_shift_template_with_cascade', {
+        p_template_id: id,
+        p_restaurant_id: restaurantId,
+        p_name: updates.name,
+        p_position: updates.position,
+        p_area: updates.area ?? null,
+        p_days: updates.days,
+        p_break_duration: updates.break_duration,
+        p_capacity: updates.capacity,
+        p_start_time: updates.start_time,
+        p_end_time: updates.end_time,
+        p_cascade: cascade,
+        p_drifted_shift_ids: driftedShiftIds,
+      });
+      if (error) throw error;
+
+      const result = data as {
+        batch_id: string | null;
+        updated_count: number;
+        published_shift_ids: string[];
+        skipped_count: number;
+      };
+      return { ...result, notify };
+    },
+    onSuccess: (result) => {
+      invalidateAllStatuses();
+      queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+      queryClient.invalidateQueries({ queryKey: ['template-linked-shifts', restaurantId] });
+
+      // Fire-and-forget, one invoke per moved published shift. `invoke`
+      // RESOLVES with { data, error } on HTTP failure rather than rejecting,
+      // so both branches are handled and neither surfaces: the cascade already
+      // succeeded, and a failed email must not read as a failed save.
+      if (result.notify) {
+        for (const shiftId of result.published_shift_ids ?? []) {
+          supabase.functions
+            .invoke('send-shift-notification', { body: { shiftId, action: 'modified' } })
+            .then(({ error }) => {
+              if (error) console.warn('template-cascade notify failed', { shiftId, error });
+            })
+            .catch((error) => {
+              console.warn('template-cascade notify failed', { shiftId, error });
+            });
+        }
+      }
+
+      if (result.updated_count === 0 || !result.batch_id) {
+        toast({ title: 'Template updated' });
+        return;
+      }
+
+      const batchId = result.batch_id;
+      toast({
+        title: 'Template updated',
+        description: `${result.updated_count} ${result.updated_count === 1 ? 'shift' : 'shifts'} moved to the new hours.`,
+        action: (
+          <ToastAction
+            altText="Undo the shift hour changes"
+            onClick={() => undoMutation.mutate(batchId)}
+          >
+            Undo
+          </ToastAction>
+        ),
+        duration: 8000,
+      });
     },
     onError: (error: Error) => {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
@@ -249,6 +345,7 @@ export function useShiftTemplates(
     error,
     createTemplate: createMutation.mutateAsync,
     updateTemplate: updateMutation.mutateAsync,
+    isUndoingCascade: undoMutation.isPending,
     hideTemplate: hideMutation.mutateAsync,
     isHiding: hideMutation.isPending,
     restoreTemplate: restoreMutation.mutateAsync,

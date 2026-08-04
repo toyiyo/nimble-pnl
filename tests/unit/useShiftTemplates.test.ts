@@ -18,6 +18,8 @@ vi.mock('@/hooks/use-toast', () => ({
 vi.mock('@/integrations/supabase/client', () => ({
   supabase: {
     from: vi.fn(),
+    rpc: vi.fn(),
+    functions: { invoke: vi.fn() },
   },
 }));
 
@@ -693,17 +695,10 @@ describe('useShiftTemplates', () => {
 
     it('updateTemplate invalidates ["shift_templates", restaurantId]', async () => {
       const selectBuilder = makeSelectBuilder([]);
-      const single = vi.fn().mockResolvedValue({ data: { id: 't1' }, error: null });
-      const updateSelect = vi.fn().mockReturnValue({ single });
-      // updateMutation chains .eq('id', id).eq('restaurant_id', id).select().single()
-      const secondEq = vi.fn().mockReturnValue({ select: updateSelect });
-      const update = vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({ eq: secondEq, select: updateSelect }),
-      });
-
-      vi.mocked(supabase.from).mockReturnValue({
-        ...selectBuilder,
-        update,
+      vi.mocked(supabase.from).mockReturnValue(selectBuilder as any);
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        error: null,
       } as any);
 
       const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
@@ -717,6 +712,329 @@ describe('useShiftTemplates', () => {
 
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ['shift_templates', 'r1'],
+      });
+    });
+  });
+
+  describe('updateTemplate cascade RPC', () => {
+    beforeEach(() => {
+      const selectBuilder = makeSelectBuilder([]);
+      vi.mocked(supabase.from).mockReturnValue(selectBuilder as any);
+    });
+
+    it('calls update_shift_template_with_cascade with the template fields, cascade flag, and drifted ids', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({
+          id: 't1',
+          name: 'Morning',
+          position: 'Server',
+          area: 'Patio',
+          days: [1, 2],
+          break_duration: 30,
+          capacity: 2,
+          start_time: '08:00',
+          end_time: '12:00',
+          cascade: true,
+          driftedShiftIds: ['s1', 's2'],
+        });
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith('update_shift_template_with_cascade', {
+        p_template_id: 't1',
+        p_restaurant_id: 'r1',
+        p_name: 'Morning',
+        p_position: 'Server',
+        p_area: 'Patio',
+        p_days: [1, 2],
+        p_break_duration: 30,
+        p_capacity: 2,
+        p_start_time: '08:00',
+        p_end_time: '12:00',
+        p_cascade: true,
+        p_drifted_shift_ids: ['s1', 's2'],
+      });
+    });
+
+    it('defaults p_area to null, p_cascade to false, and p_drifted_shift_ids to [] when omitted', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({ id: 't1', name: 'Morning' });
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith(
+        'update_shift_template_with_cascade',
+        expect.objectContaining({
+          p_area: null,
+          p_cascade: false,
+          p_drifted_shift_ids: [],
+        }),
+      );
+    });
+
+    it('shows a plain "Template updated" toast (no Undo action) when updated_count is 0', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: { batch_id: null, updated_count: 0, published_shift_ids: [], skipped_count: 0 },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({ id: 't1', name: 'Morning' });
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith({ title: 'Template updated' });
+    });
+
+    it('shows the moved-shifts toast with an Undo action when the cascade updates shifts', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: {
+          batch_id: 'batch-1',
+          updated_count: 3,
+          published_shift_ids: [],
+          skipped_count: 0,
+        },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({ id: 't1', name: 'Morning', cascade: true });
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Template updated',
+          description: '3 shifts moved to the new hours.',
+          duration: 8000,
+          action: expect.anything(),
+        }),
+      );
+    });
+
+    it('invokes send-shift-notification with action "modified" for each published shift when notify is true', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: {
+          batch_id: 'batch-1',
+          updated_count: 2,
+          published_shift_ids: ['s1', 's2'],
+          skipped_count: 0,
+        },
+        error: null,
+      } as any);
+      vi.mocked(supabase.functions.invoke).mockResolvedValue({ data: null, error: null } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({
+          id: 't1',
+          name: 'Morning',
+          cascade: true,
+          notify: true,
+        });
+      });
+
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('send-shift-notification', {
+        body: { shiftId: 's1', action: 'modified' },
+      });
+      expect(supabase.functions.invoke).toHaveBeenCalledWith('send-shift-notification', {
+        body: { shiftId: 's2', action: 'modified' },
+      });
+    });
+
+    it('does not invoke send-shift-notification when notify is false', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: {
+          batch_id: 'batch-1',
+          updated_count: 1,
+          published_shift_ids: ['s1'],
+          skipped_count: 0,
+        },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({ id: 't1', name: 'Morning', cascade: true });
+      });
+
+      expect(supabase.functions.invoke).not.toHaveBeenCalled();
+    });
+
+    it('a failed notification does not surface an error toast — the save already succeeded', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: {
+          batch_id: 'batch-1',
+          updated_count: 1,
+          published_shift_ids: ['s1'],
+          skipped_count: 0,
+        },
+        error: null,
+      } as any);
+      vi.mocked(supabase.functions.invoke).mockResolvedValue({
+        data: null,
+        error: new Error('edge function boom'),
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({
+          id: 't1',
+          name: 'Morning',
+          cascade: true,
+          notify: true,
+        });
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Template updated' }),
+      );
+      expect(toastSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ variant: 'destructive' }),
+      );
+    });
+  });
+
+  describe('undoCascade (via the Undo toast action)', () => {
+    beforeEach(() => {
+      const selectBuilder = makeSelectBuilder([]);
+      vi.mocked(supabase.from).mockReturnValue(selectBuilder as any);
+    });
+
+    async function triggerCascadeAndClickUndo(restaurantId = 'r1') {
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: {
+          batch_id: 'batch-1',
+          updated_count: 2,
+          published_shift_ids: [],
+          skipped_count: 0,
+        },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates(restaurantId), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({ id: 't1', name: 'Morning', cascade: true });
+      });
+
+      const toastCall = toastSpy.mock.calls.find(
+        ([arg]) => arg.title === 'Template updated' && arg.action,
+      );
+      expect(toastCall).toBeDefined();
+      const undoAction = toastCall![0].action;
+
+      return { result, undoAction };
+    }
+
+    it('calls undo_template_hours_cascade with the batch id and restaurant id', async () => {
+      const { undoAction } = await triggerCascadeAndClickUndo();
+
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: { restored_count: 2, changed_since_count: 0, deleted_count: 0 },
+        error: null,
+      } as any);
+
+      await act(async () => {
+        undoAction.props.onClick();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(supabase.rpc).toHaveBeenCalledWith('undo_template_hours_cascade', {
+        p_batch_id: 'batch-1',
+        p_restaurant_id: 'r1',
+      });
+    });
+
+    it('reports full success honestly when nothing was skipped', async () => {
+      const { undoAction } = await triggerCascadeAndClickUndo();
+
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: { restored_count: 2, changed_since_count: 0, deleted_count: 0 },
+        error: null,
+      } as any);
+
+      await act(async () => {
+        undoAction.props.onClick();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Cascade undone',
+          description: 'Restored 2 shifts.',
+        }),
+      );
+    });
+
+    it('reports honestly when some shifts changed or were deleted since the cascade', async () => {
+      const { undoAction } = await triggerCascadeAndClickUndo();
+
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: { restored_count: 1, changed_since_count: 1, deleted_count: 1 },
+        error: null,
+      } as any);
+
+      await act(async () => {
+        undoAction.props.onClick();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Cascade undone',
+          description: 'Restored 1 shift · 2 skipped (changed since)',
+        }),
+      );
+    });
+
+    it('invalidates shifts and template-linked-shifts queries after undo', async () => {
+      const { undoAction } = await triggerCascadeAndClickUndo();
+
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: { restored_count: 2, changed_since_count: 0, deleted_count: 0 },
+        error: null,
+      } as any);
+
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+
+      await act(async () => {
+        undoAction.props.onClick();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['shifts', 'r1'] });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ['template-linked-shifts', 'r1'],
       });
     });
   });

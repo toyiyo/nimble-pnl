@@ -73,10 +73,13 @@ SELECT is(
   'a drain tick on an empty database applies 0 rows'
 );
 
--- Test 6: that complete, error-free, 0-row tick retired the cron job.
+-- Test 6: a converged tick does NOT retire the job. Convergence is not a
+-- terminal state — the next rule a user creates lowers the watermark and makes
+-- their whole history a candidate again, and this job is the only driver that
+-- would notice.
 SELECT ok(
-  NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain'),
-  'a converged (complete + clean + 0-row) tick unschedules the drain job'
+  EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain'),
+  'a converged (complete + clean + 0-row) tick leaves the drain job scheduled'
 );
 
 -- ---------------------------------------------------------------------------

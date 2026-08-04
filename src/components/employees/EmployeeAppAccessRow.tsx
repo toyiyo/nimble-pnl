@@ -2,6 +2,8 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RolePicker } from '@/components/roles/RolePicker';
+import { RoleSelect } from '@/components/roles/RoleSelect';
+import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
 import { useRestaurantMembers } from '@/hooks/useRestaurantMembers';
 import type { RoleWithGrants } from '@/hooks/useRoles';
 import { isInternalTeamRole } from '@/lib/permissions/roleMembership';
@@ -48,8 +50,11 @@ export function EmployeeAppAccessRow({
   restaurantId,
   callerRole,
   employee,
+  email,
   grantAppAccess,
   onGrantAppAccessChange,
+  inviteRole,
+  onInviteRoleChange,
 }: EmployeeAppAccessRowProps) {
   const { data: members, isLoading, isError } = useRestaurantMembers(restaurantId);
 
@@ -111,7 +116,13 @@ export function EmployeeAppAccessRow({
   // confident lie about someone with full access. A null callerRole (e.g. a
   // restaurant-context mismatch) gets the same treatment: we don't know it's
   // safe to say "no account", so say nothing.
-  if (!isInternalTeamRole(callerRole)) return null;
+  //
+  // The `!callerRole ||` half narrows callerRole to non-null for the rest of
+  // this branch (isInternalTeamRole itself returns a plain boolean, not a
+  // type predicate) — RoleSelect below requires a definite Role.
+  if (!callerRole || !isInternalTeamRole(callerRole)) return null;
+
+  const inviteLabel = inviteRole?.name ?? ROLE_METADATA.staff.label;
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
@@ -121,19 +132,45 @@ export function EmployeeAppAccessRow({
       <p className="text-[13px] text-muted-foreground">No access</p>
       <div className="flex items-center justify-between">
         <Label
-          htmlFor="employeeAppAccessInvite"
+          htmlFor="grantAppAccess"
           className="text-[14px] font-medium text-foreground cursor-pointer"
         >
-          Invite to the app
+          Invite to the employee app
         </Label>
         <Switch
-          id="employeeAppAccessInvite"
+          id="grantAppAccess"
           checked={grantAppAccess}
-          onCheckedChange={onGrantAppAccessChange}
-          className="data-[state=checked]:bg-foreground"
-          aria-label="Invite to the app"
+          // aria-disabled rather than disabled: a disabled Switch leaves
+          // the tab order, so a keyboard user never hears why it is off.
+          aria-disabled={!email.trim() ? true : undefined}
+          aria-describedby="grantAppAccessHint"
+          onCheckedChange={(checked) => {
+            if (!email.trim()) return;
+            onGrantAppAccessChange(checked);
+          }}
+          className="data-[state=checked]:bg-foreground aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
+          aria-label="Invite to the employee app"
         />
       </div>
+      <p id="grantAppAccessHint" className="text-[13px] text-muted-foreground">
+        {!email.trim()
+          ? 'Add an email address to enable.'
+          : inviteRole?.description ??
+            'Lets them clock in, view their own schedule, and request time off from their phone.'}
+      </p>
+      {grantAppAccess && email.trim() && (
+        <>
+          <RoleSelect
+            restaurantId={restaurantId}
+            callerRole={callerRole}
+            value={inviteRole?.id ?? null}
+            onSelect={onInviteRoleChange}
+            triggerText={inviteLabel}
+            triggerLabel={`Invite as ${inviteLabel}. Change role`}
+          />
+          {inviteRole && <RoleAreaChips areas={inviteRole.role_areas} />}
+        </>
+      )}
     </div>
   );
 }

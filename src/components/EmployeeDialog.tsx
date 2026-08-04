@@ -45,6 +45,7 @@ import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
 import { isActiveForStatus } from '@/utils/employeeFilters';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
 import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { CUSTOM_ROLE } from '@/lib/permissions/invitations';
 import { EmployeeAppAccessRow } from '@/components/employees/EmployeeAppAccessRow';
 import type { RoleWithGrants } from '@/hooks/useRoles';
 
@@ -60,8 +61,13 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const [email, setEmail] = useState('');
   // Access is opt-in and separate from the email field. Typing an email used to
   // silently provision a staff login — that unlabelled side effect is the bug
-  // this switch exists to remove.
-  const [grantAppAccess, setGrantAppAccess] = useState(false);
+  // this switch exists to remove. Drives both the create-mode invite (below)
+  // and the EmployeeAppAccessRow's own switch — there is only one decision
+  // to make about a given email, not two.
+  const [appAccessGrant, setAppAccessGrant] = useState(false);
+  // The role chosen in EmployeeAppAccessRow's picker. null means "unchosen" —
+  // the invite payload then defaults to staff, same as before this picker existed.
+  const [appAccessInviteRole, setAppAccessInviteRole] = useState<RoleWithGrants | null>(null);
   // Offered instead of inviting when the typed email already belongs to a team
   // member — linking avoids double-provisioning a second account for the same person.
   const [linkToExisting, setLinkToExisting] = useState(false);
@@ -79,10 +85,6 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // would gate the app-access row on the wrong permissions.
   const callerRole =
     selectedRestaurant?.restaurant_id === restaurantId ? selectedRestaurant.role : null;
-  // Local to the app-access row — kept separate from `grantAppAccess` above,
-  // which drives the create-mode invite flow and is left untouched here.
-  const [appAccessGrant, setAppAccessGrant] = useState(false);
-  const [appAccessInviteRole, setAppAccessInviteRole] = useState<RoleWithGrants | null>(null);
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
   const [area, setArea] = useState('');
@@ -237,14 +239,16 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // from the new value, so the correct panel re-appears on the next keystroke.
   const handleEmailChange = (value: string) => {
     setEmail(value);
-    setGrantAppAccess(false);
+    setAppAccessGrant(false);
+    setAppAccessInviteRole(null);
     setLinkToExisting(false);
   };
 
   const resetForm = () => {
     setName('');
     setEmail('');
-    setGrantAppAccess(false);
+    setAppAccessGrant(false);
+    setAppAccessInviteRole(null);
     setLinkToExisting(false);
     setPhone('');
     setPosition('Server');
@@ -432,13 +436,18 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
         } else {
           toast({ title: 'Employee created', description: `${name} was added.` });
         }
-      } else if (grantAppAccess && email?.trim()) {
+      } else if (appAccessGrant && email?.trim()) {
+        // roleId must be ABSENT (not undefined) for a non-custom role —
+        // send-team-invitation/index.ts:111 rejects the pairing when
+        // role !== CUSTOM_ROLE && roleId.
+        const isCustomRole = appAccessInviteRole && appAccessInviteRole.legacy_role === null;
         supabase.functions.invoke('send-team-invitation', {
           body: {
             restaurantId: restaurantId,
             email: email.trim(),
-            role: 'staff',
+            role: isCustomRole ? CUSTOM_ROLE : (appAccessInviteRole?.legacy_role ?? 'staff'),
             employeeId: newEmployee.id, // Pass employee ID for linking
+            ...(isCustomRole ? { roleId: appAccessInviteRole.id } : {}),
           },
         }).then(({ error }) => {
           if (error) {
@@ -1118,18 +1127,24 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                 </div>
               </div>
 
-              <EmployeeAppAccessRow
-                restaurantId={restaurantId}
-                callerRole={callerRole}
-                employee={employee}
-                email={email}
-                grantAppAccess={appAccessGrant}
-                onGrantAppAccessChange={setAppAccessGrant}
-                inviteRole={appAccessInviteRole}
-                onInviteRoleChange={setAppAccessInviteRole}
-              />
+              {/* An existing member matching the typed email offers linking
+                  instead — the invite switch below would double-provision
+                  the same person, so the row is skipped entirely rather than
+                  showing both options. */}
+              {!(isCreateMode && existingMember) && (
+                <EmployeeAppAccessRow
+                  restaurantId={restaurantId}
+                  callerRole={callerRole}
+                  employee={employee}
+                  email={email}
+                  grantAppAccess={appAccessGrant}
+                  onGrantAppAccessChange={setAppAccessGrant}
+                  inviteRole={appAccessInviteRole}
+                  onInviteRoleChange={setAppAccessInviteRole}
+                />
+              )}
 
-              {isCreateMode && (existingMember ? (
+              {isCreateMode && existingMember && (
                 <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
                   <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-2.5">
                     <AlertTriangle className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
@@ -1159,34 +1174,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                     />
                   </div>
                 </div>
-              ) : (
-                <div className="flex items-center justify-between rounded-lg border border-border/40 bg-muted/30 p-3">
-                  <div className="space-y-0.5 pr-4">
-                    <Label htmlFor="grantAppAccess" className="text-[14px] font-medium text-foreground cursor-pointer">
-                      Invite to the employee app
-                    </Label>
-                    <p id="grantAppAccessHint" className="text-[13px] text-muted-foreground">
-                      {email.trim()
-                        ? 'Lets them clock in, view their own schedule, and request time off from their phone. They will not see sales, costs, payroll, or other employees.'
-                        : 'Add an email address to enable.'}
-                    </p>
-                  </div>
-                  <Switch
-                    id="grantAppAccess"
-                    checked={grantAppAccess}
-                    // aria-disabled rather than disabled: a disabled Switch leaves
-                    // the tab order, so a keyboard user never hears why it is off.
-                    aria-disabled={!email.trim() ? true : undefined}
-                    aria-describedby="grantAppAccessHint"
-                    onCheckedChange={(checked) => {
-                      if (!email.trim()) return;
-                      setGrantAppAccess(checked);
-                    }}
-                    className="data-[state=checked]:bg-foreground aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
-                    aria-label="Invite to the employee app"
-                  />
-                </div>
-              ))}
+              )}
 
               <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-2">

@@ -432,7 +432,9 @@ describe('EmployeeDialog — app access row: visibility gate and the linked-acco
     renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
 
     expect(await screen.findByText(/no access/i)).toBeInTheDocument();
-    expect(screen.getByRole('switch', { name: /invite to the app/i })).toBeInTheDocument();
+    // Same switch/copy as the create-mode invite (Task 4 unified the two) —
+    // "Invite to the employee app", not the pre-unification "Invite to the app".
+    expect(screen.getByRole('switch', { name: /invite to the employee app/i })).toBeInTheDocument();
     // Position/Area also render as `combobox` — scope to the RolePicker's
     // accessible name (it never appears here) rather than any combobox.
     expect(screen.queryByRole('combobox', { name: /jamie rivera/i })).not.toBeInTheDocument();
@@ -465,5 +467,124 @@ describe('EmployeeDialog — app access row: visibility gate and the linked-acco
     // Position/Area also render as `combobox` — scope to the RolePicker's
     // accessible name (it never appears here) rather than any combobox.
     expect(screen.queryByRole('combobox', { name: /jamie rivera/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('EmployeeDialog — create-mode invite carries the chosen role', () => {
+  const roleRow = (over: Record<string, unknown>) => ({
+    id: 'x',
+    restaurant_id: 'r1',
+    name: 'Role',
+    description: null,
+    flavor: 'collaborator',
+    builtin: false,
+    legacy_role: null,
+    created_at: '',
+    role_areas: [],
+    role_flags: [],
+    memberCount: 0,
+    ...over,
+  });
+
+  beforeEach(() => {
+    createEmployeeMock.mockReset().mockResolvedValue({ id: 'new-emp' });
+    bulkMutateMock.mockReset().mockResolvedValue({ employees_updated: 1, rows_inserted: 7 });
+    toastMock.mockReset();
+    invokeMock.mockReset().mockResolvedValue({ data: null, error: null });
+    rpcMock.mockReset().mockResolvedValue({ data: null, error: null });
+    mockUseRestaurantMembers.mockReset().mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockUseRoles.mockReset().mockReturnValue({
+      roles: [
+        roleRow({ id: 'c1', name: 'Operations Lead', description: 'Runs the floor day to day.' }),
+        roleRow({
+          id: 'chef-role',
+          name: 'Chef',
+          legacy_role: 'chef',
+          builtin: true,
+          restaurant_id: null,
+          description: 'Manage recipes and inventory',
+        }),
+      ],
+      isLoading: false,
+      error: null,
+    });
+    mockUseRestaurantContext.mockReset().mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'owner' as const,
+        restaurant: { id: 'r1', timezone: 'UTC' },
+      },
+    });
+  });
+
+  async function fillAndArm() {
+    renderDialog();
+    await userEvent.type(screen.getByLabelText(/name/i), 'New Hire');
+    await userEvent.type(screen.getByLabelText(/hourly rate/i), '15');
+    await userEvent.type(screen.getByLabelText(/email/i), 'newhire@example.com');
+    await userEvent.click(screen.getByRole('switch', { name: /invite to the employee app/i }));
+  }
+
+  it('still invites as staff when nobody touches the picker', async () => {
+    await fillAndArm();
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        'send-team-invitation',
+        expect.objectContaining({
+          body: expect.objectContaining({ role: 'staff', employeeId: 'new-emp' }),
+        }),
+      ),
+    );
+    expect(invokeMock.mock.calls[0][1].body).not.toHaveProperty('roleId');
+  });
+
+  it('invites as the chosen custom role, carrying its roleId', async () => {
+    await fillAndArm();
+    await userEvent.click(screen.getByRole('combobox', { name: /invite as/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/i }));
+    // Selecting an option commits the value but leaves the popover open (no
+    // separate confirm step here, unlike RolePicker's footer flow) — close it
+    // before reaching for controls it would otherwise cover.
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        'send-team-invitation',
+        expect.objectContaining({
+          body: expect.objectContaining({ role: 'collaborator_custom', roleId: 'c1' }),
+        }),
+      ),
+    );
+  });
+
+  it('invites as a chosen built-in role without a roleId', async () => {
+    await fillAndArm();
+    await userEvent.click(screen.getByRole('combobox', { name: /invite as/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Chef/i }));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: /add employee/i }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith(
+        'send-team-invitation',
+        expect.objectContaining({
+          body: expect.objectContaining({ role: 'chef' }),
+        }),
+      ),
+    );
+    expect(invokeMock.mock.calls[0][1].body).not.toHaveProperty('roleId');
+  });
+
+  it('describes the role it will actually grant, not always staff', async () => {
+    await fillAndArm();
+    await userEvent.click(screen.getByRole('combobox', { name: /invite as/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/i }));
+    await userEvent.keyboard('{Escape}');
+
+    expect(await screen.findByText(/runs the floor day to day/i)).toBeInTheDocument();
+    expect(screen.queryByText(/will not see sales, costs, payroll/i)).not.toBeInTheDocument();
   });
 });

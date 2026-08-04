@@ -83,12 +83,11 @@ SELECT ok(
 );
 
 -- ---------------------------------------------------------------------------
--- Retirement guard (20260804090700). v_claimed = 0 is NOT sufficient to retire:
--- the sweeps claim FOR UPDATE SKIP LOCKED, so a concurrent sweep holding the
--- last candidates makes a tick claim 0 while the backlog is still there. The
--- drain now also proves no claimable candidate remains. Tests 9/10 pin both
--- directions — it must not retire with work left, and must still retire once
--- there is none (a guard that is too wide would never converge).
+-- Claim accounting (20260804090700). The sweeps claim FOR UPDATE SKIP LOCKED,
+-- so a tick can claim 0 rows while a backlog is still there — which is why
+-- total_count (claimed), not applied_count (matched), drives the drain loop.
+-- Tests 9/10 pin that the job survives both states: work waiting, and work
+-- exhausted.
 -- ---------------------------------------------------------------------------
 
 INSERT INTO restaurants (id, name) VALUES

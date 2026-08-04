@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
@@ -12,9 +14,15 @@ import { Label } from '@/components/ui/label';
 
 import { Clock } from 'lucide-react';
 
+import { useTemplateLinkedShifts } from '@/hooks/useTemplateLinkedShifts';
+import { useDebounce } from '@/hooks/useDebounce';
+
 import type { ShiftTemplate } from '@/types/scheduling';
 
 import { AreaCombobox } from '@/components/AreaCombobox';
+import { TemplateHoursImpact } from '@/components/scheduling/ShiftPlanner/TemplateHoursImpact';
+import { buildHoursChangeLedger } from '@/lib/scheduling/hoursChangeCopy';
+import { bucketTemplateShifts } from '@/lib/scheduling/templateHoursBuckets';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
@@ -32,9 +40,14 @@ interface TemplateFormDialogProps {
     days: number[];
     break_duration: number;
     capacity: number;
+    cascade: boolean;
+    driftedShiftIds: string[];
+    notify: boolean;
   }) => void | Promise<void>;
   positions: string[];
   restaurantId: string | null;
+  /** Already resolved through safeTz by the planner — never the browser's. */
+  restaurantTimezone: string;
 }
 
 export function TemplateFormDialog({
@@ -44,6 +57,7 @@ export function TemplateFormDialog({
   onSubmit,
   positions,
   restaurantId,
+  restaurantTimezone,
 }: Readonly<TemplateFormDialogProps>) {
   const isEdit = !!template;
 
@@ -79,6 +93,8 @@ export function TemplateFormDialog({
       setArea('');
     }
     setIsSubmitting(false);
+    setSelectedDriftIds(new Set());
+    setNotify(true);
   }, [template, open]);
 
   const toggleDay = (day: number) => {
@@ -89,8 +105,64 @@ export function TemplateFormDialog({
 
   const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0 && startTime !== endTime;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const [selectedDriftIds, setSelectedDriftIds] = useState<Set<string>>(new Set());
+  const [notify, setNotify] = useState(true);
+
+  const impact = useTemplateLinkedShifts(restaurantId, template?.id ?? null);
+
+  // Debounce the DERIVED state, never the controlled input — the field itself
+  // must stay instant or it feels broken. <input type="time"> fires change per
+  // component (hour, then minute), so an undebounced ledger would announce two
+  // or three incoherent intermediate states per edit.
+  const debouncedStart = useDebounce(startTime, 300);
+  const debouncedEnd = useDebounce(endTime, 300);
+
+  const buckets = useMemo(() => {
+    if (!template) return null;
+    return bucketTemplateShifts({
+      shifts: impact.shifts,
+      oldStart: template.start_time.substring(0, 5),
+      oldEnd: template.end_time.substring(0, 5),
+      newStart: debouncedStart,
+      newEnd: debouncedEnd,
+      tz: restaurantTimezone,
+      now: new Date(),
+    });
+  }, [template, impact.shifts, debouncedStart, debouncedEnd, restaurantTimezone]);
+
+  const ledger = useMemo(() => {
+    if (!template || !buckets) return null;
+    const selectedDrift = buckets.drifted.filter((d) => selectedDriftIds.has(d.shiftId));
+    return buildHoursChangeLedger({
+      oldStart: template.start_time.substring(0, 5),
+      oldEnd: template.end_time.substring(0, 5),
+      newStart: debouncedStart,
+      newEnd: debouncedEnd,
+      movingCount: buckets.moving.length,
+      publishedCount: buckets.publishedMovingIds.length,
+      pastCount: buckets.past.length,
+      lockedCount: buckets.locked.length,
+      driftedCount: buckets.drifted.length,
+      selectedDriftCount: selectedDrift.length,
+      hoursDelta:
+        buckets.movingHoursDelta + selectedDrift.reduce((sum, d) => sum + d.hoursDelta, 0),
+    });
+  }, [template, buckets, selectedDriftIds, debouncedStart, debouncedEnd]);
+
+  const affectedCount = ledger?.totalAffected ?? 0;
+  const hoursChanged = !!template &&
+    (startTime !== template.start_time.substring(0, 5) || endTime !== template.end_time.substring(0, 5));
+  const showCascadeChoice = isEdit && hoursChanged && affectedCount > 0 && !impact.isLoading && !impact.error;
+
+  const toggleDrift = useCallback((shiftId: string) => {
+    setSelectedDriftIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(shiftId)) next.delete(shiftId); else next.add(shiftId);
+      return next;
+    });
+  }, []);
+
+  const submitWith = async (cascade: boolean) => {
     if (!isValid || isSubmitting) return;
 
     setIsSubmitting(true);
@@ -104,13 +176,24 @@ export function TemplateFormDialog({
         days,
         break_duration: breakDuration,
         capacity,
+        cascade,
+        driftedShiftIds: cascade ? [...selectedDriftIds] : [],
+        notify: cascade && notify,
       });
       onOpenChange(false);
     } catch {
-      // Error handled by mutation's onError toast
+      // Error handled by the mutation's onError toast. The dialog stays open
+      // so the manager's input is not lost.
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Enter in a text field submits the form; the safe default is the
+    // cascading save when one is on offer, matching the primary button.
+    await submitWith(showCascadeChoice);
   };
 
   return (
@@ -125,9 +208,11 @@ export function TemplateFormDialog({
               <DialogTitle className="text-[17px] font-semibold text-foreground">
                 {isEdit ? 'Edit Shift Template' : 'Add Shift Template'}
               </DialogTitle>
-              <p className="text-[13px] text-muted-foreground mt-0.5">
+              {/* DialogDescription, not a plain <p> — Radix only wires
+                  aria-describedby off this component. */}
+              <DialogDescription className="text-[13px] text-muted-foreground mt-0.5">
                 {isEdit ? 'Update template details' : 'Define a recurring shift pattern'}
-              </p>
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
@@ -183,6 +268,27 @@ export function TemplateFormDialog({
               />
             </div>
           </div>
+
+          {/* Adjacent to the control that causes it, so cause and effect are
+              visible together. Only on edit, and only once the hours actually
+              differ from what is stored. */}
+          {isEdit && hoursChanged && template && (
+            <TemplateHoursImpact
+              ledger={ledger}
+              drifted={buckets?.drifted ?? []}
+              selectedDriftIds={selectedDriftIds}
+              onToggleDrift={toggleDrift}
+              publishedCount={buckets?.publishedMovingIds.length ?? 0}
+              notify={notify}
+              onNotifyChange={setNotify}
+              isLoading={impact.isLoading}
+              error={impact.error}
+              oldStart={template.start_time.substring(0, 5)}
+              oldEnd={template.end_time.substring(0, 5)}
+              newStart={debouncedStart}
+              newEnd={debouncedEnd}
+            />
+          )}
 
           {/* Position */}
           <div className="space-y-1.5">
@@ -291,26 +397,49 @@ export function TemplateFormDialog({
               How many employees are needed for this shift
             </p>
           </div>
+        </form>
 
-          {/* Footer */}
-          <div className="flex justify-end gap-2 pt-2">
+        {/* Sticky, matching DeleteTemplateDialog:245. Without this, the ledger
+            plus seven form fields pushes Save off-screen inside a
+            max-h-[80vh] dialog on a 375x667 viewport. */}
+        <DialogFooter className="sticky bottom-0 bg-background border-t border-border/40 px-6 py-4 gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => onOpenChange(false)}
+            className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            Cancel
+          </Button>
+
+          {showCascadeChoice && (
             <Button
               type="button"
-              variant="ghost"
-              onClick={() => onOpenChange(false)}
-              className="h-9 px-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
+              variant="outline"
               disabled={!isValid || isSubmitting}
-              className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+              onClick={() => { void submitWith(false); }}
+              className="h-9 px-4 rounded-lg text-[13px] font-medium"
             >
-              {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Template'}
+              Template only
             </Button>
-          </div>
-        </form>
+          )}
+
+          <Button
+            type="button"
+            // While the impact query resolves, the single button renders
+            // disabled rather than showing a label that is about to change
+            // under the pointer.
+            disabled={!isValid || isSubmitting || (isEdit && hoursChanged && impact.isLoading)}
+            onClick={() => { void submitWith(showCascadeChoice); }}
+            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+          >
+            {isSubmitting
+              ? 'Saving...'
+              : showCascadeChoice
+                ? `Save & update ${affectedCount} ${affectedCount === 1 ? 'shift' : 'shifts'}`
+                : isEdit ? 'Save changes' : 'Add Template'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

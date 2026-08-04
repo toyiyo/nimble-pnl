@@ -112,6 +112,44 @@ export function canAssignAnyRole(inviter: Role): boolean {
 }
 
 /**
+ * The columns of a `roles` row that decide whether it can be assigned to.
+ *
+ * Declared structurally rather than importing the hook's `Role`/`RoleWithGrants`
+ * type: this module is the permission matrix, and the data layer already
+ * depends on it. Naming the four fields it reads keeps the arrow pointing one
+ * way and lets a caller pass any row shape that carries them.
+ */
+export interface AssignableRoleRow {
+  /** Builtin role string for a builtin row, NULL for a custom one. */
+  legacy_role: string | null;
+  /** Owning restaurant; NULL for the platform's own builtin rows. */
+  restaurant_id: string | null;
+  builtin: boolean;
+  flavor: string;
+}
+
+/**
+ * Whether `role` is a custom role that `assign_membership_role` would actually
+ * accept for this restaurant — restaurant-scoped, non-builtin, and
+ * collaborator-flavored, the three predicates the RPC checks together
+ * (20260803100000_assign_membership_role_custom_role_flavor_check.sql:150-161).
+ *
+ * `restaurant_id` alone is not enough, and neither is a null `legacy_role`.
+ * `copy_role_to_restaurants` (20260730160000:114-115) inserts the copy with the
+ * source row's `flavor` verbatim, `builtin = false` and no `legacy_role` — so
+ * copying a platform-flavored role hands a restaurant a non-builtin row that
+ * looks exactly like a custom role from the `legacy_role` column alone. Offering
+ * it as an assignment target fails at commit time with a 42501 that reads as a
+ * permissions problem rather than "this role was never assignable".
+ *
+ * Shared with `RolePicker`'s custom-role list so the two cannot drift: the
+ * picker's options and this gate must answer the same question.
+ */
+export function isAssignableCustomRole(role: AssignableRoleRow, restaurantId: string): boolean {
+  return role.restaurant_id === restaurantId && !role.builtin && role.flavor === 'collaborator';
+}
+
+/**
  * Whether `inviter` may put someone into ONE specific role — the gate for an
  * "Assign people to this role" action, which names its target up front.
  *
@@ -120,19 +158,25 @@ export function canAssignAnyRole(inviter: Role): boolean {
  * `staff`) standing in front of a custom role, and to a manager standing in
  * front of Owner. Both would get a 42501 on every person they picked.
  *
- * `targetLegacyRole` is the `roles.legacy_role` column: the builtin role string
- * for a builtin row, NULL for a custom one — the same discriminator
- * `RolePicker` uses to decide what to send. The two branches mirror
- * `assign_membership_role`'s rule 6 exactly
- * (20260802110000_assign_membership_role.sql:158-190): custom roles are gated
- * by `can_invite_custom_role`, builtins by membership in `invitable_roles`.
+ * The branch is on `roles.legacy_role` — the same discriminator `RolePicker`
+ * uses to decide what to send — and the two arms mirror
+ * `assign_membership_role`'s rule 6: builtins by membership in
+ * `invitable_roles`, custom roles by `can_invite_custom_role` AND the role's own
+ * restaurant / builtin / flavor (see `isAssignableCustomRole`). Both halves of
+ * the custom arm are required; the caller's privilege does not make an
+ * unassignable role assignable.
  *
  * A consequence worth stating: nobody can assign `kiosk`, because it is in no
  * inviter's row. That is the server's answer too — a kiosk is provisioned from
  * device setup, not handed to a person.
  */
-export function canAssignTargetRole(inviter: Role, targetLegacyRole: string | null): boolean {
-  return targetLegacyRole === null
-    ? canInviteCustomRole(inviter)
-    : canInviteRole(inviter, targetLegacyRole as Role);
+export function canAssignTargetRole(
+  inviter: Role,
+  role: AssignableRoleRow,
+  restaurantId: string
+): boolean {
+  if (role.legacy_role !== null) {
+    return canInviteRole(inviter, role.legacy_role as Role);
+  }
+  return canInviteCustomRole(inviter) && isAssignableCustomRole(role, restaurantId);
 }

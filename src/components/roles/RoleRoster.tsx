@@ -44,7 +44,7 @@ export function RoleRoster({ role, restaurantId, callerRole }: RoleRosterProps) 
   // assign only staff) gets the button on a custom role, and a manager gets it
   // on Owner, and every person they pick comes back 42501.
   const canAssign = canAssignAnyRole(callerRole);
-  const canAssignIntoRole = canAssignTargetRole(callerRole, role.legacy_role);
+  const canAssignIntoRole = canAssignTargetRole(callerRole, role, restaurantId);
 
   const roster = useMemo(
     () => membersInRole(members ?? [], role.id, legacyRoleIndex(roles)),

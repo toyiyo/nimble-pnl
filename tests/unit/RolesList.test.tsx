@@ -57,6 +57,19 @@ function makeMember(overrides: Partial<RestaurantMember> = {}): RestaurantMember
   };
 }
 
+/**
+ * What makes a role assignable as `collaborator_custom`: owned by *this*
+ * restaurant, non-builtin, collaborator-flavored. All three are required — see
+ * `isAssignableCustomRole` — so spreading them together keeps a fixture from
+ * accidentally testing a row the server would reject.
+ */
+const CUSTOM_ROLE_FIELDS = {
+  restaurant_id: 'rest-1',
+  builtin: false,
+  flavor: 'collaborator',
+  legacy_role: null,
+} satisfies Partial<RoleWithGrants>;
+
 function makeRole(overrides: Partial<RoleWithGrants> = {}): RoleWithGrants {
   return {
     id: 'role-1',
@@ -175,7 +188,7 @@ describe('RolesList', () => {
   it('shows singular/plural member counts, and an action instead of a dead zero', () => {
     mockUseRoles({
       roles: [
-        makeRole({ id: 'r0', name: 'Zero People', memberCount: 0 }),
+        makeRole({ id: 'r0', name: 'Zero People', ...CUSTOM_ROLE_FIELDS, memberCount: 0 }),
         makeRole({ id: 'r1', name: 'One Person', memberCount: 1 }),
         makeRole({ id: 'r3', name: 'Three People', memberCount: 3 }),
       ],
@@ -251,7 +264,7 @@ describe('RolesList', () => {
   it('calls onOpenPeople when an empty role\'s "Assign people" action is clicked', async () => {
     const user = userEvent.setup();
     const onOpenPeople = vi.fn();
-    const role = makeRole({ id: 'r0', name: 'Weekend Supervisor', builtin: false, memberCount: 0 });
+    const role = makeRole({ id: 'r0', name: 'Weekend Supervisor', ...CUSTOM_ROLE_FIELDS, memberCount: 0 });
     mockUseRoles({ roles: [role] });
     render(
       <RolesList
@@ -292,6 +305,64 @@ describe('RolesList', () => {
     expect(
       screen.queryByRole('button', { name: /nobody is in kiosk yet\. assign people/i })
     ).not.toBeInTheDocument();
+  });
+
+  it('offers no action on a platform-flavored role the restaurant happens to own', () => {
+    // `copy_role_to_restaurants` copies the source row's flavor verbatim and
+    // inserts with builtin = false and no legacy_role, so this row is
+    // indistinguishable from a custom role by legacy_role alone — and
+    // `assign_membership_role` still refuses it. Offering "Assign people" here
+    // buys a 42501 for every person picked.
+    mockUseRoles({
+      roles: [
+        makeRole({
+          id: 'rp',
+          name: 'Regional Ops',
+          ...CUSTOM_ROLE_FIELDS,
+          flavor: 'platform',
+          memberCount: 0,
+        }),
+      ],
+    });
+    render(
+      <RolesList
+        restaurantId="rest-1"
+        callerRole="owner"
+        onSelectRole={vi.fn()}
+        onNewRole={vi.fn()}
+        onOpenPeople={vi.fn()}
+      />,
+      { wrapper }
+    );
+
+    expect(within(card('Regional Ops')).getByText('Nobody yet')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /assign people/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it('names the people door for what the caller can do there', () => {
+    // A manager may not assign anyone to Owner, so the Owner roster is a
+    // read-only list for them: every picker in it is disabled and there is no
+    // assign action. Promising "Manage" would be a label the panel cannot honor.
+    const owners = makeRole({ id: 'ro', name: 'Owner', legacy_role: 'owner', memberCount: 2 });
+    mockUseRoles({ roles: [owners] });
+
+    const { rerender } = render(
+      <RolesList restaurantId="rest-1" callerRole="manager" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />,
+      { wrapper }
+    );
+    expect(
+      within(card('Owner')).getByRole('button', { name: /2 people in owner\. see who's in this role/i })
+    ).toBeInTheDocument();
+
+    // Same card, a caller who can act on it.
+    rerender(
+      <RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />
+    );
+    expect(
+      within(card('Owner')).getByRole('button', { name: /2 people in owner\. manage who's in this role/i })
+    ).toBeInTheDocument();
   });
 
   it('renders role cards before the "New role" card, in query order', () => {

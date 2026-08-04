@@ -98,21 +98,30 @@ function RoleCardPeople({
   role,
   roster,
   count,
+  restaurantId,
   callerRole,
   onOpenPeople,
 }: {
   role: RoleWithGrants;
   roster: readonly RestaurantMember[];
   count: number;
+  restaurantId: string;
   callerRole: Role;
   onOpenPeople: () => void;
 }) {
+  const canAssign = canAssignTargetRole(callerRole, role, restaurantId);
+
   if (count > 0) {
+    // The same door, named for what is behind it. A caller who cannot assign
+    // into this role — a manager opening Owner — gets a roster whose every
+    // picker is disabled and no assign action; promising "Manage" would be a
+    // label the panel cannot honor.
+    const verb = canAssign ? 'Manage' : 'See';
     return (
       <button
         type="button"
         onClick={onOpenPeople}
-        aria-label={`${memberCountLabel(count)} in ${role.name}. Manage who's in this role`}
+        aria-label={`${memberCountLabel(count)} in ${role.name}. ${verb} who's in this role`}
         className={cn(
           'group/people inline-flex items-center gap-[7px] rounded-lg -mx-1 px-1 py-0.5',
           'hover:bg-muted hover:text-foreground transition-colors',
@@ -129,7 +138,7 @@ function RoleCardPeople({
     );
   }
 
-  if (canAssignTargetRole(callerRole, role.legacy_role)) {
+  if (canAssign) {
     // The case the user actually hit: an empty custom role used to show a dead
     // "0 members". Make it the loudest thing on the card.
     return (
@@ -150,8 +159,9 @@ function RoleCardPeople({
   }
 
   // Empty, and this caller cannot fill it — Kiosk for everyone (it is in no
-  // inviter's row), Owner for a manager. Offering the action here would only
-  // walk them to a panel that cannot offer it either.
+  // inviter's row), Owner for a manager, or a role `assign_membership_role`
+  // itself refuses. Offering the action here would only walk them to a panel
+  // that cannot offer it either.
   return <span>Nobody yet</span>;
 }
 
@@ -167,12 +177,14 @@ function RoleCardPeople({
 function RoleCard({
   role,
   roster,
+  restaurantId,
   callerRole,
   onClick,
   onOpenPeople,
 }: {
   role: RoleWithGrants;
   roster: readonly RestaurantMember[];
+  restaurantId: string;
   callerRole: Role;
   onClick: () => void;
   onOpenPeople: () => void;
@@ -219,6 +231,7 @@ function RoleCard({
           role={role}
           roster={roster}
           count={count}
+          restaurantId={restaurantId}
           callerRole={callerRole}
           onOpenPeople={onOpenPeople}
         />
@@ -297,6 +310,7 @@ export function RolesList({
           key={role.id}
           role={role}
           roster={rostersByRole.get(role.id) ?? EMPTY_ROSTER}
+          restaurantId={restaurantId}
           callerRole={callerRole}
           onClick={() => onSelectRole(role)}
           onOpenPeople={() => onOpenPeople(role)}

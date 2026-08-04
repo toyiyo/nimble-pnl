@@ -134,6 +134,13 @@ BEGIN
         SELECT * INTO v_split_result FROM split_pos_sale(v_sale.id, v_splits_with_amounts);
         IF NOT v_split_result.success THEN
           RAISE NOTICE 'Failed to split sale %: %', v_sale.id, v_split_result.message;
+          -- A rule genuinely matched this row, but applying it failed. Statement 1
+          -- already stamped this row at the current watermark; leaving that stamp
+          -- in place would permanently exclude it from every future sweep even
+          -- after the blocking condition (bad split config, etc.) is fixed. Reset
+          -- it so the row stays a candidate. See EXCEPTION handler below for the
+          -- same reasoning applied to the non-split path.
+          UPDATE unified_sales SET rules_evaluated_at = '-infinity' WHERE id = v_sale.id;
           CONTINUE;
         END IF;
       ELSE
@@ -150,6 +157,12 @@ BEGIN
       WHERE id = v_sale.rule_id;
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'Error categorizing sale %: %', v_sale.id, SQLERRM;
+      -- Same reasoning as the split-failure branch above: a rule matched, the
+      -- apply raised (FK violation, check constraint, etc.), but statement 1's
+      -- stamp is already on this row. Reset it so a transient failure does not
+      -- become a silent, permanent miscategorization once the negative cache
+      -- excludes the row from every subsequent sweep.
+      UPDATE unified_sales SET rules_evaluated_at = '-infinity' WHERE id = v_sale.id;
     END;
   END LOOP;
 
@@ -264,9 +277,8 @@ BEGIN
   -- bug.
   --
   -- This UPDATE fires reset_bank_transactions_rules_evaluated_at, but that
-  -- trigger only resets when description/amount/category_id/supplier_id
-  -- change, and this statement touches none of them -- so the stamp it just
-  -- wrote survives.
+  -- trigger only resets when description/amount/supplier_id change, and this
+  -- statement touches none of them -- so the stamp it just wrote survives.
   WITH batch AS MATERIALIZED (
     SELECT bt.id
     FROM bank_transactions bt
@@ -499,6 +511,13 @@ BEGIN
       WHERE id = v_transaction.rule_id;
     EXCEPTION WHEN OTHERS THEN
       RAISE NOTICE 'Error categorizing transaction %: %', v_transaction.id, SQLERRM;
+      -- A rule matched, but the apply raised (closed fiscal period, inactive
+      -- category, split-amount mismatch, etc.). Statement 1 already stamped
+      -- this row at the current watermark; leaving that stamp in place would
+      -- permanently exclude it from every future sweep even after the
+      -- blocking condition clears (period reopened, category reactivated).
+      -- Reset it so the row stays a candidate for retry.
+      UPDATE bank_transactions SET rules_evaluated_at = '-infinity' WHERE id = v_transaction.id;
     END;
   END LOOP;
 

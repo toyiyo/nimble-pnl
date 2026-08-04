@@ -27,7 +27,7 @@ COMMENT ON COLUMN public.unified_sales.rules_evaluated_at IS
 COMMENT ON COLUMN public.bank_transactions.rules_evaluated_at IS
   'Rule watermark this row was last evaluated against by '
   'apply_rules_to_bank_transactions_internal. -infinity means "never evaluated". '
-  'Reset to -infinity by trigger when description/amount change.';
+  'Reset to -infinity by trigger when description/amount/supplier_id change.';
 
 -- Reset the cache when the row's own match inputs change.
 --

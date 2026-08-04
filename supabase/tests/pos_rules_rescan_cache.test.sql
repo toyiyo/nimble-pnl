@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(27);
+SELECT plan(33);
 
 SET LOCAL role TO postgres;
 
@@ -409,6 +409,200 @@ SELECT hasnt_index(
 SELECT hasnt_index(
   'public', 'bank_transactions', 'idx_bank_transactions_rule_candidates',
   'superseded bank_transactions candidate index is gone'
+);
+
+-- ============================================================ RETRY REGRESSIONS
+-- These pin the review-driven fix: statement 1 stamps rules_evaluated_at
+-- BEFORE the matched rule is actually applied, so a per-row application
+-- failure must reset the stamp back to '-infinity' -- otherwise the negative
+-- cache would permanently hide a row whose failure was transient/fixable.
+
+-- ---------------------------------------------------------------- TEST 28-29
+-- POS split-failure retry: a split rule whose percentages don't sum to 100%
+-- fails split_pos_sale's amount-equality check. The row must stay a
+-- candidate, and once the rule is fixed, the next sweep must apply it.
+INSERT INTO unified_sales
+  (id, restaurant_id, pos_system, external_order_id, item_name, quantity,
+   sale_date, total_price, pos_category)
+VALUES
+  ('00000000-0000-0000-0000-0000000009db', '00000000-0000-0000-0000-0000000009a1',
+   'toast', 'ord-retry-split-1', 'Retry Split Item', 1, CURRENT_DATE, 100.00, 'Entrees')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, item_name_pattern,
+   item_name_match_type, is_active, auto_apply, priority, is_split_rule,
+   split_categories, created_at)
+VALUES
+  ('00000000-0000-0000-0000-0000000009ff', '00000000-0000-0000-0000-0000000009a1',
+   'Retry split (broken percentages)', 'pos_sales', '00000000-0000-0000-0000-0000000009c1',
+   'Retry Split Item', 'exact', true, true, 50, true,
+   jsonb_build_array(
+     jsonb_build_object('category_id', '00000000-0000-0000-0000-0000000009c1',
+                        'percentage', 30, 'description', 'food'),
+     jsonb_build_object('category_id', '00000000-0000-0000-0000-0000000009c2',
+                        'percentage', 30, 'description', 'other')),
+   clock_timestamp())
+ON CONFLICT (id) DO NOTHING;
+
+SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+  '00000000-0000-0000-0000-0000000009a1', 100);
+
+SELECT is(
+  (SELECT rules_evaluated_at FROM unified_sales
+    WHERE id = '00000000-0000-0000-0000-0000000009db'),
+  '-infinity'::timestamptz,
+  'a split rule that fails split_pos_sale leaves the row as a retry candidate'
+);
+
+UPDATE categorization_rules
+   SET split_categories = jsonb_build_array(
+     jsonb_build_object('category_id', '00000000-0000-0000-0000-0000000009c1',
+                        'percentage', 60, 'description', 'food'),
+     jsonb_build_object('category_id', '00000000-0000-0000-0000-0000000009c2',
+                        'percentage', 40, 'description', 'other'))
+ WHERE id = '00000000-0000-0000-0000-0000000009ff';
+
+SELECT is(
+  (SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+     '00000000-0000-0000-0000-0000000009a1', 100)),
+  1,
+  'fixing the split rule lets the retained candidate apply on the next sweep'
+);
+
+-- ---------------------------------------------------------------- TEST 30-31
+-- Bank exception retry: a rule pointing at an inactive category raises inside
+-- the apply loop. The row must stay a candidate, and once the category is
+-- reactivated, the next sweep must apply it.
+INSERT INTO chart_of_accounts
+  (id, restaurant_id, account_name, account_code, account_type, account_subtype,
+   normal_balance, is_active)
+VALUES
+  ('00000000-0000-0000-0000-0000000009c9', '00000000-0000-0000-0000-0000000009a1',
+   'Retry Test Category', '4999', 'revenue', 'sales', 'credit', false)
+ON CONFLICT (id) DO UPDATE SET is_active = EXCLUDED.is_active;
+
+INSERT INTO bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date,
+   description, amount)
+VALUES
+  ('00000000-0000-0000-0000-0000000009e2', '00000000-0000-0000-0000-0000000009a1',
+   '00000000-0000-0000-0000-0000000009b1', 'txn-retry-2', now(),
+   'RETRY TEST VENDOR', -75.00)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, description_pattern,
+   description_match_type, is_active, auto_apply, priority, created_at)
+VALUES
+  ('00000000-0000-0000-0000-0000000009fe', '00000000-0000-0000-0000-0000000009a1',
+   'Retry bank rule (inactive category)', 'bank_transactions',
+   '00000000-0000-0000-0000-0000000009c9', 'RETRY TEST VENDOR', 'exact',
+   true, true, 60, clock_timestamp())
+ON CONFLICT (id) DO NOTHING;
+
+SELECT applied_count FROM apply_rules_to_bank_transactions_internal(
+  '00000000-0000-0000-0000-0000000009a1', 100);
+
+SELECT is(
+  (SELECT rules_evaluated_at FROM bank_transactions
+    WHERE id = '00000000-0000-0000-0000-0000000009e2'),
+  '-infinity'::timestamptz,
+  'a rule pointing at an inactive category leaves the row as a retry candidate'
+);
+
+UPDATE chart_of_accounts SET is_active = true
+ WHERE id = '00000000-0000-0000-0000-0000000009c9';
+
+SELECT is(
+  (SELECT applied_count FROM apply_rules_to_bank_transactions_internal(
+     '00000000-0000-0000-0000-0000000009a1', 100)),
+  1,
+  'reactivating the category lets the retained candidate apply on the next sweep'
+);
+
+-- ============================================================ AGGREGATION SUPPRESSION
+-- Design spec test 8: the sweep must not recompute daily_sales when it
+-- applies zero rows, and must recompute it (to the same total, since
+-- aggregate_unified_sales_to_daily ignores category_id) when it applies one.
+-- Isolated restaurant to avoid interference from the heavily-mutated state of
+-- ...09a1 by this point in the file.
+--
+-- updated_at is transaction-frozen for the life of this pgTAP script (see
+-- TEST 12's comment), so it cannot distinguish "recomputed with an identical
+-- value" from "never touched". xmin can: it changes on any UPDATE/INSERT
+-- regardless of whether the written values differ from what was already there.
+INSERT INTO restaurants (id, name) VALUES
+  ('00000000-0000-0000-0000-0000000009a2', 'Rescan Test Restaurant 2')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO chart_of_accounts
+  (id, restaurant_id, account_name, account_code, account_type, account_subtype, normal_balance)
+VALUES
+  ('00000000-0000-0000-0000-0000000009c3', '00000000-0000-0000-0000-0000000009a2',
+   'Food Sales', '4000', 'revenue', 'sales', 'credit')
+ON CONFLICT (id) DO UPDATE SET account_name = EXCLUDED.account_name;
+
+INSERT INTO unified_sales
+  (id, restaurant_id, pos_system, external_order_id, item_name, quantity, sale_date,
+   total_price, pos_category)
+VALUES
+  ('00000000-0000-0000-0000-0000000009da', '00000000-0000-0000-0000-0000000009a2',
+   'toast', 'ord-agg-1', 'Unmatched Item', 1, CURRENT_DATE - 30, 12.00, 'Entrees')
+ON CONFLICT (id) DO NOTHING;
+
+-- Establish the baseline daily_sales row directly (not through the sweep) so
+-- there is something whose xmin can be observed as unchanged.
+SELECT aggregate_unified_sales_to_daily(
+  '00000000-0000-0000-0000-0000000009a2', (CURRENT_DATE - 30));
+
+SELECT set_config(
+  'rescan_test.daily_sales_xmin',
+  (SELECT xmin::text FROM daily_sales
+    WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a2'
+      AND date = (CURRENT_DATE - 30) AND source = 'unified_pos'),
+  true);
+
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, item_name_pattern,
+   item_name_match_type, is_active, auto_apply, priority)
+VALUES
+  ('00000000-0000-0000-0000-0000000009fc', '00000000-0000-0000-0000-0000000009a2',
+   'Never matches agg', 'pos_sales', '00000000-0000-0000-0000-0000000009c3',
+   'zzz-no-such-item', 'exact', true, true, 10)
+ON CONFLICT (id) DO NOTHING;
+
+SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+  '00000000-0000-0000-0000-0000000009a2', 100);
+
+-- ---------------------------------------------------------------- TEST 32
+SELECT is(
+  (SELECT xmin::text FROM daily_sales
+    WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a2'
+      AND date = (CURRENT_DATE - 30) AND source = 'unified_pos'),
+  current_setting('rescan_test.daily_sales_xmin'),
+  'a sweep that applies zero rows does not touch daily_sales'
+);
+
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, item_name_pattern,
+   item_name_match_type, is_active, auto_apply, priority, created_at)
+VALUES
+  ('00000000-0000-0000-0000-0000000009fd', '00000000-0000-0000-0000-0000000009a2',
+   'Matches unmatched item', 'pos_sales', '00000000-0000-0000-0000-0000000009c3',
+   'Unmatched Item', 'exact', true, true, 20, clock_timestamp())
+ON CONFLICT (id) DO NOTHING;
+
+SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+  '00000000-0000-0000-0000-0000000009a2', 100);
+
+-- ---------------------------------------------------------------- TEST 33
+SELECT is(
+  (SELECT gross_revenue FROM daily_sales
+    WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a2'
+      AND date = (CURRENT_DATE - 30) AND source = 'unified_pos'),
+  12.00::numeric,
+  'a sweep that applies one row recomputes daily_sales to the same total (category_id is ignored)'
 );
 
 SELECT * FROM finish();

@@ -41,8 +41,12 @@ BEGIN
     p_pos || '_connections')
   USING p_message, p_restaurant_id;
 EXCEPTION WHEN OTHERS THEN
-  -- Error bookkeeping must never mask the original failure or stop the loop.
-  NULL;
+  -- Error bookkeeping must never mask the original failure or stop the loop,
+  -- but a break in the bookkeeping itself (e.g. a future POS's _connections
+  -- table missing these columns) should still leave a trace in the logs
+  -- rather than vanishing silently.
+  RAISE WARNING 'record_pos_sync_error: failed to record % error for restaurant %: %',
+    p_pos, p_restaurant_id, SQLERRM;
 END;
 $$;
 

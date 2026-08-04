@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(6);
+SELECT plan(7);
 
 SET LOCAL role TO postgres;
 
@@ -84,6 +84,25 @@ SELECT ok(
   has_function_privilege('service_role',
     'public.record_pos_sync_error(text, uuid, text)', 'EXECUTE'),
   'service_role can execute record_pos_sync_error'
+);
+
+-- ---------------------------------------------------------------- TEST 7
+-- Regression guard: a future CREATE OR REPLACE sourced from an older migration
+-- would silently drop the query_canceled arm and restore the Feb 2026 failure
+-- mode. WHEN OTHERS does not cover it, so its absence is invisible until an
+-- outage.
+SELECT is(
+  (SELECT count(*)::int
+     FROM pg_proc p
+     JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname IN ('sync_all_toast_to_unified_sales',
+                        'sync_all_shift4_to_unified_sales',
+                        'sync_all_focus_to_unified_sales',
+                        'sync_all_focus_transactions_to_unified_sales')
+      AND p.prosrc LIKE '%WHEN query_canceled THEN%'),
+  4,
+  'all four sync_all_* wrappers handle query_canceled explicitly'
 );
 
 SELECT * FROM finish();

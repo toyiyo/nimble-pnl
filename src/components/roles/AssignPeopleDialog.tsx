@@ -54,6 +54,18 @@ function submitLabel(submitting: boolean, count: number): string {
   return `Assign ${count}`;
 }
 
+/**
+ * The members query refetches in the background while the dialog sits open, so
+ * someone ticked a moment ago may no longer be a candidate — another admin put
+ * them in this role, or made them an owner. The button promised a number; say
+ * when we assigned fewer rather than letting the toast quietly disagree.
+ */
+function droppedNoteText(dropped: number): string | undefined {
+  if (dropped <= 0) return undefined;
+  if (dropped === 1) return 'One person was already handled elsewhere and was skipped.';
+  return `${dropped} people were already handled elsewhere and were skipped.`;
+}
+
 export function AssignPeopleDialog({
   role,
   restaurantId,
@@ -108,16 +120,18 @@ export function AssignPeopleDialog({
 
   const submit = async () => {
     const chosen = candidates.filter((m) => selected.has(m.membershipId));
-    if (chosen.length === 0) return;
+    const droppedNote = droppedNoteText(selected.size - chosen.length);
 
-    // The members query can refetch in the background while the dialog sits
-    // open, so someone ticked a moment ago may no longer be a candidate —
-    // another admin put them in this role, or made them an owner. The button
-    // promised a number; say when we assigned fewer rather than letting the
-    // toast quietly disagree with it.
-    const dropped = selected.size - chosen.length;
-    const droppedNote =
-      dropped > 0 ? `${dropped} were already handled elsewhere and were skipped.` : undefined;
+    if (chosen.length === 0) {
+      // Everyone ticked has since left the candidate list, so `renderCandidates`
+      // no longer draws a row for any of them — there is nothing left to untick.
+      // Clearing the selection is the only way back to a button that means what
+      // it says; returning without it leaves an enabled "Assign N" that can
+      // never do anything.
+      setSelected(new Set());
+      if (droppedNote) toast({ title: 'Nothing left to assign', description: droppedNote });
+      return;
+    }
 
     // Mirrors RolePicker.tsx:133-141 — a builtin role names itself and carries
     // no role_id; a custom role is the bare literal plus its id.
@@ -134,14 +148,22 @@ export function AssignPeopleDialog({
     // The bare RPC rather than `useAssignRole`, so the four query invalidations
     // fire once below instead of once per person — the queries behind this
     // dialog are all mounted and would refetch on every iteration.
-    for (const member of chosen) {
-      try {
-        await assignMembershipRole({ membershipId: member.membershipId, ...payload });
-      } catch (err) {
-        failures.push({ member, message: assignRoleErrorMessage(err) });
+    //
+    // try/finally, not a bare loop: `close()` refuses every dismissal path
+    // while `submitting` is true, so a throw that skipped `setSubmitting(false)`
+    // would seal the dialog shut. Nothing in the loop throws today; the finally
+    // is what keeps that from being a future edit's problem.
+    try {
+      for (const member of chosen) {
+        try {
+          await assignMembershipRole({ membershipId: member.membershipId, ...payload });
+        } catch (err) {
+          failures.push({ member, message: assignRoleErrorMessage(err) });
+        }
       }
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitting(false);
     // Even a fully failed run refreshes: rule 5b's owner count and the invite
     // matrix are both read from data this dialog is showing, so a denial can
     // mean the screen is stale.

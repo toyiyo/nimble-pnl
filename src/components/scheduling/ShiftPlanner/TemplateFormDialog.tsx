@@ -20,9 +20,29 @@ import type { ShiftTemplate } from '@/types/scheduling';
 
 import { AreaCombobox } from '@/components/AreaCombobox';
 import { TemplateHoursImpact } from '@/components/scheduling/ShiftPlanner/TemplateHoursImpact';
+import { pluralize } from '@/lib/scheduling/deletionCopy';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
+
+/**
+ * Extracted so the JSX references one precomputed value instead of a nested
+ * ternary — the review rulebook forbids those outright.
+ */
+function buildSaveButtonLabel(params: {
+  isSubmitting: boolean;
+  showCascadeChoice: boolean;
+  affectedCount: number;
+  isEdit: boolean;
+}): string {
+  const { isSubmitting, showCascadeChoice, affectedCount, isEdit } = params;
+  if (isSubmitting) return 'Saving...';
+  if (showCascadeChoice) {
+    return `Save & update ${affectedCount} ${pluralize(affectedCount, 'shift', 'shifts')}`;
+  }
+  if (isEdit) return 'Save changes';
+  return 'Add Template';
+}
 
 interface TemplateFormDialogProps {
   open: boolean;
@@ -40,6 +60,8 @@ interface TemplateFormDialogProps {
     cascade: boolean;
     driftedShiftIds: string[];
     notify: boolean;
+    /** What the dialog promised on the save button, e.g. "Save & update 3 shifts". 0 when not cascading. */
+    promisedCount: number;
   }) => void | Promise<void>;
   positions: string[];
   restaurantId: string | null;
@@ -112,6 +134,7 @@ export function TemplateFormDialog({
     debouncedStart,
     debouncedEnd,
     affectedCount,
+    publishedCount,
     hoursChanged,
     showCascadeChoice,
   } = useTemplateHoursLedger(restaurantId, template, startTime, endTime, restaurantTimezone, selectedDriftIds);
@@ -141,6 +164,7 @@ export function TemplateFormDialog({
         cascade,
         driftedShiftIds: cascade ? [...selectedDriftIds] : [],
         notify: cascade && notify,
+        promisedCount: cascade ? affectedCount : 0,
       });
       onOpenChange(false);
     } catch {
@@ -240,7 +264,7 @@ export function TemplateFormDialog({
               drifted={buckets?.drifted ?? []}
               selectedDriftIds={selectedDriftIds}
               onToggleDrift={toggleDrift}
-              publishedCount={buckets?.publishedMovingIds.length ?? 0}
+              publishedCount={publishedCount}
               notify={notify}
               onNotifyChange={setNotify}
               isLoading={impact.isLoading}
@@ -395,11 +419,7 @@ export function TemplateFormDialog({
             onClick={() => { void submitWith(showCascadeChoice); }}
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
-            {isSubmitting
-              ? 'Saving...'
-              : showCascadeChoice
-                ? `Save & update ${affectedCount} ${affectedCount === 1 ? 'shift' : 'shifts'}`
-                : isEdit ? 'Save changes' : 'Add Template'}
+            {buildSaveButtonLabel({ isSubmitting, showCascadeChoice, affectedCount, isEdit })}
           </Button>
         </DialogFooter>
       </DialogContent>

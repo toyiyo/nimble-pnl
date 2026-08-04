@@ -159,15 +159,32 @@ SELECT max(GREATEST(cr.created_at, COALESCE(cr.updated_at, cr.created_at)))
   INTO v_rules_changed_at
 FROM public.categorization_rules cr
 WHERE cr.restaurant_id = p_restaurant_id
-  AND cr.is_active
-  AND cr.auto_apply
-  AND cr.applies_to IN ('pos_sales', 'both');
+  AND cr.is_active = true
+  AND (cr.applies_to = 'pos_sales' OR cr.applies_to = 'both');
 
 IF v_rules_changed_at IS NULL THEN
-  RETURN QUERY SELECT 0, 0;   -- no active rules: nothing can match
+  RETURN QUERY SELECT 0, 0;   -- no rule can match: nothing to evaluate
   RETURN;
 END IF;
 ```
+
+**The watermark predicate must be character-for-character the rule-selection
+predicate of the matcher** — `find_matching_rules_for_pos_sale` filters on
+`cr.is_active = true AND (cr.applies_to = 'pos_sales' OR cr.applies_to = 'both')`
+and **nothing else** (verified via `pg_get_functiondef` on production).
+Notably it does **not** filter on `auto_apply`. If the watermark query were
+narrower than the matcher's, a rule the matcher would apply could change
+without moving the watermark, and the negative cache would suppress a real
+match — silent, permanent miscategorisation. Narrower is unsafe; wider is
+merely wasteful. Today the distinction is dormant (production has zero active
+rules with `auto_apply = false`: 660 active `pos_sales` and 274 active
+`bank_transactions` rules, all `auto_apply = true`), which is exactly why it
+has to be written down — the first `auto_apply = false` rule someone creates
+would otherwise expose it. A pgTAP test pins the equality (§5, test 16).
+
+The `IS NULL` early return is therefore precisely "the matcher's rule set is
+empty for this restaurant", so returning `(0, 0)` without touching
+`unified_sales` is equivalent to running the old code to completion.
 
 Candidate predicate is `rules_evaluated_at < v_rules_changed_at`; rows are
 stamped **`= v_rules_changed_at`**, not `now()`. A rule committed after this
@@ -614,9 +631,18 @@ pgTAP (`supabase/tests/`):
     `authenticated`; `has_function_privilege('service_role', …, 'EXECUTE')` is
     true. Guards the §3.7 cross-tenant-write hole against a future migration
     re-granting by omission.
+16. **The watermark predicate is not narrower than the matcher's** (§3.2) — a
+    rule with `is_active = true`, `auto_apply = false`, `applies_to = 'pos_sales'`
+    that matches a stamped row still gets applied on the next sweep. Fails if
+    anyone re-adds `AND cr.auto_apply` to the watermark query. Bank equivalent
+    with `applies_to = 'bank_transactions'`.
 
-Plan-shape check: `EXPLAIN` the §3.3 statement and assert the matcher's
-`loops` equals the batch size, not the candidate count.
+Boundedness check (replaces an `EXPLAIN`-plan assertion, which pgTAP cannot
+express robustly): seed N ≫ 1 uncategorized candidates, run the sweep with
+`p_batch_limit = 1`, and assert exactly **one** row moved off `'-infinity'`.
+Under the old shape the matcher ran for all N; under the new shape the `LIMIT`
+is applied before the matcher, so exactly one row can be stamped. This is a
+direct behavioural proxy for "the `LIMIT` now bounds the work".
 
 Verification on production after deploy (read-only):
 `SELECT mean_exec_time FROM cron.job_run_details` for jobid 4 before/after, and

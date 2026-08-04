@@ -2084,3 +2084,33 @@
 - **Mistake:** Spent several tool calls trying to read a failing pgTAP job. `gh run view --log-failed` answered "run is still in progress; logs will be available when it is complete" (other jobs in the same run were still going). Falling back to `gh api .../logs` returned 14 MB across ~40 enormous lines, and anchored greps for the failure found nothing.
 - **Correction:** Two independent gotchas. (1) psql prints pgTAP results as query output, so every TAP line is **indented by one space** and padded — `grep '^not ok'` and `grep -c '^not ok'` silently match zero. Use unanchored `grep -aoE "not ok [0-9]+ - .{0,120}"` plus `grep -aoE "# Looks like you failed [0-9]+ test"`. (2) The job log is fetchable per-job even mid-run via `gh api repos/OWNER/REPO/actions/jobs/<job_id>/logs`; `--log-failed` is the part that blocks.
 - **Rule:** For a CI-only test failure, go straight for the assertion text, not the step. `gh api .../jobs/<id>/logs > /tmp/log.txt`, then `grep -a` for the framework's failure token — and use `-a` because these logs contain bytes that make grep treat them as binary and print nothing but "Binary file matches". To read context around a hit in a file with pathological line lengths, `python3 -c "d=open(f).read(); i=d.find(tok); print(repr(d[i-3000:i+1500]))"` beats any line-oriented tool.
+
+## Category: Testing / React Testing Library (continued)
+
+### [2026-08-04] A `<label>` wrapping a Radix Checkbox forwards the *click* but not the *name*
+- **Mistake:** A review flagged `<label>…<Checkbox/><MemberIdentity/></label>` as possibly inert, because Radix renders `<button role="checkbox">` rather than an `<input>`, and suggested pinning it with `getByRole('checkbox', { name: 'Sam Ortiz' })`. That assertion fails — but not for the reason the finding implied.
+- **Correction:** `<button>` *is* a labelable element, so the label's activation behaviour does forward a click on the row text to the checkbox. The finding was wrong about the defect. It was also wrong about the fix: implicit labelling contributes to the accessible name of form controls, and a Radix checkbox button does not pick the label text up, so `getByRole('checkbox', { name })` finds nothing while the click works fine.
+- **Rule:** These are two independent questions — *does clicking the label toggle it* and *does the control have an accessible name*. Answer them separately. To pin the click, select the checkbox positionally (`getAllByRole('checkbox')` in render order) and assert `toBeChecked()`; if you also want the name, put `aria-label`/`aria-labelledby` on the control itself rather than assuming the wrapper supplies it.
+
+### [2026-08-04] `vi.fn()` mocks can be called with zero arguments — destructure defensively
+- **Mistake:** Two new tests died on `TypeError: Cannot read properties of undefined (reading 'p_membership_id')` inside a mock implementation written as `rpc.mockImplementation(async (_fn, params) => params.p_membership_id === 'm2' ? … : …)`.
+- **Correction:** Logging the raw `mock.calls` from a throwaway spec showed the mock receiving a spurious extra invocation with **no arguments at all** alongside the real `["assign_membership_role", {…}]` call. Extracted a `calledMembershipId(params: unknown)` helper using optional chaining, and typed both implementations `(_fn: unknown, params: unknown)`.
+- **Rule:** A mock implementation runs for every call the module under test makes, including ones you didn't author. Read the argument list through a total function, never by destructuring a positional parameter you assume is present. When a mock throws on its own arguments, dump `mock.calls` before theorising.
+
+### [2026-08-04] An `expect` inside a mock implementation is swallowed by the code's own try/catch
+- **Mistake:** Asserted `expect(inFlight).toBe(0)` *inside* an rpc mock to prove the batch loop is sequential. The mutation under test wraps each call in `try/catch` to collect per-person failures, so a thrown assertion would have been captured as a "failure" and the test would have passed while proving nothing.
+- **Rule:** A mock body is running inside the system under test. Record a plain fact (`let overlapped = false`) and assert it *after* the promise resolves. Any assertion that can be caught by production code is not an assertion.
+
+## Category: CI / Workflows (continued)
+
+### [2026-08-04] Two workflow runs on one SHA: check whether a sibling run passed the same shard before diagnosing
+- **Mistake:** Started excavating a failing `E2E Tests (Shard 2/4)` job as if it were a regression from the branch.
+- **Correction:** The push triggered two full runs of the same workflow on the identical SHA — one `event: push`, one `event: pull_request`. Shard 2/4 **failed at 19m07s in the push run and passed at 14m10s in the pull_request run**, same commit, same shard, same tests. Both failures were `toHaveURL` timeouts in `permissions-roles.spec.ts`, a pre-existing collaborator-routing spec the branch never touched — the classic shape of two concurrent E2E suites, each with its own Supabase stack, contending on one runner.
+- **Rule:** Before reading a failing job's log, run `gh run list --commit <sha>` (or compare the run ids `gh pr checks` prints) and see whether the same job passed in a sibling run. Identical SHA + identical shard + opposite outcomes is load, not logic. Confirm with `gh run rerun <id> --failed` rather than editing code.
+
+## Category: TypeScript / React (continued)
+
+### [2026-08-04] `npm run typecheck` does not typecheck the tests
+- **Mistake:** Treated a clean `npm run typecheck` as covering a new `.test.tsx`.
+- **Correction:** `tsconfig.json` is a solution file (`"files": []` plus `references`), so a bare `npx tsc --noEmit` is a **no-op that exits 0**. The real check is `tsc -p tsconfig.app.json --noEmit`, and that project's `"include": ["src"]` excludes `tests/` entirely. A type error in a spec surfaces only when vitest transpiles it.
+- **Rule:** Green typecheck says nothing about test files in this repo. Run the tests. And never take `npx tsc --noEmit` at face value in a project with `references` — check whether the root config actually lists any files.

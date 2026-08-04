@@ -169,7 +169,10 @@ const Team = () => {
           </TabsContent>
 
           <TabsContent value="roles" role="tabpanel" aria-labelledby="roles-tab">
-            <RolesTab restaurantId={selectedRestaurant.restaurant_id} />
+            <RolesTab
+              restaurantId={selectedRestaurant.restaurant_id}
+              userRole={selectedRestaurant.role}
+            />
           </TabsContent>
 
           <TabsContent value="collaborators" role="tabpanel" aria-labelledby="collaborators-tab">

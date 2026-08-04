@@ -218,7 +218,10 @@ test.describe('Roles & Areas', () => {
     await page.getByRole('button', { name: /^save role$/i }).click();
 
     // ---- Back on the roles list: the new card shows exactly what was granted ----
-    const roleCard = page.getByRole('button', { name: new RegExp(roleName) });
+    // The card is an <article>, not a button: it holds two doors (the name
+    // block opens the definition, the footer opens who holds the role), and a
+    // button inside a button is invalid HTML.
+    const roleCard = page.getByRole('article', { name: new RegExp(roleName) });
     await expect(roleCard).toBeVisible();
     await expect(roleCard).toContainText(/inventory & purchasing/i);
     await expect(roleCard).toContainText(/· manage/i); // manage-level chip suffix

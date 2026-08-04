@@ -10,6 +10,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { MoreHorizontal, Trash2 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { RolePicker } from '@/components/roles/RolePicker';
+import { canAssignAnyRole } from '@/lib/permissions/invitations';
 import type { Role } from '@/lib/permissions/types';
 
 interface TeamMember {
@@ -35,8 +36,10 @@ export const TeamMembers = ({ restaurantId, userRole }: TeamMembersProps) => {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Derive from capability system — consistent with ROLE_CAPABILITIES['manage:team']
-  const canManageMembers = userRole === 'owner' || userRole === 'manager' || userRole === 'operations_manager';
+  // Derived from the invite matrix, which is what assign_membership_role
+  // actually enforces — a role with nowhere to assign gets a label, not a
+  // picker that returns 42501 for every choice.
+  const canManageMembers = canAssignAnyRole(userRole);
 
   useEffect(() => {
     fetchTeamMembers();

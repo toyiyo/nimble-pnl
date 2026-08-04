@@ -105,9 +105,9 @@ after the job has retired, nothing re-evaluates their history.
 
 ### Decisions taken
 
-1. **Cadence `*/5 * * * *`.** Matches the four existing POS rollups (jobids 4,
-   6, 30, 38 all run `*/5`). A user who creates a rule sees their history
-   recategorized within five minutes.
+1. **Cadence `*/5 * * * *`.** Matches the four existing POS rollups — jobids 4,
+   6, 30 and 38 all run `*/5` (prod `cron.job`, confirmed 2026-08-04). A user
+   who creates a rule sees their history recategorized within five minutes.
 2. **Keep the four inline sweep calls.** They are not redundant with the
    standing job — those callers suppress the insert trigger, so the inline call
    is what categorizes their rows *in the same transaction*. Removing them
@@ -143,6 +143,21 @@ existed **only** to gate retirement. With retirement gone it has no consumer, so
 it is deleted — which also removes a per-tick cross-join probe over both tables
 for every restaurant with an active rule. Net effect: a converged tick gets
 cheaper, not more expensive.
+
+One addition, not a removal: both restaurant loops
+([:102-108](../../../supabase/migrations/20260804090700_categorization_watermark_and_drain_convergence.sql:102),
+[:147-152](../../../supabase/migrations/20260804090700_categorization_watermark_and_drain_convergence.sql:147))
+currently do `FOR r IN SELECT DISTINCT cr.restaurant_id … ` with no `ORDER BY`,
+so the planner's row order decides who gets swept first. That is harmless for a
+job that retires; for a permanent job it is structural starvation — if the
+40-second budget is ever exhausted mid-tick, the restaurants the planner
+happens to return last are skipped on *every* tick, forever. Both loops gain
+`ORDER BY random()`, which costs nothing on a set this small (one row per
+restaurant with an active auto-apply rule) and gives every restaurant equal
+expected coverage per tick. A deterministic round-robin would need a
+last-swept column, i.e. a schema change, for no additional guarantee. Loop
+order is not observable by any assertion, so this does not make the pgTAP tests
+non-deterministic.
 
 The function keeps its name. Renaming would mean `DROP FUNCTION` + recreate,
 plus edits to the cron command, the pgTAP fixtures, and the generated
@@ -198,6 +213,27 @@ The codification. Four properties, each of which would have caught a real bug:
    `pos_system` reference.** This is the property that makes future POS
    integrations free. If someone adds `AND s.pos_system = 'toast'` as an
    optimization, this test fails and explains why.
+
+   Both text assertions strip SQL comments before matching:
+
+   ```sql
+   regexp_replace(
+     regexp_replace(pg_get_functiondef(p.oid), '/\*.*?\*/', '', 'gs'),
+     '--[^\n]*', '', 'g')
+   ```
+
+   Without stripping, the tests punish exactly the behaviour this codebase
+   rewards. `20260804090300_bounded_categorization_sweep.sql` explains its own
+   invariants in long prose comments
+   ([:116-129](../../../supabase/migrations/20260804090300_bounded_categorization_sweep.sql:116)),
+   and the migration written for *this* design will carry a comment saying "do
+   not add a `pos_system` filter here" — which would fail an unstripped match on
+   its own warning.
+
+   Text matching also cannot see a filter expressed some other way (a join
+   against a connection table, say). Assertion 4 is the behavioural twin that
+   catches those; 3 catches the literal predicate with a message that names the
+   reason. They are kept as a pair, not as alternatives.
 4. **A row with an unrecognized `pos_system` is swept.** The behavioural twin of
    (3): insert a `unified_sales` row with `pos_system = 'future_pos'` — a value
    no sync function, connection table, or edge function knows about — plus a
@@ -259,6 +295,15 @@ Bounded by construction: the function already carries
 both loops, so a tick cannot overlap the next one badly. Post-deploy
 verification (below) confirms ticks settle back to sub-second once the backlog
 clears.
+
+**Overlapping ticks are survivable.** pg_cron does not serialize runs of the
+same job, so a 120s-timeout tick on a 300s cadence could in principle overlap a
+successor. Nothing corrupts if it does: the sweeps claim candidates with
+`FOR UPDATE SKIP LOCKED`, so two ticks partition the backlog rather than
+duplicating work, and `rebuild_account_balances` is an idempotent recompute
+(`current_balance = compute_account_balance(id)`, not an increment —
+[20251019021231_942cf575-c06d-491f-9f5f-77c57b85d1a2.sql:61-84](../../../supabase/migrations/20251019021231_942cf575-c06d-491f-9f5f-77c57b85d1a2.sql:61)).
+The cost of overlap is redundant work and brief row-lock waits.
 
 **The watermark ⊇ matcher invariant still governs correctness.** The drain's
 restaurant selection filters on `is_active AND auto_apply`, while

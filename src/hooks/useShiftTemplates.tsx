@@ -8,6 +8,7 @@ import { ToastAction } from '@/components/ui/toast';
 import type { ShiftTemplate } from '@/types/scheduling';
 
 import { pluralize } from '@/lib/scheduling/deletionCopy';
+import { describeCascadeShortfall } from '@/lib/scheduling/hoursChangeCopy';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
@@ -175,12 +176,16 @@ export function useShiftTemplates(
       cascade = false,
       driftedShiftIds = [],
       notify = false,
+      promisedCount = 0,
       ...updates
     }: Partial<ShiftTemplate> & {
       id: string;
       cascade?: boolean;
       driftedShiftIds?: string[];
       notify?: boolean;
+      /** Ledger's totalAffected at the moment Save was clicked — used only to
+       * detect a save-time shortfall, never sent to the RPC. */
+      promisedCount?: number;
     }) => {
       if (!restaurantId) throw new Error('No restaurant selected');
 
@@ -210,7 +215,7 @@ export function useShiftTemplates(
         published_shift_ids: string[];
         skipped_count: number;
       };
-      return { ...result, notify };
+      return { ...result, notify, promisedCount };
     },
     onSuccess: (result) => {
       invalidateCascadeQueries();
@@ -238,9 +243,11 @@ export function useShiftTemplates(
       }
 
       const batchId = result.batch_id;
+      const baseDescription = `${result.updated_count} ${pluralize(result.updated_count, 'shift', 'shifts')} moved to the new hours.`;
+      const shortfall = describeCascadeShortfall(result.promisedCount, result.updated_count);
       toast({
         title: 'Template updated',
-        description: `${result.updated_count} ${pluralize(result.updated_count, 'shift', 'shifts')} moved to the new hours.`,
+        description: shortfall ? `${baseDescription} ${shortfall}` : baseDescription,
         action: (
           <ToastAction
             altText="Undo the shift hour changes"

@@ -644,13 +644,14 @@ export function ShiftPlannerTab({
     cascade: boolean;
     driftedShiftIds: string[];
     notify: boolean;
+    promisedCount: number;
   }) => {
     if (editingTemplate) {
       await updateTemplate({ id: editingTemplate.id, ...data });
     } else {
       // A brand-new template has no linked shifts, so the cascade fields are
       // meaningless on the insert path.
-      const { cascade: _cascade, driftedShiftIds: _drifted, notify: _notify, ...templateFields } = data;
+      const { cascade: _cascade, driftedShiftIds: _drifted, notify: _notify, promisedCount: _promisedCount, ...templateFields } = data;
       await createTemplate({
         ...templateFields,
         restaurant_id: restaurantId,

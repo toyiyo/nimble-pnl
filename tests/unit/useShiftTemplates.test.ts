@@ -830,6 +830,68 @@ describe('useShiftTemplates', () => {
       );
     });
 
+    it('appends the shortfall sentence when the cascade updated fewer shifts than the dialog promised', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: {
+          batch_id: 'batch-1',
+          updated_count: 2,
+          published_shift_ids: [],
+          skipped_count: 1,
+        },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({
+          id: 't1',
+          name: 'Morning',
+          cascade: true,
+          promisedCount: 3,
+        });
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Template updated',
+          description: '2 shifts moved to the new hours. You expected 3, but only 2 were still eligible when it saved.',
+        }),
+      );
+    });
+
+    it('does not append a shortfall sentence when the promised and updated counts match', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: {
+          batch_id: 'batch-1',
+          updated_count: 3,
+          published_shift_ids: [],
+          skipped_count: 0,
+        },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({
+          id: 't1',
+          name: 'Morning',
+          cascade: true,
+          promisedCount: 3,
+        });
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Template updated',
+          description: '3 shifts moved to the new hours.',
+        }),
+      );
+    });
+
     it('maps a 23505 (unique_violation) rejection to a friendly slot-collision message', async () => {
       const conflictError = Object.assign(new Error(
         'duplicate key value violates unique constraint "uq_shift_templates_active_slot"',

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(6);
+SELECT plan(7);
 
 SET LOCAL role TO postgres;
 
@@ -111,6 +111,12 @@ SELECT is(
     WHERE id = '00000000-0000-0000-0000-0000000009e1'),
   '2026-01-01T00:00:00Z'::timestamptz,
   'updating a non-match-input column leaves bank_transactions.rules_evaluated_at intact'
+);
+
+-- ---------------------------------------------------------------- TEST 7
+SELECT has_index(
+  'public', 'unified_sales', 'idx_unified_sales_rule_candidates_v2',
+  'partial candidate index on unified_sales exists'
 );
 
 SELECT * FROM finish();

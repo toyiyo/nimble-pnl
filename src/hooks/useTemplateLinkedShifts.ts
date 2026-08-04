@@ -22,7 +22,7 @@ async function fetchTemplateLinkedShifts(
   const [countResult, rowsResult] = await Promise.all([
     // Exact count of past shifts — PostgREST's row cap (default 1000) never
     // touches this, unlike fetching every row and counting client-side.
-    (supabase.from('shifts') as any)
+    supabase.from('shifts')
       .select('id', { count: 'exact', head: true })
       .eq('restaurant_id', restaurantId)
       .eq('shift_template_id', templateId)
@@ -30,7 +30,7 @@ async function fetchTemplateLinkedShifts(
     // Row data is bounded to future/current shifts only — an ascending
     // order on an unbounded historical join used to let PostgREST's cap
     // truncate exactly the future shifts the ledger needs to count.
-    (supabase.from('shifts') as any)
+    supabase.from('shifts')
       .select('id, start_time, end_time, is_published, locked, employee_id, employee:employees!employee_id(name)')
       .eq('restaurant_id', restaurantId)
       .eq('shift_template_id', templateId)
@@ -41,7 +41,7 @@ async function fetchTemplateLinkedShifts(
   if (countResult.error) throw countResult.error;
   if (rowsResult.error) throw rowsResult.error;
 
-  const shifts = (rowsResult.data ?? []).map((row: any): LinkedShift => ({
+  const shifts = (rowsResult.data ?? []).map((row): LinkedShift => ({
     id: row.id,
     start_time: row.start_time,
     end_time: row.end_time,

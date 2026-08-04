@@ -236,3 +236,113 @@ COMMENT ON FUNCTION public.update_shift_template_with_cascade(UUID, UUID, TEXT, 
   'hours, plus any drifted shifts named in p_drifted_shift_ids (re-validated '
   'server-side). Past and locked shifts are never touched. Tags its audit rows '
   'with a cascade_batch_id so undo_template_hours_cascade can revert the batch.';
+
+-- ---------------------------------------------------------------------------
+-- undo_template_hours_cascade
+-- ---------------------------------------------------------------------------
+--
+-- The cascade is reversible, which is why the dialog needs no acknowledgement
+-- checkbox. Two skip conditions are reported separately rather than lumped
+-- together, because they mean different things to the manager reading the toast.
+CREATE OR REPLACE FUNCTION public.undo_template_hours_cascade(
+  p_batch_id      UUID,
+  p_restaurant_id UUID
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_restored_count      INTEGER := 0;
+  v_changed_since_count INTEGER := 0;
+  v_deleted_count       INTEGER := 0;
+BEGIN
+  IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN
+    RAISE EXCEPTION 'Not authorized to edit scheduling for restaurant %', p_restaurant_id
+      USING ERRCODE = 'insufficient_privilege';
+  END IF;
+
+  -- LOAD-BEARING. Every predicate below scopes with
+  -- `cascade_batch_id IS NOT DISTINCT FROM p_batch_id` so that untagged rows --
+  -- including the ones log_shift_change writes -- are invisible to the revert.
+  -- With a NULL p_batch_id that same predicate would match every untagged row
+  -- in the table and unwind the entire audit log.
+  IF p_batch_id IS NULL THEN
+    RETURN jsonb_build_object(
+      'restored_count', 0, 'changed_since_count', 0, 'deleted_count', 0
+    );
+  END IF;
+
+  -- Deleted since. schedule_change_logs.shift_id is NOT a foreign key --
+  -- 20260617120000_fix_schedule_change_logs_delete_fk.sql:38-44 dropped the
+  -- constraint precisely so a 'deleted' audit row keeps the id of a shift that
+  -- no longer exists. So `shift_id IS NULL` never fires and NOT EXISTS is the
+  -- only correct probe.
+  SELECT count(*)::int INTO v_deleted_count
+  FROM public.schedule_change_logs l
+  WHERE l.cascade_batch_id IS NOT DISTINCT FROM p_batch_id
+    AND l.restaurant_id = p_restaurant_id
+    AND NOT EXISTS (SELECT 1 FROM public.shifts s WHERE s.id = l.shift_id);
+
+  -- Changed since: the row still exists but its times no longer match what the
+  -- cascade wrote, so someone edited it in between. Blindly restoring would
+  -- destroy a newer, deliberate edit.
+  SELECT count(*)::int INTO v_changed_since_count
+  FROM public.schedule_change_logs l
+  JOIN public.shifts s
+    ON s.id = l.shift_id
+   AND s.restaurant_id = p_restaurant_id
+  WHERE l.cascade_batch_id IS NOT DISTINCT FROM p_batch_id
+    AND l.restaurant_id = p_restaurant_id
+    AND (   s.start_time IS DISTINCT FROM (l.after_data->>'start_time')::timestamptz
+         OR s.end_time   IS DISTINCT FROM (l.after_data->>'end_time')::timestamptz);
+
+  WITH reverted AS (
+    UPDATE public.shifts s
+    SET start_time = (l.before_data->>'start_time')::timestamptz,
+        end_time   = (l.before_data->>'end_time')::timestamptz,
+        updated_at = now()
+    FROM public.schedule_change_logs l
+    WHERE l.cascade_batch_id IS NOT DISTINCT FROM p_batch_id
+      AND l.restaurant_id = p_restaurant_id
+      AND s.id = l.shift_id
+      AND s.restaurant_id = p_restaurant_id
+      AND s.start_time IS NOT DISTINCT FROM (l.after_data->>'start_time')::timestamptz
+      AND s.end_time   IS NOT DISTINCT FROM (l.after_data->>'end_time')::timestamptz
+    RETURNING s.id, s.employee_id,
+              l.after_data  AS undone_after,
+              l.before_data AS undone_before
+  ),
+  logged AS (
+    -- cascade_batch_id stays NULL on the undo's own rows. Tagging them with
+    -- p_batch_id would make a second Undo click try to revert the revert.
+    -- As written, a second click finds the original rows, sees current !=
+    -- after_data, and reports them as changed-since -- safe, and honest.
+    INSERT INTO public.schedule_change_logs (
+      restaurant_id, shift_id, employee_id, change_type, changed_by,
+      before_data, after_data, reason, cascade_batch_id
+    )
+    SELECT p_restaurant_id, r.id, r.employee_id, 'updated', auth.uid(),
+           r.undone_after, r.undone_before, 'Undo template hours cascade', NULL
+    FROM reverted r
+    RETURNING 1
+  )
+  SELECT count(*)::int INTO v_restored_count FROM reverted;
+
+  RETURN jsonb_build_object(
+    'restored_count',      v_restored_count,
+    'changed_since_count', v_changed_since_count,
+    'deleted_count',       v_deleted_count
+  );
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.undo_template_hours_cascade(UUID, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.undo_template_hours_cascade(UUID, UUID) TO authenticated, service_role;
+
+COMMENT ON FUNCTION public.undo_template_hours_cascade(UUID, UUID) IS
+  'Reverts the shifts moved by one update_shift_template_with_cascade call, '
+  'identified by cascade_batch_id, restoring each from its logged before_data. '
+  'Skips shifts edited or deleted since the cascade and reports those counts '
+  'separately.';

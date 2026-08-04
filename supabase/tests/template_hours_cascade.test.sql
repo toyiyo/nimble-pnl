@@ -24,7 +24,7 @@
 
 BEGIN;
 
-SELECT plan(22);
+SELECT plan(27);
 
 -- ============================================
 -- Setup
@@ -427,6 +427,74 @@ SELECT ok(
     'public.update_shift_template_with_cascade(uuid,uuid,text,text,text,integer[],integer,integer,time,time,boolean,uuid[])',
     'EXECUTE'),
   'anon cannot execute the cascade RPC'
+);
+
+-- ============================================
+-- Undo
+-- ============================================
+
+SELECT set_config('request.jwt.claims',
+  '{"sub":"a11ce000-0000-0000-0000-0000000ca001","role":"authenticated"}', true);
+
+-- b1 and b2 were both moved to 10:00 by call B. Mutate b1 afterwards so undo
+-- has one row it must refuse to restore and one it must restore.
+UPDATE shifts
+SET start_time = (((SELECT mon FROM test_config))::timestamp + interval '15 hours') AT TIME ZONE 'America/Chicago',
+    end_time   = (((SELECT mon FROM test_config))::timestamp + interval '23 hours') AT TIME ZONE 'America/Chicago'
+WHERE id = '11000000-0000-0000-0000-0000000000b1';
+
+CREATE TEMP TABLE undo_b AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM call_b),
+  'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+-- Test 23
+SELECT is(
+  (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000b2'),
+  '11:00'::time,
+  'undo restores the opted-in drifted shift to its pre-cascade time'
+);
+
+-- Test 24
+SELECT is(
+  (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000b1'),
+  '15:00'::time,
+  'undo refuses to overwrite a shift edited after the cascade'
+);
+
+-- Test 25
+SELECT is(
+  (SELECT (result->>'changed_since_count')::int FROM undo_b),
+  1,
+  'undo reports the changed-since skip rather than lumping it into restored'
+);
+
+-- Test 26 -- a NULL batch id must revert NOTHING. With `IS NOT DISTINCT FROM`
+-- alone, NULL would match every untagged row in the table and unwind the entire
+-- audit log, so the guard is load-bearing, not defensive.
+SELECT is(
+  (SELECT (result->>'restored_count')::int FROM (
+    SELECT public.undo_template_hours_cascade(NULL, 'c0000000-0000-0000-0000-0000000ca001') AS result
+  ) q),
+  0,
+  'a NULL batch id reverts nothing'
+);
+
+-- Test 27 -- cross-tenant: the Tokyo owner names Tokyo (capability guard
+-- PASSES) but hands over Chicago's batch id.
+SELECT set_config('request.jwt.claims',
+  '{"sub":"a11ce000-0000-0000-0000-0000000ca002","role":"authenticated"}', true);
+
+SELECT is(
+  (SELECT (result->>'restored_count')::int FROM (
+    SELECT public.undo_template_hours_cascade(
+      (SELECT (result->>'batch_id')::uuid FROM call_a),
+      'c0000000-0000-0000-0000-0000000ca002'
+    ) AS result
+  ) q),
+  0,
+  'a batch id from another restaurant reverts nothing'
 );
 
 SELECT * FROM finish();

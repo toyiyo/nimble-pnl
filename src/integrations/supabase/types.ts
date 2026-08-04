@@ -6479,6 +6479,7 @@ export type Database = {
         Row: {
           after_data: Json | null
           before_data: Json | null
+          cascade_batch_id: string | null
           change_type: string
           changed_at: string
           changed_by: string
@@ -6492,6 +6493,7 @@ export type Database = {
         Insert: {
           after_data?: Json | null
           before_data?: Json | null
+          cascade_batch_id?: string | null
           change_type: string
           changed_at?: string
           changed_by: string
@@ -6505,6 +6507,7 @@ export type Database = {
         Update: {
           after_data?: Json | null
           before_data?: Json | null
+          cascade_batch_id?: string | null
           change_type?: string
           changed_at?: string
           changed_by?: string
@@ -9032,8 +9035,8 @@ export type Database = {
       }
       tip_split_items: {
         Row: {
-          applied_rule: Json | null
           amount: number
+          applied_rule: Json | null
           created_at: string | null
           employee_id: string
           hours_worked: number | null
@@ -9044,8 +9047,8 @@ export type Database = {
           tip_split_id: string
         }
         Insert: {
-          applied_rule?: Json | null
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id: string
           hours_worked?: number | null
@@ -9056,8 +9059,8 @@ export type Database = {
           tip_split_id: string
         }
         Update: {
-          applied_rule?: Json | null
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id?: string
           hours_worked?: number | null
@@ -10407,6 +10410,7 @@ export type Database = {
           elapsed_days: number
           institution_name: string
           restaurant_id: string
+          restaurant_timezone: string
           sent_stages: string[]
         }[]
       }
@@ -10419,6 +10423,7 @@ export type Database = {
           deactivated_at: string
           institution_name: string
           restaurant_id: string
+          restaurant_timezone: string
         }[]
       }
       bank_reauth_notice_recipients: {
@@ -11726,6 +11731,10 @@ export type Database = {
         | { Args: { "": string }; Returns: boolean[] }
       trigger_square_periodic_sync: { Args: never; Returns: undefined }
       unaccent: { Args: { "": string }; Returns: string }
+      undo_template_hours_cascade: {
+        Args: { p_batch_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
       unpublish_schedule: {
         Args: {
           p_reason?: string
@@ -11757,6 +11766,23 @@ export type Database = {
           locked_count: number
           updated_count: number
         }[]
+      }
+      update_shift_template_with_cascade: {
+        Args: {
+          p_area: string
+          p_break_duration: number
+          p_capacity: number
+          p_cascade: boolean
+          p_days: number[]
+          p_drifted_shift_ids: string[]
+          p_end_time: string
+          p_name: string
+          p_position: string
+          p_restaurant_id: string
+          p_start_time: string
+          p_template_id: string
+        }
+        Returns: Json
       }
       upsert_product_supplier: {
         Args: {

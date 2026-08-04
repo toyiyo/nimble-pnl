@@ -25,6 +25,7 @@ import {
 import { format } from 'date-fns';
 import { formatDateOnly, parseDateOnly } from '@/lib/dateOnly';
 import { utcTimeToLocalTime } from '@/lib/availabilityTimeUtils';
+import { safeTz } from '@/lib/restaurantClock';
 import { TimeOffRequest, EmployeeAvailability, AvailabilityException } from '@/types/scheduling';
 import {
   AlertDialog,
@@ -41,7 +42,7 @@ import { EnableNotificationsBanner } from '@/components/EnableNotificationsBanne
 const EmployeePortal = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
 
   const [timeOffDialogOpen, setTimeOffDialogOpen] = useState(false);
   const [availabilityDialogOpen, setAvailabilityDialogOpen] = useState(false);

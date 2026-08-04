@@ -13,9 +13,19 @@ import {
   ScheduleDayHeaderContent,
   TODAY_HEADER_CAP_RULE_CLASS,
 } from '@/pages/SchedulingDayHeaderContent';
+import { parseDateOnly } from '@/lib/dateOnly';
 
-const TODAY = new Date('2026-07-19T12:00:00Z');
-const OTHER_DAY = new Date('2026-07-14T12:00:00Z');
+// `day` is a calendar day (case (a) — see tz-sweep-common.md), the same as the
+// `weekDays` array `Scheduling.tsx` builds via `eachDayOfInterval`: a Date
+// anchored at LOCAL midnight, rendered with `format()`'s local fields. Anchoring
+// these fixtures at a UTC instant instead (`new Date('2026-07-19T12:00:00Z')`)
+// made the day itself ambiguous across zones — under a host east of UTC+12 that
+// instant's local calendar date is already the 20th, one day past what the
+// fixture name claims, which is what broke this test under Auckland. Building
+// via `parseDateOnly` keeps the fixture TZ-invariant, matching how the real
+// `day` prop is constructed.
+const TODAY = parseDateOnly('2026-07-19');
+const OTHER_DAY = parseDateOnly('2026-07-14');
 
 describe('TODAY_HEADER_CAP_RULE_CLASS', () => {
   it('is the 3px inset primary cap rule shadow utility', () => {

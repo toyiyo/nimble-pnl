@@ -103,7 +103,8 @@ describe('useSplhCore', () => {
 
     renderHook(() => useSplhCore('rest-1', 12), { wrapper: createWrapper() });
 
-    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'UTC', 12);
+    // safeTz falls back to the restaurant default (America/Chicago), not UTC.
+    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'America/Chicago', 12);
   });
 
   it('returns empty grid, null summary.actualSplh, and hasData:false when data is undefined (loading)', () => {

@@ -18,7 +18,7 @@
 
 BEGIN;
 
-SELECT plan(27);
+SELECT plan(29);
 
 SET LOCAL role TO postgres;
 
@@ -400,6 +400,17 @@ SELECT is(
   'cohort A picks up a day_1 notice already sent for this exact outage'
 );
 
+-- TZ sweep cluster F (.superpowers/sdd/tz-f-bank-reauth-brief.md,
+-- 20260731020000_bank_reauth_cohort_restaurant_timezone.sql): the worker's
+-- TS layer renders deactivated_at/data_current_through in the restaurant's
+-- own timezone, not the server's — cohort A must actually select it.
+SELECT is(
+  (SELECT restaurant_timezone FROM public.bank_reauth_cohort_a_candidates()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000198'),
+  (SELECT timezone FROM public.restaurants WHERE id = '00000000-0000-0000-0000-0000e0000199'),
+  'cohort A includes the restaurant''s own IANA timezone (restaurants.timezone), not a default the RPC invents'
+);
+
 -- ------------------------------------------------------------
 -- Cohort B — recovered. The core RED scenario for this task: the recovery
 -- notice's correlation key comes from bank_reauth_notices, not from
@@ -419,6 +430,14 @@ SELECT is(
      WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'),
   '2026-07-10T00:00:00Z'::timestamptz,
   'cohort B sources deactivated_at from the notices table, not the (now-NULL) bank row'
+);
+
+-- See the cohort A restaurant_timezone test above for why this matters.
+SELECT is(
+  (SELECT restaurant_timezone FROM public.bank_reauth_cohort_b_recovered()
+     WHERE connected_bank_id = '00000000-0000-0000-0000-0000e0000197'),
+  (SELECT timezone FROM public.restaurants WHERE id = '00000000-0000-0000-0000-0000e0000199'),
+  'cohort B also includes the restaurant''s own IANA timezone for the recovery-receipt email'
 );
 
 -- Acknowledge the recovery: once a 'recovered' row exists for this exact

@@ -6,7 +6,8 @@ import { useSplhData } from '@/hooks/useSplhData';
 import { useLaborCostsFromTimeTracking } from '@/hooks/useLaborCostsFromTimeTracking';
 import { normalizePunches, identifyWorkSessions } from '@/utils/timePunchProcessing';
 import { appendOpenShiftClockOuts } from '@/utils/openShiftPunches';
-import { validateTimeZone, buildSplhTimeseries } from '@/lib/splhAnalytics';
+import { buildSplhTimeseries } from '@/lib/splhAnalytics';
+import { safeTz } from '@/lib/restaurantClock';
 import { useTodayInTimezone } from '@/hooks/useTodayInTimezone';
 import { useNowTick } from '@/hooks/useNowTick';
 
@@ -61,7 +62,7 @@ function laborCostWindow(tz: string, weeks: number, todayStr: string): { windowS
  */
 export function useLaborPnlCore(restaurantId: string | null, weeks: number) {
   const { selectedRestaurant } = useRestaurantContext();
-  const tz = validateTimeZone(selectedRestaurant?.restaurant?.timezone);
+  const tz = safeTz(selectedRestaurant?.restaurant?.timezone);
   const { effectiveSettings, updateSettings, isSaving: isSavingTarget } = useStaffingSettings(restaurantId);
   const targetPct = effectiveSettings.target_labor_pct;
 

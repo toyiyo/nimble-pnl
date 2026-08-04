@@ -39,6 +39,7 @@ import type {
   DailyLaborAllocation,
 } from '@/types/scheduling';
 import type { TimePunch } from '@/types/timeTracking';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 // ============================================================================
 // Test Helpers
@@ -316,7 +317,7 @@ describe('Hourly Employee Edge Cases', () => {
         ...createShift('2024-01-19T09:00:00Z', '2024-01-19T18:00:00Z'), // Fri 9h = 45h
       ];
 
-      const payroll = calculateEmployeePay(employee, punches, 0);
+      const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
 
       expect(payroll.regularHours).toBe(40);
       expect(payroll.overtimeHours).toBe(5);
@@ -347,7 +348,7 @@ describe('Hourly Employee Edge Cases', () => {
         ...createShift('2024-01-23T08:00:00Z', '2024-01-23T18:00:00Z'), // Tue 10h = 30h
       ];
 
-      const payroll = calculateEmployeePay(employee, [...week1Punches, ...week2Punches], 0);
+      const payroll = calculateEmployeePay(employee, [...week1Punches, ...week2Punches], 0, 'UTC');
 
       // Week 1: 40 regular + 10 OT
       // Week 2: 30 regular + 0 OT
@@ -385,7 +386,7 @@ describe('Hourly Employee Edge Cases', () => {
         '2024-01-15T13:15:00Z' // 4.25 hours
       );
 
-      const payroll = calculateEmployeePay(employee, punches, 0);
+      const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
       // 4.25 * 1575 = 6693.75 cents → should round to 6694 cents
       expect(payroll.regularPay).toBe(6694);
     });
@@ -648,11 +649,14 @@ describe('Salaried Employee Edge Cases', () => {
         hire_date: '2024-01-03', // Hired on Wednesday
       });
 
-      // Calculate pay for full week (Sunday-Saturday)
+      // Calculate pay for full week (Monday–Sunday).
+      // parseDateOnly anchors at LOCAL midnight (unlike bare `new Date(str)`,
+      // which parses date-only strings as UTC midnight and would shift the
+      // loop's local calendar day for viewers behind UTC).
       const fullWeekPay = calculateSalaryForPeriod(
         employee,
-        new Date('2024-01-01'), // Sunday (before hire)
-        new Date('2024-01-07')  // Saturday
+        parseDateOnly('2024-01-01'), // Sunday (before hire)
+        parseDateOnly('2024-01-07')  // Saturday
       );
 
       // Should only pay for 5 days (Wed-Sun)
@@ -1248,10 +1252,11 @@ describe('Validation Edge Cases', () => {
         ],
       });
 
+      // See note above: parseDateOnly avoids the UTC-midnight parse trap.
       const total = calculateSalaryForPeriod(
         employee,
-        new Date('2024-01-10'),
-        new Date('2024-01-20')
+        parseDateOnly('2024-01-10'),
+        parseDateOnly('2024-01-20')
       );
 
       // Jan 10-14 at $4,000/month ≈ 65,703 cents
@@ -1526,7 +1531,7 @@ describe('Currency and Rounding Edge Cases', () => {
       '2024-01-15T17:00:00Z'
     );
 
-    const payroll = calculateEmployeePay(employee, punches, 0);
+    const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
     expect(payroll.regularPay).toBe(8); // 8 cents
   });
 
@@ -1553,7 +1558,7 @@ describe('Currency and Rounding Edge Cases', () => {
       '2024-01-15T13:20:00Z' // 4h 20m = 4.333h
     );
 
-    const payroll = calculateEmployeePay(employee, punches, 0);
+    const payroll = calculateEmployeePay(employee, punches, 0, 'UTC');
     // 4.333... * 1575 = 6824.99... → should round to 6825
     expect(payroll.regularPay).toBe(6825);
   });

@@ -35,6 +35,19 @@ type PeriodType =
   | 'current_week' | 'last_week' | 'current_month' | 'last_month'
   | 'custom';
 
+// Format a Date's local calendar fields as 'YYYY-MM-DD'. Deno edge functions
+// can't import src/lib/dateOnly.ts, so this mirrors toDateOnlyString()'s
+// local-field logic by hand. Use this (never toISOString().split('T')[0])
+// for any Date that represents a calendar day rather than an instant -
+// toISOString reads UTC fields and drifts to the previous/next day for
+// viewers/servers whose local offset differs from UTC (e.g. Pacific/Auckland).
+const toLocalYMD = (d: Date): string => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
 /**
  * Calculate date range from period string
  * Centralizes the repeated date calculation logic across tool handlers
@@ -107,16 +120,6 @@ function calculateDateRange(
       // Default to current week
       startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
   }
-
-  // Format strings in the host's local timezone so they reflect the calendar
-  // date the caller asked for. toISOString drifts to the next day when local
-  // 23:59:59 lands past midnight UTC (e.g., PT users querying "today").
-  const toLocalYMD = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
 
   return {
     startDate,
@@ -3002,8 +3005,8 @@ async function executeGetBreakEvenProgress(
     targetMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
   }
 
-  const startDateStr = historyStart.toISOString().split('T')[0];
-  const todayStr = today.toISOString().split('T')[0];
+  const startDateStr = toLocalYMD(historyStart);
+  const todayStr = toLocalYMD(today);
 
   // Fetch operating costs
   const { data: costs, error: costsError } = await supabase
@@ -3060,7 +3063,7 @@ async function executeGetBreakEvenProgress(
   const history: any[] = [];
   let current = new Date(historyStart);
   while (current <= today) {
-    const dateStr = current.toISOString().split('T')[0];
+    const dateStr = toLocalYMD(current);
     const sales = salesByDate[dateStr] || 0;
     const delta = sales - dailyBreakEven;
     const threshold = dailyBreakEven * tolerance;
@@ -3095,8 +3098,8 @@ async function executeGetBreakEvenProgress(
     const monthEnd = targetMonthEnd;
     const daysInMonth = monthEnd.getDate();
     const dayOfMonth = today <= targetMonthEnd ? Math.min(today.getDate(), daysInMonth) : daysInMonth;
-    const monthStartStr = monthStart.toISOString().split('T')[0];
-    const monthEndStr = today <= targetMonthEnd ? todayStr : targetMonthEnd.toISOString().split('T')[0];
+    const monthStartStr = toLocalYMD(monthStart);
+    const monthEndStr = today <= targetMonthEnd ? todayStr : toLocalYMD(targetMonthEnd);
 
     // Fetch month-to-date sales
     const { data: mtdSales, error: mtdError } = await supabase.rpc('get_daily_sales_totals', {

@@ -79,9 +79,15 @@ test.describe('Tip pooling flow', () => {
       expect(sum).toBe(10000);
     }).toPass({ timeout: 10000 });
 
-    // Verify the Recent Tip Splits section appears (shows approved splits)
-    // The heading is always rendered, but we need to wait for the page to transition
-    // back from the review view after approval completes
-    await expect(page.getByText(/recent tip splits/i)).toBeVisible({ timeout: 15000 });
+    // Verify the Recent Tip Splits section appears (shows approved splits).
+    // Match the HEADING, not free text: while the list is still refetching after
+    // approval, RecentTipSplits renders its empty state, whose two paragraphs
+    // ("No recent tip splits" / "Recent tip splits will appear here") also match
+    // /recent tip splits/i. Playwright treats a multi-element match as a strict
+    // mode violation and fails immediately instead of polling, so the plain-text
+    // locator only passed when it happened to resolve after the refetch landed.
+    await expect(
+      page.getByRole('heading', { name: /recent tip splits/i }),
+    ).toBeVisible({ timeout: 15000 });
   });
 });

@@ -315,6 +315,48 @@ export function useDeleteRuleV2() {
   });
 }
 
+/**
+ * Bounded so a large backlog can't spin the UI indefinitely. Whatever this
+ * doesn't reach, the categorization-backlog-drain cron job picks up.
+ */
+const MAX_APPLY_BATCHES = 50;
+
+/**
+ * Call an apply-rules RPC repeatedly until a call claims no candidates, and
+ * return the total number of rows it applied.
+ *
+ * Loops on total_count, which is candidates CLAIMED — not matched. Each call
+ * evaluates at most batchLimit rows and stamps them as evaluated, so
+ * applied_count = 0 only means that batch matched nothing; the next batch may
+ * still match. Looping on applied_count would stop at the first non-matching
+ * batch and leave the rest of the backlog untouched.
+ */
+async function drainApplyRules(
+  rpcName: 'apply_rules_to_bank_transactions' | 'apply_rules_to_pos_sales',
+  label: string,
+  restaurantId: string,
+  batchLimit: number
+): Promise<number> {
+  let applied = 0;
+
+  for (let n = 0; n < MAX_APPLY_BATCHES; n++) {
+    const { data, error } = await (supabase as any).rpc(rpcName, {
+      p_restaurant_id: restaurantId,
+      p_batch_limit: batchLimit
+    });
+
+    if (error) {
+      throw new Error(`Failed to apply rules to ${label}: ${error.message}`);
+    }
+
+    const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
+    applied += batch.applied_count;
+    if (batch.total_count === 0) break;
+  }
+
+  return applied;
+}
+
 export function useApplyRulesV2() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -329,56 +371,25 @@ export function useApplyRulesV2() {
       applyTo?: 'bank_transactions' | 'pos_sales' | 'both';
       batchLimit?: number;
     }) => {
-      let totalBankApplied = 0;
-      let totalPosApplied = 0;
+      const totalBankApplied =
+        applyTo === 'bank_transactions' || applyTo === 'both'
+          ? await drainApplyRules(
+              'apply_rules_to_bank_transactions',
+              'bank transactions',
+              restaurantId,
+              batchLimit
+            )
+          : 0;
 
-      // Auto-loop: keep calling the RPC until a call claims no candidates.
-      //
-      // total_count is candidates CLAIMED, not matched. Each call evaluates at
-      // most batchLimit rows and stamps them as evaluated, so applied_count = 0
-      // only means that batch matched nothing — the next batch may still match.
-      // Looping on applied_count would stop at the first non-matching batch and
-      // leave the rest of the backlog untouched.
-      //
-      // Bounded so a large backlog can't spin the UI indefinitely: whatever this
-      // doesn't reach, the categorization-backlog-drain cron job picks up.
-      const MAX_BATCHES = 50;
-
-      if (applyTo === 'bank_transactions' || applyTo === 'both') {
-        for (let n = 0; n < MAX_BATCHES; n++) {
-          const { data, error } = await (supabase as any)
-            .rpc('apply_rules_to_bank_transactions', {
-              p_restaurant_id: restaurantId,
-              p_batch_limit: batchLimit
-            });
-
-          if (error) {
-            throw new Error(`Failed to apply rules to bank transactions: ${error.message}`);
-          }
-
-          const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
-          totalBankApplied += batch.applied_count;
-          if (batch.total_count === 0) break;
-        }
-      }
-
-      if (applyTo === 'pos_sales' || applyTo === 'both') {
-        for (let n = 0; n < MAX_BATCHES; n++) {
-          const { data, error } = await (supabase as any)
-            .rpc('apply_rules_to_pos_sales', {
-              p_restaurant_id: restaurantId,
-              p_batch_limit: batchLimit
-            });
-
-          if (error) {
-            throw new Error(`Failed to apply rules to POS sales: ${error.message}`);
-          }
-
-          const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
-          totalPosApplied += batch.applied_count;
-          if (batch.total_count === 0) break;
-        }
-      }
+      const totalPosApplied =
+        applyTo === 'pos_sales' || applyTo === 'both'
+          ? await drainApplyRules(
+              'apply_rules_to_pos_sales',
+              'POS sales',
+              restaurantId,
+              batchLimit
+            )
+          : 0;
 
       const totalApplied = totalBankApplied + totalPosApplied;
 

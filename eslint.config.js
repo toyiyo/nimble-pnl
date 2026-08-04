@@ -5,7 +5,19 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  // `.claude/workflows/*.js` are executed by the Workflow tool inside an async
+  // wrapper, so a top-level `return` (the runtime's early-halt contract) sits
+  // alongside a top-level `export const meta`. No single parse mode accepts
+  // both -- `sourceType: "module"` rejects the `return`, and
+  // `allowReturnOutsideFunction` is only honoured for `sourceType: "script"`,
+  // which rejects the `export`. ESLint therefore reported a permanent
+  // `Parsing error: 'return' outside of function` for each script, which
+  // `dev-tools/refresh-queue.sh` ingested as a phantom `major` review item on
+  // every PR. Nothing is lost by ignoring them: `eslint --print-config` shows
+  // these files match zero rules (no config object below targets `.js` outside
+  // `src/`), so the parse error was their entire lint output. Kept narrow --
+  // a future `.claude/**` script outside `workflows/` should still be linted.
+  { ignores: ["dist", ".claude/workflows/**"] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

@@ -207,6 +207,28 @@ describe('bucketTemplateShifts', () => {
     expect(result.movingHoursDelta).toBe(0);
   });
 
+  it('returns empty buckets and a zero delta when newStart is cleared to an empty string', () => {
+    const result = bucketTemplateShifts({
+      ...BASE,
+      newStart: '',
+      shifts: [shift({ id: 's1' })],
+    });
+    expect(result.moving).toEqual([]);
+    expect(result.drifted).toEqual([]);
+    expect(result.movingHoursDelta).toBe(0);
+  });
+
+  it('returns empty buckets and a zero delta when newEnd is a malformed time', () => {
+    const result = bucketTemplateShifts({
+      ...BASE,
+      newEnd: 'garbage',
+      shifts: [shift({ id: 's1' })],
+    });
+    expect(result.moving).toEqual([]);
+    expect(result.drifted).toEqual([]);
+    expect(result.movingHoursDelta).toBe(0);
+  });
+
   it('falls back to a null employee name when the join did not resolve', () => {
     const result = bucketTemplateShifts({
       ...BASE,

@@ -64,6 +64,11 @@ export function toMinutes(hhmm: string): number {
   return Number.parseInt(h, 10) * 60 + Number.parseInt(m, 10);
 }
 
+/** True for a well-formed "HH:MM" string; false for '' (a cleared `<input type="time">`) or garbage. */
+function isValidHHMM(value: string): boolean {
+  return /^\d{1,2}:\d{2}$/.test(value);
+}
+
 /**
  * Minutes from `start` to `end` on a wall clock, wrapping past midnight.
  * An equal start and end is a full day, not zero — that is what a 24-hour
@@ -87,6 +92,20 @@ export function bucketTemplateShifts(input: {
   now: Date;
 }): TemplateHoursBuckets {
   const { shifts, oldStart, oldEnd, newStart, newEnd, tz, now } = input;
+
+  // A cleared <input type="time"> yields '', which Number.parseInt turns into
+  // NaN — an incomplete time isn't a change to preview, so report nothing
+  // moving rather than let NaN propagate into the ledger's delta badge.
+  if (!isValidHHMM(newStart) || !isValidHHMM(newEnd)) {
+    return {
+      past: [],
+      locked: [],
+      moving: [],
+      drifted: [],
+      publishedMovingIds: [],
+      movingHoursDelta: 0,
+    };
+  }
 
   const past: string[] = [];
   const locked: string[] = [];

@@ -147,19 +147,6 @@ ON CONFLICT (id) DO NOTHING;
 
 SELECT set_config('app.skip_unified_sales_triggers', 'false', true);
 
--- Re-arm the job that test 6 retired, then stamp the backlog as unevaluated so
--- a tick has real work waiting for it.
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain') THEN
-    PERFORM cron.schedule(
-      'categorization-backlog-drain',
-      '*/5 * * * *',
-      'SELECT public.drain_categorization_backlog()'
-    );
-  END IF;
-END $$;
-
 -- Each tick runs as its OWN statement, never folded into the assertion as
 -- `drain() >= 0 AND (NOT) EXISTS (...)`. The outer query scans cron.job under
 -- the snapshot taken when the statement began, so a cron.unschedule() the

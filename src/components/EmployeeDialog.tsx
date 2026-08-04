@@ -45,6 +45,8 @@ import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
 import { isActiveForStatus } from '@/utils/employeeFilters';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
 import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { EmployeeAppAccessRow } from '@/components/employees/EmployeeAppAccessRow';
+import type { RoleWithGrants } from '@/hooks/useRoles';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -72,6 +74,15 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   // null while loading, on error, and for non-members — all mean "behave normally".
   const existingMember = findMemberByEmail(restaurantMembers, email);
+  // Both call sites pass the selected restaurant (Employees.tsx, Scheduling.tsx),
+  // but a mismatch must not silently borrow another restaurant's role — that
+  // would gate the app-access row on the wrong permissions.
+  const callerRole =
+    selectedRestaurant?.restaurant_id === restaurantId ? selectedRestaurant.role : null;
+  // Local to the app-access row — kept separate from `grantAppAccess` above,
+  // which drives the create-mode invite flow and is left untouched here.
+  const [appAccessGrant, setAppAccessGrant] = useState(false);
+  const [appAccessInviteRole, setAppAccessInviteRole] = useState<RoleWithGrants | null>(null);
   const [phone, setPhone] = useState('');
   const [position, setPosition] = useState('Server');
   const [area, setArea] = useState('');
@@ -816,7 +827,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                         <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[13px] text-amber-700 dark:text-amber-400">
-                          {/* eslint-disable-next-line no-restricted-syntax -- toLocaleString here formats a NUMBER (annualizedPay), not a date; the selector matches any toLocaleString member regardless of receiver type. */}
+                          { }
                           This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
                         </p>
                       </div>
@@ -1106,6 +1117,17 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   />
                 </div>
               </div>
+
+              <EmployeeAppAccessRow
+                restaurantId={restaurantId}
+                callerRole={callerRole}
+                employee={employee}
+                email={email}
+                grantAppAccess={appAccessGrant}
+                onGrantAppAccessChange={setAppAccessGrant}
+                inviteRole={appAccessInviteRole}
+                onInviteRoleChange={setAppAccessInviteRole}
+              />
 
               {isCreateMode && (existingMember ? (
                 <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">

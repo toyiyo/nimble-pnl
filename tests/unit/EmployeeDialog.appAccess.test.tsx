@@ -5,6 +5,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { EmployeeDialog } from '@/components/EmployeeDialog';
+import type { Employee } from '@/types/scheduling';
 
 const createEmployeeMock = vi.fn();
 // insertCompensationHistoryEntry is a local function in EmployeeDialog that calls
@@ -49,11 +50,37 @@ vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({ toast: toastMock }),
 }));
 
-vi.mock('@/contexts/RestaurantContext', () => ({
-  useRestaurantContext: () => ({
-    selectedRestaurant: { restaurant: { id: 'r1', timezone: 'UTC' } },
-  }),
+// A controllable mock — most tests want the default (owner, matching
+// restaurant); the app-access-row tests below override it per case to
+// exercise the non-internal-role and restaurant-mismatch paths.
+const mockUseRestaurantContext = vi.fn(() => ({
+  selectedRestaurant: {
+    restaurant_id: 'r1',
+    role: 'owner' as const,
+    restaurant: { id: 'r1', timezone: 'UTC' },
+  },
 }));
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => mockUseRestaurantContext(),
+}));
+
+// EmployeeAppAccessRow renders RolePicker in the linked-account state, which
+// calls useRoles/useAssignRole directly — mocked the same way
+// RolePicker.test.tsx does, rather than deepening the supabase chain mock
+// above (which has no `.or()` and would crash useRoles' real query).
+const mockUseRoles = vi.fn(() => ({ roles: [], isLoading: false, error: null }));
+vi.mock('@/hooks/useRoles', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useRoles')>('@/hooks/useRoles');
+  return { ...actual, useRoles: (...args: unknown[]) => mockUseRoles(...args) };
+});
+
+const assignRoleMutate = vi.fn();
+vi.mock('@/hooks/useAssignRole', async () => {
+  const actual = await vi.importActual<typeof import('@/hooks/useAssignRole')>(
+    '@/hooks/useAssignRole'
+  );
+  return { ...actual, useAssignRole: () => ({ mutate: assignRoleMutate, isPending: false }) };
+});
 
 // Mock only the useRestaurantMembers hook (the React Query call); keep
 // findMemberByEmail real since it's a pure function used by the component
@@ -113,6 +140,19 @@ function renderDialog() {
   return render(
     <QueryClientProvider client={qc}>
       <EmployeeDialog open onOpenChange={vi.fn()} restaurantId="r1" />
+    </QueryClientProvider>,
+  );
+}
+
+function renderDialogEdit(employee: Employee) {
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, refetchOnWindowFocus: false, staleTime: Infinity },
+    },
+  });
+  return render(
+    <QueryClientProvider client={qc}>
+      <EmployeeDialog open onOpenChange={vi.fn()} restaurantId="r1" employee={employee} />
     </QueryClientProvider>,
   );
 }
@@ -312,5 +352,118 @@ describe('EmployeeDialog — link to an existing account instead of double-provi
     // link must not roll back or block employee creation.
     expect(createEmployeeMock).toHaveBeenCalled();
     expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ variant: 'destructive' }));
+  });
+});
+
+describe('EmployeeDialog — app access row: visibility gate and the linked-account state', () => {
+  const EMPLOYEE_WITH_ACCOUNT: Employee = {
+    id: 'emp-1',
+    restaurant_id: 'r1',
+    name: 'Jamie Rivera',
+    email: 'jamie@example.com',
+    position: 'Server',
+    status: 'active',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    user_id: 'u1',
+    is_active: true,
+    compensation_type: 'hourly',
+    hourly_rate: 1500,
+  };
+
+  const LINKED_MEMBER = {
+    membershipId: 'mem-1',
+    userId: 'u1',
+    email: 'jamie@example.com',
+    fullName: 'Jamie Rivera',
+    role: 'manager',
+    roleId: null,
+  };
+
+  beforeEach(() => {
+    createEmployeeMock.mockReset().mockResolvedValue({ id: 'new-emp-1' });
+    bulkMutateMock.mockReset().mockResolvedValue({ employees_updated: 1, rows_inserted: 7 });
+    toastMock.mockReset();
+    invokeMock.mockReset().mockResolvedValue({ data: null, error: null });
+    rpcMock.mockReset().mockResolvedValue({ data: null, error: null });
+    mockUseRestaurantMembers.mockReset().mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockUseRoles.mockReset().mockReturnValue({ roles: [], isLoading: false, error: null });
+    assignRoleMutate.mockReset();
+    mockUseRestaurantContext.mockReset().mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'owner' as const,
+        restaurant: { id: 'r1', timezone: 'UTC' },
+      },
+    });
+  });
+
+  it('shows the linked account and its role, not a role on the employee row', async () => {
+    mockUseRestaurantMembers.mockReturnValue({ data: [LINKED_MEMBER], isLoading: false, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByText(/signed in as/i)).toBeInTheDocument();
+    expect(screen.getByText(/jamie@example\.com/i)).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /jamie rivera/i })).toBeInTheDocument();
+  });
+
+  it('says nothing at all to a caller who cannot see the roster', async () => {
+    // RLS returns only the collaborator_accountant's own row, so a roster
+    // miss means "can't see", not "no account" — the row must be absent
+    // entirely, not a confident "No access" about someone fully provisioned.
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'collaborator_accountant' as const,
+        restaurant: { id: 'r1', timezone: 'UTC' },
+      },
+    });
+    mockUseRestaurantMembers.mockReturnValue({ data: [], isLoading: false, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    await screen.findByLabelText(/^name/i);
+    expect(screen.queryByText(/app access/i)).not.toBeInTheDocument();
+  });
+
+  it('offers the invite when the account is linked to no membership here', async () => {
+    // employee.user_id is set, but the roster has no matching userId — state
+    // 3 folds into 2.
+    mockUseRestaurantMembers.mockReturnValue({ data: [], isLoading: false, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByText(/no access/i)).toBeInTheDocument();
+    expect(screen.getByRole('switch', { name: /invite to the app/i })).toBeInTheDocument();
+    // Position/Area also render as `combobox` — scope to the RolePicker's
+    // accessible name (it never appears here) rather than any combobox.
+    expect(screen.queryByRole('combobox', { name: /jamie rivera/i })).not.toBeInTheDocument();
+  });
+
+  it('waits rather than guessing while the roster loads', async () => {
+    mockUseRestaurantMembers.mockReturnValue({ data: undefined, isLoading: true, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    await screen.findByLabelText(/^name/i);
+    expect(screen.queryByRole('switch', { name: /invite/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the role read-only when the caller role cannot be established', async () => {
+    // selectedRestaurant.restaurant_id !== the dialog's restaurantId prop
+    // ("r1") — callerRole resolves to null. The linked-member data already
+    // came back (proof it was safe to fetch), so it's still shown, just
+    // without the RolePicker combobox that needs a definite callerRole.
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'other-restaurant',
+        role: 'owner' as const,
+        restaurant: { id: 'other-restaurant', timezone: 'UTC' },
+      },
+    });
+    mockUseRestaurantMembers.mockReturnValue({ data: [LINKED_MEMBER], isLoading: false, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByText(/manager/i)).toBeInTheDocument();
+    // Position/Area also render as `combobox` — scope to the RolePicker's
+    // accessible name (it never appears here) rather than any combobox.
+    expect(screen.queryByRole('combobox', { name: /jamie rivera/i })).not.toBeInTheDocument();
   });
 });

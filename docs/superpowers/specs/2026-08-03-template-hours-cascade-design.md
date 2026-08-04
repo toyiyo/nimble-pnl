@@ -353,7 +353,8 @@ update_shift_template_with_cascade(
 ) RETURNS JSONB
 ```
 
-Returns `{ batch_id, updated_count, published_shift_ids, skipped_count }`.
+Returns `{ batch_id, updated_count, published_shifts, skipped_count }`, where each
+`published_shifts` element is `{ id, previous_start_time, previous_end_time, previous_position }`.
 
 `p_cascade = false` reproduces today's behaviour exactly, which is what the `Template only`
 button sends.
@@ -517,8 +518,9 @@ that the batch-scoped count is unaffected by the trigger's.
 path exists and is currently unused. The only client caller today passes `'deleted'`, from
 [`useShifts.tsx:390`](../../../src/hooks/useShifts.tsx).
 
-So the cascade returns `published_shift_ids`, and the client fires one invoke per id,
-fire-and-forget. Copy the error discipline from that delete call site verbatim: `invoke`
+So the cascade returns `published_shifts` — each carrying the shift's pre-cascade start,
+end, and position — and the client fires one invoke per element, passing those as
+`previousShift` so the email can render what the shift moved *from*. Fire-and-forget. Copy the error discipline from that delete call site verbatim: `invoke`
 resolves with `{ data, error }` on HTTP failure rather than rejecting, so both the `.then`
 error branch and `.catch` must be handled, and neither may surface to the caller.
 

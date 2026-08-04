@@ -213,11 +213,11 @@ BEGIN
       -- dropping it would silently stop cascading every hand-edited shift the
       -- manager checked.
       --
-      -- Residual: t.before_data is still the snapshot-time row, so a
-      -- concurrent edit that *passes* these guards is still overwritten and
-      -- Undo restores the snapshot rather than that edit. That window is now
-      -- milliseconds wide and closing it needs a second lock round-trip; note
-      -- it, do not fix it.
+      -- Known residual: t.before_data is still the snapshot-time row, so a
+      -- concurrent edit that *passes* these guards is overwritten and Undo
+      -- restores the snapshot rather than that edit. Closing it would need a
+      -- second lock round-trip to re-read before_data after the lock, for a
+      -- window that is now milliseconds wide.
       WHERE s.id = t.id
         AND s.restaurant_id = p_restaurant_id
         AND s.start_time > now()

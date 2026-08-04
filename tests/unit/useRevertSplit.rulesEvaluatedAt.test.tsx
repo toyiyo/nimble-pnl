@@ -67,8 +67,13 @@ describe('revert-split mutations reset rules_evaluated_at', () => {
 
     result.current.mutate({ saleId: 'sale-123' });
 
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    // isPending flips true -> false around the mutation; checking for false
+    // can pass on the very first render (before mutate's effects have even
+    // started) since that render is also isPending === false. isSuccess only
+    // ever becomes true once, on completion, so it can't false-positive here.
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
+    expect(supabase.from).toHaveBeenCalledWith('unified_sales');
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         is_split: false,
@@ -96,8 +101,9 @@ describe('revert-split mutations reset rules_evaluated_at', () => {
 
     result.current.mutate({ transactionId: 'txn-123' });
 
-    await waitFor(() => expect(result.current.isPending).toBe(false));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
+    expect(supabase.from).toHaveBeenCalledWith('bank_transactions');
     expect(updateMock).toHaveBeenCalledWith(
       expect.objectContaining({
         is_split: false,

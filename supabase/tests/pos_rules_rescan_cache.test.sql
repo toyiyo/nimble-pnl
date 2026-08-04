@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(33);
+SELECT plan(38);
 
 SET LOCAL role TO postgres;
 
@@ -530,8 +530,13 @@ SELECT is(
 --
 -- updated_at is transaction-frozen for the life of this pgTAP script (see
 -- TEST 12's comment), so it cannot distinguish "recomputed with an identical
--- value" from "never touched". xmin can: it changes on any UPDATE/INSERT
--- regardless of whether the written values differ from what was already there.
+-- value" from "never touched". xmin can't either here: the whole script runs
+-- inside one BEGIN/ROLLBACK transaction, so every write in this file carries
+-- the same transaction id -- xmin captured before and after would be
+-- identical regardless of whether the sweep touched the row. ctid (the
+-- physical tuple version) changes on every UPDATE within a transaction, even
+-- one that writes back identical values, so it's the one that actually
+-- distinguishes "rewritten" from "left alone".
 INSERT INTO restaurants (id, name) VALUES
   ('00000000-0000-0000-0000-0000000009a2', 'Rescan Test Restaurant 2')
 ON CONFLICT (id) DO NOTHING;
@@ -552,13 +557,13 @@ VALUES
 ON CONFLICT (id) DO NOTHING;
 
 -- Establish the baseline daily_sales row directly (not through the sweep) so
--- there is something whose xmin can be observed as unchanged.
+-- there is something whose ctid can be observed as unchanged.
 SELECT aggregate_unified_sales_to_daily(
   '00000000-0000-0000-0000-0000000009a2', (CURRENT_DATE - 30));
 
 SELECT set_config(
-  'rescan_test.daily_sales_xmin',
-  (SELECT xmin::text FROM daily_sales
+  'rescan_test.daily_sales_ctid',
+  (SELECT ctid::text FROM daily_sales
     WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a2'
       AND date = (CURRENT_DATE - 30) AND source = 'unified_pos'),
   true);
@@ -577,10 +582,10 @@ SELECT applied_count FROM apply_rules_to_pos_sales_internal(
 
 -- ---------------------------------------------------------------- TEST 32
 SELECT is(
-  (SELECT xmin::text FROM daily_sales
+  (SELECT ctid::text FROM daily_sales
     WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a2'
       AND date = (CURRENT_DATE - 30) AND source = 'unified_pos'),
-  current_setting('rescan_test.daily_sales_xmin'),
+  current_setting('rescan_test.daily_sales_ctid'),
   'a sweep that applies zero rows does not touch daily_sales'
 );
 
@@ -597,12 +602,105 @@ SELECT applied_count FROM apply_rules_to_pos_sales_internal(
   '00000000-0000-0000-0000-0000000009a2', 100);
 
 -- ---------------------------------------------------------------- TEST 33
+-- ctid changing (as opposed to just gross_revenue matching, which TEST 34
+-- checks) is the actual proof that the second sweep rewrote the row instead
+-- of leaving the untouched baseline from TEST 32 in place.
+SELECT isnt(
+  (SELECT ctid::text FROM daily_sales
+    WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a2'
+      AND date = (CURRENT_DATE - 30) AND source = 'unified_pos'),
+  current_setting('rescan_test.daily_sales_ctid'),
+  'a sweep that applies one row recomputes (rewrites) daily_sales'
+);
+
+-- ---------------------------------------------------------------- TEST 34
 SELECT is(
   (SELECT gross_revenue FROM daily_sales
     WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a2'
       AND date = (CURRENT_DATE - 30) AND source = 'unified_pos'),
   12.00::numeric,
   'a sweep that applies one row recomputes daily_sales to the same total (category_id is ignored)'
+);
+
+-- ============================================================ TRIGGER COVERAGE
+-- TEST 3/4 above only exercised one match-input column per table
+-- (item_name / amount). Cover the remaining match inputs the reset trigger
+-- watches: total_price and pos_category for unified_sales; description and
+-- supplier_id for bank_transactions. Fresh rows, isolated from the
+-- heavily-mutated ...09d1/09e1 fixtures used earlier in this file.
+INSERT INTO unified_sales
+  (id, restaurant_id, pos_system, external_order_id, item_name, quantity, sale_date,
+   total_price, pos_category)
+VALUES
+  ('00000000-0000-0000-0000-0000000009db', '00000000-0000-0000-0000-0000000009a1',
+   'toast', 'ord-rescan-trigger', 'Trigger Coverage Item', 1, CURRENT_DATE, 9.00, 'Entrees')
+ON CONFLICT (id) DO NOTHING;
+
+-- ---------------------------------------------------------------- TEST 35
+UPDATE unified_sales SET rules_evaluated_at = now()
+ WHERE id = '00000000-0000-0000-0000-0000000009db';
+UPDATE unified_sales SET total_price = 11.00
+ WHERE id = '00000000-0000-0000-0000-0000000009db';
+
+SELECT is(
+  (SELECT rules_evaluated_at FROM unified_sales
+    WHERE id = '00000000-0000-0000-0000-0000000009db'),
+  '-infinity'::timestamptz,
+  'changing total_price resets unified_sales.rules_evaluated_at'
+);
+
+-- ---------------------------------------------------------------- TEST 36
+UPDATE unified_sales SET rules_evaluated_at = now()
+ WHERE id = '00000000-0000-0000-0000-0000000009db';
+UPDATE unified_sales SET pos_category = 'Beverages'
+ WHERE id = '00000000-0000-0000-0000-0000000009db';
+
+SELECT is(
+  (SELECT rules_evaluated_at FROM unified_sales
+    WHERE id = '00000000-0000-0000-0000-0000000009db'),
+  '-infinity'::timestamptz,
+  'changing pos_category resets unified_sales.rules_evaluated_at'
+);
+
+INSERT INTO suppliers (id, restaurant_id, name)
+VALUES
+  ('00000000-0000-0000-0000-0000000009cf', '00000000-0000-0000-0000-0000000009a1',
+   'Trigger Coverage Supplier')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id, transaction_date,
+   description, amount)
+VALUES
+  ('00000000-0000-0000-0000-0000000009eb', '00000000-0000-0000-0000-0000000009a1',
+   '00000000-0000-0000-0000-0000000009b1', 'txn-rescan-trigger', now(),
+   'Trigger Coverage Vendor', -50.00)
+ON CONFLICT (id) DO NOTHING;
+
+-- ---------------------------------------------------------------- TEST 37
+UPDATE bank_transactions SET rules_evaluated_at = now()
+ WHERE id = '00000000-0000-0000-0000-0000000009eb';
+UPDATE bank_transactions SET description = 'Renamed Vendor'
+ WHERE id = '00000000-0000-0000-0000-0000000009eb';
+
+SELECT is(
+  (SELECT rules_evaluated_at FROM bank_transactions
+    WHERE id = '00000000-0000-0000-0000-0000000009eb'),
+  '-infinity'::timestamptz,
+  'changing description resets bank_transactions.rules_evaluated_at'
+);
+
+-- ---------------------------------------------------------------- TEST 38
+UPDATE bank_transactions SET rules_evaluated_at = now()
+ WHERE id = '00000000-0000-0000-0000-0000000009eb';
+UPDATE bank_transactions SET supplier_id = '00000000-0000-0000-0000-0000000009cf'
+ WHERE id = '00000000-0000-0000-0000-0000000009eb';
+
+SELECT is(
+  (SELECT rules_evaluated_at FROM bank_transactions
+    WHERE id = '00000000-0000-0000-0000-0000000009eb'),
+  '-infinity'::timestamptz,
+  'changing supplier_id resets bank_transactions.rules_evaluated_at'
 );
 
 SELECT * FROM finish();

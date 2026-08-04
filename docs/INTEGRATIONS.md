@@ -269,7 +269,7 @@ toast_payments       → Payment records (unique: restaurant_id, toast_payment_g
    - **Idempotent**: Uses upserts on all tables
    - **Skips unified_sales sync**: Sets `skipUnifiedSalesSync: true` during bulk import (cron handles it)
 
-3. **`toast-bulk-sync`** — Scheduled sync (cron, every 2 hours — pg_cron jobid 7, `0 0,2,4,...,22 * * *`)
+3. **`toast-bulk-sync`** — Scheduled sync (cron, every 2 hours — pg_cron jobid 7, `0 */2 * * *`)
    - **Round-robin**: Processes max 5 restaurants per run, ordered by `last_sync_time`
    - **Per-restaurant limit**: 200 orders max
    - **Rate limiting**: 2-second delay between restaurants
@@ -295,10 +295,10 @@ Toast API → processOrder() → toast_orders / toast_order_items / toast_paymen
 
 | Job | Schedule | Purpose |
 |-----|----------|---------|
-| `toast-bulk-sync` | Every 6h | Fetch from Toast API → raw tables |
+| `toast-bulk-sync` | Every 2h | Fetch from Toast API → raw tables |
 | `toast-unified-sales-sync` | Every 5min | Aggregate raw tables → `unified_sales` |
 
-**Separation rationale:** API fetch is slow and rate-limited (6h interval sufficient). Aggregation is fast SQL and needs to be near-real-time for dashboard accuracy (5min interval).
+**Separation rationale:** API fetch is slow and rate-limited (2h interval sufficient). Aggregation is fast SQL and needs to be near-real-time for dashboard accuracy (5min interval).
 
 **Performance patterns (apply to all POS imports):**
 

@@ -85,6 +85,45 @@ comment: a global "does this email have an account" lookup would be an
 account-enumeration oracle). Matching on `userId` reads nothing the caller cannot
 already see on the Team page.
 
+### The row renders only for internal-team callers
+
+The roster is not merely permission-gated, it is **visibility**-gated, and the two
+are not the same thing. The SELECT policy on `user_restaurants`
+(`supabase/migrations/20260120100000_add_collaborator_roles.sql:201-212`) returns
+every membership row only when `user_is_internal_team(restaurant_id)` holds —
+defined at `20260702170000_add_operations_manager_role.sql:27-43` as
+`role IN ('owner','manager','operations_manager','chef','staff')`. Every
+collaborator role is excluded. The migration says so itself, in a trailing note:
+collaborators see only their own row.
+
+`collaborator_accountant` can reach `/employees` ("View for payroll context",
+`src/App.tsx:184`), as can `collaborator_chef` (`:229`). For them
+`useRestaurantMembers` returns exactly one row — their own — so
+`members.find(m => m.userId === employee.user_id)` misses for every other
+employee, and states 1 and 3 become indistinguishable from the outside. The row
+would confidently print "No access — they can't sign in yet" about someone who
+has full access. A caller-reach check does not catch this: their reach is
+correctly empty, but the falsehood is in the *reading*, not the writing.
+
+So the row renders only when the caller is internal team. For everyone else the
+dialog behaves exactly as it does today — no app-access row at all. Saying
+nothing is honest; the alternative is a confident lie.
+
+That predicate needs a TypeScript mirror, added to
+`src/lib/permissions/roleMembership.ts`:
+
+```ts
+/** Mirrors `user_is_internal_team` (20260702170000:27-43). See the drift note below. */
+export const INTERNAL_TEAM_ROLES = ['owner', 'manager', 'operations_manager', 'chef', 'staff'] as const;
+export function isInternalTeamRole(role: Role): boolean;
+```
+
+This is a second copy of a database rule, which `roleMembership.ts`'s own header
+warns against. It is pinned the same way the invite matrix is: a mirror test that
+parses the role list out of the migration and asserts equality, modelled on
+`tests/unit/inviteMatrixMirror.test.ts`. Without the pin, adding a sixth internal
+role in SQL would silently blank this row for that role.
+
 While `useRestaurantMembers` is loading or has errored, state 1 cannot be
 distinguished from state 3. The row renders a skeleton rather than guessing —
 guessing state 2 would offer an invite to someone who already has access.
@@ -170,6 +209,34 @@ two hosts word it differently, so it is a prop:
 
 Both embed the visible chip text.
 
+### The edit-mode invite is a new call path, not a reused one
+
+Worth stating plainly, because the state table makes it look like reuse: today
+`send-team-invitation` has exactly one call site, inside
+`createEmployeeWithHistory` (`EmployeeDialog.tsx:425`), which runs in create mode
+only. The edit-mode submit branch (`:567-592`) contains no invite logic at all.
+
+**Trigger: immediate, on an explicit button — not on Save.** Clicking
+`Invite to the app…` expands the row to the same role choice as create mode plus
+a `Send invite` button; that button fires the call. Two reasons over
+invite-on-Save: the edit path has *two* exits (the plain
+`updateEmployee.mutateAsync` at `:582`, and the compensation-change path that
+detours through the effective-date modal at `:575-580`), so on-Save means three
+trigger sites across the dialog and three ways to get it wrong; and sending an
+email is an outward-facing act that should be a button the user presses, not a
+side effect of saving an unrelated field.
+
+**Payload:** `{ restaurantId, email: employee.email, role, roleId?, employeeId: employee.id }`
+— the *saved* email, never the typed draft. If the two differ, `Send invite` is
+disabled with "Save the email change before inviting." If the employee has no
+saved email, the button does not appear and the row reads "Add an email address
+to invite them." This is the one guard that keeps an invite from going to an
+address the user is still typing.
+
+The create-mode invite keeps its existing shape: fired inside
+`createEmployeeWithHistory` after the insert, fire-and-forget, carrying the
+newly-created `employeeId`. Only its `role`/`roleId` change.
+
 ### Narrow viewports
 
 `TeamMembers.tsx:178-186` records what this costs on a 375px row: the role label
@@ -216,6 +283,25 @@ Within a matching restaurant, reach is whatever `getInvitableRoles` and
 design: a manager may change someone to any role they could already invite them
 to, custom roles included; owners keep full reach. No new matrix.
 
+"No new matrix" is a claim about **target-role eligibility only.** There, the SQL
+(`20260802110000_assign_membership_role.sql:32-60`), the TS
+(`invitations.ts:10-49`), and the Deno mirror are identical and pinned by
+`tests/unit/inviteMatrixMirror.test.ts`. `assign_membership_role` additionally
+enforces rules the invite path has no analog for — self-target refusal, kiosk
+memberships being immovable, and owner protection including the last-owner
+`FOR UPDATE` count (`20260803100000_assign_membership_role_custom_role_flavor_check.sql:71-128`).
+Those are additive safeguards on the *existing-membership* path; an invite has no
+membership to protect. The two RPCs are not interchangeable, and nothing here
+assumes they are.
+
+Concurrency between the two assignment surfaces is already closed at the database
+layer: `assign_membership_role` opens with `SELECT … FOR UPDATE` on the target
+membership (`20260803100000_…:60-64`, added for exactly this race). Two admins
+submitting at once serialize. The only residue is a stale gains/loses delta in
+whichever dialog rendered first, which self-heals on the next cache
+invalidation, or surfaces as the existing `assignRoleErrorMessage` toast if the
+second commit is rejected.
+
 ### What does not change
 
 - No migration. `assign_membership_role` is Move 1's and is reused as-is.
@@ -249,8 +335,20 @@ to, custom roles included; owners keep full reach. No new matrix.
 - edit mode, `user_id` matches a member → "Signed in as", chip shows the member's role
 - edit mode, no `user_id` → "No access", `Invite to the app…`
 - edit mode, `user_id` set with no membership here → state 2, not a `RolePicker` without a membership
+- edit mode, `Send invite` → `send-team-invitation` called once with the **saved**
+  email, the chosen `role`/`roleId`, and `employeeId: employee.id`. This is a new
+  call path; asserting the label renders is not enough.
+- edit mode, typed email differs from saved → `Send invite` disabled, no call fires
+- edit mode, employee has no saved email → no `Send invite`, prompt to add one
 - roster loading → skeleton, no invite control
+- caller is `collaborator_accountant` → **no app-access row at all** (not "No access")
+- caller is `owner` → row renders
 - `selectedRestaurant.restaurant_id !== restaurantId` → read-only label
+
+**Unit — `tests/unit/internalTeamMirror.test.ts` (new):** parses the role list out
+of `20260702170000_add_operations_manager_role.sql` and asserts it equals
+`INTERNAL_TEAM_ROLES`, modelled on `inviteMatrixMirror.test.ts`. This is what
+keeps a sixth internal role added in SQL from silently blanking the row.
 
 **Unit — `tests/unit/RolePicker.test.tsx`: must pass untouched.** That file is the
 regression gate on the split; if the extraction changed observable behaviour it
@@ -277,8 +375,10 @@ of rows rather than hiding the group, and the three list states.
 | `src/components/roles/RoleSelect.tsx` | new — controlled option list, extracted from `RolePicker` |
 | `src/components/roles/RolePicker.tsx` | modify — renders `RoleSelect` + delta/commit footer; props unchanged |
 | `src/components/employees/EmployeeAppAccessRow.tsx` | new — the three states |
-| `src/components/EmployeeDialog.tsx` | modify — render the row in both modes; `:429` takes the chosen role |
+| `src/lib/permissions/roleMembership.ts` | modify — add `INTERNAL_TEAM_ROLES` / `isInternalTeamRole` |
+| `src/components/EmployeeDialog.tsx` | modify — render the row in both modes; `:429` takes the chosen role; new edit-mode invite call |
 | `tests/unit/RoleSelect.test.tsx` | new |
+| `tests/unit/internalTeamMirror.test.ts` | new |
 | `tests/unit/EmployeeDialog.appAccess.test.tsx` | extend |
 | `tests/e2e/accountless-employee-invite.spec.ts` | extend |
 | `tests/e2e/role-assignment.spec.ts` | extend |

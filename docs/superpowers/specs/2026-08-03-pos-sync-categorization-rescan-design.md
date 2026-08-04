@@ -465,7 +465,12 @@ RETURNS void
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public
 AS $$
 BEGIN
-  SET LOCAL statement_timeout = '5s';
+  -- Deliberately no `SET LOCAL statement_timeout` here. Postgres arms
+  -- statement_timeout once, at the start of each client-issued statement;
+  -- changing it inside a function does not re-arm a timer for that function's
+  -- own statements, so the guard would be a no-op that also leaks a shortened
+  -- timeout to the remainder of the caller's transaction. The single-row
+  -- primary-key-scoped UPDATE below cannot meaningfully hang.
   EXECUTE format(
     'UPDATE public.%I SET connection_status = ''error'',
                           last_error = left($1, 500),
@@ -510,8 +515,14 @@ subtransaction, so once `query_canceled` is caught the rollback to the savepoint
 completes and the handler runs with a fresh statement budget. It does **not**
 run on `pg_terminate_backend`/SIGTERM, or if the outer `cron.schedule` statement
 itself is cancelled; those remain visible only in `cron.job_run_details`, which
-is acceptable. `SET LOCAL statement_timeout = '5s'` guarantees the bookkeeping
-can never itself hang.
+is acceptable.
+
+Once `statement_timeout` has fired for a statement, Postgres disarms that
+timer — so the handler's own `UPDATE` is not immediately re-cancelled, and it
+is a single-row update keyed on an indexed `restaurant_id`. Its inner
+`EXCEPTION WHEN OTHERS THEN NULL` is the real guard: whatever goes wrong with
+the bookkeeping, the original failure is still the one that gets warned about
+and the loop still advances to the next restaurant.
 
 `square_connections` and `clover_connections` lack these columns — out of
 scope. Revel is driven from the `revel-bulk-sync` edge function (pg_cron jobid

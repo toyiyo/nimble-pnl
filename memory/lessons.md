@@ -2048,3 +2048,25 @@
 - **Mistake:** Nearly implemented CodeRabbit's suggested `AbortSignal.timeout(...)` on a `supabase.functions.invoke` call.
 - **Correction:** This repo's `@supabase/functions-js` `FunctionInvokeOptions` is `headers | method | region | body` — there is no `signal` to pass. The underlying defect (an unbounded await leaving a dialog with every button disabled) was real; the remedy had to be a `Promise.race` against a timer instead.
 - **Rule:** Reply `agreed` to the finding, not to the patch. State in the triage reply *why* the implementation diverged — a reviewer who sees their suggestion apparently ignored will re-raise it next round.
+
+## Category: Supabase / RLS & SECURITY DEFINER (continued)
+
+### [2026-08-03] The default-privileges rule applies to FUNCTIONS too — and `REVOKE ... FROM PUBLIC` cannot undo a direct `anon` grant
+- **Mistake:** `assign_membership_role` is a `SECURITY DEFINER` role-administration RPC, so its migration deliberately wrote `REVOKE EXECUTE ... FROM PUBLIC; GRANT EXECUTE ... TO authenticated;` with a comment explaining that this was "explicit, not incidental". The pgTAP assertion `NOT has_function_privilege('anon', ...)` passed locally and failed in CI — `not ok 25 - anon cannot execute the RPC` — costing a full CI round-trip plus a log excavation.
+- **Correction:** The revoke was aimed at the wrong grantee. Where the image carries `ALTER DEFAULT PRIVILEGES ... GRANT EXECUTE ON FUNCTIONS TO anon` for the migrating role, the function is created with `anon=X` **directly in `proacl`**. Revoking `PUBLIC` does not touch a direct grant to a named role. Fixed by revoking `anon` by name alongside `PUBLIC`, in both the creating migration and the `CREATE OR REPLACE` that follows it.
+- **This lesson was already in this file and I didn't apply it.** The [2026-08-02] entry directly above says *"Never let a table's write posture depend on inherited default privileges... `REVOKE ALL ON <table> FROM PUBLIC, anon, authenticated`"*. I wrote a revoke for a **function** and generalized only the `PUBLIC` half. **Rule:** the entry covers `ON TABLES`, `ON FUNCTIONS`, and `ON SEQUENCES` separately — when a lesson names one object class, check whether the mechanism is class-specific or just where you happened to hit it. Here it was the latter.
+- **Reproducing it locally is four lines and does not need a reset.** Compare `pg_default_acl` first (`SELECT defaclrole::regrole, defaclnamespace::regnamespace, defaclacl FROM pg_default_acl WHERE defaclobjtype='f'`) — local CLI 2.72.7 has `postgres|public|{postgres=X/postgres}`, CI's pinned 2.65.5 includes `anon=X`. Then simulate the CI ACL and step through it:
+  ```sql
+  GRANT   EXECUTE ON FUNCTION public.f(...) TO anon;    -- has_function_privilege → true
+  REVOKE  EXECUTE ON FUNCTION public.f(...) FROM PUBLIC; -- still true  ← the CI failure
+  REVOKE  EXECUTE ON FUNCTION public.f(...) FROM anon;   -- false
+  ```
+  Unlike the table case, no `ALTER DEFAULT PRIVILEGES` revert is needed — nothing is left in `pg_default_acl`.
+- **Corollary worth chasing separately:** `copy_role_to_restaurants`, the function this RPC was modelled on, grants to `authenticated` and never revokes at all. On a CI-style image it is `anon`-executable, failing closed only because its body keys off `auth.uid()`. Copying a function forward carries its grant posture forward too.
+
+## Category: CI / Workflows (continued)
+
+### [2026-08-03] `gh run view --log-failed` refuses while a run is in progress, and `grep '^not ok'` never matches pgTAP output
+- **Mistake:** Spent several tool calls trying to read a failing pgTAP job. `gh run view --log-failed` answered "run is still in progress; logs will be available when it is complete" (other jobs in the same run were still going). Falling back to `gh api .../logs` returned 14 MB across ~40 enormous lines, and anchored greps for the failure found nothing.
+- **Correction:** Two independent gotchas. (1) psql prints pgTAP results as query output, so every TAP line is **indented by one space** and padded — `grep '^not ok'` and `grep -c '^not ok'` silently match zero. Use unanchored `grep -aoE "not ok [0-9]+ - .{0,120}"` plus `grep -aoE "# Looks like you failed [0-9]+ test"`. (2) The job log is fetchable per-job even mid-run via `gh api repos/OWNER/REPO/actions/jobs/<job_id>/logs`; `--log-failed` is the part that blocks.
+- **Rule:** For a CI-only test failure, go straight for the assertion text, not the step. `gh api .../jobs/<id>/logs > /tmp/log.txt`, then `grep -a` for the framework's failure token — and use `-a` because these logs contain bytes that make grep treat them as binary and print nothing but "Binary file matches". To read context around a hit in a file with pathological line lengths, `python3 -c "d=open(f).read(); i=d.find(tok); print(repr(d[i-3000:i+1500]))"` beats any line-oriented tool.

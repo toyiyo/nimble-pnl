@@ -72,6 +72,10 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # This job never writes to git, and `npm ci` below runs third-party
+          # install scripts. Don't leave GITHUB_TOKEN in the git config for them.
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

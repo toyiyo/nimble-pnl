@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Clock } from 'lucide-react';
 
 import { useTemplateLinkedShifts } from '@/hooks/useTemplateLinkedShifts';
-import { useDebounce } from '@/hooks/useDebounce';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
@@ -114,8 +114,8 @@ export function TemplateFormDialog({
   // must stay instant or it feels broken. <input type="time"> fires change per
   // component (hour, then minute), so an undebounced ledger would announce two
   // or three incoherent intermediate states per edit.
-  const debouncedStart = useDebounce(startTime, 300);
-  const debouncedEnd = useDebounce(endTime, 300);
+  const debouncedStart = useDebouncedValue(startTime, 300);
+  const debouncedEnd = useDebouncedValue(endTime, 300);
 
   const buckets = useMemo(() => {
     if (!template) return null;

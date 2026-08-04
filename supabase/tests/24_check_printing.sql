@@ -1,6 +1,6 @@
 -- Tests for check printing tables and functions (multi-bank-account schema)
 BEGIN;
-SELECT plan(55);
+SELECT plan(56);
 
 -- ==========================================
 -- 1. check_bank_accounts table structure
@@ -132,7 +132,7 @@ SELECT throws_ok(
 
 SELECT throws_ok(
     $$SELECT claim_check_numbers_for_account('00000000-0000-0000-0000-aaaaaaaaaaaa'::uuid, 1)$$,
-    'Check bank account not found: 00000000-0000-0000-0000-aaaaaaaaaaaa',
+    'Check bank account not found or unauthorized',
     'claim_check_numbers_for_account rejects unknown account_id'
 );
 

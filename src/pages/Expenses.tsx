@@ -11,6 +11,7 @@ import { Wallet, TrendingUp, CheckCircle2, Printer } from "lucide-react";
 import { useRestaurantContext } from "@/contexts/RestaurantContext";
 import { usePendingOutflows } from "@/hooks/usePendingOutflows";
 import { useStripeFinancialConnections } from "@/hooks/useStripeFinancialConnections";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useToast } from "@/hooks/use-toast";
 
 import { PendingOutflowsList } from "@/components/pending-outflows/PendingOutflowsList";
@@ -28,6 +29,7 @@ export default function Expenses() {
   const [editingExpense, setEditingExpense] = useState<PendingOutflow | null>(null);
   const { selectedRestaurant } = useRestaurantContext();
   const { toast } = useToast();
+  const { hasCapability, isResolved } = usePermissions();
 
   const { data: expenses } = usePendingOutflows();
 
@@ -89,15 +91,17 @@ export default function Expenses() {
         icon={Wallet}
         title="Expenses"
         actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate('/print-checks')}
-            aria-label="Print checks"
-          >
-            <Printer className="h-4 w-4 mr-2" />
-            Print Checks
-          </Button>
+          isResolved && hasCapability('edit:pending_outflows') && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate('/print-checks')}
+              aria-label="Print checks"
+            >
+              <Printer className="h-4 w-4 mr-2" />
+              Print Checks
+            </Button>
+          )
         }
       />
 

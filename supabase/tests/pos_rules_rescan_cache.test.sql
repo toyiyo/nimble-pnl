@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(19);
+SELECT plan(22);
 
 SET LOCAL role TO postgres;
 
@@ -167,9 +167,16 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------- TEST 12
--- Editing a rule moves the watermark and re-opens the row.
-UPDATE categorization_rules SET priority = 20
+-- Editing a rule moves the watermark and re-opens the row. The
+-- update_categorization_rules_updated_at trigger stamps updated_at = NOW(),
+-- which is transaction-frozen for the life of this pgTAP script (one
+-- BEGIN..ROLLBACK), so a plain UPDATE never actually advances it here.
+-- Bypass the trigger for this one statement and use clock_timestamp()
+-- (which does advance) to simulate a real subsequent edit.
+ALTER TABLE categorization_rules DISABLE TRIGGER update_categorization_rules_updated_at;
+UPDATE categorization_rules SET priority = 20, updated_at = clock_timestamp()
  WHERE id = '00000000-0000-0000-0000-0000000009f1';
+ALTER TABLE categorization_rules ENABLE TRIGGER update_categorization_rules_updated_at;
 
 SELECT is(
   (SELECT count(*)::int FROM unified_sales s
@@ -212,11 +219,11 @@ SELECT is(
 
 -- ---------------------------------------------------------------- TEST 15
 -- Deactivating a rule lowers the watermark; the negative cache stays valid.
+-- (rules_evaluated_at is left as test 13's sweep call set it -- the current
+-- watermark including f1 and f2 both active -- so it is already >= whatever
+-- the watermark becomes once f2 is deactivated below.)
 UPDATE unified_sales
    SET category_id = NULL, is_categorized = false
- WHERE id = '00000000-0000-0000-0000-0000000009d1';
-UPDATE unified_sales
-   SET rules_evaluated_at = now()
  WHERE id = '00000000-0000-0000-0000-0000000009d1';
 UPDATE categorization_rules SET is_active = false
  WHERE id = '00000000-0000-0000-0000-0000000009f2';
@@ -287,6 +294,69 @@ SELECT is(
       AND u.rules_evaluated_at > '-infinity'),
   1,
   'p_batch_limit = 1 stamps exactly one of 26 candidates'
+);
+
+-- ---------------------------------------------------------------- TEST 20-21
+SELECT throws_ok(
+  $$SELECT * FROM apply_rules_to_pos_sales_internal(
+      '00000000-0000-0000-0000-0000000009a1', 0)$$,
+  'p_batch_limit must be a positive integer, got 0',
+  'p_batch_limit = 0 still raises'
+);
+
+SELECT throws_ok(
+  $$SELECT * FROM apply_rules_to_pos_sales_internal(
+      '00000000-0000-0000-0000-0000000009a1', NULL)$$,
+  'p_batch_limit must be a positive integer, got <NULL>',
+  'p_batch_limit = NULL still raises'
+);
+
+-- ---------------------------------------------------------------- TEST 22
+-- Split-rule branch: the parent becomes is_split = true with two children.
+UPDATE categorization_rules SET is_active = false
+ WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a1';
+
+-- Insert the sale BEFORE the split rule exists: unified_sales has its own
+-- BEFORE INSERT trigger (auto_categorize_pos_sale) that eagerly matches
+-- against currently-active rules and would otherwise mark this row
+-- is_categorized = true on arrival -- with a single category_id, not the
+-- split semantics -- taking it out of the sweep's candidate set before the
+-- sweep (the thing under test) ever runs. With no active rule yet, the
+-- trigger is a no-op and the row lands uncategorized as intended.
+INSERT INTO unified_sales
+  (id, restaurant_id, pos_system, external_order_id, item_name, quantity,
+   sale_date, total_price, pos_category)
+VALUES
+  ('00000000-0000-0000-0000-0000000009d9', '00000000-0000-0000-0000-0000000009a1',
+   'toast', 'ord-split-1', 'Split Me', 1, CURRENT_DATE, 100.00, 'Entrees')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, item_name_pattern,
+   item_name_match_type, is_active, auto_apply, priority, is_split_rule,
+   split_categories)
+VALUES
+  ('00000000-0000-0000-0000-0000000009f3', '00000000-0000-0000-0000-0000000009a1',
+   'Split burgers', 'pos_sales', '00000000-0000-0000-0000-0000000009c1',
+   'Split Me', 'exact', true, true, 40, true,
+   jsonb_build_array(
+     jsonb_build_object('category_id', '00000000-0000-0000-0000-0000000009c1',
+                        'percentage', 60, 'description', 'food'),
+     jsonb_build_object('category_id', '00000000-0000-0000-0000-0000000009c2',
+                        'percentage', 40, 'description', 'other')))
+ON CONFLICT (id) DO NOTHING;
+
+SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+  '00000000-0000-0000-0000-0000000009a1', 100);
+
+-- Asserting on the parent's is_split flag rather than on a child-row foreign
+-- key: is_split is the column the sweep's own candidate predicate reads, so it
+-- is the one whose behaviour this change could plausibly break.
+SELECT is(
+  (SELECT is_split FROM unified_sales
+    WHERE id = '00000000-0000-0000-0000-0000000009d9'),
+  true,
+  'split-rule branch still routes through split_pos_sale'
 );
 
 SELECT * FROM finish();

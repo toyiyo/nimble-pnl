@@ -1,0 +1,178 @@
+-- Bound the rule-matching sweep so LIMIT actually limits work.
+--
+-- The old driver was a single query: unified_sales CROSS JOIN LATERAL
+-- find_matching_rules_for_pos_sale(...) WHERE matched.rule_id IS NOT NULL
+-- ORDER BY sale_date DESC LIMIT p_batch_limit. Because the LIMIT sits above a
+-- filter on the function's own output, the planner must evaluate the matcher
+-- for every candidate row before it can apply the LIMIT. On production that was
+-- 51,366 rows x one matcher call each, 4.78M buffer hits, ~6s, zero matches --
+-- 288 times a day, forever, because rows that match nothing never change state.
+--
+-- Now: statement 1 picks and stamps a bounded batch (no matcher involved, so
+-- LIMIT binds); statement 2 runs the matcher against exactly those ids.
+--
+-- Design: docs/superpowers/specs/2026-08-03-pos-sync-categorization-rescan-design.md §3.2-§3.4
+CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales_internal(
+  p_restaurant_id UUID,
+  p_batch_limit   INTEGER DEFAULT 100
+)
+RETURNS TABLE (
+  applied_count INTEGER,
+  total_count   INTEGER
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  v_sale                RECORD;
+  v_applied_count       INTEGER := 0;
+  v_total_count         INTEGER := 0;
+  v_split_result        RECORD;
+  v_splits_with_amounts JSONB;
+  v_split               JSONB;
+  v_splits_array        JSONB[] := ARRAY[]::JSONB[];
+  v_rules_changed_at    TIMESTAMPTZ;
+  v_batch_ids           UUID[];
+  v_applied_dates       DATE[] := ARRAY[]::DATE[];
+  v_prev_skip           TEXT;
+BEGIN
+  -- Guard: reject NULL or non-positive batch limits (LIMIT NULL removes cap; negative aborts loops).
+  IF p_batch_limit IS NULL OR p_batch_limit < 1 THEN
+    RAISE EXCEPTION 'p_batch_limit must be a positive integer, got %', p_batch_limit;
+  END IF;
+
+  -- No permission check: this function is for background/service-role callers.
+  -- The public wrapper apply_rules_to_pos_sales enforces owner/manager membership.
+
+  -- Rule watermark. This predicate MUST mirror find_matching_rules_for_pos_sale's
+  -- own rule-selection predicate exactly -- is_active and applies_to, and
+  -- nothing else. In particular NOT auto_apply: the matcher ignores it, so a
+  -- narrower watermark here would let a rule the matcher applies change without
+  -- invalidating the cache, producing a silent permanent miss.
+  SELECT max(GREATEST(cr.created_at, COALESCE(cr.updated_at, cr.created_at)))
+    INTO v_rules_changed_at
+  FROM categorization_rules cr
+  WHERE cr.restaurant_id = p_restaurant_id
+    AND cr.is_active = true
+    AND (cr.applies_to = 'pos_sales' OR cr.applies_to = 'both');
+
+  -- No rule can match: equivalent to running to completion with zero matches,
+  -- minus all the work. Deliberately writes nothing.
+  IF v_rules_changed_at IS NULL THEN
+    RETURN QUERY SELECT 0, 0;
+    RETURN;
+  END IF;
+
+  -- Suppress trigger_unified_sales_aggregation for the duration of the sweep and
+  -- re-aggregate once at the end. aggregate_unified_sales_to_daily sums
+  -- COALESCE(total_price, unit_price*quantity, 0) and never reads category_id,
+  -- so categorising a row cannot change a daily total -- the suppression is
+  -- end-state-equivalent, not a behaviour change. Save and restore rather than
+  -- forcing 'false': the Revel sync calls this from inside its own suppression
+  -- window and must keep it.
+  v_prev_skip := COALESCE(current_setting('app.skip_unified_sales_triggers', true), 'false');
+  PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
+
+  -- Statement 1: select and stamp the batch BEFORE any matching happens.
+  -- MATERIALIZED is required -- PG12+ inlines single-reference CTEs, which would
+  -- dissolve the LIMIT back into the outer query and reintroduce the bug.
+  --
+  -- This UPDATE fires reset_unified_sales_rules_evaluated_at, but that trigger
+  -- only resets when item_name/total_price/pos_category change, and this
+  -- statement touches none of them -- so the stamp it just wrote survives.
+  WITH batch AS MATERIALIZED (
+    SELECT s.id
+    FROM unified_sales s
+    WHERE s.restaurant_id = p_restaurant_id
+      AND (s.is_categorized = false OR s.category_id IS NULL)
+      AND s.is_split = false
+      AND s.rules_evaluated_at < v_rules_changed_at
+    ORDER BY s.sale_date DESC
+    LIMIT p_batch_limit
+  ), stamped AS (
+    UPDATE unified_sales u
+       SET rules_evaluated_at = v_rules_changed_at
+      FROM batch b
+     WHERE u.id = b.id
+    RETURNING u.id
+  )
+  SELECT COALESCE(array_agg(id), '{}'::uuid[]) INTO v_batch_ids FROM stamped;
+
+  -- Statement 2: matcher runs against exactly the stamped ids -- at most
+  -- p_batch_limit calls, regardless of how many candidates exist.
+  FOR v_sale IN
+    SELECT s.id, s.sale_date, s.total_price, matched.rule_id, matched.rule_name,
+           matched.category_id AS rule_category_id,
+           matched.is_split_rule, matched.split_categories
+    FROM unified_sales s
+    CROSS JOIN LATERAL find_matching_rules_for_pos_sale(
+      p_restaurant_id,
+      jsonb_build_object('item_name', s.item_name, 'total_price', s.total_price,
+                         'pos_category', s.pos_category)
+    ) matched
+    WHERE s.id = ANY(v_batch_ids)
+      AND matched.rule_id IS NOT NULL
+  LOOP
+    v_total_count := v_total_count + 1;
+    BEGIN
+      IF v_sale.is_split_rule AND v_sale.split_categories IS NOT NULL THEN
+        v_splits_array := ARRAY[]::JSONB[];
+        FOR v_split IN SELECT * FROM jsonb_array_elements(v_sale.split_categories)
+        LOOP
+          v_splits_array := v_splits_array || jsonb_build_object(
+            'category_id', v_split->>'category_id',
+            'amount', CASE
+              WHEN v_split->>'percentage' IS NOT NULL
+              THEN ROUND((v_sale.total_price * (v_split->>'percentage')::NUMERIC / 100.0), 2)
+              ELSE (v_split->>'amount')::NUMERIC
+            END,
+            'description', COALESCE(v_split->>'description', '')
+          );
+        END LOOP;
+        v_splits_with_amounts := to_jsonb(v_splits_array);
+        SELECT * INTO v_split_result FROM split_pos_sale(v_sale.id, v_splits_with_amounts);
+        IF NOT v_split_result.success THEN
+          RAISE NOTICE 'Failed to split sale %: %', v_sale.id, v_split_result.message;
+          CONTINUE;
+        END IF;
+      ELSE
+        UPDATE unified_sales
+        SET category_id = v_sale.rule_category_id, is_categorized = true, updated_at = now()
+        WHERE id = v_sale.id;
+      END IF;
+      v_applied_count := v_applied_count + 1;
+      -- Split children inherit the parent's sale_date, so recording the
+      -- parent's date covers both the child INSERTs and the parent's UPDATE.
+      v_applied_dates := v_applied_dates || v_sale.sale_date::date;
+      UPDATE categorization_rules
+      SET apply_count = apply_count + 1, last_applied_at = now()
+      WHERE id = v_sale.rule_id;
+    EXCEPTION WHEN OTHERS THEN
+      RAISE NOTICE 'Error categorizing sale %: %', v_sale.id, SQLERRM;
+    END;
+  END LOOP;
+
+  PERFORM set_config('app.skip_unified_sales_triggers', v_prev_skip, true);
+
+  -- Re-aggregate the touched dates once each. Skipped when the caller had
+  -- suppression on already -- that caller owns the re-aggregation.
+  IF v_applied_count > 0 AND v_prev_skip IS DISTINCT FROM 'true' THEN
+    PERFORM aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
+    FROM (SELECT DISTINCT unnest(v_applied_dates) AS sale_date) d;
+  END IF;
+
+  RETURN QUERY SELECT v_applied_count, v_total_count;
+END;
+$$;
+
+COMMENT ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer) IS
+  'Background/service-role rule sweep for unified_sales. Evaluates at most '
+  'p_batch_limit rows per call against the restaurant''s rule set, stamping '
+  'rules_evaluated_at so unmatched rows are not re-evaluated until a rule '
+  'changes. Callers needing a permission check must use apply_rules_to_pos_sales.';
+
+REVOKE EXECUTE ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer)
+  FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer)
+  TO service_role;

@@ -105,20 +105,20 @@ describe('RolesList', () => {
 
   it('shows a loading skeleton while roles are loading', () => {
     mockUseRoles({ isLoading: true });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
     expect(screen.getByTestId('roles-list-loading')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /new role/i })).not.toBeInTheDocument();
   });
 
   it('shows an error message when the roles query fails', () => {
     mockUseRoles({ error: new Error('boom') });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
     expect(screen.getByText(/failed to load roles/i)).toBeInTheDocument();
   });
 
   it('always renders the dashed "New role" card, even with zero roles', () => {
     mockUseRoles({ roles: [] });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
     expect(screen.getByRole('button', { name: /new role/i })).toBeInTheDocument();
   });
 
@@ -126,7 +126,7 @@ describe('RolesList', () => {
     const user = userEvent.setup();
     const onNewRole = vi.fn();
     mockUseRoles({ roles: [] });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={onNewRole} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={onNewRole} onOpenPeople={vi.fn()} />, { wrapper });
     await user.click(screen.getByRole('button', { name: /new role/i }));
     expect(onNewRole).toHaveBeenCalledTimes(1);
   });
@@ -138,7 +138,7 @@ describe('RolesList', () => {
         makeRole({ id: 'r-custom', name: 'Weekend Supervisor', builtin: false }),
       ],
     });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
 
     expect(card(/accountant/i)).toHaveTextContent(/built-in/i);
     expect(card(/accountant/i)).not.toHaveTextContent(/custom/i);
@@ -147,7 +147,7 @@ describe('RolesList', () => {
 
   it('shows "No areas yet" when a role has zero area grants', () => {
     mockUseRoles({ roles: [makeRole({ name: 'Empty Role', role_areas: [] })] });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
     expect(card(/empty role/i)).toHaveTextContent(/no areas yet/i);
   });
 
@@ -163,7 +163,7 @@ describe('RolesList', () => {
         }),
       ],
     });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
     const opsCard = card(/operations manager/i);
 
     expect(opsCard).toHaveTextContent(/inventory & purchasing\s*·\s*manage/i);
@@ -180,7 +180,7 @@ describe('RolesList', () => {
         makeRole({ id: 'r3', name: 'Three People', memberCount: 3 }),
       ],
     });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
 
     expect(card(/one person/i)).toHaveTextContent('1 person');
     expect(card(/three people/i)).toHaveTextContent('3 people');
@@ -195,7 +195,7 @@ describe('RolesList', () => {
     // quotes role.memberCount, the same number the editor's save banner uses.
     mockUseRestaurantMembers([]);
     mockUseRoles({ roles: [makeRole({ id: 'r3', name: 'Three People', memberCount: 3 })] });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
 
     expect(card(/three people/i)).toHaveTextContent('3 people');
   });
@@ -204,7 +204,7 @@ describe('RolesList', () => {
     const role = makeRole({ id: 'r-chef', name: 'Chef', legacy_role: 'chef', memberCount: 1 });
     mockUseRestaurantMembers([makeMember({ role: 'chef', fullName: 'Dana Chef' })]);
     mockUseRoles({ roles: [role] });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
 
     // Decoration beside a count that already says the same thing, so the face
     // pile is aria-hidden — the button's own label carries the meaning.
@@ -219,7 +219,7 @@ describe('RolesList', () => {
     const onSelectRole = vi.fn();
     const builtin = makeRole({ id: 'r-builtin', name: 'Accountant', builtin: true });
     mockUseRoles({ roles: [builtin] });
-    render(<RolesList restaurantId="rest-1" onSelectRole={onSelectRole} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={onSelectRole} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
 
     await user.click(nameDoor('Accountant'));
     expect(onSelectRole).toHaveBeenCalledTimes(1);
@@ -235,6 +235,7 @@ describe('RolesList', () => {
     render(
       <RolesList
         restaurantId="rest-1"
+        callerRole="owner"
         onSelectRole={onSelectRole}
         onNewRole={vi.fn()}
         onOpenPeople={onOpenPeople}
@@ -255,6 +256,7 @@ describe('RolesList', () => {
     render(
       <RolesList
         restaurantId="rest-1"
+        callerRole="owner"
         onSelectRole={vi.fn()}
         onNewRole={vi.fn()}
         onOpenPeople={onOpenPeople}
@@ -268,9 +270,33 @@ describe('RolesList', () => {
     expect(onOpenPeople).toHaveBeenCalledWith(role);
   });
 
+  it('offers no action on an empty role this caller cannot assign into', () => {
+    // Kiosk is in no inviter's row — not even an owner's — because a kiosk is
+    // provisioned from device setup, never handed to a person. Offering
+    // "Assign people" here would open a panel that could not offer it either.
+    mockUseRoles({
+      roles: [makeRole({ id: 'rk', name: 'Kiosk', legacy_role: 'kiosk', memberCount: 0 })],
+    });
+    render(
+      <RolesList
+        restaurantId="rest-1"
+        callerRole="owner"
+        onSelectRole={vi.fn()}
+        onNewRole={vi.fn()}
+        onOpenPeople={vi.fn()}
+      />,
+      { wrapper }
+    );
+
+    expect(within(card('Kiosk')).getByText('Nobody yet')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /nobody is in kiosk yet\. assign people/i })
+    ).not.toBeInTheDocument();
+  });
+
   it('renders role cards before the "New role" card, in query order', () => {
     mockUseRoles({ roles: [makeRole({ id: 'r1', name: 'Accountant' })] });
-    render(<RolesList restaurantId="rest-1" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
+    render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
     const buttons = screen.getAllByRole('button');
     expect(buttons[buttons.length - 1]).toHaveAccessibleName(/new role/i);
   });

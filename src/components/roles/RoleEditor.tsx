@@ -186,6 +186,20 @@ function memberNoticeText(count: number): string {
 }
 
 /**
+ * The one amber banner under the name and description, or nothing.
+ *
+ * Read-only wins over the member notice: if you cannot save, how many people
+ * would be affected by saving is not the thing to say.
+ */
+function editorNoticeText(builtinReadOnly: boolean, role: RoleWithGrants | null): string | null {
+  if (builtinReadOnly) {
+    return 'Built-in role. Read-only — keeps getting new areas as we ship features. Duplicate it to make a version you control.';
+  }
+  if (role && role.memberCount > 0) return memberNoticeText(role.memberCount);
+  return null;
+}
+
+/**
  * A band's tinted full-bleed header strip, with the column legend on the right.
  *
  * Full-bleed (no horizontal padding on the parent) is what separates one band
@@ -409,6 +423,7 @@ export function RoleEditor({
 
   const isNewDraft = role === null;
   const builtinReadOnly = role?.builtin ?? false;
+  const editorNotice = editorNoticeText(builtinReadOnly, role);
   const { toast } = useToast();
 
   const [name, setName] = useState(role?.name ?? '');
@@ -622,20 +637,12 @@ export function RoleEditor({
 
               {/* Banner sits under the two fields, as in the approved design — the
                   name is what identifies the card, so it reads first. */}
-              {builtinReadOnly ? (
+              {editorNotice && (
                 <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
                   <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
-                  <p className="text-[13px] text-foreground">
-                    Built-in role. Read-only — keeps getting new areas as we ship features. Duplicate it to make a
-                    version you control.
-                  </p>
+                  <p className="text-[13px] text-foreground">{editorNotice}</p>
                 </div>
-              ) : role && role.memberCount > 0 ? (
-                <div className="flex items-start gap-3 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-500" aria-hidden="true" />
-                  <p className="text-[13px] text-foreground">{memberNoticeText(role.memberCount)}</p>
-                </div>
-              ) : null}
+              )}
             </div>
 
             {/* Area bands */}

@@ -6,6 +6,8 @@ import { useRestaurantMembers, type RestaurantMember } from '@/hooks/useRestaura
 import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
 import { RoleFacePile } from '@/components/roles/RoleFacePile';
 import { groupMembersByRole, legacyRoleIndex } from '@/lib/permissions/roleMembership';
+import { canAssignTargetRole } from '@/lib/permissions/invitations';
+import type { Role } from '@/lib/permissions/types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,6 +39,8 @@ import { cn } from '@/lib/utils';
 
 export interface RolesListProps {
   restaurantId: string;
+  /** The signed-in user's role in this restaurant. */
+  callerRole: Role;
   onSelectRole: (role: RoleWithGrants) => void;
   onNewRole: () => void;
   /**
@@ -53,6 +57,9 @@ export interface RolesListProps {
  * responsive without a breakpoint ladder.
  */
 const ROLE_GRID_CLASS = 'grid gap-3.5 grid-cols-[repeat(auto-fill,minmax(292px,1fr))]';
+
+/** Shared so an empty role's `roster` prop is the same reference every render. */
+const EMPTY_ROSTER: readonly RestaurantMember[] = [];
 
 function memberCountLabel(count: number): string {
   return count === 1 ? '1 person' : `${count} people`;
@@ -81,6 +88,74 @@ function RoleCardSkeleton() {
 }
 
 /**
+ * The card footer's left half — the count, and what it opens.
+ *
+ * Three states, as sequential returns rather than a ternary chain: people are
+ * in the role, the role is empty and this caller can fill it, or the role is
+ * empty and they cannot.
+ */
+function RoleCardPeople({
+  role,
+  roster,
+  count,
+  callerRole,
+  onOpenPeople,
+}: {
+  role: RoleWithGrants;
+  roster: readonly RestaurantMember[];
+  count: number;
+  callerRole: Role;
+  onOpenPeople: () => void;
+}) {
+  if (count > 0) {
+    return (
+      <button
+        type="button"
+        onClick={onOpenPeople}
+        aria-label={`${memberCountLabel(count)} in ${role.name}. Manage who's in this role`}
+        className={cn(
+          'group/people inline-flex items-center gap-[7px] rounded-lg -mx-1 px-1 py-0.5',
+          'hover:bg-muted hover:text-foreground transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+        )}
+      >
+        <RoleFacePile members={roster} />
+        <span>{memberCountLabel(count)}</span>
+        <ChevronRight
+          className="h-3 w-3 opacity-0 group-hover/people:opacity-70 transition-opacity"
+          aria-hidden="true"
+        />
+      </button>
+    );
+  }
+
+  if (canAssignTargetRole(callerRole, role.legacy_role)) {
+    // The case the user actually hit: an empty custom role used to show a dead
+    // "0 members". Make it the loudest thing on the card.
+    return (
+      <button
+        type="button"
+        onClick={onOpenPeople}
+        aria-label={`Nobody is in ${role.name} yet. Assign people`}
+        className={cn(
+          'inline-flex items-center gap-[7px] rounded-lg -mx-1 px-1 py-0.5 font-medium text-foreground',
+          'hover:bg-muted transition-colors',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+        )}
+      >
+        <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
+        <span>Assign people</span>
+      </button>
+    );
+  }
+
+  // Empty, and this caller cannot fill it — Kiosk for everyone (it is in no
+  // inviter's row), Owner for a manager. Offering the action here would only
+  // walk them to a panel that cannot offer it either.
+  return <span>Nobody yet</span>;
+}
+
+/**
  * A card is two doors, not one.
  *
  * The chrome moved from a single `<button>` onto an `<article>` so the footer
@@ -92,11 +167,13 @@ function RoleCardSkeleton() {
 function RoleCard({
   role,
   roster,
+  callerRole,
   onClick,
   onOpenPeople,
 }: {
   role: RoleWithGrants;
   roster: readonly RestaurantMember[];
+  callerRole: Role;
   onClick: () => void;
   onOpenPeople: () => void;
 }) {
@@ -138,41 +215,13 @@ function RoleCard({
       <RoleAreaChips areas={role.role_areas} />
 
       <div className="flex items-center justify-between gap-2.5 mt-auto pt-[11px] border-t border-border/40 text-[12px] text-muted-foreground">
-        {count > 0 ? (
-          <button
-            type="button"
-            onClick={onOpenPeople}
-            aria-label={`${memberCountLabel(count)} in ${role.name}. Manage who's in this role`}
-            className={cn(
-              'group/people inline-flex items-center gap-[7px] rounded-lg -mx-1 px-1 py-0.5',
-              'hover:bg-muted hover:text-foreground transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-            )}
-          >
-            <RoleFacePile members={roster} />
-            <span>{memberCountLabel(count)}</span>
-            <ChevronRight
-              className="h-3 w-3 opacity-0 group-hover/people:opacity-70 transition-opacity"
-              aria-hidden="true"
-            />
-          </button>
-        ) : (
-          // The case the user actually hit: an empty custom role used to show a
-          // dead "0 people". Make it the loudest thing on the card.
-          <button
-            type="button"
-            onClick={onOpenPeople}
-            aria-label={`Nobody is in ${role.name} yet. Assign people`}
-            className={cn(
-              'inline-flex items-center gap-[7px] rounded-lg -mx-1 px-1 py-0.5 font-medium text-foreground',
-              'hover:bg-muted transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
-            )}
-          >
-            <UserPlus className="h-3.5 w-3.5" aria-hidden="true" />
-            <span>Assign people</span>
-          </button>
-        )}
+        <RoleCardPeople
+          role={role}
+          roster={roster}
+          count={count}
+          callerRole={callerRole}
+          onOpenPeople={onOpenPeople}
+        />
         <span className="text-[10px] px-1.5 py-0.5 rounded-md border border-border/40 font-mono uppercase tracking-wider text-muted-foreground">
           {role.builtin ? 'Built-in' : 'Custom'}
         </span>
@@ -202,6 +251,7 @@ function NewRoleCard({ onClick }: { onClick: () => void }) {
 
 export function RolesList({
   restaurantId,
+  callerRole,
   onSelectRole,
   onNewRole,
   onOpenPeople,
@@ -246,7 +296,8 @@ export function RolesList({
         <RoleCard
           key={role.id}
           role={role}
-          roster={rostersByRole.get(role.id) ?? []}
+          roster={rostersByRole.get(role.id) ?? EMPTY_ROSTER}
+          callerRole={callerRole}
           onClick={() => onSelectRole(role)}
           onOpenPeople={() => onOpenPeople(role)}
         />

@@ -88,6 +88,7 @@ export function RolesTab({ restaurantId, userRole }: RolesTabProps) {
         </div>
         <RolesList
           restaurantId={restaurantId}
+          callerRole={userRole}
           onSelectRole={(role) => openRole(role, 'areas')}
           onOpenPeople={(role) => openRole(role, 'people')}
           onNewRole={() => openRole(null, 'areas')}

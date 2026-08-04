@@ -33,6 +33,7 @@ export {
 // Invitations
 export {
   canAssignAnyRole,
+  canAssignTargetRole,
   canInviteRole,
   canInviteCustomRole,
   getInvitableRoles,

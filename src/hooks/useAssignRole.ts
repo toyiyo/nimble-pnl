@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import type { MembershipRoleLiteral } from '@/lib/permissions/invitations';
@@ -42,31 +43,56 @@ export function assignRoleErrorMessage(error: unknown): string {
   return FALLBACK;
 }
 
-export function useAssignRole(restaurantId: string | undefined) {
+/**
+ * The RPC call alone, with no cache side effects.
+ *
+ * Separate from the mutation so a caller assigning several people in a row can
+ * refresh ONCE at the end. Through the mutation, each `mutateAsync` fires the
+ * four invalidations below, and the queries behind the open dialog are all
+ * active — so assigning K people means 4K refetches for one net change.
+ */
+export async function assignMembershipRole({
+  membershipId,
+  role,
+  roleId,
+}: AssignRoleParams): Promise<void> {
+  const { error } = await supabase.rpc('assign_membership_role', {
+    p_membership_id: membershipId,
+    p_role: role,
+    p_role_id: roleId ?? null,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Everything a role change moves, refreshed together. Returned as a callback so
+ * both the single-assignment mutation and a batch can fire it — the batch after
+ * its whole loop rather than inside it.
+ */
+export function useRefreshAfterAssign(restaurantId: string | undefined) {
   const queryClient = useQueryClient();
 
+  return useCallback(() => {
+    // ['roles'] — member counts moved.
+    queryClient.invalidateQueries({ queryKey: ['roles', restaurantId] });
+    queryClient.invalidateQueries({ queryKey: ['collaborators', restaurantId] });
+    // ['restaurant-members'] — the roster behind a role card reads it, and a
+    // reassignment moves someone from one card's list to another's. Without
+    // this the count (from ['roles']) updates and the faces do not.
+    queryClient.invalidateQueries({ queryKey: ['restaurant-members', restaurantId] });
+    // ['restaurants'] is not belt-and-braces: useRestaurants embeds the
+    // signed-in user's own roleRecord, so a role change they can see must
+    // refresh their resolved capabilities — the same reasoning useRoles.ts
+    // documents at :15-19.
+    queryClient.invalidateQueries({ queryKey: ['restaurants'] });
+  }, [queryClient, restaurantId]);
+}
+
+export function useAssignRole(restaurantId: string | undefined) {
+  const refresh = useRefreshAfterAssign(restaurantId);
+
   return useMutation({
-    mutationFn: async ({ membershipId, role, roleId }: AssignRoleParams) => {
-      const { error } = await supabase.rpc('assign_membership_role', {
-        p_membership_id: membershipId,
-        p_role: role,
-        p_role_id: roleId ?? null,
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      // ['roles'] — member counts moved.
-      queryClient.invalidateQueries({ queryKey: ['roles', restaurantId] });
-      queryClient.invalidateQueries({ queryKey: ['collaborators', restaurantId] });
-      // ['restaurant-members'] — the roster behind a role card reads it, and a
-      // reassignment moves someone from one card's list to another's. Without
-      // this the count (from ['roles']) updates and the faces do not.
-      queryClient.invalidateQueries({ queryKey: ['restaurant-members', restaurantId] });
-      // ['restaurants'] is not belt-and-braces: useRestaurants embeds the
-      // signed-in user's own roleRecord, so a role change they can see must
-      // refresh their resolved capabilities — the same reasoning useRoles.ts
-      // documents at :15-19.
-      queryClient.invalidateQueries({ queryKey: ['restaurants'] });
-    },
+    mutationFn: assignMembershipRole,
+    onSuccess: refresh,
   });
 }

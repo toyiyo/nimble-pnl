@@ -110,3 +110,29 @@ export function canInviteCustomRole(inviter: Role): boolean {
 export function canAssignAnyRole(inviter: Role): boolean {
   return getInvitableRoles(inviter).length > 0 || canInviteCustomRole(inviter);
 }
+
+/**
+ * Whether `inviter` may put someone into ONE specific role — the gate for an
+ * "Assign people to this role" action, which names its target up front.
+ *
+ * `canAssignAnyRole` cannot answer this: it asks whether the caller has any
+ * target at all, so it says yes to an operations_manager (who may assign only
+ * `staff`) standing in front of a custom role, and to a manager standing in
+ * front of Owner. Both would get a 42501 on every person they picked.
+ *
+ * `targetLegacyRole` is the `roles.legacy_role` column: the builtin role string
+ * for a builtin row, NULL for a custom one — the same discriminator
+ * `RolePicker` uses to decide what to send. The two branches mirror
+ * `assign_membership_role`'s rule 6 exactly
+ * (20260802110000_assign_membership_role.sql:158-190): custom roles are gated
+ * by `can_invite_custom_role`, builtins by membership in `invitable_roles`.
+ *
+ * A consequence worth stating: nobody can assign `kiosk`, because it is in no
+ * inviter's row. That is the server's answer too — a kiosk is provisioned from
+ * device setup, not handed to a person.
+ */
+export function canAssignTargetRole(inviter: Role, targetLegacyRole: string | null): boolean {
+  return targetLegacyRole === null
+    ? canInviteCustomRole(inviter)
+    : canInviteRole(inviter, targetLegacyRole as Role);
+}

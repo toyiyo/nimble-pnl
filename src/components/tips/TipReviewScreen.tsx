@@ -3,7 +3,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { formatCurrencyFromCents, rebalanceAllocations, type TipShare, type ServerResult, type PoolResult } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, formatAppliedRuleLabel, rebalanceAllocations, type TipShare, type ServerResult, type PoolResult } from '@/utils/tipPooling';
 import { Info, DollarSign, ChevronRight, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ShareMethod, PoolingModel } from '@/hooks/useTipPoolSettings';
@@ -18,6 +18,8 @@ interface TipReviewScreenProps {
   readonly poolingModel?: PoolingModel;
   readonly serverResults?: ServerResult[];
   readonly poolResults?: PoolResult[];
+  readonly scaledDownFactor?: number | null;
+  readonly redistributedLeftoverCents?: number;
 }
 
 /**
@@ -40,6 +42,8 @@ export function TipReviewScreen({
   poolingModel,
   serverResults,
   poolResults,
+  scaledDownFactor = null,
+  redistributedLeftoverCents = 0,
 }: TipReviewScreenProps) {
   const [shares, setShares] = useState<TipShare[]>(initialShares);
   const [editingEmployeeId, setEditingEmployeeId] = useState<string | null>(null);
@@ -141,6 +145,31 @@ export function TipReviewScreen({
           />
         )}
 
+        {scaledDownFactor !== null && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20"
+          >
+            <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+            <span className="text-[13px] text-warning">
+              {`Guarantees totalled more than the pool, so each was reduced to ${(scaledDownFactor * 100).toFixed(1)}% of what was configured.`}
+            </span>
+          </div>
+        )}
+        {redistributedLeftoverCents > 0 && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 p-2.5 rounded-lg bg-warning/10 border border-warning/20"
+          >
+            <AlertTriangle className="h-4 w-4 text-warning flex-shrink-0" />
+            <span className="text-[13px] text-warning">
+              {`No hourly staff worked; the remaining ${formatCurrencyFromCents(redistributedLeftoverCents)} was split across the fixed percentages.`}
+            </span>
+          </div>
+        )}
+
         {/* Balance Indicator */}
         <div className="flex justify-between items-center p-4 rounded-xl border border-border/40 bg-muted/30">
           <span className="text-[14px] font-medium text-foreground">Total remaining</span>
@@ -211,17 +240,18 @@ function AllocationTable({
   onBlur: () => void;
 }>) {
   return (
-    <div className="rounded-xl border border-border/40 overflow-hidden">
+    <div className="rounded-xl border border-border/40 overflow-hidden overflow-x-auto">
       <table className="w-full">
         <thead>
           <tr className="bg-muted/50 border-b border-border/40">
             <th className="px-4 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Employee</th>
             {shareMethod === 'hours' && (
-              <th className="px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Hours</th>
+              <th className="hidden sm:table-cell px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Hours</th>
             )}
             {shareMethod === 'role' && (
               <th className="px-4 py-2.5 text-left text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Role</th>
             )}
+            <th className="px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">% of pool</th>
             <th className="px-4 py-2.5 text-right text-[12px] font-medium text-muted-foreground uppercase tracking-wider">Tip</th>
           </tr>
         </thead>
@@ -232,10 +262,17 @@ function AllocationTable({
               className="border-b border-border/40 last:border-b-0 hover:bg-muted/30 transition-colors"
             >
               <td className="px-4 py-3">
-                <span className="text-[14px] font-medium text-foreground">{share.name}</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-[14px] font-medium text-foreground truncate max-w-[12rem]">{share.name}</span>
+                  {share.appliedRule && (
+                    <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+                      {formatAppliedRuleLabel(share.appliedRule)}
+                    </span>
+                  )}
+                </div>
               </td>
               {shareMethod === 'hours' && (
-                <td className="px-4 py-3 text-right text-[13px] text-muted-foreground">
+                <td className="hidden sm:table-cell px-4 py-3 text-right text-[13px] text-muted-foreground">
                   {share.hours?.toFixed(1) || '\u2014'}
                 </td>
               )}
@@ -244,6 +281,11 @@ function AllocationTable({
                   {share.role || '\u2014'}
                 </td>
               )}
+              <td className="px-4 py-3 text-right text-[13px] text-muted-foreground tabular-nums">
+                {totalTipsCents > 0
+                  ? `${((share.amountCents / totalTipsCents) * 100).toFixed(1)}%`
+                  : '\u2014'}
+              </td>
               <td className="px-4 py-3 text-right">
                 {editingEmployeeId === share.employeeId ? (
                   <Input
@@ -263,7 +305,7 @@ function AllocationTable({
                       }
                     }}
                     autoFocus
-                    className="text-right w-32 ml-auto h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg"
+                    className="text-right w-24 sm:w-32 ml-auto h-9 text-[14px] bg-muted/30 border-border/40 rounded-lg"
                   />
                 ) : (
                   <button

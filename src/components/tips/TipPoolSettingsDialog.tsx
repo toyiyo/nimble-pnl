@@ -19,6 +19,8 @@ import type { TipSource, ShareMethod, SplitCadence, PoolingModel } from '@/hooks
 import type { TipContributionPool, CreatePoolInput, UpdatePoolInput } from '@/hooks/useTipContributionPools';
 import type { Employee } from '@/types/scheduling';
 import { ContributionPoolEditor } from './ContributionPoolEditor';
+import { RoleAllocationSection } from './RoleAllocationSection';
+import type { RoleAllocationRule } from '@/utils/tipPooling';
 
 interface TipPoolSettingsDialogProps {
   open: boolean;
@@ -31,6 +33,7 @@ interface TipPoolSettingsDialogProps {
   shareMethod: ShareMethod;
   splitCadence: SplitCadence;
   roleWeights: Record<string, number>;
+  rolePercentages: Record<string, RoleAllocationRule>;
   selectedEmployees: Set<string>;
   // Available data
   eligibleEmployees: Employee[];
@@ -40,6 +43,7 @@ interface TipPoolSettingsDialogProps {
   onShareMethodChange: (value: ShareMethod) => void;
   onSplitCadenceChange: (value: SplitCadence) => void;
   onRoleWeightsChange: (weights: Record<string, number>) => void;
+  onRolePercentagesChange: (rules: Record<string, RoleAllocationRule>) => void;
   onSelectedEmployeesChange: (employees: Set<string>) => void;
   // For percentage contribution mode
   contributionPools?: TipContributionPool[];
@@ -66,6 +70,7 @@ export function TipPoolSettingsDialog({
   shareMethod,
   splitCadence,
   roleWeights,
+  rolePercentages,
   selectedEmployees,
   eligibleEmployees,
   isLoading = false,
@@ -73,6 +78,7 @@ export function TipPoolSettingsDialog({
   onShareMethodChange,
   onSplitCadenceChange,
   onRoleWeightsChange,
+  onRolePercentagesChange,
   onSelectedEmployeesChange,
   contributionPools,
   onCreatePool,
@@ -87,6 +93,17 @@ export function TipPoolSettingsDialog({
   useEffect(() => {
     setLocalRoleWeights(roleWeights);
   }, [roleWeights]);
+
+  const [localRolePercentages, setLocalRolePercentages] = useState(rolePercentages);
+
+  useEffect(() => {
+    setLocalRolePercentages(rolePercentages);
+  }, [rolePercentages]);
+
+  const handleRolePercentagesChange = (rules: Record<string, RoleAllocationRule>) => {
+    setLocalRolePercentages(rules);
+    onRolePercentagesChange(rules);
+  };
 
   // Get unique roles from eligible employees
   const uniqueRoles = [...new Set(eligibleEmployees.map(e => e.position).filter(Boolean))];
@@ -330,6 +347,15 @@ export function TipPoolSettingsDialog({
               </RadioGroup>
               </div>
             </div>
+          )}
+
+          {/* Role Allocation (full_pool only — overlays whichever share method is active) */}
+          {isFullPool && (
+            <RoleAllocationSection
+              roles={uniqueRoles}
+              rules={localRolePercentages}
+              onChange={handleRolePercentagesChange}
+            />
           )}
 
           {/* Role Weights (full_pool + role method only) */}

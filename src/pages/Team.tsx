@@ -10,8 +10,9 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { TeamInvitations } from '@/components/TeamInvitations';
 import { TeamMembers } from '@/components/TeamMembers';
 import { CollaboratorInvitations } from '@/components/CollaboratorInvitations';
+import { RolesTab } from '@/components/roles/RolesTab';
 import { MetricIcon } from '@/components/MetricIcon';
-import { UserPlus, Building, ArrowLeft, Users, Handshake } from 'lucide-react';
+import { UserPlus, Building, ArrowLeft, Users, Handshake, ShieldCheck } from 'lucide-react';
 
 const Team = () => {
   const { user, loading } = useAuth();
@@ -115,7 +116,7 @@ const Team = () => {
         </Card>
 
         <Tabs defaultValue="members" className="space-y-4 md:space-y-6">
-          <TabsList className="grid w-full grid-cols-3 h-auto">
+          <TabsList className="grid w-full grid-cols-4 h-auto">
             <TabsTrigger
               value="members"
               id="members-tab"
@@ -124,6 +125,21 @@ const Team = () => {
             >
               <UserPlus className="h-4 w-4 mb-1" aria-hidden="true" />
               <span className="text-xs md:text-sm">Team Members</span>
+            </TabsTrigger>
+            {/*
+              No aria-label here, deliberately: the other three triggers predate
+              this one and carry "View …" labels that *replace* their visible
+              text, which breaks WCAG 2.5.3 (Label in Name) for voice control.
+              Leaving this one unlabelled lets its accessible name come from the
+              visible text, which is what the roles-and-areas E2E spec selects on.
+            */}
+            <TabsTrigger
+              value="roles"
+              id="roles-tab"
+              className="flex-col py-2 px-1 text-center transition-all duration-200 data-[state=active]:shadow-sm"
+            >
+              <ShieldCheck className="h-4 w-4 mb-1" aria-hidden="true" />
+              <span className="text-xs md:text-sm">Roles &amp; Areas</span>
             </TabsTrigger>
             <TabsTrigger
               value="collaborators"
@@ -150,6 +166,10 @@ const Team = () => {
               restaurantId={selectedRestaurant.restaurant_id}
               userRole={selectedRestaurant.role}
             />
+          </TabsContent>
+
+          <TabsContent value="roles" role="tabpanel" aria-labelledby="roles-tab">
+            <RolesTab restaurantId={selectedRestaurant.restaurant_id} />
           </TabsContent>
 
           <TabsContent value="collaborators" role="tabpanel" aria-labelledby="collaborators-tab">

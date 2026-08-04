@@ -65,7 +65,7 @@ function formatClaimantNames(names: string[]): string {
   return `${first}, ${second} +${rest.length} more`;
 }
 
-function pluralize(count: number, singular: string, plural: string): string {
+export function pluralize(count: number, singular: string, plural: string): string {
   return count === 1 ? singular : plural;
 }
 

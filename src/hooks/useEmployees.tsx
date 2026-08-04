@@ -11,6 +11,14 @@ interface UseEmployeesOptions {
 
 const defaultOptions: UseEmployeesOptions = { status: 'active' };
 
+// Stable reference for the "no data yet" case. `data || []` would otherwise
+// allocate a fresh empty array on every render while the query is loading,
+// which breaks referential equality for any useMemo/useEffect keyed on the
+// returned `employees` array — capable of driving an infinite render loop in
+// a consumer that both derives from it and writes state back on every change
+// (see src/pages/Tips.tsx).
+const EMPTY_EMPLOYEES: Employee[] = [];
+
 export const useEmployees = (
   restaurantId: string | null,
   options: UseEmployeesOptions = defaultOptions
@@ -54,7 +62,7 @@ export const useEmployees = (
   });
 
   return {
-    employees: data || [],
+    employees: data ?? EMPTY_EMPLOYEES,
     loading: isLoading,
     error,
   };

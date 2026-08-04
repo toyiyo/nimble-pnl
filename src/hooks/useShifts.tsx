@@ -6,6 +6,7 @@ import { useToast } from '@/hooks/use-toast';
 import { RecurringActionScope, getSeriesParentId } from '@/utils/recurringShiftHelpers';
 import { generateRecurringDates } from '@/utils/recurrenceUtils';
 import { buildShiftDeletedInvoke, DeletableShift } from '@/lib/shiftDeleteNotification';
+import { ShiftInterval, formatLocalDate, formatLocalDateInTz, formatLocalHHMMInTz, localDayOffsetInTz, requireTz } from '@/lib/shiftInterval';
 
 import { Shift, RecurrencePattern } from '@/types/scheduling';
 import { Json } from '@/integrations/supabase/types';
@@ -48,8 +49,8 @@ export function useShifts(
   restaurantId: string | null,
   startDate?: Date,
   endDate?: Date
-): { shifts: Shift[]; loading: boolean; error: Error | null } {
-  const { data, isLoading, error } = useQuery({
+): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['shifts', restaurantId, startDate?.toISOString(), endDate?.toISOString()],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -82,6 +83,9 @@ export function useShifts(
     shifts: data || [],
     loading: isLoading,
     error,
+    // Exposed so a failed load can offer Retry rather than an empty grid that
+    // reads as "you are not working this week".
+    refetch,
   };
 }
 
@@ -96,17 +100,29 @@ export interface UseCreateShiftOptions {
    * caller's behavior is unchanged.
    */
   silent?: boolean;
+  /**
+   * The restaurant's IANA timezone. Only consulted for a recurring create —
+   * a single-shift create's `start_time`/`end_time` already arrive as
+   * correct UTC instants from the caller (ShiftDialog resolves them via
+   * `wallClockToInstant` before calling `mutate`). Required whenever
+   * `shift.recurrence_pattern && shift.is_recurring`: every child after the
+   * first is rebuilt from the parent's restaurant-local wall clock, and
+   * doing that without a real `tz` is exactly the bug this option exists to
+   * prevent (see `createRecurringShifts`).
+   */
+  tz?: string;
 }
 
 export function useCreateShift(options: UseCreateShiftOptions = {}) {
-  const { silent = false } = options;
+  const { silent = false, tz } = options;
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (shift: ShiftInput) => {
       if (shift.recurrence_pattern && shift.is_recurring) {
-        return createRecurringShifts(shift);
+        requireTz(tz);
+        return createRecurringShifts(shift, tz);
       }
       return createSingleShift(shift);
     },
@@ -147,12 +163,59 @@ async function createSingleShift(shift: ShiftInput): Promise<Shift> {
   return toTypedShift(data);
 }
 
-async function createRecurringShifts(shift: ShiftInput): Promise<Shift> {
+async function createRecurringShifts(shift: ShiftInput, tz: string): Promise<Shift> {
   const startDate = parseISO(shift.start_time);
-  const endDate = parseISO(shift.end_time);
-  const durationMs = endDate.getTime() - startDate.getTime();
 
-  const recurringDates = generateRecurringDates(startDate, shift.recurrence_pattern!);
+  // Seed the recurrence generator with a calendar-only Date built from the
+  // restaurant-local calendar date (noon, clear of any host-local DST edge),
+  // not `startDate` itself — `generateRecurringDates` steps days/weeks via
+  // host-local `Date` getters/setters, so feeding it the raw instant would
+  // advance the HOST's calendar day, not the restaurant's. This keeps every
+  // occurrence's calendar date anchored to the restaurant regardless of the
+  // manager's device timezone.
+  const startDateStr = formatLocalDateInTz(startDate, tz);
+  const [seedYear, seedMonth, seedDay] = startDateStr.split('-').map(Number);
+  const calendarSeed = new Date(seedYear, seedMonth - 1, seedDay, 12, 0, 0);
+
+  const recurringDates = generateRecurringDates(calendarSeed, shift.recurrence_pattern!);
+  // The parent's restaurant-local wall clock (HH:MM) — every child keeps
+  // this exact wall clock, so a series spanning a DST transition stays at
+  // the same local time instead of drifting by the transition's offset.
+  const wallClockTime = formatLocalHHMMInTz(shift.start_time, tz);
+  // The parent's restaurant-local end wall clock, plus the number of calendar
+  // days its end falls past its start. Each child resolves its own start/end
+  // via `ShiftInterval.createSpanning` from those three values — rather than
+  // reusing the parent's raw millisecond duration.
+  //
+  // The offset is carried explicitly instead of being re-inferred from
+  // `endTime < startTime` (what `ShiftInterval.create` would do), because
+  // that inference only ever yields 0 or 1 and is wrong for a parent whose
+  // end lands on a later day at an equal-or-later wall clock — ShiftDialog
+  // collects start date and end date independently, so a Mon 09:00 -> Tue
+  // 17:00 parent is creatable and would otherwise spawn same-day 8h
+  // children, and a Mon 09:00 -> Tue 09:00 parent would make every child a
+  // zero-length interval and throw.
+  //
+  // Reusing a captured `durationMs` (end instant − start instant) would be
+  // wrong whenever the *parent's own* start–end interval crosses a DST
+  // transition: its elapsed instant duration then differs from its
+  // wall-clock duration, and every child — even one whose own occurrence
+  // never crosses a transition — would inherit that skew (e.g. a nightly
+  // 22:00–06:00 Chicago shift created on a spring-forward night has a 7h
+  // elapsed duration but an 8h wall-clock duration; naively applying 7h to
+  // later children lands them at 05:00, not the intended 06:00).
+  const endWallClockTime = formatLocalHHMMInTz(shift.end_time, tz);
+  const endDayOffset = localDayOffsetInTz(shift.start_time, shift.end_time, tz);
+
+  // Resolve every child interval BEFORE inserting the parent. These are pure
+  // computations that can throw (`ShiftInterval` rejects an unbuildable
+  // interval), and a throw after the parent insert has landed would leave an
+  // orphan parent in the database while the caller is told the create
+  // failed — a half-written series. Doing the arithmetic first makes the
+  // create all-or-nothing.
+  const childIntervals = recurringDates.slice(1).map((date) =>
+    ShiftInterval.createSpanning(formatLocalDate(date), wallClockTime, endWallClockTime, endDayOffset, tz),
+  );
 
   const { data: parentShift, error: parentError } = await supabase
     .from('shifts')
@@ -166,26 +229,20 @@ async function createRecurringShifts(shift: ShiftInput): Promise<Shift> {
 
   if (parentError) throw parentError;
 
-  if (recurringDates.length > 1) {
-    const childShifts = recurringDates.slice(1).map((date) => {
-      const childStartTime = new Date(date);
-      childStartTime.setHours(startDate.getHours(), startDate.getMinutes(), startDate.getSeconds());
-      const childEndTime = new Date(childStartTime.getTime() + durationMs);
-
-      return {
-        restaurant_id: shift.restaurant_id,
-        employee_id: shift.employee_id,
-        start_time: childStartTime.toISOString(),
-        end_time: childEndTime.toISOString(),
-        break_duration: shift.break_duration,
-        position: shift.position,
-        status: shift.status,
-        notes: shift.notes,
-        recurrence_pattern: shift.recurrence_pattern as unknown as Json,
-        recurrence_parent_id: parentShift.id,
-        is_recurring: true,
-      };
-    });
+  if (childIntervals.length > 0) {
+    const childShifts = childIntervals.map((childInterval) => ({
+      restaurant_id: shift.restaurant_id,
+      employee_id: shift.employee_id,
+      start_time: childInterval.startAt.toISOString(),
+      end_time: childInterval.endAt.toISOString(),
+      break_duration: shift.break_duration,
+      position: shift.position,
+      status: shift.status,
+      notes: shift.notes,
+      recurrence_pattern: shift.recurrence_pattern as unknown as Json,
+      recurrence_parent_id: parentShift.id,
+      is_recurring: true,
+    }));
 
     const { error: childError } = await supabase.from('shifts').insert(childShifts);
     if (childError) throw childError;

@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { format, startOfDay, endOfDay } from 'date-fns';
-import { formatCurrencyFromCents, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, type PercentageAllocationResult } from '@/utils/tipPooling';
+import { formatCurrencyFromCents, formatAppliedRuleLabel, ruleAppliesTo, calculateTipSplitByHours, calculateTipSplitByRole, filterTipEligible, calculateTipSplitEven, calculatePercentagePoolAllocations, calculateTipSplitWithGuarantees, type PercentageAllocationResult, type GuaranteedParticipant, type RoleAllocationRule, type TipShare } from '@/utils/tipPooling';
 import { mergeManualHours } from '@/utils/tipHours';
 import { useToast } from '@/hooks/use-toast';
 import { useTipPoolSettings, type TipSource, type ShareMethod, type SplitCadence, type PoolingModel } from '@/hooks/useTipPoolSettings';
@@ -19,6 +19,7 @@ import { useTipPayouts, type CreatePayoutsInput } from '@/hooks/useTipPayouts';
 import { usePOSTipsForDate } from '@/hooks/usePOSTips';
 import { useAutoSaveTipSettings } from '@/hooks/useAutoSaveTipSettings';
 import { useTipServerEarnings } from '@/hooks/useTipServerEarnings';
+import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { TipReviewScreen } from '@/components/tips/TipReviewScreen';
 import { TipEntryDialog } from '@/components/tips/TipEntryDialog';
 import { TipServerEntrySheet } from '@/components/tips/TipServerEntrySheet';
@@ -269,6 +270,9 @@ export function Tips() {
   const autoCalculatedHoursRef = useRef(autoCalculatedHours);
   autoCalculatedHoursRef.current = autoCalculatedHours;
   const [roleWeights, setRoleWeights] = useState<Record<string, number>>(settings?.role_weights || defaultWeights);
+  const [rolePercentages, setRolePercentages] = useState<Record<string, RoleAllocationRule>>(
+    settings?.role_percentages || {},
+  );
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [showReview, setShowReview] = useState(false);
   const [serverEntryOpen, setServerEntryOpen] = useState(false);
@@ -282,6 +286,7 @@ export function Tips() {
       setShareMethod(settings.share_method || 'hours');
       setSplitCadence(settings.split_cadence || 'daily');
       setRoleWeights(settings.role_weights || defaultWeights);
+      setRolePercentages(settings.role_percentages || {});
       setPoolingModel(settings.pooling_model || 'full_pool');
       if (settings.enabled_employee_ids?.length) {
         setSelectedEmployees(new Set(settings.enabled_employee_ids));
@@ -397,30 +402,71 @@ export function Tips() {
 
   const totalTipsCents = tipAmount || 0;
 
-  const hoursAllocations = useMemo(() => {
-    return participants.map(e => ({
-      id: e.id,
-      name: e.name,
-      hours: Number.parseFloat(hoursByEmployee[e.id] || '0') || 0,
-    }));
-  }, [participants, hoursByEmployee]);
+  const distributeRemainder = useCallback(
+    (poolCents: number, subset: GuaranteedParticipant[]): TipShare[] => {
+      if (shareMethod === 'hours') {
+        return calculateTipSplitByHours(
+          poolCents,
+          subset.map(p => ({ id: p.id, name: p.name, hours: p.hours ?? 0 })),
+        );
+      }
+      if (shareMethod === 'role') {
+        return calculateTipSplitByRole(
+          poolCents,
+          subset.map(p => ({
+            id: p.id,
+            name: p.name,
+            role: p.role ?? '',
+            weight: roleWeights[p.role ?? ''] || 1,
+          })),
+        );
+      }
+      return calculateTipSplitEven(poolCents, subset.map(p => ({ id: p.id, name: p.name })));
+    },
+    [shareMethod, roleWeights],
+  );
 
-  const previewShares = useMemo(() => {
-    if (shareMethod === 'hours') {
-      return calculateTipSplitByHours(totalTipsCents, hoursAllocations);
-    }
-    if (shareMethod === 'role') {
-      // Map participants to include role and weight
-      const participantsWithRoles = participants.map(p => ({
-        id: p.id,
-        name: p.name,
-        role: p.position,
-        weight: roleWeights[p.position] || 1,
-      }));
-      return calculateTipSplitByRole(totalTipsCents, participantsWithRoles);
-    }
-    return calculateTipSplitEven(totalTipsCents, participants);
-  }, [totalTipsCents, shareMethod, hoursAllocations, participants, roleWeights]);
+  // Bind today's pool configuration to the shared eligibility predicate. The
+  // allocator and the badge in the hours grid both go through this, so the UI
+  // can never advertise a guarantee the split does not honour.
+  const appliesRule = useCallback(
+    (rule: RoleAllocationRule | undefined, hours: number): boolean =>
+      ruleAppliesTo(rule, { poolingModel, shareMethod, hours }),
+    [poolingModel, shareMethod],
+  );
+
+  const guaranteedParticipants = useMemo<GuaranteedParticipant[]>(
+    () =>
+      participants.map(p => {
+        const hours = Number.parseFloat(hoursByEmployee[p.id] || '0') || 0;
+        const rule = p.position ? rolePercentages[p.position] : undefined;
+        return {
+          id: p.id,
+          name: p.name,
+          hours,
+          role: p.position,
+          rule: appliesRule(rule, hours) ? rule : undefined,
+        };
+      }),
+    [participants, hoursByEmployee, rolePercentages, appliesRule],
+  );
+
+  const guaranteedResult = useMemo(
+    () => calculateTipSplitWithGuarantees(totalTipsCents, guaranteedParticipants, distributeRemainder),
+    [totalTipsCents, guaranteedParticipants, distributeRemainder],
+  );
+
+  const previewShares = guaranteedResult.shares;
+
+  // Debounce the *display* only. The underlying hours state stays immediate so
+  // typing, manual-edit flags, and autosave are unaffected; without this a
+  // keystroke in one row visibly re-renders every other row's percentage.
+  const displayShares = useDebouncedValue(guaranteedResult.shares, 200);
+
+  const displayByEmployee = useMemo(
+    () => new Map(displayShares.map(s => [s.employeeId, s])),
+    [displayShares],
+  );
 
   const handleContinueToReview = (amountCents: number) => {
     setTipAmount(amountCents);
@@ -597,10 +643,11 @@ export function Tips() {
       share_method: shareMethod,
       split_cadence: splitCadence,
       role_weights: roleWeights,
+      role_percentages: rolePercentages,
       enabled_employee_ids: Array.from(selectedEmployees),
       pooling_model: poolingModel,
     });
-  }, [restaurantId, selectedEmployees, shareMethod, splitCadence, tipSource, roleWeights, poolingModel, updateSettings]);
+  }, [restaurantId, selectedEmployees, shareMethod, splitCadence, tipSource, roleWeights, rolePercentages, poolingModel, updateSettings]);
 
   useAutoSaveTipSettings({
     settings,
@@ -608,6 +655,7 @@ export function Tips() {
     shareMethod,
     splitCadence,
     roleWeights,
+    rolePercentages,
     selectedEmployees,
     poolingModel,
     onSave: handleSaveSettings,
@@ -703,6 +751,9 @@ export function Tips() {
               </div>
             </CardHeader>
             <CardContent>
+              <p className="text-[13px] text-muted-foreground mb-3">
+                {`Pool ${formatCurrencyFromCents(totalTipsCents)} · ${participants.length} ${participants.length === 1 ? 'person' : 'people'}`}
+              </p>
               <div className="grid md:grid-cols-2 gap-3">
                 {participants.map(emp => {
                   const isAutoCalculated = autoCalculatedHours[emp.id];
@@ -711,16 +762,43 @@ export function Tips() {
 
                   return (
                     <div key={emp.id} className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor={`hours-${emp.id}`} className="flex items-center gap-1">
-                          {emp.name}
+                      <div className="flex items-center justify-between gap-2">
+                        <Label htmlFor={`hours-${emp.id}`} className="flex items-center gap-1.5 min-w-0">
+                          <span className="truncate">{emp.name}</span>
                           {isAutoCalculated && hasPunches && (
-                            <Clock className="h-3 w-3 text-muted-foreground" aria-label="Auto-calculated from time punches" />
+                            <Clock className="h-3 w-3 text-muted-foreground shrink-0" aria-label="Auto-calculated from time punches" />
                           )}
+                          {(() => {
+                            const rule = emp.position ? rolePercentages[emp.position] : undefined;
+                            const hours = Number.parseFloat(hoursByEmployee[emp.id] || '0') || 0;
+                            if (!rule || !appliesRule(rule, hours)) return null;
+                            return (
+                              <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground shrink-0">
+                                {formatAppliedRuleLabel(rule)}
+                              </span>
+                            );
+                          })()}
                         </Label>
-                        {!hasPunches && (
-                          <span className="text-xs text-muted-foreground">No punches</span>
-                        )}
+                        <div className="flex items-center gap-2 shrink-0">
+                          {!hasPunches && (
+                            <span className="text-xs text-muted-foreground">No punches</span>
+                          )}
+                          {(() => {
+                            const share = displayByEmployee.get(emp.id);
+                            if (!share || totalTipsCents <= 0) return null;
+                            const pct = (share.amountCents / totalTipsCents) * 100;
+                            return (
+                              <span className="text-[13px] text-muted-foreground tabular-nums">
+                                {pct.toFixed(1)}% · {formatCurrencyFromCents(share.amountCents)}
+                                {share.lifted && (
+                                  <span className="ml-1" aria-label="Guaranteed minimum applied">
+                                    ↑
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </div>
                       <Input
                         id={`hours-${emp.id}`}
@@ -765,6 +843,8 @@ export function Tips() {
           poolingModel={poolingModel}
           serverResults={percentageResult?.serverResults}
           poolResults={percentageResult?.poolResults}
+          scaledDownFactor={isPercentageContribution ? null : guaranteedResult.scaledDownFactor}
+          redistributedLeftoverCents={isPercentageContribution ? 0 : guaranteedResult.redistributedLeftoverCents}
           onApprove={handleApprove}
           onSaveDraft={handleSaveDraft}
           isLoading={isSaving}
@@ -819,6 +899,7 @@ export function Tips() {
         shareMethod={shareMethod}
         splitCadence={splitCadence}
         roleWeights={roleWeights}
+        rolePercentages={rolePercentages}
         selectedEmployees={selectedEmployees}
         eligibleEmployees={eligibleEmployees}
         isLoading={settingsLoading}
@@ -826,6 +907,7 @@ export function Tips() {
         onShareMethodChange={setShareMethod}
         onSplitCadenceChange={setSplitCadence}
         onRoleWeightsChange={setRoleWeights}
+        onRolePercentagesChange={setRolePercentages}
         onSelectedEmployeesChange={setSelectedEmployees}
         contributionPools={contributionPools}
         onCreatePool={createPool}

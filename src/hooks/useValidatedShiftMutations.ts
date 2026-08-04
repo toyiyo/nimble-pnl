@@ -16,7 +16,7 @@
 import { useCallback, useState } from 'react';
 
 import { useCreateShift, useUpdateShift, useDeleteShift } from '@/hooks/useShifts';
-import { ShiftInterval } from '@/lib/shiftInterval';
+import { ShiftInterval, requireTz } from '@/lib/shiftInterval';
 import { ValidationResult } from '@/lib/shiftValidator';
 import {
   collectShiftIssues,
@@ -113,6 +113,17 @@ export interface UseValidatedShiftMutationsOptions {
    * usage (no undo affordance) is unaffected.
    */
   silentDelete?: boolean;
+  /**
+   * IANA timezone (the restaurant's) used to anchor `validateAndCreate`/`forceCreate`'s
+   * host-local `ShiftInterval.create`. Optional here — not because the two `create`
+   * paths can safely omit it (they can't; each throws `TypeError('INVALID_DATE')` at
+   * call time if it's missing), but because ShiftTimelineTab, the pipeline's other
+   * consumer, only calls the `fromTimestamps`-based members and provably can't hit
+   * this. Requiring it at the option level would trade a real Timeline compile error
+   * for no added safety; the invariant lives at `ShiftInterval.create`'s own required
+   * 4th parameter instead.
+   */
+  tz?: string;
 }
 
 export interface UseValidatedShiftMutationsReturn {
@@ -183,7 +194,7 @@ export function useValidatedShiftMutations(
   shifts: Shift[],
   options: UseValidatedShiftMutationsOptions = {},
 ): UseValidatedShiftMutationsReturn {
-  const { checkConflicts, silentDelete = false } = options;
+  const { checkConflicts, silentDelete = false, tz } = options;
 
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
 
@@ -198,7 +209,11 @@ export function useValidatedShiftMutations(
   // ---------------------------------------------------------------------------
   // Create (unchanged shape — host-local ShiftInterval.create, matching the
   // planner's existing convention; the timeline builds ISO inputs upstream via
-  // minutesToIso before calling this).
+  // minutesToIso before calling this). `tz` comes from options.tz — the
+  // restaurant's real timezone, threaded in by the caller (Task 4). Both paths
+  // throw `TypeError('INVALID_DATE')` up front if it's absent rather than
+  // silently falling back to the browser's zone, which is the exact bug this
+  // whole plan exists to fix.
   // ---------------------------------------------------------------------------
 
   const validateAndCreate = useCallback(
@@ -206,7 +221,9 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return { created: false };
 
       try {
-        const interval = ShiftInterval.create(input.date, input.startTime, input.endTime);
+        requireTz(tz);
+
+        const interval = ShiftInterval.create(input.date, input.startTime, input.endTime, tz);
 
         const { warnings, conflicts } = await collectShiftIssues({
           employeeId: input.employeeId,
@@ -236,7 +253,7 @@ export function useValidatedShiftMutations(
         return { created: false };
       }
     },
-    [restaurantId, shifts, checkConflicts, createShift],
+    [restaurantId, shifts, checkConflicts, createShift, tz],
   );
 
   const forceCreate = useCallback(
@@ -244,7 +261,12 @@ export function useValidatedShiftMutations(
       if (!restaurantId) return false;
 
       try {
-        const interval = ShiftInterval.create(input.date, input.startTime, input.endTime);
+        // See validateAndCreate above: options.tz is required at call time —
+        // throws TypeError('INVALID_DATE') rather than falling back to the
+        // browser's zone.
+        requireTz(tz);
+
+        const interval = ShiftInterval.create(input.date, input.startTime, input.endTime, tz);
 
         await createShift.mutateAsync(buildShiftPayload(restaurantId, input, interval));
 
@@ -255,7 +277,7 @@ export function useValidatedShiftMutations(
         return false;
       }
     },
-    [restaurantId, createShift],
+    [restaurantId, createShift, tz],
   );
 
   // ---------------------------------------------------------------------------

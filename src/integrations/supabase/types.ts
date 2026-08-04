@@ -113,6 +113,30 @@ export type Database = {
           },
         ]
       }
+      area_catalog: {
+        Row: {
+          area_key: string
+          band: string
+          max_level_collaborator: string | null
+          sort_order: number
+          ui_group: string
+        }
+        Insert: {
+          area_key: string
+          band: string
+          max_level_collaborator?: string | null
+          sort_order: number
+          ui_group: string
+        }
+        Update: {
+          area_key?: string
+          band?: string
+          max_level_collaborator?: string | null
+          sort_order?: number
+          ui_group?: string
+        }
+        Relationships: []
+      }
       asset_depreciation_schedule: {
         Row: {
           accumulated_after: number
@@ -3498,6 +3522,7 @@ export type Database = {
           invited_by: string
           restaurant_id: string
           role: string
+          role_id: string | null
           status: string
           token: string
           updated_at: string
@@ -3514,6 +3539,7 @@ export type Database = {
           invited_by: string
           restaurant_id: string
           role?: string
+          role_id?: string | null
           status?: string
           token: string
           updated_at?: string
@@ -3530,6 +3556,7 @@ export type Database = {
           invited_by?: string
           restaurant_id?: string
           role?: string
+          role_id?: string | null
           status?: string
           token?: string
           updated_at?: string
@@ -3554,6 +3581,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
             referencedColumns: ["id"]
           },
         ]
@@ -6286,6 +6320,103 @@ export type Database = {
           },
         ]
       }
+      role_areas: {
+        Row: {
+          area_key: string
+          level: string
+          role_id: string
+        }
+        Insert: {
+          area_key: string
+          level: string
+          role_id: string
+        }
+        Update: {
+          area_key?: string
+          level?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_areas_area_key_fkey"
+            columns: ["area_key"]
+            isOneToOne: false
+            referencedRelation: "area_catalog"
+            referencedColumns: ["area_key"]
+          },
+          {
+            foreignKeyName: "role_areas_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      role_flags: {
+        Row: {
+          flag: string
+          role_id: string
+        }
+        Insert: {
+          flag: string
+          role_id: string
+        }
+        Update: {
+          flag?: string
+          role_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_flags_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roles: {
+        Row: {
+          builtin: boolean
+          created_at: string
+          description: string | null
+          flavor: string
+          id: string
+          legacy_role: string | null
+          name: string
+          restaurant_id: string | null
+        }
+        Insert: {
+          builtin?: boolean
+          created_at?: string
+          description?: string | null
+          flavor: string
+          id?: string
+          legacy_role?: string | null
+          name: string
+          restaurant_id?: string | null
+        }
+        Update: {
+          builtin?: boolean
+          created_at?: string
+          description?: string | null
+          flavor?: string
+          id?: string
+          legacy_role?: string | null
+          name?: string
+          restaurant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roles_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rule_application_log: {
         Row: {
           applied_at: string
@@ -6502,6 +6633,63 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "schedule_publications_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_retractions: {
+        Row: {
+          employee_ids: string[]
+          id: string
+          notified_at: string | null
+          publication_id: string | null
+          reason: string | null
+          restaurant_id: string
+          retracted_at: string
+          retracted_by: string | null
+          shift_count: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Insert: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Update: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id?: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date?: string
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_retractions_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_retractions_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -8698,6 +8886,7 @@ export type Database = {
           id: string
           pooling_model: string
           restaurant_id: string
+          role_percentages: Json
           role_weights: Json | null
           share_method: string | null
           split_cadence: string | null
@@ -8712,6 +8901,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -8726,6 +8916,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id?: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -8844,6 +9035,7 @@ export type Database = {
       }
       tip_split_items: {
         Row: {
+          applied_rule: Json | null
           amount: number
           created_at: string | null
           employee_id: string
@@ -8855,6 +9047,7 @@ export type Database = {
           tip_split_id: string
         }
         Insert: {
+          applied_rule?: Json | null
           amount?: number
           created_at?: string | null
           employee_id: string
@@ -8866,6 +9059,7 @@ export type Database = {
           tip_split_id: string
         }
         Update: {
+          applied_rule?: Json | null
           amount?: number
           created_at?: string | null
           employee_id?: string
@@ -9704,6 +9898,7 @@ export type Database = {
           id: string
           restaurant_id: string
           role: string | null
+          role_id: string | null
           user_id: string
         }
         Insert: {
@@ -9711,6 +9906,7 @@ export type Database = {
           id?: string
           restaurant_id: string
           role?: string | null
+          role_id?: string | null
           user_id: string
         }
         Update: {
@@ -9718,6 +9914,7 @@ export type Database = {
           id?: string
           restaurant_id?: string
           role?: string | null
+          role_id?: string | null
           user_id?: string
         }
         Relationships: [
@@ -9726,6 +9923,13 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_restaurants_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
             referencedColumns: ["id"]
           },
         ]
@@ -10192,6 +10396,11 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: number
       }
+      assign_membership_role: {
+        Args: { p_membership_id: string; p_role: string; p_role_id?: string }
+        Returns: undefined
+      }
+      backfill_user_restaurants_role_id: { Args: never; Returns: undefined }
       bank_reauth_cohort_a_candidates: {
         Args: never
         Returns: {
@@ -10224,6 +10433,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      builtin_role_id_for: { Args: { p_role: string }; Returns: string }
       bulk_delete_bank_transactions: {
         Args: { p_restaurant_id: string; p_transaction_ids: string[] }
         Returns: Json
@@ -10300,6 +10510,7 @@ export type Database = {
           total_hours: number
         }[]
       }
+      can_invite_custom_role: { Args: { p_inviter: string }; Returns: boolean }
       cancel_shift_trade: {
         Args: { p_employee_id: string; p_trade_id: string }
         Returns: Json
@@ -10562,6 +10773,10 @@ export type Database = {
       }
       compute_weekly_variances: {
         Args: { p_restaurant_id: string; p_week_end: string }
+        Returns: Json
+      }
+      copy_role_to_restaurants: {
+        Args: { p_role_id: string; p_target_restaurant_ids: string[] }
         Returns: Json
       }
       copy_week_shifts: {
@@ -11000,6 +11215,7 @@ export type Database = {
       has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       in_todo: { Args: never; Returns: boolean }
+      invitable_roles: { Args: { p_inviter: string }; Returns: string[] }
       is_current_user_employee: {
         Args: { p_employee_id: string }
         Returns: boolean
@@ -11267,6 +11483,10 @@ export type Database = {
         }
         Returns: Json
       }
+      replace_role_grants: {
+        Args: { p_areas: Json; p_flags: string[]; p_role_id: string }
+        Returns: undefined
+      }
       restore_deleted_transaction: {
         Args: { p_restaurant_id: string; p_tombstone_id: string }
         Returns: Json
@@ -11299,6 +11519,13 @@ export type Database = {
         Returns: number
       }
       revel_valid_tz: { Args: { p_tz: string }; Returns: string }
+      role_member_counts: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          member_count: number
+          role_id: string
+        }[]
+      }
       runtests:
         | { Args: never; Returns: string[] }
         | { Args: { "": string }; Returns: string[] }

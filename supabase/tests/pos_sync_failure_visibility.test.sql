@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(7);
+SELECT plan(8);
 
 SET LOCAL role TO postgres;
 
@@ -103,6 +103,18 @@ SELECT is(
       AND p.prosrc LIKE '%WHEN query_canceled THEN%'),
   4,
   'all four sync_all_* wrappers handle query_canceled explicitly'
+);
+
+-- ---------------------------------------------------------------- TEST 8
+-- Revel must run the sweep. Without this call Revel rows are inserted with the
+-- categorization trigger suppressed and never categorized by anything.
+SELECT ok(
+  (SELECT p.prosrc LIKE '%apply_rules_to_pos_sales_internal%'
+     FROM pg_proc p
+     JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'public'
+      AND p.proname = 'sync_revel_to_unified_sales'),
+  'sync_revel_to_unified_sales calls the categorization sweep'
 );
 
 SELECT * FROM finish();

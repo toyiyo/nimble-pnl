@@ -314,3 +314,234 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.sync_all_focus_transactions_to_unified_sales()
   TO service_role;
+
+-- ---------------------------------------------------------------------------
+-- Revel: run the categorization sweep the other POS syncs already run.
+-- Body copied from 20260721160000_revel_rpc_sold_at_self_heal.sql:177.
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sync_revel_to_unified_sales(
+  p_restaurant_id UUID,
+  p_start_date DATE DEFAULT NULL,
+  p_end_date DATE DEFAULT NULL
+)
+RETURNS INTEGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_synced_count INTEGER := 0;
+  v_rows INTEGER := 0;
+BEGIN
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.user_restaurants
+    WHERE restaurant_id = p_restaurant_id AND user_id = auth.uid()
+  ) THEN
+    RAISE EXCEPTION 'Unauthorized: user does not have access to this restaurant';
+  END IF;
+
+  -- Suppress per-row aggregation trigger during this multi-row upsert;
+  -- batch-aggregate the touched dates once below instead.
+  PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
+
+  -- 1) Sale rows: non-voided line items (total_price includes modifiers)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id,
+    item_name, quantity, unit_price, total_price,
+    sale_date, sale_time, sold_at, pos_category, item_type, raw_data, synced_at
+  )
+  SELECT
+    oi.restaurant_id, 'revel', oi.revel_order_id, oi.revel_item_id,
+    oi.item_name, oi.quantity, oi.unit_price, oi.total_price,
+    o.order_date, o.order_time, o.sold_at, oi.menu_category, 'sale', oi.raw_json, now()
+  FROM public.revel_order_items oi
+  INNER JOIN public.revel_orders o ON oi.revel_order_id_fk = o.id
+  WHERE oi.restaurant_id = p_restaurant_id
+    AND oi.is_voided = false
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 2) Per-order reconciliation to Revel's authoritative header subtotal.
+  --    Revel removes/refunds some items from the subtotal without an item-level flag;
+  --    this labeled line makes each order's sale total match the POS exactly.
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, synced_at)
+  SELECT g.restaurant_id, 'revel', g.revel_order_id, g.revel_order_id || ':reconcile', 'POS sales adjustment',
+         1, g.adj, g.adj, g.order_date, g.order_time, g.sold_at, 'sale', now()
+  FROM (
+    SELECT o.restaurant_id, o.revel_order_id, o.order_date, o.order_time, o.sold_at,
+           round(COALESCE(o.subtotal_amount,0) - COALESCE(sum(oi.total_price) FILTER (WHERE oi.is_voided = false), 0), 2) AS adj
+    FROM public.revel_orders o
+    LEFT JOIN public.revel_order_items oi ON oi.revel_order_id_fk = o.id
+    WHERE o.restaurant_id = p_restaurant_id
+      AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+      AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+    GROUP BY o.restaurant_id, o.revel_order_id, o.order_date, o.order_time, o.sold_at, o.subtotal_amount
+  ) g
+  WHERE g.adj <> 0
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 3) Tax (header)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':tax', 'Tax',
+         1, o.tax_amount, o.tax_amount, o.order_date, o.order_time, o.sold_at, 'tax', 'tax', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.tax_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 3) Tip / gratuity (header; on top of final_total)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':tip', 'Tip',
+         1, o.tip_amount, o.tip_amount, o.order_date, o.order_time, o.sold_at, 'tip', 'tip', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.tip_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 4) Discount (header; stored negative)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':discount', 'Discount',
+         1, -abs(o.discount_amount), -abs(o.discount_amount), o.order_date, o.order_time, o.sold_at, 'discount', 'discount', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.discount_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 5) Service charge (header)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, adjustment_type, synced_at)
+  SELECT o.restaurant_id, 'revel', o.revel_order_id, o.revel_order_id || ':service_charge', 'Service Charge',
+         1, o.service_charge_amount, o.service_charge_amount, o.order_date, o.order_time, o.sold_at, 'service_charge', 'service_charge', now()
+  FROM public.revel_orders o
+  WHERE o.restaurant_id = p_restaurant_id AND COALESCE(o.service_charge_amount, 0) <> 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 6/7/8) Informational adjustment lines (Voided / Returned / Refunds). These mirror Revel's
+  -- Sales Summary "Adjustments" section. They use item_type 'other'/'refund' (NOT 'sale'), so
+  -- they never enter Net Sales — which stays exact — but are available for the audit/report.
+  -- Split rule: a voided item whose order was refunded (has a negative payment) = "Returned";
+  -- otherwise = "Voided". Refunds = payments with a negative amount.
+
+  -- 6) Voided items (voided, order NOT refunded)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, pos_category, item_type, raw_data, synced_at)
+  SELECT oi.restaurant_id, 'revel', oi.revel_order_id, oi.revel_item_id || ':void', 'Voided item - ' || oi.item_name,
+         oi.quantity, -oi.unit_price, -oi.total_price, o.order_date, o.order_time, o.sold_at, oi.menu_category, 'other', oi.raw_json, now()
+  FROM public.revel_order_items oi
+  JOIN public.revel_orders o ON oi.revel_order_id_fk = o.id
+  WHERE oi.restaurant_id = p_restaurant_id AND oi.is_voided = true
+    AND NOT EXISTS (SELECT 1 FROM public.revel_payments p
+                    WHERE p.restaurant_id = oi.restaurant_id AND p.revel_order_id = oi.revel_order_id
+                      AND (p.raw_json->>'amount')::numeric < 0)
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 7) Returned items (voided, order WAS refunded)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, pos_category, item_type, raw_data, synced_at)
+  SELECT oi.restaurant_id, 'revel', oi.revel_order_id, oi.revel_item_id || ':return', 'Returned item - ' || oi.item_name,
+         oi.quantity, -oi.unit_price, -oi.total_price, o.order_date, o.order_time, o.sold_at, oi.menu_category, 'other', oi.raw_json, now()
+  FROM public.revel_order_items oi
+  JOIN public.revel_orders o ON oi.revel_order_id_fk = o.id
+  WHERE oi.restaurant_id = p_restaurant_id AND oi.is_voided = true
+    AND EXISTS (SELECT 1 FROM public.revel_payments p
+                WHERE p.restaurant_id = oi.restaurant_id AND p.revel_order_id = oi.revel_order_id
+                  AND (p.raw_json->>'amount')::numeric < 0)
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- 8) Refunds (payments with a negative amount)
+  INSERT INTO public.unified_sales (
+    restaurant_id, pos_system, external_order_id, external_item_id, item_name,
+    quantity, unit_price, total_price, sale_date, sale_time, sold_at, item_type, raw_data, synced_at)
+  SELECT p.restaurant_id, 'revel', p.revel_order_id, p.revel_payment_id || ':refund', 'Refund',
+         1, (p.raw_json->>'amount')::numeric, (p.raw_json->>'amount')::numeric, o.order_date, o.order_time, o.sold_at, 'refund', p.raw_json, now()
+  FROM public.revel_payments p
+  JOIN public.revel_orders o ON p.revel_order_id = o.revel_order_id AND p.restaurant_id = o.restaurant_id
+  WHERE p.restaurant_id = p_restaurant_id AND (p.raw_json->>'amount')::numeric < 0
+    AND (p_start_date IS NULL OR o.order_date >= p_start_date)
+    AND (p_end_date IS NULL OR o.order_date <= p_end_date)
+  ON CONFLICT (restaurant_id, pos_system, external_order_id, external_item_id)
+    WHERE parent_sale_id IS NULL
+  DO UPDATE SET sold_at = COALESCE(EXCLUDED.sold_at, unified_sales.sold_at)
+    WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
+  GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
+
+  -- Re-enable the trigger, then batch-aggregate only the dates touched by
+  -- this sync window (both callers — revel-sync-data, revel-bulk-sync —
+  -- always pass a bounded p_start_date/p_end_date) once each, instead of
+  -- once per unified_sales row upserted above. Skip entirely when nothing
+  -- changed (the no-op guards wrote 0 rows) so a recurring sync over an
+  -- overlapping window doesn't re-aggregate the whole window for no reason.
+  PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
+
+  -- Revel suppressed auto_categorize_pos_sale for the upsert above but, unlike
+  -- Toast and Focus, never ran the batch sweep afterwards -- so Revel rows were
+  -- inserted uncategorized and stayed that way. Same call, same batch size, same
+  -- position in the sequence as the other POS syncs.
+  PERFORM public.apply_rules_to_pos_sales_internal(p_restaurant_id, 10000);
+
+  IF v_synced_count > 0 THEN
+    PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)
+    FROM (
+      SELECT DISTINCT sale_date FROM public.unified_sales
+      WHERE restaurant_id = p_restaurant_id AND pos_system = 'revel'
+        AND (p_start_date IS NULL OR sale_date >= p_start_date)
+        AND (p_end_date IS NULL OR sale_date <= p_end_date)
+    ) d;
+  END IF;
+
+  RETURN v_synced_count;
+END;
+$$;

@@ -1,9 +1,12 @@
--- Tests for the deferred categorization backlog drain
--- Migration: 20260703090000_categorization_background_and_supplier_assign.sql (§7)
+-- Tests for the standing categorization backlog sweep
+-- Migrations: 20260703090000 (§7, original), 20260804090700 (convergence guard),
+--             20260804091000 (standing sweep — retirement removed)
 --
 -- The original §7 drained the whole backlog synchronously inside the migration
--- and timed out production deploys (SQLSTATE 57014). It is now a bounded
--- 5-minute pg_cron tick that unschedules itself once converged.
+-- and timed out production deploys (SQLSTATE 57014). It became a bounded
+-- 5-minute pg_cron tick that unschedules itself once converged — which stranded
+-- every categorization path not wired into a sync function. It is now a
+-- PERMANENT 5-minute tick that never retires.
 --
 -- Test plan (10 tests):
 --  1  drain_categorization_backlog() exists
@@ -11,18 +14,15 @@
 --  3  anon cannot execute the SECURITY DEFINER drain (PUBLIC revoked)
 --  4  authenticated cannot execute it either
 --  5  a tick on an empty database applies 0 rows (no error)
---  6  the converged (complete, error-free, 0-row) tick unschedules its own cron job
+--  6  that converged tick leaves its own cron job scheduled
 --  7  categorization_rules_watermark returns the newest active-rule timestamp
 --  8  categorization_rules_watermark is NULL when no active rule covers the scope
---  9  a tick with a backlog waiting does not retire the drain job
--- 10  once every candidate is evaluated the drain still retires itself
+--  9  a tick with a backlog waiting leaves the job scheduled
+-- 10  a tick that exhausts the backlog still leaves the job scheduled
 --
--- NOTE: we do NOT assert the migration-time job still exists — the pgTAP
--- database runs a LIVE pg_cron, so on an empty database the real */5 tick may
--- already have drained 0 rows and legitimately retired the job before this
--- file runs (self-retirement working as designed). Instead the job is
--- (re)scheduled inside this rolled-back transaction and the full
--- schedule → drain → self-retire lifecycle is asserted deterministically.
+-- Tests 6 and 10 are the inverted forms of assertions that pinned the old
+-- self-retirement. They are the regression guard for the 2026-07-04 strand:
+-- if retirement ever returns, both fail.
 
 BEGIN;
 SELECT plan(10);

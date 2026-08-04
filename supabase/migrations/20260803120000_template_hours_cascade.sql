@@ -263,11 +263,19 @@ BEGIN
       USING ERRCODE = 'insufficient_privilege';
   END IF;
 
-  -- LOAD-BEARING. Every predicate below scopes with
-  -- `cascade_batch_id IS NOT DISTINCT FROM p_batch_id` so that untagged rows --
-  -- including the ones log_shift_change writes -- are invisible to the revert.
-  -- With a NULL p_batch_id that same predicate would match every untagged row
-  -- in the table and unwind the entire audit log.
+  -- LOAD-BEARING. Every predicate below scopes with plain `cascade_batch_id =
+  -- p_batch_id`, not IS NOT DISTINCT FROM -- equality is what lets the
+  -- planner use idx_schedule_change_logs_cascade_batch_id, a partial index
+  -- WHERE cascade_batch_id IS NOT NULL that an IS NOT DISTINCT FROM probe
+  -- cannot use (confirmed via EXPLAIN: that operator forced a full scan of
+  -- schedule_change_logs). Untagged rows -- including the ones
+  -- log_shift_change writes with cascade_batch_id NULL -- must stay invisible
+  -- to the revert; plain `=` already guarantees that on its own, since NULL
+  -- never equals anything, so a NULL cascade_batch_id can never satisfy
+  -- `= p_batch_id` regardless of what p_batch_id holds. The early return
+  -- below is a separate guard, not a substitute for that: it stops a caller
+  -- from treating "no batch" as a valid revert target instead of silently
+  -- running three queries that would each match zero rows.
   IF p_batch_id IS NULL THEN
     RETURN jsonb_build_object(
       'restored_count', 0, 'changed_since_count', 0, 'deleted_count', 0
@@ -281,7 +289,7 @@ BEGIN
   -- only correct probe.
   SELECT count(*)::int INTO v_deleted_count
   FROM public.schedule_change_logs l
-  WHERE l.cascade_batch_id IS NOT DISTINCT FROM p_batch_id
+  WHERE l.cascade_batch_id = p_batch_id
     AND l.restaurant_id = p_restaurant_id
     AND NOT EXISTS (SELECT 1 FROM public.shifts s WHERE s.id = l.shift_id);
 
@@ -293,7 +301,7 @@ BEGIN
   JOIN public.shifts s
     ON s.id = l.shift_id
    AND s.restaurant_id = p_restaurant_id
-  WHERE l.cascade_batch_id IS NOT DISTINCT FROM p_batch_id
+  WHERE l.cascade_batch_id = p_batch_id
     AND l.restaurant_id = p_restaurant_id
     AND (   s.start_time IS DISTINCT FROM (l.after_data->>'start_time')::timestamptz
          OR s.end_time   IS DISTINCT FROM (l.after_data->>'end_time')::timestamptz);
@@ -304,7 +312,7 @@ BEGIN
         end_time   = (l.before_data->>'end_time')::timestamptz,
         updated_at = now()
     FROM public.schedule_change_logs l
-    WHERE l.cascade_batch_id IS NOT DISTINCT FROM p_batch_id
+    WHERE l.cascade_batch_id = p_batch_id
       AND l.restaurant_id = p_restaurant_id
       AND s.id = l.shift_id
       AND s.restaurant_id = p_restaurant_id

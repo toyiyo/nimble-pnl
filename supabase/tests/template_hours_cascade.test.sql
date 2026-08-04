@@ -24,7 +24,7 @@
 
 BEGIN;
 
-SELECT plan(27);
+SELECT plan(28);
 
 -- ============================================
 -- Setup
@@ -126,7 +126,10 @@ SELECT * FROM (VALUES
 ) AS v
 ON CONFLICT (id) DO NOTHING;
 
--- Template B: one matching, one drifted (the drift opt-in block).
+-- Template B: one matching, one drifted (the drift opt-in block), plus a
+-- second drifted-and-PUBLISHED shift (b3) proving a posted hand-edited shift
+-- is just as opt-in-able and just as visible in published_shift_ids as a
+-- posted matching one (Test 10).
 INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
 SELECT * FROM (VALUES
   ('11000000-0000-0000-0000-0000000000b1'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, '7b000000-0000-0000-0000-00000000000b'::uuid,
@@ -134,7 +137,10 @@ SELECT * FROM (VALUES
    ((SELECT mon FROM test_config)::timestamp + interval '17 hours') AT TIME ZONE 'America/Chicago', 'Server', false, false),
   ('11000000-0000-0000-0000-0000000000b2'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, '7b000000-0000-0000-0000-00000000000b'::uuid,
    (((SELECT mon FROM test_config) + 1)::timestamp + interval '11 hours') AT TIME ZONE 'America/Chicago',
-   (((SELECT mon FROM test_config) + 1)::timestamp + interval '19 hours') AT TIME ZONE 'America/Chicago', 'Server', false, false)
+   (((SELECT mon FROM test_config) + 1)::timestamp + interval '19 hours') AT TIME ZONE 'America/Chicago', 'Server', false, false),
+  ('11000000-0000-0000-0000-0000000000b3'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, '7b000000-0000-0000-0000-00000000000b'::uuid,
+   (((SELECT mon FROM test_config) + 3)::timestamp + interval '11 hours') AT TIME ZONE 'America/Chicago',
+   (((SELECT mon FROM test_config) + 3)::timestamp + interval '19 hours') AT TIME ZONE 'America/Chicago', 'Server', false, true)
 ) AS v
 ON CONFLICT (id) DO NOTHING;
 
@@ -237,7 +243,7 @@ SELECT public.update_shift_template_with_cascade(
   '7b000000-0000-0000-0000-00000000000b', 'c0000000-0000-0000-0000-0000000ca001',
   'B Drift', 'Server', 'Cascade Test Zone B', '{1,2,3,4,5}'::int[], 30, 1,
   '10:00'::time, '18:00'::time, true,
-  ARRAY['11000000-0000-0000-0000-0000000000b2']::uuid[]
+  ARRAY['11000000-0000-0000-0000-0000000000b2', '11000000-0000-0000-0000-0000000000b3']::uuid[]
 ) AS result;
 
 -- Test 8
@@ -254,7 +260,18 @@ SELECT is(
   'the matching sibling still moves in the same call'
 );
 
--- Test 10 -- a1 belongs to template A, so it fails the shift_template_id
+-- Test 10 -- b3 is drifted AND published. It was opted in like b2, but only
+-- b3 is published, so it alone should appear in published_shift_ids: a
+-- published drifted shift the manager opts in is exactly as visible to the
+-- "already posted"/notify machinery as a published matching shift (a5 in
+-- Call A), even though it never entered the `moving` bucket the way a5 did.
+SELECT is(
+  (SELECT result->'published_shift_ids' FROM call_b),
+  '["11000000-0000-0000-0000-0000000000b3"]'::jsonb,
+  'an opted-in drifted shift that is itself published appears in published_shift_ids'
+);
+
+-- Test 11 -- a1 belongs to template A, so it fails the shift_template_id
 -- re-validation and is reported as skipped rather than silently retimed.
 CREATE TEMP TABLE call_b_skip AS
 SELECT public.update_shift_template_with_cascade(
@@ -283,7 +300,7 @@ SELECT public.update_shift_template_with_cascade(
   '10:00'::time, '18:00'::time, true, '{}'::uuid[]
 );
 
--- Test 11
+-- Test 12
 SELECT is(
   (SELECT (start_time AT TIME ZONE 'Asia/Tokyo')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000c1'),
   '10:00'::time,
@@ -303,14 +320,14 @@ SELECT public.update_shift_template_with_cascade(
   '23:00'::time, '03:00'::time, true, '{}'::uuid[]
 );
 
--- Test 12
+-- Test 13
 SELECT is(
   (SELECT (end_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000d1'),
   '03:00'::time,
   'overnight shift end lands on 03:00 local'
 );
 
--- Test 13
+-- Test 14
 SELECT is(
   (SELECT (end_time - start_time) FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000d1'),
   interval '4 hours',
@@ -327,14 +344,14 @@ SELECT public.update_shift_template_with_cascade(
   '14:00'::time, '22:00'::time, false, '{}'::uuid[]
 );
 
--- Test 14
+-- Test 15
 SELECT is(
   (SELECT start_time FROM shift_templates WHERE id = '7e000000-0000-0000-0000-00000000000e'),
   '14:00'::time,
   'p_cascade = false still writes the template row'
 );
 
--- Test 15
+-- Test 16
 SELECT is(
   (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000e1'),
   '09:00'::time,
@@ -345,7 +362,7 @@ SELECT is(
 -- Batch identity
 -- ============================================
 
--- Test 16
+-- Test 17
 SELECT is(
   (SELECT COUNT(DISTINCT cascade_batch_id)::int FROM schedule_change_logs
     WHERE cascade_batch_id = (SELECT (result->>'batch_id')::uuid FROM call_a)),
@@ -353,14 +370,14 @@ SELECT is(
   'one cascade call tags every row it wrote with a single batch id'
 );
 
--- Test 17
+-- Test 18
 SELECT isnt(
   (SELECT (result->>'batch_id')::uuid FROM call_a),
   (SELECT (result->>'batch_id')::uuid FROM call_b),
   'two cascade calls get distinct batch ids'
 );
 
--- Test 18
+-- Test 19
 SELECT is(
   (SELECT COUNT(*)::int FROM schedule_change_logs
     WHERE cascade_batch_id = (SELECT (result->>'batch_id')::uuid FROM call_a)),
@@ -372,7 +389,7 @@ SELECT is(
 -- The log_shift_change trigger also fires on published shifts
 -- ============================================
 
--- Test 19 -- a5 was published, so the AFTER UPDATE trigger wrote its own
+-- Test 20 -- a5 was published, so the AFTER UPDATE trigger wrote its own
 -- untagged row on top of the RPC's tagged one. Two rows total, one tagged.
 -- Documented so a reader counting rows does not conclude something broke.
 SELECT is(
@@ -390,7 +407,7 @@ SELECT is(
 SELECT set_config('request.jwt.claims',
   '{"sub":"a11ce000-0000-0000-0000-0000000ca003","role":"authenticated"}', true);
 
--- Test 20
+-- Test 21
 SELECT throws_ok(
   $$ SELECT public.update_shift_template_with_cascade(
        '7a000000-0000-0000-0000-00000000000a', 'c0000000-0000-0000-0000-0000000ca001',
@@ -414,14 +431,14 @@ SELECT public.update_shift_template_with_cascade(
   ARRAY['11000000-0000-0000-0000-0000000000c1']::uuid[]
 );
 
--- Test 21
+-- Test 22
 SELECT is(
   (SELECT (start_time AT TIME ZONE 'Asia/Tokyo')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000c1'),
   '10:00'::time,
   'a caller authorized at restaurant A cannot retime restaurant B''s shifts'
 );
 
--- Test 22
+-- Test 23
 SELECT ok(
   NOT has_function_privilege('anon',
     'public.update_shift_template_with_cascade(uuid,uuid,text,text,text,integer[],integer,integer,time,time,boolean,uuid[])',
@@ -449,30 +466,33 @@ SELECT public.undo_template_hours_cascade(
   'c0000000-0000-0000-0000-0000000ca001'
 ) AS result;
 
--- Test 23
+-- Test 24
 SELECT is(
   (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000b2'),
   '11:00'::time,
   'undo restores the opted-in drifted shift to its pre-cascade time'
 );
 
--- Test 24
+-- Test 25
 SELECT is(
   (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000b1'),
   '15:00'::time,
   'undo refuses to overwrite a shift edited after the cascade'
 );
 
--- Test 25
+-- Test 26
 SELECT is(
   (SELECT (result->>'changed_since_count')::int FROM undo_b),
   1,
   'undo reports the changed-since skip rather than lumping it into restored'
 );
 
--- Test 26 -- a NULL batch id must revert NOTHING. With `IS NOT DISTINCT FROM`
--- alone, NULL would match every untagged row in the table and unwind the entire
--- audit log, so the guard is load-bearing, not defensive.
+-- Test 27 -- a NULL batch id must revert NOTHING. Plain `= p_batch_id` is
+-- already NULL-safe on its own (NULL never equals anything, so a NULL
+-- cascade_batch_id, or a NULL p_batch_id probing it, can never satisfy the
+-- predicate); the early `IF p_batch_id IS NULL THEN RETURN` guard exists to
+-- reject "no batch" as a valid revert target outright, not to prevent the
+-- three queries below from matching rows they'd never match anyway.
 SELECT is(
   (SELECT (result->>'restored_count')::int FROM (
     SELECT public.undo_template_hours_cascade(NULL, 'c0000000-0000-0000-0000-0000000ca001') AS result
@@ -481,7 +501,7 @@ SELECT is(
   'a NULL batch id reverts nothing'
 );
 
--- Test 27 -- cross-tenant: the Tokyo owner names Tokyo (capability guard
+-- Test 28 -- cross-tenant: the Tokyo owner names Tokyo (capability guard
 -- PASSES) but hands over Chicago's batch id.
 SELECT set_config('request.jwt.claims',
   '{"sub":"a11ce000-0000-0000-0000-0000000ca002","role":"authenticated"}', true);

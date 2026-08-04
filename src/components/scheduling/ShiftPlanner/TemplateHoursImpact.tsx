@@ -13,7 +13,9 @@ import type { LedgerTone } from '@/lib/scheduling/deletionCopy';
 import type { HoursChangeLedger } from '@/lib/scheduling/hoursChangeCopy';
 import type { DriftRow } from '@/lib/scheduling/templateHoursBuckets';
 
-// Same map as DeleteTemplateDialog — edit and delete render identically.
+// Chip shape mirrors DeleteTemplateDialog; the tones differ on purpose.
+// Untouched shifts here are neutral bookkeeping, not the emerald "kept safe"
+// outcome a deletion reports, so `success` reads as muted rather than green.
 const CHIP_TONE_CLASSES: Record<LedgerTone, string> = {
   destructive: 'bg-destructive/10 text-destructive',
   warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-500',

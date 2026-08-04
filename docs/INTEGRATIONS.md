@@ -269,12 +269,14 @@ toast_payments       → Payment records (unique: restaurant_id, toast_payment_g
    - **Idempotent**: Uses upserts on all tables
    - **Skips unified_sales sync**: Sets `skipUnifiedSalesSync: true` during bulk import (cron handles it)
 
-3. **`toast-bulk-sync`** — Scheduled sync (cron, every 6 hours)
+3. **`toast-bulk-sync`** — Scheduled sync (cron, every 2 hours (pg_cron jobid 7, `0 0,2,4,...,22 * * *`))
    - **Round-robin**: Processes max 5 restaurants per run, ordered by `last_sync_time`
    - **Per-restaurant limit**: 200 orders max
    - **Rate limiting**: 2-second delay between restaurants
    - **Incremental**: Fetches orders from `last_sync_time - 25 hours` to now
    - **Why 25 hours?** Toast data can be corrected within 24 hours; 1-hour buffer prevents boundary misses
+
+> **Also on a schedule:** `sync_all_toast_to_unified_sales()` — a plpgsql function, not an edge function — runs every 5 minutes as pg_cron jobid 4 (`toast-unified-sales-sync`). It loops every active `toast_connections` row, rolls `toast_orders` into `unified_sales`, and drives rule categorization via `apply_rules_to_pos_sales_internal`. A per-restaurant failure sets `toast_connections.connection_status = 'error'` with `last_error` / `last_error_at`.
 
 **Sync pipeline (raw → unified):**
 
@@ -733,7 +735,7 @@ When implementing this pattern for a new POS integration:
   - [ ] Add cron job to run aggregation every 5 minutes
 
 - [ ] **Cron Jobs**
-  - [ ] Bulk sync (every 6 hours): fetch from POS API
+  - [ ] Bulk sync (every 2 hours): fetch from POS API
   - [ ] Aggregation sync (every 5 minutes): `[pos]_orders → unified_sales`
 
 ### Best Practices

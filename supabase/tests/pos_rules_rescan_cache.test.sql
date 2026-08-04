@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(8);
+SELECT plan(19);
 
 SET LOCAL role TO postgres;
 
@@ -123,6 +123,170 @@ SELECT has_index(
 SELECT has_index(
   'public', 'bank_transactions', 'idx_bank_transactions_rule_candidates_v2',
   'partial candidate index on bank_transactions exists'
+);
+
+-- ================================================================ SWEEP
+-- Rule that matches nothing in the fixture set.
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, item_name_pattern,
+   item_name_match_type, is_active, auto_apply, priority)
+VALUES
+  ('00000000-0000-0000-0000-0000000009f1', '00000000-0000-0000-0000-0000000009a1',
+   'Never matches', 'pos_sales', '00000000-0000-0000-0000-0000000009c1',
+   'zzz-no-such-item', 'exact', true, true, 10)
+ON CONFLICT (id) DO NOTHING;
+
+-- Reset the fixture row to a clean uncategorized state.
+UPDATE unified_sales
+   SET item_name = 'Widget Burger', category_id = NULL, is_categorized = false,
+       is_split = false
+ WHERE id = '00000000-0000-0000-0000-0000000009d1';
+
+-- ---------------------------------------------------------------- TEST 9
+SELECT lives_ok(
+  $$SELECT * FROM apply_rules_to_pos_sales_internal(
+      '00000000-0000-0000-0000-0000000009a1', 100)$$,
+  'sweep runs against a restaurant with one non-matching rule'
+);
+
+-- ---------------------------------------------------------------- TEST 10
+SELECT isnt(
+  (SELECT rules_evaluated_at FROM unified_sales
+    WHERE id = '00000000-0000-0000-0000-0000000009d1'),
+  '-infinity'::timestamptz,
+  'a row that matched no rule is stamped as evaluated'
+);
+
+-- ---------------------------------------------------------------- TEST 11
+-- Core assertion: the second sweep sees no candidates at all.
+SELECT is(
+  (SELECT total_count FROM apply_rules_to_pos_sales_internal(
+     '00000000-0000-0000-0000-0000000009a1', 100)),
+  0,
+  'second sweep re-evaluates nothing'
+);
+
+-- ---------------------------------------------------------------- TEST 12
+-- Editing a rule moves the watermark and re-opens the row.
+UPDATE categorization_rules SET priority = 20
+ WHERE id = '00000000-0000-0000-0000-0000000009f1';
+
+SELECT is(
+  (SELECT count(*)::int FROM unified_sales s
+    WHERE s.restaurant_id = '00000000-0000-0000-0000-0000000009a1'
+      AND s.rules_evaluated_at < (
+        SELECT max(GREATEST(cr.created_at, COALESCE(cr.updated_at, cr.created_at)))
+        FROM categorization_rules cr
+        WHERE cr.restaurant_id = '00000000-0000-0000-0000-0000000009a1'
+          AND cr.is_active = true
+          AND (cr.applies_to = 'pos_sales' OR cr.applies_to = 'both'))),
+  1,
+  'editing a rule re-opens previously stamped rows'
+);
+
+-- ---------------------------------------------------------------- TEST 13
+-- Inserting a new rule also re-opens them, and the sweep applies it.
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, item_name_pattern,
+   item_name_match_type, is_active, auto_apply, priority)
+VALUES
+  ('00000000-0000-0000-0000-0000000009f2', '00000000-0000-0000-0000-0000000009a1',
+   'Burgers to food sales', 'pos_sales', '00000000-0000-0000-0000-0000000009c1',
+   'Widget Burger', 'exact', true, true, 30)
+ON CONFLICT (id) DO NOTHING;
+
+SELECT is(
+  (SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+     '00000000-0000-0000-0000-0000000009a1', 100)),
+  1,
+  'a newly inserted rule re-opens stamped rows and gets applied'
+);
+
+-- ---------------------------------------------------------------- TEST 14
+SELECT is(
+  (SELECT category_id FROM unified_sales
+    WHERE id = '00000000-0000-0000-0000-0000000009d1'),
+  '00000000-0000-0000-0000-0000000009c1'::uuid,
+  'the matched row carries the rule category'
+);
+
+-- ---------------------------------------------------------------- TEST 15
+-- Deactivating a rule lowers the watermark; the negative cache stays valid.
+UPDATE unified_sales
+   SET category_id = NULL, is_categorized = false
+ WHERE id = '00000000-0000-0000-0000-0000000009d1';
+UPDATE unified_sales
+   SET rules_evaluated_at = now()
+ WHERE id = '00000000-0000-0000-0000-0000000009d1';
+UPDATE categorization_rules SET is_active = false
+ WHERE id = '00000000-0000-0000-0000-0000000009f2';
+
+SELECT is(
+  (SELECT total_count FROM apply_rules_to_pos_sales_internal(
+     '00000000-0000-0000-0000-0000000009a1', 100)),
+  0,
+  'deactivating a rule does not re-open stamped rows'
+);
+
+-- ---------------------------------------------------------------- TEST 16-17
+-- Restaurant with no applicable rule at all: return (0,0), write nothing.
+UPDATE categorization_rules SET is_active = false
+ WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a1';
+UPDATE unified_sales SET rules_evaluated_at = '-infinity'
+ WHERE id = '00000000-0000-0000-0000-0000000009d1';
+
+SELECT is(
+  (SELECT applied_count::text || '/' || total_count::text
+     FROM apply_rules_to_pos_sales_internal(
+       '00000000-0000-0000-0000-0000000009a1', 100)),
+  '0/0',
+  'restaurant with zero active rules returns (0,0)'
+);
+
+SELECT is(
+  (SELECT rules_evaluated_at FROM unified_sales
+    WHERE id = '00000000-0000-0000-0000-0000000009d1'),
+  '-infinity'::timestamptz,
+  'restaurant with zero active rules writes nothing'
+);
+
+-- ---------------------------------------------------------------- TEST 18
+-- Watermark must not be narrower than the matcher's own rule predicate:
+-- the matcher ignores auto_apply, so the watermark must too.
+UPDATE categorization_rules SET is_active = true, auto_apply = false
+ WHERE id = '00000000-0000-0000-0000-0000000009f2';
+
+SELECT is(
+  (SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+     '00000000-0000-0000-0000-0000000009a1', 100)),
+  1,
+  'an active auto_apply=false rule still moves the watermark and gets applied'
+);
+
+-- ---------------------------------------------------------------- TEST 19
+-- Boundedness: with p_batch_limit = 1, exactly one row leaves '-infinity'.
+UPDATE unified_sales
+   SET category_id = NULL, is_categorized = false, rules_evaluated_at = '-infinity'
+ WHERE restaurant_id = '00000000-0000-0000-0000-0000000009a1';
+
+INSERT INTO unified_sales
+  (restaurant_id, pos_system, external_order_id, item_name, quantity, sale_date,
+   total_price, pos_category)
+SELECT '00000000-0000-0000-0000-0000000009a1', 'toast',
+       'ord-bulk-' || g, 'Bulk Item ' || g, 1, CURRENT_DATE, 5.00, 'Entrees'
+FROM generate_series(1, 25) g;
+
+-- Run the sweep as a plain statement (this file is a SQL script, not a plpgsql
+-- body, so the result is simply discarded), then assert on the side effect.
+SELECT applied_count FROM apply_rules_to_pos_sales_internal(
+  '00000000-0000-0000-0000-0000000009a1', 1);
+
+SELECT is(
+  (SELECT count(*)::int FROM unified_sales u
+    WHERE u.restaurant_id = '00000000-0000-0000-0000-0000000009a1'
+      AND u.rules_evaluated_at > '-infinity'),
+  1,
+  'p_batch_limit = 1 stamps exactly one of 26 candidates'
 );
 
 SELECT * FROM finish();

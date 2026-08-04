@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { canInviteRole, getInvitableRoles } from '@/lib/permissions/invitations';
+import {
+  canAssignAnyRole,
+  canInviteRole,
+  canInviteCustomRole,
+  getInvitableRoles,
+} from '@/lib/permissions/invitations';
+import type { Role } from '@/lib/permissions/types';
 
 describe('invite matrix', () => {
   it('operations_manager can invite only staff', () => {
@@ -58,5 +64,38 @@ describe('invite matrix', () => {
 
   it('operations manager collaborator can invite nobody', () => {
     expect(getInvitableRoles('collaborator_operations_manager')).toEqual([]);
+  });
+});
+
+describe('canAssignAnyRole', () => {
+  const ASSIGNERS: readonly Role[] = ['owner', 'manager', 'operations_manager'];
+  const NON_ASSIGNERS: readonly Role[] = [
+    'chef',
+    'staff',
+    'kiosk',
+    'collaborator_accountant',
+    'collaborator_inventory',
+    'collaborator_chef',
+    'collaborator_operations_manager',
+  ];
+
+  it('is true for exactly the roles with somewhere to assign', () => {
+    for (const r of ASSIGNERS) expect(canAssignAnyRole(r)).toBe(true);
+    for (const r of NON_ASSIGNERS) expect(canAssignAnyRole(r)).toBe(false);
+  });
+
+  it('agrees with the matrix it is derived from, role by role', () => {
+    // The point of deriving rather than re-listing: no role may be shown a
+    // live role picker that assign_membership_role would then refuse. A chef
+    // reaches /team (App.tsx gates only staff, kiosk and collaborators), so
+    // this is a reachable state, not a hypothetical one.
+    for (const r of [...ASSIGNERS, ...NON_ASSIGNERS]) {
+      const hasSomeTarget = getInvitableRoles(r).length > 0 || canInviteCustomRole(r);
+      expect(canAssignAnyRole(r)).toBe(hasSomeTarget);
+    }
+  });
+
+  it('is false for an unrecognised role', () => {
+    expect(canAssignAnyRole('unknown_role' as unknown as Role)).toBe(false);
   });
 });

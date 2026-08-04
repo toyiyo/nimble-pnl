@@ -92,3 +92,21 @@ export function canInviteRole(inviter: Role, target: Role): boolean {
 export function canInviteCustomRole(inviter: Role): boolean {
   return CUSTOM_ROLE_INVITERS.includes(inviter);
 }
+
+/**
+ * Whether `inviter` may change anyone's role at all — the gate for showing a
+ * role picker rather than a plain label.
+ *
+ * Derived from the two structures above rather than re-listing the roles that
+ * can assign, so it cannot drift from them: a role with nowhere to assign is a
+ * role that `assign_membership_role` would refuse for every target it was
+ * offered (rule 6, 20260802110000_assign_membership_role.sql:188). Showing that
+ * caller a live picker buys them a 42501 for every choice.
+ *
+ * This is a reachable state, not a hypothetical one: `App.tsx`'s
+ * `StaffRoleChecker` keeps staff, kiosk and collaborators off /team, but a chef
+ * walks straight in.
+ */
+export function canAssignAnyRole(inviter: Role): boolean {
+  return getInvitableRoles(inviter).length > 0 || canInviteCustomRole(inviter);
+}

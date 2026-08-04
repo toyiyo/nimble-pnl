@@ -25,60 +25,99 @@ if (missingArgs.length) {
 }
 
 // ---- Optional per-run context, all caller-supplied -------------------------
-// NOTHING below this line may name a feature, file, or commit. This script is
-// reusable: it runs against whatever branch args.branch points at. It once
-// carried one branch's error-boundary work inline — a "PRIOR STATE" paragraph
-// asserting a commit had landed, and a Verify gate grepping that branch's probe
-// string. On every other branch the paragraph actively misinformed the agent,
-// and the grep matched nothing and passed vacuously. Per-run facts arrive
-// through args or they do not get stated at all.
+// Nothing below may hardcode a fact about a particular branch — no feature
+// name, no source file under review, no commit SHA. This script is reusable: it
+// runs against whatever branch args.branch points at. It once carried one
+// branch's error-boundary work inline — a "PRIOR STATE" paragraph asserting a
+// commit had landed, and a Verify gate grepping that branch's probe string. On
+// every other branch the paragraph actively misinformed the agent, and the grep
+// matched nothing and passed vacuously. Per-run facts arrive through args or
+// they do not get stated at all. (Naming this repo's own fixed landmarks —
+// progress.md, origin/main — is fine; those are true on every branch.)
+//
+// Every optional arg below fails CLOSED. A malformed value halts Preflight
+// instead of degrading to "feature off": silently disabling a gate the caller
+// asked for reproduces the exact failure this file exists to prevent — a gate
+// that never ran being indistinguishable from a gate that passed.
 const shQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`
+const preflight = (reason) => ({ stopped: true, phase: 'Preflight', reason })
+const trimmed = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '')
 
 // args.priorState — free text describing what the human resolved before this
-// run was launched. The fallback asserts nothing that isn't true by
-// construction and points the agent at the branch's own history instead.
+// run was launched. The fallback asserts NOTHING: it cannot know that the build
+// or review phases ran, so it sends the agent to the records instead of
+// claiming they did. Telling it "phases 4-7 are complete" when no input
+// establishes that is how required review work gets skipped.
 const PRIOR_STATE =
-  typeof ctx.priorState === 'string' && ctx.priorState.trim()
-    ? ctx.priorState.trim()
-    : 'Phases 4-7 (build, simplify, review) already ran on this branch, and the Review-phase gate that halted the previous run was resolved by hand before this run was launched. For what actually landed, read progress.md and `git log origin/main..HEAD --oneline` — assume nothing beyond them. Do NOT re-run the reviewers or re-litigate findings already resolved on the branch.'
+  trimmed(ctx.priorState) ||
+  'Determine what already happened on this branch by reading progress.md and `git log origin/main..HEAD --oneline`. Do NOT assume a phase ran or a finding was resolved unless those records show it. This script starts at Verify and does not itself run the build or review phases — if the records do not show them as complete, halt and say so rather than proceeding or starting them yourself.'
 
 // args.bundleProbe — opt-in production-bundle gate. Either a bare string (the
 // pattern, expected ABSENT from the build output) or
 // { pattern, expect: 'absent'|'present', dir?, rationale? }.
-// Omitted → the gate is a genuine no-op: nothing is grepped, nothing asserted,
-// and no returned field claims it passed. A gate nobody configured must never
-// read as a gate that succeeded.
-const rawProbe =
-  typeof ctx.bundleProbe === 'string'
-    ? { pattern: ctx.bundleProbe }
-    : ctx.bundleProbe && typeof ctx.bundleProbe === 'object'
-      ? ctx.bundleProbe
-      : null
-const PROBE =
-  rawProbe && typeof rawProbe.pattern === 'string' && rawProbe.pattern.trim()
-    ? {
-        pattern: rawProbe.pattern.trim(),
-        expect: rawProbe.expect === 'present' ? 'present' : 'absent',
-        dir: (typeof rawProbe.dir === 'string' && rawProbe.dir.trim()) || 'dist/',
-        rationale: typeof rawProbe.rationale === 'string' ? rawProbe.rationale.trim() : '',
-      }
-    : null
-if (rawProbe && !PROBE) {
-  // Fail closed: a malformed probe silently degrading to "no gate" is exactly
-  // how a gate ends up looking satisfied without ever having run.
-  return { stopped: true, phase: 'Preflight', reason: 'args.bundleProbe was supplied but carries no usable `pattern` string.' }
+// Omitted entirely → the gate is a genuine no-op: nothing is grepped, nothing
+// asserted, and no returned field claims it passed. Supplied but malformed →
+// Preflight halt, never a silent no-op.
+const EXPECTATIONS = ['absent', 'present']
+let PROBE = null
+if (ctx.bundleProbe !== undefined && ctx.bundleProbe !== null) {
+  const raw =
+    typeof ctx.bundleProbe === 'string'
+      ? { pattern: ctx.bundleProbe }
+      : typeof ctx.bundleProbe === 'object' && !Array.isArray(ctx.bundleProbe)
+        ? ctx.bundleProbe
+        : null
+  if (!raw) {
+    return preflight(`args.bundleProbe must be a string or an object, got ${Array.isArray(ctx.bundleProbe) ? 'array' : typeof ctx.bundleProbe}.`)
+  }
+  const pattern = trimmed(raw.pattern)
+  if (!pattern) return preflight('args.bundleProbe was supplied but carries no usable `pattern` string.')
+  // An unrecognised `expect` must NOT fall through to the default. "present "
+  // or "Present" quietly becoming "absent" would invert the gate and let it
+  // pass while checking the opposite of what was asked for.
+  if (raw.expect !== undefined && !EXPECTATIONS.includes(raw.expect)) {
+    return preflight(`args.bundleProbe.expect must be exactly ${EXPECTATIONS.map((e) => `'${e}'`).join(' or ')} (got ${JSON.stringify(raw.expect)}).`)
+  }
+  if (raw.dir !== undefined && !trimmed(raw.dir)) return preflight('args.bundleProbe.dir was supplied but is not a non-empty string.')
+  if (raw.rationale !== undefined && typeof raw.rationale !== 'string') return preflight('args.bundleProbe.rationale must be a string.')
+  PROBE = { pattern, expect: raw.expect || 'absent', dir: trimmed(raw.dir) || 'dist/', rationale: trimmed(raw.rationale) }
 }
 
 // args.prNotes — extra material the PR ## Summary must call out (design
 // asymmetries, amended design sections, anything the diff alone won't convey).
-const PR_NOTES = typeof ctx.prNotes === 'string' && ctx.prNotes.trim() ? ctx.prNotes.trim() : ''
+const PR_NOTES = trimmed(ctx.prNotes)
+if (ctx.prNotes !== undefined && !PR_NOTES) return preflight('args.prNotes was supplied but is not a non-empty string.')
 
 // args.resolvedFindings — findings settled by hand before this run, so Triage
 // can answer a reviewer who re-raises one instead of re-fixing or reverting it.
-// Entries: a string, or { topic, commit?, note? }.
-const RESOLVED = (Array.isArray(ctx.resolvedFindings) ? ctx.resolvedFindings : [])
-  .map((f) => (typeof f === 'string' ? { note: f } : f))
-  .filter((f) => f && typeof f === 'object' && (f.topic || f.note))
+// Entries: { topic, commit, note? }. `commit` is REQUIRED, because the reply
+// this drives ("agreed, resolved in <sha>") is audited against the PR's commit
+// list — an entry with nothing checkable to cite would either block the audit
+// or, worse, get the agent to vouch for a fix on faith. That unverifiable
+// vouching is the original bug in this file.
+const RESOLVED = []
+if (ctx.resolvedFindings !== undefined) {
+  if (!Array.isArray(ctx.resolvedFindings)) return preflight('args.resolvedFindings must be an array.')
+  for (let i = 0; i < ctx.resolvedFindings.length; i++) {
+    const f = ctx.resolvedFindings[i]
+    if (!f || typeof f !== 'object' || Array.isArray(f)) {
+      return preflight(`args.resolvedFindings[${i}] must be an object with { topic, commit, note? }.`)
+    }
+    const topic = trimmed(f.topic)
+    const commit = trimmed(f.commit)
+    const note = trimmed(f.note)
+    if (!topic) return preflight(`args.resolvedFindings[${i}] is missing a non-empty \`topic\` string.`)
+    if (!commit) {
+      return preflight(
+        `args.resolvedFindings[${i}] ("${topic}") is missing a non-empty \`commit\`. ` +
+          'Every resolved finding must cite a commit the triage audit can verify against the PR; ' +
+          'if there is no such commit, leave the finding out and let Triage handle it normally.',
+      )
+    }
+    if (f.note !== undefined && !note) return preflight(`args.resolvedFindings[${i}] ("${topic}") has a \`note\` that is not a non-empty string.`)
+    RESOLVED.push({ topic, commit, note })
+  }
+}
 
 const STATUS = {
   status: { type: 'string', enum: ['completed', 'needs_human', 'failed'] },
@@ -310,8 +349,8 @@ const triage = await runAgent(
       `5. Write the full classified list to dev-tools/9d-triage-${ctx.branch}.md (persistent artifact for the done gate).\n` +
       (RESOLVED.length
         ? 'ALREADY RESOLVED BEFORE THIS RUN — if a reviewer re-raises one of these, reply "agreed" citing the commit named here instead of re-fixing or reverting:\n' +
-          RESOLVED.map((f) => `- ${[f.topic, f.commit && `resolved in ${f.commit}`, f.note].filter(Boolean).join(' — ')}`).join('\n') +
-          '\nConfirm each cited commit is actually on this branch (`git log origin/main..HEAD --oneline`) BEFORE citing it. If it is not there, this note is stale — treat the finding as unresolved and handle it normally.\n'
+          RESOLVED.map((f) => `- ${f.topic} — resolved in ${f.commit}${f.note ? ` — ${f.note}` : ''}`).join('\n') +
+          '\nConfirm each cited commit is actually on this branch (`git log origin/main..HEAD --oneline`) BEFORE citing it. If it is not there, this note is stale — treat the finding as unresolved and handle it normally. Anything NOT in this list is unresolved by default; handle it normally.\n'
         : '') +
       'Return counts + latestSha. If there are genuinely ambiguous comments you cannot resolve, return status=needs_human with them.',
   ),

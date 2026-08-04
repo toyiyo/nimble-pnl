@@ -187,8 +187,13 @@ describe('AssignPeopleDialog', () => {
         expect.objectContaining({ title: '1 assigned, 1 failed', variant: 'destructive' })
       )
     );
-    // Only the failure stays ticked, so a retry cannot re-assign the one that landed.
+    // Only the failure stays ticked, so a retry cannot re-assign the one that
+    // landed. Named by position, in candidate order: the row's accessible name
+    // lives on the label text, not on the Radix checkbox itself.
     expect(screen.getByText('1 person selected')).toBeInTheDocument();
+    const [danaBox, samBox] = screen.getAllByRole('checkbox');
+    expect(danaBox).not.toBeChecked();
+    expect(samBox).toBeChecked();
     expect(props.onOpenChange).not.toHaveBeenCalled();
   });
 });

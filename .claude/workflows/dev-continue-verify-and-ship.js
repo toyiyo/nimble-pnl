@@ -4,7 +4,7 @@ export const meta = {
   whenToUse:
     'When dev-build-and-ship.js halted at the Review fold gate, the human resolved the finding and committed the fix, and Phases 8 onward still need to run. Resuming the original run would replay the cached fold agent and stop at the same gate.',
   phases: [
-    { title: 'Verify', detail: 'full suite + prod-bundle probe grep' },
+    { title: 'Verify', detail: 'full suite (+ optional prod-bundle probe)' },
     { title: 'Ship', detail: 'push + open PR' },
     { title: 'CI Loop', detail: 'watch checks, fix, re-push (max 5)' },
     { title: 'Triage', detail: 'reply to every review finding, audit exit 0' },
@@ -23,6 +23,62 @@ const missingArgs = REQUIRED.filter((k) => !ctx[k])
 if (missingArgs.length) {
   return { stopped: true, phase: 'Preflight', reason: `Missing required args: ${missingArgs.join(', ')}` }
 }
+
+// ---- Optional per-run context, all caller-supplied -------------------------
+// NOTHING below this line may name a feature, file, or commit. This script is
+// reusable: it runs against whatever branch args.branch points at. It once
+// carried one branch's error-boundary work inline — a "PRIOR STATE" paragraph
+// asserting a commit had landed, and a Verify gate grepping that branch's probe
+// string. On every other branch the paragraph actively misinformed the agent,
+// and the grep matched nothing and passed vacuously. Per-run facts arrive
+// through args or they do not get stated at all.
+const shQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`
+
+// args.priorState — free text describing what the human resolved before this
+// run was launched. The fallback asserts nothing that isn't true by
+// construction and points the agent at the branch's own history instead.
+const PRIOR_STATE =
+  typeof ctx.priorState === 'string' && ctx.priorState.trim()
+    ? ctx.priorState.trim()
+    : 'Phases 4-7 (build, simplify, review) already ran on this branch, and the Review-phase gate that halted the previous run was resolved by hand before this run was launched. For what actually landed, read progress.md and `git log origin/main..HEAD --oneline` — assume nothing beyond them. Do NOT re-run the reviewers or re-litigate findings already resolved on the branch.'
+
+// args.bundleProbe — opt-in production-bundle gate. Either a bare string (the
+// pattern, expected ABSENT from the build output) or
+// { pattern, expect: 'absent'|'present', dir?, rationale? }.
+// Omitted → the gate is a genuine no-op: nothing is grepped, nothing asserted,
+// and no returned field claims it passed. A gate nobody configured must never
+// read as a gate that succeeded.
+const rawProbe =
+  typeof ctx.bundleProbe === 'string'
+    ? { pattern: ctx.bundleProbe }
+    : ctx.bundleProbe && typeof ctx.bundleProbe === 'object'
+      ? ctx.bundleProbe
+      : null
+const PROBE =
+  rawProbe && typeof rawProbe.pattern === 'string' && rawProbe.pattern.trim()
+    ? {
+        pattern: rawProbe.pattern.trim(),
+        expect: rawProbe.expect === 'present' ? 'present' : 'absent',
+        dir: (typeof rawProbe.dir === 'string' && rawProbe.dir.trim()) || 'dist/',
+        rationale: typeof rawProbe.rationale === 'string' ? rawProbe.rationale.trim() : '',
+      }
+    : null
+if (rawProbe && !PROBE) {
+  // Fail closed: a malformed probe silently degrading to "no gate" is exactly
+  // how a gate ends up looking satisfied without ever having run.
+  return { stopped: true, phase: 'Preflight', reason: 'args.bundleProbe was supplied but carries no usable `pattern` string.' }
+}
+
+// args.prNotes — extra material the PR ## Summary must call out (design
+// asymmetries, amended design sections, anything the diff alone won't convey).
+const PR_NOTES = typeof ctx.prNotes === 'string' && ctx.prNotes.trim() ? ctx.prNotes.trim() : ''
+
+// args.resolvedFindings — findings settled by hand before this run, so Triage
+// can answer a reviewer who re-raises one instead of re-fixing or reverting it.
+// Entries: a string, or { topic, commit?, note? }.
+const RESOLVED = (Array.isArray(ctx.resolvedFindings) ? ctx.resolvedFindings : [])
+  .map((f) => (typeof f === 'string' ? { note: f } : f))
+  .filter((f) => f && typeof f === 'object' && (f.topic || f.note))
 
 const STATUS = {
   status: { type: 'string', enum: ['completed', 'needs_human', 'failed'] },
@@ -82,7 +138,7 @@ function envelope(body, { skillRef = false } = {}) {
     '',
     WAIT_DISCIPLINE,
     '',
-    'PRIOR STATE: Phases 4-7 are COMPLETE. All reviewers ran (security/performance/maintainability: no findings; ocr-rules + sound-logic minors fixed in c0872b91). One Codex major — tier-2 route-shell boundary had no resetKey — was escalated and has since been resolved by hand in commit ff3776c1, which adds src/components/RouteShellBoundary.tsx, amends the design doc\'s "Reset semantics" section, and adds tests/unit/RouteShellBoundary.test.tsx. Do NOT re-litigate that decision or re-run the reviewers.',
+    `PRIOR STATE: ${PRIOR_STATE}`,
     '',
     body,
   ].join('\n')
@@ -159,27 +215,39 @@ phase('Verify')
 // resumed run that arrives with spend already on the clock. The check that
 // actually bites is the one before Ship.
 { const b = budgetHalt('Verify'); if (b) return b }
+// Probe block is emitted only when the caller configured one. Note the explicit
+// reading of grep's exit code: 1 (no match) and 2 (grep could not run — e.g. no
+// build output) are different outcomes, and conflating them is what let an
+// unconfigured gate report success.
+const probeInstruction = PROBE
+  ? 'ADDITIONALLY — this run was launched with a production-bundle gate. After npm run build, run:\n' +
+    `  grep -rF -- ${shQuote(PROBE.pattern)} ${shQuote(PROBE.dir)} ; echo "exit=$?"\n` +
+    `The pattern MUST be ${PROBE.expect.toUpperCase()} in the build output, i.e. exit=${PROBE.expect === 'present' ? '0' : '1'}.\n` +
+    'Read the exit code literally: 0 = matched, 1 = no match, 2 = grep itself failed (missing directory, unreadable path). Exit 2 is NOT a pass — it means there was no build output to check, so investigate and re-run rather than recording the gate as satisfied.\n' +
+    (PROBE.rationale ? `Why this gate exists: ${PROBE.rationale}\n` : '') +
+    'If the observed result contradicts the expectation, fix the cause and re-run; do NOT proceed. Record the raw grep output and its exit code in progress.md under a "Production bundle verification" heading, and set bundleProbeOk=true only if what you observed matches the expectation.\n'
+  : ''
 const verify = await runAgent(
   envelope(
     'PHASE 8 (Verify). Ensure the .env.local symlink exists in the worktree. Run the FULL suite: npm run test ; npm run test:db ; npm run test:e2e (start npm run dev:full / local Supabase as needed, then TEAR DOWN the dev server) ; npm run typecheck ; npm run lint ; npm run build.\n' +
-      'ADDITIONALLY — this feature has a plan-mandated production-bundle gate (Task 6 of the plan). After npm run build, run:\n' +
-      '  grep -r "__error-boundary-probe" dist/ ; echo "exit=$?"\n' +
-      'It MUST report no matches (exit=1). The dev-only diagnostic route at src/App.tsx is gated on import.meta.env.DEV so Vite eliminates the dead branch; the path string lives inside that branch, so its absence from dist/ proves the probe route cannot ship. If the string IS present, the guard shape is wrong — fix it (move the probe behind a module imported only under the DEV branch) and re-run; do NOT proceed with a deliberately-throwing route in the production bundle. Record the grep output in progress.md under a "Production bundle verification" heading and set probeAbsentFromBundle accordingly.\n' +
+      probeInstruction +
       'If anything fails, fix + commit and re-run, up to 5 iterations. Return allPass=true ONLY if every check passes with real output evidence. If still failing after 5 iterations, return status=failed listing the failing checks. Always tear down any background servers you start.',
   ),
   {
     label: 'verify',
     phase: 'Verify',
     schema: statusSchema(
-      { allPass: { type: 'boolean' }, probeAbsentFromBundle: { type: 'boolean' } },
-      ['allPass', 'probeAbsentFromBundle'],
+      { allPass: { type: 'boolean' }, ...(PROBE ? { bundleProbeOk: { type: 'boolean' } } : {}) },
+      ['allPass', ...(PROBE ? ['bundleProbeOk'] : [])],
     ),
   },
 )
 { const g = gate(verify, 'Verify'); if (g.halt) return g.out }
 if (!verify.allPass) return stop('Verify', { reason: 'local verification did not pass after 5 iterations' })
-if (!verify.probeAbsentFromBundle) {
-  return stop('Verify', { reason: 'the dev-only /__error-boundary-probe path is present in the production bundle — a deliberately-throwing route must not ship' })
+if (PROBE && !verify.bundleProbeOk) {
+  return stop('Verify', {
+    reason: `production-bundle gate failed: "${PROBE.pattern}" was required to be ${PROBE.expect} in ${PROBE.dir} and was not`,
+  })
 }
 
 // ===========================================================================
@@ -194,7 +262,7 @@ log(`Entering Ship at ~${spent()} tokens (ceiling ${TOKEN_CEILING})`)
 const ship = await runAgent(
   envelope(
     'PHASE 9a (Ship). Push the branch: git push -u origin ' + ctx.branch + '. Open a PR with gh pr create: concise title (<70 chars), body with ## Summary (bullets from the plan), ## Test plan, and a link to the design doc.\n' +
-      'In ## Summary, explicitly call out the three boundary tiers and the reset-key asymmetry (tier 1 has no resetKey because it sits above BrowserRouter; tiers 2 and 3 key on pathname, tier 3 additionally on restaurant id). Also note the design doc was amended during review — link the "Reset semantics" section.\n' +
+      (PR_NOTES ? `ALSO call the following out explicitly in ## Summary — it is the context the diff alone will not convey:\n${PR_NOTES}\n` : '') +
       'Return the PR number as prNumber. Update progress.md with it.',
   ),
   { label: 'ship', phase: 'Ship', schema: statusSchema({ prNumber: { type: 'number' } }, ['prNumber']) },
@@ -240,7 +308,11 @@ const triage = await runAgent(
       `4b. Reply to EVERY finding: node dev-tools/pr-triage.js reply --pr ${PR} --comment <id> --verdict <agreed|pushed-back|ignored> [--commit <sha>] --rationale "<why>". For a CHANGES_REQUESTED review (no thread to nest under) use --review <reviewer-login> instead of --comment. A fix is an "agreed" reply naming the commit, NOT a substitute for replying. Use \`node dev-tools/pr-triage.js list --pr ${PR}\` to enumerate unanswered findings and their comment ids.\n` +
       `4c. Then run: node dev-tools/pr-triage.js audit --pr ${PR} — it must exit 0 before you return. Exit 1 means a finding is unanswered; exit 2 means the audit could not read the PR (fail closed — investigate, never treat as a pass).\n` +
       `5. Write the full classified list to dev-tools/9d-triage-${ctx.branch}.md (persistent artifact for the done gate).\n` +
-      'NOTE: if a reviewer re-raises the tier-2 resetKey question, it is already resolved in ff3776c1 — reply "agreed" citing that commit and the amended "Reset semantics" section of the design doc. Do not revert it.\n' +
+      (RESOLVED.length
+        ? 'ALREADY RESOLVED BEFORE THIS RUN — if a reviewer re-raises one of these, reply "agreed" citing the commit named here instead of re-fixing or reverting:\n' +
+          RESOLVED.map((f) => `- ${[f.topic, f.commit && `resolved in ${f.commit}`, f.note].filter(Boolean).join(' — ')}`).join('\n') +
+          '\nConfirm each cited commit is actually on this branch (`git log origin/main..HEAD --oneline`) BEFORE citing it. If it is not there, this note is stale — treat the finding as unresolved and handle it normally.\n'
+        : '') +
       'Return counts + latestSha. If there are genuinely ambiguous comments you cannot resolve, return status=needs_human with them.',
   ),
   {
@@ -287,7 +359,7 @@ return {
   done: done.donePassed,
   tokensSpent: spent(),
   ...(stalls.length ? { stalls } : {}),
-  probeAbsentFromBundle: verify.probeAbsentFromBundle,
+  ...(PROBE ? { bundleProbeOk: verify.bundleProbeOk } : {}),
   triage: {
     fixesCommitted: triage.fixesCommitted || 0,
     declinedWithReply: triage.declinedWithReply || 0,

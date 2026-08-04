@@ -93,6 +93,18 @@ VALUES
    'Food Sales', '4000', 'revenue', 'sales', 'credit')
 ON CONFLICT (id) DO NOTHING;
 
+-- apply_rules_to_bank_transactions_internal posts a journal entry for each
+-- categorized row and requires a Cash account (account_code 1000) to exist for
+-- the restaurant, or it raises and the whole batch is skipped
+-- (20260703090000:519-528). Without this row test 6 fails silently: the
+-- function logs a WARNING and leaves the bank row uncategorized.
+INSERT INTO chart_of_accounts
+  (id, restaurant_id, account_name, account_code, account_type, account_subtype, normal_balance)
+VALUES
+  ('dddddddd-0000-0000-0000-0000000000c2', 'dddddddd-0000-0000-0000-0000000000a1',
+   'Cash', '1000', 'asset', 'cash', 'debit')
+ON CONFLICT (id) DO NOTHING;
+
 INSERT INTO connected_banks
   (id, restaurant_id, stripe_financial_account_id, institution_name)
 VALUES

@@ -24,7 +24,7 @@
 
 BEGIN;
 
-SELECT plan(28);
+SELECT plan(30);
 
 -- ============================================
 -- Setup
@@ -128,7 +128,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Template B: one matching, one drifted (the drift opt-in block), plus a
 -- second drifted-and-PUBLISHED shift (b3) proving a posted hand-edited shift
--- is just as opt-in-able and just as visible in published_shift_ids as a
+-- is just as opt-in-able and just as visible in published_shifts as a
 -- posted matching one (Test 10).
 INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
 SELECT * FROM (VALUES
@@ -229,9 +229,19 @@ SELECT is(
 
 -- Test 7
 SELECT is(
-  (SELECT result->'published_shift_ids' FROM call_a),
+  (SELECT jsonb_agg(elem->>'id') FROM call_a, jsonb_array_elements(result->'published_shifts') elem),
   '["11000000-0000-0000-0000-0000000000a5"]'::jsonb,
-  'published_shift_ids carries exactly the one published shift that moved'
+  'published_shifts carries exactly the one published shift that moved'
+);
+
+-- Test 7b -- the pre-cascade instant, not the post-cascade one, so the notify
+-- email can render "Previous Start" without a second round trip. A5 was
+-- seeded at mon + 3 days (line 123-125), not mon itself.
+SELECT is(
+  (SELECT (elem->>'previous_start_time')::timestamptz
+     FROM call_a, jsonb_array_elements(result->'published_shifts') elem),
+  (((SELECT mon FROM test_config) + 3)::timestamp + interval '9 hours') AT TIME ZONE 'America/Chicago',
+  'a published moved shift carries its pre-cascade start time'
 );
 
 -- ============================================
@@ -261,14 +271,23 @@ SELECT is(
 );
 
 -- Test 10 -- b3 is drifted AND published. It was opted in like b2, but only
--- b3 is published, so it alone should appear in published_shift_ids: a
+-- b3 is published, so it alone should appear in published_shifts: a
 -- published drifted shift the manager opts in is exactly as visible to the
 -- "already posted"/notify machinery as a published matching shift (a5 in
 -- Call A), even though it never entered the `moving` bucket the way a5 did.
 SELECT is(
-  (SELECT result->'published_shift_ids' FROM call_b),
+  (SELECT jsonb_agg(elem->>'id') FROM call_b, jsonb_array_elements(result->'published_shifts') elem),
   '["11000000-0000-0000-0000-0000000000b3"]'::jsonb,
-  'an opted-in drifted shift that is itself published appears in published_shift_ids'
+  'an opted-in drifted shift that is itself published appears in published_shifts'
+);
+
+-- Test 10b -- b3's pre-cascade start was 11:00, distinct from a5's 09:00
+-- (Test 7b), so this is not just Test 7b passing by coincidence.
+SELECT is(
+  (SELECT (elem->>'previous_start_time')::timestamptz
+     FROM call_b, jsonb_array_elements(result->'published_shifts') elem),
+  (((SELECT mon FROM test_config) + 3)::timestamp + interval '11 hours') AT TIME ZONE 'America/Chicago',
+  'a published opted-in drifted shift carries its pre-cascade start time'
 );
 
 -- Test 11 -- a1 belongs to template A, so it fails the shift_template_id

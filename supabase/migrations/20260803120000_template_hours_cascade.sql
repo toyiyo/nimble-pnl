@@ -67,14 +67,14 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_tz            TEXT;
-  v_old_start     TIME;
-  v_old_end       TIME;
-  v_batch_id      UUID := gen_random_uuid();
-  v_updated_count INTEGER := 0;
-  v_published_ids UUID[] := '{}';
-  v_skipped_count INTEGER := 0;
-  v_drift_ids     UUID[] := COALESCE(p_drifted_shift_ids, '{}'::UUID[]);
+  v_tz                TEXT;
+  v_old_start         TIME;
+  v_old_end           TIME;
+  v_batch_id          UUID := gen_random_uuid();
+  v_updated_count     INTEGER := 0;
+  v_published_shifts  JSONB := '[]'::jsonb;
+  v_skipped_count     INTEGER := 0;
+  v_drift_ids         UUID[] := COALESCE(p_drifted_shift_ids, '{}'::UUID[]);
 BEGIN
   -- The capability check, not a hardcoded role array: this is exactly what the
   -- shifts UPDATE policy and the schedule_change_logs INSERT policy require
@@ -92,16 +92,23 @@ BEGIN
   -- bypasses RLS. Every statement below therefore also filters on
   -- restaurant_id = p_restaurant_id. Starting here: a template id from another
   -- tenant finds no row and the call becomes a no-op.
+  -- FOR UPDATE: this function reads the old hours here and UPDATEs the same
+  -- template row below. Without the lock, two concurrent cascades on one
+  -- template can both derive the same stale v_old_start/v_old_end, and the
+  -- second to commit retimes its shifts against hours the template no longer
+  -- has -- exactly the template/shift divergence this feature exists to
+  -- eliminate.
   SELECT t.start_time, t.end_time
     INTO v_old_start, v_old_end
   FROM public.shift_templates t
   WHERE t.id = p_template_id
-    AND t.restaurant_id = p_restaurant_id;
+    AND t.restaurant_id = p_restaurant_id
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RETURN jsonb_build_object(
       'batch_id', NULL, 'updated_count', 0,
-      'published_shift_ids', to_jsonb('{}'::UUID[]), 'skipped_count', 0
+      'published_shifts', '[]'::jsonb, 'skipped_count', 0
     );
   END IF;
 
@@ -162,6 +169,9 @@ BEGIN
       SELECT
         s.id,
         s.employee_id,
+        s.start_time AS prev_start,
+        s.end_time   AS prev_end,
+        s.position   AS prev_position,
         to_jsonb(s.*) AS before_data,
         (((s.start_time AT TIME ZONE v_tz)::date || ' ' || p_start_time)::timestamp
           AT TIME ZONE v_tz) AS new_start,
@@ -192,10 +202,34 @@ BEGIN
           end_time   = t.new_end,
           updated_at = now()
       FROM target t
+      -- Re-checks the same classification guards target already applied to
+      -- s, not just s.id/s.restaurant_id. Under READ COMMITTED, if another
+      -- transaction modified this row between the snapshot and this UPDATE,
+      -- the UPDATE blocks and then re-evaluates its WHERE against the NEW row
+      -- version -- so without repeating the guards a shift another writer
+      -- moved into the past, locked, or hand-edited away from v_old_start/end
+      -- would still get stomped. The drift-ids arm is preserved verbatim: a
+      -- drifted opt-in row by definition fails the time-match arm, so
+      -- dropping it would silently stop cascading every hand-edited shift the
+      -- manager checked.
+      --
+      -- Residual: t.before_data is still the snapshot-time row, so a
+      -- concurrent edit that *passes* these guards is still overwritten and
+      -- Undo restores the snapshot rather than that edit. That window is now
+      -- milliseconds wide and closing it needs a second lock round-trip; note
+      -- it, do not fix it.
       WHERE s.id = t.id
         AND s.restaurant_id = p_restaurant_id
+        AND s.start_time > now()
+        AND s.locked = false
+        AND (
+          (    (s.start_time AT TIME ZONE v_tz)::time = v_old_start
+           AND (s.end_time   AT TIME ZONE v_tz)::time = v_old_end)
+          OR s.id = ANY(v_drift_ids)
+        )
       RETURNING s.id, s.employee_id, s.is_published,
-                t.before_data, to_jsonb(s.*) AS after_data
+                t.before_data, to_jsonb(s.*) AS after_data,
+                t.prev_start, t.prev_end, t.prev_position
     ),
     logged AS (
       -- A data-modifying CTE runs exactly once and to completion whether or not
@@ -211,18 +245,33 @@ BEGIN
     )
     -- Counts from RETURNING, not GET DIAGNOSTICS: once the UPDATE feeds a CTE,
     -- GET DIAGNOSTICS reports the ENCLOSING statement's row count.
+    --
+    -- to_jsonb(prev_start) on the typed timestamptz column, not
+    -- before_data->>'start_time': ->> yields Postgres' space-separated text
+    -- rendering, while to_jsonb of a timestamptz yields ISO-8601 with a T,
+    -- which is what the edge function's formatDateTime can parse.
     SELECT count(*)::int,
-           COALESCE(array_agg(id) FILTER (WHERE is_published), '{}')
-      INTO v_updated_count, v_published_ids
+           COALESCE(
+             jsonb_agg(
+               jsonb_build_object(
+                 'id', id,
+                 'previous_start_time', to_jsonb(prev_start),
+                 'previous_end_time',   to_jsonb(prev_end),
+                 'previous_position',   prev_position
+               )
+             ) FILTER (WHERE is_published),
+             '[]'::jsonb
+           )
+      INTO v_updated_count, v_published_shifts
     FROM updated;
   END IF;
 
   RETURN jsonb_build_object(
     -- NULL when nothing moved, so the client knows not to offer Undo.
-    'batch_id',            CASE WHEN v_updated_count > 0 THEN v_batch_id ELSE NULL END,
-    'updated_count',       v_updated_count,
-    'published_shift_ids', to_jsonb(v_published_ids),
-    'skipped_count',       v_skipped_count
+    'batch_id',         CASE WHEN v_updated_count > 0 THEN v_batch_id ELSE NULL END,
+    'updated_count',    v_updated_count,
+    'published_shifts', v_published_shifts,
+    'skipped_count',    v_skipped_count
   );
 END;
 $$;
@@ -291,7 +340,11 @@ BEGIN
   FROM public.schedule_change_logs l
   WHERE l.cascade_batch_id = p_batch_id
     AND l.restaurant_id = p_restaurant_id
-    AND NOT EXISTS (SELECT 1 FROM public.shifts s WHERE s.id = l.shift_id);
+    AND NOT EXISTS (
+      SELECT 1 FROM public.shifts s
+      WHERE s.id = l.shift_id
+        AND s.restaurant_id = p_restaurant_id
+    );
 
   -- Changed since: the row still exists but its times no longer match what the
   -- cascade wrote, so someone edited it in between. Blindly restoring would

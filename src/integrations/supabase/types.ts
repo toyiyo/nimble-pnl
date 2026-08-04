@@ -894,6 +894,7 @@ export type Database = {
           reconciled_at: string | null
           reconciled_by: string | null
           restaurant_id: string
+          rules_evaluated_at: string
           source: string | null
           statement_upload_id: string | null
           status: Database["public"]["Enums"]["transaction_status_enum"]
@@ -935,6 +936,7 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id: string
+          rules_evaluated_at?: string
           source?: string | null
           statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
@@ -976,6 +978,7 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id?: string
+          rules_evaluated_at?: string
           source?: string | null
           statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
@@ -9032,8 +9035,8 @@ export type Database = {
       }
       tip_split_items: {
         Row: {
-          applied_rule: Json | null
           amount: number
+          applied_rule: Json | null
           created_at: string | null
           employee_id: string
           hours_worked: number | null
@@ -9044,8 +9047,8 @@ export type Database = {
           tip_split_id: string
         }
         Insert: {
-          applied_rule?: Json | null
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id: string
           hours_worked?: number | null
@@ -9056,8 +9059,8 @@ export type Database = {
           tip_split_id: string
         }
         Update: {
-          applied_rule?: Json | null
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id?: string
           hours_worked?: number | null
@@ -9727,6 +9730,7 @@ export type Database = {
           quantity: number
           raw_data: Json | null
           restaurant_id: string
+          rules_evaluated_at: string
           sale_date: string
           sale_time: string | null
           sold_at: string | null
@@ -9755,6 +9759,7 @@ export type Database = {
           quantity?: number
           raw_data?: Json | null
           restaurant_id: string
+          rules_evaluated_at?: string
           sale_date: string
           sale_time?: string | null
           sold_at?: string | null
@@ -9783,6 +9788,7 @@ export type Database = {
           quantity?: number
           raw_data?: Json | null
           restaurant_id?: string
+          rules_evaluated_at?: string
           sale_date?: string
           sale_time?: string | null
           sold_at?: string | null
@@ -11463,6 +11469,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      record_pos_sync_error: {
+        Args: { p_message: string; p_pos: string; p_restaurant_id: string }
+        Returns: undefined
       }
       reject_open_shift_claim: {
         Args: { p_claim_id: string; p_reviewer_note?: string }

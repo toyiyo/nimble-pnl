@@ -605,12 +605,18 @@ export function useRevertBankTransactionSplit() {
       if (deleteSplitsError) throw deleteSplitsError;
 
       // Update parent to mark as not split
+      // rules_evaluated_at: reverting a split flips is_categorized/category_id
+      // without touching any of the negative-cache trigger's watched columns
+      // (description/amount/supplier_id), so the row would otherwise stay
+      // stamped at its pre-revert watermark and never re-enter the sweep's
+      // candidate set. Reset it explicitly so the row gets re-evaluated.
       const { error: updateError } = await supabase
         .from('bank_transactions')
-        .update({ 
+        .update({
           is_split: false,
           is_categorized: false,
           category_id: null,
+          rules_evaluated_at: '-infinity',
           updated_at: new Date().toISOString()
         })
         .eq('id', transactionId);

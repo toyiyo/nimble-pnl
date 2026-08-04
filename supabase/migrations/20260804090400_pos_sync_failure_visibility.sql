@@ -73,7 +73,7 @@ CREATE OR REPLACE FUNCTION sync_all_toast_to_unified_sales()
 RETURNS TABLE(restaurant_id UUID, orders_synced INTEGER)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_connection RECORD;
@@ -130,6 +130,10 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION sync_all_toast_to_unified_sales()
+  FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION sync_all_toast_to_unified_sales() TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- Shift4. Body copied from
 -- 20260127100000_shift4_lighthouse_sync_enhancements.sql:49.
@@ -179,7 +183,9 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION sync_all_shift4_to_unified_sales() TO service_role;
+REVOKE EXECUTE ON FUNCTION sync_all_shift4_to_unified_sales()
+  FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION sync_all_shift4_to_unified_sales() TO service_role;
 
 -- ---------------------------------------------------------------------------
 -- Focus (legacy sales rollup). Body copied from
@@ -241,6 +247,10 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION public.sync_all_focus_to_unified_sales()
+  FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.sync_all_focus_to_unified_sales() TO service_role;
+
 -- ---------------------------------------------------------------------------
 -- Focus (transactions rollup). Body copied from
 -- 20260703120000_focus_backfill_reliability.sql:80.
@@ -249,7 +259,7 @@ CREATE OR REPLACE FUNCTION public.sync_all_focus_transactions_to_unified_sales()
 RETURNS TABLE(restaurant_id uuid, rows_synced integer)
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   r record;
@@ -316,6 +326,8 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION public.sync_all_focus_transactions_to_unified_sales()
+  FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.sync_all_focus_transactions_to_unified_sales()
   TO service_role;
 
@@ -331,7 +343,7 @@ CREATE OR REPLACE FUNCTION public.sync_revel_to_unified_sales(
 RETURNS INTEGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 AS $$
 DECLARE
   v_synced_count INTEGER := 0;
@@ -554,3 +566,16 @@ BEGIN
   RETURN v_synced_count;
 END;
 $$;
+
+-- Revel keeps `authenticated`: unlike the sync_all_* wrappers it takes a
+-- restaurant_id and is called from the UI (useRevelSalesAdapter.syncToUnified),
+-- and it enforces membership itself.
+--
+-- `anon` must go, though. That membership check is
+--   IF auth.uid() IS NOT NULL AND NOT EXISTS (... user_restaurants ...)
+-- so a caller with no JWT short-circuits it and passes ANY p_restaurant_id --
+-- a SECURITY DEFINER cross-tenant write reachable with the publishable key.
+REVOKE EXECUTE ON FUNCTION public.sync_revel_to_unified_sales(UUID, DATE, DATE)
+  FROM PUBLIC, anon;
+GRANT  EXECUTE ON FUNCTION public.sync_revel_to_unified_sales(UUID, DATE, DATE)
+  TO authenticated, service_role;

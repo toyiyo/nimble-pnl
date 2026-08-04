@@ -82,7 +82,7 @@ CREATE OR REPLACE FUNCTION public.drain_categorization_backlog()
 RETURNS integer
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = pg_catalog, public
 SET statement_timeout = '120s'
 AS $$
 DECLARE
@@ -192,13 +192,57 @@ BEGIN
     END;
   END LOOP;
 
-  -- ── Self-retire ONLY after a complete, error-free, empty pass ─────────────
-  -- "Empty" means no candidate was even CLAIMED: with a bounded batch, zero
-  -- rows applied only means the rows this tick looked at matched nothing.
-  -- v_claimed=0 alone is still not enough -- the budget may have expired before
-  -- reaching a backlogged restaurant, or every attempt may have errored.
-  -- Retiring then would strand the backlog forever; keep ticking instead.
-  IF v_claimed = 0 AND v_errors = 0 AND NOT v_budget_hit THEN
+  -- ── Self-retire ONLY after a complete, error-free, provably drained pass ──
+  -- Three things must hold, and none of them is redundant:
+  --
+  --   v_errors = 0, NOT v_budget_hit -- the pass actually visited every
+  --     restaurant. Either flag means some restaurant was never swept, so this
+  --     tick knows nothing about its backlog.
+  --
+  --   v_claimed = 0 -- with a bounded batch, zero rows APPLIED only means the
+  --     rows this tick looked at matched nothing; the next batch may still
+  --     match. Claim count, not apply count, is the drain signal.
+  --
+  --   no claimable candidate remains -- v_claimed = 0 is necessary but NOT
+  --     sufficient. The sweeps claim with FOR UPDATE SKIP LOCKED, so a
+  --     concurrent sweep (a 5-minute POS rollup, an interactive apply) holding
+  --     the last candidates makes this tick claim 0 while the backlog is still
+  --     there. Retiring on that race would strand it: nothing else drains the
+  --     BANK sweep -- this job is its only automated driver.
+  --
+  -- The guard asks the same question the sweeps ask, via the same watermark
+  -- definition, so it cannot drift narrow and retire early.
+  IF v_claimed = 0 AND v_errors = 0 AND NOT v_budget_hit
+     AND NOT EXISTS (
+       SELECT 1
+       FROM (
+         SELECT DISTINCT cr.restaurant_id, cr.applies_to
+         FROM categorization_rules cr
+         WHERE cr.is_active AND cr.auto_apply
+       ) rules
+       CROSS JOIN LATERAL (
+         SELECT 1
+         FROM unified_sales s
+         WHERE rules.applies_to IN ('pos_sales', 'both')
+           AND s.restaurant_id = rules.restaurant_id
+           AND (s.is_categorized = false OR s.category_id IS NULL)
+           AND s.is_split = false
+           AND s.rules_evaluated_at
+               < public.categorization_rules_watermark(rules.restaurant_id, 'pos_sales')
+         UNION ALL
+         SELECT 1
+         FROM bank_transactions bt
+         WHERE rules.applies_to IN ('bank_transactions', 'both')
+           AND bt.restaurant_id = rules.restaurant_id
+           AND (bt.is_categorized = false OR bt.category_id IS NULL)
+           AND bt.is_split = false
+           AND bt.excluded_reason IS NULL
+           AND bt.rules_evaluated_at
+               < public.categorization_rules_watermark(rules.restaurant_id, 'bank_transactions')
+         LIMIT 1
+       ) leftover
+     )
+  THEN
     IF EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain') THEN
       PERFORM cron.unschedule('categorization-backlog-drain');
       RAISE LOG 'categorization drain: backlog converged — job unscheduled';
@@ -216,10 +260,11 @@ COMMENT ON FUNCTION public.drain_categorization_backlog() IS
   'Bounded (~40s) tick that drains the pre-existing uncategorized POS/bank '
   'backlog for restaurants with active auto_apply rules. Scheduled every 5 '
   'minutes by the categorization-backlog-drain pg_cron job; unschedules that '
-  'job itself only after a COMPLETE, error-free tick CLAIMS 0 candidates '
-  '(budget-expired, errored, or matched-nothing-but-still-claiming ticks keep '
-  'the job alive). Returns rows applied this tick. Replaces the in-migration '
-  'synchronous backfill that timed out production deploys.';
+  'job itself only after a COMPLETE, error-free tick CLAIMS 0 candidates AND no '
+  'claimable candidate is left (budget-expired, errored, matched-nothing-but-'
+  'still-claiming, and SKIP-LOCKED-raced ticks all keep the job alive). Returns '
+  'rows applied this tick. Replaces the in-migration synchronous backfill that '
+  'timed out production deploys.';
 
 -- Re-assert the 20260703090000 hardening: CREATE OR REPLACE keeps the existing
 -- ACL, but restating it keeps this file self-contained if it is ever replayed

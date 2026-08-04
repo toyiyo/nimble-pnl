@@ -12,6 +12,49 @@
 -- LIMIT binds); statement 2 runs the matcher against exactly those ids.
 --
 -- Design: docs/superpowers/specs/2026-08-03-pos-sync-categorization-rescan-design.md §3.2-§3.4
+
+-- The rule watermark, defined ONCE.
+--
+-- This predicate MUST mirror find_matching_rules_for_{pos_sale,bank_transaction}'s
+-- own rule-selection predicate exactly -- is_active and applies_to, and nothing
+-- else. In particular NOT auto_apply: the matchers ignore it, so a narrower
+-- watermark would let a rule the matcher applies change without invalidating the
+-- cache, producing a silent permanent miss.
+--
+-- It lives in its own function because three call sites need it and they must
+-- agree: both sweeps (to pick and stamp candidates) and drain_categorization_backlog
+-- (to decide whether any claimable candidate is left before it retires itself).
+-- A copy that drifted narrow in any one of them is a silent correctness bug.
+CREATE OR REPLACE FUNCTION public.categorization_rules_watermark(
+  p_restaurant_id UUID,
+  p_scope TEXT      -- 'pos_sales' or 'bank_transactions'
+)
+RETURNS TIMESTAMPTZ
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT max(GREATEST(cr.created_at, COALESCE(cr.updated_at, cr.created_at)))
+  FROM public.categorization_rules cr
+  WHERE cr.restaurant_id = p_restaurant_id
+    AND cr.is_active = true
+    AND (cr.applies_to = p_scope OR cr.applies_to = 'both');
+$$;
+
+COMMENT ON FUNCTION public.categorization_rules_watermark(UUID, TEXT) IS
+  'Newest create/update timestamp across a restaurant''s active rules for the '
+  'given scope. Sole definition of the negative-result cache watermark: a '
+  'unified_sales / bank_transactions row with rules_evaluated_at below this has '
+  'not been evaluated against the current rule set. Returns NULL when no active '
+  'rule exists, meaning nothing can match.';
+
+-- SECURITY DEFINER over categorization_rules, so keep it off the public API.
+REVOKE EXECUTE ON FUNCTION public.categorization_rules_watermark(UUID, TEXT)
+  FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.categorization_rules_watermark(UUID, TEXT)
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION apply_rules_to_pos_sales_internal(
   p_restaurant_id UUID,
   p_batch_limit   INTEGER DEFAULT 100
@@ -45,17 +88,10 @@ BEGIN
   -- No permission check: this function is for background/service-role callers.
   -- The public wrapper apply_rules_to_pos_sales enforces owner/manager membership.
 
-  -- Rule watermark. This predicate MUST mirror find_matching_rules_for_pos_sale's
-  -- own rule-selection predicate exactly -- is_active and applies_to, and
-  -- nothing else. In particular NOT auto_apply: the matcher ignores it, so a
-  -- narrower watermark here would let a rule the matcher applies change without
-  -- invalidating the cache, producing a silent permanent miss.
-  SELECT max(GREATEST(cr.created_at, COALESCE(cr.updated_at, cr.created_at)))
-    INTO v_rules_changed_at
-  FROM categorization_rules cr
-  WHERE cr.restaurant_id = p_restaurant_id
-    AND cr.is_active = true
-    AND (cr.applies_to = 'pos_sales' OR cr.applies_to = 'both');
+  -- Rule watermark. Single definition, shared with the bank sweep and with
+  -- drain_categorization_backlog's retirement guard -- see the function's
+  -- comment for why it must not be re-derived inline.
+  v_rules_changed_at := public.categorization_rules_watermark(p_restaurant_id, 'pos_sales');
 
   -- No rule can match: equivalent to running to completion with zero matches,
   -- minus all the work. Deliberately writes nothing.
@@ -275,18 +311,10 @@ BEGIN
     RAISE EXCEPTION 'Cash account (1000) not found for restaurant %', p_restaurant_id;
   END IF;
 
-  -- Rule watermark. This predicate MUST mirror
-  -- find_matching_rules_for_bank_transaction's own rule-selection predicate
-  -- exactly -- is_active and applies_to, and nothing else. In particular NOT
-  -- auto_apply: the matcher ignores it, so a narrower watermark here would
-  -- let a rule the matcher applies change without invalidating the cache,
-  -- producing a silent permanent miss.
-  SELECT max(GREATEST(cr.created_at, COALESCE(cr.updated_at, cr.created_at)))
-    INTO v_rules_changed_at
-  FROM categorization_rules cr
-  WHERE cr.restaurant_id = p_restaurant_id
-    AND cr.is_active = true
-    AND (cr.applies_to = 'bank_transactions' OR cr.applies_to = 'both');
+  -- Rule watermark. Single definition, shared with the POS sweep and with
+  -- drain_categorization_backlog's retirement guard -- see the function's
+  -- comment for why it must not be re-derived inline.
+  v_rules_changed_at := public.categorization_rules_watermark(p_restaurant_id, 'bank_transactions');
 
   -- No rule can match: equivalent to running to completion with zero matches,
   -- minus all the work. Deliberately writes nothing.

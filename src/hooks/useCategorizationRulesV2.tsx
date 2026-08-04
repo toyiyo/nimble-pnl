@@ -349,9 +349,13 @@ async function drainApplyRules(
       throw new Error(`Failed to apply rules to ${label}: ${error.message}`);
     }
 
-    const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
-    applied += batch.applied_count;
-    if (batch.total_count === 0) break;
+    // Coerced because this RPC is called untyped: an absent applied_count would
+    // make `applied` NaN and surface as "NaN rows" in the toast, and an absent
+    // total_count would never satisfy the exit test, burning all
+    // MAX_APPLY_BATCHES round-trips before giving up.
+    const batch = data?.[0];
+    applied += Number(batch?.applied_count ?? 0);
+    if (Number(batch?.total_count ?? 0) === 0) break;
   }
 
   return applied;

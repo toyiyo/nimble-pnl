@@ -56,6 +56,39 @@ export type AreaLevel = 'view' | 'manage';
 /** The three cross-cutting sensitive-data switches, resolved from `role_flags`. */
 export type SensitiveFlag = 'view:costs' | 'view:pay_rates' | 'view:employee_pii';
 
+/**
+ * The three sensitive-data flags with their human labels.
+ *
+ * Lived in RoleEditor.tsx until the role picker's delta needed the same
+ * labels. Two copies of "Employee pay rates" is how a screen ends up naming
+ * a permission differently from the screen that grants it.
+ */
+export const SENSITIVE_FLAGS: ReadonlyArray<{
+  flag: SensitiveFlag;
+  name: string;
+  hint: string;
+  requires: readonly AreaKey[];
+}> = [
+  {
+    flag: 'view:costs',
+    name: 'Item costs & margins',
+    hint: 'Unit costs, recipe cost, plate margin',
+    requires: ['inventory', 'recipes', 'reports'],
+  },
+  {
+    flag: 'view:pay_rates',
+    name: 'Employee pay rates',
+    hint: 'Hourly and salary amounts on the roster and schedule',
+    requires: ['employees', 'scheduling'],
+  },
+  {
+    flag: 'view:employee_pii',
+    name: 'Contact details & tax IDs',
+    hint: 'Phone, address, last 4 of SSN',
+    requires: ['employees'],
+  },
+];
+
 /** The three bands the editor groups areas into. Matches area_catalog.band. */
 export type Band = 'Operations' | 'Money' | 'People & admin';
 

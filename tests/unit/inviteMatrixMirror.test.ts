@@ -5,7 +5,7 @@
  * them, so this test is the only thing preventing silent drift.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /** Extract `const INVITABLE_ROLES ... = { ... };` and parse it into a plain object. */
@@ -56,6 +56,54 @@ const read = (p: string) => readFileSync(resolve(process.cwd(), p), 'utf8');
 
 const TS_PATH = 'src/lib/permissions/invitations.ts';
 const DENO_PATH = 'supabase/functions/send-team-invitation/index.ts';
+
+const MIGRATIONS_DIR = 'supabase/migrations';
+
+/**
+ * The migration that currently defines the SQL matrix.
+ *
+ * Migrations are append-only, so a future change to the matrix arrives as a
+ * NEW file with CREATE OR REPLACE. Pinning this test to one filename would
+ * leave it asserting against a superseded definition — passing while the
+ * live matrix drifts. Picking the lexicographically-last definer matches
+ * what the database actually ran.
+ */
+function readLatestSqlMatrix(): string {
+  const dir = resolve(process.cwd(), MIGRATIONS_DIR);
+  const definers = readdirSync(dir)
+    .filter((f) => f.endsWith('.sql'))
+    .filter((f) =>
+      readFileSync(resolve(dir, f), 'utf8').includes(
+        'FUNCTION public.invitable_roles'
+      )
+    )
+    .sort();
+  expect(definers.length, 'no migration defines public.invitable_roles').toBeGreaterThan(0);
+  return readFileSync(resolve(dir, definers[definers.length - 1]), 'utf8');
+}
+
+/** Parse the `('owner', ARRAY['a','b']), …` VALUES list into a plain object. */
+function parseSqlMatrix(source: string): Record<string, string[]> {
+  const start = source.indexOf('FUNCTION public.invitable_roles');
+  expect(start, 'invitable_roles not found in the SQL').toBeGreaterThan(-1);
+  const body = source.slice(start);
+  const matrix: Record<string, string[]> = {};
+  const entry = /\(\s*'(\w+)'\s*,\s*ARRAY\[([^\]]*)\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = entry.exec(body)) !== null) {
+    matrix[m[1]] = [...m[2].matchAll(/'([^']+)'/g)].map((r) => r[1]);
+  }
+  return matrix;
+}
+
+/** Parse the ARRAY[...] literal inside can_invite_custom_role. */
+function parseSqlCustomRoleInviters(source: string): string[] {
+  const start = source.indexOf('FUNCTION public.can_invite_custom_role');
+  expect(start, 'can_invite_custom_role not found in the SQL').toBeGreaterThan(-1);
+  const match = /ARRAY\[([^\]]*)\]/.exec(source.slice(start));
+  expect(match, 'no ARRAY literal in can_invite_custom_role').not.toBeNull();
+  return [...match![1].matchAll(/'([^']+)'/g)].map((r) => r[1]);
+}
 
 describe('invite matrix mirror', () => {
   const ts = parseMatrix(read(TS_PATH), TS_PATH);
@@ -116,5 +164,21 @@ describe('invite matrix mirror', () => {
     for (const [inviter, targets] of Object.entries(deno)) {
       expect(targets, `${inviter} (Deno) should not be able to invite kiosk`).not.toContain('kiosk');
     }
+  });
+
+  it('the SQL matrix matches the TS matrix row for row', () => {
+    // The third copy. SQL omits empty rows entirely (a missing row returns
+    // NULL, which the RPC treats as deny), so only the non-empty TS rows are
+    // compared — the same rule the existing TS<->Deno assertion uses.
+    const sql = parseSqlMatrix(readLatestSqlMatrix());
+    const tsNonEmpty = Object.fromEntries(
+      Object.entries(ts).filter(([, targets]) => targets.length > 0)
+    );
+    expect(sql).toEqual(tsNonEmpty);
+  });
+
+  it('the SQL custom-role inviter list matches the TS one', () => {
+    expect(parseSqlCustomRoleInviters(readLatestSqlMatrix()))
+      .toEqual(parseCustomRoleInviters(read(TS_PATH), TS_PATH));
   });
 });

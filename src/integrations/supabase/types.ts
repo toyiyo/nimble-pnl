@@ -3563,13 +3563,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "invitations_role_id_fkey"
-            columns: ["role_id"]
-            isOneToOne: false
-            referencedRelation: "roles"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
@@ -3588,6 +3581,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
             referencedColumns: ["id"]
           },
         ]
@@ -6380,6 +6380,7 @@ export type Database = {
           description: string | null
           flavor: string
           id: string
+          legacy_role: string | null
           name: string
           restaurant_id: string | null
         }
@@ -6389,6 +6390,7 @@ export type Database = {
           description?: string | null
           flavor: string
           id?: string
+          legacy_role?: string | null
           name: string
           restaurant_id?: string | null
         }
@@ -6398,6 +6400,7 @@ export type Database = {
           description?: string | null
           flavor?: string
           id?: string
+          legacy_role?: string | null
           name?: string
           restaurant_id?: string | null
         }
@@ -10264,6 +10267,7 @@ export type Database = {
       _prokind: { Args: { p_oid: unknown }; Returns: unknown }
       _query: { Args: { "": string }; Returns: string }
       _refine_vol: { Args: { "": string }; Returns: string }
+      _retval: { Args: { "": string }; Returns: string }
       _revel_connection_is_due: {
         Args: { rc: Database["public"]["Tables"]["revel_connections"]["Row"] }
         Returns: boolean
@@ -10383,6 +10387,10 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: number
       }
+      assign_membership_role: {
+        Args: { p_membership_id: string; p_role: string; p_role_id?: string }
+        Returns: undefined
+      }
       backfill_user_restaurants_role_id: { Args: never; Returns: undefined }
       bank_reauth_cohort_a_candidates: {
         Args: never
@@ -10489,6 +10497,7 @@ export type Database = {
           total_hours: number
         }[]
       }
+      can_invite_custom_role: { Args: { p_inviter: string }; Returns: boolean }
       cancel_shift_trade: {
         Args: { p_employee_id: string; p_trade_id: string }
         Returns: Json
@@ -10939,6 +10948,7 @@ export type Database = {
         Returns: Json
       }
       focus_slug: { Args: { p_text: string }; Returns: string }
+      format_type_string: { Args: { "": string }; Returns: string }
       fulltext_product_search: {
         Args: {
           p_limit?: number
@@ -11192,6 +11202,7 @@ export type Database = {
       has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       in_todo: { Args: never; Returns: boolean }
+      invitable_roles: { Args: { p_inviter: string }; Returns: string[] }
       is_current_user_employee: {
         Args: { p_employee_id: string }
         Returns: boolean

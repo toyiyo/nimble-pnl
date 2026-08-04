@@ -4,6 +4,12 @@ import { supabase } from '@/integrations/supabase/client';
 import type { MembershipRoleLiteral } from '@/lib/permissions';
 
 export interface RestaurantMember {
+  /**
+   * The `user_restaurants` row id — what `assign_membership_role` takes, and
+   * what `RolePicker` needs to change this person's role. Not the user id: a
+   * user may hold a membership in more than one restaurant.
+   */
+  membershipId: string;
   userId: string;
   email: string | null;
   fullName: string | null;
@@ -37,7 +43,7 @@ export function useRestaurantMembers(restaurantId: string | undefined) {
     queryFn: async (): Promise<RestaurantMember[]> => {
       const { data: memberships, error: membershipError } = await supabase
         .from('user_restaurants')
-        .select('user_id, role, role_id')
+        .select('id, user_id, role, role_id')
         .eq('restaurant_id', restaurantId);
 
       if (membershipError) throw membershipError;
@@ -54,6 +60,7 @@ export function useRestaurantMembers(restaurantId: string | undefined) {
       return memberships.map((m) => {
         const profile = byUserId.get(m.user_id);
         return {
+          membershipId: m.id,
           userId: m.user_id,
           email: profile?.email ?? null,
           fullName: profile?.full_name ?? null,

@@ -58,6 +58,10 @@ export function useAssignRole(restaurantId: string | undefined) {
       // ['roles'] — member counts moved.
       queryClient.invalidateQueries({ queryKey: ['roles', restaurantId] });
       queryClient.invalidateQueries({ queryKey: ['collaborators', restaurantId] });
+      // ['restaurant-members'] — the roster behind a role card reads it, and a
+      // reassignment moves someone from one card's list to another's. Without
+      // this the count (from ['roles']) updates and the faces do not.
+      queryClient.invalidateQueries({ queryKey: ['restaurant-members', restaurantId] });
       // ['restaurants'] is not belt-and-braces: useRestaurants embeds the
       // signed-in user's own roleRecord, so a role change they can see must
       // refresh their resolved capabilities — the same reasoning useRoles.ts

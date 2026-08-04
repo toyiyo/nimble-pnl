@@ -110,7 +110,34 @@ describe('bucketTemplateShifts', () => {
       currentStart: '11:00',
       currentEnd: '19:00',
       hoursDelta: 0, // 11:00-19:00 (8h) -> 10:00-18:00 (8h)
+      isPublished: false,
     });
+  });
+
+  it('carries is_published onto a drifted row as isPublished: true', () => {
+    const result = bucketTemplateShifts({
+      ...BASE,
+      shifts: [shift({
+        id: 's1',
+        is_published: true,
+        start_time: '2026-03-10T16:00:00Z',
+        end_time: '2026-03-11T00:00:00Z',
+      })],
+    });
+    expect(result.drifted[0].isPublished).toBe(true);
+  });
+
+  it('carries is_published onto a drifted row as isPublished: false', () => {
+    const result = bucketTemplateShifts({
+      ...BASE,
+      shifts: [shift({
+        id: 's1',
+        is_published: false,
+        start_time: '2026-03-10T16:00:00Z',
+        end_time: '2026-03-11T00:00:00Z',
+      })],
+    });
+    expect(result.drifted[0].isPublished).toBe(false);
   });
 
   it('flags published shifts that are actually moving', () => {

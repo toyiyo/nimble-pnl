@@ -4,6 +4,7 @@ import {
   buildDeltaBadge,
   buildHoursChangeLedger,
   deriveHoursChangeSeverity,
+  describeCascadeShortfall,
   formatHoursDelta,
   type HoursChangeInput,
 } from '@/lib/scheduling/hoursChangeCopy';
@@ -129,5 +130,25 @@ describe('buildHoursChangeLedger', () => {
   it('uses singular copy for a single moving shift', () => {
     const ledger = buildHoursChangeLedger({ ...BASE, movingCount: 1 });
     expect(ledger.summary).toBe('Low impact. 1h later · same length. 1 shift moves.');
+  });
+});
+
+describe('describeCascadeShortfall', () => {
+  it('reports the gap when fewer shifts were updated than promised', () => {
+    expect(describeCascadeShortfall(3, 2)).toBe(
+      'You expected 3, but only 2 were still eligible when it saved.'
+    );
+  });
+
+  it('says nothing when the counts match', () => {
+    expect(describeCascadeShortfall(3, 3)).toBeUndefined();
+  });
+
+  it('says nothing when nothing was promised', () => {
+    expect(describeCascadeShortfall(0, 0)).toBeUndefined();
+  });
+
+  it('says nothing in the (should-not-happen) case of more updated than promised', () => {
+    expect(describeCascadeShortfall(2, 3)).toBeUndefined();
   });
 });

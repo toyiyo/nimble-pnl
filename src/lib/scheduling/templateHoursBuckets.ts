@@ -38,6 +38,13 @@ export interface DriftRow {
   currentEnd: string;
   /** Signed hours this shift gains if the manager opts it in. */
   hoursDelta: number;
+  /**
+   * Mirrors LinkedShift.is_published. A drifted shift can be posted to staff
+   * same as a moving one — the "already posted" chip and the notify checkbox
+   * both need to see this even though the shift never entered
+   * `publishedMovingIds` (that array is scoped to the moving bucket only).
+   */
+  isPublished: boolean;
 }
 
 export interface TemplateHoursBuckets {
@@ -52,7 +59,7 @@ export interface TemplateHoursBuckets {
   movingHoursDelta: number;
 }
 
-function toMinutes(hhmm: string): number {
+export function toMinutes(hhmm: string): number {
   const [h, m] = hhmm.split(':');
   return Number.parseInt(h, 10) * 60 + Number.parseInt(m, 10);
 }
@@ -120,6 +127,7 @@ export function bucketTemplateShifts(input: {
       currentStart,
       currentEnd,
       hoursDelta: (newDuration - durationMinutes(currentStart, currentEnd)) / 60,
+      isPublished: s.is_published,
     });
   }
 

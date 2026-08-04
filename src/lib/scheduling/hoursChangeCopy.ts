@@ -11,7 +11,7 @@
  * See docs/superpowers/specs/2026-08-03-template-hours-cascade-design.md.
  */
 
-import { durationMinutes } from '@/lib/scheduling/templateHoursBuckets';
+import { durationMinutes, toMinutes } from '@/lib/scheduling/templateHoursBuckets';
 import { pluralize, type LedgerChip, type LedgerLine, type Severity } from '@/lib/scheduling/deletionCopy';
 
 export interface HoursChangeInput {
@@ -20,7 +20,12 @@ export interface HoursChangeInput {
   newStart: string;
   newEnd: string;
   movingCount: number;
-  /** Published shifts among the moving set. */
+  /**
+   * Published shifts among the shifts that will actually move — the moving
+   * bucket plus any opted-in drifted shift that is itself published. Not
+   * scoped to the moving bucket alone, or a manager who opts a posted
+   * drifted shift in would see severity and the notify count understate it.
+   */
   publishedCount: number;
   pastCount: number;
   lockedCount: number;
@@ -50,11 +55,6 @@ export interface HoursChangeLedger {
  */
 export function deriveHoursChangeSeverity(publishedCount: number): Severity {
   return publishedCount > 0 ? 'high' : 'low';
-}
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':');
-  return Number.parseInt(h, 10) * 60 + Number.parseInt(m, 10);
 }
 
 function formatMinutes(total: number): string {
@@ -91,6 +91,26 @@ export function formatHoursDelta(hours: number): string {
   if (hours === 0) return 'No change in scheduled hours';
   const sign = hours > 0 ? '+' : '-';
   return `${sign}${Math.abs(hours)} scheduled hours`;
+}
+
+/**
+ * Extra toast sentence for when the cascade moved fewer shifts than the
+ * dialog promised. `promisedCount` is the ledger's `totalAffected` at the
+ * instant the manager clicked Save; `updatedCount` is the RPC's
+ * `updated_count`. The gap has two independent causes the client can't tell
+ * apart after the fact — a moving shift's start crossed into the past
+ * between preview and save (the ledger's `now` goes stale while the dialog
+ * is open), or a re-validated opted-in drift id was dropped server-side
+ * (`skipped_count`) — so the copy names neither and just reports the gap.
+ * Undefined when nothing was promised or the counts already match, so the
+ * caller can append it conditionally without an extra branch.
+ */
+export function describeCascadeShortfall(
+  promisedCount: number,
+  updatedCount: number,
+): string | undefined {
+  if (promisedCount <= updatedCount) return undefined;
+  return `You expected ${promisedCount}, but only ${updatedCount} were still eligible when it saved.`;
 }
 
 export function buildHoursChangeLedger(input: HoursChangeInput): HoursChangeLedger {

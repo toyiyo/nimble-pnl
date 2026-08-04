@@ -16,6 +16,15 @@ interface UseTemplateHoursLedgerResult {
   debouncedStart: string;
   debouncedEnd: string;
   affectedCount: number;
+  /**
+   * Published shifts among the shifts that will actually move: the moving
+   * bucket's published ids plus any opted-in drifted row that is itself
+   * published. The single source of truth for both the ledger's severity
+   * and the "Notify N staff" checkbox — see `buildHoursChangeLedger`'s
+   * `publishedCount` doc for why this can't be `buckets.publishedMovingIds`
+   * alone.
+   */
+  publishedCount: number;
   hoursChanged: boolean;
   showCascadeChoice: boolean;
 }
@@ -59,16 +68,32 @@ export function useTemplateHoursLedger(
     });
   }, [template, impact.shifts, debouncedStart, debouncedEnd, restaurantTimezone]);
 
+  // Shared by the ledger's publishedCount/hoursDelta below and by the
+  // standalone publishedCount this hook exposes to the "Notify" checkbox —
+  // one filter, not two copies that could drift apart.
+  const selectedDrift = useMemo(() => {
+    if (!buckets) return [];
+    return buckets.drifted.filter((d) => selectedDriftIds.has(d.shiftId));
+  }, [buckets, selectedDriftIds]);
+
+  // Published shifts among the shifts that will actually move: the moving
+  // bucket's published ids plus any opted-in drifted row that is itself
+  // published. `buckets.publishedMovingIds` alone would miss a manager
+  // opting a posted drifted shift in — see hoursChangeCopy.ts's
+  // publishedCount doc.
+  const publishedCount = buckets
+    ? buckets.publishedMovingIds.length + selectedDrift.filter((d) => d.isPublished).length
+    : 0;
+
   const ledger = useMemo(() => {
     if (!template || !buckets) return null;
-    const selectedDrift = buckets.drifted.filter((d) => selectedDriftIds.has(d.shiftId));
     return buildHoursChangeLedger({
       oldStart: template.start_time.substring(0, 5),
       oldEnd: template.end_time.substring(0, 5),
       newStart: debouncedStart,
       newEnd: debouncedEnd,
       movingCount: buckets.moving.length,
-      publishedCount: buckets.publishedMovingIds.length,
+      publishedCount,
       // Sum, not double-count: impact.pastCount is shifts excluded up front
       // by the hook's server-side cutoff (never fetched as rows), while
       // buckets.past is shifts that were fetched as future but crossed `now`
@@ -81,7 +106,7 @@ export function useTemplateHoursLedger(
       hoursDelta:
         buckets.movingHoursDelta + selectedDrift.reduce((sum, d) => sum + d.hoursDelta, 0),
     });
-  }, [template, buckets, selectedDriftIds, debouncedStart, debouncedEnd, impact.pastCount]);
+  }, [template, buckets, selectedDrift, publishedCount, debouncedStart, debouncedEnd, impact.pastCount]);
 
   const affectedCount = ledger?.totalAffected ?? 0;
   const hoursChanged = !!template &&
@@ -89,5 +114,15 @@ export function useTemplateHoursLedger(
   // `hoursChanged` already implies `template` is set, so no separate isEdit check is needed here.
   const showCascadeChoice = hoursChanged && affectedCount > 0 && !impact.isLoading && !impact.error;
 
-  return { impact, buckets, ledger, debouncedStart, debouncedEnd, affectedCount, hoursChanged, showCascadeChoice };
+  return {
+    impact,
+    buckets,
+    ledger,
+    debouncedStart,
+    debouncedEnd,
+    affectedCount,
+    publishedCount,
+    hoursChanged,
+    showCascadeChoice,
+  };
 }

@@ -302,14 +302,35 @@ Restoring the **previous** value rather than blindly `'false'` matters: the
 function is also reachable from `drain_categorization_backlog()` and from the
 public wrapper, and a future caller may hold suppression across the call.
 
-This is end-state-equivalent to today's behaviour, not a functional change:
-`aggregate_unified_sales_to_daily` sums
+**Equivalence argument — all five triggers, not just the aggregation one.**
+Suppression widens a window that other triggers also sit in, so the argument
+has to enumerate them rather than reason about `trigger_unified_sales_to_daily`
+alone. `unified_sales` carries exactly five non-internal triggers (verified in
+production via `pg_get_triggerdef`; the split-rule one has no migration source —
+see §7 item 2):
+
+| Trigger | Timing | Honours the GUC? | Effect of the wider suppression window |
+|---|---|---|---|
+| `auto_categorize_pos_sale` → `auto_apply_pos_categorization_rules()` | BEFORE INSERT | **yes** | No-op either way. It only fires on rows the sweep inserts — split children — and its guard is `is_categorized = false OR category_id IS NULL`, while `split_pos_sale` inserts children with `is_categorized = true` and a non-null `category_id` ([`20251122170000…sql:120-121`](../../../supabase/migrations/20251122170000_fix_split_pos_sale_cleanup.sql#L120)). Guard already fails today; suppressing it changes nothing. |
+| `automatic_inventory_deduction_trigger` → `trigger_automatic_inventory_deduction()` | AFTER INSERT | no | Behaviour is identical inside and outside the window, because it never reads the GUC. (It does deduct inventory a second time for split children — pre-existing, unchanged by this design, and untouched by suppression.) |
+| `trigger_auto_apply_pos_split_rules` → `auto_apply_pos_split_rules()` | AFTER INSERT | no | Identical inside and outside the window. Its guard is `category_id IS NOT NULL AND is_categorized = false AND is_split = false`, which split children never satisfy (`is_categorized = true`), so it does not fire in either regime. |
+| `trigger_unified_sales_to_daily` → `trigger_unified_sales_aggregation()` | AFTER INSERT OR DELETE OR UPDATE | **yes** | **The one that actually changes.** Compensated by the single end-of-sweep re-aggregation below. |
+| `trigger_update_unified_sales_updated_at` | BEFORE UPDATE | no | Identical. Disjoint from the new §3.5 trigger (which writes only `rules_evaluated_at`), so their relative firing order is immaterial. |
+
+Only the fourth row changes, and it is end-state-equivalent rather than a
+functional change: `aggregate_unified_sales_to_daily` sums
 `COALESCE(total_price, unit_price*quantity, 0) WHERE adjustment_type IS NULL`
 and never reads `category_id`, so categorising a row cannot change a daily
 total. Split rules do add rows, and split children inherit the parent's
 `sale_date`
 ([`20251122170000_fix_split_pos_sale_cleanup.sql:117`](../../../supabase/migrations/20251122170000_fix_split_pos_sale_cleanup.sql#L117)),
-so recording the parent's date covers them.
+so recording the parent's date covers both the child `INSERT`s and the parent's
+`is_split = true` `UPDATE`.
+
+This table is written out rather than asserted because the conclusion currently
+rests on two unguarded triggers whose guards *happen* to exclude the rows the
+sweep touches. If either guard is ever relaxed, the equivalence breaks, and the
+reasoning needs to be visible for that to be caught.
 
 `bank_transactions` has no aggregation-on-UPDATE trigger, so its half of the
 change carries none of this hazard. Its existing `p_skip_rebuild` /
@@ -439,10 +460,26 @@ EXCEPTION WHEN OTHERS THEN
   NULL;  -- error bookkeeping must never mask the original failure
 END;
 $$;
+
+-- MANDATORY. Supabase's default ACL on the public schema grants EXECUTE to
+-- anon and authenticated (verified: pg_default_acl carries
+-- {postgres=X,anon=X,authenticated=X,service_role=X} for schema public).
+-- Without this REVOKE, a SECURITY DEFINER function that writes to
+-- <pos>_connections is reachable with the public anon key, letting any caller
+-- set connection_status='error' and an attacker-controlled last_error on ANY
+-- restaurant's connection row — a cross-tenant write that bypasses RLS
+-- entirely. Same pattern the sibling internals already use at
+-- 20260703090000…sql:411-413.
+REVOKE EXECUTE ON FUNCTION public.record_pos_sync_error(text, uuid, text)
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.record_pos_sync_error(text, uuid, text)
+  TO service_role;
 ```
 
 `p_pos` is supplied only as a literal by the four wrappers, never from user
-input; the `format(%I)` quoting is belt-and-braces. On the success path each
+input; the `format(%I)` quoting is belt-and-braces. The `REVOKE` above is not —
+it is the only thing keeping this function off the PostgREST surface, and it
+must ship in the same migration as the `CREATE`. On the success path each
 wrapper clears the fields (`connection_status = 'connected'`,
 `last_error = NULL`, `last_error_at = NULL`).
 
@@ -510,7 +547,7 @@ Supabase keys `schema_migrations` on the 14-digit prefix alone.
 | `20260804090100_idx_unified_sales_rule_candidates_v2.sql` | CIC only |
 | `20260804090200_idx_bank_transactions_rule_candidates_v2.sql` | CIC only |
 | `20260804090300_bounded_categorization_sweep.sql` | `CREATE OR REPLACE` both internal functions |
-| `20260804090400_pos_sync_failure_visibility.sql` | `record_pos_sync_error()` helper, four `sync_all_*` wrappers (`query_canceled` arm + error recording), Revel sweep call |
+| `20260804090400_pos_sync_failure_visibility.sql` | `record_pos_sync_error()` helper **and its `REVOKE`/`GRANT`** (§3.7 — same file as the `CREATE`, non-negotiable), four `sync_all_*` wrappers (`query_canceled` arm + error recording), Revel sweep call |
 | `20260804090500_drop_superseded_rule_candidate_indexes.sql` | `DROP INDEX CONCURRENTLY IF EXISTS` ×2, own file each statement |
 
 **`CREATE OR REPLACE FUNCTION` is a full-body rewrite.** Every recreated
@@ -572,6 +609,11 @@ pgTAP (`supabase/tests/`):
     fails against today's code.
 14. A restaurant that syncs cleanly after a prior failure has
     `connection_status`/`last_error`/`last_error_at` cleared.
+15. **`record_pos_sync_error` is not callable by `anon` or `authenticated`** —
+    `SET LOCAL ROLE anon`, expect `throws_ok` with `42501`; same for
+    `authenticated`; `has_function_privilege('service_role', …, 'EXECUTE')` is
+    true. Guards the §3.7 cross-tenant-write hole against a future migration
+    re-granting by omission.
 
 Plan-shape check: `EXPLAIN` the §3.3 statement and assert the matcher's
 `loops` equals the batch size, not the candidate count.
@@ -606,6 +648,16 @@ trending to zero over ~6 runs.
    (unlike `auto_apply_pos_categorization_rules` and
    `trigger_unified_sales_aggregation`), so split rules fire during bulk syncs
    while plain rules do not. Inconsistent, but not a regression introduced here.
+   **Schema drift:** this claim is verified against the live production body via
+   `pg_get_functiondef`, not a migration file — `auto_apply_pos_split_rules`,
+   `auto_apply_bank_split_rules`, `apply_split_rule_to_pos_sale`, and
+   `apply_split_rule_to_bank_transaction` exist in production with **no
+   defining migration anywhere in `supabase/migrations/`** (exhaustive grep
+   returns zero hits). That is a second instance of the drift class §4 warns
+   about: any future `CREATE OR REPLACE` of these four has no in-repo source to
+   copy from and must be sourced from `pg_get_functiondef`. §3.4's equivalence
+   table depends on one of them, which is why it cites production rather than a
+   file. Reconciling them into a migration is its own task.
 3. **`daily_sales` double-counts split sales.**
    `aggregate_unified_sales_to_daily` sums all rows with
    `adjustment_type IS NULL` and excludes neither split parents nor their

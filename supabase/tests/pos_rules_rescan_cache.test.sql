@@ -632,32 +632,32 @@ INSERT INTO unified_sales
   (id, restaurant_id, pos_system, external_order_id, item_name, quantity, sale_date,
    total_price, pos_category)
 VALUES
-  ('00000000-0000-0000-0000-0000000009db', '00000000-0000-0000-0000-0000000009a1',
+  ('00000000-0000-0000-0000-0000000009dc', '00000000-0000-0000-0000-0000000009a1',
    'toast', 'ord-rescan-trigger', 'Trigger Coverage Item', 1, CURRENT_DATE, 9.00, 'Entrees')
 ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------- TEST 35
 UPDATE unified_sales SET rules_evaluated_at = now()
- WHERE id = '00000000-0000-0000-0000-0000000009db';
+ WHERE id = '00000000-0000-0000-0000-0000000009dc';
 UPDATE unified_sales SET total_price = 11.00
- WHERE id = '00000000-0000-0000-0000-0000000009db';
+ WHERE id = '00000000-0000-0000-0000-0000000009dc';
 
 SELECT is(
   (SELECT rules_evaluated_at FROM unified_sales
-    WHERE id = '00000000-0000-0000-0000-0000000009db'),
+    WHERE id = '00000000-0000-0000-0000-0000000009dc'),
   '-infinity'::timestamptz,
   'changing total_price resets unified_sales.rules_evaluated_at'
 );
 
 -- ---------------------------------------------------------------- TEST 36
 UPDATE unified_sales SET rules_evaluated_at = now()
- WHERE id = '00000000-0000-0000-0000-0000000009db';
+ WHERE id = '00000000-0000-0000-0000-0000000009dc';
 UPDATE unified_sales SET pos_category = 'Beverages'
- WHERE id = '00000000-0000-0000-0000-0000000009db';
+ WHERE id = '00000000-0000-0000-0000-0000000009dc';
 
 SELECT is(
   (SELECT rules_evaluated_at FROM unified_sales
-    WHERE id = '00000000-0000-0000-0000-0000000009db'),
+    WHERE id = '00000000-0000-0000-0000-0000000009dc'),
   '-infinity'::timestamptz,
   'changing pos_category resets unified_sales.rules_evaluated_at'
 );

@@ -627,6 +627,10 @@ pgTAP (`supabase/tests/`):
    re-aggregated once.
 10. Watermark tie boundary: a rule whose `created_at` exactly equals the stamp
     is documented as not re-opening (pins §3.2's accepted limitation).
+    **Deferred** — not trivially safe to add inline (needs careful
+    `clock_timestamp()`-vs-frozen-`now()` sequencing to hit an exact tie
+    deterministically). Tracked in `progress.md` (Phase 7b fold, ocr-rules
+    MINOR, `pos_rules_rescan_cache.test.sql:2`).
 11. Bank equivalents of 1, 2, and 6.
 12. `p_batch_limit` validation still raises for `NULL`, `0`, and negatives.
 13. **`query_canceled` isolation** — with a `sync_all_*` wrapper whose inner
@@ -635,13 +639,27 @@ pgTAP (`supabase/tests/`):
     `connection_status = 'error'` with a populated `last_error`, and the
     *following* restaurant in the loop still syncs. This is the assertion that
     fails against today's code.
+    **Deferred** — `pos_sync_failure_visibility.test.sql` TEST 3 already
+    exercises `record_pos_sync_error` from inside a `query_canceled` handler
+    in isolation; forcing a deterministic per-restaurant timeout boundary
+    inside the actual multi-restaurant loop without mocking the inner sync
+    function would be flaky/disproportionate for a fold pass. Tracked in
+    `progress.md` (Phase 7b fold, ocr-rules MAJOR,
+    `pos_sync_failure_visibility.test.sql:61`).
 14. A restaurant that syncs cleanly after a prior failure has
-    `connection_status`/`last_error`/`last_error_at` cleared.
+    `connection_status`/`last_error`/`last_error_at` cleared. **Deferred**
+    alongside 13 — same multi-restaurant-loop harness gap; the "clear a
+    stale failure" `UPDATE` itself is unchanged legacy code (see §3.7 file
+    table), only its trigger conditions (13's cross-restaurant continuation)
+    are new and untested end-to-end.
 15. **`record_pos_sync_error` is not callable by `anon` or `authenticated`** —
     `SET LOCAL ROLE anon`, expect `throws_ok` with `42501`; same for
     `authenticated`; `has_function_privilege('service_role', …, 'EXECUTE')` is
     true. Guards the §3.7 cross-tenant-write hole against a future migration
-    re-granting by omission.
+    re-granting by omission. **Covered** by
+    `pos_sync_failure_visibility.test.sql` TEST 4-6, via the equivalent
+    `has_function_privilege` boolean checks (same ACL assertion, direct
+    privilege check instead of `SET LOCAL ROLE` + `throws_ok`).
 16. **The watermark predicate is not narrower than the matcher's** (§3.2) — a
     rule with `is_active = true`, `auto_apply = false`, `applies_to = 'pos_sales'`
     that matches a stamped row still gets applied on the next sweep. Fails if

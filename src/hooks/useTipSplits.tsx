@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import type { TipShare } from '@/utils/tipPooling';
+import type { RoleAllocationRule, TipShare } from '@/utils/tipPooling';
 import type { ShareMethod, TipSource } from './useTipPoolSettings';
 
 export interface TipSplit {
@@ -29,6 +29,7 @@ export interface TipSplitItem {
   role: string | null;
   role_weight: number | null;
   manually_edited: boolean;
+  applied_rule: RoleAllocationRule | null;
   created_at: string;
 }
 
@@ -49,6 +50,26 @@ export interface CreateTipSplitInput {
   shares: TipShare[];
   notes?: string;
   status?: 'draft' | 'approved';
+}
+
+/**
+ * Build the tip_split_items rows for a set of shares.
+ *
+ * `applied_rule` is an audit record of why an employee received what they did —
+ * it is written but never read back for display, because resuming a draft
+ * re-derives amounts from current settings.
+ */
+export function buildSplitItemRows(splitId: string, shares: TipShare[]) {
+  return shares.map(share => ({
+    tip_split_id: splitId,
+    employee_id: share.employeeId,
+    amount: share.amountCents,
+    hours_worked: share.hours ?? null,
+    role: share.role ?? null,
+    role_weight: null,
+    manually_edited: false,
+    applied_rule: share.appliedRule ?? null,
+  }));
 }
 
 /**
@@ -174,15 +195,7 @@ export function useTipSplits(restaurantId: string | null, startDate?: string, en
 
   // Helper: Insert split items
   const insertSplitItems = async (splitId: string, input: CreateTipSplitInput): Promise<void> => {
-    const items = input.shares.map(share => ({
-      tip_split_id: splitId,
-      employee_id: share.employeeId,
-      amount: share.amountCents,
-      hours_worked: share.hours || null,
-      role: share.role || null,
-      role_weight: null,
-      manually_edited: false,
-    }));
+    const items = buildSplitItemRows(splitId, input.shares);
 
     const { error: itemsError } = await supabase
       .from('tip_split_items')

@@ -8883,6 +8883,7 @@ export type Database = {
           id: string
           pooling_model: string
           restaurant_id: string
+          role_percentages: Json
           role_weights: Json | null
           share_method: string | null
           split_cadence: string | null
@@ -8897,6 +8898,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -8911,6 +8913,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id?: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -9029,6 +9032,7 @@ export type Database = {
       }
       tip_split_items: {
         Row: {
+          applied_rule: Json | null
           amount: number
           created_at: string | null
           employee_id: string
@@ -9040,6 +9044,7 @@ export type Database = {
           tip_split_id: string
         }
         Insert: {
+          applied_rule?: Json | null
           amount?: number
           created_at?: string | null
           employee_id: string
@@ -9051,6 +9056,7 @@ export type Database = {
           tip_split_id: string
         }
         Update: {
+          applied_rule?: Json | null
           amount?: number
           created_at?: string | null
           employee_id?: string

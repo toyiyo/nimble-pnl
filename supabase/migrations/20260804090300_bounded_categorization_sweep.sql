@@ -69,8 +69,10 @@ BEGIN
   -- COALESCE(total_price, unit_price*quantity, 0) and never reads category_id,
   -- so categorising a row cannot change a daily total -- the suppression is
   -- end-state-equivalent, not a behaviour change. Save and restore rather than
-  -- forcing 'false': the Revel sync calls this from inside its own suppression
-  -- window and must keep it.
+  -- forcing 'false': sync_revel_to_unified_sales calls this from inside its own
+  -- suppression window (before it re-enables the trigger and re-aggregates the
+  -- whole sync window itself) and must keep it -- otherwise both it and this
+  -- function re-aggregate the same dates.
   v_prev_skip := COALESCE(current_setting('app.skip_unified_sales_triggers', true), 'false');
   PERFORM set_config('app.skip_unified_sales_triggers', 'true', true);
 
@@ -81,6 +83,14 @@ BEGIN
   -- This UPDATE fires reset_unified_sales_rules_evaluated_at, but that trigger
   -- only resets when item_name/total_price/pos_category change, and this
   -- statement touches none of them -- so the stamp it just wrote survives.
+  --
+  -- FOR UPDATE SKIP LOCKED makes the batch a claim rather than a guess. Two
+  -- sweeps can overlap (the 5-minute rollup, the backlog drain, an interactive
+  -- apply); without it both would read the same unlocked ids, and re-checking
+  -- u.id = b.id in the stamping UPDATE proves nothing under READ COMMITTED
+  -- because that predicate still holds after the other transaction commits.
+  -- Both would then apply the same rules -- double apply_count increments and,
+  -- on the bank side, duplicate bank_transaction_splits (no unique constraint).
   WITH batch AS MATERIALIZED (
     SELECT s.id
     FROM unified_sales s
@@ -90,6 +100,7 @@ BEGIN
       AND s.rules_evaluated_at < v_rules_changed_at
     ORDER BY s.sale_date DESC
     LIMIT p_batch_limit
+    FOR UPDATE SKIP LOCKED
   ), stamped AS (
     UPDATE unified_sales u
        SET rules_evaluated_at = v_rules_changed_at
@@ -99,8 +110,17 @@ BEGIN
   )
   SELECT COALESCE(array_agg(id), '{}'::uuid[]) INTO v_batch_ids FROM stamped;
 
+  -- total_count is the number of candidates CLAIMED by this call, not the
+  -- number that matched a rule. Callers use it to decide whether to keep
+  -- going: since the batch is bounded, "applied 0" no longer means "nothing
+  -- left to do" -- only an empty claim proves the backlog is drained. See
+  -- drain_categorization_backlog and useCategorizationRulesV2's apply loop.
+  v_total_count := COALESCE(array_length(v_batch_ids, 1), 0);
+
   -- Statement 2: matcher runs against exactly the stamped ids -- at most
   -- p_batch_limit calls, regardless of how many candidates exist.
+  -- ORDER BY is restored here because id = ANY(uuid[]) does not preserve the
+  -- batch's ordering; rules are applied newest-first, as they were before.
   FOR v_sale IN
     SELECT s.id, s.sale_date, s.total_price, matched.rule_id, matched.rule_name,
            matched.category_id AS rule_category_id,
@@ -113,8 +133,8 @@ BEGIN
     ) matched
     WHERE s.id = ANY(v_batch_ids)
       AND matched.rule_id IS NOT NULL
+    ORDER BY s.sale_date DESC
   LOOP
-    v_total_count := v_total_count + 1;
     BEGIN
       IF v_sale.is_split_rule AND v_sale.split_categories IS NOT NULL THEN
         v_splits_array := ARRAY[]::JSONB[];
@@ -183,7 +203,11 @@ COMMENT ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer) IS
   'Background/service-role rule sweep for unified_sales. Evaluates at most '
   'p_batch_limit rows per call against the restaurant''s rule set, stamping '
   'rules_evaluated_at so unmatched rows are not re-evaluated until a rule '
-  'changes. Callers needing a permission check must use apply_rules_to_pos_sales.';
+  'changes. Callers needing a permission check must use apply_rules_to_pos_sales. '
+  'Returns (applied_count, total_count) where total_count is the number of '
+  'candidates CLAIMED this call, not the number matched: because the batch is '
+  'bounded, applied_count=0 does not mean the backlog is drained, so loop on '
+  'total_count > 0 rather than applied_count > 0.';
 
 REVOKE EXECUTE ON FUNCTION apply_rules_to_pos_sales_internal(uuid, integer)
   FROM PUBLIC, anon, authenticated;
@@ -279,6 +303,11 @@ BEGIN
   -- This UPDATE fires reset_bank_transactions_rules_evaluated_at, but that
   -- trigger only resets when description/amount/supplier_id change, and this
   -- statement touches none of them -- so the stamp it just wrote survives.
+  --
+  -- FOR UPDATE SKIP LOCKED makes the batch a claim rather than a guess, for
+  -- the same reason as the POS sweep above. It matters more here: the apply
+  -- path INSERTs into bank_transaction_splits, which has no uniqueness
+  -- constraint, so two sweeps claiming the same row would duplicate splits.
   WITH batch AS MATERIALIZED (
     SELECT bt.id
     FROM bank_transactions bt
@@ -289,6 +318,7 @@ BEGIN
       AND bt.rules_evaluated_at < v_rules_changed_at
     ORDER BY bt.transaction_date DESC
     LIMIT p_batch_limit
+    FOR UPDATE SKIP LOCKED
   ), stamped AS (
     UPDATE bank_transactions u
        SET rules_evaluated_at = v_rules_changed_at
@@ -298,6 +328,11 @@ BEGIN
   )
   SELECT COALESCE(array_agg(id), '{}'::uuid[]) INTO v_batch_ids FROM stamped;
 
+  -- Candidates CLAIMED, not matched -- see the note in
+  -- apply_rules_to_pos_sales_internal. Callers loop on this, not applied_count.
+  v_total_count := COALESCE(array_length(v_batch_ids, 1), 0);
+
+  -- ORDER BY restored: id = ANY(uuid[]) does not preserve the batch ordering.
   FOR v_transaction IN
     SELECT
       bt.id,
@@ -323,9 +358,8 @@ BEGIN
     ) matched
     WHERE bt.id = ANY(v_batch_ids)
       AND matched.rule_id IS NOT NULL
+    ORDER BY bt.transaction_date DESC
   LOOP
-    v_total_count := v_total_count + 1;
-
     BEGIN
       SELECT id INTO v_fiscal_period_id
       FROM fiscal_periods
@@ -528,6 +562,13 @@ BEGIN
   RETURN QUERY SELECT v_applied_count, v_total_count;
 END;
 $$;
+
+COMMENT ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer, boolean) IS
+  'Background/service-role rule sweep for bank_transactions. Evaluates at most '
+  'p_batch_limit rows per call, stamping rules_evaluated_at so unmatched rows '
+  'are not re-evaluated until a rule changes. Returns (applied_count, '
+  'total_count) where total_count is the number of candidates CLAIMED this '
+  'call, not the number matched: loop on total_count > 0, not applied_count > 0.';
 
 REVOKE EXECUTE ON FUNCTION apply_rules_to_bank_transactions_internal(uuid, integer, boolean)
   FROM PUBLIC, anon, authenticated;

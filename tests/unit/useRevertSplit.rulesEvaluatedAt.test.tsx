@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useRevertPosSaleSplit } from '@/hooks/useSplitPosSale';
 import { useRevertBankTransactionSplit } from '@/hooks/useBankTransactions';
@@ -65,7 +65,9 @@ describe('revert-split mutations reset rules_evaluated_at', () => {
 
     const { result } = renderHook(() => useRevertPosSaleSplit(), { wrapper });
 
-    result.current.mutate({ saleId: 'sale-123' });
+    act(() => {
+      result.current.mutate({ saleId: 'sale-123' });
+    });
 
     // isPending flips true -> false around the mutation; checking for false
     // can pass on the very first render (before mutate's effects have even
@@ -99,7 +101,9 @@ describe('revert-split mutations reset rules_evaluated_at', () => {
 
     const { result } = renderHook(() => useRevertBankTransactionSplit(), { wrapper });
 
-    result.current.mutate({ transactionId: 'txn-123' });
+    act(() => {
+      result.current.mutate({ transactionId: 'txn-123' });
+    });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 

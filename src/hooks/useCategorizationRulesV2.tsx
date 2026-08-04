@@ -332,10 +332,20 @@ export function useApplyRulesV2() {
       let totalBankApplied = 0;
       let totalPosApplied = 0;
 
-      // Auto-loop: keep calling RPC until no more matches
+      // Auto-loop: keep calling the RPC until a call claims no candidates.
+      //
+      // total_count is candidates CLAIMED, not matched. Each call evaluates at
+      // most batchLimit rows and stamps them as evaluated, so applied_count = 0
+      // only means that batch matched nothing — the next batch may still match.
+      // Looping on applied_count would stop at the first non-matching batch and
+      // leave the rest of the backlog untouched.
+      //
+      // Bounded so a large backlog can't spin the UI indefinitely: whatever this
+      // doesn't reach, the categorization-backlog-drain cron job picks up.
+      const MAX_BATCHES = 50;
+
       if (applyTo === 'bank_transactions' || applyTo === 'both') {
-        let hasMore = true;
-        while (hasMore) {
+        for (let n = 0; n < MAX_BATCHES; n++) {
           const { data, error } = await (supabase as any)
             .rpc('apply_rules_to_bank_transactions', {
               p_restaurant_id: restaurantId,
@@ -348,13 +358,12 @@ export function useApplyRulesV2() {
 
           const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
           totalBankApplied += batch.applied_count;
-          hasMore = batch.applied_count > 0;
+          if (batch.total_count === 0) break;
         }
       }
 
       if (applyTo === 'pos_sales' || applyTo === 'both') {
-        let hasMore = true;
-        while (hasMore) {
+        for (let n = 0; n < MAX_BATCHES; n++) {
           const { data, error } = await (supabase as any)
             .rpc('apply_rules_to_pos_sales', {
               p_restaurant_id: restaurantId,
@@ -367,7 +376,7 @@ export function useApplyRulesV2() {
 
           const batch = data?.[0] ?? { applied_count: 0, total_count: 0 };
           totalPosApplied += batch.applied_count;
-          hasMore = batch.applied_count > 0;
+          if (batch.total_count === 0) break;
         }
       }
 

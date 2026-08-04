@@ -522,6 +522,17 @@ BEGIN
     WHERE unified_sales.sold_at IS DISTINCT FROM COALESCE(EXCLUDED.sold_at, unified_sales.sold_at);
   GET DIAGNOSTICS v_rows = ROW_COUNT; v_synced_count := v_synced_count + v_rows;
 
+  -- Revel suppressed auto_categorize_pos_sale for the upsert above but, unlike
+  -- Toast and Focus, never ran the batch sweep afterwards -- so Revel rows were
+  -- inserted uncategorized and stayed that way.
+  --
+  -- Called BEFORE the suppression flag is cleared, deliberately: the sweep saves
+  -- and restores that flag, and skips its own re-aggregation when it finds
+  -- suppression already on. Clearing first would make the sweep re-aggregate the
+  -- dates it touched and then have this function re-aggregate the whole window
+  -- again below -- the same work twice.
+  PERFORM public.apply_rules_to_pos_sales_internal(p_restaurant_id, 10000);
+
   -- Re-enable the trigger, then batch-aggregate only the dates touched by
   -- this sync window (both callers — revel-sync-data, revel-bulk-sync —
   -- always pass a bounded p_start_date/p_end_date) once each, instead of
@@ -529,12 +540,6 @@ BEGIN
   -- changed (the no-op guards wrote 0 rows) so a recurring sync over an
   -- overlapping window doesn't re-aggregate the whole window for no reason.
   PERFORM set_config('app.skip_unified_sales_triggers', 'false', true);
-
-  -- Revel suppressed auto_categorize_pos_sale for the upsert above but, unlike
-  -- Toast and Focus, never ran the batch sweep afterwards -- so Revel rows were
-  -- inserted uncategorized and stayed that way. Same call, same batch size, same
-  -- position in the sequence as the other POS syncs.
-  PERFORM public.apply_rules_to_pos_sales_internal(p_restaurant_id, 10000);
 
   IF v_synced_count > 0 THEN
     PERFORM public.aggregate_unified_sales_to_daily(p_restaurant_id, d.sale_date)

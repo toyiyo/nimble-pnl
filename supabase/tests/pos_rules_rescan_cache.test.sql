@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(38);
+SELECT plan(44);
 
 SET LOCAL role TO postgres;
 
@@ -701,6 +701,126 @@ SELECT is(
     WHERE id = '00000000-0000-0000-0000-0000000009eb'),
   '-infinity'::timestamptz,
   'changing supplier_id resets bank_transactions.rules_evaluated_at'
+);
+
+-- ================================================================
+-- Watermark self-invalidation and claim-based convergence.
+--
+-- The sweeps bump categorization_rules.apply_count/last_applied_at every time
+-- a rule fires. If that bookkeeping advanced updated_at, it would advance the
+-- rule watermark, and every row the same sweep had just stamped would compare
+-- as stale on the next call -- the negative cache would never hold for any
+-- restaurant whose rules actually match something.
+--
+-- Own restaurant so the many mutations above cannot perturb the watermark.
+-- ================================================================
+INSERT INTO restaurants (id, name) VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000a3', 'Watermark Test Restaurant')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO chart_of_accounts
+  (id, restaurant_id, account_name, account_code, account_type, account_subtype, normal_balance)
+VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000c1', 'aaaaaaaa-0000-0000-0000-0000000000a3',
+   'Food Sales', '4000', 'revenue', 'sales', 'credit')
+ON CONFLICT (id) DO NOTHING;
+
+-- Dated in the past so "did updated_at advance?" is decidable inside a single
+-- transaction: now() is fixed for the whole transaction, so a rule created here
+-- with a default updated_at could never be observed to move.
+INSERT INTO categorization_rules
+  (id, restaurant_id, rule_name, applies_to, category_id, item_name_pattern,
+   item_name_match_type, is_active, auto_apply, priority, created_at, updated_at)
+VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000f1', 'aaaaaaaa-0000-0000-0000-0000000000a3',
+   'Watermark rule', 'pos_sales', 'aaaaaaaa-0000-0000-0000-0000000000c1',
+   'Match Me', 'exact', true, true, 10,
+   '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')
+ON CONFLICT (id) DO NOTHING;
+
+-- Suppress auto_categorize_pos_sale so the fixture rows arrive uncategorized
+-- and the sweep below is the only thing that ever categorizes them.
+SELECT set_config('app.skip_unified_sales_triggers', 'true', true);
+
+INSERT INTO unified_sales
+  (id, restaurant_id, pos_system, external_order_id, item_name, quantity,
+   sale_date, total_price)
+VALUES
+  ('aaaaaaaa-0000-0000-0000-0000000000d1', 'aaaaaaaa-0000-0000-0000-0000000000a3',
+   'toast', 'ord-wm-1', 'Match Me', 1, CURRENT_DATE, 10.00),
+  ('aaaaaaaa-0000-0000-0000-0000000000d2', 'aaaaaaaa-0000-0000-0000-0000000000a3',
+   'toast', 'ord-wm-2', 'No Rule For Me', 1, CURRENT_DATE, 20.00)
+ON CONFLICT (id) DO NOTHING;
+
+SELECT set_config('app.skip_unified_sales_triggers', 'false', true);
+
+-- ---------------------------------------------------------------- TEST 39
+UPDATE categorization_rules
+   SET apply_count = apply_count + 1, last_applied_at = now()
+ WHERE id = 'aaaaaaaa-0000-0000-0000-0000000000f1';
+
+SELECT is(
+  (SELECT updated_at FROM categorization_rules
+    WHERE id = 'aaaaaaaa-0000-0000-0000-0000000000f1'),
+  '2026-01-01T00:00:00Z'::timestamptz,
+  'bumping apply_count/last_applied_at does not advance categorization_rules.updated_at'
+);
+
+-- ---------------------------------------------------------------- TEST 40-41
+-- One sweep: claims both candidates, applies the one that matches.
+CREATE TEMP TABLE wm_sweep_1 AS
+  SELECT * FROM apply_rules_to_pos_sales_internal(
+    'aaaaaaaa-0000-0000-0000-0000000000a3', 100);
+
+SELECT is(
+  (SELECT total_count FROM wm_sweep_1),
+  2,
+  'total_count reports candidates CLAIMED (both rows), not rows matched'
+);
+
+SELECT is(
+  (SELECT applied_count FROM wm_sweep_1),
+  1,
+  'applied_count reports only the row an active rule matched'
+);
+
+-- ---------------------------------------------------------------- TEST 42
+-- The load-bearing assertion: the previous sweep bumped apply_count on a rule
+-- it applied. If that had advanced updated_at, the watermark would now exceed
+-- the stamp the same sweep wrote and both rows would be claimed all over again.
+CREATE TEMP TABLE wm_sweep_2 AS
+  SELECT * FROM apply_rules_to_pos_sales_internal(
+    'aaaaaaaa-0000-0000-0000-0000000000a3', 100);
+
+SELECT is(
+  (SELECT total_count FROM wm_sweep_2),
+  0,
+  'a sweep that applied a rule does not re-open its own stamped rows'
+);
+
+-- ---------------------------------------------------------------- TEST 43
+-- The other half of the invariant: a genuine definition change must still
+-- advance the watermark, or edited rules would never be re-applied.
+UPDATE categorization_rules
+   SET rule_name = 'Watermark rule (renamed)'
+ WHERE id = 'aaaaaaaa-0000-0000-0000-0000000000f1';
+
+SELECT ok(
+  (SELECT updated_at FROM categorization_rules
+    WHERE id = 'aaaaaaaa-0000-0000-0000-0000000000f1')
+  > '2026-01-01T00:00:00Z'::timestamptz,
+  'a rule-definition change still advances categorization_rules.updated_at'
+);
+
+-- ---------------------------------------------------------------- TEST 44
+CREATE TEMP TABLE wm_sweep_3 AS
+  SELECT * FROM apply_rules_to_pos_sales_internal(
+    'aaaaaaaa-0000-0000-0000-0000000000a3', 100);
+
+SELECT is(
+  (SELECT total_count FROM wm_sweep_3),
+  1,
+  'editing a rule re-opens the still-uncategorized row for evaluation'
 );
 
 SELECT * FROM finish();

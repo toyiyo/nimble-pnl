@@ -118,7 +118,7 @@ the roster below the count. Such a row renders as "Unnamed member".
 
 | File | Responsibility |
 |---|---|
-| `src/lib/permissions/roleMembership.ts` | Pure resolution: `resolveMembershipRoleId`, `membersInRole`. Mirrors `role_member_counts`. Unit-tested. |
+| `src/lib/permissions/roleMembership.ts` | Pure resolution: `legacyRoleIndex`, `resolveMembershipRoleId`, `membersInRole`, `groupMembersByRole`. Mirrors `role_member_counts`. Unit-tested. |
 | — | `canAssignAnyRole(role)` is added to the existing `src/lib/permissions/invitations.ts`, not to a new file (see "Who may assign" below). |
 | `src/components/roles/memberDisplay.ts` | `memberDisplayName(member)`, `memberInitials(member)`. |
 | `src/components/roles/RoleFacePile.tsx` | Up to three stacked initial avatars. Decorative (`aria-hidden`). |
@@ -152,17 +152,28 @@ export function resolveMembershipRoleId(
   rolesByLegacy: ReadonlyMap<string, string>
 ): string | null;
 
+/** The legacy-role → role-id map both functions below resolve through. */
+export function legacyRoleIndex(
+  roles: readonly RoleWithGrants[]
+): Map<string, string>;
+
 /** Everyone in `members` whose membership resolves to `roleId`. */
 export function membersInRole(
   members: readonly RestaurantMember[],
   roleId: string,
-  roles: readonly RoleWithGrants[]
+  byLegacy: ReadonlyMap<string, string>
 ): RestaurantMember[];
+
+/** Every member bucketed by resolved role id, for the whole grid at once. */
+export function groupMembersByRole(
+  members: readonly RestaurantMember[],
+  byLegacy: ReadonlyMap<string, string>
+): Map<string, RestaurantMember[]>;
 ```
 
-`rolesByLegacy` is built once from `roles.filter(r => r.legacy_role !== null)`.
-`membersInRole` builds it internally; both are exported so the grid can build
-the map once for all cards.
+Every function takes the map rather than building it — the grid builds it once
+via `legacyRoleIndex` and buckets all cards in a single `groupMembersByRole`
+pass, instead of re-deriving it per card.
 
 ---
 
@@ -251,7 +262,7 @@ correct counts with no avatars rather than flashing wrong numbers. The face
 pile degrades to nothing; the door still works.
 
 The grid runs **one** `useRestaurantMembers` query for all cards and groups
-once with `membersInRole` — not one query per card.
+once with `groupMembersByRole` — not one query, or one filter pass, per card.
 
 ---
 

@@ -119,6 +119,7 @@ the roster below the count. Such a row renders as "Unnamed member".
 | File | Responsibility |
 |---|---|
 | `src/lib/permissions/roleMembership.ts` | Pure resolution: `resolveMembershipRoleId`, `membersInRole`. Mirrors `role_member_counts`. Unit-tested. |
+| — | `canAssignAnyRole(role)` is added to the existing `src/lib/permissions/invitations.ts`, not to a new file (see "Who may assign" below). |
 | `src/components/roles/memberDisplay.ts` | `memberDisplayName(member)`, `memberInitials(member)`. |
 | `src/components/roles/RoleFacePile.tsx` | Up to three stacked initial avatars. Decorative (`aria-hidden`). |
 | `src/components/roles/RoleRoster.tsx` | The "Who's in this role" panel: rows, empty state, "Assign people" trigger. |
@@ -129,6 +130,8 @@ the roster below the count. Such a row renders as "Unnamed member".
 
 | File | Change |
 |---|---|
+| `src/lib/permissions/invitations.ts:79-94` | Add `canAssignAnyRole(role)`, derived from the matrix. |
+| `src/components/TeamMembers.tsx:38-39` | Replace the hardcoded `canManageMembers` list with `canAssignAnyRole(userRole)`. |
 | `src/hooks/useRestaurantMembers.ts:40,54-62` | Select `id` too; add `membershipId` to `RestaurantMember`. |
 | `src/hooks/useAssignRole.ts:59-65` | Also invalidate `['restaurant-members', restaurantId]`. |
 | `src/components/roles/RolesList.tsx:72-106` | `<button>` card → `<article>` + hit button + footer people button. |
@@ -201,6 +204,24 @@ Ours becomes:
   </div>
 </article>
 ```
+
+**`CARD_CHROME` must carry `flex flex-col`.** Today the footer pins to the
+bottom of a short card because `mt-auto` (`RolesList.tsx:98`) sits on a direct
+child of the single flex-column button, which stretches to the grid row height.
+Once the card is an `<article>` with three children, that column context has to
+move to the `<article>` or every card's footer floats up to hug its
+description and the grid stops looking like a grid. The prototype's CSS says
+the same thing (`display:flex; flex-direction:column` on `.rolecard`,
+`margin-top:auto` on `.rolecard__foot`). Concretely: `CARD_CHROME` =
+`group flex flex-col gap-3 p-[18px] rounded-xl border border-border/40 bg-card shadow-sm hover:border-border transition-colors`,
+`FOOT` keeps `mt-auto pt-[11px] border-t border-border/40`, and `HIT` drops the
+card chrome it no longer owns, keeping `flex items-start gap-[11px] text-left
+rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`.
+
+`RoleCardSkeleton` (`RolesList.tsx:50-70`) already mirrors this shape as a
+plain `<div>` with the same padding, gap, border and footer rule, so it needs
+no structural change — but its values must keep matching `CARD_CHROME`, which
+is the reason the two are worth reading side by side when this lands.
 
 Moving `RoleAreaChips` out of the hit button is not cosmetic: it renders a
 `<div>` (`RoleAreaChips.tsx:27`), and `<div>` inside `<button>` violates the
@@ -305,7 +326,12 @@ mutation. Props mirror the Team Members wiring:
   currentRole={member.role}
   currentRoleId={member.roleId}
   callerRole={callerRole}
-  disabled={isSelf || member.role === 'kiosk' || (member.role === 'owner' && callerRole !== 'owner')}
+  disabled={
+    !canAssign ||
+    isSelf ||
+    member.role === 'kiosk' ||
+    (member.role === 'owner' && callerRole !== 'owner')
+  }
 />
 ```
 
@@ -319,6 +345,45 @@ context provided by `DialogContent`/`SheetContent`. In the roster it is on a
 plain page, outside any dialog, so the hook returns its default `false` and the
 popover is non-modal — correct for a page. The constraint only bites inside
 `AssignPeopleDialog`, which does not render a `RolePicker`.
+
+### Who may assign
+
+`chef` is not blocked from `/team` — `App.tsx`'s `StaffRoleChecker` (lines
+237-295) turns away only `staff`, `kiosk` and the `collaborator_*` roles — and
+`RolesTab` applies no gate of its own. So the roster must carry the same
+permission gate the Team Members list does, or a chef would see pickers that
+look live and fail with a 42501 from `invitable_roles()`, which has no `chef`
+row (`assign_membership_role.sql:32-48`).
+
+`TeamMembers.tsx:39` spells that gate out as a literal list:
+
+```ts
+const canManageMembers = userRole === 'owner' || userRole === 'manager' || userRole === 'operations_manager';
+```
+
+Copying that list into the roster would make three copies of the same fact
+(here, `TeamMembers`, and the SQL matrix). Instead it is **derived** from the
+matrix that already exists, in `src/lib/permissions/invitations.ts` beside
+`getInvitableRoles` (line 79) and `canInviteCustomRole` (line 92):
+
+```ts
+/** Whether this role can change anyone's role at all. Derived from
+ *  INVITABLE_ROLES rather than re-listed, so it cannot disagree with it. */
+export function canAssignAnyRole(inviter: Role): boolean {
+  return getInvitableRoles(inviter).length > 0 || canInviteCustomRole(inviter);
+}
+```
+
+`INVITABLE_ROLES` (`invitations.ts:10`) has rows only for `owner`, `manager`
+and `operations_manager`, so this returns exactly the set `canManageMembers`
+hardcodes today — and `TeamMembers.tsx:38-39` is switched to it in this PR,
+deleting the literal list rather than adding a second one.
+
+When `canAssignAnyRole(callerRole)` is false the roster still renders — reading
+who holds a role is not a privileged act, and these users can already read the
+same memberships on Team Members — but every `RolePicker` is disabled and the
+"Assign people" action is not rendered at all. The final authority remains the
+RPC.
 
 ### States
 
@@ -423,6 +488,11 @@ stays open when anything failed, with the failed rows still selected.
 - An unrecognised role string → dropped.
 - Grouping totals equal the per-role counts for a mixed fixture.
 
+Plus, in `tests/unit/invitationMatrix.test.ts`:
+`canAssignAnyRole` is true for exactly `owner`, `manager`,
+`operations_manager` and false for every other `Role` — the assertion that
+catches it silently widening if a future matrix row is added.
+
 **Not added, and why:** no pgTAP — this PR contains no SQL. No new Playwright
 spec — the flow needs two seeded members holding different roles in one
 restaurant, which `tests/helpers/e2e-supabase` does not currently provide;
@@ -430,7 +500,8 @@ building that seeding is its own change and would dominate the PR.
 
 **Existing gates:** `npm run typecheck`, `npm run lint`, `npm run test`,
 `npm run build`, plus the existing roles-and-areas E2E spec, which selects the
-roles tab by its visible text (`Team.tsx:129-135`) and must keep passing
+roles tab by its visible text (`Team.tsx:136-143`, deliberately unlabelled —
+see the comment at lines 129-135) and must keep passing
 through the card restructure.
 
 ## Accessibility

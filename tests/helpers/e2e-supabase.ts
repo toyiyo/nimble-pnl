@@ -910,6 +910,28 @@ export async function seedTemplateWithShifts(
       }
     : null;
 
+  // Fail loudly on an ambiguous name rather than let the Set in the
+  // page.evaluate below dedup it silently: `employeeIdByName`/`rows.find`
+  // resolve by name, so a drifted/past/locked employee sharing a name with
+  // the moving employee (or with each other) would produce a fixture other
+  // than the one the test intended, with no error to explain why.
+  const allSeedNames = [
+    movingEmployeeName,
+    ...driftedList.map((d) => d.employeeName),
+    ...(past ? [past.employeeName] : []),
+    ...(locked ? [locked.employeeName] : []),
+  ];
+  const seenNames = new Set<string>();
+  for (const name of allSeedNames) {
+    if (seenNames.has(name)) {
+      throw new Error(
+        `seedTemplateWithShifts: employee name "${name}" is used by more than one seeded shift — ` +
+        'each moving/drifted/past/locked employee must have a distinct name.'
+      );
+    }
+    seenNames.add(name);
+  }
+
   const seeded = await page.evaluate(
     async (args: {
       restId: string;

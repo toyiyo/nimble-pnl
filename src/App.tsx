@@ -234,7 +234,10 @@ export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: str
 };
 
 // Role Route Checker Component - handles staff, kiosk, and collaborator routing
-function StaffRoleChecker({
+// Exported (test-only surface, not a route target) so behaviour can be
+// asserted directly instead of via source-text regex — see
+// tests/unit/StaffRoleChecker.employeeRoutes.test.tsx.
+export function StaffRoleChecker({
   children,
   allowStaff,
   currentPath

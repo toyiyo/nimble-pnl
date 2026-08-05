@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { summarizeResponses, type ReviewMetrics } from '@/lib/reviews/reviewMetrics';
+import type { ReviewMetrics } from '@/lib/reviews/reviewMetrics';
 
 export type ReviewResponseStatus = 'new' | 'in_progress' | 'resolved';
 
@@ -25,6 +25,19 @@ export interface ReviewResponseContact {
   contact_email: string | null;
 }
 
+interface ReviewResponseMetricsRow {
+  average_rating: number | null;
+  total_ratings: number;
+  comment_count: number;
+  unread_count: number;
+}
+
+// review_responses / review_response_contacts / review_response_metrics
+// aren't in the generated Supabase types yet (added by migrations after the
+// last `npm run sync-types`) — every `.from('table' as any)` /
+// `.rpc('review_response_metrics' as any)` cast in this file is for that
+// gap; the real shapes are the interfaces above.
+
 export function useReviewResponses(restaurantId?: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -35,6 +48,11 @@ export function useReviewResponses(restaurantId?: string) {
     staleTime: 30000,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<ReviewResponse[]> => {
+      // Capped at 500 for the inbox *list* only — that's a reasonable amount
+      // of recent comments to page through. The header metrics below do NOT
+      // come from this capped array; they're a separate, uncapped server-side
+      // aggregate, so a restaurant past 500 responses still sees a correct
+      // average/total/unread count.
       const { data, error } = await supabase
         .from('review_responses' as any)
         .select(
@@ -49,16 +67,32 @@ export function useReviewResponses(restaurantId?: string) {
     },
   });
 
-  const responses = query.data ?? [];
+  const metricsQuery = useQuery({
+    queryKey: ['review-response-metrics', restaurantId],
+    enabled: Boolean(restaurantId),
+    staleTime: 30000,
+    refetchOnWindowFocus: true,
+    queryFn: async (): Promise<ReviewMetrics> => {
+      // review_response_metrics isn't in the generated Supabase types yet
+      // (added by 20260804110000_review_response_aggregates.sql, after the
+      // last `npm run sync-types`) — hence the `as any` cast.
+      const { data, error } = await supabase.rpc('review_response_metrics' as any, {
+        p_restaurant_id: restaurantId!,
+      });
+      if (error) throw error;
+      const row = ((data ?? []) as unknown as ReviewResponseMetricsRow[])[0];
+      return {
+        averageRating: row?.average_rating ?? null,
+        totalRatings: row?.total_ratings ?? 0,
+        commentCount: row?.comment_count ?? 0,
+        unreadCount: row?.unread_count ?? 0,
+      };
+    },
+  });
 
-  // Every rating feeds the average; only commented rows reach the list.
-  const metrics: ReviewMetrics = summarizeResponses(
-    responses.map((row) => ({
-      rating: row.rating,
-      hasComment: Boolean(row.comment),
-      status: row.status,
-    }))
-  );
+  const responses = query.data ?? [];
+  const metrics: ReviewMetrics =
+    metricsQuery.data ?? { averageRating: null, totalRatings: 0, commentCount: 0, unreadCount: 0 };
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: ReviewResponseStatus }) => {
@@ -72,6 +106,9 @@ export function useReviewResponses(restaurantId?: string) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['review-responses', restaurantId] });
+      // A status change (e.g. clearing "new") moves unreadCount, which comes
+      // from the separate aggregate query, not the list above.
+      queryClient.invalidateQueries({ queryKey: ['review-response-metrics', restaurantId] });
     },
     onError: (error: Error) => {
       toast({ title: 'Could not update', description: error.message, variant: 'destructive' });
@@ -101,8 +138,8 @@ export function useReviewResponses(restaurantId?: string) {
   return {
     responses,
     metrics,
-    isLoading: query.isLoading,
-    error: query.error as Error | null,
+    isLoading: query.isLoading || metricsQuery.isLoading,
+    error: (query.error ?? metricsQuery.error) as Error | null,
     updateStatus: updateStatus.mutateAsync,
     fetchContact,
   };

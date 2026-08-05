@@ -28,6 +28,17 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+// useMonthlyMetrics now sources the restaurant timezone from
+// useRestaurantClock (via useRestaurantContext) to bucket accrued labor by
+// the restaurant's calendar day, not the host's. Pin a fixed timezone so this
+// file's assertions (whole-month `labor_cost > 0`, no specific day bucket)
+// stay deterministic regardless of host TZ.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { timezone: 'America/Chicago' } },
+  }),
+}));
+
 const RESTAURANT = 'rest-monthly-1';
 
 const EMP_IDS = [

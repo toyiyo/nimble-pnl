@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { suggestRateCorrections } from '@/hooks/useEmployeeLaborCosts';
 import { computeAge, isMinor } from '@/lib/employeeUtils';
+import { safeTz, toBusinessDay } from '@/lib/restaurantClock';
 import { cn } from '@/lib/utils';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -63,6 +64,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // member — linking avoids double-provisioning a second account for the same person.
   const [linkToExisting, setLinkToExisting] = useState(false);
   const { data: restaurantMembers } = useRestaurantMembers(restaurantId);
+  // Declared before `getToday` below (which calls this immediately, via
+  // `useState(getToday())`) -- threading a local into an earlier hook while
+  // declaring it lower is a TDZ ReferenceError at render that tsc does not
+  // catch (memory/lessons.md:1303-1304).
+  const { selectedRestaurant } = useRestaurantContext();
+  const restaurantTimezone = safeTz(selectedRestaurant?.restaurant?.timezone);
   // null while loading, on error, and for non-members — all mean "behave normally".
   const existingMember = findMemberByEmail(restaurantMembers, email);
   const [phone, setPhone] = useState('');
@@ -104,7 +111,17 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     return weekly / standardDays;
   }, [dailyRateWeekly, standardDays]);
 
-  const getToday = () => new Date().toISOString().split('T')[0];
+  // An operator recording a pay change in the evening, US-zone, gets the
+  // effective date pre-filled from the restaurant's business day -- the UTC
+  // day (toISOString) rolls to tomorrow hours before local midnight, which
+  // would otherwise write a compensation-history row dated a day early.
+  // Memoized on the zone: now that this closes over `restaurantTimezone`, the
+  // reset effect below has to re-run when the zone changes, or a dialog left
+  // open across a settings change keeps pre-filling the stale business day.
+  const getToday = useCallback(
+    () => toBusinessDay(new Date(), restaurantTimezone),
+    [restaurantTimezone],
+  );
 
   type CompensationHistoryPayload = {
     restaurantId: string;
@@ -135,8 +152,6 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   const createEmployee = useCreateEmployee();
   const updateEmployee = useUpdateEmployee();
   const { toast } = useToast();
-  const { selectedRestaurant } = useRestaurantContext();
-  const restaurantTimezone = selectedRestaurant?.restaurant?.timezone || 'UTC';
 
   // --------------------------------------------------------------------------
   // Default availability (create mode only)
@@ -201,7 +216,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     } else {
       resetForm();
     }
-  }, [employee, open]);
+    // `getToday` is tz-derived, so the zone changing has to re-seed the
+    // effective date -- see its useCallback above.
+  }, [employee, open, getToday]);
 
   // Editing the email invalidates the access decision the user made against the
   // previous address (grant a new login vs. link to whoever that email belongs
@@ -799,6 +816,7 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                       <div className="flex items-start gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
                         <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                         <p className="text-[13px] text-amber-700 dark:text-amber-400">
+                          {/* eslint-disable-next-line no-restricted-syntax -- toLocaleString here formats a NUMBER (annualizedPay), not a date; the selector matches any toLocaleString member regardless of receiver type. */}
                           This employee's annualized pay (${annualizedPay.toLocaleString('en-US', { maximumFractionDigits: 0 })}/year) is below the FLSA exempt threshold ($35,568/year). Consult labor law before classifying as exempt.
                         </p>
                       </div>

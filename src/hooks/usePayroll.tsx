@@ -8,7 +8,6 @@ import {
   ManualPayment,
   shouldIncludeEmployeeInPayroll,
 } from '@/utils/payrollCalculations';
-import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import type { Employee } from '@/types/scheduling';
 import {
@@ -18,6 +17,9 @@ import {
 } from '@/utils/tipAggregation';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
 import { fetchAllRows } from '@/utils/fetchAllRows';
+import { useRestaurantClock } from './useRestaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { businessDayRangeToInstants } from '@/lib/restaurantClock';
 
 // Combine tips from tip_split_items and legacy employee_tips (both in cents) into a Map of cents.
 export function aggregateTips(
@@ -114,9 +116,10 @@ export function usePayroll(
   const { employees } = useEmployees(restaurantId, { status: 'all' });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { tz: timezone } = useRestaurantClock();
 
   const { data: payrollPeriod, isLoading, error, refetch } = useQuery({
-    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString()],
+    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), timezone],
     queryFn: async (): Promise<PayrollPeriod | null> => {
       if (!restaurantId) return null;
 
@@ -124,13 +127,26 @@ export function usePayroll(
       // that straddle the period boundary are paired whole. calculateEmployeePay
       // then filters periods back to [startDate, endDate] by clock-in day.
       //
+      // Buffer the RESTAURANT-zone day bounds, not startDate/endDate directly:
+      // startDate/endDate are calendar-day tokens (host-local Date objects),
+      // and buffering those raw instants buffers the VIEWER's day boundary.
+      // When the viewer is far from the restaurant's zone that ±18h buffer is
+      // partly (or, at the extremes, entirely) eaten by the offset
+      // difference, so a boundary-crossing shift is never fetched and the
+      // pairing engine can't pair it.
+      //
       // Paginated via `fetchAllRows` (not a single unbounded `.select()`):
       // PostgREST caps an unpaginated response at 1,000 rows, which would
       // silently drop the newest punches (the query orders `punch_time asc`)
       // once a pay period crosses that threshold. The `.order('id')`
       // tiebreaker makes each page boundary deterministic when multiple
       // punches share a `punch_time`.
-      const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+      const { start: dayStart, end: dayEnd } = businessDayRangeToInstants(
+        toDateOnlyString(startDate),
+        toDateOnlyString(endDate),
+        timezone,
+      );
+      const { fetchStart, fetchEnd } = bufferPunchFetchRange(dayStart, dayEnd);
       const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
         supabase
           .from('time_punches')
@@ -157,8 +173,8 @@ export function usePayroll(
         .select('id, total_amount')
         .eq('restaurant_id', restaurantId)
         .in('status', ['approved', 'archived'])
-        .gte('split_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('split_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('split_date', toDateOnlyString(startDate))
+        .lte('split_date', toDateOnlyString(endDate));
 
       if (splitsError) throw splitsError;
 
@@ -180,8 +196,8 @@ export function usePayroll(
         .select('*')
         .eq('restaurant_id', restaurantId)
         .eq('source', 'per-job')
-        .gte('date', format(startDate, 'yyyy-MM-dd'))
-        .lte('date', format(endDate, 'yyyy-MM-dd'));
+        .gte('date', toDateOnlyString(startDate))
+        .lte('date', toDateOnlyString(endDate));
 
       if (manualPaymentsError) throw manualPaymentsError;
 
@@ -206,8 +222,8 @@ export function usePayroll(
         .from('employee_tips')
         .select('employee_id, tip_amount, tip_date')
         .eq('restaurant_id', restaurantId)
-        .gte('tip_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('tip_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('tip_date', toDateOnlyString(startDate))
+        .lte('tip_date', toDateOnlyString(endDate));
 
       if (employeeTipsError) throw employeeTipsError;
 
@@ -216,8 +232,8 @@ export function usePayroll(
         .from('tip_payouts')
         .select('employee_id, amount')
         .eq('restaurant_id', restaurantId)
-        .gte('payout_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('payout_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('payout_date', toDateOnlyString(startDate))
+        .lte('payout_date', toDateOnlyString(endDate));
 
       if (tipPayoutsError) throw tipPayoutsError;
 
@@ -277,8 +293,8 @@ export function usePayroll(
         .from('overtime_adjustments')
         .select('employee_id, punch_date, adjustment_type, hours, reason')
         .eq('restaurant_id', restaurantId)
-        .gte('punch_date', format(startDate, 'yyyy-MM-dd'))
-        .lte('punch_date', format(endDate, 'yyyy-MM-dd'));
+        .gte('punch_date', toDateOnlyString(startDate))
+        .lte('punch_date', toDateOnlyString(endDate));
 
       if (otAdjError) {
         console.error('Error fetching overtime adjustments:', otAdjError);
@@ -316,6 +332,7 @@ export function usePayroll(
         eligibleEmployees,
         punchesPerEmployee,
         tipsPerEmployee,
+        timezone,
         manualPaymentsPerEmployee,
         tipPayoutsPerEmployee,
         overtimeRules,

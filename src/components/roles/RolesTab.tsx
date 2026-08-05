@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { RolesList } from '@/components/roles/RolesList';
-import { RoleEditor } from '@/components/roles/RoleEditor';
+import { RoleEditor, type RoleEditorTab } from '@/components/roles/RoleEditor';
 import type { RoleWithGrants } from '@/hooks/useRoles';
+import type { Role } from '@/lib/permissions/types';
 
 /**
  * RolesTab — the "Roles & areas" tab body on Team Management.
@@ -26,20 +27,36 @@ import type { RoleWithGrants } from '@/hooks/useRoles';
 
 export interface RolesTabProps {
   restaurantId: string;
+  /** The signed-in user's role in this restaurant. */
+  userRole: Role;
 }
 
-export function RolesTab({ restaurantId }: RolesTabProps) {
+export function RolesTab({ restaurantId, userRole }: RolesTabProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [selectedRole, setSelectedRole] = useState<RoleWithGrants | null>(null);
+  // Which door the card was opened by. Lives here rather than in the editor so
+  // the editor stays controlled and a second click on the other door of the
+  // same card still switches tabs.
+  const [activeTab, setActiveTab] = useState<RoleEditorTab>('areas');
+
+  const openRole = (role: RoleWithGrants | null, tab: RoleEditorTab) => {
+    setSelectedRole(role);
+    setActiveTab(tab);
+    setIsEditing(true);
+  };
 
   if (isEditing) {
     return (
       <RoleEditor
         restaurantId={restaurantId}
         role={selectedRole}
+        callerRole={userRole}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
         onBack={() => {
           setIsEditing(false);
           setSelectedRole(null);
+          setActiveTab('areas');
         }}
       />
     );
@@ -71,14 +88,10 @@ export function RolesTab({ restaurantId }: RolesTabProps) {
         </div>
         <RolesList
           restaurantId={restaurantId}
-          onSelectRole={(role) => {
-            setSelectedRole(role);
-            setIsEditing(true);
-          }}
-          onNewRole={() => {
-            setSelectedRole(null);
-            setIsEditing(true);
-          }}
+          callerRole={userRole}
+          onSelectRole={(role) => openRole(role, 'areas')}
+          onOpenPeople={(role) => openRole(role, 'people')}
+          onNewRole={() => openRole(null, 'areas')}
         />
       </div>
     </div>

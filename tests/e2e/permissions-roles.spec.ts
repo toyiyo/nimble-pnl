@@ -63,11 +63,21 @@ const collaboratorRoles = [
   },
 ];
 
+// Every `page.goto` below is a real browser navigation, so the SPA re-boots
+// from scratch each time: Vite re-serves the module graph, auth restores the
+// session, and the membership query re-runs. On CI (four shards, unbundled dev
+// server) one navigation costs 4-6s, and a signup costs ~35s — so a sweep over
+// a dozen routes runs past the project's 90s budget and dies mid-loop, with the
+// URL sitting on whatever route was still booting. `test.slow()` triples the
+// budget; it does not slow a passing run down, it only stops the clock from
+// running out on work that was always going to take this long.
+
 test.describe('Collaborator Role Routing and Access', () => {
   test.describe.configure({ mode: 'serial' });
 
   for (const { role, landing, allowed, forbidden } of collaboratorRoles) {
     test(`should redirect ${role} to landing (${landing}) and restrict access`, async ({ page }) => {
+      test.slow();
       const user = generateTestUser();
       await signUpAndCreateRestaurant(page, user);
 
@@ -111,6 +121,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
   test.describe.configure({ mode: 'serial' });
 
   test('owner should have access to dashboard and all routes', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('owner');
     await signUpAndCreateRestaurant(page, user);
 
@@ -141,6 +152,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
   });
 
   test('manager should have access to dashboard and operational routes', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('manager');
     await signUpAndCreateRestaurant(page, user);
 
@@ -159,6 +171,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
   });
 
   test('chef (internal) should have access to dashboard and recipe/inventory routes', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('chef');
     await signUpAndCreateRestaurant(page, user);
 
@@ -177,6 +190,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
   });
 
   test('staff should be redirected to employee schedule', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('staff');
     await signUpAndCreateRestaurant(page, user);
 
@@ -216,6 +230,7 @@ test.describe('Existing Role Routing - Regression Prevention', () => {
   });
 
   test('kiosk should only access kiosk route', async ({ page }) => {
+    test.slow(); // see the route-sweep note above
     const user = generateTestUser('kiosk');
     await signUpAndCreateRestaurant(page, user);
 

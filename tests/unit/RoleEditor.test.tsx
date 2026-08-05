@@ -3,9 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { RoleEditor } from '../../src/components/roles/RoleEditor';
+import { RoleEditor, type RoleEditorTab } from '../../src/components/roles/RoleEditor';
 import type { RoleWithGrants } from '../../src/hooks/useRoles';
 import type { UserRestaurant } from '../../src/hooks/useRestaurants';
+import type { Role } from '../../src/lib/permissions/types';
 
 /**
  * Phase 4 task 9d (roles-and-areas plan, 2026-07-29): RoleEditor.tsx — the
@@ -43,6 +44,18 @@ import { useRestaurants } from '../../src/hooks/useRestaurants';
 const wrapper = ({ children }: { children: React.ReactNode }) => (
   <QueryClientProvider client={new QueryClient()}>{children}</QueryClientProvider>
 );
+
+/**
+ * The Areas|People tab props, spread into every render below. Every assertion
+ * in this file is about the Areas tab, so it is pinned open rather than left to
+ * whatever the editor would default to — the People tab is `RoleRoster`'s own
+ * test surface. `callerRole` is what the People tab hands to `RolePicker`.
+ */
+const editorProps = {
+  callerRole: 'owner' as Role,
+  activeTab: 'areas' as RoleEditorTab,
+  onTabChange: vi.fn(),
+};
 
 function makeRole(overrides: Partial<RoleWithGrants> = {}): RoleWithGrants {
   return {
@@ -112,7 +125,7 @@ describe('RoleEditor', () => {
   it('renders a "All roles" back button and calls onBack when clicked', async () => {
     const user = userEvent.setup();
     const onBack = vi.fn();
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
 
     const back = screen.getByRole('button', { name: /all roles/i });
     await user.click(back);
@@ -121,7 +134,7 @@ describe('RoleEditor', () => {
 
   it('renders labeled Role name / What this person does inputs, pre-filled when editing', () => {
     const role = makeRole({ name: 'Weekend Supervisor', description: 'Covers weekend shifts' });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
     expect(screen.getByLabelText(/role name/i)).toHaveValue('Weekend Supervisor');
     expect(screen.getByLabelText(/what this person does/i)).toHaveValue('Covers weekend shifts');
@@ -129,7 +142,7 @@ describe('RoleEditor', () => {
 
   it('shows the member-count warning banner with the exact copy for an existing role with members', () => {
     const role = makeRole({ memberCount: 2 });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
     expect(
       screen.getByText(/2 people have this role\. saving changes what they can reach the next time they load a page\./i)
     ).toBeInTheDocument();
@@ -137,25 +150,25 @@ describe('RoleEditor', () => {
 
   it('uses singular phrasing for a one-person member count', () => {
     const role = makeRole({ memberCount: 1 });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
     expect(screen.getByText(/1 person has this role\./i)).toBeInTheDocument();
   });
 
   it('shows no member-count banner for a brand-new draft', () => {
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
     expect(screen.queryByText(/people have this role/i)).not.toBeInTheDocument();
   });
 
   it('shows no member-count banner for an existing role with zero members', () => {
     const role = makeRole({ memberCount: 0 });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
     expect(screen.queryByText(/people have this role/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/person has this role/i)).not.toBeInTheDocument();
   });
 
   it('shows the built-in notice and disables Save with a describing hint for a builtin role', () => {
     const role = makeRole({ builtin: true, name: 'Accountant', memberCount: 3 });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
     expect(screen.getByText(/built-in role/i)).toBeInTheDocument();
     expect(screen.getByText(/duplicate it to make a version you control/i)).toBeInTheDocument();
@@ -171,7 +184,7 @@ describe('RoleEditor', () => {
   });
 
   it('renders all ten area rows as RadioGroups with the "{Area} access" aria-label', () => {
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     for (const label of [
       'Dashboard & Reports',
@@ -190,7 +203,7 @@ describe('RoleEditor', () => {
   });
 
   it('caps Payroll at View: Manage is disabled with an aria-describedby reason mentioning owners and managers', () => {
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     const payrollGroup = screen.getByRole('radiogroup', { name: /^payroll access$/i });
     const manage = within(payrollGroup).getByRole('radio', { name: /^manage$/i });
@@ -205,7 +218,7 @@ describe('RoleEditor', () => {
   });
 
   it('makes Team & Access fully ungrantable: both View and Manage disabled with the same reason', () => {
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     const teamGroup = screen.getByRole('radiogroup', { name: /^team & access access$/i });
     const view = within(teamGroup).getByRole('radio', { name: /^view$/i });
@@ -227,7 +240,7 @@ describe('RoleEditor', () => {
   });
 
   it('does not cap Inventory & Purchasing or Scheduling at all', () => {
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     const inventoryGroup = screen.getByRole('radiogroup', { name: /^inventory & purchasing access$/i });
     expect(within(inventoryGroup).getByRole('radio', { name: /^manage$/i })).not.toBeDisabled();
@@ -238,7 +251,7 @@ describe('RoleEditor', () => {
 
   it('starts the grant counter at "0 granted" and updates it as areas are toggled', async () => {
     const user = userEvent.setup();
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     const counter = screen.getByText(/^\d+\s+granted$/i);
     expect(counter).toHaveTextContent(/^0 granted$/i);
@@ -250,7 +263,7 @@ describe('RoleEditor', () => {
   });
 
   it('renders the three sensitive-data Switches with accessible names for costs and pay rates', () => {
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
     expect(screen.getByRole('switch', { name: /costs/i })).toBeInTheDocument();
     expect(screen.getByRole('switch', { name: /pay rates/i })).toBeInTheDocument();
     expect(screen.getAllByRole('switch')).toHaveLength(3);
@@ -258,7 +271,7 @@ describe('RoleEditor', () => {
 
   it('disables a sensitive-data switch with a "Needs access to" hint until a requiring area is granted', async () => {
     const user = userEvent.setup();
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     const payRatesSwitch = screen.getByRole('switch', { name: /pay rates/i });
     expect(payRatesSwitch).toBeDisabled();
@@ -280,7 +293,7 @@ describe('RoleEditor', () => {
     const onBack = vi.fn();
     const createRole = vi.fn().mockResolvedValue('new-role-id');
     mockUseRoles({ createRole });
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
 
     await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
     const inventoryGroup = screen.getByRole('radiogroup', { name: /^inventory & purchasing access$/i });
@@ -305,7 +318,7 @@ describe('RoleEditor', () => {
     const updateRole = vi.fn().mockResolvedValue('role-1');
     mockUseRoles({ updateRole });
     const role = makeRole({ id: 'role-1' });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
     await user.click(screen.getByRole('button', { name: /^save role$/i }));
 
@@ -315,7 +328,7 @@ describe('RoleEditor', () => {
 
   it('disables Save with a describing hint when the role name is empty', () => {
     const role = makeRole({ name: '' });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
     const save = screen.getByRole('button', { name: /^save role$/i });
     expect(save).toBeDisabled();
@@ -330,7 +343,7 @@ describe('RoleEditor', () => {
       name: 'Operations Manager',
       role_areas: [{ area_key: 'settings', level: 'view' }],
     });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
     expect(screen.queryByRole('radiogroup', { name: /^settings & integrations access$/i })).not.toBeInTheDocument();
     expect(screen.getByText(/partial/i)).toBeInTheDocument();
@@ -342,7 +355,7 @@ describe('RoleEditor', () => {
       name: 'Accountant',
       role_areas: [{ area_key: 'books', level: 'manage' }, { area_key: 'chart_of_accounts', level: 'manage' }],
     });
-    render(<RoleEditor restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
     const booksGroup = screen.getByRole('radiogroup', { name: /^money & books access$/i });
     expect(within(booksGroup).getByRole('radio', { name: /^manage$/i })).toBeDisabled();
@@ -357,13 +370,13 @@ describe('RoleEditor', () => {
       ],
     });
 
-    const { rerender } = render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    const { rerender } = render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
     expect(screen.queryByRole('listbox', { name: /other restaurants/i })).not.toBeInTheDocument();
 
-    rerender(<RoleEditor restaurantId="rest-1" role={makeRole({ builtin: true })} onBack={vi.fn()} />);
+    rerender(<RoleEditor {...editorProps} restaurantId="rest-1" role={makeRole({ builtin: true })} onBack={vi.fn()} />);
     expect(screen.queryByRole('listbox', { name: /other restaurants/i })).not.toBeInTheDocument();
 
-    rerender(<RoleEditor restaurantId="rest-1" role={makeRole({ builtin: false })} onBack={vi.fn()} />);
+    rerender(<RoleEditor {...editorProps} restaurantId="rest-1" role={makeRole({ builtin: false })} onBack={vi.fn()} />);
     const listbox = screen.getByRole('listbox', { name: /other restaurants/i });
     expect(within(listbox).getByRole('option', { name: /cold stone/i })).toBeInTheDocument();
     // The currently-selected restaurant is not offered as a copy target.
@@ -398,7 +411,7 @@ describe('RoleEditor', () => {
       ],
     });
 
-    render(<RoleEditor restaurantId="rest-1" role={makeRole({ builtin: false })} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={makeRole({ builtin: false })} onBack={vi.fn()} />, { wrapper });
 
     const listbox = screen.getByRole('listbox', { name: /other restaurants/i });
     expect(within(listbox).getByRole('option', { name: /owned/i })).toBeInTheDocument();
@@ -417,7 +430,7 @@ describe('RoleEditor', () => {
       ],
     });
 
-    render(<RoleEditor restaurantId="rest-1" role={makeRole({ id: 'role-1' })} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={makeRole({ id: 'role-1' })} onBack={vi.fn()} />, { wrapper });
 
     const listbox = screen.getByRole('listbox', { name: /other restaurants/i });
     await user.selectOptions(listbox, ['rest-2']);
@@ -438,7 +451,7 @@ describe('RoleEditor', () => {
     const user = userEvent.setup();
     const createRole = vi.fn().mockResolvedValue('new-role-id');
     mockUseRoles({ createRole });
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
 
@@ -467,7 +480,7 @@ describe('RoleEditor', () => {
     const user = userEvent.setup();
     const createRole = vi.fn().mockResolvedValue('new-role-id');
     mockUseRoles({ createRole });
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
     const employeesGroup = screen.getByRole('radiogroup', { name: /^employees access$/i });
@@ -490,7 +503,7 @@ describe('RoleEditor', () => {
     const onBack = vi.fn();
     const createRole = vi.fn().mockRejectedValue(new Error('new row violates row-level security policy'));
     mockUseRoles({ createRole });
-    render(<RoleEditor restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={onBack} />, { wrapper });
 
     await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
     await user.click(screen.getByRole('button', { name: /^save role$/i }));

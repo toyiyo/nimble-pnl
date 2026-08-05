@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import { CheckCircle2, AlertCircle, Loader2, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateInTimezone } from "@/lib/timezone";
+import { safeTz } from '@/lib/restaurantClock';
 import { toast } from "sonner";
 
 interface EnhancedReconciliationDialogProps {
@@ -84,7 +85,7 @@ export function EnhancedReconciliationDialog({ isOpen, onClose }: EnhancedReconc
       return [];
     }
     
-    const timezone = selectedRestaurant?.restaurant?.timezone || 'America/Chicago';
+    const timezone = safeTz(selectedRestaurant?.restaurant?.timezone);
     const endingDateStr = formatDateInTimezone(endingDate, timezone, 'yyyy-MM-dd');
     
     if (import.meta.env.DEV) {

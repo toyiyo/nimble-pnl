@@ -390,3 +390,51 @@ describe('the Phase 7a reviewer retry knows which null it got', () => {
     expect(labelsOf(run).filter((l) => l?.startsWith('review:security'))).toEqual(['review:security'])
   })
 })
+
+/**
+ * The third failure mode, and the only one that reaches the PR. The phase
+ * prompts say "fix it and commit" and leave HOW to stage to each agent, so they
+ * reach for `git add -A`. One worktree is shared by every phase, so that sweeps
+ * in per-run scratch and whatever an earlier phase left dirty: PR diffs carrying
+ * ~8k lines of workflow noise (#679, #628, #590) and merge conflicts located
+ * entirely inside regenerated artifacts. memory/lessons.md records it four
+ * times (:386, :693, :1454, :1770) — the recurrence is why it is pinned here.
+ *
+ * Gitignoring the scratch is a backstop, not the fix: a broad add still picks up
+ * unrelated TRACKED files. As with WAIT_DISCIPLINE the only lever is the prompt,
+ * so the guard is only real if EVERY agent in BOTH scripts carries it.
+ */
+describe('broad staging', () => {
+  it('warns every agent in both scripts, naming the exact commands', async () => {
+    for (const script of [BUILD_SCRIPT, CONTINUE_SCRIPT]) {
+      const run = await runWorkflow(script, { args: BASE_ARGS, onAgent: responder() })
+      expect(run.calls.length).toBeGreaterThan(0)
+      for (const call of run.calls) {
+        expect(call.prompt, `${script} / ${call.label}`).toContain('STAGING DISCIPLINE')
+        // The footgun named exactly — a generic "stage carefully" would not have
+        // stopped any of the four incidents.
+        expect(call.prompt, `${script} / ${call.label}`).toContain('git add -A')
+        expect(call.prompt, `${script} / ${call.label}`).toContain('git add .')
+        expect(call.prompt, `${script} / ${call.label}`).toContain('git commit -a')
+        // progress.md is gitignored, and was still force-added into PR #542.
+        expect(call.prompt, `${script} / ${call.label}`).toContain('git add -f')
+        // A rule with no check is a suggestion; the index must be verifiable.
+        expect(call.prompt, `${script} / ${call.label}`).toContain('diff --cached --name-only')
+        // Staging from an ambient cwd is how the same accident starts, so the
+        // form agents are given to copy must already carry -C.
+        expect(call.prompt, `${script} / ${call.label}`).toMatch(/git -C \S+ add <path>/)
+      }
+    }
+  })
+
+  it('never itself instructs an agent to stage broadly', async () => {
+    for (const script of [BUILD_SCRIPT, CONTINUE_SCRIPT]) {
+      const run = await runWorkflow(script, { args: BASE_ARGS, onAgent: responder() })
+      for (const call of run.calls) {
+        // Only the prohibition may mention these; no prompt may direct one.
+        const directives = call.prompt.split('\n').filter((l: string) => /\b(?:run|use|then):?\s*`?git add (?:-A|\.)/i.test(l))
+        expect(directives, `${script} / ${call.label}`).toEqual([])
+      }
+    }
+  })
+})

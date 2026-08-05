@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { normalizePrices, hasValidPriceData, normalizeConfidenceScore } from "../_shared/priceNormalization.ts";
+import { toDateOnlyString } from "../_shared/dateOnly.ts";
 
 interface ReceiptProcessRequest {
   receiptId: string;
@@ -55,32 +56,32 @@ function parsePurchaseDate(dateString: string | undefined): string | null {
 // Helper function to extract date from filename
 function extractDateFromFilename(filename: string | null): string | null {
   if (!filename) return null;
-  
+
   // Remove file extension
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, '');
-  
+
   // Pattern 1: YYYY-MM-DD or YYYY_MM_DD or YYYY.MM.DD
-  const isoPattern = /(\d{4})[-_.\/](\d{1,2})[-_.\/](\d{1,2})/;
+  const isoPattern = /(\d{4})[-_./](\d{1,2})[-_./](\d{1,2})/;
   const isoMatch = nameWithoutExt.match(isoPattern);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
     const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+      return toDateOnlyString(date);
     }
   }
-  
+
   // Pattern 2: MM-DD-YYYY or MM_DD_YYYY
-  const usPattern = /(\d{1,2})[-_.\/](\d{1,2})[-_.\/](\d{4})/;
+  const usPattern = /(\d{1,2})[-_./](\d{1,2})[-_./](\d{4})/;
   const usMatch = nameWithoutExt.match(usPattern);
   if (usMatch) {
     const [, month, day, year] = usMatch;
     const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
+      return toDateOnlyString(date);
     }
   }
-  
+
   return null;
 }
 

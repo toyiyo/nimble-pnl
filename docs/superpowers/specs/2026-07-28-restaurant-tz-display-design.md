@@ -1,0 +1,377 @@
+# Default all user-visible dates to the restaurant's timezone
+
+**Date:** 2026-07-28
+**Branch:** `fix/restaurant-tz-display`
+**Status:** Design
+
+## Problem
+
+A user viewing the application from a timezone other than the restaurant's sees
+times rendered in *their* browser's zone. A manager in Madrid looking at a
+Chicago restaurant sees a 6 PM shift as the following day. This has been
+reported as confusion; it is also, in at least one path, silent data corruption.
+
+The requested change: default every user-visible date and time to the
+restaurant's timezone, especially for scheduling and cost attribution.
+
+## What is already correct — do not change
+
+The data model is sound. Verified against production
+(`ncdujvdgqtaunuyigflp`, `information_schema.columns`, 2026-07-28):
+
+| Kind | Columns | Action |
+|---|---|---|
+| Calendar day (`date`) | `daily_pnl.date`, `daily_labor_costs.date`, `daily_food_costs.date`, `unified_sales.sale_date`, `time_off_requests.start_date`/`end_date`, `inventory_transactions.transaction_date` | **None.** Already restaurant-local business days. Timezone-converting these would *introduce* a bug. |
+| Instant (`timestamptz`) | `shifts.start_time`/`end_time`, `time_punches.punch_time`, `unified_sales.sold_at`, `shifts.published_at`, `time_off_requests.reviewed_at` | **This is the entire bug surface.** |
+| Wall clock (`time`) | `shift_templates.start_time`/`end_time`, `employee_availability.start_time`/`end_time` | Two *different* conventions — see below. |
+
+`restaurants.timezone` is reliable: 35 rows in production, **zero** null or
+empty, 5 distinct IANA zones (`America/Chicago` ×31, plus `America/New_York`,
+`America/Bahia_Banderas`, `America/Denver`, `America/Los_Angeles`).
+
+Server-side logic is largely already timezone-aware: 46 files under
+`supabase/migrations/` use `AT TIME ZONE`.
+
+### The two `time` columns disagree with each other
+
+This is the sharpest edge in the codebase and must not be "unified" by this work:
+
+- `shift_templates.start_time`/`end_time` are **restaurant-local wall clock**
+  (`src/lib/shiftInterval.ts:166`).
+- `employee_availability.start_time`/`end_time` are **UTC clock times**, paired
+  with a restaurant-**local** `day_of_week` — a lossy dual-convention encoding
+  read via `utcTimeToLocalTime` (`src/lib/availabilityTimeUtils.ts:18`).
+
+`memory/lessons.md:1185` documents a prior incident where picking the wrong
+reference implementation for this pair produced false availability conflicts for
+evening Pacific shifts. **Availability is out of scope for this PR.**
+
+## Root cause
+
+The defect is confined to the **client presentation and client-side
+day-bucketing layer**. `format()`, `toLocaleDateString()` and `new Date()` all
+read the *browser's* zone.
+
+Correctness is currently **opt-in per call site**, and three different fallbacks
+coexist:
+
+| Site | Fallback |
+|---|---|
+| `src/pages/Scheduling.tsx:221` | `'UTC'` |
+| `src/hooks/useDateFormat.tsx:9` | `'America/Chicago'` |
+| `src/components/POSSalesImportReview.tsx:156` | `Intl.DateTimeFormat().resolvedOptions().timeZone` |
+
+The third is the reported bug installed as a default.
+
+The consequence of opt-in correctness is recurrence. `git log --all
+--regexp-ignore-case --extended-regexp --grep="timezone|\btz\b|\butc\b"` returned
+**148** commits across all refs (81 reachable from `main`) as of `b24dc4eb`; the
+count drifts upward as work lands, so treat it as an order of magnitude rather
+than a fixed figure. Among them, the branch
+`fix/publish-schedule-tz-bucketing` and, most recently, `c675d566`
+"fix(scheduling): publish-week timezone off-by-one across hooks + notify fn
+(#671)".
+
+`memory/lessons.md` records this bug class five separate times:
+`memory/lessons.md:271` (a $2,246 payroll swing from a TZ-dependent week
+boundary), `memory/lessons.md:281` (the `parseDateOnly` local-vs-UTC-midnight
+regression), `memory/lessons.md:1007`, `memory/lessons.md:1186`, and
+`memory/lessons.md:1298`.
+
+What the file does **not** contain is a single stated rule covering both halves
+of the problem. The rule this design adopts — *before serializing a `Date`,
+decide whether it is a day on a calendar or a moment in time, and serialize
+accordingly* — is a synthesis of those five entries, not a quotation. Today it
+is encoded only in prose docstrings (`src/lib/dateOnly.ts:5-12`,
+`src/lib/dateOnly.ts:32-36`). Nothing mechanically enforces it. Making it
+mechanical is the point of this PR.
+
+Compounding: CI runs in UTC, the one zone where these bugs are invisible —
+"CI runs in UTC and prod servers run in UTC; a green local test on PT means
+nothing for either" (`memory/lessons.md:273`).
+
+## Defects this PR fixes
+
+### 1. Punch edit round-trip silently rewrites the instant (data corruption)
+
+`src/pages/TimePunchesManager.tsx:477` reads a punch into a `datetime-local`
+field using the browser's zone:
+
+```ts
+punch_time: format(new Date(punch.punch_time), "yyyy-MM-dd'T'HH:mm"),
+```
+
+`src/pages/TimePunchesManager.tsx:492` writes it back, re-interpreting those
+digits in the browser's zone:
+
+```ts
+punch_time: new Date(editFormData.punch_time).toISOString(),
+```
+
+A manager editing a punch from a zone other than the restaurant's shifts the
+punch by the offset difference — **even when they change nothing but the notes
+field.** This corrupts payroll hours permanently and is the highest-severity
+item in this PR.
+
+### 2. Labor-cost day bucketing uses the viewer's zone
+
+`src/services/laborCalculations.ts:945` buckets worked hours by day:
+
+```ts
+const dateKey = formatDateUTC(period.clockIn ?? period.startTime);
+```
+
+`formatDateUTC` is **misnamed**. Its body reads *local* fields, not UTC
+(`src/services/laborCalculations.ts:43-48`), and its own doc comment says as
+much — "in the user's local timezone" (`src/services/laborCalculations.ts:38`).
+Hours therefore attribute to whatever day it is in the *viewer's* browser.
+
+This is not hypothetical. `memory/lessons.md:1403` records the exact mechanism
+already biting CI: employee `0f5da8cc`'s split shift clocks in at
+`2026-07-23T01:56:20Z` — Jul 22 20:56 in Chicago, Jul 23 01:56 in UTC — so
+`$26.44` of labor lands on a different day depending on the host zone, and a
+day-total assertion read `$560.28` on the UTC runner versus `$586.72` on a
+Chicago machine. Every viewer outside the restaurant's zone sees that same
+misattribution in production, silently.
+
+### 3. Payroll bucketing, same defect, explicitly coupled
+
+`src/utils/payrollCalculations.ts:492`:
+
+```ts
+const dateKey = format(new Date(period.clockIn), 'yyyy-MM-dd');
+```
+
+`src/services/laborCalculations.ts:40-41` states this bucketing "must match
+Payroll's day-bucketing (payrollCalculations.ts) so period totals and monthly
+aggregation stay consistent." **The two must change together** or the Labor and
+Payroll screens will disagree.
+
+Additionally `src/utils/payrollCalculations.ts:559` does `new Date(dateKey)` on
+a `YYYY-MM-DD` string, which the ECMAScript spec parses as **UTC midnight** —
+the precise bug `parseDateOnly` exists to prevent (`src/lib/dateOnly.ts:13`).
+
+### 4. Timecard day bucketing
+
+`src/pages/EmployeeTimecard.tsx:106` groups punches into days with
+`format(punchDate, 'yyyy-MM-dd')` — browser zone.
+
+### Explicitly NOT a defect
+
+`src/hooks/useLaborCostsFromTimeTracking.tsx:112-113` calls
+`format(dateFrom, 'yyyy-MM-dd')` against a `date` column. `dateFrom` is a
+local-midnight `Date` *token* (a calendar day), so reading its local fields is
+the correct serialization — the calendar-day half of the rule stated above, not
+a quotation from anywhere. This file is not changed.
+
+**Caveat.** That conclusion rests on a caller-side invariant the file itself does
+not enforce: `dateFrom: Date` (`src/hooks/useLaborCostsFromTimeTracking.tsx:59`)
+is a parameter, and nothing stops a future caller passing an instant. The one
+caller today builds it via `new Date(y, m-1, d, ...)` from `useTodayInTimezone`
+(`src/hooks/useLaborPnlCore.ts:44-48`) — genuinely local midnight. Implementation
+must re-audit callers before treating this exclusion as closed, and should add a
+type-level marker (a branded `CalendarDay` type) if the audit finds more than one.
+
+## Design
+
+### `src/lib/restaurantClock.ts` (new, pure — no React)
+
+```ts
+safeTz(tz: string | null | undefined): string
+formatInstant(iso: string | Date, tz: string, pattern: string): string
+toBusinessDay(iso: string | Date, tz: string): string      // → YYYY-MM-DD
+parseWallClock(wallClock: string, tz: string): string      // → ISO instant
+```
+
+`safeTz` is ported from `supabase/functions/_shared/timezone.ts:25`, whose
+`DEFAULT_TIMEZONE` is `'America/Chicago'`
+(`supabase/functions/_shared/timezone.ts:15`) — matching the database default.
+This becomes the single fallback, replacing all three above.
+`memory/lessons.md:807` records that an invalid IANA string makes `Intl` throw
+`RangeError`, which is why validation is mandatory rather than cosmetic.
+
+**Load-bearing guard — and why it must not throw in production.**
+
+`formatInstant` rejects a date-only string, and `formatDateOnly`
+(`src/lib/dateOnly.ts:49`) rejects an ISO instant. This converts the calendar-day
+vs. moment-in-time rule from a convention people forget into a mechanical check,
+and it is what makes the remaining migration self-checking rather than another
+round of manual vigilance.
+
+The original draft of this design had both **throw unconditionally**. That is
+wrong, and the reason is specific to this codebase: `grep -rn
+"componentDidCatch\|getDerivedStateFromError\|ErrorBoundary" src` returns
+**zero** matches, and `react-error-boundary` is not a dependency. **There is no
+error boundary anywhere in this application.** An uncaught throw inside render
+unmounts the entire React tree — a blank white screen on the whole route, not a
+degraded widget. For a manager checking labor cost mid-shift, that is strictly
+worse than the bug being fixed: a wrong date is readable and recoverable, a
+white screen is neither.
+
+The guard is therefore **environment-split**:
+
+| Environment | Behavior on wrong-shape input |
+|---|---|
+| `import.meta.env.DEV`, and under Vitest | **Throw.** Authoring-time and CI feedback, where a loud failure is the entire point. |
+| Production build | **Do not throw.** Log once via the existing error path, and render the value through the correct branch inferred from its shape (a date-only string formats as a calendar day; an instant formats in `tz`). |
+
+Production degradation is a *correct render plus a logged defect*, never a
+crash. This keeps the mechanical guarantee where it pays — the migration and CI —
+without making a latent call site a customer-visible outage.
+
+The missing error boundary is a real gap independent of this work, but adding
+one is out of scope here; see Scope boundary.
+
+### `src/hooks/useRestaurantClock.ts` (new)
+
+Binds the pure functions to the selected restaurant and returns
+`{ tz, tzAbbrev, viewerTzDiffers, today, formatInstant, toBusinessDay, parseWallClock }`.
+
+- `today` composes the existing `useTodayInTimezone`
+  (`src/hooks/useTodayInTimezone.ts:17`), which already re-checks across
+  midnight and on tab focus. Reuse, not reimplementation.
+- `tz` is declared **immediately after** `useRestaurantContext()`. Threading it
+  into an earlier `useMemo` while declaring it lower causes a TDZ
+  `ReferenceError` at render that `tsc` does not catch
+  (`memory/lessons.md:1303-1304`).
+- `viewerTzDiffers` compares the **current UTC offset**, not the IANA string:
+  `America/Chicago` and `US/Central` name the same zone and must not trigger a
+  cue.
+
+**Memoization is specified, not left to the implementer.** The returned object
+is wrapped in `useMemo` with dependency array **`[tz, today]`** — both, exactly.
+Neither plausible default is safe:
+
+- `[tz]` alone freezes `today` at first render. `useTodayInTimezone` bails out of
+  re-render on every no-op tick and only yields a new string when the day
+  actually rolls over (`src/hooks/useTodayInTimezone.ts:20-38`), so a stale
+  closure here would silently defeat the exact midnight-rollover behavior the
+  hook was reused for — the overnight-dashboard case in its own docstring.
+- No `useMemo` at all returns fresh closures every render, retriggering any
+  consumer `useEffect`/`useCallback` that lists them.
+
+With `[tz, today]`, consumers get a new object identity at most **once per day**
+(rollover) plus on restaurant switch. That contract is documented in the hook's
+docstring so consumers can safely put the returned functions in dep arrays.
+
+### `src/components/RestaurantTzNotice.tsx` (new)
+
+Returns `null` when offsets match. Otherwise renders a muted
+`text-[13px] text-muted-foreground` line ("times shown in restaurant time
+(CDT)"), per the CLAUDE.md typography scale and semantic-token rules.
+
+The abbreviation is wrapped in `<abbr title="Central Daylight Time">` so screen
+readers announce the expansion rather than spelling "C D T".
+
+Rationale: correctness alone does not resolve the reported *confusion* — a
+viewer in another zone still has no cue whose 6 PM they are reading.
+
+**Placement gate — the notice makes a claim the page must actually honor.**
+A header-level notice asserts *every* time on that screen is in restaurant time.
+Since ~35+ display-only call sites stay unmigrated until follow-up PRs, mounting
+it page-wide risks a screen that vouches for a number rendered in the viewer's
+zone right beside one rendered in the restaurant's — worse than no notice, since
+the UI now actively endorses the wrong value.
+
+Implementation must therefore, **before mounting it on any page header**, audit
+every time/date display on that page and confirm each one routes through
+`useRestaurantClock`. Where the audit does not come back clean, the notice
+attaches to the specific migrated widget instead of the page header, and the
+page header waits for the follow-up PR that finishes it. Scheduling and Timecard
+are the intended targets; the audit decides whether they qualify in this PR.
+
+### Enforcement — `eslint.config.js`, configuration only
+
+`no-restricted-syntax` AST selectors banning `format(`, `parseISO(`,
+`toLocaleDateString`, `toLocaleTimeString`, `toLocaleString`, and
+`.toISOString().split('T')[0]` in files that touch instant columns.
+
+**Flat config, not `.eslintrc`.** `eslint.config.js` is a flat config built with
+`tseslint.config(...)` (`eslint.config.js:7`) and there is no `.eslintrc*` file
+in the repo. Flat config has **no `overrides` key** — writing one produces a
+silently ignored no-op, which here would mean the allowlist never applies and
+the rule breaks the build on every not-yet-migrated file. The equivalent is two
+config objects in the exported array: the first turns the rule on for a broad
+`files` glob, and a **later** object re-declares it as `"off"` for the narrower
+allowlist glob. Later entries win.
+
+No custom ESLint plugin. The allowlist doubles as the migration tracker; its
+length is an honest progress metric.
+
+## Testing
+
+- Unit tests per clock function, executed under multiple zones.
+- **Corruption regression:** load a punch in zone X, save without editing any
+  field, assert the persisted instant is byte-identical. This fails today.
+- Guard tests asserting `formatInstant` rejects `'2026-07-28'` and
+  `formatDateOnly` rejects `'2026-07-28T18:00:00Z'`.
+- `test:tz` (`package.json:32`) currently runs **3 distinct test files across 5
+  zone invocations** (`scheduleWeekRange.test.ts` runs three times; 6 commands
+  total). Expand it to the **full unit suite** under `Pacific/Auckland` (ahead
+  of UTC), `America/Chicago` (behind), and `UTC` (what CI runs).
+
+### SQL parity for `toBusinessDay` — required, not optional
+
+Per CLAUDE.md the SQL side is authoritative and TypeScript is preview-only.
+`toBusinessDay(instant, tz)` is a client-side reimplementation of what 46
+migrations already do as `(instant AT TIME ZONE tz)::date` — and
+`src/lib/shiftInterval.ts:147-156` documents that `shift_template_assigned_count`
+buckets exactly that way. Nothing currently pins the two together, and
+`memory/lessons.md:1297` is the record of a client bucketing helper silently
+drifting from its fixtures.
+
+Mitigation: one **shared fixture table** of `(instant, tz, expected_day)` rows,
+consumed twice —
+
+1. a Vitest case asserting `toBusinessDay(instant, tz) === expected_day`;
+2. a pgTAP case in `supabase/tests/` asserting
+   `(instant AT TIME ZONE tz)::date = expected_day`.
+
+Rows must include a DST transition (Mar 8 / Nov 1), a zone ahead of UTC, a zone
+behind, and an instant whose local time falls before 06:00 (where the two
+implementations diverge first if either is wrong). If SQL and TS ever disagree,
+SQL wins and `toBusinessDay` is the bug.
+
+**Fixture hazard.** `memory/lessons.md:1297` records that making a shared
+bucketing helper timezone-aware broke CI in three places at once, because
+fixtures seeded with naive datetime strings resolve differently on a UTC runner.
+Before touching the bucketers, grep test seeds for naive datetime strings and
+`getTimezoneOffset`, re-anchor them to explicit UTC instants matching production
+`timestamptz` data, and run the whole suite under `TZ=UTC` locally.
+
+## Scope boundary
+
+**In:** the clock module, the hook, the notice component, the lint guardrail,
+the CI zone matrix, and the four defect sites above.
+
+**Out, deliberately:**
+- The remaining display-only call sites — allowlisted, migrated in follow-up PRs.
+  Estimates range from ~35 (banned-pattern grep) to 51 (banned pattern *and* an
+  instant-column field name), the upper bound inflated by `start_time`/`end_time`
+  matches on the out-of-scope wall-clock tables. **The authoritative count is
+  whatever lands in the ESLint allowlist** once the ratchet exists; the spec
+  should not pretend to a number before then.
+- Availability (`employee_availability`) — the dual-convention hazard above.
+- **An app-wide error boundary.** There is none today (verified: zero matches in
+  `src`), which is a standing fragility this design works around rather than
+  fixes. Out of scope here because it is an app-shell concern with its own
+  blast radius, but it should be tracked — with one in place, the clock guard
+  could throw in production and degrade to a bounded fallback UI instead of
+  needing the environment split above.
+- Per-restaurant business-day cutoff — tracked as a separate task. Note for that
+  work: `period.clockIn` is already the bucketing anchor at both
+  `src/services/laborCalculations.ts:945` and
+  `src/utils/payrollCalculations.ts:492`, so an overnight shift's hours already
+  attribute wholly to the clock-in day. The remaining gap is punches not linked
+  to a shift.
+
+## Risks
+
+| Risk | Mitigation |
+|---|---|
+| Labor and Payroll bucketing drift apart | Change both in one commit; assert equality in a shared test. |
+| Timezone-fragile fixtures break CI | Re-anchor seeds first; verify under `TZ=UTC` before pushing. |
+| The guard rejects a caller passing a date-only string to `formatInstant` | Intended — that caller is a latent bug. Throws in dev/CI, where the full unit suite under 3 zones surfaces it before merge. |
+| A guard rejection reaches production from a path fixtures never covered (bad POS import, null, a call site wired up after merge) | Production never throws: it logs and renders via the shape-inferred branch. No render crash, because there is no error boundary to catch one. |
+| Half-migrated period: some screens restaurant-tz, others browser-tz | Accepted at the screen level — the corrupting and cost-attribution paths go first, and display-only drift is the status quo. **Not** accepted *within* a page carrying the tz notice; the placement gate above resolves that case. |
+| `useRestaurantClock` returns unstable identities and thrashes consumer effects | `useMemo` keyed `[tz, today]` — new identity at most once per day plus on restaurant switch. |

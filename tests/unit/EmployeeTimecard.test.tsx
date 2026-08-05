@@ -18,6 +18,8 @@ import { render, screen } from '@testing-library/react';
 import React from 'react';
 import EmployeeTimecard from '@/pages/EmployeeTimecard';
 import { bufferPunchFetchRange } from '@/utils/punchWindow';
+import { businessDayRangeToInstants } from '@/lib/restaurantClock';
+import { toDateOnlyString } from '@/lib/dateOnly';
 import type { TimePunch } from '@/types/timeTracking';
 
 const { useTimePunchesMock, useCurrentEmployeeMock, usePeriodNavigationMock } = vi.hoisted(() => ({
@@ -82,7 +84,16 @@ describe('EmployeeTimecard overnight windowing', () => {
 
     expect(useTimePunchesMock).toHaveBeenCalledTimes(1);
     const [restaurantId, employeeId, fetchStartArg, fetchEndArg] = useTimePunchesMock.mock.calls[0];
-    const { fetchStart, fetchEnd } = bufferPunchFetchRange(startDate, endDate);
+    // The buffer is applied to the RESTAURANT's day bounds (the mocked
+    // restaurant carries no timezone, so this falls back to the DB default,
+    // America/Chicago), not to startDate/endDate's own host-local instant
+    // values -- see the fetchStart/fetchEnd comment in EmployeeTimecard.tsx.
+    const { start: dayStart, end: dayEnd } = businessDayRangeToInstants(
+      toDateOnlyString(startDate),
+      toDateOnlyString(endDate),
+      'America/Chicago',
+    );
+    const { fetchStart, fetchEnd } = bufferPunchFetchRange(dayStart, dayEnd);
 
     expect(restaurantId).toBe('r1');
     expect(employeeId).toBe('e1');
@@ -115,5 +126,61 @@ describe('EmployeeTimecard overnight windowing', () => {
     const sunCard = sunHeading.closest('div.p-4');
     expect(sunCard).not.toBeNull();
     expect(sunCard!.textContent).toContain('0h 0m');
+  });
+
+  // The restaurant mock carries no `timezone`, so useRestaurantClock falls back
+  // to the DB default (America/Chicago) regardless of the host's TZ. Both punch
+  // instants land on Wed Jul 8 in Chicago but on Thu Jul 9 in UTC (CI) and in
+  // Pacific/Auckland -- so bucketing by the host's calendar fields fails this.
+  it('buckets punches by the restaurant day, not the viewer local day', () => {
+    const clockIn = new Date('2026-07-08T19:00:00Z'); // Jul 8 2:00 PM CDT
+    const clockOut = new Date('2026-07-09T02:30:00Z'); // Jul 8 9:30 PM CDT
+    useTimePunchesMock.mockReturnValue({
+      punches: [punch('in', 'clock_in', clockIn), punch('out', 'clock_out', clockOut)],
+      loading: false,
+    });
+
+    render(<EmployeeTimecard />);
+
+    const wedCard = screen.getByText('Jul 8').closest('div.p-4');
+    expect(wedCard).not.toBeNull();
+    // Punch chips render in the restaurant's zone too, not the browser's.
+    expect(wedCard!.textContent).toContain('2:00 PM');
+    expect(wedCard!.textContent).toContain('9:30 PM');
+
+    const thuCard = screen.getByText('Jul 9').closest('div.p-4');
+    expect(thuCard).not.toBeNull();
+    expect(thuCard!.textContent).toContain('No punches recorded');
+  });
+
+  // Regression: `periodPunches` (the display list feeding punchesByDay) must
+  // filter by RESTAURANT business-day membership, not by comparing punch_time
+  // instants to startDate/endDate directly. startDate/endDate here are
+  // host-local instants (see the fixture comment above); on a host AHEAD of
+  // America/Chicago (UTC, Pacific/Auckland -- both in this suite's TZ
+  // matrix), endDate's instant lands hours BEFORE the restaurant's actual
+  // Jul-12 day boundary. A punch late in the restaurant's Jul 12 evening
+  // would previously fall after that early endDate and vanish from this
+  // card's chip list (and from `punchesByDay`) even though `dayHours` --
+  // sourced from the unfiltered buffered punches -- still counted its hours,
+  // producing a card with nonzero net hours and "No punches recorded".
+  it('includes a punch late in the restaurant business day even when it falls after the viewer-local endDate instant', () => {
+    // 2026-07-13T01:00:00Z = 2026-07-12 20:00 CDT -- restaurant business day
+    // Jul 12, the last day of the period, but AFTER `endDate`'s instant
+    // (2026-07-12T23:59:59.999Z under TZ=UTC, and earlier still under
+    // TZ=Pacific/Auckland) once read literally.
+    const clockIn = new Date('2026-07-13T01:00:00Z');
+    useTimePunchesMock.mockReturnValue({
+      punches: [punch('in', 'clock_in', clockIn)],
+      loading: false,
+    });
+
+    render(<EmployeeTimecard />);
+
+    const sunCard = screen.getByText('Jul 12').closest('div.p-4');
+    expect(sunCard).not.toBeNull();
+    expect(sunCard!.textContent).not.toContain('No punches recorded');
+    // Rendered in the restaurant's zone: 2026-07-13T01:00:00Z is 8:00 PM CDT.
+    expect(sunCard!.textContent).toContain('8:00 PM');
   });
 });

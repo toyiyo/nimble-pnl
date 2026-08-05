@@ -82,6 +82,11 @@ describe("Monthly Performance acceptance — Russo's April 2026", () => {
       tipsOwedByEmployee,
       monthStart: new Date(Date.UTC(2026, 3, 1, 0, 0, 0)),
       monthEnd: new Date(Date.UTC(2026, 3, 30, 23, 59, 59)),
+      // Russo's Pizzeria's restaurant timezone. Day-bucketing (and thus which
+      // side of the month boundary an overnight shift lands on) is restaurant-
+      // local, not host-local — see calculateActualLaborCostForMonth in
+      // laborCalculations.ts.
+      timezone: 'America/Chicago',
     });
 
     expect(labor.tipsOwedCents).toBe(0);

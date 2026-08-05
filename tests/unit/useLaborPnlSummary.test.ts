@@ -99,7 +99,8 @@ describe('useLaborPnlSummary', () => {
 
     renderHook(() => useLaborPnlSummary('rest-1'), { wrapper: createWrapper() });
 
-    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'UTC', 4);
+    // safeTz falls back to the restaurant default (America/Chicago), not UTC.
+    expect(mockUseSplhData).toHaveBeenCalledWith('rest-1', 'America/Chicago', 4);
   });
 
   it('CRITICAL: reconciliation — summary totals equal the sum of the daily sparkline series', async () => {

@@ -30,6 +30,7 @@ import { RestaurantSelector } from '@/components/RestaurantSelector';
 import { ExportDropdown } from '@/components/financial-statements/shared/ExportDropdown';
 import { generateTablePDF } from '@/utils/pdfExport';
 import { formatDateInTimezone } from '@/lib/timezone';
+import { safeTz } from '@/lib/restaurantClock';
 
 const TRANSACTION_TYPES = [
   {
@@ -152,12 +153,12 @@ export default function InventoryAudit() {
 
   const displayValuesMap = useMemo(() => {
     const map = new Map<string, AuditDisplayValues>();
-    const tz = selectedRestaurant?.restaurant.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const tz = safeTz(selectedRestaurant?.restaurant?.timezone);
     for (const txn of filteredTransactions) {
       map.set(txn.id, computeAuditDisplayValues(txn, tz));
     }
     return map;
-  }, [filteredTransactions, selectedRestaurant?.restaurant.timezone]);
+  }, [filteredTransactions, selectedRestaurant?.restaurant?.timezone]);
 
   const listRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -215,7 +216,7 @@ export default function InventoryAudit() {
 
     setIsExporting(true);
     try {
-      const tz = selectedRestaurant?.restaurant.timezone || 'UTC';
+      const tz = safeTz(selectedRestaurant?.restaurant?.timezone);
       const columns = ['Date', 'Product', 'Type', 'Quantity', 'Unit Cost', 'Total Cost', 'Reason'];
       const rows = filteredTransactions.map((txn) => [
         formatDateInTimezone(txn.transaction_date || txn.created_at, tz, 'MMM dd, yyyy'),

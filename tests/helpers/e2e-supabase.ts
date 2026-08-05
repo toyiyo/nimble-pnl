@@ -6,6 +6,22 @@
 import { expect, type Page } from '@playwright/test';
 
 /**
+ * Shape of `tip_pool_settings.role_percentages`, keyed by role name.
+ * Exported so specs and the `__getTipPoolSettings` helper cannot drift apart.
+ */
+export type RolePercentagesMap = Record<string, { mode: string; percentage: number }>;
+
+/**
+ * One approved payout, joined back to the employee it belongs to.
+ * `appliedRule` is the audit trail: which guarantee, if any, produced the amount.
+ */
+export type ApprovedSplitRow = {
+  name: string;
+  amountCents: number;
+  appliedRule: { mode: string; percentage: number } | null;
+};
+
+/**
  * Expose Supabase helper functions to browser context
  * This avoids dynamic imports from /src/ which Vite doesn't serve
  */
@@ -104,6 +120,53 @@ export async function exposeSupabaseHelpers(page: Page) {
       }
 
       return (count || 0) > 0;
+    };
+
+    (window as any).__getTipPoolSettings = async (
+      restaurantId: string
+    ): Promise<RolePercentagesMap | null> => {
+      const { data, error } = await supabase
+        .from('tip_pool_settings')
+        .select('role_percentages')
+        .eq('restaurant_id', restaurantId)
+        .eq('active', true)
+        .maybeSingle();
+
+      if (error) {
+        console.error('Error fetching tip_pool_settings', error);
+        return null;
+      }
+
+      return (data?.role_percentages as RolePercentagesMap) ?? null;
+    };
+
+    (window as any).__getApprovedSplitBreakdown = async (
+      restaurantId: string
+    ): Promise<ApprovedSplitRow[]> => {
+      const { data, error } = await supabase
+        .from('tip_split_items')
+        .select('amount, applied_rule, employees!inner(name), tip_splits!inner(restaurant_id, status)')
+        .eq('tip_splits.restaurant_id', restaurantId)
+        .eq('tip_splits.status', 'approved');
+
+      if (error) {
+        console.error('Error fetching approved split breakdown', error);
+        return [];
+      }
+
+      // The `!inner` joins defeat the generated row types, so name the shape we
+      // actually asked for rather than letting it decay to `any`.
+      type JoinedRow = {
+        amount: number;
+        applied_rule: ApprovedSplitRow['appliedRule'];
+        employees: { name: string } | null;
+      };
+
+      return ((data ?? []) as unknown as JoinedRow[]).map(row => ({
+        name: row.employees?.name ?? '',
+        amountCents: row.amount,
+        appliedRule: row.applied_rule ?? null,
+      }));
     };
 
     (window as any).__insertAvailability = async (rows: any[], restaurantId: string) => {

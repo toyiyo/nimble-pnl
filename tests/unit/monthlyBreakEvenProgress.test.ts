@@ -1,9 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { calculateMonthlyProgress } from '@/lib/monthlyBreakEvenProgress';
+import { parseDateOnly } from '@/lib/dateOnly';
 
-// Use UTC math to keep day-of-month deterministic across CI hosts.
-function utcDate(year: number, month1to12: number, day: number): Date {
-  return new Date(Date.UTC(year, month1to12 - 1, day, 12, 0, 0));
+// `calculateMonthlyProgress` reads `today` via LOCAL field getters
+// (`.getDate()`, date-fns `getDaysInMonth()`), matching its one production
+// call site (`breakEvenCalculator.ts`), which builds `today` from a
+// restaurant-business-day string via `parseLocalDate` (also local fields) --
+// a calendar day, case (a) in .superpowers/sdd/tz-sweep-common.md, not an
+// instant. The old helper built these fixtures via `Date.UTC(...12:00:00)`,
+// which is viewer-local itself: for any host TZ >= UTC+12 (e.g.
+// Pacific/Auckland, +12/+13), noon UTC lands after local midnight and
+// `.getDate()` reads back the NEXT day, one day ahead of the fixture's
+// intent. Building the fixture from local fields directly (same helper the
+// production code uses to turn a calendar-day string into a Date) is
+// deterministic across every host TZ.
+function localDate(year: number, month1to12: number, day: number): Date {
+  const mm = String(month1to12).padStart(2, '0');
+  const dd = String(day).padStart(2, '0');
+  return parseDateOnly(`${year}-${mm}-${dd}`);
 }
 
 describe('calculateMonthlyProgress', () => {
@@ -11,7 +25,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: 0,
       mtdSales: 5000,
-      today: utcDate(2026, 5, 15),
+      today: localDate(2026, 5, 15),
     });
 
     expect(result.status).toBe('no_target');
@@ -23,7 +37,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: Infinity,
       mtdSales: 5000,
-      today: utcDate(2026, 5, 15),
+      today: localDate(2026, 5, 15),
     });
 
     expect(result.status).toBe('no_target');
@@ -34,7 +48,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: -100,
       mtdSales: 0,
-      today: utcDate(2026, 5, 1),
+      today: localDate(2026, 5, 1),
     });
 
     expect(result.status).toBe('no_target');
@@ -44,7 +58,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: 31000,
       mtdSales: 0,
-      today: utcDate(2026, 5, 1),
+      today: localDate(2026, 5, 1),
     });
 
     expect(result.daysInMonth).toBe(31);
@@ -61,7 +75,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: 31000,
       mtdSales: 0,
-      today: utcDate(2026, 5, 7),
+      today: localDate(2026, 5, 7),
     });
 
     expect(result.expectedPercent).toBeCloseTo((7 / 31) * 100, 5);
@@ -74,7 +88,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: (16 / 31) * target,
-      today: utcDate(2026, 5, 16),
+      today: localDate(2026, 5, 16),
     });
 
     expect(result.progressPercent).toBeCloseTo(result.expectedPercent, 5);
@@ -87,7 +101,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: 0.7 * target,
-      today: utcDate(2026, 5, 16),
+      today: localDate(2026, 5, 16),
     });
 
     expect(result.paceDelta).toBeGreaterThan(5);
@@ -105,7 +119,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: 0.2 * target,
-      today: utcDate(2026, 5, 16),
+      today: localDate(2026, 5, 16),
     });
 
     expect(result.paceDelta).toBeLessThan(-5);
@@ -120,7 +134,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: mtd,
-      today: utcDate(2026, 5, 31),
+      today: localDate(2026, 5, 31),
     });
 
     expect(result.daysInMonth).toBe(31);
@@ -135,7 +149,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: target,
-      today: utcDate(2026, 5, 16),
+      today: localDate(2026, 5, 16),
     });
 
     expect(result.amountRemaining).toBe(0);
@@ -148,7 +162,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: target * 1.5,
-      today: utcDate(2026, 5, 16),
+      today: localDate(2026, 5, 16),
     });
 
     expect(result.amountRemaining).toBe(0);
@@ -162,7 +176,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: 20000,
-      today: utcDate(2026, 4, 20),
+      today: localDate(2026, 4, 20),
     });
 
     expect(result.daysInMonth).toBe(30);
@@ -176,7 +190,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: 14500,
-      today: utcDate(2024, 2, 15),
+      today: localDate(2024, 2, 15),
     });
 
     expect(result.daysInMonth).toBe(29);
@@ -190,7 +204,7 @@ describe('calculateMonthlyProgress', () => {
     const result = calculateMonthlyProgress({
       monthlyBreakEven: target,
       mtdSales: 0.45 * target, // 27000 — ahead of day-10/30 pace (33.3%) by ~11.7pp
-      today: utcDate(2026, 6, 10), // June: 30 days
+      today: localDate(2026, 6, 10), // June: 30 days
     });
 
     expect(result.daysInMonth).toBe(30);

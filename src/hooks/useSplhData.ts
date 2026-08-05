@@ -108,7 +108,7 @@ function localWindow(tz: string, weeks: number): { startStr: string; endStr: str
  * Shared paginated fetch of `unified_sales` + `time_punches` for the SPLH
  * heatmap/timeline/summary. Internal building block for `useSplhAnalytics`
  * and `useSplhSummary` — callers are expected to have already validated
- * `tz` (e.g. via `validateTimeZone`).
+ * `tz` (e.g. via `safeTz`).
  */
 export function useSplhData(restaurantId: string | null, tz: string, weeks: number) {
   return useQuery({

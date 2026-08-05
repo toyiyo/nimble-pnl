@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { useTimePunches, useDeleteTimePunch, useUpdateTimePunch, useCreateTimePunch } from '@/hooks/useTimePunches';
 import { useEmployees } from '@/hooks/useEmployees';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +26,8 @@ import {
   startOfDay, endOfDay
 } from 'date-fns';
 import { WEEK_STARTS_ON } from '@/lib/dateConfig';
+import { toDateOnlyString } from '@/lib/dateOnly';
+import { editFormToPunchTime, punchToEditForm } from '@/lib/punchEditForm';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   AlertDialog,
@@ -74,6 +77,7 @@ type VisualizationMode = 'manual' | 'cards' | 'barcode' | 'stream' | 'receipt';
 const TimePunchesManager = () => {
   const { selectedRestaurant } = useRestaurantContext();
   const restaurantId = selectedRestaurant?.restaurant_id || null;
+  const clock = useRestaurantClock();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
@@ -310,6 +314,11 @@ const TimePunchesManager = () => {
   const updatePunch = useUpdateTimePunch();
   const createPunch = useCreateTimePunch();
   const [forceSessionToClose, setForceSessionToClose] = useState<any | null>(null);
+  // datetime-local carve-out: this seeds a <input type="datetime-local">, which is
+  // inherently the viewer's wall clock, and the value is parsed back with
+  // `new Date(forceOutTime)` below -- converting only the seed would desynchronize
+  // seed from parse.
+  // eslint-disable-next-line no-restricted-syntax
   const [forceOutTime, setForceOutTime] = useState<string>(() => format(new Date(), "yyyy-MM-dd'T'HH:mm"));
 
   // Filter punches (buffered) by search term — feeds pairing only.
@@ -473,10 +482,9 @@ const TimePunchesManager = () => {
 
   const openEditDialog = (punch: TimePunch) => {
     setEditingPunch(punch);
-    setEditFormData({
-      punch_time: format(new Date(punch.punch_time), "yyyy-MM-dd'T'HH:mm"),
-      notes: punch.notes || '',
-    });
+    // Restaurant wall clock, NOT the browser's. Paired with editFormToPunchTime
+    // on save so an edit that touches only `notes` cannot move the instant.
+    setEditFormData(punchToEditForm(punch, clock.tz));
   };
 
   const closeEditDialog = () => {
@@ -489,7 +497,7 @@ const TimePunchesManager = () => {
 
     updatePunch.mutate({
       id: editingPunch.id,
-      punch_time: new Date(editFormData.punch_time).toISOString(),
+      punch_time: editFormToPunchTime(editFormData, editingPunch, clock.tz),
       notes: editFormData.notes || undefined,
     });
     closeEditDialog();
@@ -557,13 +565,15 @@ const TimePunchesManager = () => {
 
     const headers = ['Employee', 'Position', 'Punch Type', 'Date', 'Time', 'Notes', 'Location'];
     const rows = windowPunches.map((punch) => {
-      const punchDate = new Date(punch.punch_time);
       return [
         punch.employee?.name || 'Unknown',
         punch.employee?.position || '',
         punch.punch_type.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
-        format(punchDate, 'yyyy-MM-dd'),
-        format(punchDate, 'HH:mm:ss'),
+        // punch_time is an instant; render both Date and Time columns in the
+        // restaurant's zone so a punch exported by an operator in another
+        // zone doesn't land on the wrong day next to the wrong hour.
+        clock.toBusinessDay(punch.punch_time),
+        clock.formatInstant(punch.punch_time, 'HH:mm:ss'),
         punch.notes?.replace(/"/g, '""') || '',
         punch.location?.latitude != null && punch.location?.longitude != null
           ? `${punch.location.latitude},${punch.location.longitude}`
@@ -580,7 +590,7 @@ const TimePunchesManager = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `time-punches-${format(dateRange.start, 'yyyy-MM-dd')}-to-${format(dateRange.end, 'yyyy-MM-dd')}.csv`;
+    link.download = `time-punches-${toDateOnlyString(dateRange.start)}-to-${toDateOnlyString(dateRange.end)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -860,8 +870,8 @@ const TimePunchesManager = () => {
                           <div className="text-xs text-muted-foreground truncate">{punch.employee?.position}</div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <div className="text-sm font-medium">{format(new Date(punch.punch_time), 'MMM d')}</div>
-                          <div className="text-xs text-muted-foreground">{format(new Date(punch.punch_time), 'h:mm a')}</div>
+                          <div className="text-sm font-medium">{clock.formatInstant(punch.punch_time, 'MMM d')}</div>
+                          <div className="text-xs text-muted-foreground">{clock.formatInstant(punch.punch_time, 'h:mm a')}</div>
                         </div>
                         <div className="flex items-center gap-1 flex-shrink-0">
                           {punch.photo_path && (
@@ -943,7 +953,7 @@ const TimePunchesManager = () => {
                   <div>
                     <div className="font-medium">{session.employee_name}</div>
                     <div className="text-xs text-muted-foreground">
-                      In: {format(new Date(session.clock_in), 'h:mm a')} • 
+                      In: {clock.formatInstant(session.clock_in, 'h:mm a')} •
                       Open for {Math.max(0, Math.floor(differenceInMinutes(new Date(), new Date(session.clock_in)) / 60))}h {Math.max(0, differenceInMinutes(new Date(), new Date(session.clock_in)) % 60)}m
                     </div>
                   </div>
@@ -1076,7 +1086,7 @@ const TimePunchesManager = () => {
             {forceSessionToClose?.clock_in && forceOutTime && 
               new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime() && (
               <p className="text-xs text-destructive mt-2">
-                Time must be after {format(new Date(forceSessionToClose.clock_in), 'h:mm a')}.
+                Time must be after {clock.formatInstant(forceSessionToClose.clock_in, 'h:mm a')}.
               </p>
             )}
           </div>
@@ -1097,6 +1107,9 @@ const TimePunchesManager = () => {
                   notes: 'Force clock out by manager',
                 });
                 setForceSessionToClose(null);
+                // datetime-local carve-out, as above -- resets the seed for the next
+                // force-clock-out dialog open.
+                // eslint-disable-next-line no-restricted-syntax
                 setForceOutTime(format(new Date(), "yyyy-MM-dd'T'HH:mm"));
               }}
               disabled={!!(forceSessionToClose?.clock_in && forceOutTime && new Date(forceOutTime).getTime() < new Date(forceSessionToClose.clock_in).getTime())}
@@ -1126,11 +1139,11 @@ const TimePunchesManager = () => {
                 </div>
                 <div>
                   <span className="text-muted-foreground">Date:</span>
-                  <div className="font-medium">{format(new Date(viewingPunch.punch_time), 'MMM d, yyyy')}</div>
+                  <div className="font-medium">{clock.formatInstant(viewingPunch.punch_time, 'MMM d, yyyy')}</div>
                 </div>
                 <div>
                   <span className="text-muted-foreground">Time:</span>
-                  <div className="font-medium">{format(new Date(viewingPunch.punch_time), 'h:mm:ss a')}</div>
+                  <div className="font-medium">{clock.formatInstant(viewingPunch.punch_time, 'h:mm:ss a')}</div>
                 </div>
               </div>
 
@@ -1217,7 +1230,9 @@ const TimePunchesManager = () => {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="punch_time">Punch Time</Label>
+              <Label htmlFor="punch_time" className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+                Punch Time ({clock.tzAbbrev})
+              </Label>
               <Input
                 id="punch_time"
                 type="datetime-local"

@@ -127,6 +127,26 @@ const WAIT_DISCIPLINE = [
   "- Kill every background process you start before you return, on the failure path too (`trap 'kill $pid 2>/dev/null' EXIT`). Orphans outlive the agent that spawned them.",
 ].join('\n')
 
+// Third failure mode, and the only one that reaches the PR: staging. The phase
+// prompts say "fix it and commit" and leave HOW to stage to each agent, so they
+// reach for `git add -A`. One worktree is shared by every phase, so that sweeps
+// in per-run scratch and whatever an earlier phase left dirty — it has produced
+// PR diffs carrying ~8k lines of workflow noise, and merge conflicts located
+// entirely inside regenerated artifacts (memory/lessons.md:386, :693, :1454,
+// :1770 — four incidents, one pattern).
+//
+// Gitignoring the scratch is a backstop, not the fix: a broad add still picks up
+// unrelated TRACKED files. Explicit paths are what actually bound a commit, and
+// like WAIT_DISCIPLINE the only lever is the prompt — the script layer cannot
+// see, let alone veto, an agent's git invocation.
+const STAGING_DISCIPLINE = [
+  'STAGING DISCIPLINE (applies to every commit you make, in every phase):',
+  `- Stage EXPLICIT paths, always with -C so the command cannot act on the wrong checkout: git -C ${ctx.worktreePath} add <path> [<path>...]`,
+  '- NEVER `git add -A`, `git add .`, or `git commit -a`. This worktree is shared across phases and accumulates per-run scratch (dev-tools/*.patch, dev-tools/*-output.md, dev-tools/9d-triage-*) plus whatever an earlier phase left dirty; a broad add sweeps all of it into your commit, where it becomes PR noise and conflicts with other branches regenerating the same files.',
+  '- `progress.md` is gitignored and must NEVER be staged — not even with `git add -f`.',
+  `- Before each commit, confirm the index holds only what you intended: git -C ${ctx.worktreePath} diff --cached --name-only`,
+].join('\n')
+
 // Orientation block injected into EVERY agent prompt (fresh context).
 // The development-workflow.md pointer is OPT-IN (skillRef), not default: it is a
 // 42 KB file and every phase prompt below already states what that phase must do.
@@ -143,6 +163,8 @@ function envelope(body, { skillRef = false } = {}) {
     ...(skillRef
       ? [`- The authoritative phase definitions live in ${ctx.worktreePath}/.claude/skills/development-workflow.md — consult the matching phase if you need detail.`]
       : []),
+    '',
+    STAGING_DISCIPLINE,
     '',
     WAIT_DISCIPLINE,
     '',
@@ -552,7 +574,12 @@ let crClean = false
 for (let it = 1; it <= 3 && !crClean; it++) {
   const cr = await runAgent(
     envelope(
-      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --plain --type committed (in the worktree). Fix ONLY actionable findings and commit them. ` +
+      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --agent --committed --base origin/main (in the worktree). ` +
+        '--agent emits structured findings for agent workflows; --committed limits the review to committed changes; --base origin/main pins the comparison to trunk so 7c sees the whole branch. ' +
+        "Use origin/main, NOT main — a worktree's local main is frequently stale, and a stale base silently changes which commits get reviewed. " +
+        'Do NOT narrow this to the Phase 7a snapshot SHA with --base-commit — reviewing only the post-snapshot fixes is Phase 7d\'s job, and 7c exists to re-examine the whole branch as one coherent change. ' +
+        "There is no --plain/--type flag on the current CLI (plain text is the default output mode) — if you hit \"unknown option\", run `coderabbit review --help` and report the drift rather than guessing. " +
+        'Fix ONLY actionable findings and commit them. ' +
         'Return clean=true if there were NO actionable findings this run; clean=false if you fixed some (we re-run). On iteration 3 with findings still remaining, return clean=false and list the remaining items in reason — the script will escalate. ' +
         'BEST-EFFORT: if the CodeRabbit CLI is not installed, not authenticated, or returns a billing/credits/quota error (e.g. "run out of usage credits"), treat 7c as skipped — return status=completed, clean=true, and note "CodeRabbit skipped (unavailable/credits)" in reason. Do NOT return needs_human for environment/billing problems; the CodeRabbit GitHub bot still reviews the PR and is triaged in Phase 9d. Reserve needs_human only for genuinely ambiguous findings.',
     ),

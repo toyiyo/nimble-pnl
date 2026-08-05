@@ -9,6 +9,16 @@ vi.mock('@/hooks/useEmployees', () => ({
   useEmployees: vi.fn(),
 }));
 
+// useScheduledLaborCosts now sources the restaurant timezone from
+// useRestaurantClock (via useRestaurantContext) to bucket scheduled shift
+// costs by the restaurant's calendar day, not the host's. Pin a fixed
+// timezone so every fixture's day-bucketing here is deterministic.
+vi.mock('@/contexts/RestaurantContext', () => ({
+  useRestaurantContext: () => ({
+    selectedRestaurant: { restaurant: { timezone: 'America/Chicago' } },
+  }),
+}));
+
 describe('useScheduledLaborCosts', () => {
   const mockRestaurantId = 'restaurant-123';
   const dateFrom = new Date('2025-01-01T00:00:00Z');

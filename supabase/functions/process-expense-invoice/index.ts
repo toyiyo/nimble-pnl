@@ -4,6 +4,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { logAICall, extractTokenUsage, type AICallMetadata } from "../_shared/braintrust.ts";
 import { normalizeDate, normalizePdfInput } from "../_shared/expenseInvoiceUtils.ts";
+import { toDateOnlyString } from "../_shared/dateOnly.ts";
 
 interface ExpenseInvoiceProcessRequest {
   invoiceUploadId: string;
@@ -160,7 +161,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const m = parseInt(month, 10) - 1;
     const d = parseInt(day, 10);
     if (isValidParts(y, m, d)) {
-      return new Date(y, m, d).toISOString().split("T")[0];
+      return toDateOnlyString(new Date(y, m, d));
     }
   }
 
@@ -172,7 +173,7 @@ function extractDateFromFilename(filename: string | null): string | null {
     const m = parseInt(month, 10) - 1;
     const d = parseInt(day, 10);
     if (isValidParts(y, m, d)) {
-      return new Date(y, m, d).toISOString().split("T")[0];
+      return toDateOnlyString(new Date(y, m, d));
     }
   }
 

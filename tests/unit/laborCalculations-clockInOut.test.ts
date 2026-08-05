@@ -70,8 +70,9 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
       const { breakdown } = calculateActualLaborCost(
         [hourlyEmployee],
         punches,
-        new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date(2025, 11, 9), // local calendar-day token; generateDateRange reads host-local fields
+        new Date(2025, 11, 10), // local calendar-day token; keeps generateDateRange TZ-independent
+        'UTC'
       );
 
       // Both should report 8 hours
@@ -92,8 +93,9 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
       const { breakdown } = calculateActualLaborCost(
         [hourlyEmployee],
         punches,
-        new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date(2025, 11, 9), // local calendar-day token; generateDateRange reads host-local fields
+        new Date(2025, 11, 10), // local calendar-day token; keeps generateDateRange TZ-independent
+        'UTC'
       );
 
       expect(payrollHours).toBe(8);
@@ -111,8 +113,9 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
       const { breakdown } = calculateActualLaborCost(
         [hourlyEmployee],
         punches,
-        new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date(2025, 11, 9), // local calendar-day token; generateDateRange reads host-local fields
+        new Date(2025, 11, 10), // local calendar-day token; keeps generateDateRange TZ-independent
+        'UTC'
       );
 
       expect(payrollHours).toBe(12);
@@ -136,7 +139,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        'UTC'
       );
 
       expect(payrollHours).toBe(7.5);
@@ -162,7 +166,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        'UTC'
       );
 
       expect(payrollHours).toBe(8);
@@ -183,8 +188,9 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
       const { breakdown } = calculateActualLaborCost(
         [hourlyEmployee],
         punches,
-        new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date(2025, 11, 9), // local calendar-day token; generateDateRange reads host-local fields
+        new Date(2025, 11, 10), // local calendar-day token; keeps generateDateRange TZ-independent
+        'UTC'
       );
 
       expect(payrollHours).toBe(11);
@@ -205,7 +211,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        'UTC'
       );
 
       expect(payrollHours).toBe(8);
@@ -225,7 +232,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-11T23:59:59Z')
+        new Date('2025-12-11T23:59:59Z'),
+        'UTC'
       );
 
       // Total hours match
@@ -247,7 +255,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        'UTC'
       );
 
       expect(payrollHours).toBe(8.75);
@@ -266,7 +275,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        'UTC'
       );
 
       expect(payrollHours).toBe(0.5);
@@ -286,8 +296,9 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
       const { breakdown } = calculateActualLaborCost(
         [hourlyEmployee],
         punches,
-        new Date('2025-12-09'),
-        new Date('2025-12-10')
+        new Date(2025, 11, 9), // local calendar-day token; generateDateRange reads host-local fields
+        new Date(2025, 11, 10), // local calendar-day token; keeps generateDateRange TZ-independent
+        'UTC'
       );
 
       expect(payrollHours).toBe(8);
@@ -313,7 +324,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [hourlyEmployee],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        'UTC'
       );
 
       // All three methods should match
@@ -355,7 +367,8 @@ describe('LaborCalculations - Clock In/Out Cross-Validation', () => {
         [employee1, employee2],
         punches,
         new Date('2025-12-09T00:00:00Z'),
-        new Date('2025-12-09T23:59:59Z')
+        new Date('2025-12-09T23:59:59Z'),
+        'UTC'
       );
 
       // Verify individual employee hours match

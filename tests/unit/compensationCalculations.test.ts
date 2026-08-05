@@ -28,6 +28,7 @@ import {
   calculateContractorPayForPeriod,
 } from '@/utils/compensationCalculations';
 import type { Employee, CompensationType, DailyLaborAllocation } from '@/types/scheduling';
+import { parseDateOnly } from '@/lib/dateOnly';
 
 // ============================================================================
 // Helper Functions
@@ -656,10 +657,13 @@ describe('calculateSalaryForPeriod - hire date handling', () => {
       pay_period_type: 'weekly',
       hire_date: '2024-12-04', // Hired on Wed
     });
-    
-    const startDate = new Date('2024-12-01'); // Sunday
-    const endDate = new Date('2024-12-07'); // Saturday
-    
+
+    // parseDateOnly anchors at LOCAL midnight (unlike bare `new Date(str)`,
+    // which parses date-only strings as UTC midnight and would shift the
+    // loop's local calendar day for viewers behind UTC).
+    const startDate = parseDateOnly('2024-12-01'); // Sunday
+    const endDate = parseDateOnly('2024-12-07'); // Saturday
+
     const pay = calculateSalaryForPeriod(employee, startDate, endDate);
     
     // Only 4 days (Dec 4-7) * daily rate
@@ -731,10 +735,11 @@ describe('calculateContractorPayForPeriod - hire date handling', () => {
       contractor_payment_interval: 'weekly',
       hire_date: '2024-12-04', // Hired on Wed
     });
-    
-    const startDate = new Date('2024-12-01');
-    const endDate = new Date('2024-12-07');
-    
+
+    // See note above: parseDateOnly avoids the UTC-midnight parse trap.
+    const startDate = parseDateOnly('2024-12-01');
+    const endDate = parseDateOnly('2024-12-07');
+
     const pay = calculateContractorPayForPeriod(employee, startDate, endDate);
     
     // Only 4 days (Dec 4-7) * daily rate

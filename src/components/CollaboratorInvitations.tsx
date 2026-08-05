@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
+import { RolePicker } from '@/components/roles/RolePicker';
 import { AccountlessEmployeeHint } from '@/components/invitations/AccountlessEmployeeHint';
 
 // 3. Icons
@@ -516,27 +517,33 @@ export function CollaboratorInvitations({ restaurantId, userRole }: Collaborator
                 return (
                   <div
                     key={collab.id}
-                    className="flex items-center justify-between p-3 border border-border/40 rounded-xl hover:border-border transition-colors"
+                    className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 border border-border/40 rounded-xl hover:border-border transition-colors"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-muted">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2 rounded-lg bg-muted shrink-0">
                         <Icon className="h-4 w-4" />
                       </div>
-                      <div>
-                        <p className="font-medium text-sm">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate">
                           {collab.profileName || collab.email}
                         </p>
                         {collab.profileName && (
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-muted-foreground truncate">
                             {collab.email}
                           </p>
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline">
-                        {roleLabelFor(collab.role, collab.roleId)}
-                      </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <RolePicker
+                        membershipId={collab.id}
+                        restaurantId={restaurantId}
+                        personName={collab.profileName || collab.email}
+                        currentRole={collab.role}
+                        currentRoleId={collab.roleId}
+                        callerRole={userRole}
+                        disabled={!canManage}
+                      />
                       {canManage && (
                         <Button
                           variant="ghost"

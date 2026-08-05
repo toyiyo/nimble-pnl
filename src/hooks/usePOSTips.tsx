@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { format } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
+import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { businessDayRangeToInstants } from '@/lib/restaurantClock';
 
 export interface POSTipData {
   date: string;
@@ -35,18 +36,31 @@ function mergeTip(
 }
 
 export function usePOSTips(restaurantId: string | null, startDate: string, endDate: string) {
+  // employee_tips.recorded_at is a moment in time (case b) -- it must bucket
+  // by the RESTAURANT's business day, the same day the pos-tips RPC already
+  // uses, or the two sides of the merge below disagree on which day a tip
+  // belongs to for any viewer/host ahead of the restaurant's timezone.
+  const { tz, toBusinessDay } = useRestaurantClock();
+
   return useQuery({
-    queryKey: ['pos-tips', restaurantId, startDate, endDate],
+    queryKey: ['pos-tips', restaurantId, startDate, endDate, tz],
     queryFn: async (): Promise<POSTipData[]> => {
       if (!restaurantId) return [];
+
+      // startDate/endDate are restaurant-local calendar days; the bucketing
+      // below already keys them off `tz` via toBusinessDay, so the fetch
+      // window must be built from the same zone -- a bare 'YYYY-MM-DD' bound
+      // parses against UTC in Postgres, disagreeing with the bucketing and
+      // dropping or leaking tips at the edges of the range.
+      const { start, end } = businessDayRangeToInstants(startDate, endDate, tz);
 
       const [employeeResult, posResult] = await Promise.all([
         supabase
           .from('employee_tips')
           .select('recorded_at, tip_amount, tip_source')
           .eq('restaurant_id', restaurantId)
-          .gte('recorded_at', startDate)
-          .lte('recorded_at', endDate + 'T23:59:59')
+          .gte('recorded_at', start.toISOString())
+          .lte('recorded_at', end.toISOString())
           .order('recorded_at', { ascending: true }),
         (supabase.rpc as any)('get_pos_tips_by_date', {
           p_restaurant_id: restaurantId,
@@ -65,7 +79,7 @@ export function usePOSTips(restaurantId: string | null, startDate: string, endDa
       const tipsByDate = new Map<string, TipBucket>();
 
       for (const tip of employeeResult.data ?? []) {
-        const date = format(new Date(tip.recorded_at), 'yyyy-MM-dd');
+        const date = toBusinessDay(tip.recorded_at);
         const source = (tip.tip_source || 'employee_tips') as POSTipData['source'];
         mergeTip(tipsByDate, date, tip.tip_amount || 0, 1, source);
       }

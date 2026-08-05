@@ -894,6 +894,7 @@ export type Database = {
           reconciled_at: string | null
           reconciled_by: string | null
           restaurant_id: string
+          rules_evaluated_at: string
           source: string | null
           statement_upload_id: string | null
           status: Database["public"]["Enums"]["transaction_status_enum"]
@@ -935,6 +936,7 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id: string
+          rules_evaluated_at?: string
           source?: string | null
           statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
@@ -976,6 +978,7 @@ export type Database = {
           reconciled_at?: string | null
           reconciled_by?: string | null
           restaurant_id?: string
+          rules_evaluated_at?: string
           source?: string | null
           statement_upload_id?: string | null
           status?: Database["public"]["Enums"]["transaction_status_enum"]
@@ -3563,13 +3566,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "invitations_role_id_fkey"
-            columns: ["role_id"]
-            isOneToOne: false
-            referencedRelation: "roles"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "invitations_employee_id_fkey"
             columns: ["employee_id"]
             isOneToOne: false
@@ -3588,6 +3584,13 @@ export type Database = {
             columns: ["employee_id"]
             isOneToOne: false
             referencedRelation: "inactive_employees"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_role_id_fkey"
+            columns: ["role_id"]
+            isOneToOne: false
+            referencedRelation: "roles"
             referencedColumns: ["id"]
           },
         ]
@@ -6380,6 +6383,7 @@ export type Database = {
           description: string | null
           flavor: string
           id: string
+          legacy_role: string | null
           name: string
           restaurant_id: string | null
         }
@@ -6389,6 +6393,7 @@ export type Database = {
           description?: string | null
           flavor: string
           id?: string
+          legacy_role?: string | null
           name: string
           restaurant_id?: string | null
         }
@@ -6398,6 +6403,7 @@ export type Database = {
           description?: string | null
           flavor?: string
           id?: string
+          legacy_role?: string | null
           name?: string
           restaurant_id?: string | null
         }
@@ -6627,6 +6633,63 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "schedule_publications_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      schedule_retractions: {
+        Row: {
+          employee_ids: string[]
+          id: string
+          notified_at: string | null
+          publication_id: string | null
+          reason: string | null
+          restaurant_id: string
+          retracted_at: string
+          retracted_by: string | null
+          shift_count: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Insert: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date: string
+          week_start_date: string
+        }
+        Update: {
+          employee_ids?: string[]
+          id?: string
+          notified_at?: string | null
+          publication_id?: string | null
+          reason?: string | null
+          restaurant_id?: string
+          retracted_at?: string
+          retracted_by?: string | null
+          shift_count?: number
+          week_end_date?: string
+          week_start_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "schedule_retractions_publication_id_fkey"
+            columns: ["publication_id"]
+            isOneToOne: false
+            referencedRelation: "schedule_publications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "schedule_retractions_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
@@ -8823,6 +8886,7 @@ export type Database = {
           id: string
           pooling_model: string
           restaurant_id: string
+          role_percentages: Json
           role_weights: Json | null
           share_method: string | null
           split_cadence: string | null
@@ -8837,6 +8901,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -8851,6 +8916,7 @@ export type Database = {
           id?: string
           pooling_model?: string
           restaurant_id?: string
+          role_percentages?: Json
           role_weights?: Json | null
           share_method?: string | null
           split_cadence?: string | null
@@ -8970,6 +9036,7 @@ export type Database = {
       tip_split_items: {
         Row: {
           amount: number
+          applied_rule: Json | null
           created_at: string | null
           employee_id: string
           hours_worked: number | null
@@ -8981,6 +9048,7 @@ export type Database = {
         }
         Insert: {
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id: string
           hours_worked?: number | null
@@ -8992,6 +9060,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          applied_rule?: Json | null
           created_at?: string | null
           employee_id?: string
           hours_worked?: number | null
@@ -9661,6 +9730,7 @@ export type Database = {
           quantity: number
           raw_data: Json | null
           restaurant_id: string
+          rules_evaluated_at: string
           sale_date: string
           sale_time: string | null
           sold_at: string | null
@@ -9689,6 +9759,7 @@ export type Database = {
           quantity?: number
           raw_data?: Json | null
           restaurant_id: string
+          rules_evaluated_at?: string
           sale_date: string
           sale_time?: string | null
           sold_at?: string | null
@@ -9717,6 +9788,7 @@ export type Database = {
           quantity?: number
           raw_data?: Json | null
           restaurant_id?: string
+          rules_evaluated_at?: string
           sale_date?: string
           sale_time?: string | null
           sold_at?: string | null
@@ -10207,6 +10279,7 @@ export type Database = {
       _prokind: { Args: { p_oid: unknown }; Returns: unknown }
       _query: { Args: { "": string }; Returns: string }
       _refine_vol: { Args: { "": string }; Returns: string }
+      _retval: { Args: { "": string }; Returns: string }
       _revel_connection_is_due: {
         Args: { rc: Database["public"]["Tables"]["revel_connections"]["Row"] }
         Returns: boolean
@@ -10326,6 +10399,10 @@ export type Database = {
         Args: { p_restaurant_id: string; p_user_id: string }
         Returns: number
       }
+      assign_membership_role: {
+        Args: { p_membership_id: string; p_role: string; p_role_id?: string }
+        Returns: undefined
+      }
       backfill_user_restaurants_role_id: { Args: never; Returns: undefined }
       bank_reauth_cohort_a_candidates: {
         Args: never
@@ -10432,6 +10509,7 @@ export type Database = {
           total_hours: number
         }[]
       }
+      can_invite_custom_role: { Args: { p_inviter: string }; Returns: boolean }
       cancel_shift_trade: {
         Args: { p_employee_id: string; p_trade_id: string }
         Returns: Json
@@ -10882,6 +10960,7 @@ export type Database = {
         Returns: Json
       }
       focus_slug: { Args: { p_text: string }; Returns: string }
+      format_type_string: { Args: { "": string }; Returns: string }
       fulltext_product_search: {
         Args: {
           p_limit?: number
@@ -11135,6 +11214,7 @@ export type Database = {
       has_unique: { Args: { "": string }; Returns: string }
       hash_invitation_token: { Args: { token: string }; Returns: string }
       in_todo: { Args: never; Returns: boolean }
+      invitable_roles: { Args: { p_inviter: string }; Returns: string[] }
       is_current_user_employee: {
         Args: { p_employee_id: string }
         Returns: boolean
@@ -11389,6 +11469,10 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      record_pos_sync_error: {
+        Args: { p_message: string; p_pos: string; p_restaurant_id: string }
+        Returns: undefined
       }
       reject_open_shift_claim: {
         Args: { p_claim_id: string; p_reviewer_note?: string }

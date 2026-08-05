@@ -31,6 +31,18 @@ interface ResponseStatRow {
   comment: string | null;
 }
 
+type ToastFn = ReturnType<typeof useToast>['toast'];
+
+/** Both mutations below hit the same unique constraint; only the fallback title differs. */
+function toastSaveError(toast: ToastFn, error: Error, fallbackTitle: string) {
+  const duplicate = error.message.includes('review_pages_slug_key');
+  toast({
+    title: duplicate ? 'That link is taken' : fallbackTitle,
+    description: duplicate ? 'Pick a different link and try again.' : error.message,
+    variant: 'destructive',
+  });
+}
+
 export function useReviewPages(restaurantId?: string) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -111,14 +123,7 @@ export function useReviewPages(restaurantId?: string) {
       queryClient.invalidateQueries({ queryKey: ['review-pages', restaurantId] });
       toast({ title: 'Page created' });
     },
-    onError: (error: Error) => {
-      const duplicate = error.message.includes('review_pages_slug_key');
-      toast({
-        title: duplicate ? 'That link is taken' : 'Could not create the page',
-        description: duplicate ? 'Pick a different link and try again.' : error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => toastSaveError(toast, error, 'Could not create the page'),
   });
 
   const updatePage = useMutation({
@@ -137,14 +142,7 @@ export function useReviewPages(restaurantId?: string) {
       queryClient.invalidateQueries({ queryKey: ['review-pages', restaurantId] });
       toast({ title: 'Saved' });
     },
-    onError: (error: Error) => {
-      const duplicate = error.message.includes('review_pages_slug_key');
-      toast({
-        title: duplicate ? 'That link is taken' : 'Could not save',
-        description: duplicate ? 'Pick a different link and try again.' : error.message,
-        variant: 'destructive',
-      });
-    },
+    onError: (error: Error) => toastSaveError(toast, error, 'Could not save'),
   });
 
   const uploadLogo = useCallback(

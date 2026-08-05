@@ -140,19 +140,9 @@ async function handleRate(
     return json({ token: await signReviewToken({ rid: crypto.randomUUID(), exp: expiry() }, tokenSecret), routed_to: 'feedback' });
   }
 
-  const since = new Date(Date.now() - REVIEW_RATE_WINDOW_MS).toISOString();
-  const { count, error: countError } = await supabase
-    .from('review_responses')
-    .select('id', { count: 'exact', head: true })
-    .eq('review_page_id', page.id)
-    .eq('ip_hash', ipHash)
-    .gte('submitted_at', since);
-
-  if (countError) {
-    console.error('review-public: rate limit probe failed', countError);
-    return fail(500);
-  }
-  if (isOverLimit(count ?? 0)) {
+  const recentCount = await countRecentResponses(supabase, page.id, ipHash);
+  if (recentCount === null) return fail(500);
+  if (isOverLimit(recentCount)) {
     console.warn('review-public: rate limited', { page_id: page.id, ip_hash: ipHash });
     return json({ token: await signReviewToken({ rid: crypto.randomUUID(), exp: expiry() }, tokenSecret), routed_to: 'feedback' });
   }
@@ -187,6 +177,32 @@ async function handleRate(
 
 function expiry(): number {
   return Math.floor(Date.now() / 1000) + REVIEW_TOKEN_TTL_SECONDS;
+}
+
+/**
+ * Shared by handleRate and handleComment: how many responses this
+ * (page, ip_hash) pair has logged in the trailing window. Returns null on a
+ * query failure so the caller can answer with a generic 500 instead of
+ * leaking which of the two write paths broke.
+ */
+async function countRecentResponses(
+  supabase: Supabase,
+  pageId: string,
+  ipHash: string
+): Promise<number | null> {
+  const since = new Date(Date.now() - REVIEW_RATE_WINDOW_MS).toISOString();
+  const { count, error } = await supabase
+    .from('review_responses')
+    .select('id', { count: 'exact', head: true })
+    .eq('review_page_id', pageId)
+    .eq('ip_hash', ipHash)
+    .gte('submitted_at', since);
+
+  if (error) {
+    console.error('review-public: rate limit probe failed', error);
+    return null;
+  }
+  return count ?? 0;
 }
 
 const MAX_COMMENT_LENGTH = 4000;
@@ -232,19 +248,9 @@ async function handleComment(
   }
   if (!existing) return ok();
 
-  const since = new Date(Date.now() - REVIEW_RATE_WINDOW_MS).toISOString();
-  const { count, error: countError } = await supabase
-    .from('review_responses')
-    .select('id', { count: 'exact', head: true })
-    .eq('review_page_id', existing.review_page_id)
-    .eq('ip_hash', ipHash)
-    .gte('submitted_at', since);
-
-  if (countError) {
-    console.error('review-public: comment rate probe failed', countError);
-    return fail(500);
-  }
-  if (isOverLimit(count ?? 0)) {
+  const recentCount = await countRecentResponses(supabase, existing.review_page_id, ipHash);
+  if (recentCount === null) return fail(500);
+  if (isOverLimit(recentCount)) {
     console.warn('review-public: rate limited on comment', {
       page_id: existing.review_page_id,
       ip_hash: ipHash,

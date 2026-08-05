@@ -9,11 +9,24 @@ export interface EmailSendSummary {
 
 const MAX_ERROR_LENGTH = 200;
 
+// Cap the raw error text handed to the redaction regex, independent of how
+// large the upstream Resend response body was. Well above MAX_ERROR_LENGTH
+// so any embedded email near the front of the message still gets redacted
+// before the final truncation below; bounds worst-case regex work to a
+// fixed size regardless of how much text Resend sends back.
+const MAX_RAW_INPUT_LENGTH = 2000;
+
 // Resend's raw error body sometimes echoes the offending recipient back
 // (e.g. "Invalid `to` field: a@example.com is not a valid email"). Strip
 // anything email-shaped before the message reaches a log line or a response
-// the manager sees, regardless of how it got there.
-const EMAIL_PATTERN = /[^\s"'<>]+@[^\s"'<>]+\.[^\s"'<>]+/g;
+// the manager sees, regardless of how it got there. Delimiter chars
+// (":()[]{},;" plus the existing quote/angle-bracket/whitespace set) are
+// excluded from both the local part and domain so adjacent diagnostic text
+// ("field:", parens, etc.) survives redaction instead of being swallowed
+// into the match; the trailing negative lookbehind keeps a sentence-ending
+// period out of the match too.
+const EMAIL_PATTERN =
+  /[^\s"'<>:()[\]{},;]+@[^\s"'<>:()[\]{},;]+\.[^\s"'<>:()[\]{},;]+(?<!\.)/g;
 
 const redactEmails = (message: string): string => message.replace(EMAIL_PATTERN, '[redacted]');
 
@@ -22,7 +35,9 @@ const redactEmails = (message: string): string => message.replace(EMAIL_PATTERN,
  * never gets pasted whole into a response the manager sees.
  */
 const truncateError = (message: string): string => {
-  const redacted = redactEmails(message);
+  const bounded =
+    message.length > MAX_RAW_INPUT_LENGTH ? message.slice(0, MAX_RAW_INPUT_LENGTH) : message;
+  const redacted = redactEmails(bounded);
   if (redacted.length <= MAX_ERROR_LENGTH) {
     return redacted;
   }

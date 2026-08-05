@@ -88,6 +88,29 @@ describe('summarizeSends', () => {
     expect(summary.firstError).toContain('[redacted]');
   });
 
+  it('redacts an embedded email without swallowing adjacent punctuation', () => {
+    const summary = summarizeSends(
+      [fail('a', 400, 'field:a@example.com is invalid, see (a@example.com) for details.')],
+      'broadcast',
+    );
+
+    // The address is redacted, but delimiter text right next to it —
+    // "field:", the parens, the trailing sentence punctuation — must
+    // survive so the diagnostic message stays readable.
+    expect(summary.firstError).toBe(
+      'field:[redacted] is invalid, see ([redacted]) for details.',
+    );
+  });
+
+  it('keeps a sentence-ending period out of the redacted match', () => {
+    const summary = summarizeSends(
+      [fail('a', 400, 'contact us at a@example.com.')],
+      'broadcast',
+    );
+
+    expect(summary.firstError).toBe('contact us at [redacted].');
+  });
+
   it('returns zeros for an empty result set without logging', () => {
     const summary = summarizeSends([], 'test');
 

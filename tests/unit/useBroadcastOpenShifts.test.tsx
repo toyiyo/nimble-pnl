@@ -94,7 +94,8 @@ describe('buildBroadcastToast', () => {
   });
 
   it('does not go destructive on stale-function skew even when email_failed is nonzero', () => {
-    // Pre-Task-3 function: can emit email_failed > 0 without email_recipients.
+    // Rolling-deploy skew: an old function build can emit email_failed > 0
+    // without ever including email_recipients.
     // `?? 0` on a missing denominator must not make failed >= recipients trivially true.
     const toast = buildBroadcastToast({
       success: true,

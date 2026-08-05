@@ -67,9 +67,17 @@ if (ctx.priorState !== undefined && !trimmed(ctx.priorState)) {
 // Omitted entirely → the gate is a genuine no-op: nothing is grepped, nothing
 // asserted, and no returned field claims it passed. Supplied but malformed →
 // Preflight halt, never a silent no-op.
+// `null` halts rather than meaning "off". It reads as a deliberate opt-out, but
+// it is also what a JSON/YAML merge or a `?? null` produces when an intended
+// probe goes missing — and that path deletes a gate the caller asked for while
+// looking exactly like a run that never wanted one. Omitting the key is the
+// only way to say "no gate", because omission cannot happen by accident.
 const EXPECTATIONS = ['absent', 'present']
 let PROBE = null
-if (ctx.bundleProbe !== undefined && ctx.bundleProbe !== null) {
+if (ctx.bundleProbe === null) {
+  return preflight('args.bundleProbe is null. Omit the key entirely to run without a production-bundle gate — null is usually a config merge that dropped an intended probe, and silently skipping the gate is what this validation exists to prevent.')
+}
+if (ctx.bundleProbe !== undefined) {
   const raw =
     typeof ctx.bundleProbe === 'string'
       ? { pattern: ctx.bundleProbe }

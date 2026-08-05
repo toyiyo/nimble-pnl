@@ -41,6 +41,7 @@ export type AreaKey =
   | 'purchasing'
   | 'recipes'
   | 'scheduling'
+  | 'reviews'
   | 'books'
   | 'chart_of_accounts'
   | 'payroll'
@@ -111,6 +112,7 @@ export type AreaGroupKey =
   | 'inventory'
   | 'recipes'
   | 'scheduling'
+  | 'reviews'
   | 'books'
   | 'payroll'
   | 'employees'
@@ -185,10 +187,18 @@ export const AREA_DEFINITIONS: readonly AreaDefinition[] = [
     maxLevelForCollaborator: 'manage',
   },
   {
+    key: 'reviews',
+    label: 'Reviews',
+    band: 'Operations',
+    sortOrder: 6,
+    areaKeys: ['reviews'],
+    maxLevelForCollaborator: 'view',
+  },
+  {
     key: 'books',
     label: 'Money & Books',
     band: 'Money',
-    sortOrder: 6,
+    sortOrder: 7,
     areaKeys: ['books', 'chart_of_accounts'],
     maxLevelForCollaborator: 'manage',
   },
@@ -196,7 +206,7 @@ export const AREA_DEFINITIONS: readonly AreaDefinition[] = [
     key: 'payroll',
     label: 'Payroll',
     band: 'Money',
-    sortOrder: 7,
+    sortOrder: 8,
     areaKeys: ['payroll'],
     maxLevelForCollaborator: 'view',
   },
@@ -204,7 +214,7 @@ export const AREA_DEFINITIONS: readonly AreaDefinition[] = [
     key: 'employees',
     label: 'Employees',
     band: 'People & admin',
-    sortOrder: 8,
+    sortOrder: 9,
     areaKeys: ['employees'],
     maxLevelForCollaborator: 'manage',
   },
@@ -212,7 +222,7 @@ export const AREA_DEFINITIONS: readonly AreaDefinition[] = [
     key: 'team',
     label: 'Team & Access',
     band: 'People & admin',
-    sortOrder: 9,
+    sortOrder: 10,
     areaKeys: ['team', 'collaborators'],
     // Ungrantable at any level to a collaborator role — see the doc comment
     // on AreaDefinition.maxLevelForCollaborator.
@@ -222,7 +232,7 @@ export const AREA_DEFINITIONS: readonly AreaDefinition[] = [
     key: 'settings',
     label: 'Settings & Integrations',
     band: 'People & admin',
-    sortOrder: 10,
+    sortOrder: 11,
     areaKeys: ['settings', 'integrations'],
     maxLevelForCollaborator: 'view',
   },
@@ -283,6 +293,10 @@ const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
   scheduling: {
     view: ['view:scheduling'],
     manageAdds: ['edit:scheduling', 'view:tips', 'edit:tips', 'view:time_punches', 'edit:time_punches'],
+  },
+  reviews: {
+    view: ['view:reviews'],
+    manageAdds: ['manage:reviews'],
   },
   books: {
     view: [
@@ -395,6 +409,7 @@ export const AREA_LANDING_PATHS: Record<AreaKey, string> = {
   purchasing: '/purchase-orders',
   recipes: '/recipes',
   scheduling: '/scheduling',
+  reviews: '/reviews',
   books: '/transactions',
   chart_of_accounts: '/chart-of-accounts',
   payroll: '/payroll',
@@ -418,6 +433,7 @@ export const AREA_PRIORITY: readonly AreaKey[] = [
   'purchasing',
   'recipes',
   'scheduling',
+  'reviews',
   'books',
   'chart_of_accounts',
   'payroll',

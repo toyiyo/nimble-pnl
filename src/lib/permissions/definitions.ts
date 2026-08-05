@@ -79,6 +79,8 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'manage:integrations',
     'view:collaborators',
     'manage:collaborators',
+    'view:reviews',
+    'manage:reviews',
   ],
 
   manager: [
@@ -134,6 +136,8 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:integrations',
     'view:collaborators',
     'manage:collaborators',
+    'view:reviews',
+    'manage:reviews',
   ],
 
   operations_manager: [
@@ -171,6 +175,8 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:employees',
     'manage:employees',
     'view:settings',
+    'view:reviews',
+    'manage:reviews',
   ],
 
   chef: [
@@ -195,6 +201,7 @@ export const ROLE_CAPABILITIES: Record<Role, readonly Capability[]> = {
     'view:pos_sales',
     'view:scheduling',
     'view:settings',
+    'view:reviews',
   ],
 
   staff: [

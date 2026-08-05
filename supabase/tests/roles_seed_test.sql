@@ -35,7 +35,7 @@ BEGIN;
 SELECT plan(25);
 
 -- ----------------------------------------------------------------------------
--- Fixture 1: area_key/level -> legacy capability bundle (78 rows, 14 areas).
+-- Fixture 1: area_key/level -> legacy capability bundle (81 rows, 15 areas).
 -- ----------------------------------------------------------------------------
 CREATE TEMP TABLE test_area_capability_at_level (
   area_key TEXT NOT NULL,
@@ -121,11 +121,14 @@ INSERT INTO test_area_capability_at_level (area_key, level, capability) VALUES
   ('settings', 'manage', 'edit:settings'),
   ('integrations', 'view', 'view:integrations'),
   ('integrations', 'manage', 'view:integrations'),
-  ('integrations', 'manage', 'manage:integrations');
+  ('integrations', 'manage', 'manage:integrations'),
+  ('reviews', 'view', 'view:reviews'),
+  ('reviews', 'manage', 'view:reviews'),
+  ('reviews', 'manage', 'manage:reviews');
 
 -- ----------------------------------------------------------------------------
 -- Fixture 2: expected ROLE_CAPABILITIES per role, keyed by display name
--- (226 rows across 9 roles; Kiosk deliberately contributes zero rows since
+-- (233 rows across 9 roles; Kiosk deliberately contributes zero rows since
 -- ROLE_CAPABILITIES.kiosk = []).
 -- ----------------------------------------------------------------------------
 CREATE TEMP TABLE test_expected_capabilities (
@@ -188,6 +191,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Owner', 'manage:integrations'),
   ('Owner', 'view:collaborators'),
   ('Owner', 'manage:collaborators'),
+  ('Owner', 'view:reviews'),
+  ('Owner', 'manage:reviews'),
   ('Manager', 'view:dashboard'),
   ('Manager', 'view:ai_assistant'),
   ('Manager', 'view:transactions'),
@@ -239,6 +244,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Manager', 'view:integrations'),
   ('Manager', 'view:collaborators'),
   ('Manager', 'manage:collaborators'),
+  ('Manager', 'view:reviews'),
+  ('Manager', 'manage:reviews'),
   ('Operations Manager', 'view:dashboard'),
   ('Operations Manager', 'view:ai_assistant'),
   ('Operations Manager', 'view:inventory'),
@@ -272,6 +279,8 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Operations Manager', 'view:employees'),
   ('Operations Manager', 'manage:employees'),
   ('Operations Manager', 'view:settings'),
+  ('Operations Manager', 'view:reviews'),
+  ('Operations Manager', 'manage:reviews'),
   ('Chef', 'view:dashboard'),
   ('Chef', 'view:inventory'),
   ('Chef', 'edit:inventory'),
@@ -292,6 +301,7 @@ INSERT INTO test_expected_capabilities (role_name, capability) VALUES
   ('Chef', 'view:pos_sales'),
   ('Chef', 'view:scheduling'),
   ('Chef', 'view:settings'),
+  ('Chef', 'view:reviews'),
   ('Employee (self-service)', 'view:settings'),
   ('Accountant', 'view:transactions'),
   ('Accountant', 'edit:transactions'),

@@ -13,6 +13,7 @@ import { test, expect, type Page } from '@playwright/test';
  */
 
 const FN_GLOB = '**/functions/v1/review-public';
+const PAGE_URL = '/r/table-tents';
 
 const GOOD_PAGE = {
   restaurant_name: 'Test Diner',
@@ -45,7 +46,7 @@ test.describe('public review page load states', () => {
         : { status: 200, body: GOOD_PAGE }
     );
 
-    await page.goto('/r/table-tents');
+    await page.goto(PAGE_URL);
 
     await expect(page.getByRole('heading', { name: /something went wrong/i })).toBeVisible({
       timeout: 10000,
@@ -63,7 +64,7 @@ test.describe('public review page load states', () => {
   test('a second failure escalates the copy', async ({ page }) => {
     await stubPage(page, () => ({ status: 500, body: { error: 'Server error' } }));
 
-    await page.goto('/r/table-tents');
+    await page.goto(PAGE_URL);
     await expect(page.getByText(/that's on us, not you/i)).toBeVisible({ timeout: 10000 });
 
     await page.getByRole('button', { name: /try again/i }).click();
@@ -75,7 +76,7 @@ test.describe('public review page load states', () => {
   test('a genuinely paused page still shows the paused screen', async ({ page }) => {
     await stubPage(page, () => ({ status: 200, body: { inactive: true } }));
 
-    await page.goto('/r/table-tents');
+    await page.goto(PAGE_URL);
 
     await expect(page.getByRole('heading', { name: /isn't active/i })).toBeVisible({
       timeout: 10000,
@@ -91,7 +92,7 @@ test.describe('public review page load states', () => {
       body: { restaurant_name: 'Test Diner', threshold: 'four' },
     }));
 
-    await page.goto('/r/table-tents');
+    await page.goto(PAGE_URL);
 
     await expect(page.getByRole('heading', { name: /something went wrong/i })).toBeVisible({
       timeout: 10000,

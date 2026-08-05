@@ -99,9 +99,18 @@ Rules, in order:
 2. `data` is not a non-null object → `error`
 3. `data.inactive === true` → `inactive`
 4. the payload validates (`restaurant_name` and `headline` are strings,
-   `threshold` is an integer 1–5, `subheadline` and `logo_url` are string-or-null)
+   `subheadline` and `logo_url` are string-or-null, `threshold` is a number)
    → `ready`
 5. otherwise → `error`
+
+The validator checks that the page is *renderable*, not that it is
+well-formed by the server's rules. `threshold` is the line where those two
+differ: the client never reads it — routing is decided server-side and
+arrives as `routed_to` (`src/pages/ReviewPage.tsx:125`) — so an integer-1-to-5
+bound here would encode a schema constraint the page does not depend on, and
+a future server-side widening of `promoter_threshold` would turn every live
+page into an error screen. That is the failure this whole change exists to
+prevent, so the bound stays off and the type check stays on.
 
 Rule 4 is a change in behaviour beyond the reported bug, and it is intentional:
 today `data as PublicPage` (`src/pages/ReviewPage.tsx:79`) is an unchecked cast,

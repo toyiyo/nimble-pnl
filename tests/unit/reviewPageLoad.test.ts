@@ -54,14 +54,19 @@ describe('classifyReviewPageResponse', () => {
     expect(classifyReviewPageResponse({ ...VALID, threshold: 'four' }, null)).toEqual({
       kind: 'error',
     });
-    expect(classifyReviewPageResponse({ ...VALID, threshold: 2.5 }, null)).toEqual({
-      kind: 'error',
-    });
-    expect(classifyReviewPageResponse({ ...VALID, threshold: 0 }, null)).toEqual({ kind: 'error' });
-    expect(classifyReviewPageResponse({ ...VALID, threshold: 6 }, null)).toEqual({ kind: 'error' });
     expect(classifyReviewPageResponse({ ...VALID, subheadline: 12 }, null)).toEqual({
       kind: 'error',
     });
+  });
+
+  it('accepts a threshold outside the range the page knows about', () => {
+    // The page never reads `threshold`; routing arrives as `routed_to`. A
+    // server-side widening of `promoter_threshold` must not turn a live page
+    // into an error screen.
+    for (const threshold of [0, 6, 2.5]) {
+      const page = { ...VALID, threshold };
+      expect(classifyReviewPageResponse(page, null)).toEqual({ kind: 'ready', page });
+    }
   });
 
   it('ignores inactive when it is not exactly true', () => {

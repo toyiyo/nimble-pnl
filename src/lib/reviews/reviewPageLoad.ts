@@ -25,6 +25,9 @@ export type ReviewPageLoad =
   | { kind: 'inactive' }
   | { kind: 'error' };
 
+/** What the page holds while the fetch is still out, plus every settled outcome. */
+export type ReviewPageLoadState = { kind: 'loading' } | ReviewPageLoad;
+
 function isNullableString(value: unknown): boolean {
   return value === null || typeof value === 'string';
 }
@@ -39,10 +42,11 @@ function isPublicReviewPage(
     typeof value.headline === 'string' &&
     isNullableString(value.subheadline) &&
     isNullableString(value.logo_url) &&
-    typeof value.threshold === 'number' &&
-    Number.isInteger(value.threshold) &&
-    value.threshold >= 1 &&
-    value.threshold <= 5
+    // Type only, no range: the page never reads `threshold` — routing is
+    // decided server-side and arrives as `routed_to`. Bounding it here would
+    // encode a schema rule the render does not depend on, so a future widening
+    // of `promoter_threshold` would turn every live page into an error screen.
+    typeof value.threshold === 'number'
   );
 }
 

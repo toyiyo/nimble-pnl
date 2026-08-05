@@ -20,29 +20,10 @@ import type { ShiftTemplate } from '@/types/scheduling';
 
 import { AreaCombobox } from '@/components/AreaCombobox';
 import { TemplateHoursImpact } from '@/components/scheduling/ShiftPlanner/TemplateHoursImpact';
-import { pluralize } from '@/lib/scheduling/deletionCopy';
+import { buildSaveButtonLabel } from '@/lib/scheduling/hoursChangeCopy';
 import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'] as const;
-
-/**
- * Extracted so the JSX references one precomputed value instead of a nested
- * ternary — the review rulebook forbids those outright.
- */
-function buildSaveButtonLabel(params: {
-  isSubmitting: boolean;
-  showCascadeChoice: boolean;
-  affectedCount: number;
-  isEdit: boolean;
-}): string {
-  const { isSubmitting, showCascadeChoice, affectedCount, isEdit } = params;
-  if (isSubmitting) return 'Saving...';
-  if (showCascadeChoice) {
-    return `Save & update ${affectedCount} ${pluralize(affectedCount, 'shift', 'shifts')}`;
-  }
-  if (isEdit) return 'Save changes';
-  return 'Add Template';
-}
 
 interface TemplateFormDialogProps {
   open: boolean;
@@ -62,7 +43,7 @@ interface TemplateFormDialogProps {
     notify: boolean;
     /** What the dialog promised on the save button, e.g. "Save & update 3 shifts". 0 when not cascading. */
     promisedCount: number;
-  }) => void | Promise<void>;
+  }) => Promise<void>;
   positions: string[];
   restaurantId: string | null;
   /** Already resolved through safeTz by the planner — never the browser's. */
@@ -150,6 +131,16 @@ export function TemplateFormDialog({
   const submitWith = async (cascade: boolean) => {
     if (!isValid || isSubmitting) return;
 
+    // Filtered against the live drift bucket, not the raw checkbox set: a
+    // refetch can drop a row out of buckets.drifted (deleted, newly locked,
+    // crossed into the past) without pruning selectedDriftIds to match. The
+    // RPC re-validates every opted-in id server-side regardless — this is
+    // about the client not promising promisedCount for one set of ids while
+    // sending a different set.
+    const driftedShiftIds = cascade
+      ? [...selectedDriftIds].filter((id) => buckets?.drifted.some((d) => d.shiftId === id))
+      : [];
+
     setIsSubmitting(true);
     try {
       await onSubmit({
@@ -162,7 +153,7 @@ export function TemplateFormDialog({
         break_duration: breakDuration,
         capacity,
         cascade,
-        driftedShiftIds: cascade ? [...selectedDriftIds] : [],
+        driftedShiftIds,
         notify: cascade && notify,
         promisedCount: cascade ? affectedCount : 0,
       });

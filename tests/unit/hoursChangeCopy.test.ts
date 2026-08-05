@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildDeltaBadge,
   buildHoursChangeLedger,
+  buildSaveButtonLabel,
   deriveHoursChangeSeverity,
   describeCascadeShortfall,
   formatHoursDelta,
@@ -150,5 +151,50 @@ describe('describeCascadeShortfall', () => {
 
   it('says nothing in the (should-not-happen) case of more updated than promised', () => {
     expect(describeCascadeShortfall(2, 3)).toBeUndefined();
+  });
+});
+
+describe('buildSaveButtonLabel', () => {
+  it('shows the submitting label regardless of the other params', () => {
+    expect(buildSaveButtonLabel({
+      isSubmitting: true,
+      showCascadeChoice: true,
+      affectedCount: 3,
+      isEdit: true,
+    })).toBe('Saving...');
+  });
+
+  it('pluralizes the cascading label at the affectedCount 1 vs 2 boundary', () => {
+    expect(buildSaveButtonLabel({
+      isSubmitting: false,
+      showCascadeChoice: true,
+      affectedCount: 1,
+      isEdit: true,
+    })).toBe('Save & update 1 shift');
+
+    expect(buildSaveButtonLabel({
+      isSubmitting: false,
+      showCascadeChoice: true,
+      affectedCount: 2,
+      isEdit: true,
+    })).toBe('Save & update 2 shifts');
+  });
+
+  it('falls back to "Save changes" on an edit with no cascade on offer', () => {
+    expect(buildSaveButtonLabel({
+      isSubmitting: false,
+      showCascadeChoice: false,
+      affectedCount: 0,
+      isEdit: true,
+    })).toBe('Save changes');
+  });
+
+  it('falls back to "Add Template" in create mode', () => {
+    expect(buildSaveButtonLabel({
+      isSubmitting: false,
+      showCascadeChoice: false,
+      affectedCount: 0,
+      isEdit: false,
+    })).toBe('Add Template');
   });
 });

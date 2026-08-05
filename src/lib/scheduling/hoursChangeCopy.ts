@@ -113,6 +113,28 @@ export function describeCascadeShortfall(
   return `You expected ${promisedCount}, but only ${updatedCount} were still eligible when it saved.`;
 }
 
+/**
+ * Label for the dialog's primary save button. Lives here, not in the dialog
+ * component, because it is a pure copy builder over the same
+ * showCascadeChoice/affectedCount values the rest of this module turns into
+ * ledger copy, and every other pure copy builder for this feature is unit
+ * tested from this file.
+ */
+export function buildSaveButtonLabel(params: {
+  isSubmitting: boolean;
+  showCascadeChoice: boolean;
+  affectedCount: number;
+  isEdit: boolean;
+}): string {
+  const { isSubmitting, showCascadeChoice, affectedCount, isEdit } = params;
+  if (isSubmitting) return 'Saving...';
+  if (showCascadeChoice) {
+    return `Save & update ${affectedCount} ${pluralize(affectedCount, 'shift', 'shifts')}`;
+  }
+  if (isEdit) return 'Save changes';
+  return 'Add Template';
+}
+
 export function buildHoursChangeLedger(input: HoursChangeInput): HoursChangeLedger {
   const {
     oldStart, oldEnd, newStart, newEnd,

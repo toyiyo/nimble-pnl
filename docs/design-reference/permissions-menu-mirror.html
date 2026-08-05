@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Permissions, re-cut along the menu</title>
+<style>
+/* ───────────────────────────────────────────────────────────────
+   EasyShiftHQ · Role editor redesign
+   Chrome is editorial (Charter). The screen inside is faithful to
+   the app's Apple/Notion system, because it has to be buildable.
+   ─────────────────────────────────────────────────────────────── */
+:root{
+  --bg:#fbfbfa; --surface:#ffffff; --sunken:#f4f4f2;
+  --fg:#1c1c1a; --muted:#77776f; --faint:#a3a39a;
+  --line:#e5e4e0; --line-strong:#d2d1cb;
+  --accent:#1c1c1a; --accent-fg:#ffffff;
+  --amber:#b45309; --amber-bg:#fef3c7; --amber-line:#fde68a;
+  --new:#0f766e; --new-bg:#ccfbf1; --new-line:#99f6e4;
+  --shadow:0 1px 2px rgba(28,28,26,.05), 0 8px 24px -12px rgba(28,28,26,.14);
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --display:"Charter","Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#141413; --surface:#1c1c1a; --sunken:#232320;
+    --fg:#f0efe9; --muted:#9c9b92; --faint:#6e6d66;
+    --line:#2e2e2a; --line-strong:#3d3d38;
+    --accent:#f0efe9; --accent-fg:#141413;
+    --amber:#fbbf24; --amber-bg:#3a2c0c; --amber-line:#5c451a;
+    --new:#5eead4; --new-bg:#0d2f2b; --new-line:#155e56;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:var(--ui); font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:48px 24px 96px}
+
+/* ── Masthead ─────────────────────────────────────────────── */
+.masthead{border-bottom:1px solid var(--line-strong); padding-bottom:28px; margin-bottom:32px}
+.eyebrow{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--faint); margin:0 0 14px
+}
+h1{
+  font-family:var(--display); font-weight:600; font-size:clamp(30px,4.4vw,46px);
+  line-height:1.08; letter-spacing:-.015em; margin:0 0 14px; max-width:19ch;
+}
+h1 em{font-style:italic; color:var(--muted)}
+.dek{font-size:15.5px; color:var(--muted); max-width:60ch; margin:0}
+
+/* ── Evidence strip ───────────────────────────────────────── */
+.evidence{
+  display:grid; gap:1px; background:var(--line); border:1px solid var(--line);
+  border-radius:14px; overflow:hidden; margin:0 0 44px;
+  grid-template-columns:repeat(auto-fit,minmax(238px,1fr));
+}
+.ev{background:var(--surface); padding:18px 20px}
+.ev .n{
+  font-family:var(--mono); font-size:26px; letter-spacing:-.03em;
+  color:var(--fg); display:block; line-height:1; margin-bottom:9px
+}
+.ev .t{font-size:13px; font-weight:600; margin:0 0 4px}
+.ev .d{font-size:12.5px; color:var(--muted); margin:0}
+.ev code{font-family:var(--mono); font-size:11.5px; background:var(--sunken); padding:1px 4px; border-radius:4px}
+
+h2{
+  font-family:var(--display); font-size:24px; font-weight:600; letter-spacing:-.01em;
+  margin:0 0 6px
+}
+.sub{color:var(--muted); font-size:14px; margin:0 0 22px; max-width:64ch}
+section{margin-bottom:56px}
+
+/* ── The screen ───────────────────────────────────────────── */
+.screen{
+  display:grid; gap:20px; align-items:start;
+  grid-template-columns:minmax(0,1fr) 316px;
+}
+@media (max-width:900px){.screen{grid-template-columns:minmax(0,1fr)}}
+
+.card{
+  background:var(--surface); border:1px solid var(--line);
+  border-radius:14px; box-shadow:var(--shadow); overflow:hidden;
+}
+.identity{padding:20px}
+.idgrid{display:grid; gap:14px; grid-template-columns:1fr 1fr}
+@media (max-width:560px){.idgrid{grid-template-columns:1fr}}
+label.fld{
+  display:block; font-size:11.5px; font-weight:500; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.07em; margin-bottom:6px
+}
+input.fld{
+  width:100%; height:38px; padding:0 11px; font:inherit; font-size:14px;
+  color:var(--fg); background:var(--sunken); border:1px solid var(--line);
+  border-radius:9px; outline:none;
+}
+input.fld:focus{border-color:var(--line-strong)}
+
+/* ── Group header (the menu group) ────────────────────────── */
+.group + .group{border-top:1px solid var(--line)}
+.ghead{
+  display:flex; align-items:center; gap:12px;
+  padding:11px 18px; background:var(--sunken);
+  border-bottom:1px solid var(--line);
+}
+.gtoggle{
+  display:flex; align-items:center; gap:12px; flex:1; min-width:0;
+  background:transparent; border:0; padding:0; margin:0;
+  font:inherit; color:inherit; text-align:left; cursor:pointer;
+}
+.gtoggle:hover .gname{color:var(--fg)}
+.gtoggle:focus-visible{outline:2px solid var(--line-strong); outline-offset:3px; border-radius:5px}
+.chev{
+  width:13px; height:13px; flex:0 0 13px; color:var(--faint);
+  transition:transform .18s ease;
+}
+.group.open .chev{transform:rotate(90deg)}
+.gname{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muted); flex:1;
+}
+.gcount{
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.04em;
+  color:var(--faint); white-space:nowrap;
+}
+.gcount b{color:var(--fg); font-weight:600}
+.gbody{display:none}
+.group.open .gbody{display:block}
+
+/* ── Page row ─────────────────────────────────────────────── */
+.row{
+  display:flex; align-items:center; gap:14px; padding:11px 18px;
+  border-bottom:1px solid var(--line);
+}
+.row:last-child{border-bottom:0}
+.row.on{background:linear-gradient(90deg,rgba(28,28,26,.028),transparent 42%)}
+@media (prefers-color-scheme:dark){.row.on{background:linear-gradient(90deg,rgba(240,239,233,.045),transparent 42%)}}
+.ricon{
+  width:26px; height:26px; flex:0 0 26px; border-radius:7px;
+  background:var(--sunken); border:1px solid var(--line);
+  display:grid; place-items:center; color:var(--muted);
+}
+.row.on .ricon{background:var(--fg); border-color:var(--fg); color:var(--surface)}
+.ricon svg{width:13px; height:13px}
+.rmeta{min-width:0; flex:1}
+.rname{font-size:13.5px; font-weight:500; display:flex; align-items:center; gap:7px; flex-wrap:wrap}
+.rhint{font-size:12px; color:var(--muted); margin-top:1px}
+.rhint .lock{color:var(--amber)}
+.tag{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  padding:1.5px 5px; border-radius:5px; font-weight:600; white-space:nowrap;
+}
+.tag.new{background:var(--new-bg); color:var(--new); border:1px solid var(--new-line)}
+.tag.bundled{background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-line)}
+.path{font-family:var(--mono); font-size:11px; color:var(--faint)}
+
+/* ── Segmented control ────────────────────────────────────── */
+.seg{
+  position:relative; display:grid; grid-template-columns:repeat(3,1fr);
+  gap:2px; padding:2px; background:var(--sunken); border:1px solid var(--line);
+  border-radius:9px; width:222px; flex:0 0 222px;
+}
+.seg.sm{width:196px; flex:0 0 196px}
+@media (max-width:640px){
+  .row{flex-wrap:wrap}
+  .seg,.seg.sm{width:100%; flex:1 1 100%}
+}
+.seg button{
+  position:relative; z-index:1; border:0; background:transparent; font:inherit;
+  font-size:12px; font-weight:500; color:var(--muted); padding:5px 2px;
+  border-radius:7px; cursor:pointer; white-space:nowrap;
+  display:flex; align-items:center; justify-content:center; gap:3px;
+}
+.seg button:disabled{opacity:.42; cursor:not-allowed}
+.seg button[aria-checked="true"]{color:var(--fg)}
+.seg button[aria-checked="true"][data-v="2"]{color:var(--accent-fg)}
+.seg .thumb{
+  position:absolute; z-index:0; top:2px; bottom:2px; left:2px;
+  width:calc(33.333% - 1.33px); border-radius:7px;
+  background:var(--surface); border:1px solid var(--line-strong);
+  box-shadow:0 1px 2px rgba(0,0,0,.06);
+  transition:transform .17s cubic-bezier(.32,.72,0,1), background .17s ease;
+}
+.seg[data-level="1"] .thumb{transform:translateX(100%)}
+.seg[data-level="2"] .thumb{transform:translateX(200%); background:var(--accent); border-color:var(--accent)}
+.seg button svg{width:10px; height:10px}
+.seg.roll{opacity:.9}
+.seg.roll .thumb{border-style:dashed}
+.seg[data-mixed="1"] .thumb{opacity:0}
+.mixed{
+  font-family:var(--mono); font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--faint); position:absolute; inset:0; display:grid; place-items:center; z-index:2;
+  pointer-events:none;
+}
+.seg[data-mixed="1"] .mixed{display:grid}
+.seg .mixed{display:none}
+
+.legend{
+  display:flex; justify-content:space-between; align-items:baseline; gap:12px;
+  padding:9px 18px; border-bottom:1px solid var(--line); background:var(--surface);
+}
+.legend .l{font-family:var(--mono); font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--faint)}
+
+/* ── Preview column ───────────────────────────────────────── */
+.side{position:sticky; top:20px; display:grid; gap:14px}
+.pv{background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow); overflow:hidden}
+.pvhead{padding:13px 16px; border-bottom:1px solid var(--line)}
+.pvtitle{font-size:13px; font-weight:600; margin:0}
+.pvsub{font-size:12px; color:var(--muted); margin:2px 0 0}
+.pvbody{padding:10px 8px; max-height:452px; overflow-y:auto}
+.pvempty{padding:26px 16px; text-align:center; font-size:12.5px; color:var(--faint)}
+.pvgroup{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.13em; text-transform:uppercase;
+  color:var(--faint); padding:9px 10px 4px;
+}
+.pvitem{
+  display:flex; align-items:center; gap:9px; padding:5.5px 10px;
+  border-radius:8px; font-size:12.5px;
+}
+.pvitem:hover{background:var(--sunken)}
+.pvitem svg{width:13px; height:13px; color:var(--muted); flex:0 0 13px}
+.pvitem .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.dot{
+  width:5px; height:5px; border-radius:50%; background:var(--accent); flex:0 0 5px;
+}
+.dot.hidden{visibility:hidden}
+.pvfoot{
+  padding:10px 16px; border-top:1px solid var(--line); background:var(--sunken);
+  font-size:11.5px; color:var(--muted);
+}
+.pvfoot b{color:var(--fg)}
+
+.sent{
+  background:var(--surface); border:1px solid var(--line); border-radius:14px;
+  padding:14px 16px; font-size:13px; line-height:1.55; box-shadow:var(--shadow);
+}
+.sent .k{font-weight:600}
+.sent p{margin:0 0 8px}
+.sent p:last-child{margin:0}
+
+.actions{display:flex; justify-content:flex-end; gap:8px; padding:14px 18px; border-top:1px solid var(--line)}
+.btn{
+  height:34px; padding:0 15px; border-radius:9px; font:inherit; font-size:13px;
+  font-weight:500; border:1px solid var(--line); background:var(--surface);
+  color:var(--muted); cursor:pointer;
+}
+.btn.primary{background:var(--accent); color:var(--accent-fg); border-color:var(--accent)}
+
+/* ── Notes ────────────────────────────────────────────────── */
+.notes{
+  display:grid; gap:1px; background:var(--line); border:1px solid var(--line);
+  border-radius:14px; overflow:hidden; grid-template-columns:repeat(auto-fit,minmax(268px,1fr));
+}
+.note{background:var(--surface); padding:18px 20px}
+.note h3{
+  font-size:13px; font-weight:600; margin:0 0 7px; display:flex; align-items:center; gap:8px
+}
+.note p{font-size:12.5px; color:var(--muted); margin:0 0 8px; line-height:1.6}
+.note p:last-child{margin:0}
+.note code{font-family:var(--mono); font-size:11.5px; background:var(--sunken); padding:1px 4px; border-radius:4px}
+.pill{
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.06em; text-transform:uppercase;
+  padding:2px 6px; border-radius:5px; background:var(--sunken); color:var(--muted);
+  border:1px solid var(--line); font-weight:600;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">EasyShiftHQ · Team → Roles → Role editor</p>
+  <h1>Permissions, re-cut <em>along the menu</em></h1>
+  <p class="dek">
+    The editor's ten abstract "areas" become the sidebar itself: five groups, one row per page,
+    named and ordered exactly as the person granting access sees them every day. Toggle anything
+    below — the right column is the menu that role will actually get.
+  </p>
+</header>
+
+<div class="evidence">
+  <div class="ev">
+    <span class="n">9→1</span>
+    <p class="t">Accounting is one switch</p>
+    <p class="d">Invoices, Transactions, Banking, Expenses, Customers, Statements, Intelligence, Assets and Print Checks all ride on <code>books</code>.</p>
+  </div>
+  <div class="ev">
+    <span class="n">↑2</span>
+    <p class="t">Tip Pooling costs you two other pages</p>
+    <p class="d"><code>/tips</code> needs <code>scheduling: manage</code> — which also hands over schedule editing and time punches.</p>
+  </div>
+  <div class="ev">
+    <span class="n">≠</span>
+    <p class="t">Integrations is filed somewhere else</p>
+    <p class="d">Under <em>Main</em> in the menu; under <em>People&nbsp;&amp;&nbsp;admin → "Settings&nbsp;&amp;&nbsp;Integrations"</em> in the editor.</p>
+  </div>
+  <div class="ev">
+    <span class="n">5</span>
+    <p class="t">Pages with no permission at all</p>
+    <p class="d">Ops Inbox, Weekly Brief, Budget, Labor and Financial Account can't be granted to anyone.</p>
+  </div>
+</div>
+
+<section>
+  <h2>The redesigned editor</h2>
+  <p class="sub">
+    Group headers roll up; open one to tune individual pages. Every row carries the page's real
+    sidebar name, icon and path, so there is nothing to translate.
+  </p>
+
+  <div class="screen">
+    <div>
+      <div class="card identity" style="margin-bottom:16px">
+        <div class="idgrid">
+          <div>
+            <label class="fld" for="rn">Role name</label>
+            <input class="fld" id="rn" value="Bookkeeper" />
+          </div>
+          <div>
+            <label class="fld" for="rd">What this person does</label>
+            <input class="fld" id="rd" value="Invoices and expenses only" />
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="legend">
+          <span class="l">Access by page</span>
+          <span class="l">No access · View · Manage</span>
+        </div>
+        <div id="groups"></div>
+        <div class="actions">
+          <button class="btn">Cancel</button>
+          <button class="btn primary">Save role</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="side">
+      <div class="pv">
+        <div class="pvhead">
+          <p class="pvtitle">What <span id="pvname">Bookkeeper</span> sees</p>
+          <p class="pvsub">Their sidebar, exactly.</p>
+        </div>
+        <div class="pvbody" id="preview"></div>
+        <div class="pvfoot" id="pvfoot"></div>
+      </div>
+      <div class="sent" id="sentence"></div>
+    </aside>
+  </div>
+</section>
+
+<section>
+  <h2>What it takes to build</h2>
+  <p class="sub">Three of these are UI. One is a migration, and it's the one that buys the control you're missing.</p>
+  <div class="notes">
+    <div class="note">
+      <h3><span class="pill">DB</span> One area per page</h3>
+      <p><code>area_catalog</code> grows from 14 keys to one per gateable page, and its <code>ui_group</code>/<code>sort_order</code> columns are re-seeded from <code>navigationGroups</code> instead of the three bands.</p>
+      <p>Existing roles migrate mechanically: a role holding <code>books: view</code> gets view on all nine pages that <code>books</code> covered — nobody gains or loses access on deploy day.</p>
+    </div>
+    <div class="note">
+      <h3><span class="pill">UI</span> The menu is the schema</h3>
+      <p><code>AREA_DEFINITIONS</code> stops being a hand-kept list and is derived from <code>navigationGroups</code>, so a new page added to the sidebar shows up in the editor automatically instead of silently becoming ungrantable.</p>
+      <p>That's what closes the five-page hole — and stops it reopening.</p>
+    </div>
+    <div class="note">
+      <h3><span class="pill">UI</span> Roll-up, then refine</h3>
+      <p>33 rows is a wall, so groups collapse to a single control and a <code>4/6</code> summary. Hitting <em>Manage</em> on a group header sets every page under it; touching one page turns the header <code>MIXED</code>.</p>
+      <p>Granting a whole area stays one click — you just get to go deeper when you need to.</p>
+    </div>
+    <div class="note">
+      <h3><span class="pill">Guard</span> Caps survive the re-cut</h3>
+      <p>Per-page caps replace per-area ones: read-only surfaces lock <em>Manage</em>, and <code>/team</code> stays ungrantable to any collaborator role — the privilege-escalation guard <code>role_areas_enforce_collaborator_cap</code> already enforces in SQL.</p>
+      <p>Pages that genuinely move money (<code>/print-checks</code>) keep their own note on the row.</p>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+/* ── Icons (lucide paths, trimmed) ─────────────────────────── */
+const I = {
+  home:'M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z',
+  plug:'M9 2v6M15 2v6M6 8h12v3a6 6 0 0 1-12 0zM12 17v5',
+  cart:'M2 3h2.5l2 12h11M8 20a1 1 0 1 0 2 0 1 1 0 1 0-2 0M16 20a1 1 0 1 0 2 0 1 1 0 1 0-2 0M6.5 7H21l-1.7 6H7.6',
+  inbox:'M3 12h5l1.5 3h5L16 12h5M5 4h14l2 8v7a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-7z',
+  star:'m12 3 2.9 5.9 6.5.9-4.7 4.6 1.1 6.5L12 17.8 6.2 20.9l1.1-6.5L2.6 9.8l6.5-.9z',
+  news:'M4 5h13v14H4zM17 9h3v9a1 1 0 0 1-3 0zM7 8h7M7 12h7M7 16h5',
+  cal:'M7 2v4M17 2v4M3 9h18M4 5h16v16H4zM8 14h2M14 14h2',
+  clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l3 2',
+  coins:'M9 6a5 3 0 1 0 10 0 5 3 0 1 0-10 0M19 6v5c0 1.7-2.2 3-5 3M5 12a5 3 0 1 0 10 0 5 3 0 1 0-10 0M5 12v6c0 1.7 2.2 3 5 3s5-1.3 5-3v-6',
+  wallet:'M3 7a2 2 0 0 1 2-2h13v4M3 7v10a2 2 0 0 0 2 2h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5a2 2 0 0 1-2-2M17 12h.01',
+  bank:'M3 21h18M4 10h16M5 10V6l7-3 7 3v4M7 10v8M12 10v8M17 10v8',
+  chef:'M7 20h10M6.5 16h11a4.5 4.5 0 0 0 .5-9 4 4 0 0 0-7-2.5A4 4 0 0 0 6 7a4.5 4.5 0 0 0 .5 9z',
+  utensils:'M4 3v7a2 2 0 0 0 4 0V3M6 10v11M17 3c-1.5 2-2 4-2 6s.5 3 2 3 2-1 2-3-.5-4-2-6M17 12v9',
+  pkg:'m12 3 8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9',
+  check:'M9 11l2 2 4-4M5 4h14v16l-7-3-7 3z',
+  bag:'M6 8h12l1 12H5zM9 8V6a3 3 0 0 1 6 0v2',
+  file:'M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7zM14 3v4h4M9 13h6M9 17h4',
+  target:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2',
+  users:'M8 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7M2 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5M16 4.5a3.5 3.5 0 0 1 0 7M18 20c0-2.4-1-4.2-2.5-5.2',
+  card:'M3 6h18v12H3zM3 10h18M6.5 14.5h3',
+  dollar:'M12 2v20M16.5 6.5C15.5 5.2 14 4.5 12 4.5c-2.5 0-4 1.3-4 3.2 0 4.6 8.5 2.4 8.5 7 0 2-1.7 3.3-4.5 3.3-2.2 0-3.8-.8-4.8-2.2',
+  printer:'M6 9V3h12v6M6 18H5a2 2 0 0 1-2-2v-5h18v5a2 2 0 0 1-2 2h-1M6 14h12v7H6z',
+  bld:'M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17M15 9h4a1 1 0 0 1 1 1v11M8 7h3M8 11h3M8 15h3',
+  trend:'M3 17l6-6 4 4 8-8M15 7h6v6',
+  receipt:'M5 3h14v18l-2.5-1.5L14 21l-2-1.5L10 21l-2.5-1.5L5 21zM9 8h6M9 12h6M9 16h3',
+  set:'M12 8.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7M19.5 12a7.5 7.5 0 0 0-.1-1.2l2-1.5-2-3.4-2.3 1a7.5 7.5 0 0 0-2-1.2l-.3-2.5h-4l-.3 2.5a7.5 7.5 0 0 0-2 1.2l-2.3-1-2 3.4 2 1.5a7.5 7.5 0 0 0 0 2.4l-2 1.5 2 3.4 2.3-1a7.5 7.5 0 0 0 2 1.2l.3 2.5h4l.3-2.5a7.5 7.5 0 0 0 2-1.2l2.3 1 2-3.4-2-1.5c.07-.4.1-.8.1-1.2z',
+  life:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M5.6 5.6l3.2 3.2M15.2 15.2l3.2 3.2M18.4 5.6l-3.2 3.2M8.8 15.2l-3.2 3.2',
+  banknote:'M3 6h18v12H3zM12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6M6.5 9.5h.01M17.5 14.5h.01',
+};
+const svg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="${I[k]||I.file}"/></svg>`;
+const lockSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 10V7a5 5 0 0 1 10 0v3M5 10h14v11H5z"/></svg>';
+
+/* ── The model: the sidebar, with a cap and a manage-meaning per page ──
+   max: 1 = view only (nothing there is editable), 2 = view or manage, 0 = ungrantable
+   was: what controls this page today. null = nothing does.            */
+const GROUPS = [
+ {label:'Main', items:[
+  {p:'/',            l:'Dashboard',   i:'home',   max:1, hint:'Daily numbers, prime cost, P&L snapshot', was:'Dashboard & Reports'},
+  {p:'/integrations',l:'Integrations',i:'plug',   max:2, hint:'POS, bank and payroll connections', was:'Settings & Integrations', moved:1, mh:'connect and disconnect systems'},
+  {p:'/pos-sales',   l:'POS Sales',   i:'cart',   max:1, hint:'Ticket-level sales from your POS', was:'Sales'},
+  {p:'/ops-inbox',   l:'Ops Inbox',   i:'inbox',  max:2, hint:'Exceptions and things needing a decision', was:null, mh:'resolve and dismiss items'},
+  {p:'/reviews',     l:'Reviews',     i:'star',   max:2, hint:'Review pages, QR codes, guest feedback', was:'Reviews', mh:'edit QR pages and reply'},
+  {p:'/weekly-brief',l:'Weekly Brief',i:'news',   max:1, hint:'The weekly summary and its archive', was:null},
+ ]},
+ {label:'Operations', items:[
+  {p:'/scheduling',  l:'Scheduling',  i:'cal',    max:2, hint:'Shifts, templates, open-shift broadcasts', was:'Scheduling', mh:'publish and edit schedules'},
+  {p:'/time-punches',l:'Time Clock',  i:'clock',  max:2, hint:'Punches, edits, missed-punch fixes', was:'Scheduling · manage', bundled:1, mh:'edit punches'},
+  {p:'/tips',        l:'Tip Pooling', i:'coins',  max:2, hint:'Pools, rules and distribution', was:'Scheduling · manage', bundled:1, mh:'run and adjust distributions'},
+  {p:'/payroll',     l:'Payroll',     i:'wallet', max:2, hint:'Pay runs and payroll history', was:'Payroll', mh:'run payroll', mlock:'Owners and Managers only.'},
+  {p:'/labor',       l:'Labor',       i:'banknote',max:1,hint:'Labor cost against sales', was:null},
+ ]},
+ {label:'Inventory', items:[
+  {p:'/recipes',        l:'Recipes',        i:'chef',    max:2, hint:'Recipe cards and plate cost', was:'Recipes', mh:'create and edit recipes'},
+  {p:'/prep-recipes',   l:'Prep Recipes',   i:'utensils',max:2, hint:'Prep items and production batches', was:'Recipes', bundled:1, mh:'edit prep items and batches'},
+  {p:'/inventory',      l:'Inventory',      i:'pkg',     max:2, hint:'Counts, stock levels, unit costs', was:'Inventory & Purchasing', mh:'adjust counts and costs'},
+  {p:'/inventory-audit',l:'Audit',          i:'check',   max:2, hint:'Count sessions and variance', was:'Inventory · manage', bundled:1, mh:'run and close audits'},
+  {p:'/purchase-orders',l:'Purchase Orders',i:'bag',     max:2, hint:'POs, receiving, supplier invoices', was:'Inventory & Purchasing', bundled:1, mh:'raise and receive POs'},
+  {p:'/reports',        l:'Reports',        i:'file',    max:1, hint:'Saved reports and P&L trends', was:'Dashboard & Reports', moved:1},
+ ]},
+ {label:'Accounting', items:[
+  {p:'/budget',                l:'Budget & Run Rate',      i:'target', max:2, hint:'Targets and burn against plan', was:null, mh:'set targets'},
+  {p:'/customers',             l:'Customers',              i:'users',  max:2, hint:'Customer records and balances', was:'Money & Books', bundled:1, mh:'add and edit customers'},
+  {p:'/invoices',              l:'Invoices',               i:'file',   max:2, hint:'Draft, send and track invoices', was:'Money & Books', bundled:1, mh:'create, send and void invoices'},
+  {p:'/stripe-account',        l:'Financial Account',      i:'card',   max:2, hint:'Balance, payouts and transfers', was:null, mh:'move funds', mlock:'Owners only.'},
+  {p:'/banking',               l:'Banks',                  i:'bank',   max:2, hint:'Connected accounts and feeds', was:'Money & Books', bundled:1, mh:'connect and reconcile'},
+  {p:'/expenses',              l:'Expenses',               i:'dollar', max:2, hint:'Bills, receipts and categories', was:'Money & Books', bundled:1, mh:'record and categorise'},
+  {p:'/print-checks',          l:'Print Checks',           i:'printer',max:2, hint:'Issue and print checks', was:'Money & Books · manage', bundled:1, mh:'issue checks — this moves money'},
+  {p:'/assets',                l:'Assets & Equipment',     i:'bld',    max:2, hint:'Fixed assets and depreciation', was:'Money & Books', bundled:1, mh:'add and depreciate assets'},
+  {p:'/financial-intelligence',l:'Financial Intelligence', i:'trend',  max:1, hint:'AI analysis over your books', was:'Money & Books', bundled:1},
+  {p:'/transactions',          l:'Transactions',           i:'receipt',max:2, hint:'The ledger and categorisation', was:'Money & Books', bundled:1, mh:'edit and recategorise'},
+  {p:'/chart-of-accounts',     l:'Chart of Accounts',      i:'file',   max:2, hint:'Account tree and mappings', was:'Money & Books', mh:'add and rename accounts'},
+  {p:'/financial-statements',  l:'Statements',             i:'file',   max:1, hint:'P&L, balance sheet, cash flow', was:'Money & Books', bundled:1},
+ ]},
+ {label:'Admin', items:[
+  {p:'/employees',l:'Employees',   i:'users', max:2, hint:'Roster, jobs, wage assignments', was:'Employees', mh:'hire, edit and terminate'},
+  {p:'/team',     l:'Team',        i:'users', max:0, hint:'Invite people, assign roles, edit roles', was:'Team & Access', lock:'Owners and Managers only — a collaborator can never grant access.'},
+  {p:'/settings', l:'Settings',    i:'set',   max:2, hint:'Restaurant profile, hours, timezone', was:'Settings & Integrations', mh:'change settings', mlock:'Owners and Managers only.'},
+  {p:'/help',     l:'Help Center', i:'life',  max:1, hint:'Always available to everyone', was:'Always on', always:1},
+ ]},
+];
+
+/* Start on the state that motivated this: a bookkeeper who should see
+   invoices and expenses and nothing else — impossible today. */
+const state = {};
+GROUPS.forEach(g => g.items.forEach(it => {
+  state[it.p] = it.always ? 1 : 0;
+}));
+state['/invoices'] = 2; state['/expenses'] = 2; state['/customers'] = 1;
+
+const LEVELS = ['No access','View','Manage'];
+
+function segHTML(id, level, {max, mixed, roll, label}={}){
+  const b = (v,text,dis,lock) =>
+    `<button type="button" role="radio" data-v="${v}" aria-checked="${!mixed && level===v}" ${dis?'disabled aria-disabled="true"':''}
+      aria-label="${text}">${lock?lockSvg:''}${text}</button>`;
+  return `<div class="seg ${roll?'roll':''} ${roll?'':'sm'}" data-level="${level}" data-mixed="${mixed?1:0}" data-id="${id}"
+      role="radiogroup" aria-label="${label} access">
+    <span class="thumb"></span><span class="mixed">Mixed</span>
+    ${b(0,'No access',false,false)}
+    ${b(1,'View', max===0, max===0)}
+    ${b(2,'Manage', max<2, max<2)}
+  </div>`;
+}
+
+function groupLevel(g){
+  const vals = g.items.filter(i=>!i.always).map(i=>state[i.p]);
+  return vals.every(v=>v===vals[0]) ? vals[0] : -1;
+}
+
+function render(){
+  document.getElementById('groups').innerHTML = GROUPS.map((g,gi)=>{
+    const gl = groupLevel(g);
+    const on = g.items.filter(i=>state[i.p]>0).length;
+    const open = g.open ?? (gi===3);
+    return `<div class="group ${open?'open':''}" data-g="${gi}">
+      <div class="ghead">
+        <button class="gtoggle" data-toggle="${gi}" aria-expanded="${open}" aria-controls="gb${gi}">
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></svg>
+          <span class="gname">${g.label}</span>
+          <span class="gcount"><b>${on}</b>/${g.items.length} pages</span>
+        </button>
+        ${segHTML('g'+gi, gl<0?0:gl, {max:2, mixed:gl<0, roll:true, label:g.label+' — all pages'})}
+      </div>
+      <div class="gbody" id="gb${gi}">${g.items.map(it=>{
+        const lv = state[it.p];
+        const tags = [
+          it.was===null ? '<span class="tag new">no permission today</span>' : '',
+          it.bundled ? `<span class="tag bundled">bundled into “${it.was.split(' · ')[0]}”</span>` : '',
+        ].join('');
+        const note = it.lock ? `<span class="lock"> · ${it.lock}</span>`
+                   : (it.mlock && lv<2 ? `<span class="lock"> · ${it.mlock}</span>` : '');
+        const mh = (lv===2 && it.mh) ? ` · <b style="font-weight:500;color:var(--fg)">Manage: ${it.mh}</b>` : '';
+        return `<div class="row ${lv>0?'on':''}">
+          <span class="ricon">${svg(it.i)}</span>
+          <span class="rmeta">
+            <span class="rname">${it.l} <span class="path">${it.p}</span> ${tags}</span>
+            <span class="rhint">${it.hint}${mh}${note}</span>
+          </span>
+          ${it.always
+            ? '<span class="path" style="flex:0 0 196px;text-align:center">always on</span>'
+            : segHTML(it.p, lv, {max:it.max, label:it.l})}
+        </div>`;
+      }).join('')}</div>
+    </div>`;
+  }).join('');
+  renderPreview();
+}
+
+function renderPreview(){
+  const name = document.getElementById('rn').value.trim() || 'This role';
+  document.getElementById('pvname').textContent = name;
+  let html = '', pages = 0, manages = 0;
+  GROUPS.forEach(g=>{
+    const vis = g.items.filter(i=>state[i.p]>0);
+    if(!vis.length) return;
+    html += `<div class="pvgroup">${g.label==='Admin'&&vis.every(v=>v.p==='/settings'||v.p==='/help')?'Settings':g.label}</div>`;
+    vis.forEach(i=>{
+      pages++; if(state[i.p]===2) manages++;
+      html += `<div class="pvitem">${svg(i.i)}<span class="nm">${i.l}</span>
+        <span class="dot ${state[i.p]===2?'':'hidden'}" title="Can change things here"></span></div>`;
+    });
+  });
+  document.getElementById('preview').innerHTML = html ||
+    '<div class="pvempty">No pages granted yet.<br>This role would sign in and see nothing.</div>';
+
+  const landing = (()=>{ for(const g of GROUPS) for(const i of g.items) if(state[i.p]>0 && i.p!=='/help') return i.l; return null; })();
+  document.getElementById('pvfoot').innerHTML =
+    `<b>${pages}</b> page${pages===1?'':'s'} · <b>${manages}</b> they can change` +
+    (landing ? ` · opens on <b>${landing}</b>` : '');
+
+  const canSee = [], canDo = [];
+  GROUPS.forEach(g=>g.items.forEach(i=>{
+    if(i.always) return;
+    if(state[i.p]===2) canDo.push(i.l); else if(state[i.p]===1) canSee.push(i.l);
+  }));
+  const list = a => a.length>3 ? a.slice(0,3).join(', ')+` and ${a.length-3} more` : a.join(' and ');
+  document.getElementById('sentence').innerHTML =
+    `<p><span class="k">${name}</span> ${canDo.length?`can change <span class="k">${list(canDo)}</span>`:'can change nothing'}${canSee.length?`, and can look at <span class="k">${list(canSee)}</span>`:''}.</p>` +
+    `<p style="color:var(--muted)">Everything else is hidden — not greyed out, not there.</p>`;
+}
+
+document.getElementById('groups').addEventListener('click', e=>{
+  const btn = e.target.closest('.seg button');
+  if(btn){
+    e.stopPropagation();
+    const seg = btn.closest('.seg'), id = seg.dataset.id, v = +btn.dataset.v;
+    if(btn.disabled) return;
+    if(id.startsWith('g')){
+      const g = GROUPS[+id.slice(1)];
+      g.items.forEach(i=>{ if(!i.always) state[i.p] = Math.min(v, i.max); });
+      g.open = true;
+    } else state[id] = v;
+    render();
+    return;
+  }
+  const head = e.target.closest('[data-toggle]');
+  if(head){ const g = GROUPS[+head.dataset.toggle]; g.open = !(g.open ?? (+head.dataset.toggle===3)); render(); }
+});
+document.getElementById('rn').addEventListener('input', renderPreview);
+
+render();
+</script>
+</body>
+</html>

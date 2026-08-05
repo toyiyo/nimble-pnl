@@ -799,7 +799,35 @@ describe('useShiftTemplates', () => {
         await result.current.updateTemplate({ id: 't1', name: 'Morning' });
       });
 
-      expect(toastSpy).toHaveBeenCalledWith({ title: 'Template updated' });
+      expect(toastSpy).toHaveBeenCalledWith({ title: 'Template updated', description: undefined });
+    });
+
+    it('still explains the shortfall when a cascading save promised shifts but moved none', async () => {
+      vi.mocked(supabase.rpc).mockResolvedValue({
+        data: { batch_id: null, updated_count: 0, published_shifts: [], skipped_count: 3 },
+        error: null,
+      } as any);
+
+      const { result } = renderHook(() => useShiftTemplates('r1'), { wrapper });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+
+      await act(async () => {
+        await result.current.updateTemplate({
+          id: 't1',
+          name: 'Morning',
+          cascade: true,
+          promisedCount: 3,
+        });
+      });
+
+      // A bare "Template updated" after clicking "Save & update 3 shifts"
+      // reads as if the shifts moved. No Undo — there is no batch to undo.
+      const call = toastSpy.mock.calls.at(-1)![0];
+      expect(call.title).toBe('Template updated');
+      expect(call.description).toBe(
+        'You expected 3, but none were still eligible when it saved.'
+      );
+      expect(call.action).toBeUndefined();
     });
 
     it('shows the moved-shifts toast with an Undo action when the cascade updates shifts', async () => {

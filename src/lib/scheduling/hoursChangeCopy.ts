@@ -110,7 +110,11 @@ export function describeCascadeShortfall(
   updatedCount: number,
 ): string | undefined {
   if (promisedCount <= updatedCount) return undefined;
-  return `You expected ${promisedCount}, but only ${updatedCount} were still eligible when it saved.`;
+  // "only 0 were still eligible" is the one phrasing this sentence has to get
+  // right — a cascade that moved nothing is exactly when the manager most
+  // needs it, and that is the case where counting reads worst.
+  const survivors = updatedCount === 0 ? 'none were' : `only ${updatedCount} were`;
+  return `You expected ${promisedCount}, but ${survivors} still eligible when it saved.`;
 }
 
 /**

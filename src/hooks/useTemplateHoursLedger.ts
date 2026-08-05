@@ -45,8 +45,11 @@ export function useTemplateHoursLedger(
   endTime: string,
   restaurantTimezone: string,
   selectedDriftIds: Set<string>,
+  isOpen: boolean = true,
 ): UseTemplateHoursLedgerResult {
-  const impact = useTemplateLinkedShifts(restaurantId, template?.id ?? null);
+  // `isOpen` only gates fetching — see useTemplateLinkedShifts for why the
+  // dialog's open state has to reach the query at all.
+  const impact = useTemplateLinkedShifts(restaurantId, template?.id ?? null, isOpen);
 
   // Debounce the DERIVED state, never the controlled input — the field itself
   // must stay instant or it feels broken. <input type="time"> fires change per

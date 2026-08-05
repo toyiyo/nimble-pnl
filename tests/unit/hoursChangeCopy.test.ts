@@ -141,6 +141,12 @@ describe('describeCascadeShortfall', () => {
     );
   });
 
+  it('says "none were" rather than "only 0 were" when the cascade moved nothing', () => {
+    expect(describeCascadeShortfall(3, 0)).toBe(
+      'You expected 3, but none were still eligible when it saved.'
+    );
+  });
+
   it('says nothing when the counts match', () => {
     expect(describeCascadeShortfall(3, 3)).toBeUndefined();
   });

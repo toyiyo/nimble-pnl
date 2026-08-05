@@ -103,7 +103,11 @@ export function TemplateFormDialog({
     );
   };
 
-  const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0 && startTime !== endTime;
+  // A cleared <input type="time"> reads back as '', which is unequal to any
+  // other time and so used to sail past the start/end check and reach the RPC
+  // as an uncastable empty string.
+  const isValid = name.trim().length > 0 && position.trim().length > 0 && days.length > 0
+    && startTime.length > 0 && endTime.length > 0 && startTime !== endTime;
 
   const [selectedDriftIds, setSelectedDriftIds] = useState<Set<string>>(new Set());
   const [notify, setNotify] = useState(true);
@@ -118,7 +122,7 @@ export function TemplateFormDialog({
     publishedCount,
     hoursChanged,
     showCascadeChoice,
-  } = useTemplateHoursLedger(restaurantId, template, startTime, endTime, restaurantTimezone, selectedDriftIds);
+  } = useTemplateHoursLedger(restaurantId, template, startTime, endTime, restaurantTimezone, selectedDriftIds, open);
 
   const toggleDrift = useCallback((shiftId: string) => {
     setSelectedDriftIds((prev) => {

@@ -278,7 +278,15 @@ export function useShiftTemplates(
       }
 
       if (result.updated_count === 0 || !result.batch_id) {
-        toast({ title: 'Template updated' });
+        // A cascading save that moved nothing still owes an explanation:
+        // clicking "Save & update 3 shifts" and getting a bare "Template
+        // updated" reads as if the shifts moved. No Undo action here — with
+        // no batch id there is nothing to undo. `promisedCount` is 0 for a
+        // template-only save, so the sentence stays absent for it.
+        toast({
+          title: 'Template updated',
+          description: describeCascadeShortfall(result.promisedCount, result.updated_count),
+        });
         return;
       }
 

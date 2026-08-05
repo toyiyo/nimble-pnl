@@ -155,13 +155,16 @@ the load effect, and resets the state to `loading` so the skeleton shows while
 it retries. No page reload — a reload would be a heavier hammer and would lose
 nothing but also gain nothing.
 
-**Retry mechanics.** The button disables itself for the duration of the in-flight
-attempt. The existing `cancelled` flag (`src/pages/ReviewPage.tsx:70`, `:75`,
-`:83-85`) already makes a double-fire harmless at the data layer, but a button
-that still looks pressable while a fetch is running is a UI gap on exactly the
-flaky mobile connections this page is built for. A fast repeat failure would
-otherwise flash skeleton → error → skeleton → error; the disabled state removes
-the ability to drive that flicker, so no artificial minimum skeleton duration is
+**Retry mechanics.** No `disabled` prop is needed, because the button is not on
+screen during the retry: the click resets the state to `loading`, which swaps the
+whole card for the skeleton and unmounts the button with it. A second tap has
+nothing to hit. That is stronger than disabling it, and it is why the escalated
+copy — not a spinner on the button — is what tells a guest the retry ran. The
+existing `cancelled` flag (`src/pages/ReviewPage.tsx:70`, `:75`, `:83-85`) covers
+the in-flight response of a superseded attempt at the data layer.
+
+A fast repeat failure therefore reads as error → skeleton → error rather than a
+flicker the guest can drive, so no artificial minimum skeleton duration is
 needed.
 
 **Accessibility.** The load effect currently announces nothing: the `aria-live`
@@ -242,7 +245,6 @@ cases, no auth needed:
 2. Function returns `{inactive: true}` → the paused screen still renders. This
    is the regression guard for the half of the behaviour that must not change.
 3. Function returns a malformed 200 → the error screen renders.
-4. Function returns 500 twice → the second render carries the escalated copy,
-   and the retry button is disabled while the retry is in flight.
+4. Function returns 500 twice → the second render carries the escalated copy.
 
 Case 1 is the outage, reproduced: it fails on `main` and passes after the fix.

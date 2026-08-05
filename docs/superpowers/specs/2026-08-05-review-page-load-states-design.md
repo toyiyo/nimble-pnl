@@ -44,22 +44,36 @@ Three shapes, and the client currently distinguishes only one of them:
 | Missing config, DB error, bad request | 4xx/5xx `{ error: <generic string> }` (`index.ts:24-25`) |
 
 Merging unknown-slug with paused is deliberate at the function — it stops a
-public endpoint from confirming which slugs exist (`index.ts:128`, the comment
+public endpoint from confirming which slugs exist (`index.ts:129`, the comment
 above the branch says so). That merge is correct and stays. The merge this
 design undoes is the client-side one, between *the function answered* and *the
 function did not*.
 
+Splitting error from inactive on the client leaks nothing the function hides:
+an unknown slug and a paused page both stay on the 200 `{inactive: true}` path
+(`index.ts:129-134`), and the new `error` classification is reachable only via a
+4xx/5xx or an unreadable 200 — none of which vary with whether a slug exists.
+
 Two premises worth pinning, because the fix depends on them:
 
-- `supabase.functions.invoke()` **resolves** with `{ data, error }` on HTTP
-  failures and only rejects on transport failures. So a 500 arrives as a
-  resolved `error`, not a throw — which is why the current code catches it at
-  all, and why the fix belongs in the same branch rather than in a `try`.
-  (Confirmed for this codebase in `memory/lessons.md`, entry 2026-05-16.)
-- `restaurant_name` can legitimately be the empty string: the payload uses
-  `?? ''` when the restaurant join comes back null
-  (`supabase/functions/review-public/index.ts:141`). Any validation must accept
-  `''`, or a live page with an odd join renders as an error.
+- `supabase.functions.invoke()` **resolves** with `{ data, error }` in every
+  failure mode. A 500 arrives as a resolved `error`, not a throw — which is why
+  the current code catches it at all, and why the fix belongs in the same branch
+  rather than in a `try`. Under the pinned SDK (`@supabase/functions-js` 2.4.6,
+  via `@supabase/supabase-js@^2.57.4` at `package.json:89`) the whole `invoke()`
+  body — including the `fetch` rejection path — sits inside one `try/catch` that
+  returns `{ data: null, error }`, so transport failures resolve too. The entry
+  in `memory/lessons.md` 2026-05-16 says `invoke()` "only rejects on transport
+  failures"; that half is stale for this SDK version and should be corrected
+  there separately.
+- `restaurant_name` can be the empty string: the payload uses `?? ''` when the
+  restaurant join comes back null
+  (`supabase/functions/review-public/index.ts:141`). Under the current schema
+  that fallback is unreachable — `review_pages.restaurant_id` is `NOT NULL` with
+  `ON DELETE CASCADE` and `restaurants.name` is `NOT NULL` — so accepting `''`
+  is defensive, not a live scenario. It stays in the validator and in the test
+  table anyway: the cost is one line, and the failure it prevents is a live page
+  rendering as an error.
 
 ## The fix
 
@@ -122,22 +136,72 @@ The paused screen keeps its exact copy — it is correct, it is just no longer
 shown for failures. The new screen sits beside it, in the same card:
 
 > **Something went wrong**
-> That's on us, not you.
+> That's on us, not you. — *first failure*
+> Still not working. Give it a minute and try again. — *second and later*
 > [ Try again ]
+
+Two audiences hit this screen: a guest at a table, who needs to know the tap
+failed and it wasn't their fault, and the owner testing their own QR, who needs
+to know this is **not** a page-configuration problem. Naming the failure as ours
+serves both; the escalated line on repeat serves the owner during an outage like
+the one that prompted this, where the same static copy on the fourth attempt
+reads as a dead end. The register matches the page's existing voice
+(`src/pages/ReviewPage.tsx:244`, `:388`) — the file's other error strings are
+purely instructional (`:240`, `:362`), so this is a departure in shape, not in
+tone, and is worth a second look at UI review.
 
 Retry re-runs the fetch by bumping an `attempt` counter that is a dependency of
 the load effect, and resets the state to `loading` so the skeleton shows while
 it retries. No page reload — a reload would be a heavier hammer and would lose
 nothing but also gain nothing.
 
-The button carries visible text, so it needs no `aria-label`. The heading is the
-card's `<h1>`, matching the paused and land screens.
+**Retry mechanics.** The button disables itself for the duration of the in-flight
+attempt. The existing `cancelled` flag (`src/pages/ReviewPage.tsx:70`, `:75`,
+`:83-85`) already makes a double-fire harmless at the data layer, but a button
+that still looks pressable while a fetch is running is a UI gap on exactly the
+flaky mobile connections this page is built for. A fast repeat failure would
+otherwise flash skeleton → error → skeleton → error; the disabled state removes
+the ability to drive that flicker, so no artificial minimum skeleton duration is
+needed.
+
+**Accessibility.** The load effect currently announces nothing: the `aria-live`
+region at `src/pages/ReviewPage.tsx:216-218` lives inside the loaded state, and
+the focus effect at `:88-90` deliberately skips `'land'` and never runs for the
+early-return screens. A screen-reader guest who lands mid-fetch therefore hears
+nothing when the skeleton resolves, and hears nothing again after tapping *Try
+again*. This change fixes that for the screens it owns:
+
+- Each terminal load screen (ready, inactive, error) sets the existing
+  `announcement` state, so the polite region carries the outcome. The region
+  moves out of the loaded-state JSX to the outermost wrapper so it is mounted in
+  every state and a transition into it is actually announced.
+- The error screen's `<h1>` takes `tabIndex={-1}` and receives focus on entry,
+  the same idiom as `branchHeadingRef` at `:252-256`. Without it, focus lands on
+  `<body>` when the retry button unmounts and the guest is dropped to the top of
+  the document.
+- The card gets a `<main>` wrapper. `/r/:slug` is a standalone route outside the
+  authenticated layout's `<main>` (`src/App.tsx:112`, route at `:319-339`), so
+  this page has never had a landmark in any state. It is one element on a render
+  path this change is already rewriting.
+
+**Styling.** *Try again* is the sole path forward, so it takes the primary-CTA
+treatment already in the file (`src/pages/ReviewPage.tsx:366-373`:
+`h-11 w-full rounded-lg bg-primary text-[15px] font-medium text-primary-foreground`),
+not the ghost/underline idiom used for the opt-out at `:272-278`. Semantic tokens
+throughout; the card reuses the `card` class at `:162` and the
+`counter-display`/`counter-micro` typography. The button carries visible text, so
+it needs no `aria-label`.
 
 This is the same shape as the two error affordances already in the file, which
 both name the failure and leave the action in reach: `rateError` at
 `src/pages/ReviewPage.tsx:238-246` and `submitError` at
 `src/pages/ReviewPage.tsx:360-364`. The load path is the only one of the three
 that lacked it.
+
+No interaction with the star write guard: the error and loading screens are
+early returns that gate before any `stage`-based rendering, so a retry can only
+happen before a rating has been committed and `committedRef` (`:67`) is
+untouched.
 
 ## What is deliberately not in scope
 
@@ -150,6 +214,15 @@ that lacked it.
   bundling it here would make this diff two unrelated things.
 - **The `rate` and `comment` paths.** They already distinguish failure from
   outcome (`src/pages/ReviewPage.tsx:115`, `:155`) and are untouched.
+- **Offering the feedback form and contact capture to promoters too.** Raised
+  while this design was in review: today a 4★+ tap goes straight to the Google
+  hand-off (`src/pages/ReviewPage.tsx:125-128`) with no way to say anything or
+  leave contact details. That is a change to the funnel's branching and to the
+  `rate`/`comment` contract, not to load-state handling — its own cycle.
+- **Silent ratings being invisible in the inbox.** The inbox lists only rows
+  with a comment (`src/hooks/useReviewResponses.ts:67`), so a 5★ tap with no
+  written feedback appears in the header counters but never in the list. Also
+  raised in review, also a separate surface.
 
 ## Testing
 
@@ -169,5 +242,7 @@ cases, no auth needed:
 2. Function returns `{inactive: true}` → the paused screen still renders. This
    is the regression guard for the half of the behaviour that must not change.
 3. Function returns a malformed 200 → the error screen renders.
+4. Function returns 500 twice → the second render carries the escalated copy,
+   and the retry button is disabled while the retry is in flight.
 
 Case 1 is the outage, reproduced: it fails on `main` and passes after the fix.

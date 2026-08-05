@@ -31,7 +31,7 @@
 
 | File | Responsibility |
 |------|----------------|
-| `supabase/migrations/20260803120000_template_hours_cascade.sql` | `cascade_batch_id` column + partial index, `update_shift_template_with_cascade`, `undo_template_hours_cascade` |
+| `supabase/migrations/20260804100000_template_hours_cascade.sql` | `cascade_batch_id` column + partial index, `update_shift_template_with_cascade`, `undo_template_hours_cascade` |
 | `supabase/tests/template_hours_cascade.test.sql` | pgTAP for both RPCs — the authoritative layer |
 | `src/lib/scheduling/templateHoursBuckets.ts` | `bucketTemplateShifts` — pure bucketing + hours delta, owns all client-side timezone reasoning |
 | `src/lib/scheduling/hoursChangeCopy.ts` | `buildHoursChangeLedger` — pure copy/severity, reuses `deletionCopy.ts` types |
@@ -55,7 +55,7 @@
 ### Task 1: The cascade RPC (migration + pgTAP)
 
 **Files:**
-- Create: `supabase/migrations/20260803120000_template_hours_cascade.sql`
+- Create: `supabase/migrations/20260804100000_template_hours_cascade.sql`
 - Create: `supabase/tests/template_hours_cascade.test.sql`
 
 **Interfaces:**
@@ -87,7 +87,7 @@ Create `supabase/tests/template_hours_cascade.test.sql`:
 ```sql
 -- pgTAP for update_shift_template_with_cascade (Task 1) and
 -- undo_template_hours_cascade (Task 2), from
--- supabase/migrations/20260803120000_template_hours_cascade.sql.
+-- supabase/migrations/20260804100000_template_hours_cascade.sql.
 --
 -- What makes this suite non-vacuous:
 --   * The Tokyo block proves drift detection reads the RESTAURANT's wall clock.
@@ -519,7 +519,7 @@ Expected: FAIL — `template_hours_cascade.test.sql` errors with `function publi
 
 - [ ] **Step 4: Write the migration**
 
-Create `supabase/migrations/20260803120000_template_hours_cascade.sql`:
+Create `supabase/migrations/20260804100000_template_hours_cascade.sql`:
 
 ```sql
 -- Cascading shift-template hour changes to the shifts generated from them.
@@ -773,7 +773,7 @@ Expected: PASS — `template_hours_cascade.test.sql` reports 22/22 (`# Looks lik
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260803120000_template_hours_cascade.sql supabase/tests/template_hours_cascade.test.sql
+git add supabase/migrations/20260804100000_template_hours_cascade.sql supabase/tests/template_hours_cascade.test.sql
 git commit -m "feat(scheduling): cascade template hour changes to linked shifts via RPC"
 ```
 
@@ -782,7 +782,7 @@ git commit -m "feat(scheduling): cascade template hour changes to linked shifts 
 ### Task 2: The undo RPC
 
 **Files:**
-- Modify: `supabase/migrations/20260803120000_template_hours_cascade.sql` (append)
+- Modify: `supabase/migrations/20260804100000_template_hours_cascade.sql` (append)
 - Modify: `supabase/tests/template_hours_cascade.test.sql` (bump `plan(22)` → `plan(27)`, append a section before `SELECT * FROM finish();`)
 
 **Interfaces:**
@@ -877,7 +877,7 @@ Expected: FAIL with `function public.undo_template_hours_cascade(uuid, uuid) doe
 
 - [ ] **Step 3: Append the function to the migration**
 
-Append to `supabase/migrations/20260803120000_template_hours_cascade.sql`:
+Append to `supabase/migrations/20260804100000_template_hours_cascade.sql`:
 
 ```sql
 -- ---------------------------------------------------------------------------
@@ -1010,7 +1010,7 @@ Expected: the diff adds `cascade_batch_id` to `schedule_change_logs` and both ne
 - [ ] **Step 6: Commit**
 
 ```bash
-git add supabase/migrations/20260803120000_template_hours_cascade.sql supabase/tests/template_hours_cascade.test.sql src/integrations/supabase/types.ts
+git add supabase/migrations/20260804100000_template_hours_cascade.sql supabase/tests/template_hours_cascade.test.sql src/integrations/supabase/types.ts
 git commit -m "feat(scheduling): add undo_template_hours_cascade RPC"
 ```
 

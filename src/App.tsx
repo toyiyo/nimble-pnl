@@ -164,6 +164,12 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
   );
 }
 
+// Shared prefix-match helper: true if `path` equals or is nested under any
+// entry in `prefixes`. Used by both the collaborator work-view gate and the
+// staff allow-list gate below so the matching rule can't drift between them.
+const matchesAnyPrefix = (path: string, prefixes: string[]) =>
+  prefixes.some(prefix => path.startsWith(prefix));
+
 // Paths staff use for self-service (clock in/out, view their own schedule,
 // pay, tips, etc). Shared by the staff gate and the collaborator work-view
 // gate below — both grant access to the same nine /employee/* paths.
@@ -294,9 +300,7 @@ export function StaffRoleChecker({
     // same /employee/* self-service paths staff use, once eligibility has
     // resolved. Non-employee paths, and ineligible collaborators, fall
     // through to the existing allow-list/redirect logic below unchanged.
-    const isEmployeeSelfServicePath = EMPLOYEE_SELF_SERVICE_PATHS.some(
-      path => currentPath.startsWith(path)
-    );
+    const isEmployeeSelfServicePath = matchesAnyPrefix(currentPath, EMPLOYEE_SELF_SERVICE_PATHS);
     if (isEmployeeSelfServicePath) {
       if (!isWorkViewResolved) {
         return <RouteLoadingScreen />;
@@ -319,7 +323,7 @@ export function StaffRoleChecker({
 
   // Allowed paths for staff users (excludes kiosk - they have their own check above)
   const staffAllowedPaths = [...EMPLOYEE_SELF_SERVICE_PATHS, '/settings'];
-  const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
+  const isStaffAllowedPath = matchesAnyPrefix(currentPath, staffAllowedPaths);
 
   // If user is staff and trying to access restricted route
   if (isStaff && !allowStaff && !isStaffAllowedPath) {

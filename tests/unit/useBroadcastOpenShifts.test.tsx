@@ -60,6 +60,21 @@ describe('buildBroadcastToast', () => {
     );
   });
 
+  it('does not claim push was sent when no push went out either', () => {
+    // Push disabled for the restaurant, or every push failed: this is the case
+    // where nobody was reached at all, so claiming delivery is simply false.
+    const toast = buildBroadcastToast(
+      result({ email_sent: 0, email_failed: 12, push_sent: 0 }),
+    );
+
+    expect(toast.description).not.toContain('Push notifications were sent');
+    expect(toast).toEqual({
+      title: 'Broadcast reached no one',
+      description: 'All 12 emails failed to send, and no push notifications went out.',
+      variant: 'destructive',
+    });
+  });
+
   it('goes destructive when no email got through at all', () => {
     const toast = buildBroadcastToast(result({ email_sent: 0, email_failed: 12 }));
 

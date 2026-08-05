@@ -42,12 +42,21 @@ export function buildBroadcastToast(data: BroadcastResult): BroadcastToast {
   const recipients = data.email_recipients;
   const failed = data.email_failed ?? 0;
 
-  // Nothing was emailed at all. Push may still have landed, so this isn't an
-  // outright failure — but "Broadcast sent" on its own would read as delivery.
+  // Nothing was emailed at all. Whether that's a total wash depends on the other
+  // channel: push is off for some restaurants, and every push can fail on its
+  // own, so the copy has to check rather than assume delivery.
   if (failed > 0 && failed >= recipients) {
+    if (data.push_sent > 0) {
+      return {
+        title: 'Broadcast sent, but no emails went out',
+        description: `Push notifications were sent. All ${recipients} emails failed to send.`,
+        variant: 'destructive',
+      };
+    }
+
     return {
-      title: 'Broadcast sent, but no emails went out',
-      description: `Push notifications were sent. All ${recipients} emails failed to send.`,
+      title: 'Broadcast reached no one',
+      description: `All ${recipients} emails failed to send, and no push notifications went out.`,
       variant: 'destructive',
     };
   }

@@ -93,6 +93,10 @@ export function ReviewQrDialog({ open, onOpenChange, slug, publicUrl }: ReviewQr
               className="mx-auto h-48 w-48 [&>svg]:h-full [&>svg]:w-full"
               aria-label={`QR code linking to ${publicUrl}`}
               role="img"
+              // `svg` is the `qrcode` package's own SVG output (not user HTML): it
+              // encodes `publicUrl`, which is built from `slug` — restricted to
+              // SLUG_PATTERN's [a-z0-9-] charset (see reviewSlug.ts) — so there is
+              // no attacker-controlled markup reaching innerHTML here.
               dangerouslySetInnerHTML={{ __html: svg }}
             />
           ) : (

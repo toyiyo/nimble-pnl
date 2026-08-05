@@ -19,6 +19,8 @@ const FN_GLOB = '**/functions/v1/review-public';
 
 test.describe('public review page star control', () => {
   test('arrow keys preview, Enter commits exactly one rating', async ({ page }) => {
+    // Captured request bodies from the stubbed `review-public` route below —
+    // shaped by whatever the client sends, not a typed contract, hence `any`.
     const rateBodies: any[] = [];
 
     await page.route(FN_GLOB, async (route) => {

@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { QrCode, Upload } from 'lucide-react';
 
 import { useReviewPages, type ReviewPageWithStats } from '@/hooks/useReviewPages';
+import { useToast } from '@/hooks/use-toast';
 import { isValidSlug, slugifyPageName, withCollisionSuffix } from '@/lib/reviews/reviewSlug';
 
 import { ReviewQrDialog } from './ReviewQrDialog';
@@ -23,6 +24,7 @@ const THRESHOLDS = [1, 2, 3, 4, 5] as const;
 
 export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageBuilderProps) {
   const { createPage, updatePage, uploadLogo, isSaving } = useReviewPages(restaurantId);
+  const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const [name, setName] = useState('');
@@ -76,7 +78,17 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
 
   const handleLogo = async (file: File | undefined) => {
     if (!file || !page) return;
-    await uploadLogo(page.id, file);
+    try {
+      await uploadLogo(page.id, file);
+    } catch (error) {
+      toast({
+        title: 'Could not upload logo',
+        description: error instanceof Error ? error.message : 'Something went wrong.',
+        variant: 'destructive',
+      });
+    } finally {
+      if (fileRef.current) fileRef.current.value = '';
+    }
   };
 
   return (

@@ -11,6 +11,7 @@ import { useReviewPages, type ReviewPageWithStats } from '@/hooks/useReviewPages
 import { useReviewResponses, type ReviewResponse, type ReviewResponseStatus } from '@/hooks/useReviewResponses';
 import { ReviewPageBuilder } from '@/components/reviews/ReviewPageBuilder';
 import { ReviewFeedbackDetail } from '@/components/reviews/ReviewFeedbackDetail';
+import { StarDisplay } from '@/components/reviews/StarDisplay';
 import { formatRelativeTime } from '@/lib/reviews/relativeTime';
 
 type Tab = 'pages' | 'feedback';
@@ -194,10 +195,7 @@ function FeedbackRow({
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[14px] text-foreground" aria-label={`${response.rating} out of 5 stars`}>
-          {'★'.repeat(response.rating)}
-          <span className="text-muted-foreground/40">{'☆'.repeat(5 - response.rating)}</span>
-        </span>
+        <StarDisplay rating={response.rating} className="text-[14px] text-foreground" />
         <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
           {STATUS_LABELS[response.status]}
         </span>

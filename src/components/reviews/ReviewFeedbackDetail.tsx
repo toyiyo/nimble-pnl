@@ -12,6 +12,7 @@ import {
 import { ChevronLeft } from 'lucide-react';
 
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
+import { StarDisplay } from '@/components/reviews/StarDisplay';
 import type {
   ReviewResponse,
   ReviewResponseContact,
@@ -68,10 +69,7 @@ export function ReviewFeedbackDetail({
 
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-[20px] leading-none text-foreground" aria-label={`${response.rating} out of 5 stars`}>
-            {'★'.repeat(response.rating)}
-            <span className="text-muted-foreground/40">{'☆'.repeat(5 - response.rating)}</span>
-          </p>
+          <StarDisplay rating={response.rating} as="p" className="text-[20px] leading-none text-foreground" />
           <p className="mt-2 text-[12px] text-muted-foreground">
             {pageName} · {formatInstant(response.commented_at ?? response.submitted_at, 'MMM d, yyyy h:mm a')}{' '}
             {tzAbbrev}

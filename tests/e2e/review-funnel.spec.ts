@@ -22,6 +22,8 @@ test('owner creates a page, a guest comments, the owner resolves it', async ({ p
   const user = generateTestUser('reviews');
   await signUpAndCreateRestaurant(page, user);
 
+  // `__getRestaurantId` is a test-only hook the app exposes on `window`, not
+  // part of any typed global — hence the `any` cast.
   const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
   expect(restaurantId).toBeTruthy();
 

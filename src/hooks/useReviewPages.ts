@@ -49,6 +49,15 @@ function toastSaveError(toast: ToastFn, error: Error, fallbackTitle: string) {
   toast({ title: fallbackTitle, description: error.message, variant: 'destructive' });
 }
 
+/** Shared `UPDATE ... WHERE id = ... AND restaurant_id = ...` chain for review_pages. */
+function updateReviewPageRow(id: string, restaurantId: string, patch: Record<string, unknown>) {
+  return supabase
+    .from('review_pages' as any)
+    .update(patch)
+    .eq('id', id)
+    .eq('restaurant_id', restaurantId);
+}
+
 const MAX_SLUG_COLLISION_RETRIES = 5;
 
 /**
@@ -67,7 +76,10 @@ async function withSlugCollisionRetry<T>(
   let candidate = slug;
   for (let i = 0; i < MAX_SLUG_COLLISION_RETRIES; i++) {
     const { data, error } = await attempt(candidate);
-    if (!error) return data as T;
+    if (!error) {
+      if (data === null) throw new Error('Save succeeded but returned no data.');
+      return data;
+    }
     if (!isSlugCollision(error)) throw error;
     candidate = withCollisionSuffix(candidate);
   }
@@ -162,21 +174,13 @@ export function useReviewPages(restaurantId?: string) {
       // The .eq('restaurant_id', …) is belt to RLS's braces: an id from a stale
       // cache or a hand-edited request can never reach another tenant's row.
       if (rest.slug === undefined) {
-        const { error } = await supabase
-          .from('review_pages' as any)
-          .update(rest)
-          .eq('id', id)
-          .eq('restaurant_id', restaurantId);
+        const { error } = await updateReviewPageRow(id, restaurantId, rest);
         if (error) throw error;
         return;
       }
 
       await withSlugCollisionRetry(rest.slug, async (slug) => {
-        const { error } = await supabase
-          .from('review_pages' as any)
-          .update({ ...rest, slug })
-          .eq('id', id)
-          .eq('restaurant_id', restaurantId);
+        const { error } = await updateReviewPageRow(id, restaurantId, { ...rest, slug });
         return { data: error ? null : {}, error };
       });
     },

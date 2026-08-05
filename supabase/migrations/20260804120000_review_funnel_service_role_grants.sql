@@ -10,10 +10,8 @@
 -- This is the same requirement bank_reauth_notices already documents:
 -- "Without this GRANT the SELECT above fails" (20260723130100).
 --
--- Caught by exercising the deployed review-public function directly against
--- a local Postgres instance during Phase 7b re-verification — the pgTAP
--- suites never exposed it because they run as `postgres`/`authenticated`,
--- never as `service_role`.
+-- pgTAP suites never exposed this because they run as `postgres`/
+-- `authenticated`, never as `service_role`.
 -- ============================================================================
 
 GRANT ALL ON public.review_pages TO service_role;

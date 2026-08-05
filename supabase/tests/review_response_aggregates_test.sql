@@ -1,8 +1,9 @@
 BEGIN;
 SELECT plan(6);
 
--- Fixture: two pages in restaurant A (one with a comment, one without), plus
--- an owner (manage:reviews) and an outsider with no restaurant at all.
+-- Fixture: one page in restaurant A with three responses (one commented, two
+-- not), plus an owner (manage:reviews) and an outsider with no restaurant at
+-- all.
 INSERT INTO auth.users (id, email) VALUES
   ('aaaaaaaa-0000-0000-0000-000000000001', 'owner-a@test.local'),
   ('aaaaaaaa-0000-0000-0000-000000000099', 'outsider@test.local');

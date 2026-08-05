@@ -23,13 +23,14 @@ function createWrapper() {
   };
 }
 
-/** `.select(...).eq(...).order(...).limit(...)` resolving to a Supabase result. */
+/** `.select(...).eq(...).not(...).order(...).limit(...)` → a Supabase result. */
 function makeListStub(data: unknown, error: unknown = null) {
   const limit = vi.fn(async () => ({ data, error }));
   const order = vi.fn(() => ({ limit }));
-  const eq = vi.fn(() => ({ order }));
+  const not = vi.fn(() => ({ order }));
+  const eq = vi.fn(() => ({ not }));
   const select = vi.fn(() => ({ eq }));
-  return { stub: { select }, select, eq, order, limit };
+  return { stub: { select }, select, eq, not, order, limit };
 }
 
 /** `.update(...).eq('id', …).eq('restaurant_id', …)` resolving to `{ error }`. */
@@ -87,7 +88,7 @@ describe('useReviewResponses', () => {
     expect(mockSupabase.rpc).not.toHaveBeenCalled();
   });
 
-  it('caps the inbox list at 500 rows, newest first', async () => {
+  it('filters to commented rows server-side, then caps at 500, newest first', async () => {
     const list = makeListStub([RESPONSE_ROW]);
     mockSupabase.from.mockReturnValue(list.stub);
     mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
@@ -99,6 +100,9 @@ describe('useReviewResponses', () => {
     await waitFor(() => expect(result.current.responses).toHaveLength(1));
     expect(mockSupabase.from).toHaveBeenCalledWith('review_responses');
     expect(list.eq).toHaveBeenCalledWith('restaurant_id', 'rest-1');
+    // The comment filter must precede the cap. Filtering client-side after a
+    // 500-row fetch loses a written complaint behind 500 newer silent taps.
+    expect(list.not).toHaveBeenCalledWith('comment', 'is', null);
     expect(list.order).toHaveBeenCalledWith('submitted_at', { ascending: false });
     expect(list.limit).toHaveBeenCalledWith(500);
   });
@@ -236,7 +240,7 @@ describe('useReviewResponses', () => {
     expect(contact.eqRestaurant).toHaveBeenCalledWith('restaurant_id', 'rest-1');
   });
 
-  it('returns null for a view-only reader whose contact fetch is refused', async () => {
+  it('returns null silently for a view-only reader, whose RLS-filtered read is empty', async () => {
     mockSupabase.from.mockReturnValue(makeListStub([RESPONSE_ROW]).stub);
     mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
 
@@ -245,11 +249,32 @@ describe('useReviewResponses', () => {
     });
     await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-    // RLS withholds the row; the pane renders nothing rather than an error.
-    mockSupabase.from.mockReturnValue(makeContactStub(null, new Error('permission denied')).stub);
-    await expect(result.current.fetchContact('resp-1')).resolves.toBeNull();
-
+    // RLS filters the row out rather than rejecting the read: zero rows, no
+    // error. Indistinguishable from "the guest left nothing", and correctly
+    // so — the pane renders nothing and says nothing.
     mockSupabase.from.mockReturnValue(makeContactStub(null).stub);
     await expect(result.current.fetchContact('resp-1')).resolves.toBeNull();
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a failed contact fetch instead of passing it off as no contact', async () => {
+    mockSupabase.from.mockReturnValue(makeListStub([RESPONSE_ROW]).stub);
+    mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
+
+    const { result } = renderHook(() => useReviewResponses('rest-1'), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // A genuine transport failure is NOT the empty case: rendering "no
+    // contact details" over a guest who did leave them loses the reply.
+    mockSupabase.from.mockReturnValue(makeContactStub(null, new Error('fetch failed')).stub);
+    await expect(result.current.fetchContact('resp-1')).resolves.toBeNull();
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Could not load contact details',
+        variant: 'destructive',
+      })
+    );
   });
 });

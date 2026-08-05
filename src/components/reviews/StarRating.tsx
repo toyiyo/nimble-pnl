@@ -30,10 +30,20 @@ export function StarRating({ value, onPreview, onCommit, disabled = false }: Sta
 
   const active = focused || value || 1;
 
+  // Preview follows focus — including the plain Tab that first enters the
+  // group. Without this, tabbing in leaves every star aria-checked="false"
+  // and visually empty while the focus ring sits on star 1, so a screen
+  // reader user pressing Enter files a rating nothing ever announced.
+  // Previewing is not selecting: the write still needs Enter, Space, or a tap.
+  const preview = (star: number) => {
+    setFocused(star);
+    onPreview(star);
+  };
+
   const moveTo = (next: number) => {
     const clamped = Math.min(5, Math.max(1, next));
-    setFocused(clamped);
-    onPreview(clamped);
+    // Idempotent with the onFocus below, which fires from the .focus() call.
+    preview(clamped);
     refs.current[clamped - 1]?.focus();
   };
 
@@ -86,7 +96,7 @@ export function StarRating({ value, onPreview, onCommit, disabled = false }: Sta
           aria-label={`${star} out of 5 stars`}
           tabIndex={star === active ? 0 : -1}
           disabled={disabled}
-          onFocus={() => setFocused(star)}
+          onFocus={() => preview(star)}
           onKeyDown={(event) => handleKeyDown(event, star)}
           onClick={() => onCommit(star)}
           className={cn(

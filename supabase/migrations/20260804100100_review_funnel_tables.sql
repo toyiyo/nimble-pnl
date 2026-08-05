@@ -56,7 +56,13 @@ CREATE TABLE public.review_responses (
 );
 
 REVOKE ALL ON public.review_responses FROM anon, authenticated;
-GRANT SELECT, UPDATE ON public.review_responses TO authenticated;
+GRANT SELECT ON public.review_responses TO authenticated;
+-- UPDATE is column-level on purpose. A table-level UPDATE grant, combined
+-- with the manage:reviews policy below, would let any reviews manager PATCH
+-- `rating`, `comment`, or `routed_to` straight through PostgREST and rewrite
+-- the numbers on responses only the edge function is allowed to write. Triage
+-- moves `status`; the guest's own words and stars are not ours to edit.
+GRANT UPDATE (status) ON public.review_responses TO authenticated;
 ALTER TABLE public.review_responses ENABLE ROW LEVEL SECURITY;
 
 COMMENT ON COLUMN public.review_responses.restaurant_id IS

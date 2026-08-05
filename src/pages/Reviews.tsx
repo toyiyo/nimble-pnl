@@ -82,11 +82,12 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
   const { pages } = useReviewPages(restaurantId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Ratings without a comment are a number, not a message. They count toward
-  // the header metrics and stay out of the list — an inbox of 300 silent
-  // five-star taps is an inbox nobody opens.
-  const commented = responses.filter((row) => Boolean(row.comment));
-  const selected = commented.find((row) => row.id === selectedId) ?? null;
+  // `responses` is already the commented rows only — the hook filters them
+  // server-side, before its 500-row cap. Ratings without a comment are a
+  // number, not a message: they count toward the header metrics and stay out
+  // of the list, because an inbox of 300 silent five-star taps is an inbox
+  // nobody opens.
+  const selected = responses.find((row) => row.id === selectedId) ?? null;
   const pageNames = new Map(pages.map((page) => [page.id, page.name]));
   const nowMs = Date.now();
 
@@ -126,7 +127,7 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
         ))}
       </div>
 
-      {commented.length === 0 ? (
+      {responses.length === 0 ? (
         <div className="mt-6 rounded-xl border border-border/40 p-10 text-center">
           <h2 className="text-[15px] font-semibold text-foreground">No written feedback yet</h2>
           <p className="mt-1 text-[13px] text-muted-foreground">
@@ -137,7 +138,7 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
         <div className="mt-6 md:grid md:grid-cols-[340px_1fr] md:gap-6">
           <div className={selected ? 'hidden md:block' : 'block'}>
             <div className="space-y-2">
-              {commented.map((row) => (
+              {responses.map((row) => (
                 <FeedbackRow
                   key={row.id}
                   response={row}

@@ -58,7 +58,11 @@ AS $$
     round(avg(rr.rating)::numeric, 1) AS average_rating,
     count(*) AS total_ratings,
     count(*) FILTER (WHERE rr.comment IS NOT NULL) AS comment_count,
-    count(*) FILTER (WHERE rr.status = 'new') AS unread_count
+    -- Unread counts unread *comments*, not unread rows. A silent star tap is
+    -- also born with status 'new' and never appears in the Feedback list, so
+    -- counting every new row would leave a badge the manager has no way to
+    -- open or clear — permanently nonzero under ordinary promoter traffic.
+    count(*) FILTER (WHERE rr.status = 'new' AND rr.comment IS NOT NULL) AS unread_count
   FROM public.review_responses rr
   WHERE rr.restaurant_id = p_restaurant_id;
 $$;
@@ -67,4 +71,4 @@ REVOKE ALL ON FUNCTION public.review_response_metrics(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.review_response_metrics(UUID) TO authenticated;
 
 COMMENT ON FUNCTION public.review_response_metrics(UUID) IS
-'Restaurant-wide average rating / total ratings / comment count / unread count for the Feedback tab header. Not capped at any row count, unlike the list query that backs the inbox rows themselves.';
+'Restaurant-wide average rating / total ratings / comment count / unread comment count for the Feedback tab header. Not capped at any row count, unlike the list query that backs the inbox rows themselves.';

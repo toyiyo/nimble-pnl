@@ -47,6 +47,10 @@ export function ReviewFeedbackDetail({
       setContact(null);
       return;
     }
+    // Clear first. Holding the previous guest's name and email on screen while
+    // the next fetch is in flight — or forever, if it fails — is how a manager
+    // ends up emailing an apology to the wrong person.
+    setContact(null);
     let cancelled = false;
     fetchContact(response.id).then((row) => {
       if (!cancelled) setContact(row);

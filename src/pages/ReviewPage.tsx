@@ -59,6 +59,11 @@ export default function ReviewPage() {
 
   const [announcement, setAnnouncement] = useState('');
   const branchHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  // The write guard is a ref, not the `committed` state: React batches state
+  // updates, so a double-tap or a click landing on the same frame as an Enter
+  // would see `committed === 0` twice and file two ratings. The state is what
+  // renders; the ref is what decides.
+  const committedRef = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,7 +95,8 @@ export default function ReviewPage() {
 
   const handleCommit = useCallback(
     async (rating: number) => {
-      if (committed) return;
+      if (committedRef.current) return;
+      committedRef.current = rating;
       setCommitted(rating);
       setPreview(rating);
 
@@ -118,7 +124,7 @@ export default function ReviewPage() {
         setAnnouncement('Tell us what happened. This goes straight to the owner.');
       }
     },
-    [committed, honeypot, slug]
+    [honeypot, slug]
   );
 
   const handleSubmitComment = useCallback(async () => {

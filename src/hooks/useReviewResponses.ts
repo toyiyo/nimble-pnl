@@ -48,17 +48,23 @@ export function useReviewResponses(restaurantId?: string) {
     staleTime: 30000,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<ReviewResponse[]> => {
-      // Capped at 500 for the inbox *list* only — that's a reasonable amount
-      // of recent comments to page through. The header metrics below do NOT
-      // come from this capped array; they're a separate, uncapped server-side
-      // aggregate, so a restaurant past 500 responses still sees a correct
-      // average/total/unread count.
+      // Commented rows only, and the filter is applied SERVER-side, before
+      // the cap. Filtering after a `.limit(500)` would mean a location that
+      // takes 500 silent star taps after a written complaint fetches 500
+      // silent rows and shows an empty inbox — the complaint dropped off the
+      // end of a window it was never in.
+      //
+      // Capped at 500 for the inbox *list* only. The header metrics below do
+      // NOT come from this capped array; they're a separate, uncapped
+      // server-side aggregate, so a restaurant past 500 comments still sees a
+      // correct average/total/unread count.
       const { data, error } = await supabase
         .from('review_responses' as any)
         .select(
           'id, restaurant_id, review_page_id, rating, routed_to, comment, contact_consent, status, submitted_at, commented_at'
         )
         .eq('restaurant_id', restaurantId!)
+        .not('comment', 'is', null)
         .order('submitted_at', { ascending: false })
         .limit(500);
 
@@ -117,8 +123,14 @@ export function useReviewResponses(restaurantId?: string) {
 
   // Contact details live in their own table so that RLS — which is row-level,
   // not column-level — can hold them to manage:reviews while the comment
-  // itself stays readable at view:reviews. A viewer's fetch returns no rows
-  // rather than an error, and the caller renders nothing.
+  // itself stays readable at view:reviews. A viewer's fetch is filtered by
+  // RLS to zero rows, NOT rejected: `data === null` with no error is the
+  // ordinary "you may not see this, or the guest left nothing" answer, and
+  // the caller renders nothing.
+  //
+  // An actual error is therefore not that case — it is a network or PostgREST
+  // failure, and swallowing it would render "no contact details" over a guest
+  // who did leave them. Say so, and still return null so the pane renders.
   const fetchContact = useCallback(
     async (responseId: string): Promise<ReviewResponseContact | null> => {
       if (!restaurantId) throw new Error('No restaurant selected');
@@ -129,10 +141,18 @@ export function useReviewResponses(restaurantId?: string) {
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
 
-      if (error) return null;
+      if (error) {
+        console.error('useReviewResponses: contact fetch failed', error);
+        toast({
+          title: 'Could not load contact details',
+          description: 'This guest may have left a name and email. Try again in a moment.',
+          variant: 'destructive',
+        });
+        return null;
+      }
       return (data as unknown as ReviewResponseContact) ?? null;
     },
-    [restaurantId]
+    [restaurantId, toast]
   );
 
   return {

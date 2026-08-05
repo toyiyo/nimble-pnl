@@ -57,10 +57,13 @@ SELECT is(
   'review_response_metrics counts only the one commented response'
 );
 
+-- Two rows are status 'new', but one of them is a silent five-star tap that
+-- never reaches the Feedback list. Counting it would put a badge on the tab
+-- that the manager has no row to open and no way to clear.
 SELECT is(
   (SELECT unread_count FROM public.review_response_metrics('11111111-0000-0000-0000-000000000001')),
-  2::bigint,
-  'review_response_metrics counts the two still-new responses'
+  1::bigint,
+  'review_response_metrics counts only the new response that carries a comment'
 );
 
 SELECT is(

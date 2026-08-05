@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(4);
+SELECT plan(6);
 
 -- Fixture: two restaurants, an owner in A and a chef in A, plus one page.
 INSERT INTO auth.users (id, email) VALUES
@@ -62,6 +62,26 @@ SELECT is(
    WHERE status = 'new'),
   1,
   'the response starts in the new status'
+);
+
+-- Switch to the owner, who does hold manage:reviews, so what is being tested
+-- below is the column grant and not the RLS policy: with a table-level UPDATE
+-- grant both of these would succeed and a manager could rewrite the ratings
+-- behind their own metrics.
+SELECT set_config('request.jwt.claims', '{"sub":"aaaaaaaa-0000-0000-0000-000000000001","role":"authenticated"}', true);
+SELECT set_config('request.jwt.claim.sub', 'aaaaaaaa-0000-0000-0000-000000000001', true);
+
+SELECT throws_like(
+  $$UPDATE public.review_responses SET rating = 5
+    WHERE id = '33333333-0000-0000-0000-000000000001'$$,
+  '%permission denied%',
+  'a reviews manager cannot PATCH rating — UPDATE is granted on the status column only'
+);
+
+SELECT lives_ok(
+  $$UPDATE public.review_responses SET status = 'resolved'
+    WHERE id = '33333333-0000-0000-0000-000000000001'$$,
+  'the same manager can still move status, which is what triage actually does'
 );
 
 SELECT * FROM finish();

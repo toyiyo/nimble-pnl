@@ -14,6 +14,11 @@
 -- `authenticated`, never as `service_role`.
 -- ============================================================================
 
-GRANT ALL ON public.review_pages TO service_role;
-GRANT ALL ON public.review_responses TO service_role;
-GRANT ALL ON public.review_response_contacts TO service_role;
+-- Each grant is exactly what one handler needs, and no more. `service_role`
+-- carries rolbypassrls, so its table ACL is the only thing standing between a
+-- leaked key and the data: DELETE on any of these tables would put "erase the
+-- restaurant's feedback history" inside the blast radius for no benefit,
+-- since review-public never deletes a row.
+GRANT SELECT ON public.review_pages TO service_role;              -- handlePage
+GRANT SELECT, INSERT, UPDATE ON public.review_responses TO service_role;
+GRANT INSERT ON public.review_response_contacts TO service_role;  -- handleComment

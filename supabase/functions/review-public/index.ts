@@ -260,11 +260,14 @@ async function handleComment(
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_NAME_LENGTH) : '';
   const email = typeof body.email === 'string' ? body.email.trim().slice(0, MAX_EMAIL_LENGTH) : '';
 
-  // Every early exit below returns the same shape. A caller cannot distinguish
-  // a bot trip, a replay, an expiry, or a rate-limited drop from a real write.
-  const ok = () => json({ ok: true });
-
+  // A malformed request is answered honestly with a 400 — that tells an
+  // attacker nothing they did not already know about their own payload.
   if (!token || !comment || comment.length > MAX_COMMENT_LENGTH) return fail(400);
+
+  // Past this point every early exit returns the same shape, so a caller
+  // holding a well-formed request cannot distinguish a bot trip, a replay, an
+  // expiry, or a rate-limited drop from a real write.
+  const ok = () => json({ ok: true });
 
   if (honeypot) {
     console.warn('review-public: honeypot tripped on comment', { ip_hash: ipHash });

@@ -131,6 +131,7 @@ const AREA_HINT: Record<AreaGroupKey, string> = {
   inventory: 'Counts, audits, purchase orders, receipts',
   recipes: 'Recipes, prep recipes, production batches',
   scheduling: 'Schedules, time punches, tip pools',
+  reviews: 'Review pages, QR codes, guest feedback',
   books: 'Transactions, banking, expenses, invoices, statements',
   payroll: 'Pay runs and payroll history',
   employees: 'Roster, jobs, wage assignments',

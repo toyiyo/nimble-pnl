@@ -85,6 +85,19 @@ describe('StaffRoleChecker — employee route gating for collaborators', () => {
     expect(screen.getByTestId('location')).toHaveTextContent('/employee/schedule');
   });
 
+  it('does not grant a path that merely shares a prefix with an entry (boundary-safe match)', () => {
+    // '/employee/payroll-backup' shares the literal prefix '/employee/pay'
+    // with the '/employee/pay' entry but is not nested under it. A bare
+    // `startsWith` would incorrectly treat this as an employee self-service
+    // path and grant it; `matchesAnyPrefix`'s `/`-boundary check must reject
+    // it so the collaborator instead falls through to the ordinary
+    // allow-list/redirect logic below (same as any other disallowed path).
+    renderChecker('/employee/payroll-backup');
+
+    expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent('/scheduling');
+  });
+
   it('redirects to the role landing when the collaborator has no employee record', () => {
     mocks.viewMode = { canUseWorkView: false, isWorkViewResolved: true };
 

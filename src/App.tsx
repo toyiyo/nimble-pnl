@@ -315,9 +315,7 @@ export function StaffRoleChecker({
     const config =
       COLLABORATOR_ROUTES[role] ??
       customCollaboratorRoutes(grantMap(selectedRestaurant?.roleRecord?.role_areas ?? []));
-    const isAllowedPath = config.allowed.some(path =>
-      currentPath === path || currentPath.startsWith(path + '/')
-    );
+    const isAllowedPath = matchesAnyPrefix(currentPath, config.allowed);
     if (!isAllowedPath) {
       return <Navigate to={config.landing} replace />;
     }

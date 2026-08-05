@@ -262,6 +262,28 @@ describe('sendPaced', () => {
     expect(results.every((r) => !r.ok && r.error === BUDGET_EXHAUSTED_ERROR)).toBe(true);
   });
 
+  it('stops retrying a 429 once the budget is spent', async () => {
+    const timer = makeFakeTimer();
+    const send = vi.fn().mockResolvedValue({ ok: false, status: 429, error: 'slow down' });
+
+    // Backoff is 1s/2s/4s, so an unguarded retry chain runs 4 attempts and
+    // ~7s past the deadline — the dominant overshoot, far larger than the
+    // sub-interval pacing wait. With a 1000ms budget the second attempt lands
+    // exactly on it, so no third is started.
+    const results = await sendPaced(['a'], send, {
+      intervalMs: 500,
+      budgetMs: 1000,
+      sleep: timer.sleep,
+      now: timer.now,
+    });
+
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(results[0].attempts).toBe(2);
+    // The in-flight send still reports its real outcome — abandoning retries
+    // must not disguise a 429 as a budget skip.
+    expect(results[0].status).toBe(429);
+  });
+
   it('does not truncate a run that fits inside the budget', async () => {
     const timer = makeFakeTimer();
     const send = vi.fn().mockResolvedValue({ ok: true, status: 200 });

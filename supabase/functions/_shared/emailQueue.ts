@@ -167,9 +167,9 @@ export const sendPaced = async <T>(
   for (const recipient of recipients) {
     // Checked between recipients rather than mid-flight: aborting a send
     // already in progress would lose the distinction between a 429 worth
-    // retrying and a request that never happened. One recipient can therefore
-    // overshoot the budget by its own retry chain; the bound is on the fan-out,
-    // not on any single send.
+    // retrying and a request that never happened. The residual overshoot is
+    // therefore one in-flight request (capped by REQUEST_TIMEOUT_MS) plus at
+    // most one pacing interval — the retry chain is bounded separately below.
     if (now() - startedAt >= budgetMs) {
       results.push({
         recipient,
@@ -205,6 +205,13 @@ export const sendPaced = async <T>(
 
       const retryable = outcome.status === 429 && attempts <= maxRetries;
       if (!retryable) break;
+
+      // Stop retrying once the budget is spent. The retry chain would otherwise
+      // run entirely inside the per-recipient guard above, so one unlucky
+      // recipient could add four request timeouts plus 7s of backoff on top of
+      // the deadline — the dominant overshoot term by far. The attempt already
+      // made keeps its real outcome; only further attempts are abandoned.
+      if (now() - startedAt >= budgetMs) break;
 
       // Exponential backoff on top of the normal pacing gap: 1s, 2s, 4s.
       await sleep(BASE_BACKOFF_MS * 2 ** (attempts - 1));

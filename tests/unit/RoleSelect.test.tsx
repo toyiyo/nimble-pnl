@@ -133,4 +133,30 @@ describe('RoleSelect', () => {
     expect(footer).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Footer/ })).not.toBeInTheDocument();
   });
+
+  it('reopens unfiltered after the caller closes it itself', async () => {
+    mockUseRoles.mockReturnValue({
+      roles: [
+        roleRow({ id: 'c1', name: 'Operations Lead', restaurant_id: 'r1' }),
+        roleRow({ id: 'c2', name: 'Pastry Lead', restaurant_id: 'r1' }),
+      ],
+      isLoading: false, error: null,
+    });
+
+    // Both real call sites drive `open` themselves — RolePicker closes in
+    // onSuccess, the invite pickers close on select — so Radix's onOpenChange
+    // never fires on the way out. Clearing there would leak the last search
+    // into the next open.
+    const { rerender } = render(
+      <RoleSelect {...base} open onOpenChange={vi.fn()} />, { wrapper }
+    );
+    await userEvent.type(await screen.findByPlaceholderText(/search roles/i), 'Pastry');
+    expect(screen.queryByRole('option', { name: /Operations Lead/ })).not.toBeInTheDocument();
+
+    rerender(<RoleSelect {...base} open={false} onOpenChange={vi.fn()} />);
+    rerender(<RoleSelect {...base} open onOpenChange={vi.fn()} />);
+
+    expect(await screen.findByPlaceholderText(/search roles/i)).toHaveValue('');
+    expect(await screen.findByRole('option', { name: /Operations Lead/ })).toBeInTheDocument();
+  });
 });

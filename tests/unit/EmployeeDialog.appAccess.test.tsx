@@ -718,6 +718,86 @@ describe('EmployeeDialog — the edit-mode invite', () => {
     );
   });
 
+  it('keeps the chosen role when the restaurant timezone changes underneath', async () => {
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false, staleTime: Infinity },
+      },
+    });
+    // A FUNCTION, not a stored element: re-rendering the identical element
+    // object makes React bail out of the subtree entirely, and the component
+    // would never re-read the (mocked) restaurant context.
+    const tree = () => (
+      <QueryClientProvider client={qc}>
+        <EmployeeDialog open onOpenChange={vi.fn()} restaurantId="r1" employee={EMPLOYEE_NO_ACCOUNT} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+
+    await userEvent.click(await screen.findByRole('button', { name: /invite to the app/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /invite as/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/i }));
+    await userEvent.keyboard('{Escape}');
+
+    // Someone else changes the restaurant's zone while this dialog sits open.
+    // It re-seeds the compensation effective date and nothing else — the admin
+    // is mid-decision about a person, and the zone is not the person.
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'owner' as const,
+        restaurant: { id: 'r1', timezone: 'America/New_York' },
+      },
+    });
+    rerender(tree());
+
+    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('send-team-invitation', {
+        body: {
+          restaurantId: 'r1',
+          email: 'sam@x.com',
+          role: 'collaborator_custom',
+          roleId: 'c1',
+          employeeId: 'e1',
+        },
+      }),
+    );
+  });
+
+  it('names the invite trigger by the role it is about to send', async () => {
+    renderDialogEdit(EMPLOYEE_NO_ACCOUNT);
+
+    await userEvent.click(await screen.findByRole('button', { name: /invite to the app/i }));
+
+    // WCAG 2.5.3: the accessible name has to contain the visible chip text, so
+    // a voice-control user can say what they see.
+    // ROLE_METADATA.staff.label, not the raw role key — the chip says what the
+    // admin sees everywhere else in the app.
+    const trigger = screen.getByRole('combobox', { name: /invite as/i });
+    expect(trigger.getAttribute('aria-label')).toBe('Invite as Employee (self-service). Change role');
+    expect(trigger).toHaveTextContent('Employee (self-service)');
+
+    await userEvent.click(trigger);
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/i }));
+
+    const updated = screen.getByRole('combobox', { name: /invite as/i });
+    expect(updated.getAttribute('aria-label')).toBe('Invite as Operations Lead. Change role');
+    expect(updated).toHaveTextContent('Operations Lead');
+  });
+
+  it('says the roster failed rather than claiming no access', async () => {
+    mockUseRestaurantMembers.mockReturnValue({ data: undefined, isLoading: false, isError: true });
+    renderDialogEdit(EMPLOYEE_NO_ACCOUNT);
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/couldn't load access details/i);
+    // Offering an invite off a roster we couldn't read risks double-provisioning
+    // someone who already has an account.
+    expect(screen.queryByRole('button', { name: /invite to the app/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/no access/i)).not.toBeInTheDocument();
+  });
+
   it('asks for an email first when the employee has none saved', async () => {
     renderDialogEdit({ ...EMPLOYEE_NO_ACCOUNT, email: undefined });
 

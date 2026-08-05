@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Command,
@@ -70,6 +70,14 @@ export function RoleSelect({
   };
 
   const [search, setSearch] = useState('');
+  // Clearing on the `open` value rather than inside onOpenChange: a caller that
+  // drives `open` itself never routes through Radix's callback, so both real
+  // call sites (RolePicker closes in onSuccess, the invite pickers close on
+  // select) would reopen still filtered by the last thing typed.
+  useEffect(() => {
+    if (!open) setSearch('');
+  }, [open]);
+
   const modal = useInsideScrollLock();
 
   // useRoles returns { roles, isLoading, error, ... } — NOT a raw React Query
@@ -123,10 +131,7 @@ export function RoleSelect({
   return (
     <Popover
       open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (!next) setSearch('');
-      }}
+      onOpenChange={setOpen}
       modal={modal}
     >
       <PopoverTrigger asChild>

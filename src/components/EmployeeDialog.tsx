@@ -207,6 +207,16 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
 
   const bulkSetAvailability = useBulkSetAvailability({ silent: true });
 
+  // The zone changing has to re-seed the effective date -- see `getToday`'s
+  // useCallback above. It gets its own effect rather than riding along in the
+  // reset below: that one re-seeds every field from `employee` and clears the
+  // access decision, so hanging it off the zone would let a settings change
+  // made anywhere else in the app silently discard what the admin has typed
+  // and the role they just picked, with the dialog open in front of them.
+  useEffect(() => {
+    setEffectiveDate(getToday());
+  }, [getToday]);
+
   useEffect(() => {
     setEffectiveDate(getToday());
     setIsEffectiveDateModalOpen(false);
@@ -255,9 +265,11 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     } else {
       resetForm();
     }
-    // `getToday` is tz-derived, so the zone changing has to re-seed the
-    // effective date -- see its useCallback above.
-  }, [employee, open, getToday]);
+    // Deliberately NOT depending on `getToday`: this effect is "the person on
+    // screen changed", and the zone is not the person. The effect above owns
+    // the tz re-seed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employee, open]);
 
   // Editing the email invalidates the access decision the user made against the
   // previous address (grant a new login vs. link to whoever that email belongs

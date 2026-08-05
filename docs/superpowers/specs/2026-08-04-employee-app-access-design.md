@@ -324,7 +324,8 @@ second commit is rejected.
 | `useRestaurantMembers` errors | Same skeleton replaced by "Couldn't load access details." No control. Consistent with the fail-closed hint in `resolveAccountlessEmployeeHint`. |
 | `useRoles` loading / errors | `RoleSelect` renders its existing `:231-244` states inside the popover. |
 | Assignment rejected (42501) | `RolePicker`'s existing toast via `assignRoleErrorMessage`. Unchanged. |
-| Invite rejected | Existing `EmployeeDialog.tsx:432-446` toast path, unchanged. The employee is still created — the invite is fire-and-forget by design. |
+| Invite rejected (create mode) | Existing `EmployeeDialog.tsx:432-446` toast path, unchanged. The employee is still created and the dialog still closes — the invite is fire-and-forget by design, and losing the whole employee record over a failed email would be worse. |
+| Invite rejected (edit mode) | `handleSendInvite`'s "Couldn't send the invitation / Please try again." toast. Nothing was being saved, so the existing employee is untouched and the dialog stays open — the button is still there to retry. |
 
 ## Testing
 

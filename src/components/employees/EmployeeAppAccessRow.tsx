@@ -62,6 +62,7 @@ export function EmployeeAppAccessRow({
 }: EmployeeAppAccessRowProps) {
   const { data: members, isLoading, isError } = useRestaurantMembers(restaurantId);
   const [inviteExpanded, setInviteExpanded] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   if (isLoading) return <AppAccessSkeleton />;
   if (isError) {
@@ -129,6 +130,29 @@ export function EmployeeAppAccessRow({
 
   const inviteLabel = inviteRole?.name ?? ROLE_METADATA.staff.label;
 
+  // Both invite branches below render the same picker, so they share one set
+  // of props — and one open state, since only one of them is ever mounted.
+  //
+  // Closing on select is the difference between this picker and RolePicker's.
+  // There, the choice is a candidate: the footer shows the access delta and a
+  // commit button, so the popover has to stay open until the assignment lands.
+  // Here the choice IS the whole action — there is no footer and nothing left
+  // to confirm — so leaving it open would just park a 340px panel over the
+  // rest of the form.
+  const invitePickerProps = {
+    restaurantId,
+    callerRole,
+    value: inviteRole?.id ?? null,
+    onSelect: (role: RoleWithGrants) => {
+      onInviteRoleChange(role);
+      setPickerOpen(false);
+    },
+    triggerText: inviteLabel,
+    triggerLabel: `Invite as ${inviteLabel}. Change role`,
+    open: pickerOpen,
+    onOpenChange: setPickerOpen,
+  };
+
   // Edit mode: `onSendInvite` is only ever passed for an existing employee
   // record, so `employee` is defined here too — its SAVED email (not
   // whatever is currently typed in the dialog's field) is what the invite
@@ -159,14 +183,7 @@ export function EmployeeAppAccessRow({
           </Button>
         ) : (
           <>
-            <RoleSelect
-              restaurantId={restaurantId}
-              callerRole={callerRole}
-              value={inviteRole?.id ?? null}
-              onSelect={onInviteRoleChange}
-              triggerText={inviteLabel}
-              triggerLabel={`Invite as ${inviteLabel}. Change role`}
-            />
+            <RoleSelect {...invitePickerProps} />
             {inviteRole && <RoleAreaChips areas={inviteRole.role_areas} />}
             <Button
               type="button"
@@ -224,14 +241,7 @@ export function EmployeeAppAccessRow({
       </p>
       {grantAppAccess && email.trim() && (
         <>
-          <RoleSelect
-            restaurantId={restaurantId}
-            callerRole={callerRole}
-            value={inviteRole?.id ?? null}
-            onSelect={onInviteRoleChange}
-            triggerText={inviteLabel}
-            triggerLabel={`Invite as ${inviteLabel}. Change role`}
-          />
+          <RoleSelect {...invitePickerProps} />
           {inviteRole && <RoleAreaChips areas={inviteRole.role_areas} />}
         </>
       )}

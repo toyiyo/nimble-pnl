@@ -137,14 +137,29 @@ export function RoleSelect({
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[340px] p-0" align="end">
-        <Command shouldFilter={false}>
+      {/*
+        The height cap is load-bearing, not cosmetic. Search box + a 300px list
+        + RolePicker's delta footer is ~450px of panel; anchored to a chip
+        partway down the employee dialog on a 720px-tall screen, neither side
+        has room, so Radix picks the roomier one and the footer — which holds
+        the only button that commits the change — lands below the fold with no
+        way to scroll to it. `--radix-popover-content-available-height` is the
+        space Radix measured on the side it chose, so capping to it lets the
+        LIST absorb the shortfall (min-h-0 below) and keeps the footer on
+        screen. collisionPadding keeps the panel off the viewport edge.
+      */}
+      <PopoverContent
+        className="flex max-h-[var(--radix-popover-content-available-height)] w-[340px] flex-col p-0"
+        align="end"
+        collisionPadding={12}
+      >
+        <Command shouldFilter={false} className="min-h-0">
           <CommandInput
             placeholder="Search roles..."
             value={search}
             onValueChange={setSearch}
           />
-          <CommandList>
+          <CommandList className="min-h-0 flex-1">
             {/*
               These three states are direct children of CommandList, never
               routed through CommandEmpty. CommandEmpty means "no rows
@@ -198,7 +213,8 @@ export function RoleSelect({
             )}
           </CommandList>
 
-          {footer}
+          {/* shrink-0 so the list, not the footer, gives up the space. */}
+          {footer && <div className="shrink-0">{footer}</div>}
         </Command>
       </PopoverContent>
     </Popover>

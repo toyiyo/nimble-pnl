@@ -25,9 +25,35 @@ function fail(status: number): Response {
   return json({ error: status >= 500 ? 'Something went wrong.' : 'Request could not be completed.' }, status);
 }
 
+const IPV4_PATTERN = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+const IPV6_PATTERN = /^[0-9a-fA-F:]{2,45}$/;
+
+function isPlausibleIp(value: string): boolean {
+  const v4 = IPV4_PATTERN.exec(value);
+  if (v4) return v4.slice(1).every((octet) => Number(octet) <= 255);
+  return value.includes(':') && IPV6_PATTERN.test(value);
+}
+
+/**
+ * X-Forwarded-For is a comma-separated hop chain that each proxy APPENDS to,
+ * never overwrites. The left-most entry is whatever the connecting client
+ * sent — fully attacker-controlled, since Supabase does not strip or
+ * override a client-supplied X-Forwarded-For before this function sees it.
+ * Trusting that entry let anyone reset their own rate-limit bucket on every
+ * request by sending a fresh, arbitrary value. The right-most entry is what
+ * Supabase's own gateway observed as its TCP peer, which a client cannot
+ * spoof — so that's the one this rate limit's ip_hash is built from. A value
+ * that doesn't parse as a plausible IPv4/IPv6 address falls back to a shared
+ * 'unknown' bucket rather than being trusted verbatim.
+ */
 function clientIp(req: Request): string {
   const forwarded = req.headers.get('x-forwarded-for') ?? '';
-  return forwarded.split(',')[0].trim() || 'unknown';
+  const hops = forwarded
+    .split(',')
+    .map((hop) => hop.trim())
+    .filter(Boolean);
+  const candidate = hops[hops.length - 1] ?? '';
+  return isPlausibleIp(candidate) ? candidate : 'unknown';
 }
 
 Deno.serve(async (req: Request) => {
@@ -184,19 +210,31 @@ function expiry(): number {
  * (page, ip_hash) pair has logged in the trailing window. Returns null on a
  * query failure so the caller can answer with a generic 500 instead of
  * leaking which of the two write paths broke.
+ *
+ * `excludeResponseId` is set by handleComment to its own rating's row id.
+ * Without it, a guest's own rating — inserted by handleRate moments earlier,
+ * and still inside the window — counts against their immediate follow-up
+ * comment call. At exactly the 120th rating for a (page, ip_hash) pair that
+ * made handleComment's count 120 where handleRate's had been 119, silently
+ * dropping a comment the ceiling was never meant to touch.
  */
 async function countRecentResponses(
   supabase: Supabase,
   pageId: string,
-  ipHash: string
+  ipHash: string,
+  excludeResponseId?: string
 ): Promise<number | null> {
   const since = new Date(Date.now() - REVIEW_RATE_WINDOW_MS).toISOString();
-  const { count, error } = await supabase
+  let query = supabase
     .from('review_responses')
     .select('id', { count: 'exact', head: true })
     .eq('review_page_id', pageId)
     .eq('ip_hash', ipHash)
     .gte('submitted_at', since);
+  if (excludeResponseId) {
+    query = query.neq('id', excludeResponseId);
+  }
+  const { count, error } = await query;
 
   if (error) {
     console.error('review-public: rate limit probe failed', error);
@@ -248,7 +286,7 @@ async function handleComment(
   }
   if (!existing) return ok();
 
-  const recentCount = await countRecentResponses(supabase, existing.review_page_id, ipHash);
+  const recentCount = await countRecentResponses(supabase, existing.review_page_id, ipHash, existing.id);
   if (recentCount === null) return fail(500);
   if (isOverLimit(recentCount)) {
     console.warn('review-public: rate limited on comment', {

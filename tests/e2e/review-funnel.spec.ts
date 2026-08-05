@@ -91,7 +91,10 @@ test('owner creates a page, a guest comments, the owner resolves it', async ({ p
   await guest.getByRole('radio', { name: '2 out of 5 stars' }).click();
 
   await expect(guest.getByRole('heading', { name: /what happened/i })).toBeVisible();
-  await expect(guest.getByText(/straight to the owner/i)).toBeVisible();
+  // Anchored: an sr-only live-region paragraph elsewhere on the page also
+  // contains "straight to the owner", which would otherwise make this
+  // ambiguous. This targets the visible micro-copy specifically.
+  await expect(guest.getByText(/^this goes straight to the owner/i)).toBeVisible();
   // No Google link on this branch, at all.
   await expect(guest.getByRole('link', { name: /google/i })).toHaveCount(0);
 

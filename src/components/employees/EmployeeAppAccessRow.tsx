@@ -4,7 +4,7 @@ import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RolePicker } from '@/components/roles/RolePicker';
-import { RoleSelect } from '@/components/roles/RoleSelect';
+import { RoleSelect, type RoleSelectProps } from '@/components/roles/RoleSelect';
 import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
 import { useRestaurantMembers } from '@/hooks/useRestaurantMembers';
 import type { RoleWithGrants } from '@/hooks/useRoles';
@@ -32,17 +32,8 @@ export interface EmployeeAppAccessRowProps {
   sendingInvite?: boolean;
 }
 
-function AppAccessSkeleton() {
-  return (
-    <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
-      <Skeleton className="h-3 w-20" />
-      <Skeleton className="h-4 w-48" />
-    </div>
-  );
-}
-
-/** The card shell every non-loading, non-error state below shares — the "App
- * access" label plus the same border/background. Only the body differs. */
+/** The card shell every state below shares — the "App access" label plus the
+ * same border/background. Only the body differs. */
 function AppAccessCard({ children }: { children: ReactNode }) {
   return (
     <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
@@ -54,11 +45,89 @@ function AppAccessCard({ children }: { children: ReactNode }) {
   );
 }
 
+function AppAccessSkeleton() {
+  return (
+    <AppAccessCard>
+      <Skeleton className="h-4 w-48" />
+    </AppAccessCard>
+  );
+}
+
 /** ROLE_METADATA doesn't have an entry for the bare collaborator_custom
  * literal (see CUSTOM_ROLE in invitations.ts) — mirrors the fallback
  * RolePicker.tsx uses for its own currentLabel. */
 function roleLabelFor(role: string): string {
   return ROLE_METADATA[role as Role]?.label ?? (role === CUSTOM_ROLE ? 'Custom role' : role);
+}
+
+/** Named against RoleSelect's own props so a typo lands on the object literal
+ * that builds it rather than at the spread site. */
+type InvitePickerProps = Pick<
+  RoleSelectProps,
+  'restaurantId' | 'callerRole' | 'value' | 'onSelect' | 'triggerText' | 'triggerLabel' | 'open' | 'onOpenChange'
+>;
+
+/** Edit mode: the invite fires on its own button rather than on the dialog's
+ * Save, so it lives behind a disclosure instead of sitting open next to
+ * unrelated fields. Three states, each its own early return. */
+function EditModeInvite({
+  savedEmail,
+  typedEmailDiffers,
+  expanded,
+  onExpand,
+  picker,
+  inviteRole,
+  onSendInvite,
+  sendingInvite,
+}: {
+  savedEmail: string | undefined;
+  typedEmailDiffers: boolean;
+  expanded: boolean;
+  onExpand: () => void;
+  picker: InvitePickerProps;
+  inviteRole: RoleWithGrants | null;
+  onSendInvite: () => void;
+  sendingInvite?: boolean;
+}) {
+  if (!savedEmail) {
+    return (
+      <p className="text-[13px] text-muted-foreground">
+        Add an email address and save before inviting this employee to the app.
+      </p>
+    );
+  }
+
+  if (!expanded) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={onExpand}
+        className="h-9 px-4 -ml-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        Invite to the app…
+      </Button>
+    );
+  }
+
+  return (
+    <>
+      <RoleSelect {...picker} />
+      {inviteRole && <RoleAreaChips areas={inviteRole.role_areas} />}
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={onSendInvite}
+        disabled={sendingInvite || typedEmailDiffers}
+        className="h-9 px-4 -ml-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        {sendingInvite ? 'Sending…' : 'Send invite'}
+      </Button>
+      {typedEmailDiffers && (
+        <p className="text-[13px] text-muted-foreground">Save the email change before inviting.</p>
+      )}
+    </>
+  );
 }
 
 export function EmployeeAppAccessRow({
@@ -80,12 +149,11 @@ export function EmployeeAppAccessRow({
   if (isLoading) return <AppAccessSkeleton />;
   if (isError) {
     return (
-      <div
-        role="alert"
-        className="rounded-lg border border-border/40 bg-muted/30 p-3 text-[13px] text-muted-foreground"
-      >
-        Couldn't load access details.
-      </div>
+      <AppAccessCard>
+        <p role="alert" className="text-[13px] text-muted-foreground">
+          Couldn't load access details.
+        </p>
+      </AppAccessCard>
     );
   }
 
@@ -102,8 +170,17 @@ export function EmployeeAppAccessRow({
     // to fall back to a read-only display of the same information.
     return (
       <AppAccessCard>
+        {/* RestaurantMember.email is nullable -- the roster reads it from a
+            joined profiles row that may not have one. "Signed in as" trailing
+            off into nothing reads like a rendering bug, so name the state. */}
         <p className="text-[13px] text-muted-foreground truncate">
-          Signed in as <span className="text-foreground">{member.email}</span>
+          {member.email ? (
+            <>
+              Signed in as <span className="text-foreground">{member.email}</span>
+            </>
+          ) : (
+            'Signed in to the app'
+          )}
         </p>
         {callerRole ? (
           <RolePicker
@@ -149,7 +226,7 @@ export function EmployeeAppAccessRow({
   // Here the choice IS the whole action — there is no footer and nothing left
   // to confirm — so leaving it open would just park a 340px panel over the
   // rest of the form.
-  const invitePickerProps = {
+  const invitePickerProps: InvitePickerProps = {
     restaurantId,
     callerRole,
     value: inviteRole?.id ?? null,
@@ -170,44 +247,26 @@ export function EmployeeAppAccessRow({
   // associates with this employee record.
   if (onSendInvite) {
     const savedEmail = employee?.email?.trim();
-    const typedEmailDiffers = !!savedEmail && email.trim() !== savedEmail;
+    // Case-insensitively, for the reason findMemberByEmail documents:
+    // profiles.email is plain TEXT, not CITEXT, so the same address can come
+    // back in a different case than the user types it. Comparing strictly
+    // would block the invite over a capital letter.
+    const typedEmailDiffers =
+      !!savedEmail && email.trim().toLowerCase() !== savedEmail.toLowerCase();
 
     return (
       <AppAccessCard>
         <p className="text-[13px] text-muted-foreground">No access</p>
-        {!savedEmail ? (
-          <p className="text-[13px] text-muted-foreground">
-            Add an email address and save before inviting this employee to the app.
-          </p>
-        ) : !inviteExpanded ? (
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setInviteExpanded(true)}
-            className="h-9 px-4 -ml-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-          >
-            Invite to the app…
-          </Button>
-        ) : (
-          <>
-            <RoleSelect {...invitePickerProps} />
-            {inviteRole && <RoleAreaChips areas={inviteRole.role_areas} />}
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onSendInvite}
-              disabled={sendingInvite || !savedEmail || typedEmailDiffers}
-              className="h-9 px-4 -ml-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
-            >
-              {sendingInvite ? 'Sending…' : 'Send invite'}
-            </Button>
-            {typedEmailDiffers && (
-              <p className="text-[13px] text-muted-foreground">
-                Save the email change before inviting.
-              </p>
-            )}
-          </>
-        )}
+        <EditModeInvite
+          savedEmail={savedEmail}
+          typedEmailDiffers={typedEmailDiffers}
+          expanded={inviteExpanded}
+          onExpand={() => setInviteExpanded(true)}
+          picker={invitePickerProps}
+          inviteRole={inviteRole}
+          onSendInvite={onSendInvite}
+          sendingInvite={sendingInvite}
+        />
       </AppAccessCard>
     );
   }

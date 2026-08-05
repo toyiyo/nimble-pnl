@@ -44,10 +44,10 @@ import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { convertAvailabilityWindowsToUtc } from '@/lib/availabilityTimeUtils';
 import { isActiveForStatus } from '@/utils/employeeFilters';
 import { useRestaurantMembers, findMemberByEmail } from '@/hooks/useRestaurantMembers';
-import { ROLE_METADATA } from '@/lib/permissions/definitions';
-import { CUSTOM_ROLE } from '@/lib/permissions/invitations';
 import { EmployeeAppAccessRow } from '@/components/employees/EmployeeAppAccessRow';
 import type { RoleWithGrants } from '@/hooks/useRoles';
+import { ROLE_METADATA } from '@/lib/permissions/definitions';
+import { CUSTOM_ROLE } from '@/lib/permissions/invitations';
 
 interface EmployeeDialogProps {
   open: boolean;
@@ -212,6 +212,16 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
     setIsEffectiveDateModalOpen(false);
     setPendingCompChange(null);
     setSavingCompHistory(false);
+
+    // The access decision belongs to whoever is on screen right now, so it is
+    // cleared for BOTH branches below. The edit branch re-seeds every other
+    // field from `employee` but has nothing to re-seed these from -- leaving
+    // them alone would carry a role picked for the last person into the next
+    // person's invite payload, and the "Send invite" button doesn't show what
+    // role it is about to send.
+    setAppAccessGrant(false);
+    setAppAccessInviteRole(null);
+    setLinkToExisting(false);
 
     if (employee) {
       setName(employee.name);
@@ -1175,6 +1185,11 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   showing both options. */}
               {!(isCreateMode && existingMember) && (
                 <EmployeeAppAccessRow
+                  // The row owns "is the invite panel expanded" locally, which
+                  // is per-person state the row has no other way to reset --
+                  // the dialog is reused across employees rather than
+                  // remounted. Keying on the employee remounts just this row.
+                  key={employee?.id ?? 'new'}
                   restaurantId={restaurantId}
                   callerRole={callerRole}
                   employee={employee}

@@ -40,6 +40,9 @@ export interface RoleSelectProps {
   disabled?: boolean;
   /** Rendered as a sibling of CommandList, inside Command. Never inside CommandList. */
   footer?: ReactNode;
+  /** Optional: control `open` only when the popover has to close on something
+   * other than a click outside — the invite pickers close on select, RolePicker
+   * closes when the assignment lands. Left off, the popover manages itself. */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -59,7 +62,10 @@ export function RoleSelect({
   const [openUncontrolled, setOpenUncontrolled] = useState(false);
   const open = openProp ?? openUncontrolled;
   const setOpen = (next: boolean) => {
-    setOpenUncontrolled(next);
+    // Only track internally while nobody else is driving `open`. Writing both
+    // would leave the two out of step for a caller that passes `open` without
+    // `onOpenChange`, and whichever one it stopped agreeing with would win.
+    if (openProp === undefined) setOpenUncontrolled(next);
     onOpenChange?.(next);
   };
 

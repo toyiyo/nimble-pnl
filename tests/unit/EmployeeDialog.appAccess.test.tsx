@@ -471,22 +471,24 @@ describe('EmployeeDialog — app access row: visibility gate and the linked-acco
   });
 });
 
-describe('EmployeeDialog — create-mode invite carries the chosen role', () => {
-  const roleRow = (over: Record<string, unknown>) => ({
-    id: 'x',
-    restaurant_id: 'r1',
-    name: 'Role',
-    description: null,
-    flavor: 'collaborator',
-    builtin: false,
-    legacy_role: null,
-    created_at: '',
-    role_areas: [],
-    role_flags: [],
-    memberCount: 0,
-    ...over,
-  });
+/** A custom role, overridable field by field. Shared by both invite suites so
+ * they can't drift into testing subtly different role shapes. */
+const roleRow = (over: Record<string, unknown>) => ({
+  id: 'x',
+  restaurant_id: 'r1',
+  name: 'Role',
+  description: null,
+  flavor: 'collaborator',
+  builtin: false,
+  legacy_role: null,
+  created_at: '',
+  role_areas: [],
+  role_flags: [],
+  memberCount: 0,
+  ...over,
+});
 
+describe('EmployeeDialog — create-mode invite carries the chosen role', () => {
   beforeEach(() => {
     createEmployeeMock.mockReset().mockResolvedValue({ id: 'new-emp' });
     bulkMutateMock.mockReset().mockResolvedValue({ employees_updated: 1, rows_inserted: 7 });
@@ -591,21 +593,6 @@ describe('EmployeeDialog — create-mode invite carries the chosen role', () => 
 });
 
 describe('EmployeeDialog — the edit-mode invite', () => {
-  const roleRow = (over: Record<string, unknown>) => ({
-    id: 'x',
-    restaurant_id: 'r1',
-    name: 'Role',
-    description: null,
-    flavor: 'collaborator',
-    builtin: false,
-    legacy_role: null,
-    created_at: '',
-    role_areas: [],
-    role_flags: [],
-    memberCount: 0,
-    ...over,
-  });
-
   const EMPLOYEE_NO_ACCOUNT: Employee = {
     id: 'e1',
     restaurant_id: 'r1',
@@ -678,6 +665,57 @@ describe('EmployeeDialog — the edit-mode invite', () => {
 
     await userEvent.click(sendButton);
     expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('starts the next employee fresh instead of carrying the last one\'s role', async () => {
+    const qc = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false, refetchOnWindowFocus: false, staleTime: Infinity },
+      },
+    });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <EmployeeDialog
+          open
+          onOpenChange={vi.fn()}
+          restaurantId="r1"
+          employee={EMPLOYEE_NO_ACCOUNT}
+        />
+      </QueryClientProvider>,
+    );
+
+    await userEvent.click(await screen.findByRole('button', { name: /invite to the app/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /invite as/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/i }));
+    await userEvent.keyboard('{Escape}');
+
+    const OTHER: Employee = {
+      ...EMPLOYEE_NO_ACCOUNT,
+      id: 'e2',
+      name: 'Dana Cruz',
+      email: 'dana@x.com',
+    };
+    rerender(
+      <QueryClientProvider client={qc}>
+        <EmployeeDialog open onOpenChange={vi.fn()} restaurantId="r1" employee={OTHER} />
+      </QueryClientProvider>,
+    );
+
+    // The panel collapses back to its entry point, so the next person starts at
+    // the same place the first one did rather than mid-decision.
+    await userEvent.click(await screen.findByRole('button', { name: /invite to the app/i }));
+    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('send-team-invitation', {
+        body: {
+          restaurantId: 'r1',
+          email: 'dana@x.com',
+          role: 'staff',
+          employeeId: 'e2',
+        },
+      }),
+    );
   });
 
   it('asks for an email first when the employee has none saved', async () => {

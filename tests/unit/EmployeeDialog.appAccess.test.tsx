@@ -86,6 +86,11 @@ vi.mock('@/hooks/useAssignRole', async () => {
 // findMemberByEmail real since it's a pure function used by the component
 // itself. Default: nobody on the roster matches — tests that need an
 // existing member override this per-test (mirrors TeamInvitations.test.tsx).
+// The signed-in caller. EmployeeAppAccessRow needs it to recognise "this is
+// me" and disable the picker — assign_membership_role rejects self-assignment.
+const mockUseAuth = vi.fn(() => ({ user: { id: 'caller-1' } as { id: string } | null }));
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => mockUseAuth() }));
+
 const mockUseRestaurantMembers = vi.fn(() => ({ data: [], isError: false }));
 vi.mock('@/hooks/useRestaurantMembers', async () => {
   const actual = await vi.importActual<typeof import('@/hooks/useRestaurantMembers')>(
@@ -389,6 +394,7 @@ describe('EmployeeDialog — app access row: visibility gate and the linked-acco
     mockUseRestaurantMembers.mockReset().mockReturnValue({ data: [], isLoading: false, isError: false });
     mockUseRoles.mockReset().mockReturnValue({ roles: [], isLoading: false, error: null });
     assignRoleMutate.mockReset();
+    mockUseAuth.mockReset().mockReturnValue({ user: { id: 'caller-1' } });
     mockUseRestaurantContext.mockReset().mockReturnValue({
       selectedRestaurant: {
         restaurant_id: 'r1',
@@ -404,7 +410,80 @@ describe('EmployeeDialog — app access row: visibility gate and the linked-acco
 
     expect(await screen.findByText(/signed in as/i)).toBeInTheDocument();
     expect(screen.getByText(/jamie@example\.com/i)).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: /jamie rivera/i })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: /jamie rivera/i })).toBeEnabled();
+  });
+
+  // Each case below mirrors a rule `assign_membership_role` raises 42501 for.
+  // Left enabled, the picker offers a menu where every choice ends in an error
+  // toast — the same guard RoleRoster and TeamMembers already carry.
+  it('will not let you change your own role from your own employee dialog', async () => {
+    mockUseAuth.mockReturnValue({ user: { id: 'u1' } });
+    mockUseRestaurantMembers.mockReturnValue({ data: [LINKED_MEMBER], isLoading: false, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByRole('combobox', { name: /jamie rivera/i })).toBeDisabled();
+  });
+
+  it('will not reassign a kiosk membership', async () => {
+    mockUseRestaurantMembers.mockReturnValue({
+      data: [{ ...LINKED_MEMBER, role: 'kiosk' }],
+      isLoading: false,
+      isError: false,
+    });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByRole('combobox', { name: /jamie rivera/i })).toBeDisabled();
+  });
+
+  it('will not let a manager change an owner', async () => {
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'manager' as const,
+        restaurant: { id: 'r1', timezone: 'UTC' },
+      },
+    });
+    mockUseRestaurantMembers.mockReturnValue({
+      data: [{ ...LINKED_MEMBER, role: 'owner' }],
+      isLoading: false,
+      isError: false,
+    });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByRole('combobox', { name: /jamie rivera/i })).toBeDisabled();
+  });
+
+  it('still lets that manager change a non-owner', async () => {
+    // The owner guard is per-target, not a blanket "managers can't assign" —
+    // without this the previous test would pass just as well if the disable
+    // were keyed on callerRole alone.
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'manager' as const,
+        restaurant: { id: 'r1', timezone: 'UTC' },
+      },
+    });
+    mockUseRestaurantMembers.mockReturnValue({ data: [LINKED_MEMBER], isLoading: false, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByRole('combobox', { name: /jamie rivera/i })).toBeEnabled();
+  });
+
+  it('will not offer a role menu to a caller with no assign rights', async () => {
+    // A chef can see the roster (internal team) but `assign_membership_role`
+    // accepts nothing from them.
+    mockUseRestaurantContext.mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'chef' as const,
+        restaurant: { id: 'r1', timezone: 'UTC' },
+      },
+    });
+    mockUseRestaurantMembers.mockReturnValue({ data: [LINKED_MEMBER], isLoading: false, isError: false });
+    renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
+
+    expect(await screen.findByRole('combobox', { name: /jamie rivera/i })).toBeDisabled();
   });
 
   it('says nothing at all to a caller who cannot see the roster', async () => {

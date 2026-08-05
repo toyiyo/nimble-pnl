@@ -196,7 +196,11 @@ export function RoleSelect({
                 Couldn't load roles. Please try again.
               </p>
             )}
-            {!isLoading && !error && customRoles.length === 0 && builtinRoles.length === 0 && (
+            {/* `!!restaurantId` for the same reason the loading branch checks
+                it: with no restaurant the query is disabled, so isLoading is
+                false and the empty state would render UNDER the loading line
+                rather than instead of it. */}
+            {!!restaurantId && !isLoading && !error && customRoles.length === 0 && builtinRoles.length === 0 && (
               <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
                 No roles match. Create one in Team → Roles.
               </p>

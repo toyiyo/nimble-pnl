@@ -6,11 +6,12 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { RolePicker } from '@/components/roles/RolePicker';
 import { RoleSelect, type RoleSelectProps } from '@/components/roles/RoleSelect';
 import { RoleAreaChips } from '@/components/roles/RoleAreaChips';
+import { useAuth } from '@/hooks/useAuth';
 import { useRestaurantMembers } from '@/hooks/useRestaurantMembers';
 import type { RoleWithGrants } from '@/hooks/useRoles';
 import { isInternalTeamRole } from '@/lib/permissions/roleMembership';
 import { ROLE_METADATA } from '@/lib/permissions/definitions';
-import { CUSTOM_ROLE } from '@/lib/permissions/invitations';
+import { canAssignAnyRole, CUSTOM_ROLE } from '@/lib/permissions/invitations';
 import type { Role } from '@/lib/permissions/types';
 import type { Employee } from '@/types/scheduling';
 
@@ -143,6 +144,7 @@ export function EmployeeAppAccessRow({
   sendingInvite,
 }: EmployeeAppAccessRowProps) {
   const { data: members, isLoading, isError } = useRestaurantMembers(restaurantId);
+  const { user } = useAuth();
   const [inviteExpanded, setInviteExpanded] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -190,6 +192,18 @@ export function EmployeeAppAccessRow({
             currentRole={member.role}
             currentRoleId={member.roleId}
             callerRole={callerRole}
+            // The same four conditions RoleRoster and TeamMembers disable on,
+            // each mirroring a rule `assign_membership_role` would otherwise
+            // raise 42501 for: no assign rights at all, self (rule 2), kiosk
+            // (rule 4), an owner changed by a non-owner (rule 5a). Without
+            // this, opening your own employee dialog offers a menu where every
+            // choice ends in an error toast.
+            disabled={
+              !canAssignAnyRole(callerRole) ||
+              (!!user && member.userId === user.id) ||
+              member.role === 'kiosk' ||
+              (member.role === 'owner' && callerRole !== 'owner')
+            }
           />
         ) : (
           <p className="text-[14px] font-medium text-foreground">{roleLabelFor(member.role)}</p>

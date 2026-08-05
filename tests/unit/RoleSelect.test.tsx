@@ -63,6 +63,18 @@ describe('RoleSelect', () => {
     expect(screen.queryByText(/no roles match/i)).not.toBeInTheDocument();
   });
 
+  it('waits rather than claiming no roles exist when there is no restaurant yet', async () => {
+    // useRoles is `enabled: !!restaurantId`, and a disabled React Query reports
+    // isLoading === false — so the empty state has to check restaurantId too or
+    // it renders "No roles match" directly under "Loading roles…".
+    mockUseRoles.mockReturnValue({ roles: [], isLoading: false, error: null });
+    render(<RoleSelect {...base} restaurantId="" />, { wrapper });
+    await userEvent.click(screen.getByRole('combobox'));
+
+    expect(screen.getByRole('status')).toHaveTextContent(/loading roles/i);
+    expect(screen.queryByText(/no roles match/i)).not.toBeInTheDocument();
+  });
+
   it('hides owner from a manager and shows it to an owner', async () => {
     mockUseRoles.mockReturnValue({
       roles: [roleRow({ id: 'owner-role', name: 'Owner', legacy_role: 'owner', builtin: true, restaurant_id: null })],

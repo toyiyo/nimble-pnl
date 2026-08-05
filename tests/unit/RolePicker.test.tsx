@@ -167,4 +167,33 @@ describe('RolePicker', () => {
     expect(screen.queryByRole('option', { name: /Copied platform role/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /Scoped builtin/ })).not.toBeInTheDocument();
   });
+
+  // RolePicker owns `open` precisely so commit's onSuccess can close it and
+  // clear the candidate. When the option list moved into RoleSelect, an
+  // uncontrolled popover would leave this dialog open on a stale candidate
+  // after a successful assignment. Written before the extraction, on purpose.
+  it('closes and clears the candidate once the assignment lands', async () => {
+    mockUseRoles.mockReturnValue({
+      roles: [roleRow({ id: 'c1', name: 'Operations Lead' })],
+      isLoading: false, error: null,
+    });
+    render(<RolePicker {...base} />, { wrapper });
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/ }));
+    await userEvent.click(screen.getByRole('button', { name: /change role to/i }));
+
+    const [, handlers] = mutate.mock.calls[0];
+    handlers.onSuccess();
+
+    // Popover gone, so the commit button and the option list are gone with it.
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /change role to/i })).not.toBeInTheDocument()
+    );
+    expect(screen.queryByRole('option', { name: /Operations Lead/ })).not.toBeInTheDocument();
+
+    // Reopening starts clean — no candidate carried over, so no commit footer.
+    await userEvent.click(screen.getByRole('combobox', { name: /Dana Reyes/i }));
+    expect(screen.queryByRole('button', { name: /change role to/i })).not.toBeInTheDocument();
+  });
 });

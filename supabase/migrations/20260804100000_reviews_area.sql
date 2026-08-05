@@ -127,6 +127,13 @@ BEGIN
       WHEN 'view:pos_sales' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_operations_manager')
       WHEN 'view:scheduling' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef', 'collaborator_operations_manager')
       WHEN 'edit:scheduling' THEN v_role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')
+
+      -- Mirrors the role_areas grants inserted above: Owner/Manager/Operations
+      -- Manager get 'manage', Chef gets 'view', nobody else (including every
+      -- collaborator) gets anything — there is no role_areas row for them.
+      WHEN 'view:reviews' THEN v_role IN ('owner', 'manager', 'operations_manager', 'chef')
+      WHEN 'manage:reviews' THEN v_role IN ('owner', 'manager', 'operations_manager')
+
       WHEN 'view:payroll' THEN v_role IN ('owner', 'manager', 'operations_manager', 'collaborator_accountant', 'collaborator_operations_manager')
       WHEN 'edit:payroll' THEN v_role IN ('owner', 'manager', 'operations_manager')
       WHEN 'view:tips' THEN v_role IN ('owner', 'manager', 'operations_manager', 'collaborator_operations_manager')

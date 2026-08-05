@@ -39,9 +39,14 @@ test('owner creates a page, a guest comments, the owner resolves it', async ({ p
   await page.getByLabel(/google review link/i).fill('https://example.com/google-review');
   await page.getByRole('button', { name: /create page/i }).click();
 
-  // The card now exists, live, with the slug the guest will scan.
-  await expect(page.getByText(`/r/${slug}`)).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText('Live')).toBeVisible();
+  // The card now exists, live, with the slug the guest will scan. Scoped to
+  // the list card specifically: the builder stays open in the other pane
+  // after creation (this is a split view, not a modal) and its own "Live"
+  // switch label would otherwise make `getByText('Live')` ambiguous.
+  const card = page.getByRole('button', { name: pageName });
+  await expect(card).toBeVisible({ timeout: 10000 });
+  await expect(card.getByText(`/r/${slug}`)).toBeVisible();
+  await expect(card.getByText('Live', { exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: /qr code/i }).click();
   await expect(page.getByRole('button', { name: /download qr code as svg/i })).toBeEnabled({

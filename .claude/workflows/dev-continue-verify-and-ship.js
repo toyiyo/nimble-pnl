@@ -42,15 +42,24 @@ if (missingArgs.length) {
 const shQuote = (s) => `'${String(s).replace(/'/g, "'\\''")}'`
 const preflight = (reason) => ({ stopped: true, phase: 'Preflight', reason })
 const trimmed = (v) => (typeof v === 'string' && v.trim() ? v.trim() : '')
+// Single-line fields get interpolated into a shell command or into one bullet
+// of a formatted list. A newline in either place silently restructures what the
+// agent reads, so reject it rather than rendering something ambiguous.
+const multiline = (v) => /[\r\n]/.test(v)
 
 // args.priorState — free text describing what the human resolved before this
 // run was launched. The fallback asserts NOTHING: it cannot know that the build
 // or review phases ran, so it sends the agent to the records instead of
 // claiming they did. Telling it "phases 4-7 are complete" when no input
 // establishes that is how required review work gets skipped.
+// Supplied-but-blank halts rather than falling back: a caller who meant to set
+// this and passed '' would otherwise get the generic text and never know.
 const PRIOR_STATE =
   trimmed(ctx.priorState) ||
   'Determine what already happened on this branch by reading progress.md and `git log origin/main..HEAD --oneline`. Do NOT assume a phase ran or a finding was resolved unless those records show it. This script starts at Verify and does not itself run the build or review phases — if the records do not show them as complete, halt and say so rather than proceeding or starting them yourself.'
+if (ctx.priorState !== undefined && !trimmed(ctx.priorState)) {
+  return preflight('args.priorState was supplied but is not a non-empty string.')
+}
 
 // args.bundleProbe — opt-in production-bundle gate. Either a bare string (the
 // pattern, expected ABSENT from the build output) or
@@ -72,6 +81,10 @@ if (ctx.bundleProbe !== undefined && ctx.bundleProbe !== null) {
   }
   const pattern = trimmed(raw.pattern)
   if (!pattern) return preflight('args.bundleProbe was supplied but carries no usable `pattern` string.')
+  // pattern and dir land inside the grep command line. A newline in `pattern`
+  // would make grep -F treat it as several alternative patterns; a newline in
+  // `dir` would append a second shell line entirely.
+  if (multiline(pattern)) return preflight('args.bundleProbe.pattern must be a single line (it is interpolated into a shell command).')
   // An unrecognised `expect` must NOT fall through to the default. "present "
   // or "Present" quietly becoming "absent" would invert the gate and let it
   // pass while checking the opposite of what was asked for.
@@ -79,6 +92,7 @@ if (ctx.bundleProbe !== undefined && ctx.bundleProbe !== null) {
     return preflight(`args.bundleProbe.expect must be exactly ${EXPECTATIONS.map((e) => `'${e}'`).join(' or ')} (got ${JSON.stringify(raw.expect)}).`)
   }
   if (raw.dir !== undefined && !trimmed(raw.dir)) return preflight('args.bundleProbe.dir was supplied but is not a non-empty string.')
+  if (multiline(trimmed(raw.dir))) return preflight('args.bundleProbe.dir must be a single line (it is interpolated into a shell command).')
   if (raw.rationale !== undefined && typeof raw.rationale !== 'string') return preflight('args.bundleProbe.rationale must be a string.')
   PROBE = { pattern, expect: raw.expect || 'absent', dir: trimmed(raw.dir) || 'dist/', rationale: trimmed(raw.rationale) }
 }
@@ -115,6 +129,12 @@ if (ctx.resolvedFindings !== undefined) {
       )
     }
     if (f.note !== undefined && !note) return preflight(`args.resolvedFindings[${i}] ("${topic}") has a \`note\` that is not a non-empty string.`)
+    // Each entry renders as ONE bullet. A newline in any field would split it
+    // across lines and make the surrounding triage instructions ambiguous about
+    // which text belongs to which finding.
+    for (const [field, value] of [['topic', topic], ['commit', commit], ['note', note]]) {
+      if (multiline(value)) return preflight(`args.resolvedFindings[${i}].${field} must be a single line (each entry renders as one bullet).`)
+    }
     RESOLVED.push({ topic, commit, note })
   }
 }

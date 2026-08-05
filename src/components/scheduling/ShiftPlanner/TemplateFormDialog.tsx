@@ -124,6 +124,14 @@ export function TemplateFormDialog({
     showCascadeChoice,
   } = useTemplateHoursLedger(restaurantId, template, startTime, endTime, restaurantTimezone, selectedDriftIds, open);
 
+  // The ledger (and so `affectedCount`, and so the button's label) is computed
+  // from the DEBOUNCED times, but `submitWith` sends the raw ones. Inside the
+  // 300 ms window those disagree, and a manager who retypes a time and clicks
+  // straight through gets a button promising "update 3 shifts" while the RPC
+  // applies hours the count was never computed for. Treat the unsettled window
+  // as still-loading rather than letting the label lie.
+  const debouncePending = startTime !== debouncedStart || endTime !== debouncedEnd;
+
   const toggleDrift = useCallback((shiftId: string) => {
     setSelectedDriftIds((prev) => {
       const next = new Set(prev);
@@ -410,7 +418,10 @@ export function TemplateFormDialog({
             // While the impact query resolves, the single button renders
             // disabled rather than showing a label that is about to change
             // under the pointer.
-            disabled={!isValid || isSubmitting || (isEdit && hoursChanged && impact.isLoading)}
+            disabled={
+              !isValid || isSubmitting ||
+              (isEdit && hoursChanged && (impact.isLoading || debouncePending))
+            }
             onClick={() => { void submitWith(showCascadeChoice); }}
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >

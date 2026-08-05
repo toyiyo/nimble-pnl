@@ -54,6 +54,17 @@ describe('buildDeltaBadge', () => {
   it('reports no change when the times are identical', () => {
     expect(buildDeltaBadge('09:00', '17:00', '09:00', '17:00')).toBe('no change');
   });
+
+  it('takes the short way round the clock when the start crosses midnight', () => {
+    // A raw subtraction reads 23:00 -> 01:00 as -1320 minutes and renders
+    // "22h earlier", the opposite direction from the two-hour move the manager
+    // made. Both midnight-crossing shifts, so the length is unchanged.
+    expect(buildDeltaBadge('23:00', '07:00', '01:00', '09:00')).toBe('2h later · same length');
+  });
+
+  it('takes the short way round the clock backwards across midnight', () => {
+    expect(buildDeltaBadge('01:00', '09:00', '23:00', '07:00')).toBe('2h earlier · same length');
+  });
 });
 
 describe('formatHoursDelta', () => {
@@ -67,6 +78,20 @@ describe('formatHoursDelta', () => {
 
   it('names the zero case rather than printing "+0"', () => {
     expect(formatHoursDelta(0)).toBe('No change in scheduled hours');
+  });
+
+  it('rounds a float sum instead of rendering it verbatim', () => {
+    // How the caller actually builds this: a sum of `minutes / 60` terms, none
+    // of which is exact in binary floating point. Six shifts extended ten
+    // minutes each is exactly one hour, and used to render as
+    // "+0.9999999999999999 scheduled hours".
+    const sixTenMinuteExtensions = Array.from({ length: 6 }).reduce<number>((sum) => sum + 10 / 60, 0);
+    expect(sixTenMinuteExtensions).not.toBe(1);
+    expect(formatHoursDelta(sixTenMinuteExtensions)).toBe('+1 scheduled hours');
+  });
+
+  it('reads a delta that cancels to float dust as no change', () => {
+    expect(formatHoursDelta(0.1 + 0.2 - 0.3)).toBe('No change in scheduled hours');
   });
 });
 

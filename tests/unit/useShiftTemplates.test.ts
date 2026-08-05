@@ -1196,6 +1196,37 @@ describe('useShiftTemplates', () => {
       );
     });
 
+    it('names shifts Undo declined on purpose separately from the other skips', async () => {
+      // A shift locked, or started, since the cascade is not "changed since"
+      // and not "deleted" — Undo refused it for the same reasons the cascade
+      // refuses it. Folding it under either of the other labels would tell the
+      // manager the wrong thing about a shift that is still sitting there.
+      const { undoAction } = await triggerCascadeAndClickUndo();
+
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: {
+          restored_count: 1,
+          changed_since_count: 1,
+          deleted_count: 0,
+          protected_count: 2,
+        },
+        error: null,
+      } as any);
+
+      await act(async () => {
+        undoAction.props.onClick();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Cascade undone',
+          description: 'Restored 1 shift · skipped 1 changed since, 2 now locked or started',
+        }),
+      );
+    });
+
     it('invalidates shifts and template-linked-shifts queries after undo', async () => {
       const { undoAction } = await triggerCascadeAndClickUndo();
 

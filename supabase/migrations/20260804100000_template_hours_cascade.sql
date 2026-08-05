@@ -30,11 +30,18 @@ ALTER TABLE public.schedule_change_logs
 -- PARTIAL. The column is NULL for nearly every row, so the predicate keeps the
 -- index small and keeps the write cost off the common logging path.
 --
--- Deliberately not CONCURRENTLY. schedule_change_logs is written on most
--- scheduling actions, so a long SHARE lock would matter -- but the predicate
--- matches zero rows at creation time (brand-new, unbackfilled column), so the
--- build is effectively instantaneous regardless of table size. That keeps both
--- statements in one migration file, which CREATE INDEX CONCURRENTLY forbids.
+-- Deliberately not CONCURRENTLY, and the cost is a table scan under a SHARE
+-- lock -- not zero. The all-NULL predicate keeps the resulting index tiny, but
+-- a partial build still reads every row to evaluate the predicate, so writers
+-- to schedule_change_logs block for the length of that scan. Accepted here:
+-- CONCURRENTLY cannot run inside a transaction block and Supabase wraps each
+-- migration in one, so using it would mean splitting this into a separate
+-- out-of-band deploy step for an index the two functions below cannot work
+-- without. The scan is sequential over an append-only audit table with no
+-- index to build entries from, which is the cheap shape of this operation.
+-- If schedule_change_logs ever grows past the point where a seq scan's
+-- duration is an outage, move this statement to its own concurrent
+-- pre-deploy migration and drop the IF NOT EXISTS here.
 CREATE INDEX IF NOT EXISTS idx_schedule_change_logs_cascade_batch
   ON public.schedule_change_logs (cascade_batch_id)
   WHERE cascade_batch_id IS NOT NULL;
@@ -161,10 +168,9 @@ BEGIN
     -- and the transaction stays in milliseconds (lock-short-transactions).
     --
     -- `target` reads the pre-UPDATE snapshot, so its to_jsonb(s.*) is the OLD
-    -- row -- that is before_data. The new instants are RECONSTRUCTED from each
-    -- shift's own restaurant-local date rather than offset by an interval:
-    -- interval arithmetic preserves elapsed duration across a DST boundary,
-    -- which is the opposite of what a manager typing "10:00" means.
+    -- row -- that is before_data. It deliberately does NOT precompute the new
+    -- instants: see the UPDATE's SET clause for why they have to come from the
+    -- locked row instead.
     WITH target AS (
       SELECT
         s.id,
@@ -172,17 +178,7 @@ BEGIN
         s.start_time AS prev_start,
         s.end_time   AS prev_end,
         s.position   AS prev_position,
-        to_jsonb(s.*) AS before_data,
-        (((s.start_time AT TIME ZONE v_tz)::date || ' ' || p_start_time)::timestamp
-          AT TIME ZONE v_tz) AS new_start,
-        CASE
-          WHEN p_end_time <= p_start_time THEN
-            ((((s.start_time AT TIME ZONE v_tz)::date + 1) || ' ' || p_end_time)::timestamp
-              AT TIME ZONE v_tz)
-          ELSE
-            (((s.start_time AT TIME ZONE v_tz)::date || ' ' || p_end_time)::timestamp
-              AT TIME ZONE v_tz)
-        END AS new_end
+        to_jsonb(s.*) AS before_data
       FROM public.shifts s
       WHERE s.restaurant_id     = p_restaurant_id
         AND s.shift_template_id = p_template_id
@@ -198,8 +194,30 @@ BEGIN
     ),
     updated AS (
       UPDATE public.shifts s
-      SET start_time = t.new_start,
-          end_time   = t.new_end,
+      -- RECONSTRUCTED from each shift's own restaurant-local date rather than
+      -- offset by an interval: interval arithmetic preserves elapsed duration
+      -- across a DST boundary, which is the opposite of what a manager typing
+      -- "10:00" means.
+      --
+      -- Derived from `s`, never from the `target` snapshot. In an UPDATE ...
+      -- FROM, the SET expressions see the row version this statement locked,
+      -- so `s.start_time` here is post-block and current. The guards below
+      -- re-check only ::time, locked, and start_time > now() -- none of them
+      -- pins the DATE. A concurrent writer that moved this shift to a
+      -- different day while keeping the same local time-of-day passes every
+      -- guard, so computing the date from the snapshot row would silently drag
+      -- the shift back onto its old day. Reading the date off `s` removes that
+      -- whole class without a second round trip.
+      SET start_time = (((s.start_time AT TIME ZONE v_tz)::date || ' ' || p_start_time)::timestamp
+                          AT TIME ZONE v_tz),
+          end_time   = CASE
+            WHEN p_end_time <= p_start_time THEN
+              ((((s.start_time AT TIME ZONE v_tz)::date + 1) || ' ' || p_end_time)::timestamp
+                AT TIME ZONE v_tz)
+            ELSE
+              (((s.start_time AT TIME ZONE v_tz)::date || ' ' || p_end_time)::timestamp
+                AT TIME ZONE v_tz)
+          END,
           updated_at = now()
       FROM target t
       -- Re-checks the same classification guards target already applied to
@@ -306,6 +324,7 @@ DECLARE
   v_restored_count      INTEGER := 0;
   v_changed_since_count INTEGER := 0;
   v_deleted_count       INTEGER := 0;
+  v_protected_count     INTEGER := 0;
 BEGIN
   IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN
     RAISE EXCEPTION 'Not authorized to edit scheduling for restaurant %', p_restaurant_id
@@ -327,7 +346,8 @@ BEGIN
   -- running three queries that would each match zero rows.
   IF p_batch_id IS NULL THEN
     RETURN jsonb_build_object(
-      'restored_count', 0, 'changed_since_count', 0, 'deleted_count', 0
+      'restored_count', 0, 'changed_since_count', 0, 'deleted_count', 0,
+      'protected_count', 0
     );
   END IF;
 
@@ -359,6 +379,25 @@ BEGIN
     AND (   s.start_time IS DISTINCT FROM (l.after_data->>'start_time')::timestamptz
          OR s.end_time   IS DISTINCT FROM (l.after_data->>'end_time')::timestamptz);
 
+  -- Protected since: the row still holds exactly what the cascade wrote, so it
+  -- WOULD be restored -- but it has become locked, or its start has crossed
+  -- into the past, since the cascade ran. The cascade refuses both (line ~190:
+  -- `locked` means hands off; past shifts are payroll-visible), and Undo has to
+  -- refuse them for the same reasons or the flag and the payroll boundary mean
+  -- nothing the moment a toast is on screen. Counted separately so the toast
+  -- can say why these did not come back instead of quietly folding them into
+  -- restored_count.
+  SELECT count(*)::int INTO v_protected_count
+  FROM public.schedule_change_logs l
+  JOIN public.shifts s
+    ON s.id = l.shift_id
+   AND s.restaurant_id = p_restaurant_id
+  WHERE l.cascade_batch_id = p_batch_id
+    AND l.restaurant_id = p_restaurant_id
+    AND s.start_time IS NOT DISTINCT FROM (l.after_data->>'start_time')::timestamptz
+    AND s.end_time   IS NOT DISTINCT FROM (l.after_data->>'end_time')::timestamptz
+    AND (s.locked OR s.start_time <= now());
+
   WITH reverted AS (
     UPDATE public.shifts s
     SET start_time = (l.before_data->>'start_time')::timestamptz,
@@ -371,6 +410,13 @@ BEGIN
       AND s.restaurant_id = p_restaurant_id
       AND s.start_time IS NOT DISTINCT FROM (l.after_data->>'start_time')::timestamptz
       AND s.end_time   IS NOT DISTINCT FROM (l.after_data->>'end_time')::timestamptz
+      -- Same two guards the cascade UPDATE applies. Without them Undo is a
+      -- privileged writer that the `locked` flag and the past-shift boundary
+      -- do not bind -- it would rewrite a shift the manager locked after the
+      -- cascade, and one that payroll can already see. v_protected_count above
+      -- counts exactly the rows these two lines exclude.
+      AND s.locked = false
+      AND s.start_time > now()
     RETURNING s.id, s.employee_id,
               l.after_data  AS undone_after,
               l.before_data AS undone_before
@@ -394,7 +440,8 @@ BEGIN
   RETURN jsonb_build_object(
     'restored_count',      v_restored_count,
     'changed_since_count', v_changed_since_count,
-    'deleted_count',       v_deleted_count
+    'deleted_count',       v_deleted_count,
+    'protected_count',     v_protected_count
   );
 END;
 $$;
@@ -405,5 +452,5 @@ GRANT EXECUTE ON FUNCTION public.undo_template_hours_cascade(UUID, UUID) TO auth
 COMMENT ON FUNCTION public.undo_template_hours_cascade(UUID, UUID) IS
   'Reverts the shifts moved by one update_shift_template_with_cascade call, '
   'identified by cascade_batch_id, restoring each from its logged before_data. '
-  'Skips shifts edited or deleted since the cascade and reports those counts '
-  'separately.';
+  'Skips shifts edited, deleted, locked, or started since the cascade and '
+  'reports each of those counts separately.';

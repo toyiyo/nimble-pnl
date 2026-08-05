@@ -179,19 +179,26 @@ export function useShiftTemplates(
         p_restaurant_id: restaurantId,
       });
       if (error) throw error;
-      return data as { restored_count: number; changed_since_count: number; deleted_count: number };
+      return data as {
+        restored_count: number;
+        changed_since_count: number;
+        deleted_count: number;
+        protected_count: number;
+      };
     },
     onSuccess: (result) => {
       invalidateCascadeQueries();
 
       const shiftsWord = pluralize(result.restored_count, 'shift', 'shifts');
-      // The two skip reasons are not interchangeable: "changed since" tells a
+      // The skip reasons are not interchangeable: "changed since" tells a
       // manager someone re-edited the shift and their edit was respected,
-      // while "deleted" tells them there is no shift left to restore. Summing
-      // them under one label reported deletions as edits.
+      // "deleted" tells them there is no shift left to restore, and "now
+      // locked or started" tells them Undo declined on purpose rather than
+      // failing. Summing any of them under one label misreports the others.
       const skippedReasons = [
         result.changed_since_count > 0 ? `${result.changed_since_count} changed since` : null,
         result.deleted_count > 0 ? `${result.deleted_count} deleted` : null,
+        result.protected_count > 0 ? `${result.protected_count} now locked or started` : null,
       ].filter(Boolean);
       toast({
         title: 'Cascade undone',
@@ -268,11 +275,18 @@ export function useShiftTemplates(
                 },
               },
             })
+            // Dev-only. A failed staff notification must not break the save
+            // that already committed, but it must not ship console noise to
+            // production either.
             .then(({ error }) => {
-              if (error) console.warn('template-cascade notify failed', { shiftId: s.id, error });
+              if (error && import.meta.env.DEV) {
+                console.warn('template-cascade notify failed', { shiftId: s.id, error });
+              }
             })
             .catch((error) => {
-              console.warn('template-cascade notify failed', { shiftId: s.id, error });
+              if (import.meta.env.DEV) {
+                console.warn('template-cascade notify failed', { shiftId: s.id, error });
+              }
             });
         }
       }

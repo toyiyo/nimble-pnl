@@ -24,7 +24,7 @@
 
 BEGIN;
 
-SELECT plan(30);
+SELECT plan(34);
 
 -- ============================================
 -- Setup
@@ -220,6 +220,19 @@ SELECT is(
   'published matching shift still moves'
 );
 
+-- Test 5b -- the cascade rewrites the time of day and NOTHING else. a5 sits on
+-- mon + 3 while a1 sits on mon, so a single anchor date shared across the batch
+-- (or an interval offset applied to the wrong row) would land a5 on the wrong
+-- day. This is the observable half of deriving the new instants from each
+-- shift's own local date; the other half -- a concurrent writer moving the day
+-- between snapshot and UPDATE -- needs two sessions and cannot be reached from
+-- a single pgTAP transaction.
+SELECT is(
+  (SELECT (start_time AT TIME ZONE 'America/Chicago')::date FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000a5'),
+  ((SELECT mon FROM test_config) + 3),
+  'the cascade moves the time of day and leaves the shift on its own date'
+);
+
 -- Test 6
 SELECT is(
   (SELECT (result->>'updated_count')::int FROM call_a),
@@ -381,10 +394,19 @@ SELECT is(
 -- Batch identity
 -- ============================================
 
--- Test 17
+-- Test 17 -- selected by SHIFT, never by batch id. Filtering on
+-- `cascade_batch_id = <call_a's id>` and then counting DISTINCT of that same
+-- column returns 1 whenever any row matches, so it would pass just as well
+-- against an RPC that minted a fresh id per row. a1 and a5 are the two shifts
+-- Call A actually moved (Tests 1 and 5), and no later call tags them -- a1's
+-- only other appearance is call_b_skip, where it is re-validated away without
+-- a row written (Test 11). One distinct id across their tagged rows is
+-- therefore the assertion a per-row id would fail.
 SELECT is(
   (SELECT COUNT(DISTINCT cascade_batch_id)::int FROM schedule_change_logs
-    WHERE cascade_batch_id = (SELECT (result->>'batch_id')::uuid FROM call_a)),
+    WHERE cascade_batch_id IS NOT NULL
+      AND shift_id IN ('11000000-0000-0000-0000-0000000000a1',
+                       '11000000-0000-0000-0000-0000000000a5')),
   1,
   'one cascade call tags every row it wrote with a single batch id'
 );
@@ -534,6 +556,47 @@ SELECT is(
   ) q),
   0,
   'a batch id from another restaurant reverts nothing'
+);
+
+-- Test 29/30 -- Undo is bound by the same two refusals as the cascade. Call A
+-- moved a1 and a5; lock a1 afterwards, the way a manager would once they were
+-- happy with it. Undo must leave the locked row exactly where the cascade put
+-- it and report it under protected_count -- folding it into restored_count
+-- would tell the manager a shift came back that never did, and rewriting it
+-- would make `locked` mean nothing the moment a toast is on screen. Call A's
+-- batch is still un-reverted here: Test 28 handed it to the Tokyo owner, who
+-- was scoped out.
+SELECT set_config('request.jwt.claims',
+  '{"sub":"a11ce000-0000-0000-0000-0000000ca001","role":"authenticated"}', true);
+
+UPDATE shifts SET locked = true WHERE id = '11000000-0000-0000-0000-0000000000a1';
+
+CREATE TEMP TABLE undo_a AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM call_a),
+  'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+-- Test 29
+SELECT is(
+  (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000a1'),
+  '10:00'::time,
+  'undo refuses to restore a shift locked after the cascade'
+);
+
+-- Test 30
+SELECT is(
+  (SELECT (result->>'protected_count')::int FROM undo_a),
+  1,
+  'undo counts the locked shift under protected_count, not restored_count'
+);
+
+-- Test 31 -- the same call still restores everything it is allowed to, so a
+-- single protected row does not sink the whole revert.
+SELECT is(
+  (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000a5'),
+  '09:00'::time,
+  'undo still restores the eligible shifts in a batch that has a protected one'
 );
 
 SELECT * FROM finish();

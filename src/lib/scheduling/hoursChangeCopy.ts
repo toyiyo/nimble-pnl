@@ -71,7 +71,17 @@ export function buildDeltaBadge(
   newStart: string,
   newEnd: string
 ): string {
-  const startShift = toMinutes(newStart) - toMinutes(oldStart);
+  // Normalised onto the wrapping wall clock, the same convention
+  // `durationMinutes` already uses. A raw subtraction reads 23:00 -> 01:00 as
+  // -1320 and renders "22h earlier", when the manager moved the shift two
+  // hours later. Anything past half a day in either direction is the short way
+  // round the other way. The cascade always wrote the right instants; only
+  // this badge was wrong.
+  const rawStartShift = toMinutes(newStart) - toMinutes(oldStart);
+  const startShift =
+    rawStartShift > 720 ? rawStartShift - 1440
+    : rawStartShift <= -720 ? rawStartShift + 1440
+    : rawStartShift;
   const lengthDelta = durationMinutes(newStart, newEnd) - durationMinutes(oldStart, oldEnd);
 
   const parts: string[] = [];
@@ -88,9 +98,16 @@ export function buildDeltaBadge(
 }
 
 export function formatHoursDelta(hours: number): string {
-  if (hours === 0) return 'No change in scheduled hours';
-  const sign = hours > 0 ? '+' : '-';
-  return `${sign}${Math.abs(hours)} scheduled hours`;
+  // Rounded HERE, at the one point where the summed delta becomes copy. The
+  // caller builds it as a sum of `minutes / 60` terms, none of which is exact
+  // in binary floating point: three shifts extended 20 minutes each sum to
+  // 0.9999999999999999, which rendered verbatim. Rounding before the zero
+  // check also keeps a delta that cancels out to -2.2e-16 reading as "No
+  // change" rather than "-2.220446049250313e-16 scheduled hours".
+  const rounded = Math.round(hours * 10) / 10;
+  if (rounded === 0) return 'No change in scheduled hours';
+  const sign = rounded > 0 ? '+' : '-';
+  return `${sign}${Math.abs(rounded)} scheduled hours`;
 }
 
 /**

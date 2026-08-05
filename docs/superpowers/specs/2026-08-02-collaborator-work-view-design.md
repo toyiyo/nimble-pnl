@@ -6,10 +6,10 @@
 
 ## The report
 
-`josema92@hotmail.com` was moved from an employee-only membership to a
-collaborator membership at *Wetzel's - Cold Stone - Alamo Ranch*. The
-"You're viewing as" persona card no longer appears, so there is no way to
-reach the My Work surface and validate the newly assigned permissions.
+A user was moved from an employee-only membership to a collaborator
+membership at a restaurant tenant. The "You're viewing as" persona card no
+longer appears, so there is no way to reach the My Work surface and
+validate the newly assigned permissions.
 
 ## Root cause
 

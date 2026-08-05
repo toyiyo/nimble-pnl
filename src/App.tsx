@@ -167,8 +167,10 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
 // Shared prefix-match helper: true if `path` equals or is nested under any
 // entry in `prefixes`. Used by both the collaborator work-view gate and the
 // staff allow-list gate below so the matching rule can't drift between them.
+// Matches on a `/`-boundary so e.g. `/employee/pay` does not also match
+// `/employee/payroll-backup`.
 const matchesAnyPrefix = (path: string, prefixes: string[]) =>
-  prefixes.some(prefix => path.startsWith(prefix));
+  prefixes.some(prefix => path === prefix || path.startsWith(`${prefix}/`));
 
 // Paths staff use for self-service (clock in/out, view their own schedule,
 // pay, tips, etc). Shared by the staff gate and the collaborator work-view

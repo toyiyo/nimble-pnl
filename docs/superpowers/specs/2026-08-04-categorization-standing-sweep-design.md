@@ -132,10 +132,61 @@ is replaced by an unconditional `RAISE LOG` of the tick outcome.
 
 Everything else is preserved verbatim: `SECURITY DEFINER`,
 `SET search_path = pg_catalog, public`, `SET statement_timeout = '120s'`, the
-40-second soft budget, the POS loop (2 × 5000) and bank loop (5 × 1000 with
-`p_skip_rebuild => true` plus one `rebuild_account_balances` per restaurant per
-tick), and the explicit `WHEN query_canceled` handlers — `WHEN OTHERS` does not
-catch SQLSTATE 57014.
+40-second soft budget **in total**, the POS loop (2 × 5000) and bank loop
+(5 × 1000 with `p_skip_rebuild => true` plus one `rebuild_account_balances` per
+restaurant per tick), and the explicit `WHEN query_canceled` handlers —
+`WHEN OTHERS` does not catch SQLSTATE 57014.
+
+#### 1a. The budget is split POS/bank so POS cannot starve bank
+
+**Amended 2026-08-05, after Phase 7 review.** The version above shares one
+`v_budget_hit` flag and one 40-second budget across both loops, and the POS loop
+runs first. Two consequences, both reachable only because this PR makes the job
+permanent:
+
+1. A POS pass that exhausts the 40s budget leaves `v_budget_hit = true` when the
+   bank loop's entry guard runs, so **zero** bank restaurants are swept that tick.
+2. Worse and likelier: the POS `WHEN query_canceled` handler sets
+   `v_budget_hit := true` deliberately (a cancelled batch means time is gone).
+   With one shared flag, a *single* POS statement timeout zeroes out bank for the
+   whole tick even with 39 seconds left. The Feb 2026 incident recorded 733
+   `statement_timeout` aborts, so this path is not hypothetical.
+
+Bank is the backlog this PR exists to rescue (3,351 stranded rows). A permanent
+sweep in which POS structurally outranks bank is a defect in the fix itself.
+
+Measured on production 2026-08-05, it does not bite *today* — POS has 4,948
+claimable rows against bank's 1,348, and they sit in near-disjoint restaurants
+(the one holding 4,855 POS rows has zero bank candidates). The POS loop's own cap
+(2 × 5000 per restaurant × 7 restaurants) stays well inside 40s at current rule
+counts. This is a correctness fix for the state the job is being made permanent
+*for*, not a live incident.
+
+**The fix, exactly:**
+
+- Replace the single `v_budget_hit` with `v_budget_hit_pos` and
+  `v_budget_hit_bank`. Each loop's entry guard and inner-batch guard read and
+  write **only its own** flag. The POS `query_canceled` handler sets
+  `v_budget_hit_pos` only.
+- Add `v_budget_pos interval := interval '25 seconds'`. The POS loop's guards
+  compare against `v_budget_pos`; the bank loop's guards keep comparing against
+  the full `v_budget` (40s).
+- **Both loops keep measuring from the same `v_started`.** Bank must NOT get an
+  independent clock. Giving bank its own 15s measured from its own start would
+  make the worst case `25s + 120s statement + 15s + 120s statement = 280s`,
+  against a 300s cadence — a regression on the ~160s bound established in *Risks*
+  below. Measuring bank from `v_started` against the 40s total keeps that bound
+  exactly as stated.
+- Report both flags in the closing `RAISE LOG`.
+
+Net guarantee: POS may consume at most 25s, so bank is always left at least 15s,
+and the total soft budget is still 40s. If POS finishes early, bank gets
+correspondingly more — no capacity is wasted.
+
+The conformance test asserts this structurally, in the style of tests 2 and 3:
+split the comment-stripped function definition at the bank-loop marker and assert
+the POS half references `v_budget_hit_pos` and never `v_budget_hit_bank`, and the
+bank half the reverse. Re-unifying the flags fails the test.
 
 The `NOT EXISTS (… leftover …)` subquery at
 [:219-244](../../../supabase/migrations/20260804090700_categorization_watermark_and_drain_convergence.sql:219)
@@ -261,6 +312,20 @@ Plus regression coverage for the two paths that were broken:
    strand).
 6. A `bank_transactions` candidate with an active auto-apply bank rule is
    categorized by a drain tick.
+7. **The two loops do not share a budget flag** (§1a). Split the comment-stripped
+   `drain_categorization_backlog` definition at the bank-loop marker and assert
+   the POS half references `v_budget_hit_pos` and never `v_budget_hit_bank`, and
+   the bank half the reverse. Re-unifying the flags — which is what silently
+   re-introduces POS starving bank — fails here.
+8. **A POS loop that gives up still leaves the bank loop to sweep** — the
+   behavioural twin of (7), same pairing as (3)/(4). Reached through the
+   `query_canceled` path rather than by burning 25 seconds of real POS work:
+   instant, deterministic, and the likelier of the two ways the shared flag
+   fired. `CREATE OR REPLACE` a stub `apply_rules_to_pos_sales_internal` that
+   raises SQLSTATE 57014 (reverted by the file's `ROLLBACK`), add a fresh bank
+   candidate, run one tick, assert it is categorized. Both 7 and 8 were
+   mutation-checked against a re-unified-flag build of the migration: both pass
+   on the fix and fail on the mutant.
 
 ### 4. Invert the tests that pin the old semantics
 
@@ -337,6 +402,20 @@ design exists to remove. It would also serialize the standing job against the
 inline `apply_rules_to_pos_sales_internal` calls that toast, focus,
 focus_transactions and revel still make, turning a safe concurrent path into a
 blocking one.
+
+**POS starving bank of the shared budget — fixed, see §1a.** The pre-amendment
+version ran the POS loop first against a single 40s budget and a single
+`v_budget_hit` flag, so a POS pass that ran out of time — or a *single* POS
+`query_canceled`, which sets that flag deliberately — left the bank loop with
+nothing. Production measurement on 2026-08-05 says it does not bite today: POS
+holds 4,948 claimable rows and bank 1,348, in near-disjoint restaurants, and the
+POS loop's own per-restaurant cap keeps it well inside 40s. It becomes reachable
+as POS customers grow, and this PR is what makes the job permanent, so §1a splits
+the budget: POS capped at 25s, bank guaranteed the remaining 15s, separate hit
+flags. **The ~160s worst case above is unchanged by that split** — precisely
+because bank's guard still measures from the shared `v_started` against the 40s
+total rather than starting its own clock. An independent bank clock would have
+made the worst case 25s + 120s + 15s + 120s = 280s against a 300s cadence.
 
 **Cost profile, measured on production 2026-08-04.** With 934 active auto-apply
 rules across 7 restaurants per scope, a converged tick does: 2 restaurant-

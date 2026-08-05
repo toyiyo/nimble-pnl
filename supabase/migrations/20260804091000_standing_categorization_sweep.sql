@@ -40,9 +40,23 @@ DECLARE
   v_total       integer     := 0;
   v_claimed     integer     := 0;
   v_errors      integer     := 0;
-  v_budget_hit  boolean     := false;
+  -- One flag per loop. A single shared flag let the POS loop -- which runs
+  -- first -- zero out the bank loop for a whole tick, and not only on genuine
+  -- time exhaustion: the POS query_canceled handler below sets its flag
+  -- deliberately, so ONE timed-out POS batch used to cancel bank with 39s of
+  -- budget left. Bank is the backlog this job exists to rescue; it must not be
+  -- structurally outranked. Keep these separate.
+  v_budget_hit_pos  boolean := false;
+  v_budget_hit_bank boolean := false;
   v_started     timestamptz := clock_timestamp();
+  -- Both loops measure from the SAME v_started. POS may take at most 25s, so
+  -- bank is guaranteed the remaining 15s of the unchanged 40s total -- and more
+  -- when POS finishes early. Do NOT give bank its own clock: 15s measured from
+  -- bank's own start would make the worst case 25s + 120s statement_timeout +
+  -- 15s + 120s = 280s against a 300s cadence, instead of the ~160s this design
+  -- is bounded at.
   v_budget      interval    := interval '40 seconds';
+  v_budget_pos  interval    := interval '25 seconds';
 BEGIN
   -- ── POS backlog (a few batches per restaurant per tick) ──────────────────
   -- ORDER BY random(): no ordering was harmless while this job retired, but a
@@ -61,8 +75,8 @@ BEGIN
     ) d
     ORDER BY random()
   LOOP
-    IF v_budget_hit OR clock_timestamp() - v_started > v_budget THEN
-      v_budget_hit := true;
+    IF v_budget_hit_pos OR clock_timestamp() - v_started > v_budget_pos THEN
+      v_budget_hit_pos := true;
       EXIT;
     END IF;
     BEGIN
@@ -77,8 +91,8 @@ BEGIN
         v_claimed := v_claimed + COALESCE(n_claimed, 0);
         i := i + 1;
         EXIT WHEN COALESCE(n_claimed, 0) = 0 OR i >= 2;
-        IF clock_timestamp() - v_started > v_budget THEN
-          v_budget_hit := true;
+        IF clock_timestamp() - v_started > v_budget_pos THEN
+          v_budget_hit_pos := true;
           EXIT;
         END IF;
       END LOOP;
@@ -88,7 +102,7 @@ BEGIN
       -- Treat it as time exhaustion so the pass is not considered complete.
       WHEN query_canceled THEN
         v_errors := v_errors + 1;
-        v_budget_hit := true;
+        v_budget_hit_pos := true;
         RAISE WARNING 'categorization drain (pos) canceled for restaurant %: %',
           r.restaurant_id, SQLERRM;
       WHEN OTHERS THEN
@@ -110,8 +124,10 @@ BEGIN
     ) d
     ORDER BY random()
   LOOP
-    IF v_budget_hit OR clock_timestamp() - v_started > v_budget THEN
-      v_budget_hit := true;
+    -- v_budget (the full 40s), not v_budget_pos, and NOT v_budget_hit_pos: a POS
+    -- pass that exhausted its 25s or hit a statement timeout leaves bank its 15s.
+    IF v_budget_hit_bank OR clock_timestamp() - v_started > v_budget THEN
+      v_budget_hit_bank := true;
       EXIT;
     END IF;
     BEGIN
@@ -128,7 +144,7 @@ BEGIN
         i := i + 1;
         EXIT WHEN COALESCE(n_claimed, 0) = 0 OR i >= 5;
         IF clock_timestamp() - v_started > v_budget THEN
-          v_budget_hit := true;
+          v_budget_hit_bank := true;
           EXIT;
         END IF;
       END LOOP;
@@ -141,7 +157,7 @@ BEGIN
     EXCEPTION
       WHEN query_canceled THEN
         v_errors := v_errors + 1;
-        v_budget_hit := true;
+        v_budget_hit_bank := true;
         RAISE WARNING 'categorization drain (bank) canceled for restaurant %: %',
           r.restaurant_id, SQLERRM;
       WHEN OTHERS THEN
@@ -157,15 +173,16 @@ BEGIN
   -- watermark and makes their whole history a candidate again. The previous
   -- version retired here and left 3,351 bank rows and 9,333 POS rows stranded
   -- for a month with no automated driver.
-  RAISE LOG 'categorization drain: applied % rows of % claimed this tick (errors=%, budget_hit=%)',
-    v_total, v_claimed, v_errors, v_budget_hit;
+  RAISE LOG 'categorization drain: applied % rows of % claimed this tick (errors=%, budget_hit_pos=%, budget_hit_bank=%)',
+    v_total, v_claimed, v_errors, v_budget_hit_pos, v_budget_hit_bank;
 
   RETURN v_total;
 END;
 $$;
 
 COMMENT ON FUNCTION public.drain_categorization_backlog() IS
-  'Standing bounded (~40s) sweep that applies categorization rules to the '
+  'Standing bounded (~40s total, of which POS may take at most 25s so the bank '
+  'sweep is never starved) sweep that applies categorization rules to the '
   'uncategorized POS and bank backlog for every restaurant with an active '
   'auto_apply rule. Runs permanently every 5 minutes as the '
   'categorization-backlog-drain pg_cron job and NEVER unschedules itself -- a '

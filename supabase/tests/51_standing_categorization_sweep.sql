@@ -8,11 +8,12 @@
 --   * the sweep job runs permanently and never retires  (tests 1, 4)
 --   * the drain cannot reacquire the ability to retire   (test 2)
 --   * the sweep carries no pos_system predicate          (tests 3, 5)
+--   * neither loop can starve the other of the budget    (tests 8, 9)
 --
 -- If a future change breaks one of these, the failure message says which
 -- property was lost and why it mattered.
 --
--- Test plan (7 tests):
+-- Test plan (9 tests):
 --  1  the migration scheduled a standing */5 categorization-backlog-drain job
 --  2  drain_categorization_backlog contains no cron.unschedule
 --  3  apply_rules_to_pos_sales_internal contains no pos_system predicate
@@ -20,13 +21,16 @@
 --  5  a row whose pos_system no sync function knows about is still categorized
 --  6  a bank_transactions candidate is categorized by the same mechanism
 --  7  one tick covers both tables
+--  8  the POS and bank loops each track their own budget-hit flag
+--  9  a POS loop that hits query_canceled still leaves the bank loop to sweep
 --
--- NOTE: tests run out of numeric order below -- 1, 2, 3, 5, 6, 7, then 4 last.
--- Test 4 must run after the backlog-exhausting ticks used by 5/6/7 so it
--- asserts the job survives post-convergence; see the comment at test 4.
+-- NOTE: tests run out of numeric order below -- 1, 2, 3, 5, 6, 7, then 4, then
+-- 8 and 9. Test 4 must run after the backlog-exhausting ticks used by 5/6/7 so
+-- it asserts the job survives post-convergence; see the comment at test 4.
+-- Tests 8 and 9 are last because 9 stubs out apply_rules_to_pos_sales_internal.
 
 BEGIN;
-SELECT plan(7);
+SELECT plan(9);
 
 -- Test 1: the job the migration created is really there, on the real schedule.
 -- Unlike 50_categorization_backlog_drain.sql this does NOT re-schedule the job
@@ -200,6 +204,105 @@ SELECT public.drain_categorization_backlog();
 SELECT ok(
   EXISTS (SELECT 1 FROM cron.job WHERE jobname = 'categorization-backlog-drain'),
   'a converged tick leaves the standing job scheduled'
+);
+
+-- Test 8: the POS and bank loops must not share a budget flag. Structural, and
+-- placed last only to avoid renumbering the tests above.
+--
+-- The pre-amendment drain ran the POS loop first against one v_budget_hit, so a
+-- POS pass that ran out of time — or a SINGLE POS query_canceled, whose handler
+-- sets the flag deliberately — left the bank loop with nothing to do for the
+-- whole tick. Bank is the backlog this job exists to rescue. Re-unifying the
+-- flags reintroduces that silently, and would pass every other test in this
+-- file, so it is pinned here.
+--
+-- Comments are stripped first (as in tests 2/3), then the definition is cut at
+-- non-comment markers: the POS half runs from the POS loop's applies_to literal
+-- to the bank loop's, and the bank half from there to the closing RAISE LOG —
+-- which names both flags legitimately and so must be excluded. The strpos
+-- ordering is asserted too: a marker that stopped matching would otherwise
+-- collapse the halves to empty strings and pass vacuously.
+WITH def AS (
+  SELECT regexp_replace(
+    regexp_replace(pg_get_functiondef(p.oid), '/\*.*?\*/', '', 'gs'),
+    '--[^\n]*', '', 'g'
+  ) AS src
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public' AND p.proname = 'drain_categorization_backlog'
+), marks AS (
+  SELECT
+    src,
+    strpos(src, '''pos_sales''')         AS p_pos,
+    strpos(src, '''bank_transactions''') AS p_bank,
+    strpos(src, 'categorization drain: applied') AS p_log
+  FROM def
+), halves AS (
+  SELECT
+    p_pos > 0 AND p_bank > p_pos AND p_log > p_bank AS markers_ok,
+    substr(src, p_pos, p_bank - p_pos)  AS pos_half,
+    substr(src, p_bank, p_log - p_bank) AS bank_half
+  FROM marks
+)
+SELECT ok(
+  markers_ok
+  AND pos_half  LIKE     '%v_budget_hit_pos%'
+  AND pos_half  NOT LIKE '%v_budget_hit_bank%'
+  AND bank_half LIKE     '%v_budget_hit_bank%'
+  AND bank_half NOT LIKE '%v_budget_hit_pos%',
+  'the POS and bank loops each track their own budget-hit flag'
+)
+FROM halves;
+
+-- Test 9: the behavioural twin of test 8 — a POS loop that gives up still
+-- leaves the bank loop to run. Test 8 pins the shape; this pins the outcome.
+--
+-- Exercised through the query_canceled path rather than by burning 25s of real
+-- POS work: it is instant, deterministic, and it is the likelier of the two
+-- ways the old shared flag fired. The POS handler sets its flag deliberately on
+-- a cancel, so before the split ONE timed-out POS batch skipped bank entirely —
+-- and the Feb 2026 incident logged 733 statement_timeout aborts.
+
+-- A fresh bank candidate, created after the ticks above. The rule is
+-- deactivated across the INSERT because auto_categorize_bank_transaction is a
+-- BEFORE INSERT trigger that honours no skip GUC — with the rule live the row
+-- would arrive already categorized and prove nothing. Reactivating raises the
+-- watermark, which is what re-opens the row to the sweep.
+UPDATE categorization_rules SET is_active = false
+WHERE id = 'dddddddd-0000-0000-0000-0000000000f2';
+
+INSERT INTO bank_transactions
+  (id, restaurant_id, connected_bank_id, stripe_transaction_id,
+   transaction_date, description, amount)
+VALUES
+  ('dddddddd-0000-0000-0000-0000000000e2', 'dddddddd-0000-0000-0000-0000000000a1',
+   'dddddddd-0000-0000-0000-0000000000b1', 'txn_standing_sweep_starvation',
+   CURRENT_DATE, 'STANDING SWEEP VENDOR', -31.00);
+
+UPDATE categorization_rules SET is_active = true
+WHERE id = 'dddddddd-0000-0000-0000-0000000000f2';
+
+-- Fault injection, reverted by this file's ROLLBACK along with everything else.
+-- 57014 is query_canceled: what statement_timeout raises, and what WHEN OTHERS
+-- does not catch — which is why the drain names it explicitly.
+-- The DEFAULT must be restated: CREATE OR REPLACE refuses to drop an existing
+-- parameter default.
+CREATE OR REPLACE FUNCTION public.apply_rules_to_pos_sales_internal(
+  p_restaurant_id uuid, p_batch_limit integer DEFAULT 100
+) RETURNS TABLE(applied_count integer, total_count integer)
+LANGUAGE plpgsql
+AS $stub$
+BEGIN
+  RAISE EXCEPTION 'simulated statement timeout' USING ERRCODE = '57014';
+END;
+$stub$;
+
+SELECT public.drain_categorization_backlog();
+
+SELECT ok(
+  (SELECT is_categorized AND category_id = 'dddddddd-0000-0000-0000-0000000000c1'
+   FROM bank_transactions WHERE id = 'dddddddd-0000-0000-0000-0000000000e2'),
+  'a POS loop that hits query_canceled still leaves the bank loop to sweep'
 );
 
 SELECT * FROM finish();

@@ -164,6 +164,21 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
   );
 }
 
+// Paths staff use for self-service (clock in/out, view their own schedule,
+// pay, tips, etc). Shared by the staff gate and the collaborator work-view
+// gate below — both grant access to the same nine /employee/* paths.
+const EMPLOYEE_SELF_SERVICE_PATHS = [
+  '/employee/clock',
+  '/employee/portal',
+  '/employee/timecard',
+  '/employee/pin',
+  '/employee/pay',
+  '/employee/schedule',
+  '/employee/shifts',
+  '/employee/tips',
+  '/employee/more',
+];
+
 // Collaborator route configurations
 // Each collaborator role has a landing page and list of allowed paths
 export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }> = {
@@ -247,6 +262,7 @@ export function StaffRoleChecker({
   currentPath: string;
 }) {
   const { selectedRestaurant, loading } = useRestaurantContext();
+  const { canUseWorkView, isWorkViewResolved } = useViewMode();
 
   // Every check below reads `selectedRestaurant?.role`, which is undefined
   // while the membership rows are still in flight — so without this the gate
@@ -274,6 +290,22 @@ export function StaffRoleChecker({
   // URL. Its allow-list is derived from its areas instead, and a collaborator
   // whose role record hasn't arrived derives an empty one, so this fails closed.
   if (isCollaborator && role) {
+    // A collaborator who is also an active employee ("work view") reaches the
+    // same /employee/* self-service paths staff use, once eligibility has
+    // resolved. Non-employee paths, and ineligible collaborators, fall
+    // through to the existing allow-list/redirect logic below unchanged.
+    const isEmployeeSelfServicePath = EMPLOYEE_SELF_SERVICE_PATHS.some(
+      path => currentPath.startsWith(path)
+    );
+    if (isEmployeeSelfServicePath) {
+      if (!isWorkViewResolved) {
+        return <RouteLoadingScreen />;
+      }
+      if (canUseWorkView) {
+        return <>{children}</>;
+      }
+    }
+
     const config =
       COLLABORATOR_ROUTES[role] ??
       customCollaboratorRoutes(grantMap(selectedRestaurant?.roleRecord?.role_areas ?? []));
@@ -286,7 +318,7 @@ export function StaffRoleChecker({
   }
 
   // Allowed paths for staff users (excludes kiosk - they have their own check above)
-  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pin', '/employee/pay', '/employee/schedule', '/employee/shifts', '/employee/tips', '/employee/more', '/settings'];
+  const staffAllowedPaths = [...EMPLOYEE_SELF_SERVICE_PATHS, '/settings'];
   const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
 
   // If user is staff and trying to access restricted route

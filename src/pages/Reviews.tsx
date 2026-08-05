@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -81,6 +82,7 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
     useReviewResponses(restaurantId);
   const { pages } = useReviewPages(restaurantId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // `responses` is already the commented rows only — the hook filters them
   // server-side, before its 500-row cap. Ratings without a comment are a
@@ -88,8 +90,41 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
   // of the list, because an inbox of 300 silent five-star taps is an inbox
   // nobody opens.
   const selected = responses.find((row) => row.id === selectedId) ?? null;
-  const pageNames = new Map(pages.map((page) => [page.id, page.name]));
-  const nowMs = Date.now();
+  const pageNames = useMemo(
+    () => new Map(pages.map((page) => [page.id, page.name])),
+    [pages]
+  );
+  // Page name and relative time are computed once per fetch, not per render:
+  // a fresh Date.now() every pass would hand all 500 rows a changed prop and
+  // undo the memo on FeedbackRow. "3m ago" advancing only when the inbox
+  // itself refreshes is the right resolution for a coarse relative time.
+  const rowMeta = useMemo(() => {
+    const nowMs = Date.now();
+    return new Map(
+      responses.map((row) => [
+        row.id,
+        `${pageNames.get(row.review_page_id) ?? 'Deleted page'} · ${formatRelativeTime(
+          row.commented_at ?? row.submitted_at,
+          nowMs
+        )}`,
+      ])
+    );
+  }, [responses, pageNames]);
+
+  // Comments are free text: a two-line clamp, a one-line meta row and a
+  // status chip land most rows near 118px, and `measureElement` corrects the
+  // rest. The cap the hook enforces is 500 rows, which is exactly the range
+  // where mounting every row starts costing a manager real scroll latency.
+  const virtualizer = useVirtualizer({
+    count: responses.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => 118,
+    overscan: 10,
+  });
+
+  // A fresh arrow per row would defeat the memo on FeedbackRow — every parent
+  // render would hand all 500 rows a new prop.
+  const handleSelect = useCallback((id: string) => setSelectedId(id), []);
 
   if (isLoading) {
     return (
@@ -137,17 +172,31 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
       ) : (
         <div className="mt-6 md:grid md:grid-cols-[340px_1fr] md:gap-6">
           <div className={selected ? 'hidden md:block' : 'block'}>
-            <div className="space-y-2">
-              {responses.map((row) => (
-                <FeedbackRow
-                  key={row.id}
-                  response={row}
-                  pageName={pageNames.get(row.review_page_id) ?? 'Deleted page'}
-                  nowMs={nowMs}
-                  selected={row.id === selectedId}
-                  onSelect={() => setSelectedId(row.id)}
-                />
-              ))}
+            <div
+              ref={listRef}
+              className="max-h-[calc(100vh-320px)] min-h-[240px] overflow-y-auto"
+            >
+              <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+                {virtualizer.getVirtualItems().map((virtualRow) => {
+                  const row = responses[virtualRow.index];
+                  return (
+                    <div
+                      key={row.id}
+                      data-index={virtualRow.index}
+                      ref={virtualizer.measureElement}
+                      className="absolute left-0 top-0 w-full pb-2"
+                      style={{ transform: `translateY(${virtualRow.start}px)` }}
+                    >
+                      <FeedbackRow
+                        response={row}
+                        meta={rowMeta.get(row.id) ?? ''}
+                        selected={row.id === selectedId}
+                        onSelect={handleSelect}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -173,23 +222,24 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
   );
 }
 
-function FeedbackRow({
+interface FeedbackRowProps {
+  response: ReviewResponse;
+  /** Pre-computed "<page name> · <relative time>" — see rowMeta in FeedbackTab. */
+  meta: string;
+  selected: boolean;
+  onSelect: (id: string) => void;
+}
+
+const FeedbackRow = memo(function FeedbackRow({
   response,
-  pageName,
-  nowMs,
+  meta,
   selected,
   onSelect,
-}: {
-  response: ReviewResponse;
-  pageName: string;
-  nowMs: number;
-  selected: boolean;
-  onSelect: () => void;
-}) {
+}: FeedbackRowProps) {
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => onSelect(response.id)}
       aria-current={selected ? 'true' : undefined}
       className={`w-full text-left p-4 rounded-xl border bg-background transition-colors ${
         selected ? 'border-border' : 'border-border/40 hover:border-border'
@@ -201,13 +251,11 @@ function FeedbackRow({
           {STATUS_LABELS[response.status]}
         </span>
       </div>
-      <p className="mt-1 text-[12px] text-muted-foreground truncate">
-        {pageName} · {formatRelativeTime(response.commented_at ?? response.submitted_at, nowMs)}
-      </p>
+      <p className="mt-1 text-[12px] text-muted-foreground truncate">{meta}</p>
       <p className="mt-2 text-[13px] text-foreground line-clamp-2">{response.comment}</p>
     </button>
   );
-}
+});
 
 function PagesTab({ restaurantId, canManage }: { restaurantId?: string; canManage: boolean }) {
   const { pages, isLoading, error } = useReviewPages(restaurantId);
@@ -312,6 +360,7 @@ function PagesTab({ restaurantId, canManage }: { restaurantId?: string; canManag
           <ReviewPageBuilder
             page={creating ? null : selected}
             restaurantId={restaurantId}
+            canManage={canManage}
             onCreated={(id) => {
               setCreating(false);
               setSelectedId(id);

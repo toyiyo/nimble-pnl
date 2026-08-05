@@ -84,6 +84,19 @@ export function ReviewQrDialog({ open, onOpenChange, slug, publicUrl }: ReviewQr
         </DialogHeader>
 
         <div className="px-6 py-5 space-y-4">
+          {/* The encoder is a dynamic import, so on a slow connection this
+              dialog can sit on a skeleton for seconds with both download
+              buttons disabled. Sighted users see the placeholder; without a
+              live region a screen reader user gets an opened dialog and
+              silence, then two buttons that quietly become enabled. */}
+          <p aria-live="polite" className="sr-only">
+            {failed
+              ? "The QR code didn't generate."
+              : svg
+                ? 'QR code ready to download.'
+                : 'Generating the QR code…'}
+          </p>
+
           {failed ? (
             <p className="text-[13px] text-muted-foreground">
               The code didn&apos;t generate. Close this and try again.

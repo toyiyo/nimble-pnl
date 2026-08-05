@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(6);
+SELECT plan(8);
 
 -- Fixture: two restaurants, an owner in A and a chef in A, plus one page.
 INSERT INTO auth.users (id, email) VALUES
@@ -82,6 +82,24 @@ SELECT lives_ok(
   $$UPDATE public.review_responses SET status = 'resolved'
     WHERE id = '33333333-0000-0000-0000-000000000001'$$,
   'the same manager can still move status, which is what triage actually does'
+);
+
+-- `service_role` carries rolbypassrls, so no policy constrains it and the table
+-- ACL is the only control left. Its UPDATE is column-scoped to the three
+-- columns handleComment writes; a leaked service key must not be able to turn a
+-- one-star complaint into a five-star rave inside the restaurant's own metrics.
+SET LOCAL role TO postgres;
+
+SELECT is(
+  has_column_privilege('service_role', 'public.review_responses', 'rating', 'UPDATE'),
+  FALSE,
+  'service_role cannot UPDATE rating'
+);
+
+SELECT is(
+  has_column_privilege('service_role', 'public.review_responses', 'comment', 'UPDATE'),
+  TRUE,
+  'service_role can UPDATE comment, which is the one write the public form makes'
 );
 
 SELECT * FROM finish();

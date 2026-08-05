@@ -75,12 +75,23 @@ Deno.serve(async (req: Request) => {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  let body: Record<string, unknown>;
+  // `req.json()` resolves happily for any valid JSON document, not just an
+  // object: `null`, `7`, `"x"` and `[]` all parse. Annotating the result
+  // `Record<string, unknown>` is a lie TypeScript cannot catch at runtime, and
+  // the `body.action` read below would throw a TypeError into the outer
+  // handler — a 500 plus an "unhandled failure" log line for what is a
+  // one-character request body. On an unauthenticated public endpoint that is
+  // a free log-flooding primitive. Narrow the type where the data arrives.
+  let parsed: unknown;
   try {
-    body = await req.json();
+    parsed = await req.json();
   } catch {
     return fail(400);
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return fail(400);
+  }
+  const body = parsed as Record<string, unknown>;
 
   const ipHash = await hashIp(clientIp(req), ipPepper);
 

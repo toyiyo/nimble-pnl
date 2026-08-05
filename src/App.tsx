@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -320,8 +321,15 @@ const App = () => (
               element={
                 <Suspense
                   fallback={
+                    // Same skeletons ReviewPage shows while it fetches, so the
+                    // chunk download and the data fetch look like one wait
+                    // instead of an empty card that snaps into a skeleton.
                     <div className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
-                      <div className="w-full max-w-md rounded-lg border border-border bg-card px-6 py-8 shadow-sm" />
+                      <div className="w-full max-w-md rounded-lg border border-border bg-card px-6 py-8 shadow-sm">
+                        <Skeleton className="mx-auto h-14 w-14 rounded-full" />
+                        <Skeleton className="mx-auto mt-4 h-5 w-40" />
+                        <Skeleton className="mx-auto mt-6 h-10 w-56" />
+                      </div>
                     </div>
                   }
                 >

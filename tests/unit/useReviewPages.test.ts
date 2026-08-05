@@ -43,12 +43,26 @@ function makeInsertStub(results: Array<{ data: unknown; error: unknown }>) {
   return { stub: { insert }, insert, single };
 }
 
-/** `.update(...).eq('id', …).eq('restaurant_id', …)` resolving to `{ error }`. */
-function makeUpdateStub(results: Array<{ error: unknown }>) {
-  const eqRestaurant = vi.fn(async () => results.shift() ?? { error: null });
+/**
+ * `.update(...).eq('id', …).eq('restaurant_id', …).select('id').maybeSingle()`.
+ *
+ * Each queued result may set `data` explicitly; omitting it means "one row
+ * matched". PostgREST reports a write the WHERE clause filtered away as a
+ * plain success, so `data` is the only signal that anything was updated.
+ */
+function makeUpdateStub(results: Array<{ error: unknown; data?: unknown }>) {
+  const maybeSingle = vi.fn(async () => {
+    const next = results.shift() ?? { error: null };
+    return {
+      data: next.error ? null : 'data' in next ? next.data : { id: 'page-1' },
+      error: next.error,
+    };
+  });
+  const select = vi.fn(() => ({ maybeSingle }));
+  const eqRestaurant = vi.fn(() => ({ select }));
   const eqId = vi.fn(() => ({ eq: eqRestaurant }));
   const update = vi.fn(() => ({ eq: eqId }));
-  return { stub: { update }, update, eqId, eqRestaurant };
+  return { stub: { update }, update, eqId, eqRestaurant, select, maybeSingle };
 }
 
 const PAGE_ROW = {
@@ -324,5 +338,27 @@ describe('useReviewPages', () => {
       result.current.uploadLogo('page-1', new File([''], 'a.png', { type: 'image/png' }))
     ).rejects.toThrow('storage full');
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('deletes the uploaded object when the page row it belongs to is gone', async () => {
+    mockSupabase.from.mockReturnValue(makeListStub([]));
+    mockSupabase.rpc.mockResolvedValue({ data: [], error: null });
+    const upload = vi.fn(async () => ({ error: null }));
+    const remove = vi.fn(async () => ({ error: null }));
+    mockSupabase.storage.from.mockReturnValue({ upload, remove });
+    // The object uploaded fine; the row it was going to be attached to matched
+    // nothing. Leaving it behind means a private bucket accruing images no page
+    // will ever reference and nothing will ever clean up.
+    const { stub } = makeUpdateStub([{ error: null, data: null }]);
+
+    const { result } = renderHook(() => useReviewPages('rest-1'), { wrapper: createWrapper() });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    mockSupabase.from.mockReturnValue(stub);
+    await expect(
+      result.current.uploadLogo('page-1', new File([''], 'a.png', { type: 'image/png' }))
+    ).rejects.toThrow(/no longer available/);
+
+    expect(remove).toHaveBeenCalledWith([upload.mock.calls[0][0]]);
   });
 });

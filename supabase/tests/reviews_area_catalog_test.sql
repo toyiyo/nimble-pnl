@@ -3,7 +3,7 @@
 -- addressed by role_id (not the legacy `role` string) because the legacy CASE
 -- branch has no `reviews` arm and returns FALSE by design.
 BEGIN;
-SELECT plan(9);
+SELECT plan(11);
 
 -- ---------------------------------------------------------------------------
 -- Catalog shape
@@ -70,20 +70,49 @@ SELECT is(
 );
 
 -- ---------------------------------------------------------------------------
--- Capability resolution: a Chef holds view but not manage
+-- Capability resolution: through user_has_capability, not through role_areas
+--
+-- The role_areas assertions above prove the grant rows exist. They do not
+-- prove the function every RLS policy and every ProtectedRoute actually calls
+-- can see them — that path runs through user_has_capability's own area lookup,
+-- and a `reviews` row nobody resolves is a menu entry nobody can open.
 -- ---------------------------------------------------------------------------
-CREATE TEMP TABLE reviews_probe AS
-SELECT
-  EXISTS (
-    SELECT 1 FROM (VALUES ('b0000000-0000-0000-0000-000000000004')) v(rid)
-    JOIN public.role_areas ra
-      ON ra.role_id = v.rid::uuid AND ra.area_key = 'reviews' AND ra.level = 'manage'
-  ) AS chef_manages;
+INSERT INTO auth.users (id, email) VALUES
+  ('cccccccc-0000-0000-0000-000000000001', 'catalog-owner@test.local'),
+  ('cccccccc-0000-0000-0000-000000000002', 'catalog-chef@test.local');
+
+INSERT INTO public.restaurants (id, name)
+VALUES ('cccccccc-0000-0000-0000-000000000099', 'Catalog Test Restaurant');
+
+-- role_id, not the legacy `role` string: the legacy CASE has no reviews arm.
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALUES
+  ('cccccccc-0000-0000-0000-000000000001', 'cccccccc-0000-0000-0000-000000000099',
+   'owner', 'b0000000-0000-0000-0000-000000000001'),
+  ('cccccccc-0000-0000-0000-000000000002', 'cccccccc-0000-0000-0000-000000000099',
+   'chef',  'b0000000-0000-0000-0000-000000000004');
+
+SELECT set_config('request.jwt.claims',
+  '{"sub":"cccccccc-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
 SELECT is(
-  (SELECT chef_manages FROM reviews_probe),
+  public.user_has_capability('cccccccc-0000-0000-0000-000000000099'::uuid, 'manage:reviews'),
+  TRUE,
+  'user_has_capability resolves manage:reviews for the Owner'
+);
+
+SELECT set_config('request.jwt.claims',
+  '{"sub":"cccccccc-0000-0000-0000-000000000002","role":"authenticated"}', true);
+
+SELECT is(
+  public.user_has_capability('cccccccc-0000-0000-0000-000000000099'::uuid, 'view:reviews'),
+  TRUE,
+  'user_has_capability resolves view:reviews for the Chef'
+);
+
+SELECT is(
+  public.user_has_capability('cccccccc-0000-0000-0000-000000000099'::uuid, 'manage:reviews'),
   FALSE,
-  'Chef does not manage reviews'
+  'user_has_capability withholds manage:reviews from the Chef'
 );
 
 SELECT * FROM finish();

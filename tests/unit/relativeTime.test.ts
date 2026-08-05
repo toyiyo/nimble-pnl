@@ -27,4 +27,15 @@ describe('formatRelativeTime', () => {
   it('clamps a future timestamp to "just now" rather than printing a negative', () => {
     expect(formatRelativeTime(new Date(NOW + 60_000).toISOString(), NOW)).toBe('just now');
   });
+
+  // Date.parse answers NaN, and NaN survives Math.max and Math.floor to lose
+  // every comparison in the chain — the untreated version renders the literal
+  // string "NaNd ago" into an inbox row.
+  it.each([
+    ['an empty string', ''],
+    ['prose', 'yesterday'],
+    ['a mangled timestamp', '2026-8-4Tnoon'],
+  ])('says "recently" for %s rather than doing arithmetic on NaN', (_label, input) => {
+    expect(formatRelativeTime(input, NOW)).toBe('recently');
+  });
 });

@@ -17,12 +17,25 @@ import { ReviewQrDialog } from './ReviewQrDialog';
 interface ReviewPageBuilderProps {
   page: ReviewPageWithStats | null;
   restaurantId: string;
+  /**
+   * `manage:reviews`. A chef holds `view:reviews` and legitimately reaches
+   * this pane to read a page's settings and print its QR — but every control
+   * that writes is theirs to look at, not to use. RLS already rejects the
+   * write; leaving the controls live only means the rejection arrives as a
+   * red toast after they have retyped a headline.
+   */
+  canManage: boolean;
   onCreated: (id: string) => void;
 }
 
 const THRESHOLDS = [1, 2, 3, 4, 5] as const;
 
-export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageBuilderProps) {
+export function ReviewPageBuilder({
+  page,
+  restaurantId,
+  canManage,
+  onCreated,
+}: ReviewPageBuilderProps) {
   const { createPage, updatePage, uploadLogo, isSaving } = useReviewPages(restaurantId);
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -59,6 +72,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
   };
 
   const handleSave = async () => {
+    if (!canManage) return;
     const payload = {
       name: name.trim(),
       slug,
@@ -77,7 +91,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
   };
 
   const handleLogo = async (file: File | undefined) => {
-    if (!file || !page) return;
+    if (!file || !page || !canManage) return;
     try {
       await uploadLogo(page.id, file);
     } catch (error) {
@@ -103,6 +117,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
               </Label>
               <Switch
                 id="page-active"
+                disabled={!canManage}
                 checked={isActive}
                 onCheckedChange={setIsActive}
                 className="data-[state=checked]:bg-foreground"
@@ -121,6 +136,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
             </Label>
             <Input
               id="page-name"
+              disabled={!canManage}
               value={name}
               onChange={(event) => handleNameChange(event.target.value)}
               placeholder="Table tents"
@@ -140,6 +156,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
             </Label>
             <Input
               id="page-slug"
+              disabled={!canManage}
               value={slug}
               onChange={(event) => {
                 setSlugTouched(true);
@@ -158,6 +175,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
               <Button
                 type="button"
                 variant="ghost"
+                disabled={!canManage}
                 className="mt-1 h-8 px-0 text-[12px] text-muted-foreground hover:text-foreground"
                 onClick={() => setSlug(withCollisionSuffix(slugifyPageName(name)))}
               >
@@ -175,6 +193,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
             </Label>
             <Input
               id="page-headline"
+              disabled={!canManage}
               value={headline}
               onChange={(event) => setHeadline(event.target.value)}
               className="mt-1.5 h-10 text-[14px] bg-muted/30 border-border/40 rounded-lg focus-visible:ring-1 focus-visible:ring-border"
@@ -190,6 +209,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
             </Label>
             <Input
               id="page-subheadline"
+              disabled={!canManage}
               value={subheadline}
               onChange={(event) => setSubheadline(event.target.value)}
               placeholder="Optional"
@@ -217,6 +237,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
             <RadioGroup
               value={String(threshold)}
               onValueChange={(value) => setThreshold(Number(value))}
+              disabled={!canManage}
               className="mt-2 flex items-center gap-2"
             >
               {THRESHOLDS.map((star) => (
@@ -251,6 +272,7 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
             </Label>
             <Input
               id="page-destination"
+              disabled={!canManage}
               value={destinationUrl}
               onChange={(event) => setDestinationUrl(event.target.value)}
               placeholder="https://g.page/r/…/review"
@@ -281,15 +303,19 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
               className="hidden"
               onChange={(event) => handleLogo(event.target.files?.[0])}
             />
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => fileRef.current?.click()}
-              className="h-9 px-4 rounded-lg text-[13px] font-medium"
-            >
-              <Upload className="mr-2 h-4 w-4" />
-              {page.logo_path ? 'Replace logo' : 'Upload logo'}
-            </Button>
+            {canManage && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileRef.current?.click()}
+                className="h-9 px-4 rounded-lg text-[13px] font-medium"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                {page.logo_path ? 'Replace logo' : 'Upload logo'}
+              </Button>
+            )}
+            {/* The QR stays available to viewers: printing the table tent is
+                reading the page, not changing it. */}
             <Button
               type="button"
               variant="outline"
@@ -299,22 +325,30 @@ export function ReviewPageBuilder({ page, restaurantId, onCreated }: ReviewPageB
               <QrCode className="mr-2 h-4 w-4" />
               QR code
             </Button>
-            <p className="w-full text-[12px] text-muted-foreground">
-              PNG, JPEG, or WebP, up to 2 MB.
-            </p>
+            {canManage && (
+              <p className="w-full text-[12px] text-muted-foreground">
+                PNG, JPEG, or WebP, up to 2 MB.
+              </p>
+            )}
           </div>
         </div>
       )}
 
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          disabled={!canSave || isSaving}
-          onClick={handleSave}
-          className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
-        >
-          {isSaving ? 'Saving…' : page ? 'Save' : 'Create page'}
-        </Button>
+      <div className="flex items-center justify-end gap-3">
+        {canManage ? (
+          <Button
+            type="button"
+            disabled={!canSave || isSaving}
+            onClick={handleSave}
+            className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
+          >
+            {isSaving ? 'Saving…' : page ? 'Save' : 'Create page'}
+          </Button>
+        ) : (
+          <p className="text-[12px] text-muted-foreground">
+            You can read these settings, but not change them.
+          </p>
+        )}
       </div>
 
       {page && (

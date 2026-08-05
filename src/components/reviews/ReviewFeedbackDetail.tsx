@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
@@ -38,6 +39,11 @@ export function ReviewFeedbackDetail({
 }: ReviewFeedbackDetailProps) {
   const { formatInstant, tzAbbrev } = useRestaurantClock();
   const [contact, setContact] = useState<ReviewResponseContact | null>(null);
+  // `contact === null` is genuinely ambiguous — it is both "still fetching"
+  // and "this guest left nothing". Rendering the second reading during the
+  // first tells a manager the guest declined contact, moments before an email
+  // address appears where that sentence was.
+  const [contactLoading, setContactLoading] = useState(false);
 
   useEffect(() => {
     // The contact row is a separate fetch on a separate table, so a viewer
@@ -45,15 +51,19 @@ export function ReviewFeedbackDetail({
     // could not have hidden these columns inside review_responses.
     if (!canManage || !response.contact_consent) {
       setContact(null);
+      setContactLoading(false);
       return;
     }
     // Clear first. Holding the previous guest's name and email on screen while
     // the next fetch is in flight — or forever, if it fails — is how a manager
     // ends up emailing an apology to the wrong person.
     setContact(null);
+    setContactLoading(true);
     let cancelled = false;
     fetchContact(response.id).then((row) => {
-      if (!cancelled) setContact(row);
+      if (cancelled) return;
+      setContact(row);
+      setContactLoading(false);
     });
     return () => {
       cancelled = true;
@@ -107,7 +117,12 @@ export function ReviewFeedbackDetail({
           <h3 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
             Contact
           </h3>
-          {contact?.contact_email || contact?.contact_name ? (
+          {contactLoading ? (
+            <div className="mt-2 space-y-1.5">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-4 w-48" />
+            </div>
+          ) : contact?.contact_email || contact?.contact_name ? (
             <div className="mt-2 space-y-1">
               <p className="text-[14px] text-foreground">{contact.contact_name ?? 'No name given'}</p>
               {contact.contact_email && (

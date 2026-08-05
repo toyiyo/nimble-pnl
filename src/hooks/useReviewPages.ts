@@ -49,13 +49,24 @@ function toastSaveError(toast: ToastFn, error: Error, fallbackTitle: string) {
   toast({ title: fallbackTitle, description: error.message, variant: 'destructive' });
 }
 
+/**
+ * A zero-row UPDATE is not an error in PostgREST — an id from a stale cache, a
+ * page another manager deleted, or a row RLS filters away all resolve exactly
+ * like a successful write, and the caller toasts "Saved" over a change that
+ * never landed. `.select('id').maybeSingle()` makes the row itself the receipt.
+ */
+const NO_ROW_MESSAGE =
+  'That page is no longer available — it may have been deleted, or you may no longer have access.';
+
 /** Shared `UPDATE ... WHERE id = ... AND restaurant_id = ...` chain for review_pages. */
 function updateReviewPageRow(id: string, restaurantId: string, patch: Record<string, unknown>) {
   return supabase
     .from('review_pages' as any)
     .update(patch)
     .eq('id', id)
-    .eq('restaurant_id', restaurantId);
+    .eq('restaurant_id', restaurantId)
+    .select('id')
+    .maybeSingle();
 }
 
 const MAX_SLUG_COLLISION_RETRIES = 5;
@@ -174,14 +185,17 @@ export function useReviewPages(restaurantId?: string) {
       // The .eq('restaurant_id', …) is belt to RLS's braces: an id from a stale
       // cache or a hand-edited request can never reach another tenant's row.
       if (rest.slug === undefined) {
-        const { error } = await updateReviewPageRow(id, restaurantId, rest);
+        const { data, error } = await updateReviewPageRow(id, restaurantId, rest);
         if (error) throw error;
+        if (!data) throw new Error(NO_ROW_MESSAGE);
         return;
       }
 
+      // withSlugCollisionRetry already turns a null `data` into a thrown
+      // error, so the updated row travels straight through as the receipt.
       await withSlugCollisionRetry(rest.slug, async (slug) => {
-        const { error } = await updateReviewPageRow(id, restaurantId, { ...rest, slug });
-        return { data: error ? null : {}, error };
+        const { data, error } = await updateReviewPageRow(id, restaurantId, { ...rest, slug });
+        return { data: data as { id: string } | null, error };
       });
     },
     onSuccess: () => {
@@ -203,12 +217,19 @@ export function useReviewPages(restaurantId?: string) {
         .upload(path, file, { contentType: file.type, upsert: false });
       if (uploadError) throw uploadError;
 
-      const { error: updateError } = await supabase
-        .from('review_pages' as any)
-        .update({ logo_path: path })
-        .eq('id', pageId)
-        .eq('restaurant_id', restaurantId);
-      if (updateError) throw updateError;
+      const { data, error: updateError } = await updateReviewPageRow(pageId, restaurantId, {
+        logo_path: path,
+      });
+
+      // The upload already happened. If the row never took the new path — the
+      // page was deleted mid-upload, or RLS filtered it — the object is dead
+      // weight nothing will ever reference or clean up, so remove it before
+      // reporting the failure. A failed removal is not worth a second error:
+      // the user's problem is the save, not the orphan.
+      if (updateError || !data) {
+        await supabase.storage.from('review-page-logos').remove([path]);
+        throw updateError ?? new Error(NO_ROW_MESSAGE);
+      }
 
       queryClient.invalidateQueries({ queryKey: ['review-pages', restaurantId] });
       return path;

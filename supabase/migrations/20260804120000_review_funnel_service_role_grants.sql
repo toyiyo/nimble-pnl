@@ -20,5 +20,13 @@
 -- restaurant's feedback history" inside the blast radius for no benefit,
 -- since review-public never deletes a row.
 GRANT SELECT ON public.review_pages TO service_role;              -- handlePage
-GRANT SELECT, INSERT, UPDATE ON public.review_responses TO service_role;
+GRANT SELECT, INSERT ON public.review_responses TO service_role;  -- handleRate
+-- UPDATE is column-scoped for the same reason `authenticated`'s is
+-- (20260804100100): handleComment writes exactly these three columns and
+-- nothing else. A table-level UPDATE would let a leaked service key rewrite
+-- `rating` or `routed_to` on rows that are already filed — silently turning a
+-- one-star complaint into a five-star rave inside the restaurant's own
+-- metrics, with no INSERT to show for it.
+GRANT UPDATE (comment, contact_consent, commented_at)
+  ON public.review_responses TO service_role;
 GRANT INSERT ON public.review_response_contacts TO service_role;  -- handleComment

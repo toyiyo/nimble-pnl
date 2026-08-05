@@ -33,12 +33,20 @@ function makeListStub(data: unknown, error: unknown = null) {
   return { stub: { select }, select, eq, not, order, limit };
 }
 
-/** `.update(...).eq('id', …).eq('restaurant_id', …)` resolving to `{ error }`. */
-function makeUpdateStub(error: unknown = null) {
-  const eqRestaurant = vi.fn(async () => ({ error }));
+/**
+ * `.update(...).eq('id', …).eq('restaurant_id', …).select('id').maybeSingle()`.
+ *
+ * The trailing `.select().maybeSingle()` is what makes a zero-row UPDATE
+ * distinguishable: without it PostgREST answers a filtered-away write with
+ * success and no error, so `data` is the only evidence anything was written.
+ */
+function makeUpdateStub(error: unknown = null, data: unknown = { id: 'resp-1' }) {
+  const maybeSingle = vi.fn(async () => ({ data: error ? null : data, error }));
+  const select = vi.fn(() => ({ maybeSingle }));
+  const eqRestaurant = vi.fn(() => ({ select }));
   const eqId = vi.fn(() => ({ eq: eqRestaurant }));
   const update = vi.fn(() => ({ eq: eqId }));
-  return { stub: { update }, update, eqId, eqRestaurant };
+  return { stub: { update }, update, eqId, eqRestaurant, select, maybeSingle };
 }
 
 /** `.select(...).eq(...).eq(...).maybeSingle()` resolving to a Supabase result. */
@@ -201,6 +209,28 @@ describe('useReviewResponses', () => {
     await expect(
       result.current.updateStatus({ id: 'resp-1', status: 'resolved' })
     ).rejects.toThrow('denied');
+
+    expect(mockToast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: 'Could not update', variant: 'destructive' })
+    );
+  });
+
+  it('treats a status change that matched no row as a failure, not a success', async () => {
+    mockSupabase.from.mockReturnValue(makeListStub([RESPONSE_ROW]).stub);
+    mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
+
+    const { result } = renderHook(() => useReviewResponses('rest-1'), {
+      wrapper: createWrapper(),
+    });
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+    // RLS filtered the row, or the id is from a stale cache: PostgREST reports
+    // no error either way. Reporting "Updated" over a write that never landed
+    // is how a manager marks a complaint resolved that stays open.
+    mockSupabase.from.mockReturnValue(makeUpdateStub(null, null).stub);
+    await expect(
+      result.current.updateStatus({ id: 'resp-1', status: 'resolved' })
+    ).rejects.toThrow(/no longer available/);
 
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Could not update', variant: 'destructive' })

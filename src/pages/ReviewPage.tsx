@@ -25,7 +25,7 @@ interface PublicPage {
   threshold: number;
 }
 
-type Stage = 'land' | 'promoter' | 'feedback' | 'thanks' | 'thanks_unknown';
+type Stage = 'land' | 'promoter' | 'feedback' | 'thanks';
 
 function initials(name: string): string {
   return name
@@ -56,6 +56,7 @@ export default function ReviewPage() {
   const [honeypot, setHoneypot] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(false);
+  const [rateError, setRateError] = useState(false);
 
   const [announcement, setAnnouncement] = useState('');
   const branchHeadingRef = useRef<HTMLHeadingElement | null>(null);
@@ -99,18 +100,24 @@ export default function ReviewPage() {
       committedRef.current = rating;
       setCommitted(rating);
       setPreview(rating);
+      setRateError(false);
 
       const { data, error } = await supabase.functions.invoke('review-public', {
         body: { action: 'rate', slug, rating, hp: honeypot },
       });
 
-      // The rate call never completed, so routed_to never arrived and the
-      // client does not know which branch this guest belongs in. Fall back to
-      // a plain thank-you with no call to action: handing a Google link to a
-      // guest who may have tapped one star is the worst outcome available.
+      // Nothing came back, so nothing was filed as far as this client can
+      // know. Saying "thanks, your rating was received" here would be a
+      // straight lie to the one guest in a hundred whose tap failed, and it
+      // would strand them: the write guard is already armed, so the stars
+      // would sit inert behind a thank-you for a rating the restaurant never
+      // got. Disarm the guard, restore the stars, and say what happened.
       if (error || !data?.token) {
-        setStage('thanks_unknown');
-        setAnnouncement('Thanks — your rating was received.');
+        committedRef.current = 0;
+        setCommitted(0);
+        setPreview(0);
+        setRateError(true);
+        setAnnouncement("That didn't send. Tap a star to try again.");
         return;
       }
 
@@ -228,9 +235,15 @@ export default function ReviewPage() {
                 disabled={committed > 0}
               />
             </div>
-            <p className="counter-micro mt-6 text-center text-[12px] text-muted-foreground">
-              tap a star — 10 seconds, no account
-            </p>
+            {rateError ? (
+              <div className="mt-6 rounded-lg border border-border px-3 py-2 text-center text-[13px] text-foreground">
+                That didn&apos;t send. Tap a star to try again.
+              </div>
+            ) : (
+              <p className="counter-micro mt-6 text-center text-[12px] text-muted-foreground">
+                tap a star — 10 seconds, no account
+              </p>
+            )}
           </>
         )}
 
@@ -362,7 +375,7 @@ export default function ReviewPage() {
           </>
         )}
 
-        {(stage === 'thanks' || stage === 'thanks_unknown') && (
+        {stage === 'thanks' && (
           <>
             <h1
               ref={branchHeadingRef}

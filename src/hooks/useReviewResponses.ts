@@ -103,12 +103,22 @@ export function useReviewResponses(restaurantId?: string) {
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: ReviewResponseStatus }) => {
       if (!restaurantId) throw new Error('No restaurant selected');
-      const { error } = await supabase
+      // `.select('id').maybeSingle()` is what makes this a confirmed write.
+      // A zero-row UPDATE resolves without an error in PostgREST, so an id
+      // from a stale cache — or a row RLS filters away — would report success,
+      // the status control would settle on the new value, and the next
+      // refetch would silently snap it back with no explanation.
+      const { data, error } = await supabase
         .from('review_responses' as any)
         .update({ status })
         .eq('id', id)
-        .eq('restaurant_id', restaurantId);
+        .eq('restaurant_id', restaurantId)
+        .select('id')
+        .maybeSingle();
       if (error) throw error;
+      if (!data) {
+        throw new Error('That feedback is no longer available — it may have just been removed.');
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['review-responses', restaurantId] });
@@ -142,7 +152,13 @@ export function useReviewResponses(restaurantId?: string) {
         .maybeSingle();
 
       if (error) {
-        console.error('useReviewResponses: contact fetch failed', error);
+        // Dev only: in production this line would put a PostgREST error —
+        // which carries the failing table, column and filter — into the
+        // browser console of a page that is showing guest PII. The toast is
+        // the user-facing signal; the console is for whoever is debugging.
+        if (import.meta.env.DEV) {
+          console.error('useReviewResponses: contact fetch failed', error);
+        }
         toast({
           title: 'Could not load contact details',
           description: 'This guest may have left a name and email. Try again in a moment.',

@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(6);
+SELECT plan(7);
 
 -- Fixture: two restaurants, an owner in A and a chef in A.
 INSERT INTO auth.users (id, email) VALUES
@@ -59,12 +59,23 @@ SELECT throws_like(
   'chef cannot create a page'
 );
 
+-- An UPDATE the policy filters out is not an error: Postgres evaluates the
+-- USING clause as a row filter, so the statement succeeds having touched
+-- nothing. That silence is exactly why it needs asserting — without the
+-- row-unchanged check below, a policy that accidentally let the chef through
+-- would look identical from here.
+SELECT lives_ok(
+  $$UPDATE public.review_pages SET name = 'Chef renamed this'
+    WHERE id = '22222222-0000-0000-0000-000000000001'$$,
+  'chef UPDATE raises no error — RLS filters the row out instead'
+);
+
 SELECT is(
   (SELECT count(*)::int FROM public.review_pages
    WHERE id = '22222222-0000-0000-0000-000000000001'
      AND name = 'Table tents'),
   1,
-  'the chef UPDATE below is the only thing that could have changed this'
+  'and the chef UPDATE changed nothing: the name is still the owner''s'
 );
 
 SELECT * FROM finish();

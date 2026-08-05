@@ -9,15 +9,24 @@ export interface EmailSendSummary {
 
 const MAX_ERROR_LENGTH = 200;
 
+// Resend's raw error body sometimes echoes the offending recipient back
+// (e.g. "Invalid `to` field: a@example.com is not a valid email"). Strip
+// anything email-shaped before the message reaches a log line or a response
+// the manager sees, regardless of how it got there.
+const EMAIL_PATTERN = /[^\s"'<>]+@[^\s"'<>]+\.[^\s"'<>]+/g;
+
+const redactEmails = (message: string): string => message.replace(EMAIL_PATTERN, '[redacted]');
+
 /**
  * Truncates an error message to a bounded length so a Resend error body
  * never gets pasted whole into a response the manager sees.
  */
 const truncateError = (message: string): string => {
-  if (message.length <= MAX_ERROR_LENGTH) {
-    return message;
+  const redacted = redactEmails(message);
+  if (redacted.length <= MAX_ERROR_LENGTH) {
+    return redacted;
   }
-  return `${message.slice(0, MAX_ERROR_LENGTH)}…`;
+  return `${redacted.slice(0, MAX_ERROR_LENGTH)}…`;
 };
 
 /**

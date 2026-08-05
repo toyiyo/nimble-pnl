@@ -74,6 +74,20 @@ describe('summarizeSends', () => {
     expect(logged).not.toContain('a@example.com');
   });
 
+  it('redacts an email address embedded in the Resend error body itself', () => {
+    const summary = summarizeSends(
+      [fail('a', 400, 'Invalid `to` field: a@example.com is not a valid email')],
+      'broadcast',
+    );
+
+    const logged = vi.mocked(console.error).mock.calls.flat().join(' ');
+    // Resend can echo the recipient back inside the error text, not just via
+    // our own id/email fields — the redaction has to catch that case too.
+    expect(logged).not.toContain('a@example.com');
+    expect(summary.firstError).not.toContain('a@example.com');
+    expect(summary.firstError).toContain('[redacted]');
+  });
+
   it('returns zeros for an empty result set without logging', () => {
     const summary = summarizeSends([], 'test');
 

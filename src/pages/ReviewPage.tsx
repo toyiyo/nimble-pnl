@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 
 import { Button } from '@/components/ui/button';
@@ -10,20 +10,18 @@ import { Textarea } from '@/components/ui/textarea';
 
 import { StarRating } from '@/components/reviews/StarRating';
 
+import {
+  classifyReviewPageResponse,
+  type PublicReviewPage,
+  type ReviewPageLoad,
+} from '@/lib/reviews/reviewPageLoad';
+
 import { supabase } from '@/integrations/supabase/client';
 
 import '@fontsource/zilla-slab/400.css';
 import '@fontsource/zilla-slab/600.css';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@/styles/counter-theme.css';
-
-interface PublicPage {
-  restaurant_name: string;
-  headline: string;
-  subheadline: string | null;
-  logo_url: string | null;
-  threshold: number;
-}
 
 type Stage = 'land' | 'promoter' | 'feedback' | 'thanks';
 
@@ -39,9 +37,9 @@ function initials(name: string): string {
 export default function ReviewPage() {
   const { slug = '' } = useParams<{ slug: string }>();
 
-  const [page, setPage] = useState<PublicPage | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [inactive, setInactive] = useState(false);
+  const [load, setLoad] = useState<{ kind: 'loading' } | ReviewPageLoad>({ kind: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  const [failures, setFailures] = useState(0);
 
   const [preview, setPreview] = useState(0);
   const [committed, setCommitted] = useState(0);
@@ -65,6 +63,7 @@ export default function ReviewPage() {
   // would see `committed === 0` twice and file two ratings. The state is what
   // renders; the ref is what decides.
   const committedRef = useRef(0);
+  const errorHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,25 +72,38 @@ export default function ReviewPage() {
         body: { action: 'page', slug },
       });
       if (cancelled) return;
-      if (error || !data || data.inactive) {
-        setInactive(true);
+      const result = classifyReviewPageResponse(data, error);
+      setLoad(result);
+      if (result.kind === 'error') {
+        setFailures((count) => count + 1);
+        setAnnouncement('Something went wrong loading this page.');
+      } else if (result.kind === 'inactive') {
+        setAnnouncement("This link isn't active.");
       } else {
-        setPage(data as PublicPage);
+        setAnnouncement(`${result.page.restaurant_name}. ${result.page.headline}`);
       }
-      setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+  }, [slug, attempt]);
 
   useEffect(() => {
     if (stage !== 'land') branchHeadingRef.current?.focus();
   }, [stage]);
 
+  useEffect(() => {
+    if (load.kind === 'error') errorHeadingRef.current?.focus();
+  }, [load.kind, attempt]);
+
   const handlePreview = useCallback((rating: number) => {
     setPreview(rating);
     setAnnouncement(`${rating} out of 5 stars`);
+  }, []);
+
+  const handleRetry = useCallback(() => {
+    setLoad({ kind: 'loading' });
+    setAttempt((count) => count + 1);
   }, []);
 
   const handleCommit = useCallback(
@@ -161,35 +173,74 @@ export default function ReviewPage() {
 
   const card = 'w-full max-w-md rounded-lg border border-border bg-card px-6 py-8 shadow-sm';
 
-  if (loading) {
-    return (
-      <div className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
-        <div className={card}>
-          <Skeleton className="mx-auto h-14 w-14 rounded-full" />
-          <Skeleton className="mx-auto mt-4 h-5 w-40" />
-          <Skeleton className="mx-auto mt-6 h-10 w-56" />
-        </div>
-      </div>
+  // Every load state renders through the same shell so the polite region is
+  // mounted throughout — a region that appears with its own text is not
+  // announced, which is what used to happen on this page.
+  const shell = (children: ReactNode) => (
+    <main className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+      <div className={card}>{children}</div>
+    </main>
+  );
+
+  if (load.kind === 'loading') {
+    return shell(
+      <>
+        <Skeleton className="mx-auto h-14 w-14 rounded-full" />
+        <Skeleton className="mx-auto mt-4 h-5 w-40" />
+        <Skeleton className="mx-auto mt-6 h-10 w-56" />
+      </>
     );
   }
 
-  if (inactive || !page) {
-    return (
-      <div className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
-        <div className={card}>
-          <h1 className="counter-display text-[22px] font-semibold text-foreground text-center">
-            This link isn&apos;t active
-          </h1>
-          <p className="counter-micro mt-3 text-[12px] text-muted-foreground text-center">
-            Ask the restaurant for a current one.
-          </p>
-        </div>
-      </div>
+  if (load.kind === 'inactive') {
+    return shell(
+      <>
+        <h1 className="counter-display text-[22px] font-semibold text-foreground text-center">
+          This link isn&apos;t active
+        </h1>
+        <p className="counter-micro mt-3 text-[12px] text-muted-foreground text-center">
+          Ask the restaurant for a current one.
+        </p>
+      </>
     );
   }
+
+  if (load.kind === 'error') {
+    return shell(
+      <>
+        <h1
+          ref={errorHeadingRef}
+          tabIndex={-1}
+          className="counter-display text-[22px] font-semibold text-foreground text-center focus:outline-none"
+        >
+          Something went wrong
+        </h1>
+        <p className="counter-micro mt-3 text-[12px] text-muted-foreground text-center">
+          {failures > 1
+            ? 'Still not working. Give it a minute and try again.'
+            : "That's on us, not you."}
+        </p>
+        <Button
+          type="button"
+          onClick={handleRetry}
+          className="mt-6 h-11 w-full rounded-lg bg-primary text-[15px] font-medium text-primary-foreground"
+        >
+          Try again
+        </Button>
+      </>
+    );
+  }
+
+  const page: PublicReviewPage = load.page;
 
   return (
-    <div className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
+    <main className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
       <div className={card}>
         <div className="flex flex-col items-center">
           {page.logo_url ? (
@@ -212,10 +263,6 @@ export default function ReviewPage() {
         </div>
 
         <div className="counter-rule my-6" />
-
-        <p aria-live="polite" className="sr-only">
-          {announcement}
-        </p>
 
         {stage === 'land' && (
           <>
@@ -392,6 +439,6 @@ export default function ReviewPage() {
 
         <div className="counter-rule mt-8" />
       </div>
-    </div>
+    </main>
   );
 }

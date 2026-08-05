@@ -81,6 +81,7 @@ import HelpArticle from "./pages/Help/HelpArticle";
 import Assets from "./pages/Assets";
 import BudgetRunRate from "./pages/BudgetRunRate";
 import OpsInbox from "./pages/OpsInbox";
+import Reviews from "./pages/Reviews";
 import WeeklyBrief from "./pages/WeeklyBrief";
 import { queryClientConfig } from "@/lib/react-query-config";
 
@@ -374,6 +375,7 @@ const App = () => (
             <Route path="/assets" element={<ProtectedRoute><Assets /></ProtectedRoute>} />
             <Route path="/budget" element={<ProtectedRoute><BudgetRunRate /></ProtectedRoute>} />
             <Route path="/ops-inbox" element={<ProtectedRoute><OpsInbox /></ProtectedRoute>} />
+            <Route path="/reviews" element={<ProtectedRoute><Reviews /></ProtectedRoute>} />
             <Route path="/weekly-brief" element={<ProtectedRoute><WeeklyBrief /></ProtectedRoute>} />
             <Route path="/help" element={<ProtectedRoute allowStaff={true}><HelpCenter /></ProtectedRoute>} />
             <Route path="/help/payroll-calculations" element={<ProtectedRoute allowStaff={true}><PayrollCalculationsHelp /></ProtectedRoute>} />

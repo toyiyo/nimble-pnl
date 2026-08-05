@@ -167,11 +167,24 @@ BEGIN
     -- One statement: all row locks acquired in one go (lock-deadlock-prevention)
     -- and the transaction stays in milliseconds (lock-short-transactions).
     --
-    -- `target` reads the pre-UPDATE snapshot, so its to_jsonb(s.*) is the OLD
-    -- row -- that is before_data. It deliberately does NOT precompute the new
-    -- instants: see the UPDATE's SET clause for why they have to come from the
-    -- locked row instead.
-    WITH target AS (
+    -- `target` produces before_data, and FOR UPDATE is what makes it true.
+    -- Without the lock this CTE reads the statement's snapshot, so a concurrent
+    -- writer that edited a shift between the snapshot and the UPDATE would have
+    -- its edit overwritten AND logged as if it never existed -- Undo would then
+    -- restore the snapshot, not that edit. Under READ COMMITTED, FOR UPDATE
+    -- waits out the other writer, re-evaluates this WHERE against the row
+    -- version it actually locked, and drops rows that no longer qualify. So
+    -- to_jsonb(s.*) below is the row as it stands the instant we own it, and
+    -- prev_start/prev_end (which the notification email renders as "Previous
+    -- Start") describe what the employee was actually looking at.
+    --
+    -- MATERIALIZED is not decoration: it pins the lock-then-read to happen once
+    -- and in full before the UPDATE reads this CTE, rather than leaving that to
+    -- the planner's inlining choice.
+    --
+    -- Deliberately does NOT precompute the new instants: see the UPDATE's SET
+    -- clause for why they come from the UPDATE's own row reference.
+    WITH target AS MATERIALIZED (
       SELECT
         s.id,
         s.employee_id,
@@ -191,6 +204,7 @@ BEGIN
           -- Your call: only the ids the manager explicitly opted into
           OR s.id = ANY(v_drift_ids)
         )
+      FOR UPDATE
     ),
     updated AS (
       UPDATE public.shifts s
@@ -199,15 +213,15 @@ BEGIN
       -- across a DST boundary, which is the opposite of what a manager typing
       -- "10:00" means.
       --
-      -- Derived from `s`, never from the `target` snapshot. In an UPDATE ...
-      -- FROM, the SET expressions see the row version this statement locked,
-      -- so `s.start_time` here is post-block and current. The guards below
-      -- re-check only ::time, locked, and start_time > now() -- none of them
-      -- pins the DATE. A concurrent writer that moved this shift to a
-      -- different day while keeping the same local time-of-day passes every
-      -- guard, so computing the date from the snapshot row would silently drag
-      -- the shift back onto its old day. Reading the date off `s` removes that
-      -- whole class without a second round trip.
+      -- Derived from `s`, not from `t`. In an UPDATE ... FROM, the SET
+      -- expressions see the row version this statement locked, so
+      -- `s.start_time` is unambiguously the current one. This matters because
+      -- the guards below re-check only ::time, locked, and start_time > now()
+      -- -- none of them pins the DATE, so a concurrent writer that moved this
+      -- shift to a different day while keeping the same local time-of-day
+      -- passes every one of them. `target`'s FOR UPDATE now makes t agree with
+      -- s here, but the date belongs to the row being written, and saying so
+      -- in the SET clause keeps this correct without depending on that.
       SET start_time = (((s.start_time AT TIME ZONE v_tz)::date || ' ' || p_start_time)::timestamp
                           AT TIME ZONE v_tz),
           end_time   = CASE
@@ -231,11 +245,10 @@ BEGIN
       -- dropping it would silently stop cascading every hand-edited shift the
       -- manager checked.
       --
-      -- Known residual: t.before_data is still the snapshot-time row, so a
-      -- concurrent edit that *passes* these guards is overwritten and Undo
-      -- restores the snapshot rather than that edit. Closing it would need a
-      -- second lock round-trip to re-read before_data after the lock, for a
-      -- window that is now milliseconds wide.
+      -- Belt and braces now that `target` locks: the rows are already ours by
+      -- the time this runs, so these can no longer fail from a concurrent
+      -- writer. Kept because they are the only thing standing between a future
+      -- edit to `target` and a silent stomp.
       WHERE s.id = t.id
         AND s.restaurant_id = p_restaurant_id
         AND s.start_time > now()

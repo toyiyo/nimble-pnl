@@ -206,7 +206,13 @@ export function TemplateFormDialog({
           </div>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
+        {/* The id is what makes Enter work. The footer is sticky and therefore
+            sits OUTSIDE this element, so the save button can only reach
+            handleSubmit through form="template-form" -- and a form holding
+            several text inputs and no submit control gets no implicit
+            submission at all, which is what the comment on handleSubmit used
+            to describe rather than what happened. */}
+        <form id="template-form" onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
           {/* Template Name */}
           <div className="space-y-1.5">
             <Label
@@ -414,7 +420,13 @@ export function TemplateFormDialog({
           )}
 
           <Button
-            type="button"
+            // Submits #template-form from outside it, so a click and an Enter
+            // keypress take the same path through handleSubmit. `disabled`
+            // then governs both: a browser skips a disabled submit button when
+            // deciding whether to submit implicitly, so the guards below hold
+            // for Enter too.
+            type="submit"
+            form="template-form"
             // While the impact query resolves, the single button renders
             // disabled rather than showing a label that is about to change
             // under the pointer.
@@ -422,7 +434,6 @@ export function TemplateFormDialog({
               !isValid || isSubmitting ||
               (isEdit && hoursChanged && (impact.isLoading || debouncePending))
             }
-            onClick={() => { void submitWith(showCascadeChoice); }}
             className="h-9 px-4 rounded-lg bg-foreground text-background hover:bg-foreground/90 text-[13px] font-medium"
           >
             {buildSaveButtonLabel({ isSubmitting, showCascadeChoice, affectedCount, isEdit })}

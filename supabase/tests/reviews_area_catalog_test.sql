@@ -32,10 +32,16 @@ SELECT is(
   'collaborators may hold reviews at view only'
 );
 
+-- Not count(DISTINCT sort_order) = count(*): four pairs (inventory/purchasing,
+-- books/chart_of_accounts, team/collaborators, settings/integrations) share a
+-- sort_order by design so they render as one row in the editor (see
+-- area_catalog.ui_group's own comment in 20260730100000). The real invariant
+-- the renumber must preserve is "each ui_group renders at exactly one
+-- position" — i.e. sort_order and ui_group partition area_catalog identically.
 SELECT is(
   (SELECT count(DISTINCT sort_order)::int FROM public.area_catalog),
-  (SELECT count(*)::int FROM public.area_catalog),
-  'the renumber left every sort_order distinct'
+  (SELECT count(DISTINCT ui_group)::int FROM public.area_catalog),
+  'the renumber left every ui_group at exactly one distinct sort_order'
 );
 
 -- ---------------------------------------------------------------------------
@@ -58,7 +64,7 @@ SELECT is(
 SELECT is(
   (SELECT count(*)::int FROM public.role_areas ra
    JOIN public.roles r ON r.id = ra.role_id
-   WHERE ra.area_key = 'reviews' AND r.is_builtin),
+   WHERE ra.area_key = 'reviews' AND r.builtin),
   4,
   'exactly four builtins hold reviews (Owner, Manager, Operations Manager, Chef)'
 );

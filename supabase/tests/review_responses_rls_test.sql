@@ -1,5 +1,5 @@
 BEGIN;
-SELECT plan(8);
+SELECT plan(11);
 
 -- Fixture: two restaurants, an owner in A and a chef in A, plus one page.
 INSERT INTO auth.users (id, email) VALUES
@@ -88,6 +88,13 @@ SELECT lives_ok(
 -- ACL is the only control left. Its UPDATE is column-scoped to the three
 -- columns handleComment writes; a leaked service key must not be able to turn a
 -- one-star complaint into a five-star rave inside the restaurant's own metrics.
+--
+-- These assertions are the reason 20260804120000 revokes before it grants.
+-- Production creates every public table with `ALTER DEFAULT PRIVILEGES … GRANT
+-- ALL ON TABLES TO service_role` already in force, so the narrow grants are
+-- inert unless the broad one is taken away first — and that difference is
+-- invisible on a bare local Postgres, which has no default privileges to
+-- revoke. This block failed in CI and passed locally before the revoke landed.
 SET LOCAL role TO postgres;
 
 SELECT is(
@@ -100,6 +107,31 @@ SELECT is(
   has_column_privilege('service_role', 'public.review_responses', 'comment', 'UPDATE'),
   TRUE,
   'service_role can UPDATE comment, which is the one write the public form makes'
+);
+
+-- review-public never deletes, so DELETE has no reason to be inside the blast
+-- radius of a leaked key: erasing a restaurant's feedback history would be
+-- unrecoverable and leave no INSERT behind to show it happened.
+SELECT is(
+  has_table_privilege('service_role', 'public.review_responses', 'DELETE'),
+  FALSE,
+  'service_role cannot DELETE a response'
+);
+
+-- handlePage reads pages; it never edits them. Page edits are the manager's,
+-- through `authenticated` and RLS.
+SELECT is(
+  has_table_privilege('service_role', 'public.review_pages', 'UPDATE'),
+  FALSE,
+  'service_role cannot UPDATE a page'
+);
+
+-- Contacts are write-only for the public form: handleComment files an email
+-- address, and reading them back is the inbox's job, under RLS.
+SELECT is(
+  has_table_privilege('service_role', 'public.review_response_contacts', 'SELECT'),
+  FALSE,
+  'service_role cannot read the contact rows it writes'
 );
 
 SELECT * FROM finish();

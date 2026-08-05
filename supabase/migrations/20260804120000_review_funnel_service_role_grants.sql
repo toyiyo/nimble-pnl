@@ -14,6 +14,20 @@
 -- `authenticated`, never as `service_role`.
 -- ============================================================================
 
+-- The REVOKE is not housekeeping, it is the whole control. Production runs
+-- `ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO
+-- service_role`, so all three tables arrived at CREATE TABLE time already
+-- carrying table-level ALL for this role — exactly the reason 20260804100100
+-- revokes `anon, authenticated` before granting them anything ("a GRANT of a
+-- narrower set does not take away a broader one"). That migration missed
+-- `service_role`. Without these lines the column list below is a comment: a
+-- leaked key keeps UPDATE on `rating` and DELETE on every row, and only CI —
+-- whose database is built the way production's is — can tell, because a bare
+-- local Postgres has no such default privileges to revoke.
+REVOKE ALL ON public.review_pages FROM service_role;
+REVOKE ALL ON public.review_responses FROM service_role;
+REVOKE ALL ON public.review_response_contacts FROM service_role;
+
 -- Each grant is exactly what one handler needs, and no more. `service_role`
 -- carries rolbypassrls, so its table ACL is the only thing standing between a
 -- leaked key and the data: DELETE on any of these tables would put "erase the

@@ -92,6 +92,25 @@ describe('buildBroadcastToast', () => {
 
     expect(toast.description).toBe('Notified 25 team members about 4 open shifts.');
   });
+
+  it('does not go destructive on stale-function skew even when email_failed is nonzero', () => {
+    // Pre-Task-3 function: can emit email_failed > 0 without email_recipients.
+    // `?? 0` on a missing denominator must not make failed >= recipients trivially true.
+    const toast = buildBroadcastToast({
+      success: true,
+      open_shifts: 4,
+      push_sent: 10,
+      push_failed: 0,
+      email_sent: 9,
+      email_failed: 3,
+      total_employees: 25,
+    });
+
+    expect(toast).toEqual({
+      title: 'Broadcast sent',
+      description: 'Notified 25 team members about 4 open shifts.',
+    });
+  });
 });
 
 describe('useBroadcastOpenShifts', () => {

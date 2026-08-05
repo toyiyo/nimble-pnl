@@ -30,9 +30,17 @@ export interface BroadcastToast {
 }
 
 export function buildBroadcastToast(data: BroadcastResult): BroadcastToast {
-  const recipients = data.email_recipients ?? 0;
-  const failed = data.email_failed ?? 0;
   const base = `Notified ${data.total_employees} team members about ${data.open_shifts} open shifts.`;
+
+  // The function predates email_recipients (rolling-deploy skew): we can't
+  // tell what fraction of emails failed, so don't guess — degrade to the
+  // plain message rather than risk a false "all emails failed" toast.
+  if (data.email_recipients === undefined) {
+    return { title: 'Broadcast sent', description: base };
+  }
+
+  const recipients = data.email_recipients;
+  const failed = data.email_failed ?? 0;
 
   // Nothing was emailed at all. Push may still have landed, so this isn't an
   // outright failure — but "Broadcast sent" on its own would read as delivery.

@@ -2,10 +2,15 @@
 -- Review funnel, slice 1: pages, responses, and guest contact PII.
 --
 -- Each REVOKE sits immediately after its own CREATE TABLE. Production's
--- pg_default_acl grants `anon` full CRUD on newly created public tables, so
--- any gap between creation and revoke is a window in which the table is
--- anon-writable. The revoke names `anon` directly rather than PUBLIC, because
--- that default ACL is a direct grant to the role.
+-- pg_default_acl grants `anon` AND `authenticated` full CRUD on newly created
+-- public tables, so any gap between creation and revoke is a window in which
+-- the table is writable by both. The revoke names the roles directly rather
+-- than PUBLIC, because that default ACL is a direct grant to each role.
+--
+-- Both roles must be revoked before the GRANTs below, or the grants read as
+-- documentation rather than policy: a GRANT of a narrower set does not take
+-- away what the default ACL already handed out, so `authenticated` would
+-- silently keep INSERT/DELETE on every table here.
 -- ============================================================================
 
 CREATE TABLE public.review_pages (
@@ -26,7 +31,7 @@ CREATE TABLE public.review_pages (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-REVOKE ALL ON public.review_pages FROM anon;
+REVOKE ALL ON public.review_pages FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.review_pages TO authenticated;
 ALTER TABLE public.review_pages ENABLE ROW LEVEL SECURITY;
 
@@ -50,7 +55,7 @@ CREATE TABLE public.review_responses (
   ip_hash TEXT NULL
 );
 
-REVOKE ALL ON public.review_responses FROM anon;
+REVOKE ALL ON public.review_responses FROM anon, authenticated;
 GRANT SELECT, UPDATE ON public.review_responses TO authenticated;
 ALTER TABLE public.review_responses ENABLE ROW LEVEL SECURITY;
 
@@ -71,7 +76,7 @@ CREATE TABLE public.review_response_contacts (
   contact_email TEXT NULL
 );
 
-REVOKE ALL ON public.review_response_contacts FROM anon;
+REVOKE ALL ON public.review_response_contacts FROM anon, authenticated;
 GRANT SELECT ON public.review_response_contacts TO authenticated;
 ALTER TABLE public.review_response_contacts ENABLE ROW LEVEL SECURITY;
 

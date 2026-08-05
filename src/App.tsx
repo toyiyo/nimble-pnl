@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -37,6 +38,11 @@ import { ReceiptImport } from "@/pages/ReceiptImport";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Unsubscribe from "./pages/Unsubscribe";
+// Lazy on purpose. The public review page pulls in two webfonts and the
+// Counter stylesheet that no authenticated user will ever render; every other
+// route here is a static import, so adding this one the same way would
+// silently defeat the isolation.
+const ReviewPage = lazy(() => import("./pages/ReviewPage"));
 import Transactions from "./pages/Transactions";
 import ChartOfAccounts from "./pages/ChartOfAccounts";
 import FinancialStatements from "./pages/FinancialStatements";
@@ -308,6 +314,20 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/unsubscribe" element={<Unsubscribe />} />
+            <Route
+              path="/r/:slug"
+              element={
+                <Suspense
+                  fallback={
+                    <div className="theme-counter min-h-screen bg-background flex items-center justify-center p-4">
+                      <div className="w-full max-w-md rounded-lg border border-border bg-card px-6 py-8 shadow-sm" />
+                    </div>
+                  }
+                >
+                  <ReviewPage />
+                </Suspense>
+              }
+            />
             <Route path="/settings" element={<ProtectedRoute allowStaff={true}><RestaurantSettings /></ProtectedRoute>} />
             <Route path="/team" element={<ProtectedRoute><Team /></ProtectedRoute>} />
             <Route path="/employees" element={<ProtectedRoute><Employees /></ProtectedRoute>} />

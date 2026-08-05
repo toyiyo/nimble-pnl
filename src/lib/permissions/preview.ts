@@ -109,6 +109,7 @@ const PHRASE: Record<AreaGroupKey, { view: string; manage: string }> = {
   inventory: { view: 'look at inventory', manage: 'count and receive inventory' },
   recipes: { view: 'read recipes', manage: 'build and edit recipes' },
   scheduling: { view: 'view the schedule', manage: 'build schedules, fix punches, and run tips' },
+  reviews: { view: 'see review pages and guest feedback', manage: 'build review pages and manage guest feedback' },
   books: { view: 'read the books', manage: 'keep the books' },
   payroll: { view: 'see payroll', manage: 'run payroll' },
   employees: { view: 'see the roster', manage: 'manage employee records' },

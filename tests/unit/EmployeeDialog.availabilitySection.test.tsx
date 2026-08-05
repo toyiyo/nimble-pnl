@@ -54,6 +54,11 @@ vi.mock('@/contexts/RestaurantContext', () => ({
   }),
 }));
 
+// EmployeeAppAccessRow (mounted by every EmployeeDialog render) calls useAuth,
+// which throws without an AuthProvider by design. Nothing here asserts on app
+// access — this just keeps the dialog mountable.
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'caller-1' } }) }));
+
 vi.mock('@/integrations/supabase/client', () => {
   // Build a chainable supabase query mock that resolves at any terminal call.
   function makeChain(): any {

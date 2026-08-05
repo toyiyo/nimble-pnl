@@ -200,8 +200,11 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
       // Transcribed independently from ROLE_CAPABILITIES.chef (definitions.ts)
       // via the area model, the same way tests/unit/areas.test.ts's builtin
       // reconstruction works — chef holds inventory + recipes at 'manage'
-      // and reports/sales/purchasing/scheduling/settings at 'view', with no
-      // sensitive flags.
+      // and reports/sales/purchasing/scheduling/settings/reviews at 'view',
+      // with no sensitive flags. `reviews` was added by the review-funnel
+      // migration (20260804100000_reviews_area.sql), which grants chef
+      // 'view' on the new area — keep this fixture in lockstep with that
+      // seed and with ROLE_CAPABILITIES.chef.
       setupMockContext({
         role: 'chef',
         loading: false,
@@ -218,6 +221,7 @@ describe('usePermissions — area-based resolution (Phase 4, task 8)', () => {
             { area_key: 'recipes', level: 'manage' },
             { area_key: 'scheduling', level: 'view' },
             { area_key: 'settings', level: 'view' },
+            { area_key: 'reviews', level: 'view' },
           ],
           role_flags: [],
         },

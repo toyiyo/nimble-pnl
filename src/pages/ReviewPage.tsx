@@ -105,6 +105,11 @@ export default function ReviewPage() {
   }, []);
 
   const handleRetry = useCallback(() => {
+    // Announcing the retry is what makes a repeat failure audible. Without it
+    // the settle below writes the same error string it wrote last time, React
+    // bails out on the identical state, the live region's text never changes,
+    // and a screen-reader guest hears silence in response to their tap.
+    setAnnouncement('Retrying.');
     setLoad({ kind: 'loading' });
     setAttempt((count) => count + 1);
   }, []);

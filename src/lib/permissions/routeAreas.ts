@@ -58,6 +58,9 @@ export const AREA_ROUTES: readonly AreaRoute[] = [
   { path: '/time-punches', area: 'scheduling', minLevel: 'manage' },
   { path: '/tips', area: 'scheduling', minLevel: 'manage' },
 
+  // reviews
+  { path: '/reviews', area: 'reviews', minLevel: 'view' },
+
   // books / chart of accounts
   { path: '/transactions', area: 'books', minLevel: 'view' },
   { path: '/banking', area: 'books', minLevel: 'view' },

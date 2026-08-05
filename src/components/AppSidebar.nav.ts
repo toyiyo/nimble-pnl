@@ -33,6 +33,7 @@ import {
   Newspaper,
   LifeBuoy,
   Banknote,
+  Star,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { allowedPathsForAreas } from '@/lib/permissions/routeAreas';
@@ -58,6 +59,7 @@ export const navigationGroups: NavGroup[] = [
       { path: '/integrations', label: 'Integrations', icon: Plug },
       { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
       { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
+      { path: '/reviews', label: 'Reviews', icon: Star },
       { path: '/weekly-brief', label: 'Weekly Brief', icon: Newspaper },
     ],
   },

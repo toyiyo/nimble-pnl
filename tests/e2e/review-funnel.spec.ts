@@ -144,7 +144,10 @@ test('owner creates a page, a guest comments, the owner resolves it', async ({ p
   });
 
   await page.reload();
-  await page.getByRole('button', { name: 'Feedback' }).click();
+  // Scoped to #root: a third-party survey widget injects its own
+  // "Feedback" tab outside the app root, which would otherwise make this
+  // ambiguous.
+  await page.locator('#root').getByRole('button', { name: 'Feedback' }).click();
 
   // Exactly one row: silent ratings never reach this list.
   const rows = page.getByRole('button').filter({ hasText: 'The wait was long' });

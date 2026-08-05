@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,19 @@ function AppAccessSkeleton() {
     <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
       <Skeleton className="h-3 w-20" />
       <Skeleton className="h-4 w-48" />
+    </div>
+  );
+}
+
+/** The card shell every non-loading, non-error state below shares — the "App
+ * access" label plus the same border/background. Only the body differs. */
+function AppAccessCard({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
+      <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+        App access
+      </Label>
+      {children}
     </div>
   );
 }
@@ -88,10 +101,7 @@ export function EmployeeAppAccessRow({
     // definite role to gate its option list) is safe to render, or whether
     // to fall back to a read-only display of the same information.
     return (
-      <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
-        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-          App access
-        </Label>
+      <AppAccessCard>
         <p className="text-[13px] text-muted-foreground truncate">
           Signed in as <span className="text-foreground">{member.email}</span>
         </p>
@@ -111,7 +121,7 @@ export function EmployeeAppAccessRow({
           Roles belong to the EasyShiftHQ account, not the employee record — the same control
           appears on Team members.
         </p>
-      </div>
+      </AppAccessCard>
     );
   }
 
@@ -163,10 +173,7 @@ export function EmployeeAppAccessRow({
     const typedEmailDiffers = !!savedEmail && email.trim() !== savedEmail;
 
     return (
-      <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
-        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-          App access
-        </Label>
+      <AppAccessCard>
         <p className="text-[13px] text-muted-foreground">No access</p>
         {!savedEmail ? (
           <p className="text-[13px] text-muted-foreground">
@@ -201,15 +208,12 @@ export function EmployeeAppAccessRow({
             )}
           </>
         )}
-      </div>
+      </AppAccessCard>
     );
   }
 
   return (
-    <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
-      <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
-        App access
-      </Label>
+    <AppAccessCard>
       <p className="text-[13px] text-muted-foreground">No access</p>
       <div className="flex items-center justify-between">
         <Label
@@ -245,6 +249,6 @@ export function EmployeeAppAccessRow({
           {inviteRole && <RoleAreaChips areas={inviteRole.role_areas} />}
         </>
       )}
-    </div>
+    </AppAccessCard>
   );
 }

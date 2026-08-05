@@ -169,8 +169,8 @@ serve(async (req) => {
     let emailFailCount = 0;
     // Employees who actually have an address — a different, smaller denominator
     // than `allEmployees.length`, which the response reports as total_employees.
-    const emailRecipientCount = 0;
-    const emailRateLimitedCount = 0;
+    let emailRecipientCount = 0;
+    let emailRateLimitedCount = 0;
     let emailFailedReason: string | undefined;
 
     // Independent per-channel gating (email/push may be toggled separately).

@@ -172,6 +172,29 @@ function ProtectedRoute({ children, allowStaff = false, noChrome = false }: { ch
   );
 }
 
+// Shared prefix-match helper: true if `path` equals or is nested under any
+// entry in `prefixes`. Used by both the collaborator work-view gate and the
+// staff allow-list gate below so the matching rule can't drift between them.
+// Matches on a `/`-boundary so e.g. `/employee/pay` does not also match
+// `/employee/payroll-backup`.
+const matchesAnyPrefix = (path: string, prefixes: string[]) =>
+  prefixes.some(prefix => path === prefix || path.startsWith(`${prefix}/`));
+
+// Paths staff use for self-service (clock in/out, view their own schedule,
+// pay, tips, etc). Shared by the staff gate and the collaborator work-view
+// gate below — both grant access to the same nine /employee/* paths.
+const EMPLOYEE_SELF_SERVICE_PATHS = [
+  '/employee/clock',
+  '/employee/portal',
+  '/employee/timecard',
+  '/employee/pin',
+  '/employee/pay',
+  '/employee/schedule',
+  '/employee/shifts',
+  '/employee/tips',
+  '/employee/more',
+];
+
 // Collaborator route configurations
 // Each collaborator role has a landing page and list of allowed paths
 export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: string[] }> = {
@@ -242,7 +265,10 @@ export const COLLABORATOR_ROUTES: Record<string, { landing: string; allowed: str
 };
 
 // Role Route Checker Component - handles staff, kiosk, and collaborator routing
-function StaffRoleChecker({
+// Exported (test-only surface, not a route target) so behaviour can be
+// asserted directly instead of via source-text regex — see
+// tests/unit/StaffRoleChecker.employeeRoutes.test.tsx.
+export function StaffRoleChecker({
   children,
   allowStaff,
   currentPath
@@ -252,6 +278,7 @@ function StaffRoleChecker({
   currentPath: string;
 }) {
   const { selectedRestaurant, loading } = useRestaurantContext();
+  const { canUseWorkView, isWorkViewResolved } = useViewMode();
 
   // Every check below reads `selectedRestaurant?.role`, which is undefined
   // while the membership rows are still in flight — so without this the gate
@@ -279,20 +306,32 @@ function StaffRoleChecker({
   // URL. Its allow-list is derived from its areas instead, and a collaborator
   // whose role record hasn't arrived derives an empty one, so this fails closed.
   if (isCollaborator && role) {
+    // A collaborator who is also an active employee ("work view") reaches the
+    // same /employee/* self-service paths staff use, once eligibility has
+    // resolved. Non-employee paths, and ineligible collaborators, fall
+    // through to the existing allow-list/redirect logic below unchanged.
+    const isEmployeeSelfServicePath = matchesAnyPrefix(currentPath, EMPLOYEE_SELF_SERVICE_PATHS);
+    if (isEmployeeSelfServicePath) {
+      if (!isWorkViewResolved) {
+        return <RouteLoadingScreen />;
+      }
+      if (canUseWorkView) {
+        return <>{children}</>;
+      }
+    }
+
     const config =
       COLLABORATOR_ROUTES[role] ??
       customCollaboratorRoutes(grantMap(selectedRestaurant?.roleRecord?.role_areas ?? []));
-    const isAllowedPath = config.allowed.some(path =>
-      currentPath === path || currentPath.startsWith(path + '/')
-    );
+    const isAllowedPath = matchesAnyPrefix(currentPath, config.allowed);
     if (!isAllowedPath) {
       return <Navigate to={config.landing} replace />;
     }
   }
 
   // Allowed paths for staff users (excludes kiosk - they have their own check above)
-  const staffAllowedPaths = ['/employee/clock', '/employee/portal', '/employee/timecard', '/employee/pin', '/employee/pay', '/employee/schedule', '/employee/shifts', '/employee/tips', '/employee/more', '/settings'];
-  const isStaffAllowedPath = staffAllowedPaths.some(path => currentPath.startsWith(path));
+  const staffAllowedPaths = [...EMPLOYEE_SELF_SERVICE_PATHS, '/settings'];
+  const isStaffAllowedPath = matchesAnyPrefix(currentPath, staffAllowedPaths);
 
   // If user is staff and trying to access restricted route
   if (isStaff && !allowStaff && !isStaffAllowedPath) {

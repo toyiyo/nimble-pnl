@@ -45,7 +45,10 @@ describe('StaffRoleChecker holds rendering until the role is known', () => {
 
   it('shares one loading screen component with ProtectedRoute', () => {
     expect(appSource).toMatch(/function\s+RouteLoadingScreen\s*\(\s*\)/);
-    // Both gates render it, so they cannot drift into two different screens.
-    expect(appSource.match(/<RouteLoadingScreen\s*\/>/g)?.length).toBe(2);
+    // ProtectedRoute, StaffRoleChecker's role-unknown gate, and
+    // StaffRoleChecker's work-view-unresolved gate (for collaborators on
+    // employee self-service paths) all render it, so they cannot drift into
+    // different screens.
+    expect(appSource.match(/<RouteLoadingScreen\s*\/>/g)?.length).toBe(3);
   });
 });

@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { RolePicker } from '@/components/roles/RolePicker';
 import { RoleSelect } from '@/components/roles/RoleSelect';
@@ -55,8 +57,11 @@ export function EmployeeAppAccessRow({
   onGrantAppAccessChange,
   inviteRole,
   onInviteRoleChange,
+  onSendInvite,
+  sendingInvite,
 }: EmployeeAppAccessRowProps) {
   const { data: members, isLoading, isError } = useRestaurantMembers(restaurantId);
+  const [inviteExpanded, setInviteExpanded] = useState(false);
 
   if (isLoading) return <AppAccessSkeleton />;
   if (isError) {
@@ -123,6 +128,65 @@ export function EmployeeAppAccessRow({
   if (!callerRole || !isInternalTeamRole(callerRole)) return null;
 
   const inviteLabel = inviteRole?.name ?? ROLE_METADATA.staff.label;
+
+  // Edit mode: `onSendInvite` is only ever passed for an existing employee
+  // record, so `employee` is defined here too — its SAVED email (not
+  // whatever is currently typed in the dialog's field) is what the invite
+  // can safely target, since that's the address the backend already
+  // associates with this employee record.
+  if (onSendInvite) {
+    const savedEmail = employee?.email?.trim();
+    const typedEmailDiffers = !!savedEmail && email.trim() !== savedEmail;
+
+    return (
+      <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">
+        <Label className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
+          App access
+        </Label>
+        <p className="text-[13px] text-muted-foreground">No access</p>
+        {!savedEmail ? (
+          <p className="text-[13px] text-muted-foreground">
+            Add an email address and save before inviting this employee to the app.
+          </p>
+        ) : !inviteExpanded ? (
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => setInviteExpanded(true)}
+            className="h-9 px-4 -ml-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+          >
+            Invite to the app…
+          </Button>
+        ) : (
+          <>
+            <RoleSelect
+              restaurantId={restaurantId}
+              callerRole={callerRole}
+              value={inviteRole?.id ?? null}
+              onSelect={onInviteRoleChange}
+              triggerText={inviteLabel}
+              triggerLabel={`Invite as ${inviteLabel}. Change role`}
+            />
+            {inviteRole && <RoleAreaChips areas={inviteRole.role_areas} />}
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={onSendInvite}
+              disabled={sendingInvite || !savedEmail || typedEmailDiffers}
+              className="h-9 px-4 -ml-4 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              {sendingInvite ? 'Sending…' : 'Send invite'}
+            </Button>
+            {typedEmailDiffers && (
+              <p className="text-[13px] text-muted-foreground">
+                Save the email change before inviting.
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/30 p-3 space-y-2">

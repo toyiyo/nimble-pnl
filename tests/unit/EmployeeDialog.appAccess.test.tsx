@@ -432,9 +432,10 @@ describe('EmployeeDialog — app access row: visibility gate and the linked-acco
     renderDialogEdit(EMPLOYEE_WITH_ACCOUNT);
 
     expect(await screen.findByText(/no access/i)).toBeInTheDocument();
-    // Same switch/copy as the create-mode invite (Task 4 unified the two) —
-    // "Invite to the employee app", not the pre-unification "Invite to the app".
-    expect(screen.getByRole('switch', { name: /invite to the employee app/i })).toBeInTheDocument();
+    // Edit mode (Task 5) replaces the create-mode switch with the
+    // "Send invite" button flow — there is no `onSendInvite`-less switch
+    // once a dialog is editing an existing employee record.
+    expect(screen.getByRole('button', { name: /invite to the app/i })).toBeInTheDocument();
     // Position/Area also render as `combobox` — scope to the RolePicker's
     // accessible name (it never appears here) rather than any combobox.
     expect(screen.queryByRole('combobox', { name: /jamie rivera/i })).not.toBeInTheDocument();
@@ -586,5 +587,104 @@ describe('EmployeeDialog — create-mode invite carries the chosen role', () => 
 
     expect(await screen.findByText(/runs the floor day to day/i)).toBeInTheDocument();
     expect(screen.queryByText(/will not see sales, costs, payroll/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('EmployeeDialog — the edit-mode invite', () => {
+  const roleRow = (over: Record<string, unknown>) => ({
+    id: 'x',
+    restaurant_id: 'r1',
+    name: 'Role',
+    description: null,
+    flavor: 'collaborator',
+    builtin: false,
+    legacy_role: null,
+    created_at: '',
+    role_areas: [],
+    role_flags: [],
+    memberCount: 0,
+    ...over,
+  });
+
+  const EMPLOYEE_NO_ACCOUNT: Employee = {
+    id: 'e1',
+    restaurant_id: 'r1',
+    name: 'Sam Rivera',
+    email: 'sam@x.com',
+    position: 'Server',
+    status: 'active',
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    is_active: true,
+    compensation_type: 'hourly',
+    hourly_rate: 1500,
+  };
+
+  beforeEach(() => {
+    createEmployeeMock.mockReset().mockResolvedValue({ id: 'new-emp' });
+    bulkMutateMock.mockReset().mockResolvedValue({ employees_updated: 1, rows_inserted: 7 });
+    toastMock.mockReset();
+    invokeMock.mockReset().mockResolvedValue({ data: null, error: null });
+    rpcMock.mockReset().mockResolvedValue({ data: null, error: null });
+    mockUseRestaurantMembers.mockReset().mockReturnValue({ data: [], isLoading: false, isError: false });
+    mockUseRoles.mockReset().mockReturnValue({
+      roles: [
+        roleRow({ id: 'c1', name: 'Operations Lead', description: 'Runs the floor day to day.' }),
+      ],
+      isLoading: false,
+      error: null,
+    });
+    mockUseRestaurantContext.mockReset().mockReturnValue({
+      selectedRestaurant: {
+        restaurant_id: 'r1',
+        role: 'owner' as const,
+        restaurant: { id: 'r1', timezone: 'UTC' },
+      },
+    });
+  });
+
+  it('sends the invite with the saved email and the chosen role', async () => {
+    renderDialogEdit(EMPLOYEE_NO_ACCOUNT);
+
+    await userEvent.click(await screen.findByRole('button', { name: /invite to the app/i }));
+    await userEvent.click(screen.getByRole('combobox', { name: /invite as/i }));
+    await userEvent.click(await screen.findByRole('option', { name: /Operations Lead/i }));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('send-team-invitation', {
+        body: {
+          restaurantId: 'r1',
+          email: 'sam@x.com',
+          role: 'collaborator_custom',
+          roleId: 'c1',
+          employeeId: 'e1',
+        },
+      }),
+    );
+  });
+
+  it('refuses to invite an address the user is still typing', async () => {
+    renderDialogEdit(EMPLOYEE_NO_ACCOUNT);
+
+    const emailInput = await screen.findByLabelText(/email/i);
+    await userEvent.clear(emailInput);
+    await userEvent.type(emailInput, 'other@x.com');
+
+    await userEvent.click(screen.getByRole('button', { name: /invite to the app/i }));
+    const sendButton = screen.getByRole('button', { name: /send invite/i });
+    expect(sendButton).toBeDisabled();
+
+    await userEvent.click(sendButton);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+
+  it('asks for an email first when the employee has none saved', async () => {
+    renderDialogEdit({ ...EMPLOYEE_NO_ACCOUNT, email: undefined });
+
+    await screen.findByLabelText(/^name/i);
+    expect(screen.queryByRole('button', { name: /send invite/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/add an email address/i)).toBeInTheDocument();
   });
 });

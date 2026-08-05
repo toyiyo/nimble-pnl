@@ -56,6 +56,19 @@ interface EmployeeDialogProps {
   restaurantId: string;
 }
 
+// Shared by the create-mode invite (fired on submit) and the edit-mode invite
+// (fired immediately from the row) so the two call sites cannot build the
+// payload differently. roleId must be ABSENT (not undefined) for a non-custom
+// role — send-team-invitation/index.ts:111 rejects the pairing when
+// role !== CUSTOM_ROLE && roleId.
+function invitePayloadFor(role: RoleWithGrants | null) {
+  const isCustomRole = !!role && role.legacy_role === null;
+  return {
+    role: isCustomRole ? CUSTOM_ROLE : (role?.legacy_role ?? 'staff'),
+    ...(isCustomRole ? { roleId: role.id } : {}),
+  };
+}
+
 export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: EmployeeDialogProps) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -68,6 +81,9 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
   // The role chosen in EmployeeAppAccessRow's picker. null means "unchosen" —
   // the invite payload then defaults to staff, same as before this picker existed.
   const [appAccessInviteRole, setAppAccessInviteRole] = useState<RoleWithGrants | null>(null);
+  // Edit-mode invite (EmployeeAppAccessRow's "Send invite" button) fires
+  // immediately, not on Save — this tracks that in-flight request only.
+  const [sendingInvite, setSendingInvite] = useState(false);
   // Offered instead of inviting when the typed email already belongs to a team
   // member — linking avoids double-provisioning a second account for the same person.
   const [linkToExisting, setLinkToExisting] = useState(false);
@@ -437,17 +453,12 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
           toast({ title: 'Employee created', description: `${name} was added.` });
         }
       } else if (appAccessGrant && email?.trim()) {
-        // roleId must be ABSENT (not undefined) for a non-custom role —
-        // send-team-invitation/index.ts:111 rejects the pairing when
-        // role !== CUSTOM_ROLE && roleId.
-        const isCustomRole = appAccessInviteRole && appAccessInviteRole.legacy_role === null;
         supabase.functions.invoke('send-team-invitation', {
           body: {
             restaurantId: restaurantId,
             email: email.trim(),
-            role: isCustomRole ? CUSTOM_ROLE : (appAccessInviteRole?.legacy_role ?? 'staff'),
+            ...invitePayloadFor(appAccessInviteRole),
             employeeId: newEmployee.id, // Pass employee ID for linking
-            ...(isCustomRole ? { roleId: appAccessInviteRole.id } : {}),
           },
         }).then(({ error }) => {
           if (error) {
@@ -477,6 +488,37 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
       resetForm();
     } catch (error) {
       console.error('Error creating employee', error);
+    }
+  };
+
+  // Fires immediately from EmployeeAppAccessRow's "Send invite" button — not
+  // on Save. The edit path has two exits below (a plain update, and a
+  // compensation-change detour through the effective-date modal); hanging an
+  // outward-facing email off either would be three trigger sites for the same
+  // action instead of one.
+  const handleSendInvite = async () => {
+    if (!employee?.email) return;
+    setSendingInvite(true);
+    try {
+      const { error } = await supabase.functions.invoke('send-team-invitation', {
+        body: {
+          restaurantId,
+          email: employee.email,
+          ...invitePayloadFor(appAccessInviteRole),
+          employeeId: employee.id,
+        },
+      });
+      if (error) throw error;
+      toast({ title: `Invitation sent to ${employee.email}` });
+    } catch (e) {
+      console.error('Error sending invitation:', e);
+      toast({
+        title: "Couldn't send the invitation",
+        description: 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setSendingInvite(false);
     }
   };
 
@@ -1141,6 +1183,8 @@ export const EmployeeDialog = ({ open, onOpenChange, employee, restaurantId }: E
                   onGrantAppAccessChange={setAppAccessGrant}
                   inviteRole={appAccessInviteRole}
                   onInviteRoleChange={setAppAccessInviteRole}
+                  onSendInvite={!isCreateMode ? handleSendInvite : undefined}
+                  sendingInvite={sendingInvite}
                 />
               )}
 

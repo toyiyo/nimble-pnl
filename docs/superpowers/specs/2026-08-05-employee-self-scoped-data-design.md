@@ -100,6 +100,8 @@ copies that shape.
 2. RLS must stop restaurant-wide reads for roles that have no scheduling/payroll capability,
    so the boundary holds even against a hand-rolled `supabase-js` call from devtools.
 3. No behaviour change for any role that legitimately reads restaurant-wide data today.
+4. Where a role *does* lose a restaurant-wide read, it must fail loudly. No surface may
+   silently report a truncated aggregate as if it were complete (§4.4).
 
 **Non-goals**
 - Tightening `employees` (§6 — deferred with evidence).
@@ -167,7 +169,23 @@ export function useMyPayroll(restaurantId, employeeId: string | null, startDate,
 The `enabled` gate at [usePayroll.tsx:342](../../../src/hooks/usePayroll.tsx#L342) is
 `!!restaurantId && !!employees.length`; the self-scoped variant additionally requires
 `!!employeeId`. The query key must include `employeeId` so an employee's cache entry can
-never be served to the admin page (or vice versa).
+never be served to the admin page (or vice versa). Cache invalidation is unaffected: every
+`invalidateQueries` call touching these families uses a 1- or 2-element key prefix with no
+`exact: true`, so appending `employeeId` at the end of the key still prefix-matches.
+
+**`usePayroll` must also report the inner employees query's loading state.** The `enabled`
+gate depends on `employees.length`, but `usePayroll` destructures only `{ employees }` from
+`useEmployees` at [usePayroll.tsx:116](../../../src/hooks/usePayroll.tsx#L116) and discards
+its `loading` ([useEmployees.tsx:66](../../../src/hooks/useEmployees.tsx#L66) returns it).
+While that inner query is in flight, `employees.length === 0`, so the payroll query stays
+*disabled* — and a disabled query reports `isFetching: false`, hence `isLoading: false`, with
+`data: undefined`. `usePayroll` returns that unmodified at
+[usePayroll.tsx:484](../../../src/hooks/usePayroll.tsx#L484), so `EmployeePay` currently
+renders its "No Pay Data" empty-state card during that window instead of a skeleton. Under
+`useMyPayroll` the inner `useEmployees` cannot start until `employeeId` resolves, which
+*widens* the window. Both entry points must therefore return
+`loading: isLoading || employeesLoading`. This is a pre-existing bug that this change would
+otherwise make worse, so it is fixed here rather than deferred.
 
 Downstream aggregation is unchanged: `calculatePayrollPeriod`
 ([:329-340](../../../src/hooks/usePayroll.tsx#L329)) simply receives a one-element
@@ -179,9 +197,42 @@ Downstream aggregation is unchanged: `calculatePayrollPeriod`
 - [AvailableShiftsPage.tsx:250-254](../../../src/pages/AvailableShiftsPage.tsx#L250) → `useMyShifts(...)`; the `employee_id` predicate is dropped from the `useMemo` but **`status !== 'cancelled'` is kept** — it is a display rule, not a scoping rule.
 - [EmployeePay.tsx:58](../../../src/pages/EmployeePay.tsx#L58) → `useMyPayroll(restaurantId, currentEmployee?.id ?? null, startDate, endDate)`.
 
-Loading states already gate on `employeeLoading` on all three pages, so the extra
-"disabled until `currentEmployee` resolves" tick renders as the existing skeleton rather than
-an empty state.
+**Loading states.** On `EmployeeSchedule` and at the top-level gate of `AvailableShiftsPage`,
+the "disabled until `currentEmployee` resolves" tick renders as the existing skeleton:
+`currentEmployee` and `employeeLoading` come from the same `useQuery` result and update
+atomically, and React Query optimistically reports `isLoading: true` in the same render where
+a never-fetched query first becomes enabled. Two exceptions must be fixed as part of this
+change:
+
+- **`EmployeePay`** would render its empty state instead of a skeleton — see the
+  `loading: isLoading || employeesLoading` fix in §3.2.
+- **`AvailableShiftsPage`** computes its page `loading` as `const loading = feedLoading;`
+  ([AvailableShiftsPage.tsx:327](../../../src/pages/AvailableShiftsPage.tsx#L327)), which never
+  includes the shifts hook that feeds conflict detection. If the open-shifts feed resolves
+  first, `hasScheduleConflict(...)` runs against an empty `employeeShifts` array and silently
+  omits conflict badges — an employee could claim an open shift that overlaps one they are
+  already scheduled for. This gap pre-exists, but since this change reroutes that exact call
+  site to an `employeeId`-gated hook, `useMyShifts`'s loading state is folded into `loading`
+  here.
+
+Also update the comment at
+[EmployeeSchedule.tsx:92-94](../../../src/pages/EmployeeSchedule.tsx#L92), which justifies
+`shiftsLoading || employeeLoading` by reference to the client-side filter this change removes.
+The `|| employeeLoading` term must **stay** — a disabled-but-not-yet-enabled `useMyShifts`
+reports `isLoading: false` — but the stated reason changes.
+
+**Downstream consumers on these pages are unaffected**, verified rather than assumed:
+`useWeekRetractionReason` reads `schedule_retractions`, which is restaurant/week-scoped with no
+shift dependency ([useSchedulePublish.tsx:445-474](../../../src/hooks/useSchedulePublish.tsx#L445));
+`useWeekScheduleStatus` derives its counts from whatever array it is handed
+([:378-434](../../../src/hooks/useSchedulePublish.tsx#L378)), which is content-identical before
+and after; `MyShiftTradesCard` runs off `useMyTradeActivity(restaurantId, employeeId)` and is
+independent of the `useShifts` family; and the fingerprint pill
+([src/lib/scheduleSeenFingerprint.ts](../../../src/lib/scheduleSeenFingerprint.ts), consumed at
+[EmployeeSchedule.tsx:109-116](../../../src/pages/EmployeeSchedule.tsx#L109)) hashes fields off
+an array whose select shape is unchanged. `hasScheduleConflict`
+([src/lib/openShiftHelpers.ts:36-59](../../../src/lib/openShiftHelpers.ts#L36)) has no
+restaurant-wide dependency.
 
 ---
 
@@ -274,7 +325,51 @@ Note that `useShiftTrades`'s own conflict-detection read of `shifts` is already 
 (`.eq('employee_id', currentEmployeeId)` at [:616-620](../../../src/hooks/useShiftTrades.ts#L616))
 and is unaffected.
 
-### 4.4 Migration mechanics
+### 4.4 Edge-function callers (the sweep must leave `src/`)
+
+Most edge functions use the service-role key and bypass RLS entirely, but
+`ai-execute-tool` does **not**: it builds its client from `SUPABASE_ANON_KEY` plus the
+caller's forwarded `Authorization` header
+([supabase/functions/ai-execute-tool/index.ts:3615-3618](../../../supabase/functions/ai-execute-tool/index.ts#L3615)),
+so RLS applies in full to every query it issues. Three of its tools read the tables this
+change tightens:
+
+| Tool | Reads | Line |
+|---|---|---|
+| `get_kpis` | `time_punches` (+ `employees`) restaurant-wide | [:236-249](../../../supabase/functions/ai-execute-tool/index.ts#L236) |
+| `get_labor_costs` | `time_punches` via `fetchLaborData` | [:1955-1957](../../../supabase/functions/ai-execute-tool/index.ts#L1955) |
+| `get_schedule_overview` | `shifts` restaurant-wide | [:2164-2170](../../../supabase/functions/ai-execute-tool/index.ts#L2164) |
+
+All three sit in `canUseTool`'s `basicTools` list
+([supabase/functions/_shared/tools-registry.ts:889-899](../../../supabase/functions/_shared/tools-registry.ts#L889),
+whose comment reads "Labor costs visible to all (aggregate data)"), so they are reachable by
+every role — including `collaborator_inventory` and `collaborator_chef`, which are **not**
+theoretical: the AI chat bubble is hidden only for `staff` and `kiosk`
+([src/components/ai-chat/AiChatBubble.tsx:90](../../../src/components/ai-chat/AiChatBubble.tsx#L90)).
+
+Without action, after this migration those roles would receive an RLS-truncated punch set and
+the assistant would report a near-$0 labor cost and an inflated margin — silently, as a
+plausible number rather than an error. That is the same silent-zero failure mode §4.1 exists
+to prevent, recurring because the original sweep never left `src/`. Required as part of this
+change:
+
+- Move `get_labor_costs` and `get_schedule_overview` out of `basicTools` and gate them on
+  `view:scheduling OR view:payroll`, so an unentitled caller gets a clean permission error.
+- Leave `get_kpis` basic (its sales KPIs are legitimately available to those roles) but make
+  its **labor component degrade explicitly** — omit the labor fields with a stated reason
+  rather than computing a total from a truncated punch set.
+
+Prefer resolving the gate through the `user_has_capability` RPC rather than a hard-coded role
+list in `tools-registry.ts`: `canUseTool` currently branches on a `userRole` string, and a
+second hard-coded copy of the capability set would drift from the RLS predicate and would not
+resolve custom roles keyed on `role_id`.
+
+The plan must also confirm the remaining forwarded-JWT edge functions. Spot-checked already:
+`generate-schedule` ([index.ts:116](../../../supabase/functions/generate-schedule/index.ts#L116))
+and `notify-schedule-published` ([index.ts:65](../../../supabase/functions/notify-schedule-published/index.ts#L65))
+touch `shifts` but are hard-gated to `owner`/`manager`, so they are unaffected.
+
+### 4.5 Migration mechanics
 
 - One migration file, `supabase/migrations/2026080512xxxx_self_scope_employee_reads.sql`.
 - `DROP POLICY IF EXISTS` by exact name, then `CREATE POLICY`. Permissive policies OR, so the
@@ -301,6 +396,9 @@ mocked `supabase` client, that:
    and `.eq('id', <id>)` to `employees`.
 4. `useShifts` / `usePayroll` (admin) still issue exactly the query they issue today — a
    regression guard for the shared implementation.
+5. `useMyPayroll` reports `loading: true` while its inner `useEmployees` query is in flight
+   (the §3.2 disabled-query window), so `EmployeePay` cannot render an empty state before the
+   payroll query has had a chance to run.
 
 Existing suites that must stay green: [tests/unit/usePayroll.pagination.test.ts](../../../tests/unit/usePayroll.pagination.test.ts)
 and [tests/unit/usePayroll.fetchRange.test.ts](../../../tests/unit/usePayroll.fetchRange.test.ts).
@@ -311,11 +409,18 @@ New `supabase/tests/rls_employee_self_scope.sql`. For each of the six tables, wi
 one `staff` employee, one coworker, and one `manager`:
 
 - staff sees own row; staff does **not** see the coworker's row (the actual fix);
-- manager/`view:payroll` holder sees both;
-- a `chef` sees both — the §4.1 regression guard, and the clause only `view:scheduling` grants;
+- a `chef` sees both — isolates the `view:scheduling` arm, since `chef` holds no `view:payroll`;
+- a `collaborator_accountant` sees both — isolates the `view:payroll` arm. A `manager`
+  fixture cannot do this: `manager` holds **both** capabilities, so "manager sees both" cannot
+  distinguish a working `view:payroll` clause from one that is never reached. Each arm of the
+  OR must be exercised by a role that satisfies only that arm;
 - for `shifts`, a staff user reaches a coworker's shift **only** when it is referenced by a
   `shift_trades` row — exercising §4.3's clause with a row no other clause grants, so the test
-  is not vacuous.
+  is not vacuous. Cover the `requested_shift_id` arm with its own case: no application code
+  writes that column today (`useCreateShiftTrade`'s insert at
+  [src/hooks/useShiftTrades.ts:304-311](../../../src/hooks/useShiftTrades.ts#L304) never sets
+  it), so it is inert in production and would otherwise ship as an unverified clause that a
+  future direct-swap feature inherits. pgTAP fixtures can insert it directly.
 
 Every existing pgTAP test touching these tables must be re-checked: narrowing a SELECT
 predicate can make an unrelated assertion vacuous rather than failing it. The plan budgets a
@@ -364,5 +469,9 @@ issue will be filed.
 | Self-scoped hook degrades to restaurant-wide while `currentEmployee` loads | Separate hook with a mandatory `employeeId` in `enabled` (§3.1) + a unit test asserting zero queries when null (§5.1) |
 | React Query cache collision between admin and self views | `employeeId` in the query key (§3.2) |
 | Shift-trade marketplace breaks under the new `shifts` policy | Dedicated trade clause (§4.3) + non-vacuous pgTAP case (§5.2) |
-| Existing pgTAP assertions become vacuous rather than failing | `grep -rln` sweep of `supabase/tests/` per table; full `db:reset` before `test:db` (§4.4) |
+| Existing pgTAP assertions become vacuous rather than failing | `grep -rln` sweep of `supabase/tests/` per table; full `db:reset` before `test:db` (§4.5) |
+| AI assistant silently reports near-$0 labor cost for roles that lose restaurant-wide reads | Gate `get_labor_costs`/`get_schedule_overview` on capability; make `get_kpis`'s labor component degrade explicitly (§4.4) |
+| `EmployeePay` flashes an empty state instead of a skeleton | `loading: isLoading \|\| employeesLoading` (§3.2) + a unit test for the disabled-query window (§5.1) |
+| `AvailableShiftsPage` silently omits conflict badges while shifts load | Fold `useMyShifts` loading into the page's `loading` (§3.3) |
+| One arm of the RLS OR predicate never actually exercised | Separate `chef` and `collaborator_accountant` fixtures, one per arm (§5.2) |
 | Employee pay figure drifts from the admin Payroll page | One shared implementation, two entry points — not a duplicate calculation (§3.2) |

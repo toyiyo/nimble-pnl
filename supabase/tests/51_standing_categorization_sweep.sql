@@ -20,6 +20,10 @@
 --  5  a row whose pos_system no sync function knows about is still categorized
 --  6  a bank_transactions candidate is categorized by the same mechanism
 --  7  one tick covers both tables
+--
+-- NOTE: tests run out of numeric order below -- 1, 2, 3, 5, 6, 7, then 4 last.
+-- Test 4 must run after the backlog-exhausting ticks used by 5/6/7 so it
+-- asserts the job survives post-convergence; see the comment at test 4.
 
 BEGIN;
 SELECT plan(7);

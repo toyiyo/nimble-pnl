@@ -179,9 +179,20 @@ counts. This is a correctness fix for the state the job is being made permanent
   exactly as stated.
 - Report both flags in the closing `RAISE LOG`.
 
-Net guarantee: POS may consume at most 25s, so bank is always left at least 15s,
-and the total soft budget is still 40s. If POS finishes early, bank gets
-correspondingly more — no capacity is wasted.
+Net guarantee, for the checked/voluntary bound the two entry guards enforce:
+POS may consume at most 25s of *checked* time, so bank is left at least 15s of
+its own checked budget, and the total soft budget is still 40s. If POS
+finishes early, bank gets correspondingly more — no capacity is wasted. This is
+not an absolute wall-clock bound, though: the checks run only *between*
+batches, so a single in-flight `apply_rules_to_pos_sales_internal` call can
+still block past the 25s checkpoint for up to the full 120s
+`statement_timeout` before `query_canceled` fires. In that case bank's entry
+guard (which measures from the same `v_started` against the 40s total, not its
+own clock — see below) can already read past 40s by the time the bank loop
+starts, leaving bank nothing that tick. See *Risks* → "POS starving bank of
+the shared budget" for the full worst-case accounting; this section states the
+checked bound the guards are built to enforce, not a guarantee against an
+in-flight statement running long.
 
 The conformance test asserts this structurally, in the style of tests 2 and 3:
 split the comment-stripped function definition at the bank-loop marker and assert

@@ -181,10 +181,16 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.drain_categorization_backlog() IS
-  'Standing bounded (~40s total, of which POS may take at most 25s so the bank '
-  'sweep is never starved) sweep that applies categorization rules to the '
-  'uncategorized POS and bank backlog for every restaurant with an active '
-  'auto_apply rule. Runs permanently every 5 minutes as the '
+  'Standing bounded (~40s total soft budget, of which POS is checked against '
+  'at most 25s between batches so bank keeps its 15s share when both loops '
+  'stay within their checkpoints) sweep that applies categorization rules to '
+  'the uncategorized POS and bank backlog for every restaurant with an active '
+  'auto_apply rule. That 25s/15s split is a checked bound, not an absolute '
+  'wall-clock one: a single in-flight POS batch can still run past its '
+  'checkpoint for up to the 120s statement_timeout before query_canceled '
+  'fires, in which case bank''s own 40s guard (measured from the same start '
+  'time) can already be exceeded -- see the design doc Risks section for the '
+  'full worst-case accounting. Runs permanently every 5 minutes as the '
   'categorization-backlog-drain pg_cron job and NEVER unschedules itself -- a '
   'converged backlog is not terminal, because the next rule a user creates '
   'lowers the watermark and re-opens their history. POS-agnostic by '

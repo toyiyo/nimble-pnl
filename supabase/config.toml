@@ -37,6 +37,9 @@ verify_jwt = false
 [functions.validate-invitation]
 verify_jwt = false
 
+[functions.review-public]
+verify_jwt = false
+
 [functions.enhance-product-ai]
 verify_jwt = true
 

@@ -226,7 +226,7 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 - Track via `initial_sync_done` and `sync_cursor` columns on connection
 - Edge functions use service role key - remove `auth.uid()` checks from RPC functions
 - **CPU Limits**: Edge functions have strict CPU limits (~10s). Batch processing and skip per-order RPC calls
-- **unified_sales sync**: For large imports, defer to cron job (runs every 6 hours) to avoid timeouts
+- **unified_sales sync**: For large imports, defer to cron job (`sync_all_toast_to_unified_sales()`, pg_cron jobid 4, every 5 minutes) to avoid timeouts
 - Use `skipUnifiedSalesSync: true` in processOrder during bulk imports
 
 **Key Files:**
@@ -240,7 +240,8 @@ unified_sales      → Normalized view for P&L (synced via RPC)
 - Bulk sync processes max 5 restaurants per cron run (round-robin by `last_sync_time`)
 - Max 200 orders per restaurant per run
 - 2-second delay between restaurants to avoid API rate limits
-- Cron runs every 6 hours - all restaurants eventually get synced
+- `toast-bulk-sync` cron runs every 2 hours (pg_cron jobid 7) - all restaurants eventually get synced
+- A separate SQL rollup, `sync_all_toast_to_unified_sales()`, runs every 5 minutes (pg_cron jobid 4) and also drives rule categorization
 - For faster sync with many restaurants, increase cron frequency or add workers
 
 **Testing Cron Locally:**

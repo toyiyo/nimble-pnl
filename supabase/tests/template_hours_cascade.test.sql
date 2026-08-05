@@ -1,6 +1,6 @@
 -- pgTAP for update_shift_template_with_cascade (Task 1) and
 -- undo_template_hours_cascade (Task 2), from
--- supabase/migrations/20260804100000_template_hours_cascade.sql.
+-- supabase/migrations/20260804130000_template_hours_cascade.sql.
 --
 -- What makes this suite non-vacuous:
 --   * The Tokyo block proves drift detection reads the RESTAURANT's wall clock.

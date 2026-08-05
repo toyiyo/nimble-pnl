@@ -574,7 +574,12 @@ let crClean = false
 for (let it = 1; it <= 3 && !crClean; it++) {
   const cr = await runAgent(
     envelope(
-      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --plain --type committed (in the worktree). Fix ONLY actionable findings and commit them. ` +
+      `PHASE 7c (CodeRabbit) iteration ${it}/3. Run: coderabbit review --agent --committed --base origin/main (in the worktree). ` +
+        '--agent emits structured findings for agent workflows; --committed limits the review to committed changes; --base origin/main pins the comparison to trunk so 7c sees the whole branch. ' +
+        "Use origin/main, NOT main — a worktree's local main is frequently stale, and a stale base silently changes which commits get reviewed. " +
+        'Do NOT narrow this to the Phase 7a snapshot SHA with --base-commit — reviewing only the post-snapshot fixes is Phase 7d\'s job, and 7c exists to re-examine the whole branch as one coherent change. ' +
+        "There is no --plain/--type flag on the current CLI (plain text is the default output mode) — if you hit \"unknown option\", run `coderabbit review --help` and report the drift rather than guessing. " +
+        'Fix ONLY actionable findings and commit them. ' +
         'Return clean=true if there were NO actionable findings this run; clean=false if you fixed some (we re-run). On iteration 3 with findings still remaining, return clean=false and list the remaining items in reason — the script will escalate. ' +
         'BEST-EFFORT: if the CodeRabbit CLI is not installed, not authenticated, or returns a billing/credits/quota error (e.g. "run out of usage credits"), treat 7c as skipped — return status=completed, clean=true, and note "CodeRabbit skipped (unavailable/credits)" in reason. Do NOT return needs_human for environment/billing problems; the CodeRabbit GitHub bot still reviews the PR and is triaged in Phase 9d. Reserve needs_human only for genuinely ambiguous findings.',
     ),

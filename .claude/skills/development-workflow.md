@@ -499,27 +499,60 @@ review*. Most issues should have been caught by 7a.
 **Independent of the GitHub bot.** The CodeRabbit GitHub bot's inline
 comments on the PR are handled separately in Phase 9d.
 
-**Command:** `coderabbit review --agent --committed`
+**Command:** `coderabbit review --agent --committed --base origin/main`
 
 Review loop (max 3 iterations):
 
-```
-Iteration 1: Run coderabbit review --agent --committed
+```text
+Iteration 1: Run coderabbit review --agent --committed --base origin/main
   |-- No actionable findings --> Proceed to Phase 8
   +-- Has findings --> Fix them, commit fixes
        |
-       Iteration 2: Run coderabbit review --agent --committed
+       Iteration 2: Run coderabbit review --agent --committed --base origin/main
          |-- No actionable findings --> Proceed to Phase 8
          +-- Has findings --> Fix them, commit fixes
               |
-              Iteration 3: Run coderabbit review --agent --committed
+              Iteration 3: Run coderabbit review --agent --committed --base origin/main
                 |-- No actionable findings --> Proceed to Phase 8
                 +-- Still has findings --> Report to user for manual decision
 ```
 
-Use `--type committed` to review all committed changes on the branch.
-Parse the output for actionable suggestions vs informational notes. Only
-fix actionable items.
+`--committed` reviews all committed changes on the branch; `--base origin/main`
+pins the comparison to the *remote-tracking* trunk — exactly the base the
+Phase 7a reviewers use (`git diff origin/main...HEAD`) — instead of letting
+the CLI infer one.
+
+Use `origin/main`, not `main`. A worktree's local `main` is frequently stale
+or divergent (nothing in this workflow updates it), and a stale base silently
+widens the review to include commits already on trunk, or narrows it to miss
+your own. Naming the remote-tracking ref removes the failure mode instead of
+documenting a `git fetch` workaround around it.
+
+Do **not** narrow 7c to the Phase 7a snapshot SHA via `--base-commit` —
+that would leave 7c reviewing only the 7b fixes, which is Phase 7d's job.
+7c's value is that it re-examines the whole branch as one coherent change.
+`--agent` emits **structured findings** intended for agent workflows —
+use it, because this phase parses the output programmatically to separate
+actionable suggestions from informational notes. Only fix actionable items.
+
+**Flag reference** (CLI v0.7.x — verify with `coderabbit review --help`
+before editing this section; the flags have churned before):
+
+| Flag | Use |
+|---|---|
+| `--agent` | Structured findings for agent workflows. Default for 7c. |
+| `--committed` | Review committed changes only (what 7c wants). |
+| `--uncommitted` | Staged changes + tracked edits (what the pre-commit hook wants). |
+| `--include-untracked` | Also review files never `git add`-ed. |
+| `--base <branch>` / `--base-commit <commit>` | Pin the comparison point. Prefer the remote-tracking form (`origin/main`). |
+| `--light` | Lighter review, reduced context work. Use when 7a already covered the diff and 7c is a formality. |
+| `coderabbit review findings` | Re-read the previous local review without spending another one. |
+
+There is no `--plain` flag and no `--type` flag: **plain text is now the
+default output mode**. If you see `error: unknown option '--plain'`, this
+section is stale again — re-check `--help` and fix it here, in
+`.claude/workflows/dev-build-and-ship.js`, `.claude/commands/review.md`,
+and the pre-commit hook in `.claude/settings.json` together.
 
 **Skip condition for the whole phase:** None. 7a and 7c always run on
 any task that produces code. 7a is skipped only when the task is
@@ -889,7 +922,7 @@ This is the Ralph loop principle: each fresh context window re-orients from pers
 | 6. Simplify | `code-simplifier:code-simplifier` | Never |
 | 7a Multi-Model Review | Agents: `security`, `performance`, `maintainability`, `sound-logic`, `ocr-rules` (all NON-SKIPPABLE, parallel) + `dev-tools/codex-adversarial-review.sh` (best-effort) | Workflow/doc-only changes (no code diff) |
 | 7b Fold Findings | Classify + fix `critical`/`major`, commit | No `critical`/`major` findings |
-| 7c CodeRabbit | `coderabbit review --agent --committed` | Never |
+| 7c CodeRabbit | `coderabbit review --agent --committed --base origin/main` | Never |
 | 8. Verify | `superpowers:verification-before-completion` | Never (loop locally until green) |
 | 9a Push & Create PR | `git push -u origin <branch>` + `gh pr create` | Never |
 | 9b Watch CI + fix red | `gh pr checks <PR> --watch` + autonomous fix loop (max 5 iter) | Never |

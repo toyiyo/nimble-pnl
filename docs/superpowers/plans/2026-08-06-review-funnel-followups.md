@@ -1009,9 +1009,9 @@ Create `supabase/migrations/20260806120000_review_metrics_actionable.sql`:
 -- and under-counts it.
 --
 -- Warning: a DROP FUNCTION here breaks the page for every user. A DROP resets
--- the grants, `authenticated` loses EXECUTE, and the Feedback tab header
--- fails with `permission denied for function`. Use CREATE OR REPLACE, keep
--- the same signature and the same attributes, and restate the two grant
+-- the grants. `authenticated` then loses EXECUTE. The Feedback tab header
+-- then fails with `permission denied for function`. Use CREATE OR REPLACE.
+-- Keep the same signature and the same attributes. Restate the two grant
 -- lines below.
 -- ============================================================================
 
@@ -1066,7 +1066,7 @@ Expected: PASS. The file reports 6 of 6.
 - [ ] **Step 5: Check that the grant survived**
 
 ```bash
-cd /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/review-funnel-followups && npx supabase db execute --local "SELECT has_function_privilege('authenticated', 'public.review_response_metrics(uuid)', 'EXECUTE') AS granted;"
+cd /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/review-funnel-followups && npx supabase db query --local "SELECT has_function_privilege('authenticated', 'public.review_response_metrics(uuid)', 'EXECUTE') AS granted;"
 ```
 
 Expected: `granted` is `t`. A `f` means the migration dropped the function. Fix the migration; do not add a second grant migration.

@@ -7,9 +7,9 @@
 -- and under-counts it.
 --
 -- Warning: a DROP FUNCTION here breaks the page for every user. A DROP resets
--- the grants, `authenticated` loses EXECUTE, and the Feedback tab header
--- fails with `permission denied for function`. Use CREATE OR REPLACE, keep
--- the same signature and the same attributes, and restate the two grant
+-- the grants. `authenticated` then loses EXECUTE. The Feedback tab header
+-- then fails with `permission denied for function`. Use CREATE OR REPLACE.
+-- Keep the same signature and the same attributes. Restate the two grant
 -- lines below.
 -- ============================================================================
 

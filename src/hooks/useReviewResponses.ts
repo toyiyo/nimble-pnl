@@ -25,6 +25,22 @@ export interface ReviewResponseContact {
   contact_email: string | null;
 }
 
+/** Which rows the inbox list asks for. The predicate runs server-side. */
+export type ReviewResponseFilter = 'all' | 'commented' | 'silent';
+
+/**
+ * A row a manager can act on: a comment to read, or a guest who asked to hear
+ * back. A silent five-star tap is neither, so it carries no status and no
+ * contact card.
+ *
+ * The `unread_count` FILTER in `review_response_metrics` holds the same rule
+ * in SQL (supabase/migrations/20260806120000_review_metrics_actionable.sql).
+ * Change both together, or the header badge and the rows disagree.
+ */
+export function isActionableResponse(response: ReviewResponse): boolean {
+  return response.comment !== null || response.contact_consent;
+}
+
 interface ReviewResponseMetricsRow {
   average_rating: number | null;
   total_ratings: number;
@@ -38,33 +54,47 @@ interface ReviewResponseMetricsRow {
 // `.rpc('review_response_metrics' as any)` cast in this file is for that
 // gap; the real shapes are the interfaces above.
 
-export function useReviewResponses(restaurantId?: string) {
+export function useReviewResponses(
+  restaurantId?: string,
+  filter: ReviewResponseFilter = 'all'
+) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const query = useQuery({
-    queryKey: ['review-responses', restaurantId],
+    // The filter joins the key, so each mode caches on its own. A shared key
+    // would answer `silent` from the `all` cache.
+    queryKey: ['review-responses', restaurantId, filter],
     enabled: Boolean(restaurantId),
     staleTime: 30000,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<ReviewResponse[]> => {
-      // Commented rows only, and the filter is applied SERVER-side, before
-      // the cap. Filtering after a `.limit(500)` would mean a location that
-      // takes 500 silent star taps after a written complaint fetches 500
-      // silent rows and shows an empty inbox — the complaint dropped off the
-      // end of a window it was never in.
+      // The filter is applied SERVER-side, before the cap. A filter after a
+      // `.limit(500)` would mean a location that takes 500 silent star taps
+      // after a written complaint fetches 500 silent rows and shows an empty
+      // inbox — the complaint dropped off the end of a window it was never in.
+      //
+      // Known limit: in `all` mode a heavy run of silent taps can push an old
+      // comment past the 500-row cap. `With comments` is the mode that
+      // guarantees the full comment list.
       //
       // Capped at 500 for the inbox *list* only. The header metrics below do
       // NOT come from this capped array; they're a separate, uncapped
       // server-side aggregate, so a restaurant past 500 comments still sees a
       // correct average/total/unread count.
-      const { data, error } = await supabase
+      const base = supabase
         .from('review_responses' as any)
         .select(
           'id, restaurant_id, review_page_id, rating, routed_to, comment, contact_consent, status, submitted_at, commented_at'
         )
-        .eq('restaurant_id', restaurantId!)
-        .not('comment', 'is', null)
+        .eq('restaurant_id', restaurantId!);
+
+      // `all` adds no predicate, so it reads the base query unchanged.
+      let scoped = base;
+      if (filter === 'commented') scoped = base.not('comment', 'is', null);
+      else if (filter === 'silent') scoped = base.is('comment', null);
+
+      const { data, error } = await scoped
         .order('submitted_at', { ascending: false })
         .limit(500);
 

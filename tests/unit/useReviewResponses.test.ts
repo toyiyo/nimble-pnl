@@ -12,7 +12,11 @@ const mockToast = vi.hoisted(() => vi.fn());
 vi.mock('@/integrations/supabase/client', () => ({ supabase: mockSupabase }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: mockToast }) }));
 
-import { useReviewResponses } from '@/hooks/useReviewResponses';
+import {
+  isActionableResponse,
+  useReviewResponses,
+  type ReviewResponseFilter,
+} from '@/hooks/useReviewResponses';
 
 function createWrapper() {
   const client = new QueryClient({
@@ -23,14 +27,19 @@ function createWrapper() {
   };
 }
 
-/** `.select(...).eq(...).not(...).order(...).limit(...)` → a Supabase result. */
+/**
+ * `.select(...).eq(...)` then, per filter, `.not(...)` / `.is(...)` / neither,
+ * then `.order(...).limit(...)`. The `all` mode adds no predicate, so `eq`
+ * carries `order` directly.
+ */
 function makeListStub(data: unknown, error: unknown = null) {
   const limit = vi.fn(async () => ({ data, error }));
   const order = vi.fn(() => ({ limit }));
   const not = vi.fn(() => ({ order }));
-  const eq = vi.fn(() => ({ not }));
+  const is = vi.fn(() => ({ order }));
+  const eq = vi.fn(() => ({ not, is, order }));
   const select = vi.fn(() => ({ eq }));
-  return { stub: { select }, select, eq, not, order, limit };
+  return { stub: { select }, select, eq, not, is, order, limit };
 }
 
 /**
@@ -96,7 +105,7 @@ describe('useReviewResponses', () => {
     expect(mockSupabase.rpc).not.toHaveBeenCalled();
   });
 
-  it('filters to commented rows server-side, then caps at 500, newest first', async () => {
+  it('adds no comment predicate by default, then caps at 500, newest first', async () => {
     const list = makeListStub([RESPONSE_ROW]);
     mockSupabase.from.mockReturnValue(list.stub);
     mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
@@ -108,11 +117,59 @@ describe('useReviewResponses', () => {
     await waitFor(() => expect(result.current.responses).toHaveLength(1));
     expect(mockSupabase.from).toHaveBeenCalledWith('review_responses');
     expect(list.eq).toHaveBeenCalledWith('restaurant_id', 'rest-1');
-    // The comment filter must precede the cap. Filtering client-side after a
-    // 500-row fetch loses a written complaint behind 500 newer silent taps.
-    expect(list.not).toHaveBeenCalledWith('comment', 'is', null);
+    // A silent rating is a rating. The default mode hides nothing.
+    expect(list.not).not.toHaveBeenCalled();
+    expect(list.is).not.toHaveBeenCalled();
     expect(list.order).toHaveBeenCalledWith('submitted_at', { ascending: false });
     expect(list.limit).toHaveBeenCalledWith(500);
+  });
+
+  it('filters to commented rows server-side, before the cap', async () => {
+    const list = makeListStub([RESPONSE_ROW]);
+    mockSupabase.from.mockReturnValue(list.stub);
+    mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
+
+    const { result } = renderHook(() => useReviewResponses('rest-1', 'commented'), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.responses).toHaveLength(1));
+    // The predicate must precede the cap. A client-side filter after a
+    // 500-row fetch loses a written complaint behind 500 newer silent taps.
+    expect(list.not).toHaveBeenCalledWith('comment', 'is', null);
+    expect(list.limit).toHaveBeenCalledWith(500);
+  });
+
+  it('filters to silent rows server-side, before the cap', async () => {
+    const list = makeListStub([RESPONSE_ROW]);
+    mockSupabase.from.mockReturnValue(list.stub);
+    mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
+
+    const { result } = renderHook(() => useReviewResponses('rest-1', 'silent'), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => expect(result.current.responses).toHaveLength(1));
+    expect(list.is).toHaveBeenCalledWith('comment', null);
+    expect(list.limit).toHaveBeenCalledWith(500);
+  });
+
+  it('caches each filter on its own key, so a filter change refetches', async () => {
+    const list = makeListStub([RESPONSE_ROW]);
+    mockSupabase.from.mockReturnValue(list.stub);
+    mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
+
+    const { rerender } = renderHook(
+      ({ filter }: { filter: ReviewResponseFilter }) => useReviewResponses('rest-1', filter),
+      { wrapper: createWrapper(), initialProps: { filter: 'all' as ReviewResponseFilter } }
+    );
+    await waitFor(() => expect(list.limit).toHaveBeenCalledTimes(1));
+
+    // A shared query key would answer `silent` from the `all` cache and show
+    // commented rows under a filter that excludes them.
+    rerender({ filter: 'silent' });
+    await waitFor(() => expect(list.limit).toHaveBeenCalledTimes(2));
+    expect(list.is).toHaveBeenCalledWith('comment', null);
   });
 
   it('takes metrics from the uncapped aggregate, not the capped list', async () => {
@@ -305,6 +362,20 @@ describe('useReviewResponses', () => {
         title: 'Could not load contact details',
         variant: 'destructive',
       })
+    );
+  });
+
+  it('calls a row actionable when it holds a comment or contact consent', () => {
+    expect(isActionableResponse({ ...RESPONSE_ROW, comment: 'x', contact_consent: false })).toBe(
+      true
+    );
+    // The guest asked to hear back. That is a chore, comment or not.
+    expect(isActionableResponse({ ...RESPONSE_ROW, comment: null, contact_consent: true })).toBe(
+      true
+    );
+    // A silent five-star tap needs no triage.
+    expect(isActionableResponse({ ...RESPONSE_ROW, comment: null, contact_consent: false })).toBe(
+      false
     );
   });
 });

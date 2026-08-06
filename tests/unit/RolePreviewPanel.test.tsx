@@ -60,11 +60,20 @@ describe('RolePreviewPanel', () => {
     expect(counter).not.toHaveTextContent(/^0 granted$/i);
   });
 
-  it('strikes through and dims a nav item whose area is not granted', () => {
-    render(<RolePreviewPanel grants={{}} flags={[]} />);
-    const dashboard = screen.getByText('Dashboard');
-    expect(dashboard).toHaveClass('line-through');
-    expect(dashboard.parentElement).toHaveClass('text-muted-foreground/50');
+  it('omits pages the role cannot reach, rather than decorating them', () => {
+    render(<RolePreviewPanel grants={{ invoices: 'manage' }} flags={[]} flavor="platform" />);
+
+    expect(screen.getByText('Invoices')).toBeInTheDocument();
+    // Banking rode in the same `books` bundle before the re-cut.
+    expect(screen.queryByText('Banks')).not.toBeInTheDocument();
+  });
+
+  it('groups the preview by sidebar group, not by the retired bands', () => {
+    render(<RolePreviewPanel grants={{ invoices: 'manage', tips: 'view' }} flags={[]} flavor="platform" />);
+
+    expect(screen.getByText('Accounting')).toBeInTheDocument();
+    expect(screen.getByText('Operations')).toBeInTheDocument();
+    expect(screen.queryByText('Money & Books')).not.toBeInTheDocument();
   });
 
   it('marks a view-level area READ ONLY and does not mark a manage-level area READ ONLY', () => {

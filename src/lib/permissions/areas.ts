@@ -148,88 +148,89 @@ export interface PageArea {
 }
 
 /**
- * The 33 pages' permission metadata, in sidebar order. Source of truth for
- * `AREA_DEFINITIONS` (joined against `navigationGroups` for label/icon/
- * group/order), `AREA_LANDING_PATHS` and `AREA_PRIORITY` below — none of
- * those three is hand-maintained separately.
+ * Positional row for one `PAGE_AREAS` entry —
+ * `[key, path, hasManageTier, maxLevelForCollaborator, hint, manageHint?, navLabel?]`.
+ * Written this way (rather than 33 object literals repeating the same five
+ * property names) because the repeated `hasManageTier:`/
+ * `maxLevelForCollaborator:`/`hint:`/`manageHint:` keys, identical across
+ * nearly every row, read as duplicated code to static analysis even though
+ * the *data* isn't duplicated — each row's values differ. `PAGE_AREAS` below
+ * reconstructs the exact same `PageArea[]` from these rows; this is a
+ * presentation change only.
  */
-export const PAGE_AREAS: readonly PageArea[] = [
+type PageAreaRow = readonly [
+  key: AreaKey,
+  path: string,
+  hasManageTier: boolean,
+  maxLevelForCollaborator: AreaLevel | null,
+  hint: string,
+  manageHint?: string,
+  navLabel?: string,
+];
+
+const PAGE_AREA_ROWS: readonly PageAreaRow[] = [
   // Main
-  { key: 'dashboard', path: '/', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'Daily numbers, prime cost, P&L snapshot' },
-  { key: 'integrations', path: '/integrations', hasManageTier: true, maxLevelForCollaborator: 'view',
-    hint: 'POS, bank and payroll connections', manageHint: 'connect and disconnect systems' },
-  { key: 'sales', path: '/pos-sales', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'Ticket-level sales from your POS' },
-  { key: 'ops_inbox', path: '/ops-inbox', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'Exceptions and things needing a decision' },
-  { key: 'reviews', path: '/reviews', hasManageTier: true, maxLevelForCollaborator: 'view',
-    hint: 'Review pages, QR codes, guest feedback', manageHint: 'edit QR pages and reply' },
-  { key: 'weekly_brief', path: '/weekly-brief', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'The weekly summary and its archive' },
+  ['dashboard', '/', false, 'view', 'Daily numbers, prime cost, P&L snapshot'],
+  ['integrations', '/integrations', true, 'view', 'POS, bank and payroll connections', 'connect and disconnect systems'],
+  ['sales', '/pos-sales', false, 'view', 'Ticket-level sales from your POS'],
+  ['ops_inbox', '/ops-inbox', false, 'view', 'Exceptions and things needing a decision'],
+  ['reviews', '/reviews', true, 'view', 'Review pages, QR codes, guest feedback', 'edit QR pages and reply'],
+  ['weekly_brief', '/weekly-brief', false, 'view', 'The weekly summary and its archive'],
 
   // Operations
-  { key: 'scheduling', path: '/scheduling', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Shifts, templates, open-shift broadcasts', manageHint: 'publish and edit schedules' },
-  { key: 'time_punches', path: '/time-punches', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Punches, edits, missed-punch fixes', manageHint: 'edit punches' },
-  { key: 'tips', path: '/tips', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Pools, rules and distribution', manageHint: 'run and adjust distributions' },
-  { key: 'payroll', path: '/payroll', hasManageTier: true, maxLevelForCollaborator: 'view',
-    hint: 'Pay runs and payroll history', manageHint: 'run payroll' },
-  { key: 'labor', path: '/labor', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'Labor cost against sales' },
+  ['scheduling', '/scheduling', true, 'manage', 'Shifts, templates, open-shift broadcasts', 'publish and edit schedules'],
+  ['time_punches', '/time-punches', true, 'manage', 'Punches, edits, missed-punch fixes', 'edit punches'],
+  ['tips', '/tips', true, 'manage', 'Pools, rules and distribution', 'run and adjust distributions'],
+  ['payroll', '/payroll', true, 'view', 'Pay runs and payroll history', 'run payroll'],
+  ['labor', '/labor', false, 'view', 'Labor cost against sales'],
 
   // Inventory
-  { key: 'recipes', path: '/recipes', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Recipe cards and plate cost', manageHint: 'create and edit recipes' },
-  { key: 'prep_recipes', path: '/prep-recipes', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Prep items and production batches', manageHint: 'edit prep items and batches' },
-  { key: 'inventory', path: '/inventory', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Counts, stock levels, unit costs', manageHint: 'adjust counts and costs' },
-  { key: 'inventory_audit', path: '/inventory-audit', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Count sessions and variance', manageHint: 'run and close audits' },
-  { key: 'purchasing', path: '/purchase-orders', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'POs, receiving, supplier invoices', manageHint: 'raise and receive POs' },
-  { key: 'reports', path: '/reports', hasManageTier: true, maxLevelForCollaborator: 'view',
-    hint: 'Saved reports and P&L trends', manageHint: 'and the AI assistant' },
+  ['recipes', '/recipes', true, 'manage', 'Recipe cards and plate cost', 'create and edit recipes'],
+  ['prep_recipes', '/prep-recipes', true, 'manage', 'Prep items and production batches', 'edit prep items and batches'],
+  ['inventory', '/inventory', true, 'manage', 'Counts, stock levels, unit costs', 'adjust counts and costs'],
+  ['inventory_audit', '/inventory-audit', true, 'manage', 'Count sessions and variance', 'run and close audits'],
+  ['purchasing', '/purchase-orders', true, 'manage', 'POs, receiving, supplier invoices', 'raise and receive POs'],
+  ['reports', '/reports', true, 'view', 'Saved reports and P&L trends', 'and the AI assistant'],
 
   // Accounting
-  { key: 'budget', path: '/budget', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'Targets and burn against plan' },
-  { key: 'customers', path: '/customers', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Customer records and balances', manageHint: 'add and edit customers' },
-  { key: 'invoices', path: '/invoices', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Draft, send and track invoices', manageHint: 'create, send and void invoices' },
-  { key: 'stripe_account', path: '/stripe-account', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'Balance, payouts and transfers' },
-  { key: 'banking', path: '/banking', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Connected accounts and feeds', manageHint: 'connect and reconcile' },
-  { key: 'expenses', path: '/expenses', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Bills, receipts and categories', manageHint: 'record and categorise' },
-  { key: 'print_checks', path: '/print-checks', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Issue and print checks', manageHint: 'issue checks — this moves money' },
-  { key: 'assets', path: '/assets', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Fixed assets and depreciation', manageHint: 'add and depreciate assets' },
-  { key: 'financial_intelligence', path: '/financial-intelligence', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'AI analysis over your books' },
-  { key: 'transactions', path: '/transactions', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'The ledger and categorisation', manageHint: 'edit and recategorise' },
-  { key: 'chart_of_accounts', path: '/chart-of-accounts', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Account tree and mappings', manageHint: 'add and rename accounts' },
-  { key: 'financial_statements', path: '/financial-statements', hasManageTier: false, maxLevelForCollaborator: 'view',
-    hint: 'P&L, balance sheet, cash flow' },
+  ['budget', '/budget', false, 'view', 'Targets and burn against plan'],
+  ['customers', '/customers', true, 'manage', 'Customer records and balances', 'add and edit customers'],
+  ['invoices', '/invoices', true, 'manage', 'Draft, send and track invoices', 'create, send and void invoices'],
+  ['stripe_account', '/stripe-account', false, 'view', 'Balance, payouts and transfers'],
+  ['banking', '/banking', true, 'manage', 'Connected accounts and feeds', 'connect and reconcile'],
+  ['expenses', '/expenses', true, 'manage', 'Bills, receipts and categories', 'record and categorise'],
+  ['print_checks', '/print-checks', true, 'manage', 'Issue and print checks', 'issue checks — this moves money'],
+  ['assets', '/assets', true, 'manage', 'Fixed assets and depreciation', 'add and depreciate assets'],
+  ['financial_intelligence', '/financial-intelligence', false, 'view', 'AI analysis over your books'],
+  ['transactions', '/transactions', true, 'manage', 'The ledger and categorisation', 'edit and recategorise'],
+  ['chart_of_accounts', '/chart-of-accounts', true, 'manage', 'Account tree and mappings', 'add and rename accounts'],
+  ['financial_statements', '/financial-statements', false, 'view', 'P&L, balance sheet, cash flow'],
 
   // Admin
-  { key: 'employees', path: '/employees', hasManageTier: true, maxLevelForCollaborator: 'manage',
-    hint: 'Roster, jobs, wage assignments', manageHint: 'hire, edit and terminate' },
-  { key: 'team', path: '/team', navLabel: 'Team members', hasManageTier: true, maxLevelForCollaborator: null,
-    hint: 'Invite people, assign roles, edit these roles' },
-  { key: 'collaborators', path: '/team', navLabel: 'Collaborators', hasManageTier: true, maxLevelForCollaborator: null,
-    hint: 'Add external collaborators and set what they can do' },
-  { key: 'settings', path: '/settings', hasManageTier: true, maxLevelForCollaborator: 'view',
-    hint: 'Restaurant profile, hours, timezone', manageHint: 'change settings' },
+  ['employees', '/employees', true, 'manage', 'Roster, jobs, wage assignments', 'hire, edit and terminate'],
+  ['team', '/team', true, null, 'Invite people, assign roles, edit these roles', undefined, 'Team members'],
+  ['collaborators', '/team', true, null, 'Add external collaborators and set what they can do', undefined, 'Collaborators'],
+  ['settings', '/settings', true, 'view', 'Restaurant profile, hours, timezone', 'change settings'],
 ];
+
+/**
+ * The 33 pages' permission metadata, in sidebar order, reconstructed from
+ * `PAGE_AREA_ROWS` above. Source of truth for `AREA_DEFINITIONS` (joined
+ * against `navigationGroups` for label/icon/group/order), `AREA_LANDING_PATHS`
+ * and `AREA_PRIORITY` below — none of those three is hand-maintained
+ * separately.
+ */
+export const PAGE_AREAS: readonly PageArea[] = PAGE_AREA_ROWS.map(
+  ([key, path, hasManageTier, maxLevelForCollaborator, hint, manageHint, navLabel]) => ({
+    key,
+    path,
+    hasManageTier,
+    maxLevelForCollaborator,
+    hint,
+    ...(manageHint !== undefined ? { manageHint } : {}),
+    ...(navLabel !== undefined ? { navLabel } : {}),
+  })
+);
 
 interface AreaCapabilities {
   /** Capabilities granted once the area is at 'view' (or 'manage', which is a superset). */

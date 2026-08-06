@@ -385,6 +385,12 @@ input.fld:focus{border-color:var(--line-strong)}
 </div>
 
 <script>
+/* ── Escaping (role name is free-text user input, must not be
+   reinterpreted as HTML when spliced into innerHTML) ──────────── */
+function esc(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
 /* ── Icons (lucide paths, trimmed) ─────────────────────────── */
 const I = {
   home:'M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z',
@@ -564,7 +570,7 @@ function renderPreview(){
   }));
   const list = a => a.length>3 ? a.slice(0,3).join(', ')+` and ${a.length-3} more` : a.join(' and ');
   document.getElementById('sentence').innerHTML =
-    `<p><span class="k">${name}</span> ${canDo.length?`can change <span class="k">${list(canDo)}</span>`:'can change nothing'}${canSee.length?`, and can look at <span class="k">${list(canSee)}</span>`:''}.</p>` +
+    `<p><span class="k">${esc(name)}</span> ${canDo.length?`can change <span class="k">${list(canDo)}</span>`:'can change nothing'}${canSee.length?`, and can look at <span class="k">${list(canSee)}</span>`:''}.</p>` +
     `<p style="color:var(--muted)">Everything else is hidden — not greyed out, not there.</p>`;
 }
 

@@ -22,28 +22,26 @@
 --     custom-role resolution into user_has_capability, and `products` has
 --     called it since 20260120100100. It stays here as a stable regression
 --     guard on the view/manage boundary the new migration must preserve.)
---  4. The genuinely RED pair for Task 6 itself: a *different* custom role,
---     granted {scheduling: manage} — the area the design doc says
---     `edit:scheduling`/`view:tips`/`edit:tips`/`view:time_punches`/
---     `edit:time_punches` all resolve through — must currently be DENIED on
---     `tip_pool_settings` (a shape-2 table: role literal
+--  4. A second custom role, granted {tips: manage} — the area `view:tips`/
+--     `edit:tips` resolve through since the 2026-08-05 page-shaped re-cut
+--     (docs/superpowers/specs/2026-08-05-permissions-menu-mirror-design.md)
+--     split `tips` out of the old bundled `scheduling` area — must be
+--     GRANTED on `tip_pool_settings` (a shape-2 table: role literal
 --     {owner,manager,operations_manager,collaborator_operations_manager}, no
---     open-to-any-member SELECT policy to confound the result) despite
---     holding that grant, because tip_pool_settings' policies still check
---     the role column directly. Once Task 6's migration lands, converting
---     tip_pool_settings to call user_has_capability, these two assertions
---     flip to GRANTED without this file changing — that is the RED->GREEN
---     transition this test exists to drive.
+--     open-to-any-member SELECT policy to confound the result), now that
+--     Task 6's migration (20260730150000) rewrote its policies to call
+--     user_has_capability(). Originally written against a {scheduling:
+--     manage} grant, back when `scheduling:manage` was the area `view:tips`/
+--     `edit:tips` resolved through (pre-2026-08-05); updated to `{tips:
+--     manage}` to track the re-cut area_catalog.
 --  5. Fail-closed property, tested rather than trusted: the {inventory:
 --     manage}-only custom role from (2/3) is denied on one representative
 --     table from EACH of the ten role-set shapes catalogued in the design
---     doc (including the three shapes — 2, 7, 8 — that Task 6 will actually
---     convert). This holds both before and after Task 6 lands: the sample
---     tables are chosen so their post-migration capability domain
---     (`scheduling` for the shape-2/8 tables, `books` for the shape-7
---     table) never overlaps with the `inventory` grant this role holds, so
---     the denial is durable across the RED->GREEN transition, not just true
---     by accident of the migration not existing yet.
+--     doc (including the three shapes — 2, 7, 8 — that Task 6 converted).
+--     The sample tables are chosen so their capability domain (`tips` for
+--     the shape-2 table, `time_punches` for shape-8, `books` for shape-7)
+--     never overlaps with the `inventory` grant this role holds, so the
+--     denial is durable regardless of which migrations have landed.
 --  6. Cross-tenant isolation: the same custom role, granted {inventory:
 --     manage} and a member only of restaurant R1, sees nothing in R2.
 --  7. The receipt_imports drift guard, from commit 94505ec5 (design doc
@@ -111,15 +109,15 @@ VALUES (
 )
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = 'collaborator_custom', role_id = EXCLUDED.role_id;
 
--- Role B: a second custom role in R1, granted {scheduling: manage} directly.
--- Kept separate from Role A so the tip_pool_settings RED assertions (4) are
+-- Role B: a second custom role in R1, granted {tips: manage} directly.
+-- Kept separate from Role A so the tip_pool_settings assertions (4) are
 -- never contaminated by the inventory grant used in the fail-closed sample.
 INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin)
 VALUES (
   '6a000000-0000-0000-0000-0000000000b1',
   '6a000000-0000-0000-0000-000000000001',
-  'Task 6 Custom Role B (scheduling)',
-  'pgTAP fixture — scheduling capability-funnel RED/GREEN pair',
+  'Task 6 Custom Role B (tips)',
+  'pgTAP fixture — tips capability-funnel regression guard',
   'collaborator',
   false
 )
@@ -270,12 +268,11 @@ SELECT is(
 );
 
 -- ============================================================================
--- 4. tip_pool_settings (shape 2, scheduling domain): the genuinely RED pair.
---    Role B, denied first with zero grants, then still denied even after
---    {scheduling: manage} is granted — because tip_pool_settings' policies
---    are still role literals until Task 6's migration lands. These last two
---    assertions are expected to flip from FAIL to PASS once that migration
---    ships, with no change to this file.
+-- 4. tip_pool_settings (shape 2, tips domain): Role B, denied first with
+--    zero grants, then granted access via {tips: manage} — tip_pool_settings'
+--    policies call user_has_capability(restaurant_id, 'view:tips'/'edit:tips'),
+--    and those capabilities resolve through the `tips` area since the
+--    2026-08-05 page-shaped re-cut.
 -- ============================================================================
 INSERT INTO public.tip_pool_settings (id, restaurant_id)
 VALUES ('6a000000-0000-0000-0000-000000000701', '6a000000-0000-0000-0000-000000000001')
@@ -295,33 +292,31 @@ SELECT is(
   'denied baseline: custom role with zero area grants cannot UPDATE tip_pool_settings'
 );
 
--- Grant {scheduling: manage} to Role B.
+-- Grant {tips: manage} to Role B.
 INSERT INTO public.role_areas (role_id, area_key, level)
-VALUES ('6a000000-0000-0000-0000-0000000000b1', 'scheduling', 'manage')
+VALUES ('6a000000-0000-0000-0000-0000000000b1', 'tips', 'manage')
 ON CONFLICT (role_id, area_key) DO UPDATE SET level = 'manage';
 
--- RED: expected to fail until Task 6's migration rewrites tip_pool_settings'
--- policies to call user_has_capability(restaurant_id, 'view:tips'/'edit:tips').
 SELECT is(
   pg_temp.as_user_count('6a000000-0000-0000-0000-000000000102'::uuid,
     'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
   1::bigint,
-  'custom role {scheduling: manage} can SELECT tip_pool_settings once Task 6 converts its policies (RED until that migration lands)'
+  'custom role {tips: manage} can SELECT tip_pool_settings'
 );
 SELECT is(
   pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000102'::uuid,
     'UPDATE public.tip_pool_settings SET pooling_model = ''full_pool'' WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
   1::bigint,
-  'custom role {scheduling: manage} can UPDATE tip_pool_settings once Task 6 converts its policies (RED until that migration lands)'
+  'custom role {tips: manage} can UPDATE tip_pool_settings'
 );
 
--- Role B's scheduling grant must not leak into unrelated domains (inventory,
+-- Role B's tips grant must not leak into unrelated domains (inventory,
 -- books) — fail-closed holds for the broader-grant role too.
 SELECT is(
   pg_temp.as_user_count('6a000000-0000-0000-0000-000000000102'::uuid,
     'SELECT count(*) FROM public.products WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
   0::bigint,
-  'custom role {scheduling: manage} still cannot SELECT products (inventory domain, not granted)'
+  'custom role {tips: manage} still cannot SELECT products (inventory domain, not granted)'
 );
 
 INSERT INTO public.assets (id, restaurant_id, name, category, purchase_date, purchase_cost, useful_life_months, unit_cost)
@@ -332,7 +327,7 @@ SELECT is(
   pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000102'::uuid,
     'UPDATE public.assets SET notes = ''nope'' WHERE id = ''6a000000-0000-0000-0000-000000000a51'''),
   0::bigint,
-  'custom role {scheduling: manage} still cannot UPDATE assets (books domain, not granted)'
+  'custom role {tips: manage} still cannot UPDATE assets (books domain, not granted)'
 );
 
 -- ============================================================================
@@ -356,12 +351,12 @@ SELECT is(
 
 -- Shape 2: {owner, manager, operations_manager, collaborator_operations_manager}
 -- — tip_pool_settings, same row as section 4, but under Role A (inventory
--- only, no scheduling grant at all) so this holds permanently.
+-- only, no tips grant at all) so this holds permanently.
 SELECT is(
   pg_temp.as_user_count('6a000000-0000-0000-0000-000000000101'::uuid,
     'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
   0::bigint,
-  'fail-closed shape {owner,manager,operations_manager,collaborator_operations_manager}: tip_pool_settings SELECT denied for a role holding no scheduling grant'
+  'fail-closed shape {owner,manager,operations_manager,collaborator_operations_manager}: tip_pool_settings SELECT denied for a role holding no tips grant'
 );
 
 -- Shape 3: {owner, manager, chef} — daily_food_costs.

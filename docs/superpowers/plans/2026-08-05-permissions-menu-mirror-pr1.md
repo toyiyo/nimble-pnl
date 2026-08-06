@@ -143,7 +143,7 @@ export type { NavItem, NavGroup };
 `preview.ts:32`, `AppSidebar.tsx:24`, and both existing test files keep importing from `@/components/AppSidebar.nav` unchanged.
 
 Run: `npm run typecheck` → exit 0.
-Run: `npx vitest run tests/unit/AppSidebar.nav.test.ts tests/unit/collaboratorOperationsManagerRouting.test.ts --reporter=line` → PASS, same test count as before. These assert `getNavigationForRole('owner')` deep-equals `navigationGroups`; a dropped or reordered item fails here.
+Run: `npx vitest run tests/unit/AppSidebar.nav.test.ts tests/unit/collaboratorOperationsManagerRouting.test.ts --reporter=dot` → PASS, same test count as before. These assert `getNavigationForRole('owner')` deep-equals `navigationGroups`; a dropped or reordered item fails here.
 
 - [ ] **Step 3: Commit the move**
 
@@ -177,13 +177,13 @@ In `tests/unit/AppSidebar.nav.test.ts`:
 
 Import `COLLABORATOR_ROUTES` from `@/App` — it is already a named export at `src/App.tsx:200`. Do not re-type the allow-list in the test; a second transcription is exactly the drift this plan exists to remove.
 
-Run: `npx vitest run tests/unit/AppSidebar.nav.test.ts --reporter=line` → FAIL on `/budget`.
+Run: `npx vitest run tests/unit/AppSidebar.nav.test.ts --reporter=dot` → FAIL on `/budget`.
 
 - [ ] **Step 5: Remove the link and commit**
 
 Delete `{ path: '/budget', label: 'Budget & Run Rate', icon: Target }` from `collaboratorAccountantNav` (`src/components/AppSidebar.nav.ts:120`). Drop `Target` from the icon import if nothing else uses it.
 
-Run: `npx vitest run tests/unit/AppSidebar.nav.test.ts --reporter=line` → PASS.
+Run: `npx vitest run tests/unit/AppSidebar.nav.test.ts --reporter=dot` → PASS.
 
 ```bash
 git add src/components/AppSidebar.nav.ts tests/unit/AppSidebar.nav.test.ts
@@ -203,7 +203,9 @@ The load-bearing task, and the whole risk of the change. Tasks 3–7 are recover
 
 **Files:**
 - Create: `supabase/migrations/20260805120000_page_areas.sql`, `supabase/tests/page_areas_catalog_test.sql`
-- Modify: `supabase/tests/roles_seed_test.sql`, `supabase/tests/roles_schema_test.sql`, `supabase/tests/user_has_capability_areas_test.sql`
+- Modify: `supabase/tests/roles_seed_test.sql`, `supabase/tests/roles_schema_test.sql`, `supabase/tests/user_has_capability_areas_test.sql`, `supabase/tests/25_check_printing_capabilities.sql`, `supabase/tests/reviews_area_catalog_test.sql`
+
+The last two are easy to miss: they never mention `area_catalog` in their titles, but both hardcode bundle-era facts. `25_check_printing_capabilities` builds a custom role and escalates it through `books` at view then manage — and check printing is gated by two capability pairs (`view`/`edit:banking` and `view`/`edit:pending_outflows`) that this re-cut splits across `banking` and `print_checks`, so each stage must grant the pair. `reviews_area_catalog_test` asserts `reviews` sits in the invented `Operations` band at sort_order 6; mirroring the sidebar puts it in `Main` at 5. Grep for `'books'` and for `area_catalog` across `supabase/tests/` before assuming the list is complete.
 
 **Interfaces:**
 - Produces: `area_catalog` with 33 rows keyed as in *The 33 keys*; `user_has_capability(uuid, text)` with a re-pointed VALUES map.
@@ -553,7 +555,7 @@ describe('areas.ts derives from the sidebar', () => {
 });
 ```
 
-Run: `npx vitest run tests/unit/areas.test.ts --reporter=line` → FAIL, `PAGE_AREAS` is not exported.
+Run: `npx vitest run tests/unit/areas.test.ts --reporter=dot` → FAIL, `PAGE_AREAS` is not exported.
 
 - [ ] **Step 2: Rewrite `areas.ts`**
 
@@ -609,7 +611,7 @@ Derive `AREA_LANDING_PATHS` from `PAGE_AREAS` (`key → path`) and `AREA_PRIORIT
 
 Delete `Band` and `AreaGroupKey`. Rewrite the file header: it says "fourteen", "Ten rows in the editor", and cites the superseded `20260730140000` migration at lines 10-28. Point it at `20260805120000_page_areas.sql` and describe the join-against-nav derivation.
 
-Run: `npx vitest run tests/unit/areas.test.ts --reporter=line` → PASS.
+Run: `npx vitest run tests/unit/areas.test.ts --reporter=dot` → PASS.
 
 - [ ] **Step 3: Let the compiler find the rest, then commit**
 
@@ -655,7 +657,7 @@ fails a test instead of becoming silently ungrantable."
 
 The assertion itself does not change: `allowedPathsForAreas(grants)` sorted must equal `COLLABORATOR_ROUTES[role].allowed` sorted, for all four builtin collaborators.
 
-Run: `npx vitest run tests/unit/routeAreas.test.ts --reporter=line` → FAIL, the fixture references keys `AREA_ROUTES` does not yet map.
+Run: `npx vitest run tests/unit/routeAreas.test.ts --reporter=dot` → FAIL, the fixture references keys `AREA_ROUTES` does not yet map.
 
 - [ ] **Step 2: Derive `AREA_ROUTES`**
 
@@ -683,7 +685,7 @@ Replace the header's "Deliberately unmapped" paragraph (lines 19-22) — now fal
 
 - [ ] **Step 3: Run the calibration and commit**
 
-Run: `npx vitest run tests/unit/routeAreas.test.ts --reporter=line` → PASS for all four builtin collaborators.
+Run: `npx vitest run tests/unit/routeAreas.test.ts --reporter=dot` → PASS for all four builtin collaborators.
 
 A diff here is a genuine access change, not a test to adjust. Extra path → the fan-out granted too much; missing path → too little. Both are Task 2 bugs. Expect `/print-checks` to stay on Accountant (it held `books: 'manage'`, so the fan-out gives it `print_checks: 'manage'`) and `/inventory-audit` plus `/receipt-import` to stay on Inventory Helper.
 
@@ -731,7 +733,7 @@ hand-written allow-lists still reproduce exactly from their seeded grants."
 
 Read `RolePreviewPanel.tsx`'s actual prop signature before writing this rather than trusting the shape above.
 
-Run: `npx vitest run tests/unit/RolePreviewPanel.test.tsx --reporter=line` → FAIL.
+Run: `npx vitest run tests/unit/RolePreviewPanel.test.tsx --reporter=dot` → FAIL.
 
 - [ ] **Step 2: Regroup and drop the strike-through**
 
@@ -741,7 +743,7 @@ Delete `PHRASE` (lines 106-118 — keyed by the deleted `AreaGroupKey`) and read
 
 In `RolePreviewPanel.tsx`, remove the strike-through/dim styling path for ungranted items; it now has nothing to render.
 
-Run: `npx vitest run tests/unit/RolePreviewPanel.test.tsx --reporter=line` → PASS.
+Run: `npx vitest run tests/unit/RolePreviewPanel.test.tsx --reporter=dot` → PASS.
 
 - [ ] **Step 3: Commit**
 
@@ -803,7 +805,7 @@ Deliberately minimal. Collapsible groups and roll-up controls are PR 2; this tas
 
 Write `rowFor(label)` as a local helper resolving the row container from its visible page label. Read the existing test file's helpers first and reuse them where they fit.
 
-Run: `npx vitest run tests/unit/RoleEditor.test.tsx --reporter=line` → FAIL.
+Run: `npx vitest run tests/unit/RoleEditor.test.tsx --reporter=dot` → FAIL.
 
 - [ ] **Step 2: Render from `AREA_DEFINITIONS`**
 
@@ -813,13 +815,13 @@ Keep `LevelControl` (`RoleEditor.tsx:284-334`) exactly as it is — a Radix `Rad
 
 Styling per CLAUDE.md's Typography Scale (form-label tier for group headings, body tier for row labels, secondary tier for hints). With 33 rows a radio labelled only "Manage" is ambiguous, so each row's `RadioGroup` needs `aria-label={`${label} access level`}`.
 
-Run: `npx vitest run tests/unit/RoleEditor.test.tsx --reporter=line` → PASS.
+Run: `npx vitest run tests/unit/RoleEditor.test.tsx --reporter=dot` → PASS.
 
 - [ ] **Step 3: Whole suite green, and the build compiles**
 
 Run: `npm run typecheck` → exit 0. Every error recorded in Task 3 Step 3 should now be resolved.
 Run: `npm run lint` → exit 0.
-Run: `npx vitest run --reporter=line` (timeout: 600000) → PASS. Any failure outside the files this plan touched is a real regression; investigate before continuing.
+Run: `npx vitest run --reporter=dot` (timeout: 600000) → PASS. Any failure outside the files this plan touched is a real regression; investigate before continuing.
 
 - [ ] **Step 4: Commit**
 

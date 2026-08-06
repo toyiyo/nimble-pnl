@@ -172,28 +172,48 @@ test.describe('Roles & Areas', () => {
 
     // The disabled reason is the accessible description, not just a visual
     // lock icon (design doc: "capped levels use disabled + aria-disabled
-    // with the reason text as their accessible description").
+    // with the reason text as their accessible description"). Per-area
+    // lock-reason prose (AREA_LOCK_REASON, e.g. "Owners and Managers
+    // only.") was retired with the bundle model (Task 6 Step 2, per the
+    // 2026-08-05 permissions-menu-mirror plan) — the padlock glyph plus
+    // disabled state is the only "why" now; aria-describedby points at the
+    // row's own hint text instead (RoleEditor.test.tsx documents the same
+    // change), so this asserts against AREA_DEFINITIONS['payroll'].hint.
     const payrollDescribedBy = await payrollManage.getAttribute('aria-describedby');
     expect(payrollDescribedBy, 'capped Manage radio must have an aria-describedby pointing at its reason text').toBeTruthy();
-    await expect(page.locator(`#${payrollDescribedBy}`)).toContainText(/owners and managers only/i);
+    await expect(page.locator(`#${payrollDescribedBy}`)).toContainText(/pay runs and payroll history/i);
 
-    // ---- Ungrantable area: Team & Access can never be granted by any collaborator role ----
+    // ---- Ungrantable area: Team members can never be granted by any collaborator role ----
     // (AREA_DEFINITIONS['team'].maxLevelForCollaborator === null — the
     // privilege-escalation guard the design doc calls out explicitly.)
-    const teamGroup = page.getByRole('radiogroup', { name: /team & access access/i });
+    // The old combined "Team & Access" bundle is retired along with the rest
+    // of the bundle model (Task 3's re-cut, per the 2026-08-05
+    // permissions-menu-mirror plan): the catalog now carries two distinct
+    // rows over the same /team path, 'team' (navLabel "Team members") and
+    // 'collaborators' (navLabel "Collaborators"), so the radiogroup's
+    // accessible name is "Team members access", not "Team & Access access".
+    const teamGroup = page.getByRole('radiogroup', { name: /^team members access$/i });
     await expect(teamGroup.getByRole('radio', { name: /^view$/i })).toBeDisabled();
     const teamManage = teamGroup.getByRole('radio', { name: /^manage$/i });
     await expect(teamManage).toBeDisabled();
+    // Same retirement as payroll's reason text above: aria-describedby now
+    // points at AREA_DEFINITIONS['team'].hint, not a bespoke lock-reason
+    // string.
     const teamDescribedBy = await teamManage.getAttribute('aria-describedby');
-    expect(teamDescribedBy, 'the ungrantable Team & Access row must explain why via an accessible description').toBeTruthy();
-    await expect(page.locator(`#${teamDescribedBy}`)).toContainText(/owners and managers only/i);
+    expect(teamDescribedBy, 'the ungrantable Team members row must explain why via an accessible description').toBeTruthy();
+    await expect(page.locator(`#${teamDescribedBy}`)).toContainText(/invite people, assign roles, edit these roles/i);
 
-    // ---- Grant area 1: Inventory & Purchasing → Manage ----
+    // ---- Grant area 1: Inventory → Manage ----
     // Neither of the two areas granted below is capped for a collaborator
     // role, so the grant is meaningful (not silently clamped), and per
     // AREA_PRIORITY in usePermissions.ts, 'inventory' outranks 'scheduling'
-    // for landing-path purposes — asserted further down.
-    const inventoryGroup = page.getByRole('radiogroup', { name: /inventory & purchasing access/i });
+    // for landing-path purposes — asserted further down. The old "Inventory
+    // & Purchasing" bundle is retired along with the rest of the bundle
+    // model (Task 3's re-cut): the catalog now carries 'inventory',
+    // 'inventory_audit' (row label "Audit"), and 'purchasing' (row label
+    // "Purchase Orders") as separate rows, so the radiogroup's accessible
+    // name is "Inventory access", not "Inventory & Purchasing access".
+    const inventoryGroup = page.getByRole('radiogroup', { name: /^inventory access$/i });
     await inventoryGroup.getByRole('radio', { name: /^manage$/i }).click();
     await expect(grantCounter).not.toHaveText(/^0\s+granted$/i);
     const countAfterFirstGrant = await grantCounter.textContent();
@@ -223,7 +243,7 @@ test.describe('Roles & Areas', () => {
     // button inside a button is invalid HTML.
     const roleCard = page.getByRole('article', { name: new RegExp(roleName) });
     await expect(roleCard).toBeVisible();
-    await expect(roleCard).toContainText(/inventory & purchasing/i);
+    await expect(roleCard).toContainText(/inventory/i); // RoleAreaChips renders row.label, "Inventory" post-migration
     await expect(roleCard).toContainText(/· manage/i); // manage-level chip suffix
     await expect(roleCard).toContainText(/scheduling/i);
     await expect(roleCard).toContainText(/custom/i); // CUSTOM badge, vs. built-ins' BUILT-IN
@@ -305,9 +325,12 @@ test.describe('Roles & Areas', () => {
     // RolePreviewPanel ("What they'll see") is the only <aside> on this page
     // and carries no accessible name, so it lands the implicit
     // "complementary" landmark role — an accessible selector, not a testid.
+    // Exact match: the panel also renders a manage-hint sentence ("Invoices
+    // only can create, send and void invoices.") that contains the
+    // substring "Invoices", so a non-exact getByText resolves to two nodes.
     const preview = page.getByRole('complementary');
-    await expect(preview.getByText('Invoices')).toBeVisible();
-    await expect(preview.getByText('Banks')).toBeHidden();
+    await expect(preview.getByText('Invoices', { exact: true })).toBeVisible();
+    await expect(preview.getByText('Banks', { exact: true })).toBeHidden();
 
     await page.getByRole('button', { name: /^save role$/i }).click();
     await expect(page.getByText('Invoices only')).toBeVisible();

@@ -184,6 +184,8 @@ export function useShiftTemplates(
         changed_since_count: number;
         deleted_count: number;
         protected_count: number;
+        template_restored: boolean;
+        template_changed_since: boolean;
       };
     },
     onSuccess: (result) => {
@@ -199,6 +201,10 @@ export function useShiftTemplates(
         result.changed_since_count > 0 ? `${result.changed_since_count} changed since` : null,
         result.deleted_count > 0 ? `${result.deleted_count} deleted` : null,
         result.protected_count > 0 ? `${result.protected_count} now locked or started` : null,
+        // Restoring the template is the expected case and is not narrated -- saying so
+        // on every Undo would be noise. This is the case where the manager's mental
+        // model and the data disagree, so it gets said out loud.
+        result.template_changed_since ? 'template hours changed since' : null,
       ].filter(Boolean);
       toast({
         title: 'Cascade undone',

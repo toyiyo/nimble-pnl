@@ -299,13 +299,13 @@ ON CONFLICT (role_id, area_key) DO UPDATE SET level = 'manage';
 
 SELECT is(
   pg_temp.as_user_count('6a000000-0000-0000-0000-000000000102'::uuid,
-    'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+    'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'' AND restaurant_id = ''6a000000-0000-0000-0000-000000000001'''),
   1::bigint,
   'custom role {tips: manage} can SELECT tip_pool_settings'
 );
 SELECT is(
   pg_temp.as_user_update_count('6a000000-0000-0000-0000-000000000102'::uuid,
-    'UPDATE public.tip_pool_settings SET pooling_model = ''full_pool'' WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+    'UPDATE public.tip_pool_settings SET pooling_model = ''full_pool'' WHERE id = ''6a000000-0000-0000-0000-000000000701'' AND restaurant_id = ''6a000000-0000-0000-0000-000000000001'''),
   1::bigint,
   'custom role {tips: manage} can UPDATE tip_pool_settings'
 );
@@ -314,7 +314,7 @@ SELECT is(
 -- books) — fail-closed holds for the broader-grant role too.
 SELECT is(
   pg_temp.as_user_count('6a000000-0000-0000-0000-000000000102'::uuid,
-    'SELECT count(*) FROM public.products WHERE id = ''6a000000-0000-0000-0000-000000000d01'''),
+    'SELECT count(*) FROM public.products WHERE id = ''6a000000-0000-0000-0000-000000000d01'' AND restaurant_id = ''6a000000-0000-0000-0000-000000000001'''),
   0::bigint,
   'custom role {tips: manage} still cannot SELECT products (inventory domain, not granted)'
 );
@@ -354,7 +354,7 @@ SELECT is(
 -- only, no tips grant at all) so this holds permanently.
 SELECT is(
   pg_temp.as_user_count('6a000000-0000-0000-0000-000000000101'::uuid,
-    'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'''),
+    'SELECT count(*) FROM public.tip_pool_settings WHERE id = ''6a000000-0000-0000-0000-000000000701'' AND restaurant_id = ''6a000000-0000-0000-0000-000000000001'''),
   0::bigint,
   'fail-closed shape {owner,manager,operations_manager,collaborator_operations_manager}: tip_pool_settings SELECT denied for a role holding no tips grant'
 );

@@ -100,7 +100,7 @@ function grantsAt(level: AreaLevel, keys: AreaKey[] = ALL_AREA_KEYS): Partial<Re
 
 describe('AREA_DEFINITIONS', () => {
   it('defines exactly 33 areas', () => {
-    expect(AREA_DEFINITIONS.length).toBe(33);
+    expect(AREA_DEFINITIONS).toHaveLength(33);
   });
 
   it('caps Team & Access at no grantable level (privilege-escalation guard)', () => {
@@ -167,7 +167,7 @@ describe('expandAreas', () => {
   // all must still carry the pending_outflows capabilities that table's RLS
   // checks — the client-side mirror of the SQL OR-across-two-areas fix for
   // the P1 finding on 20260805120000_page_areas.sql.
-  it('expenses grants view:pending_outflows/edit:pending_outflows with no print_checks area held at all', () => {
+  it('should grant pending_outflows capabilities when expenses is granted without print_checks', () => {
     expect(expandAreas({ expenses: 'view' }, [])).toContain('view:pending_outflows');
     expect(expandAreas({ expenses: 'view' }, [])).not.toContain('edit:pending_outflows');
     expect(expandAreas({ expenses: 'manage' }, [])).toContain('view:pending_outflows');

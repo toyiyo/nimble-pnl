@@ -33,7 +33,6 @@
 import { navigationGroups } from '@/components/AppSidebar.nav';
 import {
   AREA_DEFINITIONS,
-  AREA_LANDING_PATHS,
   AREA_PRIORITY,
   expandAreas,
   landingAreaKey,

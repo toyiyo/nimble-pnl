@@ -31,7 +31,7 @@ import { navigationGroups, SUPPLEMENTAL_NAV_ITEMS } from '@/components/AppSideba
 
 // Re-exported so existing importers (AppSidebar.tsx, permissions/preview.ts,
 // tests) don't need to change when this data moved to AppSidebar.nav.data.ts.
-export type { NavItem, NavGroup };
+export type { NavItem, NavGroup } from '@/components/AppSidebar.nav.data';
 export { navigationGroups, SUPPLEMENTAL_NAV_ITEMS };
 
 // Navigation groups for collaborator roles

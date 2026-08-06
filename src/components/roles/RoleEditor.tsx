@@ -178,7 +178,7 @@ function editorNoticeText(builtinReadOnly: boolean, role: RoleWithGrants | null)
  * group from the next in the approved design — the rows below it are the
  * ones that get the padding.
  */
-function GroupHeader({ label, legend, first }: { label: string; legend?: string; first?: boolean }) {
+function GroupHeader({ label, legend, first }: Readonly<{ label: string; legend?: string; first?: boolean }>) {
   return (
     <div
       className={cn(

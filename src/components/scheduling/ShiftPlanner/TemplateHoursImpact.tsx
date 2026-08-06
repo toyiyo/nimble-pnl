@@ -82,6 +82,7 @@ export function TemplateHoursImpact({
   // When nothing would move on its own, these checkboxes are the only thing the
   // manager can act on -- so they are not hidden behind a third click.
   const driftDefaultOpen = drifted.length > 0 && ledger.totalAffected === 0;
+  const isDriftOpen = driftOpen ?? driftDefaultOpen;
 
   return (
     <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
@@ -156,14 +157,14 @@ export function TemplateHoursImpact({
             </div>
 
             {drifted.length > 0 && (
-              <Collapsible open={driftOpen ?? driftDefaultOpen} onOpenChange={setDriftOpen}>
+              <Collapsible open={isDriftOpen} onOpenChange={setDriftOpen}>
                 <CollapsibleTrigger asChild>
                   <button
                     type="button"
                     className="flex items-center gap-2 text-[13px] font-medium text-foreground"
                   >
                     <ChevronRight
-                      className={`h-4 w-4 text-muted-foreground transition-transform ${(driftOpen ?? driftDefaultOpen) ? 'rotate-90' : ''}`}
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${isDriftOpen ? 'rotate-90' : ''}`}
                       aria-hidden="true"
                     />
                     {drifted.length} hand-edited {drifted.length === 1 ? 'shift' : 'shifts'} — your call

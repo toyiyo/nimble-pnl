@@ -19,7 +19,8 @@
 - No manual caching. React Query only, `staleTime: 30000`.
 - Every button without visible text needs `aria-label`. Every input needs a label.
 - Handle the loading state, the error state and the empty state.
-- The email shape check is duplicated: `src/lib/reviews/reviewSubmission.ts` (TypeScript) and `supabase/functions/_shared/reviewContact.ts` (Deno). The edge function cannot import from `src/`. The server copy is authoritative. Each copy names the other in a comment.
+- The submit rule is duplicated: `src/lib/reviews/reviewSubmission.ts` (TypeScript) and `supabase/functions/_shared/reviewContact.ts` (Deno). The edge function cannot import from `src/`. The server copy is authoritative. Each copy names the other in a comment.
+- The actionable-row rule is duplicated too: SQL in the migration, TypeScript in `isActionableResponse`. Each copy names the other in a comment.
 - The migration must use `CREATE OR REPLACE FUNCTION`. A `DROP FUNCTION` resets the grants and breaks the Feedback tab header with `permission denied for function`.
 - Every early exit in `handleComment` after the 400 check returns `{ ok: true }`. A caller must not tell a bot trip from a replay from a real write.
 - Run Playwright with `--reporter=line`. Never the default `html` reporter.
@@ -144,10 +145,12 @@ Create `src/lib/reviews/reviewSubmission.ts`:
  * comment and no email. A form that holds neither writes nothing, so the
  * Send control stays disabled.
  *
- * The email shape check is a copy. `supabase/functions/_shared/reviewContact.ts`
+ * This whole module is a copy. `supabase/functions/_shared/reviewContact.ts`
  * holds the Deno original, which an edge function can import and this file
- * cannot. That copy is authoritative: this one only enables a button. Change
- * both together.
+ * cannot: `isPlausibleEmail` and `hasFollowUpPayload` there answer to
+ * `isPlausibleEmail` and `canSubmitFollowUp` here. That copy is
+ * authoritative: this one only enables a button. Change both together, or
+ * the button sends a request the server answers with a 400.
  */
 
 /** The longest email `handleComment` accepts. It slices at this length. */
@@ -183,7 +186,7 @@ export function canSubmitFollowUp(input: {
 cd /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/review-funnel-followups && npx vitest run tests/unit/reviewSubmission.test.ts --reporter=verbose
 ```
 
-Expected: PASS, 16 tests.
+Expected: PASS, 15 tests.
 
 - [ ] **Step 5: Run the type check**
 
@@ -214,7 +217,10 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: the rule from Task 1, restated in Deno. No import across the boundary.
-- Produces: `export function isPlausibleEmail(value: string): boolean` and `export const MAX_EMAIL_LENGTH = 320` from `../_shared/reviewContact.ts`.
+- Produces, from `../_shared/reviewContact.ts`:
+  - `export const MAX_EMAIL_LENGTH = 320`
+  - `export function isPlausibleEmail(value: string): boolean`
+  - `export function hasFollowUpPayload(input: { comment: string; consent: boolean; email: string }): boolean`
 
 **Context:** `handleComment` has no test harness in this repo. The edge function is stubbed in the E2E specs. Task 4 covers the client contract; the pgTAP test in Task 5 covers the aggregate. Verify this task with `npm run typecheck` and a careful read.
 
@@ -224,11 +230,14 @@ Create `supabase/functions/_shared/reviewContact.ts`:
 
 ```ts
 /**
- * The email shape check `handleComment` uses.
+ * The submit rule `handleComment` uses.
  *
  * `src/lib/reviews/reviewSubmission.ts` holds the client copy, which enables
- * the Send control. This copy is authoritative: it decides what the server
- * writes. An edge function cannot import from `src/`. Change both together.
+ * the Send control: `isPlausibleEmail` and `canSubmitFollowUp` there answer
+ * to `isPlausibleEmail` and `hasFollowUpPayload` here. This copy is
+ * authoritative: it decides what the server writes. An edge function cannot
+ * import from `src/`. Change both together, or the button sends a request
+ * the server answers with a 400.
  */
 
 /** The longest email `handleComment` accepts. It slices at this length. */
@@ -245,6 +254,17 @@ export function isPlausibleEmail(value: string): boolean {
   if (trimmed.length === 0 || trimmed.length > MAX_EMAIL_LENGTH) return false;
   return EMAIL_PATTERN.test(trimmed);
 }
+
+export function hasFollowUpPayload(input: {
+  comment: string;
+  consent: boolean;
+  email: string;
+}): boolean {
+  if (input.comment.trim().length > 0) return true;
+  // Consent false means the server discards the name and the email. Without
+  // consent an address is not a payload.
+  return input.consent && isPlausibleEmail(input.email);
+}
 ```
 
 - [ ] **Step 2: Import the module in the edge function**
@@ -253,7 +273,7 @@ In `supabase/functions/review-public/index.ts`, add one import after line 16:
 
 ```ts
 import { hashIp, isOverLimit, REVIEW_RATE_WINDOW_MS } from '../_shared/reviewRateLimit.ts';
-import { isPlausibleEmail, MAX_EMAIL_LENGTH } from '../_shared/reviewContact.ts';
+import { hasFollowUpPayload, MAX_EMAIL_LENGTH } from '../_shared/reviewContact.ts';
 ```
 
 - [ ] **Step 3: Delete the duplicate constant**
@@ -288,7 +308,7 @@ Replace `index.ts:274-276`:
 
   // The comment is optional, the payload is not. A request with neither a
   // comment nor a usable email writes nothing, so it stays a 400.
-  if (!comment && !(consent && isPlausibleEmail(email))) return fail(400);
+  if (!hasFollowUpPayload({ comment, consent, email })) return fail(400);
 ```
 
 - [ ] **Step 5: Move the single-use guard to `commented_at` and store NULL for an empty comment**
@@ -371,6 +391,13 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `canSubmitFollowUp` from `@/lib/reviews/reviewSubmission` (Task 1).
 - Produces: the DOM contract Task 4 asserts against — a `Tell us something directly` button, a `Back` button, a `Your feedback (optional)` label, and a `Leave a Google review` link on the `thanks` stage.
 
+**Note on the branch test:** the design doc keys the copy on `routed_to`. Do
+not hold `routed_to` in state. `routeRating` in
+`supabase/functions/_shared/reviewRouting.ts:22` returns `'destination'` only
+when a `destinationUrl` exists, and `handleRate` releases the URL only on that
+branch. So `destinationUrl !== null` is the same test, and it cannot fall out
+of step with a second state value.
+
 - [ ] **Step 1: Add the imports**
 
 In `src/pages/ReviewPage.tsx`, add the icon import and the module import. Follow the project import order: icons after the UI components, libraries last.
@@ -388,64 +415,34 @@ import {
 } from '@/lib/reviews/reviewPageLoad';
 ```
 
-- [ ] **Step 2: Add the `routedTo` state**
+- [ ] **Step 2: Derive the branch from `destinationUrl`**
 
-After the `destinationUrl` state (`ReviewPage.tsx:48`), add:
-
-```tsx
-  const [destinationUrl, setDestinationUrl] = useState<string | null>(null);
-  // The server's branch decision. The form copy follows it: `What happened?`
-  // in front of a five-star guest reads as an accusation.
-  const [routedTo, setRoutedTo] = useState<'destination' | 'feedback' | null>(null);
-```
-
-- [ ] **Step 3: Record the branch in `handleCommit`**
-
-Replace `ReviewPage.tsx:144-152`:
+After the `announcement` state (`ReviewPage.tsx:66`), add:
 
 ```tsx
-// before
-      setToken(data.token as string);
-      if (data.routed_to === 'destination') {
-        setDestinationUrl((data.destination_url as string) ?? null);
-        setStage('promoter');
-        setAnnouncement('Thanks. You can share this on Google.');
-      } else {
-        setStage('feedback');
-        setAnnouncement('Tell us what happened. This goes straight to the owner.');
-      }
-
-// after
-      setToken(data.token as string);
-      if (data.routed_to === 'destination') {
-        setDestinationUrl((data.destination_url as string) ?? null);
-        setRoutedTo('destination');
-        setStage('promoter');
-        setAnnouncement('Thanks. You can share this on Google.');
-      } else {
-        setRoutedTo('feedback');
-        setStage('feedback');
-        setAnnouncement('Tell us what happened. This goes straight to the owner.');
-      }
+  // The server's branch decision, derived. `routeRating` returns
+  // `'destination'` only when a URL exists, and `handleRate` releases the URL
+  // only on that branch, so this is the same test with no second state to
+  // keep in step. The form copy follows it: `What happened?` in front of a
+  // five-star guest reads as an accusation.
+  const isPromoterBranch = destinationUrl !== null;
 ```
 
-- [ ] **Step 4: Add the two stage-move callbacks**
+- [ ] **Step 3: Leave `handleCommit` as it is**
+
+`ReviewPage.tsx:144-152` already sets `destinationUrl` on the promoter branch and leaves it null on the other. Step 2 reads that value. No change here.
+
+- [ ] **Step 4: Add the stage-move callback**
 
 After `handleCommit` (`ReviewPage.tsx:155`), add:
 
 ```tsx
-  // Both moves clear the error banner first. `That didn't send.` over a form
-  // the guest has not sent yet reads as a new failure.
-  const handleOpenFeedback = useCallback(() => {
+  // Every stage move clears the error banner first. `That didn't send.` over
+  // a form the guest has not sent yet reads as a new failure.
+  const goToStage = useCallback((next: Stage, message: string) => {
     setSubmitError(false);
-    setStage('feedback');
-    setAnnouncement('Tell us more. This goes straight to the owner.');
-  }, []);
-
-  const handleBackToPromoter = useCallback(() => {
-    setSubmitError(false);
-    setStage('promoter');
-    setAnnouncement('Back to the Google link.');
+    setStage(next);
+    setAnnouncement(message);
   }, []);
 ```
 
@@ -509,14 +506,17 @@ Replace `ReviewPage.tsx:157-180`:
       setSubmitError(true);
       return;
     }
-    setStage('thanks');
-    setAnnouncement(
+    goToStage(
+      'thanks',
       destinationUrl
         ? 'Thanks. You can also share this on Google.'
         : 'Thanks. The owner has your note.'
     );
-  }, [comment, consent, destinationUrl, email, honeypot, name, token]);
+  }, [comment, consent, destinationUrl, email, goToStage, honeypot, name, token]);
 ```
+
+`goToStage` is declared in Step 4, above `handleSubmitComment`. Keep that
+order, or the `const` is read before its declaration.
 
 - [ ] **Step 6: Add the `Tell us something directly` control to the promoter stage**
 
@@ -535,7 +535,7 @@ Replace `ReviewPage.tsx:323-329` (the `No thanks` button) with two controls:
 // after
           <button
             type="button"
-            onClick={handleOpenFeedback}
+            onClick={() => goToStage('feedback', 'Tell us more. This goes straight to the owner.')}
             className="counter-micro mt-4 w-full text-center text-[12px] text-muted-foreground underline"
           >
             Tell us something directly
@@ -571,11 +571,11 @@ Replace `ReviewPage.tsx:333-344` (the heading block of the `feedback` stage):
 // after
       {stage === 'feedback' && (
         <>
-          {routedTo === 'destination' && (
+          {isPromoterBranch && (
             <Button
               type="button"
               variant="ghost"
-              onClick={handleBackToPromoter}
+              onClick={() => goToStage('promoter', 'Back to the Google link.')}
               className="mb-2 h-9 px-2 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
             >
               <ChevronLeft className="mr-1 h-4 w-4" />
@@ -587,7 +587,7 @@ Replace `ReviewPage.tsx:333-344` (the heading block of the `feedback` stage):
             tabIndex={-1}
             className="counter-display text-center text-[26px] font-semibold text-foreground focus:outline-none"
           >
-            {routedTo === 'destination' ? 'Tell us more' : 'What happened?'}
+            {isPromoterBranch ? 'Tell us more' : 'What happened?'}
           </h1>
           <p className="counter-micro mt-2 text-center text-[12px] text-muted-foreground">
             this goes straight to the owner — not public
@@ -1033,6 +1033,9 @@ AS $$
     -- guest who asked to hear back. A silent star tap is also born with
     -- status 'new' and needs no triage, so counting it would leave a badge
     -- the manager has no way to open or clear.
+    -- `isActionableResponse` in src/hooks/useReviewResponses.ts holds the same
+    -- rule for the client. Change both together, or the badge count and the
+    -- rows that show a status chip disagree.
     count(*) FILTER (
       WHERE rr.status = 'new'
         AND (rr.comment IS NOT NULL OR rr.contact_consent)
@@ -1243,6 +1246,10 @@ export type ReviewResponseFilter = 'all' | 'commented' | 'silent';
  * A row a manager can act on: a comment to read, or a guest who asked to hear
  * back. A silent five-star tap is neither, so it carries no status and no
  * contact card.
+ *
+ * The `unread_count` FILTER in `review_response_metrics` holds the same rule
+ * in SQL (supabase/migrations/20260806120000_review_metrics_actionable.sql).
+ * Change both together, or the header badge and the rows disagree.
  */
 export function isActionableResponse(response: ReviewResponse): boolean {
   return response.comment !== null || response.contact_consent;
@@ -1287,12 +1294,10 @@ export function useReviewResponses(
         )
         .eq('restaurant_id', restaurantId!);
 
-      const scoped =
-        filter === 'commented'
-          ? base.not('comment', 'is', null)
-          : filter === 'silent'
-            ? base.is('comment', null)
-            : base;
+      // `all` adds no predicate, so it reads the base query unchanged.
+      let scoped = base;
+      if (filter === 'commented') scoped = base.not('comment', 'is', null);
+      else if (filter === 'silent') scoped = base.is('comment', null);
 
       const { data, error } = await scoped
         .order('submitted_at', { ascending: false })
@@ -1312,7 +1317,7 @@ The `updateStatus` mutation invalidates `['review-responses', restaurantId]`. Re
 cd /Users/josedelgado/Documents/GitHub/nimble-pnl/.claude/worktrees/review-funnel-followups && npx vitest run tests/unit/useReviewResponses.test.ts --reporter=verbose && npm run typecheck
 ```
 
-Expected: PASS, 16 tests. No type error.
+Expected: PASS, 17 tests. No type error.
 
 - [ ] **Step 5: Commit**
 
@@ -1380,7 +1385,7 @@ const EMPTY_STATES: Record<ReviewResponseFilter, { title: string; body: string }
   },
   commented: {
     title: 'No written feedback yet',
-    body: 'Guests who rate below your threshold get the private form. Their notes land here.',
+    body: 'Every guest can leave a note, at any star count. Their notes land here.',
   },
   silent: {
     title: 'Every rating here has a comment',
@@ -1445,14 +1450,23 @@ Replace `Reviews.tsx:114-123`:
   // status chip land most rows near 118px, and `measureElement` corrects the
   // rest. The cap the hook enforces is 500 rows, which is exactly the range
   // where mounting every row starts costing a manager real scroll latency.
+  // Both callbacks stay memoized. The virtualizer compares them by reference
+  // to decide if it must re-measure every row. A fresh arrow function per
+  // render breaks that check, so a plain row click re-measures all 500 rows.
+  // A silent row drops the two-line clamp and the status chip.
+  const estimateSize = useCallback(
+    (index: number) => (responses[index]?.comment ? 118 : 76),
+    [responses]
+  );
+  // Without a stable key the measurement cache is keyed by index. A filter
+  // change then applies the old row's height to the new row at that index.
+  const getItemKey = useCallback((index: number) => responses[index].id, [responses]);
+
   const virtualizer = useVirtualizer({
     count: responses.length,
     getScrollElement: () => listRef.current,
-    // A silent row drops the two-line clamp and the status chip.
-    estimateSize: (index) => (responses[index]?.comment ? 118 : 76),
-    // Without a stable key the measurement cache is keyed by index. A filter
-    // change then applies the old row's height to the new row at that index.
-    getItemKey: (index) => responses[index].id,
+    estimateSize,
+    getItemKey,
     overscan: 10,
   });
 

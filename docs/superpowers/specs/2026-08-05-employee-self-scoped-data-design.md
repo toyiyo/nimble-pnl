@@ -245,19 +245,30 @@ permissive policies:
 
 ```sql
 -- own row
+TO authenticated
 USING (EXISTS (
   SELECT 1 FROM employees e
   WHERE e.id = <table>.employee_id
-    AND e.user_id = auth.uid()
+    AND e.user_id = (select auth.uid())
     AND e.restaurant_id = <table>.restaurant_id
 ))
 
 -- privileged restaurant-wide
+TO authenticated
 USING (
   user_has_capability(restaurant_id, 'view:scheduling')
   OR user_has_capability(restaurant_id, 'view:payroll')
 )
 ```
+
+`(select auth.uid())` rather than bare `auth.uid()` is deliberate: an unwrapped call is
+evaluated **per row**, whereas the subquery form is hoisted to an InitPlan and evaluated once
+per query. These are the hot tables — a payroll window over `time_punches` paginates through
+thousands of rows — so this is the difference between one `auth.uid()` call and thousands.
+
+`TO authenticated` keeps the predicate from being evaluated for the `anon` role at all. Both
+are additions relative to the surrounding policies, which use the unwrapped form; they are
+applied to the new policies only, not retrofitted across the schema.
 
 **Why `view:scheduling OR view:payroll`, and not `view:payroll` alone.** The legacy-role
 capability sets are declared in [src/lib/permissions/definitions.ts](../../../src/lib/permissions/definitions.ts):
@@ -287,11 +298,43 @@ and is deliberately out of scope.
 | Table | Policy replaced | Notes |
 |---|---|---|
 | `employee_compensation_history` | Users can view compensation history for their restaurants | Own row joins via `employee_id`; also read as the embedded `compensation_history:` join in `useEmployees`. |
-| `time_punches` | Users can view time punches for their restaurants | Own-row policy already exists — the new own-row policy is redundant but harmless; the two legacy `owner`/`manager` policies are left untouched (out of scope to consolidate). |
-| `employee_tips` | Users can view tips for their restaurants | Same as above. |
+| `time_punches` | Users can view time punches for their restaurants **+ `Employees can view own time punches`** | See §4.2.1 — the pre-existing own-row policy is replaced, not supplemented. |
+| `employee_tips` | Users can view tips for their restaurants **+ `Employees can view own tips`** | Same as above. |
 | `overtime_adjustments` | Users can view their restaurant overtime adjustments | Sole SELECT policy today. |
 | `daily_labor_allocations` | Users can view allocations for their restaurants | Sole SELECT policy today. |
 | `shifts` | Users can view shifts for their restaurants | Needs a third clause — see §4.3. |
+
+#### 4.2.1 `time_punches` / `employee_tips`: replace the existing own-row policy, don't stack on it
+
+These two tables already carry an own-row SELECT policy from the tips migration. Verified in
+production, both read:
+
+```sql
+employee_id IN (SELECT employees.id FROM employees WHERE employees.user_id = auth.uid())
+```
+
+Creating §4.1's own-row policy *alongside* it would leave two permissive own-row clauses on the
+two highest-volume tables in the change — both evaluated, then OR'd, on every row of a payroll
+window. That directly undoes the per-row cost §4.1 and §4.6 exist to control. So the migration
+**drops these two by name as well** and lets the uniform policy replace them.
+
+The replacement is not merely a reformat. It differs in two ways, both improvements:
+
+- **`(select auth.uid())` instead of bare `auth.uid()`** — the existing form is evaluated per
+  row, which is exactly the anti-pattern on exactly the wrong table.
+- **It adds `e.restaurant_id = <table>.restaurant_id`**, which the existing form omits. For a
+  user employed at two restaurants the old predicate resolves *both* their employee ids; the
+  row's own `employee_id` still pins it transitively, so this is a tightening with no practical
+  effect. Confirmed against production: `time_punches`, `employee_tips`, `shifts` and
+  `employee_compensation_history` have **zero** rows whose `restaurant_id` disagrees with their
+  employee's, so no row is stranded by adding the join.
+
+The duplicated legacy `owner`/`manager` policies (`Managers can view all …` and `Managers can
+view restaurant …` are byte-identical predicates on both tables) are dropped down to one each
+in the same migration. `A OR A ≡ A`, so this is provably behaviour-preserving, and it halves a
+per-row `user_restaurants` subquery on the hot path this change is already rewriting. This was
+previously listed as out of scope; it is pulled in because the migration is touching these
+exact policies anyway, and it is called out in the PR description.
 
 ### 4.3 `shifts` needs a shift-trade clause
 
@@ -320,6 +363,11 @@ USING (EXISTS (
 `requested_shift_id`, `offered_by_employee_id`, `target_employee_id`, `status`. This subquery
 is itself evaluated under the caller's RLS on `shift_trades`; the pgTAP suite must assert that
 a staff user actually reaches an offered shift through it rather than assuming it.
+
+**This clause needs an index that does not exist.** Production has
+`idx_shift_trades_offered_shift (offered_shift_id)` but **nothing on `requested_shift_id`**, so
+the second half of the `OR` would sequentially scan `shift_trades` for every `shifts` row a
+staff user fails the first two clauses on. The migration must create it (§4.6).
 
 Note that `useShiftTrades`'s own conflict-detection read of `shifts` is already self-scoped
 (`.eq('employee_id', currentEmployeeId)` at [:616-620](../../../src/hooks/useShiftTrades.ts#L616))
@@ -379,6 +427,44 @@ touch `shifts` but are hard-gated to `owner`/`manager`, so they are unaffected.
 - Because a `SELECT` predicate changes on tables that also have `INSERT/UPDATE/DELETE`
   policies with `USING`/`WITH CHECK` clauses, the plan must re-run the full pgTAP suite after
   a `db:reset` (editing a migration and running `test:db` without a reset tests the *old* state).
+
+### 4.6 Index coverage and evaluation cost
+
+Every column the new predicates touch was checked against production `pg_indexes`. One gap:
+
+| Column | Index | Status |
+|---|---|---|
+| `shifts.employee_id` | `idx_shifts_employee_id` | ✅ |
+| `time_punches.employee_id` | `idx_time_punches_employee` (+ a duplicate `…_employee_id`) | ✅ |
+| `employee_tips.employee_id` | `idx_employee_tips_employee` (+ a duplicate `…_employee_id`) | ✅ |
+| `employee_compensation_history.employee_id` | `idx_employee_comp_history_employee` | ✅ |
+| `overtime_adjustments.employee_id` | `idx_overtime_adjustments_employee_date` (leading col) | ✅ |
+| `daily_labor_allocations.employee_id` | `idx_daily_labor_allocations_employee` | ✅ |
+| `employees.user_id` | `idx_employees_user_id`, `idx_employees_user_restaurant_active` | ✅ |
+| `shift_trades.offered_shift_id` | `idx_shift_trades_offered_shift` | ✅ |
+| `shift_trades.requested_shift_id` | — | ❌ **create it** |
+
+So the migration also carries:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_shift_trades_requested_shift
+  ON shift_trades (requested_shift_id);
+```
+
+The duplicated `employee_id` indexes on `time_punches` and `employee_tips` are pre-existing
+write-amplification, not caused by this change; dropping them is a separate cleanup and stays
+out of scope.
+
+**The `user_has_capability` arm cannot be hoisted.** Unlike `auth.uid()`, it takes the row's
+own `restaurant_id`, so it is correlated and Postgres will call the `SECURITY DEFINER` function
+once per candidate row for privileged readers on the largest tables. The same pattern already
+runs in production on `employees`, so this is a known cost rather than a new class of risk, and
+the function is `STABLE` (so repeated calls within a statement are at least cacheable by the
+planner). Verification step for the plan: `EXPLAIN ANALYZE` a representative payroll-window
+`time_punches` select as a `manager` before and after the migration, and record both. If it
+regresses materially, the fallback is a `restaurant_id`-only capability check hoisted into a
+`WITH`-style InitPlan — deliberately *not* done pre-emptively, because the two-clause form is
+simpler and the cost is unmeasured.
 
 ---
 

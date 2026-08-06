@@ -135,8 +135,16 @@ user_has_capability(restaurant_id,'view:payroll')` policy, plus the `shift_trade
 `shifts` (design §4.3). Policy bodies are transcribed from the production `pg_policies` output
 in design §1.3, not re-derived.
 
-The two legacy `owner`/`manager` role-string policies on `time_punches` and `employee_tips`
-are left untouched.
+Every new policy is `TO authenticated` and spells the own-row check `(select auth.uid())`, not
+bare `auth.uid()` — per-query InitPlan instead of a per-row call (design §4.1). Also create
+`idx_shift_trades_requested_shift ON shift_trades (requested_shift_id)`: production has no
+index on that column and the new `shifts` clause filters on it (design §4.6).
+
+On `time_punches` and `employee_tips`, additionally drop the **pre-existing** own-row policies
+(`Employees can view own time punches`, `Employees can view own tips`) so the uniform policy
+replaces rather than stacks on them, and collapse each table's two byte-identical
+`Managers can view …` policies to one. Both are justified in design §4.2.1 — verified
+behaviour-preserving, and they keep two redundant per-row subqueries off the hottest tables.
 
 Then: `npm run db:reset && npm run test:db` — **never** `test:db` without a reset, or the old
 migration state is what gets tested.
@@ -175,6 +183,9 @@ Run from the worktree, printing `pwd` in the same invocation as each command:
 4. `npm run db:reset && npm run test:db`
 5. Manual RLS spot-check against **local** Supabase: authenticate as a staff user and confirm
    a direct `supabase.from('shifts').select()` returns only that employee's rows.
+6. `EXPLAIN ANALYZE` a payroll-window `time_punches` select as a `manager`, before and after the
+   migration, and record both in the PR. The `user_has_capability` arm is correlated to the row
+   and cannot be hoisted (design §4.6); the fallback if it regresses materially is noted there.
 
 No E2E is added: the pages' observable behaviour is unchanged by design, and what changed is
 what crosses the wire — which the unit tests assert directly and Playwright cannot.
@@ -187,5 +198,7 @@ what crosses the wire — which the unit tests assert directly and Playwright ca
   ([TradeRequestDialog.tsx:53](../../../src/components/schedule/TradeRequestDialog.tsx#L53)) and
   the correct fix is column-level. **File a follow-up issue** and state the residual risk in the
   PR description: a `staff` user can still enumerate coworker `employees` rows.
-- Consolidating the duplicate legacy `owner`/`manager` policies on `time_punches` / `employee_tips`.
+- ~~Consolidating the duplicate legacy `owner`/`manager` policies on `time_punches` /
+  `employee_tips`~~ — pulled **in** scope (Step 8, design §4.2.1): the migration rewrites these
+  exact policies anyway and the duplicates cost a per-row subquery for nothing.
 - Narrowing `chef`'s access to pay rates — a product decision, not a security fix.

@@ -254,6 +254,14 @@ describe('AppSidebar.nav.data — the leaf module', () => {
     expect(dataModule.navigationGroups).toBe(navigationGroups);
   });
 
+  it('re-exports the same SUPPLEMENTAL_NAV_ITEMS reference AppSidebar.nav uses', async () => {
+    // Same guard as navigationGroups above, for the other data export the
+    // plan calls out by name (Task 1 Step 2).
+    const navModule = await import('@/components/AppSidebar.nav');
+    const dataModule = await import('@/components/AppSidebar.nav.data');
+    expect(navModule.SUPPLEMENTAL_NAV_ITEMS).toBe(dataModule.SUPPLEMENTAL_NAV_ITEMS);
+  });
+
   it('imports nothing from @/lib/permissions, keeping it a leaf', async () => {
     // areas.ts derives AREA_DEFINITIONS from navigationGroups while
     // AppSidebar.nav.ts imports from routeAreas.ts (which imports areas.ts).

@@ -269,33 +269,37 @@ test.describe('Roles & Areas', () => {
     const roleId = await getRoleIdByName(page, restaurantId, roleName);
     await simulateAcceptedCustomRole(page, restaurantId, roleId);
 
-    // Landing path: 'inventory' precedes 'scheduling' in AREA_PRIORITY
-    // (usePermissions.ts), so a role holding both lands on /inventory.
-    await expect(page).toHaveURL('/inventory', { timeout: 15000 });
+    // Landing path: AREA_PRIORITY is AREA_DEFINITIONS' own catalog order
+    // (areas.ts), which post-migration mirrors the sidebar's group order
+    // (Main, Operations, Inventory, Accounting, Admin) rather than any
+    // hand-kept priority list. 'scheduling' (Operations) precedes
+    // 'inventory' (Inventory) in that order, so a role holding both lands
+    // on /scheduling, not /inventory as under the old bundle model.
+    await expect(page).toHaveURL('/scheduling', { timeout: 15000 });
 
     const sidebar = page.locator('aside[role="navigation"], [data-sidebar]').first();
     await expect(sidebar).toBeVisible();
 
     // Each nav group is a Collapsible whose content Radix *unmounts* while
     // closed, and only the group holding the current path opens by default.
-    // Landing on /inventory therefore opens Inventory and leaves Operations
+    // Landing on /scheduling therefore opens Operations and leaves Inventory
     // closed. Two consequences this block is written around: a granted item
     // in a closed group has to be revealed before it can be asserted visible,
     // and every negative below must be a DOM-absence check — `not.toBeVisible`
     // would pass for any collapsed group whether or not the role was granted
     // it, which is exactly the assertion that cannot be allowed to be vacuous
     // here.
-    await expect(sidebar.getByRole('button', { name: 'Inventory', exact: true })).toBeVisible();
-
-    await sidebar.getByText('Operations', { exact: true }).first().click();
     await expect(sidebar.getByRole('button', { name: 'Scheduling', exact: true })).toBeVisible();
 
     // Scheduling was granted at *view*, and /time-punches and /tips are gated
-    // at manage (routeAreas.ts), so the rest of the now-open Operations group
-    // is absent from the DOM rather than merely hidden.
+    // at manage (routeAreas.ts), so the rest of the already-open Operations
+    // group is absent from the DOM rather than merely hidden.
     await expect(sidebar.getByRole('button', { name: 'Time Clock', exact: true })).toHaveCount(0);
     await expect(sidebar.getByRole('button', { name: 'Tip Pooling', exact: true })).toHaveCount(0);
     await expect(sidebar.getByRole('button', { name: 'Payroll', exact: true })).toHaveCount(0);
+
+    await sidebar.getByText('Inventory', { exact: true }).first().click();
+    await expect(sidebar.getByRole('button', { name: 'Inventory', exact: true })).toBeVisible();
 
     // Ungranted areas produce no group at all — in particular Team, which
     // this role could never have been granted in the first place.

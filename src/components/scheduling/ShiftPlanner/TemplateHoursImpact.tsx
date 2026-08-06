@@ -180,7 +180,19 @@ export function TemplateHoursImpact({
                           <Checkbox
                             id={inputId}
                             checked={selectedDriftIds.has(row.shiftId)}
-                            onCheckedChange={() => onToggleDrift(row.shiftId)}
+                            onCheckedChange={() => {
+                              // Ticking a row is only reachable while this disclosure is
+                              // already open (default or manual), so latching `driftOpen`
+                              // to `true` here is always a no-op-or-lock, never a surprise
+                              // open. Without it, picking the first of several drifted
+                              // shifts flips `ledger.totalAffected` above 0 on the next
+                              // render, `driftDefaultOpen` recomputes to `false`, and the
+                              // still-null `driftOpen` lets the panel snap shut on the
+                              // remaining unpicked checkboxes -- the exact "hidden behind a
+                              // third click" outcome this disclosure exists to avoid.
+                              setDriftOpen(true);
+                              onToggleDrift(row.shiftId);
+                            }}
                           />
                           <Label htmlFor={inputId} className="text-[13px] font-normal text-foreground">
                             {who} — {row.localDate}, currently {row.currentStart}–{row.currentEnd}

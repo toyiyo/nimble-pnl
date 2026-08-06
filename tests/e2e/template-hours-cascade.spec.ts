@@ -46,6 +46,26 @@ async function setRestaurantTimezone(page: import('@playwright/test').Page, rest
   expect(result.stored).toBe(TIMEZONE);
 }
 
+/** Reads a shift's `start_time`/`end_time` straight from Supabase, bypassing the UI. */
+async function fetchShiftTimes(
+  page: import('@playwright/test').Page,
+  shiftId: string
+): Promise<{ start_time: string; end_time: string }> {
+  return page.evaluate(
+    async (id: string) => {
+      const supabase = (window as any).__supabase;
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('start_time, end_time')
+        .eq('id', id)
+        .single();
+      if (error) throw new Error(error.message);
+      return data as { start_time: string; end_time: string };
+    },
+    shiftId
+  );
+}
+
 test.describe('template hours cascade', () => {
   test("moving a template's hours moves the linked shifts", async ({ page }) => {
     const user = generateTestUser('cascade-happy');
@@ -621,16 +641,24 @@ test.describe('template hours cascade', () => {
     // sticky footer (TemplateFormDialog.tsx's `DialogFooter`), which then
     // intercepts the click. Center it explicitly first.
     await pickedCheckbox.evaluate((el) => el.scrollIntoView({ block: 'center' }));
-    // Not `.check()`, and no post-click assertion on the checkbox itself:
-    // the instant this tick makes `totalAffected > 0`, `driftDefaultOpen`
-    // (TemplateHoursImpact.tsx) recomputes to false and the drift disclosure
-    // — which was only ever open by that default, never by an explicit
-    // manual toggle — collapses again, unmounting the checkbox. That is the
-    // panel doing exactly what Task 4 specifies ("open when it's the only
-    // thing to do"; picking one means it no longer is), not a bug to work
-    // around here. The button-label assertions below are what confirm the
-    // pick actually registered.
+    // Not `.check()`: `.check()`'s click-then-verify retry loop fights the
+    // row's plain toggle semantics (`onCheckedChange` flips a Set, it does
+    // not accept Radix's boolean argument), so a single `.click()` is used
+    // instead.
     await pickedCheckbox.click();
+
+    // The still-unpicked drifted shift's checkbox stays reachable after the
+    // first pick. Ticking Casey's checkbox makes `ledger.totalAffected` go
+    // from 0 to 1 on the next render, which used to collapse this
+    // disclosure (it was only ever open by the "nothing else to do"
+    // default, never by an explicit manual toggle) and hide Drew's
+    // still-unpicked checkbox behind a second click — see
+    // TemplateHoursImpact.tsx's `onCheckedChange` handler, which now latches
+    // the disclosure open on the first tick.
+    const untouchedCheckbox = dialog.getByLabel(
+      new RegExp(`${untouchedDrift.employeeName} — ${untouchedDrift.localDate}`, 'i')
+    );
+    await expect(untouchedCheckbox).toBeVisible({ timeout: 5000 });
 
     const cascadeButton = dialog.getByRole('button', { name: 'Save & update 1 shift' });
     await expect(cascadeButton).toBeVisible({ timeout: 5000 });
@@ -641,32 +669,8 @@ test.describe('template hours cascade', () => {
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
 
     const [pickedRow, untouchedRow] = await Promise.all([
-      page.evaluate(
-        async (shiftId: string) => {
-          const supabase = (window as any).__supabase;
-          const { data, error } = await supabase
-            .from('shifts')
-            .select('start_time, end_time')
-            .eq('id', shiftId)
-            .single();
-          if (error) throw new Error(error.message);
-          return data as { start_time: string; end_time: string };
-        },
-        pickedDrift.shiftId
-      ),
-      page.evaluate(
-        async (shiftId: string) => {
-          const supabase = (window as any).__supabase;
-          const { data, error } = await supabase
-            .from('shifts')
-            .select('start_time, end_time')
-            .eq('id', shiftId)
-            .single();
-          if (error) throw new Error(error.message);
-          return data as { start_time: string; end_time: string };
-        },
-        untouchedDrift.shiftId
-      ),
+      fetchShiftTimes(page, pickedDrift.shiftId),
+      fetchShiftTimes(page, untouchedDrift.shiftId),
     ]);
 
     expect(localHHMM(pickedRow.start_time)).toBe('10:00');

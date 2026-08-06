@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-05
 **Branch:** `feature/permissions-menu-mirror`
-**Status:** design, awaiting approval
+**Status:** PR 1 implemented on `feature/permissions-menu-mirror` (see §6 for scope; §7 resolutions below reflect the shipped code, not the original proposal)
 
 ---
 
@@ -184,8 +184,9 @@ INSERT INTO public.area_catalog (...) VALUES ...;
 UPDATE public.area_catalog SET ui_group = ..., sort_order = ..., band = ... WHERE ...;
 
 -- 2. fan out: insert the per-page rows (§4a) before removing anything
-INSERT INTO public.role_areas (role_id, area_key, level) SELECT ... FROM public.role_areas WHERE area_key = 'books' ...
-ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;   -- 'manage' must win over a pre-existing 'view'
+INSERT INTO public.role_areas (role_id, area_key, level) SELECT ... FROM public.role_areas WHERE area_key = 'books' ...;
+INSERT INTO public.role_areas (role_id, area_key, level) SELECT ... FROM public.role_areas WHERE area_key = 'reports' ...;
+-- (scheduling, inventory, recipes fan-outs follow the same plain-INSERT shape)
 
 -- 3. now the old rows can go, then the catalog row they pin
 DELETE FROM public.role_areas  WHERE area_key = 'books';
@@ -194,7 +195,7 @@ DELETE FROM public.area_catalog WHERE area_key = 'books';
 ALTER TABLE public.role_areas ENABLE TRIGGER role_areas_block_builtin_mutation;
 ```
 
-The `ON CONFLICT … DO UPDATE` is not decoration. A role can legitimately reach the same target key from two sources — `reports:manage` and `books:view` both want to write `dashboard`/`financial_intelligence`-adjacent rows in some orderings — and the higher level must win. `DO NOTHING` would silently downgrade whichever ran second.
+Each fan-out is a plain `INSERT`, not an upsert. No `ON CONFLICT` is needed: every fan-out targets keys that were only just inserted in step 1 (§4.1), no two fan-outs share a target key, and `role_areas.area_key` is `RESTRICT`-FK'd to `area_catalog`, so no pre-existing `role_areas` row can already reference a key this migration just created. A plain `INSERT` therefore cannot conflict — and if that premise is ever wrong, a loud unique-violation is the correct failure mode, not a silent overwrite.
 
 **The trigger must come back on, and a test must prove it.** `DISABLE TRIGGER` is durable schema state: a migration that errors between the disable and the enable leaves the collaborator-escalation guard **off in production**, silently, with no other symptom. `supabase/tests/page_areas_catalog_test.sql` asserts `tgenabled = 'O'` for all four guards after migration (§5). This is the single highest-risk step in the change and it gets its own assertion rather than being folded into a broader one.
 
@@ -265,20 +266,15 @@ Splitting the other way (UI first) is not possible — the UI has nothing to ren
 
 ---
 
-## 7. Decisions needed before implementation
+## 7. Decisions (resolved — see progress.md "Decisions locked by the user" for the record of when/how)
 
-**7.1 The Accountant's dead `/budget` link (§1, defect 3).** `collaboratorAccountantNav` shows it (`src/components/AppSidebar.nav.ts:120`); `COLLABORATOR_ROUTES.collaborator_accountant.allowed` omits it (`src/App.tsx:203-218`). Two ways to end the mismatch:
+**7.1 The Accountant's dead `/budget` link (§1, defect 3).** Resolved as **(b) remove the link**, not grant it. `/budget` is dropped from `collaboratorAccountantNav` (`src/components/AppSidebar.nav.ts`, commit `f092bbc4`); `COLLABORATOR_ROUTES.collaborator_accountant.allowed` was already omitting it, so the two are consistent again. Verified in the shipped code: `collaboratorAccountantNav`'s `Financial` group has no `/budget` entry. The general (non-collaborator) `navigationGroups` Accounting group in `AppSidebar.nav.data.ts` still lists `/budget` — that is a *different* array (the main app sidebar, not the Accountant collaborator's hand-written nav) and is unaffected by this decision; `budget` is grantable through the new editor like any other area, per §7.2/§4.1, and nobody holds it on deploy day.
 
-- *(a) Grant it.* Seed `budget:view` on the Accountant builtin and add `/budget` to its hand-written allow-list. The link starts working. This is a **new grant to an existing external role** — every current Accountant collaborator gains the Budget & Run Rate page on deploy.
-- *(b) Remove the link.* Drop `/budget` from `collaboratorAccountantNav`. Nobody gains anything; the dead link stops being offered.
+**7.2 Fully per-page, or keep some pairs fused?** Resolved as **fully per-page**, with two intentional exceptions kept fused per §3.2: `batches` stays absorbed into `recipes`, and `inventory_transactions`/`receipt_import` stay absorbed into `inventory` (both are sub-flows of their parent page, not independent sidebar entries, so they have no page of their own to split into). Recipes/Prep Recipes and Inventory/Audit — the two pairs this decision was actually about — did split into independent `prep_recipes` and `inventory_audit` catalog keys, exactly as recommended.
 
-Recommendation: **(b)**. It fixes the defect without changing anyone's access, and §4's "nobody gains or loses on deploy day" stays literally true. An owner who *wants* their accountant to see the budget can grant it afterwards through the new editor — which is the whole point of the change.
+**7.3 The sensitive-data flags band.** Resolved as **no change** — `view:costs`, `view:pay_rates`, `view:employee_pii` remain in `SENSITIVE_FLAGS`, read from `role_flags` independently of `AREA_DEFINITIONS`/areas, unchanged by this migration.
 
-**7.2 Fully per-page, or keep some pairs fused?** Recipes/Prep Recipes and Inventory/Audit are the candidates. Recommendation: **fully per-page**. Fusing reintroduces exactly the defect being fixed, and the roll-up control in PR 2 makes granting a whole group one click anyway.
-
-**7.3 The sensitive-data flags band.** `view:costs`, `view:pay_rates`, `view:employee_pii` are cross-cutting — they are not pages and are read from `role_flags` independently of areas. They stay exactly as they are, in their own band below the five groups. No change proposed.
-
-**7.4 The editor mirrors the full internal menu**, not the viewer's own role-filtered sidebar. An owner editing a role must see every page they could delegate, including ones their own role filters out. Stated so it is not later mistaken for a bug.
+**7.4 The editor mirrors the full internal menu**, not the viewer's own role-filtered sidebar. Confirmed in `RoleEditor.tsx`: rows are built by walking all 33 `AREA_DEFINITIONS`, not a role-filtered subset — an owner editing a role sees every delegable page regardless of what their own role's sidebar shows.
 
 ---
 

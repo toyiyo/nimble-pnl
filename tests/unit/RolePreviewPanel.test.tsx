@@ -66,7 +66,7 @@ describe('RolePreviewPanel', () => {
   });
 
   it('omits pages the role cannot reach, rather than decorating them', () => {
-    render(<RolePreviewPanel grants={{ invoices: 'manage' }} flags={[]} flavor="platform" />);
+    render(<RolePreviewPanel grants={{ invoices: 'manage' }} flags={[]} />);
 
     expect(screen.getByText('Invoices')).toBeInTheDocument();
     // Banking rode in the same `books` bundle before the re-cut.
@@ -74,7 +74,7 @@ describe('RolePreviewPanel', () => {
   });
 
   it('groups the preview by sidebar group, not by the retired bands', () => {
-    render(<RolePreviewPanel grants={{ invoices: 'manage', tips: 'view' }} flags={[]} flavor="platform" />);
+    render(<RolePreviewPanel grants={{ invoices: 'manage', tips: 'view' }} flags={[]} />);
 
     expect(screen.getByText('Accounting')).toBeInTheDocument();
     expect(screen.getByText('Operations')).toBeInTheDocument();

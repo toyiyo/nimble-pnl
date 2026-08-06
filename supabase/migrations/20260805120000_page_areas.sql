@@ -28,7 +28,7 @@ UPDATE public.area_catalog SET ui_group = 'Inventory',  band = 'Inventory',  sor
 UPDATE public.area_catalog SET ui_group = 'Inventory',  band = 'Inventory',  sort_order = 3, max_level_collaborator = 'manage' WHERE area_key = 'inventory';
 UPDATE public.area_catalog SET ui_group = 'Inventory',  band = 'Inventory',  sort_order = 5, max_level_collaborator = 'manage' WHERE area_key = 'purchasing';
 UPDATE public.area_catalog SET ui_group = 'Inventory',  band = 'Inventory',  sort_order = 6, max_level_collaborator = 'view'   WHERE area_key = 'reports';
-UPDATE public.area_catalog SET ui_group = 'Accounting', band = 'Accounting', sort_order = 12, max_level_collaborator = 'manage' WHERE area_key = 'chart_of_accounts';
+UPDATE public.area_catalog SET ui_group = 'Accounting', band = 'Accounting', sort_order = 11, max_level_collaborator = 'manage' WHERE area_key = 'chart_of_accounts';
 UPDATE public.area_catalog SET ui_group = 'Admin',      band = 'Admin',      sort_order = 1, max_level_collaborator = 'manage' WHERE area_key = 'employees';
 UPDATE public.area_catalog SET ui_group = 'Admin',      band = 'Admin',      sort_order = 2, max_level_collaborator = NULL     WHERE area_key = 'team';
 UPDATE public.area_catalog SET ui_group = 'Admin',      band = 'Admin',      sort_order = 3, max_level_collaborator = NULL     WHERE area_key = 'collaborators';
@@ -54,7 +54,7 @@ INSERT INTO public.area_catalog (area_key, ui_group, band, sort_order, max_level
   ('assets',                 'Accounting', 'Accounting', 8,  'manage'),
   ('financial_intelligence', 'Accounting', 'Accounting', 9,  'view'),
   ('transactions',           'Accounting', 'Accounting', 10, 'manage'),
-  ('financial_statements',   'Accounting', 'Accounting', 11, 'view');
+  ('financial_statements',   'Accounting', 'Accounting', 12, 'view');
 
 -- ============================================================================
 -- Step 3: fan out role_areas, then retire books

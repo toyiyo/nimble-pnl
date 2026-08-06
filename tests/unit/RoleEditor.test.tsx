@@ -227,20 +227,21 @@ describe('RoleEditor', () => {
     expect(within(rowFor('Statements')).getByRole('radio', { name: /manage/i })).toBeDisabled();
   });
 
-  it('caps Payroll at View: Manage is disabled and described by the row hint', () => {
+  it('caps Payroll at View: Manage is disabled and described by a real lock reason', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
     const payrollGroup = screen.getByRole('radiogroup', { name: /^payroll access$/i });
     const manage = within(payrollGroup).getByRole('radio', { name: /^manage$/i });
     expect(manage).toBeDisabled();
     expect(manage).toHaveAttribute('aria-disabled', 'true');
-    // Per-area cap-reason prose (AREA_LOCK_REASON) was retired with the
-    // bundle model (Task 6 Step 2, per plan) — the padlock glyph plus
-    // disabled state is the only "why" now; aria-describedby still points
-    // at the row's own hint text rather than nothing.
+    // aria-describedby points at a dedicated sr-only reason paragraph (not the
+    // row's page-level hint) — CodeRabbit flagged the row-hint version as
+    // inaccurate (the "reason" wasn't actually a reason), fixed in Phase 7c.
     const describedBy = manage.getAttribute('aria-describedby');
     expect(describedBy).toBeTruthy();
-    expect(document.getElementById(describedBy!)).toHaveTextContent(/pay runs and payroll history/i);
+    expect(document.getElementById(describedBy!)).toHaveTextContent(
+      /manage is not available to a collaborator role for this page/i
+    );
 
     // View is not capped.
     expect(within(payrollGroup).getByRole('radio', { name: /^view$/i })).not.toBeDisabled();

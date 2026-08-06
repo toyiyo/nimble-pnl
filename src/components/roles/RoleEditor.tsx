@@ -360,8 +360,13 @@ function AreaRow({
     <div className="flex flex-col items-stretch gap-2.5 border-b border-border/40 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
       <div className="min-w-0">
         <div className="text-[14px] font-medium text-foreground">{row.label}</div>
-        <p id={`${row.key}-cap-reason`} className="mt-0.5 text-[13px] text-muted-foreground">
-          {row.hint}
+        <p className="mt-0.5 text-[13px] text-muted-foreground">{row.hint}</p>
+        <p id={`${row.key}-cap-reason`} className="sr-only">
+          {row.maxLevelForCollaborator === null
+            ? 'This page cannot be granted to a collaborator role.'
+            : !row.hasManageTier
+              ? 'This page has no manage tier.'
+              : 'Manage is not available to a collaborator role for this page.'}
         </p>
       </div>
       {builtinReadOnly ? (

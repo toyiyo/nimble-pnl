@@ -175,13 +175,16 @@ test.describe('Roles & Areas', () => {
     // with the reason text as their accessible description"). Per-area
     // lock-reason prose (AREA_LOCK_REASON, e.g. "Owners and Managers
     // only.") was retired with the bundle model (Task 6 Step 2, per the
-    // 2026-08-05 permissions-menu-mirror plan) — the padlock glyph plus
-    // disabled state is the only "why" now; aria-describedby points at the
-    // row's own hint text instead (RoleEditor.test.tsx documents the same
-    // change), so this asserts against AREA_DEFINITIONS['payroll'].hint.
+    // 2026-08-05 permissions-menu-mirror plan). Reusing the row's hint text
+    // for the reason (a later Phase 7c iteration) was itself replaced by
+    // RoleEditor.tsx's describeCapReason() (Phase 7d re-review, commit
+    // 62ae1d9e) — a real sr-only sentence instead of the hint, since the
+    // hint doesn't explain *why* the level is locked. Payroll has a manage
+    // tier but a collaborator role is capped at view, so it falls into
+    // describeCapReason's third branch.
     const payrollDescribedBy = await payrollManage.getAttribute('aria-describedby');
     expect(payrollDescribedBy, 'capped Manage radio must have an aria-describedby pointing at its reason text').toBeTruthy();
-    await expect(page.locator(`#${payrollDescribedBy}`)).toContainText(/pay runs and payroll history/i);
+    await expect(page.locator(`#${payrollDescribedBy}`)).toContainText(/manage is not available to a collaborator role/i);
 
     // ---- Ungrantable area: Team members can never be granted by any collaborator role ----
     // (AREA_DEFINITIONS['team'].maxLevelForCollaborator === null — the
@@ -196,12 +199,13 @@ test.describe('Roles & Areas', () => {
     await expect(teamGroup.getByRole('radio', { name: /^view$/i })).toBeDisabled();
     const teamManage = teamGroup.getByRole('radio', { name: /^manage$/i });
     await expect(teamManage).toBeDisabled();
-    // Same retirement as payroll's reason text above: aria-describedby now
-    // points at AREA_DEFINITIONS['team'].hint, not a bespoke lock-reason
-    // string.
+    // Same describeCapReason() source as payroll's reason text above. Team
+    // members has maxLevelForCollaborator === null, so it falls into the
+    // first branch: an ungrantable-page sentence, not a bespoke lock-reason
+    // string and not the row's hint text.
     const teamDescribedBy = await teamManage.getAttribute('aria-describedby');
     expect(teamDescribedBy, 'the ungrantable Team members row must explain why via an accessible description').toBeTruthy();
-    await expect(page.locator(`#${teamDescribedBy}`)).toContainText(/invite people, assign roles, edit these roles/i);
+    await expect(page.locator(`#${teamDescribedBy}`)).toContainText(/cannot be granted to a collaborator role/i);
 
     // ---- Grant area 1: Inventory → Manage ----
     // Neither of the two areas granted below is capped for a collaborator

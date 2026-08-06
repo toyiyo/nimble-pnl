@@ -762,8 +762,9 @@ import { test, expect } from '@playwright/test';
  * three paths that hand-off must not close.
  *
  * The edge function is not served in the e2e stack, so `review-public` is
- * stubbed. Its token and routing logic are covered elsewhere; what this
- * proves is the wiring — which controls appear, and what the client sends.
+ * stubbed. Other tests cover its token logic and its routing logic. This spec
+ * proves the wiring. It shows which controls appear. It shows what the client
+ * sends.
  */
 
 const FN_GLOB = '**/functions/v1/review-public';
@@ -780,7 +781,7 @@ const RATE_BODY = {
   destination_url: 'https://example.com/google-review',
 };
 
-/** Stubs the three actions and collects every `comment` body the page sends. */
+/** Stubs the three actions. Collects every `comment` body the page sends. */
 async function stubReviewPublic(page: any, commentBodies: any[]) {
   await page.route(FN_GLOB, async (route: any) => {
     const body = route.request().postDataJSON();

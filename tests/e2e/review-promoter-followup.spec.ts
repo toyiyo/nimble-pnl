@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -10,8 +10,9 @@ import { test, expect } from '@playwright/test';
  * three paths that hand-off must not close.
  *
  * The edge function is not served in the e2e stack, so `review-public` is
- * stubbed. Its token and routing logic are covered elsewhere; what this
- * proves is the wiring — which controls appear, and what the client sends.
+ * stubbed. Other tests cover its token logic and its routing logic. This spec
+ * proves the wiring. It shows which controls appear. It shows what the client
+ * sends.
  */
 
 const FN_GLOB = '**/functions/v1/review-public';
@@ -28,8 +29,8 @@ const RATE_BODY = {
   destination_url: 'https://example.com/google-review',
 };
 
-/** Stubs the three actions and collects every `comment` body the page sends. */
-async function stubReviewPublic(page: any, commentBodies: any[]) {
+/** Stubs the three actions. Collects every `comment` body the page sends. */
+async function stubReviewPublic(page: Page, commentBodies: any[]) {
   await page.route(FN_GLOB, async (route: any) => {
     const body = route.request().postDataJSON();
     if (body.action === 'page') {
@@ -112,6 +113,9 @@ test.describe('public review page promoter follow-up', () => {
     await expect(send).toBeDisabled();
 
     await page.getByLabel(/it's ok to contact me about this/i).check();
+    // Consent alone is not a payload. The owner gets no way to answer.
+    await expect(send).toBeDisabled();
+
     await page.getByLabel(/^email$/i).fill('ada@example.com');
     await expect(send).toBeEnabled();
     await send.click();

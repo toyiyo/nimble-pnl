@@ -210,7 +210,7 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
       <ToggleGroup
         type="single"
         value={filter}
-        // Radix sends an empty string when the guest taps the active item.
+        // Radix sends an empty string when the manager taps the active item.
         // Keep the mode; a list with no filter at all is not a state.
         onValueChange={(value) => value && setFilter(value as ReviewResponseFilter)}
         aria-label="Filter feedback"

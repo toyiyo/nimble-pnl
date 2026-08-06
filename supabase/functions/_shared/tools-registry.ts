@@ -998,6 +998,16 @@ export async function hasSchedulingOrPayrollCapability(
 }
 
 /**
+ * Type guard for CAPABILITY_GATED_TOOLS membership. Shared by
+ * canUseCapabilityGatedTool and by the ai-execute-tool dispatcher, which
+ * needs the same check to decide whether to call canUseTool or this file's
+ * capability path at all — kept in one place so the two never drift.
+ */
+export function isCapabilityGatedTool(toolName: string): toolName is (typeof CAPABILITY_GATED_TOOLS)[number] {
+  return (CAPABILITY_GATED_TOOLS as readonly string[]).includes(toolName);
+}
+
+/**
  * Resolves access for a CAPABILITY_GATED_TOOLS entry. Returns false
  * immediately — with no RPC call — for any tool not in that list.
  */
@@ -1006,7 +1016,7 @@ export async function canUseCapabilityGatedTool(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
-  if (!(CAPABILITY_GATED_TOOLS as readonly string[]).includes(toolName)) {
+  if (!isCapabilityGatedTool(toolName)) {
     return false;
   }
 

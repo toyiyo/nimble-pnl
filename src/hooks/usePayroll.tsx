@@ -41,6 +41,21 @@ export function aggregateTips(
   return tipsPerEmployee;
 }
 
+/**
+ * Narrows a Supabase query to `employee_id = employeeId` in self-scoped mode;
+ * a no-op pass-through in admin mode (`employeeId` falsy). Centralizes the
+ * per-employee predicate applied to each of the seven per-employee queries
+ * below so the self-scoping rule lives in one place, not six near-identical
+ * copies of it. `.eq()` returns `this` in supabase-js, so this stays
+ * type-safe across differently-shaped queries.
+ */
+function scopeToEmployee<Query extends { eq(column: string, value: string): Query }>(
+  query: Query,
+  employeeId: string | null | undefined,
+): Query {
+  return employeeId ? query.eq('employee_id', employeeId) : query;
+}
+
 type TipSplitForFallback = { id: string; total_amount: number };
 
 /**
@@ -160,21 +175,20 @@ function usePayrollInternal(
         timezone,
       );
       const { fetchStart, fetchEnd } = bufferPunchFetchRange(dayStart, dayEnd);
-      const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) => {
-        let query = supabase
-          .from('time_punches')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .gte('punch_time', fetchStart.toISOString())
-          .lte('punch_time', fetchEnd.toISOString());
-        if (employeeId) {
-          query = query.eq('employee_id', employeeId);
-        }
-        return query
+      const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
+        scopeToEmployee(
+          supabase
+            .from('time_punches')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .gte('punch_time', fetchStart.toISOString())
+            .lte('punch_time', fetchEnd.toISOString()),
+          employeeId,
+        )
           .order('punch_time', { ascending: true })
           .order('id')
-          .range(from, to);
-      });
+          .range(from, to),
+      );
 
       if (capped) {
         console.warn(
@@ -201,29 +215,27 @@ function usePayrollInternal(
       // Always issued (even with an empty splitIds list) so this stays one of the seven
       // per-employee queries the self-scoped predicate threads into; `.in(..., [])` resolves
       // to no rows without a client-side short-circuit.
-      let tipSplitItemsQuery = supabase
-        .from('tip_split_items')
-        .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
-        .in('tip_split_id', splitIds);
-      if (employeeId) {
-        tipSplitItemsQuery = tipSplitItemsQuery.eq('employee_id', employeeId);
-      }
-      const { data: tips, error: tipsError } = await tipSplitItemsQuery;
+      const { data: tips, error: tipsError } = await scopeToEmployee(
+        supabase
+          .from('tip_split_items')
+          .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
+          .in('tip_split_id', splitIds),
+        employeeId,
+      );
 
       if (tipsError) throw tipsError;
 
       // Fetch manual payments (per-job contractor payments) for the period
-      let manualPaymentsQuery = supabase
-        .from('daily_labor_allocations')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('source', 'per-job')
-        .gte('date', toDateOnlyString(startDate))
-        .lte('date', toDateOnlyString(endDate));
-      if (employeeId) {
-        manualPaymentsQuery = manualPaymentsQuery.eq('employee_id', employeeId);
-      }
-      const { data: manualPaymentsData, error: manualPaymentsError } = await manualPaymentsQuery;
+      const { data: manualPaymentsData, error: manualPaymentsError } = await scopeToEmployee(
+        supabase
+          .from('daily_labor_allocations')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('source', 'per-job')
+          .gte('date', toDateOnlyString(startDate))
+          .lte('date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (manualPaymentsError) throw manualPaymentsError;
 
@@ -244,30 +256,28 @@ function usePayrollInternal(
       });
 
       // Fetch tips from tip_split_items and employee_tips for the period
-      let employeeTipsQuery = supabase
-        .from('employee_tips')
-        .select('employee_id, tip_amount, tip_date')
-        .eq('restaurant_id', restaurantId)
-        .gte('tip_date', toDateOnlyString(startDate))
-        .lte('tip_date', toDateOnlyString(endDate));
-      if (employeeId) {
-        employeeTipsQuery = employeeTipsQuery.eq('employee_id', employeeId);
-      }
-      const { data: employeeTips, error: employeeTipsError } = await employeeTipsQuery;
+      const { data: employeeTips, error: employeeTipsError } = await scopeToEmployee(
+        supabase
+          .from('employee_tips')
+          .select('employee_id, tip_amount, tip_date')
+          .eq('restaurant_id', restaurantId)
+          .gte('tip_date', toDateOnlyString(startDate))
+          .lte('tip_date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (employeeTipsError) throw employeeTipsError;
 
       // Fetch tip payouts (cash already paid out) for the period
-      let tipPayoutsQuery = supabase
-        .from('tip_payouts')
-        .select('employee_id, amount')
-        .eq('restaurant_id', restaurantId)
-        .gte('payout_date', toDateOnlyString(startDate))
-        .lte('payout_date', toDateOnlyString(endDate));
-      if (employeeId) {
-        tipPayoutsQuery = tipPayoutsQuery.eq('employee_id', employeeId);
-      }
-      const { data: tipPayoutsData, error: tipPayoutsError } = await tipPayoutsQuery;
+      const { data: tipPayoutsData, error: tipPayoutsError } = await scopeToEmployee(
+        supabase
+          .from('tip_payouts')
+          .select('employee_id, amount')
+          .eq('restaurant_id', restaurantId)
+          .gte('payout_date', toDateOnlyString(startDate))
+          .lte('payout_date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (tipPayoutsError) throw tipPayoutsError;
 
@@ -323,16 +333,15 @@ function usePayrollInternal(
       }
 
       // Fetch overtime adjustments for the period
-      let otAdjQuery = supabase
-        .from('overtime_adjustments')
-        .select('employee_id, punch_date, adjustment_type, hours, reason')
-        .eq('restaurant_id', restaurantId)
-        .gte('punch_date', toDateOnlyString(startDate))
-        .lte('punch_date', toDateOnlyString(endDate));
-      if (employeeId) {
-        otAdjQuery = otAdjQuery.eq('employee_id', employeeId);
-      }
-      const { data: otAdjData, error: otAdjError } = await otAdjQuery;
+      const { data: otAdjData, error: otAdjError } = await scopeToEmployee(
+        supabase
+          .from('overtime_adjustments')
+          .select('employee_id, punch_date, adjustment_type, hours, reason')
+          .eq('restaurant_id', restaurantId)
+          .gte('punch_date', toDateOnlyString(startDate))
+          .lte('punch_date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (otAdjError) {
         console.error('Error fetching overtime adjustments:', otAdjError);

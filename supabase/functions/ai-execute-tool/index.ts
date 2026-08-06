@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool, requiredRoleFor, CAPABILITY_GATED_TOOLS, canUseCapabilityGatedTool } from "../_shared/tools-registry.ts";
+import { canUseTool, requiredRoleFor, isCapabilityGatedTool, canUseCapabilityGatedTool } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -3681,7 +3681,7 @@ serve(async (req) => {
     // owner/manager via their own role checks; send-shift-notification reads
     // `shifts` through a SUPABASE_SERVICE_ROLE_KEY client (RLS bypassed
     // entirely, not forwarded-JWT), so it's unaffected by this change.
-    if ((CAPABILITY_GATED_TOOLS as readonly string[]).includes(tool_name)) {
+    if (isCapabilityGatedTool(tool_name)) {
       const allowed = await canUseCapabilityGatedTool(tool_name, restaurant_id, supabase);
       if (!allowed) {
         return new Response(

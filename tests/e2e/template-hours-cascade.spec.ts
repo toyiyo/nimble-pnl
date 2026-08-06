@@ -615,7 +615,22 @@ test.describe('template hours cascade', () => {
       new RegExp(`${pickedDrift.employeeName} — ${pickedDrift.localDate}`, 'i')
     );
     await expect(pickedCheckbox).toBeVisible({ timeout: 5000 });
-    await pickedCheckbox.check();
+    // With no "moving" section above it (shiftCount: 0), the checkbox row
+    // lands close enough to the bottom of the scrollable dialog body that
+    // Playwright's default scroll-into-view centers it right under the
+    // sticky footer (TemplateFormDialog.tsx's `DialogFooter`), which then
+    // intercepts the click. Center it explicitly first.
+    await pickedCheckbox.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // Not `.check()`, and no post-click assertion on the checkbox itself:
+    // the instant this tick makes `totalAffected > 0`, `driftDefaultOpen`
+    // (TemplateHoursImpact.tsx) recomputes to false and the drift disclosure
+    // — which was only ever open by that default, never by an explicit
+    // manual toggle — collapses again, unmounting the checkbox. That is the
+    // panel doing exactly what Task 4 specifies ("open when it's the only
+    // thing to do"; picking one means it no longer is), not a bug to work
+    // around here. The button-label assertions below are what confirm the
+    // pick actually registered.
+    await pickedCheckbox.click();
 
     const cascadeButton = dialog.getByRole('button', { name: 'Save & update 1 shift' });
     await expect(cascadeButton).toBeVisible({ timeout: 5000 });

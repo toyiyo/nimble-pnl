@@ -382,22 +382,19 @@ SELECT throws_ok(
 RESET row_security;
 
 -- ============================================================================
--- 14. area_catalog shape: fifteen areas collapsing onto the eleven ui_groups
---     of the approved design. The four splits (purchasing, chart_of_accounts,
---     collaborators, integrations) exist so the builtin roles derive
---     byte-identically from ROLE_CAPABILITIES; see the migration's column
---     comment.
+-- 14. area_catalog shape: thirty-three areas (one per gateable sidebar page)
+--     collapsing onto the five ui_groups of the approved design.
 -- ============================================================================
 SELECT is(
   (SELECT count(*)::int FROM public.area_catalog),
-  15,
-  'area_catalog holds fifteen areas'
+  33,
+  'area_catalog holds thirty-three areas'
 );
 
 SELECT is(
   (SELECT count(DISTINCT ui_group)::int FROM public.area_catalog),
-  11,
-  'the fifteen areas collapse onto the eleven ui_groups of the approved design'
+  5,
+  'the thirty-three areas collapse onto the five ui_groups of the approved design'
 );
 
 -- The editor renders one level control per ui_group and writes every area_key

@@ -115,6 +115,11 @@ function mockUseRestaurants(partial: Partial<ReturnType<typeof useRestaurants>> 
   });
 }
 
+/** Resolves a row's control from its visible page label ("Invoices", "Statements", ...). */
+function rowFor(label: string): HTMLElement {
+  return screen.getByRole('radiogroup', { name: new RegExp(`^${label} access$`, 'i') });
+}
+
 describe('RoleEditor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -183,23 +188,40 @@ describe('RoleEditor', () => {
     expect(document.getElementById(describedBy!)).toHaveTextContent(/read-only/i);
   });
 
-  it('renders all ten area rows as RadioGroups with the "{Area} access" aria-label', () => {
+  it('renders one row per gateable page, grouped by sidebar group', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
 
-    for (const label of [
-      'Dashboard & Reports',
-      'Sales',
-      'Inventory & Purchasing',
-      'Recipes',
-      'Scheduling',
-      'Money & Books',
-      'Payroll',
-      'Employees',
-      'Team & Access',
-      'Settings & Integrations',
-    ]) {
-      expect(screen.getByRole('radiogroup', { name: new RegExp(`^${label} access$`, 'i') })).toBeInTheDocument();
+    expect(screen.getAllByRole('radiogroup')).toHaveLength(33);
+    for (const label of ['Main', 'Operations', 'Inventory', 'Accounting', 'Admin']) {
+      expect(screen.getByText(label)).toBeInTheDocument();
     }
+  });
+
+  it('grants a single page without its former bundle-mates', async () => {
+    const user = userEvent.setup();
+    const createRole = vi.fn().mockResolvedValue('new-role-id');
+    mockUseRoles({ createRole });
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+
+    await user.type(screen.getByLabelText(/role name/i), 'Weekend Supervisor');
+    await user.click(within(rowFor('Invoices')).getByRole('radio', { name: /manage/i }));
+    await user.click(screen.getByRole('button', { name: /^save role$/i }));
+
+    expect(createRole).toHaveBeenCalledTimes(1);
+    const draft = createRole.mock.calls[0][0];
+    expect(draft.areas).toEqual(
+      expect.arrayContaining([expect.objectContaining({ area_key: 'invoices', level: 'manage' })])
+    );
+    // Invoices and Banking used to be bundled under the retired "Money &
+    // Books" band — granting one must not drag the other along.
+    expect(draft.areas).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ area_key: 'banking' })])
+    );
+  });
+
+  it('locks Manage on a page with no edit capability', () => {
+    render(<RoleEditor {...editorProps} restaurantId="rest-1" role={null} onBack={vi.fn()} />, { wrapper });
+    expect(within(rowFor('Statements')).getByRole('radio', { name: /manage/i })).toBeDisabled();
   });
 
   it('caps Payroll at View: Manage is disabled with an aria-describedby reason mentioning owners and managers', () => {

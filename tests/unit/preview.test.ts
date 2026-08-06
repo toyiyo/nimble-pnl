@@ -119,15 +119,13 @@ describe('buildRolePreview — navPreview', () => {
     expect(dashboard).toBeUndefined();
   });
 
-  it('marks an item reachable and read-only at view level, reachable and not read-only at manage level', () => {
+  it('marks an item read-only at view level, not read-only at manage level', () => {
     const viewOnly = buildRolePreview({ inventory: 'view' }, []);
     const inventoryItem = viewOnly.navPreview.flatMap((g) => g.items).find((i) => i.path === '/inventory');
-    expect(inventoryItem?.reachable).toBe(true);
     expect(inventoryItem?.readOnly).toBe(true);
 
     const manage = buildRolePreview({ inventory: 'manage' }, []);
     const inventoryItemManage = manage.navPreview.flatMap((g) => g.items).find((i) => i.path === '/inventory');
-    expect(inventoryItemManage?.reachable).toBe(true);
     expect(inventoryItemManage?.readOnly).toBe(false);
   });
 
@@ -151,7 +149,6 @@ describe('buildRolePreview — navPreview', () => {
     const { navPreview } = buildRolePreview({ team: 'view', collaborators: 'manage' }, []);
     const teamItems = navPreview.flatMap((g) => g.items).filter((i) => i.path === '/team');
     expect(teamItems).toHaveLength(1);
-    expect(teamItems[0].reachable).toBe(true);
     expect(teamItems[0].readOnly).toBe(false);
 
     const viewOnly = buildRolePreview({ team: 'view' }, []);

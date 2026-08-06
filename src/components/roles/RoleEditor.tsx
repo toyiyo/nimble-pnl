@@ -57,18 +57,21 @@ function describeRoleWriteError(err: unknown): string {
 
 /**
  * RoleEditor — the full-page, two-column custom role editor (roles-and-areas
- * design, Phase 4 task 9d).
+ * design, Phase 4 task 9d; re-cut onto the per-page catalog by the
+ * permissions-menu-mirror work).
  *
  * **Corrected against the approved prototype** (docs/design-reference/
  * roles-and-areas.html, editor.png/editor-dark.png): a full page reached from
  * the roles list via a "← All roles" back link, not a dialog — an earlier
  * draft of the design doc described a `max-w-2xl` dialog, which the design
  * doc's own "The role editor" section calls out as an explicitly corrected
- * mistake. Left column: identity card, then the ten areas grouped into three
- * bands. Right column (sticky at `lg`): `RolePreviewPanel` (task 9e), which
- * renders `buildRolePreview`'s (preview.ts, task 9b) output — this file only
- * owns the `grants`/`flags`/`name` state and passes it down, it does not
- * render the preview column itself.
+ * mistake. Left column: identity card, then the 33 areas grouped into five
+ * sidebar groups (Main, Operations, Inventory, Accounting, Admin) — one row
+ * per `area_key`, 1:1 with a sidebar page. Right column (sticky at `lg`):
+ * `RolePreviewPanel` (task 9e), which renders `buildRolePreview`'s
+ * (preview.ts, task 9b) output — this file only owns the `grants`/`flags`/
+ * `name` state and passes it down, it does not render the preview column
+ * itself.
  *
  * The three-state area control is a real `RadioGroup` (Radix's
  * `react-radio-group` primitives, used directly rather than through
@@ -77,19 +80,18 @@ function describeRoleWriteError(err: unknown): string {
  * access / View / Manage" are mutually exclusive values of one setting, radio
  * semantics, not a `ToggleGroup`'s independent pressed buttons. Per-area caps
  * (`AreaDefinition.maxLevelForCollaborator`) drive which segments are
- * `disabled` + `aria-disabled`, with the reason text as their
- * `aria-describedby` target — transcribed from the design doc's per-area cap
- * table and the prototype's `AREAS` array, keyed by `AREA_DEFINITIONS`' row
- * keys (which match the prototype's own area keys 1:1).
+ * `disabled` + `aria-disabled` — transcribed from the design doc's per-area
+ * cap table, keyed by `AREA_DEFINITIONS`' row keys (which now match
+ * `area_catalog.area_key` 1:1, so there is no bundle-vs-row split left to
+ * reconcile).
  *
  * Builtin roles are read-only: no field or control here writes anything (the
  * database's `role_areas_enforce_collaborator_cap`/immutability triggers are
- * the actual guard, per the design doc — this is only the UI hint). A
- * builtin row whose underlying `area_key`s hold *different* levels (only
- * possible for a builtin, seeded directly in SQL — a custom role's own
- * segmented control always writes the same level to every `area_key` in a
- * row) cannot be represented by one three-state control, so it renders a
- * static "Partial" marker instead.
+ * the actual guard, per the design doc — this is only the UI hint). Every
+ * row is now exactly one `area_key`, so a builtin's level is just its one
+ * grant rendered through the same three-state control a custom role uses —
+ * the old multi-key-bundle "Partial" marker this paragraph used to describe
+ * no longer exists (see `LevelControl`'s own comment).
  *
  * "Copy role to other restaurants" (design doc, same section) has no
  * prototype precedent — confirmed by a full read of
@@ -170,13 +172,13 @@ function editorNoticeText(builtinReadOnly: boolean, role: RoleWithGrants | null)
 }
 
 /**
- * A band's tinted full-bleed header strip, with the column legend on the right.
+ * A group's tinted full-bleed header strip, with the column legend on the right.
  *
- * Full-bleed (no horizontal padding on the parent) is what separates one band
- * from the next in the approved design — the rows below it are the ones that
- * get the padding.
+ * Full-bleed (no horizontal padding on the parent) is what separates one
+ * group from the next in the approved design — the rows below it are the
+ * ones that get the padding.
  */
-function BandHeader({ label, legend, first }: { label: string; legend?: string; first?: boolean }) {
+function GroupHeader({ label, legend, first }: { label: string; legend?: string; first?: boolean }) {
   return (
     <div
       className={cn(
@@ -608,7 +610,7 @@ export function RoleEditor({
             <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
               {GROUP_ORDER.map((group, groupIndex) => (
                 <div key={group}>
-                  <BandHeader
+                  <GroupHeader
                     label={group}
                     legend={groupIndex === 0 ? 'No access · View · Manage' : undefined}
                     first={groupIndex === 0}
@@ -630,7 +632,7 @@ export function RoleEditor({
               {/* Sensitive data closes the same card, as its own band — the flags
                   are cross-cutting, but they are read as one more thing this role
                   either can or cannot see. */}
-              <BandHeader label="Sensitive data" legend="Off · On" />
+              <GroupHeader label="Sensitive data" legend="Off · On" />
               <div className="p-5 pt-4 space-y-1">
                 {/* Say plainly what these switches do today. They are stored on
                     the role and resolvable through user_has_capability(), but no

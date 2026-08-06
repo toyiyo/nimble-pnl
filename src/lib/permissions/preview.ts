@@ -46,8 +46,6 @@ export interface NavPreviewItem {
   path: string;
   /** Read from the real sidebar nav data (`AppSidebar.nav.ts`), never re-typed here. */
   label: string;
-  /** Whether the granted areas include this item's `area_key` at any level. */
-  reachable: boolean;
   /** Reachable, but only at `'view'` — the prototype's "READ ONLY" badge. */
   readOnly: boolean;
   /** This item's `area_key` is the highest-priority granted area — the prototype's "OPENS HERE" badge. */
@@ -195,7 +193,6 @@ function buildNavPreview(grants: Partial<Record<AreaKey, AreaLevel>>): NavPrevie
     group.items.push({
       path: row.path,
       label: findNavLabel(row.path) ?? row.path,
-      reachable: true,
       readOnly: level === 'view',
       isLanding: row.key === landingKey,
     });
@@ -205,10 +202,11 @@ function buildNavPreview(grants: Partial<Record<AreaKey, AreaLevel>>): NavPrevie
 }
 
 /**
- * `grants` are keyed by the fourteen SQL `area_key`s (matching `role_areas`
- * row granularity and `expandAreas`' own signature), not the ten editor UI
- * rows — the same grants object the rest of the client-side permission model
- * (`expandAreas`, `usePermissions.ts`'s `landingPath`) already uses.
+ * `grants` are keyed by the 33 SQL `area_key`s, one per UI row (post
+ * menu-mirror re-cut, matching `role_areas` row granularity and
+ * `expandAreas`' own signature) — the same grants object the rest of the
+ * client-side permission model (`expandAreas`, `usePermissions.ts`'s
+ * `landingPath`) already uses.
  */
 export function buildRolePreview(
   grants: Partial<Record<AreaKey, AreaLevel>>,

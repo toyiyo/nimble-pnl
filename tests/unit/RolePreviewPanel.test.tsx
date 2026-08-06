@@ -29,7 +29,11 @@ describe('RolePreviewPanel', () => {
     expect(screen.getByText(/sign in and see nothing/i)).toBeInTheDocument();
   });
 
-  it('renders the prose summary including the "can\'t" half, verbatim', () => {
+  it('renders the prose summary, including the per-group "can\'t fully reach" half', () => {
+    // Post menu-mirror re-cut (Task 5 Step 2): the "can" half reads each
+    // granted row's own hint/manageHint off AREA_DEFINITIONS (no more PHRASE
+    // map), and the "can't" half is a per-sidebar-group page count instead
+    // of the four retired bundle categories.
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
       reports: 'view',
       sales: 'view',
@@ -39,9 +43,10 @@ describe('RolePreviewPanel', () => {
     render(<RolePreviewPanel grants={grants} flags={[]} roleName="Weekend Supervisor" />);
     expect(
       screen.getByText(
-        "Weekend Supervisor can read the dashboard and reports; see POS sales; " +
-          "build schedules, fix punches, and run tips; and see the roster. " +
-          "Can't touch the books, payroll, team settings, or costs and margins."
+        "Weekend Supervisor can Ticket-level sales from your POS; publish and edit schedules; " +
+          "Saved reports and P&L trends; and Roster, jobs, wage assignments. " +
+          "Can't fully reach Main: 1 of 6 pages, Operations: 1 of 5 pages, Inventory: 1 of 6 pages, " +
+          "Accounting: 0 of 12 pages, Admin: 1 of 4 pages, or costs and margins."
       )
     ).toBeInTheDocument();
   });

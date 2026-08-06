@@ -60,8 +60,7 @@ export function RolePreviewPanel({ grants, flags, roleName }: RolePreviewPanelPr
                 <div
                   key={item.path}
                   className={cn(
-                    'flex items-center gap-2.5 px-2.5 py-1 rounded-md text-[13px]',
-                    item.reachable ? 'text-foreground' : 'text-muted-foreground/50',
+                    'flex items-center gap-2.5 px-2.5 py-1 rounded-md text-[13px] text-foreground',
                     item.isLanding && 'bg-primary/10 text-primary font-semibold'
                   )}
                 >
@@ -70,7 +69,7 @@ export function RolePreviewPanel({ grants, flags, roleName }: RolePreviewPanelPr
                     aria-hidden="true"
                     className="h-[5px] w-[5px] flex-none rounded-full bg-current"
                   />
-                  <span className={cn(!item.reachable && 'line-through')}>{item.label}</span>
+                  <span>{item.label}</span>
                   {item.readOnly && (
                     <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
                       Read only

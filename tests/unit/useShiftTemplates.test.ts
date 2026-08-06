@@ -1227,6 +1227,41 @@ describe('useShiftTemplates', () => {
       );
     });
 
+    it('distinguishes a taken template slot from the template being edited', async () => {
+      // Nobody touched this template — another active template moved into the
+      // hours it is trying to return to, and uq_shift_templates_active_slot
+      // blocked the restore. Reporting that as "template hours changed since"
+      // would send the manager to inspect a record that never changed.
+      const { undoAction } = await triggerCascadeAndClickUndo();
+
+      vi.mocked(supabase.rpc).mockResolvedValueOnce({
+        data: {
+          restored_count: 2,
+          changed_since_count: 0,
+          deleted_count: 0,
+          protected_count: 0,
+          template_restored: false,
+          template_changed_since: false,
+          template_slot_conflict: true,
+        },
+        error: null,
+      } as any);
+
+      await act(async () => {
+        undoAction.props.onClick();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(toastSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Cascade undone',
+          description:
+            'Restored 2 shifts · skipped template hours taken by another template',
+        }),
+      );
+    });
+
     it('invalidates shifts and template-linked-shifts queries after undo', async () => {
       const { undoAction } = await triggerCascadeAndClickUndo();
 

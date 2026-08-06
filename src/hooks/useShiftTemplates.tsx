@@ -186,6 +186,7 @@ export function useShiftTemplates(
         protected_count: number;
         template_restored: boolean;
         template_changed_since: boolean;
+        template_slot_conflict: boolean;
       };
     },
     onSuccess: (result) => {
@@ -205,6 +206,13 @@ export function useShiftTemplates(
         // on every Undo would be noise. This is the case where the manager's mental
         // model and the data disagree, so it gets said out loud.
         result.template_changed_since ? 'template hours changed since' : null,
+        // Not folded in with the line above: nobody edited this template, so
+        // "changed since" would send the manager to inspect the wrong record.
+        // Another active template now sits in the hours this one is trying to
+        // return to, and that is the thing they have to resolve.
+        result.template_slot_conflict
+          ? 'template hours taken by another template'
+          : null,
       ].filter(Boolean);
       toast({
         title: 'Cascade undone',

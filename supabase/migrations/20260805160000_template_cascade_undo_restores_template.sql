@@ -360,6 +360,7 @@ DECLARE
   -- and a null in the returned JSONB would diverge from what the client types.
   v_template_restored      BOOLEAN := false;
   v_template_changed_since BOOLEAN := false;
+  v_template_slot_conflict BOOLEAN := false;
 BEGIN
   IF NOT public.user_has_capability(p_restaurant_id, 'edit:scheduling') THEN
     RAISE EXCEPTION 'Not authorized to edit scheduling for restaurant %', p_restaurant_id
@@ -383,7 +384,7 @@ BEGIN
     RETURN jsonb_build_object(
       'restored_count', 0, 'changed_since_count', 0, 'deleted_count', 0,
       'protected_count', 0, 'template_restored', false,
-      'template_changed_since', false
+      'template_changed_since', false, 'template_slot_conflict', false
     );
   END IF;
 
@@ -468,13 +469,30 @@ BEGIN
       -- columns. If a manager edited the template's hours after the cascade, that is
       -- a newer deliberate decision and Undo declines rather than destroying it.
       IF v_cur_start = v_after_start AND v_cur_end = v_after_end THEN
-        UPDATE public.shift_templates
-        SET start_time = v_before_start,
-            end_time   = v_before_end,
-            updated_at = now()
-        WHERE id = v_template_id
-          AND restaurant_id = p_restaurant_id;
-        v_template_restored := true;
+        -- Subtransaction, deliberately. uq_shift_templates_active_slot is unique on
+        -- (restaurant_id, position, start_time, end_time, days, coalesce(area,''))
+        -- WHERE is_active -- so the cascade FREED this template's original slot, and
+        -- another manager may have created an active template in it since. Restoring
+        -- would then raise 23505, and without this block that error propagates out of
+        -- the function and aborts the whole transaction: none of the shifts get
+        -- reverted and the manager sees a raw constraint error instead of the Undo
+        -- they asked for. A BEGIN/EXCEPTION block rolls back only its own work, so
+        -- the shift revert below still runs and the template is reported as skipped --
+        -- the same "decline safely and say so" contract as template_changed_since.
+        BEGIN
+          UPDATE public.shift_templates
+          SET start_time = v_before_start,
+              end_time   = v_before_end,
+              updated_at = now()
+          WHERE id = v_template_id
+            AND restaurant_id = p_restaurant_id;
+          v_template_restored := true;
+        EXCEPTION WHEN unique_violation THEN
+          -- Distinct from template_changed_since: nobody touched THIS template, so
+          -- telling the manager its hours changed would send them to look at the
+          -- wrong record. Something else now occupies the slot.
+          v_template_slot_conflict := true;
+        END;
       ELSE
         v_template_changed_since := true;
       END IF;
@@ -526,7 +544,8 @@ BEGIN
     'deleted_count',       v_deleted_count,
     'protected_count',     v_protected_count,
     'template_restored',      v_template_restored,
-    'template_changed_since', v_template_changed_since
+    'template_changed_since', v_template_changed_since,
+    'template_slot_conflict', v_template_slot_conflict
   );
 END;
 $$;
@@ -540,6 +559,8 @@ COMMENT ON FUNCTION public.undo_template_hours_cascade(UUID, UUID) IS
   'and restores the template''s own hours from the batch header when the '
   'template still holds exactly what that cascade wrote. Skips shifts edited, '
   'deleted, locked, or started since the cascade and reports each of those '
-  'counts separately, plus template_restored/template_changed_since for the '
-  'template itself. Batches from before this migration have no header row and '
-  'both template flags come back false.';
+  'counts separately, plus template_restored/template_changed_since/'
+  'template_slot_conflict for the template itself -- the last when another active '
+  'template has taken the freed uq_shift_templates_active_slot, which is skipped '
+  'rather than aborting the shift revert. Batches from before this migration have '
+  'no header row and all three template flags come back false.';

@@ -153,11 +153,12 @@ WHERE b.id = p_batch_id
   AND b.restaurant_id = p_restaurant_id;
 ```
 
-Both new flags are declared with an explicit default:
+All three new flags are declared with an explicit default:
 
 ```sql
 v_template_restored      BOOLEAN := false;
 v_template_changed_since BOOLEAN := false;
+v_template_slot_conflict BOOLEAN := false;
 ```
 
 Not left to plpgsql's `NULL` default. The legacy-batch path and the early
@@ -175,17 +176,21 @@ IF FOUND THEN
   FOR UPDATE;
 
   IF FOUND AND v_cur_start = v_after_start AND v_cur_end = v_after_end THEN
-    UPDATE public.shift_templates
-    SET start_time = v_before_start, end_time = v_before_end, updated_at = now()
-    WHERE id = v_template_id AND restaurant_id = p_restaurant_id;
-    v_template_restored := true;
+    BEGIN
+      UPDATE public.shift_templates
+      SET start_time = v_before_start, end_time = v_before_end, updated_at = now()
+      WHERE id = v_template_id AND restaurant_id = p_restaurant_id;
+      v_template_restored := true;
+    EXCEPTION WHEN unique_violation THEN
+      v_template_slot_conflict := true;
+    END;
   ELSIF FOUND THEN
     v_template_changed_since := true;
   END IF;
 END IF;
 ```
 
-Three properties, each deliberate:
+Four properties, each deliberate:
 
 - **`FOR UPDATE` before the comparison.** Same reasoning as the cascade's own lock at
   `:102-113`: without it a concurrent template edit can be read stale and stomped. Taking
@@ -206,17 +211,30 @@ Three properties, each deliberate:
   manager clicked Undo to reverse *their template edit*; leaving the template on the new
   hours would be the same desync in a rarer shape. The header is the record of what the
   template edit was, so it is restorable on its own terms.
+- **The `unique_violation` subtransaction.** `uq_shift_templates_active_slot`
+  (`supabase/migrations/20260528120000_shift_templates_idempotent_apply.sql:22-24`) is unique
+  on `(restaurant_id, position, start_time, end_time, days, coalesce(area,''))` where
+  `is_active`, so the cascade *frees* this template's original hours and another manager can
+  create an active template in them before the Undo lands. The restore then raises `23505`.
+  Without the `BEGIN … EXCEPTION` block that error propagates out of the function and aborts
+  the entire transaction: no shift is reverted and the manager sees a raw constraint error
+  instead of the Undo they asked for. A block-level handler rolls back only its own work, so
+  the shift revert still runs and the template is reported as skipped — the same "decline
+  safely and say so" contract as `template_changed_since`, which is why it gets its own flag
+  rather than being folded into that one. Nobody edited this template; something else took
+  its slot, and those send the manager to different records.
 
-The return object gains two booleans:
+The return object gains three booleans:
 
 ```sql
 'template_restored',      v_template_restored,
-'template_changed_since', v_template_changed_since
+'template_changed_since', v_template_changed_since,
+'template_slot_conflict', v_template_slot_conflict
 ```
 
 Old batches (rows already in `schedule_change_logs` from before this migration) have no
-header. The `SELECT … INTO` finds nothing, both flags stay `false`, and Undo behaves exactly
-as it does today — no error, no partial write.
+header. The `SELECT … INTO` finds nothing, all three flags stay `false`, and Undo behaves
+exactly as it does today — no error, no partial write.
 
 ### Tenant scoping and grants
 
@@ -229,7 +247,8 @@ pattern the cascade function documents at `:96-101`.
 ### Client surface
 
 `src/hooks/useShiftTemplates.tsx:182-187` types the RPC result; it gains
-`template_restored: boolean` and `template_changed_since: boolean`. The success toast
+`template_restored: boolean`, `template_changed_since: boolean` and
+`template_slot_conflict: boolean`. The success toast
 (`:203-208`) already invalidates `['shift_templates', restaurantId]` via
 `invalidateCascadeQueries()` (`:144-148`), so a restored template refreshes without further
 work. The toast's `skippedReasons` list (`:198-202`) gains one more entry, kept in the same
@@ -237,6 +256,7 @@ work. The toast's `skippedReasons` list (`:198-202`) gains one more entry, kept 
 
 ```ts
 result.template_changed_since ? 'template hours changed since' : null,
+result.template_slot_conflict ? 'template hours taken by another template' : null,
 ```
 
 Restoration of the template is the expected case and is not narrated — reporting "restored
@@ -331,35 +351,77 @@ Three shifts on Home are desynced today. The repair is a **read-only diagnosis f
 then a proposed statement with exact row counts, then the user's explicit approval before
 any write — per CLAUDE.md's rule on prod writes.
 
-Diagnosis query (read-only, safe to run without approval):
+### Step 1 — bound the blast radius (read-only)
 
 ```sql
-SELECT l.cascade_batch_id, l.restaurant_id, s.shift_template_id,
-       t.start_time AS template_start, t.end_time AS template_end,
-       count(*) AS reverted_shifts
-FROM public.schedule_change_logs l
-LEFT JOIN public.shifts s ON s.id = l.shift_id
-LEFT JOIN public.shift_templates t ON t.id = s.shift_template_id
-WHERE l.reason = 'Undo template hours cascade'
-GROUP BY 1, 2, 3, 4, 5;
+SELECT change_type, count(*) AS n, min(changed_at), max(changed_at)
+FROM public.schedule_change_logs
+WHERE cascade_batch_id IS NOT NULL
+GROUP BY change_type;
 ```
 
-`LEFT JOIN`, not inner: `schedule_change_logs.shift_id` is deliberately not a foreign key
-(`supabase/migrations/20260617120000_fix_schedule_change_logs_delete_fk.sql:38-44`), so an
-inner join would silently drop any batch whose shift was deleted afterwards and understate
-the damage.
+Every row the cascade has ever written carries a `cascade_batch_id`, so this is the whole
+population. **Result: 4 rows, in 2 batches, all on Home (`0a1812a5-…`).** No other tenant
+has ever run a cascade, so nothing else can be damaged.
 
-This finds every batch an Undo touched; the desynced ones are those whose template hours
-still differ from the restored shifts' local hours. The repair is a targeted
-`UPDATE public.shift_templates SET start_time = …, end_time = …` per affected template —
-never a bulk statement, and never applied from this branch's migration. The migration ships
-the code fix only; historical data is repaired separately and explicitly, because a
-migration that rewrites tenant data based on inferred intent is exactly the kind of thing
-that cannot be undone.
+### Step 2 — identify actual mismatches, not candidate batches
 
-For Home specifically the expected repair is one row: template
-`a71b4223-5a39-460b-bb12-83f0937ab4d9` back to `10:00`/`16:30`, matching the three shifts
-that Undo restored. Counts will be confirmed against live data and stated before asking.
+Listing the batches an Undo touched is not enough: it names candidates without saying which
+are broken. The comparison has to be made explicitly, in the **restaurant's** timezone —
+comparing a bare `start_time::time` against the template would call every non-UTC tenant's
+matching shift "drifted", which is the same timezone trap the cascade's own bucketing has
+to avoid.
+
+```sql
+WITH tz AS (
+  SELECT id AS restaurant_id, coalesce(timezone, 'UTC') AS tzname
+  FROM public.restaurants
+)
+SELECT t.id AS template_id, t.name,
+       t.start_time AS tmpl_start, t.end_time AS tmpl_end,
+       s.id AS shift_id,
+       s.start_time AT TIME ZONE tz.tzname AS shift_start_local,
+       s.end_time   AT TIME ZONE tz.tzname AS shift_end_local,
+       (s.start_time AT TIME ZONE tz.tzname)::time = t.start_time
+         AND (s.end_time AT TIME ZONE tz.tzname)::time = t.end_time AS matches_template,
+       s.start_time > now() AS in_future
+FROM public.shift_templates t
+JOIN tz ON tz.restaurant_id = t.restaurant_id
+JOIN public.shifts s
+  ON s.shift_template_id = t.id AND s.restaurant_id = t.restaurant_id
+ORDER BY t.name, s.start_time;
+```
+
+Joining through `shifts.shift_template_id` rather than through `schedule_change_logs.shift_id`
+is deliberate: that column is **not** a foreign key
+(`supabase/migrations/20260617120000_fix_schedule_change_logs_delete_fk.sql:38-44`), so a
+log-driven query has to `LEFT JOIN` and still cannot tell a deleted shift from a live one.
+Reading current state directly answers the actual question — which templates disagree with
+their shifts right now.
+
+**Result on Home.** One template is damaged: `a71b4223-…` "Opening - weekend", sitting at
+`11:00`/`18:30` with three future `scheduled` shifts (Aug 7/8/9) still at `10:00`/`16:30`,
+all `matches_template = false`. Template `a9d89620-…` "Opening Shift - weekdays" is **not**
+damaged — its one future shift matches, and its three `10:00`/`16:30` shifts are all in the
+past, which the cascade correctly refuses to touch.
+
+### Step 3 — repair in the product, not in SQL
+
+The recommended remediation is **no production write**. The Bug 2 fix is the repair: once
+deployed, that template's panel reads "0 shifts move. 3 hand-edited shifts you can pick",
+and the manager ticks the three and cascades them.
+
+A SQL repair would have to guess the intended hours. Undo restored the shifts to
+`10:00`/`16:30`, but the manager then deliberately edited the template to `11:00`/`18:30`
+while the UI was under-reporting the impact. Which of those two is "correct" is a scheduling
+decision, not a data-integrity one, and picking either in an `UPDATE` silently substitutes
+our judgement for theirs.
+
+If a write is wanted anyway it stays a targeted `UPDATE public.shift_templates SET
+start_time = …, end_time = … WHERE id = … AND restaurant_id = …` — one row, never a bulk
+statement, never from this branch's migration, and only after the exact row count is stated
+and explicitly approved. The migration ships the code fix only; a migration that rewrites
+tenant data from inferred intent is precisely what cannot be undone.
 
 ---
 
@@ -379,7 +441,16 @@ that Undo restored. Counts will be confirmed against live data and stated before
 5. Tenant isolation: an Undo naming another restaurant's batch id restores nothing and
    leaves both templates untouched.
 6. Legacy batch: an Undo for a `cascade_batch_id` with no header row reverts shifts and
-   returns both flags false.
+   returns all template flags false.
+7. **The freed slot was taken.** `uq_shift_templates_active_slot` is unique on
+   `(restaurant_id, position, start_time, end_time, days, coalesce(area,''))` where
+   `is_active`, so a cascade frees the template's original hours and another active template
+   can move into them. Cascade, insert a squatter in the freed slot, undo: assert
+   `template_slot_conflict` is true, `template_restored` and `template_changed_since` false,
+   the template stays where the cascade put it — and, separately, that the shifts are
+   **still reverted**. Without the subtransaction around the template `UPDATE`, the `23505`
+   escapes the function and aborts the whole transaction: the manager gets a raw constraint
+   error and not one shift comes back.
 7. **Template restored when no shift is** — cascade, then lock every moved shift, then undo:
    assert `restored_count = 0` and `template_restored = true`. This is the one combination
    the "Restored independently of `restored_count`" decision above rests on, and none of
@@ -411,8 +482,10 @@ but 2b is a render-state behaviour no pure-function test can reach):
 
 ### Playwright — `tests/e2e/template-hours-cascade.spec.ts` (extend)
 
-Two scenarios, one per bug — the first would pass today and the second would not, so both
-are needed.
+Two scenarios, one per bug. Neither passes against today's code — scenario 1 fails at the
+second cascade (the shifts read as drifted and nothing moves) and scenario 2 fails at the
+first assertion (the collapsed summary says "0 shifts move" and names nothing pickable).
+That is what makes them regression tests rather than descriptions.
 
 1. **Bug 1 round trip.** Create a template with linked future shifts, change the hours and
    cascade, click Undo, then change the hours again and assert the shifts move. Today the

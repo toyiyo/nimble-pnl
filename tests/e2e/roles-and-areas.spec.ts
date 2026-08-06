@@ -285,4 +285,42 @@ test.describe('Roles & Areas', () => {
     await expect(sidebar.getByRole('button', { name: 'Employees', exact: true })).toHaveCount(0);
     await expect(sidebar.getByRole('button', { name: 'Settings', exact: true })).toHaveCount(0);
   });
+
+  test('an owner can grant Invoices without granting Banking', async ({ page }) => {
+    // The literal complaint: "I am expecting to be able to set permissions for
+    // tip pooling, invoices, and other individual pages."
+    const owner = generateTestUser('invoices-only-owner');
+    await signUpAndCreateRestaurant(page, owner);
+
+    await page.goto('/team');
+    await page.getByRole('tab', { name: /roles & areas/i }).click();
+    await page.getByRole('button', { name: /new role/i }).click();
+    await page.getByLabel(/role name/i).fill('Invoices only');
+
+    // aria-label convention is "{row.label} access" (RoleEditor.tsx), not
+    // "access level" — see the sibling test above for the same pattern.
+    await page.getByRole('radiogroup', { name: /^invoices access$/i })
+              .getByRole('radio', { name: /^manage$/i }).click();
+
+    // RolePreviewPanel ("What they'll see") is the only <aside> on this page
+    // and carries no accessible name, so it lands the implicit
+    // "complementary" landmark role — an accessible selector, not a testid.
+    const preview = page.getByRole('complementary');
+    await expect(preview.getByText('Invoices')).toBeVisible();
+    await expect(preview.getByText('Banks')).toBeHidden();
+
+    await page.getByRole('button', { name: /^save role$/i }).click();
+    await expect(page.getByText('Invoices only')).toBeVisible();
+
+    // Reopen: the grant persisted as one page, not a bundle.
+    await page.getByText('Invoices only').click();
+    await expect(
+      page.getByRole('radiogroup', { name: /^invoices access$/i })
+          .getByRole('radio', { name: /^manage$/i })
+    ).toBeChecked();
+    await expect(
+      page.getByRole('radiogroup', { name: /^banks access$/i })
+          .getByRole('radio', { name: /^no access$/i })
+    ).toBeChecked();
+  });
 });

@@ -127,19 +127,26 @@ function buildSummary(
 
   // Per sidebar group, how much of it this role reaches — "Accounting: 3 of
   // 12 pages" — the same roll-up shape PR 2's header needs. A group the role
-  // fully reaches has nothing worth naming in the "can't" half.
-  const totalByGroup = new Map<string, number>();
-  const reachedByGroup = new Map<string, number>();
+  // fully reaches has nothing worth naming in the "can't" half. Counted by
+  // unique `path`, not by row: `team`/`collaborators` are two AREA_DEFINITIONS
+  // rows sharing one sidebar page (/team), and this text says "pages".
+  const totalByGroup = new Map<string, Set<string>>();
+  const reachedByGroup = new Map<string, Set<string>>();
   for (const row of AREA_DEFINITIONS) {
-    totalByGroup.set(row.uiGroup, (totalByGroup.get(row.uiGroup) ?? 0) + 1);
+    const total = totalByGroup.get(row.uiGroup) ?? new Set<string>();
+    total.add(row.path);
+    totalByGroup.set(row.uiGroup, total);
+
     if (rowLevel(row, grants) !== null) {
-      reachedByGroup.set(row.uiGroup, (reachedByGroup.get(row.uiGroup) ?? 0) + 1);
+      const reached = reachedByGroup.get(row.uiGroup) ?? new Set<string>();
+      reached.add(row.path);
+      reachedByGroup.set(row.uiGroup, reached);
     }
   }
   const blocked: string[] = [];
   for (const [group, total] of totalByGroup) {
-    const reached = reachedByGroup.get(group) ?? 0;
-    if (reached < total) blocked.push(`${group}: ${reached} of ${total} pages`);
+    const reached = reachedByGroup.get(group)?.size ?? 0;
+    if (reached < total.size) blocked.push(`${group}: ${reached} of ${total.size} pages`);
   }
   if (!flags.includes('view:costs')) blocked.push('costs and margins');
 

@@ -188,7 +188,10 @@ INSERT INTO public.role_areas (role_id, area_key, level) SELECT ... FROM public.
 INSERT INTO public.role_areas (role_id, area_key, level) SELECT ... FROM public.role_areas WHERE area_key = 'reports' ...;
 -- (scheduling, inventory, recipes fan-outs follow the same plain-INSERT shape)
 
--- 3. now the old rows can go, then the catalog row they pin
+-- 3. only `books` is retired — reports/scheduling/inventory/recipes are
+--    survivors (§4.1) and keep their own role_areas/area_catalog rows.
+--    Now that books's rows have somewhere else to live, its old rows can
+--    go, then the catalog row they pin.
 DELETE FROM public.role_areas  WHERE area_key = 'books';
 DELETE FROM public.area_catalog WHERE area_key = 'books';
 
@@ -197,7 +200,7 @@ ALTER TABLE public.role_areas ENABLE TRIGGER role_areas_block_builtin_mutation;
 
 Each fan-out is a plain `INSERT`, not an upsert. No `ON CONFLICT` is needed: every fan-out targets keys that were only just inserted in step 1 (§4.1), no two fan-outs share a target key, and `role_areas.area_key` is `RESTRICT`-FK'd to `area_catalog`, so no pre-existing `role_areas` row can already reference a key this migration just created. A plain `INSERT` therefore cannot conflict — and if that premise is ever wrong, a loud unique-violation is the correct failure mode, not a silent overwrite.
 
-**The trigger must come back on, and a test must prove it.** `DISABLE TRIGGER` is durable schema state: a migration that errors between the disable and the enable leaves the collaborator-escalation guard **off in production**, silently, with no other symptom. `supabase/tests/page_areas_catalog_test.sql` asserts `tgenabled = 'O'` for all four guards after migration (§5). This is the single highest-risk step in the change and it gets its own assertion rather than being folded into a broader one.
+**The trigger must come back on, and a test must prove it.** `DISABLE TRIGGER` is durable schema state, and Postgres DDL is transactional: because the whole migration above runs as one transaction, an error anywhere between the disable and the enable rolls back the `ALTER TABLE` along with everything else — the guard is never left off by a failed `supabase db reset`/`migration up` run in the normal case. The residual risk is an executor that splits this file across multiple transactions or commits partway through (a manual `psql` session pasted in pieces, for instance); that leaves the collaborator-escalation guard **off in production**, silently, with no other symptom. `supabase/tests/page_areas_catalog_test.sql` asserts `tgenabled = 'O'` for all four guards after migration (§5) as a backstop against exactly that case — cheap insurance for a step whose failure mode, if it ever happened, would be silent.
 
 `role_flags` is not touched, so `role_flags_block_builtin_mutation` stays enabled throughout.
 

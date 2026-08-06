@@ -61,7 +61,7 @@ describe('buildRolePreview — summary', () => {
       'Weekend Supervisor can Ticket-level sales from your POS; publish and edit schedules; ' +
         'Saved reports and P&L trends; and Roster, jobs, wage assignments. ' +
         "Can't fully reach Main: 1 of 6 pages, Operations: 1 of 5 pages, Inventory: 1 of 6 pages, " +
-        'Accounting: 0 of 12 pages, Admin: 1 of 4 pages, or costs and margins.'
+        'Accounting: 0 of 12 pages, Admin: 1 of 3 pages, or costs and margins.'
     );
   });
 
@@ -72,7 +72,7 @@ describe('buildRolePreview — summary', () => {
       [],
       'X'
     );
-    expect(withoutAdmin.summary).toMatch(/Admin: 0 of 4 pages/);
+    expect(withoutAdmin.summary).toMatch(/Admin: 0 of 3 pages/);
     expect(withAdmin.summary).not.toMatch(/Admin/);
   });
 

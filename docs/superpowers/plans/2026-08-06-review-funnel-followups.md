@@ -421,10 +421,10 @@ After the `announcement` state (`ReviewPage.tsx:66`), add:
 
 ```tsx
   // The server's branch decision, derived. `routeRating` returns
-  // `'destination'` only when a URL exists, and `handleRate` releases the URL
-  // only on that branch, so this is the same test with no second state to
-  // keep in step. The form copy follows it: `What happened?` in front of a
-  // five-star guest reads as an accusation.
+  // `'destination'` only when a URL exists. `handleRate` releases the URL only
+  // on that branch. This test is the same one, with no second state to keep in
+  // step. The form copy follows it. `What happened?` in front of a five-star
+  // guest reads as an accusation.
   const isPromoterBranch = destinationUrl !== null;
 ```
 
@@ -437,8 +437,8 @@ After the `announcement` state (`ReviewPage.tsx:66`), add:
 After `handleCommit` (`ReviewPage.tsx:155`), add:
 
 ```tsx
-  // Every stage move clears the error banner first. `That didn't send.` over
-  // a form the guest has not sent yet reads as a new failure.
+  // Every stage move clears the error banner first. The guest did not send the
+  // new form yet. `That didn't send.` above it reads as a new failure.
   const goToStage = useCallback((next: Stage, message: string) => {
     setSubmitError(false);
     setStage(next);

@@ -62,10 +62,10 @@ export default function ReviewPage() {
   const [announcement, setAnnouncement] = useState('');
 
   // The server's branch decision, derived. `routeRating` returns
-  // `'destination'` only when a URL exists, and `handleRate` releases the URL
-  // only on that branch, so this is the same test with no second state to
-  // keep in step. The form copy follows it: `What happened?` in front of a
-  // five-star guest reads as an accusation.
+  // `'destination'` only when a URL exists. `handleRate` releases the URL only
+  // on that branch. This test is the same one, with no second state to keep in
+  // step. The form copy follows it. `What happened?` in front of a five-star
+  // guest reads as an accusation.
   const isPromoterBranch = destinationUrl !== null;
 
   const branchHeadingRef = useRef<HTMLHeadingElement | null>(null);
@@ -165,8 +165,8 @@ export default function ReviewPage() {
     [honeypot, slug]
   );
 
-  // Every stage move clears the error banner first. `That didn't send.` over
-  // a form the guest has not sent yet reads as a new failure.
+  // Every stage move clears the error banner first. The guest did not send the
+  // new form yet. `That didn't send.` above it reads as a new failure.
   const goToStage = useCallback((next: Stage, message: string) => {
     setSubmitError(false);
     setStage(next);
@@ -374,7 +374,7 @@ export default function ReviewPage() {
               onClick={() => goToStage('promoter', 'Back to the Google link.')}
               className="mb-2 h-9 px-2 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
             >
-              <ChevronLeft className="mr-1 h-4 w-4" />
+              <ChevronLeft aria-hidden="true" className="mr-1 h-4 w-4" />
               Back
             </Button>
           )}
@@ -396,14 +396,19 @@ export default function ReviewPage() {
               </Label>
               <Textarea
                 id="review-comment"
+                aria-describedby="review-comment-hint"
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}
                 rows={4}
                 className="mt-1.5 bg-background border-border"
               />
               {/* Without this line a guest who wants no comment sees a dead
-                  Send control and no reason for it. */}
-              <p className="counter-micro mt-1.5 text-[12px] text-muted-foreground">
+                  Send control and no reason for it. `aria-describedby` reads it
+                  out to a guest who tabs straight into the field. */}
+              <p
+                id="review-comment-hint"
+                className="counter-micro mt-1.5 text-[12px] text-muted-foreground"
+              >
                 Write a note, give your email, or both.
               </p>
             </div>

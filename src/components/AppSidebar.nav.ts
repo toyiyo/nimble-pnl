@@ -21,7 +21,6 @@ import {
   CalendarDays,
   Utensils,
   Building2,
-  Target,
   Printer,
   LifeBuoy,
 } from 'lucide-react';
@@ -40,7 +39,6 @@ export const collaboratorAccountantNav: NavGroup[] = [
   {
     label: 'Financial',
     items: [
-      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
       { path: '/transactions', label: 'Transactions', icon: Receipt },
       { path: '/banking', label: 'Banks', icon: Wallet },
       { path: '/expenses', label: 'Expenses', icon: DollarSign },

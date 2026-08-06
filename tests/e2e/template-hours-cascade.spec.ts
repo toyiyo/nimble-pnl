@@ -49,20 +49,25 @@ async function setRestaurantTimezone(page: import('@playwright/test').Page, rest
 /** Reads a shift's `start_time`/`end_time` straight from Supabase, bypassing the UI. */
 async function fetchShiftTimes(
   page: import('@playwright/test').Page,
+  restaurantId: string,
   shiftId: string
 ): Promise<{ start_time: string; end_time: string }> {
   return page.evaluate(
-    async (id: string) => {
+    // Filtered on restaurant_id as well as the primary key: every query in this
+    // codebase is tenant-scoped, and a test that reads across tenants would pass
+    // even if a cascade leaked into someone else's shifts.
+    async (args: { restId: string; id: string }) => {
       const supabase = (window as any).__supabase;
       const { data, error } = await supabase
         .from('shifts')
         .select('start_time, end_time')
-        .eq('id', id)
+        .eq('restaurant_id', args.restId)
+        .eq('id', args.id)
         .single();
       if (error) throw new Error(error.message);
       return data as { start_time: string; end_time: string };
     },
-    shiftId
+    { restId: restaurantId, id: shiftId }
   );
 }
 
@@ -669,8 +674,8 @@ test.describe('template hours cascade', () => {
     await expect(dialog).not.toBeVisible({ timeout: 10000 });
 
     const [pickedRow, untouchedRow] = await Promise.all([
-      fetchShiftTimes(page, pickedDrift.shiftId),
-      fetchShiftTimes(page, untouchedDrift.shiftId),
+      fetchShiftTimes(page, restaurantId as string, pickedDrift.shiftId),
+      fetchShiftTimes(page, restaurantId as string, untouchedDrift.shiftId),
     ]);
 
     expect(localHHMM(pickedRow.start_time)).toBe('10:00');

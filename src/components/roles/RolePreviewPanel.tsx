@@ -20,11 +20,13 @@ import { cn } from '@/lib/utils';
  * item selection). That derivation is unit tested directly in
  * `tests/unit/preview.test.ts`; this file's own test
  * (`tests/unit/RolePreviewPanel.test.tsx`) only covers how that output is
- * rendered — the struck-through/READ ONLY/OPENS HERE markers and the sticky
- * layout the design doc's "The live preview" section asks for.
+ * rendered — the READ ONLY/OPENS HERE markers and the sticky layout the
+ * design doc's "The live preview" section asks for. (Ungranted pages are
+ * omitted outright, post menu-mirror re-cut — there is no struck-through
+ * "unreachable" row left to render.)
  *
  * `grants`/`flags` are keyed/typed exactly as `buildRolePreview` expects
- * (fourteen SQL `area_key`s, not the ten UI rows) — the same shape
+ * (the 33 SQL `area_key`s, one per UI row) — the same shape
  * `RoleEditor.tsx`'s own `Grants` state already uses, so no reshaping happens
  * at the call site.
  */
@@ -60,8 +62,7 @@ export function RolePreviewPanel({ grants, flags, roleName }: RolePreviewPanelPr
                 <div
                   key={item.path}
                   className={cn(
-                    'flex items-center gap-2.5 px-2.5 py-1 rounded-md text-[13px]',
-                    item.reachable ? 'text-foreground' : 'text-muted-foreground/50',
+                    'flex items-center gap-2.5 px-2.5 py-1 rounded-md text-[13px] text-foreground',
                     item.isLanding && 'bg-primary/10 text-primary font-semibold'
                   )}
                 >
@@ -70,7 +71,7 @@ export function RolePreviewPanel({ grants, flags, roleName }: RolePreviewPanelPr
                     aria-hidden="true"
                     className="h-[5px] w-[5px] flex-none rounded-full bg-current"
                   />
-                  <span className={cn(!item.reachable && 'line-through')}>{item.label}</span>
+                  <span>{item.label}</span>
                   {item.readOnly && (
                     <span className="ml-auto font-mono text-[9px] uppercase tracking-[0.08em] text-muted-foreground">
                       Read only

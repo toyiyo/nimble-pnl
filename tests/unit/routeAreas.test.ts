@@ -32,29 +32,41 @@ type Grants = Partial<Record<AreaKey, AreaLevel>>;
  */
 const SEEDED_COLLABORATOR_AREAS: Record<string, Grants> = {
   collaborator_accountant: {
-    books: 'manage',
-    chart_of_accounts: 'manage',
-    payroll: 'view',
-    employees: 'view',
+    transactions: 'manage', banking: 'manage', expenses: 'manage',
+    invoices: 'manage', customers: 'manage', assets: 'manage',
+    // financial_statements/financial_intelligence stay at 'view' — the
+    // migration clamps both area_catalog rows to 'view' with no 'manage'
+    // tier (20260805120000_page_areas.sql), so books:'manage' fans out
+    // onto these two at 'view', not 'manage'.
+    print_checks: 'manage', financial_statements: 'view',
+    financial_intelligence: 'view',
+    chart_of_accounts: 'manage', payroll: 'view', employees: 'view',
     settings: 'view',
   },
   collaborator_inventory: {
     inventory: 'manage',
     purchasing: 'manage',
+    inventory_audit: 'manage',
     settings: 'view',
   },
   collaborator_chef: {
     inventory: 'view',
     recipes: 'manage',
+    prep_recipes: 'manage',
     settings: 'view',
   },
   collaborator_operations_manager: {
     reports: 'manage',
+    dashboard: 'view',
     sales: 'view',
     inventory: 'manage',
+    inventory_audit: 'manage',
     purchasing: 'manage',
     recipes: 'manage',
+    prep_recipes: 'manage',
     scheduling: 'manage',
+    time_punches: 'manage',
+    tips: 'manage',
     payroll: 'view',
     employees: 'view',
     settings: 'view',
@@ -94,16 +106,26 @@ describe('routeAreas – the exclusions that areas cannot express', () => {
     expect(allowedPathsForAreas({})).toEqual([...UNIVERSAL_PATHS]);
   });
 
-  it('maps no path to an area more than once', () => {
+  it('maps no path to an area more than once, except /team which two areas share', () => {
+    // AREA_DEFINITIONS joins on PAGE_AREAS.path and /team has two catalog
+    // rows (`team` and `collaborators`), so AREA_ROUTES carries both — see
+    // areas.ts. Harmless: /team is a COLLABORATOR_PATH_EXCLUSIONS entry, so
+    // allowedPathsForAreas never reaches either row for it.
     const paths = AREA_ROUTES.map((route) => route.path);
-    expect(new Set(paths).size).toBe(paths.length);
+    const counts = new Map<string, number>();
+    for (const path of paths) counts.set(path, (counts.get(path) ?? 0) + 1);
+    const duplicates = [...counts.entries()].filter(([, count]) => count > 1);
+    expect(duplicates).toEqual([['/team', 2]]);
   });
 
   it('treats manage as satisfying a view requirement, and view as not satisfying manage', () => {
+    // Every AREA_DEFINITIONS-derived route is minLevel: 'view' now (the
+    // per-page re-cut); /receipt-import is the one route still gated at
+    // 'manage' (spec §3.2), so it is what exercises the manage/view gap.
     expect(allowedPathsForAreas({ inventory: 'manage' })).toContain('/inventory');
-    expect(allowedPathsForAreas({ inventory: 'manage' })).toContain('/inventory-audit');
+    expect(allowedPathsForAreas({ inventory: 'manage' })).toContain('/receipt-import');
     expect(allowedPathsForAreas({ inventory: 'view' })).toContain('/inventory');
-    expect(allowedPathsForAreas({ inventory: 'view' })).not.toContain('/inventory-audit');
+    expect(allowedPathsForAreas({ inventory: 'view' })).not.toContain('/receipt-import');
   });
 });
 
@@ -121,7 +143,13 @@ const SEEDED_BUILTIN_AREAS: Record<string, Grants> = {
     purchasing: 'manage',
     recipes: 'manage',
     scheduling: 'manage',
-    books: 'manage',
+    // Fanned out from the seeded books:'manage' row, same as
+    // SEEDED_COLLABORATOR_AREAS.collaborator_accountant above
+    // (20260805120000_page_areas.sql Step 3).
+    transactions: 'manage', banking: 'manage', expenses: 'manage',
+    invoices: 'manage', customers: 'manage', assets: 'manage',
+    print_checks: 'manage', financial_statements: 'view',
+    financial_intelligence: 'view',
     chart_of_accounts: 'manage',
     payroll: 'manage',
     employees: 'manage',
@@ -137,7 +165,11 @@ const SEEDED_BUILTIN_AREAS: Record<string, Grants> = {
     purchasing: 'manage',
     recipes: 'manage',
     scheduling: 'manage',
-    books: 'manage',
+    // Fanned out from the seeded books:'manage' row, same as owner above.
+    transactions: 'manage', banking: 'manage', expenses: 'manage',
+    invoices: 'manage', customers: 'manage', assets: 'manage',
+    print_checks: 'manage', financial_statements: 'view',
+    financial_intelligence: 'view',
     chart_of_accounts: 'view',
     payroll: 'manage',
     employees: 'manage',
@@ -174,12 +206,16 @@ const SEEDED_BUILTIN_AREAS: Record<string, Grants> = {
   ...SEEDED_COLLABORATOR_AREAS,
 };
 
-describe('routeAreas – /print-checks is gated on books@manage across every builtin', () => {
+describe('routeAreas – /print-checks is gated on its own print_checks area, not books', () => {
+  // `books` no longer exists (20260805120000_page_areas.sql retires it);
+  // print_checks is its own catalog row now, and — per routeAreas.ts's
+  // header — every route derived from AREA_DEFINITIONS is minLevel:
+  // 'view', so holding the area at all (view or manage) opens the page.
   for (const [role, grants] of Object.entries(SEEDED_BUILTIN_AREAS)) {
-    const satisfiesBooksManage = grants.books === 'manage';
-    it(`${satisfiesBooksManage ? 'admits' : 'excludes'} /print-checks for ${role}`, () => {
+    const holdsPrintChecks = grants.print_checks !== undefined;
+    it(`${holdsPrintChecks ? 'admits' : 'excludes'} /print-checks for ${role}`, () => {
       const derived = allowedPathsForAreas(grants);
-      if (satisfiesBooksManage) {
+      if (holdsPrintChecks) {
         expect(derived).toContain('/print-checks');
       } else {
         expect(derived).not.toContain('/print-checks');
@@ -187,12 +223,12 @@ describe('routeAreas – /print-checks is gated on books@manage across every bui
     });
   }
 
-  it('admits /print-checks for a synthetic books@manage role', () => {
-    expect(allowedPathsForAreas({ books: 'manage' })).toContain('/print-checks');
+  it('admits /print-checks for a synthetic print_checks@view role', () => {
+    expect(allowedPathsForAreas({ print_checks: 'view' })).toContain('/print-checks');
   });
 
-  it('excludes /print-checks for a synthetic books@view role', () => {
-    expect(allowedPathsForAreas({ books: 'view' })).not.toContain('/print-checks');
+  it('excludes /print-checks holding no areas at all', () => {
+    expect(allowedPathsForAreas({})).not.toContain('/print-checks');
   });
 });
 
@@ -204,7 +240,7 @@ describe('routeAreas – customCollaboratorRoutes', () => {
       {},
       { reports: 'manage' },
       { scheduling: 'manage' },
-      { books: 'manage', payroll: 'view' },
+      { print_checks: 'manage', payroll: 'view' },
       { settings: 'view' },
     ];
     for (const grants of cases) {

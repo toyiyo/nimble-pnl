@@ -71,7 +71,7 @@
 
 BEGIN;
 
-SELECT plan(19);
+SELECT plan(29);
 
 -- ----------------------------------------------------------------------------
 -- Fixture: legacy CASE, transcribed verbatim and parameterized on p_role.
@@ -505,7 +505,155 @@ SELECT is(
 SELECT set_config('request.jwt.claims', '{}', true);
 
 -- ============================================================================
--- 5. Performance gate.
+-- 5. Re-pointed special-case coverage (Task 2 Step 8).
+--
+--    view:financial_intelligence and view:ai_assistant are hardcoded IF
+--    branches above the generic VALUES map, each checking one specific
+--    area_key at one specific level. Section 1's full-matrix round trip
+--    exercises these only incidentally, through whatever areas the ten
+--    builtins happen to hold; these five assertions target the branches
+--    directly with custom roles built to isolate exactly what each one
+--    checks. Reuses the shared pro/active restaurant from section 1's
+--    header comment, so has_subscription_feature does not trivially deny.
+-- ============================================================================
+INSERT INTO auth.users (id, email) VALUES
+  ('5a000000-0000-0000-0000-000000000501', 'task5-fi-granted@example.com'),
+  ('5a000000-0000-0000-0000-000000000502', 'task5-fi-wrong-area@example.com'),
+  ('5a000000-0000-0000-0000-000000000503', 'task5-ai-manage@example.com'),
+  ('5a000000-0000-0000-0000-000000000504', 'task5-ai-view-only@example.com'),
+  ('5a000000-0000-0000-0000-000000000505', 'task5-tips-granted@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin) VALUES
+  ('5a000000-0000-0000-0000-0000000000c2', '5a000000-0000-0000-0000-000000000099', 'Task 5 FI Granted Role', 'pgTAP fixture — financial_intelligence:view', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c3', '5a000000-0000-0000-0000-000000000099', 'Task 5 FI Wrong-Area Role', 'pgTAP fixture — transactions:view only', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c4', '5a000000-0000-0000-0000-000000000099', 'Task 5 AI Manage Role', 'pgTAP fixture — reports:manage', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c5', '5a000000-0000-0000-0000-000000000099', 'Task 5 AI View-Only Role', 'pgTAP fixture — reports:view only', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c6', '5a000000-0000-0000-0000-000000000099', 'Task 5 Tips Granted Role', 'pgTAP fixture — tips:view', 'platform', false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.role_areas (role_id, area_key, level) VALUES
+  ('5a000000-0000-0000-0000-0000000000c2', 'financial_intelligence', 'view'),
+  ('5a000000-0000-0000-0000-0000000000c3', 'transactions',           'view'),
+  ('5a000000-0000-0000-0000-0000000000c4', 'reports',                'manage'),
+  ('5a000000-0000-0000-0000-0000000000c5', 'reports',                'view'),
+  ('5a000000-0000-0000-0000-0000000000c6', 'tips',                   'view')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALUES
+  ('5a000000-0000-0000-0000-000000000501', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c2'),
+  ('5a000000-0000-0000-0000-000000000502', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c3'),
+  ('5a000000-0000-0000-0000-000000000503', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c4'),
+  ('5a000000-0000-0000-0000-000000000504', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c5'),
+  ('5a000000-0000-0000-0000-000000000505', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c6')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id;
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000501","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:financial_intelligence'),
+  TRUE,
+  're-pointed special case: view:financial_intelligence granted to a role holding financial_intelligence:view'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000502","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:financial_intelligence'),
+  FALSE,
+  're-pointed special case: view:financial_intelligence denied to a role holding only transactions:view — the branch checks the financial_intelligence area specifically, not the retired books bundle'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000503","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:ai_assistant'),
+  TRUE,
+  'view:ai_assistant still granted to a role holding reports:manage'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000504","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:ai_assistant'),
+  FALSE,
+  'view:ai_assistant still denied to a role holding only reports:view — the branch requires manage specifically'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000505","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:tips'),
+  TRUE,
+  'view:tips granted to a role holding tips:view — the tier that moved down to a plain area+level lookup in the Step 4 rewrite'
+);
+
+SELECT set_config('request.jwt.claims', '{}', true);
+
+-- ============================================================================
+-- 5b. view:pending_outflows / edit:pending_outflows resolve via an OR across
+--    two areas ('print_checks' and 'expenses'), not a single-area VALUES
+--    row. Expenses.tsx calls usePendingOutflows() unconditionally, so a
+--    custom role granted Expenses without Print Checks must still satisfy
+--    the pending_outflows RLS policies (20260120100100_update_rls_for_
+--    collaborators.sql) — this is the fix for the P1 finding on
+--    20260805120000_page_areas.sql: the migration's original design assumed
+--    /print-checks was the only page reading that table.
+-- ============================================================================
+INSERT INTO auth.users (id, email) VALUES
+  ('5a000000-0000-0000-0000-000000000601', 'task5-expenses-manage@example.com'),
+  ('5a000000-0000-0000-0000-000000000602', 'task5-expenses-view-only@example.com'),
+  ('5a000000-0000-0000-0000-000000000603', 'task5-neither-area@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin) VALUES
+  ('5a000000-0000-0000-0000-0000000000c7', '5a000000-0000-0000-0000-000000000099', 'Task 5 Expenses Manage Role', 'pgTAP fixture — expenses:manage, no print_checks', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c8', '5a000000-0000-0000-0000-000000000099', 'Task 5 Expenses View-Only Role', 'pgTAP fixture — expenses:view, no print_checks', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c9', '5a000000-0000-0000-0000-000000000099', 'Task 5 Neither Area Role', 'pgTAP fixture — transactions:manage only, no expenses/print_checks', 'platform', false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.role_areas (role_id, area_key, level) VALUES
+  ('5a000000-0000-0000-0000-0000000000c7', 'expenses',     'manage'),
+  ('5a000000-0000-0000-0000-0000000000c8', 'expenses',     'view'),
+  ('5a000000-0000-0000-0000-0000000000c9', 'transactions', 'manage')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALUES
+  ('5a000000-0000-0000-0000-000000000601', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c7'),
+  ('5a000000-0000-0000-0000-000000000602', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c8'),
+  ('5a000000-0000-0000-0000-000000000603', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c9')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id;
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000601","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pending_outflows'),
+  TRUE,
+  'view:pending_outflows granted to a role holding expenses:manage with no print_checks area at all'
+);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'edit:pending_outflows'),
+  TRUE,
+  'edit:pending_outflows granted to a role holding expenses:manage with no print_checks area at all'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000602","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pending_outflows'),
+  TRUE,
+  'view:pending_outflows granted to a role holding only expenses:view'
+);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'edit:pending_outflows'),
+  FALSE,
+  'edit:pending_outflows denied to a role holding only expenses:view (manage required)'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000603","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pending_outflows'),
+  FALSE,
+  'view:pending_outflows denied to a role holding neither expenses nor print_checks'
+);
+
+SELECT set_config('request.jwt.claims', '{}', true);
+
+-- ============================================================================
+-- 6. Performance gate.
 -- ============================================================================
 
 -- 50 products rows on the shared restaurant so a per-row RLS qual evaluation

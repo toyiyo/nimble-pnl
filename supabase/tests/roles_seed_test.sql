@@ -17,11 +17,21 @@
 --
 -- Two fixture tables encode the independently-derived expectation, entirely
 -- decoupled from the migration's own area_key/level choices:
---   test_area_capability_at_level — for every (area_key, level) pair in the
---     14-row area_catalog, the full set of legacy Capability strings that
---     tier bundles. The 'manage' tier's capability list is always the total
---     union (view-tier capabilities plus manage-tier additions), so a plain
---     join against a role's granted level needs no cumulative logic.
+--   test_area_capability_at_level — for every (area_key, level) pair among
+--     the 27 (of 33) area_catalog keys that map to a legacy Capability, the
+--     full set of legacy Capability strings that tier bundles. The 'manage'
+--     tier's capability list is always the total union (view-tier
+--     capabilities plus manage-tier additions), so a plain join against a
+--     role's granted level needs no cumulative logic. Six re-cut keys —
+--     ops_inbox, weekly_brief, budget, labor, stripe_account, assets — are
+--     deliberately absent: none of them corresponds to a legacy Capability
+--     string (assets was reachable pre-migration only as one of the nine
+--     `books` pages, never its own capability), so a role_areas row for any
+--     of them contributes nothing to derived_capabilities below, same as
+--     omitting it here. (`assets` does have `view:assets`/`edit:assets`
+--     capability strings in `user_has_capability` — it's excluded from this
+--     fixture only because those strings aren't in the ROLE_CAPABILITIES
+--     fixed-point being reconstructed here, not because they don't exist.)
 --   test_expected_capabilities — the untouched ROLE_CAPABILITIES arrays,
 --     transcribed capability-by-capability from definitions.ts, keyed by
 --     the role's display name (the seed's roles.name convention, matching
@@ -35,7 +45,11 @@ BEGIN;
 SELECT plan(25);
 
 -- ----------------------------------------------------------------------------
--- Fixture 1: area_key/level -> legacy capability bundle (81 rows, 15 areas).
+-- Fixture 1: area_key/level -> legacy capability bundle (84 rows, 27 areas).
+-- Re-derived from 20260805120000_page_areas.sql's user_has_capability VALUES
+-- map (Step 4) plus its two hardcoded special cases (view:ai_assistant off
+-- reports:manage, view:financial_intelligence off its own area at either
+-- level) — NOT from the pre-migration `books` bundle this replaces.
 -- ----------------------------------------------------------------------------
 CREATE TEMP TABLE test_area_capability_at_level (
   area_key TEXT NOT NULL,
@@ -44,9 +58,9 @@ CREATE TEMP TABLE test_area_capability_at_level (
 ) ON COMMIT DROP;
 
 INSERT INTO test_area_capability_at_level (area_key, level, capability) VALUES
-  ('reports', 'view', 'view:dashboard'),
+  ('dashboard', 'view', 'view:dashboard'),
+  ('dashboard', 'manage', 'view:dashboard'),
   ('reports', 'view', 'view:reports'),
-  ('reports', 'manage', 'view:dashboard'),
   ('reports', 'manage', 'view:reports'),
   ('reports', 'manage', 'view:ai_assistant'),
   ('sales', 'view', 'view:pos_sales'),
@@ -54,53 +68,56 @@ INSERT INTO test_area_capability_at_level (area_key, level, capability) VALUES
   ('inventory', 'view', 'view:inventory'),
   ('inventory', 'manage', 'view:inventory'),
   ('inventory', 'manage', 'edit:inventory'),
-  ('inventory', 'manage', 'view:inventory_audit'),
-  ('inventory', 'manage', 'edit:inventory_audit'),
   ('inventory', 'manage', 'view:receipt_import'),
   ('inventory', 'manage', 'edit:receipt_import'),
   ('inventory', 'manage', 'view:inventory_transactions'),
   ('inventory', 'manage', 'edit:inventory_transactions'),
+  ('inventory_audit', 'view', 'view:inventory_audit'),
+  ('inventory_audit', 'manage', 'view:inventory_audit'),
+  ('inventory_audit', 'manage', 'edit:inventory_audit'),
   ('purchasing', 'view', 'view:purchase_orders'),
   ('purchasing', 'manage', 'view:purchase_orders'),
   ('purchasing', 'manage', 'edit:purchase_orders'),
   ('recipes', 'view', 'view:recipes'),
-  ('recipes', 'view', 'view:prep_recipes'),
   ('recipes', 'view', 'view:batches'),
   ('recipes', 'manage', 'view:recipes'),
-  ('recipes', 'manage', 'view:prep_recipes'),
   ('recipes', 'manage', 'view:batches'),
   ('recipes', 'manage', 'edit:recipes'),
-  ('recipes', 'manage', 'edit:prep_recipes'),
   ('recipes', 'manage', 'edit:batches'),
+  ('prep_recipes', 'view', 'view:prep_recipes'),
+  ('prep_recipes', 'manage', 'view:prep_recipes'),
+  ('prep_recipes', 'manage', 'edit:prep_recipes'),
   ('scheduling', 'view', 'view:scheduling'),
   ('scheduling', 'manage', 'view:scheduling'),
   ('scheduling', 'manage', 'edit:scheduling'),
-  ('scheduling', 'manage', 'view:tips'),
-  ('scheduling', 'manage', 'edit:tips'),
-  ('scheduling', 'manage', 'view:time_punches'),
-  ('scheduling', 'manage', 'edit:time_punches'),
-  ('books', 'view', 'view:transactions'),
-  ('books', 'view', 'view:banking'),
-  ('books', 'view', 'view:expenses'),
-  ('books', 'view', 'view:financial_statements'),
-  ('books', 'view', 'view:invoices'),
-  ('books', 'view', 'view:customers'),
-  ('books', 'view', 'view:financial_intelligence'),
-  ('books', 'view', 'view:pending_outflows'),
-  ('books', 'manage', 'view:transactions'),
-  ('books', 'manage', 'view:banking'),
-  ('books', 'manage', 'view:expenses'),
-  ('books', 'manage', 'view:financial_statements'),
-  ('books', 'manage', 'view:invoices'),
-  ('books', 'manage', 'view:customers'),
-  ('books', 'manage', 'view:financial_intelligence'),
-  ('books', 'manage', 'view:pending_outflows'),
-  ('books', 'manage', 'edit:transactions'),
-  ('books', 'manage', 'edit:banking'),
-  ('books', 'manage', 'edit:expenses'),
-  ('books', 'manage', 'edit:invoices'),
-  ('books', 'manage', 'edit:customers'),
-  ('books', 'manage', 'edit:pending_outflows'),
+  ('tips', 'view', 'view:tips'),
+  ('tips', 'manage', 'view:tips'),
+  ('tips', 'manage', 'edit:tips'),
+  ('time_punches', 'view', 'view:time_punches'),
+  ('time_punches', 'manage', 'view:time_punches'),
+  ('time_punches', 'manage', 'edit:time_punches'),
+  ('transactions', 'view', 'view:transactions'),
+  ('transactions', 'manage', 'view:transactions'),
+  ('transactions', 'manage', 'edit:transactions'),
+  ('banking', 'view', 'view:banking'),
+  ('banking', 'manage', 'view:banking'),
+  ('banking', 'manage', 'edit:banking'),
+  ('expenses', 'view', 'view:expenses'),
+  ('expenses', 'manage', 'view:expenses'),
+  ('expenses', 'manage', 'edit:expenses'),
+  ('financial_statements', 'view', 'view:financial_statements'),
+  ('financial_statements', 'manage', 'view:financial_statements'),
+  ('invoices', 'view', 'view:invoices'),
+  ('invoices', 'manage', 'view:invoices'),
+  ('invoices', 'manage', 'edit:invoices'),
+  ('customers', 'view', 'view:customers'),
+  ('customers', 'manage', 'view:customers'),
+  ('customers', 'manage', 'edit:customers'),
+  ('print_checks', 'view', 'view:pending_outflows'),
+  ('print_checks', 'manage', 'view:pending_outflows'),
+  ('print_checks', 'manage', 'edit:pending_outflows'),
+  ('financial_intelligence', 'view', 'view:financial_intelligence'),
+  ('financial_intelligence', 'manage', 'view:financial_intelligence'),
   ('chart_of_accounts', 'view', 'view:chart_of_accounts'),
   ('chart_of_accounts', 'manage', 'view:chart_of_accounts'),
   ('chart_of_accounts', 'manage', 'edit:chart_of_accounts'),

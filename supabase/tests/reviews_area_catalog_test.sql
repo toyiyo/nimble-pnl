@@ -14,16 +14,20 @@ SELECT is(
   'area_catalog holds exactly one reviews row'
 );
 
+-- Band and position now mirror the sidebar exactly (20260805120000_page_areas):
+-- /reviews is the fifth item of the Main group in navigationGroups, so it is
+-- band 'Main' at sort_order 5 — not the invented 'Operations' band the bundle
+-- model put it in.
 SELECT is(
   (SELECT band FROM public.area_catalog WHERE area_key = 'reviews'),
-  'Operations',
-  'reviews sits in the Operations band'
+  'Main',
+  'reviews sits in the Main band, mirroring the sidebar'
 );
 
 SELECT is(
   (SELECT sort_order FROM public.area_catalog WHERE area_key = 'reviews'),
-  6,
-  'reviews sorts sixth, immediately after scheduling'
+  5,
+  'reviews sorts fifth in Main, its sidebar position'
 );
 
 SELECT is(
@@ -32,16 +36,21 @@ SELECT is(
   'collaborators may hold reviews at view only'
 );
 
--- Not count(DISTINCT sort_order) = count(*): four pairs (inventory/purchasing,
--- books/chart_of_accounts, team/collaborators, settings/integrations) share a
--- sort_order by design so they render as one row in the editor (see
--- area_catalog.ui_group's own comment in 20260730100000). The real invariant
--- the renumber must preserve is "each ui_group renders at exactly one
--- position" — i.e. sort_order and ui_group partition area_catalog identically.
+-- Under the bundle model, paired areas deliberately shared a sort_order so
+-- they rendered as one editor row, and the invariant was "sort_order and
+-- ui_group partition area_catalog identically". The per-page re-cut gives
+-- every page its own row, so sort_order is now unique WITHIN a group and
+-- inserting reviews must not have collided with a Main sibling.
 SELECT is(
-  (SELECT count(DISTINCT sort_order)::int FROM public.area_catalog),
-  (SELECT count(DISTINCT ui_group)::int FROM public.area_catalog),
-  'the renumber left every ui_group at exactly one distinct sort_order'
+  (SELECT count(*)::int FROM (
+     SELECT sort_order
+     FROM public.area_catalog
+     WHERE ui_group = 'Main'
+     GROUP BY sort_order
+     HAVING count(*) > 1
+   ) AS collisions),
+  0,
+  'no two Main pages share a sort_order after the reviews insert'
 );
 
 -- ---------------------------------------------------------------------------

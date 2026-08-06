@@ -8,7 +8,14 @@
 -- check_audit_log from the legacy `role IN ('owner','manager')` /
 -- role-literal guard to `user_has_capability(..., 'edit:pending_outflows')`
 -- (write) / `user_has_capability(..., 'view:pending_outflows')` (select),
--- which resolve to the `books` area at manage/view level respectively.
+-- which resolve to the `print_checks` area at manage/view level respectively.
+--
+-- Those policies ALSO require view:banking / edit:banking, which resolve to
+-- the `banking` area. Before 20260805120000_page_areas.sql both pairs lived on
+-- the single `books` bundle, so one grant covered them; the per-page re-cut
+-- split that bundle, and check printing now spans TWO areas. A role needs both
+-- Banks and Print Checks to do what `books` alone used to do — which is why
+-- every escalation stage below grants the pair, not one key.
 --
 -- Modelled on collaborator_custom_rls_test.sql: denied-baseline-first
 -- throughout, custom roles built from `roles` + `role_areas`, impersonation
@@ -19,8 +26,9 @@
 -- Five principals:
 --   - one custom-role user (role_id set), whose role_areas grants are
 --     escalated in three stages across this file: {inventory: manage} only
---     (principal A) -> + {books: view} (principal B) -> {books: manage}
---     (principal C). Reusing one user across stages mirrors the
+--     (principal A) -> + {banking: view, print_checks: view} (principal B)
+--     -> {banking: manage, print_checks: manage} (principal C).
+--     Reusing one user across stages mirrors the
 --     "escalate in place" pattern from collaborator_custom_rls_test.sql and
 --     keeps the RLS coverage (5.3) and RPC coverage (5.1/5.2) pinned to the
 --     exact same grant transitions.
@@ -53,12 +61,13 @@ VALUES ('25000000-0000-0000-0000-000000000001', 'Task 1 Check Capability Test Re
 ON CONFLICT (id) DO NOTHING;
 
 -- Custom role, starts with zero area grants (escalated below through
--- inventory-manage-only -> +books-view -> books-manage).
+-- inventory-manage-only -> +check-printing-view -> check-printing-manage,
+-- where "check printing" means the {banking, print_checks} pair).
 INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin)
 VALUES (
   '25000000-0000-0000-0000-0000000000a1',
   '25000000-0000-0000-0000-000000000001',
-  'Task 1 Custom Role (books escalation)',
+  'Task 1 Custom Role (check-printing escalation)',
   'pgTAP fixture -- principals A/B/C, escalated in place',
   'collaborator',
   false
@@ -83,8 +92,8 @@ VALUES
   ('25000000-0000-0000-0000-000000000105', '25000000-0000-0000-0000-000000000001', 'collaborator_accountant', NULL)
 ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id;
 
--- Start the custom role with {inventory: manage} only -- no books area at
--- all. Principal A's baseline.
+-- Start the custom role with {inventory: manage} only -- neither banking nor
+-- print_checks granted at all. Principal A's baseline.
 INSERT INTO public.role_areas (role_id, area_key, level)
 VALUES ('25000000-0000-0000-0000-0000000000a1', 'inventory', 'manage')
 ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
@@ -194,7 +203,7 @@ $$;
 -- 1. claim_check_numbers_for_account authorization (denied-baseline-first).
 -- ============================================================================
 
--- A. custom role, {inventory: manage} only (no books) -> denied.
+-- A. custom role, {inventory: manage} only (neither area) -> denied.
 SELECT is(
   (SELECT err FROM pg_temp.as_user_claim(
     '25000000-0000-0000-0000-000000000101'::uuid,
@@ -203,27 +212,31 @@ SELECT is(
   'principal A (custom role, inventory manage only): claim_check_numbers_for_account denied'
 );
 
--- Grant {books: view} to the custom role. Principal B's baseline.
+-- Grant view on both check-printing areas. Principal B's baseline.
 INSERT INTO public.role_areas (role_id, area_key, level)
-VALUES ('25000000-0000-0000-0000-0000000000a1', 'books', 'view')
+VALUES
+  ('25000000-0000-0000-0000-0000000000a1', 'banking', 'view'),
+  ('25000000-0000-0000-0000-0000000000a1', 'print_checks', 'view')
 ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
 
--- B. custom role, {books: view} -> denied. Proves the bar is manage, not
--- "has any books grant".
+-- B. custom role, view on both -> denied. Proves the bar is manage, not
+-- "has any grant on the check-printing areas".
 SELECT is(
   (SELECT err FROM pg_temp.as_user_claim(
     '25000000-0000-0000-0000-000000000101'::uuid,
     '25000000-0000-0000-0000-000000000b01'::uuid, 1)),
   'Check bank account not found or unauthorized',
-  'principal B (custom role, books view): claim_check_numbers_for_account denied'
+  'principal B (custom role, banking+print_checks view): claim_check_numbers_for_account denied'
 );
 
--- Upgrade to {books: manage}. Principal C's baseline.
+-- Upgrade both to manage. Principal C's baseline.
 INSERT INTO public.role_areas (role_id, area_key, level)
-VALUES ('25000000-0000-0000-0000-0000000000a1', 'books', 'manage')
+VALUES
+  ('25000000-0000-0000-0000-0000000000a1', 'banking', 'manage'),
+  ('25000000-0000-0000-0000-0000000000a1', 'print_checks', 'manage')
 ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
 
--- C. custom role, {books: manage} -> succeeds, returns the correct start
+-- C. custom role, manage on both -> succeeds, returns the correct start
 -- number, and advances next_check_number by the claimed count. This is one
 -- of the two genuinely RED pairs for Task 1 (the other is F). Claimed once
 -- (count=5) and materialized so all three assertions read the same call.
@@ -235,7 +248,7 @@ SELECT * FROM pg_temp.as_user_claim(
 SELECT is(
   (SELECT ok FROM task1_claim_c),
   true,
-  'principal C (custom role, books manage): claim_check_numbers_for_account succeeds'
+  'principal C (custom role, banking+print_checks manage): claim_check_numbers_for_account succeeds'
 );
 SELECT is(
   (SELECT start_number FROM task1_claim_c),
@@ -302,10 +315,10 @@ SELECT is(
 --    check_bank_accounts, check_settings, check_audit_log.
 --    Reuses the same custom-role user at its three grant stages: at
 --    {inventory: manage} only (principal A) it cannot SELECT any of the
---    three tables at all; at {books: view} (principal B) it can SELECT all
---    three but every write is denied (the tier-ordering invariant: SELECT
---    tier <= route tier, design 5.5); at {books: manage} (principal C)
---    writes succeed.
+--    three tables at all; at view on both check-printing areas (principal B)
+--    it can SELECT all three but every write is denied (the tier-ordering
+--    invariant: SELECT tier <= route tier, design 5.5); at manage on both
+--    (principal C) writes succeed.
 -- ============================================================================
 
 -- check_settings.restaurant_id is UNIQUE (not id) -- ON CONFLICT (id) DO
@@ -320,15 +333,17 @@ INSERT INTO public.check_audit_log (id, restaurant_id, check_number, payee_name,
 VALUES ('25000000-0000-0000-0000-000000000d01', '25000000-0000-0000-0000-000000000001', 9001, 'Task 1 Fixture Payee', 100.00, CURRENT_DATE, 'printed')
 ON CONFLICT (id) DO NOTHING;
 
--- Section 1 above escalated the shared custom role all the way to
--- {books: manage} (principal C). Re-run the same three-stage escalation
--- here so the RLS assertions below observe the same grant transitions their
--- labels (A/B/C) describe, rather than inheriting section 1's end state.
+-- Section 1 above escalated the shared custom role all the way to manage on
+-- both check-printing areas (principal C). Re-run the same three-stage
+-- escalation here so the RLS assertions below observe the same grant
+-- transitions their labels (A/B/C) describe, rather than inheriting
+-- section 1's end state.
 DELETE FROM public.role_areas
-  WHERE role_id = '25000000-0000-0000-0000-0000000000a1' AND area_key = 'books';
+  WHERE role_id = '25000000-0000-0000-0000-0000000000a1'
+    AND area_key IN ('banking', 'print_checks');
 
--- A. custom role, {inventory: manage} only (no books) -> cannot SELECT any
--- of the three tables.
+-- A. custom role, {inventory: manage} only (neither area) -> cannot SELECT
+-- any of the three tables.
 SELECT is(
   pg_temp.as_user_count('25000000-0000-0000-0000-000000000101'::uuid,
     'SELECT count(*) FROM public.check_bank_accounts WHERE id = ''25000000-0000-0000-0000-000000000b01'''),
@@ -348,30 +363,32 @@ SELECT is(
   'principal A: cannot SELECT check_audit_log'
 );
 
--- Grant {books: view} to the custom role. Principal B's baseline.
+-- Grant view on both check-printing areas. Principal B's baseline.
 INSERT INTO public.role_areas (role_id, area_key, level)
-VALUES ('25000000-0000-0000-0000-0000000000a1', 'books', 'view')
+VALUES
+  ('25000000-0000-0000-0000-0000000000a1', 'banking', 'view'),
+  ('25000000-0000-0000-0000-0000000000a1', 'print_checks', 'view')
 ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
 
--- B. custom role, {books: view} -> can SELECT all three, but every write is
--- denied (books view is not books manage).
+-- B. custom role, view on both -> can SELECT all three, but every write is
+-- denied (view is not manage).
 SELECT is(
   pg_temp.as_user_count('25000000-0000-0000-0000-000000000101'::uuid,
     'SELECT count(*) FROM public.check_bank_accounts WHERE id = ''25000000-0000-0000-0000-000000000b01'''),
   1::bigint,
-  'principal B (books view): can SELECT check_bank_accounts'
+  'principal B (banking+print_checks view): can SELECT check_bank_accounts'
 );
 SELECT is(
   pg_temp.as_user_count('25000000-0000-0000-0000-000000000101'::uuid,
     'SELECT count(*) FROM public.check_settings WHERE id = ''25000000-0000-0000-0000-000000000c01'''),
   1::bigint,
-  'principal B (books view): can SELECT check_settings'
+  'principal B (banking+print_checks view): can SELECT check_settings'
 );
 SELECT is(
   pg_temp.as_user_count('25000000-0000-0000-0000-000000000101'::uuid,
     'SELECT count(*) FROM public.check_audit_log WHERE id = ''25000000-0000-0000-0000-000000000d01'''),
   1::bigint,
-  'principal B (books view): can SELECT check_audit_log'
+  'principal B (banking+print_checks view): can SELECT check_audit_log'
 );
 
 SELECT is(
@@ -379,7 +396,7 @@ SELECT is(
     $$INSERT INTO public.check_bank_accounts (restaurant_id, account_name)
       VALUES ('25000000-0000-0000-0000-000000000001', 'Task 1 Denied Write B')$$),
   'denied',
-  'principal B (books view): cannot INSERT check_bank_accounts'
+  'principal B (banking+print_checks view): cannot INSERT check_bank_accounts'
 );
 -- check_settings has UNIQUE(restaurant_id) -- a second row for this
 -- restaurant would collide with the fixture row regardless of RLS, so this
@@ -390,28 +407,30 @@ SELECT is(
     $$UPDATE public.check_settings SET business_name = 'Task 1 Denied Write B'
       WHERE id = '25000000-0000-0000-0000-000000000c01'$$),
   0::bigint,
-  'principal B (books view): cannot UPDATE check_settings'
+  'principal B (banking+print_checks view): cannot UPDATE check_settings'
 );
 SELECT is(
   pg_temp.as_user_try('25000000-0000-0000-0000-000000000101'::uuid,
     $$INSERT INTO public.check_audit_log (restaurant_id, check_number, payee_name, amount, issue_date, action)
       VALUES ('25000000-0000-0000-0000-000000000001', 9002, 'Task 1 Denied Write B', 50.00, CURRENT_DATE, 'printed')$$),
   'denied',
-  'principal B (books view): cannot INSERT check_audit_log'
+  'principal B (banking+print_checks view): cannot INSERT check_audit_log'
 );
 
--- Upgrade to {books: manage}. Principal C's baseline.
+-- Upgrade both to manage. Principal C's baseline.
 INSERT INTO public.role_areas (role_id, area_key, level)
-VALUES ('25000000-0000-0000-0000-0000000000a1', 'books', 'manage')
+VALUES
+  ('25000000-0000-0000-0000-0000000000a1', 'banking', 'manage'),
+  ('25000000-0000-0000-0000-0000000000a1', 'print_checks', 'manage')
 ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
 
--- C. custom role, {books: manage} -> writes succeed on all three.
+-- C. custom role, manage on both -> writes succeed on all three.
 SELECT is(
   pg_temp.as_user_try('25000000-0000-0000-0000-000000000101'::uuid,
     $$INSERT INTO public.check_bank_accounts (restaurant_id, account_name)
       VALUES ('25000000-0000-0000-0000-000000000001', 'Task 1 Allowed Write C')$$),
   'allowed',
-  'principal C (books manage): can INSERT check_bank_accounts'
+  'principal C (banking+print_checks manage): can INSERT check_bank_accounts'
 );
 -- check_settings has UNIQUE(restaurant_id); use UPDATE + row count rather
 -- than a second INSERT (see as_user_update_count's comment).
@@ -420,14 +439,14 @@ SELECT is(
     $$UPDATE public.check_settings SET business_name = 'Task 1 Updated Business'
       WHERE id = '25000000-0000-0000-0000-000000000c01'$$),
   1::bigint,
-  'principal C (books manage): can UPDATE check_settings'
+  'principal C (banking+print_checks manage): can UPDATE check_settings'
 );
 SELECT is(
   pg_temp.as_user_try('25000000-0000-0000-0000-000000000101'::uuid,
     $$INSERT INTO public.check_audit_log (restaurant_id, check_number, payee_name, amount, issue_date, action)
       VALUES ('25000000-0000-0000-0000-000000000001', 9003, 'Task 1 Allowed Write C', 75.00, CURRENT_DATE, 'printed')$$),
   'allowed',
-  'principal C (books manage): can INSERT check_audit_log'
+  'principal C (banking+print_checks manage): can INSERT check_audit_log'
 );
 
 -- ============================================================================

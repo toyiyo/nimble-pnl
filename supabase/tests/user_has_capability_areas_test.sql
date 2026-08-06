@@ -71,7 +71,7 @@
 
 BEGIN;
 
-SELECT plan(19);
+SELECT plan(24);
 
 -- ----------------------------------------------------------------------------
 -- Fixture: legacy CASE, transcribed verbatim and parameterized on p_role.
@@ -505,7 +505,88 @@ SELECT is(
 SELECT set_config('request.jwt.claims', '{}', true);
 
 -- ============================================================================
--- 5. Performance gate.
+-- 5. Re-pointed special-case coverage (Task 2 Step 8).
+--
+--    view:financial_intelligence and view:ai_assistant are hardcoded IF
+--    branches above the generic VALUES map, each checking one specific
+--    area_key at one specific level. Section 1's full-matrix round trip
+--    exercises these only incidentally, through whatever areas the ten
+--    builtins happen to hold; these five assertions target the branches
+--    directly with custom roles built to isolate exactly what each one
+--    checks. Reuses the shared pro/active restaurant from section 1's
+--    header comment, so has_subscription_feature does not trivially deny.
+-- ============================================================================
+INSERT INTO auth.users (id, email) VALUES
+  ('5a000000-0000-0000-0000-000000000501', 'task5-fi-granted@example.com'),
+  ('5a000000-0000-0000-0000-000000000502', 'task5-fi-wrong-area@example.com'),
+  ('5a000000-0000-0000-0000-000000000503', 'task5-ai-manage@example.com'),
+  ('5a000000-0000-0000-0000-000000000504', 'task5-ai-view-only@example.com'),
+  ('5a000000-0000-0000-0000-000000000505', 'task5-tips-granted@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin) VALUES
+  ('5a000000-0000-0000-0000-0000000000c2', '5a000000-0000-0000-0000-000000000099', 'Task 5 FI Granted Role', 'pgTAP fixture — financial_intelligence:view', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c3', '5a000000-0000-0000-0000-000000000099', 'Task 5 FI Wrong-Area Role', 'pgTAP fixture — transactions:view only', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c4', '5a000000-0000-0000-0000-000000000099', 'Task 5 AI Manage Role', 'pgTAP fixture — reports:manage', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c5', '5a000000-0000-0000-0000-000000000099', 'Task 5 AI View-Only Role', 'pgTAP fixture — reports:view only', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c6', '5a000000-0000-0000-0000-000000000099', 'Task 5 Tips Granted Role', 'pgTAP fixture — tips:view', 'platform', false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.role_areas (role_id, area_key, level) VALUES
+  ('5a000000-0000-0000-0000-0000000000c2', 'financial_intelligence', 'view'),
+  ('5a000000-0000-0000-0000-0000000000c3', 'transactions',           'view'),
+  ('5a000000-0000-0000-0000-0000000000c4', 'reports',                'manage'),
+  ('5a000000-0000-0000-0000-0000000000c5', 'reports',                'view'),
+  ('5a000000-0000-0000-0000-0000000000c6', 'tips',                   'view')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALUES
+  ('5a000000-0000-0000-0000-000000000501', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c2'),
+  ('5a000000-0000-0000-0000-000000000502', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c3'),
+  ('5a000000-0000-0000-0000-000000000503', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c4'),
+  ('5a000000-0000-0000-0000-000000000504', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c5'),
+  ('5a000000-0000-0000-0000-000000000505', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c6')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id;
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000501","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:financial_intelligence'),
+  TRUE,
+  're-pointed special case: view:financial_intelligence granted to a role holding financial_intelligence:view'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000502","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:financial_intelligence'),
+  FALSE,
+  're-pointed special case: view:financial_intelligence denied to a role holding only transactions:view — the branch checks the financial_intelligence area specifically, not the retired books bundle'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000503","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:ai_assistant'),
+  TRUE,
+  'view:ai_assistant still granted to a role holding reports:manage'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000504","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:ai_assistant'),
+  FALSE,
+  'view:ai_assistant still denied to a role holding only reports:view — the branch requires manage specifically'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000505","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:tips'),
+  TRUE,
+  'view:tips granted to a role holding tips:view — the tier that moved down to a plain area+level lookup in the Step 4 rewrite'
+);
+
+SELECT set_config('request.jwt.claims', '{}', true);
+
+-- ============================================================================
+-- 6. Performance gate.
 -- ============================================================================
 
 -- 50 products rows on the shared restaurant so a per-row RLS qual evaluation

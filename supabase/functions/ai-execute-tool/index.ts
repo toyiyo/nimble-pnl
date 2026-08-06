@@ -3674,6 +3674,13 @@ serve(async (req) => {
     // tables (20260805130000_self_scope_employee_reads.sql), resolved via the
     // user_has_capability RPC rather than a hard-coded role — canUseTool
     // always denies these two, so they get their own branch here.
+    //
+    // Sweep of the other forwarded-JWT (anon key + Authorization header)
+    // consumers of the six self-scoped tables in supabase/functions/:
+    // generate-schedule and notify-schedule-published already require
+    // owner/manager via their own role checks; send-shift-notification reads
+    // `shifts` through a SUPABASE_SERVICE_ROLE_KEY client (RLS bypassed
+    // entirely, not forwarded-JWT), so it's unaffected by this change.
     if ((CAPABILITY_GATED_TOOLS as readonly string[]).includes(tool_name)) {
       const allowed = await canUseCapabilityGatedTool(tool_name, restaurant_id, supabase);
       if (!allowed) {

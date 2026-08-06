@@ -159,6 +159,44 @@ describe('buildHoursChangeLedger', () => {
   });
 });
 
+describe('buildHoursChangeLedger summary — pickable drift', () => {
+  it('names the pickable shifts when nothing would move', () => {
+    const ledger = buildHoursChangeLedger({
+      ...BASE, movingCount: 0, driftedCount: 3, selectedDriftCount: 0, publishedCount: 0,
+    });
+    expect(ledger.summary).toContain('0 shifts move.');
+    expect(ledger.summary).toContain('3 hand-edited shifts you can pick.');
+  });
+
+  it('uses the singular for one pickable shift', () => {
+    const ledger = buildHoursChangeLedger({
+      ...BASE, movingCount: 0, driftedCount: 1, selectedDriftCount: 0,
+    });
+    expect(ledger.summary).toContain('1 hand-edited shift you can pick.');
+  });
+
+  it('drops the clause once something is moving', () => {
+    const ledger = buildHoursChangeLedger({
+      ...BASE, movingCount: 0, driftedCount: 3, selectedDriftCount: 1,
+    });
+    expect(ledger.summary).not.toContain('you can pick');
+  });
+
+  it('drops the clause when shifts already move on their own', () => {
+    const ledger = buildHoursChangeLedger({
+      ...BASE, movingCount: 2, driftedCount: 3, selectedDriftCount: 0,
+    });
+    expect(ledger.summary).not.toContain('you can pick');
+  });
+
+  it('leaves the past/locked-only summary alone', () => {
+    const ledger = buildHoursChangeLedger({
+      ...BASE, movingCount: 0, driftedCount: 0, pastCount: 2, lockedCount: 1,
+    });
+    expect(ledger.summary).not.toContain('you can pick');
+  });
+});
+
 describe('describeCascadeShortfall', () => {
   it('reports the gap when fewer shifts were updated than promised', () => {
     expect(describeCascadeShortfall(3, 2)).toBe(

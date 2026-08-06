@@ -7,6 +7,9 @@ import { ToastAction } from '@/components/ui/toast';
 
 import type { ShiftTemplate } from '@/types/scheduling';
 
+import { pluralize } from '@/lib/scheduling/deletionCopy';
+import { describeCascadeShortfall } from '@/lib/scheduling/hoursChangeCopy';
+
 // ---------------------------------------------------------------------------
 // Pure helpers (exported for testing)
 // ---------------------------------------------------------------------------
@@ -55,6 +58,32 @@ interface UseShiftTemplatesOptions {
 }
 
 type TemplateInput = Omit<ShiftTemplate, 'id' | 'created_at' | 'updated_at'>;
+
+/**
+ * Every editable column, all required — deliberately NOT `Partial<ShiftTemplate>`.
+ * `update_shift_template_with_cascade` takes the whole row positionally and has
+ * no parameter defaults, so a partial payload does not update a subset: the
+ * omitted keys drop out of the JSON body and PostgREST fails to resolve the
+ * overload at all. A `Partial` signature would advertise a subset update that
+ * cannot work.
+ */
+type UpdateTemplateInput = {
+  id: string;
+  name: string;
+  position: string;
+  area?: string | null;
+  days: number[];
+  break_duration: number;
+  capacity: number;
+  start_time: string;
+  end_time: string;
+  cascade?: boolean;
+  driftedShiftIds?: string[];
+  notify?: boolean;
+  /** Ledger's totalAffected at the moment Save was clicked — used only to
+   * detect a save-time shortfall, never sent to the RPC. */
+  promisedCount?: number;
+};
 
 interface HideTemplateInput {
   id: string;
@@ -108,6 +137,23 @@ export function useShiftTemplates(
     queryClient.invalidateQueries({ queryKey: ['shift_templates', restaurantId] });
   };
 
+  // Shared by every mutation whose cascade RPC touches shift rows alongside
+  // the template row (currently undo and update-with-cascade), so a
+  // successful cascade always refreshes templates, shifts, and the
+  // linked-shifts ledger together.
+  const invalidateCascadeQueries = () => {
+    invalidateAllStatuses();
+    queryClient.invalidateQueries({ queryKey: ['shifts', restaurantId] });
+    queryClient.invalidateQueries({ queryKey: ['template-linked-shifts', restaurantId] });
+  };
+
+  // Shared by every mutation below that has no special-cased error copy
+  // (update-with-cascade is the one exception, since it maps a unique-index
+  // violation to a friendlier message).
+  const showErrorToast = (error: Error) => {
+    toast({ title: 'Error', description: error.message, variant: 'destructive' });
+  };
+
   const createMutation = useMutation({
     mutationFn: async (input: TemplateInput) => {
       const { data, error } = await (supabase
@@ -122,30 +168,167 @@ export function useShiftTemplates(
       invalidateAllStatuses();
       toast({ title: 'Template created', description: 'Shift template has been added.' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    onError: showErrorToast,
+  });
+
+  const undoMutation = useMutation({
+    mutationFn: async (batchId: string) => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+      const { data, error } = await supabase.rpc('undo_template_hours_cascade', {
+        p_batch_id: batchId,
+        p_restaurant_id: restaurantId,
+      });
+      if (error) throw error;
+      return data as {
+        restored_count: number;
+        changed_since_count: number;
+        deleted_count: number;
+        protected_count: number;
+      };
     },
+    onSuccess: (result) => {
+      invalidateCascadeQueries();
+
+      const shiftsWord = pluralize(result.restored_count, 'shift', 'shifts');
+      // The skip reasons are not interchangeable: "changed since" tells a
+      // manager someone re-edited the shift and their edit was respected,
+      // "deleted" tells them there is no shift left to restore, and "now
+      // locked or started" tells them Undo declined on purpose rather than
+      // failing. Summing any of them under one label misreports the others.
+      const skippedReasons = [
+        result.changed_since_count > 0 ? `${result.changed_since_count} changed since` : null,
+        result.deleted_count > 0 ? `${result.deleted_count} deleted` : null,
+        result.protected_count > 0 ? `${result.protected_count} now locked or started` : null,
+      ].filter(Boolean);
+      toast({
+        title: 'Cascade undone',
+        description: skippedReasons.length > 0
+          ? `Restored ${result.restored_count} ${shiftsWord} · skipped ${skippedReasons.join(', ')}`
+          : `Restored ${result.restored_count} ${shiftsWord}.`,
+      });
+    },
+    onError: showErrorToast,
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<ShiftTemplate> & { id: string }) => {
-      let query = (supabase
-        .from('shift_templates') as any)
-        .update(updates)
-        .eq('id', id);
-      if (restaurantId) {
-        query = query.eq('restaurant_id', restaurantId);
-      }
-      const { data, error } = await query.select().single();
+    mutationFn: async ({
+      id,
+      cascade = false,
+      driftedShiftIds = [],
+      notify = false,
+      promisedCount = 0,
+      ...updates
+    }: UpdateTemplateInput) => {
+      if (!restaurantId) throw new Error('No restaurant selected');
+
+      // One RPC, not a client-side loop: the template row and the shift rows
+      // land in the same transaction, so there is no window where one has
+      // applied and the other has not — which is the whole complaint being
+      // fixed here, under a different trigger.
+      const { data, error } = await supabase.rpc('update_shift_template_with_cascade', {
+        p_template_id: id,
+        p_restaurant_id: restaurantId,
+        p_name: updates.name,
+        p_position: updates.position,
+        p_area: updates.area ?? null,
+        p_days: updates.days,
+        p_break_duration: updates.break_duration,
+        p_capacity: updates.capacity,
+        p_start_time: updates.start_time,
+        p_end_time: updates.end_time,
+        p_cascade: cascade,
+        p_drifted_shift_ids: driftedShiftIds,
+      });
       if (error) throw error;
-      return data;
+
+      const result = data as {
+        batch_id: string | null;
+        updated_count: number;
+        published_shifts: Array<{
+          id: string;
+          previous_start_time: string;
+          previous_end_time: string;
+          previous_position: string;
+        }>;
+        skipped_count: number;
+      };
+      return { ...result, notify, promisedCount };
     },
-    onSuccess: () => {
-      invalidateAllStatuses();
-      toast({ title: 'Template updated' });
+    onSuccess: (result) => {
+      invalidateCascadeQueries();
+
+      // Fire-and-forget, one invoke per moved published shift. `invoke`
+      // RESOLVES with { data, error } on HTTP failure rather than rejecting,
+      // so both branches are handled and neither surfaces: the cascade already
+      // succeeded, and a failed email must not read as a failed save.
+      if (result.notify) {
+        for (const s of result.published_shifts ?? []) {
+          supabase.functions
+            .invoke('send-shift-notification', {
+              body: {
+                shiftId: s.id,
+                action: 'modified',
+                previousShift: {
+                  start_time: s.previous_start_time,
+                  end_time: s.previous_end_time,
+                  position: s.previous_position,
+                },
+              },
+            })
+            // Dev-only. A failed staff notification must not break the save
+            // that already committed, but it must not ship console noise to
+            // production either.
+            .then(({ error }) => {
+              if (error && import.meta.env.DEV) {
+                console.warn('template-cascade notify failed', { shiftId: s.id, error });
+              }
+            })
+            .catch((error) => {
+              if (import.meta.env.DEV) {
+                console.warn('template-cascade notify failed', { shiftId: s.id, error });
+              }
+            });
+        }
+      }
+
+      if (result.updated_count === 0 || !result.batch_id) {
+        // A cascading save that moved nothing still owes an explanation:
+        // clicking "Save & update 3 shifts" and getting a bare "Template
+        // updated" reads as if the shifts moved. No Undo action here — with
+        // no batch id there is nothing to undo. `promisedCount` is 0 for a
+        // template-only save, so the sentence stays absent for it.
+        toast({
+          title: 'Template updated',
+          description: describeCascadeShortfall(result.promisedCount, result.updated_count),
+        });
+        return;
+      }
+
+      const batchId = result.batch_id;
+      const baseDescription = `${result.updated_count} ${pluralize(result.updated_count, 'shift', 'shifts')} moved to the new hours.`;
+      const shortfall = describeCascadeShortfall(result.promisedCount, result.updated_count);
+      toast({
+        title: 'Template updated',
+        description: shortfall ? `${baseDescription} ${shortfall}` : baseDescription,
+        action: (
+          <ToastAction
+            altText="Undo the shift hour changes"
+            onClick={() => undoMutation.mutate(batchId)}
+          >
+            Undo
+          </ToastAction>
+        ),
+        duration: 8000,
+      });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
+    // Widened (not `as any`) so the Postgres error code Supabase attaches to
+    // the thrown error is visible here — `tsconfig.app.json` has
+    // `strict: false`, so this narrow structural type is enough.
+    onError: (error: Error & { code?: string }) => {
+      const description = error.code === '23505'
+        ? 'Another active template already uses these hours for this position. Pick a different time or position, or update that template instead.'
+        : error.message;
+      toast({ title: 'Error', description, variant: 'destructive' });
     },
   });
 
@@ -165,9 +348,7 @@ export function useShiftTemplates(
       invalidateAllStatuses();
       toast({ title: 'Template restored' });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   const hideMutation = useMutation({
@@ -199,9 +380,7 @@ export function useShiftTemplates(
         ),
       });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   // Hard delete — irreversible cascade (open_shift_claims). No Undo action;
@@ -238,9 +417,7 @@ export function useShiftTemplates(
         description: pendingClaimsWithdrawnDescription(pendingClaimsCount),
       });
     },
-    onError: (error: Error) => {
-      toast({ title: 'Error', description: error.message, variant: 'destructive' });
-    },
+    onError: showErrorToast,
   });
 
   return {
@@ -249,6 +426,7 @@ export function useShiftTemplates(
     error,
     createTemplate: createMutation.mutateAsync,
     updateTemplate: updateMutation.mutateAsync,
+    isUndoingCascade: undoMutation.isPending,
     hideTemplate: hideMutation.mutateAsync,
     isHiding: hideMutation.isPending,
     restoreTemplate: restoreMutation.mutateAsync,

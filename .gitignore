@@ -44,6 +44,7 @@ progress.md
 # Dev workflow Phase 7 review artifacts (ephemeral, per-run — write-only scratch)
 dev-tools/phase7-diff.patch
 dev-tools/codex-review-output.md
+dev-tools/coderabbit-*
 # Dev workflow Phase 9d review-triage artifacts (ephemeral, per-run)
 dev-tools/9d-triage-*
 

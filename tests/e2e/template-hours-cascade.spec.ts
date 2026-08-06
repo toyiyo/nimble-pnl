@@ -46,6 +46,23 @@ async function setRestaurantTimezone(page: import('@playwright/test').Page, rest
   expect(result.stored).toBe(TIMEZONE);
 }
 
+/**
+ * Opens a template row's action menu.
+ *
+ * The trigger is `opacity-0 group-hover:opacity-100` and lives inside the row,
+ * so hovering the button itself satisfies the group-hover — there is no need to
+ * reach for the row's `.group` utility class, which is a Tailwind
+ * implementation detail rather than anything the user perceives.
+ */
+async function openTemplateActions(
+  page: import('@playwright/test').Page,
+  templateName: string
+) {
+  const actionsButton = page.getByRole('button', { name: `Actions for ${templateName}` });
+  await actionsButton.hover();
+  await actionsButton.click();
+}
+
 /** Reads a shift's `start_time`/`end_time` straight from Supabase, bypassing the UI. */
 async function fetchShiftTimes(
   page: import('@playwright/test').Page,
@@ -96,11 +113,7 @@ test.describe('template hours cascade', () => {
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
     // Row actions are hover-revealed — hover the row, then Actions -> Edit.
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -177,11 +190,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -238,11 +247,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -340,11 +345,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -416,11 +417,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -494,13 +491,8 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-
     const openEditDialog = async () => {
-      await templateRow.hover();
-      await expect(actionsButton).toBeVisible({ timeout: 5000 });
-      await actionsButton.click();
+      await openTemplateActions(page, template.name);
       await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
       const editDialog = page.getByRole('dialog');
       await expect(editDialog).toBeVisible();
@@ -614,11 +606,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');

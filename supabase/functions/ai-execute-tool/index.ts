@@ -2,7 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { canUseTool, requiredRoleFor } from "../_shared/tools-registry.ts";
+import { canUseTool, requiredRoleFor, CAPABILITY_GATED_TOOLS, canUseCapabilityGatedTool } from "../_shared/tools-registry.ts";
 import { MODELS } from "../_shared/model-router.ts";
 import { 
   fetchInventoryTransactions,
@@ -180,9 +180,18 @@ async function executeGetKpis(
   const { period = 'month', start_date, end_date } = args;
 
   // Import shared calculation module
-  const { calculatePeriodMetrics } = await import('../_shared/periodMetrics.ts');
+  const { calculatePeriodMetrics, redactLaborFields } = await import('../_shared/periodMetrics.ts');
+  const { hasSchedulingOrPayrollCapability } = await import('../_shared/tools-registry.ts');
 
   const { startDate, endDate, startDateStr, endDateStr } = calculateDateRange(period, start_date, end_date);
+
+  // This function runs under the caller's forwarded JWT (RLS applies), and
+  // time_punches is now self-scoped to own-row unless the caller holds
+  // view:scheduling or view:payroll (20260805130000_self_scope_employee_reads.sql).
+  // A caller without that capability would otherwise silently get a
+  // labor total computed from only their own punches — check up front so the
+  // labor/prime-cost fields can be omitted instead of misreported below.
+  const hasLaborAccess = await hasSchedulingOrPayrollCapability(restaurantId, supabase);
 
   // ====== FETCH DATA FROM DATABASE ======
   
@@ -225,47 +234,53 @@ async function executeGetKpis(
     throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);
   }
 
-  // Fetch labor costs using time_punches + employees (same as Dashboard)
-  // Import labor calculation module
-  const { calculateActualLaborCost, LABOR_FETCH_LOOKAHEAD_HOURS } = await import('../_shared/laborCalculations.ts');
+  // Fetch labor costs using time_punches + employees (same as Dashboard) —
+  // only when the caller can actually see restaurant-wide punches. Skipping
+  // the fetch entirely (rather than fetching and computing anyway) avoids
+  // ever deriving a labor total from an RLS-truncated own-row-only result.
+  let laborCostData: { total_labor_cost: number }[] = [];
+  if (hasLaborAccess) {
+    // Import labor calculation module
+    const { calculateActualLaborCost, LABOR_FETCH_LOOKAHEAD_HOURS } = await import('../_shared/laborCalculations.ts');
 
-  // Fetch time punches for the period, widened by an overnight look-ahead so a
-  // shift whose clock_out lands just after endDate still pairs whole.
-  // calculateActualLaborCost attributes hours by clock-in day and drops
-  // out-of-window periods, so this never double-counts.
-  const { data: timePunches, error: punchesError } = await supabase
-    .from('time_punches')
-    .select('id, employee_id, restaurant_id, punch_time, punch_type')
-    .eq('restaurant_id', restaurantId)
-    .gte('punch_time', startDate.toISOString())
-    .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
-    .order('punch_time', { ascending: true });
+    // Fetch time punches for the period, widened by an overnight look-ahead so a
+    // shift whose clock_out lands just after endDate still pairs whole.
+    // calculateActualLaborCost attributes hours by clock-in day and drops
+    // out-of-window periods, so this never double-counts.
+    const { data: timePunches, error: punchesError } = await supabase
+      .from('time_punches')
+      .select('id, employee_id, restaurant_id, punch_time, punch_type')
+      .eq('restaurant_id', restaurantId)
+      .gte('punch_time', startDate.toISOString())
+      .lte('punch_time', new Date(endDate.getTime() + LABOR_FETCH_LOOKAHEAD_HOURS * 3600 * 1000).toISOString())
+      .order('punch_time', { ascending: true });
 
-  if (punchesError) {
-    throw new Error(`Failed to fetch time punches: ${punchesError.message}`);
+    if (punchesError) {
+      throw new Error(`Failed to fetch time punches: ${punchesError.message}`);
+    }
+
+    // Fetch all employees (including inactive for historical accuracy)
+    const { data: employees, error: employeesError } = await supabase
+      .from('employees')
+      .select('*')
+      .eq('restaurant_id', restaurantId);
+
+    if (employeesError) {
+      throw new Error(`Failed to fetch employees: ${employeesError.message}`);
+    }
+
+    // Calculate labor costs using shared module (same logic as Dashboard)
+    const { breakdown: laborBreakdown } = calculateActualLaborCost(
+      employees || [],
+      timePunches || [],
+      startDate,
+      endDate
+    );
+
+    // Convert to format expected by calculatePeriodMetrics
+    // Labor total is in dollars, convert to cents for consistency
+    laborCostData = [{ total_labor_cost: Math.round(laborBreakdown.total * 100) / 100 }];
   }
-
-  // Fetch all employees (including inactive for historical accuracy)
-  const { data: employees, error: employeesError } = await supabase
-    .from('employees')
-    .select('*')
-    .eq('restaurant_id', restaurantId);
-
-  if (employeesError) {
-    throw new Error(`Failed to fetch employees: ${employeesError.message}`);
-  }
-
-  // Calculate labor costs using shared module (same logic as Dashboard)
-  const { breakdown: laborBreakdown } = calculateActualLaborCost(
-    employees || [],
-    timePunches || [],
-    startDate,
-    endDate
-  );
-
-  // Convert to format expected by calculatePeriodMetrics
-  // Labor total is in dollars, convert to cents for consistency
-  const laborCostData = [{ total_labor_cost: Math.round(laborBreakdown.total * 100) / 100 }];
 
   // Fetch inventory value
   const { data: inventory, error: invError } = await supabase
@@ -297,6 +312,13 @@ async function executeGetKpis(
     laborCostData || []
   );
 
+  // laborCostData is [] when !hasLaborAccess, so metrics.costs/profitability/
+  // benchmarks were computed with labor_cost = 0. redactLaborFields strips
+  // everything downstream of that (prime_cost, profit_margin, the
+  // labor/prime benchmark statuses) rather than let it read as a complete
+  // restaurant-wide figure — food-cost-only fields are unaffected and stay in.
+  const { costs, profitability, benchmarks, laborOmittedReason } = redactLaborFields(metrics, hasLaborAccess);
+
   return {
     ok: true,
     data: {
@@ -306,10 +328,11 @@ async function executeGetKpis(
 
       // All metrics from shared calculation module
       revenue: metrics.revenue,
-      costs: metrics.costs,
-      profitability: metrics.profitability,
+      costs,
+      profitability,
       liabilities: metrics.liabilities,
-      benchmarks: metrics.benchmarks,
+      benchmarks,
+      labor_omitted: laborOmittedReason ? { reason: laborOmittedReason } : undefined,
 
       // Additional metrics not in shared module
       inventory_value: inventoryValue,
@@ -318,7 +341,10 @@ async function executeGetKpis(
     evidence: [
       { table: 'unified_sales', date: startDateStr, summary: `Sales data ${startDateStr} to ${endDateStr}` },
       { table: 'inventory_transactions', date: startDateStr, summary: `Food cost (usage) ${startDateStr} to ${endDateStr}` },
-      { table: 'time_punches', date: startDateStr, summary: `Labor from time punches ${startDateStr} to ${endDateStr}` },
+      // Omitted when !hasLaborAccess — time_punches was never fetched in that case.
+      ...(hasLaborAccess
+        ? [{ table: 'time_punches', date: startDateStr, summary: `Labor from time punches ${startDateStr} to ${endDateStr}` }]
+        : []),
       { table: 'products', summary: `Current inventory snapshot (${inventory?.length || 0} items)` },
     ],
   };
@@ -3642,8 +3668,35 @@ serve(async (req) => {
       throw new Error('Access denied to this restaurant');
     }
 
-    // Check if user can use this tool
-    if (!canUseTool(tool_name, userRestaurant.role)) {
+    // Check if user can use this tool. get_labor_costs / get_schedule_overview
+    // read restaurant-wide labor/schedule data gated on the same
+    // view:scheduling OR view:payroll capability as the RLS behind those
+    // tables (20260805130000_self_scope_employee_reads.sql), resolved via the
+    // user_has_capability RPC rather than a hard-coded role — canUseTool
+    // always denies these two, so they get their own branch here.
+    if ((CAPABILITY_GATED_TOOLS as readonly string[]).includes(tool_name)) {
+      const allowed = await canUseCapabilityGatedTool(tool_name, restaurant_id, supabase);
+      if (!allowed) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: {
+              code: 'TOOL_PERMISSION_DENIED',
+              message: `You don't have permission to use ${tool_name}.`,
+              tool: tool_name,
+              required_capability: 'view:scheduling or view:payroll',
+            },
+          }),
+          {
+            status: 403,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+      }
+    } else if (!canUseTool(tool_name, userRestaurant.role)) {
       const requiredRole = requiredRoleFor(tool_name);
       return new Response(
         JSON.stringify({

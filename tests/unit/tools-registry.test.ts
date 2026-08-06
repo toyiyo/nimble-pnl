@@ -5,6 +5,7 @@ import {
   requiredRoleFor,
   CAPABILITY_GATED_TOOLS,
   canUseCapabilityGatedTool,
+  hasSchedulingOrPayrollCapability,
 } from '../../supabase/functions/_shared/tools-registry';
 
 /**
@@ -225,5 +226,18 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
     const result = await canUseCapabilityGatedTool('get_kpis', 'rest-1', supabase as any);
     expect(result).toBe(false);
     expect(supabase.rpc).not.toHaveBeenCalled();
+  });
+
+  // hasSchedulingOrPayrollCapability is the underlying OR-check, reused by
+  // get_kpis's labor-component gate (get_kpis itself stays a basic tool; it
+  // just must not compute prime cost from an RLS-truncated labor set).
+  it('hasSchedulingOrPayrollCapability: true when only scheduling is granted', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': true, 'view:payroll': false });
+    expect(await hasSchedulingOrPayrollCapability('rest-1', supabase as any)).toBe(true);
+  });
+
+  it('hasSchedulingOrPayrollCapability: false when neither is granted', async () => {
+    const supabase = mockSupabase({ 'view:scheduling': false, 'view:payroll': false });
+    expect(await hasSchedulingOrPayrollCapability('rest-1', supabase as any)).toBe(false);
   });
 });

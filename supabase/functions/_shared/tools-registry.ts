@@ -972,20 +972,17 @@ interface CapabilityCheckClient {
 }
 
 /**
- * Resolves access for a CAPABILITY_GATED_TOOLS entry via the
- * `user_has_capability` RPC (same function the RLS policies call), OR'ing
- * view:scheduling and view:payroll. Returns false immediately — with no RPC
- * call — for any tool not in CAPABILITY_GATED_TOOLS.
+ * Resolves view:scheduling OR view:payroll for the calling user via the
+ * `user_has_capability` RPC — the same function the RLS policies behind
+ * shifts/time_punches/employee_compensation_history/etc. call. Shared by
+ * canUseCapabilityGatedTool and by get_kpis's labor-component gate (get_kpis
+ * itself stays a basic tool, but its labor/prime-cost fields must not be
+ * computed from an RLS-truncated data set for a caller who lacks this).
  */
-export async function canUseCapabilityGatedTool(
-  toolName: string,
+export async function hasSchedulingOrPayrollCapability(
   restaurantId: string,
   supabase: CapabilityCheckClient
 ): Promise<boolean> {
-  if (!(CAPABILITY_GATED_TOOLS as readonly string[]).includes(toolName)) {
-    return false;
-  }
-
   const [scheduling, payroll] = await Promise.all([
     supabase.rpc('user_has_capability', {
       p_restaurant_id: restaurantId,
@@ -998,4 +995,20 @@ export async function canUseCapabilityGatedTool(
   ]);
 
   return Boolean(scheduling.data) || Boolean(payroll.data);
+}
+
+/**
+ * Resolves access for a CAPABILITY_GATED_TOOLS entry. Returns false
+ * immediately — with no RPC call — for any tool not in that list.
+ */
+export async function canUseCapabilityGatedTool(
+  toolName: string,
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  if (!(CAPABILITY_GATED_TOOLS as readonly string[]).includes(toolName)) {
+    return false;
+  }
+
+  return hasSchedulingOrPayrollCapability(restaurantId, supabase);
 }

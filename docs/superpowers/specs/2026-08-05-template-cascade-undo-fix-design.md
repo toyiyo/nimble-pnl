@@ -45,30 +45,40 @@ At 02:36:20 the shifts' start matched the stale `v_old_start` (10:00) but their 
 match the stale `v_old_end` (17:30). The predicate is a conjunction, so all three fell to
 drifted. Current prod state: template 11:00–18:30, all three shifts still 10:00–16:30.
 
-### Bug 2 — the drift opt-in checkboxes are unreachable
+### Bug 2 — the ledger announces "0 shifts move" when three are one tick away
 
-`src/hooks/useTemplateHoursLedger.ts:118`:
+The user's words were *"I don't even see the option."* The panel **is** rendered — it is
+gated at `src/components/scheduling/ShiftPlanner/TemplateFormDialog.tsx:270` on
+`isEdit && hoursChanged && template`, which has no dependency on how many shifts would move.
+Nothing is unreachable. What is wrong is what the manager is told.
 
-```ts
-const showCascadeChoice = hoursChanged && affectedCount > 0 && !impact.isLoading && !impact.error;
-```
+The panel renders **collapsed** (`TemplateHoursImpact.tsx:56`, `expanded = false`), so the
+only thing on screen is the one-line summary at `:99-101`. That summary is built at
+`src/lib/scheduling/hoursChangeCopy.ts:235-238` from `totalAffected`, which is
+`movingCount + selectedDriftCount` (`:168`) — and a drifted shift contributes zero until its
+checkbox is ticked. In the reported state (3 drifted, none picked) the manager reads:
 
-`affectedCount` is `ledger.totalAffected`, which is
-`movingCount + selectedDriftCount` (`src/lib/scheduling/hoursChangeCopy.ts:168`). A drifted
-shift contributes zero until the manager ticks its checkbox — and those checkboxes render
-inside `<TemplateHoursImpact>`, which the dialog gates on the very same flag
-(`src/components/scheduling/ShiftPlanner/TemplateFormDialog.tsx:410`). When every linked
-shift is drifted, `movingCount = 0`, `selectedDriftCount = 0`, `affectedCount = 0`, the panel
-never renders, and the only control that could raise the count is hidden behind the gate.
+> Low impact. 1h later · same length. **0 shifts move.**
 
-This is independent of Bug 1 — Bug 1 is simply the most common way to reach the deadlock.
-It also fires whenever a manager hand-edits every linked shift, which is exactly what the
-"Your call" bucket exists for.
+Meanwhile the primary button says "Save changes" and the "Template only" button is absent,
+because `showCascadeChoice` is correctly false (`useTemplateHoursLedger.ts:118`) — saving
+right now genuinely would only change the template.
 
-The same flag is overloaded across four call sites in the dialog: the panel guard
-(`:410`), the "Template only" button (`:418`), the primary button's label
-(`:439`, via `buildSaveButtonLabel`), and the implicit-submit path (`:185`,
-`await submitWith(showCascadeChoice)`).
+So every control is telling the truth about *this instant*, and the composite is still a lie
+about *the situation*: three shifts are one checkbox away from moving, and the single line the
+manager actually reads says the opposite. Having been told there is nothing to do, they do
+not expand the panel — and the checkboxes sit behind that first disclosure plus a second,
+nested one that is also closed by default (`TemplateHoursImpact.tsx:57`, `:151-164`).
+
+This is independent of Bug 1 in the sense that it fires for any all-drifted template — a
+manager who hand-edited every linked shift hits the same wall. Bug 1 is simply what put a
+manager who had hand-edited *nothing* into that state.
+
+**`showCascadeChoice` is not the defect and is not being changed.** Its four uses in the
+dialog (`:185`, `:410`, `:418`→ the "Template only" button at `:410`'s guard, `:439`) are
+consistent with each other and with its name: a cascade choice is on offer exactly when
+something would move. An earlier draft of this design proposed splitting it; that was based
+on a misreading of `:410` as the panel's render guard, and is dropped.
 
 ---
 
@@ -143,6 +153,18 @@ WHERE b.id = p_batch_id
   AND b.restaurant_id = p_restaurant_id;
 ```
 
+Both new flags are declared with an explicit default:
+
+```sql
+v_template_restored      BOOLEAN := false;
+v_template_changed_since BOOLEAN := false;
+```
+
+Not left to plpgsql's `NULL` default. The legacy-batch path and the early
+`p_batch_id IS NULL` return at `:360-365` both fall through without assigning them, and a
+`null` in the returned JSONB would diverge from the `false` this design and the client's
+TypeScript both assume.
+
 Then, when a header was found, lock and conditionally restore:
 
 ```sql
@@ -170,10 +192,16 @@ Three properties, each deliberate:
   the template lock *before* the shift revert also fixes the lock order for the pair, so
   Undo and a concurrent cascade acquire template-then-shifts in the same sequence and cannot
   deadlock against each other.
-- **The "unchanged since" guard.** Mirrors the shift-level guard at `:424-425` exactly: a
-  row is restored only if it still holds precisely what the cascade wrote. If someone edited
-  the template's hours after the cascade, that is a newer deliberate decision and Undo
-  declines rather than destroying it.
+- **The "unchanged since" guard.** Mirrors the shift-level guard at `:424-425`: a row is
+  restored only if it still holds precisely what the cascade wrote. If someone edited the
+  template's hours after the cascade, that is a newer deliberate decision and Undo declines
+  rather than destroying it. Plain `=` rather than the shift guard's
+  `IS NOT DISTINCT FROM`, because `shift_templates.start_time`/`end_time` are `TIME NOT NULL`
+  (`supabase/migrations/20251114100000_create_scheduling_tables.sql:39-40`) while
+  `shifts.start_time`/`end_time` are not — the operators are equivalent here and `=` says so.
+  A second Undo click on the same batch lands in the `changed_since` branch, because the
+  first Undo already moved the template off the cascade's after-hours. Mechanically right,
+  and it matches how a second click already behaves for the shifts (`:438-441`).
 - **Restored independently of `restored_count`.** Even when every shift is skipped, the
   manager clicked Undo to reverse *their template edit*; leaving the template on the new
   hours would be the same desync in a rarer shape. The header is the record of what the
@@ -217,68 +245,79 @@ where the manager's mental model and the data disagree.
 
 ---
 
-## Fix 2 — split the overloaded flag
+## Fix 2 — say what the manager can do, and put the control in front of them
 
-`useTemplateHoursLedger` returns two flags where it returned one:
+Two changes, both small, both aimed at the one line the manager actually reads and the one
+click that stands between them and the checkboxes.
 
-```ts
-// Anything worth showing the manager: linked shifts exist in some bucket.
-const linkedShiftCount =
-  (buckets ? buckets.moving.length + buckets.locked.length + buckets.drifted.length + buckets.past.length : 0)
-  + impact.pastCount;
-const showImpactPanel = hoursChanged && linkedShiftCount > 0 && !impact.isLoading && !impact.error;
+### 2a. The summary names the shifts they can pick
 
-// A cascade is actually on offer: something would move if they saved now.
-const cascadeOnOffer = showImpactPanel && affectedCount > 0;
-```
-
-`showCascadeChoice` is removed rather than kept as an alias — leaving both names in place is
-how the overload happened.
-
-Call-site mapping in `TemplateFormDialog.tsx`:
-
-| Site | Today | After |
-|---|---|---|
-| `:410` panel render guard | `showCascadeChoice` | `showImpactPanel` |
-| `:418` "Template only" button | `showCascadeChoice` | `cascadeOnOffer` |
-| `:439` `buildSaveButtonLabel` | `showCascadeChoice` | `cascadeOnOffer` |
-| `:185` `submitWith(...)` | `showCascadeChoice` | `cascadeOnOffer` |
-
-`buildSaveButtonLabel`'s parameter is renamed `cascadeOnOffer` to match, and the function
-gains a defensive floor so it can never emit "Save & update 0 shifts"
-(`src/lib/scheduling/hoursChangeCopy.ts:144-157`):
+`buildHoursChangeLedger` (`src/lib/scheduling/hoursChangeCopy.ts:234-238`) gains a clause
+for the case where nothing would move but something *could*:
 
 ```ts
-if (cascadeOnOffer && affectedCount > 0) {
-  return `Save & update ${affectedCount} ${pluralize(affectedCount, 'shift', 'shifts')}`;
-}
+const unpickedDrift = driftedCount - selectedDriftCount;   // already computed at :226
+const pickClause = totalAffected === 0 && unpickedDrift > 0
+  ? ` ${unpickedDrift} hand-edited ${pluralize(unpickedDrift, 'shift', 'shifts')} you can pick.`
+  : '';
 ```
 
-The resulting states a manager can now reach:
+appended to both branches of `summary`. The reported state now reads:
 
-| Buckets | Panel | Primary button | Behaviour |
-|---|---|---|---|
-| 3 moving | shown | "Save & update 3 shifts" | unchanged from today |
-| 3 drifted, 0 ticked | **shown** (was hidden) | "Save changes" | template-only save; checkboxes reachable |
-| 3 drifted, 2 ticked | shown | "Save & update 2 shifts" | cascade the two |
-| only past/locked | **shown** (was hidden) | "Save changes" | explains why nothing moves |
-| no linked shifts | hidden | "Save changes" | unchanged from today |
+> Low impact. 1h later · same length. 0 shifts move. **3 hand-edited shifts you can pick.**
 
-The ledger copy already handles every one of these without change: the "0 shifts move" chip
-is emitted unconditionally and deliberately (`hoursChangeCopy.ts:178-184`), and the untouched
-lines for past, locked, and unpicked drift are each independently conditional
-(`:213-232`). The panel is honest at `movingCount = 0` as written.
+Scoped to `totalAffected === 0` deliberately. Once anything is moving, the panel's chips and
+the "Save & update N shifts" button already say so, and this line is truncated
+(`TemplateHoursImpact.tsx:99`, `truncate`) — spending its remaining width on a second
+call to action would push the count off screen.
+
+`severity` is untouched: `deriveHoursChangeSeverity` keys on `publishedCount` (`:56-58`),
+which counts only shifts that would actually move, so an all-drifted state stays "Low
+impact". That is correct — saving right now moves nothing.
+
+### 2b. The drift disclosure opens by default when it is the only thing to do
+
+`TemplateHoursImpact.tsx:57` initialises `driftOpen` to `false` unconditionally. It becomes
+a nullable override over a derived default, so the default can depend on `ledger` (which is
+`null` on the first render while the impact query is in flight, and so cannot be read by a
+`useState` initialiser that runs exactly once):
+
+```ts
+const [driftOpen, setDriftOpen] = useState<boolean | null>(null);
+// ... after the `if (!ledger) return null` bail-out at :77
+const driftDefaultOpen = drifted.length > 0 && ledger.totalAffected === 0;
+```
+
+used as `<Collapsible open={driftOpen ?? driftDefaultOpen} onOpenChange={setDriftOpen}>`.
+Once the manager touches the disclosure, their choice sticks for the rest of the dialog.
+
+The outer panel stays collapsed by default. Keeping the form calm was a deliberate choice in
+PR #700, and with 2a the collapsed line now carries the signal that earns the click.
+
+### What is explicitly NOT changing
+
+- `showCascadeChoice` and its four call sites — see the Bug 2 section above.
+- `buildSaveButtonLabel` (`:144-157`). "Save changes" is the right label when nothing would
+  move, and "Save & update N shifts" appears the moment a checkbox is ticked. It is already
+  correct in every reachable state.
+- The panel's render guard at `TemplateFormDialog.tsx:270`. It already renders in every
+  state that has something to say.
 
 ### Accessibility and styling
 
-No new components. The drift checkboxes, the disclosure, and the aria-live summary are the
-ones shipped in PR #700 and are unchanged — this fix only makes them reachable. The panel's
-existing semantic tokens and Apple/Notion styling carry over untouched.
+No new components and no new controls. The drift checkboxes are already correctly labelled
+(`TemplateHoursImpact.tsx:172-179`, `Checkbox id` + `Label htmlFor`). The `aria-live="polite"`
+region is scoped to the summary line (`:99`) — 2a changes the text that region announces but
+not when it announces, so a manager on a screen reader hears the pick clause on the same
+settled-keystroke cadence as today. 2b opens a `Collapsible` whose trigger already carries
+its own state; no ARIA changes are needed. Existing semantic tokens and the Apple/Notion
+scale carry over untouched.
 
 ### Known limitation (pre-existing, unchanged)
 
 Re-syncing drifted shifts *without* editing the hours stays impossible: `hoursChanged`
-(`useTemplateHoursLedger.ts:115-116`) gates the whole panel, so a manager who wants to pull
+(`useTemplateHoursLedger.ts:115-116`) gates the panel at `TemplateFormDialog.tsx:270`, so a
+manager who wants to pull
 hand-edited shifts back onto the template's current hours must nudge the time and change it
 back. That is the shipped design from PR #700, not a regression from these two bugs, and
 fixing it is a separate feature (a "re-sync shifts" action on the template row). Recorded
@@ -299,11 +338,16 @@ SELECT l.cascade_batch_id, l.restaurant_id, s.shift_template_id,
        t.start_time AS template_start, t.end_time AS template_end,
        count(*) AS reverted_shifts
 FROM public.schedule_change_logs l
-JOIN public.shifts s ON s.id = l.shift_id
-JOIN public.shift_templates t ON t.id = s.shift_template_id
+LEFT JOIN public.shifts s ON s.id = l.shift_id
+LEFT JOIN public.shift_templates t ON t.id = s.shift_template_id
 WHERE l.reason = 'Undo template hours cascade'
 GROUP BY 1, 2, 3, 4, 5;
 ```
+
+`LEFT JOIN`, not inner: `schedule_change_logs.shift_id` is deliberately not a foreign key
+(`supabase/migrations/20260617120000_fix_schedule_change_logs_delete_fk.sql:38-44`), so an
+inner join would silently drop any batch whose shift was deleted afterwards and understate
+the damage.
 
 This finds every batch an Undo touched; the desynced ones are those whose template hours
 still differ from the restored shifts' local hours. The repair is a targeted
@@ -336,27 +380,48 @@ that Undo restored. Counts will be confirmed against live data and stated before
    leaves both templates untouched.
 6. Legacy batch: an Undo for a `cascade_batch_id` with no header row reverts shifts and
    returns both flags false.
+7. **Template restored when no shift is** — cascade, then lock every moved shift, then undo:
+   assert `restored_count = 0` and `template_restored = true`. This is the one combination
+   the "Restored independently of `restored_count`" decision above rests on, and none of
+   tests 1–3 constructs it.
+8. **Superseded batch** — cascade X, then cascade Y on the same template, then Undo(X):
+   assert Y's shifts are not disturbed (they fail X's `after_data` guard and count as
+   `changed_since`) and the template is not restored (`template_changed_since = true`, since
+   it now holds Y's hours, not X's). The safety here comes from two independently written
+   guards happening to compose; given this migration exists because of exactly that class of
+   interaction, it gets a test rather than a paragraph.
 
 ### Vitest
 
-`tests/unit/useTemplateHoursLedger.test.ts`:
-- `showImpactPanel` true when `driftedCount > 0` and `movingCount === 0`.
-- `showImpactPanel` true when only past/locked shifts are linked.
-- `showImpactPanel` false when no linked shifts exist at all.
-- `cascadeOnOffer` false at `affectedCount === 0`, true once a drift id is selected.
-
 `tests/unit/hoursChangeCopy.test.ts`:
-- `buildSaveButtonLabel` returns "Save changes" when `cascadeOnOffer` is false.
-- Returns "Save changes" (not "Save & update 0 shifts") if `cascadeOnOffer` is true but
-  `affectedCount` is 0.
-- Still returns "Save & update 1 shift" / "…2 shifts" for the normal cases.
+- `buildHoursChangeLedger` summary ends with "3 hand-edited shifts you can pick." when
+  `movingCount = 0`, `driftedCount = 3`, `selectedDriftCount = 0`. **Fails today** — today's
+  summary stops at "0 shifts move."
+- Singular form at `driftedCount = 1`.
+- No pick clause once `selectedDriftCount > 0` (something is moving, so the button carries it).
+- No pick clause when `movingCount > 0` and drift is unpicked.
+- No pick clause when `driftedCount = 0` — the past/locked-only state is unchanged.
+
+`tests/unit/templateHoursImpact.test.tsx` (new; the repo lists component tests as optional,
+but 2b is a render-state behaviour no pure-function test can reach):
+- Drift disclosure is open on first render when `drifted.length > 0` and
+  `ledger.totalAffected === 0`, and the checkboxes are in the accessibility tree.
+- Closed on first render when something is already moving.
+- A manual toggle wins over the default and survives a ledger re-render.
 
 ### Playwright — `tests/e2e/template-hours-cascade.spec.ts` (extend)
 
-One scenario covering the user's report: create a template with linked future shifts,
-change the hours and cascade, click Undo, then change the hours again and assert the impact
-panel appears with the shifts in the moving bucket. This is the regression that no unit test
-can cover, because it spans the RPC round trip.
+Two scenarios, one per bug — the first would pass today and the second would not, so both
+are needed.
+
+1. **Bug 1 round trip.** Create a template with linked future shifts, change the hours and
+   cascade, click Undo, then change the hours again and assert the shifts move. Today the
+   second edit finds them drifted and moves nothing.
+2. **Bug 2 opt-in path.** On a template whose linked shifts are all hand-edited, change the
+   hours and assert (a) the collapsed summary names the pickable shifts, (b) expanding the
+   panel shows the drift checkboxes without a further click, (c) ticking one relabels the
+   primary button to "Save & update 1 shift" and reveals "Template only", and (d) saving
+   sends that shift id with `cascade: true` and the shift actually moves.
 
 ## Migration
 

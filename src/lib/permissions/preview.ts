@@ -162,6 +162,10 @@ function higherLevel(a: AreaLevel | null, b: AreaLevel | null): AreaLevel | null
 function buildNavPreview(grants: Partial<Record<AreaKey, AreaLevel>>): NavPreviewGroup[] {
   const landingKey = landingAreaKey(grants);
   const groups: NavPreviewGroup[] = [];
+  // Tracks each item's actual level (not just readOnly) so merging a second
+  // row onto the same path — `team`/`collaborators` both land on /team — is a
+  // plain `higherLevel` call, not a round trip through the boolean.
+  const levelByPath = new Map<string, AreaLevel>();
 
   // AREA_DEFINITIONS is already in sidebar order, so groups come out in
   // sidebar order (Main, Operations, Inventory, Accounting, Admin) for free.
@@ -180,11 +184,14 @@ function buildNavPreview(grants: Partial<Record<AreaKey, AreaLevel>>): NavPrevie
     // higher level and landing status either area grants.
     const existing = group.items.find((item) => item.path === row.path);
     if (existing) {
-      existing.readOnly = higherLevel(existing.readOnly ? 'view' : 'manage', level) === 'view';
+      const mergedLevel = higherLevel(levelByPath.get(row.path) ?? null, level) as AreaLevel;
+      levelByPath.set(row.path, mergedLevel);
+      existing.readOnly = mergedLevel === 'view';
       existing.isLanding = existing.isLanding || row.key === landingKey;
       continue;
     }
 
+    levelByPath.set(row.path, level);
     group.items.push({
       path: row.path,
       label: findNavLabel(row.path) ?? row.path,

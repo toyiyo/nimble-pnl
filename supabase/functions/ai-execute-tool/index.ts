@@ -191,44 +191,52 @@ async function executeGetKpis(
   // A caller without that capability would otherwise silently get a
   // labor total computed from only their own punches — check up front so the
   // labor/prime-cost fields can be omitted instead of misreported below.
-  const hasLaborAccess = await hasSchedulingOrPayrollCapability(restaurantId, supabase);
-
+  //
+  // Run this alongside the sales/adjustments/food-cost fetches (none of which
+  // depend on it — only the labor block further down does) rather than
+  // awaiting it first, so it doesn't add a full extra round trip onto the
+  // front of an already-sequential fetch chain in a CPU-limited edge function.
   // ====== FETCH DATA FROM DATABASE ======
-  
-  // Fetch sales (excluding adjustments)
-  const { data: sales, error: salesError } = await supabase
-    .from('unified_sales')
-    .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_account:chart_of_accounts!category_id(account_type, account_subtype)')
-    .eq('restaurant_id', restaurantId)
-    .gte('sale_date', startDateStr)
-    .lte('sale_date', endDateStr)
-    .is('adjustment_type', null);
 
+  const [hasLaborAccess, salesResult, adjustmentsResult, foodCostResult] = await Promise.all([
+    hasSchedulingOrPayrollCapability(restaurantId, supabase),
+    // Fetch sales (excluding adjustments)
+    supabase
+      .from('unified_sales')
+      .select('id, total_price, item_type, parent_sale_id, is_categorized, chart_account:chart_of_accounts!category_id(account_type, account_subtype)')
+      .eq('restaurant_id', restaurantId)
+      .gte('sale_date', startDateStr)
+      .lte('sale_date', endDateStr)
+      .is('adjustment_type', null),
+    // Fetch adjustments separately
+    supabase
+      .from('unified_sales')
+      .select('adjustment_type, total_price')
+      .eq('restaurant_id', restaurantId)
+      .gte('sale_date', startDateStr)
+      .lte('sale_date', endDateStr)
+      .not('adjustment_type', 'is', null),
+    // Fetch food costs (COGS)
+    supabase
+      .from('inventory_transactions')
+      .select('total_cost')
+      .eq('restaurant_id', restaurantId)
+      .eq('transaction_type', 'usage')
+      .gte('created_at', startDateStr)
+      .lte('created_at', endDateStr + 'T23:59:59.999Z'),
+  ]);
+
+  const { data: sales, error: salesError } = salesResult;
   if (salesError) {
     throw new Error(`Failed to fetch sales: ${salesError.message}`);
   }
 
-  // Fetch adjustments separately
-  const { data: adjustments, error: adjustmentsError } = await supabase
-    .from('unified_sales')
-    .select('adjustment_type, total_price')
-    .eq('restaurant_id', restaurantId)
-    .gte('sale_date', startDateStr)
-    .lte('sale_date', endDateStr)
-    .not('adjustment_type', 'is', null);
-
+  const { data: adjustments, error: adjustmentsError } = adjustmentsResult;
   if (adjustmentsError) {
     throw new Error(`Failed to fetch adjustments: ${adjustmentsError.message}`);
   }
 
-  // Fetch food costs (COGS)
-  const { data: foodCostData, error: foodCostError } = await supabase
-    .from('inventory_transactions')
-    .select('total_cost')
-    .eq('restaurant_id', restaurantId)
-    .eq('transaction_type', 'usage')
-    .gte('created_at', startDateStr)
-    .lte('created_at', endDateStr + 'T23:59:59.999Z');
+  const { data: foodCostData, error: foodCostError } = foodCostResult;
 
   if (foodCostError) {
     throw new Error(`Failed to fetch food costs: ${foodCostError.message}`);

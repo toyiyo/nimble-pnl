@@ -994,6 +994,25 @@ export async function hasSchedulingOrPayrollCapability(
     }),
   ]);
 
+  // An RPC failure here must not disappear silently: without logging it, a
+  // genuine infra failure (e.g. the RPC unreachable) is indistinguishable
+  // from a legitimate denial once it coerces to `false` below, and the
+  // caller reports a plain permission-denied error with no trace of the
+  // real cause. Fail closed (deny) either way — this gates security-
+  // sensitive tools/RLS-adjacent reads, so an infra error must not fail open.
+  if (scheduling.error) {
+    console.error('hasSchedulingOrPayrollCapability: view:scheduling RPC failed', {
+      restaurantId,
+      error: scheduling.error,
+    });
+  }
+  if (payroll.error) {
+    console.error('hasSchedulingOrPayrollCapability: view:payroll RPC failed', {
+      restaurantId,
+      error: payroll.error,
+    });
+  }
+
   return Boolean(scheduling.data) || Boolean(payroll.data);
 }
 

@@ -123,6 +123,37 @@ describe('useMyShifts (self-scoped)', () => {
     expect(matching).toBeDefined();
     expect(matching).toContain('emp-1');
   });
+
+  it('keys the unresolved self-scoped state (employeeId: null) DIFFERENTLY from the admin key, so a disabled query cannot read back an admin query\'s cache', async () => {
+    // Regression test for a query-key collision: `employeeId ?? 'all'` would
+    // map BOTH admin mode (employeeId === undefined, via useShifts) and
+    // self-scoped-but-unresolved mode (employeeId === null, via useMyShifts
+    // before useCurrentEmployee resolves) to the identical 'all' segment.
+    // `enabled: false` only suppresses a new fetch, not a cache read, so a
+    // dual-role viewer mounting useMyShifts after useShifts already cached
+    // restaurant-wide data for the same range would transiently read that
+    // cached admin data back through the self-scoped hook.
+    setupShiftsQueryChain();
+    const queryClient = createQueryClient();
+
+    const { result: adminResult } = renderHook(
+      () => useShifts(restaurantId, startDate, endDate),
+      { wrapper: createWrapper(queryClient) },
+    );
+    await waitFor(() => expect(adminResult.current.loading).toBe(false));
+
+    renderHook(() => useMyShifts(restaurantId, null, startDate, endDate), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    const keys = queryClient.getQueryCache().getAll().map((query) => query.queryKey);
+    const shiftsKeys = keys.filter((key) => Array.isArray(key) && key[0] === 'shifts');
+
+    // Two distinct cache entries must exist — admin and unresolved-self-scoped
+    // must never collide onto the same key.
+    expect(shiftsKeys).toHaveLength(2);
+    expect(shiftsKeys[0]).not.toEqual(shiftsKeys[1]);
+  });
 });
 
 describe('useShifts (admin) — regression guard for the shared implementation', () => {

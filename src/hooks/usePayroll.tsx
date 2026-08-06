@@ -146,8 +146,19 @@ function usePayrollInternal(
   const queryClient = useQueryClient();
   const { tz: timezone } = useRestaurantClock();
 
+  // `isSelfScoped` (i.e. `employeeId !== undefined`) is admin mode; a plain
+  // `employeeId ?? null` fallback would map BOTH admin mode (undefined) and
+  // self-scoped-but-unresolved mode (null) to the same `null` key segment.
+  // `enabled: false` only suppresses a new fetch, not a cache read, so a
+  // disabled self-scoped query mounted while `employeeId` is still resolving
+  // could otherwise read back an admin query's already-cached restaurant-wide
+  // payroll under the identical key — reopening the leak this hook exists to
+  // close for a dual-role viewer. Admin and self-scoped-unresolved must use
+  // distinct segments.
+  const queryKeyEmployeeId = isSelfScoped ? employeeId ?? 'pending' : 'admin';
+
   const { data: payrollPeriod, isLoading, error, refetch } = useQuery({
-    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), timezone, employeeId ?? null],
+    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), timezone, queryKeyEmployeeId],
     queryFn: async (): Promise<PayrollPeriod | null> => {
       if (!restaurantId) return null;
 
@@ -212,16 +223,21 @@ function usePayrollInternal(
       const splitIds = (approvedSplits || []).map(s => s.id);
 
       // Then fetch the tip split items for those splits, including split_date from tip_splits.
-      // Always issued (even with an empty splitIds list) so this stays one of the seven
-      // per-employee queries the self-scoped predicate threads into; `.in(..., [])` resolves
-      // to no rows without a client-side short-circuit.
-      const { data: tips, error: tipsError } = await scopeToEmployee(
-        supabase
-          .from('tip_split_items')
-          .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
-          .in('tip_split_id', splitIds),
-        employeeId,
-      );
+      // Short-circuited locally when splitIds is empty: PostgREST's `.in()` has no
+      // client-side empty-array guard — it sends `tip_split_id=in.()` literally, which
+      // PostgREST rejects on a typed uuid column (postgrest/postgrest#641) rather than
+      // returning zero rows. Any payroll period with no approved/archived tip splits
+      // (the common case) would otherwise fail the entire payroll query. Same guard
+      // pattern as the identical query in src/pages/EmployeeTips.tsx.
+      const { data: tips, error: tipsError } = splitIds.length === 0
+        ? { data: [] as DBTipSplitItem[], error: null }
+        : await scopeToEmployee(
+            supabase
+              .from('tip_split_items')
+              .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
+              .in('tip_split_id', splitIds),
+            employeeId,
+          );
 
       if (tipsError) throw tipsError;
 
@@ -386,6 +402,12 @@ function usePayrollInternal(
         overtimeAdjustments,
       );
     },
+    // The `!isSelfScoped || !!employeeId` clause is belt-and-suspenders: when
+    // self-scoped and employeeId is null, `restaurantId` was already forced
+    // to null for the inner `useEmployees` call above, so `employees.length`
+    // is already 0 and this query is already disabled without it. Kept for
+    // clarity — it states the invariant directly rather than relying on a
+    // reader re-deriving it from useEmployees' own gate.
     enabled: !!restaurantId && !!employees.length && (!isSelfScoped || !!employeeId),
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,

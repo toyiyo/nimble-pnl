@@ -45,19 +45,36 @@ export function buildShiftChangeDescription(
   return description;
 }
 
+interface UseShiftsResult {
+  shifts: Shift[];
+  loading: boolean;
+  error: Error | null;
+  refetch: () => void;
+}
+
 function useShiftsQuery(
   restaurantId: string | null,
   startDate?: Date,
   endDate?: Date,
   employeeId?: string | null
-): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
+): UseShiftsResult {
+  // `employeeId === undefined` is admin mode (useShifts); `null` is
+  // self-scoped mode with the id not yet resolved (useMyShifts, disabled
+  // below). These must map to DIFFERENT key segments — collapsing both
+  // through a single `?? 'all'` fallback would let a self-scoped query,
+  // while still disabled and waiting on `employeeId`, read back whatever an
+  // admin query already cached under the same key (`enabled: false` only
+  // suppresses a new fetch, not a cache read), briefly serving
+  // restaurant-wide shifts to a dual-role viewer's self-scoped page.
+  const queryKeyEmployeeId = employeeId === undefined ? 'all' : employeeId ?? 'pending';
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: [
       'shifts',
       restaurantId,
       startDate?.toISOString(),
       endDate?.toISOString(),
-      employeeId ?? 'all',
+      queryKeyEmployeeId,
     ],
     queryFn: async () => {
       if (!restaurantId) return [];
@@ -104,7 +121,7 @@ export function useShifts(
   restaurantId: string | null,
   startDate?: Date,
   endDate?: Date
-): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
+): UseShiftsResult {
   return useShiftsQuery(restaurantId, startDate, endDate);
 }
 
@@ -120,7 +137,7 @@ export function useMyShifts(
   employeeId: string | null,
   startDate?: Date,
   endDate?: Date
-): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
+): UseShiftsResult {
   return useShiftsQuery(restaurantId, startDate, endDate, employeeId);
 }
 

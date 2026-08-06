@@ -195,6 +195,11 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
     },
   );
 
+  // Deliberately a minimal `{ rpc }` shape, not a full Supabase client — the
+  // functions under test only ever call `.rpc(...)`. The `as any` casts below
+  // at each call site accept that mismatch against `CapabilityCheckClient`'s
+  // real (wider) type; same minimal-mock-plus-cast pattern used throughout
+  // this test suite for Supabase client mocks.
   function mockSupabase(responses: Record<string, boolean | null>) {
     return {
       rpc: vi.fn((_fn: string, args: { p_capability: string }) =>
@@ -239,5 +244,32 @@ describe('tools-registry: get_labor_costs / get_schedule_overview are capability
   it('hasSchedulingOrPayrollCapability: false when neither is granted', async () => {
     const supabase = mockSupabase({ 'view:scheduling': false, 'view:payroll': false });
     expect(await hasSchedulingOrPayrollCapability('rest-1', supabase as any)).toBe(false);
+  });
+
+  it('hasSchedulingOrPayrollCapability: fails closed AND logs when an RPC errors, instead of silently reporting a plain denial', async () => {
+    const rpcError = new Error('connection reset');
+    const supabase = {
+      rpc: vi.fn((_fn: string, args: { p_capability: string }) =>
+        args.p_capability === 'view:scheduling'
+          ? Promise.resolve({ data: null, error: rpcError })
+          : Promise.resolve({ data: false, error: null }),
+      ),
+    };
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      const result = await hasSchedulingOrPayrollCapability('rest-1', supabase as any);
+
+      // Fail closed: an infra error must not grant access.
+      expect(result).toBe(false);
+      // But the real cause must be logged, not swallowed — otherwise an infra
+      // failure is indistinguishable from a legitimate permission denial.
+      expect(consoleErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('view:scheduling'),
+        expect.objectContaining({ restaurantId: 'rest-1', error: rpcError }),
+      );
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

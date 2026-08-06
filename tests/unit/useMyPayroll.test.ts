@@ -110,9 +110,23 @@ describe('useMyPayroll (self-scoped)', () => {
     Object.values(allChains).forEach((chain) => {
       chain.calls.length = 0;
     });
+    // Reset tip_splits back to the generic empty-response default between
+    // tests — the first test below overrides it to a non-empty response so
+    // the (short-circuited-when-empty) tip_split_items query actually fires.
+    restaurantScopedChains.tip_splits.then = (
+      resolve: (v: { data: unknown[]; error: null }) => void,
+    ) => resolve({ data: [], error: null });
   });
 
   it("applies .eq('employee_id', <id>) on all seven per-employee tables and .eq('id', <id>) on employees", async () => {
+    // tip_split_items is only queried when there's at least one approved/
+    // archived tip_splits row for the period (see the short-circuit in
+    // usePayroll.tsx — `.in('tip_split_id', [])` is never issued), so seed a
+    // split here to exercise that query's employee_id predicate.
+    restaurantScopedChains.tip_splits.then = (
+      resolve: (v: { data: unknown[]; error: null }) => void,
+    ) => resolve({ data: [{ id: 'split-1', total_amount: 500 }], error: null });
+
     const { useMyPayroll } = await import('@/hooks/usePayroll');
 
     const { result } = renderHook(
@@ -128,6 +142,24 @@ describe('useMyPayroll (self-scoped)', () => {
     });
     expect(fromMock).toHaveBeenCalledWith('employees');
     expect(employeesChain.calls).toContainEqual({ method: 'eq', args: ['id', 'emp-1'] });
+  });
+
+  it('does not query tip_split_items at all when there are no approved/archived tip splits for the period (empty splitIds short-circuit)', async () => {
+    // Regression test: `.in('tip_split_id', [])` sends `in.()` to PostgREST
+    // literally, which errors on a typed uuid column instead of returning
+    // zero rows — so the common case (no tip splits yet) must never reach
+    // the network at all.
+    const { useMyPayroll } = await import('@/hooks/usePayroll');
+
+    const { result } = renderHook(
+      () => useMyPayroll(restaurantId, 'emp-1', startDate, endDate),
+      { wrapper: createWrapper(createQueryClient()) },
+    );
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(fromMock).not.toHaveBeenCalledWith('tip_split_items');
+    expect(perEmployeeTableChains.tip_split_items.calls).toHaveLength(0);
   });
 
   it('leaves tip_splits and overtime_rules restaurant-scoped, with no employee_id predicate', async () => {
@@ -217,5 +249,34 @@ describe('usePayroll (admin) — regression guard for the shared implementation'
       (call) => call.method === 'eq' && call.args[0] === 'id',
     );
     expect(employeesIdCalls).toHaveLength(0);
+  });
+
+  it("keys the unresolved self-scoped state (employeeId: null) DIFFERENTLY from the admin key, so a disabled query cannot read back the admin query's cache", async () => {
+    // Regression test for a query-key collision: `employeeId ?? null` would
+    // map BOTH admin mode (employeeId === undefined, via usePayroll) and
+    // self-scoped-but-unresolved mode (employeeId === null, via useMyPayroll
+    // before useCurrentEmployee resolves) to the identical `null` segment.
+    // `enabled: false` only suppresses a new fetch, not a cache read, so a
+    // dual-role viewer mounting useMyPayroll after usePayroll already cached
+    // restaurant-wide payroll for the same range would transiently read that
+    // cached admin data back through the self-scoped hook.
+    const { usePayroll, useMyPayroll } = await import('@/hooks/usePayroll');
+    const queryClient = createQueryClient();
+
+    const { result: adminResult } = renderHook(
+      () => usePayroll(restaurantId, startDate, endDate),
+      { wrapper: createWrapper(queryClient) },
+    );
+    await waitFor(() => expect(adminResult.current.loading).toBe(false));
+
+    renderHook(() => useMyPayroll(restaurantId, null, startDate, endDate), {
+      wrapper: createWrapper(queryClient),
+    });
+
+    const keys = queryClient.getQueryCache().getAll().map((query) => query.queryKey);
+    const payrollKeys = keys.filter((key) => Array.isArray(key) && key[0] === 'payroll');
+
+    expect(payrollKeys).toHaveLength(2);
+    expect(payrollKeys[0]).not.toEqual(payrollKeys[1]);
   });
 });

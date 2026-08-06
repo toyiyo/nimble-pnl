@@ -18,9 +18,10 @@
  *      `joinList`) — the design doc itself quotes the output of this exact
  *      algorithm as its own worked example under "The live preview".
  *   2. `navPreview` — the real sidebar nav groups (imported from
- *      `AppSidebar.nav.ts`, not re-typed here, so a label can't drift),
- *      tagged reachable/unreachable, read-only at view level, and "opens
- *      here" for the landing item — reusing `AREA_LANDING_PATHS`/
+ *      `AppSidebar.nav.ts`, not re-typed here, so a label can't drift).
+ *      Ungranted pages are omitted outright (there is no struck-through
+ *      unreachable row to render); granted rows are read-only at view level,
+ *      and "opens here" for the landing item — reusing `AREA_LANDING_PATHS`/
  *      `AREA_PRIORITY` from `areas.ts` (also used by `usePermissions.ts`'s
  *      `landingPath`) so the preview's landing item is always the page the
  *      role would actually land on.

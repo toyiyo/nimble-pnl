@@ -336,6 +336,22 @@ function ReadOnlyLevelControl({ row, level }: { row: AreaDefinition; level: Area
   );
 }
 
+/**
+ * The sr-only prose behind a locked segment's `aria-describedby`. Only called
+ * for rows that are actually capped — `row.maxLevelForCollaborator !== 'manage'`
+ * — so every branch here describes a real lock, never a false "Manage isn't
+ * available" claim on a row that grants it freely.
+ */
+function describeCapReason(row: AreaDefinition): string {
+  if (row.maxLevelForCollaborator === null) {
+    return 'This page cannot be granted to a collaborator role.';
+  }
+  if (!row.hasManageTier) {
+    return 'This page has no manage tier.';
+  }
+  return 'Manage is not available to a collaborator role for this page.';
+}
+
 function AreaRow({
   row,
   grants,
@@ -361,13 +377,11 @@ function AreaRow({
       <div className="min-w-0">
         <div className="text-[14px] font-medium text-foreground">{row.label}</div>
         <p className="mt-0.5 text-[13px] text-muted-foreground">{row.hint}</p>
-        <p id={`${row.key}-cap-reason`} className="sr-only">
-          {row.maxLevelForCollaborator === null
-            ? 'This page cannot be granted to a collaborator role.'
-            : !row.hasManageTier
-              ? 'This page has no manage tier.'
-              : 'Manage is not available to a collaborator role for this page.'}
-        </p>
+        {row.maxLevelForCollaborator !== 'manage' && (
+          <p id={`${row.key}-cap-reason`} className="sr-only">
+            {describeCapReason(row)}
+          </p>
+        )}
       </div>
       {builtinReadOnly ? (
         <ReadOnlyLevelControl row={row} level={level} />

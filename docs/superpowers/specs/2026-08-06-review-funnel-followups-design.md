@@ -68,9 +68,40 @@ Would you share that on Google?
 `Back` control that returns to `promoter`, so a guest who changes their mind
 does not lose the Google link.
 
+`Back` sits above the heading, as a ghost button with a `ChevronLeft` icon.
+`Reviews.tsx:75-82` and `Reviews.tsx:346-357` already use that pattern. The
+control is secondary in weight; `Send to the owner` stays the primary action.
+
+**Warning: a stale error banner reads as a new failure.** Both stage controls
+clear the error state before they change the stage.
+
+```ts
+// on `Tell us something directly` and on `Back`
+setSubmitError(false);
+```
+
+`ReviewPage.tsx:411-415` renders the banner `That didn't send. Your rating is
+already saved — try once more.` on `submitError`. Without the reset a guest
+sees that banner over a form they did not send yet.
+
+The comment text, the consent tick, the name and the email stay. A guest who
+taps `Back` and returns must not lose what they typed.
+
 After the guest sends the form, the `thanks` stage shows the Google button
 again when `destinationUrl` is set. A comment must not cost the restaurant a
 Google review.
+
+```text
+Thanks for telling us
+You can also share this on Google.
+
+[ Leave a Google review ]     ← only when destinationUrl is set
+```
+
+The sub-line `have a good one` (`ReviewPage.tsx:437-439`) becomes `You can also
+share this on Google.` when a Google button follows it. A sign-off above a call
+to action reads as an end. Without a `destinationUrl` the sub-line does not
+change. The button uses the same style the `promoter` stage uses.
 
 ### Part 1b — the form copy follows the branch
 
@@ -83,6 +114,18 @@ Google review.
 
 `What happened?` in front of a five-star guest reads as an accusation. The
 sub-line is correct for both branches and does not change.
+
+The comment field label states the new rule. `ReviewPage.tsx:348-350` reads
+`Your feedback` today.
+
+| Element | Copy |
+|---|---|
+| `Label` for `review-comment` | `Your feedback (optional)` |
+| Help line under the field | `Write a note, give your email, or both.` |
+
+The name and the email fields sit behind the consent tick
+(`ReviewPage.tsx:371-397`). Without the help line a guest who wants no comment
+sees a dead `Send` control and no reason for it.
 
 ### Part 1c — the comment becomes optional
 
@@ -106,6 +149,47 @@ export function canSubmitFollowUp(input: {
 
 The module is pure, so a unit test covers the rule. The rule must not live
 inside the JSX, where only an E2E test can reach it.
+
+**Warning: the button rule is not the only gate.** `handleSubmitComment`
+(`ReviewPage.tsx:156`) holds a second, independent guard.
+
+```ts
+// before
+if (!token || !comment.trim()) return;
+
+// after
+if (!token || !canSubmitFollowUp({ comment, consent, email })) return;
+```
+
+A change to the `disabled` rule alone leaves this guard in place. The button
+then answers a tap with nothing: no request, no error, no new stage.
+
+The request body sends no empty string.
+
+```ts
+comment: comment.trim() || undefined,
+```
+
+### Part 1e — the live region
+
+`ReviewPage` holds one `aria-live` region through `setAnnouncement`. The region
+is a diff channel: two identical strings announce once. Each new stage move
+sets its own string.
+
+| Move | Announcement |
+|---|---|
+| `promoter` → `feedback` (`Tell us something directly`) | `Tell us more. This goes straight to the owner.` |
+| `feedback` → `promoter` (`Back`) | `Back to the Google link.` |
+| `feedback` → `thanks`, `destinationUrl` set | `Thanks. You can also share this on Google.` |
+| `feedback` → `thanks`, no `destinationUrl` | `Thanks. The owner has your note.` |
+
+The `thanks` move sets no announcement today (`ReviewPage.tsx:157-180`). A
+screen-reader guest hears nothing after a send, and hears nothing about the new
+Google button. A guest who taps `Tell us something directly` and `Back` more
+than once hears two different strings, so each move stays audible.
+
+The heading focus effect (`ReviewPage.tsx:91-93`) stays. It moves focus; it
+does not replace the announcement.
 
 ### Part 1d — the server accepts a contact-only submit
 
@@ -184,8 +268,11 @@ guarantees the full comment list. A code comment records this trade.
 
 ### Part 2b — the list shows every response
 
-A three-button filter group sits above the rows: `All`, `With comments`,
-`Silent`. Each button carries `aria-pressed`.
+A `ToggleGroup` with `type="single"` sits above the rows. It holds three
+`ToggleGroupItem` controls: `All`, `With comments`, `Silent`. Six components
+already use this primitive, for example `src/components/roles/RoleEditor.tsx`.
+Radix gives the group one tab stop and arrow-key movement. Three plain buttons
+with `aria-pressed` give three tab stops and no arrow keys.
 
 A row with no comment shows `No comment left` in muted text, in place of the
 two-line comment clamp.
@@ -196,7 +283,33 @@ Empty-state copy follows the mode:
 |---|---|
 | `all` | `No ratings yet` |
 | `commented` | `No written feedback yet` |
-| `silent` | `Every rating here came with a comment` |
+| `silent` | `Every rating here has a comment` |
+
+**The virtualizer needs three changes.** `Reviews.tsx:118-123` sets
+`estimateSize: () => 118`, a constant tuned for a two-line comment clamp, a
+meta row and a status chip. A silent row holds none of the clamp and no chip.
+
+```ts
+const virtualizer = useVirtualizer({
+  count: responses.length,
+  getScrollElement: () => listRef.current,
+  // A silent row drops the two-line clamp and the status chip.
+  estimateSize: (index) => (responses[index]?.comment ? 118 : 76),
+  // Without a stable key the measurement cache is keyed by index. A filter
+  // change then applies the old row's height to the new row at that index.
+  getItemKey: (index) => responses[index].id,
+  overscan: 10,
+});
+```
+
+The list scrolls to the top on every filter change. A manager deep inside
+`All` who taps `Silent` must not land in the middle of a shorter list.
+
+```ts
+useEffect(() => {
+  if (listRef.current) listRef.current.scrollTop = 0;
+}, [filter]);
+```
 
 ### Part 2c — status applies to an actionable row only
 
@@ -213,8 +326,25 @@ would offer a manager a chore that means nothing.
 
 A contact-only row **is** actionable. The guest asked to hear back.
 
-The detail pane shows `This guest left a rating only.` in place of the comment
-body when the comment is null.
+**Warning: two rules apply here, and they are not the same rule.** A
+contact-only row has no comment and is actionable. It shows the placeholder
+text **and** it keeps the status chip.
+
+| Element | Rule |
+|---|---|
+| `No comment left` in the list row | `comment === null` |
+| `This guest left a rating only.` in the detail pane | `comment === null` |
+| Status chip in the list row | `isActionable` |
+| Status `Select` in the detail pane | `isActionable && canManage` |
+| `Contact` card in the detail pane | `isActionable && canManage` |
+
+A single `comment === null` test on all five elements hides the status chip on
+a contact-only row. That result contradicts the rule above.
+
+`ReviewFeedbackDetail.tsx:115-143` renders the `Contact` card on `canManage`
+alone. On a non-actionable row that card always reads `This guest didn't leave
+contact details`. The card then costs a manager a read and gives nothing back,
+for the same reason the status control does.
 
 ### Part 2d — the unread metric follows the same rule
 
@@ -223,6 +353,22 @@ One migration replaces `review_response_metrics`.
 ```sql
 count(*) FILTER (WHERE rr.status = 'new'
   AND (rr.comment IS NOT NULL OR rr.contact_consent)) AS unread_count
+```
+
+**Warning: a `DROP FUNCTION` here breaks the page for every user.** The
+migration must use `CREATE OR REPLACE FUNCTION`, with the same signature
+`public.review_response_metrics(p_restaurant_id UUID)` and the same attributes
+`LANGUAGE sql STABLE SET search_path = public, pg_temp`. A `DROP` resets the
+grants. `authenticated` then loses EXECUTE, and the Feedback tab header fails
+with `permission denied for function`.
+
+The migration also repeats the two grant lines, as
+`20260803100000_assign_membership_role_custom_role_flavor_check.sql:187-193`
+does.
+
+```sql
+REVOKE ALL ON FUNCTION public.review_response_metrics(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.review_response_metrics(UUID) TO authenticated;
 ```
 
 The old rule counted `comment IS NOT NULL` alone. That rule now under-counts: a
@@ -286,9 +432,19 @@ exactly the rows `comment IS NULL` was true for, plus no others, because
 `handleComment` is the only writer of both columns.
 
 **No new PII column.** A contact-only submit writes to
-`review_response_contacts`, which slice 1 already holds to `manage:reviews`
-through RLS. The primary key on `review_response_id` still allows one contact
-row per response.
+`review_response_contacts`. Slice 1 already holds that table to
+`manage:reviews` through the `review_response_contacts_select` policy
+(`supabase/migrations/20260804100100_review_funnel_tables.sql:194-196`). The
+primary key on `review_response_id`
+(`supabase/migrations/20260804100100_review_funnel_tables.sql:78`) still allows
+one contact row per response.
+
+**No new grant.** `service_role` already holds `GRANT INSERT` on
+`review_response_contacts`
+(`supabase/migrations/20260804120000_review_funnel_service_role_grants.sql:46`)
+and `GRANT UPDATE (comment, contact_consent, commented_at)` on
+`review_responses` (line 44 of the same file). The widened write path uses the
+grants slice 1 gave it.
 
 **No enumeration oracle.** Every widened path keeps the existing answer shape.
 A contact-only submit returns the same `{ ok: true }` a comment returns.

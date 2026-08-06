@@ -17,8 +17,9 @@ import {
   operationsManagerNav,
   staffNav,
 } from '@/components/AppSidebar.nav';
-import { allowedPathsForAreas } from '@/lib/permissions/routeAreas';
+import { allowedPathsForAreas, UNIVERSAL_PATHS } from '@/lib/permissions/routeAreas';
 import type { AreaKey, AreaLevel } from '@/lib/permissions/areas';
+import { COLLABORATOR_ROUTES } from '@/App';
 
 describe('AppSidebar.nav – operations_manager', () => {
   const nav = getNavigationForRole('operations_manager');
@@ -67,6 +68,16 @@ describe('AppSidebar.nav – operations_manager', () => {
   it('returns empty array for kiosk role', () => {
     const kioskNav = getNavigationForRole('kiosk');
     expect(kioskNav).toEqual([]);
+  });
+
+  it('does not offer the accountant a page it will bounce them off', () => {
+    const paths = collaboratorAccountantNav.flatMap((g) => g.items.map((i) => i.path));
+    const allowed = new Set(COLLABORATOR_ROUTES.collaborator_accountant.allowed);
+    const universal = new Set(UNIVERSAL_PATHS);
+
+    for (const path of paths) {
+      expect(allowed.has(path) || universal.has(path)).toBe(true);
+    }
   });
 });
 

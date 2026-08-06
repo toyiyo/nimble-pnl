@@ -245,3 +245,27 @@ describe('AppSidebar.nav – custom roles derive their nav from granted areas', 
     expect(nav.flatMap((group) => group.items.map((item) => item.path))).toEqual(['/help']);
   });
 });
+
+describe('AppSidebar.nav.data — the leaf module', () => {
+  it('re-exports the same navigationGroups reference AppSidebar.nav uses', async () => {
+    // Guards against a copy that silently forks from the moved original:
+    // AppSidebar.nav.ts must re-export this exact array, not a duplicate.
+    const dataModule = await import('@/components/AppSidebar.nav.data');
+    expect(dataModule.navigationGroups).toBe(navigationGroups);
+  });
+
+  it('imports nothing from @/lib/permissions, keeping it a leaf', async () => {
+    // areas.ts derives AREA_DEFINITIONS from navigationGroups while
+    // AppSidebar.nav.ts imports from routeAreas.ts (which imports areas.ts).
+    // If this data file ever imported from @/lib/permissions, that would be
+    // an import cycle with module-level const initialization on both ends —
+    // a temporal-dead-zone crash at import time, not a lint warning.
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const source = fs.readFileSync(
+      path.resolve(__dirname, '../../src/components/AppSidebar.nav.data.ts'),
+      'utf-8'
+    );
+    expect(source).not.toMatch(/from ['"]@\/lib\/permissions/);
+  });
+});

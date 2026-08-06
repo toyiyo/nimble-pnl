@@ -47,29 +47,50 @@ describe('areas.ts derives from the sidebar', () => {
 });
 
 // ============================================================
-// These tests mirror supabase/migrations/20260730100000_roles_and_areas_tables.sql
-// (area_catalog seed) and 20260730110000_seed_builtin_roles.sql (role_areas
-// seed) literally, transcribed independently rather than derived from the
-// SQL, per the [2026-07-09] lesson about non-self-referential round trips.
+// These tests mirror supabase/migrations/20260805120000_page_areas.sql
+// (area_catalog re-cut and role_areas fan-out) literally, transcribed
+// independently rather than derived from the SQL, per the [2026-07-09]
+// lesson about non-self-referential round trips.
 // ============================================================
 
 const ALL_AREA_KEYS: AreaKey[] = [
-  'reports',
+  'dashboard',
+  'integrations',
   'sales',
-  'inventory',
-  'purchasing',
-  'recipes',
-  'scheduling',
+  'ops_inbox',
   'reviews',
-  'books',
-  'chart_of_accounts',
+  'weekly_brief',
+  'scheduling',
+  'time_punches',
+  'tips',
   'payroll',
+  'labor',
+  'recipes',
+  'prep_recipes',
+  'inventory',
+  'inventory_audit',
+  'purchasing',
+  'reports',
+  'budget',
+  'customers',
+  'invoices',
+  'stripe_account',
+  'banking',
+  'expenses',
+  'print_checks',
+  'assets',
+  'financial_intelligence',
+  'transactions',
+  'chart_of_accounts',
+  'financial_statements',
   'employees',
   'team',
   'collaborators',
   'settings',
-  'integrations',
 ];
+
+/** Areas with no capability at all (spec §3.4) — gated purely by routing. */
+const CAPABILITYLESS_AREAS: AreaKey[] = ['ops_inbox', 'weekly_brief', 'budget', 'labor', 'stripe_account'];
 
 function grantsAt(level: AreaLevel, keys: AreaKey[] = ALL_AREA_KEYS): Partial<Record<AreaKey, AreaLevel>> {
   const grants: Partial<Record<AreaKey, AreaLevel>> = {};
@@ -78,38 +99,38 @@ function grantsAt(level: AreaLevel, keys: AreaKey[] = ALL_AREA_KEYS): Partial<Re
 }
 
 describe('AREA_DEFINITIONS', () => {
-  it('defines exactly eleven areas', () => {
-    expect(AREA_DEFINITIONS.length).toBe(11);
-  });
-
-  it('groups areas into exactly three bands, matching area_catalog', () => {
-    const byBand = new Map<string, string[]>();
-    for (const area of AREA_DEFINITIONS) {
-      byBand.set(area.band, [...(byBand.get(area.band) ?? []), area.key]);
-    }
-    expect(byBand.get('Operations')).toEqual(['reports', 'sales', 'inventory', 'recipes', 'scheduling', 'reviews']);
-    expect(byBand.get('Money')).toEqual(['books', 'payroll']);
-    expect(byBand.get('People & admin')).toEqual(['employees', 'team', 'settings']);
+  it('defines exactly 33 areas', () => {
+    expect(AREA_DEFINITIONS.length).toBe(33);
   });
 
   it('caps Team & Access at no grantable level (privilege-escalation guard)', () => {
-    const team = AREA_DEFINITIONS.find((a) => a.key === 'team');
-    expect(team?.maxLevelForCollaborator).toBeNull();
+    for (const key of ['team', 'collaborators']) {
+      const area = AREA_DEFINITIONS.find((a) => a.key === key);
+      expect(area?.maxLevelForCollaborator, `${key} cap`).toBeNull();
+    }
   });
 
-  it('caps Dashboard & Reports, Sales, Payroll, Settings & Integrations at view for collaborators', () => {
-    const capped = ['reports', 'sales', 'payroll', 'settings'];
+  it('caps Dashboard, Reports, Sales, Payroll, Settings at view for collaborators', () => {
+    const capped = ['dashboard', 'reports', 'sales', 'payroll', 'settings'];
     for (const key of capped) {
       const area = AREA_DEFINITIONS.find((a) => a.key === key);
       expect(area?.maxLevelForCollaborator, `${key} cap`).toBe('view');
     }
   });
 
-  it('every area definition expands to a non-empty capability set at its own manage level', () => {
+  it('every area definition with a capability expands to a non-empty set at its own manage level', () => {
     for (const area of AREA_DEFINITIONS) {
-      const grants = grantsAt('manage', [...area.areaKeys]);
+      if (CAPABILITYLESS_AREAS.includes(area.key)) continue;
+      const grants = grantsAt('manage', [area.key]);
       const caps = expandAreas(grants, []);
       expect(caps.length, `${area.key} should grant at least one capability`).toBeGreaterThan(0);
+    }
+  });
+
+  it('the five capability-less areas expand to nothing even at manage (spec §3.4)', () => {
+    for (const key of CAPABILITYLESS_AREAS) {
+      const caps = expandAreas(grantsAt('manage', [key as AreaKey]), []);
+      expect(caps, key).toEqual([]);
     }
   });
 
@@ -125,10 +146,10 @@ describe('expandAreas', () => {
   });
 
   it('view:assets/edit:assets are present in the union, closing the SQL/TypeScript drift', () => {
-    expect(expandAreas({ books: 'view' }, [])).toContain('view:assets');
-    expect(expandAreas({ books: 'view' }, [])).not.toContain('edit:assets');
-    expect(expandAreas({ books: 'manage' }, [])).toContain('view:assets');
-    expect(expandAreas({ books: 'manage' }, [])).toContain('edit:assets');
+    expect(expandAreas({ assets: 'view' }, [])).toContain('view:assets');
+    expect(expandAreas({ assets: 'view' }, [])).not.toContain('edit:assets');
+    expect(expandAreas({ assets: 'manage' }, [])).toContain('view:assets');
+    expect(expandAreas({ assets: 'manage' }, [])).toContain('edit:assets');
   });
 
   it('grants view:ai_assistant only when reports is at manage (matches the legacy CASE, minus the subscription gate)', () => {
@@ -136,9 +157,9 @@ describe('expandAreas', () => {
     expect(expandAreas({ reports: 'manage' }, [])).toContain('view:ai_assistant');
   });
 
-  it('grants view:financial_intelligence at either books tier (matches the legacy CASE, minus the subscription gate)', () => {
-    expect(expandAreas({ books: 'view' }, [])).toContain('view:financial_intelligence');
-    expect(expandAreas({ books: 'manage' }, [])).toContain('view:financial_intelligence');
+  it('grants view:financial_intelligence at either financial_intelligence tier (matches the legacy CASE, minus the subscription gate)', () => {
+    expect(expandAreas({ financial_intelligence: 'view' }, [])).toContain('view:financial_intelligence');
+    expect(expandAreas({ financial_intelligence: 'manage' }, [])).toContain('view:financial_intelligence');
   });
 
   it('manage is a superset of view (no capability is lost going from view to manage)', () => {
@@ -179,16 +200,26 @@ describe('expandAreas', () => {
 
 // ============================================================
 // Per-role reconstruction, transcribed literally from
-// supabase/migrations/20260730110000_seed_builtin_roles.sql's role_areas
-// INSERT — not derived from ROLE_CAPABILITIES — so a mismatch here is a real
+// supabase/migrations/20260805120000_page_areas.sql's role_areas fan-out
+// (Step 3: books -> its nine successor pages, reports -> +dashboard:view,
+// scheduling:manage -> +time_punches/tips:manage, inventory:manage ->
+// +inventory_audit:manage, recipes -> +prep_recipes at the same level) —
+// not derived from ROLE_CAPABILITIES — so a mismatch here is a real
 // regression in either the seed or this file, not a tautology.
 // ============================================================
 
 describe('expandAreas reconstructs each builtin from its seeded area grants', () => {
   it('Owner', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      reports: 'manage', sales: 'view', inventory: 'manage', purchasing: 'manage',
-      recipes: 'manage', scheduling: 'manage', reviews: 'manage', books: 'manage', chart_of_accounts: 'manage',
+      dashboard: 'view', reports: 'manage', sales: 'view',
+      inventory: 'manage', inventory_audit: 'manage', purchasing: 'manage',
+      recipes: 'manage', prep_recipes: 'manage',
+      scheduling: 'manage', time_punches: 'manage', tips: 'manage',
+      reviews: 'manage',
+      transactions: 'manage', banking: 'manage', expenses: 'manage', invoices: 'manage',
+      customers: 'manage', financial_statements: 'manage', financial_intelligence: 'manage',
+      assets: 'manage', print_checks: 'manage',
+      chart_of_accounts: 'manage',
       payroll: 'manage', employees: 'manage', team: 'manage', collaborators: 'manage',
       settings: 'manage', integrations: 'manage',
     };
@@ -199,8 +230,15 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
 
   it('Manager', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      reports: 'manage', sales: 'view', inventory: 'manage', purchasing: 'manage',
-      recipes: 'manage', scheduling: 'manage', reviews: 'manage', books: 'manage', chart_of_accounts: 'view',
+      dashboard: 'view', reports: 'manage', sales: 'view',
+      inventory: 'manage', inventory_audit: 'manage', purchasing: 'manage',
+      recipes: 'manage', prep_recipes: 'manage',
+      scheduling: 'manage', time_punches: 'manage', tips: 'manage',
+      reviews: 'manage',
+      transactions: 'manage', banking: 'manage', expenses: 'manage', invoices: 'manage',
+      customers: 'manage', financial_statements: 'manage', financial_intelligence: 'manage',
+      assets: 'manage', print_checks: 'manage',
+      chart_of_accounts: 'view',
       payroll: 'manage', employees: 'manage', team: 'manage', collaborators: 'manage',
       settings: 'view', integrations: 'view',
     };
@@ -211,8 +249,11 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
 
   it('Operations Manager', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      reports: 'manage', sales: 'view', inventory: 'manage', purchasing: 'manage',
-      recipes: 'manage', scheduling: 'manage', reviews: 'manage', payroll: 'manage', employees: 'manage',
+      dashboard: 'view', reports: 'manage', sales: 'view',
+      inventory: 'manage', inventory_audit: 'manage', purchasing: 'manage',
+      recipes: 'manage', prep_recipes: 'manage',
+      scheduling: 'manage', time_punches: 'manage', tips: 'manage',
+      reviews: 'manage', payroll: 'manage', employees: 'manage',
       team: 'manage', settings: 'view',
     };
     const result = new Set(expandAreas(grants));
@@ -222,8 +263,10 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
 
   it('Chef', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      reports: 'view', sales: 'view', inventory: 'manage', purchasing: 'view',
-      recipes: 'manage', scheduling: 'view', reviews: 'view', settings: 'view',
+      dashboard: 'view', reports: 'view', sales: 'view',
+      inventory: 'manage', inventory_audit: 'manage', purchasing: 'view',
+      recipes: 'manage', prep_recipes: 'manage',
+      scheduling: 'view', reviews: 'view', settings: 'view',
     };
     const result = new Set(expandAreas(grants));
     const expected = new Set(ROLE_CAPABILITIES.chef);
@@ -245,7 +288,10 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
 
   it('Accountant', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      books: 'manage', chart_of_accounts: 'manage', payroll: 'view', employees: 'view',
+      transactions: 'manage', banking: 'manage', expenses: 'manage', invoices: 'manage',
+      customers: 'manage', financial_statements: 'manage', financial_intelligence: 'manage',
+      assets: 'manage', print_checks: 'manage',
+      chart_of_accounts: 'manage', payroll: 'view', employees: 'view',
       settings: 'view',
     };
     const result = new Set(expandAreas(grants));
@@ -259,7 +305,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
 
   it('Inventory Helper', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      inventory: 'manage', purchasing: 'manage', settings: 'view',
+      inventory: 'manage', inventory_audit: 'manage', purchasing: 'manage', settings: 'view',
     };
     const result = new Set(expandAreas(grants));
     const expected = new Set(ROLE_CAPABILITIES.collaborator_inventory);
@@ -268,7 +314,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
 
   it('Recipe Consultant', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      inventory: 'view', recipes: 'manage', settings: 'view',
+      inventory: 'view', recipes: 'manage', prep_recipes: 'manage', settings: 'view',
     };
     const result = new Set(expandAreas(grants));
     const expected = new Set(ROLE_CAPABILITIES.collaborator_chef);
@@ -277,9 +323,11 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
 
   it('Operations Manager (Collaborator)', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      reports: 'manage', sales: 'view', inventory: 'manage', purchasing: 'manage',
-      recipes: 'manage', scheduling: 'manage', payroll: 'view', employees: 'view',
-      settings: 'view',
+      dashboard: 'view', reports: 'manage', sales: 'view',
+      inventory: 'manage', inventory_audit: 'manage', purchasing: 'manage',
+      recipes: 'manage', prep_recipes: 'manage',
+      scheduling: 'manage', time_punches: 'manage', tips: 'manage',
+      payroll: 'view', employees: 'view', settings: 'view',
     };
     const result = new Set(expandAreas(grants));
     const expected = new Set(ROLE_CAPABILITIES.collaborator_operations_manager);

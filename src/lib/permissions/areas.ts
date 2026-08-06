@@ -1,55 +1,74 @@
 /**
- * The area model (roles-and-areas design)
+ * The area model (menu-mirror design)
  *
- * An "area" is a named bundle of existing `view:*`/`edit:*` capability pairs,
- * granted at one of three levels: no access, `'view'`, or `'manage'`. This is
- * the client-side mirror of the SQL seed — every mapping below is transcribed
- * literally (not derived) from:
+ * An "area" is one gateable sidebar page, granted at one of three levels: no
+ * access, `'view'`, or `'manage'`. This is the client-side mirror of the SQL
+ * seed — every mapping below is transcribed literally (not derived) from:
  *
- *   - supabase/migrations/20260730100000_roles_and_areas_tables.sql
- *     (`area_catalog`: the fourteen `area_key`s, their `ui_group`/`band`
- *     grouping, and `max_level_collaborator`)
- *   - supabase/migrations/20260730140000_user_has_capability_from_areas.sql
- *     (the capability -> (area_key, required_level) map used by
- *     `user_has_capability` for the `role_id IS NOT NULL` path)
+ *   - supabase/migrations/20260805120000_page_areas.sql
+ *     (`area_catalog`: the 33 `area_key`s — one per gateable `navigationGroups`
+ *     item, plus `collaborators` sharing `/team` with `team` — their
+ *     `ui_group`/`sort_order`/`max_level_collaborator`)
+ *   - the same migration's rewrite of `user_has_capability` (the capability ->
+ *     (area_key, required_level) map used for the `role_id IS NOT NULL` path)
  *
  * If either SQL source changes, this file must change with it — that is the
  * whole point of "single source of truth mirroring the SQL seed" from the
- * design doc (docs/superpowers/specs/2026-07-29-roles-and-areas-design.md).
+ * design doc (docs/superpowers/specs/2026-08-05-permissions-menu-mirror-design.md).
  *
- * Ten rows in the editor, fourteen areas underneath: the design's ten bands
- * (what `AREA_DEFINITIONS` exposes) collapse four pairs of `area_key`s
- * (inventory+purchasing, books+chart_of_accounts, team+collaborators,
- * settings+integrations) onto one editor row each. The split exists because
- * the six builtin roles do not partition cleanly along ten coarse areas —
- * e.g. `collaborator_chef` holds `view:inventory` without
- * `view:purchase_orders`. `expandAreas` operates on the full fourteen
- * `AreaKey`s (matching what `role_areas` actually stores per row), while
- * `AREA_DEFINITIONS` is the ten-row UI grouping built on top of them.
+ * One area per sidebar page, one row in the editor per area: `PAGE_AREAS`
+ * declares each page's permission metadata (level caps, hint copy); it is
+ * joined against `navigationGroups` (`AppSidebar.nav.data.ts`) to produce
+ * `AREA_DEFINITIONS` — the page's real sidebar label, icon, group and
+ * position, so the editor never re-invents wording or ordering the sidebar
+ * already has. A page added to `navigationGroups` with no matching
+ * `PAGE_AREAS` entry fails `tests/unit/areas.test.ts`'s drift alarm instead of
+ * silently becoming ungrantable.
  */
 
+import type { LucideIcon } from 'lucide-react';
+import { navigationGroups } from '@/components/AppSidebar.nav.data';
 import type { Capability } from './types';
 
 /**
- * The fourteen SQL area_keys — the actual grant granularity stored in
- * `role_areas`. Matches area_catalog.area_key exactly.
+ * The 33 SQL area_keys — one per gateable `navigationGroups` item, plus
+ * `collaborators`, which shares `/team` with `team` (spec §3.2). Matches
+ * area_catalog.area_key exactly.
  */
 export type AreaKey =
-  | 'reports'
+  | 'dashboard'
+  | 'integrations'
   | 'sales'
-  | 'inventory'
-  | 'purchasing'
-  | 'recipes'
-  | 'scheduling'
+  | 'ops_inbox'
   | 'reviews'
-  | 'books'
-  | 'chart_of_accounts'
+  | 'weekly_brief'
+  | 'scheduling'
+  | 'time_punches'
+  | 'tips'
   | 'payroll'
+  | 'labor'
+  | 'recipes'
+  | 'prep_recipes'
+  | 'inventory'
+  | 'inventory_audit'
+  | 'purchasing'
+  | 'reports'
+  | 'budget'
+  | 'customers'
+  | 'invoices'
+  | 'stripe_account'
+  | 'banking'
+  | 'expenses'
+  | 'print_checks'
+  | 'assets'
+  | 'financial_intelligence'
+  | 'transactions'
+  | 'chart_of_accounts'
+  | 'financial_statements'
   | 'employees'
   | 'team'
   | 'collaborators'
-  | 'settings'
-  | 'integrations';
+  | 'settings';
 
 /** The grant level for one area_key. No third "none" value — omit the key instead. */
 export type AreaLevel = 'view' | 'manage';
@@ -90,152 +109,126 @@ export const SENSITIVE_FLAGS: ReadonlyArray<{
   },
 ];
 
-/** The three bands the editor groups areas into. Matches area_catalog.band. */
-export type Band = 'Operations' | 'Money' | 'People & admin';
-
 /**
- * One row in the role editor. `areaKeys` lists the underlying `area_key`(s)
- * this row writes when its control is toggled — more than one for the four
- * split rows.
+ * One page's permission metadata — everything the editor needs that isn't
+ * already on the sidebar's own `navigationGroups` entry (label/icon/order).
  */
-/**
- * The ten `ui_group` keys from area_catalog, as a closed union.
- *
- * Deliberately a union rather than `string`: three maps elsewhere are keyed by
- * it (`AREA_HINT` and `AREA_LOCK_REASON` in `RoleEditor.tsx`, `PHRASE` in
- * `./preview.ts`), and with `string` a renamed or added row here would resolve
- * to `undefined` at runtime instead of failing the build.
- */
-export type AreaGroupKey =
-  | 'reports'
-  | 'sales'
-  | 'inventory'
-  | 'recipes'
-  | 'scheduling'
-  | 'reviews'
-  | 'books'
-  | 'payroll'
-  | 'employees'
-  | 'team'
-  | 'settings';
-
-export interface AreaDefinition {
-  /** The ui_group key from area_catalog. */
-  key: AreaGroupKey;
-  label: string;
-  band: Band;
-  /** area_catalog.sort_order, shared by every area_key in the group. */
-  sortOrder: number;
-  /** The area_key(s) this editor row grants. */
-  areaKeys: readonly AreaKey[];
+export interface PageArea {
+  /** The area_key from area_catalog. */
+  key: AreaKey;
+  /** The `navigationGroups` path this area gates. `team` and `collaborators` share `/team`. */
+  path: string;
+  /**
+   * Whether the page has a Manage tier at all. `false` means the page has no
+   * edit capability — the editor locks the Manage segment. Matches
+   * area_catalog's implicit "no edit:X exists" for this key.
+   */
+  hasManageTier: boolean;
   /**
    * The highest level a collaborator-flavored custom role can be granted for
-   * this area. `null` means ungrantable at any level — Team & Access, the
-   * privilege-escalation guard the design calls out explicitly (a
-   * collaborator role that could edit roles could mint itself owner-level
-   * access). Enforced in SQL by `role_areas_enforce_collaborator_cap`; this
-   * value only drives the editor's disabled state, so the two cannot drift
-   * because both read area_catalog.max_level_collaborator.
+   * this area. `null` means ungrantable at any level — currently only `team`
+   * and `collaborators`, the privilege-escalation guard the design calls out
+   * explicitly (a collaborator role that could edit roles could mint itself
+   * owner-level access). Enforced in SQL by
+   * `role_areas_enforce_collaborator_cap`; this value only drives the
+   * editor's disabled state, so the two cannot drift because both read
+   * area_catalog.max_level_collaborator.
    */
   maxLevelForCollaborator: AreaLevel | null;
+  /** View-tier row copy, authored per page in the mockup. */
+  hint: string;
+  /** Manage-tier row copy, only present where `hasManageTier` is true. */
+  manageHint?: string;
+  /**
+   * Overrides the sidebar's `label` for this row. Only `team` and
+   * `collaborators` need it — both gate `/team`, so the sidebar's single
+   * "Team" label can't distinguish them.
+   */
+  navLabel?: string;
 }
 
 /**
- * The ten editor rows, in the design's fixed order (Operations, then Money,
- * then People & admin bands). Matches area_catalog's (ui_group, band,
- * sort_order, max_level_collaborator) columns exactly.
+ * The 33 pages' permission metadata, in sidebar order. Source of truth for
+ * `AREA_DEFINITIONS` (joined against `navigationGroups` for label/icon/
+ * group/order), `AREA_LANDING_PATHS` and `AREA_PRIORITY` below — none of
+ * those three is hand-maintained separately.
  */
-export const AREA_DEFINITIONS: readonly AreaDefinition[] = [
-  {
-    key: 'reports',
-    label: 'Dashboard & Reports',
-    band: 'Operations',
-    sortOrder: 1,
-    areaKeys: ['reports'],
-    maxLevelForCollaborator: 'view',
-  },
-  {
-    key: 'sales',
-    label: 'Sales',
-    band: 'Operations',
-    sortOrder: 2,
-    areaKeys: ['sales'],
-    maxLevelForCollaborator: 'view',
-  },
-  {
-    key: 'inventory',
-    label: 'Inventory & Purchasing',
-    band: 'Operations',
-    sortOrder: 3,
-    areaKeys: ['inventory', 'purchasing'],
-    maxLevelForCollaborator: 'manage',
-  },
-  {
-    key: 'recipes',
-    label: 'Recipes',
-    band: 'Operations',
-    sortOrder: 4,
-    areaKeys: ['recipes'],
-    maxLevelForCollaborator: 'manage',
-  },
-  {
-    key: 'scheduling',
-    label: 'Scheduling',
-    band: 'Operations',
-    sortOrder: 5,
-    areaKeys: ['scheduling'],
-    maxLevelForCollaborator: 'manage',
-  },
-  {
-    key: 'reviews',
-    label: 'Reviews',
-    band: 'Operations',
-    sortOrder: 6,
-    areaKeys: ['reviews'],
-    maxLevelForCollaborator: 'view',
-  },
-  {
-    key: 'books',
-    label: 'Money & Books',
-    band: 'Money',
-    sortOrder: 7,
-    areaKeys: ['books', 'chart_of_accounts'],
-    maxLevelForCollaborator: 'manage',
-  },
-  {
-    key: 'payroll',
-    label: 'Payroll',
-    band: 'Money',
-    sortOrder: 8,
-    areaKeys: ['payroll'],
-    maxLevelForCollaborator: 'view',
-  },
-  {
-    key: 'employees',
-    label: 'Employees',
-    band: 'People & admin',
-    sortOrder: 9,
-    areaKeys: ['employees'],
-    maxLevelForCollaborator: 'manage',
-  },
-  {
-    key: 'team',
-    label: 'Team & Access',
-    band: 'People & admin',
-    sortOrder: 10,
-    areaKeys: ['team', 'collaborators'],
-    // Ungrantable at any level to a collaborator role — see the doc comment
-    // on AreaDefinition.maxLevelForCollaborator.
-    maxLevelForCollaborator: null,
-  },
-  {
-    key: 'settings',
-    label: 'Settings & Integrations',
-    band: 'People & admin',
-    sortOrder: 11,
-    areaKeys: ['settings', 'integrations'],
-    maxLevelForCollaborator: 'view',
-  },
+export const PAGE_AREAS: readonly PageArea[] = [
+  // Main
+  { key: 'dashboard', path: '/', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'Daily numbers, prime cost, P&L snapshot' },
+  { key: 'integrations', path: '/integrations', hasManageTier: true, maxLevelForCollaborator: 'view',
+    hint: 'POS, bank and payroll connections', manageHint: 'connect and disconnect systems' },
+  { key: 'sales', path: '/pos-sales', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'Ticket-level sales from your POS' },
+  { key: 'ops_inbox', path: '/ops-inbox', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'Exceptions and things needing a decision' },
+  { key: 'reviews', path: '/reviews', hasManageTier: true, maxLevelForCollaborator: 'view',
+    hint: 'Review pages, QR codes, guest feedback', manageHint: 'edit QR pages and reply' },
+  { key: 'weekly_brief', path: '/weekly-brief', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'The weekly summary and its archive' },
+
+  // Operations
+  { key: 'scheduling', path: '/scheduling', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Shifts, templates, open-shift broadcasts', manageHint: 'publish and edit schedules' },
+  { key: 'time_punches', path: '/time-punches', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Punches, edits, missed-punch fixes', manageHint: 'edit punches' },
+  { key: 'tips', path: '/tips', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Pools, rules and distribution', manageHint: 'run and adjust distributions' },
+  { key: 'payroll', path: '/payroll', hasManageTier: true, maxLevelForCollaborator: 'view',
+    hint: 'Pay runs and payroll history', manageHint: 'run payroll' },
+  { key: 'labor', path: '/labor', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'Labor cost against sales' },
+
+  // Inventory
+  { key: 'recipes', path: '/recipes', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Recipe cards and plate cost', manageHint: 'create and edit recipes' },
+  { key: 'prep_recipes', path: '/prep-recipes', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Prep items and production batches', manageHint: 'edit prep items and batches' },
+  { key: 'inventory', path: '/inventory', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Counts, stock levels, unit costs', manageHint: 'adjust counts and costs' },
+  { key: 'inventory_audit', path: '/inventory-audit', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Count sessions and variance', manageHint: 'run and close audits' },
+  { key: 'purchasing', path: '/purchase-orders', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'POs, receiving, supplier invoices', manageHint: 'raise and receive POs' },
+  { key: 'reports', path: '/reports', hasManageTier: true, maxLevelForCollaborator: 'view',
+    hint: 'Saved reports and P&L trends', manageHint: 'and the AI assistant' },
+
+  // Accounting
+  { key: 'budget', path: '/budget', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'Targets and burn against plan' },
+  { key: 'customers', path: '/customers', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Customer records and balances', manageHint: 'add and edit customers' },
+  { key: 'invoices', path: '/invoices', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Draft, send and track invoices', manageHint: 'create, send and void invoices' },
+  { key: 'stripe_account', path: '/stripe-account', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'Balance, payouts and transfers' },
+  { key: 'banking', path: '/banking', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Connected accounts and feeds', manageHint: 'connect and reconcile' },
+  { key: 'expenses', path: '/expenses', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Bills, receipts and categories', manageHint: 'record and categorise' },
+  { key: 'print_checks', path: '/print-checks', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Issue and print checks', manageHint: 'issue checks — this moves money' },
+  { key: 'assets', path: '/assets', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Fixed assets and depreciation', manageHint: 'add and depreciate assets' },
+  { key: 'financial_intelligence', path: '/financial-intelligence', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'AI analysis over your books' },
+  { key: 'transactions', path: '/transactions', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'The ledger and categorisation', manageHint: 'edit and recategorise' },
+  { key: 'chart_of_accounts', path: '/chart-of-accounts', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Account tree and mappings', manageHint: 'add and rename accounts' },
+  { key: 'financial_statements', path: '/financial-statements', hasManageTier: false, maxLevelForCollaborator: 'view',
+    hint: 'P&L, balance sheet, cash flow' },
+
+  // Admin
+  { key: 'employees', path: '/employees', hasManageTier: true, maxLevelForCollaborator: 'manage',
+    hint: 'Roster, jobs, wage assignments', manageHint: 'hire, edit and terminate' },
+  { key: 'team', path: '/team', navLabel: 'Team members', hasManageTier: true, maxLevelForCollaborator: null,
+    hint: 'Invite people, assign roles, edit these roles' },
+  { key: 'collaborators', path: '/team', navLabel: 'Collaborators', hasManageTier: true, maxLevelForCollaborator: null,
+    hint: 'Add external collaborators and set what they can do' },
+  { key: 'settings', path: '/settings', hasManageTier: true, maxLevelForCollaborator: 'view',
+    hint: 'Restaurant profile, hours, timezone', manageHint: 'change settings' },
 ];
 
 interface AreaCapabilities {
@@ -246,14 +239,24 @@ interface AreaCapabilities {
 }
 
 /**
- * The fourteen area_keys' capability bundles. Transcribed literally from the
+ * The 33 area_keys' capability bundles. Transcribed literally from the
  * capability -> (area_key, required_level) VALUES map in
- * user_has_capability (20260730140000_user_has_capability_from_areas.sql):
- * every capability whose required_level is 'view' lands in that area's
- * `view` list here, every 'manage' one lands in `manageAdds`.
+ * `user_has_capability` (20260805120000_page_areas.sql): every capability
+ * whose required_level is 'view' lands in that area's `view` list here,
+ * every 'manage' one lands in `manageAdds`.
+ *
+ * Seven entries are not a pure one-to-one re-point of a same-named
+ * capability (spec §3.2): `recipes`/`inventory` absorb capabilities with no
+ * page of their own (`view:batches`, `view:inventory_transactions`, etc.),
+ * `print_checks` renames off `view:pending_outflows`, and `reports`'s manage
+ * tier means "and the AI assistant" via the hardcoded
+ * `area_key = 'reports' AND level = 'manage'` check rather than a
+ * `view:ai_assistant` row in the VALUES map itself. `dashboard`,
+ * `ops_inbox`, `weekly_brief`, `budget`, `labor` and `stripe_account` carry
+ * no capability at all (spec §3.4) — gated purely by routing, same as today.
  *
  * `view:ai_assistant` and `view:financial_intelligence` are included
- * unconditionally here, exactly as ROLE_CAPABILITIES does today — the SQL
+ * unconditionally here, exactly as they were before the re-cut — the SQL
  * ANDs them with `has_subscription_feature(...)`, but that is a runtime,
  * per-restaurant subscription check with no place in a pure (grants, flags)
  * -> Capability[] function, and today's static ROLE_CAPABILITIES table
@@ -262,71 +265,125 @@ interface AreaCapabilities {
  * ROLE_CAPABILITIES.
  */
 const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
-  reports: {
-    view: ['view:dashboard', 'view:reports'],
-    manageAdds: ['view:ai_assistant'],
+  dashboard: {
+    view: ['view:dashboard'],
+    manageAdds: [],
+  },
+  integrations: {
+    view: ['view:integrations'],
+    manageAdds: ['manage:integrations'],
   },
   sales: {
     view: ['view:pos_sales'],
     manageAdds: [],
   },
-  inventory: {
-    view: ['view:inventory'],
-    manageAdds: [
-      'edit:inventory',
-      'view:inventory_audit',
-      'edit:inventory_audit',
-      'view:receipt_import',
-      'edit:receipt_import',
-      'view:inventory_transactions',
-      'edit:inventory_transactions',
-    ],
-  },
-  purchasing: {
-    view: ['view:purchase_orders'],
-    manageAdds: ['edit:purchase_orders'],
-  },
-  recipes: {
-    view: ['view:recipes', 'view:prep_recipes', 'view:batches'],
-    manageAdds: ['edit:recipes', 'edit:prep_recipes', 'edit:batches'],
-  },
-  scheduling: {
-    view: ['view:scheduling'],
-    manageAdds: ['edit:scheduling', 'view:tips', 'edit:tips', 'view:time_punches', 'edit:time_punches'],
+  ops_inbox: {
+    view: [],
+    manageAdds: [],
   },
   reviews: {
     view: ['view:reviews'],
     manageAdds: ['manage:reviews'],
   },
-  books: {
-    view: [
-      'view:transactions',
-      'view:banking',
-      'view:expenses',
-      'view:financial_statements',
-      'view:invoices',
-      'view:customers',
-      'view:financial_intelligence',
-      'view:pending_outflows',
-      'view:assets',
-    ],
+  weekly_brief: {
+    view: [],
+    manageAdds: [],
+  },
+  scheduling: {
+    view: ['view:scheduling'],
+    manageAdds: ['edit:scheduling'],
+  },
+  time_punches: {
+    view: ['view:time_punches'],
+    manageAdds: ['edit:time_punches'],
+  },
+  tips: {
+    view: ['view:tips'],
+    manageAdds: ['edit:tips'],
+  },
+  payroll: {
+    view: ['view:payroll'],
+    manageAdds: ['edit:payroll'],
+  },
+  labor: {
+    view: [],
+    manageAdds: [],
+  },
+  recipes: {
+    view: ['view:recipes', 'view:batches'],
+    manageAdds: ['edit:recipes', 'edit:batches'],
+  },
+  prep_recipes: {
+    view: ['view:prep_recipes'],
+    manageAdds: ['edit:prep_recipes'],
+  },
+  inventory: {
+    view: ['view:inventory'],
     manageAdds: [
-      'edit:transactions',
-      'edit:banking',
-      'edit:expenses',
-      'edit:invoices',
-      'edit:customers',
-      'edit:pending_outflows',
-      'edit:assets',
+      'edit:inventory',
+      'view:receipt_import', 'edit:receipt_import',
+      'view:inventory_transactions', 'edit:inventory_transactions',
     ],
+  },
+  inventory_audit: {
+    view: ['view:inventory_audit'],
+    manageAdds: ['edit:inventory_audit'],
+  },
+  purchasing: {
+    view: ['view:purchase_orders'],
+    manageAdds: ['edit:purchase_orders'],
+  },
+  reports: {
+    view: ['view:reports'],
+    manageAdds: ['view:ai_assistant'], // manage on Reports means "and the AI assistant"
+  },
+  budget: {
+    view: [],
+    manageAdds: [],
+  },
+  customers: {
+    view: ['view:customers'],
+    manageAdds: ['edit:customers'],
+  },
+  invoices: {
+    view: ['view:invoices'],
+    manageAdds: ['edit:invoices'],
+  },
+  stripe_account: {
+    view: [],
+    manageAdds: [],
+  },
+  banking: {
+    view: ['view:banking'],
+    manageAdds: ['edit:banking'],
+  },
+  expenses: {
+    view: ['view:expenses'],
+    manageAdds: ['edit:expenses'],
+  },
+  print_checks: {
+    view: ['view:pending_outflows'],
+    manageAdds: ['edit:pending_outflows'],
+  },
+  assets: {
+    view: ['view:assets'],
+    manageAdds: ['edit:assets'],
+  },
+  financial_intelligence: {
+    view: ['view:financial_intelligence'],
+    manageAdds: [],
+  },
+  transactions: {
+    view: ['view:transactions'],
+    manageAdds: ['edit:transactions'],
   },
   chart_of_accounts: {
     view: ['view:chart_of_accounts'],
     manageAdds: ['edit:chart_of_accounts'],
   },
-  payroll: {
-    view: ['view:payroll'],
-    manageAdds: ['edit:payroll'],
+  financial_statements: {
+    view: ['view:financial_statements'],
+    manageAdds: [],
   },
   employees: {
     view: ['view:employees'],
@@ -344,10 +401,6 @@ const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
     view: ['view:settings'],
     manageAdds: ['edit:settings'],
   },
-  integrations: {
-    view: ['view:integrations'],
-    manageAdds: ['manage:integrations'],
-  },
 };
 
 /**
@@ -355,12 +408,6 @@ const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
  * capability set it holds — the client-side mirror of what
  * `user_has_capability` computes per-capability in SQL for a `role_id IS NOT
  * NULL` membership.
- *
- * `grants` is keyed by the fourteen `AreaKey`s (matching `role_areas` rows,
- * not the ten editor rows) so a builtin's split grant — e.g.
- * `operations_manager` holding `settings: 'view'` without `integrations` —
- * is represented exactly, including cases the ten-row editor cannot express
- * for a builtin.
  *
  * `flags` are independent of area grants: a granted flag is included in the
  * output as-is, matching the SQL, which checks `role_flags` directly for
@@ -392,57 +439,78 @@ export function expandAreas(
 }
 
 /**
+ * One row in the role editor — a `PageArea` enriched with the sidebar's own
+ * label, icon, group and position, so none of those is hand-maintained here.
+ */
+export interface AreaDefinition extends PageArea {
+  /** The sidebar's label for this page, or `navLabel` where the page overrides it. */
+  label: string;
+  icon: LucideIcon;
+  /** The `navigationGroups` group label this page belongs to (area_catalog.ui_group). */
+  uiGroup: string;
+  /** 1-based position within `uiGroup`, taken from `navigationGroups` order. */
+  sortOrder: number;
+}
+
+/**
+ * Walks `navigationGroups` in order and, for each item, emits every
+ * `PAGE_AREAS` entry whose `path` matches (two, for `/team`) — the join that
+ * makes a sidebar page's label/icon/group/order the single source of truth
+ * for the editor instead of a second hand-kept copy. Skips `/help`, which
+ * stays universal (`routeAreas.ts`) rather than becoming a grantable area.
+ */
+function deriveAreaDefinitions(): AreaDefinition[] {
+  const definitions: AreaDefinition[] = [];
+
+  for (const group of navigationGroups) {
+    let sortOrder = 0;
+    for (const item of group.items) {
+      if (item.path === '/help') continue;
+
+      for (const area of PAGE_AREAS.filter((candidate) => candidate.path === item.path)) {
+        sortOrder += 1;
+        definitions.push({
+          ...area,
+          label: area.navLabel ?? item.label,
+          icon: item.icon,
+          uiGroup: group.label,
+          sortOrder,
+        });
+      }
+    }
+  }
+
+  return definitions;
+}
+
+/**
+ * The 33 editor rows, in sidebar order (Main, Operations, Inventory,
+ * Accounting, then Admin). Derived from `navigationGroups` joined against
+ * `PAGE_AREAS` — see `deriveAreaDefinitions`.
+ */
+export const AREA_DEFINITIONS: readonly AreaDefinition[] = deriveAreaDefinitions();
+
+/**
  * One representative nav path per `area_key` — the page a role holding that
  * area lands on, and (via `AREA_PRIORITY`) the page it lands on by default.
- * Moved here (out of `usePermissions.ts`, where this lived until task 9b)
- * so `preview.ts`'s live preview and `usePermissions.ts`'s `landingPath` both
- * read one copy rather than risking two hand-maintained lists drifting apart.
- * Paths mirror the builtin `landingPath`s already in `ROLE_METADATA`
- * (definitions.ts) — e.g. `collaborator_operations_manager` -> `/scheduling`,
- * `collaborator_inventory` -> `/inventory` — so a custom role built from the
- * same areas lands in the same place a builtin with that area would.
+ * Derived from `PAGE_AREAS` rather than hand-maintained, so a page moving
+ * in the sidebar can't leave this list stale.
  */
-export const AREA_LANDING_PATHS: Record<AreaKey, string> = {
-  reports: '/',
-  sales: '/pos-sales',
-  inventory: '/inventory',
-  purchasing: '/purchase-orders',
-  recipes: '/recipes',
-  scheduling: '/scheduling',
-  reviews: '/reviews',
-  books: '/transactions',
-  chart_of_accounts: '/chart-of-accounts',
-  payroll: '/payroll',
-  employees: '/employees',
-  team: '/team',
-  collaborators: '/team',
-  settings: '/settings',
-  integrations: '/integrations',
-};
+export const AREA_LANDING_PATHS: Record<AreaKey, string> = PAGE_AREAS.reduce(
+  (paths, area) => {
+    paths[area.key] = area.path;
+    return paths;
+  },
+  {} as Record<AreaKey, string>
+);
 
 /**
  * Priority order for picking a landing path (or, in `preview.ts`, the "opens
  * here" nav item) when multiple areas are granted — mirrors
- * `AREA_DEFINITIONS`' band ordering (Operations, then Money, then People &
- * admin).
+ * `AREA_DEFINITIONS`' sidebar ordering (Main, then Operations, Inventory,
+ * Accounting, Admin).
  */
-export const AREA_PRIORITY: readonly AreaKey[] = [
-  'reports',
-  'sales',
-  'inventory',
-  'purchasing',
-  'recipes',
-  'scheduling',
-  'reviews',
-  'books',
-  'chart_of_accounts',
-  'payroll',
-  'employees',
-  'team',
-  'collaborators',
-  'settings',
-  'integrations',
-];
+export const AREA_PRIORITY: readonly AreaKey[] = AREA_DEFINITIONS.map((area) => area.key);
 
 /**
  * A role's area rows collapsed into the level-per-`area_key` map that

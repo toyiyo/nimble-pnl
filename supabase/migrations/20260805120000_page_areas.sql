@@ -55,3 +55,63 @@ INSERT INTO public.area_catalog (area_key, ui_group, band, sort_order, max_level
   ('financial_intelligence', 'Accounting', 'Accounting', 9,  'view'),
   ('transactions',           'Accounting', 'Accounting', 10, 'manage'),
   ('financial_statements',   'Accounting', 'Accounting', 11, 'view');
+
+-- ============================================================================
+-- Step 3: fan out role_areas, then retire books
+--
+-- Insert before deleting — the FK is RESTRICT and the new rows do not
+-- depend on the old ones surviving. Every fan-out below targets keys that
+-- were only just inserted above, and no two fan-outs share a target key, so
+-- a plain INSERT cannot conflict. Left unqualified: if that premise is ever
+-- wrong, a loud unique-violation is the right outcome.
+-- ============================================================================
+
+-- books:manage -> manage on all nine books pages.
+-- books:view   -> view on eight; print_checks is SKIPPED (spec §4.1) —
+--                 /print-checks is the only books path gated at manage today.
+INSERT INTO public.role_areas (role_id, area_key, level)
+SELECT ra.role_id, page.area_key, ra.level
+FROM public.role_areas ra
+CROSS JOIN LATERAL (VALUES
+  ('transactions'), ('banking'), ('expenses'), ('invoices'), ('customers'),
+  ('financial_statements'), ('financial_intelligence'), ('assets'), ('print_checks')
+) AS page(area_key)
+WHERE ra.area_key = 'books'
+  AND NOT (page.area_key = 'print_checks' AND ra.level = 'view');
+
+-- reports -> dashboard at view. The `reports` row keeps its own level:
+-- view:ai_assistant is resolved by a hardcoded `area_key = 'reports' AND
+-- level = 'manage'` check below, so downgrading it would silently kill AI
+-- Assistant for Owner, Manager and both Operations Manager roles.
+INSERT INTO public.role_areas (role_id, area_key, level)
+SELECT ra.role_id, 'dashboard', 'view'
+FROM public.role_areas ra
+WHERE ra.area_key = 'reports';
+
+-- scheduling:manage -> manage on time_punches and tips. scheduling:view fans
+-- out to nothing: a view-level holder reaches neither page today.
+INSERT INTO public.role_areas (role_id, area_key, level)
+SELECT ra.role_id, page.area_key, 'manage'
+FROM public.role_areas ra
+CROSS JOIN LATERAL (VALUES ('time_punches'), ('tips')) AS page(area_key)
+WHERE ra.area_key = 'scheduling' AND ra.level = 'manage';
+
+-- inventory:manage -> inventory_audit:manage. inventory:view fans out to
+-- nothing (/inventory-audit is manage-gated today).
+INSERT INTO public.role_areas (role_id, area_key, level)
+SELECT ra.role_id, 'inventory_audit', 'manage'
+FROM public.role_areas ra
+WHERE ra.area_key = 'inventory' AND ra.level = 'manage';
+
+-- recipes -> prep_recipes at the same level.
+INSERT INTO public.role_areas (role_id, area_key, level)
+SELECT ra.role_id, 'prep_recipes', ra.level
+FROM public.role_areas ra
+WHERE ra.area_key = 'recipes';
+
+-- The five new areas (ops_inbox, weekly_brief, budget, labor,
+-- stripe_account) intentionally receive NO rows. Grantable from now on;
+-- nobody holds them on deploy day.
+
+DELETE FROM public.role_areas   WHERE area_key = 'books';
+DELETE FROM public.area_catalog WHERE area_key = 'books';

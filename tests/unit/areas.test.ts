@@ -1,12 +1,50 @@
 import { describe, it, expect } from 'vitest';
 import {
   AREA_DEFINITIONS,
+  PAGE_AREAS,
   expandAreas,
   type AreaKey,
   type AreaLevel,
 } from '@/lib/permissions/areas';
+import { navigationGroups } from '@/components/AppSidebar.nav.data';
 import { ROLE_CAPABILITIES } from '@/lib/permissions/definitions';
 import type { Capability } from '@/lib/permissions/types';
+
+describe('areas.ts derives from the sidebar', () => {
+  it('has exactly one area per gateable sidebar page — the drift alarm', () => {
+    const navPaths = navigationGroups
+      .flatMap((g) => g.items.map((i) => i.path))
+      .filter((p) => p !== '/help');
+    const areaPaths = PAGE_AREAS.map((a) => a.path);
+
+    // `/team` carries two areas (team + collaborators), so compare as sets.
+    // A page added to AppSidebar.nav.data.ts with no PAGE_AREAS entry fails
+    // here rather than becoming silently ungrantable — which is how /budget,
+    // /labor, /stripe-account, /ops-inbox and /weekly-brief went unreachable.
+    expect(new Set(areaPaths)).toEqual(new Set(navPaths));
+  });
+
+  it('groups and orders areas exactly as the sidebar does', () => {
+    const navGroupLabels = navigationGroups.map((g) => g.label);
+    const defGroupLabels = [...new Set(AREA_DEFINITIONS.map((d) => d.uiGroup))];
+    expect(defGroupLabels).toEqual(navGroupLabels);
+  });
+
+  it('locks manage on pages with no edit capability', () => {
+    const readOnly = ['dashboard', 'sales', 'ops_inbox', 'weekly_brief', 'labor',
+                      'budget', 'stripe_account', 'financial_statements',
+                      'financial_intelligence'];
+    for (const key of readOnly) {
+      expect(PAGE_AREAS.find((a) => a.key === key)?.hasManageTier).toBe(false);
+    }
+  });
+
+  it('keeps team and collaborators ungrantable to collaborator roles', () => {
+    for (const key of ['team', 'collaborators'] as const) {
+      expect(PAGE_AREAS.find((a) => a.key === key)?.maxLevelForCollaborator).toBeNull();
+    }
+  });
+});
 
 // ============================================================
 // These tests mirror supabase/migrations/20260730100000_roles_and_areas_tables.sql

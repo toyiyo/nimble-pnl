@@ -14,6 +14,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 import { signReviewToken, verifyReviewToken, REVIEW_TOKEN_TTL_SECONDS } from '../_shared/reviewToken.ts';
 import { routeRating } from '../_shared/reviewRouting.ts';
 import { hashIp, isOverLimit, REVIEW_RATE_WINDOW_MS } from '../_shared/reviewRateLimit.ts';
+import { hasFollowUpPayload, MAX_EMAIL_LENGTH } from '../_shared/reviewContact.ts';
 
 const JSON_HEADERS = { ...corsHeaders, 'Content-Type': 'application/json' };
 
@@ -256,7 +257,6 @@ async function countRecentResponses(
 
 const MAX_COMMENT_LENGTH = 4000;
 const MAX_NAME_LENGTH = 200;
-const MAX_EMAIL_LENGTH = 320;
 
 async function handleComment(
   supabase: Supabase,
@@ -273,7 +273,11 @@ async function handleComment(
 
   // A malformed request is answered honestly with a 400 — that tells an
   // attacker nothing they did not already know about their own payload.
-  if (!token || !comment || comment.length > MAX_COMMENT_LENGTH) return fail(400);
+  if (!token || comment.length > MAX_COMMENT_LENGTH) return fail(400);
+
+  // The comment is optional, the payload is not. A request with neither a
+  // comment nor a usable email writes nothing, so it stays a 400.
+  if (!hasFollowUpPayload({ comment, consent, email })) return fail(400);
 
   // Past this point every early exit returns the same shape, so a caller
   // holding a well-formed request cannot distinguish a bot trip, a replay, an
@@ -310,17 +314,25 @@ async function handleComment(
     return ok();
   }
 
-  // `comment IS NULL` is what makes the token single-use: a replay updates
-  // zero rows and still answers ok.
+  // `commented_at IS NULL` is what makes the token single-use: a replay
+  // updates zero rows and still answers ok. `comment IS NULL` cannot do that
+  // job now — a contact-only submit leaves the comment NULL, so a replay
+  // would match again, re-run the UPDATE, and hit the primary key on
+  // review_response_contacts. `handleComment` is the only writer of
+  // `commented_at`, so the new guard rejects every replay the old one did.
+  //
+  // An empty comment stores as NULL, not as an empty string.
+  // `review_response_metrics` counts `comment IS NOT NULL`, so an empty
+  // string would inflate the comment count and put a blank row in the inbox.
   const { data: updated, error: updateError } = await supabase
     .from('review_responses')
     .update({
-      comment,
+      comment: comment || null,
       contact_consent: consent,
       commented_at: new Date().toISOString(),
     })
     .eq('id', payload.rid)
-    .is('comment', null)
+    .is('commented_at', null)
     .select('id');
 
   if (updateError) {

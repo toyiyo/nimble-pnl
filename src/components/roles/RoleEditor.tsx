@@ -16,10 +16,8 @@ import {
   grantMap,
   SENSITIVE_FLAGS,
   type AreaDefinition,
-  type AreaGroupKey,
   type AreaKey,
   type AreaLevel,
-  type Band,
   type SensitiveFlag,
 } from '@/lib/permissions/areas';
 import { membershipCapabilities } from '@/lib/permissions/membershipCapabilities';
@@ -124,35 +122,6 @@ export interface RoleEditorProps {
 
 type Grants = Partial<Record<AreaKey, AreaLevel>>;
 
-/** Per-row hint text, transcribed verbatim from the prototype's `AREAS[].hint`. */
-const AREA_HINT: Record<AreaGroupKey, string> = {
-  reports: 'Daily numbers, saved reports, AI assistant',
-  sales: 'Ticket-level sales from your POS',
-  inventory: 'Counts, audits, purchase orders, receipts',
-  recipes: 'Recipes, prep recipes, production batches',
-  scheduling: 'Schedules, time punches, tip pools',
-  reviews: 'Review pages, QR codes, guest feedback',
-  books: 'Transactions, banking, expenses, invoices, statements',
-  payroll: 'Pay runs and payroll history',
-  employees: 'Roster, jobs, wage assignments',
-  team: 'Invite people, assign roles, edit these roles',
-  settings: 'Restaurant settings, POS and bank connections',
-};
-
-/**
- * Per-row cap reason, transcribed verbatim from the design doc's per-area cap
- * table and the prototype's `AREAS[].viewOnlyReason`/`manageOwnerOnly`/
- * `ownerOnly`. Only rows with a non-'manage' `maxLevelForCollaborator` need
- * one — every other row is uncapped.
- */
-const AREA_LOCK_REASON: Partial<Record<AreaGroupKey, string>> = {
-  reports: 'Nothing there is editable.',
-  sales: 'Sales come from your POS — nobody edits them here.',
-  payroll: 'Owners and Managers only.',
-  team: 'Owners and Managers only — a collaborator can never grant access.',
-  settings: 'Owners and Managers only.',
-};
-
 /**
  * Whether a sensitive-data flag is meaningful for the current grants: at least
  * one of the areas it reads must still be granted. A builtin is exempt — its
@@ -167,17 +136,17 @@ function flagAvailable(
   return builtinReadOnly || flag.requires.some((key) => !!grants[key]);
 }
 
-const BAND_ORDER: readonly Band[] = ['Operations', 'Money', 'People & admin'];
-
-/** A row is "partial" when its underlying area_keys disagree — only possible for a builtin. */
-function rowIsPartial(row: AreaDefinition, grants: Grants): boolean {
-  if (row.areaKeys.length < 2) return false;
-  const levels = row.areaKeys.map((key) => grants[key] ?? null);
-  return new Set(levels).size > 1;
-}
+/**
+ * `AREA_DEFINITIONS`' `uiGroup` values, deduped in first-seen order — already
+ * sidebar order (Main, Operations, Inventory, Accounting, Admin), so no
+ * hand-kept band list to drift from the catalog.
+ */
+const GROUP_ORDER: readonly string[] = Array.from(
+  new Set(AREA_DEFINITIONS.map((row) => row.uiGroup))
+);
 
 function areaKeyLabel(key: AreaKey): string {
-  return AREA_DEFINITIONS.find((row) => row.areaKeys.includes(key))?.label ?? key;
+  return AREA_DEFINITIONS.find((row) => row.key === key)?.label ?? key;
 }
 
 function memberNoticeText(count: number): string {
@@ -376,15 +345,11 @@ function AreaRow({
   builtinReadOnly: boolean;
   onChange: (row: AreaDefinition, level: AreaLevel | null) => void;
 }) {
-  const partial = builtinReadOnly && rowIsPartial(row, grants);
-  const level = partial ? null : row.areaKeys.reduce<AreaLevel | null>((acc, key) => {
-    const granted = grants[key];
-    if (granted === 'manage') return 'manage';
-    if (granted === 'view' && acc !== 'manage') return 'view';
-    return acc;
-  }, null);
-  const reason = AREA_LOCK_REASON[row.key];
-  const showReason = !builtinReadOnly && row.maxLevelForCollaborator !== 'manage';
+  // Task 3's re-cut made every row exactly one `area_key` (the old
+  // multi-key bundles, and the "Partial" marker a split among their
+  // levels could produce, no longer exist), so a builtin row's level is
+  // just its one grant, same as a custom role's.
+  const level = grants[row.key] ?? null;
 
   return (
     // Stacked below `sm`, side-by-side above it — the prototype collapses this
@@ -394,15 +359,10 @@ function AreaRow({
       <div className="min-w-0">
         <div className="text-[14px] font-medium text-foreground">{row.label}</div>
         <p id={`${row.key}-cap-reason`} className="mt-0.5 text-[13px] text-muted-foreground">
-          {AREA_HINT[row.key]}
-          {showReason && reason && <span className="text-amber-600 dark:text-amber-500"> · {reason}</span>}
+          {row.hint}
         </p>
       </div>
-      {partial ? (
-        <span className="self-start sm:self-auto text-[11px] px-1.5 py-0.5 rounded-md border border-border/40 font-mono uppercase tracking-wider text-muted-foreground">
-          Partial
-        </span>
-      ) : builtinReadOnly ? (
+      {builtinReadOnly ? (
         <ReadOnlyLevelControl row={row} level={level} />
       ) : (
         <LevelControl row={row} level={level} onChange={(next) => onChange(row, next)} />
@@ -456,12 +416,12 @@ export function RoleEditor({
   );
   const effectiveFlagSet = useMemo(() => new Set(effectiveFlags), [effectiveFlags]);
 
-  const rowsByBand = useMemo(() => {
-    const groups = new Map<Band, AreaDefinition[]>();
+  const rowsByGroup = useMemo(() => {
+    const groups = new Map<string, AreaDefinition[]>();
     for (const row of AREA_DEFINITIONS) {
-      const list = groups.get(row.band) ?? [];
+      const list = groups.get(row.uiGroup) ?? [];
       list.push(row);
-      groups.set(row.band, list);
+      groups.set(row.uiGroup, list);
     }
     return groups;
   }, []);
@@ -489,10 +449,8 @@ export function RoleEditor({
   function handleAreaChange(row: AreaDefinition, level: AreaLevel | null) {
     setGrants((prev) => {
       const next = { ...prev };
-      for (const key of row.areaKeys) {
-        if (level === null) delete next[key];
-        else next[key] = level;
-      }
+      if (level === null) delete next[row.key];
+      else next[row.key] = level;
       return next;
     });
   }
@@ -648,15 +606,15 @@ export function RoleEditor({
 
             {/* Area bands */}
             <div className="rounded-xl border border-border/40 bg-card overflow-hidden">
-              {BAND_ORDER.map((band, bandIndex) => (
-                <div key={band}>
+              {GROUP_ORDER.map((group, groupIndex) => (
+                <div key={group}>
                   <BandHeader
-                    label={band}
-                    legend={bandIndex === 0 ? 'No access · View · Manage' : undefined}
-                    first={bandIndex === 0}
+                    label={group}
+                    legend={groupIndex === 0 ? 'No access · View · Manage' : undefined}
+                    first={groupIndex === 0}
                   />
                   <div className="px-5">
-                    {(rowsByBand.get(band) ?? []).map((row) => (
+                    {(rowsByGroup.get(group) ?? []).map((row) => (
                       <AreaRow
                         key={row.key}
                         row={row}

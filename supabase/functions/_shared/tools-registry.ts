@@ -885,6 +885,14 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     return false;
   }
 
+  // get_labor_costs / get_schedule_overview are NOT in basicTools: they read
+  // restaurant-wide labor/schedule data, gated on view:scheduling OR
+  // view:payroll (see CAPABILITY_GATED_TOOLS / canUseCapabilityGatedTool
+  // below). That capability set doesn't collapse to a static role list —
+  // e.g. chef holds view:scheduling but not manager/owner — so canUseTool
+  // always denies them here; the dispatcher must call
+  // canUseCapabilityGatedTool for these two instead.
+
   // Navigation and basic query tools available to all users
   const basicTools = [
     'navigate',
@@ -893,8 +901,6 @@ export function canUseTool(toolName: string, userRole: string): boolean {
     'get_recipe_analytics',
     'get_sales_summary',
     'get_inventory_transactions',
-    'get_labor_costs',           // Labor costs visible to all (aggregate data)
-    'get_schedule_overview',     // Schedule overview visible to all
     'get_proactive_insights',    // Proactive insights for all users
     'get_daily_sales_totals'     // Daily revenue totals visible to all
   ];
@@ -944,4 +950,52 @@ export function requiredRoleFor(toolName: string): 'staff' | 'manager' | 'owner'
   if (canUseTool(toolName, 'staff')) return 'staff';
   if (canUseTool(toolName, 'manager')) return 'manager';
   return 'owner';
+}
+
+/**
+ * Tools whose access is determined by the view:scheduling / view:payroll
+ * capability (resolved per-restaurant via the `user_has_capability` RPC)
+ * rather than by role. These read the same restaurant-wide labor/schedule
+ * data as the RLS-protected tables behind them (shifts, time_punches,
+ * employee_compensation_history, etc.) — see
+ * supabase/migrations/20260805130000_self_scope_employee_reads.sql — so the
+ * dispatcher gate must match that RLS predicate instead of a second,
+ * independently-maintained role list.
+ */
+export const CAPABILITY_GATED_TOOLS = ['get_labor_costs', 'get_schedule_overview'] as const;
+
+interface CapabilityCheckClient {
+  rpc: (
+    fn: string,
+    args: { p_restaurant_id: string; p_capability: string }
+  ) => Promise<{ data: boolean | null; error: unknown }>;
+}
+
+/**
+ * Resolves access for a CAPABILITY_GATED_TOOLS entry via the
+ * `user_has_capability` RPC (same function the RLS policies call), OR'ing
+ * view:scheduling and view:payroll. Returns false immediately — with no RPC
+ * call — for any tool not in CAPABILITY_GATED_TOOLS.
+ */
+export async function canUseCapabilityGatedTool(
+  toolName: string,
+  restaurantId: string,
+  supabase: CapabilityCheckClient
+): Promise<boolean> {
+  if (!(CAPABILITY_GATED_TOOLS as readonly string[]).includes(toolName)) {
+    return false;
+  }
+
+  const [scheduling, payroll] = await Promise.all([
+    supabase.rpc('user_has_capability', {
+      p_restaurant_id: restaurantId,
+      p_capability: 'view:scheduling',
+    }),
+    supabase.rpc('user_has_capability', {
+      p_restaurant_id: restaurantId,
+      p_capability: 'view:payroll',
+    }),
+  ]);
+
+  return Boolean(scheduling.data) || Boolean(payroll.data);
 }

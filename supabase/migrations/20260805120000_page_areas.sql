@@ -69,8 +69,23 @@ INSERT INTO public.area_catalog (area_key, ui_group, band, sort_order, max_level
 -- books:manage -> manage on all nine books pages.
 -- books:view   -> view on eight; print_checks is SKIPPED (spec §4.1) —
 --                 /print-checks is the only books path gated at manage today.
+-- financial_statements/financial_intelligence are clamped to 'view'
+-- regardless of the source books level: both are seeded above (lines 55,57)
+-- with max_level_collaborator = 'view' and have no manage tier at all
+-- (spec §3.2/§3.3 — "Pages with no edit capability get no manage tier").
+-- Copying a raw books:manage level onto them verbatim would (a) materialize
+-- a 'manage' row for a page the product defines as view-only, and (b) abort
+-- this migration outright for any pre-existing non-builtin collaborator role
+-- holding books:manage, since role_areas_enforce_collaborator_cap stays
+-- ENABLED throughout (only role_areas_block_builtin_mutation is toggled).
 INSERT INTO public.role_areas (role_id, area_key, level)
-SELECT ra.role_id, page.area_key, ra.level
+SELECT
+  ra.role_id,
+  page.area_key,
+  CASE
+    WHEN page.area_key IN ('financial_statements', 'financial_intelligence') THEN 'view'
+    ELSE ra.level
+  END
 FROM public.role_areas ra
 CROSS JOIN LATERAL (VALUES
   ('transactions'), ('banking'), ('expenses'), ('invoices'), ('customers'),

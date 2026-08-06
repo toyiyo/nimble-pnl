@@ -38,7 +38,7 @@ CREATE POLICY "Employees can view own shifts"
       AND e.restaurant_id = shifts.restaurant_id
   ));
 
-CREATE POLICY "Users with scheduling or payroll access can view restaurant shifts"
+CREATE POLICY "Scheduling or payroll capability view shifts"
   ON shifts
   FOR SELECT
   TO authenticated
@@ -79,7 +79,7 @@ CREATE POLICY "Employees can view own compensation history"
       AND e.restaurant_id = employee_compensation_history.restaurant_id
   ));
 
-CREATE POLICY "Users with scheduling or payroll access can view restaurant compensation history"
+CREATE POLICY "Scheduling or payroll capability view comp history"
   ON employee_compensation_history
   FOR SELECT
   TO authenticated
@@ -105,7 +105,7 @@ CREATE POLICY "Employees can view own overtime adjustments"
       AND e.restaurant_id = overtime_adjustments.restaurant_id
   ));
 
-CREATE POLICY "Users with scheduling or payroll access can view restaurant overtime adjustments"
+CREATE POLICY "Scheduling or payroll capability view overtime adjustments"
   ON overtime_adjustments
   FOR SELECT
   TO authenticated
@@ -131,7 +131,7 @@ CREATE POLICY "Employees can view own daily labor allocations"
       AND e.restaurant_id = daily_labor_allocations.restaurant_id
   ));
 
-CREATE POLICY "Users with scheduling or payroll access can view restaurant daily labor allocations"
+CREATE POLICY "Scheduling or payroll capability view daily labor allocations"
   ON daily_labor_allocations
   FOR SELECT
   TO authenticated
@@ -160,7 +160,7 @@ CREATE POLICY "Employees can view own time punches"
       AND e.restaurant_id = time_punches.restaurant_id
   ));
 
-CREATE POLICY "Users with scheduling or payroll access can view restaurant time punches"
+CREATE POLICY "Scheduling or payroll capability view time punches"
   ON time_punches
   FOR SELECT
   TO authenticated
@@ -189,7 +189,7 @@ CREATE POLICY "Employees can view own tips"
       AND e.restaurant_id = employee_tips.restaurant_id
   ));
 
-CREATE POLICY "Users with scheduling or payroll access can view restaurant tips"
+CREATE POLICY "Scheduling or payroll capability view tips"
   ON employee_tips
   FOR SELECT
   TO authenticated

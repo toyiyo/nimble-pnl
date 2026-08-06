@@ -45,13 +45,20 @@ export function buildShiftChangeDescription(
   return description;
 }
 
-export function useShifts(
+function useShiftsQuery(
   restaurantId: string | null,
   startDate?: Date,
-  endDate?: Date
+  endDate?: Date,
+  employeeId?: string | null
 ): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['shifts', restaurantId, startDate?.toISOString(), endDate?.toISOString()],
+    queryKey: [
+      'shifts',
+      restaurantId,
+      startDate?.toISOString(),
+      endDate?.toISOString(),
+      employeeId ?? 'all',
+    ],
     queryFn: async () => {
       if (!restaurantId) return [];
 
@@ -59,6 +66,10 @@ export function useShifts(
         .from('shifts')
         .select('*, employee:employees(*)')
         .eq('restaurant_id', restaurantId);
+
+      if (employeeId) {
+        query = query.eq('employee_id', employeeId);
+      }
 
       if (startDate) {
         query = query.gte('start_time', startDate.toISOString());
@@ -73,7 +84,7 @@ export function useShifts(
 
       return data.map(toTypedShift);
     },
-    enabled: !!restaurantId,
+    enabled: !!restaurantId && (employeeId === undefined || !!employeeId),
     staleTime: 30000,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
@@ -87,6 +98,30 @@ export function useShifts(
     // reads as "you are not working this week".
     refetch,
   };
+}
+
+export function useShifts(
+  restaurantId: string | null,
+  startDate?: Date,
+  endDate?: Date
+): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
+  return useShiftsQuery(restaurantId, startDate, endDate);
+}
+
+/**
+ * Self-scoped variant of `useShifts` for employee-facing pages. Applies
+ * `.eq('employee_id', employeeId)` server-side and stays disabled until
+ * `employeeId` is resolved (non-null) — an optional filter that silently
+ * degrades to "no filter" while the caller is still resolving the current
+ * employee would re-open the restaurant-wide read this hook exists to close.
+ */
+export function useMyShifts(
+  restaurantId: string | null,
+  employeeId: string | null,
+  startDate?: Date,
+  endDate?: Date
+): { shifts: Shift[]; loading: boolean; error: Error | null; refetch: () => void } {
+  return useShiftsQuery(restaurantId, startDate, endDate, employeeId);
 }
 
 type ShiftInput = Omit<Shift, 'id' | 'created_at' | 'updated_at' | 'employee'>;

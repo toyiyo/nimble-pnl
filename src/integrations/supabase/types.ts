@@ -6320,6 +6320,155 @@ export type Database = {
           },
         ]
       }
+      review_pages: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          destination_url: string | null
+          headline: string
+          id: string
+          is_active: boolean
+          logo_path: string | null
+          name: string
+          promoter_threshold: number
+          restaurant_id: string
+          slug: string
+          subheadline: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          destination_url?: string | null
+          headline?: string
+          id?: string
+          is_active?: boolean
+          logo_path?: string | null
+          name: string
+          promoter_threshold?: number
+          restaurant_id: string
+          slug: string
+          subheadline?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          destination_url?: string | null
+          headline?: string
+          id?: string
+          is_active?: boolean
+          logo_path?: string | null
+          name?: string
+          promoter_threshold?: number
+          restaurant_id?: string
+          slug?: string
+          subheadline?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_pages_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_response_contacts: {
+        Row: {
+          contact_email: string | null
+          contact_name: string | null
+          restaurant_id: string
+          review_response_id: string
+        }
+        Insert: {
+          contact_email?: string | null
+          contact_name?: string | null
+          restaurant_id: string
+          review_response_id: string
+        }
+        Update: {
+          contact_email?: string | null
+          contact_name?: string | null
+          restaurant_id?: string
+          review_response_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_response_contacts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_response_contacts_review_response_id_fkey"
+            columns: ["review_response_id"]
+            isOneToOne: true
+            referencedRelation: "review_responses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_responses: {
+        Row: {
+          comment: string | null
+          commented_at: string | null
+          contact_consent: boolean
+          id: string
+          ip_hash: string | null
+          rating: number
+          restaurant_id: string
+          review_page_id: string
+          routed_to: string
+          status: string
+          submitted_at: string
+        }
+        Insert: {
+          comment?: string | null
+          commented_at?: string | null
+          contact_consent?: boolean
+          id?: string
+          ip_hash?: string | null
+          rating: number
+          restaurant_id: string
+          review_page_id: string
+          routed_to: string
+          status?: string
+          submitted_at?: string
+        }
+        Update: {
+          comment?: string | null
+          commented_at?: string | null
+          contact_consent?: boolean
+          id?: string
+          ip_hash?: string | null
+          rating?: number
+          restaurant_id?: string
+          review_page_id?: string
+          routed_to?: string
+          status?: string
+          submitted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_responses_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_responses_review_page_id_fkey"
+            columns: ["review_page_id"]
+            isOneToOne: false
+            referencedRelation: "review_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       role_areas: {
         Row: {
           area_key: string
@@ -8452,6 +8601,57 @@ export type Database = {
         }
         Relationships: []
       }
+      template_hours_cascade_batches: {
+        Row: {
+          after_end_time: string
+          after_start_time: string
+          before_end_time: string
+          before_start_time: string
+          changed_by: string | null
+          created_at: string
+          id: string
+          restaurant_id: string
+          shift_template_id: string
+        }
+        Insert: {
+          after_end_time: string
+          after_start_time: string
+          before_end_time: string
+          before_start_time: string
+          changed_by?: string | null
+          created_at?: string
+          id: string
+          restaurant_id: string
+          shift_template_id: string
+        }
+        Update: {
+          after_end_time?: string
+          after_start_time?: string
+          before_end_time?: string
+          before_start_time?: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          restaurant_id?: string
+          shift_template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_hours_cascade_batches_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "template_hours_cascade_batches_shift_template_id_fkey"
+            columns: ["shift_template_id"]
+            isOneToOne: false
+            referencedRelation: "shift_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       time_off_requests: {
         Row: {
           created_at: string | null
@@ -10519,6 +10719,10 @@ export type Database = {
         Args: { p_employee_id: string; p_trade_id: string }
         Returns: Json
       }
+      categorization_rules_watermark: {
+        Args: { p_restaurant_id: string; p_scope: string }
+        Returns: string
+      }
       categorize_bank_transaction:
         | {
             Args: {
@@ -11527,6 +11731,24 @@ export type Database = {
         Returns: number
       }
       revel_valid_tz: { Args: { p_tz: string }; Returns: string }
+      review_page_stats: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          average_rating: number
+          comment_count: number
+          rating_count: number
+          review_page_id: string
+        }[]
+      }
+      review_response_metrics: {
+        Args: { p_restaurant_id: string }
+        Returns: {
+          average_rating: number
+          comment_count: number
+          total_ratings: number
+          unread_count: number
+        }[]
+      }
       role_member_counts: {
         Args: { p_restaurant_id: string }
         Returns: {

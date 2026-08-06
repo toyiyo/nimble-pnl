@@ -233,9 +233,15 @@ export function buildHoursChangeLedger(input: HoursChangeInput): HoursChangeLedg
 
   const severityLabel = severity === 'high' ? 'High impact' : 'Low impact';
   const movingClause = `${totalAffected} ${pluralize(totalAffected, 'shift moves', 'shifts move')}`;
+  // Scoped to totalAffected === 0 deliberately. Once anything is moving, the chips
+  // and the "Save & update N shifts" button already say so, and this line is
+  // truncated on screen -- a second call to action would push the count off.
+  const pickClause = totalAffected === 0 && unpickedDrift > 0
+    ? ` ${unpickedDrift} hand-edited ${pluralize(unpickedDrift, 'shift', 'shifts')} you can pick.`
+    : '';
   const summary = publishedCount > 0
-    ? `${severityLabel}. ${deltaBadge}. ${movingClause}, ${publishedCount} already posted.`
-    : `${severityLabel}. ${deltaBadge}. ${movingClause}.`;
+    ? `${severityLabel}. ${deltaBadge}. ${movingClause}, ${publishedCount} already posted.${pickClause}`
+    : `${severityLabel}. ${deltaBadge}. ${movingClause}.${pickClause}`;
 
   return { severity, chips, changes, untouched, summary, deltaBadge, totalAffected };
 }

@@ -5,9 +5,6 @@
  * rendering the full sidebar (which depends on React context).
  */
 import {
-  Home,
-  Plug,
-  ShoppingCart,
   ChefHat,
   Package,
   ClipboardCheck,
@@ -19,105 +16,29 @@ import {
   CalendarCheck,
   TrendingUp,
   Clock,
-  ClipboardList,
   DollarSign,
   ShoppingBag,
   CalendarDays,
-  Coins,
-  CreditCard,
   Utensils,
   Building2,
-  Target,
   Printer,
-  Inbox,
-  Newspaper,
   LifeBuoy,
-  Banknote,
-  Star,
 } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import { allowedPathsForAreas } from '@/lib/permissions/routeAreas';
 import type { AreaKey, AreaLevel } from '@/lib/permissions/areas';
+import type { NavItem, NavGroup } from '@/components/AppSidebar.nav.data';
+import { navigationGroups, SUPPLEMENTAL_NAV_ITEMS } from '@/components/AppSidebar.nav.data';
 
-export interface NavItem {
-  path: string;
-  label: string;
-  icon: LucideIcon;
-}
-
-export interface NavGroup {
-  label: string;
-  items: NavItem[];
-}
-
-// Full navigation structure (owner / manager / chef default)
-export const navigationGroups: NavGroup[] = [
-  {
-    label: 'Main',
-    items: [
-      { path: '/', label: 'Dashboard', icon: Home },
-      { path: '/integrations', label: 'Integrations', icon: Plug },
-      { path: '/pos-sales', label: 'POS Sales', icon: ShoppingCart },
-      { path: '/ops-inbox', label: 'Ops Inbox', icon: Inbox },
-      { path: '/reviews', label: 'Reviews', icon: Star },
-      { path: '/weekly-brief', label: 'Weekly Brief', icon: Newspaper },
-    ],
-  },
-  {
-    label: 'Operations',
-    items: [
-      { path: '/scheduling', label: 'Scheduling', icon: CalendarCheck },
-      { path: '/time-punches', label: 'Time Clock', icon: ClipboardList },
-      { path: '/tips', label: 'Tip Pooling', icon: Coins },
-      { path: '/payroll', label: 'Payroll', icon: Wallet },
-      { path: '/labor', label: 'Labor', icon: Banknote },
-    ],
-  },
-  {
-    label: 'Inventory',
-    items: [
-      { path: '/recipes', label: 'Recipes', icon: ChefHat },
-      { path: '/prep-recipes', label: 'Prep Recipes', icon: Utensils },
-      { path: '/inventory', label: 'Inventory', icon: Package },
-      { path: '/inventory-audit', label: 'Audit', icon: ClipboardCheck },
-      { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingBag },
-      { path: '/reports', label: 'Reports', icon: FileText },
-    ],
-  },
-  {
-    label: 'Accounting',
-    items: [
-      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
-      { path: '/customers', label: 'Customers', icon: Users },
-      { path: '/invoices', label: 'Invoices', icon: FileText },
-      { path: '/stripe-account', label: 'Financial Account', icon: CreditCard },
-      { path: '/banking', label: 'Banks', icon: Wallet },
-      { path: '/expenses', label: 'Expenses', icon: DollarSign },
-      { path: '/print-checks', label: 'Print Checks', icon: Printer },
-      { path: '/assets', label: 'Assets & Equipment', icon: Building2 },
-      { path: '/financial-intelligence', label: 'Financial Intelligence', icon: TrendingUp },
-      { path: '/transactions', label: 'Transactions', icon: Receipt },
-      { path: '/chart-of-accounts', label: 'Chart of Accounts', icon: FileText },
-      { path: '/financial-statements', label: 'Statements', icon: FileText },
-    ],
-  },
-  {
-    label: 'Admin',
-    items: [
-      { path: '/employees', label: 'Employees', icon: Users },
-      { path: '/team', label: 'Team', icon: Users },
-      { path: '/settings', label: 'Settings', icon: Settings },
-      { path: '/help', label: 'Help Center', icon: LifeBuoy },
-    ],
-  },
-];
+// Re-exported so existing importers (AppSidebar.tsx, permissions/preview.ts,
+// tests) don't need to change when this data moved to AppSidebar.nav.data.ts.
+export type { NavItem, NavGroup } from '@/components/AppSidebar.nav.data';
+export { navigationGroups, SUPPLEMENTAL_NAV_ITEMS };
 
 // Navigation groups for collaborator roles
 export const collaboratorAccountantNav: NavGroup[] = [
   {
     label: 'Financial',
     items: [
-      { path: '/budget', label: 'Budget & Run Rate', icon: Target },
       { path: '/transactions', label: 'Transactions', icon: Receipt },
       { path: '/banking', label: 'Banks', icon: Wallet },
       { path: '/expenses', label: 'Expenses', icon: DollarSign },
@@ -248,15 +169,6 @@ export const collaboratorOperationsManagerNav: NavGroup[] = navigationGroups
     }
     return group;
   });
-
-// Nav items that exist for a collaborator but have no row in
-// navigationGroups: an owner reaches Receipt Import from inside Inventory, so
-// it was never a top-level entry for them. collaboratorInventoryNav declares
-// it, and a custom inventory role is routed to it — without this the derived
-// sidebar would omit a page the role can open.
-const SUPPLEMENTAL_NAV_ITEMS: Record<string, NavItem[]> = {
-  Inventory: [{ path: '/receipt-import', label: 'Receipt Import', icon: Receipt }],
-};
 
 // Every collaborator nav renames the Admin group, since a collaborator sees
 // only its Settings/Help tail.

@@ -1,6 +1,8 @@
 -- pgTAP for update_shift_template_with_cascade (Task 1) and
 -- undo_template_hours_cascade (Task 2), from
--- supabase/migrations/20260804130000_template_hours_cascade.sql.
+-- supabase/migrations/20260804130000_template_hours_cascade.sql, plus the
+-- template-restore behavior of undo_template_hours_cascade from
+-- supabase/migrations/20260805160000_template_cascade_undo_restores_template.sql.
 --
 -- What makes this suite non-vacuous:
 --   * The Tokyo block proves drift detection reads the RESTAURANT's wall clock.
@@ -24,7 +26,7 @@
 
 BEGIN;
 
-SELECT plan(34);
+SELECT plan(48);
 
 -- ============================================
 -- Setup
@@ -597,6 +599,373 @@ SELECT is(
   (SELECT (start_time AT TIME ZONE 'America/Chicago')::time FROM shifts WHERE id = '11000000-0000-0000-0000-0000000000a5'),
   '09:00'::time,
   'undo still restores the eligible shifts in a batch that has a protected one'
+);
+
+-- ============================================
+-- Undo restores the template's hours (Bug 1)
+-- ============================================
+--
+-- Six fresh templates, each on its own singleton `days` value so none can
+-- collide with each other or with A-E on uq_shift_templates_active_slot
+-- (restaurant_id, position, start_time, end_time, days, area) regardless of
+-- what hours a given call rewrites them to.
+
+-- ---- Happy path: cascade, undo, recascade (Tests 35-38, 40-41) ----
+
+INSERT INTO shift_templates (id, restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area) VALUES
+  ('e1000000-0000-4000-8000-000000000001', 'c0000000-0000-0000-0000-0000000ca001', 'Undo case', '{1,2}', '10:00', '16:30', 0, 'Server', 1, true, NULL)
+ON CONFLICT (id) DO UPDATE
+  SET restaurant_id = EXCLUDED.restaurant_id, days = EXCLUDED.days,
+      start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, area = EXCLUDED.area;
+
+INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
+SELECT * FROM (VALUES
+  ('e1000000-0000-4000-8000-000000000011'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, 'e1000000-0000-4000-8000-000000000001'::uuid,
+   ((SELECT mon FROM test_config)::timestamp + interval '10 hours')                   AT TIME ZONE 'America/Chicago',
+   ((SELECT mon FROM test_config)::timestamp + interval '16 hours 30 minutes')        AT TIME ZONE 'America/Chicago', 'Server', false, false),
+  ('e1000000-0000-4000-8000-000000000012'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, 'e1000000-0000-4000-8000-000000000001'::uuid,
+   (((SELECT mon FROM test_config) + 1)::timestamp + interval '10 hours')             AT TIME ZONE 'America/Chicago',
+   (((SELECT mon FROM test_config) + 1)::timestamp + interval '16 hours 30 minutes')  AT TIME ZONE 'America/Chicago', 'Server', false, false)
+) AS v
+ON CONFLICT (id) DO NOTHING;
+
+-- Cascade: end 16:30 -> 17:30
+CREATE TEMP TABLE undo_cascade_1 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000001', 'c0000000-0000-0000-0000-0000000ca001',
+  'Undo case', 'Server', NULL, '{1,2}'::int[], 0, 1,
+  '10:00'::time, '17:30'::time, true, '{}'::uuid[]
+) AS result;
+
+-- Test 35: a header row was written for this batch
+SELECT is(
+  (SELECT count(*)::int FROM template_hours_cascade_batches
+   WHERE id = (SELECT (result->>'batch_id')::uuid FROM undo_cascade_1)),
+  1,
+  'cascade writes one batch header row'
+);
+
+-- Test 36: the header records the template hours from BEFORE the edit
+SELECT results_eq(
+  $q$SELECT before_start_time, before_end_time, after_start_time, after_end_time
+     FROM template_hours_cascade_batches
+     WHERE id = (SELECT (result->>'batch_id')::uuid FROM undo_cascade_1)$q$,
+  $q$VALUES ('10:00'::time, '16:30'::time, '10:00'::time, '17:30'::time)$q$,
+  'header records before and after template hours'
+);
+
+CREATE TEMP TABLE undo_result_1 AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM undo_cascade_1), 'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+-- Test 37: the template is back to its pre-cascade hours
+SELECT results_eq(
+  $q$SELECT start_time, end_time FROM shift_templates
+     WHERE id = 'e1000000-0000-4000-8000-000000000001'$q$,
+  $q$VALUES ('10:00'::time, '16:30'::time)$q$,
+  'undo restores the template hours'
+);
+
+-- Test 38: and says so
+SELECT results_eq(
+  $q$SELECT (SELECT (result->>'template_restored')::boolean FROM undo_result_1),
+            (SELECT (result->>'template_changed_since')::boolean FROM undo_result_1)$q$,
+  $q$VALUES (true, false)$q$,
+  'undo reports template_restored true and template_changed_since false on the happy path'
+);
+
+-- Test 39 -- legacy batch: a schedule_change_logs row tagged with a batch id
+-- that has no header row (i.e. from before this migration). Undo must not
+-- error, and both new flags come back false.
+INSERT INTO schedule_change_logs (restaurant_id, shift_id, employee_id, change_type, changed_by, before_data, after_data, reason, cascade_batch_id)
+VALUES (
+  'c0000000-0000-0000-0000-0000000ca001', 'e1000000-0000-4000-8000-000000000011',
+  'e0000000-0000-0000-0000-0000000ca001', 'updated', 'a11ce000-0000-0000-0000-0000000ca001',
+  '{}'::jsonb, '{}'::jsonb, 'legacy batch (no header row)', 'f9000000-0000-4000-8000-000000000099'
+);
+
+CREATE TEMP TABLE undo_legacy AS
+SELECT public.undo_template_hours_cascade(
+  'f9000000-0000-4000-8000-000000000099', 'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+SELECT results_eq(
+  $q$SELECT (SELECT (result->>'template_restored')::boolean FROM undo_legacy),
+            (SELECT (result->>'template_changed_since')::boolean FROM undo_legacy)$q$,
+  $q$VALUES (false, false)$q$,
+  'a legacy batch with no header row reverts shifts as before and reports both new flags false'
+);
+
+-- Test 40: THE REPORTED BUG. A second cascade after the undo must move the shifts.
+CREATE TEMP TABLE recascade_1 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000001', 'c0000000-0000-0000-0000-0000000ca001',
+  'Undo case', 'Server', NULL, '{1,2}'::int[], 0, 1,
+  '11:00'::time, '18:30'::time, true, '{}'::uuid[]
+) AS result;
+
+SELECT is(
+  (SELECT (result->>'updated_count')::int FROM recascade_1),
+  2,
+  'a cascade after an undo still moves the shifts (the reported bug)'
+);
+
+-- Test 41: and the shifts really hold the new local hours
+SELECT is(
+  (SELECT count(*)::int FROM shifts
+   WHERE shift_template_id = 'e1000000-0000-4000-8000-000000000001'
+     AND (start_time AT TIME ZONE 'America/Chicago')::time = '11:00'
+     AND (end_time   AT TIME ZONE 'America/Chicago')::time = '18:30'),
+  2,
+  'both shifts sit at the re-cascaded hours'
+);
+
+-- ---- Test 42: template changed since ----
+
+INSERT INTO shift_templates (id, restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area) VALUES
+  ('e1000000-0000-4000-8000-000000000002', 'c0000000-0000-0000-0000-0000000ca001', 'Changed since case', '{3}', '07:00', '15:00', 0, 'Server', 1, true, NULL)
+ON CONFLICT (id) DO UPDATE
+  SET restaurant_id = EXCLUDED.restaurant_id, days = EXCLUDED.days,
+      start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, area = EXCLUDED.area;
+
+INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
+SELECT * FROM (VALUES
+  ('e1000000-0000-4000-8000-000000000021'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, 'e1000000-0000-4000-8000-000000000002'::uuid,
+   (((SELECT mon FROM test_config) + 2)::timestamp + interval '7 hours')  AT TIME ZONE 'America/Chicago',
+   (((SELECT mon FROM test_config) + 2)::timestamp + interval '15 hours') AT TIME ZONE 'America/Chicago', 'Server', false, false)
+) AS v
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TEMP TABLE cascade_42 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000002', 'c0000000-0000-0000-0000-0000000ca001',
+  'Changed since case', 'Server', NULL, '{3}'::int[], 0, 1,
+  '10:00'::time, '18:00'::time, true, '{}'::uuid[]
+) AS result;
+
+-- A manager edits the template's hours by hand after the cascade, before
+-- anyone clicks Undo.
+UPDATE shift_templates SET start_time = '09:00'::time
+WHERE id = 'e1000000-0000-4000-8000-000000000002';
+
+CREATE TEMP TABLE undo_42 AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM cascade_42), 'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+SELECT results_eq(
+  $q$SELECT (SELECT start_time FROM shift_templates WHERE id = 'e1000000-0000-4000-8000-000000000002'),
+            (SELECT (result->>'template_restored')::boolean FROM undo_42),
+            (SELECT (result->>'template_changed_since')::boolean FROM undo_42)$q$,
+  $q$VALUES ('09:00'::time, false, true)$q$,
+  'undo declines to restore a template hand-edited since the cascade, and reports template_changed_since'
+);
+
+-- ---- Test 43: template restored even when every shift is protected ----
+
+INSERT INTO shift_templates (id, restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area) VALUES
+  ('e1000000-0000-4000-8000-000000000003', 'c0000000-0000-0000-0000-0000000ca001', 'All-locked case', '{4}', '07:00', '15:00', 0, 'Server', 1, true, NULL)
+ON CONFLICT (id) DO UPDATE
+  SET restaurant_id = EXCLUDED.restaurant_id, days = EXCLUDED.days,
+      start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, area = EXCLUDED.area;
+
+INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
+SELECT * FROM (VALUES
+  ('e1000000-0000-4000-8000-000000000031'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, 'e1000000-0000-4000-8000-000000000003'::uuid,
+   (((SELECT mon FROM test_config) + 3)::timestamp + interval '7 hours')  AT TIME ZONE 'America/Chicago',
+   (((SELECT mon FROM test_config) + 3)::timestamp + interval '15 hours') AT TIME ZONE 'America/Chicago', 'Server', false, false)
+) AS v
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TEMP TABLE cascade_43 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000003', 'c0000000-0000-0000-0000-0000000ca001',
+  'All-locked case', 'Server', NULL, '{4}'::int[], 0, 1,
+  '08:00'::time, '16:00'::time, true, '{}'::uuid[]
+) AS result;
+
+-- The manager locks the shift after seeing it cascade, before clicking Undo.
+UPDATE shifts SET locked = true WHERE id = 'e1000000-0000-4000-8000-000000000031';
+
+CREATE TEMP TABLE undo_43 AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM cascade_43), 'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+SELECT results_eq(
+  $q$SELECT (SELECT (result->>'restored_count')::int FROM undo_43),
+            (SELECT (result->>'template_restored')::boolean FROM undo_43)$q$,
+  $q$VALUES (0, true)$q$,
+  'the template comes back even when every one of its shifts is protected'
+);
+
+-- ---- Test 44: no header when nothing moved ----
+
+INSERT INTO shift_templates (id, restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area) VALUES
+  ('e1000000-0000-4000-8000-000000000004', 'c0000000-0000-0000-0000-0000000ca001', 'Locked-only case', '{5}', '07:00', '15:00', 0, 'Server', 1, true, NULL)
+ON CONFLICT (id) DO UPDATE
+  SET restaurant_id = EXCLUDED.restaurant_id, days = EXCLUDED.days,
+      start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, area = EXCLUDED.area;
+
+-- Locked BEFORE the cascade call, so it never enters the `target` CTE at all.
+INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
+SELECT * FROM (VALUES
+  ('e1000000-0000-4000-8000-000000000041'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, 'e1000000-0000-4000-8000-000000000004'::uuid,
+   (((SELECT mon FROM test_config) + 4)::timestamp + interval '7 hours')  AT TIME ZONE 'America/Chicago',
+   (((SELECT mon FROM test_config) + 4)::timestamp + interval '15 hours') AT TIME ZONE 'America/Chicago', 'Server', true, false)
+) AS v
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TEMP TABLE header_count_before_44 AS
+SELECT count(*)::int AS n FROM template_hours_cascade_batches;
+
+CREATE TEMP TABLE cascade_44 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000004', 'c0000000-0000-0000-0000-0000000ca001',
+  'Locked-only case', 'Server', NULL, '{5}'::int[], 0, 1,
+  '08:00'::time, '16:00'::time, true, '{}'::uuid[]
+) AS result;
+
+SELECT results_eq(
+  $q$SELECT (SELECT (result->>'batch_id') FROM cascade_44),
+            (SELECT count(*)::int FROM template_hours_cascade_batches)$q$,
+  $q$SELECT (SELECT NULL::text), (SELECT n FROM header_count_before_44)$q$,
+  'a cascade whose only linked shift is locked writes no batch header'
+);
+
+-- ---- Test 45: tenant isolation ----
+--
+-- recascade_1's batch belongs to restaurant A (Chicago). The Tokyo owner is
+-- authorized at restaurant B (the capability guard passes), but hands over
+-- Chicago's batch id -- the per-statement restaurant_id scoping must still
+-- keep it out.
+SELECT set_config('request.jwt.claims',
+  '{"sub":"a11ce000-0000-0000-0000-0000000ca002","role":"authenticated"}', true);
+
+CREATE TEMP TABLE undo_45 AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM recascade_1), 'c0000000-0000-0000-0000-0000000ca002'
+) AS result;
+
+SELECT results_eq(
+  $q$SELECT (SELECT start_time FROM shift_templates WHERE id = 'e1000000-0000-4000-8000-000000000001'),
+            (SELECT end_time   FROM shift_templates WHERE id = 'e1000000-0000-4000-8000-000000000001'),
+            (SELECT (result->>'template_restored')::boolean FROM undo_45)$q$,
+  $q$VALUES ('11:00'::time, '18:30'::time, false)$q$,
+  'a batch id from another restaurant leaves restaurant A''s template untouched'
+);
+
+SELECT set_config('request.jwt.claims',
+  '{"sub":"a11ce000-0000-0000-0000-0000000ca001","role":"authenticated"}', true);
+
+-- ---- Test 46: superseded batch ----
+
+INSERT INTO shift_templates (id, restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area) VALUES
+  ('e1000000-0000-4000-8000-000000000005', 'c0000000-0000-0000-0000-0000000ca001', 'Superseded case', '{6}', '07:00', '08:00', 0, 'Server', 1, true, NULL)
+ON CONFLICT (id) DO UPDATE
+  SET restaurant_id = EXCLUDED.restaurant_id, days = EXCLUDED.days,
+      start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, area = EXCLUDED.area;
+
+INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
+SELECT * FROM (VALUES
+  ('e1000000-0000-4000-8000-000000000051'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, 'e1000000-0000-4000-8000-000000000005'::uuid,
+   (((SELECT mon FROM test_config) + 5)::timestamp + interval '7 hours') AT TIME ZONE 'America/Chicago',
+   (((SELECT mon FROM test_config) + 5)::timestamp + interval '8 hours') AT TIME ZONE 'America/Chicago', 'Server', false, false)
+) AS v
+ON CONFLICT (id) DO NOTHING;
+
+-- Cascade X: 07:00-08:00 -> 10:00-11:00
+CREATE TEMP TABLE cascade_x_46 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000005', 'c0000000-0000-0000-0000-0000000ca001',
+  'Superseded case', 'Server', NULL, '{6}'::int[], 0, 1,
+  '10:00'::time, '11:00'::time, true, '{}'::uuid[]
+) AS result;
+
+-- Cascade Y, same template: 10:00-11:00 -> 11:00-12:00. The shift still
+-- matches X's after-hours exactly, so Y moves it again.
+CREATE TEMP TABLE cascade_y_46 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000005', 'c0000000-0000-0000-0000-0000000ca001',
+  'Superseded case', 'Server', NULL, '{6}'::int[], 0, 1,
+  '11:00'::time, '12:00'::time, true, '{}'::uuid[]
+) AS result;
+
+CREATE TEMP TABLE undo_x_46 AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM cascade_x_46), 'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+SELECT results_eq(
+  $q$SELECT (SELECT end_time FROM shift_templates WHERE id = 'e1000000-0000-4000-8000-000000000005'),
+            (SELECT (result->>'template_changed_since')::boolean FROM undo_x_46),
+            (SELECT (result->>'changed_since_count')::int FROM undo_x_46)$q$,
+  $q$VALUES ('12:00'::time, true, 1)$q$,
+  'undoing a superseded batch leaves the newer cascade''s hours in place and reports changed_since'
+);
+
+-- ---- Tests 47-48: the freed slot was taken by another template ----
+--
+-- uq_shift_templates_active_slot is UNIQUE on (restaurant_id, position,
+-- start_time, end_time, days, coalesce(area,'')) WHERE is_active. A cascade
+-- therefore FREES the template's original hours, and nothing stops another
+-- manager from creating an active template there before the Undo lands. Without
+-- the subtransaction in undo_template_hours_cascade, the restore raises 23505,
+-- that error escapes the function, and the whole transaction aborts -- the
+-- manager gets a raw constraint error and NOT ONE of their shifts is reverted.
+--
+-- The position is unique to this block on purpose: it is part of the unique key,
+-- so no other fixture in this file can perturb the collision being tested.
+INSERT INTO shift_templates (id, restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area) VALUES
+  ('e1000000-0000-4000-8000-000000000006', 'c0000000-0000-0000-0000-0000000ca001', 'Slot conflict case', '{3}', '07:00', '08:00', 0, 'Slot Conflict Cook', 1, true, NULL)
+ON CONFLICT (id) DO UPDATE
+  SET restaurant_id = EXCLUDED.restaurant_id, days = EXCLUDED.days,
+      start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, area = EXCLUDED.area;
+
+INSERT INTO shifts (id, restaurant_id, employee_id, shift_template_id, start_time, end_time, position, locked, is_published)
+SELECT * FROM (VALUES
+  ('e1000000-0000-4000-8000-000000000061'::uuid, 'c0000000-0000-0000-0000-0000000ca001'::uuid, 'e0000000-0000-0000-0000-0000000ca001'::uuid, 'e1000000-0000-4000-8000-000000000006'::uuid,
+   (((SELECT mon FROM test_config) + 2)::timestamp + interval '7 hours') AT TIME ZONE 'America/Chicago',
+   (((SELECT mon FROM test_config) + 2)::timestamp + interval '8 hours') AT TIME ZONE 'America/Chicago', 'Slot Conflict Cook', false, false)
+) AS v
+ON CONFLICT (id) DO NOTHING;
+
+-- 07:00-08:00 -> 09:00-10:00, freeing 07:00-08:00.
+CREATE TEMP TABLE cascade_47 AS
+SELECT public.update_shift_template_with_cascade(
+  'e1000000-0000-4000-8000-000000000006', 'c0000000-0000-0000-0000-0000000ca001',
+  'Slot conflict case', 'Slot Conflict Cook', NULL, '{3}'::int[], 0, 1,
+  '09:00'::time, '10:00'::time, true, '{}'::uuid[]
+) AS result;
+
+-- The squatter. Same restaurant, position, days and area, sitting in exactly the
+-- hours the Undo wants to give back.
+INSERT INTO shift_templates (id, restaurant_id, name, days, start_time, end_time, break_duration, position, capacity, is_active, area) VALUES
+  ('e1000000-0000-4000-8000-000000000007', 'c0000000-0000-0000-0000-0000000ca001', 'Slot squatter', '{3}', '07:00', '08:00', 0, 'Slot Conflict Cook', 1, true, NULL)
+ON CONFLICT (id) DO NOTHING;
+
+CREATE TEMP TABLE undo_47 AS
+SELECT public.undo_template_hours_cascade(
+  (SELECT (result->>'batch_id')::uuid FROM cascade_47), 'c0000000-0000-0000-0000-0000000ca001'
+) AS result;
+
+SELECT results_eq(
+  $q$SELECT (SELECT (result->>'template_restored')::boolean      FROM undo_47),
+            (SELECT (result->>'template_slot_conflict')::boolean FROM undo_47),
+            (SELECT (result->>'template_changed_since')::boolean FROM undo_47),
+            (SELECT start_time FROM shift_templates WHERE id = 'e1000000-0000-4000-8000-000000000006')$q$,
+  $q$VALUES (false, true, false, '09:00'::time)$q$,
+  'undo reports template_slot_conflict and leaves the template where the cascade put it'
+);
+
+-- The point of the subtransaction: the shift revert must survive the collision.
+SELECT results_eq(
+  $q$SELECT (SELECT (result->>'restored_count')::int FROM undo_47),
+            (SELECT (start_time AT TIME ZONE 'America/Chicago')::time
+               FROM shifts WHERE id = 'e1000000-0000-4000-8000-000000000061')$q$,
+  $q$VALUES (1, '07:00'::time)$q$,
+  'the shift is still reverted even though the template restore hit the unique index'
 );
 
 SELECT * FROM finish();

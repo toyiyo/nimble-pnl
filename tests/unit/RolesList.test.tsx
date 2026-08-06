@@ -179,10 +179,12 @@ describe('RolesList', () => {
     render(<RolesList restaurantId="rest-1" callerRole="owner" onSelectRole={vi.fn()} onNewRole={vi.fn()} onOpenPeople={vi.fn()} />, { wrapper });
     const opsCard = card(/operations manager/i);
 
-    expect(opsCard).toHaveTextContent(/inventory & purchasing\s*·\s*manage/i);
+    // Post menu-mirror re-cut, `inventory` and `reports` are separate rows —
+    // no more "Inventory & Purchasing"/"Dashboard & Reports" bundle labels.
+    expect(opsCard).toHaveTextContent(/inventory\s*·\s*manage/i);
     // The view-level chip carries the area label but never the "· manage" suffix.
-    expect(opsCard).toHaveTextContent(/dashboard & reports/i);
-    expect(opsCard).not.toHaveTextContent(/dashboard & reports\s*·\s*manage/i);
+    expect(opsCard).toHaveTextContent(/reports/i);
+    expect(opsCard).not.toHaveTextContent(/reports\s*·\s*manage/i);
   });
 
   it('shows singular/plural member counts, and an action instead of a dead zero', () => {

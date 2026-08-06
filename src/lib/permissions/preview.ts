@@ -18,9 +18,10 @@
  *      `joinList`) — the design doc itself quotes the output of this exact
  *      algorithm as its own worked example under "The live preview".
  *   2. `navPreview` — the real sidebar nav groups (imported from
- *      `AppSidebar.nav.ts`, not re-typed here, so a label can't drift),
- *      tagged reachable/unreachable, read-only at view level, and "opens
- *      here" for the landing item — reusing `AREA_LANDING_PATHS`/
+ *      `AppSidebar.nav.ts`, not re-typed here, so a label can't drift).
+ *      Ungranted pages are omitted outright (there is no struck-through
+ *      unreachable row to render); granted rows are read-only at view level,
+ *      and "opens here" for the landing item — reusing `AREA_LANDING_PATHS`/
  *      `AREA_PRIORITY` from `areas.ts` (also used by `usePermissions.ts`'s
  *      `landingPath`) so the preview's landing item is always the page the
  *      role would actually land on.
@@ -32,12 +33,10 @@
 import { navigationGroups } from '@/components/AppSidebar.nav';
 import {
   AREA_DEFINITIONS,
-  AREA_LANDING_PATHS,
   AREA_PRIORITY,
   expandAreas,
   landingAreaKey,
   type AreaDefinition,
-  type AreaGroupKey,
   type AreaKey,
   type AreaLevel,
   type SensitiveFlag,
@@ -47,8 +46,6 @@ export interface NavPreviewItem {
   path: string;
   /** Read from the real sidebar nav data (`AppSidebar.nav.ts`), never re-typed here. */
   label: string;
-  /** Whether the granted areas include this item's `area_key` at any level. */
-  reachable: boolean;
   /** Reachable, but only at `'view'` — the prototype's "READ ONLY" badge. */
   readOnly: boolean;
   /** This item's `area_key` is the highest-priority granted area — the prototype's "OPENS HERE" badge. */
@@ -56,7 +53,7 @@ export interface NavPreviewItem {
 }
 
 export interface NavPreviewGroup {
-  /** One of AREA_DEFINITIONS' three bands (Operations / Money / People & admin). */
+  /** The sidebar's own `ui_group` (Main / Operations / Inventory / Accounting / Admin). */
   label: string;
   items: NavPreviewItem[];
 }
@@ -83,39 +80,15 @@ function findNavLabel(path: string): string | undefined {
 }
 
 /**
- * Highest grant level among a UI row's underlying `area_key`s, or `null` if
- * none are granted. Exported (task 9c) so `RolesList.tsx`'s per-role chip
- * derivation reads the same per-row level this file already computes for the
- * editor's live preview, instead of a second hand-written copy.
+ * The grant level for one editor row, or `null` if ungranted. Exported
+ * (task 9c) so `RolesList.tsx`'s per-role chip derivation reads the same
+ * per-row level this file already computes for the editor's live preview,
+ * instead of a second hand-written copy. One `AreaDefinition` row is one
+ * `area_key` (post menu-mirror re-cut, areas.ts) — no fan-out to reduce.
  */
 export function rowLevel(row: AreaDefinition, grants: Partial<Record<AreaKey, AreaLevel>>): AreaLevel | null {
-  let level: AreaLevel | null = null;
-  for (const areaKey of row.areaKeys) {
-    const granted = grants[areaKey];
-    if (granted === 'manage') return 'manage';
-    if (granted === 'view') level = 'view';
-  }
-  return level;
+  return grants[row.key] ?? null;
 }
-
-/**
- * Prose fragments per UI row per level, transcribed verbatim from the
- * approved prototype's `PHRASE` map (docs/design-reference/roles-and-areas.html).
- * Keyed by `AreaDefinition.key` (the same ten keys the prototype uses).
- */
-const PHRASE: Record<AreaGroupKey, { view: string; manage: string }> = {
-  reports: { view: 'read the dashboard and reports', manage: 'read the dashboard and reports' },
-  sales: { view: 'see POS sales', manage: 'see POS sales' },
-  inventory: { view: 'look at inventory', manage: 'count and receive inventory' },
-  recipes: { view: 'read recipes', manage: 'build and edit recipes' },
-  scheduling: { view: 'view the schedule', manage: 'build schedules, fix punches, and run tips' },
-  reviews: { view: 'see review pages and guest feedback', manage: 'build review pages and manage guest feedback' },
-  books: { view: 'read the books', manage: 'keep the books' },
-  payroll: { view: 'see payroll', manage: 'run payroll' },
-  employees: { view: 'see the roster', manage: 'manage employee records' },
-  team: { view: 'see the team list', manage: 'invite people and set roles' },
-  settings: { view: 'view settings', manage: 'change settings and integrations' },
-};
 
 /**
  * Joins a list with a trailing conjunction. Phrases can themselves contain
@@ -140,28 +113,46 @@ function buildSummary(
     return 'No areas yet. This role can sign in and see nothing.';
   }
 
+  // Per row: its own `hint` (view) or `manageHint` (manage, falling back to
+  // `hint` for the handful of manage-tier rows that don't reword it) — read
+  // straight off the AREA_DEFINITIONS row instead of a second hand-kept
+  // phrase map, so a page's copy can't drift between the editor and the
+  // preview sentence.
   const canPhrases = grantedRows.map((row) => {
     const level = rowLevel(row, grants);
-    // level is non-null here — grantedRows was filtered on exactly that.
-    return PHRASE[row.key][level as 'view' | 'manage'];
+    return level === 'manage' && row.manageHint ? row.manageHint : row.hint;
   });
   const uniquePhrases = canPhrases.filter((phrase, index) => canPhrases.indexOf(phrase) === index);
   const canStr = joinList(uniquePhrases, 'and');
 
-  // Fixed four-item check, transcribed from the prototype: only these
-  // categories surface in the "can't" half, not every ungranted area.
+  // Per sidebar group, how much of it this role reaches — "Accounting: 3 of
+  // 12 pages" — the same roll-up shape PR 2's header needs. A group the role
+  // fully reaches has nothing worth naming in the "can't" half. Counted by
+  // unique `path`, not by row: `team`/`collaborators` are two AREA_DEFINITIONS
+  // rows sharing one sidebar page (/team), and this text says "pages".
+  const totalByGroup = new Map<string, Set<string>>();
+  const reachedByGroup = new Map<string, Set<string>>();
+  for (const row of AREA_DEFINITIONS) {
+    const total = totalByGroup.get(row.uiGroup) ?? new Set<string>();
+    total.add(row.path);
+    totalByGroup.set(row.uiGroup, total);
+
+    if (rowLevel(row, grants) !== null) {
+      const reached = reachedByGroup.get(row.uiGroup) ?? new Set<string>();
+      reached.add(row.path);
+      reachedByGroup.set(row.uiGroup, reached);
+    }
+  }
   const blocked: string[] = [];
-  const booksRow = AREA_DEFINITIONS.find((row) => row.key === 'books');
-  const payrollRow = AREA_DEFINITIONS.find((row) => row.key === 'payroll');
-  const teamRow = AREA_DEFINITIONS.find((row) => row.key === 'team');
-  if (booksRow && rowLevel(booksRow, grants) === null) blocked.push('the books');
-  if (payrollRow && rowLevel(payrollRow, grants) === null) blocked.push('payroll');
-  if (teamRow && rowLevel(teamRow, grants) === null) blocked.push('team settings');
+  for (const [group, total] of totalByGroup) {
+    const reached = reachedByGroup.get(group)?.size ?? 0;
+    if (reached < total.size) blocked.push(`${group}: ${reached} of ${total.size} pages`);
+  }
   if (!flags.includes('view:costs')) blocked.push('costs and margins');
 
   let summary = `${roleName} can ${canStr}.`;
   if (blocked.length > 0) {
-    summary += ` Can't touch ${joinList(blocked, 'or')}.`;
+    summary += ` Can't fully reach ${joinList(blocked, 'or')}.`;
   }
   return summary;
 }
@@ -175,46 +166,54 @@ function higherLevel(a: AreaLevel | null, b: AreaLevel | null): AreaLevel | null
 
 function buildNavPreview(grants: Partial<Record<AreaKey, AreaLevel>>): NavPreviewGroup[] {
   const landingKey = landingAreaKey(grants);
-  const levelByPath = new Map<string, AreaLevel | null>();
+  const groups: NavPreviewGroup[] = [];
+  // Tracks each item's actual level (not just readOnly) so merging a second
+  // row onto the same path — `team`/`collaborators` both land on /team — is a
+  // plain `higherLevel` call, not a round trip through the boolean.
+  const levelByPath = new Map<string, AreaLevel>();
 
-  return AREA_DEFINITIONS.reduce<NavPreviewGroup[]>((groups, row) => {
-    let group = groups.find((g) => g.label === row.band);
+  // AREA_DEFINITIONS is already in sidebar order, so groups come out in
+  // sidebar order (Main, Operations, Inventory, Accounting, Admin) for free.
+  for (const row of AREA_DEFINITIONS) {
+    const level = grants[row.key] ?? null;
+    if (level === null) continue; // a literal render of the sidebar this role gets — ungranted pages are absent, not decorated.
+
+    let group = groups.find((g) => g.label === row.uiGroup);
     if (!group) {
-      group = { label: row.band, items: [] };
+      group = { label: row.uiGroup, items: [] };
       groups.push(group);
     }
 
-    for (const areaKey of row.areaKeys) {
-      const path = AREA_LANDING_PATHS[areaKey];
-      // Two area keys can share one nav item — `team` and `collaborators`
-      // both land on /team — and the sidebar renders that item once, so the
-      // preview must too, at the highest level either area grants.
-      const level = higherLevel(levelByPath.get(path) ?? null, grants[areaKey] ?? null);
-      levelByPath.set(path, level);
-
-      const existing = group.items.find((item) => item.path === path);
-      const item = existing ?? {
-        path,
-        label: findNavLabel(path) ?? path,
-        reachable: false,
-        readOnly: false,
-        isLanding: false,
-      };
-      item.reachable = level !== null;
-      item.readOnly = level === 'view';
-      item.isLanding = item.isLanding || areaKey === landingKey;
-      if (!existing) group.items.push(item);
+    // `team` and `collaborators` are two rows that both land on /team — the
+    // sidebar renders that item once, so the preview must too, at the
+    // higher level and landing status either area grants.
+    const existing = group.items.find((item) => item.path === row.path);
+    if (existing) {
+      const mergedLevel = higherLevel(levelByPath.get(row.path) ?? null, level) as AreaLevel;
+      levelByPath.set(row.path, mergedLevel);
+      existing.readOnly = mergedLevel === 'view';
+      existing.isLanding = existing.isLanding || row.key === landingKey;
+      continue;
     }
 
-    return groups;
-  }, []);
+    levelByPath.set(row.path, level);
+    group.items.push({
+      path: row.path,
+      label: findNavLabel(row.path) ?? row.path,
+      readOnly: level === 'view',
+      isLanding: row.key === landingKey,
+    });
+  }
+
+  return groups;
 }
 
 /**
- * `grants` are keyed by the fourteen SQL `area_key`s (matching `role_areas`
- * row granularity and `expandAreas`' own signature), not the ten editor UI
- * rows — the same grants object the rest of the client-side permission model
- * (`expandAreas`, `usePermissions.ts`'s `landingPath`) already uses.
+ * `grants` are keyed by the 33 SQL `area_key`s, one per UI row (post
+ * menu-mirror re-cut, matching `role_areas` row granularity and
+ * `expandAreas`' own signature) — the same grants object the rest of the
+ * client-side permission model (`expandAreas`, `usePermissions.ts`'s
+ * `landingPath`) already uses.
  */
 export function buildRolePreview(
   grants: Partial<Record<AreaKey, AreaLevel>>,

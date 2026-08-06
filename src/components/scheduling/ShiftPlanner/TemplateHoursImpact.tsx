@@ -54,7 +54,10 @@ export function TemplateHoursImpact({
   newEnd,
 }: Readonly<TemplateHoursImpactProps>) {
   const [expanded, setExpanded] = useState(false);
-  const [driftOpen, setDriftOpen] = useState(false);
+  // null means "no manual choice yet", so the default below can depend on `ledger`
+  // -- which is null on the first render while the impact query is in flight, and so
+  // cannot be read by a useState initialiser that runs exactly once.
+  const [driftOpen, setDriftOpen] = useState<boolean | null>(null);
 
   if (isLoading) {
     return (
@@ -75,6 +78,11 @@ export function TemplateHoursImpact({
   }
 
   if (!ledger) return null;
+
+  // When nothing would move on its own, these checkboxes are the only thing the
+  // manager can act on -- so they are not hidden behind a third click.
+  const driftDefaultOpen = drifted.length > 0 && ledger.totalAffected === 0;
+  const isDriftOpen = driftOpen ?? driftDefaultOpen;
 
   return (
     <div className="rounded-xl border border-border/40 bg-muted/30 overflow-hidden">
@@ -149,14 +157,14 @@ export function TemplateHoursImpact({
             </div>
 
             {drifted.length > 0 && (
-              <Collapsible open={driftOpen} onOpenChange={setDriftOpen}>
+              <Collapsible open={isDriftOpen} onOpenChange={setDriftOpen}>
                 <CollapsibleTrigger asChild>
                   <button
                     type="button"
                     className="flex items-center gap-2 text-[13px] font-medium text-foreground"
                   >
                     <ChevronRight
-                      className={`h-4 w-4 text-muted-foreground transition-transform ${driftOpen ? 'rotate-90' : ''}`}
+                      className={`h-4 w-4 text-muted-foreground transition-transform ${isDriftOpen ? 'rotate-90' : ''}`}
                       aria-hidden="true"
                     />
                     {drifted.length} hand-edited {drifted.length === 1 ? 'shift' : 'shifts'} — your call
@@ -172,7 +180,19 @@ export function TemplateHoursImpact({
                           <Checkbox
                             id={inputId}
                             checked={selectedDriftIds.has(row.shiftId)}
-                            onCheckedChange={() => onToggleDrift(row.shiftId)}
+                            onCheckedChange={() => {
+                              // Ticking a row is only reachable while this disclosure is
+                              // already open (default or manual), so latching `driftOpen`
+                              // to `true` here is always a no-op-or-lock, never a surprise
+                              // open. Without it, picking the first of several drifted
+                              // shifts flips `ledger.totalAffected` above 0 on the next
+                              // render, `driftDefaultOpen` recomputes to `false`, and the
+                              // still-null `driftOpen` lets the panel snap shut on the
+                              // remaining unpicked checkboxes -- the exact "hidden behind a
+                              // third click" outcome this disclosure exists to avoid.
+                              setDriftOpen(true);
+                              onToggleDrift(row.shiftId);
+                            }}
                           />
                           <Label htmlFor={inputId} className="text-[13px] font-normal text-foreground">
                             {who} — {row.localDate}, currently {row.currentStart}–{row.currentEnd}

@@ -46,6 +46,48 @@ async function setRestaurantTimezone(page: import('@playwright/test').Page, rest
   expect(result.stored).toBe(TIMEZONE);
 }
 
+/**
+ * Opens a template row's action menu.
+ *
+ * The trigger is `opacity-0 group-hover:opacity-100` and lives inside the row,
+ * so hovering the button itself satisfies the group-hover — there is no need to
+ * reach for the row's `.group` utility class, which is a Tailwind
+ * implementation detail rather than anything the user perceives.
+ */
+async function openTemplateActions(
+  page: import('@playwright/test').Page,
+  templateName: string
+) {
+  const actionsButton = page.getByRole('button', { name: `Actions for ${templateName}` });
+  await actionsButton.hover();
+  await actionsButton.click();
+}
+
+/** Reads a shift's `start_time`/`end_time` straight from Supabase, bypassing the UI. */
+async function fetchShiftTimes(
+  page: import('@playwright/test').Page,
+  restaurantId: string,
+  shiftId: string
+): Promise<{ start_time: string; end_time: string }> {
+  return page.evaluate(
+    // Filtered on restaurant_id as well as the primary key: every query in this
+    // codebase is tenant-scoped, and a test that reads across tenants would pass
+    // even if a cascade leaked into someone else's shifts.
+    async (args: { restId: string; id: string }) => {
+      const supabase = (window as any).__supabase;
+      const { data, error } = await supabase
+        .from('shifts')
+        .select('start_time, end_time')
+        .eq('restaurant_id', args.restId)
+        .eq('id', args.id)
+        .single();
+      if (error) throw new Error(error.message);
+      return data as { start_time: string; end_time: string };
+    },
+    { restId: restaurantId, id: shiftId }
+  );
+}
+
 test.describe('template hours cascade', () => {
   test("moving a template's hours moves the linked shifts", async ({ page }) => {
     const user = generateTestUser('cascade-happy');
@@ -71,11 +113,7 @@ test.describe('template hours cascade', () => {
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
     // Row actions are hover-revealed — hover the row, then Actions -> Edit.
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -152,11 +190,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -213,11 +247,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -315,11 +345,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -391,11 +417,7 @@ test.describe('template hours cascade', () => {
 
     await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
 
-    const templateRow = page.locator('.group', { has: page.getByText(template.name) }).first();
-    await templateRow.hover();
-    const actionsButton = page.getByRole('button', { name: `Actions for ${template.name}` });
-    await expect(actionsButton).toBeVisible({ timeout: 5000 });
-    await actionsButton.click();
+    await openTemplateActions(page, template.name);
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
 
     const dialog = page.getByRole('dialog');
@@ -445,5 +467,209 @@ test.describe('template hours cascade', () => {
       expect(localHHMM(shift.start_time)).toBe('09:00');
       expect(localHHMM(shift.end_time)).toBe('17:00');
     }
+  });
+
+  test('a cascade after an undo still moves the shifts', async ({ page }) => {
+    const user = generateTestUser('cascade-redo-after-undo');
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+    await setRestaurantTimezone(page, restaurantId as string);
+
+    const { template } = await seedTemplateWithShifts(page, restaurantId as string, {
+      start_time: '10:00',
+      end_time: '16:30',
+      shiftCount: 2,
+      timezone: TIMEZONE,
+    });
+
+    await page.goto('/scheduling');
+    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await page.getByRole('tab', { name: /planner/i }).click();
+
+    await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
+
+    const openEditDialog = async () => {
+      await openTemplateActions(page, template.name);
+      await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+      const editDialog = page.getByRole('dialog');
+      await expect(editDialog).toBeVisible();
+      return editDialog;
+    };
+
+    // 1. Cascade 10:00-16:30 -> 10:00-17:30.
+    let dialog = await openEditDialog();
+    await dialog.getByLabel('Start Time').fill('10:00');
+    await dialog.getByLabel('End Time').fill('17:30');
+
+    const firstCascadeButton = dialog.getByRole('button', { name: 'Save & update 2 shifts' });
+    await expect(firstCascadeButton).toBeVisible({ timeout: 5000 });
+    await firstCascadeButton.click();
+
+    await expect(page.getByText('2 shifts moved to the new hours.').first()).toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    // 2. Undo — the toast's own Undo button, not the header's account menu.
+    const undoButton = page.getByRole('button', { name: 'Undo', exact: true });
+    await expect(undoButton).toBeVisible();
+    await undoButton.click();
+    await expect(page.getByText('Restored 2 shifts.').first()).toBeVisible({ timeout: 10000 });
+
+    const afterUndo = await page.evaluate(
+      async (args: { restId: string; templateId: string }) => {
+        const supabase = (window as any).__supabase;
+        const { data, error } = await supabase
+          .from('shifts')
+          .select('start_time, end_time')
+          .eq('restaurant_id', args.restId)
+          .eq('shift_template_id', args.templateId)
+          .order('start_time');
+        if (error) throw new Error(error.message);
+        return data as { start_time: string; end_time: string }[];
+      },
+      { restId: restaurantId as string, templateId: template.id }
+    );
+    expect(afterUndo).toHaveLength(2);
+    for (const shift of afterUndo) {
+      expect(localHHMM(shift.start_time)).toBe('10:00');
+      expect(localHHMM(shift.end_time)).toBe('16:30');
+    }
+
+    // 3. Edit hours again: 10:00 -> 11:00. Before Task 1's fix, the undo left the
+    // template row itself desynced (only the shifts were restored, not the
+    // template's own start/end columns), so re-opening this dialog would
+    // reclassify both shifts as hand-edited drift and the primary button would
+    // read the plain "Save changes" instead of a cascade count.
+    dialog = await openEditDialog();
+    await expect(dialog.getByLabel('Start Time')).toHaveValue('10:00');
+    await expect(dialog.getByLabel('End Time')).toHaveValue('16:30');
+    await dialog.getByLabel('Start Time').fill('11:00');
+
+    const secondCascadeButton = dialog.getByRole('button', { name: 'Save & update 2 shifts' });
+    await expect(secondCascadeButton).toBeVisible({ timeout: 5000 });
+    await secondCascadeButton.click();
+
+    await expect(page.getByText('2 shifts moved to the new hours.').first()).toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    const finalShifts = await page.evaluate(
+      async (args: { restId: string; templateId: string }) => {
+        const supabase = (window as any).__supabase;
+        const { data, error } = await supabase
+          .from('shifts')
+          .select('start_time, end_time')
+          .eq('restaurant_id', args.restId)
+          .eq('shift_template_id', args.templateId)
+          .order('start_time');
+        if (error) throw new Error(error.message);
+        return data as { start_time: string; end_time: string }[];
+      },
+      { restId: restaurantId as string, templateId: template.id }
+    );
+    expect(finalShifts).toHaveLength(2);
+    for (const shift of finalShifts) {
+      expect(localHHMM(shift.start_time)).toBe('11:00');
+      expect(localHHMM(shift.end_time)).toBe('16:30');
+    }
+  });
+
+  test('a manager can pick hand-edited shifts into the cascade', async ({ page }) => {
+    const user = generateTestUser('cascade-drift-panel-open');
+    await signUpAndCreateRestaurant(page, user);
+    await exposeSupabaseHelpers(page);
+
+    const restaurantId = await page.evaluate(() => (window as any).__getRestaurantId());
+    expect(restaurantId).toBeTruthy();
+    await setRestaurantTimezone(page, restaurantId as string);
+
+    // No "moving" shifts at all — both linked shifts are hand-edited away from
+    // the template's hours, so before the cascade is even edited there is
+    // nothing to move, and the drift picks are the only action available.
+    const { template, driftedShifts } = await seedTemplateWithShifts(page, restaurantId as string, {
+      start_time: '09:00',
+      end_time: '17:00',
+      shiftCount: 0,
+      driftedShifts: [
+        { start_time: '11:00', end_time: '19:00', employeeName: 'Casey Chicago' },
+        { start_time: '12:00', end_time: '20:00', employeeName: 'Drew Dallas' },
+      ],
+      timezone: TIMEZONE,
+    });
+    expect(driftedShifts).toHaveLength(2);
+    const [pickedDrift, untouchedDrift] = driftedShifts;
+
+    await page.goto('/scheduling');
+    await page.waitForURL(/\/scheduling/, { timeout: 8000 });
+    await page.getByRole('tab', { name: /planner/i }).click();
+
+    await expect(page.getByText(template.name)).toBeVisible({ timeout: 15000 });
+
+    await openTemplateActions(page, template.name);
+    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+
+    await dialog.getByLabel('Start Time').fill('10:00');
+    await dialog.getByLabel('End Time').fill('18:00');
+
+    // Nothing moves on its own — the collapsed summary names the drifted
+    // shifts as the only thing the manager can act on.
+    await expect(dialog.getByRole('button', { name: 'Save changes' })).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByText(/hand-edited shifts you can pick/i)).toBeVisible();
+
+    // Expand the outer summary — this is the only click. The drift picker
+    // opens on its own (Task 4) because there is nothing else to disclose.
+    await dialog.getByRole('button', { name: /shift moves|shifts move/i }).click();
+
+    const pickedCheckbox = dialog.getByLabel(
+      new RegExp(`${pickedDrift.employeeName} — ${pickedDrift.localDate}`, 'i')
+    );
+    await expect(pickedCheckbox).toBeVisible({ timeout: 5000 });
+    // With no "moving" section above it (shiftCount: 0), the checkbox row
+    // lands close enough to the bottom of the scrollable dialog body that
+    // Playwright's default scroll-into-view centers it right under the
+    // sticky footer (TemplateFormDialog.tsx's `DialogFooter`), which then
+    // intercepts the click. Center it explicitly first.
+    await pickedCheckbox.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    // Not `.check()`: `.check()`'s click-then-verify retry loop fights the
+    // row's plain toggle semantics (`onCheckedChange` flips a Set, it does
+    // not accept Radix's boolean argument), so a single `.click()` is used
+    // instead.
+    await pickedCheckbox.click();
+
+    // The still-unpicked drifted shift's checkbox stays reachable after the
+    // first pick. Ticking Casey's checkbox makes `ledger.totalAffected` go
+    // from 0 to 1 on the next render, which used to collapse this
+    // disclosure (it was only ever open by the "nothing else to do"
+    // default, never by an explicit manual toggle) and hide Drew's
+    // still-unpicked checkbox behind a second click — see
+    // TemplateHoursImpact.tsx's `onCheckedChange` handler, which now latches
+    // the disclosure open on the first tick.
+    const untouchedCheckbox = dialog.getByLabel(
+      new RegExp(`${untouchedDrift.employeeName} — ${untouchedDrift.localDate}`, 'i')
+    );
+    await expect(untouchedCheckbox).toBeVisible({ timeout: 5000 });
+
+    const cascadeButton = dialog.getByRole('button', { name: 'Save & update 1 shift' });
+    await expect(cascadeButton).toBeVisible({ timeout: 5000 });
+    await expect(dialog.getByRole('button', { name: 'Template only' })).toBeVisible();
+    await cascadeButton.click();
+
+    await expect(page.getByText('1 shift moved to the new hours.').first()).toBeVisible({ timeout: 10000 });
+    await expect(dialog).not.toBeVisible({ timeout: 10000 });
+
+    const [pickedRow, untouchedRow] = await Promise.all([
+      fetchShiftTimes(page, restaurantId as string, pickedDrift.shiftId),
+      fetchShiftTimes(page, restaurantId as string, untouchedDrift.shiftId),
+    ]);
+
+    expect(localHHMM(pickedRow.start_time)).toBe('10:00');
+    expect(localHHMM(pickedRow.end_time)).toBe('18:00');
+
+    expect(untouchedRow.start_time).toBe(untouchedDrift.startTime);
+    expect(untouchedRow.end_time).toBe(untouchedDrift.endTime);
   });
 });

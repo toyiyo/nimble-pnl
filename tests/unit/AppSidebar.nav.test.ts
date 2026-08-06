@@ -149,7 +149,14 @@ describe('AppSidebar.nav – viewMode param', () => {
 
 describe('AppSidebar.nav – custom roles derive their nav from granted areas', () => {
   type Grants = Partial<Record<AreaKey, AreaLevel>>;
-  const INVENTORY_ROLE: Grants = { inventory: 'manage', purchasing: 'manage', settings: 'view' };
+  // Post menu-mirror re-cut, `inventory_audit` is its own AreaKey/row — no
+  // longer implied by granting `inventory` — so it needs its own grant here.
+  const INVENTORY_ROLE: Grants = {
+    inventory: 'manage',
+    inventory_audit: 'manage',
+    purchasing: 'manage',
+    settings: 'view',
+  };
 
   it('keeps every builtin role\'s nav byte-identical, even when grants are passed', () => {
     // The whole point of the branch: builtin arrays are retained, not

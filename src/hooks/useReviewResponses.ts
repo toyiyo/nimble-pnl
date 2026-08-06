@@ -33,9 +33,11 @@ export type ReviewResponseFilter = 'all' | 'commented' | 'silent';
  * back. A silent five-star tap is neither, so it carries no status and no
  * contact card.
  *
- * The `unread_count` FILTER in `review_response_metrics` holds the same rule
- * in SQL (supabase/migrations/20260806120000_review_metrics_actionable.sql).
- * Change both together, or the header badge and the rows disagree.
+ * Warning: a change to one copy of this rule alone makes the header badge and
+ * the rows disagree. The `unread_count` FILTER in `review_response_metrics`
+ * holds the same rule in SQL
+ * (supabase/migrations/20260806120000_review_metrics_actionable.sql).
+ * Change both together.
  */
 export function isActionableResponse(response: ReviewResponse): boolean {
   return response.comment !== null || response.contact_consent;

@@ -137,6 +137,9 @@ describe('useReviewResponses', () => {
     // The predicate must precede the cap. A client-side filter after a
     // 500-row fetch loses a written complaint behind 500 newer silent taps.
     expect(list.not).toHaveBeenCalledWith('comment', 'is', null);
+    // The two arms exclude each other. Both predicates together return zero
+    // rows, and the inbox looks empty under a filter that has rows.
+    expect(list.is).not.toHaveBeenCalled();
     expect(list.limit).toHaveBeenCalledWith(500);
   });
 
@@ -151,6 +154,7 @@ describe('useReviewResponses', () => {
 
     await waitFor(() => expect(result.current.responses).toHaveLength(1));
     expect(list.is).toHaveBeenCalledWith('comment', null);
+    expect(list.not).not.toHaveBeenCalled();
     expect(list.limit).toHaveBeenCalledWith(500);
   });
 

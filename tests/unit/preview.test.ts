@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildRolePreview } from '@/lib/permissions/preview';
-import { expandAreas, type AreaKey, type AreaLevel } from '@/lib/permissions/areas';
+import { AREA_DEFINITIONS, expandAreas, type AreaKey, type AreaLevel } from '@/lib/permissions/areas';
 
 /**
  * Direct unit test for the pure preview derivation
@@ -45,9 +45,11 @@ describe('buildRolePreview — summary', () => {
     expect(summary).toMatch(/sign in and see nothing/i);
   });
 
-  it('reproduces the design doc\'s own Weekend Supervisor worked example verbatim', () => {
-    // design doc, "The live preview": reports:view, sales:view,
-    // scheduling:manage, employees:view, sensitive flags all off.
+  it('renders "can" phrases per granted row and a per-group "can\'t fully reach" roll-up (post menu-mirror re-cut)', () => {
+    // Post-migration re-cut, the "can't" half names sidebar groups with a
+    // reached/total count rather than the retired bundle categories — see
+    // preview.ts's buildSummary and the design doc's note that this branch
+    // "is rewritten to read group roll-up state".
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
       reports: 'view',
       sales: 'view',
@@ -56,17 +58,22 @@ describe('buildRolePreview — summary', () => {
     };
     const { summary } = buildRolePreview(grants, [], 'Weekend Supervisor');
     expect(summary).toBe(
-      "Weekend Supervisor can read the dashboard and reports; see POS sales; " +
-        "build schedules, fix punches, and run tips; and see the roster. " +
-        "Can't touch the books, payroll, team settings, or costs and margins."
+      'Weekend Supervisor can Ticket-level sales from your POS; publish and edit schedules; ' +
+        'Saved reports and P&L trends; and Roster, jobs, wage assignments. ' +
+        "Can't fully reach Main: 1 of 6 pages, Operations: 1 of 5 pages, Inventory: 1 of 6 pages, " +
+        'Accounting: 0 of 12 pages, Admin: 1 of 4 pages, or costs and margins.'
     );
   });
 
-  it('drops a "can\'t" clause once its area is granted', () => {
-    const withoutBooks = buildRolePreview({ payroll: 'view' }, [], 'X');
-    const withBooks = buildRolePreview({ payroll: 'view', books: 'view' }, [], 'X');
-    expect(withoutBooks.summary).toMatch(/touch the books/);
-    expect(withBooks.summary).not.toMatch(/touch the books/);
+  it('drops a group\'s "can\'t fully reach" clause once every page in that group is granted', () => {
+    const withoutAdmin = buildRolePreview({ dashboard: 'view' }, [], 'X');
+    const withAdmin = buildRolePreview(
+      { dashboard: 'view', employees: 'view', team: 'view', collaborators: 'view', settings: 'view' },
+      [],
+      'X'
+    );
+    expect(withoutAdmin.summary).toMatch(/Admin: 0 of 4 pages/);
+    expect(withAdmin.summary).not.toMatch(/Admin/);
   });
 
   it('drops the costs clause once the view:costs flag is set', () => {
@@ -77,11 +84,8 @@ describe('buildRolePreview — summary', () => {
   });
 
   it('omits the "can\'t" sentence entirely once nothing is blocked', () => {
-    const grants: Partial<Record<AreaKey, AreaLevel>> = {
-      books: 'manage',
-      payroll: 'manage',
-      team: 'manage',
-    };
+    const grants: Partial<Record<AreaKey, AreaLevel>> = {};
+    for (const row of AREA_DEFINITIONS) grants[row.key] = 'manage';
     const { summary } = buildRolePreview(grants, ['view:costs'], 'Owner-ish');
     expect(summary).not.toMatch(/can't/i);
   });
@@ -93,19 +97,26 @@ describe('buildRolePreview — summary', () => {
 });
 
 describe('buildRolePreview — navPreview', () => {
-  it('groups nav items into the three bands, matching AREA_DEFINITIONS', () => {
-    const { navPreview } = buildRolePreview({}, []);
+  it('groups nav items into the five sidebar groups, in sidebar order, matching AREA_DEFINITIONS', () => {
+    // One grant per group so every group has something to show — an empty
+    // group is dropped entirely (see the next test).
+    const grants: Partial<Record<AreaKey, AreaLevel>> = {
+      dashboard: 'view',
+      scheduling: 'view',
+      inventory: 'view',
+      invoices: 'view',
+      settings: 'view',
+    };
+    const { navPreview } = buildRolePreview(grants, []);
     const labels = navPreview.map((g) => g.label);
-    expect(labels).toEqual(['Operations', 'Money', 'People & admin']);
+    expect(labels).toEqual(['Main', 'Operations', 'Inventory', 'Accounting', 'Admin']);
   });
 
-  it('marks an item unreachable when its area is not granted', () => {
+  it('omits an item entirely when its area is not granted — a literal preview, not a decorated full menu', () => {
     const { navPreview } = buildRolePreview({}, []);
+    expect(navPreview).toEqual([]);
     const dashboard = navPreview.flatMap((g) => g.items).find((i) => i.path === '/');
-    expect(dashboard).toBeDefined();
-    expect(dashboard?.reachable).toBe(false);
-    expect(dashboard?.readOnly).toBe(false);
-    expect(dashboard?.isLanding).toBe(false);
+    expect(dashboard).toBeUndefined();
   });
 
   it('marks an item reachable and read-only at view level, reachable and not read-only at manage level', () => {
@@ -121,14 +132,16 @@ describe('buildRolePreview — navPreview', () => {
   });
 
   it('tags exactly the highest-priority granted area\'s item as the landing item ("opens here")', () => {
-    // AREA_PRIORITY (areas.ts): reports, sales, inventory, purchasing, ... —
-    // inventory outranks scheduling.
+    // AREA_PRIORITY (areas.ts) is AREA_DEFINITIONS' own declaration order —
+    // sidebar order — so a Main/Operations-group grant outranks an
+    // Inventory-group one: scheduling (Operations) outranks inventory
+    // (Inventory) here.
     const grants: Partial<Record<AreaKey, AreaLevel>> = { scheduling: 'view', inventory: 'manage' };
     const { navPreview } = buildRolePreview(grants, []);
     const items = navPreview.flatMap((g) => g.items);
     const landingItems = items.filter((i) => i.isLanding);
     expect(landingItems).toHaveLength(1);
-    expect(landingItems[0].path).toBe('/inventory');
+    expect(landingItems[0].path).toBe('/scheduling');
   });
 
   it('renders one row per nav item when two areas share a path, at the higher level', () => {
@@ -148,7 +161,8 @@ describe('buildRolePreview — navPreview', () => {
   });
 
   it('real labels are read from the actual sidebar nav data, not re-typed here', () => {
-    const { navPreview } = buildRolePreview({}, []);
+    const grants: Partial<Record<AreaKey, AreaLevel>> = { dashboard: 'view', inventory: 'view', settings: 'view' };
+    const { navPreview } = buildRolePreview(grants, []);
     const items = navPreview.flatMap((g) => g.items);
     const dashboard = items.find((i) => i.path === '/');
     const inventory = items.find((i) => i.path === '/inventory');

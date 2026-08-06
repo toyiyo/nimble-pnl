@@ -134,11 +134,13 @@ DELETE FROM public.area_catalog WHERE area_key = 'books';
 -- ============================================================================
 -- Step 4: rewrite user_has_capability's map and its one hardcoded special
 -- case to match the re-cut catalog. Body copied from
--- 20260804100000_reviews_area.sql with three edits: the
--- view:financial_intelligence special case re-points off 'books'; four
--- capability groups (tips, time_punches, inventory_audit, pending_outflows)
--- move down a tier onto their own area at the level the old bundle granted;
--- the rest of the former `books` capabilities re-point onto their own
+-- 20260804100000_reviews_area.sql with four edits: the
+-- view:financial_intelligence special case re-points off 'books'; three
+-- capability groups (tips, time_punches, inventory_audit) move down a tier
+-- onto their own area at the level the old bundle granted; pending_outflows
+-- becomes a hardcoded OR across two areas ('print_checks' and 'expenses' —
+-- Expenses.tsx reads it unconditionally, so it can't be a single-area VALUES
+-- row); the rest of the former `books` capabilities re-point onto their own
 -- per-page area at the same level. Everything else — view:ai_assistant,
 -- manage:subscription, the sensitive-flag branches, and the entire legacy
 -- v_role_id IS NULL CASE — is byte-for-byte unchanged.
@@ -292,6 +294,29 @@ BEGIN
     ) AND has_subscription_feature(p_restaurant_id, 'financial_intelligence');
   END IF;
 
+  -- pending_outflows is read by two pages, not one: /print-checks (its own
+  -- area) and /expenses (Expenses.tsx calls usePendingOutflows
+  -- unconditionally). Either area, held at the matching level, must satisfy
+  -- it — a plain single-area VALUES row can't express an OR, so this stays
+  -- a hardcoded branch instead of two rows below.
+  IF p_capability = 'view:pending_outflows' THEN
+    RETURN EXISTS (
+      SELECT 1 FROM role_areas ra
+      WHERE ra.role_id = v_role_id
+        AND ra.area_key IN ('print_checks', 'expenses')
+        AND ra.level IN ('view', 'manage')
+    );
+  END IF;
+
+  IF p_capability = 'edit:pending_outflows' THEN
+    RETURN EXISTS (
+      SELECT 1 FROM role_areas ra
+      WHERE ra.role_id = v_role_id
+        AND ra.area_key IN ('print_checks', 'expenses')
+        AND ra.level = 'manage'
+    );
+  END IF;
+
   -- Sensitive flags: independent of area grants, no legacy equivalent.
   IF p_capability IN ('view:costs', 'view:pay_rates', 'view:employee_pii') THEN
     RETURN EXISTS (
@@ -339,8 +364,9 @@ BEGIN
     ('edit:invoices',               'invoices',            'manage'),
     ('view:customers',              'customers',           'view'),
     ('edit:customers',              'customers',           'manage'),
-    ('view:pending_outflows',       'print_checks',        'view'),
-    ('edit:pending_outflows',       'print_checks',        'manage'),
+    -- view:pending_outflows / edit:pending_outflows are NOT here — they're
+    -- satisfied by either 'print_checks' or 'expenses', so they're resolved
+    -- by the hardcoded IF branches above instead of a single-area row.
     ('view:assets',                 'assets',              'view'),
     ('edit:assets',                 'assets',              'manage'),
     ('view:chart_of_accounts',      'chart_of_accounts',   'view'),

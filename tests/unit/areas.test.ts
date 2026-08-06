@@ -162,6 +162,18 @@ describe('expandAreas', () => {
     expect(expandAreas({ financial_intelligence: 'manage' }, [])).toContain('view:financial_intelligence');
   });
 
+  // Expenses.tsx reads pending_outflows unconditionally via
+  // usePendingOutflows(), so an Expenses grant with no Print Checks area at
+  // all must still carry the pending_outflows capabilities that table's RLS
+  // checks — the client-side mirror of the SQL OR-across-two-areas fix for
+  // the P1 finding on 20260805120000_page_areas.sql.
+  it('expenses grants view:pending_outflows/edit:pending_outflows with no print_checks area held at all', () => {
+    expect(expandAreas({ expenses: 'view' }, [])).toContain('view:pending_outflows');
+    expect(expandAreas({ expenses: 'view' }, [])).not.toContain('edit:pending_outflows');
+    expect(expandAreas({ expenses: 'manage' }, [])).toContain('view:pending_outflows');
+    expect(expandAreas({ expenses: 'manage' }, [])).toContain('edit:pending_outflows');
+  });
+
   it('manage is a superset of view (no capability is lost going from view to manage)', () => {
     const viewCaps = new Set(expandAreas(grantsAt('view')));
     const manageCaps = new Set(expandAreas(grantsAt('manage')));
@@ -217,7 +229,11 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
       scheduling: 'manage', time_punches: 'manage', tips: 'manage',
       reviews: 'manage',
       transactions: 'manage', banking: 'manage', expenses: 'manage', invoices: 'manage',
-      customers: 'manage', financial_statements: 'manage', financial_intelligence: 'manage',
+      // financial_statements/financial_intelligence stay at 'view' — the
+      // migration's area_catalog rows for both carry no 'manage' tier
+      // (20260805120000_page_areas.sql clamps them to 'view'), so books:'manage'
+      // fans out onto these two at 'view', not 'manage'.
+      customers: 'manage', financial_statements: 'view', financial_intelligence: 'view',
       assets: 'manage', print_checks: 'manage',
       chart_of_accounts: 'manage',
       payroll: 'manage', employees: 'manage', team: 'manage', collaborators: 'manage',
@@ -236,7 +252,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
       scheduling: 'manage', time_punches: 'manage', tips: 'manage',
       reviews: 'manage',
       transactions: 'manage', banking: 'manage', expenses: 'manage', invoices: 'manage',
-      customers: 'manage', financial_statements: 'manage', financial_intelligence: 'manage',
+      customers: 'manage', financial_statements: 'view', financial_intelligence: 'view',
       assets: 'manage', print_checks: 'manage',
       chart_of_accounts: 'view',
       payroll: 'manage', employees: 'manage', team: 'manage', collaborators: 'manage',
@@ -289,7 +305,7 @@ describe('expandAreas reconstructs each builtin from its seeded area grants', ()
   it('Accountant', () => {
     const grants: Partial<Record<AreaKey, AreaLevel>> = {
       transactions: 'manage', banking: 'manage', expenses: 'manage', invoices: 'manage',
-      customers: 'manage', financial_statements: 'manage', financial_intelligence: 'manage',
+      customers: 'manage', financial_statements: 'view', financial_intelligence: 'view',
       assets: 'manage', print_checks: 'manage',
       chart_of_accounts: 'manage', payroll: 'view', employees: 'view',
       settings: 'view',

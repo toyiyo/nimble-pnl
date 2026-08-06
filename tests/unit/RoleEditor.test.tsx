@@ -379,10 +379,9 @@ describe('RoleEditor', () => {
     render(<RoleEditor {...editorProps} restaurantId="rest-1" role={role} onBack={vi.fn()} />, { wrapper });
 
     const settingsGroup = rowFor('Settings');
-    expect(within(settingsGroup).getByRole('radio', { name: /^view$/i })).toHaveAttribute(
-      'data-state',
-      'checked'
-    );
+    const viewRadio = within(settingsGroup).getByRole('radio', { name: /^view$/i });
+    expect(viewRadio).toHaveAttribute('data-state', 'checked');
+    expect(viewRadio).toBeDisabled();
     expect(within(settingsGroup).getByRole('radio', { name: /^manage$/i })).toBeDisabled();
     expect(within(settingsGroup).getByRole('radio', { name: /^no access$/i })).toBeDisabled();
     expect(screen.queryByText(/^partial$/i)).not.toBeInTheDocument();

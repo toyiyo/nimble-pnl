@@ -338,7 +338,7 @@ test.describe('Roles & Areas', () => {
     // substring "Invoices", so a non-exact getByText resolves to two nodes.
     const preview = page.getByRole('complementary');
     await expect(preview.getByText('Invoices', { exact: true })).toBeVisible();
-    await expect(preview.getByText('Banks', { exact: true })).toBeHidden();
+    await expect(preview.getByText('Banks', { exact: true })).toHaveCount(0);
 
     await page.getByRole('button', { name: /^save role$/i }).click();
     await expect(page.getByText('Invoices only')).toBeVisible();

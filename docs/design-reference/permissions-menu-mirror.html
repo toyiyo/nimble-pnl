@@ -548,10 +548,10 @@ function renderPreview(){
   GROUPS.forEach(g=>{
     const vis = g.items.filter(i=>state[i.p]>0);
     if(!vis.length) return;
-    html += `<div class="pvgroup">${g.label==='Admin'&&vis.every(v=>v.p==='/settings'||v.p==='/help')?'Settings':g.label}</div>`;
+    html += `<div class="pvgroup">${esc(g.label==='Admin'&&vis.every(v=>v.p==='/settings'||v.p==='/help')?'Settings':g.label)}</div>`;
     vis.forEach(i=>{
       pages++; if(state[i.p]===2) manages++;
-      html += `<div class="pvitem">${svg(i.i)}<span class="nm">${i.l}</span>
+      html += `<div class="pvitem">${svg(i.i)}<span class="nm">${esc(i.l)}</span>
         <span class="dot ${state[i.p]===2?'':'hidden'}" title="Can change things here"></span></div>`;
     });
   });
@@ -568,9 +568,9 @@ function renderPreview(){
     if(i.always) return;
     if(state[i.p]===2) canDo.push(i.l); else if(state[i.p]===1) canSee.push(i.l);
   }));
-  const list = a => a.length>3 ? a.slice(0,3).join(', ')+` and ${a.length-3} more` : a.join(' and ');
+  const list = a => (a.length>3 ? a.slice(0,3).join(', ')+` and ${a.length-3} more` : a.join(' and '));
   document.getElementById('sentence').innerHTML =
-    `<p><span class="k">${esc(name)}</span> ${canDo.length?`can change <span class="k">${list(canDo)}</span>`:'can change nothing'}${canSee.length?`, and can look at <span class="k">${list(canSee)}</span>`:''}.</p>` +
+    `<p><span class="k">${esc(name)}</span> ${canDo.length?`can change <span class="k">${esc(list(canDo))}</span>`:'can change nothing'}${canSee.length?`, and can look at <span class="k">${esc(list(canSee))}</span>`:''}.</p>` +
     `<p style="color:var(--muted)">Everything else is hidden — not greyed out, not there.</p>`;
 }
 

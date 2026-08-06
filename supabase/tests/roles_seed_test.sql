@@ -28,7 +28,10 @@
 --     string (assets was reachable pre-migration only as one of the nine
 --     `books` pages, never its own capability), so a role_areas row for any
 --     of them contributes nothing to derived_capabilities below, same as
---     omitting it here.
+--     omitting it here. (`assets` does have `view:assets`/`edit:assets`
+--     capability strings in `user_has_capability` — it's excluded from this
+--     fixture only because those strings aren't in the ROLE_CAPABILITIES
+--     fixed-point being reconstructed here, not because they don't exist.)
 --   test_expected_capabilities — the untouched ROLE_CAPABILITIES arrays,
 --     transcribed capability-by-capability from definitions.ts, keyed by
 --     the role's display name (the seed's roles.name convention, matching

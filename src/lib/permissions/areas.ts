@@ -190,7 +190,7 @@ const PAGE_AREA_ROWS: readonly PageAreaRow[] = [
   ['inventory', '/inventory', true, 'manage', 'Counts, stock levels, unit costs', 'adjust counts and costs'],
   ['inventory_audit', '/inventory-audit', true, 'manage', 'Count sessions and variance', 'run and close audits'],
   ['purchasing', '/purchase-orders', true, 'manage', 'POs, receiving, supplier invoices', 'raise and receive POs'],
-  ['reports', '/reports', true, 'view', 'Saved reports and P&L trends', 'and the AI assistant'],
+  ['reports', '/reports', true, 'view', 'Saved reports and P&L trends', 'use the AI assistant'],
 
   // Accounting
   ['budget', '/budget', false, 'view', 'Targets and burn against plan'],
@@ -249,8 +249,12 @@ interface AreaCapabilities {
  * Seven entries are not a pure one-to-one re-point of a same-named
  * capability (spec §3.2): `recipes`/`inventory` absorb capabilities with no
  * page of their own (`view:batches`, `view:inventory_transactions`, etc.),
- * `print_checks` renames off `view:pending_outflows`, and `reports`'s manage
- * tier means "and the AI assistant" via the hardcoded
+ * `print_checks` renames off `view:pending_outflows` (and `expenses` grants
+ * the same pair — `Expenses.tsx` reads `pending_outflows` unconditionally
+ * via `usePendingOutflows`, so Expenses access without Print Checks must
+ * still satisfy that table's RLS; see the matching `IF` branches in
+ * `user_has_capability` rather than a VALUES-map row), and `reports`'s
+ * manage tier means "use the AI assistant" via the hardcoded
  * `area_key = 'reports' AND level = 'manage'` check rather than a
  * `view:ai_assistant` row in the VALUES map itself. `dashboard`,
  * `ops_inbox`, `weekly_brief`, `budget`, `labor` and `stripe_account` carry
@@ -336,7 +340,7 @@ const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
   },
   reports: {
     view: ['view:reports'],
-    manageAdds: ['view:ai_assistant'], // manage on Reports means "and the AI assistant"
+    manageAdds: ['view:ai_assistant'], // manage on Reports means "use the AI assistant"
   },
   budget: {
     view: [],
@@ -359,8 +363,10 @@ const AREA_CAPABILITIES: Record<AreaKey, AreaCapabilities> = {
     manageAdds: ['edit:banking'],
   },
   expenses: {
-    view: ['view:expenses'],
-    manageAdds: ['edit:expenses'],
+    // Expenses.tsx reads pending_outflows unconditionally, so Expenses
+    // access must satisfy that table's RLS too, not just Print Checks.
+    view: ['view:expenses', 'view:pending_outflows'],
+    manageAdds: ['edit:expenses', 'edit:pending_outflows'],
   },
   print_checks: {
     view: ['view:pending_outflows'],

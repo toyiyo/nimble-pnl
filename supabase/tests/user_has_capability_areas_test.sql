@@ -71,7 +71,7 @@
 
 BEGIN;
 
-SELECT plan(24);
+SELECT plan(29);
 
 -- ----------------------------------------------------------------------------
 -- Fixture: legacy CASE, transcribed verbatim and parameterized on p_role.
@@ -581,6 +581,73 @@ SELECT is(
   public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:tips'),
   TRUE,
   'view:tips granted to a role holding tips:view — the tier that moved down to a plain area+level lookup in the Step 4 rewrite'
+);
+
+SELECT set_config('request.jwt.claims', '{}', true);
+
+-- ============================================================================
+-- 5b. view:pending_outflows / edit:pending_outflows resolve via an OR across
+--    two areas ('print_checks' and 'expenses'), not a single-area VALUES
+--    row. Expenses.tsx calls usePendingOutflows() unconditionally, so a
+--    custom role granted Expenses without Print Checks must still satisfy
+--    the pending_outflows RLS policies (20260120100100_update_rls_for_
+--    collaborators.sql) — this is the fix for the P1 finding on
+--    20260805120000_page_areas.sql: the migration's original design assumed
+--    /print-checks was the only page reading that table.
+-- ============================================================================
+INSERT INTO auth.users (id, email) VALUES
+  ('5a000000-0000-0000-0000-000000000601', 'task5-expenses-manage@example.com'),
+  ('5a000000-0000-0000-0000-000000000602', 'task5-expenses-view-only@example.com'),
+  ('5a000000-0000-0000-0000-000000000603', 'task5-neither-area@example.com')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.roles (id, restaurant_id, name, description, flavor, builtin) VALUES
+  ('5a000000-0000-0000-0000-0000000000c7', '5a000000-0000-0000-0000-000000000099', 'Task 5 Expenses Manage Role', 'pgTAP fixture — expenses:manage, no print_checks', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c8', '5a000000-0000-0000-0000-000000000099', 'Task 5 Expenses View-Only Role', 'pgTAP fixture — expenses:view, no print_checks', 'platform', false),
+  ('5a000000-0000-0000-0000-0000000000c9', '5a000000-0000-0000-0000-000000000099', 'Task 5 Neither Area Role', 'pgTAP fixture — transactions:manage only, no expenses/print_checks', 'platform', false)
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.role_areas (role_id, area_key, level) VALUES
+  ('5a000000-0000-0000-0000-0000000000c7', 'expenses',     'manage'),
+  ('5a000000-0000-0000-0000-0000000000c8', 'expenses',     'view'),
+  ('5a000000-0000-0000-0000-0000000000c9', 'transactions', 'manage')
+ON CONFLICT (role_id, area_key) DO UPDATE SET level = EXCLUDED.level;
+
+INSERT INTO public.user_restaurants (user_id, restaurant_id, role, role_id) VALUES
+  ('5a000000-0000-0000-0000-000000000601', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c7'),
+  ('5a000000-0000-0000-0000-000000000602', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c8'),
+  ('5a000000-0000-0000-0000-000000000603', '5a000000-0000-0000-0000-000000000099', 'collaborator_custom', '5a000000-0000-0000-0000-0000000000c9')
+ON CONFLICT (user_id, restaurant_id) DO UPDATE SET role = EXCLUDED.role, role_id = EXCLUDED.role_id;
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000601","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pending_outflows'),
+  TRUE,
+  'view:pending_outflows granted to a role holding expenses:manage with no print_checks area at all'
+);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'edit:pending_outflows'),
+  TRUE,
+  'edit:pending_outflows granted to a role holding expenses:manage with no print_checks area at all'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000602","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pending_outflows'),
+  TRUE,
+  'view:pending_outflows granted to a role holding only expenses:view'
+);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'edit:pending_outflows'),
+  FALSE,
+  'edit:pending_outflows denied to a role holding only expenses:view (manage required)'
+);
+
+SELECT set_config('request.jwt.claims', '{"sub":"5a000000-0000-0000-0000-000000000603","role":"authenticated"}', true);
+SELECT is(
+  public.user_has_capability('5a000000-0000-0000-0000-000000000099'::uuid, 'view:pending_outflows'),
+  FALSE,
+  'view:pending_outflows denied to a role holding neither expenses nor print_checks'
 );
 
 SELECT set_config('request.jwt.claims', '{}', true);

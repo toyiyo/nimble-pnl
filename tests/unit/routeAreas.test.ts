@@ -34,8 +34,12 @@ const SEEDED_COLLABORATOR_AREAS: Record<string, Grants> = {
   collaborator_accountant: {
     transactions: 'manage', banking: 'manage', expenses: 'manage',
     invoices: 'manage', customers: 'manage', assets: 'manage',
-    print_checks: 'manage', financial_statements: 'manage',
-    financial_intelligence: 'manage',
+    // financial_statements/financial_intelligence stay at 'view' — the
+    // migration clamps both area_catalog rows to 'view' with no 'manage'
+    // tier (20260805120000_page_areas.sql), so books:'manage' fans out
+    // onto these two at 'view', not 'manage'.
+    print_checks: 'manage', financial_statements: 'view',
+    financial_intelligence: 'view',
     chart_of_accounts: 'manage', payroll: 'view', employees: 'view',
     settings: 'view',
   },
@@ -144,8 +148,8 @@ const SEEDED_BUILTIN_AREAS: Record<string, Grants> = {
     // (20260805120000_page_areas.sql Step 3).
     transactions: 'manage', banking: 'manage', expenses: 'manage',
     invoices: 'manage', customers: 'manage', assets: 'manage',
-    print_checks: 'manage', financial_statements: 'manage',
-    financial_intelligence: 'manage',
+    print_checks: 'manage', financial_statements: 'view',
+    financial_intelligence: 'view',
     chart_of_accounts: 'manage',
     payroll: 'manage',
     employees: 'manage',
@@ -164,8 +168,8 @@ const SEEDED_BUILTIN_AREAS: Record<string, Grants> = {
     // Fanned out from the seeded books:'manage' row, same as owner above.
     transactions: 'manage', banking: 'manage', expenses: 'manage',
     invoices: 'manage', customers: 'manage', assets: 'manage',
-    print_checks: 'manage', financial_statements: 'manage',
-    financial_intelligence: 'manage',
+    print_checks: 'manage', financial_statements: 'view',
+    financial_intelligence: 'view',
     chart_of_accounts: 'view',
     payroll: 'manage',
     employees: 'manage',

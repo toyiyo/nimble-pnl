@@ -9,6 +9,28 @@ description: "MANDATORY — invoke BEFORE any implementation, feature, bugfix, o
 
 This skill defines the mandatory development pipeline for every task. Follow each phase in order. Skip conditions are documented per phase.
 
+### Writing standard (applies to every phase)
+
+Write every word of prose in **ASD-STE100 Simplified Technical English**. This
+covers chat replies, the design doc, the plan file, `progress.md`, commit
+messages, the PR body, replies to reviewers, code comments, and the
+retrospective.
+
+One idea per sentence. Maximum 20 words for an instruction, 25 for a
+description. Active voice. Start an instruction with the verb. One word for one
+meaning: `fix` (not repair/resolve/address), `change` (not modify/tweak),
+`delete` (not remove/drop), `check` (not verify/validate/ensure). Simple tenses
+only. No `-ing` word as a noun. No idioms and no hedges.
+
+Keep exact: code identifiers, file paths, tool output, error messages, and
+quotes from CodeRabbit, Codex, or SonarCloud. Do not rewrite them.
+
+Full standard: `docs/STE100_STYLE.md`. Phases 4–9 inject the same rules into
+every sub-agent through the `WRITING_STANDARD` block in
+`.claude/workflows/dev-build-and-ship.js`. Phase 2.5 design reviewers and any
+other sub-agent you launch by hand must get the same instruction in their
+prompt.
+
 The workflow is designed for **autonomous execution**: after the user approves the plan (Phase 3), Claude executes Phases 4–9 without requiring human prompts. The user is only notified when the PR is green and ready for review, or when Claude is genuinely stuck.
 
 **Phases 4–9 run as a dynamic workflow.** After plan approval, Phases 4–9 are orchestrated by the `dev-build-and-ship` workflow script (`.claude/workflows/dev-build-and-ship.js`), launched via the `Workflow` tool. The runtime enforces phase ordering deterministically — this is the mechanism that stops phases (Verify, review-comment triage) from being silently skipped. Phases 0–3 stay interactive in the main session (they require human Q&A and plan approval, which a background workflow cannot do). See **Phase 4–9: Autonomous Workflow Execution** below. The prose for Phases 4–10 that follows is the **reference contract** each workflow agent implements — keep it accurate; the agents read this file.

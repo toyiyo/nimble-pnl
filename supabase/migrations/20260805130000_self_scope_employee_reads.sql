@@ -47,6 +47,16 @@ CREATE POLICY "Scheduling or payroll capability view shifts"
     OR user_has_capability(restaurant_id, 'view:payroll')
   );
 
+-- Deliberately carries no status/participant filter. The subquery is itself evaluated under
+-- the caller's RLS on shift_trades, so this implements exactly "you may see a shift iff you
+-- may see a trade referencing it" — the two policies stay in lockstep by construction.
+--
+-- Accepted residual risk (design §4.3.1): shift_trades' own SELECT policy admits any active
+-- employee to every open-marketplace trade (target_employee_id IS NULL) regardless of status,
+-- so a resolved trade keeps its shift readable by coworkers. Measured at 37 of 8,195 shifts
+-- (0.45%) across 2 restaurants, all of them shifts their owner broadcast to the marketplace.
+-- The root-cause fix belongs in the shift_trades policy — a product decision about trade
+-- history — and is filed as a follow-up. When it lands, this clause inherits it unchanged.
 CREATE POLICY "Employees can view shift-trade-referenced shifts"
   ON shifts
   FOR SELECT

@@ -369,6 +369,56 @@ a staff user actually reaches an offered shift through it rather than assuming i
 the second half of the `OR` would sequentially scan `shift_trades` for every `shifts` row a
 staff user fails the first two clauses on. The migration must create it (§4.6).
 
+#### 4.3.1 Accepted residual risk: resolved trades keep their shift visible
+
+Raised by the Phase 7 adversarial reviewer. The clause carries **no status or participant
+filter**, and the pre-existing `shift_trades` SELECT policy (verified in production) admits any
+active employee to every *open-marketplace* trade — `target_employee_id IS NULL` — regardless of
+`status` and with no expiry:
+
+```sql
+EXISTS (SELECT 1 FROM employees me
+  WHERE me.user_id = auth.uid() AND me.restaurant_id = shift_trades.restaurant_id
+    AND me.is_active = true
+    AND (shift_trades.target_employee_id IS NULL
+         OR me.id = ANY (ARRAY[target_employee_id, offered_by_employee_id, accepted_by_employee_id])))
+```
+
+So a `staff` user can still read a coworker's shift row if that shift was *ever* posted to the
+open marketplace — including via a trade since `cancelled`, `rejected`, or `approved`.
+
+**The clause is nonetheless internally coherent.** The subquery runs under the caller's own RLS
+on `shift_trades`, so the rule it implements is exactly *"you may see a shift iff you may see a
+trade referencing it."* The over-breadth lives entirely in the upstream `shift_trades` policy,
+not here. Measured against production:
+
+| | |
+|---|---|
+| Total `shifts` rows | 8,195 |
+| Reachable by a non-owner via this clause | **37 (0.45%)** |
+| Restaurants affected | 2 |
+| Rows where `requested_shift_id IS NOT NULL` | **0** (the column is inert, as §4.3 states) |
+
+Open-marketplace trades by status: 26 `approved`, 11 `cancelled`, 2 `open`, 1 `rejected`.
+
+**Decision: accept and document.** Rationale:
+
+1. Every one of the 37 is a shift its owner **deliberately broadcast to all colleagues** via the
+   marketplace. That is the feature working, not a confidentiality boundary being crossed.
+2. This is `shifts` only — schedule data. The compensation and payroll leak, the more sensitive
+   half of the original report, is closed unconditionally by §4.1.
+3. Adding a status filter *here* would desynchronize the two policies: 26 existing `approved`
+   open trades would still render in the trade-history UI while their embedded
+   `offered_shift:shifts!offered_shift_id(...)` came back `null`. That is a UI regression traded
+   for a 0.45%→~0.02% change in a restaurant-internal exposure.
+4. Tightening `shift_trades` itself is the correct root-cause fix, but it changes what the
+   marketplace shows every employee — a **product decision about trade history**, not a security
+   fix, and outside this change's mandate.
+
+Follow-up issue to file alongside the `employees` one from §6: *"Scope `shift_trades` SELECT to
+active trades"* — decide a retention/status rule for open-marketplace trade visibility, then the
+`shifts` clause inherits it for free with no further change here.
+
 Note that `useShiftTrades`'s own conflict-detection read of `shifts` is already self-scoped
 (`.eq('employee_id', currentEmployeeId)` at [:616-620](../../../src/hooks/useShiftTrades.ts#L616))
 and is unaffected.

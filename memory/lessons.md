@@ -2088,6 +2088,36 @@
 - **Correction:** Two independent gotchas. (1) psql prints pgTAP results as query output, so every TAP line is **indented by one space** and padded — `grep '^not ok'` and `grep -c '^not ok'` silently match zero. Use unanchored `grep -aoE "not ok [0-9]+ - .{0,120}"` plus `grep -aoE "# Looks like you failed [0-9]+ test"`. (2) The job log is fetchable per-job even mid-run via `gh api repos/OWNER/REPO/actions/jobs/<job_id>/logs`; `--log-failed` is the part that blocks.
 - **Rule:** For a CI-only test failure, go straight for the assertion text, not the step. `gh api .../jobs/<id>/logs > /tmp/log.txt`, then `grep -a` for the framework's failure token — and use `-a` because these logs contain bytes that make grep treat them as binary and print nothing but "Binary file matches". To read context around a hit in a file with pathological line lengths, `python3 -c "d=open(f).read(); i=d.find(tok); print(repr(d[i-3000:i+1500]))"` beats any line-oriented tool.
 
+## Category: CI / Tooling Config (continued)
+
+### [2026-08-04] Nothing type-checks `supabase/functions/` — a `const` reassignment shipped through a green typecheck and green CI
+- **Mistake:** Declared two counters `const` in `broadcast-open-shifts/index.ts` and then reassigned them on the primary success path. `npm run typecheck` passed. Every CI job passed. In production this is a hard `TypeError: Assignment to constant variable` on the *happy* path — the broadcast would have thrown for every restaurant with email recipients.
+- **Correction:** Caught by the Phase 6 code-simplify agent reading the diff, not by any tool. `tsconfig.app.json` includes only `src`, so `tsc --noEmit` never opens a single edge function; there is no `deno check` step in CI either. Edge functions are checked by nothing.
+- **Rule:** A green typecheck says nothing about `supabase/functions/`. When editing an edge function, either run `deno check supabase/functions/<fn>/index.ts` yourself or treat the human/agent review as the only gate — and weight it accordingly. This class of error (reassignment, arity, obvious type mismatch) is exactly what you have stopped looking for by hand because the compiler normally finds it.
+- **Corollary worth fixing separately:** adding `deno check` to CI would close this for all 70+ functions at once.
+
+## Category: Code Review Process (continued)
+
+### [2026-08-04] Check the finding's *mechanism*, not just its example — the reviewer's instance may be the small one
+- **Mistake:** Copilot flagged that `sendPaced`'s budget check ran before the pacing wait, so the loop could sleep past its own deadline. Read literally the finding is nearly cosmetic: the overshoot is bounded by `intervalMs`, 500ms against a 90s budget.
+- **Correction:** Verifying it meant re-reading where the guard actually sat, which surfaced the real hole — the *retry* chain also ran inside the guard, so one recipient entering just under the deadline could still burn 4 attempts x 15s timeout + 7s backoff ≈ 67s. 90 + 67 = 157s, past the edge request ceiling the budget exists to respect. Same mechanism, ~130x the magnitude, and the reviewer had picked the smaller instance of it.
+- **Rule:** When a finding sounds too small to matter, that is the cue to check whether its mechanism has a larger instance elsewhere in the same function. Dismissing on magnitude without tracing the mechanism is how the big one survives. Say in the triage reply that the fix diverged and why, so the reviewer does not re-raise the version they wrote.
+
+### [2026-08-04] Redacting the identifier you control does not redact the one the upstream API echoes back
+- **Mistake:** `summarizeSends` deliberately logged the employee *id* and never the email address — the convention this repo already had. But the raw Resend error body was passed through untouched, and Resend echoes the offending address back in it ("Invalid `to` field: a@example.com is not a valid email"). That string was both `console.error`'d and returned as `email_failed_reason` straight into the manager's toast.
+- **Correction:** CodeRabbit caught it. Fixed by regex-redacting anything email-shaped before the message reaches a log or a response. Two follow-ups from the next review pass: cap the raw input before it hits the regex (`MAX_RAW_INPUT_LENGTH = 2000`, independent of how large the upstream body was), and exclude delimiter chars from the pattern so adjacent diagnostic text is not swallowed into the match.
+- **Rule:** PII redaction has to cover the fields you *pass through*, not only the fields you *choose*. Any third-party error body is untrusted text that may contain the very identifier you just took care to omit. And when you do regex over it, bound the input length — an unbounded upstream body against a backtracking pattern is a DoS you wrote yourself.
+
+## Category: Development Workflow (continued)
+
+### [2026-08-04] `--reporter=line` is a Playwright reporter; Vitest fails on it
+- **Mistake:** Ran `npx vitest run <files> --reporter=line` and got `ERR_LOAD_URL` out of `loadCustomReporterModule` — Vitest tried to resolve `line` as a module path. CLAUDE.md's "No Unbounded Waits" section does show `--reporter=line`, but on a `npx playwright test` line.
+- **Rule:** Vitest's reporters are `default`, `verbose`, `dot`, `json`, `junit`, `tap`. For a quick pass/fail read just omit the flag and read the default reporter's summary. Don't carry a flag across from a neighbouring example in the same doc without checking which tool that example was invoking.
+
+### [2026-08-04] Re-verify a dependency's existence before a design doc asserts it is missing
+- **Mistake:** The design doc was written around "`_shared/emailQueue.ts` does not exist yet, so copy it in" — true when the `git ls-tree origin/main` / `gh pr list` check ran, false a few hours later when PR #685 merged. The whole first section of the spec, and one of the three decisions put to the user, were built on it.
+- **Correction:** Two Phase 2.5 reviewers flagged it, and they disagreed with each other on the details — re-running the check rather than accepting either write-up was what actually settled it.
+- **Rule:** A repo-state check has a shelf life measured in hours on an active repo. Re-run it immediately before committing a design doc that depends on it, and again before the plan. When two reviewers contradict each other about repo state, neither is the source of truth — the repo is.
 ## Category: CI / Workflows (continued)
 
 ### [2026-08-04] A migration-version collision fails ONLY the `pull_request` run — and renaming the file then breaks the Supabase preview branch

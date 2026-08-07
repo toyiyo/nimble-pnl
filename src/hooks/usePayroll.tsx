@@ -41,6 +41,32 @@ export function aggregateTips(
   return tipsPerEmployee;
 }
 
+/**
+ * Narrows a Supabase query to `employee_id = employeeId` in self-scoped mode;
+ * a no-op pass-through in admin mode (`employeeId` falsy). Centralizes the
+ * per-employee predicate applied to each of the seven per-employee queries
+ * below so the self-scoping rule lives in one place, not six near-identical
+ * copies of it. `.eq()` returns `this` in supabase-js, so this stays
+ * type-safe across differently-shaped queries.
+ *
+ * `Query` is intentionally left unconstrained (no `extends { eq(...): Query }`
+ * structural bound): constraining a generic against a Supabase
+ * PostgrestFilterBuilder shape forces the compiler to fully expand that
+ * (deeply nested, self-referential) type at every call site to check the
+ * constraint, which trips `TS2589: Type instantiation is excessively deep and
+ * possibly infinite` on some of the six differently-shaped queries below. The
+ * inline cast on the `.eq()` call keeps the same runtime behavior and the
+ * same `Query` return type without asking the compiler to prove the
+ * constraint structurally.
+ */
+function scopeToEmployee<Query>(
+  query: Query,
+  employeeId: string | null | undefined,
+): Query {
+  if (!employeeId) return query;
+  return (query as { eq: (column: string, value: string) => Query }).eq('employee_id', employeeId);
+}
+
 type TipSplitForFallback = { id: string; total_amount: number };
 
 /**
@@ -104,22 +130,48 @@ interface DBOvertimeAdjustment {
 }
 
 /**
- * Hook to fetch and calculate payroll for a given period
+ * Internal implementation shared by `usePayroll` (admin) and `useMyPayroll`
+ * (self-scoped) so an employee's own numbers can never drift from what the
+ * admin page shows for the same employee. `employeeId === undefined` means
+ * admin mode (no per-employee predicate, all employees fetched);
+ * `employeeId === null` means self-scoped mode with no id resolved yet
+ * (everything stays disabled); a string means self-scoped mode, filtered.
  */
-export function usePayroll(
+function usePayrollInternal(
   restaurantId: string | null,
   startDate: Date,
-  endDate: Date
+  endDate: Date,
+  employeeId?: string | null,
 ) {
+  const isSelfScoped = employeeId !== undefined;
+
   // Fetch ALL employees (including inactive) for historical payroll accuracy
-  // An employee deactivated today should still show their past work/salary
-  const { employees } = useEmployees(restaurantId, { status: 'all' });
+  // An employee deactivated today should still show their past work/salary.
+  // In self-scoped mode with no employeeId yet, pass restaurantId as null so
+  // useEmployees' own `enabled: !!restaurantId` gate stays closed too.
+  const { employees, loading: employeesLoading } = useEmployees(
+    isSelfScoped && !employeeId ? null : restaurantId,
+    { status: 'all', employeeId: employeeId ?? undefined },
+  );
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { tz: timezone } = useRestaurantClock();
 
+  // `isSelfScoped` (i.e. `employeeId !== undefined`) is self-scoped mode
+  // (resolved or still-pending); `!isSelfScoped` (employeeId undefined) is
+  // admin mode. A plain `employeeId ?? null` fallback would map BOTH admin
+  // mode (undefined) and self-scoped-but-unresolved mode (null) to the same
+  // `null` key segment.
+  // `enabled: false` only suppresses a new fetch, not a cache read, so a
+  // disabled self-scoped query mounted while `employeeId` is still resolving
+  // could otherwise read back an admin query's already-cached restaurant-wide
+  // payroll under the identical key — reopening the leak this hook exists to
+  // close for a dual-role viewer. Admin and self-scoped-unresolved must use
+  // distinct segments.
+  const queryKeyEmployeeId = isSelfScoped ? employeeId ?? 'pending' : 'admin';
+
   const { data: payrollPeriod, isLoading, error, refetch } = useQuery({
-    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), timezone],
+    queryKey: ['payroll', restaurantId, startDate.toISOString(), endDate.toISOString(), timezone, queryKeyEmployeeId],
     queryFn: async (): Promise<PayrollPeriod | null> => {
       if (!restaurantId) return null;
 
@@ -148,12 +200,15 @@ export function usePayroll(
       );
       const { fetchStart, fetchEnd } = bufferPunchFetchRange(dayStart, dayEnd);
       const { rows: punches, capped } = await fetchAllRows<DBTimePunch>((from, to) =>
-        supabase
-          .from('time_punches')
-          .select('*')
-          .eq('restaurant_id', restaurantId)
-          .gte('punch_time', fetchStart.toISOString())
-          .lte('punch_time', fetchEnd.toISOString())
+        scopeToEmployee(
+          supabase
+            .from('time_punches')
+            .select('*')
+            .eq('restaurant_id', restaurantId)
+            .gte('punch_time', fetchStart.toISOString())
+            .lte('punch_time', fetchEnd.toISOString()),
+          employeeId,
+        )
           .order('punch_time', { ascending: true })
           .order('id')
           .range(from, to),
@@ -179,25 +234,37 @@ export function usePayroll(
       if (splitsError) throw splitsError;
 
       const splitIds = (approvedSplits || []).map(s => s.id);
-      
-      // Then fetch the tip split items for those splits, including split_date from tip_splits
-      const { data: tips, error: tipsError } = splitIds.length > 0
-        ? await supabase
-            .from('tip_split_items')
-            .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
-            .in('tip_split_id', splitIds)
-        : { data: [], error: null };
+
+      // Then fetch the tip split items for those splits, including split_date from tip_splits.
+      // Short-circuited locally when splitIds is empty: PostgREST's `.in()` has no
+      // client-side empty-array guard — it sends `tip_split_id=in.()` literally, which
+      // PostgREST rejects on a typed uuid column (postgrest/postgrest#641) rather than
+      // returning zero rows. Any payroll period with no approved/archived tip splits
+      // (the common case) would otherwise fail the entire payroll query. Same guard
+      // pattern as the identical query in src/pages/EmployeeTips.tsx.
+      const { data: tips, error: tipsError } = splitIds.length === 0
+        ? { data: [] as DBTipSplitItem[], error: null }
+        : await scopeToEmployee(
+            supabase
+              .from('tip_split_items')
+              .select('employee_id, amount, tip_split_id, tip_splits(split_date)')
+              .in('tip_split_id', splitIds),
+            employeeId,
+          );
 
       if (tipsError) throw tipsError;
 
       // Fetch manual payments (per-job contractor payments) for the period
-      const { data: manualPaymentsData, error: manualPaymentsError } = await supabase
-        .from('daily_labor_allocations')
-        .select('*')
-        .eq('restaurant_id', restaurantId)
-        .eq('source', 'per-job')
-        .gte('date', toDateOnlyString(startDate))
-        .lte('date', toDateOnlyString(endDate));
+      const { data: manualPaymentsData, error: manualPaymentsError } = await scopeToEmployee(
+        supabase
+          .from('daily_labor_allocations')
+          .select('*')
+          .eq('restaurant_id', restaurantId)
+          .eq('source', 'per-job')
+          .gte('date', toDateOnlyString(startDate))
+          .lte('date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (manualPaymentsError) throw manualPaymentsError;
 
@@ -218,22 +285,28 @@ export function usePayroll(
       });
 
       // Fetch tips from tip_split_items and employee_tips for the period
-      const { data: employeeTips, error: employeeTipsError } = await supabase
-        .from('employee_tips')
-        .select('employee_id, tip_amount, tip_date')
-        .eq('restaurant_id', restaurantId)
-        .gte('tip_date', toDateOnlyString(startDate))
-        .lte('tip_date', toDateOnlyString(endDate));
+      const { data: employeeTips, error: employeeTipsError } = await scopeToEmployee(
+        supabase
+          .from('employee_tips')
+          .select('employee_id, tip_amount, tip_date')
+          .eq('restaurant_id', restaurantId)
+          .gte('tip_date', toDateOnlyString(startDate))
+          .lte('tip_date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (employeeTipsError) throw employeeTipsError;
 
       // Fetch tip payouts (cash already paid out) for the period
-      const { data: tipPayoutsData, error: tipPayoutsError } = await supabase
-        .from('tip_payouts')
-        .select('employee_id, amount')
-        .eq('restaurant_id', restaurantId)
-        .gte('payout_date', toDateOnlyString(startDate))
-        .lte('payout_date', toDateOnlyString(endDate));
+      const { data: tipPayoutsData, error: tipPayoutsError } = await scopeToEmployee(
+        supabase
+          .from('tip_payouts')
+          .select('employee_id, amount')
+          .eq('restaurant_id', restaurantId)
+          .gte('payout_date', toDateOnlyString(startDate))
+          .lte('payout_date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (tipPayoutsError) throw tipPayoutsError;
 
@@ -289,12 +362,15 @@ export function usePayroll(
       }
 
       // Fetch overtime adjustments for the period
-      const { data: otAdjData, error: otAdjError } = await supabase
-        .from('overtime_adjustments')
-        .select('employee_id, punch_date, adjustment_type, hours, reason')
-        .eq('restaurant_id', restaurantId)
-        .gte('punch_date', toDateOnlyString(startDate))
-        .lte('punch_date', toDateOnlyString(endDate));
+      const { data: otAdjData, error: otAdjError } = await scopeToEmployee(
+        supabase
+          .from('overtime_adjustments')
+          .select('employee_id, punch_date, adjustment_type, hours, reason')
+          .eq('restaurant_id', restaurantId)
+          .gte('punch_date', toDateOnlyString(startDate))
+          .lte('punch_date', toDateOnlyString(endDate)),
+        employeeId,
+      );
 
       if (otAdjError) {
         console.error('Error fetching overtime adjustments:', otAdjError);
@@ -339,7 +415,13 @@ export function usePayroll(
         overtimeAdjustments,
       );
     },
-    enabled: !!restaurantId && !!employees.length,
+    // The `!isSelfScoped || !!employeeId` clause is belt-and-suspenders: when
+    // self-scoped and employeeId is null, `restaurantId` was already forced
+    // to null for the inner `useEmployees` call above, so `employees.length`
+    // is already 0 and this query is already disabled without it. Kept for
+    // clarity — it states the invariant directly rather than relying on a
+    // reader re-deriving it from useEmployees' own gate.
+    enabled: !!restaurantId && !!employees.length && (!isSelfScoped || !!employeeId),
     staleTime: 30000, // 30 seconds
     refetchOnWindowFocus: true,
   });
@@ -481,7 +563,7 @@ export function usePayroll(
 
   return {
     payrollPeriod,
-    loading: isLoading,
+    loading: isLoading || employeesLoading,
     error,
     refetch,
     addManualPayment: addManualPaymentMutation.mutate,
@@ -491,4 +573,29 @@ export function usePayroll(
     adjustOvertime: adjustOvertimeMutation.mutate,
     isAdjustingOvertime: adjustOvertimeMutation.isPending,
   };
+}
+
+/**
+ * Hook to fetch and calculate payroll for a given period (admin — all employees).
+ */
+export function usePayroll(
+  restaurantId: string | null,
+  startDate: Date,
+  endDate: Date
+) {
+  return usePayrollInternal(restaurantId, startDate, endDate);
+}
+
+/**
+ * Self-scoped payroll for a single employee. `employeeId: null` means the
+ * caller's own employee id hasn't resolved yet — the hook stays fully
+ * disabled (no queries issued) until it does.
+ */
+export function useMyPayroll(
+  restaurantId: string | null,
+  employeeId: string | null,
+  startDate: Date,
+  endDate: Date
+) {
+  return usePayrollInternal(restaurantId, startDate, endDate, employeeId);
 }

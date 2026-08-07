@@ -7,6 +7,7 @@ export type EmployeeStatusFilter = 'active' | 'inactive' | 'all';
 
 interface UseEmployeesOptions {
   status?: EmployeeStatusFilter;
+  employeeId?: string;
 }
 
 const defaultOptions: UseEmployeesOptions = { status: 'active' };
@@ -23,10 +24,10 @@ export const useEmployees = (
   restaurantId: string | null,
   options: UseEmployeesOptions = defaultOptions
 ) => {
-  const { status = 'active' } = options;
+  const { status = 'active', employeeId } = options;
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['employees', restaurantId, status],
+    queryKey: ['employees', restaurantId, status, employeeId],
     queryFn: async () => {
       if (!restaurantId) return [];
 
@@ -45,6 +46,10 @@ export const useEmployees = (
         query = query.eq('is_active', false);
       }
       // 'all' = no filter
+
+      if (employeeId) {
+        query = query.eq('id', employeeId);
+      }
 
       query = query
         .order('name')

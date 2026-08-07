@@ -19,6 +19,7 @@ import {
   calculateProfitability,
   calculateBenchmarks,
   calculatePeriodMetrics,
+  redactLaborFields,
   type SaleRecord,
   type AdjustmentRecord,
   type InventoryTransactionRecord,
@@ -586,5 +587,57 @@ describe('calculatePeriodMetrics', () => {
     expect(result.costs.labor_cost).toBe(0);
     expect(result.profitability.gross_profit).toBe(0);
     expect(result.profitability.profit_margin).toBe(0);
+  });
+});
+
+describe('redactLaborFields', () => {
+  // get_kpis (ai-execute-tool) runs under the caller's forwarded JWT, so
+  // time_punches is RLS-truncated to own-row for a caller without
+  // view:scheduling/view:payroll. Its labor total, and everything computed
+  // from it (prime_cost, profitability, labor/prime benchmark statuses),
+  // must never reach that caller looking like a complete figure.
+  const sales: SaleRecord[] = [
+    createSale({ total_price: 1000, chart_account: { account_type: 'revenue', account_subtype: 'sales' } }),
+  ];
+  const foodCosts: InventoryTransactionRecord[] = [{ total_cost: -300 }];
+  const laborCosts: LaborCostRecord[] = [{ total_labor_cost: 250 }];
+  const metrics = calculatePeriodMetrics(sales, [], foodCosts, laborCosts);
+
+  it('passes every field through unchanged when the caller has labor access', () => {
+    const result = redactLaborFields(metrics, true);
+    expect(result.costs).toEqual(metrics.costs);
+    expect(result.profitability).toEqual(metrics.profitability);
+    expect(result.benchmarks).toEqual(metrics.benchmarks);
+    expect(result.laborOmittedReason).toBeUndefined();
+  });
+
+  it('keeps only food-cost fields in costs when labor access is missing', () => {
+    const result = redactLaborFields(metrics, false);
+    expect(result.costs).toEqual({
+      food_cost: metrics.costs.food_cost,
+      food_cost_percentage: metrics.costs.food_cost_percentage,
+    });
+    expect(result.costs).not.toHaveProperty('labor_cost');
+    expect(result.costs).not.toHaveProperty('prime_cost');
+  });
+
+  it('drops profitability entirely when labor access is missing (it derives from prime_cost)', () => {
+    const result = redactLaborFields(metrics, false);
+    expect(result.profitability).toBeUndefined();
+  });
+
+  it('keeps only the food benchmark when labor access is missing', () => {
+    const result = redactLaborFields(metrics, false);
+    expect(result.benchmarks).toEqual({
+      food_cost_status: metrics.benchmarks.food_cost_status,
+      target_food_cost: metrics.benchmarks.target_food_cost,
+    });
+    expect(result.benchmarks).not.toHaveProperty('labor_cost_status');
+    expect(result.benchmarks).not.toHaveProperty('prime_cost_status');
+  });
+
+  it('supplies an explicit reason when labor access is missing', () => {
+    const result = redactLaborFields(metrics, false);
+    expect(result.laborOmittedReason).toMatch(/view:scheduling|view:payroll/);
   });
 });

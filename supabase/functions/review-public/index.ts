@@ -14,7 +14,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 import { signReviewToken, verifyReviewToken, REVIEW_TOKEN_TTL_SECONDS } from '../_shared/reviewToken.ts';
 import { routeRating } from '../_shared/reviewRouting.ts';
 import { hashIp, isOverLimit, REVIEW_RATE_WINDOW_MS } from '../_shared/reviewRateLimit.ts';
-import { hasFollowUpPayload, MAX_EMAIL_LENGTH } from '../_shared/reviewContact.ts';
+import { hasFollowUpPayload, isPlausibleEmail, MAX_EMAIL_LENGTH } from '../_shared/reviewContact.ts';
 
 const JSON_HEADERS = { ...corsHeaders, 'Content-Type': 'application/json' };
 
@@ -269,7 +269,23 @@ async function handleComment(
   const honeypot = typeof body.hp === 'string' ? body.hp : '';
   const consent = body.consent === true;
   const name = typeof body.name === 'string' ? body.name.trim().slice(0, MAX_NAME_LENGTH) : '';
-  const email = typeof body.email === 'string' ? body.email.trim().slice(0, MAX_EMAIL_LENGTH) : '';
+
+  // Validate the raw, untruncated email before any slice. A slice-then-check
+  // order let a caller send a 400-character string, watch the server cut it
+  // to MAX_EMAIL_LENGTH, and have the server store an address the guest
+  // never typed.
+  const rawEmail = typeof body.email === 'string' ? body.email.trim() : '';
+
+  // A comment carries the payload on its own, so an email-only request has
+  // no fallback: an over-length email must fail loud here, not fall through
+  // to the generic hasFollowUpPayload 400 below as if it were merely
+  // malformed.
+  if (!comment && rawEmail.length > MAX_EMAIL_LENGTH) return fail(400);
+
+  // A comment-bearing request drops an invalid or over-length email and
+  // keeps the comment. Truncation happens only now, after the raw value has
+  // passed every check.
+  const email = comment && !isPlausibleEmail(rawEmail) ? '' : rawEmail.slice(0, MAX_EMAIL_LENGTH);
 
   // A malformed request is answered honestly with a 400 — that tells an
   // attacker nothing they did not already know about their own payload.
@@ -314,48 +330,33 @@ async function handleComment(
     return ok();
   }
 
-  // `commented_at IS NULL` is what makes the token single-use: a replay
-  // updates zero rows and still answers ok. `comment IS NULL` cannot do that
-  // job now — a contact-only submit leaves the comment NULL, so a replay
-  // would match again, re-run the UPDATE, and hit the primary key on
-  // review_response_contacts. `handleComment` is the only writer of
-  // `commented_at`, so the new guard rejects every replay the old one did.
+  // review_response_submit_followup runs the guarded UPDATE and, on
+  // consent, the review_response_contacts INSERT inside one implicit
+  // transaction. `commented_at IS NULL` is what makes the token single-use:
+  // a replay updates zero rows and still answers ok. `comment IS NULL`
+  // cannot do that job — a contact-only submit leaves the comment NULL, so
+  // a replay would match again and hit the primary key on
+  // review_response_contacts. The RPC is the only writer of `commented_at`,
+  // so the guard rejects every replay. A failed contact insert now rolls
+  // the UPDATE back too, so `commented_at` stays NULL and a retry works.
   //
   // An empty comment stores as NULL, not as an empty string.
   // `review_response_metrics` counts `comment IS NOT NULL`, so an empty
   // string would inflate the comment count and put a blank row in the inbox.
-  const { data: updated, error: updateError } = await supabase
-    .from('review_responses')
-    .update({
-      comment: comment || null,
-      contact_consent: consent,
-      commented_at: new Date().toISOString(),
-    })
-    .eq('id', payload.rid)
-    .is('commented_at', null)
-    .select('id');
+  const { error: writeError } = await supabase.rpc('review_response_submit_followup', {
+    p_response_id: payload.rid,
+    p_comment: comment || null,
+    p_consent: consent,
+    p_name: name || null,
+    p_email: email || null,
+  });
 
-  if (updateError) {
-    console.error('review-public: comment update failed', updateError);
+  // The RPC returns false on a replay (zero rows updated) and true on a
+  // real write. The caller answers ok() either way, so it cannot tell them
+  // apart.
+  if (writeError) {
+    console.error('review-public: comment write failed', writeError);
     return fail(500);
   }
-  if (!updated || updated.length === 0) return ok();
-
-  // Consent false means the values are discarded, not stored and hidden.
-  if (consent && (name || email)) {
-    const { error: contactError } = await supabase
-      .from('review_response_contacts')
-      .insert({
-        review_response_id: payload.rid,
-        restaurant_id: '00000000-0000-0000-0000-000000000000', // overwritten by the trigger
-        contact_name: name || null,
-        contact_email: email || null,
-      });
-    if (contactError) {
-      console.error('review-public: contact insert failed', contactError);
-      // The comment itself is saved; the guest does not need to know.
-    }
-  }
-
   return ok();
 }

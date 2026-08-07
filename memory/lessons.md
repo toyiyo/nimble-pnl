@@ -2294,3 +2294,53 @@
 - **Mistake:** The first draft of the payload validator range-checked `threshold` to 1–5, mirroring the DB's `promoter_threshold` constraint.
 - **Correction:** Dropped the bound, kept the type check, and wrote the reason into the code as a comment plus a unit test that feeds it `[0, 6, 2.5]` and asserts `ready`. The page never reads `threshold` — routing is decided server-side and arrives as `routed_to`.
 - **Rule:** A client-side validator's job is renderability, not well-formedness. Every constraint it enforces beyond what the UI actually consumes is a future outage: widen `promoter_threshold` server-side and a stale client turns every live page into an error screen — the exact failure class the validator was added to prevent. Check each field against "does the render path read this?" and drop the constraint if the answer is no.
+
+## Category: Supabase Edge Functions (continued)
+
+### [2026-08-06] Two writes behind one `{ ok: true }` lose data when the first write is also the retry guard
+- **Mistake:** `handleComment` ran an UPDATE on `review_responses` — setting `comment`, `contact_consent` and `commented_at` — then an INSERT into `review_response_contacts`. A failed INSERT was swallowed under the comment `// The comment itself is saved; the guest does not need to know.`, and the handler still returned `{ ok: true }`. For a **contact-only** submit — no comment, only a name and an email — that deleted the guest email. The `commented_at` stamp is also the replay guard (`WHERE commented_at IS NULL`), so the guest could not retry: the second attempt matched zero rows and reported success again. The whole-branch review passed this code as Ready to merge. Two of the three PR bots found it independently, both as their top finding.
+- **Correction:** One `SECURITY DEFINER` plpgsql function, `review_response_submit_followup`, that holds the UPDATE and the INSERT in one body. A plpgsql function body is one implicit transaction, so an unhandled exception in the INSERT unwinds the UPDATE. No explicit `BEGIN`/`COMMIT`, and no compensating update. A pgTAP assertion forces a primary-key collision on the INSERT and checks `commented_at` is still NULL.
+- **Rule:** Before you swallow a secondary write's error, ask what the primary write already made unrepeatable. A guard column that the first write stamps — `commented_at`, `processed_at`, `synced_at` — turns every partial failure into permanent loss, because the retry path now reads the operation as done. Two mechanical checks: (1) a handler with two `await supabase.from(...)` writes and one success response needs a transaction, not a try/catch; (2) when a payload has an optional part, ask what happens if the request carries **only** the optional part — the happy path never covers that case.
+
+### [2026-08-06] Truncate after you validate, or the server stores an address the guest never typed
+- **Mistake:** `handleComment` ran `body.email.trim().slice(0, MAX_EMAIL_LENGTH)` at line 272, then passed the result to `hasFollowUpPayload` at line 280. An over-length email was cut to a shorter string that still looked like an email. The request passed the payload check, and the row stored a truncated address. The client rejected the same input, so the two layers disagreed and neither reported it.
+- **Correction:** Keep the raw trimmed value. Check it first: return 400 for an email-only request over `MAX_EMAIL_LENGTH`; drop the email for a comment-only request when `isPlausibleEmail` says no. Truncate only after both checks pass.
+- **Rule:** A length cap is a storage limit, not an input rule. Apply it after validation, never before. A `slice()` that runs before the guard turns "reject this input" into "store a different input", and afterwards the corrupted value looks exactly like a real one. Grep a handler for `.slice(0,` and check what reads the sliced value first.
+
+---
+
+## Category: TypeScript (continued)
+
+### [2026-08-06] `npm run typecheck` and `npx tsc --noEmit` check different projects
+- **Mistake:** I ran `npx tsc --noEmit` to check a known pre-existing error and got a clean result. I nearly reported the error as fixed. `package.json:15` defines `"typecheck": "tsc -p tsconfig.app.json --noEmit"`. A bare `npx tsc --noEmit` uses the **root** `tsconfig.json`, a different project with a different `include`. The real script still reports `src/hooks/useReviewPages.ts(198,24): error TS2352`.
+- **Correction:** Always run `npm run typecheck`.
+- **Rule:** Never substitute a raw tool call for the repo's npm script. Read the script first. A `-p <file>` flag, a `--config`, or a different working directory silently changes the answer, and a clean result from the wrong project is worse than no result. This holds for `tsc`, `eslint` and `vitest` alike. When a check disagrees with what you expect, suspect the invocation before you suspect the code.
+
+### [2026-08-06] A stale comment kept four `as any` casts alive after the types caught up
+- **Mistake:** `useReviewResponses.ts` carried a comment saying the generated Supabase types did not declare the review tables, plus four `.from('review_responses' as any)`-style casts that the comment justified. The types **did** declare them: `review_response_contacts` at `src/integrations/supabase/types.ts:6379`, `review_responses` at `:6415`, `review_response_metrics` at `:11743`. Those casts were the branch's only ESLint errors. Deleting them took the branch from 4 errors to 0.
+- **Rule:** A cast justified by a comment must name a check the reader can re-run, not a claim about the world. Write the grep that proves it, not the conclusion. A claim rots the moment someone regenerates the file, and nothing fails when it does. Corollary: when you see `as any` beside an explanation, run the explanation before you trust it.
+
+---
+
+## Category: UI Patterns (continued)
+
+### [2026-08-06] Two list filters that read as opposites still stranded the rows that mattered most
+- **Mistake:** The inbox offered `all`, `commented` and `silent`. `commented` meant `comment IS NOT NULL`; `silent` meant `comment IS NULL`. That reads like a partition, and it is one — over comments. But the same branch added a row type with **no comment and a contact request**: a guest who left only a name and an email. That row is the most actionable row in the inbox, and it landed under `silent`, filed beside the rows that need no reply. The label was now false for it.
+- **Correction:** Cut the axis on the rule the rest of the UI already used — `isActionableResponse`, which is `comment IS NOT NULL OR contact_consent`. The middle filter became `needsReply` with the predicate `.or('comment.not.is.null,contact_consent.is.true')`. `silent` became `.is('comment', null).eq('contact_consent', false)`.
+- **Rule:** Check a filter axis against the rule the rest of the UI acts on, not against the column it happens to read. A predicate over one column partitions that column, not the domain. When a later change adds a second signal for the same concept, the split misfiles rows instead of dropping them, so no test fails and no count looks wrong. When one rule lives in more than one place — here a TS function, a SQL `FILTER`, and a query predicate — name the other copies in a comment on each.
+
+---
+
+## Category: CI / Workflows (continued)
+
+### [2026-08-06] The `pr-comment-response` gate does not re-run when you answer the findings
+- **Confirms and extends [2026-08-05]** ("the check is a snapshot of the moment it ran"). The workflow triggers are `pull_request_target` (opened, synchronize, reopened, ready_for_review), a `*/30` cron, and `workflow_dispatch`. `pull_request_review_comment` is absent on purpose: the file's own comment explains that the event runs the workflow **from the PR**, so a contributor could disarm the gate by editing the YAML. Answering every finding therefore leaves the red check in place for up to 30 minutes.
+- **Rule:** After you reply to the findings, dispatch the gate yourself: `gh workflow run pr-comment-response.yml -f pr=<N>`. Confirm with `node dev-tools/pr-triage.js list --pr <N>`, which must print `No unanswered findings.` Do not wait for the cron, and do not read the old failure as a new one.
+
+### [2026-08-06] `gh pr checks --watch --fail-fast` exits at once when a check is already red
+- **Mistake:** I started `gh pr checks 713 --watch --fail-fast` while a stale gate failure was still posted. It exited 0 after one snapshot, and the background task reported success. Nothing was watched, and 30 other checks were still pending.
+- **Rule:** `--fail-fast` treats the **current** state as a stop condition, not only a future transition. Use plain `--watch` whenever a known-stale failure is still on the PR. Clear the stale check first, or you get a green exit code over an unread suite.
+
+### [2026-08-06] `--reporter=basic` does not exist in vitest 4
+- **Mistake:** `npx vitest run --reporter=basic` failed with `ERR_LOAD_URL`. The error names a module load failure, not an unknown reporter, so it reads like a broken install.
+- **Rule:** Use no `--reporter` flag, or `--reporter=dot`. Treat an `ERR_LOAD_URL` from a test runner as a bad flag value first, a broken install last.

@@ -52,6 +52,11 @@ END IF;
 **Warning: a gate on these flags locks out every owner today.** Seed the
 builtin roles before you add the gate. See "Task order" below.
 
+Seed both flags to every builtin that already holds `view:employees`. Five
+roles qualify: Owner, Manager, Operations Manager, Accountant, and Operations
+Manager (Collaborator). The last two also hold `view:payroll`. A three-role
+seed takes pay data away from the Accountant, who runs payroll today.
+
 ## Architecture
 
 Postgres RLS filters rows. It cannot mask a column. A column `GRANT` is a
@@ -210,7 +215,7 @@ The timestamp must not collide with any migration on `main`. Lesson
 | `useEmployeeLaborCosts.tsx:64` | a masked rate must not understate labor cost |
 | `employeeUtils.ts` | read `is_minor` from the row, not `isMinor(date_of_birth)` |
 | `areas.ts:107-108` | name → "Contact details", hint → "Email, phone, date of birth" |
-| `definitions.ts` | add both flags to Owner, Manager, Operations Manager |
+| `definitions.ts` | add both flags to the five roles that hold `view:employees` |
 
 A post-mutation read-back goes through `employees_secure`, not a hand-written
 column list. A hand-written list at 6 sites drifts the day a column is added.
@@ -224,7 +229,10 @@ column list. A hand-written list at 6 sites drifts the day a column is added.
   for one sample user.
 - `roles_seed_test.sql:439-449` asserts zero `role_flags` rows for every
   builtin. Replace the count with the exact expected set. Do not delete the
-  assertion.
+  assertion. The `derived_capabilities` temp table at
+  `roles_seed_test.sql:397-403` reads `role_areas` only. Add a `UNION ALL`
+  branch for `role_flags`, or the round trip reports every new flag as an
+  under-grant.
 - `tests/unit/employeeUpdatePayload.test.ts` — the hook drops a masked key.
 - `tests/e2e/sensitive-data-flags.spec.ts` — a role without `view:pay_rates`
   opens the roster and sees no pay.
@@ -233,11 +241,11 @@ column list. A hand-written list at 6 sites drifts the day a column is added.
 
 The seed must land before the gate, or every owner loses access.
 
-1. Add both flags to `ROLE_CAPABILITIES` for Owner, Manager, and Operations
-   Manager in `definitions.ts`. Seed the matching `role_flags` rows. Change the
-   `roles_seed_test.sql` assertion. The round-trip property in that test
-   compares SQL-derived capabilities against `ROLE_CAPABILITIES`, so both sides
-   must move together.
+1. Add both flags to `ROLE_CAPABILITIES` for the five roles that hold
+   `view:employees` in `definitions.ts`. Seed the matching `role_flags` rows.
+   Change the `roles_seed_test.sql` assertions. The round-trip property in that
+   test compares SQL-derived capabilities against `ROLE_CAPABILITIES`, so both
+   sides must move together.
 2. Strip masked keys in `useUpdateEmployee`, and fix the dialog's write path.
 3. Add the view, the REVOKE/GRANT set, and the policy change.
 4. Point every reader at `employees_secure`.

@@ -82,6 +82,23 @@ describe('BulkInventoryDeductionDialog — date pickers (BUG-001 regression)', (
     await user.click(trigger);
   }
 
+  /**
+   * Return the day cell for `day` in the *displayed* month.
+   *
+   * The shadcn Calendar sets `showOutsideDays`, so react-day-picker renders the
+   * adjacent months' spill-over days in the same grid. A day number near either
+   * end of the month therefore matches twice — e.g. a grid whose last row is
+   * Aug 30 → Sep 5 contains both "5" cells. Outside days carry the
+   * `day-outside` class, so drop them and assert the match is unambiguous.
+   */
+  function getDayCell(grid: HTMLElement, day: string): HTMLElement {
+    const cells = within(grid)
+      .getAllByRole('gridcell', { name: day })
+      .filter((cell) => !cell.classList.contains('day-outside'));
+    expect(cells).toHaveLength(1);
+    return cells[0];
+  }
+
   it('shows "Select start date" and "Select end date" trigger buttons', async () => {
     const user = userEvent.setup();
     render(<BulkInventoryDeductionDialog />);

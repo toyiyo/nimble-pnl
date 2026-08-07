@@ -25,6 +25,25 @@ export interface ReviewResponseContact {
   contact_email: string | null;
 }
 
+/** Which rows the inbox list asks for. The predicate runs server-side. */
+export type ReviewResponseFilter = 'all' | 'needsReply' | 'silent';
+
+/**
+ * A row a manager can act on: a comment to read, or a guest who asked to hear
+ * back. A silent five-star tap is neither, so it carries no status and no
+ * contact card.
+ *
+ * Warning: this rule has three copies. Change all three together, or the
+ * header badge, the `needsReply` filter, and the status chip disagree.
+ * 1. This function.
+ * 2. The `unread_count` FILTER in `review_response_metrics`
+ *    (supabase/migrations/20260806120000_review_metrics_actionable.sql).
+ * 3. The `needsReply` predicate below, in this file's queryFn.
+ */
+export function isActionableResponse(response: ReviewResponse): boolean {
+  return response.comment !== null || response.contact_consent;
+}
+
 interface ReviewResponseMetricsRow {
   average_rating: number | null;
   total_ratings: number;
@@ -32,44 +51,65 @@ interface ReviewResponseMetricsRow {
   unread_count: number;
 }
 
-// review_responses / review_response_contacts / review_response_metrics
-// aren't in the generated Supabase types yet (added by migrations after the
-// last `npm run sync-types`) — every `.from('table' as any)` /
-// `.rpc('review_response_metrics' as any)` cast in this file is for that
-// gap; the real shapes are the interfaces above.
-
-export function useReviewResponses(restaurantId?: string) {
+export function useReviewResponses(
+  restaurantId?: string,
+  filter: ReviewResponseFilter = 'all'
+) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const query = useQuery({
-    queryKey: ['review-responses', restaurantId],
+    // The filter joins the key, so each mode caches on its own. A shared key
+    // would answer `silent` from the `all` cache.
+    queryKey: ['review-responses', restaurantId, filter],
     enabled: Boolean(restaurantId),
     staleTime: 30000,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<ReviewResponse[]> => {
-      // Commented rows only, and the filter is applied SERVER-side, before
-      // the cap. Filtering after a `.limit(500)` would mean a location that
-      // takes 500 silent star taps after a written complaint fetches 500
-      // silent rows and shows an empty inbox — the complaint dropped off the
-      // end of a window it was never in.
+      // The filter is applied SERVER-side, before the cap. A filter after a
+      // `.limit(500)` would mean a location that takes 500 silent star taps
+      // after a written complaint fetches 500 silent rows and shows an empty
+      // inbox — the complaint dropped off the end of a window it was never in.
+      //
+      // Known limit: in `all` mode a heavy run of silent taps can push an old
+      // comment past the 500-row cap. `needsReply` is the mode that
+      // guarantees the full actionable list.
       //
       // Capped at 500 for the inbox *list* only. The header metrics below do
       // NOT come from this capped array; they're a separate, uncapped
       // server-side aggregate, so a restaurant past 500 comments still sees a
       // correct average/total/unread count.
-      const { data, error } = await supabase
-        .from('review_responses' as any)
+      const base = supabase
+        .from('review_responses')
         .select(
           'id, restaurant_id, review_page_id, rating, routed_to, comment, contact_consent, status, submitted_at, commented_at'
         )
-        .eq('restaurant_id', restaurantId!)
-        .not('comment', 'is', null)
+        .eq('restaurant_id', restaurantId!);
+
+      // `all` adds no predicate, so it reads the base query unchanged.
+      // `needsReply` holds the same rule as isActionableResponse — see the
+      // warning on that function.
+      let scoped = base;
+      if (filter === 'needsReply') {
+        scoped = base.or('comment.not.is.null,contact_consent.is.true');
+      } else if (filter === 'silent') {
+        scoped = base.is('comment', null).eq('contact_consent', false);
+      }
+
+      // The list shows commented_at ?? submitted_at (Reviews.tsx,
+      // ReviewFeedbackDetail.tsx). Order by the same key, or a late follow-up
+      // reads as new but sits far down the list. NULLS LAST keeps a
+      // comment-less row under its own submitted_at.
+      const { data, error } = await scoped
+        .order('commented_at', { ascending: false, nullsFirst: false })
         .order('submitted_at', { ascending: false })
         .limit(500);
 
       if (error) throw error;
-      return (data ?? []) as unknown as ReviewResponse[];
+      // review_responses.status and .routed_to are typed as plain `string`
+      // in the generated schema; ReviewResponse narrows them to the exact
+      // values this app writes and reads.
+      return (data ?? []) as ReviewResponse[];
     },
   });
 
@@ -79,14 +119,11 @@ export function useReviewResponses(restaurantId?: string) {
     staleTime: 30000,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<ReviewMetrics> => {
-      // review_response_metrics isn't in the generated Supabase types yet
-      // (added by 20260804110000_review_response_aggregates.sql, after the
-      // last `npm run sync-types`) — hence the `as any` cast.
-      const { data, error } = await supabase.rpc('review_response_metrics' as any, {
+      const { data, error } = await supabase.rpc('review_response_metrics', {
         p_restaurant_id: restaurantId!,
       });
       if (error) throw error;
-      const row = ((data ?? []) as unknown as ReviewResponseMetricsRow[])[0];
+      const row: ReviewResponseMetricsRow | undefined = (data ?? [])[0];
       return {
         averageRating: row?.average_rating ?? null,
         totalRatings: row?.total_ratings ?? 0,
@@ -109,7 +146,7 @@ export function useReviewResponses(restaurantId?: string) {
       // the status control would settle on the new value, and the next
       // refetch would silently snap it back with no explanation.
       const { data, error } = await supabase
-        .from('review_responses' as any)
+        .from('review_responses')
         .update({ status })
         .eq('id', id)
         .eq('restaurant_id', restaurantId)
@@ -145,7 +182,7 @@ export function useReviewResponses(restaurantId?: string) {
     async (responseId: string): Promise<ReviewResponseContact | null> => {
       if (!restaurantId) throw new Error('No restaurant selected');
       const { data, error } = await supabase
-        .from('review_response_contacts' as any)
+        .from('review_response_contacts')
         .select('contact_name, contact_email')
         .eq('review_response_id', responseId)
         .eq('restaurant_id', restaurantId)
@@ -166,7 +203,7 @@ export function useReviewResponses(restaurantId?: string) {
         });
         return null;
       }
-      return (data as unknown as ReviewResponseContact) ?? null;
+      return data ?? null;
     },
     [restaurantId, toast]
   );

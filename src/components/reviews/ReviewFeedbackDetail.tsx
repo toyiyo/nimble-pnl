@@ -14,10 +14,11 @@ import { ChevronLeft } from 'lucide-react';
 
 import { useRestaurantClock } from '@/hooks/useRestaurantClock';
 import { StarDisplay } from '@/components/reviews/StarDisplay';
-import type {
-  ReviewResponse,
-  ReviewResponseContact,
-  ReviewResponseStatus,
+import {
+  isActionableResponse,
+  type ReviewResponse,
+  type ReviewResponseContact,
+  type ReviewResponseStatus,
 } from '@/hooks/useReviewResponses';
 
 interface ReviewFeedbackDetailProps {
@@ -44,6 +45,10 @@ export function ReviewFeedbackDetail({
   // first tells a manager the guest declined contact, moments before an email
   // address appears where that sentence was.
   const [contactLoading, setContactLoading] = useState(false);
+
+  // A comment to read, or a guest who asked to hear back. A silent five-star
+  // tap is neither: a status control on it offers a chore that means nothing.
+  const isActionable = isActionableResponse(response);
 
   useEffect(() => {
     // The contact row is a separate fetch on a separate table, so a viewer
@@ -90,7 +95,7 @@ export function ReviewFeedbackDetail({
           </p>
         </div>
 
-        {canManage && (
+        {canManage && isActionable && (
           <Select
             value={response.status}
             onValueChange={(value) => onStatusChange(value as ReviewResponseStatus)}
@@ -110,9 +115,13 @@ export function ReviewFeedbackDetail({
         )}
       </div>
 
-      <p className="mt-5 text-[14px] text-foreground whitespace-pre-wrap">{response.comment}</p>
+      {response.comment === null ? (
+        <p className="mt-5 text-[14px] text-muted-foreground">This guest left no comment.</p>
+      ) : (
+        <p className="mt-5 text-[14px] text-foreground whitespace-pre-wrap">{response.comment}</p>
+      )}
 
-      {canManage && (
+      {canManage && isActionable && (
         <div className="mt-6 rounded-xl border border-border/40 bg-muted/30 p-4">
           <h3 className="text-[12px] font-medium text-muted-foreground uppercase tracking-wider">
             Contact

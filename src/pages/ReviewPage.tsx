@@ -10,6 +10,9 @@ import { Textarea } from '@/components/ui/textarea';
 
 import { StarRating } from '@/components/reviews/StarRating';
 
+import { ChevronLeft } from 'lucide-react';
+
+import { canSubmitFollowUp } from '@/lib/reviews/reviewSubmission';
 import {
   classifyReviewPageResponse,
   type PublicReviewPage,
@@ -32,6 +35,20 @@ function initials(name: string): string {
     .slice(0, 2)
     .map((word) => word[0]?.toUpperCase() ?? '')
     .join('');
+}
+
+/** The Google review hand-off. The promoter stage and the thanks stage both render it. */
+function GoogleReviewLink({ href }: { href: string }) {
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-6 flex h-11 w-full items-center justify-center rounded-lg bg-primary text-[15px] font-medium text-primary-foreground"
+    >
+      Leave a Google review
+    </a>
+  );
 }
 
 export default function ReviewPage() {
@@ -57,6 +74,14 @@ export default function ReviewPage() {
   const [rateError, setRateError] = useState(false);
 
   const [announcement, setAnnouncement] = useState('');
+
+  // The server's branch decision, derived. `routeRating` returns
+  // `'destination'` only when a URL exists. `handleRate` releases the URL only
+  // on that branch. This test is the same one, with no second state to keep in
+  // step. The form copy follows it. `What happened?` in front of a five-star
+  // guest reads as an accusation.
+  const isPromoterBranch = destinationUrl !== null;
+
   const branchHeadingRef = useRef<HTMLHeadingElement | null>(null);
   // The write guard is a ref, not the `committed` state: React batches state
   // updates, so a double-tap or a click landing on the same frame as an Enter
@@ -154,8 +179,19 @@ export default function ReviewPage() {
     [honeypot, slug]
   );
 
+  // Every stage move clears the error banner first. The guest did not send the
+  // new form yet. `That didn't send.` above it reads as a new failure.
+  const goToStage = useCallback((next: Stage, message: string) => {
+    setSubmitError(false);
+    setStage(next);
+    setAnnouncement(message);
+  }, []);
+
   const handleSubmitComment = useCallback(async () => {
-    if (!token || !comment.trim()) return;
+    // The `disabled` prop is not the only gate. This guard must hold the same
+    // rule, or a tap that gets past the button answers with nothing: no
+    // request, no error, no new stage.
+    if (!token || !canSubmitFollowUp({ comment, consent, email })) return;
     setSubmitting(true);
     setSubmitError(false);
 
@@ -163,7 +199,8 @@ export default function ReviewPage() {
       body: {
         action: 'comment',
         token,
-        comment: comment.trim(),
+        // An empty string would store as a blank comment. Send nothing.
+        comment: comment.trim() || undefined,
         consent,
         name: consent ? name : undefined,
         email: consent ? email : undefined,
@@ -176,8 +213,13 @@ export default function ReviewPage() {
       setSubmitError(true);
       return;
     }
-    setStage('thanks');
-  }, [comment, consent, email, honeypot, name, token]);
+    goToStage(
+      'thanks',
+      destinationUrl
+        ? 'Thanks. You can also share this on Google.'
+        : 'Thanks. The owner has your note.'
+    );
+  }, [comment, consent, destinationUrl, email, goToStage, honeypot, name, token]);
 
   const card = 'w-full max-w-md rounded-lg border border-border bg-card px-6 py-8 shadow-sm';
 
@@ -310,20 +352,18 @@ export default function ReviewPage() {
           <p className="mt-2 text-center text-[14px] text-muted-foreground">
             Would you share that on Google? It takes about a minute.
           </p>
-          {destinationUrl && (
-            <a
-              href={destinationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-6 flex h-11 w-full items-center justify-center rounded-lg bg-primary text-[15px] font-medium text-primary-foreground"
-            >
-              Leave a Google review
-            </a>
-          )}
+          {destinationUrl && <GoogleReviewLink href={destinationUrl} />}
           <button
             type="button"
-            onClick={() => setStage('thanks')}
+            onClick={() => goToStage('feedback', 'Tell us more. This goes straight to the owner.')}
             className="counter-micro mt-4 w-full text-center text-[12px] text-muted-foreground underline"
+          >
+            Tell us something directly
+          </button>
+          <button
+            type="button"
+            onClick={() => goToStage('thanks', 'Thanks. You can also share this on Google.')}
+            className="counter-micro mt-2 w-full text-center text-[12px] text-muted-foreground underline"
           >
             No thanks
           </button>
@@ -332,12 +372,23 @@ export default function ReviewPage() {
 
       {stage === 'feedback' && (
         <>
+          {isPromoterBranch && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => goToStage('promoter', 'Back to the Google link.')}
+              className="mb-2 h-9 px-2 rounded-lg text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ChevronLeft aria-hidden="true" className="mr-1 h-4 w-4" />
+              Back
+            </Button>
+          )}
           <h1
             ref={branchHeadingRef}
             tabIndex={-1}
             className="counter-display text-center text-[26px] font-semibold text-foreground focus:outline-none"
           >
-            What happened?
+            {isPromoterBranch ? 'Tell us more' : 'What happened?'}
           </h1>
           <p className="counter-micro mt-2 text-center text-[12px] text-muted-foreground">
             this goes straight to the owner — not public
@@ -346,15 +397,25 @@ export default function ReviewPage() {
           <div className="mt-5 space-y-4">
             <div>
               <Label htmlFor="review-comment" className="text-[13px] text-foreground">
-                Your feedback
+                Your feedback (optional)
               </Label>
               <Textarea
                 id="review-comment"
+                aria-describedby="review-comment-hint"
                 value={comment}
                 onChange={(event) => setComment(event.target.value)}
                 rows={4}
                 className="mt-1.5 bg-background border-border"
               />
+              {/* Without this line a guest who wants no comment sees a dead
+                  Send control and no reason for it. `aria-describedby` reads it
+                  out to a guest who tabs straight into the field. */}
+              <p
+                id="review-comment-hint"
+                className="counter-micro mt-1.5 text-[12px] text-muted-foreground"
+              >
+                Write a note, give your email, or both.
+              </p>
             </div>
 
             <div className="flex items-start gap-2">
@@ -417,7 +478,7 @@ export default function ReviewPage() {
             <Button
               type="button"
               onClick={handleSubmitComment}
-              disabled={submitting || comment.trim().length === 0}
+              disabled={submitting || !canSubmitFollowUp({ comment, consent, email })}
               className="h-11 w-full rounded-lg bg-primary text-[15px] font-medium text-primary-foreground"
             >
               {submitting ? 'Sending…' : 'Send to the owner'}
@@ -435,9 +496,13 @@ export default function ReviewPage() {
           >
             Thanks for telling us
           </h1>
+          {/* A sign-off above a call to action reads as an end. Say what the
+              button below is for, or say goodbye — never both. */}
           <p className="counter-micro mt-3 text-center text-[12px] text-muted-foreground">
-            have a good one
+            {destinationUrl ? 'You can also share this on Google.' : 'have a good one'}
           </p>
+          {/* A comment must not cost the restaurant a Google review. */}
+          {destinationUrl && <GoogleReviewLink href={destinationUrl} />}
         </>
       )}
 

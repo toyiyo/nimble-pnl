@@ -1,15 +1,22 @@
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 
 import { ChevronLeft, Plus, Star } from 'lucide-react';
 
 import { useRestaurantContext } from '@/contexts/RestaurantContext';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useReviewPages, type ReviewPageWithStats } from '@/hooks/useReviewPages';
-import { useReviewResponses, type ReviewResponse, type ReviewResponseStatus } from '@/hooks/useReviewResponses';
+import {
+  isActionableResponse,
+  useReviewResponses,
+  type ReviewResponse,
+  type ReviewResponseFilter,
+  type ReviewResponseStatus,
+} from '@/hooks/useReviewResponses';
 import { ReviewPageBuilder } from '@/components/reviews/ReviewPageBuilder';
 import { ReviewFeedbackDetail } from '@/components/reviews/ReviewFeedbackDetail';
 import { StarDisplay } from '@/components/reviews/StarDisplay';
@@ -77,18 +84,37 @@ const STATUS_LABELS: Record<ReviewResponseStatus, string> = {
   resolved: 'Resolved',
 };
 
+const FILTER_LABELS: Array<[ReviewResponseFilter, string]> = [
+  ['all', 'All'],
+  ['needsReply', 'Needs a reply'],
+  ['silent', 'Silent'],
+];
+
+const EMPTY_STATES: Record<ReviewResponseFilter, { title: string; body: string }> = {
+  all: {
+    title: 'No ratings yet',
+    body: 'Put a review page QR code on the table. Every tap lands here.',
+  },
+  needsReply: {
+    title: 'Nothing needs a reply yet',
+    body: 'A comment or a request to hear back lands here.',
+  },
+  silent: {
+    title: 'No silent ratings',
+    body: 'A silent rating has no comment and no request to hear back.',
+  },
+};
+
 function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canManage: boolean }) {
+  const [filter, setFilter] = useState<ReviewResponseFilter>('all');
   const { responses, metrics, isLoading, error, updateStatus, fetchContact } =
-    useReviewResponses(restaurantId);
+    useReviewResponses(restaurantId, filter);
   const { pages } = useReviewPages(restaurantId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // `responses` is already the commented rows only — the hook filters them
-  // server-side, before its 500-row cap. Ratings without a comment are a
-  // number, not a message: they count toward the header metrics and stay out
-  // of the list, because an inbox of 300 silent five-star taps is an inbox
-  // nobody opens.
+  // The hook applies the filter server-side, before its 500-row cap. A row
+  // the new mode excludes leaves `selected` null, and the detail pane closes.
   const selected = responses.find((row) => row.id === selectedId) ?? null;
   const pageNames = useMemo(
     () => new Map(pages.map((page) => [page.id, page.name])),
@@ -115,12 +141,31 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
   // status chip land most rows near 118px, and `measureElement` corrects the
   // rest. The cap the hook enforces is 500 rows, which is exactly the range
   // where mounting every row starts costing a manager real scroll latency.
+  // Both callbacks stay memoized. The virtualizer compares them by reference
+  // to decide if it must re-measure every row. A fresh arrow function per
+  // render breaks that check, so a plain row click re-measures all 500 rows.
+  // A silent row drops the two-line clamp and the status chip.
+  const estimateSize = useCallback(
+    (index: number) => (responses[index]?.comment ? 118 : 76),
+    [responses]
+  );
+  // Without a stable key the measurement cache is keyed by index. A filter
+  // change then applies the old row's height to the new row at that index.
+  const getItemKey = useCallback((index: number) => responses[index].id, [responses]);
+
   const virtualizer = useVirtualizer({
     count: responses.length,
     getScrollElement: () => listRef.current,
-    estimateSize: () => 118,
+    estimateSize,
+    getItemKey,
     overscan: 10,
   });
+
+  // A manager deep inside `All` who taps `Silent` must not land in the middle
+  // of a shorter list.
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [filter]);
 
   // A fresh arrow per row would defeat the memo on FeedbackRow — every parent
   // render would hand all 500 rows a new prop.
@@ -162,15 +207,31 @@ function FeedbackTab({ restaurantId, canManage }: { restaurantId?: string; canMa
         ))}
       </div>
 
+      <ToggleGroup
+        type="single"
+        value={filter}
+        // Radix sends an empty string when the manager taps the active item.
+        // Keep the mode; a list with no filter at all is not a state.
+        onValueChange={(value) => value && setFilter(value as ReviewResponseFilter)}
+        aria-label="Filter feedback"
+        className="mt-6 justify-start"
+      >
+        {FILTER_LABELS.map(([key, label]) => (
+          <ToggleGroupItem key={key} value={key} className="h-9 px-3 text-[13px]">
+            {label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+
       {responses.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-border/40 p-10 text-center">
-          <h2 className="text-[15px] font-semibold text-foreground">No written feedback yet</h2>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Guests who rate below your threshold get the private form. Their notes land here.
-          </p>
+        <div className="mt-4 rounded-xl border border-border/40 p-10 text-center">
+          <h2 className="text-[15px] font-semibold text-foreground">
+            {EMPTY_STATES[filter].title}
+          </h2>
+          <p className="mt-1 text-[13px] text-muted-foreground">{EMPTY_STATES[filter].body}</p>
         </div>
       ) : (
-        <div className="mt-6 md:grid md:grid-cols-[340px_1fr] md:gap-6">
+        <div className="mt-4 md:grid md:grid-cols-[340px_1fr] md:gap-6">
           <div className={selected ? 'hidden md:block' : 'block'}>
             <div
               ref={listRef}
@@ -247,12 +308,21 @@ const FeedbackRow = memo(function FeedbackRow({
     >
       <div className="flex items-center justify-between gap-2">
         <StarDisplay rating={response.rating} className="text-[14px] text-foreground" />
-        <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
-          {STATUS_LABELS[response.status]}
-        </span>
+        {/* Two rules, and they are not the same rule. A contact-only row has
+            no comment and is actionable: it shows the placeholder AND the
+            chip. A silent tap needs no triage, so it carries no status. */}
+        {isActionableResponse(response) && (
+          <span className="text-[11px] px-1.5 py-0.5 rounded-md bg-muted text-muted-foreground">
+            {STATUS_LABELS[response.status]}
+          </span>
+        )}
       </div>
       <p className="mt-1 text-[12px] text-muted-foreground truncate">{meta}</p>
-      <p className="mt-2 text-[13px] text-foreground line-clamp-2">{response.comment}</p>
+      {response.comment === null ? (
+        <p className="mt-2 text-[13px] text-muted-foreground">No comment left</p>
+      ) : (
+        <p className="mt-2 text-[13px] text-foreground line-clamp-2">{response.comment}</p>
+      )}
     </button>
   );
 });

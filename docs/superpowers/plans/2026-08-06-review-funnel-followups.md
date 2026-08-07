@@ -1095,7 +1095,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: nothing.
 - Produces:
-  - `export type ReviewResponseFilter = 'all' | 'commented' | 'silent'`
+  - `export type ReviewResponseFilter = 'all' | 'needsReply' | 'silent'`
   - `export function useReviewResponses(restaurantId?: string, filter: ReviewResponseFilter = 'all')`
   - `export function isActionableResponse(response: ReviewResponse): boolean`
 
@@ -1241,7 +1241,7 @@ In `src/hooks/useReviewResponses.ts`, add the type and the predicate after the `
 
 ```ts
 /** Which rows the inbox list asks for. The predicate runs server-side. */
-export type ReviewResponseFilter = 'all' | 'commented' | 'silent';
+export type ReviewResponseFilter = 'all' | 'needsReply' | 'silent';
 
 /**
  * A row a manager can act on: a comment to read, or a guest who asked to hear
@@ -1281,8 +1281,8 @@ export function useReviewResponses(
       // inbox — the complaint dropped off the end of a window it was never in.
       //
       // Known limit: in `all` mode a heavy run of silent taps can push an old
-      // comment past the 500-row cap. `With comments` is the mode that
-      // guarantees the full comment list.
+      // comment past the 500-row cap. `Needs a reply` is the mode that
+      // guarantees the full actionable list.
       //
       // Capped at 500 for the inbox *list* only. The header metrics below do
       // NOT come from this capped array; they're a separate, uncapped
@@ -1297,8 +1297,11 @@ export function useReviewResponses(
 
       // `all` adds no predicate, so it reads the base query unchanged.
       let scoped = base;
-      if (filter === 'commented') scoped = base.not('comment', 'is', null);
-      else if (filter === 'silent') scoped = base.is('comment', null);
+      if (filter === 'needsReply') {
+        scoped = base.or('comment.not.is.null,contact_consent.is.true');
+      } else if (filter === 'silent') {
+        scoped = base.is('comment', null).eq('contact_consent', false);
+      }
 
       const { data, error } = await scoped
         .order('submitted_at', { ascending: false })
@@ -1375,7 +1378,7 @@ After `STATUS_LABELS` (`Reviews.tsx:74-78`), add:
 ```tsx
 const FILTER_LABELS: Array<[ReviewResponseFilter, string]> = [
   ['all', 'All'],
-  ['commented', 'With comments'],
+  ['needsReply', 'Needs a reply'],
   ['silent', 'Silent'],
 ];
 
@@ -1384,13 +1387,13 @@ const EMPTY_STATES: Record<ReviewResponseFilter, { title: string; body: string }
     title: 'No ratings yet',
     body: 'Put a review page QR code on the table. Every tap lands here.',
   },
-  commented: {
-    title: 'No written feedback yet',
-    body: 'Every guest can leave a note, at any star count. Their notes land here.',
+  needsReply: {
+    title: 'Nothing needs a reply yet',
+    body: 'A comment or a request to hear back lands here.',
   },
   silent: {
-    title: 'Every rating here has a comment',
-    body: 'A silent rating is a star tap with no note.',
+    title: 'No silent ratings',
+    body: 'A silent rating has no comment and no request to hear back.',
   },
 };
 ```

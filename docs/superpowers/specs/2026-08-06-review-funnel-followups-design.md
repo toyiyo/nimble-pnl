@@ -246,7 +246,7 @@ copy carries a comment that names the other. The server copy is authoritative.
 `useReviewResponses` takes a second parameter.
 
 ```ts
-export type ReviewResponseFilter = 'all' | 'commented' | 'silent';
+export type ReviewResponseFilter = 'all' | 'needsReply' | 'silent';
 export function useReviewResponses(
   restaurantId?: string,
   filter: ReviewResponseFilter = 'all'
@@ -256,20 +256,20 @@ export function useReviewResponses(
 | Filter | Predicate |
 |---|---|
 | `all` | none |
-| `commented` | `.not('comment', 'is', null)` |
-| `silent` | `.is('comment', null)` |
+| `needsReply` | `.or('comment.not.is.null,contact_consent.is.true')` |
+| `silent` | `.is('comment', null).eq('contact_consent', false)` |
 
 The predicate stays server-side, before the `.limit(500)` cap. The filter joins
 the React Query key, so each mode caches on its own.
 
 **Known limit, stated on purpose.** In `all` mode a heavy run of silent taps can
-push an old comment past the 500-row cap. `With comments` is the mode that
-guarantees the full comment list. A code comment records this trade.
+push an old comment past the 500-row cap. `Needs a reply` is the mode that
+guarantees the full actionable list. A code comment records this trade.
 
 ### Part 2b — the list shows every response
 
 A `ToggleGroup` with `type="single"` sits above the rows. It holds three
-`ToggleGroupItem` controls: `All`, `With comments`, `Silent`. Six components
+`ToggleGroupItem` controls: `All`, `Needs a reply`, `Silent`. Six components
 already use this primitive, for example `src/components/roles/RoleEditor.tsx`.
 Radix gives the group one tab stop and arrow-key movement. Three plain buttons
 with `aria-pressed` give three tab stops and no arrow keys.
@@ -282,8 +282,8 @@ Empty-state copy follows the mode:
 | Mode | Copy |
 |---|---|
 | `all` | `No ratings yet` |
-| `commented` | `No written feedback yet` |
-| `silent` | `Every rating here has a comment` |
+| `needsReply` | `Nothing needs a reply yet` |
+| `silent` | `No silent ratings` |
 
 **The virtualizer needs three changes.** `Reviews.tsx:118-123` sets
 `estimateSize: () => 118`, a constant tuned for a two-line comment clamp, a

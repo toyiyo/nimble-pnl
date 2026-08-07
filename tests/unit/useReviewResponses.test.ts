@@ -28,18 +28,29 @@ function createWrapper() {
 }
 
 /**
- * `.select(...).eq(...)` then, per filter, `.not(...)` / `.is(...)` / neither,
- * then `.order(...).limit(...)`. The `all` mode adds no predicate, so `eq`
- * carries `order` directly.
+ * `.select(...).eq(...)` then, per filter, `.or(...)` / `.is(...).eq(...)` /
+ * neither, then two chained `.order(...)` calls and `.limit(...)`. The `all`
+ * mode adds no predicate, so `eq` carries `order` directly. Both `.order()`
+ * calls resolve to the same chain object, so `order` records both calls in
+ * sequence and `limit` is reachable no matter which branch ran.
  */
 function makeListStub(data: unknown, error: unknown = null) {
   const limit = vi.fn(async () => ({ data, error }));
-  const order = vi.fn(() => ({ limit }));
-  const not = vi.fn(() => ({ order }));
-  const is = vi.fn(() => ({ order }));
-  const eq = vi.fn(() => ({ not, is, order }));
+  interface OrderChain {
+    order: (...args: unknown[]) => OrderChain;
+    limit: typeof limit;
+  }
+  const orderChain = {} as OrderChain;
+  const order = vi.fn(() => orderChain);
+  orderChain.order = order;
+  orderChain.limit = limit;
+
+  const or = vi.fn(() => orderChain);
+  const eqContactConsent = vi.fn(() => orderChain);
+  const is = vi.fn(() => ({ eq: eqContactConsent }));
+  const eq = vi.fn(() => ({ or, is, order }));
   const select = vi.fn(() => ({ eq }));
-  return { stub: { select }, select, eq, not, is, order, limit };
+  return { stub: { select }, select, eq, or, is, eqContactConsent, order, limit };
 }
 
 /**
@@ -118,28 +129,36 @@ describe('useReviewResponses', () => {
     expect(mockSupabase.from).toHaveBeenCalledWith('review_responses');
     expect(list.eq).toHaveBeenCalledWith('restaurant_id', 'rest-1');
     // A silent rating is a rating. The default mode hides nothing.
-    expect(list.not).not.toHaveBeenCalled();
+    expect(list.or).not.toHaveBeenCalled();
     expect(list.is).not.toHaveBeenCalled();
-    expect(list.order).toHaveBeenCalledWith('submitted_at', { ascending: false });
+    // The list shows commented_at ?? submitted_at, so it must order by the
+    // same key first, with submitted_at as the tiebreaker.
+    expect(list.order).toHaveBeenNthCalledWith(1, 'commented_at', {
+      ascending: false,
+      nullsFirst: false,
+    });
+    expect(list.order).toHaveBeenNthCalledWith(2, 'submitted_at', { ascending: false });
     expect(list.limit).toHaveBeenCalledWith(500);
   });
 
-  it('filters to commented rows server-side, before the cap', async () => {
+  it('filters to rows that need a reply server-side, before the cap', async () => {
     const list = makeListStub([RESPONSE_ROW]);
     mockSupabase.from.mockReturnValue(list.stub);
     mockSupabase.rpc.mockResolvedValue({ data: [METRICS_ROW], error: null });
 
-    const { result } = renderHook(() => useReviewResponses('rest-1', 'commented'), {
+    const { result } = renderHook(() => useReviewResponses('rest-1', 'needsReply'), {
       wrapper: createWrapper(),
     });
 
     await waitFor(() => expect(result.current.responses).toHaveLength(1));
     // The predicate must precede the cap. A client-side filter after a
     // 500-row fetch loses a written complaint behind 500 newer silent taps.
-    expect(list.not).toHaveBeenCalledWith('comment', 'is', null);
-    // The two arms exclude each other. Both predicates together return zero
-    // rows, and the inbox looks empty under a filter that has rows.
+    // This is the same rule as isActionableResponse — see the warning there.
+    expect(list.or).toHaveBeenCalledWith('comment.not.is.null,contact_consent.is.true');
+    // The two arms exclude each other. A stub that ran the silent branch too
+    // would call is/eqContactConsent here, and this assertion would catch it.
     expect(list.is).not.toHaveBeenCalled();
+    expect(list.eqContactConsent).not.toHaveBeenCalled();
     expect(list.limit).toHaveBeenCalledWith(500);
   });
 
@@ -154,8 +173,33 @@ describe('useReviewResponses', () => {
 
     await waitFor(() => expect(result.current.responses).toHaveLength(1));
     expect(list.is).toHaveBeenCalledWith('comment', null);
-    expect(list.not).not.toHaveBeenCalled();
+    expect(list.eqContactConsent).toHaveBeenCalledWith('contact_consent', false);
+    // The two arms exclude each other. A stub that ran the needsReply branch
+    // too would call or here, and this assertion would catch it.
+    expect(list.or).not.toHaveBeenCalled();
     expect(list.limit).toHaveBeenCalledWith(500);
+  });
+
+  it('never lets a single fetch match both the needsReply and the silent rule', () => {
+    // Mirrors the two query-builder branches as plain predicates. A future
+    // edit that lets the branches overlap — so a stub applying both filters
+    // could still return a row — fails this test before it reaches the UI.
+    const matchesNeedsReply = (row: { comment: string | null; contact_consent: boolean }) =>
+      row.comment !== null || row.contact_consent;
+    const matchesSilent = (row: { comment: string | null; contact_consent: boolean }) =>
+      row.comment === null && row.contact_consent === false;
+
+    const rowShapes = [
+      { comment: 'hi', contact_consent: false },
+      { comment: 'hi', contact_consent: true },
+      { comment: null, contact_consent: true },
+      { comment: null, contact_consent: false },
+    ];
+
+    for (const row of rowShapes) {
+      expect(matchesNeedsReply(row) && matchesSilent(row)).toBe(false);
+      expect(matchesNeedsReply(row) !== matchesSilent(row)).toBe(true);
+    }
   });
 
   it('caches each filter on its own key, so a filter change refetches', async () => {

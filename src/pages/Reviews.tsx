@@ -86,7 +86,7 @@ const STATUS_LABELS: Record<ReviewResponseStatus, string> = {
 
 const FILTER_LABELS: Array<[ReviewResponseFilter, string]> = [
   ['all', 'All'],
-  ['commented', 'With comments'],
+  ['needsReply', 'Needs a reply'],
   ['silent', 'Silent'],
 ];
 
@@ -95,13 +95,13 @@ const EMPTY_STATES: Record<ReviewResponseFilter, { title: string; body: string }
     title: 'No ratings yet',
     body: 'Put a review page QR code on the table. Every tap lands here.',
   },
-  commented: {
-    title: 'No written feedback yet',
-    body: 'Every guest can leave a note, at any star count. Their notes land here.',
+  needsReply: {
+    title: 'Nothing needs a reply yet',
+    body: 'A comment or a request to hear back lands here.',
   },
   silent: {
-    title: 'Every rating here has a comment',
-    body: 'A silent rating is a star tap with no note.',
+    title: 'No silent ratings',
+    body: 'A silent rating has no comment and no request to hear back.',
   },
 };
 

@@ -116,7 +116,7 @@ export function ReviewFeedbackDetail({
       </div>
 
       {response.comment === null ? (
-        <p className="mt-5 text-[14px] text-muted-foreground">This guest left a rating only.</p>
+        <p className="mt-5 text-[14px] text-muted-foreground">This guest left no comment.</p>
       ) : (
         <p className="mt-5 text-[14px] text-foreground whitespace-pre-wrap">{response.comment}</p>
       )}

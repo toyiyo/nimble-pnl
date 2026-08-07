@@ -48,12 +48,23 @@ export function aggregateTips(
  * below so the self-scoping rule lives in one place, not six near-identical
  * copies of it. `.eq()` returns `this` in supabase-js, so this stays
  * type-safe across differently-shaped queries.
+ *
+ * `Query` is intentionally left unconstrained (no `extends { eq(...): Query }`
+ * structural bound): constraining a generic against a Supabase
+ * PostgrestFilterBuilder shape forces the compiler to fully expand that
+ * (deeply nested, self-referential) type at every call site to check the
+ * constraint, which trips `TS2589: Type instantiation is excessively deep and
+ * possibly infinite` on some of the six differently-shaped queries below. The
+ * inline cast on the `.eq()` call keeps the same runtime behavior and the
+ * same `Query` return type without asking the compiler to prove the
+ * constraint structurally.
  */
-function scopeToEmployee<Query extends { eq(column: string, value: string): Query }>(
+function scopeToEmployee<Query>(
   query: Query,
   employeeId: string | null | undefined,
 ): Query {
-  return employeeId ? query.eq('employee_id', employeeId) : query;
+  if (!employeeId) return query;
+  return (query as { eq: (column: string, value: string) => Query }).eq('employee_id', employeeId);
 }
 
 type TipSplitForFallback = { id: string; total_amount: number };
